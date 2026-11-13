@@ -2243,3 +2243,250 @@ fn a_key_reaches_the_shell_node_holding_the_focus_and_nothing_reaches_it_while_l
     );
     session.stop().expect("the session stops cleanly");
 }
+
+// ---------------------------------------------------------------------------
+// The head camera: what the XR extension, an observer, may write on it (design/xr-extension.md).
+
+/// The serial after the shell made the head camera and the nodes beside it: what an observer's first write is built on.
+const CREATED: u64 = 1;
+
+/// A camera node named `name`, under `parent`.
+fn create_camera(id: u64, parent: u64, name: &str) -> Vec<op::Properties> {
+    let mut ops = create(id, parent);
+    ops[0].class = "camera".to_owned();
+    ops.push(set_text(id, "name", name));
+    ops
+}
+
+/// The shell makes the room's head camera and a plain node named `head`, and an observer attaches beside it.
+/// Returns the shell's wire and serial, the observer's wire, and the ids: the head camera, another camera, a node.
+fn head_camera_session(session: &Session) -> (Wire, Wire, [u64; 3]) {
+    let mut shell = Wire::connect(session.socket());
+    let (held, _) = attach_and_snapshot(&mut shell, 1);
+    let (head, other, plain) = (1000, 1001, 1002);
+    let mut ops = create_camera(head, held.root, "head");
+    ops.extend(create_camera(other, held.root, "other"));
+    ops.extend(create(plain, held.root));
+    ops.push(set_text(plain, "name", "head"));
+    transact(&mut shell, 2, 0, 1, ops);
+    let applied: ReplyPayload = reply_skipping_changes(&mut shell, "transact");
+    assert!(applied.applied, "{applied:?}");
+    let mut observer = Wire::connect(session.socket());
+    attach_observer(&mut observer, 1);
+    (shell, observer, [head, other, plain])
+}
+
+fn pose_ops(camera: u64) -> Vec<op::Properties> {
+    vec![
+        set_double(camera, "x", 1500.0),
+        set_double(camera, "y", -1600.0),
+        set_double(camera, "z", -250.0),
+        set_list(camera, "rotation", vec![0.1, -0.2, 0.0]),
+    ]
+}
+
+#[test]
+fn an_observer_writes_the_head_cameras_pose_and_the_shell_hears_it() {
+    let session = Session::start();
+    let (mut shell, mut observer, [head, ..]) = head_camera_session(&session);
+    transact(&mut observer, 2, CREATED, 2, pose_ops(head));
+    let applied: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(applied.applied, "the head pose applies: {applied:?}");
+    let heard = changes_until(&mut shell, |all| {
+        all.iter().any(|c| c.node == head && c.key == "rotation")
+    });
+    for key in ["x", "y", "z"] {
+        assert!(
+            heard.iter().any(|c| c.node == head && c.key == key),
+            "the shell hears {key}: {heard:?}"
+        );
+    }
+    let x = heard.iter().find(|c| c.node == head && c.key == "x").expect("x");
+    assert!((x.value_double - 1500.0).abs() < f64::EPSILON, "{x:?}");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn an_observer_may_not_write_any_other_node_or_property() {
+    let session = Session::start();
+    let (_shell, mut observer, [head, other, plain]) = head_camera_session(&session);
+    let refused = |observer: &mut Wire, request_id: u64, ops: Vec<op::Properties>| {
+        transact(observer, request_id, CREATED, 2, ops);
+        let reply: ReplyPayload = reply_skipping_changes(observer, "transact");
+        assert!(!reply.applied, "{reply:?}");
+        reply
+    };
+    assert_eq!(
+        refused(&mut observer, 2, vec![set_double(other, "x", 1.0)]).code,
+        "not-holder",
+        "a camera that is not named head"
+    );
+    assert_eq!(
+        refused(&mut observer, 3, vec![set_double(plain, "x", 1.0)]).code,
+        "not-holder",
+        "a node named head that is not a camera"
+    );
+    assert_eq!(
+        refused(&mut observer, 4, vec![set_double(head, "opacity", 0.5)]).code,
+        "not-holder",
+        "another property of the head camera"
+    );
+    let mut mixed = pose_ops(head);
+    mixed.push(set_double(plain, "y", 1.0));
+    let reply = refused(&mut observer, 5, mixed);
+    assert_eq!((reply.code.as_str(), reply.failed_op), ("not-holder", 4));
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_pose_that_is_not_finite_is_refused_and_the_camera_keeps_its_last_pose() {
+    let session = Session::start();
+    let (mut shell, mut observer, [head, ..]) = head_camera_session(&session);
+    transact(&mut observer, 2, CREATED, 2, pose_ops(head));
+    let applied: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(applied.applied, "{applied:?}");
+    for (request_id, bad) in [(3, f64::NAN), (4, f64::INFINITY), (5, f64::NEG_INFINITY)] {
+        transact(
+            &mut observer,
+            request_id,
+            applied.serial,
+            3,
+            vec![set_double(head, "x", 7.0), set_double(head, "y", bad)],
+        );
+        let reply: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+        assert!(!reply.applied, "{bad}: {reply:?}");
+        assert_eq!((reply.code.as_str(), reply.failed_op), ("not-finite", 1), "{bad}");
+    }
+    // The shell's mirror shows the first pose and never the refused x of 7.
+    let heard = changes_until(&mut shell, |all| {
+        all.iter().any(|c| c.node == head && c.key == "rotation")
+    });
+    assert!(
+        heard
+            .iter()
+            .all(|c| !(c.node == head && c.key == "x" && (c.value_double - 7.0).abs() < f64::EPSILON)),
+        "{heard:?}"
+    );
+    let mut later = Wire::connect(session.socket());
+    let (_, nodes) = attach_observer(&mut later, 1);
+    let x = prop_of(&nodes, head, "x").expect("x is not the default");
+    assert!((x.value_double - 1500.0).abs() < f64::EPSILON, "{x:?}");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn the_layer_budget_is_the_observers_to_write_and_not_the_shells() {
+    let session = Session::start();
+    let (mut shell, mut observer, [head, other, _]) = head_camera_session(&session);
+    transact(
+        &mut shell,
+        3,
+        1,
+        2,
+        vec![set_number(head, "layer_budget", "uint", 0, 4, 0.0)],
+    );
+    let refused: ReplyPayload = reply_skipping_changes(&mut shell, "transact");
+    assert_eq!(refused.code, "read-only", "the shell cannot write it: {refused:?}");
+
+    transact(
+        &mut observer,
+        2,
+        CREATED,
+        2,
+        vec![set_number(head, "layer_budget", "uint", 0, 16, 0.0)],
+    );
+    let applied: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(applied.applied, "{applied:?}");
+    let heard = changes_until(&mut shell, |all| {
+        all.iter().any(|c| c.node == head && c.key == "layer_budget")
+    });
+    let budget = heard.iter().find(|c| c.key == "layer_budget").expect("the budget");
+    assert_eq!((budget.value_kind.as_str(), budget.value_uint), ("uint", 16));
+
+    transact(
+        &mut observer,
+        3,
+        applied.serial,
+        3,
+        vec![set_number(other, "layer_budget", "uint", 0, 16, 0.0)],
+    );
+    let refused: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert_eq!(refused.code, "not-holder", "only the camera named head: {refused:?}");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_burst_of_pose_writes_is_refused_rate_limited_and_the_rest_still_applies() {
+    let session = Session::start();
+    let (_shell, mut observer, [head, ..]) = head_camera_session(&session);
+    // All sent before any answer is read: the compositor sees them within a millisecond or two of each other.
+    let sent = 60_u64;
+    for request_id in 0..sent {
+        transact(
+            &mut observer,
+            10 + request_id,
+            CREATED,
+            2,
+            vec![set_double(head, "x", request_id as f64)],
+        );
+    }
+    let (mut applied, mut limited, mut serial) = (0_u64, 0_u64, CREATED);
+    for _ in 0..sent {
+        let reply: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+        serial = serial.max(reply.serial);
+        match reply.code.as_str() {
+            "" => applied += 1,
+            "rate-limited" => limited += 1,
+            // Writes that got past the cap were all built against the same serial, and each changes the camera the next
+            // one names: the rule for a transaction that is stale applies to them as to any other.
+            "stale-base" => applied += 1,
+            other => panic!("a refusal that is none of those: {other}: {reply:?}"),
+        }
+    }
+    assert!(applied >= 1, "the first writes get through");
+    assert!(applied <= 12, "the cap held: {applied} of {sent} got past it");
+    assert!(limited >= 40, "the rest were refused rate-limited: {limited} of {sent}");
+    assert_eq!(applied + limited, sent);
+    // A write after the burst, once the allowance has refilled, applies again.
+    std::thread::sleep(Duration::from_millis(100));
+    transact(&mut observer, 1000, serial, 3, vec![set_double(head, "x", -1.0)]);
+    let later: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(later.applied, "{later:?}");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_connection_that_is_not_the_owner_cannot_write_the_head_pose() {
+    // D35: no capabilities, the owner gate is the connection predicate. A foreign uid is refused the attach, and a
+    // transaction it sends without one is refused `not-privileged`, so no pose it writes reaches the tree.
+    use std::os::unix::fs::MetadataExt as _;
+    let own = std::fs::metadata("/proc/self").expect("the process directory").uid();
+    let (session, _ends) = Session::start_privileged_configured(&[], |config| {
+        config.ipc_owner_uid = Some(own.wrapping_add(1));
+    });
+    let mut wire = Wire::connect(session.socket());
+    wire.send(&Envelope::request_message(
+        NAMESPACE,
+        "attach",
+        1,
+        &AttachArgs {
+            version: 1,
+            mode: "observer".to_owned(),
+        },
+    ));
+    assert_eq!(wire.receive().expect("an answer").error_code(), Some("not-owner"));
+    transact(&mut wire, 2, 0, 0, pose_ops(1000));
+    let reply: ReplyPayload = reply_skipping_changes(&mut wire, "transact");
+    assert!(!reply.applied);
+    assert_eq!(reply.code, "not-privileged", "{reply:?}");
+    transact(
+        &mut wire,
+        3,
+        0,
+        0,
+        vec![set_number(1000, "layer_budget", "uint", 0, 99, 0.0)],
+    );
+    let reply: ReplyPayload = reply_skipping_changes(&mut wire, "transact");
+    assert_eq!(reply.code, "not-privileged", "{reply:?}");
+    session.stop().expect("the session stops cleanly");
+}

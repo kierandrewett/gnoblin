@@ -8,22 +8,27 @@
 use std::collections::BTreeSet;
 use std::fmt;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use xr_capture::views::FrameSource;
 use xr_gpu::Presenter;
-use xr_layers::{Limits, Notice, compose};
-use xr_scene::{IDENTITY, Layer, Options, Plan, Pose, Projected, plan};
+use xr_layers::{Limits, Notice, NoticeKind, Priority, compose};
+use xr_scene::{Class, IDENTITY, Layer, Options, Plan, Pose, Projected, TreeView, plan};
 use xr_session::frame_loop::{FrameLoop, Tick};
 use xr_session::runtime::{Runtime, RuntimeError};
-use xr_tree::{TreeClient, TreeError};
+use xr_tree::{TreeClient, TreeError, Value};
 
 use crate::dump::Dump;
+use crate::head::{self, CameraState, Driven, Input, Sample};
 use crate::pointer::Pointer;
 use crate::surfaces::{Fault, Surfaces};
 
 /// How long the bridge sleeps when the session is not running a frame.
 const IDLE_INTERVAL: Duration = Duration::from_millis(10);
+
+/// The owner's refusal of a write built on a tree it has moved on from. It says the mirror lagged, not that the owner
+/// will not take the write, so the extension tries again on the next pass instead of backing off.
+const STALE_BASE: &str = "stale-base";
 
 /// Why the bridge stopped with an error.
 #[derive(Debug)]
@@ -76,6 +81,12 @@ pub struct FrameReport<'a> {
     pub faults: &'a [Fault],
     /// How many layers the frame ended with.
     pub submitted: usize,
+    /// How many layers the runtime lets a frame carry: the number written to the head camera's `layer_budget`.
+    pub budget: usize,
+    /// How many Views the budget dropped from this frame.
+    pub dropped: usize,
+    /// What head tracking did this frame.
+    pub head: head::Status,
 }
 
 /// Runs until the session exits or the owner goes away, calling `on_frame` with the report of every frame.
@@ -101,6 +112,9 @@ pub fn run<R: Runtime, P: Presenter, S: FrameSource>(
     let mut parts = Parts {
         surfaces: Surfaces::new(dump),
         pointer: Pointer::default(),
+        head: head::Tracker::default(),
+        budget: head::Budget::default(),
+        refusals: Refusals::default(),
     };
     let outcome = run_loop(tree, frames, opts, captures, presenter, &mut parts, on_frame);
     // Best effort: the session is ending, and a failure here has nothing left to protect.
@@ -127,6 +141,27 @@ pub fn run<R: Runtime, P: Presenter, S: FrameSource>(
 struct Parts {
     surfaces: Surfaces,
     pointer: Pointer,
+    /// Follows the head with the head camera.
+    head: head::Tracker,
+    /// Keeps the head camera's `layer_budget` current.
+    budget: head::Budget,
+    /// The last refusal the owner gave each of the extension's own writes, so a repeated one is logged once.
+    refusals: Refusals,
+}
+
+/// The code of the owner's last refusal of each kind of write, while it lasts.
+#[derive(Default)]
+struct Refusals {
+    pose: Option<String>,
+    budget: Option<String>,
+}
+
+/// Logs `code` as the owner's refusal of `what` unless it is the one already logged, and remembers it.
+fn refused(slot: &mut Option<String>, what: &str, code: &str) {
+    if slot.as_deref() != Some(code) {
+        eprintln!("gnoblin-xr: the owner refused the {what}: {code}");
+        *slot = Some(code.to_owned());
+    }
 }
 
 fn run_loop<R: Runtime, P: Presenter, S: FrameSource>(
@@ -156,11 +191,12 @@ fn run_loop<R: Runtime, P: Presenter, S: FrameSource>(
         match frames.start()? {
             Tick::Idle => thread::sleep(IDLE_INTERVAL),
             Tick::Frame(frame) => {
+                let started = Instant::now();
                 let head = frame.head.unwrap_or(Pose {
                     position: [0.0; 3],
                     orientation: IDENTITY,
                 });
-                let planned = plan(tree.model(), &head, opts);
+                let mut planned = plan(tree.model(), &head, opts);
                 let controller = frames.locate_controller(frame.display_time)?;
                 parts
                     .pointer
@@ -169,6 +205,9 @@ fn run_loop<R: Runtime, P: Presenter, S: FrameSource>(
                 for (node, error) in captures.sync(&wanted) {
                     eprintln!("gnoblin-xr: capture of view {node:?} failed: {error}");
                 }
+                let head_status = follow_head(tree, parts, &planned.layers, frame.head, started, captures)?;
+                parts.head.pair(&mut planned.layers);
+                report_budget(tree, parts, &limits)?;
 
                 let mut layers = Vec::new();
                 let mut notices = Vec::new();
@@ -177,7 +216,16 @@ fn run_loop<R: Runtime, P: Presenter, S: FrameSource>(
                     faults = parts
                         .surfaces
                         .sync(frames.runtime_mut(), presenter, &capabilities, &wanted, captures);
-                    let submission = compose(&planned.layers, &|view| parts.surfaces.swapchain(view), &limits);
+                    let priority = Priority {
+                        focused: focused_windows(tree.model()),
+                        head: head.position,
+                    };
+                    let submission = compose(
+                        &planned.layers,
+                        &|view| parts.surfaces.swapchain(view),
+                        &limits,
+                        &priority,
+                    );
                     layers = submission.layers;
                     notices = submission.notices;
                 }
@@ -187,11 +235,105 @@ fn run_loop<R: Runtime, P: Presenter, S: FrameSource>(
                     notices: &notices,
                     faults: &faults,
                     submitted: layers.len(),
+                    budget: limits.budget(),
+                    dropped: notices
+                        .iter()
+                        .filter(|notice| notice.kind == NoticeKind::LayerBudget)
+                        .count(),
+                    head: head_status,
                 });
             }
             Tick::Exit => return Ok(Outcome::SessionExited),
         }
     }
+}
+
+/// The windows that have keyboard focus on any seat of the mirror.
+fn focused_windows(model: &TreeView) -> BTreeSet<u64> {
+    model
+        .nodes
+        .values()
+        .filter(|node| matches!(node.class, Class::Seat))
+        .filter_map(|node| node.focus)
+        .collect()
+}
+
+/// The head camera of the mirror, as the tracker reads it.
+fn head_camera(tree: &TreeClient) -> Option<CameraState> {
+    let id = tree.camera_named(head::CAMERA)?;
+    CameraState::of(tree.model(), id)
+}
+
+/// Lets the tracker decide this pass, and writes the pose it asks for to the head camera. The owner refusing a write is
+/// logged once and is not fatal: the frames go on, and the tracker waits before it asks again.
+fn follow_head<S: FrameSource>(
+    tree: &mut TreeClient,
+    parts: &mut Parts,
+    layers: &[Layer],
+    head: Option<Pose>,
+    measured: Instant,
+    captures: &S,
+) -> Result<head::Status, BridgeError> {
+    let camera = head_camera(tree);
+    let driven: Vec<Driven> = layers
+        .iter()
+        .filter_map(|layer| match layer {
+            Layer::Projection(projected) if Some(projected.camera) == camera.map(|camera| camera.id) => Some(Driven {
+                view: projected.placement.id,
+                extent: projected.placement.extent,
+                serial: captures.latest(projected.placement.id).map(|frame| frame.serial),
+                eyes: projected.eyes,
+            }),
+            _ => None,
+        })
+        .collect();
+    let now = Instant::now();
+    let step = parts.head.step(&Input {
+        now,
+        sample: Sample { pose: head, measured },
+        camera,
+        driven: &driven,
+    });
+    if let Some(write) = step.write {
+        let [x, y, z] = write.pose.position;
+        let values = [
+            ("x", Value::Double(x)),
+            ("y", Value::Double(y)),
+            ("z", Value::Double(z)),
+            (
+                "rotation",
+                Value::Doubles(write.pose.rotation_degrees.map(f64::to_radians).to_vec()),
+            ),
+        ];
+        match tree.set_values(write.camera, &values) {
+            Ok(_) => {
+                parts.refusals.pose = None;
+                parts.head.wrote(now, &write, &driven);
+            }
+            Err(TreeError::Refused { code, .. }) if code == STALE_BASE => parts.head.lagged(now),
+            Err(TreeError::Refused { code, .. }) => {
+                refused(&mut parts.refusals.pose, "head pose", &code);
+                parts.head.refused(now);
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(step.status)
+}
+
+/// Writes the runtime's layer limit to the head camera when the camera does not hold it.
+fn report_budget(tree: &mut TreeClient, parts: &mut Parts, limits: &Limits) -> Result<(), BridgeError> {
+    let budget = u64::try_from(limits.budget()).unwrap_or(u64::MAX);
+    let Some((camera, value)) = parts.budget.due(Instant::now(), head_camera(tree), budget) else {
+        return Ok(());
+    };
+    match tree.set_values(camera, &[("layer_budget", Value::Uint(value))]) {
+        Ok(_) => parts.refusals.budget = None,
+        Err(TreeError::Refused { code, .. }) if code == STALE_BASE => parts.budget.lagged(),
+        Err(TreeError::Refused { code, .. }) => refused(&mut parts.refusals.budget, "layer budget", &code),
+        Err(error) => return Err(error.into()),
+    }
+    Ok(())
 }
 
 /// The View nodes the plan draws. Each is captured so its picture can be shown in the headset.
@@ -206,6 +348,9 @@ fn view_nodes(layers: &[Layer]) -> BTreeSet<u64> {
 
 #[cfg(test)]
 mod failure_modes;
+
+#[cfg(test)]
+mod head_tracking;
 
 #[cfg(test)]
 mod tests {
@@ -1236,6 +1381,9 @@ mod tests {
         pub(super) plans: Vec<Plan>,
         pub(super) notices: Vec<Vec<Notice>>,
         pub(super) faults: Vec<Vec<Fault>>,
+        pub(super) heads: Vec<crate::head::Status>,
+        pub(super) budgets: Vec<usize>,
+        pub(super) dropped: Vec<usize>,
     }
 
     impl Reports {
@@ -1243,6 +1391,9 @@ mod tests {
             self.plans.push(report.plan.clone());
             self.notices.push(report.notices.to_vec());
             self.faults.push(report.faults.to_vec());
+            self.heads.push(report.head);
+            self.budgets.push(report.budget);
+            self.dropped.push(report.dropped);
         }
     }
 

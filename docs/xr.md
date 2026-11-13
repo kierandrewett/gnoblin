@@ -177,11 +177,53 @@ projection layer instead of a quad, with the two eyes the camera states.
   metres and a turn about x or z reversed. The planner's `rig` module writes the rule down and tests it.
 
 The eyes come from the tree, so the picture and the layer cannot disagree, and the same tree always gives the same
-layer.
+layer. The one exception is a View through the `head` camera, whose picture the extension pairs with the eyes it was
+drawn from (see "Head tracking").
 
-The head pose does not move them: a stereo View is a stereoscopic picture fixed in the room (or in front of the
-head, under the `head` camera), seen from the vantage point its camera states. It is not a window that follows your
-head. The stock shell makes no stereo View.
+### Head tracking
+
+A stereo View whose `camera` is the camera named `head` follows your head. The extension measures the head pose each
+frame and writes it onto that camera, and the compositor draws the View again from the new pose.
+
+- The pose goes into `x`, `y`, `z` and `rotation`, in one write, in the camera's units, with the scene's y axis flipped.
+- Nothing is written while no View goes through the `head` camera.
+- Writes are at most 60 a second, and the next one waits until the last has shown in the tree and every View through
+  the camera has drawn from it, or 250 ms have passed.
+- A pose measured more than 100 ms before the write is dropped. A pose with a NaN, an infinity or no rotation is never
+  sent. A head that moved less than 0.1 mm and 0.005 degrees is not written again.
+- When the runtime reports no head, nothing is written and the camera keeps its last pose. The log says
+  `head tracking: untracked`.
+- When the owner refuses a write, the extension logs the code once, waits a second and tries again. A `stale-base`
+  refusal is retried on the next frame.
+- When the camera is destroyed the writes stop, and a View whose camera is gone is a flat panel. A camera the shell
+  makes again is followed from the next frame.
+
+Only the program on the session owner's connection can write the head camera. It may write that one camera's pose and
+`layer_budget` and nothing else, and the compositor refuses it `rate-limited` past 120 writes a second after a burst of 4. Any other node is refused `not-holder`, and a number that is not finite `not-finite`.
+
+**Which eyes go with which picture.** A projection layer declares the eyes its picture was drawn from, and the runtime
+reprojects it against your head when it shows it. The extension cannot read which pose the compositor drew from, so it
+uses one rule:
+
+- A picture first seen while a write is in flight is paired with that write's pose.
+- Any other picture is paired with the camera as the tree holds it.
+
+A picture drawn just before the write can be paired wrongly until the next picture, which the write itself causes. That
+is at most one write, 1/60 s of head motion. No headset has shown how it looks.
+
+### Layer budget
+
+The runtime allows a fixed number of layers in one frame. The extension writes that number to the head camera's
+read-only `layer_budget`. When more Views are ready than the budget allows, it keeps them in this order:
+
+1. The View that shows a window with keyboard focus on any seat.
+2. The Views nearest your head. A panel in the room is measured from your head, a panel under the `head` camera from
+   the head itself.
+3. Plan order, to break a tie.
+
+The Views that fit are still submitted in plan order, so dropping one never changes what covers what. A View with no
+picture yet takes no budget. The log gets one line when the budget or the number dropped changes, such as
+`layer budget 16: 2 views dropped`. The stock shell does not read `layer_budget`.
 
 ### Pointer and focus
 
@@ -270,16 +312,20 @@ Logs, the tree dump and the pictures are left in `/tmp/xr-smoke`.
 - You need an OpenXR runtime such as Monado or WiVRn. WiVRn has not been tried.
 - The extension needs a Vulkan device and `XR_KHR_vulkan_enable2`. Without them it runs a headless session, which plans
   and drives the pointer and shows nothing.
-- No headset has shown it: it has run only against Monado's null compositor, which accepts the layers and shows
-  nothing. WiVRn, real controllers and a runtime that loses a session are untried.
+- No headset has shown it. Everything here has run only against Monado's null compositor, which shows nothing, a stub
+  runtime, a fake owner and the real compositor on its headless backend.
+- Head tracking, the layer budget and the eyes a layer declares are proven only that way. Nothing says what a person
+  sees, whether a layer swims, or how a real tracker's noise behaves.
+- WiVRn, real controllers and a runtime that loses a session are untried.
 - The pictures are `wl_shm` bytes copied through a staging buffer. There is no DMA-BUF path in the extension: the
   compositor imports a client's DMA-BUF and draws it, and a View of it is read back through the GPU, but the
   extension's capture asks for shared memory only.
-- A stereo View is a fixed stereoscopic picture. Nothing writes the head pose into the tree, so a View does not follow
-  the head, and a layer drawn from a pose that is later than its picture is not handled.
+- A stereo View follows the head only through the `head` camera, and only as well as the pairing rule above holds.
+  A View whose picture changes in the same frame as the head pose can be paired with eyes one write (at most 1/60 s of
+  head motion) off until the next picture. The tests do not measure how that looks.
 - Windows from every workspace are in the room, not only the active one.
-- The layer budget of the runtime is not read by the shell. A runtime that cannot show every panel drops the ones past
-  its limit, head-locked panels first.
+- The stock shell does not read `head.layer_budget`. The extension enforces the budget itself, whatever the shell does:
+  the View that shows the focused window is the last to be dropped.
 - A panel is flat. There is no depth, and a layout that makes windows intersect is not supported.
 
 See [`extensions/gnoblin-xr`](https://github.com/kierandrewett/gnoblin/tree/main/extensions/gnoblin-xr) for the

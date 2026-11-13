@@ -1,9 +1,9 @@
 //! Tests for `compose`: planned layers and ready swapchains to submitted layers.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use xr_layers::{
-    EyeVisibility, ImageRect, Limits, Notice, NoticeKind, SubmittedLayer, SwapchainId, SwapchainRef, compose,
+    EyeVisibility, ImageRect, Limits, Notice, NoticeKind, Priority, SubmittedLayer, SwapchainId, SwapchainRef,
 };
 use xr_scene::{Eye, Fov, IDENTITY, Layer, NodeId, Placement, Pose, Projected, Space};
 
@@ -12,6 +12,15 @@ const LIMITS: Limits = Limits {
     reserved: 0,
     color_scale_bias: true,
 };
+
+/// `compose` with nothing focused and the head at the origin.
+fn compose(
+    layers: &[Layer],
+    swapchain: &dyn Fn(NodeId) -> Option<SwapchainRef>,
+    limits: &Limits,
+) -> xr_layers::Submission {
+    xr_layers::compose(layers, swapchain, limits, &Priority::default())
+}
 
 fn placement(id: NodeId, space: Space, z: f64, opacity: f64) -> Placement {
     Placement {
@@ -31,6 +40,11 @@ fn placement(id: NodeId, space: Space, z: f64, opacity: f64) -> Placement {
 
 fn quad(id: NodeId, space: Space) -> Layer {
     Layer::Quad(placement(id, space, -1.0, 1.0))
+}
+
+/// A quad at depth `z`.
+fn at(id: NodeId, space: Space, z: f64) -> Layer {
+    Layer::Quad(placement(id, space, z, 1.0))
 }
 
 /// One 1920x1080 swapchain per view, numbered `view * 10`.
@@ -79,6 +93,7 @@ fn eyes() -> [Eye; 2] {
 fn projection(id: NodeId, space: Space) -> Layer {
     Layer::Projection(Projected {
         placement: placement(id, space, 0.0, 1.0),
+        camera: 7,
         eyes: eyes(),
     })
 }
@@ -242,52 +257,134 @@ fn an_odd_width_gives_the_spare_column_to_the_right_eye() {
 }
 
 #[test]
-fn view_layers_beyond_the_budget_are_dropped_and_reported() {
-    // Budget 3: two world layers and two head-locked ones. The second head-locked layer does not fit.
+fn a_layer_over_the_budget_is_dropped_by_distance_and_reported() {
+    // Budget 3, four layers none focused: the farthest one does not fit, wherever it is in plan order.
     let limits = Limits {
         max_layer_count: 3,
         ..LIMITS
     };
     let layers = [
-        quad(1, Space::World),
-        quad(2, Space::World),
-        quad(3, Space::View),
-        quad(4, Space::View),
+        at(1, Space::World, -2.0),
+        at(2, Space::World, -9.0),
+        at(3, Space::World, -3.0),
+        at(4, Space::World, -1.0),
     ];
     let chains = swapchains(&[1, 2, 3, 4]);
     let out = compose(&layers, &|view| chains.get(&view).copied(), &limits);
-    assert_eq!(views(&out.layers), vec![1, 2, 3]);
+    assert_eq!(views(&out.layers), vec![1, 3, 4], "the kept layers keep plan order");
     assert_eq!(
         out.notices,
         vec![Notice {
-            view: 4,
+            view: 2,
             kind: NoticeKind::LayerBudget
         }]
     );
 }
 
 #[test]
-fn world_layers_take_the_budget_before_head_locked_ones() {
-    // The head-locked layer comes first in tree order, but world content keeps the budget.
+fn the_focused_view_keeps_its_layer_however_far_it_is() {
     let limits = Limits {
         max_layer_count: 2,
         ..LIMITS
     };
-    let layers = [quad(9, Space::View), quad(1, Space::World), quad(2, Space::World)];
-    let chains = swapchains(&[1, 2, 9]);
-    let out = compose(&layers, &|view| chains.get(&view).copied(), &limits);
-    assert_eq!(views(&out.layers), vec![1, 2]);
+    // View 2 shows window 102, which has focus; it is the farthest and last.
+    let layers = [
+        at(1, Space::World, -1.0),
+        at(3, Space::World, -2.0),
+        at(2, Space::World, -50.0),
+    ];
+    let chains = swapchains(&[1, 2, 3]);
+    let priority = Priority {
+        focused: BTreeSet::from([102]),
+        head: [0.0; 3],
+    };
+    let out = xr_layers::compose(&layers, &|view| chains.get(&view).copied(), &limits, &priority);
+    assert_eq!(
+        views(&out.layers),
+        vec![1, 2],
+        "the focused View and the nearest of the rest"
+    );
     assert_eq!(
         out.notices,
         vec![Notice {
-            view: 9,
+            view: 3,
             kind: NoticeKind::LayerBudget
         }]
     );
 }
 
 #[test]
-fn world_layers_beyond_the_budget_are_dropped_last_first() {
+fn two_focused_views_over_the_budget_are_ranked_by_distance() {
+    let limits = Limits {
+        max_layer_count: 1,
+        ..LIMITS
+    };
+    let layers = [
+        at(1, Space::World, -4.0),
+        at(2, Space::World, -2.0),
+        at(3, Space::World, -1.0),
+    ];
+    let chains = swapchains(&[1, 2, 3]);
+    let priority = Priority {
+        focused: BTreeSet::from([101, 102]),
+        head: [0.0; 3],
+    };
+    let out = xr_layers::compose(&layers, &|view| chains.get(&view).copied(), &limits, &priority);
+    assert_eq!(views(&out.layers), vec![2]);
+}
+
+#[test]
+fn nearest_is_measured_from_the_head_not_from_the_origin() {
+    let limits = Limits {
+        max_layer_count: 1,
+        ..LIMITS
+    };
+    // `placement` puts the layer at x = 0.5, y = 1.5 and the given z. The head has walked to z = -10.
+    let layers = [at(1, Space::World, -1.0), at(2, Space::World, -9.0)];
+    let chains = swapchains(&[1, 2]);
+    let priority = Priority {
+        focused: BTreeSet::new(),
+        head: [0.5, 1.5, -10.0],
+    };
+    let out = xr_layers::compose(&layers, &|view| chains.get(&view).copied(), &limits, &priority);
+    assert_eq!(views(&out.layers), vec![2]);
+}
+
+#[test]
+fn a_head_locked_layer_is_measured_in_the_heads_own_space() {
+    let limits = Limits {
+        max_layer_count: 1,
+        ..LIMITS
+    };
+    // The head is far from the origin, and a head-locked layer still sits about 1.8 m from it.
+    let layers = [at(1, Space::World, -2.0), at(2, Space::View, -1.0)];
+    let chains = swapchains(&[1, 2]);
+    let priority = Priority {
+        focused: BTreeSet::new(),
+        head: [30.0, 1.5, -2.0],
+    };
+    let out = xr_layers::compose(&layers, &|view| chains.get(&view).copied(), &limits, &priority);
+    assert_eq!(views(&out.layers), vec![2]);
+}
+
+#[test]
+fn a_head_that_is_not_finite_counts_as_the_origin() {
+    let limits = Limits {
+        max_layer_count: 1,
+        ..LIMITS
+    };
+    let layers = [at(1, Space::World, -5.0), at(2, Space::World, -1.0)];
+    let chains = swapchains(&[1, 2]);
+    let priority = Priority {
+        focused: BTreeSet::new(),
+        head: [f64::NAN, 0.0, 0.0],
+    };
+    let out = xr_layers::compose(&layers, &|view| chains.get(&view).copied(), &limits, &priority);
+    assert_eq!(views(&out.layers), vec![2]);
+}
+
+#[test]
+fn equal_rank_keeps_plan_order() {
     let limits = Limits {
         max_layer_count: 2,
         ..LIMITS
@@ -296,13 +393,42 @@ fn world_layers_beyond_the_budget_are_dropped_last_first() {
     let chains = swapchains(&[1, 2, 3]);
     let out = compose(&layers, &|view| chains.get(&view).copied(), &limits);
     assert_eq!(views(&out.layers), vec![1, 2]);
+}
+
+#[test]
+fn dropped_layers_are_reported_in_plan_order() {
+    let limits = Limits {
+        max_layer_count: 1,
+        ..LIMITS
+    };
+    let layers = [
+        at(1, Space::World, -3.0),
+        at(2, Space::World, -1.0),
+        at(3, Space::World, -2.0),
+    ];
+    let chains = swapchains(&[1, 2, 3]);
+    let out = compose(&layers, &|view| chains.get(&view).copied(), &limits);
+    assert_eq!(views(&out.layers), vec![2]);
     assert_eq!(
-        out.notices,
-        vec![Notice {
-            view: 3,
-            kind: NoticeKind::LayerBudget
-        }]
+        out.notices.iter().map(|notice| notice.view).collect::<Vec<_>>(),
+        vec![1, 3]
     );
+}
+
+#[test]
+fn a_focused_view_with_no_picture_yet_takes_no_budget() {
+    let limits = Limits {
+        max_layer_count: 1,
+        ..LIMITS
+    };
+    let layers = [at(1, Space::World, -1.0), at(2, Space::World, -2.0)];
+    let chains = swapchains(&[2]);
+    let priority = Priority {
+        focused: BTreeSet::from([101]),
+        head: [0.0; 3],
+    };
+    let out = xr_layers::compose(&layers, &|view| chains.get(&view).copied(), &limits, &priority);
+    assert_eq!(views(&out.layers), vec![2]);
 }
 
 #[test]

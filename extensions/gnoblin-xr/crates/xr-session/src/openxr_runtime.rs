@@ -860,6 +860,7 @@ mod tests {
                 &[Layer::Quad(placement)],
                 &|_| Some(xr_layers::SwapchainRef { id, width, height }),
                 &limits,
+                &xr_layers::Priority::default(),
             );
             assert_eq!(submission.layers.len(), 1);
             runtime

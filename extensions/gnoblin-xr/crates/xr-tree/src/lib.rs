@@ -59,6 +59,44 @@ pub struct Reply {
     pub serial: u64,
 }
 
+/// A value the extension writes with [`TreeClient::set_values`]: the kinds the extension's own writes need.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Value {
+    /// A `double` property.
+    Double(f64),
+    /// A `list<double>` property.
+    Doubles(Vec<f64>),
+    /// A `uint` property.
+    Uint(u64),
+}
+
+/// The wire form of one `set` of `key` on `node`.
+fn set_op(node: NodeId, key: &str, value: &Value) -> op::Properties {
+    let base = op::Properties {
+        kind: "set".to_owned(),
+        node,
+        key: key.to_owned(),
+        ..Default::default()
+    };
+    match value {
+        Value::Double(number) => op::Properties {
+            value_kind: "double".to_owned(),
+            value_double: *number,
+            ..base
+        },
+        Value::Doubles(numbers) => op::Properties {
+            value_kind: "list_double".to_owned(),
+            value_list: numbers.clone(),
+            ..base
+        },
+        Value::Uint(number) => op::Properties {
+            value_kind: "uint".to_owned(),
+            value_uint: *number,
+            ..base
+        },
+    }
+}
+
 /// One pointer event the owner delivers on a seat's pointer. `node` is the window the pointer is
 /// over, `seat` the seat node, and `x`, `y` are the pixel coordinates within that window.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -323,6 +361,21 @@ impl TreeClient {
         &self.model
     }
 
+    /// The id of the first camera node named `name` in tree order, if the model has one.
+    #[must_use]
+    pub fn camera_named(&self, name: &str) -> Option<NodeId> {
+        fn find(model: &TreeView, ids: &[NodeId], name: &str) -> Option<NodeId> {
+            ids.iter().find_map(|id| {
+                let node = model.nodes.get(id)?;
+                if matches!(node.class, Class::Camera { .. }) && node.name.as_deref() == Some(name) {
+                    return Some(*id);
+                }
+                find(model, &node.children, name)
+            })
+        }
+        find(&self.model, &self.model.roots, name)
+    }
+
     /// The id of the seat node named `name`, if the model has one.
     #[must_use]
     pub fn seat_named(&self, name: &str) -> Option<NodeId> {
@@ -385,6 +438,16 @@ impl TreeClient {
     pub fn send_input(&mut self, input: &PointerInput) -> Result<(), TreeError> {
         self.transact(vec![input_op(input)])?;
         Ok(())
+    }
+
+    /// Writes `values` on `node` in one owner transaction, so a reader sees all of them or none.
+    ///
+    /// # Errors
+    ///
+    /// The owner refuses the transaction ([`TreeError::Refused`]), such as `not-finite` for a number that is not
+    /// finite or `rate-limited` for writes that come too fast, or the socket fails.
+    pub fn set_values(&mut self, node: NodeId, values: &[(&str, Value)]) -> Result<Reply, TreeError> {
+        self.transact(values.iter().map(|(key, value)| set_op(node, key, value)).collect())
     }
 
     /// Applies one owner transaction. It returns once the owner answers, and any change
@@ -753,6 +816,14 @@ fn set_prop(node: &mut TreeNode, prop: &change::Properties) -> Result<(), TreeEr
                 return Err(TreeError::Protocol("tree rotation is not three angles".to_owned()));
             };
             node.rotation = [x.to_degrees(), y.to_degrees(), z.to_degrees()];
+        }
+        "layer_budget" => {
+            expect_kind(prop, "uint")?;
+            node.layer_budget = Some(prop.value_uint);
+        }
+        "focus" => {
+            expect_kind(prop, "node")?;
+            node.focus = (prop.value_node != NIL).then_some(prop.value_node);
         }
         "scale" => {
             expect_kind(prop, "list_double")?;

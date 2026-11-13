@@ -10,6 +10,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Instant;
 
 use gnoblin_input::GestureDelivery;
 use gnoblin_paint::SharedPainter;
@@ -31,7 +32,7 @@ use gnoblin_wayland::{
 use super::server::IpcEvent;
 use super::tree::{
     AttachMode, TreeAttached, TreeClasses, TreeHolder, TreeReply, TreeSession, TreeSnapshot, observer_ops, snapshot_of,
-    tree_listing,
+    tree_listing, writes_head_camera,
 };
 use super::tree_effects::{pass_from_wire, wire_from_pass};
 
@@ -220,7 +221,7 @@ impl TreeHostHandle {
         let base_serial = args.base_serial;
         // Moved out, so the ops (and any call text they carry) leave `args` and are wiped by the
         // transaction that takes them, not kept alive by the request.
-        let tx = match transaction(std::mem::take(&mut args.ops)) {
+        let mut tx = match transaction(std::mem::take(&mut args.ops)) {
             Ok(tx) => tx,
             Err(refusal) => return Some(self.refusal(refusal.code, refusal.failed_op)),
         };
@@ -233,6 +234,13 @@ impl TreeHostHandle {
                     return Some(self.refusal(Code::NotHolder, i32::try_from(index).unwrap_or(-1)));
                 }
             }
+            // The head pose is a measurement that arrives every frame: each observer may write it only so fast.
+            if let Some(index) = writes_head_camera(&tx.ops)
+                && !lock(&self.session).admit_pose(me, Instant::now())
+            {
+                return Some(self.refusal(Code::RateLimited, i32::try_from(index).unwrap_or(-1)));
+            }
+            tx = tx.from_observer();
         }
         let events = self.events.clone();
         // Asked again when the frame applies: a holder that detached while the transaction

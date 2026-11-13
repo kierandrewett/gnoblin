@@ -35,6 +35,9 @@ it looks down negative `z`. Scene `y` grows down.
 - A frustum that is not one (`fov_left` not below `fov_right`, `fov_down` not below `fov_up`, an angle of 90 degrees or
   more), an `ipd` below zero, or a `metres` of zero or less draws a blank picture of the View's size. Nothing is
   refused: each property takes any number, and the picture is blank when the combination cannot be drawn.
+- `layer_budget` is read-only. The XR extension writes it on the camera named `head`: how many composition layers the
+  headset runtime allows in one frame. `0` means nothing has reported one. A shell write is refused `read-only`. See
+  [XR mode](/xr).
 
 A stereo picture is drawn like any other, one eye after the other, each into half the width: on the CPU on the software
 renderer, and on the GPU as one texture with two viewports on GLES.

@@ -348,6 +348,7 @@ object camera since 0.2.0 secret false
   property fov_right type double since 0.2.0 secret false
   property fov_up type double since 0.2.0 secret false
   property fov_down type double since 0.2.0 secret false
+  property layer_budget type uint since 0.2.0 secret false
   signal destroyed since 0.2.0 secret false
 object canvas since 0.2.0 secret false
   property id type uint since 0.2.0 secret false
@@ -1641,6 +1642,8 @@ message Camera {
     double fov_up = 27;
     // since 0.2.0
     double fov_down = 28;
+    // since 0.2.0
+    uint64 layer_budget = 29;
   }
 
   // Signal `destroyed`, since 0.2.0.

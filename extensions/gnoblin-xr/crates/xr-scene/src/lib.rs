@@ -9,11 +9,13 @@
 //! - [`plan`]: [`plan`] turns the `room` subtree into a [`Plan`] of [`Layer`]s.
 //! - [`pick`]: [`pick`] finds the layer and the pixel a ray lands on; [`project`] finds the pixel on a chosen layer's plane.
 //! - [`rig`]: the eyes of a stereo camera, as OpenXR poses and fields of view.
+//! - [`head`]: a measured head pose as the pose of the stereo camera that follows it.
 //! - [`math`]: [`Pose`] and the quaternion arithmetic both of them use.
 //!
 //! Everything here is deterministic: the same tree, head pose and options give
 //! the same [`Plan`] bit for bit. Nothing iterates a hash map.
 
+pub mod head;
 pub mod math;
 pub mod pick;
 pub mod plan;

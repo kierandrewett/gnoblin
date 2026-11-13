@@ -16,10 +16,13 @@
 //!   the runtime offers it. The captured pictures are premultiplied, as `wl_shm` ARGB is, and OpenXR's default
 //!   blend treats a layer as premultiplied, so scaling all four channels is the right fade. Without the extension the
 //!   opacity cannot be shown: the layer is submitted at full strength and reported [`NoticeKind::OpacityIgnored`].
-//! - The budget is `max_layer_count - reserved`. World layers keep it before head-locked ones, so the head-locked
-//!   layers beyond it are dropped first; if the world layers alone exceed it, those last in plan order are dropped. Each
-//!   dropped layer is reported [`NoticeKind::LayerBudget`]. A frame that went over the budget would be refused whole by
-//!   `xrEndFrame`.
+//! - The budget is `max_layer_count - reserved`: the most layers one frame may submit. When more layers are ready, the
+//!   [`Priority`] picks which fit: the View that shows a focused window first, then the nearest to the head, and plan
+//!   order breaks a tie. The layers that fit are submitted in plan order, as always, so the dropping never changes
+//!   what covers what. Each dropped layer is reported [`NoticeKind::LayerBudget`]. A frame that went over the budget
+//!   would be refused whole by `xrEndFrame`.
+
+use std::collections::BTreeSet;
 
 use xr_scene::{Eye, Fov, Layer, NodeId, Placement, Pose, Projected, Space};
 
@@ -151,12 +154,51 @@ pub struct Submission {
     pub notices: Vec<Notice>,
 }
 
+/// What decides which layers fit in the budget: focus, then distance from the head.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Priority {
+    /// The windows that have keyboard focus on any seat, by node id. A layer whose View shows one of them ranks first.
+    pub focused: BTreeSet<NodeId>,
+    /// The head's position in tracking space, in metres. A world layer's distance is measured from it; a head-locked
+    /// layer is already in the head's space, so its distance is its own position's length. A head that is not finite
+    /// counts as the origin.
+    pub head: [f64; 3],
+}
+
+impl Priority {
+    /// The rank of `placement`: lower fits first. Unfocused sorts after focused, then nearer before farther.
+    fn rank(&self, placement: &Placement) -> (bool, f64) {
+        let focused = self.focused.contains(&placement.source);
+        let head = if self.head.iter().all(|c| c.is_finite()) {
+            self.head
+        } else {
+            [0.0; 3]
+        };
+        let origin = match placement.space {
+            Space::World => head,
+            Space::View => [0.0; 3],
+        };
+        let delta = [
+            placement.pose.position[0] - origin[0],
+            placement.pose.position[1] - origin[1],
+            placement.pose.position[2] - origin[2],
+        ];
+        let distance = (delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]).sqrt();
+        (!focused, distance)
+    }
+}
+
 /// Turns the planned `layers` into the layers to submit.
 ///
 /// `swapchain` finds the ready swapchain of a View.
-pub fn compose(layers: &[Layer], swapchain: &dyn Fn(NodeId) -> Option<SwapchainRef>, limits: &Limits) -> Submission {
+pub fn compose(
+    layers: &[Layer],
+    swapchain: &dyn Fn(NodeId) -> Option<SwapchainRef>,
+    limits: &Limits,
+    priority: &Priority,
+) -> Submission {
     let mut notices = Vec::new();
-    let mut candidates: Vec<(SubmittedLayer, f64)> = Vec::with_capacity(layers.len());
+    let mut candidates: Vec<(SubmittedLayer, f64, (bool, f64))> = Vec::with_capacity(layers.len());
     for layer in layers {
         let (Layer::Quad(placement) | Layer::Projection(Projected { placement, .. })) = layer;
         let Some(chain) = swapchain(placement.id) else {
@@ -170,12 +212,12 @@ pub fn compose(layers: &[Layer], swapchain: &dyn Fn(NodeId) -> Option<SwapchainR
             Layer::Quad(_) => quad(placement, chain),
             Layer::Projection(projected) => projection(placement, chain, &projected.eyes),
         };
-        candidates.push((submitted, placement.opacity));
+        candidates.push((submitted, placement.opacity, priority.rank(placement)));
     }
 
     let kept = within_budget(&candidates, limits.budget());
     let mut submitted = Vec::with_capacity(candidates.len());
-    for ((layer, opacity), keep) in candidates.into_iter().zip(kept) {
+    for ((layer, opacity, _), keep) in candidates.into_iter().zip(kept) {
         if keep {
             submitted.push(fade(layer, opacity, limits, &mut notices));
         } else {
@@ -191,26 +233,22 @@ pub fn compose(layers: &[Layer], swapchain: &dyn Fn(NodeId) -> Option<SwapchainR
     }
 }
 
-/// Which candidates fit in `budget`: the first world layers, then the first head-locked ones, in plan order.
-fn within_budget(candidates: &[(SubmittedLayer, f64)], budget: usize) -> Vec<bool> {
-    let mut left = budget;
+/// Which candidates fit in `budget`: the best ranked, then ties in plan order.
+fn within_budget(candidates: &[(SubmittedLayer, f64, (bool, f64))], budget: usize) -> Vec<bool> {
+    let mut order: Vec<usize> = (0..candidates.len()).collect();
+    order.sort_by(|&a, &b| {
+        let (unfocused_a, distance_a) = candidates[a].2;
+        let (unfocused_b, distance_b) = candidates[b].2;
+        unfocused_a
+            .cmp(&unfocused_b)
+            .then(distance_a.total_cmp(&distance_b))
+            .then(a.cmp(&b))
+    });
     let mut keep = vec![false; candidates.len()];
-    for want_space in [Space::World, Space::View] {
-        for (index, (layer, _)) in candidates.iter().enumerate() {
-            if space_of(layer) == want_space && left > 0 {
-                keep[index] = true;
-                left -= 1;
-            }
-        }
+    for &index in order.iter().take(budget) {
+        keep[index] = true;
     }
     keep
-}
-
-fn space_of(layer: &SubmittedLayer) -> Space {
-    match layer {
-        SubmittedLayer::Quad(quad) => quad.space,
-        SubmittedLayer::Projection(projection) => projection.space,
-    }
 }
 
 fn view_of(layer: &SubmittedLayer) -> NodeId {

@@ -86,6 +86,11 @@ pub struct TreeNode {
     pub rotation: [f64; 3],
     /// Uniform scale in the parent's space.
     pub scale: f64,
+    /// A camera's `layer_budget`: how many layers the runtime lets one frame carry, as the extension last wrote it.
+    /// `None` until a write is seen.
+    pub layer_budget: Option<u64>,
+    /// A seat's keyboard `focus`: the window node it names, or `None` for no focus.
+    pub focus: Option<NodeId>,
     /// Metres per node unit, set on the room or on the head camera.
     pub metres: Option<f64>,
     /// Opacity in `[0, 1]`. Opacity multiplies down the tree.
@@ -110,6 +115,8 @@ impl TreeNode {
             rotation: [0.0; 3],
             scale: 1.0,
             metres: None,
+            layer_budget: None,
+            focus: None,
             opacity: 1.0,
             visible: true,
             input: true,

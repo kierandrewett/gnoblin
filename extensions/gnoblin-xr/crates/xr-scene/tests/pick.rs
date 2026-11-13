@@ -123,6 +123,7 @@ fn projection_layers_are_not_picked() {
             space: Space::World,
             input: true,
         },
+        camera: 8,
         eyes: [eye, eye],
     })];
     assert!(pick(&layers, &ray([0.0, 0.0, 0.0], [0.0, 0.0, -1.0])).is_none());

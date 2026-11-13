@@ -10,6 +10,7 @@
 //! in metres, the head changes none of them, and where the panels stand is what the shell's ring rules (`docs/xr.md`,
 //! "The ring") say, worked out here from the node sizes and not read from the poses.
 
+use xr_scene::head::camera_pose;
 use xr_scene::{Class, HeadPose, IDENTITY, Layer, NodeId, Options, Placement, Plan, Space, TreeView, plan};
 use xr_tree::TreeClient;
 use xr_tree::replay::{Recording, replay};
@@ -358,4 +359,148 @@ fn closing_the_focused_window_puts_the_one_left_at_the_front_unfocused() {
         "and at the ring's radius: it is not pulled in, it has no focus",
     );
     close(alone.size[0], alone.extent[0] * 0.75 * METRES, "and it is not enlarged");
+}
+
+// ---------------------------------------------------------------------------
+// The head-tracked variant: the same recorded rooms, with one stereo View through the head camera and the camera written
+// with the head's pose, as the extension writes it (`xr_scene::head::camera_pose`).
+
+/// The recorded tree with a View of 1600 by 900 units added last under the room, drawn through the head camera: the tree,
+/// the View and the camera. `None` while there is no room.
+fn with_stereo_view(tree: &TreeView) -> Option<(TreeView, NodeId, NodeId)> {
+    let room_id = room(tree)?.id;
+    let camera = tree
+        .nodes
+        .values()
+        .find(|node| matches!(node.class, Class::Camera { .. }) && node.name.as_deref() == Some("head"))?
+        .id;
+    let mut tree = tree.clone();
+    let view = 9_000_000_001;
+    tree.insert(xr_scene::TreeNode::new(
+        view,
+        Class::View {
+            source: Some(camera),
+            camera: Some(camera),
+            width: 1600.0,
+            height: 900.0,
+        },
+    ));
+    tree.nodes.get_mut(&room_id)?.children.push(view);
+    Some((tree, view, camera))
+}
+
+fn flat_panels(plan: &Plan) -> Vec<Placement> {
+    plan.layers
+        .iter()
+        .filter_map(|layer| match layer {
+            Layer::Quad(placement) => Some(placement.clone()),
+            Layer::Projection(_) => None,
+        })
+        .collect()
+}
+
+/// The rotations are equal up to sign: `q` and `-q` are one rotation.
+fn same_rotation(a: [f64; 4], b: [f64; 4]) -> bool {
+    let dot: f64 = a.iter().zip(b).map(|(x, y)| x * y).sum();
+    (dot.abs() - 1.0).abs() < EPS
+}
+
+#[test]
+fn a_stereo_view_through_the_head_camera_follows_a_walking_turning_head_in_every_recorded_state() {
+    let mut checked = 0;
+    for tree in states() {
+        let Some((mut tree, view, camera)) = with_stereo_view(&tree) else {
+            continue;
+        };
+        let flat = flat_panels(&the_plan(&tree, &neutral()));
+        for head in head_path() {
+            let metres = tree.nodes[&camera].metres.unwrap_or(METRES);
+            let pose = camera_pose(&head, metres).expect("the walking head is a usable pose");
+            let node = tree.nodes.get_mut(&camera).expect("the camera");
+            node.position = pose.position;
+            node.rotation = pose.rotation_degrees;
+
+            let layers = the_plan(&tree, &head);
+            let projected = layers
+                .layers
+                .iter()
+                .find_map(|layer| match layer {
+                    Layer::Projection(projected) if projected.placement.id == view => Some(projected),
+                    _ => None,
+                })
+                .expect("the View through a stereo camera is a projection layer");
+            assert_eq!(projected.camera, camera);
+            for axis in 0..3 {
+                let middle = (projected.eyes[0].pose.position[axis] + projected.eyes[1].pose.position[axis]) / 2.0;
+                assert!(
+                    (middle - head.position[axis]).abs() < EPS,
+                    "axis {axis}: the eyes meet at {middle}, the head is at {}",
+                    head.position[axis]
+                );
+            }
+            for eye in &projected.eyes {
+                assert!(
+                    same_rotation(eye.pose.orientation, head.orientation),
+                    "the eyes turn with the head"
+                );
+            }
+            let eye_distance: f64 = (0..3)
+                .map(|axis| (projected.eyes[1].pose.position[axis] - projected.eyes[0].pose.position[axis]).powi(2))
+                .sum::<f64>()
+                .sqrt();
+            assert!(
+                (eye_distance - 0.063).abs() < 1e-9,
+                "the eyes keep the camera's separation: {eye_distance}"
+            );
+            assert_eq!(
+                flat_panels(&layers),
+                flat,
+                "the head moves no flat panel: the extension stays translational"
+            );
+            checked += 1;
+        }
+    }
+    assert!(
+        checked >= 16 * 3,
+        "every state that has a room was walked through: {checked}"
+    );
+}
+
+#[test]
+fn the_head_tracked_tree_plans_the_same_layers_every_time() {
+    for tree in states() {
+        let Some((mut tree, _, camera)) = with_stereo_view(&tree) else {
+            continue;
+        };
+        for head in head_path() {
+            let pose = camera_pose(&head, METRES).expect("usable");
+            let node = tree.nodes.get_mut(&camera).expect("the camera");
+            node.position = pose.position;
+            node.rotation = pose.rotation_degrees;
+            assert_eq!(the_plan(&tree, &head), the_plan(&tree, &head));
+        }
+    }
+}
+
+#[test]
+fn a_head_camera_that_is_gone_leaves_the_stereo_view_a_flat_panel() {
+    let mut checked = 0;
+    for tree in states() {
+        let Some((mut tree, view, camera)) = with_stereo_view(&tree) else {
+            continue;
+        };
+        // The shell took the camera down while the extension was still writing to it.
+        tree.nodes.remove(&camera);
+        for node in tree.nodes.values_mut() {
+            node.children.retain(|child| *child != camera);
+        }
+        let layers = the_plan(&tree, &neutral());
+        assert!(
+            flat_panels(&layers).iter().any(|panel| panel.id == view),
+            "the View is a flat panel now, and nothing panics"
+        );
+        assert!(layers.layers.iter().all(|layer| matches!(layer, Layer::Quad(_))));
+        checked += 1;
+    }
+    assert!(checked > 0);
 }

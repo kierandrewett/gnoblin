@@ -62,6 +62,9 @@ pub struct FakeSwapchain {
 pub struct FakeRuntime {
     pub script: VecDeque<Step>,
     pub head: Option<Pose>,
+    /// One sample per `locate_head` call, consumed from the front before `head` applies: a head that moves, or is
+    /// lost for a frame (`None`).
+    pub head_script: VecDeque<Option<Pose>>,
     /// What `locate_controller` reports once `controller_script` is used up.
     pub controller: ControllerState,
     /// One sample per `locate_controller` call, consumed from the front before `controller` applies.
@@ -165,7 +168,7 @@ impl Runtime for FakeRuntime {
 
     fn locate_head(&mut self, display_time: i64) -> Result<Option<Pose>> {
         self.record(Call::LocateHead(display_time))?;
-        Ok(self.head)
+        Ok(self.head_script.pop_front().unwrap_or(self.head))
     }
 
     fn locate_controller(&mut self, display_time: i64) -> Result<ControllerState> {

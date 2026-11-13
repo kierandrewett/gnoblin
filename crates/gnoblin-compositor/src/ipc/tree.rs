@@ -3,6 +3,7 @@
 //! socket; slice 5b wires it to one.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::{Duration, Instant};
 
 use gnoblin_render::Scene;
 use gnoblin_render::transaction::{
@@ -116,6 +117,8 @@ pub struct TreeSession {
     holder: Option<TreeHolder>,
     /// Each observing connection, with the seat nodes it made and so may destroy.
     observers: BTreeMap<TreeHolder, BTreeSet<NodeId>>,
+    /// How fast each observer may write the head camera.
+    limiters: BTreeMap<TreeHolder, PoseLimiter>,
 }
 
 /// What an attach grants: the epoch of the new hold. The serial is read from the frame, so the
@@ -171,6 +174,7 @@ impl TreeSession {
     /// Ends the observation of `observer` and returns the seats it made, which the caller destroys. `None` when
     /// the connection was not observing.
     pub fn release_observer(&mut self, observer: TreeHolder) -> Option<BTreeSet<NodeId>> {
+        self.limiters.remove(&observer);
         self.observers.remove(&observer)
     }
 
@@ -213,13 +217,75 @@ impl TreeSession {
             }
         }
     }
+
+    /// Whether `observer` may write the head camera now. Each observer has its own allowance ([`PoseLimiter`]); one
+    /// that is not attached has none.
+    pub fn admit_pose(&mut self, observer: TreeHolder, now: Instant) -> bool {
+        self.observers.contains_key(&observer) && self.limiters.entry(observer).or_default().admit(now)
+    }
+}
+
+/// The most head-camera writes an observer may sustain, per second. A headset reports its pose once per frame, at 90
+/// or 120 Hz at most, and the extension writes at most 60 a second: the cap leaves room for both and for jitter, and
+/// stops a client that writes as fast as the socket takes.
+pub const POSE_RATE_HZ: u32 = 120;
+
+/// How many writes an observer may make at once before the rate applies: the slack that lets a late frame catch up.
+pub const POSE_BURST: u32 = 4;
+
+/// A token bucket for one observer's head-camera writes: [`POSE_BURST`] tokens, refilled at [`POSE_RATE_HZ`] a second.
+#[derive(Clone, Copy, Debug)]
+pub struct PoseLimiter {
+    tokens: f64,
+    at: Option<Instant>,
+}
+
+impl Default for PoseLimiter {
+    fn default() -> Self {
+        Self {
+            tokens: f64::from(POSE_BURST),
+            at: None,
+        }
+    }
+}
+
+impl PoseLimiter {
+    /// Takes one write's token at `now`, or refuses it. A `now` before the last write (the clock stepped back) adds
+    /// no tokens.
+    pub fn admit(&mut self, now: Instant) -> bool {
+        let elapsed = self.at.map_or(Duration::ZERO, |at| now.saturating_duration_since(at));
+        self.at = Some(self.at.map_or(now, |at| at.max(now)));
+        self.tokens = elapsed
+            .as_secs_f64()
+            .mul_add(f64::from(POSE_RATE_HZ), self.tokens)
+            .min(f64::from(POSE_BURST));
+        if self.tokens >= 1.0 {
+            self.tokens -= 1.0;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// The properties of the camera named `head` an observer may set: the head pose and the runtime's layer limit. The
+/// frame holds them to that camera (`gnoblin_render::transaction`); this is the check that needs no scene.
+const OBSERVER_CAMERA_KEYS: [&str; 5] = ["x", "y", "z", "rotation", "layer_budget"];
+
+/// The index of the first op in `ops` that writes the head camera, if any. Such a transaction spends the observer's
+/// [`PoseLimiter`] allowance.
+#[must_use]
+pub fn writes_head_camera(ops: &[TreeOp]) -> Option<usize> {
+    ops.iter()
+        .position(|op| matches!(op, TreeOp::Set { key, .. } if OBSERVER_CAMERA_KEYS.contains(&key.as_str())))
 }
 
 /// What an observer's transaction makes and destroys, or the index of the first op an observer may not send.
 ///
 /// An observer may send a `new` of class `seat`, a `set` of that seat's `name` in the same transaction, a `destroy`
-/// of a seat it made (`owned`), an `input` on a seat it made, and a `lock` call. Everything else is the holder's. The returned seats are the ones made
-/// and destroyed, for the caller to record once the transaction applies.
+/// of a seat it made (`owned`), an `input` on a seat it made, a `lock` call, and a `set` of the head camera's pose
+/// and `layer_budget` (the frame checks that the node is that camera). Everything else is the holder's. The returned
+/// seats are the ones made and destroyed, for the caller to record once the transaction applies.
 ///
 /// # Errors
 ///
@@ -238,7 +304,7 @@ pub fn observer_ops(ops: &[TreeOp], owned: &BTreeSet<NodeId>) -> Result<(Vec<Nod
                 key,
                 timing: None,
                 ..
-            } => key == "name" && made.contains(node),
+            } => (key == "name" && made.contains(node)) || OBSERVER_CAMERA_KEYS.contains(&key.as_str()),
             TreeOp::Destroy { node } => {
                 let own = owned.contains(node) || made.contains(node);
                 if own {
@@ -762,6 +828,134 @@ mod tests {
             }),
         };
         assert_eq!(observer_ops(&[new_seat(5), animated], &BTreeSet::new()), Err(1));
+    }
+
+    fn camera_set(node: u64, key: &str) -> TreeOp {
+        TreeOp::Set {
+            node: NodeId::new(node),
+            key: key.to_owned(),
+            value: TreeValue::Double(1.0),
+            timing: None,
+        }
+    }
+
+    #[test]
+    fn an_observer_may_write_the_head_cameras_pose_and_layer_budget_keys_and_no_others() {
+        let owned = BTreeSet::new();
+        for key in ["x", "y", "z", "rotation", "layer_budget"] {
+            assert_eq!(
+                observer_ops(&[camera_set(3, key)], &owned),
+                Ok((Vec::new(), Vec::new())),
+                "{key}"
+            );
+        }
+        for key in [
+            "scale",
+            "opacity",
+            "visible",
+            "projection",
+            "metres",
+            "ipd",
+            "fov",
+            "name",
+            "source",
+        ] {
+            assert_eq!(observer_ops(&[camera_set(3, key)], &owned), Err(0), "{key}");
+        }
+    }
+
+    #[test]
+    fn a_pose_write_is_found_by_its_first_op() {
+        assert_eq!(writes_head_camera(&[new_seat(5), camera_set(3, "y")]), Some(1));
+        assert_eq!(writes_head_camera(&[new_seat(5), set_name(5, "name")]), None);
+        assert_eq!(writes_head_camera(&[]), None);
+    }
+
+    #[test]
+    fn a_burst_over_the_allowance_is_refused_and_the_rate_refills_it() {
+        let mut limiter = PoseLimiter::default();
+        let t0 = Instant::now();
+        let admitted = (0..20).filter(|_| limiter.admit(t0)).count();
+        assert_eq!(
+            admitted, POSE_BURST as usize,
+            "only the burst gets through at one instant"
+        );
+        // One token comes back every 1 / POSE_RATE_HZ seconds.
+        let step = Duration::from_secs_f64(1.0 / f64::from(POSE_RATE_HZ));
+        // A hair over, so the refill is not decided by the last bit of a float.
+        let whole = step + Duration::from_micros(10);
+        assert!(!limiter.admit(t0 + step / 2), "half a token is not a write");
+        assert!(limiter.admit(t0 + whole), "a whole one is");
+        assert!(!limiter.admit(t0 + whole), "and it is spent");
+    }
+
+    #[test]
+    fn a_steady_rate_below_the_cap_is_never_refused_and_one_above_it_is() {
+        let t0 = Instant::now();
+        let mut slow = PoseLimiter::default();
+        // 60 writes a second, the extension's own cap, for ten seconds.
+        let every = Duration::from_secs_f64(1.0 / 60.0);
+        assert!(
+            (0..600).all(|n| slow.admit(t0 + every * n)),
+            "the extension's rate passes"
+        );
+        let mut fast = PoseLimiter::default();
+        // 1000 writes a second for one second: the cap, plus the burst, gets through.
+        let every = Duration::from_millis(1);
+        let admitted = (0..1000).filter(|n| fast.admit(t0 + every * *n)).count();
+        assert!(
+            admitted <= (POSE_RATE_HZ + POSE_BURST) as usize && admitted + 2 >= POSE_RATE_HZ as usize,
+            "{admitted} of 1000 got through"
+        );
+    }
+
+    #[test]
+    fn a_long_idle_gives_back_the_burst_and_no_more() {
+        let mut limiter = PoseLimiter::default();
+        let t0 = Instant::now();
+        assert!((0..POSE_BURST).all(|_| limiter.admit(t0)));
+        let later = t0 + Duration::from_secs(3600);
+        let admitted = (0..20).filter(|_| limiter.admit(later)).count();
+        assert_eq!(admitted, POSE_BURST as usize);
+    }
+
+    #[test]
+    fn a_clock_that_steps_back_adds_no_tokens() {
+        let mut limiter = PoseLimiter::default();
+        let t0 = Instant::now() + Duration::from_secs(10);
+        assert_eq!((0..20).filter(|_| limiter.admit(t0)).count(), POSE_BURST as usize);
+        assert!(
+            !limiter.admit(t0 - Duration::from_secs(5)),
+            "an earlier instant refills nothing"
+        );
+        assert!(
+            !limiter.admit(t0),
+            "and the next call from the real time does not either"
+        );
+    }
+
+    #[test]
+    fn each_observer_has_its_own_allowance_and_a_stranger_has_none() {
+        let mut session = TreeSession::default();
+        session.attach_observer(HOLDER, true).expect("observe");
+        session.attach_observer(OTHER_HOLDER, true).expect("observe");
+        let t0 = Instant::now();
+        assert_eq!(
+            (0..20).filter(|_| session.admit_pose(HOLDER, t0)).count(),
+            POSE_BURST as usize
+        );
+        assert!(
+            session.admit_pose(OTHER_HOLDER, t0),
+            "the other observer's allowance is untouched"
+        );
+        assert!(
+            !session.admit_pose(TreeHolder::new(77), t0),
+            "a connection that is not observing has none"
+        );
+        // Attaching again after a release starts a fresh allowance.
+        session.release_observer(HOLDER);
+        session.attach_observer(HOLDER, true).expect("observe");
+        assert!(session.admit_pose(HOLDER, t0));
     }
 
     #[test]

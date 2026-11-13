@@ -6,6 +6,7 @@
 
 mod bridge;
 mod dump;
+mod head;
 mod pointer;
 mod supervise;
 mod surfaces;
@@ -135,6 +136,8 @@ fn drive<R: Runtime, P: Presenter>(
     let mut last_submitted = None;
     let mut last_notices: Vec<Notice> = Vec::new();
     let mut last_faults: Vec<Fault> = Vec::new();
+    let mut last_budget: Option<(usize, usize)> = None;
+    let mut last_head_fault: Option<head::Status> = None;
     let debug = debug_enabled(std::env::var("GNOBLIN_LOG").ok().as_deref());
     let dump = Dump::from_value(std::env::var(dump::DUMP_VARIABLE).ok());
     let mut frame_number = 0_u64;
@@ -176,6 +179,21 @@ fn drive<R: Runtime, P: Presenter>(
                     eprintln!("gnoblin-xr: {fault}");
                 }
                 last_faults = report.faults.to_vec();
+            }
+            if last_budget != Some((report.budget, report.dropped)) {
+                eprintln!(
+                    "gnoblin-xr: layer budget {}: {} views dropped",
+                    report.budget, report.dropped
+                );
+                last_budget = Some((report.budget, report.dropped));
+            }
+            let head_fault = report.head.is_fault().then_some(report.head);
+            if head_fault != last_head_fault {
+                eprintln!(
+                    "gnoblin-xr: head tracking: {}",
+                    head_fault.map_or("following", head::Status::name)
+                );
+                last_head_fault = head_fault;
             }
         },
     )

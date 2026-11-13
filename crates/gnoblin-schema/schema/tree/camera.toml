@@ -82,3 +82,15 @@ name = "fov_down"
 type = "double"
 since = "0.2.0"
 default = 0.0
+
+# How many composition layers one frame of the headset may carry, as the XR extension reports the runtime's limit
+# (`maxLayerCount` less the layers the extension keeps for itself). `0` means no extension has reported one. Read-only:
+# a shell write is refused, and the one connection that writes it is an observer, the XR extension, on the camera named
+# `head` (design/xr-extension.md). A shell reads it to decide how many Views to build; the extension enforces it
+# regardless, dropping the Views that do not fit.
+[[object.property]]
+name = "layer_budget"
+type = "uint"
+since = "0.2.0"
+default = 0
+readonly = true

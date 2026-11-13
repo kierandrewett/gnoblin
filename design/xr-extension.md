@@ -12,10 +12,47 @@ eyes side by side, from `ipd`, `metres` and four `fov_*` angles; the extension s
 eyes it states from the same camera, `xr-scene/src/rig.rs`); the gaze and controller ray as pointer input on the `xr`
 seat; a runtime that is missing, refuses the session, loses it or exits is retried with backoff over the same owner
 connection and the `xr` seat is destroyed when a session ends; a recorded tree (`xr-tree/tests/recorded/`) replayed
-through the planner with a moving head pose. Not built, or built and unproven: head-tracked stereo (nothing writes the
-head pose into the tree, and the picture-to-pose pairing it needs is not designed), the head camera's `layer_budget`,
-DMA-BUF into the headset's swapchain, WiVRn, and anything on a headset: the null compositor accepts the layers and
-shows nothing. `docs/xr.md` lists what is proven and what is not.
+through the planner with a moving head pose.
+
+**Head tracking and the layer budget (2026-11-13, lane XrHead).** Built and tested against the stub runtime
+(`FakeRuntime`), a fake owner, the compositor's own tree socket and the null compositor, and against nothing else:
+
+- _The head pose reaches the tree._ An observer connection (the extension) may write `x`, `y`, `z` and `rotation` of the
+  camera named `head`, and that camera's read-only `layer_budget`, and nothing else (`gnoblin_render::transaction::
+observer_write`, which the frame applies after the pure check in `ipc/tree.rs`). The compositor refuses a number that is
+  not finite (`not-finite`), a node that is not that camera (`not-holder`) and an observer that writes faster than 120 a
+  second after a burst of 4 (`rate-limited`, `PoseLimiter`). A connection that is not the session owner's cannot attach,
+  so cannot write (D35, one live test with `ipc_owner_uid`). This is the "narrow observer permission" the survey asked
+  for. It replaces the design's old "head pose as input on the seat": a camera the shell already draws through is the
+  one place a stereo View reads a pose from, so the pose goes there and no new input kind or seat property exists.
+- _A stereo View through `head` follows the head._ `gnoblin-xr/src/head.rs` writes the pose
+  (`xr_scene::head::camera_pose`, the inverse of `rig::eyes`), at most 60 a second, one pose in flight, never a stale
+  one (older than 100 ms) and never one that is not a rotation, and only while a View is drawn through the camera.
+- _The pairing the design never specified._ The extension cannot read which pose a picture was drawn from, so a
+  picture first seen while a write is in flight is taken to be drawn from that write, any other from the camera in the
+  tree; one write is in flight, and the write itself always causes the redraw that corrects a wrong guess. The error is
+  bounded by one write step (1/60 s of head motion), and the opposite guess would be sticky. This is a rule, not a
+  measurement: no headset has shown it.
+- _`head.layer_budget`._ The extension writes `maxLayerCount` less its reserve to the camera's `layer_budget` when the
+  camera does not hold it. The stock shell does not read it. When more Views are ready than the budget, the layers that
+  fit are the one showing the focused window, then the nearest to the head, then plan order (`xr-layers`, `Priority`):
+  this replaces "world layers first, head-locked ones dropped first", which the earlier text gave without a reason.
+
+Not built, or built and unproven: DMA-BUF into the headset's swapchain, WiVRn, and anything on a headset: the null
+compositor accepts the layers and shows nothing. `docs/xr.md` lists what is proven and what is not.
+
+**Teardown order (audit, 2026-11-13).** The listener bug of `712a904a7` was a handle linked into its owner's list and
+dropped after the owner. The extension has no PipeWire; what it holds and the order that keeps each handle safe:
+
+| Handle                              | Linked to                   | Order                                                                                                                                                                                                                                                                                           |
+| ----------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A swapchain                         | The OpenXR session          | The bridge destroys every swapchain before `run` returns, on every way a run ends (`bridge/failure_modes.rs`).                                                                                                                                                                                  |
+| The session, spaces and actions     | The instance, Vulkan device | `OpenxrRuntime` fields drop in declaration order: actions, swapchains, session, spaces, device, instance, loader.                                                                                                                                                                               |
+| Command pool, fence, staging buffer | The Vulkan device           | `VulkanPresenter` holds an `Arc` of the device and frees them in `Drop` first. Not run without a GPU.                                                                                                                                                                                           |
+| A capture (session, buffer, source) | The capture connection      | Found and fixed here: `ViewCaptures` dropped the connection before its captures when the connection was lost. It is now generic over `Connection`, declares `set` before `client`, and `views.rs` tests pin each path with a connection that records whether it was alive as each capture went. |
+
+`wayland-client` uses its pure-Rust backend, where a proxy outliving its connection is harmless; the order is kept for a
+build that links libwayland. The Vulkan and OpenXR rows are by reading, not by test.
 
 Labels: a claim with a file and line was read in this tree at `0becb6ae5`. A claim marked (unverified) was not read
 in source, in a specification or in a test.

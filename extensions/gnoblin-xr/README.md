@@ -29,8 +29,8 @@ the layers. The design is in design/xr-extension.md (D34) and design/node-api-re
 - **`xr-layers`** (library, no OpenXR types): `compose` turns the planned layers and the ready swapchain of each View into
   the layers to submit: a quad per flat View, a projection per stereo View (with the eyes the plan carries, left eye in
   the left half of the picture), in plan order. Opacity below 1 becomes a
-  colour scale when `XR_KHR_composition_layer_color_scale_bias` is enabled. Layers beyond `maxLayerCount` are dropped,
-  head-locked ones first, and reported `layer-budget`. See `crates/xr-layers/README.md`.
+  colour scale when `XR_KHR_composition_layer_color_scale_bias` is enabled. Layers beyond `maxLayerCount` are dropped by
+  priority (the View that shows a focused window is kept first, then the nearest to the head) and reported `layer-budget`. See `crates/xr-layers/README.md`.
 - **`xr-input`** (library, no OpenXR types): the controller input model. A `ControllerState` (the pointing ray, the
   select and secondary values, the scroll stick) goes in once per frame; `Controller::update` returns the ordered
   `PointerEvent`s: `BTN_LEFT` for select and `BTN_RIGHT` for secondary, pressed at 0.75 and released at 0.25, and scroll
@@ -65,8 +65,11 @@ the layers. The design is in design/xr-extension.md (D34) and design/node-api-re
 
 ## What does not exist
 
-- No head-tracked stereo: a stereo View's eyes come from its camera in the tree, and nothing writes the head pose
-  into the tree, so the picture is fixed in the room and does not follow the head.
+- Head tracking and the layer budget have run only against the stub runtime, a fake owner and the compositor's tree
+  socket, never on a headset. `src/head.rs` writes the head pose onto the camera named `head` (at most 60 a second, one in
+  flight, never a stale or non-finite pose) and pairs each picture with the eyes it was drawn from; it also writes the
+  runtime's layer limit to that camera's `layer_budget`. `xr-layers` drops Views over the budget, the focused one last,
+  then the farthest from the head. See `docs/xr.md`, "Head tracking" and "Layer budget".
 - No DMA-BUF path: pictures are `wl_shm` bytes, copied through a staging buffer.
 - No environment, no layers of the extension's own.
 - Nothing here has run on a headset. The null compositor of Monado accepts the layers and draws nothing.

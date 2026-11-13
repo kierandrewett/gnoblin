@@ -134,6 +134,8 @@ pub enum Code {
     ShellAlreadyAttached,
     /// The connection is an observer, and the op is one only the tree's holder may send.
     NotHolder,
+    /// An observer wrote the head camera's pose faster than the compositor takes it (`ipc::tree::PoseLimiter`).
+    RateLimited,
     /// A `Canvas`'s `content` does not decode as a paint list.
     BadPaint,
     /// A scene refusal with no table code of its own.
@@ -167,6 +169,7 @@ impl Code {
             Self::NotPrivileged => "not-privileged",
             Self::ShellAlreadyAttached => "shell-already-attached",
             Self::NotHolder => "not-holder",
+            Self::RateLimited => "rate-limited",
             Self::BadPaint => "bad-paint",
             Self::BadValue => "bad-value",
         }
@@ -315,13 +318,23 @@ pub enum TreeOp {
 pub struct TreeTransaction {
     /// The ops, in order.
     pub ops: Vec<TreeOp>,
+    /// Whether an observer connection sent it (`tree.attach` mode `observer`), not the tree's holder. An observer's
+    /// `set` is checked against what an observer may write (see [`observer_write`]), as well as against the schema.
+    pub observer: bool,
 }
 
 impl TreeTransaction {
-    /// A transaction of `ops`.
+    /// A transaction of `ops`, from the tree's holder.
     #[must_use]
     pub const fn new(ops: Vec<TreeOp>) -> Self {
-        Self { ops }
+        Self { ops, observer: false }
+    }
+
+    /// The same transaction, sent by an observer connection.
+    #[must_use]
+    pub const fn from_observer(mut self) -> Self {
+        self.observer = true;
+        self
     }
 }
 
@@ -496,11 +509,12 @@ pub fn validate_and_apply(
             code: Code::TooLarge,
         });
     }
+    let observer = transaction.observer;
     let mut work = scene.clone();
     let mut applied = TreeApplied::default();
     let mut created = BTreeSet::new();
     for (index, op) in transaction.ops.into_iter().enumerate() {
-        apply_op(&mut work, classes, actor, op, &mut created, &mut applied).map_err(|code| TreeRefusal {
+        apply_op(&mut work, classes, actor, observer, op, &mut created, &mut applied).map_err(|code| TreeRefusal {
             failed_op: i32::try_from(index).expect("the batch is bounded by MAX_OPS"),
             code,
         })?;
@@ -513,6 +527,7 @@ fn apply_op(
     work: &mut Scene,
     classes: &dyn ClassInfo,
     actor: Actor,
+    observer: bool,
     op: TreeOp,
     created: &mut BTreeSet<NodeId>,
     applied: &mut TreeApplied,
@@ -546,7 +561,10 @@ fn apply_op(
             value,
             timing,
         } => {
-            check_writable(work, classes, node, &key, created)?;
+            let exempt = observer && observer_write(work, created, node, &key, timing.is_some())?;
+            if !exempt {
+                check_writable(work, classes, node, &key, created)?;
+            }
             set_value(work, classes, node, &key, &value, timing.as_ref(), applied)
         }
     }
@@ -676,6 +694,41 @@ fn check_writable(
         return Err(Code::ReadOnly);
     }
     Ok(())
+}
+
+/// The class and name of the one camera an observer may write: the XR extension's head camera.
+const OBSERVER_CAMERA: (&str, &str) = ("camera", "head");
+
+/// What an observer's `set` may touch, beyond naming the seat it made in the same transaction: the `x`, `y`, `z` and
+/// `rotation` of the camera named `head` (the head pose the XR extension measures) and that camera's read-only
+/// `layer_budget` (the runtime's layer limit). It may not animate, and it may write nothing else. `Ok(true)` means the
+/// write is one of the observer's own read-only properties, so the schema's `readonly` does not refuse it.
+///
+/// The pure check that runs before the transaction is queued (`ipc::tree::observer_ops`) cannot see the scene, so
+/// it admits these keys on any node; this is the check that holds them to the head camera.
+fn observer_write(
+    work: &Scene,
+    created: &BTreeSet<NodeId>,
+    node: NodeId,
+    key: &str,
+    timed: bool,
+) -> Result<bool, Code> {
+    if !work.contains(node) {
+        return Err(Code::UnknownNode);
+    }
+    if timed {
+        return Err(Code::NotHolder);
+    }
+    if created.contains(&node) {
+        // The seat the observer is making: only its name, which the pure check already holds to.
+        return if key == "name" { Ok(false) } else { Err(Code::NotHolder) };
+    }
+    let head = work.class(node) == Some(OBSERVER_CAMERA.0) && work.text(node, "name") == Some(OBSERVER_CAMERA.1);
+    match key {
+        "x" | "y" | "z" | "rotation" if head => Ok(false),
+        "layer_budget" if head => Ok(true),
+        _ => Err(Code::NotHolder),
+    }
 }
 
 fn set_value(

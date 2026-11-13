@@ -100,6 +100,8 @@ pub struct Eye {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Projected {
     pub placement: Placement,
+    /// The stereo camera node the View names: the eyes were stated from its pose and rig.
+    pub camera: NodeId,
     pub eyes: [Eye; 2],
 }
 
@@ -266,6 +268,7 @@ fn frame_for(node: &TreeNode, parent: Frame, head: Option<NodeId>) -> Frame {
 
 /// A stereo camera's pose and rig, as the tree holds them.
 struct StereoCamera {
+    id: NodeId,
     position: [f64; 3],
     rotation: [f64; 3],
     metres: f64,
@@ -352,7 +355,11 @@ impl Walker<'_> {
         let (position, rotation) = (stereo.position, stereo.rotation);
         let eyes = rig::eyes(position, rotation, stereo.metres, &stereo.rig, [width, height]);
         match eyes {
-            Some(eyes) => self.plan.layers.push(Layer::Projection(Projected { placement, eyes })),
+            Some(eyes) => self.plan.layers.push(Layer::Projection(Projected {
+                placement,
+                camera: stereo.id,
+                eyes,
+            })),
             None => self.skip(id, SkipReason::InvalidCamera),
         }
     }
@@ -369,6 +376,7 @@ impl Walker<'_> {
             return None;
         };
         Some(StereoCamera {
+            id: node.id,
             position: node.position,
             rotation: node.rotation,
             metres: node.metres.unwrap_or(CAMERA_METRES),

@@ -761,6 +761,7 @@ fn every_refusal_code_has_the_table_4_4_spelling() {
         (Code::NotHolder, "not-holder"),
         (Code::BadPaint, "bad-paint"),
         (Code::BadValue, "bad-value"),
+        (Code::RateLimited, "rate-limited"),
     ];
     for (code, spelling) in table {
         assert_eq!(code.as_str(), spelling);
