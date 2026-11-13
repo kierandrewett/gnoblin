@@ -27,6 +27,10 @@ oxc_transformer.workspace = true
 notify.workspace = true
 # Error types: each `Display` says what failed and the `source` chain is kept.
 thiserror.workspace = true
+# The tree protocol's client side: the mirror, the transaction builder and the link trait the shell runs over.
+gnoblin-tree-client.workspace = true
+# The log facade every crate logs through.
+gnoblin-log = { path = "../gnoblin-log" }
 
 [dev-dependencies]
 # The loader and budget tests write real module trees and symlinks under a temp root.

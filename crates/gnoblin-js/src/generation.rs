@@ -292,7 +292,7 @@ impl JsGeneration {
     }
 
     /// Describes a thrown `value`: its message, and its stack with every `.ts` frame remapped.
-    fn describe<'js>(&self, ctx: &Ctx<'js>, value: &Value<'js>) -> JsError {
+    pub(crate) fn describe<'js>(&self, ctx: &Ctx<'js>, value: &Value<'js>) -> JsError {
         let exception = value
             .as_object()
             .and_then(|object| Exception::from_object(object.clone()));
