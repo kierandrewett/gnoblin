@@ -3332,6 +3332,60 @@ mod prompts {
             "nothing was submitted"
         );
     }
+
+    /// A session locked before any shell attaches: the request went nowhere, so the shell that comes up later must
+    /// show the lock screen from its snapshot alone. Without that the session stays locked with no screen to unlock it.
+    #[test]
+    fn a_shell_that_attaches_to_a_locked_session_shows_the_lock_screen() {
+        let session = Session::start();
+        let bus = Bus::start();
+        let server = zbus::block_on(Builder::address(bus.address()).build()).expect("the service's bus connection");
+        let _saver = Saver::start(session.socket(), &server);
+        let caller = zbus::block_on(Builder::address(bus.address()).build()).expect("a caller on the private bus");
+
+        // No shell is attached, so the cover is the compositor's own and the call returns once the cover is proven.
+        let asker = caller.clone();
+        let call = std::thread::spawn(move || {
+            zbus::block_on(async {
+                let proxy = Proxy::new(&asker, SAVER, SAVER_PATH, SAVER).await?;
+                proxy.call_method("Lock", &()).await.map(|_| ())
+            })
+        });
+        let deadline = Instant::now() + super::PATIENCE;
+        while !call.is_finished() {
+            assert!(
+                Instant::now() < deadline,
+                "the Lock call never returned with no shell attached"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        call.join()
+            .expect("the caller thread")
+            .expect("Lock answers once the cover is confirmed");
+        assert!(saver_active(&caller), "GetActive is true while locked");
+
+        // The shell attaches to the session that is already locked, and must draw its lock screen.
+        let mut role = connect(&session);
+        load_stock_shell(&mut role);
+        super::tick_until(&mut role, "the attached shell never showed the lock screen", |role| {
+            role.run(
+                "lock probe",
+                "return tostring(lock.engaged) .. ' ' .. tostring(#root:all(Entry))",
+            )
+            .expect("the probe runs")
+            .as_deref()
+                == Some("true 1")
+        });
+        assert!(
+            saver_active(&caller),
+            "the session stays locked while its shell attaches"
+        );
+        assert!(
+            role.diagnostics().is_empty(),
+            "no handler failed: {:?}",
+            role.diagnostics()
+        );
+    }
 }
 
 // ---- The window menu and the not-responding alert (data/lua/gnoblin/shell/menus.lua, alerts.lua) ---------------------
