@@ -298,9 +298,10 @@ fn scrub_ends_a_stream_holding(buffer: *mut pipewire::sys::pw_buffer) {
 
     assert!(!export.is_live(), "a stream that cannot zero its buffers ends");
     assert!(export.connection.is_none(), "no connection outlives the last stream");
+    assert!(observer.roundtrip(), "the observer's sync is answered");
     assert!(
-        observer.wait_gone(&stream_name(session)),
-        "the node leaves the registry"
+        observer.node(&stream_name(session)).is_none(),
+        "the node has left the registry once the scrub returns"
     );
     assert_eq!(
         export.node_id(&table, session, owner()),

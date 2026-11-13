@@ -290,6 +290,12 @@ impl Observer {
     pub fn wait_gone(&self, name: &str) -> bool {
         drive(&self.mainloop, || self.node(name).is_none())
     }
+
+    /// Waits until the daemon has answered a sync sent now, so every request sent before it has been handled and
+    /// every event it caused has reached the observer. False when the answer does not come in time.
+    pub fn roundtrip(&self) -> bool {
+        crate::roundtrip(&self.core, &self.mainloop)
+    }
 }
 
 fn connect_client(mainloop: &MainLoopRc, socket: &Path) -> CoreRc {

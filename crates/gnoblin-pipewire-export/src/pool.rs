@@ -17,12 +17,12 @@ use pipewire::sys::pw_buffer;
 /// A pointer is recorded at `add` and forgotten at `remove`. PipeWire keeps each buffer alive in
 /// between. The stream lives on one loop thread, and the pointers are read only there.
 #[derive(Default)]
-pub(crate) struct Pool {
+pub(crate) struct StreamBuffers {
     buffers: Vec<*mut pw_buffer>,
 }
 
-impl Pool {
-    /// Records a buffer PipeWire added. A null pointer is recorded too, so that [`Pool::zero`] refuses it
+impl StreamBuffers {
+    /// Records a buffer PipeWire added. A null pointer is recorded too, so that [`StreamBuffers::zero`] refuses it
     /// rather than skipping a buffer it cannot reach.
     pub(crate) fn add(&mut self, buffer: *mut pw_buffer) {
         self.buffers.push(buffer);
@@ -90,7 +90,7 @@ unsafe fn planes_of<'a>(buffer: *mut pw_buffer) -> Option<&'a mut [spa_data]> {
 }
 
 #[cfg(test)]
-impl Pool {
+impl StreamBuffers {
     /// A copy of the bytes of every data plane the pool maps, for the tests that check what a buffer holds.
     pub(crate) fn planes(&self) -> Vec<Vec<u8>> {
         let mut copies = Vec::new();
@@ -172,7 +172,7 @@ mod tests {
     fn zero_clears_every_mapped_plane_and_refuses_an_unmapped_one() {
         let mut mapped = Fake::boxed(8, true);
         let mut unmapped = Fake::boxed(8, false);
-        let mut pool = Pool::default();
+        let mut pool = StreamBuffers::default();
         pool.add(mapped.pointer());
         pool.add(unmapped.pointer());
 
@@ -183,14 +183,14 @@ mod tests {
 
     #[test]
     fn zero_refuses_a_null_pointer_and_a_buffer_with_no_planes() {
-        let mut pool = Pool::default();
+        let mut pool = StreamBuffers::default();
         assert!(pool.zero(), "an empty pool has nothing to zero");
 
         pool.add(std::ptr::null_mut());
         assert!(!pool.zero(), "a null pointer cannot be zeroed");
 
         let mut bare = without_buffer();
-        let mut bare_pool = Pool::default();
+        let mut bare_pool = StreamBuffers::default();
         bare_pool.add(&mut *bare);
         assert!(!bare_pool.zero(), "a buffer with no spa_buffer cannot be zeroed");
     }
@@ -199,7 +199,7 @@ mod tests {
     fn remove_forgets_the_buffer() {
         let mut fake = Fake::boxed(4, true);
         let pointer = fake.pointer();
-        let mut pool = Pool::default();
+        let mut pool = StreamBuffers::default();
         pool.add(pointer);
         pool.remove(pointer);
         assert!(pool.planes().is_empty());

@@ -40,7 +40,7 @@
 //! The `testing` feature (and this crate's own tests) compile `testing.rs`: a private daemon, a second
 //! client that watches it, and a consumer that reads a node's frames.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::io::Cursor;
@@ -56,7 +56,7 @@ use gnoblin_lock::{Capture, CaptureStream};
 use gnoblin_render_frame::image::Image;
 use gnoblin_types::{ClientId, Point, Rect, Tick};
 use pipewire::context::ContextRc;
-use pipewire::core::CoreRc;
+use pipewire::core::{CoreRc, PW_ID_CORE};
 use pipewire::loop_::Timeout;
 use pipewire::main_loop::MainLoopRc;
 use pipewire::properties::properties;
@@ -68,7 +68,7 @@ use pipewire::spa::pod::serialize::PodSerializer;
 use pipewire::spa::pod::{Object, Pod, Property, PropertyFlags, Value};
 use pipewire::spa::utils::{Direction, Fraction, Rectangle, SpaTypes};
 use pipewire::stream::{StreamFlags, StreamListener, StreamRc, StreamState};
-use pool::Pool;
+use pool::StreamBuffers;
 
 /// The frame rate the stream advertises. A stream produces a frame each [`FRAME_INTERVAL`].
 const FRAME_RATE: u32 = 30;
@@ -78,6 +78,8 @@ const FRAME_INTERVAL: Duration = Duration::from_millis(33);
 const BUFFER_COUNT: i32 = 4;
 /// How long a new stream may take to appear in the daemon before the start fails.
 const START_DEADLINE: Duration = Duration::from_secs(5);
+/// How long a roundtrip may take before its answer is given up as lost. A lost answer ends every stream.
+const SYNC_DEADLINE: Duration = Duration::from_secs(5);
 /// The one buffer id a stream uses. A stream holds one buffer at a time.
 const BUFFER: u64 = 1;
 
@@ -231,7 +233,7 @@ struct PipewireExportStream {
     buffers: Rc<RefCell<Vec<u8>>>,
     /// The stream's pool buffers, as PipeWire's `add_buffer` and `remove_buffer` callbacks named them. Zeroed by
     /// [`PipewireExportStream::scrub`] before the stream acknowledges a change; see `pool.rs`.
-    known_buffers: Rc<RefCell<Pool>>,
+    known_buffers: Rc<RefCell<StreamBuffers>>,
     /// Answers the daemon's format negotiation with the buffers. Declared before the stream so it drops first.
     _listener: StreamListener<()>,
     /// The stream. Dropping it destroys the node.
@@ -453,7 +455,7 @@ impl PipewireExport {
         // them the link never leaves Paused.
         let buffers = Rc::new(RefCell::new(buffer_pod.clone()));
         let answer = Rc::clone(&buffers);
-        let known_buffers = Rc::new(RefCell::new(Pool::default()));
+        let known_buffers = Rc::new(RefCell::new(StreamBuffers::default()));
         let added = Rc::clone(&known_buffers);
         let removed = Rc::clone(&known_buffers);
         let listener = stream
@@ -528,8 +530,26 @@ impl PipewireExport {
     /// Zeroes every pool buffer of every live stream, before the caller acknowledges a change to what the streams
     /// carry. A stream whose buffers cannot all be zeroed is ended, and its node goes away with it: it is never left
     /// to deliver what it filled before the change. The crate-level docs say what the zeroing relies on.
+    ///
+    /// When a stream ended, this returns only after the daemon has answered a sync sent behind the stream's
+    /// destruction, so the node is gone from the daemon by the time the caller acknowledges. If the answer does not
+    /// come, every stream is ended by dropping the connection, the one lever left.
     pub fn scrub(&mut self) {
-        self.exports.retain(|_, export| export.scrub());
+        let mut ended = false;
+        self.exports.retain(|_, export| {
+            let zeroed = export.scrub();
+            ended |= !zeroed;
+            zeroed
+        });
+        if ended {
+            let confirmed = self
+                .connection
+                .as_ref()
+                .is_some_and(|connection| roundtrip(&connection.core, &connection.mainloop));
+            if !confirmed {
+                self.exports.clear();
+            }
+        }
         if self.exports.is_empty() {
             self.connection = None;
         }
@@ -569,6 +589,35 @@ fn wait_for_node(mainloop: &MainLoopRc, stream: &StreamRc) -> Result<u32, Export
         }
         mainloop.loop_().iterate(Timeout::Finite(Duration::from_millis(10)));
     }
+}
+
+/// Waits until the daemon has answered a sync sent on `core` now. The daemon handles requests in the order it
+/// receives them, so the answer means every request sent before this one has been handled and every event they
+/// caused has been sent. False when the sync cannot be sent or the answer does not come within [`SYNC_DEADLINE`].
+pub(crate) fn roundtrip(core: &CoreRc, mainloop: &MainLoopRc) -> bool {
+    let Ok(pending) = core.sync(0) else {
+        return false;
+    };
+    let answered = Rc::new(Cell::new(false));
+    let _listener = core
+        .add_listener_local()
+        .done({
+            let answered = Rc::clone(&answered);
+            move |id, seq| {
+                if id == PW_ID_CORE && seq == pending {
+                    answered.set(true);
+                }
+            }
+        })
+        .register();
+    let started = Instant::now();
+    while !answered.get() {
+        if started.elapsed() >= SYNC_DEADLINE {
+            return false;
+        }
+        mainloop.loop_().iterate(Timeout::Finite(Duration::from_millis(10)));
+    }
+    true
 }
 
 /// The video format a stream offers: the session's pixel layout, size and the advertised rate.
