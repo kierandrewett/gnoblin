@@ -3484,12 +3484,27 @@ impl Host for State {
         // The tree's transactions apply to the scene the composer draws from, before the
         // damage is taken, so a transaction applied here draws in this frame.
         let tree = &mut self.tree;
-        self.composer.with_scene(|scene| tree.drain(scene, Instant::now));
+        let held = self.composer.with_scene(|scene| tree.drain_held(scene, Instant::now));
         // The shell's timed writes play as tracks, or land at once under reduced motion.
         let motion = self.tree.take_motion();
         self.composer.apply_shell_motion(motion);
         // A `secure` the shell wrote on a window's node marks the window for capture.
         self.composer.follow_shell_secure();
+        // A capture whose target now holds secure content ends before the frame's replies go out, so a mark is
+        // acknowledged only once the streams it cut have ended.
+        let newly = self.composer.take_newly_secure();
+        if !newly.is_empty() {
+            let composer = &self.composer;
+            self.capture.stop_targets_reaching(|target| {
+                let root = match target {
+                    gnoblin_capture::Target::Output(output) => composer.screen_node(output),
+                    gnoblin_capture::Target::Window(window) => composer.window_node(window),
+                    gnoblin_capture::Target::View(view) => Some(view),
+                };
+                root.is_some_and(|root| composer.reaches(root, &newly))
+            });
+        }
+        held.send();
         // A seat focus the shell wrote in the drain moves the keyboard to that window. The
         // compositor's own focus was published above, before the drain, so it never reads back.
         if self.composer.main_seat_focus_written_by_shell() {

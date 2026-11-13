@@ -797,6 +797,12 @@ impl TreeFrame {
     /// replies. `now` is read once at the start, and once before each transaction after
     /// the first, so a test can drive the budget with a clock of its own.
     pub fn drain(&mut self, scene: &mut Scene, now: impl Fn() -> Instant) {
+        self.drain_held(scene, now).send();
+    }
+
+    /// [`TreeFrame::drain`], with the replies held until [`Held::send`]. The frame's owner sends them after the
+    /// work the replies promise: a mark is acknowledged only once the captures it ends have ended.
+    pub(crate) fn drain_held(&mut self, scene: &mut Scene, now: impl Fn() -> Instant) -> Held {
         let start = now();
         self.frames += 1;
         let frame = self.frames;
@@ -972,7 +978,24 @@ impl TreeFrame {
             batch.serial = self.serial;
             (self.publish)(batch);
         }
-        for (reply, result) in replies {
+        Held {
+            serial: self.serial,
+            replies,
+        }
+    }
+}
+
+/// The replies a frame's drain answered, held until [`Held::send`].
+#[must_use = "the replies reach the shell only through send"]
+pub(crate) struct Held {
+    serial: u64,
+    replies: Vec<(Reply, Result<TreeApplied, TreeRefusal>)>,
+}
+
+impl Held {
+    /// Sends each reply, with the serial the drain published.
+    pub(crate) fn send(self) {
+        for (reply, result) in self.replies {
             reply(self.serial, result);
         }
     }

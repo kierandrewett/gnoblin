@@ -907,6 +907,21 @@ impl Composer {
         self.secure_scope = scope;
     }
 
+    /// Brings the secure scope up to date, as [`Composer::take_secure_scope`] does, and answers the nodes it newly
+    /// holds, so the frame's tree work can end a capture of one of them before the frame's replies go out.
+    pub fn take_newly_secure(&mut self) -> BTreeSet<NodeId> {
+        let newly = self.find_secure().difference(&self.secure_scope).copied().collect();
+        self.take_secure_scope();
+        newly
+    }
+
+    /// Whether `root`, a node below it, or the source a View at `root` draws, is among `nodes`.
+    pub fn reaches(&self, root: NodeId, nodes: &BTreeSet<NodeId>) -> bool {
+        std::iter::once(root)
+            .chain(self.scene.source(root))
+            .any(|node| self.subtree(node).iter().any(|below| nodes.contains(below)))
+    }
+
     /// How a View's source subtree is drawn: the picture itself on the CPU, or the scene the renderer draws it from.
     ///
     /// The first picture is the image of the View's source subtree through its camera. It, the scene and the second

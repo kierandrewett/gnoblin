@@ -415,6 +415,20 @@ impl CaptureTables {
         }
     }
 
+    /// Ends, as [`Stop::Secure`], every live session whose target `reaches` answers true for: a capture of a node
+    /// the frame just marked secure must not run on.
+    pub(crate) fn stop_targets_reaching(&mut self, reaches: impl Fn(Target) -> bool) {
+        let ended: Vec<SessionId> = self
+            .table
+            .sessions()
+            .filter(|session| session.stopped().is_none() && reaches(session.target()))
+            .map(|session| session.id())
+            .collect();
+        for session in ended {
+            self.stop(session, Stop::Secure);
+        }
+    }
+
     /// Ends every session and every unresolved screencopy frame.
     ///
     /// Answers whether anything was cut, so the caller republishes the session count only

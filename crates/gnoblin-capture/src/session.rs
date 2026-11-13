@@ -95,6 +95,8 @@ pub enum Stop {
     Embargoed,
     /// The output or window it captured is gone.
     TargetGone,
+    /// The window or view it captured came to hold secure content, which no capture may show.
+    Secure,
 }
 
 impl Stop {
@@ -104,6 +106,7 @@ impl Stop {
         match self {
             Self::Embargoed => "embargoed",
             Self::TargetGone => "target-gone",
+            Self::Secure => "secure",
         }
     }
 }
@@ -505,6 +508,12 @@ mod tests {
                 CaptureSessionEvent::Stop(Stop::TargetGone),
                 Ok(()),
                 CaptureSessionState::Stopped(Stop::TargetGone),
+            ),
+            (
+                live,
+                CaptureSessionEvent::Stop(Stop::Secure),
+                Ok(()),
+                CaptureSessionState::Stopped(Stop::Secure),
             ),
             (
                 claimed,
