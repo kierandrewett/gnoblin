@@ -31,3 +31,5 @@ thiserror.workspace = true
 [dev-dependencies]
 # The loader and budget tests write real module trees and symlinks under a temp root.
 tempfile = "3.23.0"
+# The stock placement goldens are read from `tests/shell/placement_cases.toml` (tests/stock_layouts.rs).
+toml.workspace = true

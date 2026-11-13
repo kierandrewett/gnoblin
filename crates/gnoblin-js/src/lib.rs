@@ -11,12 +11,14 @@
 //! - [`ConfigWatcher`] turns editor save bursts into one [`ReloadRequest`]; [`JsReloader`] stages and
 //!   commits on a request and reports failures at the author's `.ts` line; [`JsSupervisor`] counts
 //!   interrupts and panics and decides between restaging and giving up.
+//! - [`stock_modules`] is the TypeScript stock library (`data/js/gnoblin/`) as embedded `gnoblin` modules.
 
 mod error;
 mod generation;
 mod host;
 mod loader;
 mod reload;
+mod stock;
 mod supervisor;
 mod ts;
 mod watch;
@@ -27,6 +29,7 @@ pub use host::JsHost;
 pub use loader::{JsLoadState, JsLoader, JsResolver};
 pub use reload::{JsDiagnostic, JsReloader, ReloadReport};
 pub use rquickjs;
+pub use stock::stock_modules;
 pub use supervisor::{JsClock, JsFault, JsFaultAction, JsHealth, JsStrikePolicy, JsSupervisor, JsSystemClock};
 pub use ts::{JsStripped, strip_types};
 pub use watch::{ConfigWatcher, JsWatchError, ReloadRequest};
