@@ -95,6 +95,8 @@ workspaces in a root file system that held only `build-essential`, `pkg-config`,
 | Package                                                             | Needed because                                                                                                         |
 | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `libudev-dev`, `libseat-dev`, `libpipewire-0.3-dev`                 | `libudev-sys`, `libseat-sys` and `libspa-sys` run `pkg-config` for them in their build scripts                         |
+| `libwayland-dev`                                                    | `wayland-sys` runs `pkg-config` for `wayland-client` and `wayland-server` unless its `dlopen` feature is on            |
+| `libdrm-dev`                                                        | `drm-sys` and smithay's DRM backend run `pkg-config` for `libdrm`                                                      |
 | `libclang-dev`                                                      | `libspa-sys` runs bindgen, which opens `libclang.so`                                                                   |
 | `libssl-dev`                                                        | `libsqlite3-sys` compiles SQLCipher, which includes `openssl/crypto.h`                                                 |
 | `libxkbcommon-dev`, `libpixman-1-dev`, `libinput-dev`, `libgbm-dev` | the linker asks for `-lxkbcommon`, `-lpixman-1`, `-linput` and `-lgbm`; `cargo check` passes without them              |

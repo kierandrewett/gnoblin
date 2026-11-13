@@ -12,6 +12,7 @@ mod gen_proto;
 mod layout;
 mod logging;
 mod metadata;
+mod native_libs;
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -21,6 +22,7 @@ usage: cargo xtask <subcommand>
 
 subcommands:
   deps               check the workspace dependency rules from design/rust-compositor.md
+  native-libs       fail on a -sys crate in a lock file whose system packages the CI install list lacks
   gen-proto          write the generated .proto text to target/gen-proto, to read
   compat-report      print every compat adapter's declared support matrix
   dupes              fail on a struct or enum two crates declare twice
@@ -44,6 +46,7 @@ fn main() -> ExitCode {
         ("gen-proto", []) => gen_proto::run(),
         ("layout", []) => layout::run(),
         ("logging", []) => logging::run(),
+        ("native-libs", []) => native_libs::run(),
         ("docs-parity", []) => docs_parity::run(),
         ("compat-report", []) => compat_report::run(false),
         ("compat-report", [flag]) if flag == "--json" => compat_report::run(true),
@@ -51,9 +54,10 @@ fn main() -> ExitCode {
         ("dupes", [flag]) if flag == "--deny" => dupes::run(true),
         ("dupes", [flag]) if flag == "--warn" => dupes::run(false),
         ("dist", _) => dist::run(&rest),
-        ("deps" | "gen-proto" | "dupes" | "compat-report" | "logging" | "layout" | "docs-parity", _) => {
-            usage_error("unexpected argument")
-        }
+        (
+            "deps" | "gen-proto" | "dupes" | "compat-report" | "logging" | "layout" | "docs-parity" | "native-libs",
+            _,
+        ) => usage_error("unexpected argument"),
         (other, _) => usage_error(&format!("unknown subcommand `{other}`")),
     }
 }

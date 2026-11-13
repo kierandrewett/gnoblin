@@ -69,9 +69,8 @@ jobs:
         run: just workspace-ci
 
   # The XR extension is a workspace of its own (`extensions/gnoblin-xr`, own lockfile), so the job above does not
-  # build, lint, test or check its licences. `just ci` runs both gates. It links no system library (its only native
-  # crates load `libwayland` and the OpenXR and Vulkan loaders at run time, and its tests use none), so unlike the
-  # jobs around it this one installs nothing: it built and its tests ran in a bare Ubuntu 24.04 root file system.
+  # build, lint, test or check its licences. `just ci` runs both gates. Its `wayland-sys` probes `libwayland` with
+  # pkg-config, so it installs the same list as the jobs around it.
   extensions:
     name: Extension workspace format, lint, test, licences
     runs-on: ubuntu-latest
@@ -85,6 +84,8 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-deny
+      - name: Install system libraries
+        run: scripts/ci-install-system-libraries.sh
       - name: Show the pinned toolchain
         run: rustup show active-toolchain
       - name: Run the extension workspace gate

@@ -37,13 +37,14 @@ libraries=(
     "libegl1|mesa-libEGL"                     # smithay opens libEGL.so.1 at run time and panics without it; pulls in Mesa's llvmpipe
     "libvulkan1|vulkan-loader"                # the Vulkan renderer's loader; its tests skip without a loader and a device
     "mesa-vulkan-drivers|mesa-vulkan-drivers" # lavapipe, the software Vulkan device the renderer's 38 tests run on
+    "libwayland-dev|wayland-devel"            # wayland-sys probes wayland-client and wayland-server with pkg-config unless its dlopen feature is on
+    "libdrm-dev|libdrm-devel"                 # drm-sys and smithay's DRM backend: pkg-config libdrm
 )
 
 # scripts/wlcs.sh builds Canonical's wlcs with cmake against the Wayland development files.
 wlcs=(
     "cmake|cmake"
     "g++|gcc-c++"
-    "libwayland-dev|wayland-devel"
     "libgtest-dev|gtest-devel"
     "libgmock-dev|gmock-devel"
     "libboost-dev|boost-devel"
