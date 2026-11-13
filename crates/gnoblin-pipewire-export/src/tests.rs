@@ -324,6 +324,52 @@ fn scrub_ends_the_stream_when_a_buffer_has_no_mapping() {
     scrub_ends_a_stream_holding(unmapped.pointer());
 }
 
+/// A scrub whose sync is never answered ends every stream, not only the one that could not be zeroed. The daemon is
+/// suspended before the scrub, so the answer does not come; a healthy stream beside the broken one holds a mapped
+/// buffer that zeroes cleanly, and is dropped anyway. Both nodes leave the registry once the daemon runs again.
+#[test]
+fn unconfirmed_scrub_ends_every_stream() {
+    let mut mapped = crate::pool::Fake::boxed(8, true);
+    let daemon = Daemon::start();
+    let observer = Observer::connect(&daemon.socket());
+    let mut table = Table::new();
+    let healthy = table.open(owner(), output(), CaptureStream::Granted, format());
+    let broken = table.open(owner(), output(), CaptureStream::Granted, format());
+    let mut export = PipewireExport::with_socket(daemon.socket());
+    let healthy_node = export
+        .start(&table, healthy, owner())
+        .expect("a granted session starts");
+    let broken_node = export.start(&table, broken, owner()).expect("a granted session starts");
+    observer.wait_for(healthy_node);
+    observer.wait_for(broken_node);
+
+    export.exports[&healthy]
+        .known_buffers
+        .borrow_mut()
+        .add(mapped.pointer());
+    export.exports[&broken]
+        .known_buffers
+        .borrow_mut()
+        .add(std::ptr::null_mut());
+    daemon.suspend();
+    export.scrub();
+    daemon.resume();
+
+    assert!(!export.is_live(), "an unconfirmed scrub ends every stream");
+    assert!(
+        export.connection.is_none(),
+        "no connection outlives an unconfirmed scrub"
+    );
+    assert!(
+        observer.wait_gone(&stream_name(healthy)),
+        "the healthy stream's node leaves the registry"
+    );
+    assert!(
+        observer.wait_gone(&stream_name(broken)),
+        "the broken stream's node leaves the registry"
+    );
+}
+
 /// Drives `export` once per turn of a wait, on a tick of its own.
 fn pump_of<'a>(
     export: &'a mut PipewireExport,

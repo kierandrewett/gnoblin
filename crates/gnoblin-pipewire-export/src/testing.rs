@@ -86,6 +86,25 @@ impl Daemon {
         self.runtime_dir.join("pipewire-0")
     }
 
+    /// Stops the daemon from being scheduled, so a roundtrip to it is never answered. Undone by `resume`.
+    pub fn suspend(&self) {
+        self.signal("STOP");
+    }
+
+    /// Lets a suspended daemon run again.
+    pub fn resume(&self) {
+        self.signal("CONT");
+    }
+
+    fn signal(&self, signal: &str) {
+        let status = Command::new("kill")
+            .arg(format!("-{signal}"))
+            .arg(self.child.id().to_string())
+            .status()
+            .unwrap_or_else(|error| panic!("send SIG{signal} to the daemon: {error}"));
+        assert!(status.success(), "send SIG{signal} to the daemon");
+    }
+
     fn wait_for_socket(&mut self) {
         let started = Instant::now();
         while !self.socket().exists() {
