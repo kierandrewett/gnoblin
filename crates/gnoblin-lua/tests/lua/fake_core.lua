@@ -118,7 +118,10 @@ local SCHEMA = {
     {
         name = "Lock",
         base = "Node",
-        props = { engaged = { type = "boolean", default = false } },
+        props = {
+            engaged = { type = "boolean", default = false },
+            state = { type = "string", default = "not-locked", readonly = true },
+        },
         signals = { "requested" },
         methods = { "authenticate", "lock" },
         slow = { authenticate = true },

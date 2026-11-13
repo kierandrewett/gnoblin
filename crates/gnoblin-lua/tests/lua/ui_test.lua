@@ -60,8 +60,72 @@ return {
         function()
             local host, id, lock = setup()
             H.check(not lock.engaged, "the lock must start disengaged")
+            host.external(id, "state", "pending")
             H.frame(host, 1, { { type = "requested", target = id, args = {} } })
             H.check(lock.engaged, "requested must engage the lock")
+        end,
+    },
+    {
+        "a lock requested before the shell has a desk shows its screen once the desk comes up",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            root:add(Seat({}))
+            local lock = root:add(Lock({}))
+            root:add(Screen({ width = 1000, height = 800 }))
+            H.load_shell()
+            H.start_shell(host) -- the screen is in the tree, but the seat does not name it yet: there is no desk
+            local id = host.ids("Lock")[1]
+            host.external(id, "state", "pending") -- the compositor takes the lock, then sends `requested` once
+            H.frame(host, 1, { { type = "requested", target = id, args = {} } })
+            H.check(not lock.engaged, "no lock screen can be up before the desk exists")
+            H.publish_seat(host, { screen = host.ids("Screen")[1] })
+            H.frame(host, 2, {})
+            H.frame(host, 3, {})
+            H.check(#root:all(Entry) == 1, "the request must wait for the desk, got " .. #root:all(Entry) .. " entries")
+            H.check(lock.engaged, "the lock must be engaged once its screen is up")
+        end,
+    },
+    {
+        "a shell that attaches while the session is locked shows the lock screen",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            root:add(Seat({}))
+            local lock = root:add(Lock({}))
+            root:add(Screen({ width = 1000, height = 800 }))
+            host.external(host.ids("Lock")[1], "state", "locked") -- taken before this shell attached: `requested` went elsewhere
+            H.load_shell()
+            H.publish_seat(host, { screen = host.ids("Screen")[1] })
+            H.start_shell(host)
+            H.frame(host, 1, {})
+            H.frame(host, 2, {})
+            H.check(
+                #root:all(Entry) == 1,
+                "a locked session must show its lock screen on attach, got " .. #root:all(Entry)
+            )
+            H.check(lock.engaged, "the attached shell must engage the lock")
+        end,
+    },
+    {
+        "a lock that unlocks before the desk comes up leaves no screen behind",
+        function()
+            local core, host = require("fake_core")()
+            H.boot(core, host)
+            root:add(Seat({}))
+            local lock = root:add(Lock({}))
+            root:add(Screen({ width = 1000, height = 800 }))
+            H.load_shell()
+            H.start_shell(host)
+            local id = host.ids("Lock")[1]
+            host.external(id, "state", "pending")
+            H.frame(host, 1, { { type = "requested", target = id, args = {} } })
+            host.external(id, "state", "not-locked") -- unlocked before there was a desk to lock
+            H.publish_seat(host, { screen = host.ids("Screen")[1] })
+            H.frame(host, 2, {})
+            H.frame(host, 3, {})
+            H.check(#root:all(Entry) == 0, "an unlocked session must not get a lock screen")
+            H.check(not lock.engaged, "an unlocked session must not be engaged")
         end,
     },
     {
@@ -82,6 +146,7 @@ return {
         "unlock waits for the native answer and disengages on ok",
         function()
             local host, id, lock = setup()
+            host.external(id, "state", "pending")
             H.frame(host, 1, { { type = "requested", target = id, args = {} } })
             local result, err
             go(function()
@@ -98,6 +163,7 @@ return {
         "a wrong password keeps the lock engaged",
         function()
             local host, id, lock = setup()
+            host.external(id, "state", "pending")
             H.frame(host, 1, { { type = "requested", target = id, args = {} } })
             local result, err
             go(function()
@@ -112,6 +178,7 @@ return {
         "a rate-limited attempt keeps the lock engaged and returns the wait",
         function()
             local host, id, lock = setup()
+            host.external(id, "state", "pending")
             H.frame(host, 1, { { type = "requested", target = id, args = {} } })
             local result, err
             go(function()

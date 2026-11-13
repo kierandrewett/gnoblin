@@ -106,6 +106,7 @@ return {
             local w2 = root:add(Window({ app_id = "foot", title = "two" }))
             H.frame(host, 3, {})
             w2:move_with_keys()
+            host.external(lock.id, "state", "pending")
             H.frame(host, 4, { { type = "requested", target = lock.id } })
             H.check(R.current() == nil, "the lock ends it")
         end,

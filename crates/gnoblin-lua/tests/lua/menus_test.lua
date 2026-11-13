@@ -477,12 +477,14 @@ return {
             local host, wins, Menus = setup()
             ask(host, wins[1], 50, 50)
             H.check(Menus.current() ~= nil, "a menu is open")
+            host.external(lock.id, "state", "pending")
             frame(host, { { type = "requested", target = lock.id } })
             H.check(Menus.current() == nil, "the lock request closes it")
             lock.engaged = true
             ask(host, wins[1], 50, 50)
             H.check(Menus.current() == nil, "nothing opens over the lock screen")
             lock.engaged = false
+            host.external(lock.id, "state", "not-locked")
             ask(host, wins[1], 50, 50)
             H.check(Menus.current() ~= nil, "and the menu is back once it has gone")
         end,

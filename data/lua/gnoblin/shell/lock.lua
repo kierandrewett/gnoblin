@@ -15,10 +15,12 @@ Box:extend("LockCard")({
     secure = true,
 })
 
-local shown = false
+-- How often a request that waits for its desk looks again, in seconds on the shell's frame clock.
+local POLL = 0.1
+local shown = false -- the lock screen is up, or a request is waiting for its desk
 
-function Lock:on_requested()
-    self.engaged = true
+-- Starts the lock screen once. A request can come before the shell has a desk, so the screen waits for it (`show`).
+function Lock:engage()
     if shown then
         return
     end
@@ -26,6 +28,18 @@ function Lock:on_requested()
     go(function()
         self:show()
     end)
+end
+
+function Lock:on_requested()
+    self:engage()
+end
+
+-- The request is one-shot: a shell that attaches to a session already locked (a restart, or one that came up after the
+-- request) hears nothing. Its snapshot carries the lock state, which is the request.
+function Lock:on_ready()
+    if self.state ~= "not-locked" then
+        self:engage()
+    end
 end
 
 local function feedback_for(result, err)
@@ -40,10 +54,15 @@ local function feedback_for(result, err)
     return "The password could not be checked."
 end
 
--- Draws the lock screen on the desk under the pointer and returns once the session is unlocked.
+-- Draws the lock screen on the desk under the pointer and returns once the session is unlocked. The desk may not exist yet
+-- (the shell attaches before its screen is published): the screen waits for it, and gives up if the session unlocks first.
 function Lock:show()
     local d = desk()
-    if not d then
+    while self.state ~= "not-locked" and not d do
+        await(POLL)
+        d = desk()
+    end
+    if self.state == "not-locked" then -- unlocked or refused before its screen could be drawn
         shown = false
         return
     end
@@ -54,6 +73,7 @@ function Lock:show()
     local entry = card:add(Entry({ secret = true, height = 44, radius = 10, fill = "#313244", size = 15 }))
     local message = card:add(Text({ text = "Enter your password.", size = 13, color = "#a6adc8" }))
     seat.focus = entry
+    self.engaged = true
     local result
     repeat
         local text = await(entry.submit)
