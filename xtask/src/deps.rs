@@ -119,7 +119,12 @@ const HUB_FRAME: &str = "gnoblin-render-frame";
 /// The edge has to point this way for a mechanical reason: the compositor is
 /// what hosts these crates, and a crate that named it would make that edge a
 /// cycle.
-const CLIENT_SIDE: &[&str] = &["gnoblin-lua", "gnoblin-services", "xdg-desktop-portal-gnoblin"];
+const CLIENT_SIDE: &[&str] = &[
+    "gnoblin-lua",
+    "gnoblin-services",
+    "gnoblin-tree-client",
+    "xdg-desktop-portal-gnoblin",
+];
 
 /// The binary whose own dependencies [`binary_roots`] constrains.
 ///
