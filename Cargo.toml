@@ -59,6 +59,7 @@ members = [
     "crates/gnoblin-lua",
     "crates/gnoblin-lua-sandbox",
     "crates/gnoblin-lua-pattern",
+    "crates/gnoblin-js",
     "crates/gnoblin-model",
     "crates/gnoblin-output",
     "crates/gnoblin-paint",
@@ -235,6 +236,30 @@ wayland-backend = "0.3.17"
 # because the configuration and model layers must work with no Lua at all.
 mlua = { version = "0.12.2", features = ["lua55", "vendored"] }
 
+# The JavaScript engine the JS shell runtime embeds (design/js-runtime.md, J1-J9),
+# QuickJS-ng through its Rust bindings. Only `gnoblin-js` names it. `std` gives the
+# libc allocator, which the memory limit needs; `loader` gives the module resolver
+# and loader traits. No `dyn-load`, `parallel` or `futures`: the runtime owns its own
+# job loop and loads no native code from scripts (design/js-research/quickjs-embedding.md).
+rquickjs = { version = "0.14.0", default-features = false, features = ["std", "loader"] }
+# The TypeScript transformer, pinned exactly because the 0.x releases break their
+# API. `oxc_transformer` strips types, `oxc_codegen` prints the result and its source
+# map, `oxc_diagnostics` is the error type the parser reports through, and
+# `oxc_sourcemap` is the map type `gnoblin-js` remaps stack frames through. All
+# are the same release, and `oxc_sourcemap` must match the version `oxc_codegen`
+# depends on (9.0.0 at 0.158.0), or the map types would not unify.
+oxc_allocator = "=0.158.0"
+oxc_codegen = "=0.158.0"
+oxc_diagnostics = "=0.158.0"
+oxc_parser = "=0.158.0"
+oxc_semantic = "=0.158.0"
+oxc_span = "=0.158.0"
+oxc_sourcemap = "=9.0.0"
+oxc_transformer = "=0.158.0"
+# Error types for the library crates: a derive, so each `Display` says what failed
+# and the `source` chain is kept.
+thiserror = "2.0.21"
+
 # Command line parsing for `gnoblinctl`. Its command tree is generated from the
 # object schema at build time, so it uses the builder API rather than derive: a
 # generated tree cannot be a derive struct. Colour is off because `gnoblinctl`
@@ -272,6 +297,8 @@ gnoblin-tree-client = { path = "crates/gnoblin-tree-client" }
 gnoblin-paint = { path = "crates/gnoblin-paint" }
 # The Lua 5.4 pattern matcher and the load-time pattern checker (window rules and the sandbox).
 gnoblin-lua-pattern = { path = "crates/gnoblin-lua-pattern" }
+# The JavaScript shell runtime: TypeScript stripping, the module loader, and one QuickJS generation with its budgets.
+gnoblin-js = { path = "crates/gnoblin-js" }
 gnoblin-schema = { path = "crates/gnoblin-schema" }
 # The portal dialog models, the payload and result types the compositor negotiates with (D19).
 gnoblin-portal-core = { path = "crates/gnoblin-portal-core" }

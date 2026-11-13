@@ -120,6 +120,7 @@ const HUB_FRAME: &str = "gnoblin-render-frame";
 /// what hosts these crates, and a crate that named it would make that edge a
 /// cycle.
 const CLIENT_SIDE: &[&str] = &[
+    "gnoblin-js",
     "gnoblin-lua",
     "gnoblin-services",
     "gnoblin-tree-client",

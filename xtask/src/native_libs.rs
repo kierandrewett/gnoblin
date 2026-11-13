@@ -39,6 +39,7 @@ const NO_NATIVE: &[&str] = &[
     "linux-raw-sys",
     "mlua-sys",
     "openxr-sys",
+    "rquickjs-sys",
     "web-sys",
     "windows-sys",
 ];

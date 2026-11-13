@@ -1,0 +1,31 @@
+[package]
+name = "gnoblin-js"
+description = "JavaScript shell runtime: TypeScript stripping, the module loader, and one QuickJS generation with its budgets and error remapping."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# The JavaScript engine (QuickJS-ng). One generation owns one runtime and context.
+rquickjs.workspace = true
+# TypeScript stripping: the parser, the semantic pass the transformer needs for enums and
+# parameter properties, the transformer, and the printer that writes the source map.
+oxc_allocator.workspace = true
+oxc_codegen.workspace = true
+oxc_diagnostics.workspace = true
+oxc_parser.workspace = true
+oxc_semantic.workspace = true
+oxc_span.workspace = true
+oxc_sourcemap.workspace = true
+oxc_transformer.workspace = true
+# Error types: each `Display` says what failed and the `source` chain is kept.
+thiserror.workspace = true
+
+[dev-dependencies]
+# The loader and budget tests write real module trees and symlinks under a temp root.
+tempfile = "3.23.0"
