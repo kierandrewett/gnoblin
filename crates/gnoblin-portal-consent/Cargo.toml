@@ -1,6 +1,6 @@
 [package]
 name = "gnoblin-portal-consent"
-description = "The consent card of the portal dialogs: prompt, requester, Deny and Allow."
+description = "The Rust-drawn cards of the portal dialogs: consent (prompt, requester, Deny, Allow) and passphrase."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,6 +12,7 @@ egui.workspace = true
 gnoblin-types.workspace = true
 gnoblin-portal-core.workspace = true
 gnoblin-portal-ui.workspace = true
+gnoblin-secret.workspace = true
 
 [lints]
 workspace = true
