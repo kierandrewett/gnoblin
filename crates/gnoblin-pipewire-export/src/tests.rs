@@ -243,6 +243,86 @@ fn revoked_grant_tears_the_stream_down() {
     );
 }
 
+/// Scrubbing zeroes the pixels of every pool buffer the stream holds, and the stream lives on: the producer's own
+/// mapping of each buffer is the one the scrub writes, so a buffer a consumer later takes carries no picture.
+#[test]
+fn scrub_zeroes_every_pool_buffer_and_the_stream_lives_on() {
+    let daemon = Daemon::start();
+    let observer = Observer::connect(&daemon.socket());
+    let mut table = Table::new();
+    let session = table.open(owner(), output(), CaptureStream::Granted, format());
+    let mut export = PipewireExport::with_socket(daemon.socket());
+    let node = export
+        .start(&table, session, owner())
+        .expect("a granted session starts");
+    observer.wait_for(node);
+    let consumer = FrameConsumer::connect(&daemon.socket(), node);
+    consumer.wait_for_frame_pumping(
+        "of the window colour",
+        pump_of(&mut export, &mut table, &mut SolidSource),
+        |frame| frame.is_solid(WINDOW_COLOUR),
+    );
+
+    let before = export.exports[&session].known_buffers.borrow().planes();
+    assert!(
+        before.iter().any(|plane| plane.iter().any(|byte| *byte != 0)),
+        "the pool holds the window's pixels before the scrub"
+    );
+
+    export.scrub();
+
+    assert!(export.is_live(), "a stream whose buffers were zeroed lives on");
+    let after = export.exports[&session].known_buffers.borrow().planes();
+    assert!(!after.is_empty(), "the pool still holds its buffers");
+    assert!(
+        after.iter().all(|plane| plane.iter().all(|byte| *byte == 0)),
+        "every pool buffer is zeroed"
+    );
+}
+
+/// Starts a granted stream, puts `buffer` in its pool as if PipeWire had added it, and scrubs. The scrub must end the
+/// stream: a buffer it cannot zero is one a consumer could still take the picture from.
+fn scrub_ends_a_stream_holding(buffer: *mut pipewire::sys::pw_buffer) {
+    let daemon = Daemon::start();
+    let observer = Observer::connect(&daemon.socket());
+    let mut table = Table::new();
+    let session = table.open(owner(), output(), CaptureStream::Granted, format());
+    let mut export = PipewireExport::with_socket(daemon.socket());
+    let node = export
+        .start(&table, session, owner())
+        .expect("a granted session starts");
+    observer.wait_for(node);
+
+    export.exports[&session].known_buffers.borrow_mut().add(buffer);
+    export.scrub();
+
+    assert!(!export.is_live(), "a stream that cannot zero its buffers ends");
+    assert!(export.connection.is_none(), "no connection outlives the last stream");
+    assert!(
+        observer.wait_gone(&stream_name(session)),
+        "the node leaves the registry"
+    );
+    assert_eq!(
+        export.node_id(&table, session, owner()),
+        Err(ExportError::NotExported),
+        "an ended stream has no node"
+    );
+}
+
+/// A null buffer pointer cannot be zeroed, so the stream ends.
+#[test]
+fn scrub_ends_the_stream_when_a_buffer_pointer_is_null() {
+    scrub_ends_a_stream_holding(std::ptr::null_mut());
+}
+
+/// A buffer with no mapping cannot be zeroed, so the stream ends. The buffer is test memory, built with a plane the
+/// producer never mapped, and it outlives the scrub.
+#[test]
+fn scrub_ends_the_stream_when_a_buffer_has_no_mapping() {
+    let mut unmapped = crate::pool::Fake::boxed(8, false);
+    scrub_ends_a_stream_holding(unmapped.pointer());
+}
+
 /// Drives `export` once per turn of a wait, on a tick of its own.
 fn pump_of<'a>(
     export: &'a mut PipewireExport,

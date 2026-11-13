@@ -23,6 +23,13 @@
 //!   `no_buffer_queued_before_a_mark_is_delivered_after_it_on_a_real_cast` and
 //!   `no_buffer_queued_before_the_lock_is_delivered_after_it_on_a_real_cast` in `gnoblin-wayland`'s
 //!   `tests/view_capture_e2e.rs`, on a real daemon.
+//! - **A pool buffer is zeroed before a change is acknowledged.** Before the stream acknowledges a change to what it
+//!   carries, the producer writes zeros into every pool buffer it does not hold, through the mapping PipeWire gave it
+//!   at `add_buffer` (see `pool.rs`). That is not a PipeWire guarantee: PipeWire documents no way to recall a queued
+//!   buffer, and writing a buffer through a mapping a consumer also reads is the behaviour the daemon has today, not a
+//!   contract. A buffer a consumer dequeued before the zeroing may be torn by it. **Fail closed:** if any buffer cannot
+//!   be zeroed (a null pointer, no data plane, or no mapping), the stream is ended rather than left to deliver
+//!   pre-change pixels, and the consumer sees its node go away.
 //!
 //! A stream of a [`Target::View`] or a [`Target::Window`] is that target at the size it is drawn at: when the size
 //! changes the format is offered again at the new size, the table's session takes the new shape, and the consumer
@@ -61,6 +68,7 @@ use pipewire::spa::pod::serialize::PodSerializer;
 use pipewire::spa::pod::{Object, Pod, Property, PropertyFlags, Value};
 use pipewire::spa::utils::{Direction, Fraction, Rectangle, SpaTypes};
 use pipewire::stream::{StreamFlags, StreamListener, StreamRc, StreamState};
+use pool::Pool;
 
 /// The frame rate the stream advertises. A stream produces a frame each [`FRAME_INTERVAL`].
 const FRAME_RATE: u32 = 30;
@@ -221,6 +229,9 @@ struct PipewireExportStream {
     node: u32,
     /// The buffer layout the stream answers a format negotiation with. It is replaced when the format changes.
     buffers: Rc<RefCell<Vec<u8>>>,
+    /// The stream's pool buffers, as PipeWire's `add_buffer` and `remove_buffer` callbacks named them. Zeroed by
+    /// [`PipewireExportStream::scrub`] before the stream acknowledges a change; see `pool.rs`.
+    known_buffers: Rc<RefCell<Pool>>,
     /// Answers the daemon's format negotiation with the buffers. Declared before the stream so it drops first.
     _listener: StreamListener<()>,
     /// The stream. Dropping it destroys the node.
@@ -340,6 +351,11 @@ impl PipewireExportStream {
         }
         // Dropping the buffer queues it to the stream.
     }
+
+    /// Zeroes the stream's pool buffers. False when one could not be zeroed, and the caller ends the stream.
+    fn scrub(&self) -> bool {
+        self.known_buffers.borrow().zero()
+    }
 }
 
 /// The PipeWire streams of the granted capture sessions.
@@ -437,6 +453,9 @@ impl PipewireExport {
         // them the link never leaves Paused.
         let buffers = Rc::new(RefCell::new(buffer_pod.clone()));
         let answer = Rc::clone(&buffers);
+        let known_buffers = Rc::new(RefCell::new(Pool::default()));
+        let added = Rc::clone(&known_buffers);
+        let removed = Rc::clone(&known_buffers);
         let listener = stream
             .add_local_listener_with_user_data(())
             .param_changed(move |output, _, id, param| {
@@ -448,6 +467,8 @@ impl PipewireExport {
                     let _ = output.update_params(&mut [buffers]);
                 }
             })
+            .add_buffer(move |_, _, buffer| added.borrow_mut().add(buffer))
+            .remove_buffer(move |_, _, buffer| removed.borrow_mut().remove(buffer))
             .register()
             .map_err(pipewire_error)?;
         stream
@@ -467,6 +488,7 @@ impl PipewireExport {
                 format,
                 node,
                 buffers,
+                known_buffers,
                 _listener: listener,
                 stream,
                 next_frame: Instant::now(),
@@ -500,6 +522,16 @@ impl PipewireExport {
         }
         for export in self.exports.values_mut() {
             export.frame(table, tick, capture, source);
+        }
+    }
+
+    /// Zeroes every pool buffer of every live stream, before the caller acknowledges a change to what the streams
+    /// carry. A stream whose buffers cannot all be zeroed is ended, and its node goes away with it: it is never left
+    /// to deliver what it filled before the change. The crate-level docs say what the zeroing relies on.
+    pub fn scrub(&mut self) {
+        self.exports.retain(|_, export| export.scrub());
+        if self.exports.is_empty() {
+            self.connection = None;
         }
     }
 
@@ -605,6 +637,8 @@ fn serialise(value: &Value, what: &str) -> Result<Vec<u8>, ExportError> {
         .map(|(cursor, _)| cursor.into_inner())
         .map_err(|error| ExportError::Pipewire(format!("serialise the {what} params: {error}")))
 }
+
+mod pool;
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;

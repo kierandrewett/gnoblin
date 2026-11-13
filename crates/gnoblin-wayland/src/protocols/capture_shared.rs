@@ -300,6 +300,12 @@ impl CaptureTables {
         self.still_root = root;
     }
 
+    /// Zeroes the pool buffers of the PipeWire streams before a change to what they carry is acknowledged. A stream
+    /// that cannot be zeroed is ended; see [`PipewireExport::scrub`].
+    pub(crate) fn scrub_pipewire(&mut self) {
+        self.pipewire.scrub();
+    }
+
     /// The directory a View still may be written under, if the session has one.
     pub(crate) fn still_root(&self) -> Option<&std::path::Path> {
         self.still_root.as_deref()

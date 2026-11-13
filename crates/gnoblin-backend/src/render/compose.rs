@@ -1765,8 +1765,8 @@ impl Composer {
 
     /// Applies the `secure` value the shell wrote on each window's node to the window's mark, so a window the shell
     /// marks is masked in a capture and one it clears is not. A window whose node holds no `secure` value keeps
-    /// its mark. Called each frame after the tree's transactions apply.
-    pub fn follow_shell_secure(&mut self) {
+    /// its mark. Called each frame after the tree's transactions apply. Returns whether any mark turned on.
+    pub fn follow_shell_secure(&mut self) -> bool {
         let written: Vec<(WindowId, bool)> = self
             .windows
             .iter()
@@ -1775,9 +1775,11 @@ impl Composer {
                 _ => None,
             })
             .collect();
+        let mut turned_on = false;
         for (window, secure) in written {
-            self.set_window_secure(window, secure);
+            turned_on |= self.set_window_secure(window, secure);
         }
+        turned_on
     }
 
     /// Marks a window's surface secure, or clears the mark.
@@ -1786,15 +1788,18 @@ impl Composer {
     /// is kept only when it has a secure layer. The mark changes what a capture shows
     /// without changing the pixels on screen, so the window is damaged with force: the
     /// frame is redrawn and the capture reads the new mark rather than a stale frame.
-    pub fn set_window_secure(&mut self, window: WindowId, secure: bool) {
+    /// Returns true when this turned the mark on, so the caller can zero what a capture
+    /// filled before the mark.
+    pub fn set_window_secure(&mut self, window: WindowId, secure: bool) -> bool {
         let Some(entry) = self.windows.get_mut(&window) else {
-            return;
+            return false;
         };
         if entry.secure == secure {
-            return;
+            return false;
         }
         entry.secure = secure;
         self.sync(window, true);
+        secure
     }
 
     /// Sets a window's group opacity.

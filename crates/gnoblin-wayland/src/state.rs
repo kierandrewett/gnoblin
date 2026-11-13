@@ -3482,14 +3482,22 @@ impl Host for State {
         let focused = self.keyboard_focus_window();
         self.composer.set_main_seat_focus(focused);
         // The tree's transactions apply to the scene the composer draws from, before the
-        // damage is taken, so a transaction applied here draws in this frame.
+        // damage is taken, so a transaction applied here draws in this frame. Their replies
+        // wait until the secure marks of this frame are acted on, below.
         let tree = &mut self.tree;
-        self.composer.with_scene(|scene| tree.drain(scene, Instant::now));
+        let replies = self
+            .composer
+            .with_scene(|scene| tree.drain_deferring_replies(scene, Instant::now));
         // The shell's timed writes play as tracks, or land at once under reduced motion.
         let motion = self.tree.take_motion();
         self.composer.apply_shell_motion(motion);
-        // A `secure` the shell wrote on a window's node marks the window for capture.
-        self.composer.follow_shell_secure();
+        // A `secure` the shell wrote on a window's node marks the window for capture. A window that turned secure
+        // has every pool buffer of every stream zeroed before the replies go out: a reply is the shell's
+        // acknowledgement of its change, and no consumer may be handed a buffer filled before the mark.
+        if self.composer.follow_shell_secure() {
+            self.capture.scrub_pipewire();
+        }
+        replies.send();
         // A seat focus the shell wrote in the drain moves the keyboard to that window. The
         // compositor's own focus was published above, before the drain, so it never reads back.
         if self.composer.main_seat_focus_written_by_shell() {
