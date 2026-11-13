@@ -75,6 +75,34 @@ Done criteria (headless, on Agent37):
 checked in as `static/gnoblin-stock.d.ts` and marked proposed. `gnoblinctl check` and `gnoblinctl types init` are not
 done.
 
+### P4 status
+
+The stock library is TypeScript under `data/js/gnoblin/`, compiled into `gnoblin-js` (`stock_modules()` strips it once
+and returns the embedded `gnoblin` module family: `gnoblin` re-exports `gnoblin/bindings`, `gnoblin/layout`,
+`gnoblin/layouts/{floating,grid,master-stack,monocle}` and `gnoblin/config`; the modules import one another by those
+names). It reaches the host only through `globalThis.gnoblin`.
+
+Parity-tested against the Lua goldens (`crates/gnoblin-js/tests/stock_layouts.rs`, in a real generation with a fake
+host): `MasterStackLayout` (the `Tiling` corpus: 0 to 3 and 200 nodes, gap, ratio, top orientation, resize),
+`GridLayout` (row and column fill, gap), `MonocleLayout` (focus picks the shown node), and `FloatingLayout.place` for
+every case of `tests/shell/placement_cases.toml`. Tiled rectangles are floored to whole pixels as in Lua. Defaults are
+the Lua ones (ratio 0.5, gap 0), not the 0.65 and 8 of the spec's illustrative constructors. Derived from the same
+algorithm, not in the Lua corpus: master count, right and bottom orientations, fixed grid `columns`.
+
+`LayoutContext` carries the workspace rectangle and `gap: { inner, outer }`; a tiling layout insets by `outer` and uses
+`inner` unless its own `gap` is set, so one `defineConfig({ gaps })` setting reaches every stock layout. `defineConfig`
+checks the shape (closed key sets, closed key-action union, references to undeclared workspaces) and registers the
+config through `globalThis.gnoblin.__register` when the host provides it; `desugarConfig` is the table of
+spec-review.md section 4 as a plain-data plan. `defaultConfig` is one floating `desktop` workspace, `Super+1` and the
+media keys of `data/default-config`.
+
+Declared only: `Binding` (the four lifecycle hooks; `onStart` declines) and `BindingCollection` have no input wiring, so
+the `triggers` option of the layouts is stored resolved but binds nothing and the stock drag behaviours (move, resize,
+swap, split resize) are not written; `style` and `outputs` are stored and have no native effect; `rules`, `on` and
+`setup` are in the plan for the host to apply. Not ported: `Dwindle` (it needs per-workspace tree state), `Strip`, the
+launcher (`Super+space`), `Super+Left` and `Super+Right` (Strip only) and the `Swipe3` workspace slide, which depend on
+shell classes that have no JS counterpart yet.
+
 ## Hot reload
 
 Status of P5: the engine-side half is implemented in `crates/gnoblin-js` (`watch.rs`, `reload.rs`,
