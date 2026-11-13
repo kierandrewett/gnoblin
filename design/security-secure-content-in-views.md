@@ -137,15 +137,21 @@ be handed after the compositor acknowledged a `secure` mark, or the lock.
         - Past the timeout the stream is treated as ended, and the compositor still refuses to deliver more frames for it.
         - A screencopy or image-copy session of an output or of a window is not ended: it keeps delivering the treatment
           the mark selects (a masked picture).
-    3. A frame a consumer already took is the consumer's own. The producer cannot recall it.
-    4. Not proven: that a consumer which took nothing since the mark is never handed a pre-mark buffer. The tests show
-       that the compositor stops filling and delivering after the mark and that the stream is ended first. They do not
-       inspect what the daemon still holds from before the end. The lock ends the stream and its node.
+    3. A frame a consumer already took, or already holds queued, is the consumer's own. PipeWire has no call that takes a
+       queued buffer back, and the producer does not write into buffers it has handed over (that would rely on shared
+       mappings and cannot reach a copy a converter node made). Such a frame was filled before the mark, from a picture
+       that was not yet secure.
+    4. Not proven: what the daemon still holds from before the end for a consumer that stalled across the mark. The tests
+       show that the compositor stops filling and delivering after the mark, that the stream is ended first, and, for a
+       consumer that drained every buffer up to the acknowledgement, that nothing with a pixel of the window arrives after
+       it. The lock ends the stream and its node.
 - **Tried and dropped:** flushing the stream's queue at the mark (`pw_stream_flush`, then `set_active`) stopped the
-  stream, so no later frame arrived.
-- **Tests:** `no_buffer_queued_before_a_mark_is_delivered_after_it_on_a_real_cast` (View and output, both renderers,
-  mark on the window and on an ancestor), `no_buffer_queued_before_the_lock_is_delivered_after_it_on_a_real_cast`,
-  `a_cast_shows_the_window_again_when_the_mark_is_cleared`. Six repeats of the first passed (`pw5.log`).
+  stream, so no later frame arrived. Zeroing queued buffers through the shared mapping was written, then removed: it
+  relies on PipeWire behaviour that is not a documented guarantee.
+- **Tests:** `a_mark_ends_the_cast_and_nothing_with_the_window_arrives_after_the_acknowledgement` (View and output, both
+  renderers, mark on the window and on an ancestor, stalled and draining consumer),
+  `no_buffer_queued_before_the_lock_is_delivered_after_it_on_a_real_cast` (draining consumer),
+  `a_cast_shows_the_window_again_when_the_mark_is_cleared`.
 
 ## What was not proved
 

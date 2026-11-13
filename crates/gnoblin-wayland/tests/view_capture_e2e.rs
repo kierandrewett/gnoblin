@@ -156,6 +156,12 @@ impl Owner {
     /// built from a stale read is refused `stale-base` when a node it names changed since, so
     /// it is built again from a fresh serial; any other refusal fails the test.
     fn transact(&self, ops: impl Fn() -> Vec<TreeOp>) {
+        self.transact_pumping(ops, || {});
+    }
+
+    /// [`Owner::transact`] that runs `pump` once per turn of the wait for the answer, which is how a test keeps a
+    /// consumer taking buffers up to the moment the compositor acknowledges.
+    fn transact_pumping(&self, ops: impl Fn() -> Vec<TreeOp>, mut pump: impl FnMut()) {
         let deadline = Instant::now() + TIMEOUT;
         loop {
             let (_, serial) = self.read(|_| ());
@@ -168,10 +174,16 @@ impl Owner {
                     let _ = sender.send(result.map(|_| ()));
                 },
             );
-            match receiver
-                .recv_timeout(TIMEOUT)
-                .expect("the frame loop answered the transaction")
-            {
+            let started = Instant::now();
+            let answer = loop {
+                pump();
+                match receiver.recv_timeout(Duration::from_millis(1)) {
+                    Ok(answer) => break answer,
+                    Err(mpsc::RecvTimeoutError::Timeout) if started.elapsed() < TIMEOUT => {}
+                    Err(_) => panic!("the frame loop answered the transaction"),
+                }
+            };
+            match answer {
                 Ok(()) => return,
                 Err(refusal) if refusal.code == Code::StaleBase && Instant::now() < deadline => {}
                 Err(refusal) => panic!("the owner's transaction was refused: {refusal}"),
@@ -1658,6 +1670,11 @@ fn lock_node(owner: &Owner) -> NodeId {
 
 /// Waits until the `lock` node's `state` reads `want`, or fails with what it read last.
 fn wait_lock_state(owner: &Owner, node: NodeId, want: &str) {
+    wait_lock_state_pumping(owner, node, want, || thread::sleep(Duration::from_millis(5)));
+}
+
+/// [`wait_lock_state`] that runs `pump` once per turn of the wait instead of sleeping.
+fn wait_lock_state_pumping(owner: &Owner, node: NodeId, want: &str, mut pump: impl FnMut()) {
     let deadline = Instant::now() + TIMEOUT;
     loop {
         let (state, _) = owner.read(move |scene| scene.text(node, "state").map(str::to_owned));
@@ -1668,7 +1685,7 @@ fn wait_lock_state(owner: &Owner, node: NodeId, want: &str) {
             Instant::now() < deadline,
             "the lock never read `{want}`; it read {state:?}"
         );
-        thread::sleep(Duration::from_millis(5));
+        pump();
     }
 }
 
@@ -2640,14 +2657,22 @@ fn start_for(gles: bool, daemon: Option<&Daemon>, lock_check: bool) -> Option<(S
 /// Writes `secure` on `node` and returns when the shell is answered, with no frame waited for after it: the next frame
 /// a reader asks for is the first one after the compositor acknowledged the mark.
 fn mark_secure_acknowledged(owner: &Owner, node: NodeId, secure: bool) {
-    owner.transact(|| {
-        vec![TreeOp::Set {
-            node,
-            key: "secure".to_owned(),
-            value: TreeValue::Bool(secure),
-            timing: None,
-        }]
-    });
+    mark_secure_acknowledged_pumping(owner, node, secure, || {});
+}
+
+/// [`mark_secure_acknowledged`] that runs `pump` while it waits, so a consumer keeps taking buffers until the answer.
+fn mark_secure_acknowledged_pumping(owner: &Owner, node: NodeId, secure: bool, pump: impl FnMut()) {
+    owner.transact_pumping(
+        || {
+            vec![TreeOp::Set {
+                node,
+                key: "secure".to_owned(),
+                value: TreeValue::Bool(secure),
+                timing: None,
+            }]
+        },
+        pump,
+    );
 }
 
 /// A node the shell puts above the View's source, which the mark below goes on.
@@ -2843,11 +2868,21 @@ fn put_above(owner: &Owner, root: NodeId) {
 // * The producer runs the stream's cycle in the pump that fills a buffer, so no buffer it filled waits on its side
 //   across a mark or the lock. Before this, the last buffer filled waited for the next pump, and a consumer that took
 //   nothing in between was handed the picture from before the mark (1 of 8 buffers in the first run of the test).
-// * What a consumer already took before the acknowledgement is the consumer's own, and the producer cannot recall it.
-// * The lock ends the stream, which takes its queue with it.
+// * What a consumer already took, or already holds queued, before the acknowledgement is the consumer's own, and the
+//   producer cannot recall it: PipeWire has no call that takes a queued buffer back.
+// * A mark, and the lock, end the stream of a cast whose target gains secure content before the acknowledgement.
 //
-// The consumer below takes nothing between its first frame and the acknowledgement, so every buffer it takes
-// afterwards was filled before the acknowledgement and not yet taken, or after it.
+// A stalled consumer takes nothing between its first frame and the acknowledgement. A draining consumer takes every
+// buffer the daemon hands it up to the acknowledgement, so anything it takes afterwards arrived after it.
+
+/// How the consumer reads before the acknowledgement.
+#[derive(Clone, Copy, Debug)]
+enum Pace {
+    /// It takes nothing after its first frame: the buffers the producer fills queue up behind the acknowledgement.
+    Stalled,
+    /// It takes every buffer the daemon hands it up to the moment the acknowledgement arrives.
+    Draining,
+}
 
 /// Where the secure mark goes.
 #[derive(Clone, Copy, Debug)]
@@ -2870,64 +2905,78 @@ fn shows_window(frame: &gnoblin_pipewire_export::testing::ReceivedFrame) -> bool
     frame.count_of(rgb(SOURCE)) > 0
 }
 
-/// A cast whose consumer is slow, a mark acknowledged while buffers are queued: no buffer the consumer takes afterwards
-/// holds a pixel of the window, and the cast whose target gained secure content ends at the mark. The View and the
-/// output both end: a capture of the output would otherwise keep reading pixels of the window it can no longer mask.
+/// A mark acknowledged on a cast whose target gains secure content ends the cast, a View's and an output's alike: a
+/// capture of the output would otherwise keep reading pixels of the window it can no longer mask. A consumer that
+/// drained every buffer the daemon handed it up to the acknowledgement is handed nothing that holds a pixel of the window
+/// after it. A consumer that stalled holds the buffers filled before the mark, which are its own (rule 3 of the design
+/// note), so the stalled case asserts only that the stream is gone.
 #[test]
-fn no_buffer_queued_before_a_mark_is_delivered_after_it_on_a_real_cast() {
+fn a_mark_ends_the_cast_and_nothing_with_the_window_arrives_after_the_acknowledgement() {
     for gles in [false, true] {
         for cast in [Cast::View, Cast::Output] {
             for mark in [Mark::Source, Mark::Ancestor] {
-                let daemon = Daemon::start();
-                let Some((session, owner)) = start_for(gles, Some(&daemon), false) else {
-                    continue;
-                };
-                session.run(move |handle| {
-                    let label = format!("gles: {gles}, {cast:?}, {mark:?}");
-                    let mut app = Connected::connect(handle.socket(), App::default());
-                    let _window = Window::map(&mut app, SOURCE);
-                    arrange(&owner);
-                    let (window, _, root) = owner.window();
-                    let marked = match mark {
-                        Mark::Source => window,
-                        Mark::Ancestor => {
-                            put_above(&owner, root);
-                            ABOVE
-                        }
+                for pace in [Pace::Stalled, Pace::Draining] {
+                    let daemon = Daemon::start();
+                    let Some((session, owner)) = start_for(gles, Some(&daemon), false) else {
+                        continue;
                     };
-                    let target = match cast {
-                        Cast::View => gnoblin_capture::Target::View(VIEW),
-                        Cast::Output => gnoblin_capture::Target::Output(gnoblin_types::OutputId::new(0)),
-                    };
-                    let stream = handle
-                        .control
-                        .start_cast(PORTAL, target)
-                        .expect("the loop answers a stream start")
-                        .expect("the target is cast");
-                    let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
-                    consumer.wait_for_frame("of the window", shows_window);
+                    session.run(move |handle| {
+                        let label = format!("gles: {gles}, {cast:?}, {mark:?}, {pace:?}");
+                        let mut app = Connected::connect(handle.socket(), App::default());
+                        let _window = Window::map(&mut app, SOURCE);
+                        arrange(&owner);
+                        let (window, _, root) = owner.window();
+                        let marked = match mark {
+                            Mark::Source => window,
+                            Mark::Ancestor => {
+                                put_above(&owner, root);
+                                ABOVE
+                            }
+                        };
+                        let target = match cast {
+                            Cast::View => gnoblin_capture::Target::View(VIEW),
+                            Cast::Output => gnoblin_capture::Target::Output(gnoblin_types::OutputId::new(0)),
+                        };
+                        let stream = handle
+                            .control
+                            .start_cast(PORTAL, target)
+                            .expect("the loop answers a stream start")
+                            .expect("the target is cast");
+                        let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
+                        consumer.wait_for_frame("of the window", shows_window);
 
-                    // The consumer reads nothing now, and the producer goes on filling buffers: they queue.
-                    thread::sleep(Duration::from_millis(600));
-                    mark_secure_acknowledged(&owner, marked, true);
-                    // From here on, whatever the consumer takes was queued before the acknowledgement or filled after it.
-                    consumer.forget();
-                    owner.frames(3);
-                    consumer.listen(Duration::from_millis(900));
-                    let frames = consumer.frames();
-                    let leaked = frames.iter().filter(|frame| shows_window(frame)).count();
-                    assert_eq!(
-                        leaked,
-                        0,
-                        "{label}: {leaked} of {} buffers delivered after the acknowledged mark hold a pixel of the window",
-                        frames.len()
-                    );
-                    // Every cast whose target gained secure content ends at the mark, a View's and an output's alike.
-                    assert!(
-                        consumer.observer.wait_gone(&node_name(&stream)),
-                        "{label}: the mark ends the cast"
-                    );
-                });
+                        match pace {
+                            // The consumer reads nothing now, and the producer goes on filling buffers: they queue.
+                            Pace::Stalled => {
+                                thread::sleep(Duration::from_millis(600));
+                                mark_secure_acknowledged(&owner, marked, true);
+                            }
+                            Pace::Draining => {
+                                consumer.listen(Duration::from_millis(600));
+                                mark_secure_acknowledged_pumping(&owner, marked, true, || {
+                                    consumer.listen(Duration::from_millis(1));
+                                });
+                            }
+                        }
+                        consumer.forget();
+                        owner.frames(3);
+                        consumer.listen(Duration::from_millis(900));
+                        if matches!(pace, Pace::Draining) {
+                            let frames = consumer.frames();
+                            let leaked = frames.iter().filter(|frame| shows_window(frame)).count();
+                            assert_eq!(
+                                leaked,
+                                0,
+                                "{label}: {leaked} of {} buffers delivered after the acknowledged mark hold a pixel of the window",
+                                frames.len()
+                            );
+                        }
+                        assert!(
+                            consumer.observer.wait_gone(&node_name(&stream)),
+                            "{label}: the mark ends the cast"
+                        );
+                    });
+                }
             }
         }
     }
@@ -2961,8 +3010,8 @@ fn a_cast_shows_the_window_again_when_the_mark_is_cleared() {
     });
 }
 
-/// The lock with buffers queued: nothing the producer filled before the lock reaches a consumer after it, and the
-/// stream's node is gone.
+/// The lock with a consumer that drains every buffer up to it: the stream's node is gone, and nothing with a pixel of
+/// the window arrives after the lock read `locked`.
 #[test]
 fn no_buffer_queued_before_the_lock_is_delivered_after_it_on_a_real_cast() {
     for gles in [false, true] {
@@ -2987,11 +3036,11 @@ fn no_buffer_queued_before_the_lock_is_delivered_after_it_on_a_real_cast() {
                     .expect("the target is cast");
                 let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
                 consumer.wait_for_frame("of the window", shows_window);
-                thread::sleep(Duration::from_millis(600));
+                consumer.listen(Duration::from_millis(600));
 
                 let _locker = lock(handle.socket());
                 let node = lock_node(&owner);
-                wait_lock_state(&owner, node, "locked");
+                wait_lock_state_pumping(&owner, node, "locked", || consumer.listen(Duration::from_millis(1)));
                 consumer.forget();
                 assert!(
                     consumer.observer.wait_gone(&node_name(&stream)),
