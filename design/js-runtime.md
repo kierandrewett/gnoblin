@@ -66,6 +66,15 @@ Done criteria (headless, on Agent37):
 | P7 console               | JSON-over-socket REPL and inspector, `gnoblinctl console`                                                                           | P3            |
 | P8 later, separate sizes | styles and effect stack, Display mirror and span, transition planner, XR program on the new API                                     | P4            |
 
+### P2 status
+
+`crates/gnoblin-js-types` renders `gnoblin.d.ts` from the schema catalog (`render_dts`) and writes it with a
+`tsconfig.json` into the config directory (`ensure_user_files`: the declarations are refreshed on every call, the
+`tsconfig.json` only when absent). One interface per schema object; a signal `mode_changed` is
+`onModeChanged(handler)`. The hand-written stock library (`defineConfig`, `Client`, `Collection<T>`, `Layout`, ...) is
+checked in as `static/gnoblin-stock.d.ts` and marked proposed. `gnoblinctl check` and `gnoblinctl types init` are not
+done.
+
 ## Questions for the owner (the agent has a default for each)
 
 1. Initial workspace rule for a new toplevel. Default: the workspace shown by the display under the
