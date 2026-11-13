@@ -496,6 +496,51 @@ fn a_departed_owner_finishes_its_requests() {
 }
 
 #[test]
+fn a_reoffered_request_keeps_its_identity_and_deadline_and_can_be_taken_over() {
+    let mut broker = RequestBroker::new();
+    let request = broker.offer(Tick::new(900));
+    let provider = OwnerId::new(3);
+    let successor = OwnerId::new(4);
+    broker.claim(request, provider).expect("claim");
+    let _ = broker.events();
+
+    assert!(
+        broker.reoffer(request, successor).is_err(),
+        "only the holder can put a request back"
+    );
+    broker.reoffer(request, provider).expect("the holder puts it back");
+    assert!(
+        broker.events().is_empty(),
+        "nothing new was offered, so nothing is announced"
+    );
+    assert_eq!(
+        broker.state(request),
+        Some(RequestState::Offered {
+            deadline: Tick::new(900)
+        })
+    );
+    assert!(
+        broker.answer(request, provider, b"late".to_vec()).is_err(),
+        "the old holder can no longer answer"
+    );
+    broker.claim(request, successor).expect("the successor claims it");
+    broker
+        .answer(request, successor, b"secret".to_vec())
+        .expect("and answers");
+    assert!(matches!(
+        broker.events().as_slice(),
+        [RequestEvent::Finished {
+            outcome: RequestOutcome::Answered(_),
+            ..
+        }]
+    ));
+    assert!(
+        broker.reoffer(request, successor).is_err(),
+        "a finished request is not reoffered"
+    );
+}
+
+#[test]
 fn a_session_signal_carries_its_declared_field() {
     let mut graph = graph();
     let mut properties = Fields::new();

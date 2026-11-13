@@ -313,6 +313,30 @@ impl RequestBroker {
         held.len()
     }
 
+    /// Put a request its owner holds back to offered, with the deadline it had.
+    ///
+    /// This is for a request that has a second way to be served when its provider goes away or will not draw
+    /// it: the request keeps its identity and its deadline, so the host that offered it keeps waiting on the
+    /// same id, and whoever takes it over claims it like any new offer. No event is emitted, because nothing new
+    /// was offered to anyone; the caller that takes the request over knows which one it is.
+    ///
+    /// # Errors
+    ///
+    /// The same refusals as an answer from `owner`: unknown, finished, or not held by `owner`. A refusal never
+    /// changes the request.
+    pub fn reoffer(&mut self, request: RequestId, owner: OwnerId) -> Result<(), RequestError> {
+        match self.live_state(request)? {
+            Live::Claimed {
+                owner: holder,
+                deadline,
+            } if holder == owner => {
+                self.live.insert(request, Live::Offered { deadline });
+                Ok(())
+            }
+            Live::Offered { .. } | Live::Claimed { .. } => Err(RequestError::NotOwner { request, owner }),
+        }
+    }
+
     /// Finish a request whose host gave up on it, and report whether it was live.
     ///
     /// A host that goes away while its request is still waiting is the case

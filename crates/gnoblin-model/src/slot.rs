@@ -2,8 +2,9 @@
 //!
 //! `design/rust-compositor.md` ("Providers and slots") makes every optional
 //! capability a named slot with one contract. The services role holds the default
-//! provider for three of them and `prompt.secret` has none on purpose, so a prompt
-//! that nobody can draw fails closed instead of waiting out its deadline.
+//! provider for three of them and `prompt.secret` has none on purpose: no connection
+//! is the default, so a request for it is not offered to one and the compositor's
+//! own dialog serves it unless a shell claims the slot.
 //!
 //! It lives beside [`RequestBroker`](crate::RequestBroker) because the two are the
 //! same layer: a request is offered to a *slot*, and the registry is what says who
