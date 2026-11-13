@@ -16,10 +16,12 @@
 //! Frames are pulled from the same [`Table`] rules the capture protocols use, so a stream is
 //! paced and refused by the same code, and a refused frame carries no pixels.
 //!
-//! - **A buffer is delivered in the pump that fills it.** The producer fills a buffer from the picture the compositor
-//!   holds, queues it and runs the stream's cycle at once, so no buffer the producer filled waits on its side across
-//!   a `secure` mark or the lock. A consumer that took nothing since before the mark is not handed a buffer filled
-//!   before it. What a consumer had already taken is the consumer's own. The tests are
+//! - **What a secure mark or the lock guarantees.** The producer fills each buffer from the picture the compositor
+//!   holds and runs the stream's cycle at once, so no buffer waits on its side across a mark. A buffer filled after
+//!   the mark carries no window pixels. A cast whose target gains secure content (a View or a window the mark reaches,
+//!   or an output whose rectangle a secure node overlaps) is stopped before the frame's replies are sent, so the mark
+//!   is acknowledged only after that stream has been disconnected and the daemon synced. A frame a consumer already
+//!   took is the consumer's own: the producer cannot recall it, so the guarantee does not reach it. The tests are
 //!   `no_buffer_queued_before_a_mark_is_delivered_after_it_on_a_real_cast` and
 //!   `no_buffer_queued_before_the_lock_is_delivered_after_it_on_a_real_cast` in `gnoblin-wayland`'s
 //!   `tests/view_capture_e2e.rs`, on a real daemon.

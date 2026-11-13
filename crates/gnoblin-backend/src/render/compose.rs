@@ -922,6 +922,25 @@ impl Composer {
             .any(|node| self.subtree(node).iter().any(|below| nodes.contains(below)))
     }
 
+    /// Whether `output` shows one of `nodes`: a node below its screen, or one whose bounds overlap the output's
+    /// rectangle. A window is a root node, not a child of the screen, so the bounds are what places it on an output.
+    pub fn reaches_output(&self, output: OutputId, nodes: &BTreeSet<NodeId>) -> bool {
+        let Some(screen) = self.screen_node(output) else {
+            return false;
+        };
+        if self.reaches(screen, nodes) {
+            return true;
+        }
+        let Some(area) = self.scene.absolute_bounds(screen) else {
+            return false;
+        };
+        nodes.iter().any(|node| {
+            self.scene
+                .absolute_bounds(*node)
+                .is_some_and(|bounds| bounds.intersects(area))
+        })
+    }
+
     /// How a View's source subtree is drawn: the picture itself on the CPU, or the scene the renderer draws it from.
     ///
     /// The first picture is the image of the View's source subtree through its camera. It, the scene and the second

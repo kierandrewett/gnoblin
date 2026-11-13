@@ -128,8 +128,17 @@ be handed after the compositor acknowledged a `secure` mark, or the lock.
   for 600 ms before the acknowledgement, 1 of 8 buffers taken afterwards held the window (`pw1.log`).
 - **Fix:** the cycle runs in the pump that fills the buffer, so nothing the producer filled waits on its side. A buffer is
   filled from the picture published at the end of the frame that applied the mark (the fix of leak 2 above).
-- **The rule:** a consumer that took nothing since before the acknowledgement is never handed a buffer filled before it.
-  What a consumer already took is its own, and the producer cannot recall it. The lock ends the stream and its node.
+- **The rule (what is guaranteed, and what is not):**
+    1. No buffer the producer fills after the mark carries window pixels. The producer fills from the picture published
+       at the end of the frame that applied the mark.
+    2. A live cast whose target gained secure content is ended before the frame's replies go out. Ending it disconnects
+       its stream and syncs the daemon (`pw_core_sync`, waiting for its `done`, at most 2 s). Past the timeout the stream
+       is treated as ended, and the compositor still refuses to deliver more frames for it. The mark is acknowledged
+       only after this.
+    3. A frame a consumer already took is the consumer's own. The producer cannot recall it.
+    4. Not proven: that a consumer which took nothing since the mark is never handed a pre-mark buffer. The tests show
+       that the compositor stops filling and delivering after the mark and that the stream is ended first. They do not
+       inspect what the daemon still holds from before the end. The lock ends the stream and its node.
 - **Tried and dropped:** flushing the stream's queue at the mark (`pw_stream_flush`, then `set_active`) stopped the
   stream, so no later frame arrived.
 - **Tests:** `no_buffer_queued_before_a_mark_is_delivered_after_it_on_a_real_cast` (View and output, both renderers,

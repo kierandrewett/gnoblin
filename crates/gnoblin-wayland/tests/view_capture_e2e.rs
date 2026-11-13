@@ -1333,8 +1333,8 @@ fn a_png_of_a_view_holds_none_of_a_secure_windows_pixels() {
     });
 }
 
-/// A `view`-role session's frames never carry a secure window's pixels, however long it runs, and show the window
-/// again when the mark is cleared.
+/// A mark ends a `view`-role session: its next frame is refused. A session opened after the mark carries the mask and
+/// never a pixel of the secure window, and shows the window again once the mark is cleared.
 #[test]
 fn a_view_role_session_never_receives_a_secure_windows_pixels() {
     let (session, owner) = start();
@@ -1346,19 +1346,22 @@ fn a_view_role_session_never_receives_a_secure_windows_pixels() {
         viewer.capture_until(SOURCE);
         let (window, ..) = owner.window();
 
-        mark_secure(&owner, window, true);
-        viewer.capture_until(MASKED);
+        mark_secure_acknowledged(&owner, window, true);
+        assert!(!viewer.capture(), "the mark ends the session: its frame is refused");
+
+        let mut fresh = Viewer::open(handle);
+        fresh.capture_until(MASKED);
         for _ in 0..5 {
-            assert!(viewer.capture(), "the session keeps delivering frames");
+            assert!(fresh.capture(), "the new session keeps delivering frames");
             assert_eq!(
-                viewer.target.count_of(SOURCE),
+                fresh.target.count_of(SOURCE),
                 0,
                 "no frame holds a pixel of the secure window"
             );
         }
 
         mark_secure(&owner, window, false);
-        viewer.capture_until(SOURCE);
+        fresh.capture_until(SOURCE);
     });
 }
 
@@ -1868,10 +1871,10 @@ fn a_cast_of_a_view_sends_a_new_frame_when_the_view_changes() {
     });
 }
 
-/// The stream shows a secure window as the mask and never as its pixels, from the frame after the mark and for as
-/// long as it stands, and shows the window again once the mark is cleared.
+/// A secure window in a View ends the View's cast at the mark: the stream's node leaves the daemon, and no frame the
+/// consumer takes after the acknowledged mark holds a pixel of the window.
 #[test]
-fn a_cast_of_a_view_masks_a_secure_window() {
+fn a_cast_of_a_view_ends_when_a_window_in_it_is_marked_secure() {
     let daemon = Daemon::start();
     let (session, owner) = start_casting(&daemon, None, None);
     session.run(move |handle| {
@@ -1883,20 +1886,17 @@ fn a_cast_of_a_view_masks_a_secure_window() {
         consumer.wait_for_frame("of the window's colour", |frame| frame.is_solid(rgb(SOURCE)));
         let (window, ..) = owner.window();
 
-        mark_secure(&owner, window, true);
-        consumer.wait_for_frame("of the mask", |frame| frame.is_solid(rgb(MASKED)));
-        // From the first masked frame on, no frame the stream sends holds a pixel of the window.
+        mark_secure_acknowledged(&owner, window, true);
         consumer.forget();
         consumer.listen(Duration::from_millis(600));
-        let frames = consumer.frames();
-        assert!(!frames.is_empty(), "the stream keeps delivering frames while masked");
         assert!(
-            frames.iter().all(|frame| frame.count_of(rgb(SOURCE)) == 0),
+            consumer.frames().iter().all(|frame| frame.count_of(rgb(SOURCE)) == 0),
             "no frame holds a pixel of the secure window"
         );
-
-        mark_secure(&owner, window, false);
-        consumer.wait_for_frame("of the window's colour again", |frame| frame.is_solid(rgb(SOURCE)));
+        assert!(
+            consumer.observer.wait_gone(&node_name(&stream)),
+            "the mark ends the cast: its node leaves the daemon"
+        );
     });
 }
 
@@ -2597,10 +2597,13 @@ fn a_view_role_session_of_a_view_drawn_on_the_gpu_never_receives_a_secure_window
         let (window, ..) = owner.window();
         let mut viewer = Viewer::open(handle);
         viewer.capture_until(SOURCE);
-        mark_secure(&owner, window, true);
-        viewer.capture_until(MASKED);
+        mark_secure_acknowledged(&owner, window, true);
+        assert!(!viewer.capture(), "the mark ends the session: its frame is refused");
+
+        let mut fresh = Viewer::open(handle);
+        fresh.capture_until(MASKED);
         assert_eq!(
-            viewer.target.count_of(SOURCE),
+            fresh.target.count_of(SOURCE),
             0,
             "no pixel of the secure window is in the frame"
         );
@@ -2667,22 +2670,28 @@ fn the_first_frame_a_reader_asks_for_after_a_mark_is_acknowledged_holds_none_of_
             viewer.capture_until(SOURCE);
 
             mark_secure_acknowledged(&owner, window, true);
+            assert!(
+                !viewer.capture(),
+                "gles: {gles}: the first frame asked for after the acknowledged mark is refused"
+            );
+            let mut fresh = Viewer::open(handle);
             for ask in 0..6 {
-                if viewer.capture() {
+                if fresh.capture() {
                     assert_eq!(
-                        viewer.target.count_of(SOURCE),
+                        fresh.target.count_of(SOURCE),
                         0,
                         "gles: {gles}: frame {ask} after the acknowledged mark holds a pixel of the secure window"
                     );
                 }
             }
-            viewer.capture_until(MASKED);
+            fresh.capture_until(MASKED);
         });
     }
 }
 
-/// Everything below a secure node is secure with it, also when the node is above the View's source and not in it: the
-/// session, the stream and the PNG all read the mask, and the window shows again when the mark is cleared.
+/// Everything below a secure node is secure with it, also when the node is above the View's source and not in it: a
+/// cast of the View ends at the mark, a new session and a PNG read the mask, and the window shows again when the mark
+/// is cleared.
 #[test]
 fn a_node_above_the_views_source_that_is_secure_masks_every_reader_of_the_view() {
     for gles in [false, true] {
@@ -2702,24 +2711,22 @@ fn a_node_above_the_views_source_that_is_secure_masks_every_reader_of_the_view()
             let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
             consumer.wait_for_frame("of the window's colour", |frame| frame.is_solid(rgb(SOURCE)));
 
-            mark_secure(&owner, ABOVE, true);
-            viewer.capture_until(MASKED);
+            mark_secure_acknowledged(&owner, ABOVE, true);
+            assert!(
+                consumer.observer.wait_gone(&node_name(&stream)),
+                "gles: {gles}: the mark below a secure node ends the cast of the View"
+            );
+            let mut fresh = Viewer::open(handle);
+            fresh.capture_until(MASKED);
             assert!(
                 still_of(&owner, handle, VIEW, "above.png")
                     .iter()
                     .all(|word| *word == MASKED & 0x00FF_FFFF),
                 "gles: {gles}: the PNG of a View whose source is below a secure node is the mask"
             );
-            consumer.wait_for_frame("of the mask", |frame| frame.is_solid(rgb(MASKED)));
-            consumer.forget();
-            consumer.listen(Duration::from_millis(400));
-            assert!(
-                consumer.frames().iter().all(|frame| frame.count_of(rgb(SOURCE)) == 0),
-                "gles: {gles}: no frame of the stream holds a pixel of the window"
-            );
 
             mark_secure(&owner, ABOVE, false);
-            viewer.capture_until(SOURCE);
+            fresh.capture_until(SOURCE);
         });
     }
 }
@@ -2863,8 +2870,9 @@ fn shows_window(frame: &gnoblin_pipewire_export::testing::ReceivedFrame) -> bool
     frame.count_of(rgb(SOURCE)) > 0
 }
 
-/// A cast of `cast` whose consumer is slow, a mark of `mark` acknowledged while buffers are queued: no buffer the consumer
-/// takes afterwards holds a pixel of the window.
+/// A cast whose consumer is slow, a mark acknowledged while buffers are queued: no buffer the consumer takes afterwards
+/// holds a pixel of the window, and the cast whose target gained secure content ends at the mark. The View and the
+/// output both end: a capture of the output would otherwise keep reading pixels of the window it can no longer mask.
 #[test]
 fn no_buffer_queued_before_a_mark_is_delivered_after_it_on_a_real_cast() {
     for gles in [false, true] {
@@ -2914,9 +2922,10 @@ fn no_buffer_queued_before_a_mark_is_delivered_after_it_on_a_real_cast() {
                         "{label}: {leaked} of {} buffers delivered after the acknowledged mark hold a pixel of the window",
                         frames.len()
                     );
+                    // Every cast whose target gained secure content ends at the mark, a View's and an output's alike.
                     assert!(
-                        frames.iter().any(|frame| frame.count_of(rgb(MASKED)) > 0),
-                        "{label}: the stream goes on, with the mask in the window's place"
+                        consumer.observer.wait_gone(&node_name(&stream)),
+                        "{label}: the mark ends the cast"
                     );
                 });
             }
@@ -2924,7 +2933,7 @@ fn no_buffer_queued_before_a_mark_is_delivered_after_it_on_a_real_cast() {
     }
 }
 
-/// A mark cleared again shows the window in the stream, so the discard cost nothing but the frames it dropped.
+/// A mark ends the cast it reaches, and a cast started once the mark is cleared shows the window again.
 #[test]
 fn a_cast_shows_the_window_again_when_the_mark_is_cleared() {
     let daemon = Daemon::start();
@@ -2940,9 +2949,15 @@ fn a_cast_shows_the_window_again_when_the_mark_is_cleared() {
         let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
         consumer.wait_for_frame("of the window", shows_window);
         mark_secure_acknowledged(&owner, window, true);
-        consumer.wait_for_frame("of the mask", |frame| frame.is_solid(rgb(MASKED)));
+        assert!(
+            consumer.observer.wait_gone(&node_name(&stream)),
+            "the mark ends the cast"
+        );
+
         mark_secure_acknowledged(&owner, window, false);
-        consumer.wait_for_frame("of the window again", |frame| frame.is_solid(rgb(SOURCE)));
+        let stream = cast(handle, VIEW);
+        let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
+        consumer.wait_for_frame("of the window again", shows_window);
     });
 }
 
@@ -3252,8 +3267,9 @@ fn a_cast_of_a_window_follows_the_size_of_the_window() {
     });
 }
 
-/// The stream shows a secure window as the session's mask and never as its pixels, from the frame after the mark and for
-/// as long as it stands, on either renderer, and shows the window again once the mark is cleared.
+/// A secure window's cast ends at the mark: its node leaves the daemon, and no frame the consumer takes after the
+/// acknowledged mark holds a pixel of the window, on either renderer. A cast started once the mark is cleared shows the
+/// window again.
 #[test]
 fn a_cast_of_a_window_never_carries_the_pixels_of_a_secure_window() {
     for gles in [false, true] {
@@ -3270,22 +3286,24 @@ fn a_cast_of_a_window_never_carries_the_pixels_of_a_secure_window() {
             consumer.wait_for_frame("of the window's colour", |received| received.is_solid(rgb(SOURCE)));
             let (node, ..) = owner.window();
 
-            mark_secure(&owner, node, true);
-            consumer.wait_for_frame("of the mask", |received| received.count_of(rgb(SOURCE)) == 0);
-            // From the first masked frame on, no frame the stream sends holds a pixel of the window.
+            mark_secure_acknowledged(&owner, node, true);
             consumer.forget();
             consumer.listen(Duration::from_millis(600));
-            let frames = consumer.frames();
             assert!(
-                !frames.is_empty(),
-                "gles: {gles}: the stream keeps delivering frames while masked"
-            );
-            assert!(
-                frames.iter().all(|received| received.count_of(rgb(SOURCE)) == 0),
+                consumer
+                    .frames()
+                    .iter()
+                    .all(|received| received.count_of(rgb(SOURCE)) == 0),
                 "gles: {gles}: no frame holds a pixel of the secure window"
             );
+            assert!(
+                consumer.observer.wait_gone(&node_name(&stream)),
+                "gles: {gles}: the mark ends the cast of the window"
+            );
 
-            mark_secure(&owner, node, false);
+            mark_secure_acknowledged(&owner, node, false);
+            let again = cast_window(handle, id);
+            let consumer = FrameConsumer::connect(&daemon.socket(), again.node);
             consumer.wait_for_frame("of the window's colour again", |received| {
                 received.is_solid(rgb(SOURCE))
             });

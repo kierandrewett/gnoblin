@@ -3495,13 +3495,12 @@ impl Host for State {
         let newly = self.composer.take_newly_secure();
         if !newly.is_empty() {
             let composer = &self.composer;
-            self.capture.stop_targets_reaching(|target| {
-                let root = match target {
-                    gnoblin_capture::Target::Output(output) => composer.screen_node(output),
-                    gnoblin_capture::Target::Window(window) => composer.window_node(window),
-                    gnoblin_capture::Target::View(view) => Some(view),
-                };
-                root.is_some_and(|root| composer.reaches(root, &newly))
+            self.capture.stop_targets_reaching(|target| match target {
+                gnoblin_capture::Target::Output(output) => composer.reaches_output(output, &newly),
+                gnoblin_capture::Target::Window(window) => composer
+                    .window_node(window)
+                    .is_some_and(|root| composer.reaches(root, &newly)),
+                gnoblin_capture::Target::View(view) => composer.reaches(view, &newly),
             });
         }
         held.send();
