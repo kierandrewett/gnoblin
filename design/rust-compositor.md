@@ -659,6 +659,8 @@ duplicate does not reach the branch; a lane mid-migration reads the report with
 | Distro compat series (74, 82, 99/0059, portal 09, libgxdp)               | 6 patches                    | none                                            | Drop with the GNOME library floors                                                                           |
 | Build: CMake superbuild, meson subprojects, `scripts/manage-patches.py`  | -                            | Cargo and `just`                                | Delete at cutover                                                                                            |
 
+Open for the owner: this section and decision 2a disagree; see cutover-survey 16.6 O1.
+
 ### Wayland protocol coverage
 
 Smithay 0.7.0, the last crates.io release, ships handlers for these protocols
@@ -696,6 +698,8 @@ Gnoblin writes these itself:
 | `ext_background_effect_manager_v1`    | Upstream in Mutter 51; Gnoblin's blur depends on it                                  |
 | `gnoblin_window_frame_manager_v1`     | Gnoblin-owned; wire-compatible port                                                  |
 | `gnoblin_session_host_v1`             | Gnoblin-owned, new; lets a host Gnoblin run nested sessions (D4)                     |
+
+Open for the owner: this section and decision 2a disagree; see cutover-survey 16.6 O1. The protocol file is absent from the tree today (deleted by 29a493fc0).
 
 ## Parity and testing
 
@@ -1612,6 +1616,7 @@ Contracts the candidate keeps, from the shell surface inventory:
   rule that a lock request fails when no client subscribes.
 - `gnoblinctl` commands and their `--json` shapes that Bingux parses.
 - `gnoblin_window_frame_manager_v1`, which `bingux-frame` builds against.
+  Open for the owner: this section and decision 2a disagree; see cutover-survey 16.6 O1.
 - The meaning of bsm's readiness and action signals, carried by
   `gnoblin_session_host_v1` instead of `org.gnoblin.Hosted1`.
 - `init.lua`, `GNOBLIN_CONFIG`, `gnoblin.load` with globs.

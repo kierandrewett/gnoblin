@@ -1897,6 +1897,8 @@ Decisions 1 and 2 stand from pass 1. Decisions 3 and 4 are new in pass 2.
 - **(b) Keep the protocol as a second source of decoration surfaces.** `bingux-frame` keeps working, but two
   decoration paths, the `FrameRenderer` role and the region table stay, and frames still need wiring into the tree.
 
+Open for the owner: this section and decision 2a disagree; see cutover-survey 16.6 O1.
+
 **Decision 3: classes are global names.**
 
 - **(a) `Node:extend "Panel" {}` makes a global `Panel` (recommended).** This is Godot's `class_name`: any script
