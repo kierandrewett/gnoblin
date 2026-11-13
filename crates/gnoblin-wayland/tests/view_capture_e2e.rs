@@ -2940,10 +2940,13 @@ fn a_buffer_queued_before_the_mark_is_zeroed_before_the_mark_is_acknowledged() {
         let stream = cast(handle, VIEW);
         let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
         consumer.wait_for_frame("of the window", shows_window);
-        // The consumer reads nothing now, so the buffers the producer fills stay queued in the daemon.
-        thread::sleep(Duration::from_millis(600));
+        // Held, the consumer takes no buffer, so the frames the producer makes queue in the daemon. Pump only until one
+        // is queued: a held consumer that lets the pool fill stalls the producer for good.
+        consumer.hold(true);
+        consumer.wait_for_queued_pumping("a buffer queued while held", || owner.frames(1));
         mark_secure_acknowledged(&owner, window, true);
         consumer.forget();
+        consumer.hold(false);
         owner.frames(3);
         consumer.listen(Duration::from_millis(900));
         let frames = consumer.frames();

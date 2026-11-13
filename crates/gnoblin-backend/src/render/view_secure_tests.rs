@@ -256,7 +256,9 @@ enum Marking {
 
 fn mark(composer: &mut Composer, node: NodeId, marking: Marking) {
     match marking {
-        Marking::Window => composer.set_window_secure(WINDOW, true),
+        Marking::Window => {
+            composer.set_window_secure(WINDOW, true);
+        }
         Marking::NodeValue => set_secure(composer, node, true),
     }
 }

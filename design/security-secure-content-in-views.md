@@ -148,7 +148,8 @@ be handed after the compositor acknowledged a `secure` mark, or the lock.
   `a_cast_shows_the_window_again_when_the_mark_is_cleared`, and
   `a_buffer_queued_before_the_mark_is_zeroed_before_the_mark_is_acknowledged`, which asserts that a buffer taken after the
   acknowledgement is black. The zeroing and the fail-closed path are unit-tested in `gnoblin-pipewire-export`'s
-  `tests.rs` on a real daemon.
+  `tests.rs` on a real daemon. The queued-buffer test holds its consumer only until one buffer is queued: the pool has
+  four buffers, and a consumer held for longer lets the producer fill them and stop, with no frame after the release.
 
 ## What was not proved
 

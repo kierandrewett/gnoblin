@@ -1765,7 +1765,9 @@ impl Composer {
 
     /// Applies the `secure` value the shell wrote on each window's node to the window's mark, so a window the shell
     /// marks is masked in a capture and one it clears is not. A window whose node holds no `secure` value keeps
-    /// its mark. Called each frame after the tree's transactions apply. Returns whether any mark turned on.
+    /// its mark. Called each frame after the tree's transactions apply. Returns whether the secure scope gained a
+    /// node: a window's mark turned on, or a node the shell marked (an ancestor of a window, say) took its subtree
+    /// into the scope. The scope is the one the previous frame took, so this is the change the frame made.
     pub fn follow_shell_secure(&mut self) -> bool {
         let written: Vec<(WindowId, bool)> = self
             .windows
@@ -1775,11 +1777,11 @@ impl Composer {
                 _ => None,
             })
             .collect();
-        let mut turned_on = false;
+        let mut gained = false;
         for (window, secure) in written {
-            turned_on |= self.set_window_secure(window, secure);
+            gained |= self.set_window_secure(window, secure);
         }
-        turned_on
+        gained || !self.find_secure().is_subset(&self.secure_scope)
     }
 
     /// Marks a window's surface secure, or clears the mark.
@@ -4077,6 +4079,41 @@ mod tests {
         assert!(
             damage_of(&mut composer, output).is_some(),
             "the shell clearing the mark redraws the window"
+        );
+    }
+
+    // A node the shell marks secure, that is not a window, takes its subtree into the secure scope. The frame that
+    // turns the mark on reports the gain, so the caller zeroes what a capture filled before it; a steady frame reports
+    // none.
+    #[test]
+    fn a_node_the_shell_marks_secure_reports_the_scope_it_gains() {
+        let (mut composer, output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(10, 10, 100, 100));
+        composer.set_window_content(window, Some(content()));
+        assert!(damage_of(&mut composer, output).is_some(), "the new node is drawn once");
+        let above = NodeId::new(0x9000);
+        composer.with_scene(|scene| {
+            scene
+                .insert(above, NodeSpec::new(Rect::new(0, 0, 200, 200)))
+                .expect("a node above the window")
+        });
+        composer.with_scene(|scene| {
+            scene
+                .set_value(above, "secure", TreeValue::Bool(true))
+                .expect("the node takes it")
+        });
+        assert!(
+            composer.follow_shell_secure(),
+            "a node the shell marks gains the secure scope"
+        );
+        assert!(
+            damage_of(&mut composer, output).is_some(),
+            "the frame the mark is taken in draws"
+        );
+        assert!(
+            !composer.follow_shell_secure(),
+            "a frame after the mark is taken gains nothing"
         );
     }
 

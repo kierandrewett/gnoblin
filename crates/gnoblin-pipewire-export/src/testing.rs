@@ -368,6 +368,10 @@ struct Received {
     frames: Vec<ReceivedFrame>,
     /// How many buffers arrived with no bytes: a frame the producer refused.
     empty: usize,
+    /// Whether the consumer is holding: while it is, its process callback takes no buffer.
+    held: bool,
+    /// How many times the held consumer's process callback was offered a buffer it left queued.
+    skipped: usize,
     /// Every state the consumer's stream went through.
     states: Vec<String>,
 }
@@ -422,6 +426,13 @@ impl FrameConsumer {
                 }
             })
             .process(|stream, received| {
+                {
+                    let mut state = lock(received);
+                    if state.held {
+                        state.skipped += 1;
+                        return;
+                    }
+                }
                 let Some(mut buffer) = stream.dequeue_buffer() else {
                     return;
                 };
@@ -468,6 +479,23 @@ impl FrameConsumer {
         let mut received = lock(&self.received);
         received.frames.clear();
         received.empty = 0;
+    }
+
+    /// Stops the consumer taking buffers, or lets it take them again. Held, the buffers the producer fills queue in
+    /// the daemon, as a slow consumer's would.
+    pub fn hold(&self, on: bool) {
+        lock(&self.received).held = on;
+    }
+
+    /// Waits, pumping `pump` once per turn, until the held consumer has left a buffer queued in the daemon. Panics,
+    /// saying `what` was awaited, when none is queued within [`DEADLINE`].
+    #[track_caller]
+    pub fn wait_for_queued_pumping(&self, what: &str, mut pump: impl FnMut()) {
+        let queued = drive(&self.observer.mainloop, || {
+            pump();
+            lock(&self.received).skipped > 0
+        });
+        assert!(queued, "{what}: no buffer was queued within the deadline");
     }
 
     /// The frames received since the last [`FrameConsumer::forget`] that carried bytes, oldest first.
