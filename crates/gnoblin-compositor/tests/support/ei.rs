@@ -30,6 +30,8 @@ pub struct EiClient {
     /// Whether `start_emulating` was sent. The protocol starts a sequence once; a client that keeps typing sends it
     /// once and then only frames.
     emulating: bool,
+    /// The same for the pointer device, which carries the motion and the buttons together.
+    moving: bool,
 }
 
 /// One device the server created, with its interfaces and resume state.
@@ -61,6 +63,7 @@ impl EiClient {
             serial: handshake.serial,
             disconnected: false,
             emulating: false,
+            moving: false,
         }
     }
 
@@ -206,7 +209,10 @@ impl EiClient {
     /// Moves the absolute pointer to `(x, y)` in the layout's own coordinates.
     pub fn motion_absolute(&mut self, x: f32, y: f32) {
         let (wire, serial, pointer) = self.device_with::<ei::PointerAbsolute>();
-        wire.start_emulating(serial, 1);
+        if !self.moving {
+            wire.start_emulating(serial, 1);
+            self.moving = true;
+        }
         pointer.motion_absolute(x, y);
         wire.frame(serial, 0);
         let _ = self.context.flush();
@@ -215,7 +221,10 @@ impl EiClient {
     /// Presses or releases the pointer button `button` (an evdev code such as `BTN_LEFT`) on the pointer device.
     pub fn button(&mut self, button: u32, pressed: bool) {
         let (wire, serial, device) = self.device_with::<ei::Button>();
-        wire.start_emulating(serial, 1);
+        if !self.moving {
+            wire.start_emulating(serial, 1);
+            self.moving = true;
+        }
         device.button(
             button,
             if pressed {

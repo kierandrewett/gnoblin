@@ -585,6 +585,8 @@ pub struct App {
     pub button_serial: Option<u32>,
     /// Whether this client stays silent when the compositor pings it, so its windows go unresponsive.
     mute_pings: bool,
+    /// The last ping this client left unanswered while muted, answered when it resumes.
+    held_ping: Option<(xdg_wm_base::XdgWmBase, u32)>,
 }
 
 /// One wl_pointer event, with the protocol's own numbers. A surface is its protocol id.
@@ -672,10 +674,20 @@ impl Client {
         self.queue.roundtrip(&mut self.app).expect("a round trip");
     }
 
+    /// Whether a pointer button has reached this client, so it holds a serial for `show_window_menu`.
+    pub fn clicked(&self) -> bool {
+        self.app.button_serial.is_some()
+    }
+
     /// Stops (`true`) or resumes (`false`) answering `xdg_wm_base.ping`. A silent client's windows go unresponsive
     /// once the check-alive timeout passes, and a client that answers again is responsive from then on.
     pub fn mute_pings(&mut self, mute: bool) {
         self.app.mute_pings = mute;
+        // The ping it held while silent is answered now, or the compositor would wait for it for ever.
+        if !mute && let Some((wm_base, serial)) = self.app.held_ping.take() {
+            wm_base.pong(serial);
+            self.roundtrip();
+        }
     }
 
     /// Asks for the window menu the way a client does when its user right-clicks its own titlebar:
@@ -888,10 +900,12 @@ impl Dispatch<xdg_wm_base::XdgWmBase, ()> for App {
         _: &WaylandConnection,
         _: &QueueHandle<Self>,
     ) {
-        if let xdg_wm_base::Event::Ping { serial } = event
-            && !app.mute_pings
-        {
-            wm_base.pong(serial);
+        if let xdg_wm_base::Event::Ping { serial } = event {
+            if app.mute_pings {
+                app.held_ping = Some((wm_base.clone(), serial));
+            } else {
+                wm_base.pong(serial);
+            }
         }
     }
 }
