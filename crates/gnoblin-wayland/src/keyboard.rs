@@ -972,6 +972,25 @@ impl State {
             .key(device, keycode, state == KeyState::Pressed)
     }
 
+    /// The character one key edge types for a modal that takes text, from the keyboard's own key state.
+    ///
+    /// Every edge is fed through the keyboard's state, a release too, so Shift held and then let go is not
+    /// remembered. Only a press types, and a chord with Control, Alt or Super types nothing: it is a shortcut.
+    /// A key with no printable character (arrows, function keys) and a keyboard the seat does not know types
+    /// nothing either.
+    pub(crate) fn modal_text(&mut self, device: DeviceId, keycode: u32, state: KeyState) -> Option<char> {
+        let key = self.device_key(device, keycode, state)?;
+        if state != KeyState::Pressed
+            || key
+                .modifiers
+                .intersects(Modifiers::CONTROL.union(Modifiers::MOD1).union(Modifiers::SUPER))
+        {
+            return None;
+        }
+        let character = char::from_u32(xkb::keysym_to_utf32(SmithayKeysym::new(key.symbol.get())))?;
+        (!character.is_control()).then_some(character)
+    }
+
     /// Marks the seat's keymap as changed, so each keyboard's own state is rebuilt from the new one the next
     /// time it reads a key.
     pub(crate) fn keymap_changed(&mut self) {

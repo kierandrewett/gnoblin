@@ -2545,13 +2545,25 @@ impl State {
     /// `false` for an edge that is not a modal event, which then routes as usual.
     pub(crate) fn route_to_modal(&mut self, event: &InputEvent) -> bool {
         match *event {
-            InputEvent::Key { keycode, pressed, .. } => {
+            InputEvent::Key {
+                device,
+                keycode,
+                pressed,
+                ..
+            } => {
                 let state = if pressed {
                     gnoblin_types::KeyState::Pressed
                 } else {
                     gnoblin_types::KeyState::Released
                 };
                 self.modal_events.push(ModalEvent::Key { keycode, state });
+                // The character comes after its edge, and only for a dialog that has an entry: the keyboard's
+                // state is read for it, so the layout and Shift decide what was typed.
+                if self.modal.as_ref().is_some_and(Modal::takes_text)
+                    && let Some(character) = self.modal_text(device, keycode, state)
+                {
+                    self.modal_events.push(ModalEvent::Text { character });
+                }
             }
             InputEvent::PointerButton { button, pressed, .. } => {
                 let state = if pressed {
