@@ -485,7 +485,7 @@ mod tests {
             CaptureSessionEvent,
             Result<(), Refusal>,
             CaptureSessionState,
-        ); 16] = [
+        ); 17] = [
             (
                 live,
                 CaptureSessionEvent::Request {

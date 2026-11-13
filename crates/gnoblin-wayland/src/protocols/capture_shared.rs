@@ -415,15 +415,17 @@ impl CaptureTables {
         }
     }
 
-    /// Ends, as [`Stop::Secure`], every live session whose target `reaches` answers true for: a capture of a node
-    /// the frame just marked secure must not run on. Its PipeWire stream is disconnected and the daemon synced
-    /// before this returns, so the caller can acknowledge the frame's replies only after no more buffers can
-    /// reach a consumer.
+    /// Ends, as [`Stop::Secure`], every live PipeWire cast whose target `reaches` answers true for: a cast of a node
+    /// the frame just marked secure must not run on. Its stream is disconnected and the daemon synced before this
+    /// returns, so the caller can acknowledge the frame's replies only after no more buffers can reach a consumer.
+    /// A screencopy or image-copy session is not ended: it keeps delivering the treatment the mark selects.
     pub(crate) fn stop_targets_reaching(&mut self, reaches: impl Fn(Target) -> bool) {
         let ended: Vec<SessionId> = self
             .table
             .sessions()
-            .filter(|session| session.stopped().is_none() && reaches(session.target()))
+            .filter(|session| {
+                session.stopped().is_none() && session.stream() == CaptureStream::Granted && reaches(session.target())
+            })
             .map(|session| session.id())
             .collect();
         for session in ended {
