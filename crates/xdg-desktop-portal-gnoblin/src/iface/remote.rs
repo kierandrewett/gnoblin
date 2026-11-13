@@ -277,15 +277,9 @@ impl RemoteDesktop {
         let _ = remove(&self.portal.connection, handle.as_str()).await;
         let mut results = BTreeMap::new();
         if let Some(stream) = stream {
-            let mut properties = BTreeMap::new();
-            for (name, value) in &stream.properties {
-                if let Some(value) = super::variant(value) {
-                    properties.insert(name.clone(), value);
-                }
-            }
             results.insert(
                 "streams".to_owned(),
-                super::capture::streams(&[(stream.node, properties)]),
+                super::capture::streams(&[(stream.node, super::capture::properties(&stream.properties))]),
             );
         }
         log::info!(app = %app_id, session = %path, "a remote desktop session started");

@@ -9,10 +9,11 @@ use std::time::{Duration, Instant};
 
 use gnoblin_capture::{Copied, Format, PixelFormat, SessionId, Stop, Table, Target};
 use gnoblin_lock::{Capture, CaptureStream};
-use gnoblin_types::{ClientId, NodeId, OutputId, Rect, Size, Tick};
+use gnoblin_render_frame::image::Image;
+use gnoblin_types::{ClientId, NodeId, OutputId, Rect, Size, Tick, WindowId};
 
 use super::testing::{Daemon, FrameConsumer, Observer};
-use super::{ExportError, PipewireExport, PlaneSource};
+use super::{ExportError, PipewireExport, PlaneSource, write_region};
 
 const SIZE: Size = Size::new(64, 48);
 /// The colour the headless window paints, as red, green and blue.
@@ -364,13 +365,12 @@ impl PlaneSource for Resizable {
     }
 }
 
-/// A stream of a View is the View at the size it is drawn at: when the View grows and shrinks, the consumer is
-/// renegotiated to the new size and receives whole pictures of it, not a crop of the size the stream started at.
-#[test]
-fn a_view_stream_follows_the_size_the_view_is_drawn_at() {
+/// A stream of a View or a window is the target at the size it is drawn at: when it grows and shrinks, the consumer
+/// is renegotiated to the new size and receives whole pictures of it, not a crop of the size the stream started at.
+fn a_stream_follows_the_size_its_target_is_drawn_at(target: Target) {
     let daemon = Daemon::start();
     let mut table = Table::new();
-    let view = Target::View(NodeId::new(5));
+    let view = target;
     let session = table.open(owner(), view, CaptureStream::Granted, format());
     let mut export = PipewireExport::with_socket(daemon.socket());
     let node = export
@@ -400,6 +400,43 @@ fn a_view_stream_follows_the_size_the_view_is_drawn_at() {
             Some(grown),
             "the session's shape followed the View"
         );
+    }
+}
+
+#[test]
+fn a_view_stream_follows_the_size_the_view_is_drawn_at() {
+    a_stream_follows_the_size_its_target_is_drawn_at(Target::View(NodeId::new(5)));
+}
+
+#[test]
+fn a_window_stream_follows_the_size_the_window_is_drawn_at() {
+    a_stream_follows_the_size_its_target_is_drawn_at(Target::Window(WindowId::new(5)));
+}
+
+/// A frame of a window that shrank below the size the stream negotiated holds none of the pixels around the window:
+/// what lies past the window's own rectangle is black, never the desktop beside it, even before the renegotiation.
+#[test]
+fn a_frame_never_carries_pixels_past_the_targets_own_rectangle() {
+    let red = [0xff, 0x00, 0x00, 0xff].repeat(8 * 8);
+    let image = Image::new(Size::new(8, 8), 8 * 4, red).expect("an image of red pixels");
+    // The window is the 3 by 2 rectangle at (2, 1), and the stream still has its old 6 by 4 shape.
+    let negotiated = Format::new(Size::new(6, 4), 24, PixelFormat::Xrgb8888).expect("a valid format");
+    let mut plane = vec![0x55_u8; 6 * 4 * 4];
+    assert_eq!(
+        write_region(&image, Rect::new(2, 1, 3, 2), negotiated, &mut plane),
+        Copied::Copied
+    );
+    let pixel = |x: usize, y: usize| -> [u8; 4] { plane[(y * 6 + x) * 4..][..4].try_into().expect("four bytes") };
+    for y in 0..4 {
+        for x in 0..6 {
+            let inside = x < 3 && y < 2;
+            let want = if inside {
+                [0x00, 0x00, 0xff, 0xff]
+            } else {
+                [0, 0, 0, 0xff]
+            };
+            assert_eq!(pixel(x, y), want, "pixel ({x}, {y})");
+        }
     }
 }
 
@@ -474,6 +511,93 @@ fn the_lock_ends_a_view_stream_nobody_reads_and_leaves_an_output_stream_alone() 
         export.start(&table, view, owner()),
         Err(ExportError::Stopped),
         "a View stream does not come back when the lock is released"
+    );
+}
+
+/// A window is desktop content and the lock scene is not a window: the lock ends a window's stream although nobody
+/// reads it, and the stream does not come back when the lock is released.
+#[test]
+fn the_lock_ends_a_window_stream_nobody_reads() {
+    let daemon = Daemon::start();
+    let observer = Observer::connect(&daemon.socket());
+    let mut table = Table::new();
+    let window = table.open(
+        owner(),
+        Target::Window(WindowId::new(6)),
+        CaptureStream::Granted,
+        format(),
+    );
+    let mut export = PipewireExport::with_socket(daemon.socket());
+    let node = export.start(&table, window, owner()).expect("a window stream starts");
+    observer.wait_for(node);
+
+    for tick in 1..=5 {
+        export.pump(&mut table, Tick::new(tick), Capture::LockScene, &mut Nothing);
+    }
+    assert!(
+        observer.wait_gone(&stream_name(window)),
+        "the lock removed the window's node although nobody read it"
+    );
+    assert_eq!(
+        table.get(window).and_then(|entry| entry.stopped()),
+        Some(Stop::Embargoed)
+    );
+    assert_eq!(
+        export.start(&table, window, owner()),
+        Err(ExportError::Stopped),
+        "a window stream does not come back when the lock is released"
+    );
+}
+
+/// A window that is gone ends its stream cleanly: a stream being read whose window has no bounds any more is stopped
+/// by the table, and the next pump drops the node. The stream is not restarted.
+#[test]
+fn a_window_stream_ends_when_the_window_is_gone() {
+    /// A window that is there until the test takes it away.
+    struct Switch {
+        present: bool,
+    }
+    impl PlaneSource for Switch {
+        fn bounds(&self, _target: Target) -> Option<Rect> {
+            self.present.then(|| Rect::from_size(SIZE))
+        }
+        fn copy_into(&mut self, _target: Target, _region: Rect, _format: Format, plane: &mut [u8]) -> Copied {
+            for pixel in plane.as_chunks_mut::<4>().0 {
+                *pixel = WINDOW_PIXEL;
+            }
+            Copied::Copied
+        }
+    }
+    let daemon = Daemon::start();
+    let mut table = Table::new();
+    let window = table.open(
+        owner(),
+        Target::Window(WindowId::new(6)),
+        CaptureStream::Granted,
+        format(),
+    );
+    let mut export = PipewireExport::with_socket(daemon.socket());
+    let node = export.start(&table, window, owner()).expect("a window stream starts");
+    let consumer = FrameConsumer::connect(&daemon.socket(), node);
+    let mut source = Switch { present: true };
+    consumer.wait_for_frame_pumping(
+        "of the window",
+        pump_of(&mut export, &mut table, &mut source),
+        |frame| frame.is_solid(WINDOW_COLOUR),
+    );
+
+    source.present = false;
+    consumer.listen_pumping(
+        Duration::from_millis(500),
+        pump_of(&mut export, &mut table, &mut source),
+    );
+    assert!(
+        consumer.observer.wait_gone(&stream_name(window)),
+        "the window's node left the daemon with the window"
+    );
+    assert_eq!(
+        table.get(window).and_then(|entry| entry.stopped()),
+        Some(Stop::TargetGone)
     );
 }
 

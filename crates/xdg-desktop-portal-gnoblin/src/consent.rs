@@ -79,6 +79,7 @@ use gnoblin_types::{ClientId, RequestId, Tick};
 use zeroize::Zeroizing;
 
 use crate::backends::StreamId;
+use crate::iface::capture::OPTION_WINDOW;
 
 use crate::log;
 
@@ -261,6 +262,9 @@ pub struct Prompt {
     /// The parent window the caller named, as the frontend sent it. The relay does not
     /// parse it; the compositor resolves and verifies it. `None` when the caller sent none.
     pub parent_window: Option<String>,
+    /// The one window the user is asked to share, by its compositor identity. The compositor words the question
+    /// with the window's own title, and records that the user was asked about this window.
+    pub window: Option<u64>,
     /// The title the provider shows.
     pub title: String,
     /// The sentence the provider shows.
@@ -268,15 +272,18 @@ pub struct Prompt {
 }
 
 impl Prompt {
-    /// The prompt for one capability, worded from the interface and the app.
+    /// The prompt for one capability, worded from the interface and the app. `window` is the one window a screen
+    /// cast asks the user to share, when it names one.
     #[must_use]
     pub fn new(
         interface: Interface,
         requester: &Requester,
         capability: PortalCapability,
         parent_window: &str,
+        window: Option<u64>,
     ) -> Prompt {
         let what = match capability {
+            PortalCapability::Capture if window.is_some() => "share one of your windows",
             PortalCapability::Capture => "share your screen",
             PortalCapability::InputInjection => "control your pointer and keyboard",
             PortalCapability::Secret => "read its secret from your keyring",
@@ -291,6 +298,7 @@ impl Prompt {
             interface,
             app_id: requester.app_id.clone(),
             parent_window: non_empty(parent_window),
+            window,
             title: format!("{app} wants to {what}"),
             message: format!("{} is asking through {}.", interface.as_str(), capability.as_str()),
         }
@@ -708,10 +716,17 @@ impl Guard {
         if self.locked {
             return Err(Refusal::Locked);
         }
+        // The window a screen cast asks about, when the session chose one. The recorded selection is what the cast
+        // will stream (`cast_target`), so the question is about exactly that window.
+        let window = match (session.interface, session.options.get(OPTION_WINDOW)) {
+            (Interface::ScreenCast, Some(Value::Uint(window))) => Some(*window),
+            _ => None,
+        };
         // A caller with no app id has no identity a decision could be shared under, so it
         // never waits behind another prompt for its bus and is never answered from a
-        // cached grant or refusal: each of its requests prompts on its own.
-        let anonymous = session.owner.app_id.is_empty();
+        // cached grant or refusal: each of its requests prompts on its own. So is a share of one window: an earlier
+        // answer, for this app or for another window, is not an answer for this window, and neither is a refusal.
+        let anonymous = session.owner.app_id.is_empty() || window.is_some();
         if !anonymous
             && self
                 .waiting
@@ -738,7 +753,7 @@ impl Guard {
             }
         }
 
-        let prompt = Prompt::new(session.interface, &session.owner, capability, parent_window);
+        let prompt = Prompt::new(session.interface, &session.owner, capability, parent_window, window);
         let deadline = now.saturating_add(self.lifetime);
         let offer = self.host.offer(&prompt, self.timeout())?;
         let prompt_id = PromptId::new(offer.request.get());
@@ -826,6 +841,7 @@ impl Guard {
             interface: session.interface,
             app_id: session.owner.app_id.clone(),
             parent_window: non_empty(parent_window),
+            window: None,
             title,
             message,
         };

@@ -717,22 +717,3 @@ pub(crate) fn string_of(value: &zbus::OwnedVariant) -> Option<String> {
         _ => None,
     }
 }
-
-/// One value of the object model, as the variant a result carries.
-pub fn variant(value: &gnoblin_model::Value) -> Option<zbus::OwnedVariant> {
-    use zbus::{OwnedVariant, Variant};
-    let value = match value {
-        gnoblin_model::Value::Bool(raw) => Variant::from(*raw),
-        gnoblin_model::Value::Int(raw) => Variant::from(*raw),
-        gnoblin_model::Value::Uint(raw) => Variant::from(*raw),
-        gnoblin_model::Value::Double(raw) => Variant::from(*raw),
-        gnoblin_model::Value::Text(raw) => Variant::from(raw.as_str()),
-        // A bytes value, an object reference and a list have no meaning in a portal
-        // options dictionary, so a backend that returns one is dropping a field rather
-        // than inventing an encoding for it.
-        gnoblin_model::Value::Bytes(_) | gnoblin_model::Value::Object(_) | gnoblin_model::Value::List(_) => {
-            return None;
-        }
-    };
-    OwnedVariant::try_from(value).ok()
-}

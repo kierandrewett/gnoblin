@@ -13,13 +13,12 @@ use std::sync::{Mutex, PoisonError};
 
 use gnoblin_capture::Target;
 use gnoblin_client::wire::{CastSource, CastStream};
-use gnoblin_model::Value;
 
 use crate::backends::{
-    CaptureBackend, ScreenshotError, ScreenshotOptions, Stream, StreamId, StreamRequest, Unavailable,
+    CaptureBackend, ScreenshotError, ScreenshotOptions, Stream, StreamId, StreamProperty, StreamRequest, Unavailable,
 };
 use crate::host::{ConsentAnswer, ConsentCall, IpcHost};
-use crate::iface::capture::{SOURCE_MONITOR, SOURCE_VIRTUAL};
+use crate::iface::capture::{SOURCE_MONITOR, SOURCE_VIRTUAL, SOURCE_WINDOW};
 use crate::log;
 use crate::picture;
 
@@ -138,11 +137,7 @@ impl<S: ScreenSource> CaptureBackend for CaptureRelay<S> {
         let (source, source_type) = match request.target {
             Target::Output(output) => (CastSource::Output(output.get()), SOURCE_MONITOR),
             Target::View(view) => (CastSource::View(view.get()), SOURCE_VIRTUAL),
-            Target::Window(_) => {
-                return Err(Unavailable::refused(
-                    "only an output or a View can be shared in this build; a window is not served",
-                ));
-            }
+            Target::Window(window) => (CastSource::Window(window.get()), SOURCE_WINDOW),
         };
         let cast = self.source.open_cast(&request.session, source)?;
         let id = StreamId::new(self.next_stream.fetch_add(1, Ordering::Relaxed).saturating_add(1));
@@ -151,7 +146,16 @@ impl<S: ScreenSource> CaptureBackend for CaptureRelay<S> {
             .unwrap_or_else(PoisonError::into_inner)
             .insert(id, request.session.clone());
         let mut properties = BTreeMap::new();
-        properties.insert("source_type".to_owned(), Value::Uint(u64::from(source_type)));
+        properties.insert("source_type".to_owned(), StreamProperty::Uint(source_type));
+        // The interface's `position` and `size` are the logical place and extent of what the stream shows. A View
+        // has no place in the layout, so it has a size only.
+        if !matches!(request.target, Target::View(_)) {
+            properties.insert("position".to_owned(), StreamProperty::Pair(cast.x, cast.y));
+        }
+        properties.insert(
+            "size".to_owned(),
+            StreamProperty::Pair(logical(cast.layout_width), logical(cast.layout_height)),
+        );
         Ok(Stream {
             id,
             node: cast.node,
@@ -169,6 +173,11 @@ impl<S: ScreenSource> CaptureBackend for CaptureRelay<S> {
             self.source.close_cast(&session);
         }
     }
+}
+
+/// A layout extent as the signed number the interface's `(ii)` pairs carry.
+fn logical(extent: u32) -> i32 {
+    i32::try_from(extent).unwrap_or(i32::MAX)
 }
 
 #[cfg(test)]
@@ -323,12 +332,15 @@ mod tests {
 
         fn open_cast(&self, _session: &str, source: CastSource) -> Result<CastStream, Unavailable> {
             self.sources.lock().unwrap().push(source);
+            // A scale of two: the stream's pixels are twice the layout extent the properties carry.
             Ok(CastStream {
                 node: 42,
-                x: 0,
-                y: 0,
-                width: 64,
-                height: 48,
+                x: -30,
+                y: 12,
+                layout_width: 64,
+                layout_height: 48,
+                width: 128,
+                height: 96,
             })
         }
 
@@ -359,15 +371,21 @@ mod tests {
         );
         assert_eq!(
             stream.properties.get("source_type"),
-            Some(&Value::Uint(u64::from(SOURCE_VIRTUAL)))
+            Some(&StreamProperty::Uint(SOURCE_VIRTUAL))
         );
+        assert_eq!(
+            stream.properties.get("position"),
+            None,
+            "a View has no place in the layout"
+        );
+        assert_eq!(stream.properties.get("size"), Some(&StreamProperty::Pair(64, 48)));
 
         let output = relay
             .open_stream(&request(Target::Output(gnoblin_types::OutputId::new(3))))
             .expect("an output is served");
         assert_eq!(
             output.properties.get("source_type"),
-            Some(&Value::Uint(u64::from(SOURCE_MONITOR)))
+            Some(&StreamProperty::Uint(SOURCE_MONITOR))
         );
         assert_eq!(
             relay.source.sources.lock().unwrap().last(),
@@ -375,13 +393,25 @@ mod tests {
         );
     }
 
+    /// A window target is approved to the compositor as that one window, and its stream carries the window's
+    /// logical place and extent: the `position` and `size` properties are `(ii)` pairs of layout pixels, not the
+    /// stream's pixel size.
     #[test]
-    fn a_window_target_is_refused_before_the_compositor_is_asked() {
+    fn a_window_target_is_approved_as_that_window_and_streams_with_its_position_and_size() {
         let relay = CaptureRelay::new(Recording::default(), None);
-        let refused = relay
-            .open_stream(&request(Target::Window(gnoblin_types::WindowId::new(1))))
-            .expect_err("a window is not served");
-        assert!(refused.reason.contains("window"), "{refused}");
-        assert!(relay.source.sources.lock().unwrap().is_empty());
+        let stream = relay
+            .open_stream(&request(Target::Window(gnoblin_types::WindowId::new(7))))
+            .expect("a window is served");
+        assert_eq!(
+            relay.source.sources.lock().unwrap().as_slice(),
+            [CastSource::Window(7)],
+            "the compositor is told the one window"
+        );
+        assert_eq!(
+            stream.properties.get("source_type"),
+            Some(&StreamProperty::Uint(SOURCE_WINDOW))
+        );
+        assert_eq!(stream.properties.get("position"), Some(&StreamProperty::Pair(-30, 12)));
+        assert_eq!(stream.properties.get("size"), Some(&StreamProperty::Pair(64, 48)));
     }
 }

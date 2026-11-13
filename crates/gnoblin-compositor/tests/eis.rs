@@ -410,6 +410,10 @@ fn a_connection_that_is_not_the_owner_cannot_assert_the_users_consent() {
         outsider.cast_grant("/session/1", wire::CastSource::Output(wire::OUTPUT_FIRST)),
         "cast.grant",
     );
+    refused_as_not_owner(
+        outsider.cast_grant("/session/1", wire::CastSource::Window(1)),
+        "cast.grant of a window",
+    );
     refused_as_not_owner(outsider.cast_start("/session/1"), "cast.start");
     refused_as_not_owner(outsider.cast_end("/session/1"), "cast.end");
 

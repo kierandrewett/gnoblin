@@ -24,9 +24,11 @@
 //!   `no_buffer_queued_before_the_lock_is_delivered_after_it_on_a_real_cast` in `gnoblin-wayland`'s
 //!   `tests/view_capture_e2e.rs`, on a real daemon.
 //!
-//! A stream of a [`Target::View`] is the View at the size it is drawn at: when the View's size changes
-//! the format is offered again at the new size, the table's session takes the new shape, and the consumer
-//! is renegotiated. An output's or a window's stream keeps the shape it started with.
+//! A stream of a [`Target::View`] or a [`Target::Window`] is that target at the size it is drawn at: when the size
+//! changes the format is offered again at the new size, the table's session takes the new shape, and the consumer
+//! is renegotiated. An output's stream keeps the shape it started with. A frame carries only the pixels of the
+//! target's own rectangle, so a window that shrank below the size the stream negotiated is not padded with the
+//! desktop around it: what lies outside the window is black until the renegotiation lands.
 //!
 //! The `testing` feature (and this crate's own tests) compile `testing.rs`: a private daemon, a second
 //! client that watches it, and a consumer that reads a node's frames.
@@ -129,8 +131,9 @@ impl CaptureSource for Plane<'_> {
 }
 
 /// Writes `region` of `image` into `plane` as the packed 32-bit layout `format` names, from the
-/// plane's top-left corner. A pixel the image does not hold is written black, so no byte of an
-/// earlier frame survives into a later one.
+/// plane's top-left corner. A pixel the image does not hold, or that lies past the extent of `region` (the target is
+/// smaller than the format the stream negotiated), is written black, so no byte of an earlier frame survives into a
+/// later one and no pixel the target does not own is copied.
 pub fn write_region(image: &Image, region: Rect, format: Format, plane: &mut [u8]) -> Copied {
     let Some(length) = format.bytes() else {
         return Copied::Nothing;
@@ -147,9 +150,14 @@ pub fn write_region(image: &Image, region: Rect, format: Format, plane: &mut [u8
         };
         let (pixels, _) = line.as_chunks_mut::<BYTES_PER_PIXEL>();
         for (column, slot) in pixels.iter_mut().enumerate() {
+            let inside = (column as u64) < u64::from(region.width) && (row as u64) < u64::from(region.height);
             let x = region.x.saturating_add_unsigned(column as u32);
             let y = region.y.saturating_add_unsigned(row as u32);
-            let [red, green, blue, alpha] = image.pixel(Point::new(x, y)).unwrap_or([0, 0, 0, 0]);
+            let [red, green, blue, alpha] = if inside {
+                image.pixel(Point::new(x, y)).unwrap_or([0, 0, 0, 0])
+            } else {
+                [0, 0, 0, 0]
+            };
             let alpha = match format.pixel() {
                 PixelFormat::Argb8888 => alpha,
                 PixelFormat::Xrgb8888 => u8::MAX,
@@ -222,18 +230,18 @@ struct PipewireExportStream {
 }
 
 impl PipewireExportStream {
-    /// Offers the format again when the stream serves a View whose size changed.
+    /// Offers the format again when the stream serves a View or a window whose size changed.
     ///
-    /// A View is sized by its owner, and what the stream carries is the View at the size it is drawn, so a View that
-    /// grew is not cropped to the size it had when the stream started. The session takes the new shape, the next
-    /// negotiation answers with buffers of the new size, and the consumer hears the format change. An output is not
-    /// followed, and neither is a window: their size is the user's, and a stream that renegotiated on every drag
-    /// would cost its consumer more than the crop does.
-    fn follow_view_size(&mut self, table: &mut Table, source: &dyn PlaneSource) {
+    /// A View is sized by its owner and a window by its user, and what the stream carries is the target at the size
+    /// it is drawn, so a View that grew or a window that was dragged larger is not cropped to the size it had when
+    /// the stream started. The session takes the new shape, the next negotiation answers with buffers of the new
+    /// size, and the consumer hears the format change. At most one renegotiation happens per frame interval, so a
+    /// drag costs its consumer no more than 30 a second. An output is not followed: its size is the monitor's.
+    fn follow_target_size(&mut self, table: &mut Table, source: &dyn PlaneSource) {
         let Some(target) = table.get(self.session).map(|entry| entry.target()) else {
             return;
         };
-        if !matches!(target, Target::View(_)) {
+        if !matches!(target, Target::View(_) | Target::Window(_)) {
             return;
         }
         let Some(size) = source.bounds(target).map(|bounds| bounds.size()) else {
@@ -272,7 +280,7 @@ impl PipewireExportStream {
             return;
         }
         self.next_frame = now + FRAME_INTERVAL;
-        self.follow_view_size(table, source);
+        self.follow_target_size(table, source);
         // A DRIVER stream is its own graph driver, so nothing else schedules it: tick it even while
         // Paused, because a Paused stream never reaches Streaming on its own.
         if self.stream.state() != StreamState::Streaming {

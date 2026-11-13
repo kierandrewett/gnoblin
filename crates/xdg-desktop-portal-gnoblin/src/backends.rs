@@ -41,7 +41,6 @@ use std::os::fd::OwnedFd;
 use std::sync::Arc;
 
 use gnoblin_capture::Target;
-use gnoblin_model::Value;
 
 /// The compositor's handle for one opened stream.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -67,6 +66,19 @@ impl fmt::Display for StreamId {
     }
 }
 
+/// One stream property, with the D-Bus type the `ScreenCast` interface gives it.
+///
+/// These are the portal's own result values and not the object model's: the interface's `position` and `size` are
+/// `(ii)` pairs, a shape the model's values (and a D-Bus `a{sv}` built from them) have no way to say, and nothing
+/// outside this process ever holds one.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StreamProperty {
+    /// A `u`: `source_type`.
+    Uint(u32),
+    /// An `(ii)`: `position` (x, y) and `size` (width, height), in the compositor's logical coordinate space.
+    Pair(i32, i32),
+}
+
 /// One stream the compositor opened.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Stream {
@@ -74,9 +86,9 @@ pub struct Stream {
     pub id: StreamId,
     /// The PipeWire node the app reads.
     pub node: u32,
-    /// The stream's properties, in the `a{sv}` the interface returns: `position`,
-    /// `size`, `source_type` and `mapping_id` are the keys the frontend forwards.
-    pub properties: BTreeMap<String, Value>,
+    /// The stream's properties, in the `a{sv}` the interface returns: `position`, `size` and `source_type` are
+    /// the keys this backend sets (`mapping_id` needs the interface version 5 this build does not serve).
+    pub properties: BTreeMap<String, StreamProperty>,
 }
 
 /// What a screenshot should cover.

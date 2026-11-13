@@ -585,8 +585,12 @@ pub struct CastStream {
     pub session: SessionId,
     /// The PipeWire node the app reads.
     pub node: u32,
-    /// The top-left corner of what the stream shows, in layout pixels.
+    /// The top-left corner of what the stream shows, in layout pixels: an output's or a window's place. A View has
+    /// none, so it is the origin.
     pub origin: Point,
+    /// How large what the stream shows is in the layout, in layout pixels. It differs from [`CastStream::size`] on
+    /// an output or a window drawn at a scale above one.
+    pub extent: Size,
     /// The stream's size, in pixels.
     pub size: Size,
 }
@@ -596,7 +600,7 @@ pub struct CastStream {
 pub enum CastRefusal {
     /// The session lock covers the desktop, so no new stream may be opened.
     Locked,
-    /// The target is not one the session has now: no such output or View, or it has no size.
+    /// The target is not one the session has now: no such output, window or View, or it has no size.
     NoTarget,
     /// The stream could not be made: there is no PipeWire daemon, or it refused the stream.
     Unavailable(String),
@@ -617,9 +621,12 @@ impl State {
     /// A session that is already locked is refused, because a user who consented to a cast
     /// did not consent to one of a locked desktop.
     ///
-    /// The target is an output, or a View: a View's stream carries the picture the View's capture reads, at the size
-    /// the View is drawn at. Starting a stream is an audited act, and it is a session in the table like any other, so
-    /// the privacy indicator is lit from the moment this answers.
+    /// The target is an output, a window or a View. A window's stream carries the pixels of the output frame inside
+    /// the window's rectangle, which is the capture a toplevel source gives, so a secure window or an output-wide
+    /// secure layer is what an output capture shows of it (the session's treatment, never the window's pixels) and
+    /// the stream follows the window when it moves or is resized. A View's stream carries the picture the View's
+    /// capture reads, at the size the View is drawn at. Starting a stream is an audited act, and it is a session in
+    /// the table like any other, so the privacy indicator is lit from the moment this answers.
     pub(crate) fn start_cast(&mut self, client: ClientId, target: Target) -> Result<CastStream, CastRefusal> {
         if self.lock_capture(CaptureStream::Granted) != Capture::Desktop || !self.capture_allowed() {
             log::info!(area = "capture", %target, "a screen cast was refused: the session is locked");
@@ -635,12 +642,8 @@ impl State {
             log::info!(area = "capture", %target, "a screen cast was refused: the target has no size");
             return Err(CastRefusal::NoTarget);
         };
-        let origin = match target {
-            Target::Output(output) => self
-                .output_rect(output)
-                .map_or_else(|| Point::new(0, 0), |rect| Point::new(rect.x, rect.y)),
-            Target::Window(_) | Target::View(_) => Point::new(0, 0),
-        };
+        let layout = self.capture_layout(target, bounds);
+        let origin = Point::new(layout.x, layout.y);
         let owner = self.capture.portal_owner(client);
         let session = self.capture.table.open(owner, target, CaptureStream::Granted, format);
         match self.capture.pipewire.start(&self.capture.table, session, owner) {
@@ -651,6 +654,7 @@ impl State {
                     session,
                     node,
                     origin,
+                    extent: layout.size(),
                     size: bounds.size(),
                 })
             }
@@ -667,6 +671,21 @@ impl State {
         if self.capture.table.close(session).is_some() {
             log::info!(area = "capture", session = session.get(), "a screen cast ended");
             self.publish();
+        }
+    }
+
+    /// Where a target sits in the layout, and how large it is there, in logical pixels: an output's rectangle, a
+    /// window's frame as it is shown now, or a View at its own size, which has no place in the layout.
+    fn capture_layout(&self, target: Target, bounds: Rect) -> Rect {
+        match target {
+            Target::Output(output) => self.output_rect(output).unwrap_or(Rect::from_size(bounds.size())),
+            Target::Window(window) => self
+                .fallback
+                .windows()
+                .find(|managed| managed.id == window)
+                .map(|managed| self.geometry_of(window).unwrap_or(managed.geometry))
+                .unwrap_or(Rect::from_size(bounds.size())),
+            Target::View(_) => Rect::from_size(bounds.size()),
         }
     }
 

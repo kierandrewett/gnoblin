@@ -302,3 +302,47 @@ fn destroying_the_view_ends_its_cast() {
     shell.destroy_view();
     daemon.wait_until_gone(stream.node);
 }
+
+// A window as a cast source. The user must have been asked about that very window (a `portal.ui` screen cast request
+// carrying the `window` option, answered yes); a grant of any other window is refused, whatever the portal says.
+
+#[test]
+fn a_window_grant_for_a_window_nobody_asked_the_user_about_is_refused_and_makes_no_node() {
+    let daemon = Daemon::start();
+    let session = session_on(&daemon);
+    let mut portal = portal(&session);
+    assert_eq!(
+        refusal_code(portal.cast_grant("/session/window", CastSource::Window(1))),
+        wire::code::NO_CONSENT,
+        "the compositor's own record of the question decides, not the portal's say-so"
+    );
+    assert_eq!(
+        refusal_code(portal.cast_start("/session/window")),
+        wire::code::NO_CONSENT,
+        "the refused grant recorded nothing to start"
+    );
+    assert!(!daemon.holds_stream(), "no node was made");
+}
+
+#[test]
+fn a_question_about_a_window_the_compositor_does_not_show_is_refused_before_anyone_is_asked() {
+    let daemon = Daemon::start();
+    let session = session_on(&daemon);
+    let mut portal = portal(&session);
+    let mut options = gnoblin_model::Fields::new();
+    options.insert(wire::PORTAL_OPTION_WINDOW.to_owned(), gnoblin_model::Value::Uint(4242));
+    let request = wire::PortalRequest {
+        interface: "ScreenCast".to_owned(),
+        caller: wire::VerifiedCaller::new(0, "org.example.Cast"),
+        prompt: "Share a window?".to_owned(),
+        timeout_ms: 30_000,
+        options,
+        parent_window: String::new(),
+    };
+    let ticket = portal.portal_ui(&request).expect("the request is sent");
+    assert_eq!(
+        refusal_code(portal.portal_outcome(ticket)),
+        wire::code::CAPTURE_NO_WINDOW,
+        "the compositor shows no such window, so nobody is asked about it"
+    );
+}

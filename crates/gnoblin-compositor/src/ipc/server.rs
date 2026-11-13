@@ -895,7 +895,7 @@ impl Dispatcher {
     /// `portal.ui`: admit a request for the built-in dialog. A request the session
     /// cannot take answers its verdict now; an admitted one answers when it settles.
     fn portal_ui(&mut self, client: ClientId, envelope: &Envelope) {
-        let request = match wire::read_portal_ui(envelope.payload().unwrap_or(&[])) {
+        let mut request = match wire::read_portal_ui(envelope.payload().unwrap_or(&[])) {
             Ok(request) => request,
             Err(reason) => {
                 self.refuse(
@@ -907,6 +907,19 @@ impl Dispatcher {
                 return;
             }
         };
+        // A screen cast of one window asks about that window: the compositor names it from its own state, and a
+        // window it does not show is refused before the user is asked.
+        let named = {
+            let snapshot = match self.observation.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            PortalService::name_window(&mut request, &snapshot)
+        };
+        if let Err(refused) = named {
+            self.refuse(client, envelope, refused.code, &refused.message);
+            return;
+        }
         let now = self.now();
         // Every portal dialog opens on the output. The parent is resolved only so the log
         // line can say what was found; no path places a dialog on a parent window.
@@ -1756,10 +1769,23 @@ impl Dispatcher {
         self.consent_answer(client, envelope, outcome.map(|()| Vec::new()));
     }
 
-    /// `cast.grant`: the user approved a screen cast of one source, an output or a View.
+    /// `cast.grant`: the user approved a screen cast of one source, an output, a View or a window.
     fn cast_grant(&mut self, client: ClientId, envelope: &Envelope) {
         match wire::read_cast_grant(envelope.payload().unwrap_or(&[])) {
             Ok((session, source)) => {
+                // A window is approved only when the user was asked about that window and allowed it: the
+                // compositor's own record of the question, never the portal's say-so.
+                if let wire::CastSource::Window(window) = source
+                    && !self.portal.take_window_consent(client, WindowId::new(window))
+                {
+                    self.refuse(
+                        client,
+                        envelope,
+                        wire::code::NO_CONSENT,
+                        &format!("the user was not asked to share window {window}, or did not allow it"),
+                    );
+                    return;
+                }
                 let outcome = self.consent.cast_grant(client, &session, source);
                 self.consent_answer(client, envelope, outcome.map(|()| Vec::new()));
             }

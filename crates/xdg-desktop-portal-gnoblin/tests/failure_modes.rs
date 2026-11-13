@@ -300,3 +300,128 @@ fn named_refusal_is_reused() {
         Err(Refusal::Refused)
     ));
 }
+
+/// The prompts a host was offered, in order, for a test to read.
+type Seen = std::sync::Arc<std::sync::Mutex<Vec<Prompt>>>;
+
+/// A host that offers every prompt straight away and keeps what it was asked.
+struct RecordingHost {
+    next: u64,
+    seen: Seen,
+}
+
+impl Host for RecordingHost {
+    fn offer(&mut self, prompt: &Prompt, _timeout: std::time::Duration) -> Result<Offer, Refusal> {
+        self.seen.lock().expect("the recording").push(prompt.clone());
+        let request = RequestId::new(self.next);
+        self.next += 1;
+        Ok(Offer {
+            request,
+            provider: ClientId::new(1),
+        })
+    }
+
+    fn offer_secret(
+        &mut self,
+        _app_id: &str,
+        _timeout: std::time::Duration,
+    ) -> Result<futures_channel::oneshot::Receiver<Option<zeroize::Zeroizing<Vec<u8>>>>, Refusal> {
+        Err(Refusal::NoProvider { slot: "secret.derive" })
+    }
+
+    fn withdraw(&mut self, _request: RequestId) {}
+}
+
+/// A guard with one configured screen cast session per entry of `windows`: the session shares that window, or the
+/// monitor when the entry is `None`. Nothing is started, so the selection is what the session recorded.
+fn guard_sharing(windows: &[Option<u64>]) -> (Guard, Seen, Vec<String>) {
+    let seen = Seen::default();
+    let mut guard = Guard::new(
+        Box::new(RecordingHost {
+            next: 1,
+            seen: seen.clone(),
+        }),
+        LIFETIME_MS,
+    );
+    let mut paths = Vec::new();
+    for (index, window) in windows.iter().enumerate() {
+        let path = format!("{PATH}/{index}");
+        guard
+            .create(NewSession {
+                bus_name: BUS.to_owned(),
+                app_id: APP.to_owned(),
+                sandboxed: Some(false),
+                interface: Interface::ScreenCast,
+                path: path.clone(),
+            })
+            .expect("a fresh path creates a session");
+        let mut selection = std::collections::BTreeMap::new();
+        selection.insert(
+            "types".to_owned(),
+            gnoblin_model::Value::Uint(u64::from(window.is_some()) * 2 + 1),
+        );
+        if let Some(window) = window {
+            selection.insert("window".to_owned(), gnoblin_model::Value::Uint(*window));
+        }
+        guard
+            .configure(BUS, &path, selection)
+            .expect("a created session is configured");
+        paths.push(path);
+    }
+    (guard, seen, paths)
+}
+
+/// The user is asked about the window the session chose, by name: the prompt carries that window, and says it is
+/// about one window rather than about the screen.
+#[test]
+fn the_prompt_of_a_window_share_names_the_window() {
+    let (mut guard, seen, paths) = guard_sharing(&[Some(7), None]);
+    let Ok(Pending::Asked { request, .. }) = ask_path(&mut guard, 0, &paths[0]) else {
+        panic!("the window is asked about");
+    };
+    guard.answer(Tick::new(5), request, None).expect("answerable");
+    // A monitor share of the same app is the screen's question, with no window in it.
+    assert!(matches!(ask_path(&mut guard, 10, &paths[1]), Ok(Pending::Asked { .. })));
+    let seen = seen.lock().expect("the recording");
+    assert_eq!(seen[0].window, Some(7));
+    assert!(seen[0].title.contains("window"), "{}", seen[0].title);
+    assert_eq!(seen[1].window, None);
+    assert!(!seen[1].title.contains("window"), "{}", seen[1].title);
+}
+
+/// A yes for one window is not a yes for another window, or for the screen, and is not remembered for the app: every
+/// share of a window is asked about on its own, as a caller with no identity is.
+#[test]
+fn an_allowed_window_is_never_a_standing_grant_for_the_app_or_for_another_window() {
+    let (mut guard, seen, paths) = guard_sharing(&[Some(7), Some(7), Some(8), None]);
+    let Pending::Asked { request, .. } = ask_path(&mut guard, 0, &paths[0]).expect("asked") else {
+        panic!("the first window is asked about");
+    };
+    guard
+        .answer(Tick::new(10), request, Some(b"allow"))
+        .expect("answerable");
+    assert!(
+        guard.consent(BUS, APP, PortalCapability::Capture).is_none(),
+        "the app holds no standing grant after a window was allowed"
+    );
+
+    for (index, window) in [(1, Some(7)), (2, Some(8)), (3, None)] {
+        let asked = ask_path(&mut guard, 20, &paths[index]).expect("not refused");
+        let Pending::Asked { request, .. } = asked else {
+            panic!("session {index} ({window:?}) is asked about, not answered from the earlier yes");
+        };
+        guard.answer(Tick::new(30), request, None).expect("answerable");
+    }
+    assert_eq!(seen.lock().expect("the recording").len(), 4);
+}
+
+/// A refusal of one window does not stand against the next ask: the user may say yes the second time.
+#[test]
+fn a_refused_window_is_asked_about_again() {
+    let (mut guard, _seen, paths) = guard_sharing(&[Some(7), Some(7)]);
+    let Pending::Asked { request, .. } = ask_path(&mut guard, 0, &paths[0]).expect("asked") else {
+        panic!("asked");
+    };
+    guard.answer(Tick::new(10), request, None).expect("answerable");
+    assert!(matches!(ask_path(&mut guard, 20, &paths[1]), Ok(Pending::Asked { .. })));
+}

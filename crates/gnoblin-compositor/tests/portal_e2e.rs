@@ -417,6 +417,28 @@ impl Caller {
         Ok(message.body().deserialize().expect("a response and results"))
     }
 
+    /// `SelectSources` for a window source: `types` 2, and `window`, this backend's own option naming the window when
+    /// one is given. The answer is the call's own, so a refusal can be matched.
+    async fn select_window(&self, session: &str, window: Option<u64>) -> zbus::Result<(u32, Results)> {
+        let handle = self.path("request");
+        let mut options: HashMap<&str, Variant<'_>> = HashMap::new();
+        options.insert("types", Variant::from(2_u32));
+        if let Some(window) = window {
+            options.insert("window", Variant::from(window));
+        }
+        let handle = ObjectPath::try_from(handle.as_str()).expect("a request path");
+        let session = ObjectPath::try_from(session).expect("a session path");
+        let message = self
+            .call(
+                SCREEN_CAST,
+                PATH,
+                "SelectSources",
+                &(handle, session, self.app_id.as_str(), options),
+            )
+            .await?;
+        Ok(message.body().deserialize().expect("a response and results"))
+    }
+
     /// `Start`: the response code and results, or the error the backend answered with.
     async fn start(&self, interface: &'static str, session: &str) -> zbus::Result<(u32, Results)> {
         let handle = self.path("request");
@@ -996,4 +1018,100 @@ fn a_virtual_source_naming_a_view_that_is_not_there_makes_no_node() {
         "the refusal is the compositor's: {error}"
     );
     assert!(!daemon.holds_stream(), "no node was made");
+}
+
+/// A window source: the app names the window it wants to share, the user is asked about that window and says yes, the
+/// compositor streams it, and the `Start` reply carries the stream's `position` and `size`.
+#[test]
+fn an_approved_window_source_streams_the_window_the_app_named_with_its_position_and_size() {
+    let daemon = Daemon::start();
+    let mut rig = Rig::start(Some(&daemon));
+    let mut client = support::Client::connect(rig.session.wayland());
+    let _window = client.map_window("org.example.Shared", "Shared window");
+    let id = window_identity(&rig.session, "Shared window");
+    let caller = rig.caller("org.example.Cast");
+    let session = zbus::block_on(caller.create_host_session(SCREEN_CAST));
+    let (response, _) = zbus::block_on(caller.select_window(&session, Some(id))).expect("SelectSources answers");
+    assert_eq!(response, RESPONSE_OK, "the selection is recorded");
+
+    let (response, results) = with_dialogs(&mut rig.input, &[Answer::Allow], || {
+        zbus::block_on(caller.start(SCREEN_CAST, &session))
+    })
+    .expect("Start answers");
+    assert_eq!(response, RESPONSE_OK, "the user allowed the share of that window");
+    let nodes = stream_nodes(&results);
+    assert_eq!(nodes.len(), 1, "one stream is answered: {results:?}");
+    let reply = format!("{results:?}");
+    assert!(
+        reply.contains("position") && reply.contains("size"),
+        "the stream has its place and size: {reply}"
+    );
+    daemon.wait_until_present(nodes[0]);
+
+    zbus::block_on(caller.close(&session)).expect("the session closes");
+    daemon.wait_until_gone(nodes[0]);
+}
+
+#[test]
+fn a_denied_window_source_answers_cancelled_and_makes_no_node() {
+    let daemon = Daemon::start();
+    let mut rig = Rig::start(Some(&daemon));
+    let mut client = support::Client::connect(rig.session.wayland());
+    let _window = client.map_window("org.example.Shared", "Shared window");
+    let id = window_identity(&rig.session, "Shared window");
+    let caller = rig.caller("org.example.Cast");
+    let session = zbus::block_on(caller.create_host_session(SCREEN_CAST));
+    zbus::block_on(caller.select_window(&session, Some(id))).expect("SelectSources answers");
+    let (response, results) = with_dialogs(&mut rig.input, &[Answer::Deny], || {
+        zbus::block_on(caller.start(SCREEN_CAST, &session))
+    })
+    .expect("a refusal is a response, not an error");
+    assert_eq!(response, RESPONSE_CANCELLED);
+    assert!(stream_nodes(&results).is_empty());
+    assert!(!daemon.holds_stream(), "no node exists for a refused share");
+}
+
+#[test]
+fn a_window_source_that_names_no_window_is_refused_before_the_user_is_asked() {
+    let daemon = Daemon::start();
+    let rig = Rig::start(Some(&daemon));
+    let caller = rig.caller("org.example.Cast");
+    let session = zbus::block_on(caller.create_host_session(SCREEN_CAST));
+    let refused = zbus::block_on(caller.select_window(&session, None)).expect_err("a window is needed");
+    assert!(is_error(&refused, "InvalidArgs"), "{refused}");
+}
+
+/// A window the compositor does not show is refused with the question, so the user is never asked about it and no
+/// node is made.
+#[test]
+fn a_window_source_naming_a_window_that_is_not_there_is_refused_and_makes_no_node() {
+    let daemon = Daemon::start();
+    let rig = Rig::start(Some(&daemon));
+    let caller = rig.caller("org.example.Cast");
+    let session = zbus::block_on(caller.create_host_session(SCREEN_CAST));
+    zbus::block_on(caller.select_window(&session, Some(987_654))).expect("SelectSources answers");
+    let (response, results) = zbus::block_on(caller.start(SCREEN_CAST, &session))
+        .expect("a question about a missing window is a refusal, not an error");
+    assert_eq!(
+        response, RESPONSE_CANCELLED,
+        "nobody was asked, and the share is not made"
+    );
+    assert!(stream_nodes(&results).is_empty());
+    assert!(!daemon.holds_stream());
+}
+
+/// The compositor's identity for the window titled `title`: the `id` property `window list` prints, which is not the
+/// object id in its first column and is what a window source names.
+fn window_identity(session: &Session, title: &str) -> u64 {
+    wait_for(
+        &format!("a window titled {title:?} is listed with its identity"),
+        || {
+            let listing = session.ctl(&["window", "list"]).ok();
+            let line = listing.out.lines().find(|line| line.contains(&format!("{title:?}")))?;
+            line.split_whitespace()
+                .find_map(|word| word.strip_prefix("id="))?
+                .parse()
+                .ok()
+        },
+    )
 }

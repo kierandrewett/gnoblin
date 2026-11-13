@@ -43,7 +43,7 @@ use std::time::Duration;
 use futures_channel::{mpsc, oneshot};
 use gnoblin_client::wire::{CastSource, CastStream, PortalRequest, VerifiedCaller};
 use gnoblin_client::{Client, ClientError, Event, PortalOutcome, PortalTicket, Transport};
-use gnoblin_model::{Fields, Filter};
+use gnoblin_model::{Fields, Filter, Value};
 use gnoblin_types::{RequestId, Version};
 use zeroize::Zeroizing;
 
@@ -299,14 +299,22 @@ impl Host for NoShell {
 /// goes as the caller's label. This process does not know the caller's pid, so it goes as
 /// zero; the compositor resolves the caller from the bus itself. The interface is the
 /// portal interface name without its `org.freedesktop.impl.portal.` prefix, which is the
-/// form the compositor parses.
+/// form the compositor parses. A prompt about one window names it in the `window` option: the compositor words
+/// the question with that window's own title and records that the user was asked about it.
 fn portal_request(prompt: &Prompt, timeout: Duration) -> PortalRequest {
+    let mut options = Fields::new();
+    if let Some(window) = prompt.window {
+        options.insert(
+            gnoblin_client::wire::PORTAL_OPTION_WINDOW.to_owned(),
+            Value::Uint(window),
+        );
+    }
     PortalRequest {
         interface: prompt.interface.as_str().to_owned(),
         caller: VerifiedCaller::new(0, prompt.app_id.clone()),
         prompt: format!("{}\n\n{}", prompt.title, prompt.message),
         timeout_ms: u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX),
-        options: Fields::new(),
+        options,
         parent_window: prompt.parent_window.clone().unwrap_or_default(),
     }
 }
@@ -645,6 +653,7 @@ mod tests {
             interface,
             app_id: "org.example.App".to_owned(),
             parent_window: None,
+            window: None,
             title: "App wants to share your screen".to_owned(),
             message: "Share?".to_owned(),
         }

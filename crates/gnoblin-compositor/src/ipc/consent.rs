@@ -10,8 +10,8 @@
 //! | Remote desktop, no | `remote.refuse {session}` | records the refusal; the session never gets a socket |
 //! | Remote desktop, connect | `remote.connect {session}` | opens a one-shot EIS socket for the approved session and answers its path; any other session is refused |
 //! | Remote desktop, end | `remote.end {session}` | ends the session's EIS connection after releasing what it held |
-//! | Screen cast, yes | `cast.grant {session, source}` | records the approval of that one source: an output, or a View named by its node id |
-//! | Screen cast, start | `cast.start {session}` | starts the PipeWire stream of the approved output or View (the View's picture at the View's size) and answers its node; a session with no approval is refused, and so is one whose output or View is not there (`no-output`, `no-view`) |
+//! | Screen cast, yes | `cast.grant {session, source}` | records the approval of that one source: an output, a View named by its node id, or a window named by its identity (refused `no-consent` unless the user was asked about that very window by a `portal.ui` request of this connection and allowed it) |
+//! | Screen cast, start | `cast.start {session}` | starts the PipeWire stream of the approved output, View or window (the View's picture at the View's size; the window's rectangle at the window's size, following it) and answers its node and where it sits; a session with no approval is refused, and so is one whose output, View or window is not there (`no-output`, `no-view`, `no-window`) |
 //! | Screen cast, end | `cast.end {session}` | ends the stream |
 //!
 //! Every member is the owner's ([`super::server`]'s one owner predicate): the portal is
@@ -45,7 +45,7 @@ use std::collections::BTreeMap;
 use gnoblin_capture::{SessionId, Target};
 use gnoblin_client::wire::{self, CastSource, CastStream as WireCast};
 use gnoblin_input_eis::{Caps, Region};
-use gnoblin_types::{ClientId, NodeId, OutputId};
+use gnoblin_types::{ClientId, NodeId, OutputId, WindowId};
 use gnoblin_wayland::{CastRefusal, ControlHandle, SessionSnapshot};
 
 use crate::eis::{EisGate, SessionError};
@@ -222,7 +222,9 @@ impl Consent {
 
     /// `cast.grant`: the user approved a cast of `source` for `session`. An output of
     /// [`wire::OUTPUT_FIRST`] names none, and the cast takes the first output when it starts. A View is named by its
-    /// node id, and is only checked when the stream starts: a View that is not there then is refused `no-view`.
+    /// node id, and a window by its identity; both are only checked when the stream starts: one that is not there then
+    /// is refused `no-view` or `no-window`. That the user was asked about a window is the caller's check
+    /// ([`super::portal::PortalService::take_window_consent`]), made before this table hears of it.
     pub(crate) fn cast_grant(&mut self, holder: ClientId, session: &str, source: CastSource) -> Result<(), Refusal> {
         if self.cast.contains_key(session) {
             return Err(Refusal::taken(session));
@@ -245,6 +247,7 @@ impl Consent {
             CastSource::Output(output) if output != wire::OUTPUT_FIRST => Some(Target::Output(OutputId::new(output))),
             CastSource::Output(_) => snapshot.outputs().first().copied().map(Target::Output),
             CastSource::View(view) => Some(Target::View(NodeId::new(view))),
+            CastSource::Window(window) => Some(Target::Window(WindowId::new(window))),
         }
     }
 
@@ -290,7 +293,11 @@ impl Consent {
                         wire::code::CAPTURE_NO_VIEW,
                         format!("the approved View {} is not in the scene", view.get()),
                     ),
-                    Target::Output(_) | Target::Window(_) => Refusal::new(
+                    Target::Window(window) => Refusal::new(
+                        wire::code::CAPTURE_NO_WINDOW,
+                        format!("the approved window {} is not shown", window.get()),
+                    ),
+                    Target::Output(_) => Refusal::new(
                         wire::code::CAPTURE_NO_OUTPUT,
                         format!("the approved target {target} is not there"),
                     ),
@@ -310,6 +317,8 @@ impl Consent {
             node: stream.node,
             x: stream.origin.x,
             y: stream.origin.y,
+            layout_width: stream.extent.width,
+            layout_height: stream.extent.height,
             width: stream.size.width,
             height: stream.size.height,
         };
@@ -452,5 +461,13 @@ mod tests {
             Consent::target_of(CastSource::View(view), &SessionSnapshot::default()),
             Some(Target::View(NodeId::new(view)))
         );
+    }
+
+    #[test]
+    fn a_cast_grant_that_names_a_window_is_a_window_target_and_never_an_output_or_a_view() {
+        let target = Consent::target_of(CastSource::Window(5), &SessionSnapshot::default());
+        assert_eq!(target, Some(Target::Window(WindowId::new(5))));
+        assert_ne!(target, Some(Target::Output(OutputId::new(5))));
+        assert_ne!(target, Some(Target::View(NodeId::new(5))));
     }
 }

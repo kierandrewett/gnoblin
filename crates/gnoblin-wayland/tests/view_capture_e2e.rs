@@ -30,7 +30,9 @@ use gnoblin_render::Scene;
 use gnoblin_render::transaction::{ClassInfo, Code, PropertyInfo, TreeOp, TreeTransaction, TreeValue, ValueType};
 use gnoblin_secret::SecretText;
 use gnoblin_types::{NodeId, Rect};
-use gnoblin_wayland::{ClientRole, Clock, ManualClock, Observer, SessionSnapshot, TreeAnswer, TreeHooks, TreeQueue};
+use gnoblin_wayland::{
+    ClientRole, Clock, ManualClock, Observer, SessionSnapshot, TreeAnswer, TreeHooks, TreeQueue, WindowChange,
+};
 use owned::protocols::gnoblin_view_source_v1::ext_image_capture_source_v1::ExtImageCaptureSourceV1;
 use owned::protocols::gnoblin_view_source_v1::gnoblin_view_source_manager_v1::GnoblinViewSourceManagerV1;
 use owned::{Bare, Connected, Extras, Handle, Session, TIMEOUT};
@@ -467,7 +469,6 @@ impl Pixels {
 struct Window {
     surface: wl_surface::WlSurface,
     /// The toplevel's objects and its buffers, kept so the client's pools outlive the window.
-    #[allow(dead_code)]
     objects: (xdg_surface::XdgSurface, xdg_toplevel::XdgToplevel),
     buffers: Vec<Pixels>,
 }
@@ -512,6 +513,24 @@ impl Window {
         self.surface.damage(0, 0, SIDE as i32, SIDE as i32);
         self.surface.commit();
         self.buffers.push(pixels);
+        client.roundtrip();
+    }
+
+    /// Commits a new buffer of `width` by `height` pixels of `colour`: the client resizes its own window.
+    fn paint_sized(&mut self, client: &mut Connected<App>, width: u32, height: u32, colour: u32) {
+        let pixels = Pixels::solid(&client.shm, &client.qh, width, height, wl_shm::Format::Argb8888, colour);
+        self.surface.attach(Some(&pixels.buffer), 0, 0);
+        self.surface.damage(0, 0, width as i32, height as i32);
+        self.surface.commit();
+        self.buffers.push(pixels);
+        client.roundtrip();
+    }
+
+    /// Destroys the window's objects, as a client that closes its window does.
+    fn close(self, client: &mut Connected<App>) {
+        self.objects.1.destroy();
+        self.objects.0.destroy();
+        self.surface.destroy();
         client.roundtrip();
     }
 }
@@ -2975,4 +2994,388 @@ fn no_buffer_queued_before_the_lock_is_delivered_after_it_on_a_real_cast() {
             });
         }
     }
+}
+
+// A window as a PipeWire cast source. The portal's half is the IPC (`cast.grant` of a window the user was asked
+// about, then `cast.start`); what the compositor does at `cast.start` is `ControlHandle::start_cast`, called here as
+// the IPC server calls it. A real client maps the window, a private PipeWire daemon carries the stream, and a consumer
+// linked to the node receives the frames, so what is asserted is the pixels and the geometry an app would receive.
+
+/// What the session published last: the windows with their identity, frame and whether they are mapped, and how many
+/// capture sessions are open (the privacy indicator's count).
+#[derive(Debug, Default)]
+struct Watch {
+    windows: Mutex<Vec<(gnoblin_types::WindowId, Rect, bool)>>,
+    sessions: Mutex<usize>,
+}
+
+impl Observer for Watch {
+    fn published(&self, snapshot: &SessionSnapshot) {
+        *self.windows.lock().expect("the watch lock") = snapshot
+            .windows()
+            .map(|window| (window.id, window.geometry, window.mapped))
+            .collect();
+        *self.sessions.lock().expect("the watch lock") = snapshot.capture_sessions();
+    }
+}
+
+impl Watch {
+    /// The one mapped window, once the session has published it.
+    #[track_caller]
+    fn mapped(&self) -> (gnoblin_types::WindowId, Rect) {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            if let Some((id, frame, _)) = self
+                .windows
+                .lock()
+                .expect("the watch lock")
+                .iter()
+                .find(|(_, _, mapped)| *mapped)
+            {
+                return (*id, *frame);
+            }
+            assert!(Instant::now() < deadline, "the session never published a mapped window");
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    /// The frame of `window` as the session last published it.
+    fn frame_of(&self, window: gnoblin_types::WindowId) -> Option<Rect> {
+        self.windows
+            .lock()
+            .expect("the watch lock")
+            .iter()
+            .find(|(id, _, _)| *id == window)
+            .map(|(_, frame, _)| *frame)
+    }
+
+    /// Waits until the last publish counted `count` capture sessions.
+    #[track_caller]
+    fn wait_for_sessions(&self, count: usize) {
+        let deadline = Instant::now() + TIMEOUT;
+        while Instant::now() < deadline {
+            if *self.sessions.lock().expect("the watch lock") == count {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        panic!("the indicator never showed {count} capture sessions");
+    }
+
+    /// Waits until `window` is published with a frame that satisfies `accept`, and answers it.
+    #[track_caller]
+    fn wait_for_frame_of(&self, window: gnoblin_types::WindowId, accept: impl Fn(Rect) -> bool) -> Rect {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            if let Some(frame) = self.frame_of(window).filter(|frame| accept(*frame)) {
+                return frame;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the window never had the frame the test waits for, last {:?}",
+                self.frame_of(window)
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+
+/// A session on the renderer named whose casts go to `daemon`, with a [`Watch`] on what it publishes. `None` (with the
+/// reason printed) for GLES on a machine that has no surfaceless EGL context.
+fn start_watching(gles: bool, daemon: &Daemon, lock_check: bool) -> Option<(Session, Owner, Arc<Watch>)> {
+    use gnoblin_backend::render::renderer::{AnyRenderer, RendererKind};
+    if gles && let Err(error) = AnyRenderer::new(RendererKind::Gles, gnoblin_types::Size::new(8, 8)) {
+        println!("skipping the GPU half of the case: {error} (no surfaceless EGL context on this machine)");
+        return None;
+    }
+    let watch = Arc::new(Watch::default());
+    let (hooks, answers) = hooks();
+    let owner = owner_of(&hooks, answers);
+    let extras = Extras {
+        observer: Some(watch.clone()),
+        gles,
+        pipewire_socket: Some(daemon.socket()),
+        lock_check: lock_check.then(|| gnoblin_wayland::LockCheck {
+            authenticator: Arc::new(gnoblin_lock_auth::FakeAuthenticator::new().accept(USER, PASSWORD)),
+            user: Some(USER.to_owned()),
+        }),
+        ..Extras::default()
+    };
+    Some((Session::start_with_extras(None, hooks, extras), owner, watch))
+}
+
+/// Starts the cast of `window` as the portal does after the user said yes, and answers the stream.
+#[track_caller]
+fn cast_window(handle: &Handle, window: gnoblin_types::WindowId) -> gnoblin_wayland::CastStream {
+    handle
+        .control
+        .start_cast(PORTAL, gnoblin_capture::Target::Window(window))
+        .expect("the loop answers a stream start")
+        .expect("a shown window is cast")
+}
+
+/// Moves `window` to `(x, y)` the way a control request does, and waits until the session published it there.
+#[track_caller]
+fn move_window(handle: &Handle, watch: &Watch, window: gnoblin_types::WindowId, x: i32, y: i32) {
+    assert!(matches!(
+        handle.control.window_control(window, WindowChange::MoveTo { x, y }),
+        Some(Ok(()))
+    ));
+    watch.wait_for_frame_of(window, |frame| (frame.x, frame.y) == (x, y));
+}
+
+/// A stream of a window is that window's own pixels at the window's size, in the place it is, and its `origin` and
+/// `extent` are the window's frame in the layout: a consumer linked to its node receives the window's gradient, pixel
+/// for pixel, and the privacy indicator is on for as long as the stream runs.
+#[test]
+fn a_cast_of_a_window_delivers_that_windows_own_pixels_and_reports_its_place_and_size() {
+    let daemon = Daemon::start();
+    let (session, _owner, watch) = start_watching(false, &daemon, false).expect("the software renderer");
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let mut window = Window::map(&mut app, SOURCE);
+        window.paint_gradient(&mut app);
+        let (id, frame) = watch.mapped();
+        assert_eq!(
+            (frame.width, frame.height),
+            (SIDE, SIDE),
+            "the window's frame is its buffer, which is what the stream is cut to"
+        );
+
+        let stream = cast_window(handle, id);
+        assert_eq!(
+            (
+                (stream.origin.x, stream.origin.y),
+                (stream.extent.width, stream.extent.height)
+            ),
+            ((frame.x, frame.y), (frame.width, frame.height)),
+            "the stream reports the window's place and extent in the layout"
+        );
+        assert_eq!(
+            (stream.size.width, stream.size.height),
+            (SIDE, SIDE),
+            "at a scale of one the stream's pixels are the layout's"
+        );
+        watch.wait_for_sessions(1);
+
+        let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
+        let received = consumer.wait_for_frame("of the window's gradient", |received| {
+            (received.width, received.height) == (SIDE, SIDE)
+                && received.pixel(0, 0) == Some([0, 0, 0, 0xFF])
+                && received.pixel(SIDE - 1, SIDE - 1) == Some([0, (SIDE - 1) as u8, (SIDE - 1) as u8, 0xFF])
+        });
+        for y in 0..SIDE {
+            for x in 0..SIDE {
+                assert_eq!(
+                    received.pixel(x, y),
+                    Some([0, x as u8, y as u8, 0xFF]),
+                    "pixel ({x}, {y}) is the window's own"
+                );
+            }
+        }
+
+        handle.control.stop_cast(stream.session);
+        assert!(
+            consumer.observer.wait_gone(&node_name(&stream)),
+            "the stream's node leaves the daemon when the cast ends"
+        );
+        watch.wait_for_sessions(0);
+    });
+}
+
+/// A window that is moved is followed: the stream carries the window's pixels at the new place and none of what the
+/// desktop shows where it was, and a stream started after the move reports the new place.
+#[test]
+fn a_cast_of_a_window_follows_the_window_when_it_moves() {
+    let daemon = Daemon::start();
+    let (session, _owner, watch) = start_watching(false, &daemon, false).expect("the software renderer");
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let _window = Window::map(&mut app, SOURCE);
+        let (id, frame) = watch.mapped();
+        let stream = cast_window(handle, id);
+        let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
+        consumer.wait_for_frame("of the window", |received| received.is_solid(rgb(SOURCE)));
+
+        let (x, y) = (frame.x + 120, frame.y + 70);
+        move_window(handle, &watch, id, x, y);
+        consumer.forget();
+        consumer.listen(Duration::from_millis(600));
+        let frames = consumer.frames();
+        assert!(!frames.is_empty(), "the stream keeps delivering frames after the move");
+        assert!(
+            frames.iter().all(|received| received.is_solid(rgb(SOURCE))),
+            "every frame after the move is the window, not a stale cut of the desktop"
+        );
+
+        let again = cast_window(handle, id);
+        assert_eq!(
+            (again.origin.x, again.origin.y),
+            (x, y),
+            "a stream started now is where the window is"
+        );
+        handle.control.stop_cast(again.session);
+    });
+}
+
+/// A window that is resized by its client is followed: the consumer is renegotiated to the new size and receives whole
+/// pictures of the window, and a stream started afterwards reports the new extent.
+#[test]
+fn a_cast_of_a_window_follows_the_size_of_the_window() {
+    let daemon = Daemon::start();
+    let (session, _owner, watch) = start_watching(false, &daemon, false).expect("the software renderer");
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let mut window = Window::map(&mut app, SOURCE);
+        let (id, _) = watch.mapped();
+        let stream = cast_window(handle, id);
+        let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
+        consumer.wait_for_frame("of the window's first size", |received| {
+            received.is_solid(rgb(SOURCE)) && (received.width, received.height) == (SIDE, SIDE)
+        });
+
+        for (width, height) in [(SIDE + 32, SIDE + 16), (SIDE / 2, SIDE / 2)] {
+            window.paint_sized(&mut app, width, height, REPAINTED);
+            watch.wait_for_frame_of(id, |frame| (frame.width, frame.height) == (width, height));
+            let received = consumer.wait_for_frame("of the window's new size", |received| {
+                received.is_solid(rgb(REPAINTED)) && (received.width, received.height) == (width, height)
+            });
+            assert!(received.is_whole(), "the picture is exactly the window's size");
+            let again = cast_window(handle, id);
+            assert_eq!(
+                (again.extent.width, again.extent.height),
+                (width, height),
+                "a stream started now reports the window's new extent"
+            );
+            handle.control.stop_cast(again.session);
+        }
+    });
+}
+
+/// The stream shows a secure window as the session's mask and never as its pixels, from the frame after the mark and for
+/// as long as it stands, on either renderer, and shows the window again once the mark is cleared.
+#[test]
+fn a_cast_of_a_window_never_carries_the_pixels_of_a_secure_window() {
+    for gles in [false, true] {
+        let daemon = Daemon::start();
+        let Some((session, owner, watch)) = start_watching(gles, &daemon, false) else {
+            continue;
+        };
+        session.run(move |handle| {
+            let mut app = Connected::connect(handle.socket(), App::default());
+            let _window = Window::map(&mut app, SOURCE);
+            let (id, _) = watch.mapped();
+            let stream = cast_window(handle, id);
+            let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
+            consumer.wait_for_frame("of the window's colour", |received| received.is_solid(rgb(SOURCE)));
+            let (node, ..) = owner.window();
+
+            mark_secure(&owner, node, true);
+            consumer.wait_for_frame("of the mask", |received| received.count_of(rgb(SOURCE)) == 0);
+            // From the first masked frame on, no frame the stream sends holds a pixel of the window.
+            consumer.forget();
+            consumer.listen(Duration::from_millis(600));
+            let frames = consumer.frames();
+            assert!(
+                !frames.is_empty(),
+                "gles: {gles}: the stream keeps delivering frames while masked"
+            );
+            assert!(
+                frames.iter().all(|received| received.count_of(rgb(SOURCE)) == 0),
+                "gles: {gles}: no frame holds a pixel of the secure window"
+            );
+
+            mark_secure(&owner, node, false);
+            consumer.wait_for_frame("of the window's colour again", |received| {
+                received.is_solid(rgb(SOURCE))
+            });
+        });
+    }
+}
+
+/// The lock ends the stream of a window: its node leaves the daemon, no pixel of the desktop arrives after it, and a
+/// cast started while the desktop is locked is refused, because a user who consented to a cast did not consent to
+/// one of a locked desktop.
+#[test]
+fn the_session_lock_ends_a_cast_of_a_window_and_refuses_a_new_one() {
+    let daemon = Daemon::start();
+    let (session, owner, watch) = start_watching(false, &daemon, false).expect("the software renderer");
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let _window = Window::map(&mut app, SOURCE);
+        let (id, _) = watch.mapped();
+        let stream = cast_window(handle, id);
+        let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
+        consumer.wait_for_frame("of the window's colour", |received| received.is_solid(rgb(SOURCE)));
+        let _ = &owner;
+
+        let _locker = lock(handle.socket());
+        assert!(
+            consumer.observer.wait_gone(&node_name(&stream)),
+            "the lock ends the stream: its node is gone"
+        );
+        consumer.forget();
+        consumer.listen(Duration::from_millis(300));
+        assert!(
+            consumer
+                .frames()
+                .iter()
+                .all(|received| received.count_of(rgb(SOURCE)) == 0),
+            "no frame of the window arrives after the lock"
+        );
+        let refused = handle
+            .control
+            .start_cast(PORTAL, gnoblin_capture::Target::Window(id))
+            .expect("the loop answers");
+        assert_eq!(refused, Err(gnoblin_wayland::CastRefusal::Locked));
+    });
+}
+
+/// A window that is closed ends its stream cleanly: the node leaves the daemon, the indicator goes off, and the window
+/// is no longer a target.
+#[test]
+fn a_cast_of_a_window_ends_cleanly_when_the_window_is_closed() {
+    let daemon = Daemon::start();
+    let (session, _owner, watch) = start_watching(false, &daemon, false).expect("the software renderer");
+    session.run(move |handle| {
+        let mut app = Connected::connect(handle.socket(), App::default());
+        let window = Window::map(&mut app, SOURCE);
+        let (id, _) = watch.mapped();
+        let stream = cast_window(handle, id);
+        let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
+        consumer.wait_for_frame("of the window's colour", |received| received.is_solid(rgb(SOURCE)));
+        watch.wait_for_sessions(1);
+
+        window.close(&mut app);
+        assert!(
+            consumer.observer.wait_gone(&node_name(&stream)),
+            "the node leaves the daemon with the window"
+        );
+        watch.wait_for_sessions(0);
+        let again = handle
+            .control
+            .start_cast(PORTAL, gnoblin_capture::Target::Window(id))
+            .expect("the loop answers");
+        assert_eq!(again, Err(gnoblin_wayland::CastRefusal::NoTarget));
+    });
+}
+
+/// A window that is not there is not a target: the start is refused by name and makes no node.
+#[test]
+fn a_cast_of_a_window_that_is_not_there_is_refused() {
+    let daemon = Daemon::start();
+    let (session, _owner, _watch) = start_watching(false, &daemon, false).expect("the software renderer");
+    session.run(move |handle| {
+        let refused = handle
+            .control
+            .start_cast(
+                PORTAL,
+                gnoblin_capture::Target::Window(gnoblin_types::WindowId::new(9999)),
+            )
+            .expect("the loop answers");
+        assert_eq!(refused, Err(gnoblin_wayland::CastRefusal::NoTarget));
+        let observer = gnoblin_pipewire_export::testing::Observer::connect(&daemon.socket());
+        observer.settle();
+        assert_eq!(observer.node("gnoblin-capture-1"), None, "no node was made");
+    });
 }

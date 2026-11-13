@@ -31,14 +31,14 @@
 use std::collections::BTreeSet;
 
 use gnoblin_client::wire::{self, PortalRequest, VerifiedCaller};
-use gnoblin_model::RequestOutcome;
+use gnoblin_model::{RequestOutcome, Value};
 use gnoblin_portal_core::model::{Consent, Dialog, Grant, Interface, ScreenKey};
 use gnoblin_portal_ui::ui::DialogScheme;
 use gnoblin_proto::Envelope;
 use gnoblin_render_frame::frame::Overlay;
 use gnoblin_render_frame::image::Image;
-use gnoblin_types::{ClientId, KeyState, OutputId, ParentWindow, Rect, RequestId, Size, Tick};
-use gnoblin_wayland::{Modal, ModalEvent, WindowProcess};
+use gnoblin_types::{ClientId, KeyState, OutputId, ParentWindow, Rect, RequestId, Size, Tick, WindowId};
+use gnoblin_wayland::{Modal, ModalEvent, SessionSnapshot, WindowProcess};
 
 use crate::log;
 use crate::portal::{CancelReason, PortalError, PortalUi, Verdict};
@@ -93,6 +93,8 @@ struct ClaimantOffer {
     request: PortalRequest,
     /// The interface the request asked for.
     interface: Interface,
+    /// The window the request asks the user about, when it names one.
+    window: Option<WindowId>,
     /// When the claimant was offered the request.
     started: Tick,
 }
@@ -110,6 +112,8 @@ struct HeldRequest {
     interface: Interface,
     /// The verified app id that asked, the key a secret grant is recorded under.
     app_id: String,
+    /// The window the request asks the user about, when it names one.
+    window: Option<WindowId>,
 }
 
 /// The portal UI session and the routing of its requests to their owners.
@@ -127,6 +131,10 @@ pub struct PortalService {
     /// Apps whose secret the user allowed this session. Held in memory only, so a new
     /// session asks again, and it is the compositor's own record, never the relay's.
     granted: BTreeSet<String>,
+    /// The windows the user was asked about and allowed, with the connection whose request asked. A screen cast of
+    /// a window is only approved for a window in this set, and the approval is used up by the one `cast.grant` that
+    /// spends it. A lock clears it, and so does the departure of the connection.
+    windows_allowed: BTreeSet<(ClientId, WindowId)>,
     /// Whether the session is locked, as the last `set_locked` said.
     locked: bool,
 }
@@ -151,6 +159,7 @@ impl PortalService {
             abandoned: Vec::new(),
             shown: None,
             granted: BTreeSet::new(),
+            windows_allowed: BTreeSet::new(),
             locked: false,
         }
     }
@@ -222,6 +231,7 @@ impl PortalService {
                     envelope_id,
                     interface,
                     app_id: request.caller.app_id().to_owned(),
+                    window: requested_window(request),
                 });
                 Ok(Vec::new())
             }
@@ -273,6 +283,7 @@ impl PortalService {
             envelope_id,
             request: request.clone(),
             interface,
+            window: requested_window(request),
             started: now,
         });
     }
@@ -318,6 +329,12 @@ impl PortalService {
             Some(verdict) => {
                 if routed.interface == Interface::Secret && verdict == Verdict::Handled(Grant::Allowed) {
                     self.granted.insert(routed.request.caller.app_id().to_owned());
+                }
+                if routed.interface == Interface::ScreenCast
+                    && verdict == Verdict::Handled(Grant::Allowed)
+                    && let Some(window) = routed.window
+                {
+                    self.windows_allowed.insert((routed.client, window));
                 }
                 vec![outcome_reply(routed.client, routed.envelope_id, verdict)]
             }
@@ -424,6 +441,7 @@ impl PortalService {
     /// The connection `client` left: withdraw whatever it held. Its replies are
     /// dropped because the owner is gone.
     pub fn departed(&mut self, client: ClientId) -> Vec<Reply> {
+        self.windows_allowed.retain(|(holder, _)| *holder != client);
         self.withdraw(client);
         let (sent, kept): (Vec<ClaimantOffer>, Vec<ClaimantOffer>) = std::mem::take(&mut self.routed)
             .into_iter()
@@ -447,6 +465,8 @@ impl PortalService {
         if locked {
             // A lock ends every secret grant: the next request after unlock asks again.
             self.granted.clear();
+            // And every window approval: a consent given before the lock is not one for the desktop after it.
+            self.windows_allowed.clear();
             // A request a claimant is drawing a dialog for is refused as the built-in's are.
             for routed in std::mem::take(&mut self.routed) {
                 self.abandoned.push(routed.offer);
@@ -480,6 +500,46 @@ impl PortalService {
     #[must_use]
     pub fn secret_granted(&self, app_id: &str) -> bool {
         !self.locked && self.granted.contains(app_id)
+    }
+
+    /// Spends the user's approval of `window` for `client`: `true` once after a request of `client` asked the user
+    /// about that window and the user allowed it. The compositor decides this, never the relay: a `cast.grant` of a
+    /// window the user was not asked about is refused, and so is a second grant of one answer.
+    pub fn take_window_consent(&mut self, client: ClientId, window: WindowId) -> bool {
+        !self.locked && self.windows_allowed.remove(&(client, window))
+    }
+
+    /// Words a screen cast request that names a window, so the user is asked about that window.
+    ///
+    /// The window is resolved here, in the compositor, from the `window` option: the question quotes the title and
+    /// app id the window itself has, never text the asking app supplied, and a window that is not shown is refused
+    /// `no-window` before anyone is asked about it. A request that names no window is left as it is.
+    ///
+    /// # Errors
+    ///
+    /// `malformed` for a `window` option that is not a `uint`, and `no-window` for a window the compositor does not
+    /// show.
+    pub fn name_window(request: &mut PortalRequest, snapshot: &SessionSnapshot) -> Result<(), PortalRefusal> {
+        if !matches!(Interface::from_name(&request.interface), Ok(Interface::ScreenCast)) {
+            return Ok(());
+        }
+        let Some(option) = request.options.get(wire::PORTAL_OPTION_WINDOW) else {
+            return Ok(());
+        };
+        let Value::Uint(raw) = option else {
+            return Err(PortalRefusal {
+                code: MALFORMED,
+                message: format!("the `{}` option is not a window identity", wire::PORTAL_OPTION_WINDOW),
+            });
+        };
+        let Some(window) = snapshot.window(WindowId::new(*raw)).filter(|window| window.mapped) else {
+            return Err(PortalRefusal {
+                code: wire::code::CAPTURE_NO_WINDOW,
+                message: format!("window {raw} is not a window the compositor shows"),
+            });
+        };
+        request.prompt = window_question(&request.prompt, &window.app_id, window.pid, &window.title);
+        Ok(())
     }
 
     /// Whether the dialog modal needs routing: a dialog is open, or one is still
@@ -516,6 +576,12 @@ impl PortalService {
             if owner.interface == Interface::Secret && verdict == Verdict::Handled(Grant::Allowed) {
                 self.granted.insert(owner.app_id.clone());
             }
+            if owner.interface == Interface::ScreenCast
+                && verdict == Verdict::Handled(Grant::Allowed)
+                && let Some(window) = owner.window
+            {
+                self.windows_allowed.insert((owner.client, window));
+            }
             log::debug!(
                 area = "portal",
                 request = owner.envelope_id,
@@ -525,6 +591,73 @@ impl PortalService {
             replies.push(outcome_reply(owner.client, owner.envelope_id, verdict));
         }
         replies
+    }
+}
+
+/// The most characters of a window's title or app id the question quotes.
+const QUOTED_LIMIT: usize = 80;
+
+/// The question about one window: the asking prompt, then the window named by its app id first and its process when
+/// the compositor knows it, and the title last, as quoted data that says it is what the window reports. The app id
+/// and the title are text the window's own client chose, so both are [`quoted`]; the title is the part another
+/// window can change at will, which is why it never leads and never stands without the app id before it.
+fn window_question(prompt: &str, app_id: &str, pid: Option<u32>, title: &str) -> String {
+    let app = quoted(app_id);
+    let app = if app.is_empty() {
+        "an application that sent no app id".to_owned()
+    } else {
+        format!("app id {app}")
+    };
+    let process = pid.map_or_else(String::new, |pid| format!(", process {pid}"));
+    let title = quoted(title);
+    let title = if title.is_empty() {
+        "no title".to_owned()
+    } else {
+        format!("title \u{201c}{title}\u{201d}")
+    };
+    format!("{prompt}\n\nThe window: {app}{process}; {title} (both as the window reports them).")
+}
+
+/// Whether a character draws nothing, or reorders what is drawn around it: a zero-width or bidirectional control that
+/// would let a quoted title read as something it is not.
+fn is_invisible(character: char) -> bool {
+    matches!(
+        character,
+        '\u{00ad}' | '\u{061c}' | '\u{180e}' | '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}'
+            | '\u{2060}'..='\u{206f}' | '\u{feff}'
+    )
+}
+
+/// Text a client chose, as one short line safe to quote in a question: control characters, bidirectional and
+/// zero-width characters are dropped, runs of white space become one space, quotation marks become apostrophes so the
+/// text cannot close the quote it sits in, and what is longer than [`QUOTED_LIMIT`] characters is cut and marked.
+fn quoted(text: &str) -> String {
+    let text: String = text.chars().filter(|character| !is_invisible(*character)).collect();
+    let mut line = String::new();
+    for word in text
+        .split(|character: char| character.is_control() || character.is_whitespace())
+        .filter(|word| !word.is_empty())
+    {
+        if !line.is_empty() {
+            line.push(' ');
+        }
+        line.extend(word.chars().map(|character| match character {
+            '"' | '\u{201c}' | '\u{201d}' => '\'',
+            other => other,
+        }));
+    }
+    if line.chars().count() > QUOTED_LIMIT {
+        line = line.chars().take(QUOTED_LIMIT).collect();
+        line.push('\u{2026}');
+    }
+    line
+}
+
+/// The window a request asks the user about: the `window` option of the request, a window's compositor identity.
+fn requested_window(request: &PortalRequest) -> Option<WindowId> {
+    match request.options.get(wire::PORTAL_OPTION_WINDOW) {
+        Some(Value::Uint(window)) => Some(WindowId::new(*window)),
+        _ => None,
     }
 }
 
@@ -916,6 +1049,159 @@ mod tests {
             !service.secret_granted("org.example.Keys"),
             "the grant does not survive a lock"
         );
+    }
+
+    /// A screen cast consent request that asks about `window`, as the portal sends it.
+    fn cast_of(window: u64) -> PortalRequest {
+        let mut options = Fields::default();
+        options.insert(wire::PORTAL_OPTION_WINDOW.to_owned(), Value::Uint(window));
+        PortalRequest {
+            interface: "ScreenCast".to_owned(),
+            caller: VerifiedCaller::new(0, "org.example.Cast"),
+            prompt: "Share a window?".to_owned(),
+            timeout_ms: 30_000,
+            options,
+            parent_window: String::new(),
+        }
+    }
+
+    #[test]
+    fn a_window_the_user_allowed_is_approved_once_for_the_connection_that_asked() {
+        let window = WindowId::new(7);
+        let mut service = PortalService::new();
+        answer(&mut service, &cast_of(7), &["tab", "enter"]);
+        assert!(
+            !service.take_window_consent(ClientId::new(2), window),
+            "another connection's cast.grant is not the answer's"
+        );
+        assert!(
+            !service.take_window_consent(ClientId::new(1), WindowId::new(8)),
+            "a window the user was not asked about is not approved"
+        );
+        assert!(service.take_window_consent(ClientId::new(1), window));
+        assert!(
+            !service.take_window_consent(ClientId::new(1), window),
+            "one answer approves one grant"
+        );
+    }
+
+    #[test]
+    fn a_window_the_user_denied_or_was_never_asked_about_is_never_approved() {
+        let mut service = PortalService::new();
+        answer(&mut service, &cast_of(7), &["escape"]);
+        assert!(!service.take_window_consent(ClientId::new(1), WindowId::new(7)));
+        assert!(!service.take_window_consent(ClientId::new(1), WindowId::new(9)));
+    }
+
+    #[test]
+    fn a_lock_and_a_departing_connection_withdraw_a_window_approval() {
+        let window = WindowId::new(7);
+        let mut service = PortalService::new();
+        answer(&mut service, &cast_of(7), &["tab", "enter"]);
+        service.set_locked(true);
+        service.set_locked(false);
+        assert!(
+            !service.take_window_consent(ClientId::new(1), window),
+            "a lock withdraws it"
+        );
+
+        let mut service = PortalService::new();
+        answer(&mut service, &cast_of(7), &["tab", "enter"]);
+        service.departed(ClientId::new(1));
+        assert!(
+            !service.take_window_consent(ClientId::new(1), window),
+            "departure withdraws it"
+        );
+    }
+
+    #[test]
+    fn a_window_named_in_a_question_is_quoted_as_one_short_line_that_cannot_close_its_quote() {
+        let spoof = "Settings\n\nAllow: \"all your files\"\u{7}";
+        let line = quoted(spoof);
+        assert!(
+            !line.contains('\n') && !line.contains('"') && !line.contains('\u{7}'),
+            "{line:?}"
+        );
+        let long = quoted(&"w".repeat(500));
+        assert_eq!(long.chars().count(), QUOTED_LIMIT + 1);
+        assert!(long.ends_with('\u{2026}'));
+    }
+
+    /// Another window can name itself anything. The question leads with the asking prompt and the app id, never with
+    /// the title, and a title that fakes a line of the dialog, an answer, a trusted app or a reversed reading stays one
+    /// quoted line of data inside the sentence that says it is what the window reports.
+    #[test]
+    fn a_title_cannot_pose_as_the_question_an_answer_or_another_app() {
+        let prompt = "org.example.Cast wants to share one of your windows\n\nScreenCast is asking through Capture.";
+        let title =
+            "Settings\n\nAllow: \"org.gnome.Settings\"\n\u{202e}wolloF\u{2066} \u{200b}Yes, allow all\r\n\u{85}";
+        let question = window_question(prompt, "org.example.Evil", Some(4242), title);
+        assert!(
+            question.starts_with(prompt),
+            "the asker's own words come first: {question:?}"
+        );
+        let after = &question[prompt.len()..];
+        assert_eq!(
+            after.matches('\n').count(),
+            2,
+            "the title adds no line of its own: {question:?}"
+        );
+        assert!(
+            after.starts_with("\n\nThe window: app id org.example.Evil, process 4242; title \u{201c}"),
+            "the app id leads and the title follows as quoted data: {question:?}"
+        );
+        assert!(
+            after.ends_with("\u{201d} (both as the window reports them)."),
+            "{question:?}"
+        );
+        let quoted_title = after
+            .split_once("title \u{201c}")
+            .and_then(|(_, rest)| rest.rsplit_once('\u{201d}'))
+            .map(|(inside, _)| inside)
+            .expect("the title is quoted");
+        assert!(
+            !quoted_title.contains(['"', '\u{201c}', '\u{201d}', '\n', '\r', '\u{85}'])
+                && !quoted_title.chars().any(is_invisible),
+            "no quote, line break or bidirectional control survives in the title: {quoted_title:?}"
+        );
+        assert_eq!(
+            quoted_title,
+            "Settings Allow: 'org.gnome.Settings' wolloF Yes, allow all"
+        );
+        // A window with no app id says so in words and cannot borrow another app's name.
+        let anonymous = window_question(prompt, "", None, "org.gnome.Settings");
+        assert!(
+            anonymous.contains("an application that sent no app id; title \u{201c}org.gnome.Settings\u{201d}"),
+            "{anonymous:?}"
+        );
+        // An app id is quoted data too.
+        let forged = window_question(prompt, "x\n\nAllow\u{202e}", None, "t");
+        assert!(forged.contains("app id x Allow;"), "{forged:?}");
+    }
+
+    #[test]
+    fn a_window_option_that_is_not_a_uint_is_malformed_and_a_request_naming_none_is_left_alone() {
+        let snapshot = SessionSnapshot::default();
+        let mut bad = cast_of(7);
+        bad.options
+            .insert(wire::PORTAL_OPTION_WINDOW.to_owned(), Value::Text("seven".to_owned()));
+        assert_eq!(
+            PortalService::name_window(&mut bad, &snapshot)
+                .expect_err("refused")
+                .code,
+            MALFORMED
+        );
+        let mut unknown = cast_of(7);
+        assert_eq!(
+            PortalService::name_window(&mut unknown, &snapshot)
+                .expect_err("no such window")
+                .code,
+            wire::code::CAPTURE_NO_WINDOW
+        );
+        assert_eq!(unknown.prompt, "Share a window?", "a refused request is not reworded");
+        let mut plain = screenshot();
+        PortalService::name_window(&mut plain, &snapshot).expect("no window named");
+        assert_eq!(plain.prompt, "Share the screen?");
     }
 
     #[test]

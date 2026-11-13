@@ -52,13 +52,25 @@ it by name after consent.
 
 PickColor is refused. The compositor does not expose colour sampling.
 
-ScreenCast shares an output (`types` 1) or a View (`types` 4, "virtual monitor"):
+ScreenCast shares an output (`types` 1), a View (`types` 4, "virtual monitor") or one window (`types` 2):
 
-- The portal API cannot name a scene node, so a View is named by the `view` option of `SelectSources`, a `t` holding
-  its node id. The shell that made the View knows it.
+- The portal API cannot name a scene node or a window, so Gnoblin has two keys of its own in `SelectSources`.
+    - `view`: a `t` holding the View's node id.
+    - `window`: a `t` holding the `id` of the window's `window` object, which `gnoblinctl window list` prints.
+- A selection that asks for windows only and names none, or names both a View and a window, is refused at
+  `SelectSources` (`InvalidArgs`), before the user is asked.
 - The user is asked as for any share, the privacy indicator is on while it runs, and a lock ends it.
-- Only a caller the frontend says is not sandboxed may share a View.
-- Window shares (`types` 2) are advertised but not served.
+- A window share asks about that window every time. The question names the window by its app id and process first,
+  then its title as quoted text, both as the window reports them: another window can pick any title, so read the app
+  id. An earlier yes for the app, or for another window, is never reused. The compositor refuses the share (`no-consent`)
+  unless it saw you allow that very window, and refuses the question (`no-window`) for a window it does not show.
+- A window stream is the window's rectangle of the screen at the window's size, so it follows the window when it is
+  moved or resized, and another window on top of it shows in the overlap. A secure window is the secure treatment and
+  never its pixels. The stream ends when the window closes or the session locks.
+- The `Start` reply carries `source_type` (`u`), `position` and `size` (`(ii)`, layout pixels) for an output or a
+  window; a View has `size` only. `position` is where the window was when the stream started: a later move shows in
+  the stream's pixels and in a new share, not in the property, because the portal has no way to update it.
+- Only a caller the frontend says is not sandboxed may share a View or a window.
 
 See [Views](../../shell-api/views.md#casting-a-view).
 

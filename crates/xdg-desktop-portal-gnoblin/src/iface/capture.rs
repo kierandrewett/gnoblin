@@ -22,7 +22,7 @@
 //! question has no node to return. A compositor with no PipeWire daemon refuses, and the stream
 //! list is never fabricated.
 //!
-//! # Sources: monitors and Views
+//! # Sources: monitors, Views and windows
 //!
 //! `SelectSources` `types` is the portal's: [`SOURCE_MONITOR`] shares an output (the one the `output` option names,
 //! or the first), and [`SOURCE_VIRTUAL`] shares a **View**, a scene node that draws a subtree of the desktop (the
@@ -31,7 +31,17 @@
 //! virtual source with no `view` is refused at `SelectSources`, before the user is asked. The consent dialog,
 //! the privacy indicator, the audit log and the lock rule are the ones a monitor share has: the user is asked, a
 //! stream is a visible session while it runs, and a lock ends it. Secure windows inside the View are masked in
-//! the stream as in every other capture. [`SOURCE_WINDOW`] is advertised but not served.
+//! the stream as in every other capture.
+//!
+//! [`SOURCE_WINDOW`] shares **one window**, named by the compositor's identity for it in this backend's own
+//! [`OPTION_WINDOW`] option (a `t`, the `id` of the `window` object). A selection that asks for windows only and
+//! names none is refused at `SelectSources`, and so is one that names a window and a View. The user is asked about
+//! that window every time: the question carries the window, the compositor words it with the window's own title and
+//! app id, and an earlier answer for the app or for another window is never reused. The compositor refuses the
+//! share unless it recorded that the user was asked about and allowed that very window. The stream is the window's
+//! rectangle at the window's size, follows the window when it is moved or resized, shows a secure window as the
+//! session's treatment and not as its pixels, and ends with the window or the lock. Its `position` and `size`
+//! properties are the window's place and extent, a monitor's are the output's, and a View has a `size` only.
 //!
 //! # The narrower option set
 //!
@@ -43,13 +53,13 @@
 use std::collections::BTreeMap;
 
 use gnoblin_capture::Target;
-use gnoblin_types::{NodeId, OutputId};
+use gnoblin_types::{NodeId, OutputId, WindowId};
 use zbus::OwnedVariant;
 use zbus::message::Header;
 use zbus::{Connection, ObjectPath, fdo};
 
-use super::{Portal, Reply, await_consent, export_request, refused, remove, sender, unsupported, variant};
-use crate::backends::{ScreenshotError, ScreenshotOptions, StreamRequest};
+use super::{Portal, Reply, await_consent, export_request, refused, remove, sender, unsupported};
+use crate::backends::{ScreenshotError, ScreenshotOptions, StreamProperty, StreamRequest};
 use crate::consent::{ConsentOutcome, Interface, NewSession, PortalCapability};
 
 use crate::log;
@@ -66,6 +76,10 @@ pub const SOURCE_VIRTUAL: u32 = 4;
 /// node id. It is this backend's own key, because the portal API has no way to name a node, and the frontend passes
 /// unknown options through; an app that does not know a View's node id has no View to name.
 pub const OPTION_VIEW: &str = "view";
+/// The `SelectSources` option that names the window a [`SOURCE_WINDOW`] source is: a `t` (or `u`) holding the
+/// window's compositor identity, the `id` of its `window` object. It is this backend's own key, because the portal
+/// API has no way to name a window without its picker.
+pub const OPTION_WINDOW: &str = gnoblin_client::wire::PORTAL_OPTION_WINDOW;
 /// `cursor_mode` bit: the cursor is not in the frames.
 pub const CURSOR_HIDDEN: u32 = 1;
 /// `cursor_mode` bit: the cursor is drawn into the frames.
@@ -338,16 +352,11 @@ impl ScreenCast {
                 .ok_or_else(|| refused(crate::consent::Refusal::UnknownSession { path: path.clone() }))?
                 .clone();
             let selection = narrow(session.owner.narrowed(), &options);
-            // A virtual source is a View, and a View is named by the caller: the portal's `SelectSources` has no
-            // other way to say which one. A selection that asks for one and names none is refused here, before the
-            // user is asked about a share that could not be made.
-            if recorded_uint(&selection, "types").is_some_and(|types| types & SOURCE_VIRTUAL != 0)
-                && !selection.contains_key(OPTION_VIEW)
-            {
-                return Err(fdo::Error::InvalidArgs(format!(
-                    "a VIRTUAL source is a View, and the selection names none: add the `{OPTION_VIEW}` option (a \
-                     uint64 node id)"
-                )));
+            // A virtual source is a View and a window source is one window, and both are named by the caller: the
+            // portal's `SelectSources` has no other way to say which one. A selection that asks for one and names
+            // none is refused here, before the user is asked about a share that could not be made.
+            if let Some(problem) = unnamed_source(&selection) {
+                return Err(fdo::Error::InvalidArgs(problem));
             }
             shared
                 .guard
@@ -396,12 +405,11 @@ impl ScreenCast {
                         .ok_or_else(|| refused(crate::consent::Refusal::UnknownSession { path: path.clone() }))?;
                     StreamRequest {
                         session: path.clone(),
-                        // The picker is the provider's, and this backend's prompt answers
-                        // allow/deny, so the target is what the selection named: a View when it
-                        // asked for a virtual source and gave the View's node id, else the output
-                        // it named or the first one. A window selection would need the picker's
-                        // answer to carry an identity, which the request layer's answer does not:
-                        // stated here rather than guessed at from a monitor number.
+                        // The picker is the provider's, and this backend's prompt answers allow/deny, so the
+                        // target is what the selection named: a View when it asked for a virtual source and gave
+                        // the View's node id, the window when it asked for a window source and named one (and the
+                        // user was asked about that window, see `Guard::ask`), else the output it named or the
+                        // first one.
                         target: cast_target(&session.options),
                         cursor_mode: recorded_uint(&session.options, "cursor_mode").unwrap_or(CURSOR_EMBEDDED),
                         multiple: recorded_flag(&session.options, "multiple"),
@@ -503,6 +511,13 @@ pub fn narrow(narrowed: bool, options: &Options) -> BTreeMap<String, gnoblin_mod
     {
         selection.insert(OPTION_VIEW.to_owned(), gnoblin_model::Value::Uint(view));
     }
+    // The window a window source is, recorded only when the caller may have one at all. Naming a window is what
+    // makes the share a window's: the consent question and the stream are about this one window.
+    if requested_types & allowed_types & SOURCE_WINDOW != 0
+        && let Some(window) = wide_uint(options, OPTION_WINDOW)
+    {
+        selection.insert(OPTION_WINDOW.to_owned(), gnoblin_model::Value::Uint(window));
+    }
     // A persist mode needs a permission store, and this backend keeps none: the answer is
     // always "do not persist", which is what the results report rather than what was
     // asked for.
@@ -541,16 +556,53 @@ pub(crate) fn wide_uint(options: &Options, name: &str) -> Option<u64> {
     i64::try_from(value).ok().and_then(|raw| u64::try_from(raw).ok())
 }
 
-/// What a recorded selection casts: the View it named when it asked for a virtual source, else the output it named,
-/// else the first one.
+/// What a recorded selection casts: the View it named when it asked for a virtual source, else the window it named
+/// when it asked for a window source, else the output it named, else the first one.
 pub(crate) fn cast_target(selection: &BTreeMap<String, gnoblin_model::Value>) -> Target {
-    let virtual_source = recorded_uint(selection, "types").is_some_and(|types| types & SOURCE_VIRTUAL != 0);
-    if virtual_source && let Some(gnoblin_model::Value::Uint(view)) = selection.get(OPTION_VIEW) {
+    let types = recorded_uint(selection, "types").unwrap_or(0);
+    if types & SOURCE_VIRTUAL != 0
+        && let Some(gnoblin_model::Value::Uint(view)) = selection.get(OPTION_VIEW)
+    {
         return Target::View(NodeId::new(*view));
+    }
+    if types & SOURCE_WINDOW != 0
+        && let Some(gnoblin_model::Value::Uint(window)) = selection.get(OPTION_WINDOW)
+    {
+        return Target::Window(WindowId::new(*window));
     }
     Target::Output(OutputId::new(
         recorded_uint(selection, "output").map_or(gnoblin_client::wire::OUTPUT_FIRST, u64::from),
     ))
+}
+
+/// Why a recorded selection names no source the compositor could stream, if it does not.
+///
+/// A virtual source is a View and a window source is one window, and neither has a default: a selection that asks
+/// for one and names none, or that names a View and a window both, is refused before the user is asked.
+pub(crate) fn unnamed_source(selection: &BTreeMap<String, gnoblin_model::Value>) -> Option<String> {
+    let types = recorded_uint(selection, "types").unwrap_or(0);
+    let view = selection.contains_key(OPTION_VIEW);
+    let window = selection.contains_key(OPTION_WINDOW);
+    if types & SOURCE_VIRTUAL != 0 && !view {
+        return Some(format!(
+            "a VIRTUAL source is a View, and the selection names none: add the `{OPTION_VIEW}` option (a uint64 \
+             node id)"
+        ));
+    }
+    // A window source next to a monitor or a View is the app's own choice among sources, and what is cast is then
+    // the monitor, or the View it named; only a selection that can be nothing but a window needs the window named.
+    if types & SOURCE_WINDOW != 0 && types & (SOURCE_MONITOR | SOURCE_VIRTUAL) == 0 && !window {
+        return Some(format!(
+            "a WINDOW source is one window, and the selection names none: add the `{OPTION_WINDOW}` option (a \
+             uint64 window identity)"
+        ));
+    }
+    if view && window {
+        return Some(format!(
+            "the selection names both a View (`{OPTION_VIEW}`) and a window (`{OPTION_WINDOW}`): name one source"
+        ));
+    }
+    None
 }
 
 /// One unsigned value from a recorded selection, narrowed to the width the interface uses.
@@ -580,15 +632,19 @@ fn color(red: f64, green: f64, blue: f64) -> OwnedVariant {
     OwnedVariant::try_from(zbus::Variant::Structure(structure)).expect("three doubles are a value")
 }
 
-/// One stream's properties, as the dictionary the frontend forwards.
-fn properties(properties: &BTreeMap<String, gnoblin_model::Value>) -> BTreeMap<String, OwnedVariant> {
-    let mut out = BTreeMap::new();
-    for (name, value) in properties {
-        if let Some(value) = variant(value) {
-            out.insert(name.clone(), value);
-        }
-    }
-    out
+/// One stream's properties, as the dictionary the frontend forwards: `source_type` is a `u`, and `position` and
+/// `size` are `(ii)` pairs, the types the interface declares for them.
+pub(crate) fn properties(properties: &BTreeMap<String, StreamProperty>) -> BTreeMap<String, OwnedVariant> {
+    properties
+        .iter()
+        .filter_map(|(name, property)| {
+            let value = match *property {
+                StreamProperty::Uint(raw) => zbus::Variant::from(raw),
+                StreamProperty::Pair(first, second) => zbus::Variant::Structure(zbus::Structure::from((first, second))),
+            };
+            OwnedVariant::try_from(value).ok().map(|value| (name.clone(), value))
+        })
+        .collect()
 }
 
 /// The `streams` result: `a(ua{sv})`.
@@ -694,5 +750,102 @@ mod tests {
             ]),
         );
         assert_eq!(cast_target(&selection), Target::View(NodeId::new(0x102)));
+    }
+
+    /// A window's compositor identity.
+    const WINDOW: u64 = 0x2_0000_0007;
+
+    #[test]
+    fn a_window_source_that_names_a_window_is_recorded_and_casts_that_window() {
+        let selection = narrow(
+            false,
+            &options(&[
+                ("types", zbus::Variant::from(SOURCE_WINDOW)),
+                (OPTION_WINDOW, zbus::Variant::from(WINDOW)),
+            ]),
+        );
+        assert_eq!(recorded_uint(&selection, "types"), Some(SOURCE_WINDOW));
+        assert_eq!(selection.get(OPTION_WINDOW), Some(&gnoblin_model::Value::Uint(WINDOW)));
+        assert_eq!(cast_target(&selection), Target::Window(WindowId::new(WINDOW)));
+        assert_eq!(unnamed_source(&selection), None);
+    }
+
+    #[test]
+    fn a_window_source_that_names_no_window_is_refused_before_anyone_is_asked() {
+        let selection = narrow(false, &options(&[("types", zbus::Variant::from(SOURCE_WINDOW))]));
+        let problem = unnamed_source(&selection).expect("a window-only selection must name its window");
+        assert!(problem.contains(OPTION_WINDOW), "{problem}");
+        // The app that is content with a monitor too gets the monitor, as before.
+        let either = narrow(
+            false,
+            &options(&[("types", zbus::Variant::from(SOURCE_MONITOR | SOURCE_WINDOW))]),
+        );
+        assert_eq!(unnamed_source(&either), None);
+        assert!(matches!(cast_target(&either), Target::Output(_)));
+    }
+
+    #[test]
+    fn a_selection_naming_a_view_and_a_window_is_refused() {
+        let selection = narrow(
+            false,
+            &options(&[
+                ("types", zbus::Variant::from(SOURCE_VIRTUAL | SOURCE_WINDOW)),
+                (OPTION_VIEW, zbus::Variant::from(VIEW)),
+                (OPTION_WINDOW, zbus::Variant::from(WINDOW)),
+            ]),
+        );
+        assert!(unnamed_source(&selection).is_some_and(|problem| problem.contains("name one source")));
+    }
+
+    #[test]
+    fn a_window_is_only_recorded_for_a_window_source_and_never_for_a_sandboxed_caller() {
+        let monitor = narrow(
+            false,
+            &options(&[
+                ("types", zbus::Variant::from(SOURCE_MONITOR)),
+                (OPTION_WINDOW, zbus::Variant::from(WINDOW)),
+            ]),
+        );
+        assert!(
+            !monitor.contains_key(OPTION_WINDOW),
+            "a monitor share records no window, so nobody is asked about one"
+        );
+        let sandboxed = narrow(
+            true,
+            &options(&[
+                ("types", zbus::Variant::from(SOURCE_WINDOW)),
+                (OPTION_WINDOW, zbus::Variant::from(WINDOW)),
+            ]),
+        );
+        assert!(
+            !sandboxed.contains_key(OPTION_WINDOW),
+            "a sandboxed caller may not share another app's window"
+        );
+        assert!(matches!(cast_target(&sandboxed), Target::Output(_)));
+    }
+
+    /// The interface declares `source_type` a `u`, and `position` and `size` `(ii)`: the encoder gives exactly
+    /// those, not a `t` and not a list.
+    #[test]
+    fn stream_properties_carry_the_types_the_interface_declares() {
+        let mut stream = BTreeMap::new();
+        stream.insert("source_type".to_owned(), StreamProperty::Uint(SOURCE_WINDOW));
+        stream.insert("position".to_owned(), StreamProperty::Pair(-40, 8));
+        stream.insert("size".to_owned(), StreamProperty::Pair(640, 480));
+        let encoded = properties(&stream);
+        assert_eq!(encoded["source_type"].value_signature().to_string(), "u");
+        assert_eq!(u32::try_from(&encoded["source_type"]).ok(), Some(SOURCE_WINDOW));
+        for (name, want) in [("position", (-40_i32, 8_i32)), ("size", (640, 480))] {
+            assert_eq!(encoded[name].value_signature().to_string(), "(ii)", "{name}");
+            let zbus::Variant::Structure(pair) = &*encoded[name] else {
+                panic!("{name} is a structure");
+            };
+            let fields: Vec<i32> = pair
+                .fields()
+                .iter()
+                .map(|field| i32::try_from(field).expect("an i32"))
+                .collect();
+            assert_eq!(fields, [want.0, want.1], "{name}");
+        }
     }
 }

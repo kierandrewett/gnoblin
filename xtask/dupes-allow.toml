@@ -1410,16 +1410,10 @@ kind = "same-name"
 reason = "an EIS consent scope names one remote session's decision; the input router's scope names where a binding applies"
 
 [[allow]]
-left = "gnoblin-client::CastStream"
-right = "gnoblin-types::Rect"
-kind = "near-shape"
-reason = "the cast reply is a node id beside an output's placement, which shares four integer fields with a rectangle and nothing else"
-
-[[allow]]
-left = "gnoblin-client::CastStream"
-right = "gnoblin-wayland::MenuAnchor"
-kind = "near-shape"
-reason = "the cast reply is a node id beside an output's placement, which shares four integer fields with a rectangle and nothing else"
+left = "gnoblin-capture::Target"
+right = "gnoblin-client::CastSource"
+kind = "same-shape"
+reason = "a capture target is an output, a View or a window in the capture crate's typed identities; the wire's cast source names the same three by the plain numbers the portal sends in `cast.grant`, and the compositor checks the user's consent for a window before it becomes a target"
 
 [[allow]]
 left = "gnoblin-session::AutostartEntry"

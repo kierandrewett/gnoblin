@@ -189,6 +189,8 @@ pub mod code {
     pub const NO_DEVICES: &str = "no-devices";
     /// The View a screen cast names is not in the scene, or has no size to cast.
     pub const CAPTURE_NO_VIEW: &str = "no-view";
+    /// The window a screen cast or its consent question names is not a window the compositor shows.
+    pub const CAPTURE_NO_WINDOW: &str = "no-window";
 }
 
 /// The output `cast.grant` names when the user chose none: the first output the compositor has
@@ -196,17 +198,26 @@ pub mod code {
 /// says "the first one" instead of guessing a number.
 pub const OUTPUT_FIRST: u64 = u64::MAX;
 
+/// The option of a `portal.ui` screen cast request that names the window the user is asked to share: a `uint`
+/// holding the window's compositor identity. The compositor resolves it, words the question with the window's own
+/// title and app id, and refuses a `cast.grant` of a window the user was not asked about.
+pub const PORTAL_OPTION_WINDOW: &str = "window";
+
 /// What the user approved a screen cast of, as `cast.grant` names it.
 ///
 /// An output is named by its number, or by [`OUTPUT_FIRST`] for the first one the compositor has. A View is named
 /// by its node id, which the shell or an extension that made the View knows and a sandboxed app does not: the
-/// portal can only name a View the caller named itself.
+/// portal can only name a View the caller named itself. A window is named by its compositor identity (the `id` of
+/// its `window` object), and the user was asked about that one window.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CastSource {
     /// An output, by its number or [`OUTPUT_FIRST`].
     Output(u64),
     /// A View node, by its node id: the stream carries what the View draws, at the size it is drawn.
     View(u64),
+    /// One window, by its compositor identity: the stream carries the window's pixels at the window's size and
+    /// follows it when it is moved or resized.
+    Window(u64),
 }
 
 /// One decoded frame from the compositor.
@@ -501,6 +512,10 @@ pub fn cast_grant(request_id: u64, session: &str, source: CastSource) -> Envelop
             writer.u8(CAST_SOURCE_VIEW);
             writer.u64(view);
         }
+        CastSource::Window(window) => {
+            writer.u8(CAST_SOURCE_WINDOW);
+            writer.u64(window);
+        }
     }
     Envelope::request(NAMESPACE, member::CAST_GRANT, request_id, writer.finish())
 }
@@ -509,6 +524,8 @@ pub fn cast_grant(request_id: u64, session: &str, source: CastSource) -> Envelop
 const CAST_SOURCE_OUTPUT: u8 = 0;
 /// The tag of a View in a `cast.grant` payload.
 const CAST_SOURCE_VIEW: u8 = 1;
+/// The tag of a window in a `cast.grant` payload.
+const CAST_SOURCE_WINDOW: u8 = 2;
 
 /// Start the PipeWire stream of an approved screen cast. Privileged.
 pub fn cast_start(request_id: u64, session: &str) -> Envelope {
@@ -837,15 +854,23 @@ pub fn read_portal_outcome(payload: &[u8]) -> Result<(String, String), WireError
 }
 
 /// What a consented screen cast stream is, as `cast.start` answers it: the PipeWire node
-/// the stream is on and where the output it shows sits in the layout.
+/// the stream is on, where what it shows sits in the layout, and how large that is there.
+///
+/// The layout is the logical coordinate space windows and outputs are placed in. The stream's own size is in pixels
+/// and differs from the layout extent on an output with a scale above one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CastStream {
     /// The PipeWire node id the app reads.
     pub node: u32,
-    /// The left edge of the captured output, in layout pixels.
+    /// The left edge of the captured output or window, in layout pixels. A View has no place in the layout, so it
+    /// is zero.
     pub x: i32,
-    /// The top edge of the captured output, in layout pixels.
+    /// The top edge of the captured output or window, in layout pixels. Zero for a View.
     pub y: i32,
+    /// The width of what the stream shows, in layout pixels.
+    pub layout_width: u32,
+    /// The height of what the stream shows, in layout pixels.
+    pub layout_height: u32,
     /// The width of the stream, in pixels.
     pub width: u32,
     /// The height of the stream, in pixels.
@@ -859,6 +884,8 @@ pub fn cast_stream_payload(stream: &CastStream) -> Vec<u8> {
     writer.u32(stream.node);
     writer.u32(u32::from_be_bytes(stream.x.to_be_bytes()));
     writer.u32(u32::from_be_bytes(stream.y.to_be_bytes()));
+    writer.u32(stream.layout_width);
+    writer.u32(stream.layout_height);
     writer.u32(stream.width);
     writer.u32(stream.height);
     writer.finish()
@@ -870,6 +897,8 @@ pub fn read_cast_stream(payload: &[u8]) -> Result<CastStream, WireError> {
     let node = reader.u32()?;
     let x = i32::from_be_bytes(reader.u32()?.to_be_bytes());
     let y = i32::from_be_bytes(reader.u32()?.to_be_bytes());
+    let layout_width = reader.u32()?;
+    let layout_height = reader.u32()?;
     let width = reader.u32()?;
     let height = reader.u32()?;
     reader.done()?;
@@ -877,6 +906,8 @@ pub fn read_cast_stream(payload: &[u8]) -> Result<CastStream, WireError> {
         node,
         x,
         y,
+        layout_width,
+        layout_height,
         width,
         height,
     })
@@ -908,6 +939,7 @@ pub fn read_cast_grant(payload: &[u8]) -> Result<(String, CastSource), WireError
     let source = match reader.u8()? {
         CAST_SOURCE_OUTPUT => CastSource::Output(reader.u64()?),
         CAST_SOURCE_VIEW => CastSource::View(reader.u64()?),
+        CAST_SOURCE_WINDOW => CastSource::Window(reader.u64()?),
         tag => return Err(WireError::Tag(tag)),
     };
     reader.done()?;
@@ -1950,15 +1982,17 @@ mod tests {
         assert!(answered.is_sensitive(), "an answer field is secret");
     }
 
-    /// A `cast.grant` names an output or a View, and a tag this build does not know is refused rather than guessed
-    /// at: a View's node id is never read as an output number.
+    /// A `cast.grant` names an output, a View or a window, and a tag this build does not know is refused rather than
+    /// guessed at: a View's node id or a window's identity is never read as an output number.
     #[test]
-    fn a_cast_grant_carries_an_output_or_a_view_and_refuses_any_other_tag() {
+    fn a_cast_grant_carries_an_output_a_view_or_a_window_and_refuses_any_other_tag() {
         let view = (1 << 32) | 0x102;
         for source in [
             CastSource::Output(3),
             CastSource::Output(OUTPUT_FIRST),
             CastSource::View(view),
+            CastSource::Window(5),
+            CastSource::Window(u64::MAX),
         ] {
             let envelope = cast_grant(7, "/session/1", source);
             let payload = envelope.payload().expect("a request carries its payload");
@@ -1972,5 +2006,30 @@ mod tests {
         writer.u8(9);
         writer.u64(1);
         assert_eq!(read_cast_grant(&writer.finish()), Err(WireError::Tag(9)));
+    }
+
+    /// The reply to `cast.start` carries where the stream sits in the layout and how large that is there, apart from
+    /// the stream's own pixel size: a window at a negative origin and an output at a scale of two both round-trip.
+    #[test]
+    fn a_cast_stream_reply_carries_the_layout_place_and_extent_and_the_pixel_size() {
+        let window = CastStream {
+            node: 41,
+            x: -120,
+            y: 36,
+            layout_width: 640,
+            layout_height: 480,
+            width: 1280,
+            height: 960,
+        };
+        assert_eq!(
+            read_cast_stream(&cast_stream_payload(&window)).expect("the reply decodes"),
+            window
+        );
+        let mut short = cast_stream_payload(&window);
+        short.truncate(short.len() - 4);
+        assert!(
+            read_cast_stream(&short).is_err(),
+            "a reply short of its last field is refused"
+        );
     }
 }
