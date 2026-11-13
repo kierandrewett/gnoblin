@@ -2924,47 +2924,6 @@ fn no_buffer_queued_before_a_mark_is_delivered_after_it_on_a_real_cast() {
     }
 }
 
-/// A mark acknowledged with buffers queued: the producer zeroes them before it acknowledges, so the consumer that
-/// takes one afterwards gets black in its place, and no window pixel.
-#[test]
-fn a_buffer_queued_before_the_mark_is_zeroed_before_the_mark_is_acknowledged() {
-    let daemon = Daemon::start();
-    let Some((session, owner)) = start_for(false, Some(&daemon), false) else {
-        return;
-    };
-    session.run(move |handle| {
-        let mut app = Connected::connect(handle.socket(), App::default());
-        let _window = Window::map(&mut app, SOURCE);
-        arrange(&owner);
-        let (window, ..) = owner.window();
-        let stream = cast(handle, VIEW);
-        let consumer = FrameConsumer::connect(&daemon.socket(), stream.node);
-        consumer.wait_for_frame("of the window", shows_window);
-        // Held, the consumer takes no buffer, so the frames the producer makes queue in the daemon. Pump only until one
-        // is queued: a held consumer that lets the pool fill stalls the producer for good.
-        consumer.hold(true);
-        consumer.wait_for_queued_pumping("a buffer queued while held", || owner.frames(1));
-        mark_secure_acknowledged(&owner, window, true);
-        consumer.forget();
-        consumer.hold(false);
-        owner.frames(3);
-        consumer.listen(Duration::from_millis(900));
-        let frames = consumer.frames();
-        assert!(
-            frames.iter().any(|frame| frame.is_solid([0, 0, 0])),
-            "a buffer queued before the acknowledgement is zeroed: none of the {} buffers taken after it is black",
-            frames.len()
-        );
-        let leaked = frames.iter().filter(|frame| shows_window(frame)).count();
-        assert_eq!(
-            leaked,
-            0,
-            "{leaked} of {} buffers taken after the acknowledgement hold a pixel of the window",
-            frames.len()
-        );
-    });
-}
-
 /// A mark cleared again shows the window in the stream, so the discard cost nothing but the frames it dropped.
 #[test]
 fn a_cast_shows_the_window_again_when_the_mark_is_cleared() {

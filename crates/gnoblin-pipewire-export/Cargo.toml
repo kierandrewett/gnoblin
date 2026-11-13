@@ -27,10 +27,5 @@ pipewire = { version = "0.10", features = ["v0_3_34"] }
 # a test must read. Nothing in a shipped build turns it on.
 testing = []
 
-# The workspace forbids unsafe, which the PipeWire buffer mapping needs, so this crate sets its own
-# levels. Only the `pool` module may allow unsafe_code, and it does so with a `SAFETY` comment per block.
-[lints.rust]
-unsafe_code = "deny"
-
-[lints.clippy]
-all = { level = "deny", priority = -1 }
+[lints]
+workspace = true

@@ -623,24 +623,6 @@ impl Default for TreeFrame {
     }
 }
 
-/// The replies a frame's tree work owes its submitters, held until the caller has done what must come before them.
-///
-/// [`TreeFrame::drain`] sends them at once; [`TreeFrame::drain_deferring_replies`] returns them for the caller to send.
-#[must_use = "the replies are sent only by `send`"]
-pub struct DeferredReplies {
-    serial: u64,
-    replies: Vec<(Reply, Result<TreeApplied, TreeRefusal>)>,
-}
-
-impl DeferredReplies {
-    /// Sends each reply, with the serial the frame ended at.
-    pub fn send(self) {
-        for (reply, result) in self.replies {
-            reply(self.serial, result);
-        }
-    }
-}
-
 impl TreeFrame {
     /// An empty tree at serial 0 with the hooks the compositor configured.
     #[must_use]
@@ -810,20 +792,11 @@ impl TreeFrame {
         self.reaped.take()
     }
 
-    /// Runs the frame's tree work against `scene` and sends its replies at once. See
-    /// [`TreeFrame::drain_deferring_replies`] for the work itself.
-    pub fn drain(&mut self, scene: &mut Scene, now: impl Fn() -> Instant) {
-        self.drain_deferring_replies(scene, now).send();
-    }
-
     /// Runs the frame's tree work against `scene`: reads, then transactions in arrival
-    /// order until the budget is spent, then one batch if anything changed. `now` is read
-    /// once at the start, and once before each transaction after the first, so a test can
-    /// drive the budget with a clock of its own.
-    ///
-    /// The replies are returned, not sent. The caller sends them with [`DeferredReplies::send`]
-    /// once it has done what must come before them, such as zeroing the streams a change could expose.
-    pub fn drain_deferring_replies(&mut self, scene: &mut Scene, now: impl Fn() -> Instant) -> DeferredReplies {
+    /// order until the budget is spent, then one batch if anything changed, then the
+    /// replies. `now` is read once at the start, and once before each transaction after
+    /// the first, so a test can drive the budget with a clock of its own.
+    pub fn drain(&mut self, scene: &mut Scene, now: impl Fn() -> Instant) {
         let start = now();
         self.frames += 1;
         let frame = self.frames;
@@ -999,9 +972,8 @@ impl TreeFrame {
             batch.serial = self.serial;
             (self.publish)(batch);
         }
-        DeferredReplies {
-            serial: self.serial,
-            replies,
+        for (reply, result) in replies {
+            reply(self.serial, result);
         }
     }
 }

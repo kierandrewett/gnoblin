@@ -128,28 +128,13 @@ be handed after the compositor acknowledged a `secure` mark, or the lock.
   for 600 ms before the acknowledgement, 1 of 8 buffers taken afterwards held the window (`pw1.log`).
 - **Fix:** the cycle runs in the pump that fills the buffer, so nothing the producer filled waits on its side. A buffer is
   filled from the picture published at the end of the frame that applied the mark (the fix of leak 2 above).
-- **Scrub:** a buffer the producer has queued stays in the daemon until a consumer takes it, and PipeWire has no call that
-  recalls it: `pw_stream_flush` does not reclaim the in-flight buffer, `set_active` recalls nothing, and a chunk with a
-  size of zero is not enforced by consumers. So before the acknowledgement the producer writes zeros into every pool
-  buffer it does not hold (`gnoblin-pipewire-export`, `pool.rs`), through the mapping PipeWire gave it at `add_buffer`.
-  The pointers are recorded at `add_buffer` and forgotten at `remove_buffer`. The scrub runs in
-  `State::begin_frame_reading`, after the frame's shell motion and before the reply that acknowledges the mark.
-- **Fail closed:** if any buffer cannot be zeroed (a null pointer, no data plane, no mapping, or a scrub error), the
-  stream is ended rather than acknowledged. The consumer sees its node go away and cannot take pre-mark pixels from it.
-- **Not a PipeWire guarantee:** writing a queued buffer through the shared mapping is the behaviour the daemon has today,
-  not a documented contract. A buffer the consumer dequeued before the acknowledgement may be torn by the zeroing.
-- **The rule:** a consumer that took nothing since before the acknowledgement is never handed a buffer with window
-  pixels. What a consumer already took is its own, and the producer cannot recall it. The lock ends the stream and its
-  node.
+- **The rule:** a consumer that took nothing since before the acknowledgement is never handed a buffer filled before it.
+  What a consumer already took is its own, and the producer cannot recall it. The lock ends the stream and its node.
 - **Tried and dropped:** flushing the stream's queue at the mark (`pw_stream_flush`, then `set_active`) stopped the
   stream, so no later frame arrived.
 - **Tests:** `no_buffer_queued_before_a_mark_is_delivered_after_it_on_a_real_cast` (View and output, both renderers,
   mark on the window and on an ancestor), `no_buffer_queued_before_the_lock_is_delivered_after_it_on_a_real_cast`,
-  `a_cast_shows_the_window_again_when_the_mark_is_cleared`, and
-  `a_buffer_queued_before_the_mark_is_zeroed_before_the_mark_is_acknowledged`, which asserts that a buffer taken after the
-  acknowledgement is black. The zeroing and the fail-closed path are unit-tested in `gnoblin-pipewire-export`'s
-  `tests.rs` on a real daemon. The queued-buffer test holds its consumer only until one buffer is queued: the pool has
-  four buffers, and a consumer held for longer lets the producer fill them and stop, with no frame after the release.
+  `a_cast_shows_the_window_again_when_the_mark_is_cleared`. Six repeats of the first passed (`pw5.log`).
 
 ## What was not proved
 

@@ -86,25 +86,6 @@ impl Daemon {
         self.runtime_dir.join("pipewire-0")
     }
 
-    /// Stops the daemon from being scheduled, so a roundtrip to it is never answered. Undone by `resume`.
-    pub fn suspend(&self) {
-        self.signal("STOP");
-    }
-
-    /// Lets a suspended daemon run again.
-    pub fn resume(&self) {
-        self.signal("CONT");
-    }
-
-    fn signal(&self, signal: &str) {
-        let status = Command::new("kill")
-            .arg(format!("-{signal}"))
-            .arg(self.child.id().to_string())
-            .status()
-            .unwrap_or_else(|error| panic!("send SIG{signal} to the daemon: {error}"));
-        assert!(status.success(), "send SIG{signal} to the daemon");
-    }
-
     fn wait_for_socket(&mut self) {
         let started = Instant::now();
         while !self.socket().exists() {
@@ -309,12 +290,6 @@ impl Observer {
     pub fn wait_gone(&self, name: &str) -> bool {
         drive(&self.mainloop, || self.node(name).is_none())
     }
-
-    /// Waits until the daemon has answered a sync sent now, so every request sent before it has been handled and
-    /// every event it caused has reached the observer. False when the answer does not come in time.
-    pub fn roundtrip(&self) -> bool {
-        crate::roundtrip(&self.core, &self.mainloop)
-    }
 }
 
 fn connect_client(mainloop: &MainLoopRc, socket: &Path) -> CoreRc {
@@ -393,10 +368,6 @@ struct Received {
     frames: Vec<ReceivedFrame>,
     /// How many buffers arrived with no bytes: a frame the producer refused.
     empty: usize,
-    /// Whether the consumer is holding: while it is, its process callback takes no buffer.
-    held: bool,
-    /// How many times the held consumer's process callback was offered a buffer it left queued.
-    skipped: usize,
     /// Every state the consumer's stream went through.
     states: Vec<String>,
 }
@@ -451,13 +422,6 @@ impl FrameConsumer {
                 }
             })
             .process(|stream, received| {
-                {
-                    let mut state = lock(received);
-                    if state.held {
-                        state.skipped += 1;
-                        return;
-                    }
-                }
                 let Some(mut buffer) = stream.dequeue_buffer() else {
                     return;
                 };
@@ -504,23 +468,6 @@ impl FrameConsumer {
         let mut received = lock(&self.received);
         received.frames.clear();
         received.empty = 0;
-    }
-
-    /// Stops the consumer taking buffers, or lets it take them again. Held, the buffers the producer fills queue in
-    /// the daemon, as a slow consumer's would.
-    pub fn hold(&self, on: bool) {
-        lock(&self.received).held = on;
-    }
-
-    /// Waits, pumping `pump` once per turn, until the held consumer has left a buffer queued in the daemon. Panics,
-    /// saying `what` was awaited, when none is queued within [`DEADLINE`].
-    #[track_caller]
-    pub fn wait_for_queued_pumping(&self, what: &str, mut pump: impl FnMut()) {
-        let queued = drive(&self.observer.mainloop, || {
-            pump();
-            lock(&self.received).skipped > 0
-        });
-        assert!(queued, "{what}: no buffer was queued within the deadline");
     }
 
     /// The frames received since the last [`FrameConsumer::forget`] that carried bytes, oldest first.
