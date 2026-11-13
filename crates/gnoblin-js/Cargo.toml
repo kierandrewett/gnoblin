@@ -23,6 +23,8 @@ oxc_semantic.workspace = true
 oxc_span.workspace = true
 oxc_sourcemap.workspace = true
 oxc_transformer.workspace = true
+# Config-directory watcher for hot reload.
+notify.workspace = true
 # Error types: each `Display` says what failed and the `source` chain is kept.
 thiserror.workspace = true
 

@@ -257,6 +257,10 @@ oxc_semantic = "=0.158.0"
 oxc_span = "=0.158.0"
 oxc_sourcemap = "=9.0.0"
 oxc_transformer = "=0.158.0"
+# The file watcher behind JS hot reload (design/js-runtime.md, J5): inotify on Linux, CC0-1.0.
+# No default features: they only add the macOS FSEvents backend, which this workspace does not
+# target.
+notify = { version = "8.2.1", default-features = false }
 # Error types for the library crates: a derive, so each `Display` says what failed
 # and the `source` chain is kept.
 thiserror = "2.0.21"

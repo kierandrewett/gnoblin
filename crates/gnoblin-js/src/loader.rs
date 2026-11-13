@@ -15,7 +15,7 @@
 //! `generation` can remap it through the source map kept here.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -37,6 +37,8 @@ use crate::ts::strip_types;
 #[derive(Debug, Default)]
 pub struct JsLoadState {
     maps: RefCell<HashMap<String, SourceMap<'static>>>,
+    /// Every file the loader read, canonical: the module graph the hot-reload watcher observes.
+    files: RefCell<BTreeSet<PathBuf>>,
     failure: RefCell<Option<JsFailure>>,
 }
 
@@ -51,6 +53,11 @@ impl JsLoadState {
     /// An empty state, shared between a resolver, a loader and their generation.
     pub fn new() -> Rc<Self> {
         Rc::new(Self::default())
+    }
+
+    /// The canonical path of every file module loaded so far, sorted.
+    pub(crate) fn files(&self) -> Vec<PathBuf> {
+        self.files.borrow().iter().cloned().collect()
     }
 
     /// Records `error` as the last load failure and returns the message to hand to QuickJS.
@@ -176,6 +183,9 @@ impl JsLoader {
             }
             .into());
         }
+        // Recorded before the read, so a file that fails to parse is still in the graph the watcher
+        // observes: fixing it must trigger a reload.
+        self.state.files.borrow_mut().insert(canonical.clone());
         let text = fs::read_to_string(&canonical).map_err(|error| read_error(&canonical, &error))?;
         match canonical.extension().and_then(|ext| ext.to_str()) {
             Some("ts" | "mts") => {

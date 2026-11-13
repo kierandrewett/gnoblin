@@ -203,6 +203,14 @@ impl JsGeneration {
         self.runtime.memory_usage().malloc_size
     }
 
+    /// The canonical path of every file module this generation loaded, sorted: the entry and each
+    /// module it imported, directly or not. Embedded modules are not files and are not listed.
+    ///
+    /// This is the set a file watcher observes for hot reload.
+    pub fn module_paths(&self) -> Vec<PathBuf> {
+        self.load.files()
+    }
+
     /// Imports and evaluates the module at `entry`, a path under the config root (a relative path counts
     /// from the root), then runs its promise jobs until the module settles.
     ///
@@ -434,6 +442,28 @@ mod tests {
         let generation = generation(&root);
         generation.eval_module(Path::new("init.ts")).expect("init.ts evaluates");
         assert_eq!(global_number(&generation, "result"), Some(42));
+    }
+
+    #[test]
+    fn module_paths_lists_the_entry_and_its_transitive_imports() {
+        let root = root_with(&[
+            ("init.ts", "import './lib/a.ts';\nimport { gnoblin } from 'gnoblin';\n"),
+            ("lib/a.ts", "import '../b.js';\n"),
+            ("b.js", "globalThis.b = 1;\n"),
+            ("unused.ts", "export {};\n"),
+        ]);
+        let config = JsConfig::new(&root.path).embed("gnoblin", "export const gnoblin = 1;\n");
+        let generation = JsGeneration::new(&config, 1).expect("a generation");
+        assert!(generation.module_paths().is_empty(), "nothing is loaded before eval");
+        generation.eval_module(Path::new("init.ts")).expect("init.ts evaluates");
+        assert_eq!(
+            generation.module_paths(),
+            vec![
+                root.path.join("b.js"),
+                root.path.join("init.ts"),
+                root.path.join("lib/a.ts"),
+            ]
+        );
     }
 
     #[test]
