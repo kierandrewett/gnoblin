@@ -30,8 +30,8 @@ use crate::slot_link;
 use crate::tree_core::{self, ClassSpec, Shared, TreeCore};
 use gnoblin_tree_client::slot_link::{SharedSlots, SlotEvent, SlotLink};
 use gnoblin_tree_client::tree_mirror::{
-    EventFields, LuaChange, LuaChord, LuaGesture, LuaIncoming, LuaMirror, LuaOp, MirrorChangeKind, NodeId,
-    SnapshotNode, TreeLink,
+    EventFields, MirrorChange, MirrorChangeKind, NodeId, SnapshotNode, TreeChord, TreeGesture, TreeIncoming, TreeLink,
+    TreeMirror, TxOp,
 };
 
 /// The budgets the shell VM runs under. Three kinds of entry into Lua, each with its own:
@@ -151,9 +151,9 @@ pub struct LuaEvent {
     pub kind: String,
     pub bubbles: bool,
     /// A claimed chord the compositor reports; node.lua routes it to the seat that made the claim.
-    pub chord: Option<LuaChord>,
+    pub chord: Option<TreeChord>,
     /// A claimed touchpad gesture the compositor reports; node.lua routes it like a chord.
-    pub gesture: Option<LuaGesture>,
+    pub gesture: Option<TreeGesture>,
     /// Positional strings: an `answer` event carries the call's result and its error, else empty.
     pub args: Vec<String>,
     /// The input or request details of a pointer, key or request event: `x`, `y`, `button`, `dx`, `dy`, `key`, `text`,
@@ -182,19 +182,19 @@ pub struct ShellVm {
     /// When each report text was last passed on, and how many copies were held back since.
     reported: BTreeMap<String, (f64, u64)>,
     /// Messages that arrived with the boot snapshot, handled by the first frame.
-    incoming: Vec<LuaIncoming>,
+    incoming: Vec<TreeIncoming>,
     /// The serial and ops of each sent transaction, oldest first, until its reply arrives. The compositor
     /// answers in order, but a refusal carries the serial the tree had then, not the serial the shell
     /// stamped, so a reply is matched to its transaction by position. A refusal names its failed op from
     /// this record, and a stale-base or unknown-node refusal re-sends the rest. A call that carries a
     /// secret is recorded as `None`: its text is not kept past the send, so a retry cannot send it again.
-    sent: VecDeque<(u64, Vec<Option<LuaOp>>)>,
+    sent: VecDeque<(u64, Vec<Option<TxOp>>)>,
     /// Serial of the one transaction in flight. Nothing else is sent until the mirror reaches it:
     /// a second transaction built on the same base is refused as stale.
     in_flight: Option<u64>,
     /// Ops refused `stale-base` that are sent again, ahead of the next tick's writes, once the
     /// mirror reaches the refused serial.
-    retry: Vec<LuaOp>,
+    retry: Vec<TxOp>,
     /// How many transactions in a row were refused `stale-base` and sent again: reset by an applied one. Once it
     /// reaches [`STALE_RETRIES`] the refused op is dropped rather than sent again.
     stale_refusals: u32,
@@ -212,29 +212,29 @@ const PLAIN_TEXT_CALLS: &[&str] = &["measure", "claim", "claim_gesture", "claim_
 /// What the sent-log keeps of one op for a stale-base retry. A call that carries a secret is not kept: its text
 /// is not held past the send, so a retry cannot send it again. A call whose text is plain content is kept, so a
 /// race with a published batch does not leave a text unmeasured or a chord unclaimed for good.
-fn retained_op(op: &LuaOp) -> Option<LuaOp> {
+fn retained_op(op: &TxOp) -> Option<TxOp> {
     match op {
-        LuaOp::Call { method, text, .. } if !text.is_empty() && !PLAIN_TEXT_CALLS.contains(&method.as_str()) => None,
+        TxOp::Call { method, text, .. } if !text.is_empty() && !PLAIN_TEXT_CALLS.contains(&method.as_str()) => None,
         other => Some(other.clone()),
     }
 }
 
 /// Names one op for a refusal: its index, class, property and value kind, so a refused write is
 /// traceable to the Lua call that made it.
-pub fn describe_op(index: usize, op: &LuaOp, mirror: &LuaMirror) -> String {
+pub fn describe_op(index: usize, op: &TxOp, mirror: &TreeMirror) -> String {
     let class_of = |node: NodeId| {
         mirror
             .node(node)
             .map_or_else(|| "unknown".to_owned(), |record| record.class.clone())
     };
     match op {
-        LuaOp::New { id, class } => format!("op {index}: new node {id} class {class}"),
-        LuaOp::Set { node, key, value, .. } => format!(
+        TxOp::New { id, class } => format!("op {index}: new node {id} class {class}"),
+        TxOp::Set { node, key, value, .. } => format!(
             "op {index}: set node {node} ({}) property {key} value kind {}",
             class_of(*node),
             value.kind_name()
         ),
-        LuaOp::Insert {
+        TxOp::Insert {
             node,
             parent,
             index: at,
@@ -244,8 +244,8 @@ pub fn describe_op(index: usize, op: &LuaOp, mirror: &LuaMirror) -> String {
                 class_of(*node)
             )
         }
-        LuaOp::Destroy { node } => format!("op {index}: destroy node {node} ({})", class_of(*node)),
-        LuaOp::Call { node, method, .. } => {
+        TxOp::Destroy { node } => format!("op {index}: destroy node {node} ({})", class_of(*node)),
+        TxOp::Call { node, method, .. } => {
             format!("op {index}: call {method} on node {node} ({})", class_of(*node))
         }
     }
@@ -354,7 +354,7 @@ impl ShellVm {
         incoming.extend(self.link.poll().map_err(|e| ShellVmError::Link(e.0))?);
         for message in incoming {
             match message {
-                LuaIncoming::Changes { serial, changes } => {
+                TreeIncoming::Changes { serial, changes } => {
                     // A closed node runs its `destroyed` handlers before node.lua drops its face.
                     // Every node the change took is told, the deepest first as `Node:destroy` does: a titlebar
                     // under a closed window must stop its bindings, not read a node that is gone.
@@ -390,7 +390,7 @@ impl ShellVm {
                             .map(|c| c.node),
                     );
                 }
-                LuaIncoming::Reply(reply) => {
+                TreeIncoming::Reply(reply) => {
                     let (sent_serial, ops) = self.sent.pop_front().unwrap_or((reply.serial, Vec::new()));
                     if reply.applied {
                         self.stale_refusals = 0;
@@ -411,7 +411,7 @@ impl ShellVm {
                         let failed = usize::try_from(reply.failed_op).ok();
                         let retry_failed = reply.code == "stale-base" && self.stale_refusals < STALE_RETRIES;
                         self.stale_refusals = self.stale_refusals.saturating_add(1);
-                        let mut kept: Vec<LuaOp> = Vec::new();
+                        let mut kept: Vec<TxOp> = Vec::new();
                         for (index, op) in ops.into_iter().enumerate() {
                             if Some(index) == failed && !retry_failed {
                                 continue;
@@ -465,7 +465,7 @@ impl ShellVm {
                         }
                     }
                 }
-                LuaIncoming::Event(event) => {
+                TreeIncoming::Event(event) => {
                     // A pointer or key event is delivered as the DOM delivers it: to the node under the ray or
                     // holding the focus, and up its ancestors until a handler stops it. A request, an enter and a
                     // leave go to their node alone. Both carry their details as `e.x`, `e.key` and so on.
@@ -481,7 +481,7 @@ impl ShellVm {
                         fields: carries_fields.then_some(event.fields),
                     });
                 }
-                LuaIncoming::Chord(chord) => tree_events.push(LuaEvent {
+                TreeIncoming::Chord(chord) => tree_events.push(LuaEvent {
                     target: 0,
                     kind: "chord".to_owned(),
                     bubbles: false,
@@ -490,7 +490,7 @@ impl ShellVm {
                     args: Vec::new(),
                     fields: None,
                 }),
-                LuaIncoming::Gesture(gesture) => tree_events.push(LuaEvent {
+                TreeIncoming::Gesture(gesture) => tree_events.push(LuaEvent {
                     target: 0,
                     kind: "gesture".to_owned(),
                     bubbles: false,
@@ -499,10 +499,10 @@ impl ShellVm {
                     args: Vec::new(),
                     fields: None,
                 }),
-                LuaIncoming::Attached(_) | LuaIncoming::Snapshot { .. } => {
+                TreeIncoming::Attached(_) | TreeIncoming::Snapshot { .. } => {
                     return Err(ShellVmError::Link("attach or snapshot after boot".to_owned()));
                 }
-                LuaIncoming::Answer { token, result, error } => {
+                TreeIncoming::Answer { token, result, error } => {
                     let node = self.core.borrow_mut().take_call_node(token);
                     match node {
                         Some(target) => tree_events.push(LuaEvent {
@@ -551,14 +551,14 @@ impl ShellVm {
                 let mirror = core.mirror();
                 let mut made: Vec<NodeId> = Vec::new();
                 ops.retain(|op| match op {
-                    LuaOp::New { id, .. } => {
+                    TxOp::New { id, .. } => {
                         made.push(*id);
                         true
                     }
-                    LuaOp::Set { node, .. } | LuaOp::Destroy { node } | LuaOp::Call { node, .. } => {
+                    TxOp::Set { node, .. } | TxOp::Destroy { node } | TxOp::Call { node, .. } => {
                         made.contains(node) || mirror.node(*node).is_some()
                     }
-                    LuaOp::Insert { node, parent, .. } => {
+                    TxOp::Insert { node, parent, .. } => {
                         (made.contains(node) || mirror.node(*node).is_some())
                             && (made.contains(parent) || mirror.node(*parent).is_some())
                     }
@@ -580,7 +580,7 @@ impl ShellVm {
 
     /// Drains the link until the complete snapshot has arrived, building the mirror from it.
     /// Anything else that arrives meanwhile is kept for the first frame.
-    fn boot_mirror(link: &mut dyn TreeLink) -> Result<(LuaMirror, Vec<LuaIncoming>)> {
+    fn boot_mirror(link: &mut dyn TreeLink) -> Result<(TreeMirror, Vec<TreeIncoming>)> {
         let mut attached = None;
         let mut nodes: Vec<SnapshotNode> = Vec::new();
         let mut snapshot_serial = 0;
@@ -590,8 +590,8 @@ impl ShellVm {
         loop {
             for message in link.poll().map_err(|e| ShellVmError::Link(e.0))? {
                 match message {
-                    LuaIncoming::Attached(a) => attached = Some(a),
-                    LuaIncoming::Snapshot {
+                    TreeIncoming::Attached(a) => attached = Some(a),
+                    TreeIncoming::Snapshot {
                         serial,
                         last,
                         nodes: chunk,
@@ -615,12 +615,12 @@ impl ShellVm {
         if !complete {
             return Err(ShellVmError::Link("snapshot incomplete".to_owned()));
         }
-        let mirror = LuaMirror::from_snapshot(attached.epoch, attached.root, snapshot_serial, &nodes)
+        let mirror = TreeMirror::from_snapshot(attached.epoch, attached.root, snapshot_serial, &nodes)
             .map_err(|e| ShellVmError::Mirror(format!("{e:?}")))?;
         Ok((mirror, rest))
     }
 
-    fn apply_changes(&mut self, serial: u64, changes: &[LuaChange]) -> Result<()> {
+    fn apply_changes(&mut self, serial: u64, changes: &[MirrorChange]) -> Result<()> {
         self.core
             .borrow_mut()
             .mirror_mut()
@@ -847,15 +847,15 @@ fn lua_error(e: mlua::Error) -> ShellVmError {
 #[cfg(test)]
 mod refusal_tests {
     use super::describe_op;
-    use gnoblin_tree_client::tree_mirror::{LuaMirror, LuaOp, LuaValue};
+    use gnoblin_tree_client::tree_mirror::{MirrorValue, TreeMirror, TxOp};
 
     #[test]
     fn a_refused_set_names_its_index_class_property_and_value_kind() {
-        let mirror = LuaMirror::default();
-        let op = LuaOp::Set {
+        let mirror = TreeMirror::default();
+        let op = TxOp::Set {
             node: 7,
             key: "width".to_owned(),
-            value: LuaValue::Text("wide".to_owned()),
+            value: MirrorValue::Text("wide".to_owned()),
             seconds: None,
             samples: None,
         };
@@ -867,12 +867,12 @@ mod refusal_tests {
 
     #[test]
     fn a_refused_new_names_its_class() {
-        let op = LuaOp::New {
+        let op = TxOp::New {
             id: 9,
             class: "view".to_owned(),
         };
         assert_eq!(
-            describe_op(0, &op, &LuaMirror::default()),
+            describe_op(0, &op, &TreeMirror::default()),
             "op 0: new node 9 class view"
         );
     }

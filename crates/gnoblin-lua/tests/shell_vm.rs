@@ -13,8 +13,8 @@ use gnoblin_lua::Limits;
 use gnoblin_lua::shell_vm::{LuaEvent, REPORT_INTERVAL, STALE_RETRIES, ShellLimits, ShellVm};
 use gnoblin_lua::tree_core::{ClassSpec, PropSpec, TreeValueKind};
 use gnoblin_tree_client::tree_mirror::{
-    Attached, LinkError, LuaChange, LuaIncoming, LuaOp, LuaTransaction, LuaValue, MirrorChangeKind, SnapshotNode,
-    TreeLink, TxReply,
+    Attached, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeIncoming, TreeLink, TreeTx,
+    TxOp, TxReply,
 };
 
 fn lua_dir() -> PathBuf {
@@ -77,24 +77,24 @@ struct Compositor {
     /// The serial at which each node last changed in a batch the compositor published.
     changed: BTreeMap<u64, u64>,
     /// Transactions the link has received, in order.
-    sent: Vec<Vec<LuaOp>>,
+    sent: Vec<Vec<TxOp>>,
     /// The next transaction is refused when set.
     refuse_next: bool,
     /// When set, transactions are recorded in `held` and applied only by `release`, as a real
     /// compositor echoes them later.
     hold: bool,
-    held: Vec<LuaTransaction>,
+    held: Vec<TreeTx>,
     /// The value of every property a transaction or a native write set: what the compositor holds.
-    props: BTreeMap<(u64, String), LuaValue>,
+    props: BTreeMap<(u64, String), MirrorValue>,
     /// Incoming messages waiting for the next `poll`.
-    queue: Vec<LuaIncoming>,
+    queue: Vec<TreeIncoming>,
 }
 
 #[derive(Clone)]
 struct FakeLink(Rc<RefCell<Compositor>>);
 
-fn change(kind: MirrorChangeKind, node: u64) -> LuaChange {
-    LuaChange {
+fn change(kind: MirrorChangeKind, node: u64) -> MirrorChange {
+    MirrorChange {
         kind,
         node,
         class: String::new(),
@@ -107,16 +107,16 @@ fn change(kind: MirrorChangeKind, node: u64) -> LuaChange {
 }
 
 /// A `Set` change for `node.key`, as the compositor reports a native write.
-fn set_change(node: u64, key: &str, value: &str) -> LuaChange {
-    LuaChange {
+fn set_change(node: u64, key: &str, value: &str) -> MirrorChange {
+    MirrorChange {
         key: key.into(),
-        value: Some(LuaValue::Text(value.into())),
+        value: Some(MirrorValue::Text(value.into())),
         ..change(MirrorChangeKind::Set, node)
     }
 }
 
 impl FakeLink {
-    fn snapshot(&self) -> LuaIncoming {
+    fn snapshot(&self) -> TreeIncoming {
         let c = self.0.borrow();
         let nodes = c
             .nodes
@@ -131,7 +131,7 @@ impl FakeLink {
                 props: Vec::new(),
             })
             .collect();
-        LuaIncoming::Snapshot {
+        TreeIncoming::Snapshot {
             serial: c.serial,
             chunk: 0,
             last: true,
@@ -140,42 +140,43 @@ impl FakeLink {
     }
 
     /// Applies `ops` to the node map and returns the change batch describing them.
-    fn apply(&self, ops: &[LuaOp], serial: u64) -> Vec<LuaChange> {
+    fn apply(&self, ops: &[TxOp], serial: u64) -> Vec<MirrorChange> {
         let mut c = self.0.borrow_mut();
         let mut changes = Vec::new();
         for op in ops {
             match op {
-                LuaOp::New { id, class } => {
+                TxOp::New { id, class } => {
                     c.nodes.insert(*id, (class.clone(), 0, String::new()));
-                    changes.push(LuaChange {
+                    changes.push(MirrorChange {
                         class: class.clone(),
                         ..change(MirrorChangeKind::Created, *id)
                     });
                 }
-                LuaOp::Insert { node, parent, index } => {
+                TxOp::Insert { node, parent, index } => {
                     if let Some(entry) = c.nodes.get_mut(node) {
                         entry.1 = *parent;
                     }
-                    changes.push(LuaChange {
+                    changes.push(MirrorChange {
                         parent: *parent,
                         index: *index,
                         ..change(MirrorChangeKind::Parented, *node)
                     });
                 }
-                LuaOp::Set { node, key, value, .. } => {
+                TxOp::Set { node, key, value, .. } => {
                     c.props.insert((*node, key.clone()), value.clone());
-                    if let (Some(entry), LuaValue::Text(text), true) = (c.nodes.get_mut(node), value, key == "title") {
+                    if let (Some(entry), MirrorValue::Text(text), true) = (c.nodes.get_mut(node), value, key == "title")
+                    {
                         entry.2 = text.clone();
                     }
-                    changes.push(LuaChange {
+                    changes.push(MirrorChange {
                         key: key.clone(),
                         value: Some(value.clone()),
                         ..change(MirrorChangeKind::Set, *node)
                     });
                 }
-                LuaOp::Destroy { node } => {
+                TxOp::Destroy { node } => {
                     c.nodes.remove(node);
-                    changes.push(LuaChange {
+                    changes.push(MirrorChange {
                         removed: vec![*node],
                         ..change(MirrorChangeKind::Destroyed, *node)
                     });
@@ -202,12 +203,12 @@ impl TreeLink for FakeLink {
         };
         let snapshot = self.snapshot();
         let mut c = self.0.borrow_mut();
-        c.queue.push(LuaIncoming::Attached(attached));
+        c.queue.push(TreeIncoming::Attached(attached));
         c.queue.push(snapshot);
         Ok(())
     }
 
-    fn transact(&mut self, tx: &LuaTransaction) -> Result<(), LinkError> {
+    fn transact(&mut self, tx: &TreeTx) -> Result<(), LinkError> {
         {
             let mut c = self.0.borrow_mut();
             c.sent.push(tx.ops.clone());
@@ -216,7 +217,7 @@ impl TreeLink for FakeLink {
                 return Ok(());
             }
             if std::mem::replace(&mut c.refuse_next, false) {
-                c.queue.push(LuaIncoming::Reply(TxReply {
+                c.queue.push(TreeIncoming::Reply(TxReply {
                     serial: tx.serial,
                     applied: false,
                     failed_op: 0,
@@ -230,7 +231,7 @@ impl TreeLink for FakeLink {
         Ok(())
     }
 
-    fn poll(&mut self) -> Result<Vec<LuaIncoming>, LinkError> {
+    fn poll(&mut self) -> Result<Vec<TreeIncoming>, LinkError> {
         Ok(std::mem::take(&mut self.0.borrow_mut().queue))
     }
 }
@@ -238,10 +239,10 @@ impl TreeLink for FakeLink {
 impl FakeLink {
     /// Lands `tx` as the compositor does: refused `stale-base` at the first op whose node a batch
     /// published after the base changed, otherwise applied whole and echoed.
-    fn land(&self, tx: &LuaTransaction) {
+    fn land(&self, tx: &TreeTx) {
         if let Some(failed_op) = self.missing_op(tx) {
             let serial = self.0.borrow().serial;
-            self.0.borrow_mut().queue.push(LuaIncoming::Reply(TxReply {
+            self.0.borrow_mut().queue.push(TreeIncoming::Reply(TxReply {
                 serial,
                 applied: false,
                 failed_op: failed_op as i64,
@@ -251,7 +252,7 @@ impl FakeLink {
             return;
         }
         if let Some(failed_op) = self.stale_op(tx) {
-            self.0.borrow_mut().queue.push(LuaIncoming::Reply(TxReply {
+            self.0.borrow_mut().queue.push(TreeIncoming::Reply(TxReply {
                 serial: tx.serial,
                 applied: false,
                 failed_op: failed_op as i64,
@@ -263,11 +264,11 @@ impl FakeLink {
         let changes = self.apply(&tx.ops, tx.serial);
         let mut c = self.0.borrow_mut();
         c.serial = tx.serial;
-        c.queue.push(LuaIncoming::Changes {
+        c.queue.push(TreeIncoming::Changes {
             serial: tx.serial,
             changes,
         });
-        c.queue.push(LuaIncoming::Reply(TxReply {
+        c.queue.push(TreeIncoming::Reply(TxReply {
             serial: tx.serial,
             applied: true,
             failed_op: -1,
@@ -277,17 +278,17 @@ impl FakeLink {
     }
 
     /// The index of the first op of `tx` on a node the compositor no longer has (and `tx` does not make).
-    fn missing_op(&self, tx: &LuaTransaction) -> Option<usize> {
+    fn missing_op(&self, tx: &TreeTx) -> Option<usize> {
         let c = self.0.borrow();
         let mut made = Vec::new();
         tx.ops.iter().position(|op| {
             let node = match op {
-                LuaOp::New { id, .. } => {
+                TxOp::New { id, .. } => {
                     made.push(*id);
                     return false;
                 }
-                LuaOp::Set { node, .. } | LuaOp::Insert { node, .. } | LuaOp::Destroy { node } => *node,
-                LuaOp::Call { node, .. } => *node,
+                TxOp::Set { node, .. } | TxOp::Insert { node, .. } | TxOp::Destroy { node } => *node,
+                TxOp::Call { node, .. } => *node,
             };
             !c.nodes.contains_key(&node) && !made.contains(&node)
         })
@@ -295,14 +296,14 @@ impl FakeLink {
 
     /// The index of the first op of `tx` on a node that a batch published after `tx`'s base
     /// changed, or none when the base is current.
-    fn stale_op(&self, tx: &LuaTransaction) -> Option<usize> {
+    fn stale_op(&self, tx: &TreeTx) -> Option<usize> {
         let c = self.0.borrow();
         if tx.base_serial == c.serial {
             return None;
         }
         tx.ops.iter().position(|op| {
             let node = match op {
-                LuaOp::Set { node, .. } | LuaOp::Insert { node, .. } | LuaOp::Destroy { node } => *node,
+                TxOp::Set { node, .. } | TxOp::Insert { node, .. } | TxOp::Destroy { node } => *node,
                 _ => return false,
             };
             c.changed.get(&node).is_some_and(|serial| *serial > tx.base_serial)
@@ -318,22 +319,22 @@ impl FakeLink {
             entry.2 = text.into();
         }
         c.changed.insert(node, serial);
-        c.queue.push(LuaIncoming::Changes {
+        c.queue.push(TreeIncoming::Changes {
             serial,
             changes: vec![set_change(node, "title", text)],
         });
     }
 
     /// A native write of `node.key` the shell did not make, published as a batch of its own.
-    fn external_set(&self, node: u64, key: &str, value: LuaValue) {
+    fn external_set(&self, node: u64, key: &str, value: MirrorValue) {
         let mut c = self.0.borrow_mut();
         c.serial += 1;
         let serial = c.serial;
         c.props.insert((node, key.to_owned()), value.clone());
         c.changed.insert(node, serial);
-        c.queue.push(LuaIncoming::Changes {
+        c.queue.push(TreeIncoming::Changes {
             serial,
-            changes: vec![LuaChange {
+            changes: vec![MirrorChange {
                 key: key.into(),
                 value: Some(value),
                 ..change(MirrorChangeKind::Set, node)
@@ -348,9 +349,9 @@ impl FakeLink {
         c.serial += 1;
         let serial = c.serial;
         c.changed.insert(node, serial);
-        c.queue.push(LuaIncoming::Changes {
+        c.queue.push(TreeIncoming::Changes {
             serial,
-            changes: vec![LuaChange {
+            changes: vec![MirrorChange {
                 removed: vec![node],
                 ..change(MirrorChangeKind::Destroyed, node)
             }],
@@ -388,7 +389,7 @@ fn compositor_with_seat() -> Rc<RefCell<Compositor>> {
 /// The node the compositor holds `node.focus` at, or 0 when it holds none.
 fn focus_of(comp: &Rc<RefCell<Compositor>>, node: u64) -> u64 {
     match comp.borrow().props.get(&(node, "focus".to_owned())) {
-        Some(LuaValue::Node(target)) => *target,
+        Some(MirrorValue::Node(target)) => *target,
         _ => 0,
     }
 }
@@ -398,7 +399,7 @@ fn boot(comp: &Rc<RefCell<Compositor>>) -> ShellVm {
     ShellVm::new(Box::new(link), &lua_dir(), classes()).expect("boot ShellVm")
 }
 
-fn sent(comp: &Rc<RefCell<Compositor>>) -> Vec<Vec<LuaOp>> {
+fn sent(comp: &Rc<RefCell<Compositor>>) -> Vec<Vec<TxOp>> {
     comp.borrow().sent.clone()
 }
 
@@ -455,9 +456,9 @@ fn handler_creates_node_in_one_transaction() {
     let kinds: Vec<&str> = txs[0]
         .iter()
         .map(|op| match op {
-            LuaOp::New { .. } => "new",
-            LuaOp::Insert { .. } => "insert",
-            LuaOp::Set { .. } => "set",
+            TxOp::New { .. } => "new",
+            TxOp::Insert { .. } => "insert",
+            TxOp::Set { .. } => "set",
             _ => "other",
         })
         .collect();
@@ -537,7 +538,7 @@ fn function_binding_reruns_on_mirror_change() {
         c.nodes.get_mut(&2).expect("window").2 = "changed".into();
         let serial = c.serial + 1;
         c.serial = serial;
-        c.queue.push(LuaIncoming::Changes {
+        c.queue.push(TreeIncoming::Changes {
             serial,
             changes: vec![set_change(2, "title", "changed")],
         });
@@ -655,9 +656,9 @@ fn stale_base_refusal_resends_the_other_ops_on_the_new_base() {
     let kinds: Vec<&str> = txs[1]
         .iter()
         .map(|op| match op {
-            LuaOp::New { .. } => "new",
-            LuaOp::Insert { .. } => "insert",
-            LuaOp::Set { .. } => "set",
+            TxOp::New { .. } => "new",
+            TxOp::Insert { .. } => "insert",
+            TxOp::Set { .. } => "set",
             _ => "other",
         })
         .collect();
@@ -723,7 +724,7 @@ fn stale_base_refusal_resends_a_measure_and_drops_a_password() {
     let calls: Vec<(&str, &str)> = txs[1]
         .iter()
         .filter_map(|op| match op {
-            LuaOp::Call { method, text, .. } => Some((method.as_str(), text.expose())),
+            TxOp::Call { method, text, .. } => Some((method.as_str(), text.expose())),
             _ => None,
         })
         .collect();
@@ -764,7 +765,7 @@ fn the_same_write_made_again_after_a_refusal_is_sent() {
     let txs = sent(&comp);
     assert_eq!(txs.len(), 2, "the same write is sent: {txs:?}");
     assert!(
-        matches!(txs[1].as_slice(), [LuaOp::Set { key, value: LuaValue::Text(text), .. }] if key == "title" && text == "mine"),
+        matches!(txs[1].as_slice(), [TxOp::Set { key, value: MirrorValue::Text(text), .. }] if key == "title" && text == "mine"),
         "{:?}",
         txs[1]
     );
@@ -791,7 +792,7 @@ fn the_same_write_made_while_the_first_is_in_flight_is_sent_after_it() {
     let txs = sent(&comp);
     assert_eq!(txs.len(), 2, "the repeat goes out after the echo: {txs:?}");
     assert!(
-        matches!(txs[1].as_slice(), [LuaOp::Set { key, .. }] if key == "title"),
+        matches!(txs[1].as_slice(), [TxOp::Set { key, .. }] if key == "title"),
         "{:?}",
         txs[1]
     );
@@ -804,7 +805,7 @@ fn a_focus_the_shell_writes_after_the_compositor_moved_it_is_the_final_focus() {
     let comp = compositor_with_seat();
     let mut vm = boot(&comp);
     vm.frame(0.0, vec![]).expect("boot frame");
-    FakeLink(comp.clone()).external_set(4, "focus", LuaValue::Node(3));
+    FakeLink(comp.clone()).external_set(4, "focus", MirrorValue::Node(3));
     vm.run("focus", "root.children[3].focus = root.children[1]")
         .expect("run focus");
     let write = vm.frame(1.0, vec![]).expect("write frame");
@@ -827,7 +828,7 @@ fn a_focus_write_refused_stale_base_is_sent_again_and_is_the_final_focus() {
     vm.frame(1.0, vec![]).expect("write frame");
     assert_eq!(sent(&comp).len(), 1, "the focus write is in flight");
 
-    FakeLink(comp.clone()).external_set(4, "focus", LuaValue::Node(3));
+    FakeLink(comp.clone()).external_set(4, "focus", MirrorValue::Node(3));
     FakeLink(comp.clone()).release();
     assert_eq!(focus_of(&comp, 4), 3, "the refused write changed nothing");
     let refused = vm.frame(2.0, vec![]).expect("refusal frame");
@@ -843,7 +844,7 @@ fn a_focus_write_refused_stale_base_is_sent_again_and_is_the_final_focus() {
         "the focus write is sent again on the refreshed base: {txs:?}"
     );
     assert!(
-        matches!(txs[1].as_slice(), [LuaOp::Set { node: 4, key, .. }] if key == "focus"),
+        matches!(txs[1].as_slice(), [TxOp::Set { node: 4, key, .. }] if key == "focus"),
         "{:?}",
         txs[1]
     );
@@ -877,7 +878,7 @@ fn a_write_refused_stale_base_every_time_is_dropped_after_its_retries_and_the_ot
     .expect("run write");
     vm.frame(1.0, vec![]).expect("write frame");
     for round in 0..=STALE_RETRIES {
-        FakeLink(comp.clone()).external_set(4, "focus", LuaValue::Node(3));
+        FakeLink(comp.clone()).external_set(4, "focus", MirrorValue::Node(3));
         FakeLink(comp.clone()).release();
         let refused = vm.frame(2.0 + f64::from(round), vec![]).expect("refusal frame");
         assert!(refused.diagnostics.is_empty(), "{:?}", refused.diagnostics);
@@ -890,7 +891,7 @@ fn a_write_refused_stale_base_every_time_is_dropped_after_its_retries_and_the_ot
         .iter()
         .filter(|ops| {
             ops.iter()
-                .any(|op| matches!(op, LuaOp::Set { key, .. } if key == "focus"))
+                .any(|op| matches!(op, TxOp::Set { key, .. } if key == "focus"))
         })
         .count();
     assert_eq!(
@@ -936,7 +937,7 @@ fn unknown_node_refusal_resends_the_ops_on_nodes_that_are_still_there() {
     let txs = sent(&comp);
     assert_eq!(txs.len(), 3, "the surviving op is sent again");
     assert!(
-        matches!(txs[2].as_slice(), [LuaOp::Destroy { .. }]),
+        matches!(txs[2].as_slice(), [TxOp::Destroy { .. }]),
         "only the destroy of the shell's own node is sent again: {:?}",
         txs[2]
     );
@@ -982,7 +983,7 @@ fn native_title(comp: &Rc<RefCell<Compositor>>, node: u64, title: &str) {
     c.nodes.get_mut(&node).expect("node").2 = title.into();
     let serial = c.serial + 1;
     c.serial = serial;
-    c.queue.push(LuaIncoming::Changes {
+    c.queue.push(TreeIncoming::Changes {
         serial,
         changes: vec![set_change(node, "title", title)],
     });

@@ -18,8 +18,8 @@ use gnoblin_proto::tree::{change, op, snapshot_node};
 use gnoblin_proto::{Envelope, Kind, LENGTH_PREFIX_LEN, MAX_FRAME_LEN, read_frame, write_frame};
 
 use crate::tree_mirror::{
-    Attached, EventFields, LinkError, LuaChange, LuaChord, LuaGesture, LuaIncoming, LuaOp, LuaTransaction, LuaValue,
-    MirrorChangeKind, SnapshotNode, TreeEvent, TreeLink, TxReply,
+    Attached, EventFields, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeChord, TreeEvent,
+    TreeGesture, TreeIncoming, TreeLink, TreeTx, TxOp, TxReply,
 };
 
 const NAMESPACE: &str = "tree";
@@ -40,7 +40,7 @@ const WRITE_WAIT: Duration = Duration::from_secs(5);
 pub struct SocketTreeLink {
     stream: UnixStream,
     inbox: Vec<u8>,
-    pending: Vec<LuaIncoming>,
+    pending: Vec<TreeIncoming>,
     next_request: u64,
 }
 
@@ -131,7 +131,7 @@ impl TreeLink for SocketTreeLink {
         ))
     }
 
-    fn transact(&mut self, tx: &LuaTransaction) -> Result<(), LinkError> {
+    fn transact(&mut self, tx: &TreeTx) -> Result<(), LinkError> {
         let mut args = TransactArgs {
             base_serial: tx.base_serial,
             serial: tx.serial,
@@ -149,7 +149,7 @@ impl TreeLink for SocketTreeLink {
         sent
     }
 
-    fn poll(&mut self) -> Result<Vec<LuaIncoming>, LinkError> {
+    fn poll(&mut self) -> Result<Vec<TreeIncoming>, LinkError> {
         loop {
             while let Some(envelope) = self.next_envelope()? {
                 let incoming = to_incoming(&envelope)?;
@@ -164,22 +164,22 @@ impl TreeLink for SocketTreeLink {
 }
 
 /// The wire form of one write. The kind names are the ones the compositor's tree host reads.
-fn to_op(op: &LuaOp) -> op::Properties {
+fn to_op(op: &TxOp) -> op::Properties {
     match op {
-        LuaOp::New { id, class } => op::Properties {
+        TxOp::New { id, class } => op::Properties {
             kind: "new".to_owned(),
             id: *id,
             class: class.clone(),
             ..Default::default()
         },
-        LuaOp::Insert { node, parent, index } => op::Properties {
+        TxOp::Insert { node, parent, index } => op::Properties {
             kind: "insert".to_owned(),
             node: *node,
             parent: *parent,
             index: *index,
             ..Default::default()
         },
-        LuaOp::Set {
+        TxOp::Set {
             node,
             key,
             value,
@@ -196,55 +196,55 @@ fn to_op(op: &LuaOp) -> op::Properties {
                 ..Default::default()
             };
             match value {
-                LuaValue::Bool(v) => {
+                MirrorValue::Bool(v) => {
                     "bool".clone_into(&mut wire.value_kind);
                     wire.value_bool = *v;
                 }
-                LuaValue::Int(v) => {
+                MirrorValue::Int(v) => {
                     "int".clone_into(&mut wire.value_kind);
                     wire.value_int = *v;
                 }
-                LuaValue::Uint(v) => {
+                MirrorValue::Uint(v) => {
                     "uint".clone_into(&mut wire.value_kind);
                     wire.value_uint = *v;
                 }
-                LuaValue::Double(v) => {
+                MirrorValue::Double(v) => {
                     "double".clone_into(&mut wire.value_kind);
                     wire.value_double = *v;
                 }
-                LuaValue::Text(v) => {
+                MirrorValue::Text(v) => {
                     "text".clone_into(&mut wire.value_kind);
                     wire.value_text = v.clone();
                 }
-                LuaValue::Node(v) => {
+                MirrorValue::Node(v) => {
                     "node".clone_into(&mut wire.value_kind);
                     wire.value_node = *v;
                 }
-                LuaValue::List(v) => {
+                MirrorValue::List(v) => {
                     "list_double".clone_into(&mut wire.value_kind);
                     wire.value_list = v.clone();
                 }
-                LuaValue::Texts(v) => {
+                MirrorValue::Texts(v) => {
                     "list_text".clone_into(&mut wire.value_kind);
                     wire.value_texts = v.clone();
                 }
-                LuaValue::Effects(v) => {
+                MirrorValue::Effects(v) => {
                     "list_effect".clone_into(&mut wire.value_kind);
                     wire.value_effects = v.clone();
                 }
-                LuaValue::Bytes(v) => {
+                MirrorValue::Bytes(v) => {
                     "bytes".clone_into(&mut wire.value_kind);
                     wire.value_bytes = v.clone();
                 }
             }
             wire
         }
-        LuaOp::Destroy { node } => op::Properties {
+        TxOp::Destroy { node } => op::Properties {
             kind: "destroy".to_owned(),
             node: *node,
             ..Default::default()
         },
-        LuaOp::Call {
+        TxOp::Call {
             node,
             method,
             args,
@@ -264,7 +264,7 @@ fn to_op(op: &LuaOp) -> op::Properties {
 
 /// Translate one inbound envelope. Anything the tree namespace does not define, and any
 /// compositor refusal, is a [`LinkError`]: the mirror cannot continue past a message it cannot read.
-fn to_incoming(envelope: &Envelope) -> Result<LuaIncoming, LinkError> {
+fn to_incoming(envelope: &Envelope) -> Result<TreeIncoming, LinkError> {
     if envelope.namespace != NAMESPACE {
         return Err(LinkError(format!(
             "a message on the {} namespace came over the tree socket",
@@ -281,7 +281,7 @@ fn to_incoming(envelope: &Envelope) -> Result<LuaIncoming, LinkError> {
             let payload = envelope
                 .payload_as::<AttachedPayload>()
                 .ok_or_else(|| undecodable(member))?;
-            Ok(LuaIncoming::Attached(Attached {
+            Ok(TreeIncoming::Attached(Attached {
                 epoch: payload.epoch,
                 root: payload.root,
                 serial: payload.serial,
@@ -291,7 +291,7 @@ fn to_incoming(envelope: &Envelope) -> Result<LuaIncoming, LinkError> {
             let payload = envelope
                 .payload_as::<ReplyPayload>()
                 .ok_or_else(|| undecodable(member))?;
-            Ok(LuaIncoming::Reply(TxReply {
+            Ok(TreeIncoming::Reply(TxReply {
                 serial: payload.serial,
                 applied: payload.applied,
                 failed_op: payload.failed_op,
@@ -305,7 +305,7 @@ fn to_incoming(envelope: &Envelope) -> Result<LuaIncoming, LinkError> {
                 .ok_or_else(|| undecodable(member))?;
             let chunk = u32::try_from(payload.chunk)
                 .map_err(|_| LinkError(format!("snapshot chunk {} is out of range", payload.chunk)))?;
-            Ok(LuaIncoming::Snapshot {
+            Ok(TreeIncoming::Snapshot {
                 serial: payload.serial,
                 chunk,
                 last: payload.last,
@@ -320,7 +320,7 @@ fn to_incoming(envelope: &Envelope) -> Result<LuaIncoming, LinkError> {
             let payload = envelope
                 .payload_as::<EventPayload>()
                 .ok_or_else(|| undecodable(member))?;
-            Ok(LuaIncoming::Event(TreeEvent {
+            Ok(TreeIncoming::Event(TreeEvent {
                 frame: payload.frame,
                 seq: payload.seq,
                 node: payload.node,
@@ -342,7 +342,7 @@ fn to_incoming(envelope: &Envelope) -> Result<LuaIncoming, LinkError> {
             let payload = envelope
                 .payload_as::<ChordPayload>()
                 .ok_or_else(|| undecodable(member))?;
-            Ok(LuaIncoming::Chord(LuaChord {
+            Ok(TreeIncoming::Chord(TreeChord {
                 claim: payload.id,
                 chord: payload.chord,
                 state: payload.state,
@@ -352,7 +352,7 @@ fn to_incoming(envelope: &Envelope) -> Result<LuaIncoming, LinkError> {
             let payload = envelope
                 .payload_as::<GesturePayload>()
                 .ok_or_else(|| undecodable(member))?;
-            Ok(LuaIncoming::Gesture(LuaGesture {
+            Ok(TreeIncoming::Gesture(TreeGesture {
                 claim: payload.id,
                 kind: payload.kind,
                 fingers: payload.fingers,
@@ -372,7 +372,7 @@ fn to_incoming(envelope: &Envelope) -> Result<LuaIncoming, LinkError> {
                 .into_iter()
                 .map(to_change)
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(LuaIncoming::Changes {
+            Ok(TreeIncoming::Changes {
                 serial: payload.serial,
                 changes,
             })
@@ -381,7 +381,7 @@ fn to_incoming(envelope: &Envelope) -> Result<LuaIncoming, LinkError> {
             let payload = envelope
                 .payload_as::<AnswerPayload>()
                 .ok_or_else(|| undecodable(member))?;
-            Ok(LuaIncoming::Answer {
+            Ok(TreeIncoming::Answer {
                 token: payload.token,
                 result: payload.result,
                 error: payload.error,
@@ -414,7 +414,7 @@ fn to_snapshot_node(node: snapshot_node::Properties) -> Result<SnapshotNode, Lin
     })
 }
 
-fn to_change(change: change::Properties) -> Result<LuaChange, LinkError> {
+fn to_change(change: change::Properties) -> Result<MirrorChange, LinkError> {
     let kind = match change.kind.as_str() {
         "created" => MirrorChangeKind::Created,
         "parented" => MirrorChangeKind::Parented,
@@ -431,7 +431,7 @@ fn to_change(change: change::Properties) -> Result<LuaChange, LinkError> {
     } else {
         None
     };
-    Ok(LuaChange {
+    Ok(MirrorChange {
         kind,
         node: change.node,
         class: change.class,
@@ -445,18 +445,18 @@ fn to_change(change: change::Properties) -> Result<LuaChange, LinkError> {
 
 /// The value a `set` change carries. A kind the Lua side has no form for is a refusal, not a
 /// silent `nil`: the mirror would otherwise disagree with the compositor about the value.
-fn to_value(change: &change::Properties) -> Result<LuaValue, LinkError> {
+fn to_value(change: &change::Properties) -> Result<MirrorValue, LinkError> {
     match change.value_kind.as_str() {
-        "bool" => Ok(LuaValue::Bool(change.value_bool)),
-        "int" => Ok(LuaValue::Int(change.value_int)),
-        "uint" => Ok(LuaValue::Uint(change.value_uint)),
-        "double" => Ok(LuaValue::Double(change.value_double)),
-        "text" => Ok(LuaValue::Text(change.value_text.clone())),
-        "node" => Ok(LuaValue::Node(change.value_node)),
-        "list_double" => Ok(LuaValue::List(change.value_list.clone())),
-        "list_text" => Ok(LuaValue::Texts(change.value_texts.clone())),
-        "list_effect" => Ok(LuaValue::Effects(change.value_effects.clone())),
-        "bytes" => Ok(LuaValue::Bytes(change.value_bytes.clone())),
+        "bool" => Ok(MirrorValue::Bool(change.value_bool)),
+        "int" => Ok(MirrorValue::Int(change.value_int)),
+        "uint" => Ok(MirrorValue::Uint(change.value_uint)),
+        "double" => Ok(MirrorValue::Double(change.value_double)),
+        "text" => Ok(MirrorValue::Text(change.value_text.clone())),
+        "node" => Ok(MirrorValue::Node(change.value_node)),
+        "list_double" => Ok(MirrorValue::List(change.value_list.clone())),
+        "list_text" => Ok(MirrorValue::Texts(change.value_texts.clone())),
+        "list_effect" => Ok(MirrorValue::Effects(change.value_effects.clone())),
+        "bytes" => Ok(MirrorValue::Bytes(change.value_bytes.clone())),
         other => Err(LinkError(format!("a tree value of kind {other} has no Lua form"))),
     }
 }

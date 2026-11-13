@@ -2,7 +2,9 @@
 //! `node.lua` makes, with the refusals the schema and the transaction builder make.
 
 use gnoblin_lua::tree_core::{ClassSpec, PropSpec, Shared, TreeCore, TreeValueKind, install};
-use gnoblin_tree_client::tree_mirror::{LuaChange, LuaMirror, LuaOp, LuaValue, MirrorChangeKind, NIL, SnapshotNode};
+use gnoblin_tree_client::tree_mirror::{
+    MirrorChange, MirrorChangeKind, MirrorValue, NIL, SnapshotNode, TreeMirror, TxOp,
+};
 use mlua::Lua;
 
 fn snap(id: u64, parent: u64, index: i64, class: &str) -> SnapshotNode {
@@ -17,8 +19,8 @@ fn snap(id: u64, parent: u64, index: i64, class: &str) -> SnapshotNode {
     }
 }
 
-fn change(kind: MirrorChangeKind, node: u64) -> LuaChange {
-    LuaChange {
+fn change(kind: MirrorChangeKind, node: u64) -> MirrorChange {
+    MirrorChange {
         kind,
         node,
         class: String::new(),
@@ -30,7 +32,7 @@ fn change(kind: MirrorChangeKind, node: u64) -> LuaChange {
     }
 }
 
-fn prop(name: &str, kind: TreeValueKind, readonly: bool, default: Option<LuaValue>) -> PropSpec {
+fn prop(name: &str, kind: TreeValueKind, readonly: bool, default: Option<MirrorValue>) -> PropSpec {
     PropSpec {
         name: name.to_owned(),
         kind,
@@ -44,21 +46,21 @@ fn schema() -> Vec<ClassSpec> {
         ClassSpec {
             name: "Node".to_owned(),
             props: vec![
-                prop("x", TreeValueKind::Double, false, Some(LuaValue::Double(0.0))),
+                prop("x", TreeValueKind::Double, false, Some(MirrorValue::Double(0.0))),
                 prop("title", TreeValueKind::Text, false, None),
                 prop("serial", TreeValueKind::Int, true, None),
-                prop("visible", TreeValueKind::Bool, false, Some(LuaValue::Bool(true))),
+                prop("visible", TreeValueKind::Bool, false, Some(MirrorValue::Bool(true))),
                 prop(
                     "effects",
                     TreeValueKind::ListEffect,
                     false,
-                    Some(LuaValue::Effects(Vec::new())),
+                    Some(MirrorValue::Effects(Vec::new())),
                 ),
                 prop(
                     "skipped",
                     TreeValueKind::ListText,
                     true,
-                    Some(LuaValue::Texts(Vec::new())),
+                    Some(MirrorValue::Texts(Vec::new())),
                 ),
             ],
             signals: vec!["changed".to_owned()],
@@ -79,7 +81,7 @@ fn schema() -> Vec<ClassSpec> {
 
 /// Root 1 (node) with child 2 (window); epoch 7, serial 5.
 fn setup() -> (Lua, Shared) {
-    let mirror = LuaMirror::from_snapshot(7, 1, 5, &[snap(1, NIL, 0, "node"), snap(2, 1, 0, "window")])
+    let mirror = TreeMirror::from_snapshot(7, 1, 5, &[snap(1, NIL, 0, "node"), snap(2, 1, 0, "window")])
         .expect("snapshot builds");
     let core = TreeCore::shared(mirror, schema()).expect("schema is valid");
     let lua = Lua::new();
@@ -154,17 +156,17 @@ fn writes_are_seen_by_this_tick_and_the_mirror_is_unchanged_until_the_tx_is_take
     assert_eq!(
         tx.ops,
         vec![
-            LuaOp::Set {
+            TxOp::Set {
                 node: 2,
                 key: "x".to_owned(),
-                value: LuaValue::Double(4.0),
+                value: MirrorValue::Double(4.0),
                 seconds: None,
                 samples: None,
             },
-            LuaOp::Set {
+            TxOp::Set {
                 node: 2,
                 key: "title".to_owned(),
-                value: LuaValue::Text("main".to_owned()),
+                value: MirrorValue::Text("main".to_owned()),
                 seconds: None,
                 samples: None,
             },
@@ -260,14 +262,14 @@ fn a_made_node_stays_readable_after_its_transaction_is_taken_until_the_mirror_ho
 
     // The compositor's batch arrives: the mirror holds the node, and reads come from it again.
     let batch = [
-        LuaChange {
+        MirrorChange {
             class: "node".to_owned(),
             parent: 1,
             ..change(MirrorChangeKind::Created, made)
         },
-        LuaChange {
+        MirrorChange {
             key: "x".to_owned(),
-            value: Some(LuaValue::Double(4.0)),
+            value: Some(MirrorValue::Double(4.0)),
             ..change(MirrorChangeKind::Set, made)
         },
     ];
@@ -321,11 +323,11 @@ fn destroy_answers_the_node_references_that_became_nil() {
     let kinds: Vec<&str> = ops
         .iter()
         .map(|op| match op {
-            LuaOp::New { .. } => "new",
-            LuaOp::Insert { .. } => "insert",
-            LuaOp::Set { .. } => "set",
-            LuaOp::Destroy { .. } => "destroy",
-            LuaOp::Call { .. } => "call",
+            TxOp::New { .. } => "new",
+            TxOp::Insert { .. } => "insert",
+            TxOp::Set { .. } => "set",
+            TxOp::Destroy { .. } => "destroy",
+            TxOp::Call { .. } => "call",
         })
         .collect();
     assert_eq!(kinds, ["new", "insert", "set", "destroy", "destroy"]);
@@ -342,14 +344,14 @@ fn calls_need_a_declared_method_and_carry_their_argument_bytes() {
     assert_eq!(
         tx.ops,
         vec![
-            LuaOp::Call {
+            TxOp::Call {
                 node: 2,
                 method: "close".to_owned(),
                 args: b"ab".to_vec(),
                 token: 1,
                 text: gnoblin_secret::SecretText::default(),
             },
-            LuaOp::Call {
+            TxOp::Call {
                 node: 2,
                 method: "close".to_owned(),
                 args: b"cd".to_vec(),
@@ -440,7 +442,7 @@ fn a_schema_that_repeats_a_class_or_names_an_undeclared_base_is_refused() {
             ..ClassSpec::default()
         },
     ];
-    let err = TreeCore::shared(LuaMirror::empty(), dup).expect_err("duplicate class is refused");
+    let err = TreeCore::shared(TreeMirror::empty(), dup).expect_err("duplicate class is refused");
     assert!(err.contains("declared twice"), "{err}");
 
     let orphan = vec![ClassSpec {
@@ -448,6 +450,6 @@ fn a_schema_that_repeats_a_class_or_names_an_undeclared_base_is_refused() {
         base: Some("Node".to_owned()),
         ..ClassSpec::default()
     }];
-    let err = TreeCore::shared(LuaMirror::empty(), orphan).expect_err("undeclared base is refused");
+    let err = TreeCore::shared(TreeMirror::empty(), orphan).expect_err("undeclared base is refused");
     assert!(err.contains("is not declared before"), "{err}");
 }

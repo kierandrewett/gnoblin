@@ -15,8 +15,7 @@ use gnoblin_lua::shell_role::{SHELL_VM_VARIABLE, ShellRole, ShellSlot, shell_vm_
 use gnoblin_lua::shell_vm::{ShellVm, ShellVmError};
 use gnoblin_lua::tree_core::{ClassSpec, PropSpec, TreeValueKind};
 use gnoblin_tree_client::tree_mirror::{
-    Attached, LinkError, LuaChange, LuaIncoming, LuaOp, LuaTransaction, MirrorChangeKind, SnapshotNode, TreeLink,
-    TxReply,
+    Attached, LinkError, MirrorChange, MirrorChangeKind, SnapshotNode, TreeIncoming, TreeLink, TreeTx, TxOp, TxReply,
 };
 
 fn lua_dir() -> PathBuf {
@@ -50,8 +49,8 @@ fn classes() -> Vec<ClassSpec> {
 struct Compositor {
     nodes: BTreeMap<u64, (String, u64)>,
     serial: u64,
-    sent: Vec<Vec<LuaOp>>,
-    queue: Vec<LuaIncoming>,
+    sent: Vec<Vec<TxOp>>,
+    queue: Vec<TreeIncoming>,
 }
 
 #[derive(Clone)]
@@ -82,9 +81,9 @@ impl TreeLink for FakeLink {
                 props: Vec::new(),
             })
             .collect();
-        c.queue.push(LuaIncoming::Attached(attached));
+        c.queue.push(TreeIncoming::Attached(attached));
         let serial = c.serial;
-        c.queue.push(LuaIncoming::Snapshot {
+        c.queue.push(TreeIncoming::Snapshot {
             serial,
             chunk: 0,
             last: true,
@@ -93,20 +92,20 @@ impl TreeLink for FakeLink {
         Ok(())
     }
 
-    fn transact(&mut self, tx: &LuaTransaction) -> Result<(), LinkError> {
+    fn transact(&mut self, tx: &TreeTx) -> Result<(), LinkError> {
         let mut c = self.comp.borrow_mut();
         c.sent.push(tx.ops.clone());
         let serial = tx.serial;
         c.serial = serial;
-        let changes: Vec<LuaChange> = tx
+        let changes: Vec<MirrorChange> = tx
             .ops
             .iter()
             .filter_map(|op| match op {
-                LuaOp::New { id, class } => {
+                TxOp::New { id, class } => {
                     c.nodes.insert(*id, (class.clone(), 0));
                     Some(change_of(MirrorChangeKind::Created, *id, class))
                 }
-                LuaOp::Set { node, key, value, .. } => Some(LuaChange {
+                TxOp::Set { node, key, value, .. } => Some(MirrorChange {
                     key: key.clone(),
                     value: Some(value.clone()),
                     ..change_of(MirrorChangeKind::Set, *node, "")
@@ -114,8 +113,8 @@ impl TreeLink for FakeLink {
                 _ => None,
             })
             .collect();
-        c.queue.push(LuaIncoming::Changes { serial, changes });
-        c.queue.push(LuaIncoming::Reply(TxReply {
+        c.queue.push(TreeIncoming::Changes { serial, changes });
+        c.queue.push(TreeIncoming::Reply(TxReply {
             serial,
             applied: true,
             failed_op: -1,
@@ -125,7 +124,7 @@ impl TreeLink for FakeLink {
         Ok(())
     }
 
-    fn poll(&mut self) -> Result<Vec<LuaIncoming>, LinkError> {
+    fn poll(&mut self) -> Result<Vec<TreeIncoming>, LinkError> {
         if self.dead.get() {
             return Err(LinkError("owner socket closed".into()));
         }
@@ -133,8 +132,8 @@ impl TreeLink for FakeLink {
     }
 }
 
-fn change_of(kind: MirrorChangeKind, node: u64, class: &str) -> LuaChange {
-    LuaChange {
+fn change_of(kind: MirrorChangeKind, node: u64, class: &str) -> MirrorChange {
+    MirrorChange {
         kind,
         node,
         class: class.into(),
@@ -230,7 +229,7 @@ fn change_batch_sends_one_transaction_only_when_the_vm_wrote() {
     let before = sent(&comp);
 
     // The compositor reports a native change; the VM has nothing to write about it.
-    comp.borrow_mut().queue.push(LuaIncoming::Changes {
+    comp.borrow_mut().queue.push(TreeIncoming::Changes {
         serial: 1,
         changes: vec![change_of(MirrorChangeKind::Set, 1, "")],
     });
@@ -240,7 +239,7 @@ fn change_batch_sends_one_transaction_only_when_the_vm_wrote() {
     // Now the VM writes in response to the next change batch.
     role.run("write", r#"local n = Node(); n.title = "shell"; root:add(n)"#)
         .expect("run the write");
-    comp.borrow_mut().queue.push(LuaIncoming::Changes {
+    comp.borrow_mut().queue.push(TreeIncoming::Changes {
         serial: 2,
         changes: vec![change_of(MirrorChangeKind::Created, 4, "Node")],
     });

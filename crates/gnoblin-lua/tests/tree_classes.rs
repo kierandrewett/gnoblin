@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use gnoblin_lua::tree_core::{ClassSpec, PropSpec, TreeCore, TreeValueKind, tree_classes};
 use gnoblin_schema::{Catalog, DefaultValue, Namespace, ObjectType, Property, Type};
-use gnoblin_tree_client::tree_mirror::{LuaMirror, LuaValue};
+use gnoblin_tree_client::tree_mirror::{MirrorValue, TreeMirror};
 
 /// The ten tree classes, by their Lua names.
 const TEN: [&str; 10] = [
@@ -77,18 +77,18 @@ fn expected_kind(ty: &Type) -> Option<TreeValueKind> {
 }
 
 /// The value a schema default is held as, for a property of `kind`.
-fn expected_default(default: &DefaultValue, kind: TreeValueKind) -> LuaValue {
+fn expected_default(default: &DefaultValue, kind: TreeValueKind) -> MirrorValue {
     match (default, kind) {
-        (DefaultValue::Bool(value), TreeValueKind::Bool) => LuaValue::Bool(*value),
-        (DefaultValue::Int(value), TreeValueKind::Int) => LuaValue::Int(*value),
-        (DefaultValue::Uint(value), TreeValueKind::Uint) => LuaValue::Uint(*value),
-        (DefaultValue::Double(value), TreeValueKind::Double) => LuaValue::Double(*value),
-        (DefaultValue::Int(value), TreeValueKind::Double) => LuaValue::Double(*value as f64),
-        (DefaultValue::Uint(value), TreeValueKind::Double) => LuaValue::Double(*value as f64),
-        (DefaultValue::Text(value), TreeValueKind::Text) => LuaValue::Text(value.clone()),
-        (DefaultValue::List(items), TreeValueKind::ListText) if items.is_empty() => LuaValue::Texts(Vec::new()),
-        (DefaultValue::List(items), TreeValueKind::ListEffect) if items.is_empty() => LuaValue::Effects(Vec::new()),
-        (DefaultValue::List(items), TreeValueKind::ListDouble) => LuaValue::List(
+        (DefaultValue::Bool(value), TreeValueKind::Bool) => MirrorValue::Bool(*value),
+        (DefaultValue::Int(value), TreeValueKind::Int) => MirrorValue::Int(*value),
+        (DefaultValue::Uint(value), TreeValueKind::Uint) => MirrorValue::Uint(*value),
+        (DefaultValue::Double(value), TreeValueKind::Double) => MirrorValue::Double(*value),
+        (DefaultValue::Int(value), TreeValueKind::Double) => MirrorValue::Double(*value as f64),
+        (DefaultValue::Uint(value), TreeValueKind::Double) => MirrorValue::Double(*value as f64),
+        (DefaultValue::Text(value), TreeValueKind::Text) => MirrorValue::Text(value.clone()),
+        (DefaultValue::List(items), TreeValueKind::ListText) if items.is_empty() => MirrorValue::Texts(Vec::new()),
+        (DefaultValue::List(items), TreeValueKind::ListEffect) if items.is_empty() => MirrorValue::Effects(Vec::new()),
+        (DefaultValue::List(items), TreeValueKind::ListDouble) => MirrorValue::List(
             items
                 .iter()
                 .map(|item| match item {
@@ -121,27 +121,32 @@ fn documented_node() -> Vec<PropSpec> {
     by_name(vec![
         spec("id", K::Uint, true, None),
         spec("parent", K::Node, true, None),
-        spec("name", K::Text, false, Some(LuaValue::Text(String::new()))),
-        spec("x", K::Double, false, Some(LuaValue::Double(0.0))),
-        spec("y", K::Double, false, Some(LuaValue::Double(0.0))),
-        spec("z", K::Double, false, Some(LuaValue::Double(0.0))),
+        spec("name", K::Text, false, Some(MirrorValue::Text(String::new()))),
+        spec("x", K::Double, false, Some(MirrorValue::Double(0.0))),
+        spec("y", K::Double, false, Some(MirrorValue::Double(0.0))),
+        spec("z", K::Double, false, Some(MirrorValue::Double(0.0))),
         spec(
             "rotation",
             K::ListDouble,
             false,
-            Some(LuaValue::List(vec![0.0, 0.0, 0.0])),
+            Some(MirrorValue::List(vec![0.0, 0.0, 0.0])),
         ),
-        spec("scale", K::ListDouble, false, Some(LuaValue::List(vec![1.0, 1.0, 1.0]))),
-        spec("width", K::Double, false, Some(LuaValue::Double(0.0))),
-        spec("height", K::Double, false, Some(LuaValue::Double(0.0))),
-        spec("opacity", K::Double, false, Some(LuaValue::Double(1.0))),
-        spec("visible", K::Bool, false, Some(LuaValue::Bool(true))),
-        spec("clip", K::Bool, false, Some(LuaValue::Bool(false))),
-        spec("input", K::Bool, false, Some(LuaValue::Bool(true))),
-        spec("secure", K::Bool, false, Some(LuaValue::Bool(false))),
-        spec("tags", K::ListText, false, Some(LuaValue::Texts(Vec::new()))),
-        spec("effects", K::ListEffect, false, Some(LuaValue::Effects(Vec::new()))),
-        spec("skipped", K::ListText, true, Some(LuaValue::Texts(Vec::new()))),
+        spec(
+            "scale",
+            K::ListDouble,
+            false,
+            Some(MirrorValue::List(vec![1.0, 1.0, 1.0])),
+        ),
+        spec("width", K::Double, false, Some(MirrorValue::Double(0.0))),
+        spec("height", K::Double, false, Some(MirrorValue::Double(0.0))),
+        spec("opacity", K::Double, false, Some(MirrorValue::Double(1.0))),
+        spec("visible", K::Bool, false, Some(MirrorValue::Bool(true))),
+        spec("clip", K::Bool, false, Some(MirrorValue::Bool(false))),
+        spec("input", K::Bool, false, Some(MirrorValue::Bool(true))),
+        spec("secure", K::Bool, false, Some(MirrorValue::Bool(false))),
+        spec("tags", K::ListText, false, Some(MirrorValue::Texts(Vec::new()))),
+        spec("effects", K::ListEffect, false, Some(MirrorValue::Effects(Vec::new()))),
+        spec("skipped", K::ListText, true, Some(MirrorValue::Texts(Vec::new()))),
         spec("children", K::Nodes, true, None),
     ])
 }
@@ -165,7 +170,7 @@ fn the_ten_classes_are_present_base_first() {
 
 #[test]
 fn the_core_accepts_the_generated_classes() {
-    TreeCore::shared(LuaMirror::empty(), tree_classes()).expect("the generated classes are valid");
+    TreeCore::shared(TreeMirror::empty(), tree_classes()).expect("the generated classes are valid");
 }
 
 #[test]

@@ -14,8 +14,8 @@ use gnoblin_proto::tree::{change, snapshot_node};
 use gnoblin_proto::{Envelope, read_frame, write_frame};
 use gnoblin_tree_client::tree_link::SocketTreeLink;
 use gnoblin_tree_client::tree_mirror::{
-    Attached, LuaChange, LuaChord, LuaGesture, LuaIncoming, LuaOp, LuaTransaction, LuaValue, MirrorChangeKind,
-    SnapshotNode, TreeLink, TxReply,
+    Attached, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeChord, TreeGesture, TreeIncoming,
+    TreeLink, TreeTx, TxOp, TxReply,
 };
 
 fn pair() -> (SocketTreeLink, UnixStream) {
@@ -35,13 +35,13 @@ fn send(server: &mut UnixStream, envelope: &Envelope) {
     write_frame(server, envelope).expect("the frame writes");
 }
 
-fn drain(link: &mut SocketTreeLink) -> Vec<LuaIncoming> {
+fn drain(link: &mut SocketTreeLink) -> Vec<TreeIncoming> {
     link.poll().expect("the link polls")
 }
 
 /// A change with every field at its empty value, for the test to set the fields it means.
-fn bare(kind: MirrorChangeKind, node: u64) -> LuaChange {
-    LuaChange {
+fn bare(kind: MirrorChangeKind, node: u64) -> MirrorChange {
+    MirrorChange {
         kind,
         node,
         class: String::new(),
@@ -70,7 +70,7 @@ fn a_chord_event_arrives_as_a_chord_not_a_node_event() {
     );
     assert_eq!(
         drain(&mut link),
-        vec![LuaIncoming::Chord(LuaChord {
+        vec![TreeIncoming::Chord(TreeChord {
             claim: 7,
             chord: "Super+q".to_owned(),
             state: "press".to_owned(),
@@ -96,7 +96,7 @@ fn a_key_event_decodes_with_its_text_and_shows_none_of_it_in_any_debug() {
     let (mut link, mut server) = pair();
     send(&mut server, &envelope);
     let incoming = drain(&mut link);
-    let [LuaIncoming::Event(event)] = incoming.as_slice() else {
+    let [TreeIncoming::Event(event)] = incoming.as_slice() else {
         panic!("one node event: {incoming:?}");
     };
     assert_eq!(event.fields.key, "Zq9", "the shell still reads the key");
@@ -149,7 +149,7 @@ fn a_gesture_event_arrives_as_a_gesture_with_its_movement() {
     );
     assert_eq!(
         drain(&mut link),
-        vec![LuaIncoming::Gesture(LuaGesture {
+        vec![TreeIncoming::Gesture(TreeGesture {
             claim: 9,
             kind: "pinch".to_owned(),
             fingers: 4,
@@ -217,12 +217,12 @@ fn attach_sends_the_version_and_poll_yields_the_attached_reply_then_the_snapshot
     assert_eq!(
         drain(&mut link),
         vec![
-            LuaIncoming::Attached(Attached {
+            TreeIncoming::Attached(Attached {
                 epoch: 1,
                 root: 1,
                 serial: 0,
             }),
-            LuaIncoming::Snapshot {
+            TreeIncoming::Snapshot {
                 serial: 0,
                 chunk: 0,
                 last: true,
@@ -243,41 +243,41 @@ fn attach_sends_the_version_and_poll_yields_the_attached_reply_then_the_snapshot
 #[test]
 fn transact_encodes_every_op_kind_and_poll_decodes_the_reply() {
     let (mut link, mut server) = pair();
-    let tx = LuaTransaction {
+    let tx = TreeTx {
         base_serial: 0,
         serial: 1,
         ops: vec![
-            LuaOp::New {
+            TxOp::New {
                 id: 1000,
                 class: "node".to_owned(),
             },
-            LuaOp::Insert {
+            TxOp::Insert {
                 node: 1000,
                 parent: 1,
                 index: -1,
             },
-            LuaOp::Set {
+            TxOp::Set {
                 node: 1000,
                 key: "visible".to_owned(),
-                value: LuaValue::Bool(true),
+                value: MirrorValue::Bool(true),
                 seconds: Some(0.5),
                 samples: Some(vec![0.0, 1.0]),
             },
-            LuaOp::Call {
+            TxOp::Call {
                 node: 1000,
                 method: "focus".to_owned(),
                 args: vec![1, 2],
                 token: 1,
                 text: gnoblin_secret::SecretText::default(),
             },
-            LuaOp::Call {
+            TxOp::Call {
                 node: 2,
                 method: "claim".to_owned(),
                 args: vec![7, 1],
                 token: 2,
                 text: gnoblin_secret::SecretText::new("Super+q"),
             },
-            LuaOp::Destroy { node: 1000 },
+            TxOp::Destroy { node: 1000 },
         ],
     };
     link.transact(&tx).expect("transact sends");
@@ -324,7 +324,7 @@ fn transact_encodes_every_op_kind_and_poll_decodes_the_reply() {
     );
     assert_eq!(
         drain(&mut link),
-        vec![LuaIncoming::Reply(TxReply {
+        vec![TreeIncoming::Reply(TxReply {
             serial: 1,
             applied: true,
             failed_op: -1,
@@ -337,7 +337,7 @@ fn transact_encodes_every_op_kind_and_poll_decodes_the_reply() {
 #[test]
 fn refused_transact_reply_keeps_the_failed_op_and_the_code() {
     let (mut link, mut server) = pair();
-    link.transact(&LuaTransaction {
+    link.transact(&TreeTx {
         base_serial: 7,
         serial: 8,
         ops: Vec::new(),
@@ -361,7 +361,7 @@ fn refused_transact_reply_keeps_the_failed_op_and_the_code() {
     );
     assert_eq!(
         drain(&mut link),
-        vec![LuaIncoming::Reply(TxReply {
+        vec![TreeIncoming::Reply(TxReply {
             serial: 0,
             applied: false,
             failed_op: 2,
@@ -433,33 +433,33 @@ fn changes_decode_every_change_kind_and_value_kind() {
 
     assert_eq!(
         drain(&mut link),
-        vec![LuaIncoming::Changes {
+        vec![TreeIncoming::Changes {
             serial: 1,
             changes: vec![
-                LuaChange {
+                MirrorChange {
                     class: "node".to_owned(),
                     ..bare(MirrorChangeKind::Created, 1000)
                 },
-                LuaChange {
+                MirrorChange {
                     parent: 1,
                     ..bare(MirrorChangeKind::Parented, 1000)
                 },
-                LuaChange {
+                MirrorChange {
                     key: "rotation".to_owned(),
-                    value: Some(LuaValue::Double(90.0)),
+                    value: Some(MirrorValue::Double(90.0)),
                     ..bare(MirrorChangeKind::Set, 1000)
                 },
-                LuaChange {
+                MirrorChange {
                     key: "owner".to_owned(),
-                    value: Some(LuaValue::Node(7)),
+                    value: Some(MirrorValue::Node(7)),
                     ..bare(MirrorChangeKind::Set, 1000)
                 },
-                LuaChange {
+                MirrorChange {
                     key: "samples".to_owned(),
-                    value: Some(LuaValue::List(vec![1.0, 2.0])),
+                    value: Some(MirrorValue::List(vec![1.0, 2.0])),
                     ..bare(MirrorChangeKind::Set, 1000)
                 },
-                LuaChange {
+                MirrorChange {
                     removed: vec![1000, 1001],
                     ..bare(MirrorChangeKind::Destroyed, 1000)
                 },
@@ -568,17 +568,17 @@ fn list_text_and_list_effect_changes_decode_to_their_lua_values() {
 
     assert_eq!(
         drain(&mut link),
-        vec![LuaIncoming::Changes {
+        vec![TreeIncoming::Changes {
             serial: 1,
             changes: vec![
-                LuaChange {
+                MirrorChange {
                     key: "tags".to_owned(),
-                    value: Some(LuaValue::Texts(vec!["a".to_owned(), "b".to_owned()])),
+                    value: Some(MirrorValue::Texts(vec!["a".to_owned(), "b".to_owned()])),
                     ..bare(MirrorChangeKind::Set, 1000)
                 },
-                LuaChange {
+                MirrorChange {
                     key: "effects".to_owned(),
-                    value: Some(LuaValue::Effects(vec![blur])),
+                    value: Some(MirrorValue::Effects(vec![blur])),
                     ..bare(MirrorChangeKind::Set, 1000)
                 },
             ],

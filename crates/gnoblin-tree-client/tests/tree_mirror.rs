@@ -2,8 +2,8 @@
 //! (design/node-core.md, sections 4.1 and 4.6).
 
 use gnoblin_tree_client::tree_mirror::{
-    Attached, LuaApplied, LuaChange, LuaMirror, LuaOp, LuaTxBuilder, LuaValue, MirrorChangeKind, MirrorError, NIL,
-    NodeId, SnapshotBuilder, SnapshotNode, TxError,
+    Attached, MirrorApplied, MirrorChange, MirrorChangeKind, MirrorError, MirrorValue, NIL, NodeId, SnapshotBuilder,
+    SnapshotNode, TreeMirror, TxBuilder, TxError, TxOp,
 };
 
 fn snap(id: NodeId, parent: NodeId, index: i64, class: &str) -> SnapshotNode {
@@ -18,8 +18,8 @@ fn snap(id: NodeId, parent: NodeId, index: i64, class: &str) -> SnapshotNode {
     }
 }
 
-fn change(kind: MirrorChangeKind, node: NodeId) -> LuaChange {
-    LuaChange {
+fn change(kind: MirrorChangeKind, node: NodeId) -> MirrorChange {
+    MirrorChange {
         kind,
         node,
         class: String::new(),
@@ -32,17 +32,17 @@ fn change(kind: MirrorChangeKind, node: NodeId) -> LuaChange {
 }
 
 /// root(1) -> [a(2), b(3)]; a -> [c(4)].
-fn base_mirror() -> LuaMirror {
+fn base_mirror() -> TreeMirror {
     let nodes = [
         snap(1, NIL, 0, "node"),
         snap(2, 1, 0, "node"),
         snap(3, 1, 1, "node"),
         snap(4, 2, 0, "node"),
     ];
-    LuaMirror::from_snapshot(7, 1, 5, &nodes).expect("snapshot builds")
+    TreeMirror::from_snapshot(7, 1, 5, &nodes).expect("snapshot builds")
 }
 
-fn children(mirror: &LuaMirror, id: NodeId) -> Vec<NodeId> {
+fn children(mirror: &TreeMirror, id: NodeId) -> Vec<NodeId> {
     mirror.node(id).expect("node present").children.clone()
 }
 
@@ -94,7 +94,7 @@ fn snapshot_chunks_out_of_order_are_refused() {
 
 #[test]
 fn snapshot_with_a_missing_parent_is_refused() {
-    let err = LuaMirror::from_snapshot(7, 1, 5, &[snap(1, NIL, 0, "node"), snap(9, 42, 0, "node")])
+    let err = TreeMirror::from_snapshot(7, 1, 5, &[snap(1, NIL, 0, "node"), snap(9, 42, 0, "node")])
         .expect_err("node 9 names a parent that is not in the snapshot");
     assert!(matches!(err, MirrorError::Snapshot(_)), "{err:?}");
 }
@@ -109,17 +109,17 @@ fn a_change_batch_updates_the_mirror() {
     parented.index = 0;
     let mut set = change(MirrorChangeKind::Set, 10);
     set.key = "opacity".to_owned();
-    set.value = Some(LuaValue::Double(0.5));
+    set.value = Some(MirrorValue::Double(0.5));
 
     let applied = mirror
         .apply_changes(6, &[created, parented, set])
         .expect("batch applies");
 
-    assert_eq!(applied, LuaApplied::LuaApplied);
+    assert_eq!(applied, MirrorApplied::MirrorApplied);
     assert_eq!(mirror.serial(), 6);
     assert_eq!(children(&mirror, 3), vec![10]);
     assert_eq!(mirror.node(10).expect("created").class, "Canvas");
-    assert_eq!(mirror.value(10, "opacity"), Some(&LuaValue::Double(0.5)));
+    assert_eq!(mirror.value(10, "opacity"), Some(&MirrorValue::Double(0.5)));
 }
 
 #[test]
@@ -159,11 +159,11 @@ fn a_stale_batch_is_ignored() {
     let before = mirror.dump();
     let mut set = change(MirrorChangeKind::Set, 2);
     set.key = "opacity".to_owned();
-    set.value = Some(LuaValue::Double(0.0));
+    set.value = Some(MirrorValue::Double(0.0));
 
     assert_eq!(
         mirror.apply_changes(5, &[set]).expect("stale batch"),
-        LuaApplied::Ignored
+        MirrorApplied::Ignored
     );
     assert_eq!(mirror.dump(), before);
 }
@@ -185,8 +185,8 @@ fn a_refused_transaction_leaves_the_mirror_unchanged() {
     let mirror = base_mirror();
     let before = mirror.dump();
     {
-        let mut tx = LuaTxBuilder::new();
-        tx.set(&mirror, 2, "opacity", LuaValue::Double(0.25), None, None)
+        let mut tx = TxBuilder::new();
+        tx.set(&mirror, 2, "opacity", MirrorValue::Double(0.25), None, None)
             .expect("node 2 exists");
         tx.destroy(&mirror, 3).expect("node 3 exists");
         let _ = tx.into_transaction(&mirror, 6);
@@ -199,17 +199,17 @@ fn a_refused_transaction_leaves_the_mirror_unchanged() {
 fn a_transactions_own_writes_are_visible_to_its_reads() {
     // F23/F24 of node-core.md: reads inside a tick see the writes of that tick.
     let mirror = base_mirror();
-    let mut tx = LuaTxBuilder::new();
+    let mut tx = TxBuilder::new();
 
     tx.new_node(&mirror, 20, "Canvas").expect("fresh id");
     tx.insert(&mirror, 20, 3, 0).expect("insert under b");
-    tx.set(&mirror, 20, "opacity", LuaValue::Double(0.75), None, None)
+    tx.set(&mirror, 20, "opacity", MirrorValue::Double(0.75), None, None)
         .expect("set on new node");
 
     assert_eq!(tx.node(&mirror, 20).expect("new node visible").class, "Canvas");
     assert_eq!(tx.node(&mirror, 20).expect("visible").parent, 3);
     assert_eq!(tx.node(&mirror, 3).expect("b visible").children, vec![20]);
-    assert_eq!(tx.get(&mirror, 20, "opacity"), Some(&LuaValue::Double(0.75)));
+    assert_eq!(tx.get(&mirror, 20, "opacity"), Some(&MirrorValue::Double(0.75)));
     // The base is untouched by the overlay.
     assert!(mirror.node(20).is_none());
     assert_eq!(children(&mirror, 3), Vec::<NodeId>::new());
@@ -218,7 +218,7 @@ fn a_transactions_own_writes_are_visible_to_its_reads() {
 #[test]
 fn destroy_returns_the_subtree_and_hides_it_from_later_reads() {
     let mirror = base_mirror();
-    let mut tx = LuaTxBuilder::new();
+    let mut tx = TxBuilder::new();
 
     let mut removed = tx.destroy(&mirror, 2).expect("node 2 exists").removed;
     removed.sort_unstable();
@@ -243,21 +243,21 @@ fn destroy_returns_the_subtree_and_hides_it_from_later_reads() {
 #[test]
 fn destroy_nils_the_references_to_the_subtree_and_names_them_without_sending_ops() {
     let mirror = base_mirror();
-    let mut tx = LuaTxBuilder::new();
+    let mut tx = TxBuilder::new();
     // Node 3 points at the doomed node 4 and at the survivor 1; node 2 (doomed) points at 3.
-    tx.set(&mirror, 3, "source", LuaValue::Node(4), None, None)
+    tx.set(&mirror, 3, "source", MirrorValue::Node(4), None, None)
         .expect("3 exists");
-    tx.set(&mirror, 3, "focus", LuaValue::Node(1), None, None)
+    tx.set(&mirror, 3, "focus", MirrorValue::Node(1), None, None)
         .expect("3 exists");
-    tx.set(&mirror, 2, "source", LuaValue::Node(3), None, None)
+    tx.set(&mirror, 2, "source", MirrorValue::Node(3), None, None)
         .expect("2 exists");
     let writes = tx.ops().len();
 
     let destroyed = tx.destroy(&mirror, 2).expect("node 2 exists");
 
     assert_eq!(destroyed.cleared, vec![(3, "source".to_owned())]);
-    assert_eq!(tx.get(&mirror, 3, "source"), Some(&LuaValue::Node(NIL)));
-    assert_eq!(tx.get(&mirror, 3, "focus"), Some(&LuaValue::Node(1)));
+    assert_eq!(tx.get(&mirror, 3, "source"), Some(&MirrorValue::Node(NIL)));
+    assert_eq!(tx.get(&mirror, 3, "focus"), Some(&MirrorValue::Node(1)));
     // Only the destroy is sent: the compositor clears the references itself.
     assert_eq!(tx.ops().len(), writes + 1);
 }
@@ -268,20 +268,20 @@ fn destroy_nils_references_held_by_untouched_base_nodes_too() {
         snap(1, NIL, 0, "node"),
         snap(2, 1, 0, "node"),
         SnapshotNode {
-            props: vec![("source".to_owned(), LuaValue::Node(2))],
+            props: vec![("source".to_owned(), MirrorValue::Node(2))],
             ..snap(3, 1, 1, "node")
         },
     ];
-    let mirror = LuaMirror::from_snapshot(7, 1, 5, &nodes).expect("snapshot builds");
-    let mut tx = LuaTxBuilder::new();
+    let mirror = TreeMirror::from_snapshot(7, 1, 5, &nodes).expect("snapshot builds");
+    let mut tx = TxBuilder::new();
 
     let destroyed = tx.destroy(&mirror, 2).expect("node 2 exists");
 
     assert_eq!(destroyed.cleared, vec![(3, "source".to_owned())]);
-    assert_eq!(tx.get(&mirror, 3, "source"), Some(&LuaValue::Node(NIL)));
+    assert_eq!(tx.get(&mirror, 3, "source"), Some(&MirrorValue::Node(NIL)));
     assert_eq!(
         mirror.value(3, "source"),
-        Some(&LuaValue::Node(2)),
+        Some(&MirrorValue::Node(2)),
         "the base is untouched"
     );
 }
@@ -289,21 +289,21 @@ fn destroy_nils_references_held_by_untouched_base_nodes_too() {
 #[test]
 fn what_a_sent_transaction_wrote_is_read_by_the_next_builder_until_the_mirror_says_so() {
     let mirror = base_mirror();
-    let mut tx = LuaTxBuilder::new();
+    let mut tx = TxBuilder::new();
     tx.new_node(&mirror, 20, "node").expect("a new id");
     tx.insert(&mirror, 20, 3, 0).expect("20 goes under 3");
     tx.insert(&mirror, 4, 3, 1).expect("4 moves under 3");
-    tx.set(&mirror, 2, "opacity", LuaValue::Double(0.25), None, None)
+    tx.set(&mirror, 2, "opacity", MirrorValue::Double(0.25), None, None)
         .expect("2 exists");
 
     // The next tick reads it all, though the mirror holds none of it yet.
-    let mut next = LuaTxBuilder::seeded(tx.sent(&mirror));
+    let mut next = TxBuilder::seeded(tx.sent(&mirror));
     next.refresh(&mirror);
     assert_eq!(next.children(&mirror, 3).expect("3 exists"), [20, 4]);
     assert_eq!(next.children(&mirror, 2).expect("2 exists"), Vec::<NodeId>::new());
     assert_eq!(next.node(&mirror, 4).expect("4 exists").parent, 3);
     assert_eq!(next.node(&mirror, 20).expect("20 is read").parent, 3);
-    assert_eq!(next.get(&mirror, 2, "opacity"), Some(&LuaValue::Double(0.25)));
+    assert_eq!(next.get(&mirror, 2, "opacity"), Some(&MirrorValue::Double(0.25)));
     assert!(next.ops().is_empty(), "nothing is sent again");
 
     // A child the compositor destroyed meanwhile is not listed.
@@ -311,7 +311,7 @@ fn what_a_sent_transaction_wrote_is_read_by_the_next_builder_until_the_mirror_sa
     moved
         .apply_changes(
             6,
-            &[LuaChange {
+            &[MirrorChange {
                 removed: vec![4],
                 ..change(MirrorChangeKind::Destroyed, 4)
             }],
@@ -329,9 +329,9 @@ fn what_a_sent_transaction_wrote_is_read_by_the_next_builder_until_the_mirror_sa
 #[test]
 fn a_write_to_a_node_the_tree_does_not_have_is_refused_locally() {
     let mirror = base_mirror();
-    let mut tx = LuaTxBuilder::new();
+    let mut tx = TxBuilder::new();
     assert_eq!(
-        tx.set(&mirror, 99, "x", LuaValue::Double(1.0), None, None),
+        tx.set(&mirror, 99, "x", MirrorValue::Double(1.0), None, None),
         Err(TxError::UnknownNode(99))
     );
     assert!(tx.ops().is_empty());
@@ -340,27 +340,27 @@ fn a_write_to_a_node_the_tree_does_not_have_is_refused_locally() {
 #[test]
 fn inserting_a_node_under_its_own_descendant_is_refused() {
     let mirror = base_mirror();
-    let mut tx = LuaTxBuilder::new();
+    let mut tx = TxBuilder::new();
     assert_eq!(tx.insert(&mirror, 2, 4, 0), Err(TxError::Cycle(2)));
 }
 
 #[test]
 fn the_root_cannot_be_destroyed() {
     let mirror = base_mirror();
-    let mut tx = LuaTxBuilder::new();
+    let mut tx = TxBuilder::new();
     assert_eq!(tx.destroy(&mirror, 1), Err(TxError::Root(1)));
 }
 
 #[test]
 fn the_transaction_carries_the_ops_and_the_serials() {
     let mirror = base_mirror();
-    let mut tx = LuaTxBuilder::new();
+    let mut tx = TxBuilder::new();
     tx.new_node(&mirror, 20, "Node").expect("fresh id");
     tx.set(
         &mirror,
         20,
         "name",
-        LuaValue::Text("a".to_owned()),
+        MirrorValue::Text("a".to_owned()),
         Some(0.2),
         Some(vec![0.0, 1.0]),
     )
@@ -370,7 +370,7 @@ fn the_transaction_carries_the_ops_and_the_serials() {
     assert_eq!(transaction.base_serial, 5);
     assert_eq!(transaction.serial, 6);
     assert_eq!(transaction.ops.len(), 2);
-    assert!(matches!(transaction.ops[0], LuaOp::New { id: 20, .. }));
+    assert!(matches!(transaction.ops[0], TxOp::New { id: 20, .. }));
 }
 
 #[test]
@@ -379,7 +379,7 @@ fn a_reattach_rebuilds_the_mirror_from_a_fresh_snapshot() {
     let mut mirror = base_mirror();
     let mut set = change(MirrorChangeKind::Set, 2);
     set.key = "opacity".to_owned();
-    set.value = Some(LuaValue::Double(0.5));
+    set.value = Some(MirrorValue::Double(0.5));
     mirror.apply_changes(6, &[set]).expect("batch applies");
     assert!(mirror.value(2, "opacity").is_some());
 
@@ -411,7 +411,7 @@ fn a_mirror_that_applies_the_same_script_twice_dumps_identically() {
         parented.index = 0;
         let mut set = change(MirrorChangeKind::Set, 30);
         set.key = "width".to_owned();
-        set.value = Some(LuaValue::Double(12.5));
+        set.value = Some(MirrorValue::Double(12.5));
         mirror.apply_changes(6, &[created, parented, set]).expect("batch");
         mirror.dump()
     };
@@ -419,17 +419,17 @@ fn a_mirror_that_applies_the_same_script_twice_dumps_identically() {
 }
 
 /// A parentless window W(5) and a shell node P(6) under the root(1).
-fn window_and_shell_mirror() -> LuaMirror {
+fn window_and_shell_mirror() -> TreeMirror {
     let nodes = [
         snap(1, NIL, 0, "node"),
         snap(5, NIL, 0, "window"),
         snap(6, 1, 0, "node"),
     ];
-    LuaMirror::from_snapshot(7, 1, 5, &nodes).expect("snapshot builds")
+    TreeMirror::from_snapshot(7, 1, 5, &nodes).expect("snapshot builds")
 }
 
-fn parented(node: NodeId, parent: NodeId, index: i64) -> LuaChange {
-    LuaChange {
+fn parented(node: NodeId, parent: NodeId, index: i64) -> MirrorChange {
+    MirrorChange {
         parent,
         index,
         ..change(MirrorChangeKind::Parented, node)
@@ -441,7 +441,7 @@ fn a_parented_batch_places_a_parentless_window_under_its_shell_node() {
     let mut mirror = window_and_shell_mirror();
     assert_eq!(mirror.node(5).expect("window").parent, NIL);
     let applied = mirror.apply_changes(6, &[parented(5, 6, 0)]).expect("batch applies");
-    assert_eq!(applied, LuaApplied::LuaApplied);
+    assert_eq!(applied, MirrorApplied::MirrorApplied);
     assert_eq!(mirror.node(5).expect("window").parent, 6);
     assert_eq!(children(&mirror, 6), vec![5]);
     assert_eq!(mirror.serial(), 6);
@@ -453,7 +453,7 @@ fn the_echo_of_the_authors_own_transaction_is_applied_not_ignored() {
     // serial 5: it must be applied, never reported as stale.
     let mut mirror = window_and_shell_mirror();
     let applied = mirror.apply_changes(6, &[parented(5, 6, 0)]).expect("echo applies");
-    assert_eq!(applied, LuaApplied::LuaApplied);
+    assert_eq!(applied, MirrorApplied::MirrorApplied);
     assert_eq!(mirror.serial(), 6);
 }
 
@@ -463,7 +463,7 @@ fn a_replayed_parented_batch_leaves_the_window_listed_once() {
     mirror.apply_changes(6, &[parented(5, 6, 0)]).expect("first applies");
     assert_eq!(
         mirror.apply_changes(6, &[parented(5, 6, 0)]).expect("replay is stale"),
-        LuaApplied::Ignored
+        MirrorApplied::Ignored
     );
     assert_eq!(children(&mirror, 6), vec![5]);
 }
@@ -472,7 +472,7 @@ fn a_replayed_parented_batch_leaves_the_window_listed_once() {
 fn a_pending_insert_and_its_echo_do_not_double_apply_the_window() {
     // The builder holds the insert until the echo arrives; the committed view must list W once.
     let mut mirror = window_and_shell_mirror();
-    let mut tx = LuaTxBuilder::default();
+    let mut tx = TxBuilder::default();
     tx.insert(&mirror, 5, 6, 0).expect("the insert is accepted locally");
     assert_eq!(tx.children(&mirror, 6), Some(&[5][..]));
     assert_eq!(children(&mirror, 6), Vec::<NodeId>::new());
@@ -483,14 +483,14 @@ fn a_pending_insert_and_its_echo_do_not_double_apply_the_window() {
 #[test]
 fn debug_of_a_lua_call_never_shows_its_text() {
     const SECRET: &str = "hunter2-never-print-me";
-    let op = LuaOp::Call {
+    let op = TxOp::Call {
         node: 5,
         method: "claim".to_owned(),
         args: vec![7],
         token: 1,
         text: gnoblin_secret::SecretText::new(SECRET),
     };
-    let transaction = gnoblin_tree_client::tree_mirror::LuaTransaction {
+    let transaction = gnoblin_tree_client::tree_mirror::TreeTx {
         base_serial: 1,
         serial: 2,
         ops: vec![op.clone()],

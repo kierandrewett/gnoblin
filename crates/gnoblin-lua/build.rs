@@ -300,18 +300,18 @@ fn tree_kind(ty: &Type) -> Option<&'static str> {
     })
 }
 
-/// The `LuaValue` expression of a default, converted to the property's kind.
+/// The `MirrorValue` expression of a default, converted to the property's kind.
 fn lua_default(default: &DefaultValue, kind: &str, class: &str, name: &str) -> Result<String, String> {
     let mismatch = || format!("{class}.{name}: the default {default:?} does not fit {kind}");
     Ok(match (default, kind) {
-        (DefaultValue::Bool(value), "Bool") => format!("LuaValue::Bool({value})"),
-        (DefaultValue::Int(value), "Int") => format!("LuaValue::Int({value})"),
-        (DefaultValue::Uint(value), "Uint") => format!("LuaValue::Uint({value})"),
-        (DefaultValue::Double(value), "Double") => format!("LuaValue::Double({value:?})"),
+        (DefaultValue::Bool(value), "Bool") => format!("MirrorValue::Bool({value})"),
+        (DefaultValue::Int(value), "Int") => format!("MirrorValue::Int({value})"),
+        (DefaultValue::Uint(value), "Uint") => format!("MirrorValue::Uint({value})"),
+        (DefaultValue::Double(value), "Double") => format!("MirrorValue::Double({value:?})"),
         // A whole-number default of a double property is the same double.
-        (DefaultValue::Int(value), "Double") => format!("LuaValue::Double({:?})", *value as f64),
-        (DefaultValue::Uint(value), "Double") => format!("LuaValue::Double({:?})", *value as f64),
-        (DefaultValue::Text(value), "Text") => format!("LuaValue::Text({value:?}.to_owned())"),
+        (DefaultValue::Int(value), "Double") => format!("MirrorValue::Double({:?})", *value as f64),
+        (DefaultValue::Uint(value), "Double") => format!("MirrorValue::Double({:?})", *value as f64),
+        (DefaultValue::Text(value), "Text") => format!("MirrorValue::Text({value:?}.to_owned())"),
         (DefaultValue::List(items), "ListDouble") => {
             let mut values = Vec::with_capacity(items.len());
             for item in items {
@@ -322,10 +322,10 @@ fn lua_default(default: &DefaultValue, kind: &str, class: &str, name: &str) -> R
                 }
             }
             let literals: Vec<String> = values.iter().map(|value| format!("{value:?}")).collect();
-            format!("LuaValue::List(vec![{}])", literals.join(", "))
+            format!("MirrorValue::List(vec![{}])", literals.join(", "))
         }
-        (DefaultValue::List(items), "ListText") if items.is_empty() => "LuaValue::Texts(Vec::new())".to_owned(),
-        (DefaultValue::List(items), "ListEffect") if items.is_empty() => "LuaValue::Effects(Vec::new())".to_owned(),
+        (DefaultValue::List(items), "ListText") if items.is_empty() => "MirrorValue::Texts(Vec::new())".to_owned(),
+        (DefaultValue::List(items), "ListEffect") if items.is_empty() => "MirrorValue::Effects(Vec::new())".to_owned(),
         _ => return Err(mismatch()),
     })
 }

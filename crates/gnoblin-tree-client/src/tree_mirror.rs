@@ -4,7 +4,7 @@
 //!
 //! The compositor owns the tree. The shell holds a mirror rebuilt from a snapshot and
 //! advanced by change batches, each stamped with a serial. Writes made inside one tick
-//! are gathered by a [`LuaTxBuilder`] that reads through its own overlay, so a write is
+//! are gathered by a [`TxBuilder`] that reads through its own overlay, so a write is
 //! visible to later reads in the same tick without touching the mirror. Only a
 //! transaction the compositor applies changes the mirror, through the change batch it
 //! publishes; a refused transaction therefore leaves the mirror exactly as it was.
@@ -45,7 +45,7 @@ pub fn wire_class(lua: &str) -> String {
 
 /// A property value, one variant per `value_kind` the wire carries.
 #[derive(Clone, Debug, PartialEq)]
-pub enum LuaValue {
+pub enum MirrorValue {
     Bool(bool),
     Int(i64),
     Uint(u64),
@@ -58,7 +58,7 @@ pub enum LuaValue {
     Bytes(Vec<u8>),
 }
 
-impl LuaValue {
+impl MirrorValue {
     /// The wire `value_kind` this value is sent as, named for a refusal message.
     pub const fn kind_name(&self) -> &'static str {
         match self {
@@ -104,7 +104,7 @@ pub struct SnapshotNode {
     pub app_id: String,
     /// The node's property values that differ from their schema defaults, by schema name.
     /// A property at its default is absent, so reads of it return the default.
-    pub props: Vec<(String, LuaValue)>,
+    pub props: Vec<(String, MirrorValue)>,
 }
 
 /// What a change entry does.
@@ -118,20 +118,20 @@ pub enum MirrorChangeKind {
 
 /// One entry of a change batch. Fields the kind does not use are zero or empty.
 #[derive(Clone, Debug, PartialEq)]
-pub struct LuaChange {
+pub struct MirrorChange {
     pub kind: MirrorChangeKind,
     pub node: NodeId,
     pub class: String,
     pub parent: NodeId,
     pub index: i64,
     pub key: String,
-    pub value: Option<LuaValue>,
+    pub value: Option<MirrorValue>,
     pub removed: Vec<NodeId>,
 }
 
 /// One write, as sent in a transaction.
 #[derive(Clone, Debug, PartialEq)]
-pub enum LuaOp {
+pub enum TxOp {
     New {
         id: NodeId,
         class: String,
@@ -139,7 +139,7 @@ pub enum LuaOp {
     Set {
         node: NodeId,
         key: String,
-        value: LuaValue,
+        value: MirrorValue,
         seconds: Option<f64>,
         samples: Option<Vec<f64>>,
     },
@@ -165,10 +165,10 @@ pub enum LuaOp {
 
 /// A transaction: the ops of one tick, stamped with the batch the shell last applied.
 #[derive(Clone, Debug, PartialEq)]
-pub struct LuaTransaction {
+pub struct TreeTx {
     pub base_serial: u64,
     pub serial: u64,
-    pub ops: Vec<LuaOp>,
+    pub ops: Vec<TxOp>,
 }
 
 /// The compositor's answer to a transaction.
@@ -231,7 +231,7 @@ pub struct TreeEvent {
 
 /// A claimed chord the compositor saw change state: `claim` is the id the Lua side allocated.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LuaChord {
+pub struct TreeChord {
     pub claim: i64,
     pub chord: String,
     pub state: String,
@@ -239,7 +239,7 @@ pub struct LuaChord {
 
 /// A claimed touchpad gesture the compositor saw advance: `claim` is the id the Lua side allocated.
 #[derive(Clone, Debug, PartialEq)]
-pub struct LuaGesture {
+pub struct TreeGesture {
     pub claim: i64,
     pub kind: String,
     pub fingers: i64,
@@ -260,7 +260,7 @@ pub struct Attached {
 
 /// Everything the compositor can send on the tree namespace.
 #[derive(Clone, Debug, PartialEq)]
-pub enum LuaIncoming {
+pub enum TreeIncoming {
     Attached(Attached),
     Snapshot {
         serial: u64,
@@ -270,7 +270,7 @@ pub enum LuaIncoming {
     },
     Changes {
         serial: u64,
-        changes: Vec<LuaChange>,
+        changes: Vec<MirrorChange>,
     },
     Reply(TxReply),
     Answer {
@@ -279,8 +279,8 @@ pub enum LuaIncoming {
         error: String,
     },
     Event(TreeEvent),
-    Chord(LuaChord),
-    Gesture(LuaGesture),
+    Chord(TreeChord),
+    Gesture(TreeGesture),
 }
 
 /// A failure of the link itself: the socket closed or a frame did not decode.
@@ -301,9 +301,9 @@ pub trait TreeLink {
     /// Ask for a snapshot. The attach reply and the snapshot chunks arrive through [`TreeLink::poll`].
     fn attach(&mut self, version: u64) -> Result<(), LinkError>;
     /// Send one transaction. Its reply arrives through [`TreeLink::poll`].
-    fn transact(&mut self, tx: &LuaTransaction) -> Result<(), LinkError>;
+    fn transact(&mut self, tx: &TreeTx) -> Result<(), LinkError>;
     /// Drain everything that has arrived since the last call, in arrival order.
-    fn poll(&mut self) -> Result<Vec<LuaIncoming>, LinkError>;
+    fn poll(&mut self) -> Result<Vec<TreeIncoming>, LinkError>;
 }
 
 /// The mirror's view of one node.
@@ -312,7 +312,7 @@ pub struct NodeRecord {
     pub class: String,
     pub parent: NodeId,
     pub children: Vec<NodeId>,
-    pub props: BTreeMap<String, LuaValue>,
+    pub props: BTreeMap<String, MirrorValue>,
 }
 
 /// Why the mirror refused a snapshot or a change batch.
@@ -340,24 +340,24 @@ impl std::fmt::Display for MirrorError {
 
 impl std::error::Error for MirrorError {}
 
-/// What [`LuaMirror::apply_changes`] did with a batch.
+/// What [`TreeMirror::apply_changes`] did with a batch.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LuaApplied {
-    LuaApplied,
+pub enum MirrorApplied {
+    MirrorApplied,
     /// The batch was at or before the mirror's serial: it is stale and was ignored (F24).
     Ignored,
 }
 
 /// The shell's copy of the tree.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct LuaMirror {
+pub struct TreeMirror {
     epoch: u64,
     root: NodeId,
     serial: u64,
     nodes: BTreeMap<NodeId, NodeRecord>,
 }
 
-impl LuaMirror {
+impl TreeMirror {
     /// An empty mirror, before the first snapshot.
     pub fn empty() -> Self {
         Self::default()
@@ -377,7 +377,7 @@ impl LuaMirror {
             };
             for (key, text) in [("title", &node.title), ("app_id", &node.app_id)] {
                 if !text.is_empty() {
-                    record.props.insert(key.to_owned(), LuaValue::Text(text.clone()));
+                    record.props.insert(key.to_owned(), MirrorValue::Text(text.clone()));
                 }
             }
             for (key, value) in &node.props {
@@ -435,7 +435,7 @@ impl LuaMirror {
     }
 
     /// A property the mirror holds. `None` means the mirror has not seen it set.
-    pub fn value(&self, id: NodeId, key: &str) -> Option<&LuaValue> {
+    pub fn value(&self, id: NodeId, key: &str) -> Option<&MirrorValue> {
         self.node(id)?.props.get(key)
     }
 
@@ -444,9 +444,9 @@ impl LuaMirror {
     /// A batch at or before the mirror's serial is stale and ignored (F24). A batch past
     /// the next serial means one was missed: [`MirrorError::Gap`] (F23). Any other error
     /// leaves the mirror half-applied, so the caller must reattach and rebuild it.
-    pub fn apply_changes(&mut self, serial: u64, changes: &[LuaChange]) -> Result<LuaApplied, MirrorError> {
+    pub fn apply_changes(&mut self, serial: u64, changes: &[MirrorChange]) -> Result<MirrorApplied, MirrorError> {
         if serial <= self.serial {
-            return Ok(LuaApplied::Ignored);
+            return Ok(MirrorApplied::Ignored);
         }
         let expected = self.serial + 1;
         if serial != expected {
@@ -456,10 +456,10 @@ impl LuaMirror {
             self.apply_change(change)?;
         }
         self.serial = serial;
-        Ok(LuaApplied::LuaApplied)
+        Ok(MirrorApplied::MirrorApplied)
     }
 
-    fn apply_change(&mut self, change: &LuaChange) -> Result<(), MirrorError> {
+    fn apply_change(&mut self, change: &MirrorChange) -> Result<(), MirrorError> {
         match change.kind {
             MirrorChangeKind::Created => {
                 if self.nodes.contains_key(&change.node) {
@@ -606,7 +606,7 @@ impl SnapshotBuilder {
         chunk: u32,
         last: bool,
         nodes: Vec<SnapshotNode>,
-    ) -> Result<Option<LuaMirror>, MirrorError> {
+    ) -> Result<Option<TreeMirror>, MirrorError> {
         if serial != self.serial {
             return Err(MirrorError::Snapshot(format!(
                 "chunk of serial {serial} in a snapshot of serial {}",
@@ -623,7 +623,7 @@ impl SnapshotBuilder {
         self.nodes.extend(nodes);
         if last {
             let nodes = std::mem::take(&mut self.nodes);
-            LuaMirror::from_snapshot(self.epoch, self.root, self.serial, &nodes).map(Some)
+            TreeMirror::from_snapshot(self.epoch, self.root, self.serial, &nodes).map(Some)
         } else {
             Ok(None)
         }
@@ -674,11 +674,11 @@ pub struct Destroyed {
 /// shell wrote is what it reads until the compositor's batch brings the same into the mirror, so a binding that
 /// runs in between finds the nodes it made and the values it set (`SentWrites`, `seeded`, `settle`).
 #[derive(Debug, Default)]
-pub struct LuaTxBuilder {
+pub struct TxBuilder {
     overlay: BTreeMap<NodeId, Option<NodeRecord>>,
-    ops: Vec<LuaOp>,
+    ops: Vec<TxOp>,
     /// The property writes of the transactions in flight, for the nodes the mirror already holds.
-    in_flight: BTreeMap<NodeId, BTreeMap<String, LuaValue>>,
+    in_flight: BTreeMap<NodeId, BTreeMap<String, MirrorValue>>,
     /// The carried nodes of earlier ticks the overlay holds for want of the mirror.
     seeds: Vec<NodeId>,
     /// The carried nodes the mirror held when they were carried (moved, not made): one the mirror loses was
@@ -695,10 +695,10 @@ pub struct SentWrites {
     /// Which of `nodes` the mirror held already.
     pub held: Vec<NodeId>,
     /// The properties it set on nodes the mirror holds.
-    pub props: BTreeMap<NodeId, BTreeMap<String, LuaValue>>,
+    pub props: BTreeMap<NodeId, BTreeMap<String, MirrorValue>>,
 }
 
-impl LuaTxBuilder {
+impl TxBuilder {
     /// An empty builder for one tick.
     pub fn new() -> Self {
         Self::default()
@@ -720,7 +720,7 @@ impl LuaTxBuilder {
     /// What the next tick must still read of this one's writes: the nodes made that `base` does not hold, the nodes
     /// whose place or children differ from `base`'s, and the properties set on the nodes `base` holds, on top of
     /// what earlier in-flight transactions wrote.
-    pub fn sent(&self, base: &LuaMirror) -> SentWrites {
+    pub fn sent(&self, base: &TreeMirror) -> SentWrites {
         let nodes: Vec<(NodeId, NodeRecord)> = self
             .overlay
             .iter()
@@ -739,7 +739,7 @@ impl LuaTxBuilder {
             .collect();
         let mut props = self.in_flight.clone();
         for op in &self.ops {
-            if let LuaOp::Set { node, key, value, .. } = op
+            if let TxOp::Set { node, key, value, .. } = op
                 && base.node(*node).is_some()
             {
                 props.entry(*node).or_default().insert(key.clone(), value.clone());
@@ -751,7 +751,7 @@ impl LuaTxBuilder {
     /// Brings the carried nodes up to date with `base` at the start of a tick: the properties come from the mirror
     /// (a native write shows) with the in-flight writes on top, and a child the compositor destroyed is gone from
     /// the list. Their place and children stay as the shell left them until the mirror holds the same.
-    pub fn refresh(&mut self, base: &LuaMirror) {
+    pub fn refresh(&mut self, base: &TreeMirror) {
         // A node the mirror held and no longer does was destroyed by the compositor.
         let gone: Vec<NodeId> = self
             .held
@@ -805,9 +805,9 @@ impl LuaTxBuilder {
         let mut named: Vec<NodeId> = Vec::new();
         for op in &self.ops {
             match op {
-                LuaOp::New { id, .. } => named.push(*id),
-                LuaOp::Set { node, .. } | LuaOp::Destroy { node } | LuaOp::Call { node, .. } => named.push(*node),
-                LuaOp::Insert { node, parent, .. } => named.extend([*node, *parent]),
+                TxOp::New { id, .. } => named.push(*id),
+                TxOp::Set { node, .. } | TxOp::Destroy { node } | TxOp::Call { node, .. } => named.push(*node),
+                TxOp::Insert { node, parent, .. } => named.extend([*node, *parent]),
             }
         }
         self.held.clear();
@@ -819,7 +819,7 @@ impl LuaTxBuilder {
     }
 
     /// The node as this tick sees it, against the mirror the tick started from.
-    pub fn node<'a>(&'a self, base: &'a LuaMirror, id: NodeId) -> Option<&'a NodeRecord> {
+    pub fn node<'a>(&'a self, base: &'a TreeMirror, id: NodeId) -> Option<&'a NodeRecord> {
         match self.overlay.get(&id) {
             Some(entry) => entry.as_ref(),
             None => base.node(id),
@@ -827,7 +827,7 @@ impl LuaTxBuilder {
     }
 
     /// A property as this tick sees it.
-    pub fn get<'a>(&'a self, base: &'a LuaMirror, id: NodeId, key: &str) -> Option<&'a LuaValue> {
+    pub fn get<'a>(&'a self, base: &'a TreeMirror, id: NodeId, key: &str) -> Option<&'a MirrorValue> {
         let record = self.node(base, id)?;
         if !self.overlay.contains_key(&id)
             && let Some(value) = self.in_flight.get(&id).and_then(|props| props.get(key))
@@ -838,12 +838,12 @@ impl LuaTxBuilder {
     }
 
     /// The children of a node as this tick sees them, in order.
-    pub fn children<'a>(&'a self, base: &'a LuaMirror, id: NodeId) -> Option<&'a [NodeId]> {
+    pub fn children<'a>(&'a self, base: &'a TreeMirror, id: NodeId) -> Option<&'a [NodeId]> {
         self.node(base, id).map(|record| record.children.as_slice())
     }
 
     /// Copy a node into the overlay on first write, so the base is never touched.
-    fn touch(&mut self, base: &LuaMirror, id: NodeId) -> Option<&mut NodeRecord> {
+    fn touch(&mut self, base: &TreeMirror, id: NodeId) -> Option<&mut NodeRecord> {
         if let std::collections::btree_map::Entry::Vacant(slot) = self.overlay.entry(id) {
             let mut record = base.node(id)?.clone();
             if let Some(props) = self.in_flight.get(&id) {
@@ -856,12 +856,12 @@ impl LuaTxBuilder {
         self.overlay.get_mut(&id)?.as_mut()
     }
 
-    fn require(&self, base: &LuaMirror, id: NodeId) -> Result<(), TxError> {
+    fn require(&self, base: &TreeMirror, id: NodeId) -> Result<(), TxError> {
         self.node(base, id).map(|_| ()).ok_or(TxError::UnknownNode(id))
     }
 
     /// Create a node with a pre-allocated id.
-    pub fn new_node(&mut self, base: &LuaMirror, id: NodeId, class: &str) -> Result<(), TxError> {
+    pub fn new_node(&mut self, base: &TreeMirror, id: NodeId, class: &str) -> Result<(), TxError> {
         if self.node(base, id).is_some() || self.overlay.contains_key(&id) {
             return Err(TxError::Exists(id));
         }
@@ -872,7 +872,7 @@ impl LuaTxBuilder {
                 ..NodeRecord::default()
             }),
         );
-        self.ops.push(LuaOp::New {
+        self.ops.push(TxOp::New {
             id,
             class: wire_class(class),
         });
@@ -882,16 +882,16 @@ impl LuaTxBuilder {
     /// Set a property. `seconds` and `samples` describe an animated set; `None` is instant.
     pub fn set(
         &mut self,
-        base: &LuaMirror,
+        base: &TreeMirror,
         node: NodeId,
         key: &str,
-        value: LuaValue,
+        value: MirrorValue,
         seconds: Option<f64>,
         samples: Option<Vec<f64>>,
     ) -> Result<(), TxError> {
         let record = self.touch(base, node).ok_or(TxError::UnknownNode(node))?;
         record.props.insert(key.to_owned(), value.clone());
-        self.ops.push(LuaOp::Set {
+        self.ops.push(TxOp::Set {
             node,
             key: key.to_owned(),
             value,
@@ -902,7 +902,7 @@ impl LuaTxBuilder {
     }
 
     /// Insert `node` under `parent` at `index`, moving it from its current parent.
-    pub fn insert(&mut self, base: &LuaMirror, node: NodeId, parent: NodeId, index: i64) -> Result<(), TxError> {
+    pub fn insert(&mut self, base: &TreeMirror, node: NodeId, parent: NodeId, index: i64) -> Result<(), TxError> {
         self.require(base, node)?;
         self.require(base, parent)?;
         if node == base.root() {
@@ -924,11 +924,11 @@ impl LuaTxBuilder {
             let at = usize::try_from(index).map_or(record.children.len(), |i| i.min(record.children.len()));
             record.children.insert(at, node);
         }
-        self.ops.push(LuaOp::Insert { node, parent, index });
+        self.ops.push(TxOp::Insert { node, parent, index });
         Ok(())
     }
 
-    fn is_ancestor_or_self(&self, base: &LuaMirror, ancestor: NodeId, mut id: NodeId) -> bool {
+    fn is_ancestor_or_self(&self, base: &TreeMirror, ancestor: NodeId, mut id: NodeId) -> bool {
         while id != NIL {
             if id == ancestor {
                 return true;
@@ -942,7 +942,7 @@ impl LuaTxBuilder {
     /// references that became nil because their target went (section 3.4 of the design). The
     /// compositor clears the same references and says so in its next batch, so the nil writes
     /// stay local to this tick and are not sent as ops.
-    pub fn destroy(&mut self, base: &LuaMirror, node: NodeId) -> Result<Destroyed, TxError> {
+    pub fn destroy(&mut self, base: &TreeMirror, node: NodeId) -> Result<Destroyed, TxError> {
         self.require(base, node)?;
         if node == base.root() {
             return Err(TxError::Root(node));
@@ -965,7 +965,7 @@ impl LuaTxBuilder {
             self.overlay.insert(*id, None);
         }
         let cleared = self.clear_references_to(base, &subtree);
-        self.ops.push(LuaOp::Destroy { node });
+        self.ops.push(TxOp::Destroy { node });
         Ok(Destroyed {
             removed: subtree.into_iter().filter(|id| *id != node).collect(),
             cleared,
@@ -975,12 +975,12 @@ impl LuaTxBuilder {
     /// Sets every node reference that points into `gone` to nil, for this tick's reads. Returns
     /// the holder and key of each, holders in id order and keys in name order. A holder that is
     /// itself gone is skipped.
-    fn clear_references_to(&mut self, base: &LuaMirror, gone: &[NodeId]) -> Vec<(NodeId, String)> {
+    fn clear_references_to(&mut self, base: &TreeMirror, gone: &[NodeId]) -> Vec<(NodeId, String)> {
         let dangling = |record: &NodeRecord| {
             record
                 .props
                 .iter()
-                .filter(|(_, value)| matches!(value, LuaValue::Node(target) if gone.contains(target)))
+                .filter(|(_, value)| matches!(value, MirrorValue::Node(target) if gone.contains(target)))
                 .map(|(key, _)| key.clone())
                 .collect::<Vec<_>>()
         };
@@ -1001,7 +1001,7 @@ impl LuaTxBuilder {
         for (holder, keys) in holders {
             for key in keys {
                 if let Some(record) = self.touch(base, holder) {
-                    record.props.insert(key.clone(), LuaValue::Node(NIL));
+                    record.props.insert(key.clone(), MirrorValue::Node(NIL));
                     cleared.push((holder, key));
                 }
             }
@@ -1012,7 +1012,7 @@ impl LuaTxBuilder {
     /// Call a method on a node. The answer arrives later, by token.
     pub fn call(
         &mut self,
-        base: &LuaMirror,
+        base: &TreeMirror,
         node: NodeId,
         method: &str,
         args: Vec<u8>,
@@ -1020,7 +1020,7 @@ impl LuaTxBuilder {
         text: SecretText,
     ) -> Result<(), TxError> {
         self.require(base, node)?;
-        self.ops.push(LuaOp::Call {
+        self.ops.push(TxOp::Call {
             node,
             method: method.to_owned(),
             args,
@@ -1030,7 +1030,7 @@ impl LuaTxBuilder {
         Ok(())
     }
 
-    pub fn ops(&self) -> &[LuaOp] {
+    pub fn ops(&self) -> &[TxOp] {
         &self.ops
     }
 
@@ -1040,8 +1040,8 @@ impl LuaTxBuilder {
 
     /// The transaction for these writes, stamped with the serial of the mirror `base`, which
     /// must be the mirror this tick started from.
-    pub fn into_transaction(self, base: &LuaMirror, serial: u64) -> LuaTransaction {
-        LuaTransaction {
+    pub fn into_transaction(self, base: &TreeMirror, serial: u64) -> TreeTx {
+        TreeTx {
             base_serial: base.serial(),
             serial,
             ops: self.ops,
