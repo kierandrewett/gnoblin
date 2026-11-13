@@ -558,7 +558,6 @@ fn function_binding_reruns_on_mirror_change() {
 fn class_handler_fires_on_ready_event() {
     let comp = compositor_with_root_and_window();
     let mut vm = boot(&comp);
-    vm.frame(0.0, vec![]).expect("boot frame announces the snapshot");
     vm.run(
         "handler",
         r#"
@@ -567,6 +566,10 @@ fn class_handler_fires_on_ready_event() {
         "#,
     )
     .expect("install handler");
+    // The boot snapshot is the window's first `ready`: the handler runs on the boot frame, once.
+    vm.frame(0.0, vec![]).expect("boot frame announces the snapshot");
+    assert_eq!(check(&mut vm, "read", "return READY"), "1");
+    // A later `ready` for an already-readied window does not run the handler again.
     vm.frame(0.0, vec![event(2, "ready")]).expect("ready frame");
     assert_eq!(check(&mut vm, "read", "return READY"), "1");
 }
@@ -1049,7 +1052,6 @@ fn a_shell_script_cannot_reach_the_filesystem_or_a_library_the_sandbox_withholds
 fn a_handler_that_never_returns_is_stopped_and_the_frame_goes_on() {
     let comp = compositor_with_root_and_window();
     let mut vm = boot_with(&comp, tight(300_000, 10_000));
-    vm.frame(0.0, vec![]).expect("boot frame");
     vm.run(
         "handlers",
         r#"
@@ -1058,7 +1060,8 @@ fn a_handler_that_never_returns_is_stopped_and_the_frame_goes_on() {
         "#,
     )
     .expect("install handlers");
-    let frame = vm.frame(1.0, vec![event(2, "ready")]).expect("the frame is not lost");
+    // The boot frame's snapshot is the window's first `ready`, so the handlers run there.
+    let frame = vm.frame(0.0, vec![]).expect("the frame is not lost");
     assert_eq!(frame.diagnostics.len(), 1, "one report: {:?}", frame.diagnostics);
     assert!(
         frame.diagnostics[0].contains("Window on_ready handler") && frame.diagnostics[0].contains("instruction budget"),
@@ -1079,13 +1082,12 @@ fn a_handler_that_never_returns_is_stopped_and_the_frame_goes_on() {
 fn a_runaway_that_catches_every_error_is_still_stopped() {
     let comp = compositor_with_root_and_window();
     let mut vm = boot_with(&comp, tight(300_000, 10_000));
-    vm.frame(0.0, vec![]).expect("boot frame");
     vm.run(
         "handler",
         "function Window:on_ready() while true do pcall(error, 'again') end end",
     )
     .expect("install handler");
-    let frame = vm.frame(1.0, vec![event(2, "ready")]).expect("the frame is not lost");
+    let frame = vm.frame(0.0, vec![]).expect("the frame is not lost");
     assert!(
         frame.diagnostics.iter().any(|d| d.contains("instruction budget")),
         "a pcall loop cannot outrun the budget: {:?}",
@@ -1097,11 +1099,10 @@ fn a_runaway_that_catches_every_error_is_still_stopped() {
 fn a_handler_that_runs_out_its_time_is_stopped_by_the_deadline() {
     let comp = compositor_with_root_and_window();
     let mut vm = boot_with(&comp, tight(u64::MAX / 4_000, 30));
-    vm.frame(0.0, vec![]).expect("boot frame");
     vm.run("handler", "function Window:on_ready() while true do end end")
         .expect("install handler");
     let started = std::time::Instant::now();
-    let frame = vm.frame(1.0, vec![event(2, "ready")]).expect("the frame is not lost");
+    let frame = vm.frame(0.0, vec![]).expect("the frame is not lost");
     assert!(
         started.elapsed() < std::time::Duration::from_secs(5),
         "the frame took {:?}",
