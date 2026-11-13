@@ -800,9 +800,9 @@ impl TreeFrame {
         self.drain_held(scene, now).send();
     }
 
-    /// [`TreeFrame::drain`], with the replies held until [`Held::send`]. The frame's owner sends them after the
+    /// [`TreeFrame::drain`], with the replies held until [`DrainedReplies::send`]. The frame's owner sends them after the
     /// work the replies promise: a mark is acknowledged only once the captures it ends have ended.
-    pub(crate) fn drain_held(&mut self, scene: &mut Scene, now: impl Fn() -> Instant) -> Held {
+    pub(crate) fn drain_held(&mut self, scene: &mut Scene, now: impl Fn() -> Instant) -> DrainedReplies {
         let start = now();
         self.frames += 1;
         let frame = self.frames;
@@ -978,21 +978,21 @@ impl TreeFrame {
             batch.serial = self.serial;
             (self.publish)(batch);
         }
-        Held {
+        DrainedReplies {
             serial: self.serial,
             replies,
         }
     }
 }
 
-/// The replies a frame's drain answered, held until [`Held::send`].
+/// The replies a frame's drain answered, held until [`DrainedReplies::send`].
 #[must_use = "the replies reach the shell only through send"]
-pub(crate) struct Held {
+pub(crate) struct DrainedReplies {
     serial: u64,
     replies: Vec<(Reply, Result<TreeApplied, TreeRefusal>)>,
 }
 
-impl Held {
+impl DrainedReplies {
     /// Sends each reply, with the serial the drain published.
     pub(crate) fn send(self) {
         for (reply, result) in self.replies {
