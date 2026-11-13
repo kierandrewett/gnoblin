@@ -49,6 +49,7 @@ members = [
     "crates/gnoblin-portal-ui",
     "crates/gnoblin-input",
     "crates/gnoblin-input-eis",
+    "crates/gnoblin-js-types",
     "crates/gnoblin-keyring-store",
     "crates/gnoblin-keyring-handoff",
     "crates/pam-gnoblin-keyring",

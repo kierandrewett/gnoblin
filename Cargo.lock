@@ -1448,6 +1448,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-js-types"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-schema",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "gnoblin-keyring-handoff"
 version = "0.2.0-alpha.0"
 dependencies = [

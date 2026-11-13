@@ -1,0 +1,21 @@
+[package]
+name = "gnoblin-js-types"
+description = "Generates gnoblin.d.ts and the tsconfig.json for the JavaScript and TypeScript shell from the object schema."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[dependencies]
+# The catalog the declarations are generated from.
+gnoblin-schema.workspace = true
+# The tsconfig is JSON; building it as a value keeps every path and string escaped.
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile = "3.23.0"
+
+[lints]
+workspace = true
