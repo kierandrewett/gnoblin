@@ -44,6 +44,12 @@ fn classes() -> Vec<ClassSpec> {
                 readonly: false,
                 default: None,
             },
+            PropSpec {
+                name: "name".into(),
+                kind: TreeValueKind::Text,
+                readonly: false,
+                default: None,
+            },
         ],
         signals: vec!["ready".into()],
         ..ClassSpec::default()
@@ -1451,4 +1457,53 @@ fn each_user_file_gets_the_whole_load_budget() {
         .load_shell(&shell.stock, Some(&shell.config))
         .expect("the stock shell loads");
     assert!(errors.is_empty(), "{errors:?}");
+}
+
+// Level 2 of docs/build-your-shell.md. The user copies the stock tiling.lua to mine/tiling.lua, and their shell.lua
+// requires it and replaces the stock Desk:workspace. The stock shell here is a stub with the stock Desk and
+// Floating classes; the copied module is the shipped file, byte for byte.
+const LEVEL2_SHELL_LUA: &str = "require('mine.tiling')\n\
+function Desk:workspace(name)\n\
+    return Tiling({ name = name })\n\
+end\n";
+
+#[test]
+fn a_user_module_required_from_shell_lua_replaces_a_stock_method() {
+    let comp = compositor_with_root_and_window();
+    let shell = loading(
+        "Workspace = Node:extend(\"Workspace\")({})\n\
+         Floating = Workspace:extend(\"Floating\")({})\n\
+         Node:extend(\"Desk\")({})\n\
+         function Desk:workspace(name)\n\
+         \x20   return Floating({ name = name })\n\
+         end\n",
+        &[
+            (
+                "mine/tiling.lua",
+                include_str!("../../../data/lua/gnoblin/shell/tiling.lua"),
+            ),
+            ("shell.lua", LEVEL2_SHELL_LUA),
+        ],
+    );
+    let mut vm = shell.boot(&comp, ShellLimits::default());
+    let errors = vm
+        .load_shell(&shell.stock, Some(&shell.config))
+        .expect("the stock shell and the user's files load");
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!(
+        check(
+            &mut vm,
+            "level2",
+            "return tostring(Desk:workspace('main'):is('Tiling'))"
+        ),
+        "true"
+    );
+    assert_eq!(
+        check(
+            &mut vm,
+            "level2",
+            "return tostring(Desk:workspace('main'):is('Floating'))"
+        ),
+        "false"
+    );
 }
