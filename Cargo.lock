@@ -1876,8 +1876,11 @@ dependencies = [
 name = "gnoblin-tree-client"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-client",
+ "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-secret",
+ "gnoblin-types",
 ]
 
 [[package]]
