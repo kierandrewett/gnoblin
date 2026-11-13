@@ -820,6 +820,46 @@ fn a_secure_node_is_redacted_in_both_eyes_of_a_stereo_view_as_on_the_cpu() {
     }
 }
 
+/// The head camera is moved by the XR extension, an observer, and a View through it may show a secure window. Where the
+/// camera stands decides what is in each eye and never whether the secure node is masked: the capture variant is chosen
+/// from the secure marks of the source, not from the camera, so no pose, near, far, behind the node or off to the side,
+/// lets a pixel of it into a capture.
+#[test]
+fn a_secure_node_stays_redacted_wherever_the_head_camera_is_written_to_stand() {
+    let poses = [
+        (40.0, 20.0, 100.0),
+        (0.0, 0.0, 1.0),
+        (-500.0, 300.0, 40.0),
+        (40.0, 20.0, -100.0),
+        (1.0e6, -1.0e6, 50.0),
+        (40.0, 20.0, 0.001),
+    ];
+    for (x, y, z) in poses {
+        let build = |composer: &mut Composer| {
+            view_of_source(composer, Size::new(80, 40));
+            canvas(composer, 1, 101, Rect::new(10, 5, 60, 30), RED, BLUE);
+            camera(composer, "stereo", Vec3 { x, y, z }, &[]);
+            set_secure(composer, NodeId::new(1), true);
+        };
+        let (cpu, gpu) = both(build);
+        let capture = cpu_picture(&cpu.0);
+        let colours = pixels(&capture);
+        assert!(
+            !colours.contains(&RED) && !colours.contains(&BLUE),
+            "a camera at ({x}, {y}, {z}) shows a pixel of the secure node"
+        );
+        let scene = scene_of(&gpu.0);
+        assert!(
+            scene.has_capture_variant(),
+            "({x}, {y}, {z}): the capture variant exists"
+        );
+        assert!(
+            !sources(scene.eyes(true)).iter().any(|source| !is_mask(source)),
+            "({x}, {y}, {z}): neither eye of the capture samples anything but the mask"
+        );
+    }
+}
+
 /// A node that becomes secure after a consumer started reading is in the very next picture, though the View's `fps`
 /// leaves it a second before another draw.
 #[test]

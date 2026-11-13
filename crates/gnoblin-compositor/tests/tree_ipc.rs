@@ -2490,3 +2490,97 @@ fn a_connection_that_is_not_the_owner_cannot_write_the_head_pose() {
     assert_eq!(reply.code, "not-privileged", "{reply:?}");
     session.stop().expect("the session stops cleanly");
 }
+
+#[test]
+fn a_second_observer_cannot_write_another_camera_a_node_or_destroy_the_first_observers_seat() {
+    let session = Session::start();
+    let (_shell, mut first, [_, other, plain]) = head_camera_session(&session);
+    let mut second = Wire::connect(session.socket());
+    let (attached, _) = attach_observer(&mut second, 1);
+    let seat = u64::from(attached.epoch as u32) << 32 | 7;
+    // The first observer makes a seat, as the XR extension does.
+    transact(&mut first, 2, CREATED, 2, unparented_seat(seat + 1, "xr"));
+    let made: ReplyPayload = reply_skipping_changes(&mut first, "transact");
+    assert!(made.applied, "{made:?}");
+
+    let refused = |wire: &mut Wire, request_id: u64, ops: Vec<op::Properties>| {
+        transact(wire, request_id, made.serial, made.serial + 1, ops);
+        let reply: ReplyPayload = reply_skipping_changes(wire, "transact");
+        assert!(!reply.applied, "{reply:?}");
+        reply.code
+    };
+    assert_eq!(refused(&mut second, 2, vec![set_double(other, "x", 1.0)]), "not-holder");
+    assert_eq!(refused(&mut second, 3, vec![set_double(plain, "x", 1.0)]), "not-holder");
+    assert_eq!(
+        refused(
+            &mut second,
+            4,
+            vec![set_number(other, "layer_budget", "uint", 0, 9, 0.0)]
+        ),
+        "not-holder"
+    );
+    assert_eq!(refused(&mut second, 5, vec![destroy_op(seat + 1)]), "not-holder");
+
+    // Nothing of that landed: a late reader sees the other camera and the node where they were.
+    let mut later = Wire::connect(session.socket());
+    let (_, nodes) = attach_observer(&mut later, 1);
+    assert!(prop_of(&nodes, other, "x").is_none() && prop_of(&nodes, other, "layer_budget").is_none());
+    assert!(prop_of(&nodes, plain, "x").is_none());
+    assert!(
+        nodes.iter().any(|node| node.id == seat + 1),
+        "the first observer's seat is still there"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn the_shells_own_writes_to_the_head_camera_are_not_disturbed_by_an_observer_writing_its_pose() {
+    let session = Session::start();
+    let (mut shell, mut observer, [head, ..]) = head_camera_session(&session);
+    // The shell sets the rig, then the observer writes the pose on top, then the shell writes again. Each is built on
+    // the serial the last one left, as a real client's would be.
+    let mut serial = apply(&mut shell, 3, CREATED, vec![set_double(head, "ipd", 0.07)]);
+    transact(&mut observer, 2, serial, 3, pose_ops(head));
+    let posed: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(posed.applied, "{posed:?}");
+    serial = posed.serial;
+    // The shell's writes are the holder's: no cap applies to them, however many.
+    for step in 0..20_u64 {
+        serial = apply(
+            &mut shell,
+            10 + step,
+            serial,
+            vec![set_double(head, "near", 0.5 + step as f64)],
+        );
+    }
+    // And the shell still may not write what only the observer writes.
+    transact(
+        &mut shell,
+        40,
+        serial,
+        serial + 1,
+        vec![set_number(head, "layer_budget", "uint", 0, 3, 0.0)],
+    );
+    let refused: ReplyPayload = reply_skipping_changes(&mut shell, "transact");
+    assert_eq!(refused.code, "read-only", "{refused:?}");
+
+    let mut later = Wire::connect(session.socket());
+    let (_, nodes) = attach_observer(&mut later, 1);
+    let value = |key: &str| prop_of(&nodes, head, key).map(|prop| prop.value_double);
+    assert_eq!(
+        value("ipd"),
+        Some(0.07),
+        "the shell's rig survived the observer's writes"
+    );
+    assert_eq!(value("x"), Some(1500.0), "and the observer's pose survived the shell's");
+    assert_eq!(
+        value("near"),
+        Some(19.5),
+        "the last of the shell's twenty writes is the one that stands"
+    );
+    assert!(
+        prop_of(&nodes, head, "layer_budget").is_none(),
+        "the refused write left no budget"
+    );
+    session.stop().expect("the session stops cleanly");
+}
