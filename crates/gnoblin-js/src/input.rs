@@ -150,7 +150,7 @@ impl<'js> IntoJs<'js> for JsClaimOutcome {
 }
 
 /// The seat nodes, in tree order.
-fn seat_nodes(state: &HostState) -> Vec<NodeId> {
+pub(crate) fn seat_nodes(state: &HostState) -> Vec<NodeId> {
     parents_first(&state.mirror)
         .into_iter()
         .filter(|id| {

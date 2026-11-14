@@ -181,10 +181,25 @@ fn stacked_windows(state: &HostState) -> Vec<NodeId> {
     order
 }
 
-/// Queues the moves that put `node` on top of every other window. The tree's order is the stacking order, but a window
-/// the compositor made has no parent and sorts after the root's tree whatever the root holds, so the unparented windows
-/// are first given the root as their parent, in the order they already have, and then `node` goes last. A window that
-/// is already on top queues nothing.
+/// Parents every unparented window but `skip` to the root, in the order the tree stacks them. The tree's order is the
+/// stacking order, but a window the compositor made has no parent and sorts after the root's tree whatever the root
+/// holds, so whatever is to go on top of them is put there only once they have the root as their parent.
+pub(crate) fn adopt_windows(state: &mut HostState, skip: NodeId) -> Option<&'static str> {
+    let order = stacked_windows(state);
+    let HostState { mirror, tick, .. } = state;
+    let root = mirror.root();
+    for id in order.into_iter().filter(|id| *id != skip) {
+        let orphan = tick.node(mirror, id).is_some_and(|record| record.parent == NIL);
+        if orphan && tick.insert(mirror, id, root, -1).is_err() {
+            return Some("unknown-node");
+        }
+    }
+    None
+}
+
+/// Queues the moves that put `node` on top of every other window: the unparented windows are first given the root as
+/// their parent, in the order they already have, and then `node` goes last. A window that is already on top queues
+/// nothing.
 pub(crate) fn raise(state: &mut HostState, node: NodeId) -> Option<&'static str> {
     let Some(record) = state.tick.node(&state.mirror, node) else {
         return Some("unknown-node");
@@ -192,19 +207,36 @@ pub(crate) fn raise(state: &mut HostState, node: NodeId) -> Option<&'static str>
     if lua_class(&record.class) != "Window" {
         return Some("unknown-method");
     }
-    let order = stacked_windows(state);
-    if order.last() == Some(&node) {
+    if stacked_windows(state).last() == Some(&node) {
         return None;
+    }
+    if let Some(code) = adopt_windows(state, node) {
+        return Some(code);
     }
     let HostState { mirror, tick, .. } = state;
     let root = mirror.root();
-    for id in order.into_iter().filter(|id| *id != node) {
-        let orphan = tick.node(mirror, id).is_some_and(|record| record.parent == NIL);
-        if orphan && tick.insert(mirror, id, root, -1).is_err() {
-            return Some("unknown-node");
-        }
-    }
     tick.insert(mirror, node, root, -1).err().map(|_| "unknown-node")
+}
+
+/// Queues the moves that put `node` under every other window: the unparented windows are first given the root as their
+/// parent, in the order they already have, and then `node` goes first. A window that is already at the bottom queues
+/// nothing.
+pub(crate) fn lower(state: &mut HostState, node: NodeId) -> Option<&'static str> {
+    let Some(record) = state.tick.node(&state.mirror, node) else {
+        return Some("unknown-node");
+    };
+    if lua_class(&record.class) != "Window" {
+        return Some("unknown-method");
+    }
+    if stacked_windows(state).first() == Some(&node) {
+        return None;
+    }
+    if let Some(code) = adopt_windows(state, node) {
+        return Some(code);
+    }
+    let HostState { mirror, tick, .. } = state;
+    let root = mirror.root();
+    tick.insert(mirror, node, root, 0).err().map(|_| "unknown-node")
 }
 
 /// Queues a call of `method` on `node`. `focus` is not a call the compositor answers: it becomes a write of the seat's
@@ -343,17 +375,21 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
         })?,
     )?;
 
-    let shared = state.clone();
-    host.set(
-        "raise",
-        Function::new(ctx.clone(), move |node: f64| -> Option<&'static str> {
-            let mut state = shared.borrow_mut();
-            let Some(node) = state.handles.resolve(node) else {
-                return Some("unknown-node");
-            };
-            raise(&mut state, node)
-        })?,
-    )?;
+    // The two stacking moves have one shape: a window node in, a refusal code out.
+    type Move = fn(&mut HostState, NodeId) -> Option<&'static str>;
+    for (name, queue) in [("raise", raise as Move), ("lower", lower as Move)] {
+        let shared = state.clone();
+        host.set(
+            name,
+            Function::new(ctx.clone(), move |node: f64| -> Option<&'static str> {
+                let mut state = shared.borrow_mut();
+                let Some(node) = state.handles.resolve(node) else {
+                    return Some("unknown-node");
+                };
+                queue(&mut state, node)
+            })?,
+        )?;
+    }
 
     let shared = state.clone();
     host.set(
@@ -401,7 +437,7 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
 mod tests {
     use gnoblin_tree_client::tree_mirror::{MirrorValue, SnapshotNode, TreeMirror, TxOp};
 
-    use super::{JsScriptValue, call, ids_of_class, parents_first, raise, read, stacked_windows, write};
+    use super::{JsScriptValue, call, ids_of_class, lower, parents_first, raise, read, stacked_windows, write};
     use crate::bindings::{HostState, JsHostValue, NodeHandles};
 
     fn node(id: u64, parent: u64, class: &str, props: Vec<(String, MirrorValue)>) -> SnapshotNode {
@@ -665,12 +701,36 @@ mod tests {
     }
 
     #[test]
-    fn only_close_and_focus_can_be_called_on_a_window() {
+    fn a_lowered_window_goes_first_after_the_unparented_windows_are_given_the_root() {
+        let nodes = [
+            node(1, 0, "node", Vec::new()),
+            node(3, 0, "window", Vec::new()),
+            node(4, 0, "window", Vec::new()),
+            node(5, 0, "window", Vec::new()),
+        ];
+        let mut state = HostState::new(TreeMirror::from_snapshot(1, 1, 1, &nodes).expect("a mirror"));
+        assert_eq!(lower(&mut state, 3), None);
+        assert!(state.tick.ops().is_empty(), "the bottom window queues nothing");
+        assert_eq!(lower(&mut state, 5), None);
+        assert_eq!(stacked_windows(&state), [5, 3, 4]);
+        assert_eq!(lower(&mut state, 4), None);
+        assert_eq!(
+            stacked_windows(&state),
+            [4, 5, 3],
+            "a second move in the same frame sees the first"
+        );
+        assert_eq!(lower(&mut state, 99), Some("unknown-node"));
+        assert_eq!(lower(&mut state, 1), Some("unknown-method"));
+    }
+
+    #[test]
+    fn only_close_focus_and_kill_can_be_called_on_a_window() {
         let mut state = state();
         assert_eq!(call(&mut state, 3, "close"), None);
-        assert_eq!(call(&mut state, 3, "kill"), Some("unknown-method"));
+        assert_eq!(call(&mut state, 3, "kill"), None);
+        assert_eq!(call(&mut state, 3, "destroy"), Some("unknown-method"));
         assert_eq!(call(&mut state, 99, "close"), Some("unknown-node"));
-        assert_eq!(state.tick.ops().len(), 1);
-        assert_eq!(state.tokens, 1);
+        assert_eq!(state.tick.ops().len(), 2);
+        assert_eq!(state.tokens, 2);
     }
 }

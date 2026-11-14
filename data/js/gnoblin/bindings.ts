@@ -387,6 +387,8 @@ export interface BindingClient {
     /** The most the client may be resized to. Absent means no limit. */
     maxSize?: { width: number; height: number };
     floatingBounds?: Rect | null;
+    /** The room a titlebar takes above the content: the frame that must stay on screen is the content with this much on top. */
+    readonly frameInset?: number;
 }
 
 /**
@@ -799,10 +801,19 @@ export class ClientMoveBinding extends PointerDragBinding {
         }
         const delta = moved(startPointer, event.position);
         const target = { ...startBounds, x: startBounds.x + delta.x, y: startBounds.y + delta.y };
-        // The seat's constraint keeps the window reachable. Without a work area there is nothing to keep it in.
-        client.bounds = event.workArea
-            ? constrainRect(target, event.workArea, dragConstraintMode(event.dragConstraint))
-            : target;
+        // The seat's constraint keeps the window reachable. Without a work area there is nothing to keep it in. It is the
+        // frame, the content with its titlebar above, that stays in: a bar dragged off the top could not be grabbed again.
+        if (!event.workArea) {
+            client.bounds = target;
+            return;
+        }
+        const inset = client.frameInset ?? 0;
+        const frame = constrainRect(
+            { ...target, y: target.y - inset, height: target.height + inset },
+            event.workArea,
+            dragConstraintMode(event.dragConstraint),
+        );
+        client.bounds = { x: frame.x, y: frame.y + inset, width: target.width, height: target.height };
     }
 
     onEnd(event: DragEvent, state: object): void {
@@ -816,7 +827,9 @@ export class ClientMoveBinding extends PointerDragBinding {
         }
         const zone = edgeZone(event.position.x, event.position.y, event.workArea, this.snap);
         if (zone !== null) {
-            snapClient(client as SnapClient, zone, { edgeTiling: true, area: event.workArea });
+            const inset = client.frameInset ?? 0;
+            const area = { ...event.workArea, y: event.workArea.y + inset, height: event.workArea.height - inset };
+            snapClient(client as SnapClient, zone, { edgeTiling: true, area });
         }
     }
 

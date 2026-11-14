@@ -18,7 +18,7 @@ use gnoblin_tree_client::tree_mirror::{MirrorValue, NodeId, NodeRecord, TreeMirr
 use rquickjs::{Ctx, IntoJs, Value};
 use thiserror::Error;
 
-pub(crate) use host::{install, parents_first};
+pub(crate) use host::{adopt_windows, install, parents_first};
 
 /// What a script asked the host to start.
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -4,8 +4,11 @@
 // Everything that sets how it looks is a plain field of `TitlebarStyle`, so a config can hand its own style over
 // (`new Titlebar(client, { ...defaultTitlebarStyle, focusedFill: "#223" })`), and a later `defineConfig({ style })`
 // can build one from its keys. `Decorations` gives every client one titlebar and takes it away when the client goes.
+//
+// The bar sits above the window's content, never over it: its y is minus its height, so it lies in the room the layout
+// driver keeps free above the client (`Decorations.insetOf`). docs/js-ui.md, "Titlebar", says why.
 
-import { Box, Icon, Text } from "gnoblin/ui";
+import { Box, Icon, Text, uiNow, uiSeatAction } from "gnoblin/ui";
 import type { UiPointerEvent } from "gnoblin/ui";
 
 /** The three window buttons, which a style can order, leave out or give other icons. */
@@ -59,23 +62,58 @@ export interface TitlebarClient {
     readonly focused: boolean;
     readonly fullscreen: boolean;
     readonly width: number;
+    /** False once the compositor has destroyed the window. A client that does not say is alive. */
+    readonly alive?: boolean;
     x: number;
     y: number;
     maximised: boolean;
     minimised: boolean;
     close(): void;
+    /** Moves `opacity` and `scale` over time: the fade of a window that is closing. Without it the window just closes. */
+    animate?(
+        values: { opacity?: number; scale?: [number, number, number] },
+        options: { duration: number; easing?: string },
+    ): void;
 }
 
-/** The left button of the pointer, as the compositor numbers it (Linux `BTN_LEFT`). */
+/** What the seat's click actions do that the titlebar cannot do alone. The host supplies them. */
+export interface TitlebarHooks {
+    /** The seat's `menu` action: open the window menu where the pointer is. */
+    menu?(client: TitlebarClient): void;
+    /** The seat's `lower` action: put the window under the others. */
+    lower?(client: TitlebarClient): void;
+    /** Maximises or restores the window as the shell does it, which leaves room for the bar. Else the flag is written. */
+    maximise?(client: TitlebarClient, on: boolean): void;
+}
+
+/** The buttons of the pointer, as the compositor numbers them (Linux `BTN_LEFT`, `BTN_RIGHT`, `BTN_MIDDLE`). */
 const LEFT = 272;
+const RIGHT = 273;
+const MIDDLE = 274;
 
 /** Two presses within this many milliseconds on the bar are a double click. */
 const DOUBLE_CLICK_MS = 500;
 
+/** The Lua shell's fade on close: out over 0.18 s, as a window shrinks to 0.92 of its size. */
+export const CLOSE_FADE_MS = 180;
+/** A window that is still there this long after it was asked to close (a client that asks "save changes?") comes back. */
+export const CLOSE_RESTORE_MS = 1500;
+const RESTORE_SECONDS = 0.12;
+
+/** What the seat's property says each click does when the tree has no seat to ask: its schema default. */
+const DEFAULT_ACTIONS = { double_click: "toggle-maximize", middle_click: "lower", right_click: "menu" } as const;
+
+type Gesture = keyof typeof DEFAULT_ACTIONS;
+
 /**
  * The bar. Its width follows the client's, its fill follows the focus and its title the client's title, all read
  * once a frame in `refresh`. A press on a button does what the button says; a press elsewhere on the bar drags the
- * window, and a second press in quick succession maximises or restores it.
+ * window, and a second press in quick succession, a middle click and a right click do what the seat's `double_click`,
+ * `middle_click` and `right_click` say (`toggle-maximize`, `lower`, `menu`, `minimize` or `none`).
+ *
+ * The close button fades the window out first (`CLOSE_FADE_MS`) and then closes it; a window that is still there
+ * `CLOSE_RESTORE_MS` later is shown again, as a client that asked the user something is. A window the client closes
+ * itself is gone from the compositor at once, so there is nothing to fade.
  *
  * The drag moves the client by how far the pointer is from where it pressed, in the bar's own coordinates. The bar is
  * a child of the window, so those coordinates stand still while the window follows the pointer.
@@ -83,19 +121,23 @@ const DOUBLE_CLICK_MS = 500;
 export class Titlebar extends Box {
     readonly client: TitlebarClient;
     style: TitlebarStyle;
+    readonly hooks: TitlebarHooks;
     /** The part of the bar that holds the title: the bar's room that no button takes. */
     readonly dragArea: Box;
     readonly title: Text;
     readonly buttons = new Map<TitlebarButton, Icon>();
-    /** The clock the double click is timed by, in milliseconds. */
-    now: () => number = () => Date.now();
+    /** The clock the double click and the fade are timed by, in milliseconds. */
+    now: () => number = () => uiNow();
     #lastPress: number | null = null;
     #dragFrom: { x: number; y: number } | null = null;
+    /** The fade of a window being closed: when to close it, and when to bring it back if it stayed. */
+    #closing: { closeAt: number | null; restoreAt: number | null } | null = null;
 
-    constructor(client: TitlebarClient, style: TitlebarStyle = { ...defaultTitlebarStyle }) {
+    constructor(client: TitlebarClient, style: TitlebarStyle = { ...defaultTitlebarStyle }, hooks: TitlebarHooks = {}) {
         super({ direction: "row", height: style.height, padding: style.padding, gap: style.gap, radius: style.radius });
         this.client = client;
         this.style = style;
+        this.hooks = hooks;
         this.title = new Text({
             grow: 1,
             size: style.titleSize,
@@ -113,10 +155,18 @@ export class Titlebar extends Box {
         }
     }
 
+    /** The room the bar takes above the client: its height, or nothing while the window is fullscreen and the bar hidden. */
+    get inset(): number {
+        return this.client.fullscreen ? 0 : this.style.height;
+    }
+
     override refresh(): void {
         const { client, style } = this;
         this.width = client.width;
         this.height = style.height;
+        // Above the content: the bar is a child of the window node, whose origin is the content's corner.
+        this.x = 0;
+        this.y = -style.height;
         this.padding = style.padding;
         this.gap = style.gap;
         this.radius = style.radius;
@@ -130,6 +180,42 @@ export class Titlebar extends Box {
             button.size = style.buttonSize;
             button.color = style.buttonColor;
         }
+        this.#advanceClose();
+    }
+
+    /** Starts the fade out of a window that is being closed. A second press while it fades does nothing. */
+    #startClose(): void {
+        if (this.#closing !== null) {
+            return;
+        }
+        const { client } = this;
+        if (client.animate === undefined) {
+            client.close();
+            return;
+        }
+        this.#closing = { closeAt: this.now() + CLOSE_FADE_MS, restoreAt: null };
+        client.animate({ opacity: 0, scale: [0.92, 0.92, 1] }, { duration: CLOSE_FADE_MS / 1000, easing: "in-cubic" });
+    }
+
+    #advanceClose(): void {
+        const closing = this.#closing;
+        const { client } = this;
+        if (closing === null) {
+            return;
+        }
+        if (client.alive === false) {
+            this.#closing = null;
+            return;
+        }
+        const now = this.now();
+        if (closing.closeAt !== null && now >= closing.closeAt) {
+            closing.closeAt = null;
+            closing.restoreAt = now + CLOSE_RESTORE_MS;
+            client.close();
+        } else if (closing.restoreAt !== null && now >= closing.restoreAt) {
+            this.#closing = null;
+            client.animate?.({ opacity: 1, scale: [1, 1, 1] }, { duration: RESTORE_SECONDS, easing: "out" });
+        }
     }
 
     #press(name: TitlebarButton, event: UiPointerEvent): void {
@@ -138,16 +224,61 @@ export class Titlebar extends Box {
             return;
         }
         if (name === "close") {
-            this.client.close();
+            this.#startClose();
         } else if (name === "maximise") {
-            this.client.maximised = !this.client.maximised;
+            this.#toggleMaximise();
         } else {
             this.client.minimised = true;
         }
     }
 
+    #toggleMaximise(): void {
+        const { client } = this;
+        const on = !client.maximised;
+        if (this.hooks.maximise === undefined) {
+            client.maximised = on;
+        } else {
+            this.hooks.maximise(client, on);
+        }
+    }
+
+    /** Runs what the seat says a click on the bar does. An action the schema does not name is an error. */
+    #gesture(property: Gesture): void {
+        const { client } = this;
+        const action = uiSeatAction(property) ?? DEFAULT_ACTIONS[property];
+        switch (action) {
+            case "toggle-maximize":
+                this.#toggleMaximise();
+                return;
+            case "lower":
+                this.hooks.lower?.(client);
+                return;
+            case "menu":
+                this.hooks.menu?.(client);
+                return;
+            case "minimize":
+                client.minimised = true;
+                return;
+            // Maximising along one axis has no stock behaviour yet, as in the Lua shell: it does nothing.
+            case "toggle-maximize-horizontally":
+            case "toggle-maximize-vertically":
+            case "none":
+                return;
+            default:
+                throw new Error(`${property} must name a titlebar action, got ${action}`);
+        }
+    }
+
     override onPress(event: UiPointerEvent): void {
         event.stop();
+        if (event.button === MIDDLE) {
+            this.#gesture("middle_click");
+            return;
+        }
+        if (event.button === RIGHT) {
+            this.#gesture("right_click");
+            return;
+        }
         if (event.button !== LEFT) {
             return;
         }
@@ -156,7 +287,7 @@ export class Titlebar extends Box {
         this.#lastPress = now;
         if (previous !== null && now - previous <= DOUBLE_CLICK_MS) {
             this.#lastPress = null;
-            this.client.maximised = !this.client.maximised;
+            this.#gesture("double_click");
             return;
         }
         this.#dragFrom = { x: event.x, y: event.y };
@@ -187,15 +318,20 @@ export type DecorationNode = (client: TitlebarClient) => number;
  * Gives every client one titlebar. It is a collection listener: attach it to `gnoblin.clients` and it decorates each
  * client that is there and each that arrives, and removes the titlebar of one that leaves. When the compositor
  * destroys the window its titlebar's nodes go with it, and the toolkit forgets them.
+ *
+ * `insetOf(client)` is how much room the client's bar takes above its content. The layout driver leaves that much free
+ * above every window it places, so the bar and the content never overlap.
  */
 export class Decorations {
     readonly style: TitlebarStyle;
+    readonly hooks: TitlebarHooks;
     readonly #nodeOf: DecorationNode;
     readonly #bars = new Map<TitlebarClient, Titlebar>();
 
-    constructor(nodeOf: DecorationNode, style: TitlebarStyle = { ...defaultTitlebarStyle }) {
+    constructor(nodeOf: DecorationNode, style: TitlebarStyle = { ...defaultTitlebarStyle }, hooks: TitlebarHooks = {}) {
         this.#nodeOf = nodeOf;
         this.style = style;
+        this.hooks = hooks;
     }
 
     /** The titlebar of `client`, if it has one. */
@@ -203,11 +339,16 @@ export class Decorations {
         return this.#bars.get(client);
     }
 
+    /** The height of the bar above `client`'s content: 0 for a client with no bar, or one that is fullscreen. */
+    insetOf(client: TitlebarClient): number {
+        return this.#bars.get(client)?.inset ?? 0;
+    }
+
     onAdded(client: TitlebarClient): void {
         if (this.#bars.has(client)) {
             return;
         }
-        const bar = new Titlebar(client, this.style);
+        const bar = new Titlebar(client, this.style, this.hooks);
         bar.mount(this.#nodeOf(client));
         this.#bars.set(client, bar);
     }

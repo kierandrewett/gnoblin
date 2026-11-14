@@ -11,505 +11,21 @@
 //! test's byte for byte (`string.pack` in that file is `pack` here) and one list of every op is compared with
 //! `gnoblin_paint::encode`, which the compositor's own decoder reads.
 
-use std::cell::RefCell;
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
-use std::rc::Rc;
 
 use gnoblin_js::{JsShell, JsShellConfig};
 use gnoblin_paint::{PaintList, PaintOp, Rgba8, decode, encode};
-use gnoblin_tree_client::tree_mirror::{
-    Attached, EventFields, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeEvent,
-    TreeIncoming, TreeLink, TreeTx, TxOp, TxReply,
-};
-use tempfile::TempDir;
-
-const ROOT: u64 = 1;
-const LEFT: u64 = 272;
-
-// ---- the fake compositor ------------------------------------------------------------------------------------------
-
-struct Node {
-    class: String,
-    parent: u64,
-    children: Vec<u64>,
-    props: BTreeMap<String, MirrorValue>,
-}
-
-/// A `measure` call the shell sent.
-#[derive(Clone, Debug, PartialEq)]
-struct Measure {
-    token: u64,
-    node: u64,
-    size: f64,
-    text: String,
-}
-
-struct Compositor {
-    nodes: BTreeMap<u64, Node>,
-    serial: u64,
-    /// The ops of each transaction the shell sent, in order.
-    sent: Vec<Vec<TxOp>>,
-    measures: Vec<Measure>,
-    queue: Vec<TreeIncoming>,
-}
-
-#[derive(Clone)]
-struct FakeCompositor(Rc<RefCell<Compositor>>);
-
-fn change(kind: MirrorChangeKind, node: u64) -> MirrorChange {
-    MirrorChange {
-        kind,
-        node,
-        class: String::new(),
-        parent: 0,
-        index: 0,
-        key: String::new(),
-        value: None,
-        removed: Vec::new(),
-    }
-}
-
-fn set_change(node: u64, key: &str, value: MirrorValue) -> MirrorChange {
-    MirrorChange {
-        key: key.to_owned(),
-        value: Some(value),
-        ..change(MirrorChangeKind::Set, node)
-    }
-}
-
-fn text(value: &str) -> MirrorValue {
-    MirrorValue::Text(value.to_owned())
-}
-
-impl Compositor {
-    fn new() -> Self {
-        let root = Node {
-            class: "node".to_owned(),
-            parent: 0,
-            children: Vec::new(),
-            props: BTreeMap::new(),
-        };
-        Self {
-            nodes: BTreeMap::from([(ROOT, root)]),
-            serial: 1,
-            sent: Vec::new(),
-            measures: Vec::new(),
-            queue: Vec::new(),
-        }
-    }
-
-    /// `node` and everything beneath it.
-    fn subtree(&self, node: u64) -> Vec<u64> {
-        let mut out = vec![node];
-        let mut at = 0;
-        while at < out.len() {
-            if let Some(entry) = self.nodes.get(&out[at]) {
-                out.extend(entry.children.iter().copied());
-            }
-            at += 1;
-        }
-        out
-    }
-
-    fn detach(&mut self, node: u64) {
-        let parent = self.nodes.get(&node).map_or(0, |entry| entry.parent);
-        if let Some(entry) = self.nodes.get_mut(&parent) {
-            entry.children.retain(|child| *child != node);
-        }
-    }
-
-    /// Applies one op as the compositor does and returns the change it publishes.
-    fn apply(&mut self, op: &TxOp) -> Option<MirrorChange> {
-        match op {
-            TxOp::New { id, class } => {
-                self.nodes.insert(
-                    *id,
-                    Node {
-                        class: class.clone(),
-                        parent: 0,
-                        children: Vec::new(),
-                        props: BTreeMap::new(),
-                    },
-                );
-                Some(MirrorChange {
-                    class: class.clone(),
-                    ..change(MirrorChangeKind::Created, *id)
-                })
-            }
-            TxOp::Insert { node, parent, index } => {
-                self.detach(*node);
-                let held = self.nodes.get_mut(parent)?;
-                let at = usize::try_from(*index).map_or(held.children.len(), |i| i.min(held.children.len()));
-                held.children.insert(at, *node);
-                self.nodes.get_mut(node)?.parent = *parent;
-                Some(MirrorChange {
-                    parent: *parent,
-                    index: at as i64,
-                    ..change(MirrorChangeKind::Parented, *node)
-                })
-            }
-            TxOp::Set { node, key, value, .. } => {
-                self.nodes.get_mut(node)?.props.insert(key.clone(), value.clone());
-                Some(set_change(*node, key, value.clone()))
-            }
-            TxOp::Destroy { node } => {
-                let removed = self.subtree(*node);
-                self.detach(*node);
-                for id in &removed {
-                    self.nodes.remove(id);
-                }
-                Some(MirrorChange {
-                    removed,
-                    ..change(MirrorChangeKind::Destroyed, *node)
-                })
-            }
-            TxOp::Call {
-                node,
-                method,
-                args,
-                token,
-                text,
-            } => {
-                if method == "measure" {
-                    let bits: [u8; 8] = args.as_slice().try_into().ok()?;
-                    self.measures.push(Measure {
-                        token: *token,
-                        node: *node,
-                        size: f64::from_le_bytes(bits),
-                        text: text.expose().to_owned(),
-                    });
-                }
-                None
-            }
-        }
-    }
-}
-
-impl FakeCompositor {
-    fn new() -> Self {
-        Self(Rc::new(RefCell::new(Compositor::new())))
-    }
-
-    fn land(&self, tx: &TreeTx) {
-        let mut c = self.0.borrow_mut();
-        c.sent.push(tx.ops.clone());
-        let mut changes = Vec::new();
-        for op in &tx.ops {
-            if let Some(applied) = c.apply(op) {
-                changes.push(applied);
-            }
-        }
-        c.serial = tx.serial;
-        // The compositor sends no change message for a transaction that changed no node.
-        if !changes.is_empty() {
-            c.queue.push(TreeIncoming::Changes {
-                serial: tx.serial,
-                changes,
-            });
-        }
-        c.queue.push(TreeIncoming::Reply(TxReply {
-            serial: tx.serial,
-            applied: true,
-            failed_op: -1,
-            code: String::new(),
-            removed: Vec::new(),
-        }));
-    }
-
-    /// Publishes `changes` as a batch of the compositor's own.
-    fn publish(&self, changes: Vec<MirrorChange>) {
-        let mut c = self.0.borrow_mut();
-        c.serial += 1;
-        let serial = c.serial;
-        c.queue.push(TreeIncoming::Changes { serial, changes });
-    }
-
-    /// A window that is in the tree already, as at boot.
-    fn add_window(&self, id: u64, title: &str, app_id: &str) {
-        let mut c = self.0.borrow_mut();
-        let props = BTreeMap::from([
-            ("title".to_owned(), text(title)),
-            ("app_id".to_owned(), text(app_id)),
-            ("width".to_owned(), MirrorValue::Double(400.0)),
-            ("height".to_owned(), MirrorValue::Double(300.0)),
-        ]);
-        c.nodes.insert(
-            id,
-            Node {
-                class: "window".to_owned(),
-                parent: ROOT,
-                children: Vec::new(),
-                props,
-            },
-        );
-        if let Some(root) = c.nodes.get_mut(&ROOT) {
-            root.children.push(id);
-        }
-    }
-
-    /// A window the compositor maps: created, parented under the root, given its title and app id.
-    fn create_window(&self, id: u64, title: &str, app_id: &str) {
-        self.add_window(id, title, app_id);
-        self.publish(vec![
-            MirrorChange {
-                class: "window".to_owned(),
-                ..change(MirrorChangeKind::Created, id)
-            },
-            MirrorChange {
-                parent: ROOT,
-                index: 99,
-                ..change(MirrorChangeKind::Parented, id)
-            },
-            set_change(id, "title", text(title)),
-            set_change(id, "app_id", text(app_id)),
-            set_change(id, "width", MirrorValue::Double(400.0)),
-            set_change(id, "height", MirrorValue::Double(300.0)),
-        ]);
-    }
-
-    /// The compositor writes a property of its own.
-    fn external_set(&self, node: u64, key: &str, value: MirrorValue) {
-        if let Some(entry) = self.0.borrow_mut().nodes.get_mut(&node) {
-            entry.props.insert(key.to_owned(), value.clone());
-        }
-        self.publish(vec![set_change(node, key, value)]);
-    }
-
-    /// The compositor destroys a window, and its canvases with it.
-    fn destroy(&self, node: u64) {
-        let removed = {
-            let mut c = self.0.borrow_mut();
-            let removed = c.subtree(node);
-            c.detach(node);
-            for id in &removed {
-                c.nodes.remove(id);
-            }
-            removed
-        };
-        self.publish(vec![MirrorChange {
-            removed,
-            ..change(MirrorChangeKind::Destroyed, node)
-        }]);
-    }
-
-    /// A pointer event addressed to `node`.
-    fn pointer(&self, node: u64, kind: &str, x: f64, y: f64, button: u64) {
-        self.0.borrow_mut().queue.push(TreeIncoming::Event(TreeEvent {
-            frame: 0,
-            seq: 0,
-            node,
-            kind: kind.to_owned(),
-            fields: EventFields {
-                x,
-                y,
-                button,
-                ..EventFields::default()
-            },
-        }));
-    }
-
-    fn answer(&self, token: u64, result: &str, error: &str) {
-        self.0.borrow_mut().queue.push(TreeIncoming::Answer {
-            token,
-            result: result.as_bytes().to_vec(),
-            error: error.to_owned(),
-        });
-    }
-
-    fn measures(&self) -> Vec<Measure> {
-        self.0.borrow().measures.clone()
-    }
-
-    fn sent_count(&self) -> usize {
-        self.0.borrow().sent.len()
-    }
-
-    /// The `(node, method)` of every call but `measure` the shell sent, in order.
-    fn calls(&self) -> Vec<(u64, String)> {
-        self.0
-            .borrow()
-            .sent
-            .iter()
-            .flatten()
-            .filter_map(|op| match op {
-                TxOp::Call { node, method, .. } if method != "measure" => Some((*node, method.clone())),
-                _ => None,
-            })
-            .collect()
-    }
-
-    /// How many `Destroy` ops the shell sent for `node`.
-    fn destroys_of(&self, node: u64) -> usize {
-        self.0
-            .borrow()
-            .sent
-            .iter()
-            .flatten()
-            .filter(|op| matches!(op, TxOp::Destroy { node: gone } if *gone == node))
-            .count()
-    }
-
-    fn canvases(&self) -> Vec<u64> {
-        let c = self.0.borrow();
-        c.nodes
-            .iter()
-            .filter(|(_, node)| node.class == "canvas")
-            .map(|(id, _)| *id)
-            .collect()
-    }
-
-    fn children(&self, node: u64) -> Vec<u64> {
-        self.0
-            .borrow()
-            .nodes
-            .get(&node)
-            .map_or_else(Vec::new, |entry| entry.children.clone())
-    }
-
-    fn number(&self, node: u64, key: &str) -> f64 {
-        match self.0.borrow().nodes.get(&node).and_then(|entry| entry.props.get(key)) {
-            Some(MirrorValue::Double(value)) => *value,
-            _ => 0.0,
-        }
-    }
-
-    /// `x,y,width,height` of a canvas, as whole numbers when they are.
-    fn rect(&self, node: u64) -> String {
-        format!(
-            "{},{},{},{}",
-            self.number(node, "x"),
-            self.number(node, "y"),
-            self.number(node, "width"),
-            self.number(node, "height")
-        )
-    }
-
-    fn content(&self, node: u64) -> Option<Vec<u8>> {
-        match self
-            .0
-            .borrow()
-            .nodes
-            .get(&node)
-            .and_then(|entry| entry.props.get("content"))
-        {
-            Some(MirrorValue::Bytes(bytes)) => Some(bytes.clone()),
-            _ => None,
-        }
-    }
-
-    fn flag(&self, node: u64, key: &str) -> Option<bool> {
-        match self.0.borrow().nodes.get(&node).and_then(|entry| entry.props.get(key)) {
-            Some(MirrorValue::Bool(value)) => Some(*value),
-            _ => None,
-        }
-    }
-}
-
-impl TreeLink for FakeCompositor {
-    fn attach(&mut self, _version: u64) -> Result<(), LinkError> {
-        let mut c = self.0.borrow_mut();
-        let attached = Attached {
-            epoch: 1,
-            root: ROOT,
-            serial: c.serial,
-        };
-        let nodes = c
-            .nodes
-            .iter()
-            .map(|(id, node)| SnapshotNode {
-                id: *id,
-                parent: node.parent,
-                index: c
-                    .nodes
-                    .get(&node.parent)
-                    .and_then(|parent| parent.children.iter().position(|child| child == id))
-                    .map_or(0, |at| at as i64),
-                class: node.class.clone(),
-                title: String::new(),
-                app_id: String::new(),
-                props: node.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
-            })
-            .collect();
-        let snapshot = TreeIncoming::Snapshot {
-            serial: c.serial,
-            chunk: 0,
-            last: true,
-            nodes,
-        };
-        c.queue.push(TreeIncoming::Attached(attached));
-        c.queue.push(snapshot);
-        Ok(())
-    }
-
-    fn transact(&mut self, tx: &TreeTx) -> Result<(), LinkError> {
-        self.land(tx);
-        Ok(())
-    }
-
-    fn poll(&mut self) -> Result<Vec<TreeIncoming>, LinkError> {
-        Ok(std::mem::take(&mut self.0.borrow_mut().queue))
-    }
-}
-
-// ---- the rig ------------------------------------------------------------------------------------------------------
+mod common;
+use common::*;
 
 /// What every init file imports.
 const IMPORTS: &str = "import { Box, Canvas, Grid, Icon, Text, Titlebar, defaultTitlebarStyle, defineConfig, \
                        uiCanvasCount } from \"gnoblin\";\n\
                        (globalThis as any).uiCanvasCount = uiCanvasCount;\n";
 
-struct Rig {
-    shell: JsShell,
-    comp: FakeCompositor,
-    load_diagnostics: Vec<String>,
-    _dir: TempDir,
-}
-
-impl Rig {
-    fn frame(&mut self) -> Vec<String> {
-        self.shell.frame().expect("a frame").diagnostics
-    }
-
-    /// Runs frames until the shell and the compositor have nothing left to say, and returns every diagnostic.
-    fn settle(&mut self) -> Vec<String> {
-        let mut all = Vec::new();
-        for _ in 0..6 {
-            all.extend(self.frame());
-        }
-        all
-    }
-
-    fn eval(&mut self, source: &str) -> String {
-        self.shell
-            .eval(source)
-            .expect("the script runs")
-            .expect("the script has a value")
-    }
-
-    /// The node ids of the canvases `ids` holds in the script, in order.
-    fn ids(&mut self, expression: &str) -> Vec<u64> {
-        self.eval(&format!("{expression}.join(',')"))
-            .split(',')
-            .map(|id| id.parse().expect("a node id"))
-            .collect()
-    }
-}
-
 fn rig(init_body: &str) -> Rig {
-    let comp = FakeCompositor::new();
-    let dir = tempfile::tempdir().expect("a temp dir");
-    let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), format!("{IMPORTS}{init_body}\n")).expect("init.ts is written");
-    let mut shell = JsShell::new(Box::new(comp.clone()), JsShellConfig::new(&root)).expect("the shell boots");
-    let load_diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
-    Rig {
-        shell,
-        comp,
-        load_diagnostics,
-        _dir: dir,
-    }
+    rig_with(IMPORTS, init_body)
 }
 
 // ---- Box ----------------------------------------------------------------------------------------------------------
@@ -982,8 +498,9 @@ fn a_titlebar_is_a_box_of_a_drag_area_with_the_title_and_the_three_buttons() {
     );
     assert_eq!(rig.comp.children(bar), [drag, minimise, maximise, close]);
     assert_eq!(rig.comp.children(drag), [title]);
+    // The bar lies above the window's content: its y is minus its height.
     // 400 wide, padding 6: the three 16 pixel buttons and the gaps of 8 leave 316 for the drag area.
-    assert_eq!(rig.comp.rect(bar), "0,0,400,28");
+    assert_eq!(rig.comp.rect(bar), "0,-28,400,28");
     assert_eq!(rig.comp.rect(drag), "6,6,316,16");
     assert_eq!(rig.comp.rect(title), "0,0,316,16");
     assert_eq!(
@@ -1013,7 +530,7 @@ fn a_titlebar_follows_its_client_and_takes_its_look_from_plain_fields() {
     rig.settle();
     let ids = rig.ids("ids");
     let (bar, title) = (ids[0], ids[1]);
-    assert_eq!(rig.comp.rect(bar), "0,0,400,40");
+    assert_eq!(rig.comp.rect(bar), "0,-40,400,40");
     assert_eq!(
         rig.comp.children(bar).len(),
         2,
@@ -1031,7 +548,7 @@ fn a_titlebar_follows_its_client_and_takes_its_look_from_plain_fields() {
         Rgba8::new(0x44, 0x55, 0x66, 0xff),
         "the focus changed the fill"
     );
-    assert_eq!(rig.comp.rect(bar), "0,0,600,40", "the bar is as wide as its client");
+    assert_eq!(rig.comp.rect(bar), "0,-40,600,40", "the bar is as wide as its client");
     let title_list = decode(&rig.comp.content(title).expect("painted")).expect("decodes");
     assert_eq!(texts_of(&title_list), ["Renamed"]);
     rig.eval("client.fullscreen = true; 1");
@@ -1124,7 +641,11 @@ fn a_window_gets_one_titlebar_and_loses_it_when_the_window_closes() {
         6,
         "the bar, its drag area, its title and its three buttons"
     );
-    assert_eq!(rig.comp.rect(bars[0]), "0,0,400,28", "the bar is as wide as the window");
+    assert_eq!(
+        rig.comp.rect(bars[0]),
+        "0,-28,400,28",
+        "the bar is as wide as the window"
+    );
     assert_eq!(rig.eval("uiCanvasCount()"), "6");
 
     rig.settle();
@@ -1198,6 +719,12 @@ fn the_close_button_of_a_decorated_window_closes_that_window() {
     let bar = rig.comp.children(3)[0];
     let close = *rig.comp.children(bar).last().expect("the close button is last");
     rig.comp.pointer(close, "press", 4.0, 4.0, LEFT);
+    rig.settle();
+    assert!(
+        rig.comp.calls().is_empty(),
+        "the window fades out before it is asked to close"
+    );
+    std::thread::sleep(std::time::Duration::from_millis(260));
     rig.settle();
     assert_eq!(rig.comp.calls(), [(3, "close".to_owned())]);
 }

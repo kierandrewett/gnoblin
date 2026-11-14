@@ -12,10 +12,10 @@
 use std::collections::HashSet;
 
 use gnoblin_secret::SecretText;
-use gnoblin_tree_client::tree_mirror::{MirrorValue, NodeId, TreeEvent, TxError, lua_class};
+use gnoblin_tree_client::tree_mirror::{MirrorValue, NIL, NodeId, TreeEvent, TxError, lua_class};
 use rquickjs::{Ctx, Function, IntoJs, Object, Value};
 
-use crate::bindings::{HostState, NodeHandles, SharedState};
+use crate::bindings::{HostState, NodeHandles, SharedState, adopt_windows, parents_first};
 
 /// A shell makes the ids of its nodes from the epoch it attached under, so two shells never make the same id: the
 /// epoch in the high bits, a counter in the low ones. The same split `gnoblin-lua`'s shell uses.
@@ -27,10 +27,22 @@ const CANVAS: &str = "Canvas";
 
 /// The properties of a canvas a script may write as a number, and as a flag.
 const NUMBER_KEYS: &[&str] = &["x", "y", "width", "height", "opacity"];
-const FLAG_KEYS: &[&str] = &["visible", "input", "clip"];
+const FLAG_KEYS: &[&str] = &["visible", "input", "clip", "secure"];
 
-/// The event kinds that reach a canvas. A key event carries what the user typed, so it is not one of them.
+/// The event kinds that reach a canvas: the pointer's, and a key (a canvas holds the seat's keyboard focus when
+/// the script asks for it, as a menu or an entry does).
 const POINTER_KINDS: &[&str] = &["press", "release", "motion", "scroll", "enter", "leave"];
+const KEY_KIND: &str = "key";
+/// A request the compositor makes of a window (`menu` for its window menu) is for the shell whatever the node.
+const REQUEST_KIND: &str = "request";
+
+/// The seat properties the toolkit may read: the pointer, and what the titlebar's clicks do.
+const SEAT_NUMBERS: &[&str] = &["pointer_x", "pointer_y"];
+const SEAT_TEXTS: &[(&str, &str)] = &[
+    ("double_click", "toggle-maximize"),
+    ("middle_click", "lower"),
+    ("right_click", "menu"),
+];
 
 /// The compositor's answer to a measurement, as the script reads it.
 #[derive(Clone, Debug, PartialEq)]
@@ -50,8 +62,9 @@ impl<'js> IntoJs<'js> for JsUiAnswer {
     }
 }
 
-/// A pointer event that hit a canvas, as the script reads it.
-#[derive(Clone, Debug, PartialEq)]
+/// An event for the toolkit, as the script reads it: a pointer event that hit a canvas, a key sent to the canvas that
+/// holds the keyboard focus, or a request the compositor made of a window.
+#[derive(Clone, PartialEq)]
 pub(crate) struct JsUiEvent {
     node: f64,
     kind: String,
@@ -60,6 +73,30 @@ pub(crate) struct JsUiEvent {
     button: f64,
     dx: f64,
     dy: f64,
+    key: String,
+    text: String,
+    pressed: bool,
+    request: String,
+}
+
+/// What a key typed is never printed: an entry can be a passphrase's, so a log shows how long the key and the text are
+/// and nothing of them.
+impl std::fmt::Debug for JsUiEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JsUiEvent")
+            .field("node", &self.node)
+            .field("kind", &self.kind)
+            .field("x", &self.x)
+            .field("y", &self.y)
+            .field("button", &self.button)
+            .field("dx", &self.dx)
+            .field("dy", &self.dy)
+            .field("key", &format_args!("<{} bytes>", self.key.len()))
+            .field("text", &format_args!("<{} bytes>", self.text.len()))
+            .field("pressed", &self.pressed)
+            .field("request", &self.request)
+            .finish()
+    }
 }
 
 impl<'js> IntoJs<'js> for JsUiEvent {
@@ -72,6 +109,10 @@ impl<'js> IntoJs<'js> for JsUiEvent {
         object.set("button", self.button)?;
         object.set("dx", self.dx)?;
         object.set("dy", self.dy)?;
+        object.set("key", self.key)?;
+        object.set("text", self.text)?;
+        object.set("pressed", self.pressed)?;
+        object.set("request", self.request)?;
         Ok(object.into_value())
     }
 }
@@ -103,9 +144,16 @@ impl JsUiState {
         true
     }
 
-    /// Keeps a pointer event addressed to a canvas of ours; any other event is not the toolkit's.
+    /// Keeps an event for the toolkit: a pointer event or a key addressed to a canvas of ours, or a request made of any
+    /// node (a window's `menu`). Any other event is not the toolkit's.
     pub(crate) fn accept_event(&mut self, event: &TreeEvent, handles: &NodeHandles) -> bool {
-        if !self.owned.contains(&event.node) || !POINTER_KINDS.contains(&event.kind.as_str()) {
+        let kind = event.kind.as_str();
+        let wanted = if kind == REQUEST_KIND {
+            true
+        } else {
+            self.owned.contains(&event.node) && (kind == KEY_KIND || POINTER_KINDS.contains(&kind))
+        };
+        if !wanted {
             return false;
         }
         self.events.push(JsUiEvent {
@@ -116,6 +164,10 @@ impl JsUiState {
             button: event.fields.button as f64,
             dx: event.fields.dx,
             dy: event.fields.dy,
+            key: event.fields.key.clone(),
+            text: event.fields.text.clone(),
+            pressed: event.fields.pressed,
+            request: event.fields.request.clone(),
         });
         true
     }
@@ -257,6 +309,127 @@ pub(crate) fn measure(state: &mut HostState, node: NodeId, font: &str, size: f64
     Some(token)
 }
 
+/// The first seat of the tree, the one the shell's keyboard is.
+fn first_seat(state: &HostState) -> Option<NodeId> {
+    crate::input::seat_nodes(state).first().copied()
+}
+
+/// Gives the seat's keyboard focus to `node`, or takes it away with `NIL`. A canvas of ours may hold it (a menu, an
+/// entry), and so may a window: that is how a menu hands the keyboard back to the window it came from.
+pub(crate) fn focus(state: &mut HostState, node: NodeId) -> Option<&'static str> {
+    if node != NIL {
+        match state.tick.node(&state.mirror, node) {
+            None => return Some("unknown-node"),
+            Some(record) if !state.ui.owned.contains(&node) && lua_class(&record.class) != "Window" => {
+                return Some("not-owned");
+            }
+            Some(_) => {}
+        }
+    }
+    crate::input::focus_window(state, node)
+}
+
+/// The node with the keyboard focus as this frame's writes leave it, or `None`.
+pub(crate) fn focused(state: &HostState) -> Option<NodeId> {
+    let seat = first_seat(state)?;
+    match state.tick.get(&state.mirror, seat, "focus") {
+        Some(MirrorValue::Node(node)) if *node != NIL => Some(*node),
+        _ => None,
+    }
+}
+
+/// A number the seat publishes that the toolkit reads: the pointer's place.
+pub(crate) fn seat_number(state: &HostState, key: &str) -> Option<f64> {
+    if !SEAT_NUMBERS.contains(&key) {
+        return None;
+    }
+    let seat = first_seat(state)?;
+    match state.tick.get(&state.mirror, seat, key) {
+        Some(MirrorValue::Double(value)) => Some(*value),
+        _ => Some(0.0),
+    }
+}
+
+/// A text the seat publishes that the toolkit reads: what each titlebar click does. The mirror holds only what
+/// differs from the schema's default, so the default is what an absent value reads as.
+pub(crate) fn seat_text(state: &HostState, key: &str) -> Option<String> {
+    let (_, default) = SEAT_TEXTS.iter().find(|(name, _)| *name == key)?;
+    let seat = first_seat(state)?;
+    match state.tick.get(&state.mirror, seat, key) {
+        Some(MirrorValue::Text(text)) => Some(text.clone()),
+        _ => Some((*default).to_owned()),
+    }
+}
+
+/// Whether the session is locked or about to be: nothing opens over the lock screen.
+pub(crate) fn locked(state: &HostState) -> bool {
+    parents_first(&state.mirror).into_iter().any(|id| {
+        let Some(record) = state.tick.node(&state.mirror, id) else {
+            return false;
+        };
+        if lua_class(&record.class) != "Lock" {
+            return false;
+        }
+        let engaged = matches!(
+            state.tick.get(&state.mirror, id, "engaged"),
+            Some(MirrorValue::Bool(true))
+        );
+        let held = match state.tick.get(&state.mirror, id, "state") {
+            Some(MirrorValue::Text(text)) => text != "not-locked",
+            _ => false,
+        };
+        engaged || held
+    })
+}
+
+/// The size of the primary screen (the first when none is primary), or `None` while the tree has no sized screen.
+pub(crate) fn screen(state: &HostState) -> Option<(f64, f64)> {
+    let screens: Vec<NodeId> = parents_first(&state.mirror)
+        .into_iter()
+        .filter(|id| {
+            state
+                .tick
+                .node(&state.mirror, *id)
+                .is_some_and(|record| lua_class(&record.class) == "Screen")
+        })
+        .collect();
+    let primary = screens
+        .iter()
+        .copied()
+        .find(|id| {
+            matches!(
+                state.tick.get(&state.mirror, *id, "primary"),
+                Some(MirrorValue::Bool(true))
+            )
+        })
+        .or_else(|| screens.first().copied())?;
+    let size = |key: &str| match state.tick.get(&state.mirror, primary, key) {
+        Some(MirrorValue::Double(value)) => *value,
+        _ => 0.0,
+    };
+    let (width, height) = (size("width"), size("height"));
+    (width > 0.0 && height > 0.0).then_some((width, height))
+}
+
+/// Puts `node` (a canvas of ours) last under the root, over every window. The compositor makes a window with no
+/// parent, and the tree puts such a window after everything under the root, so a canvas given the root as its parent
+/// would draw under it: the windows that have none are parented to the root first, in the order they already have.
+pub(crate) fn mount_top(state: &mut HostState, node: NodeId) -> Option<&'static str> {
+    if let Err(code) = owned_canvas(state, node) {
+        return Some(code);
+    }
+    if let Some(code) = adopt_windows(state, NIL) {
+        return Some(code);
+    }
+    let HostState { mirror, tick, .. } = state;
+    let root = mirror.root();
+    tick.insert(mirror, node, root, -1).err().map(|error| match error {
+        TxError::UnknownNode(_) => "unknown-node",
+        TxError::Cycle(_) => "cycle",
+        TxError::Root(_) | TxError::Exists(_) => "refused",
+    })
+}
+
 /// Installs `__gnoblinHost.ui`, the functions `gnoblin/ui` runs on.
 pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedState) -> rquickjs::Result<()> {
     let ui = Object::new(ctx.clone())?;
@@ -360,6 +533,70 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
         })?,
     )?;
 
+    // `focus(0)` takes the keyboard focus away.
+    let shared = state.clone();
+    ui.set(
+        "focus",
+        Function::new(ctx.clone(), move |node: f64| -> Option<&'static str> {
+            let mut state = shared.borrow_mut();
+            let Some(node) = state.handles.resolve(node) else {
+                return Some("unknown-node");
+            };
+            focus(&mut state, node)
+        })?,
+    )?;
+
+    let shared = state.clone();
+    ui.set(
+        "focused",
+        Function::new(ctx.clone(), move || -> Option<f64> {
+            let state = shared.borrow();
+            focused(&state).map(|node| state.handles.to_script(node))
+        })?,
+    )?;
+
+    let shared = state.clone();
+    ui.set(
+        "top",
+        Function::new(ctx.clone(), move |node: f64| -> Option<&'static str> {
+            let mut state = shared.borrow_mut();
+            match state.handles.resolve(node) {
+                Some(node) => mount_top(&mut state, node),
+                None => Some("unknown-node"),
+            }
+        })?,
+    )?;
+
+    let shared = state.clone();
+    ui.set(
+        "seatNumber",
+        Function::new(ctx.clone(), move |key: String| -> Option<f64> {
+            seat_number(&shared.borrow(), &key)
+        })?,
+    )?;
+
+    let shared = state.clone();
+    ui.set(
+        "seatText",
+        Function::new(ctx.clone(), move |key: String| -> Option<String> {
+            seat_text(&shared.borrow(), &key)
+        })?,
+    )?;
+
+    let shared = state.clone();
+    ui.set(
+        "locked",
+        Function::new(ctx.clone(), move || -> bool { locked(&shared.borrow()) })?,
+    )?;
+
+    let shared = state.clone();
+    ui.set(
+        "screen",
+        Function::new(ctx.clone(), move || -> Option<Vec<f64>> {
+            screen(&shared.borrow()).map(|(width, height)| vec![width, height])
+        })?,
+    )?;
+
     host.set("ui", ui)
 }
 
@@ -450,5 +687,170 @@ mod tests {
             "an answer is kept once"
         );
         assert_eq!(state.ui.answers.len(), 1);
+    }
+
+    fn node_with(id: NodeId, parent: NodeId, class: &str, props: Vec<(String, MirrorValue)>) -> SnapshotNode {
+        SnapshotNode {
+            props,
+            ..snapshot(id, parent, class)
+        }
+    }
+
+    /// A root with a seat, a lock, a primary screen of 800 by 600, and two windows, one of them without a parent as the
+    /// compositor makes them.
+    fn session() -> HostState {
+        let nodes = [
+            snapshot(1, 0, "node"),
+            node_with(
+                2,
+                1,
+                "seat",
+                vec![
+                    ("pointer_x".into(), MirrorValue::Double(120.0)),
+                    ("right_click".into(), MirrorValue::Text("none".into())),
+                ],
+            ),
+            node_with(3, 1, "lock", Vec::new()),
+            node_with(
+                4,
+                1,
+                "screen",
+                vec![
+                    ("width".into(), MirrorValue::Double(800.0)),
+                    ("height".into(), MirrorValue::Double(600.0)),
+                    ("primary".into(), MirrorValue::Bool(true)),
+                ],
+            ),
+            snapshot(5, 0, "window"),
+            snapshot(6, 0, "window"),
+        ];
+        HostState::new(TreeMirror::from_snapshot(1, 1, 1, &nodes).expect("a mirror"))
+    }
+
+    #[test]
+    fn a_key_and_a_request_are_the_toolkits_and_a_key_for_a_node_that_is_not_ours_is_not() {
+        let mut state = session();
+        let canvas = create(&mut state).expect("a canvas");
+        let event = |node: NodeId, kind: &str, key: &str| TreeEvent {
+            frame: 0,
+            seq: 0,
+            node,
+            kind: kind.to_owned(),
+            fields: gnoblin_tree_client::tree_mirror::EventFields {
+                key: key.to_owned(),
+                text: key.to_owned(),
+                pressed: true,
+                request: "menu".to_owned(),
+                ..Default::default()
+            },
+        };
+        let handles = NodeHandles::default();
+        assert!(state.ui.accept_event(&event(canvas, "key", "a"), &handles));
+        assert!(
+            !state.ui.accept_event(&event(5, "key", "a"), &handles),
+            "a window's key is not ours"
+        );
+        assert!(
+            state.ui.accept_event(&event(5, "request", ""), &handles),
+            "a request is, whatever the node"
+        );
+        assert_eq!(state.ui.events.len(), 2);
+        assert_eq!(state.ui.events[0].key, "a");
+        assert_eq!(state.ui.events[1].request, "menu");
+        assert!(
+            !format!("{:?}", state.ui.events[0]).contains("\"a\""),
+            "a key typed is never printed"
+        );
+    }
+
+    #[test]
+    fn a_canvas_or_a_window_may_hold_the_keyboard_and_nothing_else_may() {
+        let mut state = session();
+        let canvas = create(&mut state).expect("a canvas");
+        assert_eq!(focus(&mut state, canvas), None);
+        assert_eq!(focused(&state), Some(canvas));
+        assert_eq!(focus(&mut state, 5), None, "a window gets the keyboard back");
+        assert_eq!(focused(&state), Some(5));
+        assert_eq!(focus(&mut state, NIL), None);
+        assert_eq!(focused(&state), None, "nil takes it away");
+        assert_eq!(
+            focus(&mut state, 4),
+            Some("not-owned"),
+            "a screen is not for the keyboard"
+        );
+        assert_eq!(focus(&mut state, 99), Some("unknown-node"));
+        let mut bare = self::state();
+        assert_eq!(focus(&mut bare, 2), Some("no-seat"));
+    }
+
+    #[test]
+    fn the_seat_gives_the_pointer_and_what_a_titlebar_click_does_and_nothing_else() {
+        let state = session();
+        assert_eq!(seat_number(&state, "pointer_x"), Some(120.0));
+        assert_eq!(seat_number(&state, "pointer_y"), Some(0.0));
+        assert_eq!(seat_number(&state, "focus_mode"), None);
+        assert_eq!(seat_text(&state, "right_click").as_deref(), Some("none"));
+        assert_eq!(
+            seat_text(&state, "middle_click").as_deref(),
+            Some("lower"),
+            "the schema's default"
+        );
+        assert_eq!(seat_text(&state, "double_click").as_deref(), Some("toggle-maximize"));
+        assert_eq!(seat_text(&state, "name"), None);
+    }
+
+    #[test]
+    fn the_session_is_locked_while_the_lock_is_engaged_or_not_not_locked() {
+        let mut state = session();
+        assert!(!locked(&state));
+        state
+            .tick
+            .set(&state.mirror, 3, "engaged", MirrorValue::Bool(true), None, None)
+            .expect("a write");
+        assert!(locked(&state));
+        state
+            .tick
+            .set(&state.mirror, 3, "engaged", MirrorValue::Bool(false), None, None)
+            .expect("a write");
+        state
+            .tick
+            .set(
+                &state.mirror,
+                3,
+                "state",
+                MirrorValue::Text("pending".into()),
+                None,
+                None,
+            )
+            .expect("a write");
+        assert!(locked(&state));
+    }
+
+    #[test]
+    fn the_screen_is_the_primary_ones_size() {
+        assert_eq!(screen(&session()), Some((800.0, 600.0)));
+        assert_eq!(screen(&state()), None);
+    }
+
+    #[test]
+    fn a_canvas_mounted_on_top_goes_after_windows_the_compositor_left_without_a_parent() {
+        let mut state = session();
+        let canvas = create(&mut state).expect("a canvas");
+        assert_eq!(mount_top(&mut state, canvas), None);
+        let parents: Vec<(NodeId, NodeId)> = state
+            .tick
+            .ops()
+            .iter()
+            .filter_map(|op| match op {
+                TxOp::Insert { node, parent, .. } => Some((*node, *parent)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            parents,
+            [(5, 1), (6, 1), (canvas, 1)],
+            "the windows first, in their order, then the canvas"
+        );
+        assert_eq!(mount_top(&mut state, 5), Some("not-owned"));
     }
 }

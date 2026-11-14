@@ -70,6 +70,8 @@ const WINDOW: &[JsPropDef] = &[
     animated("scale", JsPropKind::Doubles),
     // Whether the window is kept out of screen captures.
     def("secure", JsPropKind::Flag, true),
+    // Whether the client has left a liveness ping unanswered too long. The compositor writes it.
+    def("unresponsive", JsPropKind::Flag, false),
 ];
 
 /// An output. Its size is the work area the layout driver tiles in, `primary` picks the screen the primary display
@@ -81,8 +83,9 @@ const SCREEN: &[JsPropDef] = &[
     def("primary", JsPropKind::Flag, false),
 ];
 
-/// The methods a script may call on a window.
-const WINDOW_METHODS: &[&str] = &["focus", "close"];
+/// The methods a script may call on a window. `kill` is the not-responding alert's Force quit: the compositor
+/// refuses its own process, init and a process that did not open the window.
+const WINDOW_METHODS: &[&str] = &["focus", "close", "kill"];
 
 /// The properties a script sees on `class`, which the mirror names by its wire name (`window`) or the
 /// shell's (`Window`).
@@ -182,10 +185,11 @@ mod tests {
     }
 
     #[test]
-    fn a_script_may_close_and_focus_a_window_and_nothing_else() {
+    fn a_script_may_close_focus_and_kill_a_window_and_nothing_else() {
         assert!(may_call("window", "close"));
         assert!(may_call("Window", "focus"));
-        assert!(!may_call("window", "kill"));
+        assert!(may_call("window", "kill"));
+        assert!(!may_call("window", "destroy"));
         assert!(!may_call("screen", "close"));
     }
 }

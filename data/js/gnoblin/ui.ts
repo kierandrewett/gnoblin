@@ -27,6 +27,22 @@ export interface UiBackend {
     measure(node: number, font: string, size: number, text: string): number | undefined;
     takeAnswers(): UiAnswer[];
     takeEvents(): UiRawEvent[];
+    /** Gives the seat's keyboard focus to a canvas or a window (`0` takes it away). A refusal is a short code. */
+    focus(node: number): string | undefined;
+    /** The node with the keyboard focus, or `undefined`. */
+    focused(): number | undefined;
+    /** Puts a canvas last under the root, over every window. */
+    top(node: number): string | undefined;
+    /** A number the seat publishes: `pointer_x`, `pointer_y`. `undefined` when the tree has no seat. */
+    seatNumber(key: string): number | undefined;
+    /** What a titlebar click does: the seat's `double_click`, `middle_click` or `right_click`. */
+    seatText(key: string): string | undefined;
+    /** Whether the session is locked or about to be. */
+    locked(): boolean;
+    /** The size of the primary screen, or `undefined` while the tree has none. */
+    screen(): [number, number] | undefined;
+    /** Milliseconds on a clock that only goes forward. */
+    now(): number;
 }
 
 /** The compositor's answer to a measurement: `result` is `<width> <height> <ascent>` in whole pixels. */
@@ -36,7 +52,11 @@ export interface UiAnswer {
     error: string;
 }
 
-/** A pointer event the compositor sent to a canvas node, before it is routed to a canvas. */
+/**
+ * What the compositor sent to the toolkit before it is routed: a pointer event that hit a canvas, a key sent to the
+ * canvas that holds the keyboard focus, or a request made of a window (`request` is `menu` for its window menu, and
+ * `node` is the window).
+ */
 export interface UiRawEvent {
     node: number;
     kind: string;
@@ -45,6 +65,10 @@ export interface UiRawEvent {
     button: number;
     dx: number;
     dy: number;
+    key: string;
+    text: string;
+    pressed: boolean;
+    request: string;
 }
 
 type Report = (site: string, error: unknown) => void;
@@ -310,6 +334,32 @@ export class UiPointerEvent {
     }
 }
 
+/**
+ * A key sent to the canvas that holds the keyboard focus (`Canvas.focus()`), and from it up through its parents until a
+ * handler calls `stop()`. `key` is the xkbcommon name of the keysym (`Return`, `Escape`, `a`), `text` what the key
+ * types (empty for a key that types nothing), and `pressed` is false for the release. A key typed into an entry can
+ * be a passphrase: nothing here prints it.
+ */
+export class UiKeyEvent {
+    readonly key: string;
+    readonly text: string;
+    readonly pressed: boolean;
+    readonly target: Canvas;
+    stopped = false;
+
+    constructor(raw: UiRawEvent, target: Canvas) {
+        this.key = raw.key;
+        this.text = raw.text;
+        this.pressed = raw.pressed;
+        this.target = target;
+    }
+
+    /** Keeps the event from reaching the parents of the canvas whose handler is running. */
+    stop(): void {
+        this.stopped = true;
+    }
+}
+
 const HANDLERS: Readonly<Record<string, "onPress" | "onRelease" | "onMotion" | "onScroll" | "onEnter" | "onLeave">> = {
     press: "onPress",
     release: "onRelease",
@@ -328,6 +378,8 @@ export interface CanvasOptions {
     height?: number;
     visible?: boolean;
     opacity?: number;
+    /** Never captured by a `View`: the window it belongs to is secure. */
+    secure?: boolean;
 }
 
 /** The node properties a canvas keeps in step with its fields, and the value the tree starts them at. */
@@ -338,6 +390,7 @@ interface Written {
     height: number;
     visible: boolean;
     opacity: number;
+    secure: boolean;
 }
 
 /**
@@ -354,10 +407,12 @@ export class Canvas {
     y = 0;
     visible = true;
     opacity = 1;
+    /** Whether a capture of the screen masks this canvas. Set it on what shows a secure window's text. */
+    secure = false;
     #width: number | null = null;
     #height: number | null = null;
     #alive = true;
-    #written: Written = { x: 0, y: 0, width: 0, height: 0, visible: true, opacity: 1 };
+    #written: Written = { x: 0, y: 0, width: 0, height: 0, visible: true, opacity: 1, secure: false };
     #content: number[] | null = null;
 
     constructor(options: CanvasOptions = {}) {
@@ -371,6 +426,7 @@ export class Canvas {
         if (options.y !== undefined) this.y = options.y;
         if (options.visible !== undefined) this.visible = options.visible;
         if (options.opacity !== undefined) this.opacity = options.opacity;
+        if (options.secure !== undefined) this.secure = options.secure;
         if (options.width !== undefined) this.#width = options.width;
         if (options.height !== undefined) this.#height = options.height;
     }
@@ -447,6 +503,29 @@ export class Canvas {
         refuse(host().insert(this.node, parentNode, -1), "mount");
     }
 
+    /**
+     * Makes this canvas the last child of the root, over every window: a menu, a dialog or a bar. The compositor's
+     * windows have no parent until the shell gives them one, so the host parents them to the root first, in the order
+     * they have, and a canvas put there is above them.
+     */
+    mountTop(): void {
+        this.#check("mountTop");
+        this.parent?.children.splice(this.parent.children.indexOf(this), 1);
+        this.parent = null;
+        refuse(host().top(this.node), "mountTop");
+    }
+
+    /** Gives this canvas the seat's keyboard focus: the keys go to `onKey` here and up through its parents. */
+    focus(): void {
+        this.#check("focus");
+        refuse(host().focus(this.node), "focus");
+    }
+
+    /** Whether this canvas holds the keyboard focus. */
+    get focused(): boolean {
+        return this.#alive && host().focused() === this.node;
+    }
+
     /** Whether `other` is this canvas or lies beneath it. */
     contains(other: Canvas | null): boolean {
         for (let at = other; at !== null; at = at.parent) {
@@ -518,6 +597,7 @@ export class Canvas {
             height: this.height,
             visible: this.visible,
             opacity: this.opacity,
+            secure: this.secure,
         };
         for (const key of ["x", "y", "width", "height", "opacity"] as const) {
             if (now[key] !== written[key]) {
@@ -528,6 +608,10 @@ export class Canvas {
         if (now.visible !== written.visible) {
             this.#write("visible", now.visible);
             written.visible = now.visible;
+        }
+        if (now.secure !== written.secure) {
+            this.#write("secure", now.secure);
+            written.secure = now.secure;
         }
         const bytes = encodePaintList(this.draw());
         if (this.#content === null || !sameBytes(this.#content, bytes)) {
@@ -564,6 +648,16 @@ export class Canvas {
             event.y += at.y;
         }
     }
+
+    /** Sends a key to this canvas and then up its parents until a handler stops it. */
+    dispatchKey(event: UiKeyEvent): void {
+        for (let at: Canvas | null = this; at !== null && !event.stopped; at = at.parent) {
+            const handler = at.onKey;
+            if (typeof handler === "function") {
+                guard(at, "onKey", () => handler.call(at, event));
+            }
+        }
+    }
 }
 
 // Pointer handlers live on the interface, not the class: a class field would define an own `undefined` property in
@@ -575,6 +669,8 @@ export interface Canvas {
     onScroll?(event: UiPointerEvent): void;
     onEnter?(event: UiPointerEvent): void;
     onLeave?(event: UiPointerEvent): void;
+    /** A key, to the canvas that has the keyboard focus. Pressed and released both arrive: see `event.pressed`. */
+    onKey?(event: UiKeyEvent): void;
 }
 
 function refuse(code: string | undefined, what: string): void {
@@ -893,6 +989,81 @@ export function uiCanvasCount(): number {
     return live.size;
 }
 
+// ---- what the stock shell reads of the session -------------------------------------------------------------------
+
+/** A request the compositor made of a window: `request` is `menu` for its window menu, anchored at `x`, `y`. */
+export interface UiRequest {
+    /** The window's node. */
+    readonly node: number;
+    readonly request: string;
+    /** Where the menu is anchored, in the compositor's logical coordinates. */
+    readonly x: number;
+    readonly y: number;
+}
+
+const requestHandlers: ((request: UiRequest) => void)[] = [];
+const frameHooks: (() => void)[] = [];
+
+/** Hears every request the compositor makes of a window. Returns the function that stops listening. */
+export function onUiRequest(handler: (request: UiRequest) => void): () => void {
+    requestHandlers.push(handler);
+    return () => {
+        const at = requestHandlers.indexOf(handler);
+        if (at >= 0) {
+            requestHandlers.splice(at, 1);
+        }
+    };
+}
+
+/** Runs `hook` once a frame, after the events are delivered and before the canvases update. Returns the stop. */
+export function onUiFrame(hook: () => void): () => void {
+    frameHooks.push(hook);
+    return () => {
+        const at = frameHooks.indexOf(hook);
+        if (at >= 0) {
+            frameHooks.splice(at, 1);
+        }
+    };
+}
+
+/** Milliseconds on a clock that only goes forward: what the toolkit times its animations and delays by. */
+export function uiNow(): number {
+    return host().now();
+}
+
+/** The node with the keyboard focus, or `null`. */
+export function uiFocused(): number | null {
+    return host().focused() ?? null;
+}
+
+/** Gives the keyboard to a node: a window (or a canvas), or `null` to take it away. */
+export function uiFocus(node: number | null): void {
+    refuse(host().focus(node ?? 0), "focus");
+}
+
+/** Whether the session is locked or about to be. */
+export function uiLocked(): boolean {
+    return host().locked();
+}
+
+/** The size of the primary screen, or `null` while the tree has none. */
+export function uiScreen(): { width: number; height: number } | null {
+    const size = host().screen();
+    return size === undefined ? null : { width: size[0], height: size[1] };
+}
+
+/** The seat's pointer in the compositor's logical coordinates, or `null` with no seat. */
+export function uiPointer(): { x: number; y: number } | null {
+    const x = host().seatNumber("pointer_x");
+    const y = host().seatNumber("pointer_y");
+    return x === undefined || y === undefined ? null : { x, y };
+}
+
+/** What a titlebar click does, from the seat: `key` is `double_click`, `middle_click` or `right_click`. */
+export function uiSeatAction(key: "double_click" | "middle_click" | "right_click"): string | null {
+    return host().seatText(key) ?? null;
+}
+
 function deliver(): void {
     const toolkit = host();
     for (const answer of toolkit.takeAnswers()) {
@@ -903,19 +1074,42 @@ function deliver(): void {
         }
     }
     for (const raw of toolkit.takeEvents()) {
+        if (raw.kind === "request") {
+            const request: UiRequest = { node: raw.node, request: raw.request, x: raw.x, y: raw.y };
+            for (const handler of [...requestHandlers]) {
+                try {
+                    handler(request);
+                } catch (error) {
+                    report("onUiRequest", error);
+                }
+            }
+            continue;
+        }
         const target = live.get(raw.node);
-        if (target !== undefined) {
+        if (target === undefined) {
+            continue;
+        }
+        if (raw.kind === "key") {
+            target.dispatchKey(new UiKeyEvent(raw, target));
+        } else {
             target.dispatch(new UiPointerEvent(raw, target));
         }
     }
 }
 
-/** One frame of the toolkit: answers and events in, every canvas tree updated. The host calls it after the layouts. */
+/** One frame of the toolkit: answers and events in, the frame hooks, every canvas tree updated. The host calls it after the layouts. */
 export function runUiFrame(): void {
     if (backend === null) {
         return;
     }
     deliver();
+    for (const hook of [...frameHooks]) {
+        try {
+            hook();
+        } catch (error) {
+            report("onUiFrame", error);
+        }
+    }
     for (const canvas of [...live.values()]) {
         if (canvas.parent === null) {
             canvas.update();

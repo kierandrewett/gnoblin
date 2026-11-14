@@ -10,7 +10,7 @@
 // invocation per interested listener; the host then runs them one by one under a time budget each, so a
 // listener that throws or never returns does not stop the others.
 
-import { desugarConfig, defaultConfig, mergeConfig } from "gnoblin/config";
+import { desugarConfig, defaultConfig, mergeConfig, planStockLauncher } from "gnoblin/config";
 import type {
     BindingAction,
     ConfigListeners,
@@ -44,8 +44,13 @@ import { RuleEngine, compileRules } from "gnoblin/rules";
 import type { RuleHost, RuleView } from "gnoblin/rules";
 import { attachUi, runUiFrame, uiNodeGone, uiReleaseAll } from "gnoblin/ui";
 import type { UiBackend } from "gnoblin/ui";
-import { Decorations } from "gnoblin/titlebar";
+import { defaultTitlebarStyle, Decorations } from "gnoblin/titlebar";
 import { WorkspaceSets } from "gnoblin/sets";
+import { snappedZone, unsnapClient } from "gnoblin/snap";
+import type { SnapClient } from "gnoblin/snap";
+import { windowMenu } from "gnoblin/menus";
+import { notRespondingAlerts } from "gnoblin/alerts";
+import { barInsets } from "gnoblin/widgets";
 
 type NodeId = number;
 type Scalar = string | number | boolean;
@@ -120,11 +125,13 @@ interface Host {
     call(node: NodeId, method: string): string | undefined;
     /** Queues the moves that put a window on top of the others. */
     raise(node: NodeId): string | undefined;
+    /** Queues the moves that put a window under the others. */
+    lower(node: NodeId): string | undefined;
     windows(): NodeId[];
     screens(): NodeId[];
     spawn(command: string | string[]): string | undefined;
     input: InputHost;
-    ui: UiBackend;
+    ui: Omit<UiBackend, "now">;
     entry?: Entry;
 }
 
@@ -522,6 +529,20 @@ export class Client {
         writeFlag(this, "secure", value);
     }
 
+    /** Whether the client has left a liveness ping unanswered too long. The compositor writes it, and clears it on an answer. */
+    get unresponsive(): boolean {
+        return read<boolean>(this, "unresponsive");
+    }
+
+    /**
+     * The room a titlebar takes above the window's content, in pixels: 0 for a window with no titlebar or a fullscreen one.
+     * `bounds` is the content's rectangle; the frame a layout places is the content with this much added on top (see
+     * docs/js-ui.md, "Titlebar").
+     */
+    get frameInset(): number {
+        return decorations?.insetOf(this) ?? 0;
+    }
+
     /**
      * Whether the window floats on a workspace whose layout tiles: a floating client is not given to the layout's
      * `compute`, so it keeps the place it has. Only the script knows this; the compositor does not.
@@ -757,6 +778,28 @@ export class Client {
         if (code != null) {
             refuse(code, target, "client");
         }
+    }
+
+    /** Puts the window under every other window. */
+    lower(): void {
+        const state = stateOf(this);
+        const target = `Client#${host.label(state.node)}.lower()`;
+        if (!state.alive) {
+            throw new GnoblinError("destroyed", target, "the client is gone");
+        }
+        const code = host.lower(state.node);
+        if (code != null) {
+            refuse(code, target, "client");
+        }
+    }
+
+    /**
+     * Kills the process that owns the window with SIGKILL: the not-responding alert's Force quit. The compositor refuses,
+     * and does nothing, when the owner is unknown, has gone, changed since the window mapped, or is the compositor itself
+     * or init.
+     */
+    kill(): void {
+        callMethod(this, "kill");
     }
 
     toString(): string {
@@ -1474,7 +1517,13 @@ function screenArea(): Rect | null {
     if (typeof width !== "number" || typeof height !== "number" || !(width > 0) || !(height > 0)) {
         return null;
     }
-    return { x: 0, y: 0, width, height };
+    const insets = barInsets();
+    return {
+        x: 0,
+        y: insets.top,
+        width,
+        height: Math.max(1, height - insets.top - insets.bottom),
+    };
 }
 
 /** Writes the parts of `rect` the client does not have already. */
@@ -1484,6 +1533,18 @@ function writeBounds(client: Client, rect: Rect): void {
             writeNumber(client, key, rect[key]);
         }
     }
+}
+
+/**
+ * The content's rectangle for a frame: the titlebar lies above the content, so the frame's top edge is the bar's and the
+ * content starts a bar lower. A client with no titlebar is the frame.
+ */
+function framed(client: Client, frame: Rect): Rect {
+    const inset = client.frameInset;
+    if (!(inset > 0)) {
+        return frame;
+    }
+    return { x: frame.x, y: frame.y + inset, width: frame.width, height: Math.max(0, frame.height - inset) };
 }
 
 function sameVector(a: Vector3, b: Vector3): boolean {
@@ -1517,7 +1578,7 @@ function applyPlacements(children: readonly Client[], placements: readonly Check
     for (const client of children) {
         const placement = placed.get(client);
         if (placement?.bounds) {
-            writeBounds(client, placement.bounds);
+            writeBounds(client, framed(client, placement.bounds));
         }
         const tiled = placement?.tiled ?? false;
         if (client.tiled !== tiled) {
@@ -1914,7 +1975,7 @@ const input = new InputManager(seatHost, {
     error: (code, target, message) => new GnoblinError(code, target, message),
 });
 
-attachUi(host.ui, (site, error) => {
+attachUi({ ...host.ui, now: () => host.input.now() }, (site, error) => {
     reports.push({ site, error });
 });
 
@@ -1933,7 +1994,7 @@ function cover(client: Client, key: "fullscreen" | "maximised", on: boolean): vo
         client[key] = true;
         const area = screenArea();
         if (area !== null) {
-            writeBounds(client, area);
+            writeBounds(client, framed(client, area));
         }
         return;
     }
@@ -2043,7 +2104,19 @@ let decorations: Decorations | null = null;
 
 function decorate(): void {
     if (decorations === null) {
-        decorations = new Decorations((client) => stateOf(client).node);
+        decorations = new Decorations(
+            (client) => stateOf(client as Client).node,
+            { ...defaultTitlebarStyle },
+            {
+                menu: (client) => {
+                    if (windowMenu.started) {
+                        windowMenu.show(client as Client);
+                    }
+                },
+                lower: (client) => (client as Client).lower(),
+                maximise: (client, on) => cover(client as Client, "maximised", on),
+            },
+        );
         clientRoot.self.addListener(decorations);
     }
 }
@@ -2110,6 +2183,38 @@ function checkDocument(patch: ConfigPlan["document"]): void {
     }
 }
 
+/** The window menu, once a config asks for it: it answers the compositor's menu requests. */
+function startMenus(): void {
+    if (windowMenu.started) {
+        return;
+    }
+    windowMenu.start({
+        clientOf: (node) => clientsByNode.get(node),
+        workspaces: () => workspaceRoot.list as Workspace[],
+        moveToWorkspace: (client, workspace) => transferClient(workspace as Workspace, client as Client),
+        stack: () => host.windows().flatMap((node) => clientsByNode.get(node) ?? []),
+        raise: (client) => (client as Client).raise(),
+        maximise: (client, on) => cover(client as Client, "maximised", on),
+        leaveFullscreen: (client) => cover(client as Client, "fullscreen", false),
+        snapped: (client) => snappedZone(client) !== null,
+        unsnap: (client) => {
+            unsnapClient(client as unknown as SnapClient);
+        },
+    });
+}
+
+/** The not-responding alert, once a config asks for it. */
+function startAlerts(): void {
+    if (!notRespondingAlerts.started) {
+        notRespondingAlerts.start({
+            clients: () => clientRoot.list as Client[],
+            closeMenu: () => {
+                windowMenu.close();
+            },
+        });
+    }
+}
+
 class Gnoblin {
     readonly clients = clientRoot.self as Collection<Client>;
     readonly workspaces = workspaceRoot.self as WorkspaceCollection;
@@ -2163,7 +2268,13 @@ class Gnoblin {
         if (plan.decorations) {
             decorate();
         }
-        bindKeys(plan.bindings);
+        if (plan.menus) {
+            startMenus();
+        }
+        if (plan.alerts) {
+            startAlerts();
+        }
+        bindKeys([...plan.bindings, ...planStockLauncher(merged)]);
         installStock(plan);
         attachOn(merged.on ?? {});
         documentPatch = JSON.stringify(plan.document);

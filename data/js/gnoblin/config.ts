@@ -9,6 +9,8 @@
 //   gaps.inner/outer    workspaces[].gaps, passed to layouts as LayoutContext.gap  Workspace.gaps
 //   style               style, stored as written (no native effect yet)            gnoblin.clients.style
 //   decorations         decorations, a flag                                       a Titlebar on every client
+//   menus               menus, a flag                                             the window menu answers menu requests
+//   alerts              alerts, a flag                                            the not-responding alert watches windows
 //   outputs             outputs, stored as written (no native effect yet)          OutputProfile + Display
 //   workspaces          workspaces[] with a Layout instance and the gaps           gnoblin.workspaces.add
 //   keys                bindings[] of { trigger, action }, actions a closed union  input.primary.bind
@@ -36,6 +38,7 @@ import type { Binding, DragConstraint } from "gnoblin/bindings";
 import { focusSettings } from "gnoblin/focus";
 import type { FocusConfig } from "gnoblin/focus";
 import { WorkspaceSlideBinding } from "gnoblin/gestures";
+import { openLauncher } from "gnoblin/launcher";
 import type { Gaps, Layout } from "gnoblin/layout";
 import { compileRules } from "gnoblin/rules";
 import type { RuleConfig } from "gnoblin/rules";
@@ -165,13 +168,22 @@ export interface GnoblinConfig {
     style?: StyleConfig;
     /** Draws a titlebar on every client (a `Titlebar` canvas under its window). `defaultConfig` turns it on. */
     decorations?: boolean;
+    /**
+     * Whether the stock window menu answers the compositor's menu requests (a client's `show_window_menu`, the window
+     * menu key, a titlebar right click). `defaultConfig` turns it on; `menus: false` leaves every request unanswered.
+     */
+    menus?: boolean;
+    /**
+     * Whether the stock "not responding" alert (Wait or Force quit) opens for a window that stops answering the
+     * compositor's pings. `defaultConfig` turns it on; `alerts: false` leaves the window marked and nothing more.
+     */
+    alerts?: boolean;
     outputs?: Readonly<Record<string, OutputConfig>>;
     workspaces?: readonly WorkspaceConfig[];
     keys?: Readonly<Record<string, KeyAction>>;
     /**
-     * The command `Super+space` runs, as a command line or an argv. Nothing is bound when it is absent: the Lua
-     * shell's in-shell command entry is not ported, and no stock launcher program is assumed. A key of `keys` for
-     * `Super+space` takes precedence.
+     * The command `Super+space` runs, as a command line or an argv. Absent, `Super+space` opens the stock launcher
+     * (an `Entry` that starts what you type). A key of `keys` for `Super+space` takes precedence.
      */
     launcher?: string | readonly string[];
     /** Window rules: the first matching rule wins, `all: true` lets the next one apply too. See `gnoblin/rules`. */
@@ -229,6 +241,8 @@ export interface ConfigPlan {
     readonly gaps: Gaps;
     readonly style: StyleConfig;
     readonly decorations: boolean;
+    readonly menus: boolean;
+    readonly alerts: boolean;
     readonly outputs: Readonly<Record<string, OutputConfig>>;
     readonly workspaces: readonly PlannedWorkspace[];
     readonly bindings: readonly PlannedKey[];
@@ -357,6 +371,8 @@ const TOP_LEVEL_KEYS = [
     "on",
     "setup",
     "decorations",
+    "menus",
+    "alerts",
     "focus",
     "edgeTiling",
     "dragConstraint",
@@ -367,6 +383,8 @@ const LISTENER_EVENTS = ["clientAdded", "clientRemoved", "titleChanged", "focusC
 /** The config the shell runs when the user has none: one floating `desktop` workspace and the stock keys. */
 export const defaultConfig: Readonly<GnoblinConfig> = deepFreeze({
     decorations: true,
+    menus: true,
+    alerts: true,
     workspaces: [{ id: "desktop", layout: "floating" }],
     keys: {
         // The Lua shell's: Super+1 to Super+9 show the workspace at that position, Super+Left and Super+Right move
@@ -406,7 +424,8 @@ export function defineConfig(config: GnoblinConfig): GnoblinConfig {
  *   key that shows a workspace the merged config does not declare is dropped: it would name nothing.
  * - `focus` merges by key; `edgeTiling` and `dragConstraint` are the user's when they give one.
  * - `on` merges by event, and `setup` is the user's when they give one. `decorations` is not layered: a config that
- *   does not ask for titlebars has none (only the stock config itself turns them on).
+ *   does not ask for titlebars has none (only the stock config itself turns them on). `menus` and `alerts` are the
+ *   user's when they give one, else on.
  *
  * Pure: neither argument is changed. The user's config is checked for unknown keys here, so a typo is reported
  * against `config` as `desugarConfig` would.
@@ -440,6 +459,8 @@ export function mergeConfig(base: GnoblinConfig, user: GnoblinConfig): GnoblinCo
                 lower === undefined || higher === undefined ? (lower ?? higher ?? {}) : mergeTables(lower, higher);
         }
     }
+    const menus = user.menus ?? base.menus;
+    const alerts = user.alerts ?? base.alerts;
     const launcher = user.launcher ?? base.launcher;
     // The focus keys merge by key, so a config that sets one keeps the base's others; the other two are single values.
     const focus = base.focus === undefined && user.focus === undefined ? undefined : { ...base.focus, ...user.focus };
@@ -456,6 +477,8 @@ export function mergeConfig(base: GnoblinConfig, user: GnoblinConfig): GnoblinCo
             ...(rules === undefined ? {} : { rules }),
             ...(setup === undefined ? {} : { setup }),
             ...(user.decorations === undefined ? {} : { decorations: user.decorations }),
+            ...(menus === undefined ? {} : { menus }),
+            ...(alerts === undefined ? {} : { alerts }),
             ...(launcher === undefined ? {} : { launcher }),
             ...(focus === undefined ? {} : { focus }),
             ...(edgeTiling === undefined ? {} : { edgeTiling }),
@@ -492,6 +515,8 @@ export function desugarConfig(config: GnoblinConfig): ConfigPlan {
     return {
         gaps,
         decorations: checkDecorations(config.decorations),
+        menus: checkSwitch(config.menus, "menus"),
+        alerts: checkSwitch(config.alerts, "alerts"),
         style: config.style ?? {},
         outputs: config.outputs ?? {},
         workspaces,
@@ -533,6 +558,12 @@ function planKeys(keys: Readonly<Record<string, KeyAction>>, workspaces: Readonl
 /** The key the launcher command is bound to. */
 const LAUNCHER_TRIGGER = "Super+space";
 
+/** Whether `keys` binds the launcher's key itself. */
+function bindsLauncherKey(keys: Readonly<Record<string, KeyAction>>): boolean {
+    const wanted = parseTrigger(LAUNCHER_TRIGGER, "the launcher key").text;
+    return Object.keys(keys).some((trigger) => parseTrigger(trigger, "a key").text === wanted);
+}
+
 /** `Super+space` running the launcher command, unless `keys` binds that trigger itself or there is no launcher. */
 function planLauncher(launcher: GnoblinConfig["launcher"], keys: Readonly<Record<string, KeyAction>>): PlannedKey[] {
     if (launcher === undefined) {
@@ -541,8 +572,7 @@ function planLauncher(launcher: GnoblinConfig["launcher"], keys: Readonly<Record
     if (typeof launcher !== "string" && !Array.isArray(launcher)) {
         throw new TypeError("config.launcher must be a command line or an argv array");
     }
-    const wanted = parseTrigger(LAUNCHER_TRIGGER, "the launcher key").text;
-    if (Object.keys(keys).some((trigger) => parseTrigger(trigger, "a key").text === wanted)) {
+    if (bindsLauncherKey(keys)) {
         return [];
     }
     const command = typeof launcher === "string" ? launcher.trim().split(/\s+/) : launcher;
@@ -551,6 +581,27 @@ function planLauncher(launcher: GnoblinConfig["launcher"], keys: Readonly<Record
     } catch {
         throw new TypeError("config.launcher must be a non-empty command line or an argv of strings");
     }
+}
+
+/**
+ * `Super+space` opening the stock launcher (an `Entry` that starts what you type) for a config that gives no
+ * `launcher` command and binds that trigger nowhere. Empty otherwise: the command launcher is `plan.bindings`'s.
+ */
+export function planStockLauncher(config: GnoblinConfig): PlannedKey[] {
+    if (config.launcher !== undefined || bindsLauncherKey(config.keys ?? {})) {
+        return [];
+    }
+    return [
+        {
+            trigger: LAUNCHER_TRIGGER,
+            action: {
+                kind: "call",
+                handler: () => {
+                    openLauncher();
+                },
+            },
+        },
+    ];
 }
 
 function resolveAction(action: KeyAction, where: string, workspaces: ReadonlySet<string>): ResolvedAction {
@@ -679,6 +730,14 @@ function checkDecorations(decorations: GnoblinConfig["decorations"]): boolean {
         throw new TypeError("config.decorations: must be true or false");
     }
     return decorations ?? false;
+}
+
+/** A key that is a switch: true or false, and off when the config says nothing. */
+function checkSwitch(value: boolean | undefined, name: string): boolean {
+    if (value !== undefined && typeof value !== "boolean") {
+        throw new TypeError(`config.${name}: must be true or false`);
+    }
+    return value ?? false;
 }
 
 function checkSetup(setup: GnoblinConfig["setup"]): GnoblinConfig["setup"] {

@@ -43,6 +43,8 @@ export interface FloatingClient {
     floatingBounds?: Rect | null;
     visible?: boolean;
     tiled?: boolean;
+    /** The room a titlebar takes above the content. A window is placed as a frame: the content with this much on top. */
+    readonly frameInset?: number;
 }
 
 const DEFAULT_TRIGGERS = { move: "Super+MouseLeft+Drag", resize: "Super+MouseRight+Drag" } as const;
@@ -93,13 +95,22 @@ export class FloatingLayout extends Layout {
         const size = client.size ?? client.bounds;
         const width = size.width > 0 ? size.width : DEFAULT_WIDTH;
         const height = size.height > 0 ? size.height : DEFAULT_HEIGHT;
+        const inset = client.frameInset ?? 0;
         const occupied: Rect[] = [];
         for (const other of context.children as readonly FloatingClient[]) {
             if (other !== client && other.visible !== false) {
-                occupied.push(other.bounds);
+                // Another window takes its bar's room as well as its content's.
+                const room = other.frameInset ?? 0;
+                occupied.push({
+                    x: other.bounds.x,
+                    y: other.bounds.y - room,
+                    width: other.bounds.width,
+                    height: other.bounds.height + room,
+                });
             }
         }
-        client.bounds = this.place(width, height, context.area, occupied);
+        const frame = this.place(width, height + inset, context.area, occupied);
+        client.bounds = { x: frame.x, y: frame.y + inset, width: frame.width, height: frame.height - inset };
         this.placed.add(client);
     }
 }
