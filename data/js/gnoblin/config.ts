@@ -1,4 +1,10 @@
-// The simple tier: `export default defineConfig({...})`, plain data that desugars to the object API.
+// The simple tier of the shell's configuration: `export default defineConfig({...})`, plain data that desugars to
+// the object API.
+//
+// This module owns the config shape (`GnoblinConfig`), the stock config (`defaultConfig`), the layering of a user's
+// config over it (`mergeConfig`) and the checks that turn a config into a plan (`desugarConfig`). It does not apply
+// anything: the host reads the plan and acts on it. Read `gnoblin/workspace` for the workspace checks and
+// `gnoblin/rules` for window rules first.
 //
 // `defineConfig` is an identity function with a typed parameter. It checks the shape, hands the config to the
 // host (`globalThis.gnoblin.__register`, when the host provides one) and returns it. `desugarConfig` is the
@@ -32,8 +38,7 @@
 // what each `defineConfig` key becomes is in design/js-runtime.md.
 //
 // A key missing from the config adds nothing to the plan. The one exception is `workspaces`: a shell with
-// nowhere to put a window is unusable, so no workspace means the baseline's four floating workspaces, `1` to `4`, the
-// retired stock config's (data/default-config/config/10-windows.retired shell).
+// nowhere to put a window is unusable, so no workspace means the baseline's four floating workspaces, `1` to `4`.
 //
 // The host does not apply a user's config alone: it layers it over `defaultConfig` with `mergeConfig`, so a
 // config that says nothing about keys still has the stock ones. The rule is in the comment on `mergeConfig`.
@@ -57,6 +62,8 @@ import { checkGaps, rejectUnknown, resolveLayout } from "gnoblin/workspace";
 import type { StockLayoutName } from "gnoblin/workspace";
 import type { Client } from "gnoblin/host";
 
+// ---- Key actions ----
+
 /** What the host puts at `globalThis.gnoblin`. The library names no member of it beyond `__register`. */
 export interface GnoblinHost {
     readonly [member: string]: unknown;
@@ -67,6 +74,7 @@ export interface KeyContext {
     readonly gnoblin: GnoblinHost;
 }
 
+/** A function key action: it runs when the key is pressed. */
 export type KeyHandler = (context: KeyContext) => void;
 
 /** Run a command directly, with no shell. */
@@ -113,6 +121,9 @@ export type ResolvedAction =
     | { readonly kind: "close" }
     | { readonly kind: "call"; readonly handler: KeyHandler };
 
+// ---- Style and outputs ----
+
+/** One drop shadow in `StyleConfig.shadows`: offsets and blur in pixels, `color` as CSS text. */
 export interface ShadowConfig {
     x?: number;
     y?: number;
@@ -168,7 +179,14 @@ export interface OutputConfig {
     mirrorOf?: string;
 }
 
+/** The keys `outputRequest` accepts, for the error text of an unknown one. */
 const OUTPUT_KEYS: readonly string[] = ["mode", "scale", "transform", "position", "enabled", "mirrorOf"];
+
+/** The scale range the compositor accepts for an output. */
+const MIN_OUTPUT_SCALE = 0.5;
+const MAX_OUTPUT_SCALE = 4;
+
+/** The same names as `OutputTransform`, as a list, to check a value at run time. */
 const TRANSFORMS: readonly string[] = [
     "normal",
     "90",
@@ -205,8 +223,13 @@ export function outputRequest(
                 lines.push(`mode=${value}`);
                 break;
             case "scale":
-                if (typeof value !== "number" || !Number.isFinite(value) || value < 0.5 || value > 4) {
-                    throw new RangeError(`${where} must be a number from 0.5 to 4`);
+                if (
+                    typeof value !== "number" ||
+                    !Number.isFinite(value) ||
+                    value < MIN_OUTPUT_SCALE ||
+                    value > MAX_OUTPUT_SCALE
+                ) {
+                    throw new RangeError(`${where} must be a number from ${MIN_OUTPUT_SCALE} to ${MAX_OUTPUT_SCALE}`);
                 }
                 lines.push(`scale=${value}`);
                 break;
@@ -247,7 +270,10 @@ export function outputRequest(
     return lines.join("\n");
 }
 
-/** `outputs` as written, after every entry has made a request: a bad one fails the config naming `config.outputs.<connector>`. */
+/**
+ * `outputs` as written, after every entry has made a request: a bad one fails the config naming
+ * `config.outputs.<connector>`.
+ */
 function checkOutputs(
     outputs: Readonly<Record<string, OutputConfig>> | undefined,
 ): Readonly<Record<string, OutputConfig>> {
@@ -266,6 +292,9 @@ function checkOutputs(
     return outputs;
 }
 
+// ---- Workspaces and listeners ----
+
+/** The names of the stock layouts, as `workspaces[].layout` takes them. */
 export type { StockLayoutName };
 
 /** One set of `workspaceSets`: its name and the workspaces it shows. */
@@ -274,6 +303,7 @@ export interface WorkspaceSetConfig {
     entries: readonly { readonly workspace: string | number; readonly output?: string }[];
 }
 
+/** One entry of `workspaces`: a workspace and the layout it starts with. */
 export interface WorkspaceConfig {
     id: string;
     /** What the workspace is called where a name is shown (the overview, the inspector). Default: the id. */
@@ -282,6 +312,7 @@ export interface WorkspaceConfig {
     layout?: StockLayoutName | Layout;
 }
 
+/** The `on` table of a config: a function for each client event it wants to hear. */
 export interface ConfigListeners {
     clientAdded?(client: Client): void;
     clientRemoved?(client: Client): void;
@@ -356,10 +387,22 @@ export interface DialogStyleConfig {
     scale?: number;
 }
 
+/** The `dialogs` key of a config. */
 export interface DialogsConfig {
     style?: DialogStyleConfig;
 }
 
+// ---- The config ----
+
+/**
+ * Everything a `defineConfig` call takes. Every key is optional: a key left out keeps the stock value.
+ *
+ * @example
+ * export default defineConfig({
+ *     gaps: { inner: 8, outer: 12 },
+ *     keys: { "Super+Return": spawn("foot") },
+ * });
+ */
 export interface GnoblinConfig {
     gaps?: { inner?: number; outer?: number };
     style?: StyleConfig;
@@ -404,7 +447,10 @@ export interface GnoblinConfig {
      * never the ones already started this session; removing an entry stops nothing.
      */
     autostart?: readonly CommandLine[];
-    /** Window rules: every matching rule applies in list order and the later wins per field; `first: true` stops at a rule. See `gnoblin/rules`. */
+    /**
+     * Window rules: every matching rule applies in list order and the later wins per field; `first: true` stops at
+     * a rule. See `gnoblin/rules`.
+     */
     rules?: readonly RuleConfig[];
     /** Focus settings. A key left out is the seat's (the compositor's `window_management` config). */
     focus?: FocusConfig;
@@ -440,6 +486,9 @@ export interface GnoblinConfig {
     touchpadGestures?: readonly GestureConfig[];
 }
 
+// ---- The plan ----
+
+/** A workspace as the plan holds it: the layout is an instance and `gaps` is already checked. */
 export interface PlannedWorkspace {
     readonly id: string;
     readonly name: string;
@@ -447,11 +496,13 @@ export interface PlannedWorkspace {
     readonly gaps: Gaps;
 }
 
+/** One key binding of the plan: the trigger as written and its checked action. */
 export interface PlannedKey {
     readonly trigger: string;
     readonly action: ResolvedAction;
 }
 
+/** One `on` listener of the plan. */
 export interface PlannedListener {
     readonly event: keyof ConfigListeners;
     readonly handler: (...args: never[]) => void;
@@ -460,6 +511,7 @@ export interface PlannedListener {
 /** The document patch a config makes: each section it sets, with the keys as the document spells them. */
 export type DocumentPatch = { readonly [section: string]: DocumentValue };
 
+/** What the host applies for a config: every key checked, every default filled in. Plain data, so two plans compare. */
 export interface ConfigPlan {
     readonly gaps: Gaps;
     readonly style: StyleConfig;
@@ -484,6 +536,8 @@ export interface ConfigPlan {
     readonly autostart: readonly (readonly string[])[];
 }
 
+// ---- Action helpers ----
+
 /** `spawn("ghostty")` or `spawn("wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle")`; an argv array works too. */
 export function spawn(command: string | readonly string[], ...args: string[]): SpawnAction {
     const argv = typeof command === "string" ? [command, ...args] : [...command, ...args];
@@ -493,6 +547,7 @@ export function spawn(command: string | readonly string[], ...args: string[]): S
     return Object.freeze({ kind: "spawn", argv: Object.freeze(argv) });
 }
 
+/** `show("web")`: show the workspace with that id, or the workspace config itself. */
 function showWorkspace(workspace: string | { readonly id: string }): ShowAction {
     const id = typeof workspace === "string" ? workspace : workspace?.id;
     if (typeof id !== "string" || id === "") {
@@ -542,6 +597,10 @@ function positions(template: string) {
     return keys;
 }
 
+/**
+ * `show("web")` shows a workspace by id. Also `show.numbered`, `show.position` and `show.positions` for the
+ * numbered keys.
+ */
 export const show = Object.assign(showWorkspace, { numbered, position, positions });
 
 /** `focusColumn("left")`: the focus helper of a strip. */
@@ -559,6 +618,8 @@ export function binding(create: () => Binding): BindingAction {
     }
     return Object.freeze({ kind: "binding", create });
 }
+
+// ---- Document sections and key list ----
 
 /**
  * The sections of the config document a `defineConfig` key may set: the key as written in a config and the
@@ -596,7 +657,7 @@ export const DOCUMENT_SECTIONS = [
 export const DOCUMENT_LISTS = [["touchpadGestures", "touchpad-gestures"]] as const;
 
 /**
- * The names of the the retired shell-era sections that are not keys of their own, and what to write instead. They are named in
+ * The retired shell-era sections that are not keys of their own, and what to write instead. They are named in
  * the message when a config uses one.
  */
 const RETIRED_KEYS: Readonly<Record<string, string>> = {
@@ -646,6 +707,7 @@ const SHAPES: Readonly<Record<string, { readonly list: boolean; readonly words: 
     touchpadGestures: { list: true, words: "a list of gestures" },
 };
 
+/** A short word for the kind of `value`, for an error message. */
 function kindOf(value: unknown): string {
     return value === null ? "null" : Array.isArray(value) ? "a list" : typeof value;
 }
@@ -665,10 +727,13 @@ function checkShape(config: GnoblinConfig): void {
     }
 }
 
+/** The names `on` may hold. */
 const LISTENER_EVENTS = ["clientAdded", "clientRemoved", "titleChanged", "focusChanged"];
 
+// ---- The stock config, merging and the plan ----
+
 /**
- * The config the shell runs when the user has none: four floating workspaces, `1` to `4` (the retired stock config's), and
+ * The config the shell runs when the user has none: four floating workspaces, `1` to `4`, and
  * the stock keys. Super+1 to Super+4 show them; Super+5 to Super+9 are bound by position and do nothing until a config
  * declares more workspaces.
  */
@@ -710,6 +775,27 @@ export function defineConfig(config: GnoblinConfig): GnoblinConfig {
     return config;
 }
 
+/** The keys of `base` that survive `user`, then the user's own. `declared` is the ids the merged config declares. */
+function mergeKeys(base: GnoblinConfig, user: GnoblinConfig, declared: ReadonlySet<string | undefined>) {
+    // A gesture the user binds, by `keys` or by `gestureActions`, replaces the stock binding of the same trigger.
+    const overridden = new Set(
+        [...Object.keys(user.keys ?? {}), ...Object.keys(user.gestureActions ?? {})].map(
+            (trigger) => parseTrigger(trigger, "a key").text,
+        ),
+    );
+    const keys: Record<string, KeyAction> = {};
+    for (const [trigger, action] of Object.entries(base.keys ?? {})) {
+        const showsMissing =
+            action !== null && typeof action === "object" && action.kind === "show" && !declared.has(action.workspace);
+        if (!showsMissing && !overridden.has(parseTrigger(trigger, "a key").text)) {
+            keys[trigger] = action;
+        }
+    }
+    // Triggers are compared in canonical spelling above; the user's own keys are added as written.
+    Object.assign(keys, user.keys);
+    return keys;
+}
+
 /**
  * `user` laid over `base`, the rule the host applies to `defaultConfig` and the user's `defineConfig`:
  *
@@ -735,21 +821,7 @@ export function mergeConfig(base: GnoblinConfig, user: GnoblinConfig): GnoblinCo
         user.workspaces === undefined || user.workspaces.length === 0 ? base.workspaces : user.workspaces;
     const declared = new Set((workspaces ?? []).map((workspace) => workspace?.id));
     const gestureActions = mergeGestureActions(base.gestureActions, user.gestureActions);
-    // A gesture the user binds, by `keys` or by `gestureActions`, replaces the stock binding of the same trigger.
-    const overridden = new Set(
-        [...Object.keys(user.keys ?? {}), ...Object.keys(user.gestureActions ?? {})].map(
-            (trigger) => parseTrigger(trigger, "a key").text,
-        ),
-    );
-    const keys: Record<string, KeyAction> = {};
-    for (const [trigger, action] of Object.entries(base.keys ?? {})) {
-        const showsMissing =
-            action !== null && typeof action === "object" && action.kind === "show" && !declared.has(action.workspace);
-        if (!showsMissing && !overridden.has(parseTrigger(trigger, "a key").text)) {
-            keys[trigger] = action;
-        }
-    }
-    Object.assign(keys, user.keys);
+    const keys = mergeKeys(base, user, declared);
     const rules = user.rules ?? base.rules;
     const setup = user.setup ?? base.setup;
     const sections: { [name: string]: object } = {};
@@ -821,13 +893,15 @@ function mergeGestureActions(
     return Object.fromEntries(merged.values());
 }
 
+/** True for a plain table: an object that is neither null nor a list. */
 function isTable(value: unknown): value is object {
     return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 /** `user` laid over `base` key by key, one level of table at a time; a list or a scalar of the user's replaces. */
 function mergeTables<T extends object>(base: T, user: T): T {
-    const merged: Record<string, unknown> = { ...base };
+    // `T extends object` does not spread into a string-keyed record without a cast. The keys are the table's own.
+    const merged: Record<string, unknown> = { ...(base as Record<string, unknown>) };
     for (const [key, value] of Object.entries(user)) {
         const before = merged[key];
         merged[key] = isTable(before) && isTable(value) ? mergeTables(before, value) : value;
@@ -934,6 +1008,7 @@ function planAutostart(autostart: GnoblinConfig["autostart"]): string[][] {
     });
 }
 
+/** The workspaces of the plan: the config's, or the stock four when it declares none. Ids are unique and non-empty. */
 function planWorkspaces(declared: GnoblinConfig["workspaces"], gaps: Gaps): PlannedWorkspace[] {
     const list = declared === undefined || declared.length === 0 ? (defaultConfig.workspaces ?? []) : declared;
     const seen = new Set<string>();
@@ -959,6 +1034,7 @@ function planWorkspaces(declared: GnoblinConfig["workspaces"], gaps: Gaps): Plan
     });
 }
 
+/** The key bindings of `keys`, each trigger and action checked. */
 function planKeys(keys: Readonly<Record<string, KeyAction>>, workspaces: ReadonlySet<string>): PlannedKey[] {
     return Object.entries(keys).map(([trigger, action]) => {
         checkTrigger(trigger, "a key");
@@ -1041,6 +1117,7 @@ export function planStockLauncher(config: GnoblinConfig): PlannedKey[] {
     ];
 }
 
+/** `action` as the plan holds it, or a TypeError naming `where`. A `show` of an undeclared workspace is an Error. */
 function resolveAction(action: KeyAction, where: string, workspaces: ReadonlySet<string>): ResolvedAction {
     if (action === "close") {
         return { kind: "close" };
@@ -1073,6 +1150,7 @@ function resolveAction(action: KeyAction, where: string, workspaces: ReadonlySet
     );
 }
 
+/** The rules of `rules`, checked by compiling them. */
 function planRules(rules: readonly RuleConfig[], workspaces: ReadonlySet<string>): RuleConfig[] {
     // Compiling is the check: it throws naming the rule's index and the field. The host compiles again to run them.
     compileRules(rules, workspaces);
@@ -1088,6 +1166,7 @@ function planFocus(focus: FocusConfig | undefined): FocusConfig {
     return Object.fromEntries(Object.entries(focus).filter(([, value]) => value !== undefined));
 }
 
+/** `edgeTiling` checked; null when the config says nothing, so the seat's value stands. */
 function checkEdgeTiling(edgeTiling: GnoblinConfig["edgeTiling"]): boolean | null {
     if (edgeTiling !== undefined && typeof edgeTiling !== "boolean") {
         throw new TypeError("config.edgeTiling: must be true or false");
@@ -1095,6 +1174,7 @@ function checkEdgeTiling(edgeTiling: GnoblinConfig["edgeTiling"]): boolean | nul
     return edgeTiling ?? null;
 }
 
+/** `dragConstraint` checked and put in the form the seat uses; null when the config says nothing. */
 function checkDragConstraint(constraint: GnoblinConfig["dragConstraint"]): DragConstraint | null {
     if (constraint !== undefined && constraint !== "work_area" && constraint !== "minimum_strip") {
         throw new TypeError(`config.dragConstraint must be work_area or minimum_strip, got ${String(constraint)}`);
@@ -1102,6 +1182,7 @@ function checkDragConstraint(constraint: GnoblinConfig["dragConstraint"]): DragC
     return constraint === undefined ? null : dragConstraintMode(constraint);
 }
 
+/** The `on` listeners as a list of events and handlers. */
 function planListeners(on: ConfigListeners): PlannedListener[] {
     rejectUnknown(on, LISTENER_EVENTS, "on");
     return Object.entries(on).map(([event, handler]) => {
@@ -1176,6 +1257,7 @@ function planDocument(config: GnoblinConfig): DocumentPatch {
     return patch;
 }
 
+/** `decorations` checked: true or false, and off when the config says nothing (only `defaultConfig` turns it on). */
 function checkDecorations(decorations: GnoblinConfig["decorations"]): boolean {
     if (decorations !== undefined && typeof decorations !== "boolean") {
         throw new TypeError("config.decorations: must be true or false");
@@ -1191,6 +1273,7 @@ function checkSwitch(value: boolean | undefined, name: string): boolean {
     return value ?? false;
 }
 
+/** `setup` checked to be a function when given. */
 function checkSetup(setup: GnoblinConfig["setup"]): GnoblinConfig["setup"] {
     if (setup !== undefined && typeof setup !== "function") {
         throw new TypeError("setup must be a function");
@@ -1198,6 +1281,7 @@ function checkSetup(setup: GnoblinConfig["setup"]): GnoblinConfig["setup"] {
     return setup;
 }
 
+/** Freezes `value` and every object inside it, so a shared default cannot be changed by one config. */
 function deepFreeze<T extends object>(value: T): T {
     for (const member of Object.values(value)) {
         if (member !== null && typeof member === "object" && !Object.isFrozen(member)) {

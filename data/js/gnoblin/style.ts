@@ -1,7 +1,8 @@
 // The style model of design/js-research/owner-spec.md section 6, over plain ES classes: `Style`, `ClientStyle`, the
 // list elements (`Border`, `Shadow`, the filters) and the cascade that turns the layers a client sits under into one
 // resolved style. Nothing here touches the compositor: `gnoblin/host` binds the scopes (`gnoblin.clients.style`, a
-// workspace's, a `where()` selection's, one client's) and writes what `mapStyle` returns to the node.
+// workspace's, a `where()` selection's, one client's) and writes what `mapStyle` returns to the node. Read
+// `docs/js-style.md` first for the user's view of it.
 //
 // A scope holds only what was set on it: a property that was never assigned, or was unset, is `undefined` and is
 // inherited. `null` is a value (`background = null`). A list assigned to a scope replaces the inherited list whole.
@@ -16,9 +17,12 @@
 // copies. The first write to one of them (or the first in-place change of the array, seen by the frame comparison)
 // makes that copy the scope's own list, so the write never reaches the scope the list came from.
 
+// ---- Values and limits ----
+
 /** A colour as `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`. */
 export type Color = string;
 
+/** One radius per corner, in pixels. */
 export interface CornerRadii {
     topLeft: number;
     topRight: number;
@@ -33,6 +37,7 @@ export const MAX_STYLE_LIST = 8;
 const MAX_RADIUS = 100;
 const MAX_GRADE = 2;
 
+/** The text form of a colour: 3, 4, 6 or 8 hex digits after the `#`. */
 const COLOUR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
 /** Bumped by every accepted change of any style object. The host re-resolves a client when it moved. */
@@ -40,16 +45,25 @@ let epoch = 0;
 /** Above zero while elements are built, which are not changes. */
 let building = 0;
 
+/**
+ * A number that goes up by one for every accepted change of any style object. The host compares it between frames
+ * and re-resolves a client's style when it moved.
+ */
 export function styleEpoch(): number {
     return epoch;
 }
 
+// ---- Checkers: one per kind of value, each returns the checked value or throws with the property path ----
+
+/** Throws a RangeError whose text starts with the property path, such as `Client#42.style.opacity`. */
 function fail(path: string, message: string): never {
     throw new RangeError(`${path}: ${message}`);
 }
 
+/** Checks `value` for the property at `path`, and returns it (or its frozen, normalised form). */
 type Checker<T = unknown> = (value: unknown, path: string) => T;
 
+/** A checker for a finite number from `min` to `max`, both included. */
 function finiteIn(min: number, max: number): Checker<number> {
     return (value, path) => {
         if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max) {
@@ -110,6 +124,8 @@ const cornerRadius: Checker<number | Readonly<CornerRadii>> = (value, path) => {
 
 const background: Checker<Color | null> = (value, path) => (value === null ? null : colour(value, path));
 
+// ---- List elements ----
+
 /** Where a list element sits, for its error paths, and what runs before one of its fields is written. */
 interface Home {
     list: StyleElement[] | null;
@@ -117,6 +133,7 @@ interface Home {
     beforeWrite?: () => void;
 }
 
+/** The home of each element that sits in a list. An element outside every list has none, and its path is its class. */
 const homes = new WeakMap<StyleElement, Home>();
 
 /** One accepted write of an element's field: the checked value, with the copy-on-write and liveness hooks run. */
@@ -130,6 +147,7 @@ function write<T>(element: StyleElement, name: string, value: unknown, check: Ch
     return checked;
 }
 
+/** Sets each field of the literal `init` through the element's checked setters; an unknown field is a TypeError. */
 function assignFields(target: object, init: unknown, fields: readonly string[], label: string): void {
     if (init === undefined) {
         return;
@@ -150,8 +168,10 @@ export abstract class StyleElement {
     abstract toJSON(): Record<string, unknown>;
 }
 
+/** The fields of a `Border`, in the order `toJSON` writes them. */
 const BORDER_FIELDS = ["width", "color", "offset", "inset"] as const;
 
+/** A `Border` as a literal: any field may be left out. */
 export interface BorderInit {
     width?: number;
     color?: Color;
@@ -159,7 +179,10 @@ export interface BorderInit {
     inset?: boolean;
 }
 
-/** One stroke around the window. Several make concentric rings, `offset` apart. */
+/**
+ * One stroke around the window. Several make concentric rings, `offset` apart. `width` and `offset` are in pixels;
+ * `offset` moves the ring out from the frame (negative moves it in).
+ */
 export class Border extends StyleElement {
     #width = 1;
     #color: Color = "#ffffff";
@@ -208,8 +231,10 @@ export class Border extends StyleElement {
     }
 }
 
+/** The fields of a `Shadow`, in the order `toJSON` writes them. */
 const SHADOW_FIELDS = ["x", "y", "blur", "spread", "color", "inset"] as const;
 
+/** A `Shadow` as a literal: any field may be left out. Offsets, blur and spread are in pixels. */
 export interface ShadowInit {
     x?: number;
     y?: number;
@@ -219,7 +244,10 @@ export interface ShadowInit {
     inset?: boolean;
 }
 
-/** A shadow behind the window, or inside it with `inset`. */
+/**
+ * A shadow behind the window, or inside it with `inset`. `x` and `y` move it, `blur` softens its edge and `spread`
+ * grows it, all in pixels.
+ */
 export class Shadow extends StyleElement {
     #x = 0;
     #y = 0;
@@ -293,6 +321,7 @@ export class Shadow extends StyleElement {
     }
 }
 
+/** A `BlurFilter` as a literal. `radius` is in pixels. */
 export interface BlurFilterInit {
     radius?: number;
 }
@@ -319,6 +348,7 @@ export class BlurFilter extends StyleElement {
     }
 }
 
+/** A `SaturateFilter`, `BrightnessFilter` or `ContrastFilter` as a literal: `amount` is 1 for no change. */
 export interface AmountInit {
     amount?: number;
 }
@@ -389,15 +419,19 @@ export class ContrastFilter extends StyleElement {
     }
 }
 
+/** Any filter element of a `filter` or `backdropFilter` list. */
 export type Filter = BlurFilter | SaturateFilter | BrightnessFilter | ContrastFilter;
 
 /** The shorthand a filter list accepts: `{ blur: 18 }` is a `BlurFilter` of radius 18, and so on. */
 export type FilterInit =
     Filter | { blur: number } | { saturate: number } | { brightness: number } | { contrast: number };
 
+/** A border element or the literal that makes one, as a `borders` list takes it. */
 export type BorderLike = Border | BorderInit;
+/** A shadow element or the literal that makes one, as a `shadows` list takes it. */
 export type ShadowLike = Shadow | ShadowInit;
 
+/** The one-key literals a filter list accepts, each with the element it makes and the checker of its number. */
 const FILTER_SHORTHAND = {
     blur: { make: (n: number) => new BlurFilter({ radius: n }), check: RADIUS },
     saturate: { make: (n: number) => new SaturateFilter({ amount: n }), check: GRADE },
@@ -405,8 +439,10 @@ const FILTER_SHORTHAND = {
     contrast: { make: (n: number) => new ContrastFilter({ amount: n }), check: GRADE },
 } as const;
 
+/** A list element class, as `entryOf` constructs it. */
 type ElementClass = new (init?: never) => StyleElement;
 
+/** A copy of `element` that no list owns. Built under `building`, so making it is not a change. */
 function cloneElement(element: StyleElement): StyleElement {
     const Class = element.constructor as new (init: unknown) => StyleElement;
     building += 1;
@@ -419,6 +455,7 @@ function cloneElement(element: StyleElement): StyleElement {
     }
 }
 
+/** Whether `value` is one of the four filter classes. */
 function isFilter(value: unknown): value is Filter {
     return (
         value instanceof BlurFilter ||
@@ -454,6 +491,7 @@ function entryOf(
     }
 }
 
+/** The element a `filter` or `backdropFilter` entry stands for: a filter element or a one-key literal. */
 function filterEntry(value: unknown, path: string, target: StyleElement[]): StyleElement {
     if (isFilter(value)) {
         const home = homes.get(value);
@@ -479,8 +517,13 @@ function filterEntry(value: unknown, path: string, target: StyleElement[]): Styl
     );
 }
 
+// ---- Stores: what each scope holds and how its lists are copied on write ----
+
+/** The properties that are lists. */
 type ListName = "borders" | "shadows" | "filter" | "backdropFilter";
+/** The properties that are one value. */
 type ScalarName = "opacity" | "cornerRadius" | "background";
+/** Any style property, as `Style.unset` takes it. */
 export type StyleProperty = ListName | ScalarName;
 
 const LIST_ENTRY: Readonly<Record<ListName, (value: unknown, path: string, target: StyleElement[]) => StyleElement>> = {
@@ -490,12 +533,14 @@ const LIST_ENTRY: Readonly<Record<ListName, (value: unknown, path: string, targe
     backdropFilter: filterEntry,
 };
 
+/** The checker of each scalar property. */
 const SCALAR_CHECK: Readonly<Record<ScalarName, Checker>> = {
     opacity: UNIT,
     cornerRadius,
     background,
 };
 
+/** The properties every `Style` has, and the ones a `ClientStyle` adds. */
 const STYLE_FIELDS: readonly string[] = ["opacity", "filter", "backdropFilter"];
 const CLIENT_FIELDS: readonly string[] = [...STYLE_FIELDS, "cornerRadius", "borders", "shadows", "background"];
 
@@ -509,6 +554,7 @@ export interface StyleScope {
     guard?(): void;
 }
 
+/** A copy of an inherited list handed to a script, valid while the epoch has not moved. */
 interface View {
     epoch: number;
     list: StyleElement[];
@@ -516,6 +562,7 @@ interface View {
     seen: StyleElement[];
 }
 
+/** What one style object holds. It lives in a WeakMap so that a script cannot reach it through the object. */
 interface Store {
     label: string;
     scope: StyleScope | null;
@@ -528,6 +575,7 @@ interface Store {
 
 const stores = new WeakMap<Style, Store>();
 
+/** The store of `style`; a TypeError when `style` is not one of ours. */
 function storeOf(style: Style): Store {
     const store = stores.get(style);
     if (store === undefined) {
@@ -536,10 +584,12 @@ function storeOf(style: Style): Store {
     return store;
 }
 
+/** The error path of property `name` of the style held by `store`. */
 function pathOf(store: Store, name: string): string {
     return `${store.scope?.path() ?? store.label}.${name}`;
 }
 
+/** Whether two lists hold the same element objects in the same order. */
 function sameEntries(a: readonly StyleElement[], b: readonly StyleElement[]): boolean {
     return a.length === b.length && a.every((element, at) => element === b[at]);
 }
@@ -568,6 +618,7 @@ function commitView(store: Store, name: ListName, view: View): void {
     epoch += 1;
 }
 
+/** `value` as a list of elements for property `name`, each entry checked; the first bad entry throws with its path. */
 function checkedList(store: Store, name: ListName, value: unknown, target: StyleElement[]): StyleElement[] {
     const path = pathOf(store, name);
     if (!Array.isArray(value)) {
@@ -583,6 +634,7 @@ function checkedList(store: Store, name: ListName, value: unknown, target: Style
     return entries;
 }
 
+/** The setter of a list property: check every entry, then make the new list the scope's own. */
 function setList(style: Style, name: ListName, value: unknown): void {
     const store = storeOf(style);
     store.scope?.guard?.();
@@ -597,6 +649,10 @@ function setList(style: Style, name: ListName, value: unknown): void {
     epoch += 1;
 }
 
+/**
+ * The getter of a list property. A scope that overrides the list returns its own. Otherwise the script gets a copy
+ * of the inherited list (cached for one epoch) whose first write makes the copy the scope's own.
+ */
 function getList(style: Style, name: ListName): StyleElement[] {
     const store = storeOf(style);
     const overriding = store.lists.get(name);
@@ -628,6 +684,7 @@ function getList(style: Style, name: ListName): StyleElement[] {
     return list;
 }
 
+/** The setter of a scalar property; `undefined` takes it back to inheriting. */
 function setScalar(style: Style, name: ScalarName, value: unknown): void {
     const store = storeOf(style);
     store.scope?.guard?.();
@@ -639,6 +696,7 @@ function setScalar(style: Style, name: ScalarName, value: unknown): void {
     epoch += 1;
 }
 
+/** Takes one property back to inheriting, in whichever store it sits. */
 function unsetOne(store: Store, name: StyleProperty): void {
     store.scope?.guard?.();
     store.scalars.delete(name as ScalarName);
@@ -729,6 +787,7 @@ export class Style {
     }
 }
 
+/** A `ClientStyle` as a literal: any property may be left out. */
 export interface ClientStyleInit {
     opacity?: number;
     cornerRadius?: number | CornerRadii;
@@ -832,6 +891,7 @@ export function syncStyleLists(style: Style): Error[] {
     return errors;
 }
 
+/** Checks the list that changed in place; on success `accept` runs, on failure the old entries come back. */
 function recheck(
     store: Store,
     name: ListName,
@@ -869,6 +929,7 @@ export function layeredList(layers: readonly StyleLayer[], name: ListName): read
     return [];
 }
 
+/** A resolved border, as plain frozen data. */
 export interface BorderValue {
     readonly width: number;
     readonly color: Color;
@@ -876,6 +937,7 @@ export interface BorderValue {
     readonly inset: boolean;
 }
 
+/** A resolved shadow, as plain frozen data. */
 export interface ShadowValue {
     readonly x: number;
     readonly y: number;
@@ -885,6 +947,7 @@ export interface ShadowValue {
     readonly inset: boolean;
 }
 
+/** A resolved filter, as plain frozen data. */
 export type FilterValue =
     | { readonly kind: "blur"; readonly radius: number }
     | { readonly kind: "saturate"; readonly amount: number }
@@ -904,6 +967,7 @@ export interface ComputedStyle {
     readonly origin: Readonly<Record<StyleProperty, string>>;
 }
 
+/** What a property resolves to when no layer sets it. */
 const DEFAULT_SCALARS: Readonly<Record<ScalarName, unknown>> = { opacity: 1, cornerRadius: 0, background: null };
 
 /** The style the layers resolve to, lowest layer first, per property: the highest layer that sets it wins. */
@@ -985,6 +1049,7 @@ const BLANK: Omit<EffectWire, "kind"> = {
     frame: false,
 };
 
+/** A colour as the wire spells it: `#rrggbbaa`, lower case, with a full alpha added to a six-digit colour. */
 function wireColour(text: Color): string {
     let digits = text.slice(1).toLowerCase();
     if (digits.length <= 4) {
