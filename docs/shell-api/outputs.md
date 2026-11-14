@@ -29,25 +29,103 @@ A removed output keeps its last values and reads `connected === false`.
 `mode`, `scale`, `primary`, `enabled`, `x`, `y`, `width` and `height`. [`gnoblin.find("Output", filter)`](find) returns an
 array.
 
-| Member                      | Meaning                                                                                                       |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `name`                      | The compositor's name for the output, such as `output-0`. A workspace set's entry names it.                   |
-| `make`, `model`             | What the compositor knows of the display. Empty when it knows nothing.                                        |
-| `mode`                      | The mode in use, `WxH@Hz`.                                                                                    |
-| `scale`                     | The factor the output composes at. 2 is a HiDPI panel.                                                        |
-| `transform`                 | The rotation and flip: `normal`, `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180` or `flipped-270`. |
-| `x`, `y`, `width`, `height` | The output's rectangle in the compositor's coordinates. `bounds` is the same as one object.                   |
-| `position`                  | `{ x, y }` of the output.                                                                                     |
-| `primary`                   | Whether this is the primary output, the one the stock bars and `gnoblin.workspaces.area` are on.              |
-| `enabled`                   | Whether the output is on.                                                                                     |
-| `area`                      | What a layout tiles in on this output: its rectangle less the bars on it. `null` when the output is gone.     |
-| `workspace`                 | The workspace the output shows, or `null`.                                                                    |
-| `show(workspace, options?)` | Shows a workspace on this output. `options.duration` slides the windows.                                      |
-| `connected`, `alive`        | `false` once the display is gone.                                                                             |
-| `addListener(listener)`     | Attaches an `OutputListener`.                                                                                 |
+| Member                      | Meaning                                                                                                        |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `name`                      | The compositor's name for the output, such as `output-0`. A workspace set's entry names it.                    |
+| `connector`                 | The connector the display is plugged into, such as `DP-1`. `defineConfig({ outputs })` and `mirrorOf` name it. |
+| `identity`                  | The monitor's EDID identity, `MAN:product:serial`. Empty for a display that reports none.                      |
+| `make`, `model`             | What the compositor knows of the display. Empty when it knows nothing.                                         |
+| `mirrorOf`                  | The output this one shows a copy of, or `null`.                                                                |
+| `mode`                      | The mode in use, `WxH@Hz`.                                                                                     |
+| `scale`                     | The factor the output composes at. 2 is a HiDPI panel.                                                         |
+| `transform`                 | The rotation and flip: `normal`, `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180` or `flipped-270`.  |
+| `x`, `y`, `width`, `height` | The output's rectangle in the compositor's coordinates. `bounds` is the same as one object.                    |
+| `position`                  | `{ x, y }` of the output.                                                                                      |
+| `primary`                   | Whether this is the primary output, the one the stock bars and `gnoblin.workspaces.area` are on.               |
+| `enabled`                   | Whether the output is on.                                                                                      |
+| `area`                      | What a layout tiles in on this output: its rectangle less the bars on it. `null` when the output is gone.      |
+| `workspace`                 | The workspace the output shows, or `null`.                                                                     |
+| `show(workspace, options?)` | Shows a workspace on this output. `options.duration` slides the windows.                                       |
+| `apply(options)`            | Configures the display. See [Configure an output](#configure-an-output).                                       |
+| `mirror(source)`            | Shows a copy of `source`, or stops with `null`.                                                                |
+| `connected`, `alive`        | `false` once the display is gone.                                                                              |
+| `addListener(listener)`     | Attaches an `OutputListener`.                                                                                  |
 
-A script reads these properties and writes none. A script cannot change an output's settings: the compositor has no
-operation for it, and the `outputs` key of `defineConfig` is stored as written and not applied.
+A script reads these properties and writes none. It changes a display with `apply` and `mirror`, below.
+
+## Configure an output
+
+`output.apply({ ... })` asks the compositor to change one display. Every key is optional, and a key left out keeps its
+value.
+
+- The compositor checks the whole new arrangement before it touches hardware.
+- It then drives the changed outputs. If the backend refuses a mode, the outputs already changed are put back and the
+  last good arrangement stays.
+- It keeps the result as that monitor's profile, so the same monitor on the same port gets it back after an unplug.
+
+| Key         | Values                                                                           |
+| ----------- | -------------------------------------------------------------------------------- |
+| `mode`      | `"3440x1440@144"`, or `"preferred"` to keep what the backend drives.             |
+| `scale`     | A number from 0.5 to 4.                                                          |
+| `transform` | `"normal"`. The compositor draws no rotation, so the others are refused by name. |
+| `position`  | `[x, y]` or `{ x, y }`: the top-left corner in the one desktop coordinate space. |
+| `enabled`   | `false` switches the output off: it shows black and has no place in the desktop. |
+| `mirrorOf`  | The connector, or an `Output`, to show an exact copy of. `null` stops mirroring. |
+
+A value of the wrong shape throws before anything is sent, naming the key: `Output#output-1.apply.scale must be a number
+from 0.5 to 4`.
+
+The compositor answers a frame later. `apply` returns an `OutputApplication` with `done` and `error`, which is `null` on
+success. An `OutputListener` hears the same answer in `onApplied(output, error)`. A refusal names the key, as in
+`position: HDMI-1 and DP-1 would overlap`.
+
+**Mode and scale.** Drive an output at another mode, composed at a fractional scale:
+
+```ts
+import { gnoblin } from "gnoblin";
+
+const app = gnoblin.outputs.where({ name: "output-1" }).at(0)!.apply({ mode: "2560x1440@60", scale: 1.25 });
+```
+
+**Position.** Put an output below another. Outputs share one coordinate space, so a window can straddle the seam:
+
+```ts
+gnoblin.outputs.at(1)!.apply({ position: [0, 1080] });
+```
+
+**Mirror.** Show the first output on the second, scaled to fit and letterboxed when the shape differs. The pair is one
+monitor: the mirrored output has no place of its own, no workspace, and the pointer has one monitor for both.
+
+```ts
+gnoblin.outputs.at(1)!.mirror(gnoblin.outputs.at(0)!);
+gnoblin.outputs.at(1)!.mirror(null); // stop
+```
+
+**Off.** Switch an output off. It keeps its node, so you can switch it back on:
+
+```ts
+gnoblin.outputs.at(1)!.apply({ enabled: false });
+```
+
+**Span.** The desktop already is the span: every output is a rectangle in one space and a window across the seam is drawn
+continuously, at any mix of scales. There is no separate span mode; an output that is not mirrored or off is part of it.
+
+**In the config.** `outputs` applies the same keys by connector when the config loads, and again when that display is
+plugged in. An entry that does not check fails the config, naming `config.outputs.<connector>.<key>`; one the compositor
+refuses is reported as a diagnostic naming `outputs.<connector>.<key>`.
+
+```ts
+export default defineConfig({
+    outputs: {
+        "DP-1": { mode: "3440x1440@144", scale: 1.25, position: [0, 0] },
+        "HDMI-1": { mirrorOf: "DP-1" },
+    },
+});
+```
+
+The display backend decides what it can drive. Position, mirror and off need no modeset and work everywhere; changing a
+mode or scale works on the virtual and nested backends, and a hardware (DRM) output refuses it with the backend's reason
+until that backend can modeset.
 
 ## Listen for plugging and unplugging
 

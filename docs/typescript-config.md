@@ -194,10 +194,11 @@ dragConstraint: "minimum_strip",
 
 ### `style` and `outputs`
 
-Both keys are accepted and checked, and neither changes how windows or screens look.
-
 - `style` takes `cornerRadius`, `opacity` and `shadows`.
-- `outputs` takes `{ mode, scale }` for each connector name, such as `"DP-1"`.
+- `outputs` takes `{ mode, scale, transform, position, enabled, mirrorOf }` for each connector name, such as `"DP-1"`, and
+  configures that display. The compositor applies it through its transactional output engine when the config loads and
+  when the display is plugged in, and keeps it as the monitor's profile. A refusal is reported as a diagnostic naming
+  `outputs.<connector>.<key>`. See [Outputs](/shell-api/outputs#configure-an-output).
 
 To set a window's opacity, use the `style` field of a [window rule](/config/window_rule).
 

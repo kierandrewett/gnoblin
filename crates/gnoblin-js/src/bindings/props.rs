@@ -115,6 +115,9 @@ const WINDOW: &[JsPropDef] = &[
 /// shows, and `name` is what a workspace set's entry calls it. The compositor owns every property.
 const SCREEN: &[JsPropDef] = &[
     def("name", JsPropKind::Text, false),
+    def("connector", JsPropKind::Text, false),
+    def("identity", JsPropKind::Text, false),
+    def("mirror_of", JsPropKind::Text, false),
     def("make", JsPropKind::Text, false),
     def("model", JsPropKind::Text, false),
     def("x", JsPropKind::Double, false),

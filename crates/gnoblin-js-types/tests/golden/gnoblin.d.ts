@@ -558,13 +558,19 @@ declare module "gnoblin/schema/tree" {
         /** Schema name `output_scale`. Default `1`. */
         readonly outputScale: number;
         /** Default `"normal"`. */
-        transform: string;
+        readonly transform: string;
         /** Default `false`. */
         primary: boolean;
         /** Default `true`. */
-        enabled: boolean;
+        readonly enabled: boolean;
         readonly mode: string;
-        apply(): Reply;
+        /** Default `""`. */
+        readonly connector: string;
+        /** Default `""`. */
+        readonly identity: string;
+        /** Schema name `mirror_of`. Default `""`. */
+        readonly mirrorOf: string;
+        apply(text: string): Reply;
         /** Signal `mode_changed`. */
         onModeChanged(handler: (target: this) => void): Unsubscribe;
     }
@@ -1322,19 +1328,35 @@ declare module "gnoblin" {
         onScaleChanged?(output: Output, scale: number): void;
         /** The output's place or size in the compositor's coordinates changed. */
         onGeometryChanged?(output: Output, geometry: Rect): void;
+        /** An `apply` asked of this output was answered: `error` is null when it took effect, else why it did not. */
+        onApplied?(output: Output, error: string | null): void;
+    }
+
+    /** The compositor's answer to an `Output.apply`, filled in a frame after the call. */
+    export interface OutputApplication {
+        /** Whether the compositor has answered. */
+        readonly done: boolean;
+        /** Null while waiting and on success; else why the arrangement was left as it was, naming the key. */
+        readonly error: string | null;
     }
 
     /**
      * A connected output, the compositor's `screen` node. It shows one workspace at a time (`workspace`, `show`), and
      * the work area the layouts tile in is its rectangle less the bars on it. A destroyed one keeps its last values and
-     * reads `connected === false`. Its properties are the compositor's: none is written from a script. Docs:
-     * docs/shell-api/outputs.md.
+     * reads `connected === false`. Its properties are the compositor's: none is written from a script, and `apply`
+     * and `mirror` ask for a change. Docs: docs/shell-api/outputs.md.
      */
     export class Output extends NativeObject {
         /** The name the compositor gives the output: what a workspace set's entry and `outputs.where({ name })` use. */
         readonly name: string;
         readonly make: string;
         readonly model: string;
+        /** The connector the display is plugged into (`DP-1`): what `defineConfig({ outputs })` and `mirrorOf` name. */
+        readonly connector: string;
+        /** The monitor's EDID identity (`MAN:product:serial`), empty for a display that reports none. */
+        readonly identity: string;
+        /** The output this one shows an exact copy of, or null when it shows its own picture. */
+        readonly mirrorOf: Output | null;
         /** The mode being driven, `WxH@Hz`. */
         readonly mode: string;
         /** The factor the output composes at: 2 is a HiDPI panel. */
@@ -1361,6 +1383,16 @@ declare module "gnoblin" {
          * output takes the workspace this one showed, so no workspace is on two outputs.
          */
         show(workspace: Workspace | string, options?: ShowOptions): void;
+        /**
+         * Configures the display through the compositor's transactional output engine and keeps the result as this
+         * monitor's profile, so the same monitor on the same port gets it back after an unplug. A key left out keeps its
+         * value. The whole arrangement is checked before hardware is touched; if the backend then refuses a mode, the
+         * earlier changes are put back and the last good arrangement stays. A bad value throws here, naming the key.
+         * The compositor's answer arrives a frame later on the returned `OutputApplication` and `onApplied`.
+         */
+        apply(options: OutputSetting & { mirrorOf?: Output | string | null }): OutputApplication;
+        /** Shows an exact copy of `source` (scaled to fit, letterboxed) on this display, or stops mirroring with null. */
+        mirror(source: Output | null): OutputApplication;
     }
 
     // -- Triggers and bindings (owner-spec sections 10 and 11) ----------------
@@ -2112,12 +2144,23 @@ declare module "gnoblin" {
     /** Ends the snapped state without moving the client. */
     export function forgetSnap(client: object): void;
 
+    /**
+     * What an output is configured to do, by connector name in `defineConfig({ outputs })` and as the argument of
+     * `Output.apply`. A key left out keeps the output's value.
+     */
     export interface OutputSetting {
-        /** `"3440x1440@144"` or `"preferred"`. */
+        /** `"3440x1440@144"`, or `"preferred"` to keep what the backend drives. */
         mode?: string;
+        /** From 0.5 to 4. */
         scale?: number;
+        /** The compositor draws `normal` only and refuses the others by name. */
         transform?: "normal" | "90" | "180" | "270" | "flipped" | "flipped-90" | "flipped-180" | "flipped-270";
-        vrr?: boolean;
+        /** The output's top-left corner in the one desktop coordinate space. Left out, it follows the row. */
+        position?: readonly [number, number] | { readonly x: number; readonly y: number };
+        /** `false` switches the output off: it shows black and has no place in the desktop. */
+        enabled?: boolean;
+        /** The connector this output shows an exact copy of, letterboxed to fit its own panel. */
+        mirrorOf?: string;
     }
 
     /** A value of the config document. */

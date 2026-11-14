@@ -75,13 +75,14 @@ gnoblin.clients.addListener(new Count());
 
 An `OutputListener` attached to `gnoblin.outputs`, or to one output, has these methods:
 
-| Method                                | Called when                                       |
-| ------------------------------------- | ------------------------------------------------- |
-| `onConnected(output)`                 | An output was plugged in while the shell runs.    |
-| `onDisconnected(output)`              | An output is gone. Its last values stay readable. |
-| `onModeChanged(output, mode)`         | The mode changed. `mode` is `WxH@Hz`.             |
-| `onScaleChanged(output, scale)`       | The scale changed.                                |
-| `onGeometryChanged(output, geometry)` | The output's position or size changed.            |
+| Method                                | Called when                                                                 |
+| ------------------------------------- | --------------------------------------------------------------------------- |
+| `onConnected(output)`                 | An output was plugged in while the shell runs.                              |
+| `onDisconnected(output)`              | An output is gone. Its last values stay readable.                           |
+| `onModeChanged(output, mode)`         | The mode changed. `mode` is `WxH@Hz`.                                       |
+| `onScaleChanged(output, scale)`       | The scale changed.                                                          |
+| `onGeometryChanged(output, geometry)` | The output's position or size changed.                                      |
+| `onApplied(output, error)`            | An `apply` or `mirror` was answered. `error` is `null` when it took effect. |
 
 A listener on the collection does not hear `onConnected` for an output that was there when the shell started. See
 [Outputs](/shell-api/outputs#listen-for-plugging-and-unplugging).

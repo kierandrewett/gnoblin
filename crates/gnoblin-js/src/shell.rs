@@ -802,7 +802,7 @@ impl JsShell {
                 }
                 TreeIncoming::Answer { token, result, error } => {
                     let state = &mut *self.state.borrow_mut();
-                    if !state.ui.accept_answer(token, &result, &error) {
+                    if !state.ui.accept_answer(token, &result, &error) && !state.outputs.accept_answer(token, &error) {
                         state.lock.accept_answer(token, &result, &error);
                     }
                 }

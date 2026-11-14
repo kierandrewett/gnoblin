@@ -140,8 +140,8 @@ fn surface_workspace_screen_and_view_extend_their_bases() {
     assert_eq!(first, "    export interface Screen extends View {");
     has(&screen, "readonly screenWidth: number;");
     has(&screen, "readonly mode: string;");
-    has(&screen, "transform: string;");
-    has(&screen, "apply(): Reply;");
+    has(&screen, "readonly transform: string;");
+    has(&screen, "apply(text: string): Reply;");
     has(&screen, "onModeChanged(handler: (target: this) => void): Unsubscribe;");
 }
 

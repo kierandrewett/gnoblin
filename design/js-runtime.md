@@ -623,7 +623,7 @@ compositor stands in only for the unit tests of `swap_generation` (`crates/gnobl
   arrival after the listeners have run, so a config that wants its own listener to place windows declares a workspace
   with the base `Layout`, as the tests do.
 - **Not done.** Input events and chords (the binding lane). The document, slots, `on` and `setup` are in "P6 config
-  document and slots status"; `style` is in "P8a style status"; `outputs` is still not applied. `rules` are in
+  document and slots status"; `style` is in "P8a style status"; `outputs` is in "Output modes status". `rules` are in
   "Focus, rules and snapping status". Removing `init.ts` under a running
   shell keeps its generation until the session restarts.
 
@@ -735,7 +735,7 @@ over fakes, `crates/gnoblin/tests/js_shell.rs` against the real compositor.
 | `keyring`, `location`, `compat`, `capture`, `logging`                 | document sections read when a process starts                                                                                                                               | committed; takes effect at the next start of that process (the compositor says so in a `not applied` notice) |
 | `layerShell`, `auth`                                                  | document sections nothing reads yet                                                                                                                                        | committed; not applied (notice)                                                                              |
 | `style`                                                               | `gnoblin.clients.style`, the global scope of the style cascade; `rules[].style` is the client's own style                                                                  | applied: opacity, outer shadows, backdrop blur; the rest is noticed, not drawn (P8a)                         |
-| `outputs`                                                             | stored as written. The document has only the global `monitors.global-scale`, and a screen's tree properties are read-only                                                  | **not applied: needs native style objects (P8)**                                                             |
+| `outputs`                                                             | stored as written. The document has only the global `monitors.global-scale`, and a screen's tree properties are read-only                                                  | applied through `screen.apply` ("Output modes status")                                                       |
 | `rules`                                                               | stored as written; lane JsStockFocus owns `rules.ts`                                                                                                                       | not applied by this lane                                                                                     |
 | `launcher`                                                            | a `Super+space` key running the command, unless `keys` binds that trigger                                                                                                  | applied (a key, see `keys`)                                                                                  |
 | `focus`, `edgeTiling`, `dragConstraint`                               | script-side overrides of the seat's published settings (see "Focus, rules and snapping status")                                                                            | applied                                                                                                      |
@@ -1106,10 +1106,32 @@ the one behavioural difference, and a workspace set that names the same workspac
 - **Sets.** `SetsEnvironment.show(workspace, output)` is told every placement's output; the "which this shell does not show
   workspaces on" report is gone.
 
-**Not done.** `Output.apply`, and applying the `outputs` config key: the schema declares `screen.apply` but the compositor
-runs no call on a screen node, so a TypeScript declaration would be a no-op. A snapped window's remembered floating
-rectangle is not refitted on an output move. The menu's Move to workspace and the rule `workspace` action move a window
+**Not done.** `Output.apply` and the `outputs` config key were not done in this lane; see "Output modes status". A snapped
+window's remembered floating rectangle is not refitted on an output move. The menu's Move to workspace and the rule `workspace` action move a window
 with `transferClient` (no refit). `Workspace:walk` and the removal cases are not part of this lane.
+
+## Output modes status
+
+Lane OutputMirror. Design and decisions: `design/js-outputs.md`. User page: `docs/shell-api/outputs.md`. Tests:
+`crates/gnoblin-output/tests/profile.rs`, `crates/gnoblin-wayland/tests/output_modes.rs` (a real compositor and the
+software renderer on virtual outputs) and `crates/gnoblin-js/tests/outputs.rs` (the JS surface over the fake compositor).
+
+**Native.** `screen.apply(text)` now runs in the compositor (`crates/gnoblin-wayland/src/output_policy.rs`): the request
+is resolved as a whole layout first, the changed outputs are then driven with rollback on a refusal, and only a fully
+driven candidate becomes the output's profile. The compositor answers under the call's token. `screen.toml` gains
+`connector`, `identity` and `mirror_of`; `transform` and `enabled` are read-only. `gnoblin-output` gains `ProfileStore`
+(profiles keyed by connector and EDID identity, `Edid::identity`) and a `Display` for `LayoutError`; the backend `Output`
+carries the EDID identity. A mirror or an output that is off is a shadow: its screen node stays, the scene and the pointer
+do not see it, and its frame is the source's readback fitted into its panel, or black.
+
+**JS.** `Output.apply(options)`, `Output.mirror(source)`, `Output.connector`, `identity`, `mirrorOf`,
+`OutputListener.onApplied`, and the `outputs` config key applied by connector (`outputRequest` in
+`data/js/gnoblin/config.ts` checks a request and names the key path). A mirrored or off output has no desk, so nothing is
+laid out on it; it gets one back when it is ordinary again. `Display`, `Viewport` and `Camera` are not added.
+
+**Not done.** A DRM modeset (the hardware backend refuses `configure_output`), a transform other than `normal` (no
+renderer draws a rotation), the GLES renderer's proof of a mirror, profiles that outlive a session, and
+`wlr-output-management` or `gnoblinctl output call apply` reaching the new path (both keep their old, narrower behaviour).
 
 ## Host API B status
 

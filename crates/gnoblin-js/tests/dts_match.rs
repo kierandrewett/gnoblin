@@ -154,6 +154,7 @@ const RUNTIME_NOT_DECLARED: &[(&str, &str)] = &[
     ("defaultConfig", CONFIG_PIPELINE),
     ("desugarConfig", CONFIG_PIPELINE),
     ("mergeConfig", CONFIG_PIPELINE),
+    ("outputRequest", CONFIG_PIPELINE),
     ("planStockLauncher", CONFIG_PIPELINE),
     // Helpers the stock layouts and bindings share.
     ("checkGap", LAYOUT_HELPER),

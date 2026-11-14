@@ -21,5 +21,6 @@ export default defineConfig({
 requests that privacy screens turn on, `false` that they turn off, and `"inherit"` follows the system privacy screen
 preference.
 
-A monitor's own mode and scale, by connector name, are the `outputs` key of `defineConfig`. That key is accepted and
-checked, and it does not change a screen: see [`style` and `outputs`](/typescript-config#style-and-outputs).
+A monitor's own mode, scale, position, power and mirror, by connector name, are the `outputs` key of `defineConfig`: see
+[`style` and `outputs`](/typescript-config#style-and-outputs) and
+[Configure an output](/shell-api/outputs#configure-an-output).

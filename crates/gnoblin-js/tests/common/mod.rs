@@ -440,6 +440,26 @@ impl FakeCompositor {
             .collect()
     }
 
+    /// The `apply` calls the shell sent, in order: the screen node, the request text and the token.
+    pub fn applies(&self) -> Vec<(u64, String, u64)> {
+        self.0
+            .borrow()
+            .sent
+            .iter()
+            .flatten()
+            .filter_map(|op| match op {
+                TxOp::Call {
+                    node,
+                    method,
+                    text,
+                    token,
+                    ..
+                } if method == "apply" => Some((*node, text.expose().to_owned(), *token)),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// How many `Destroy` ops the shell sent for `node`.
     pub fn destroys_of(&self, node: u64) -> usize {
         self.0

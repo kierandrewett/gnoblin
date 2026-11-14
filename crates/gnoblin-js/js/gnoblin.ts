@@ -10,13 +10,14 @@
 // invocation per interested listener; the host then runs them one by one under a time budget each, so a
 // listener that throws or never returns does not stop the others.
 
-import { desugarConfig, defaultConfig, mergeConfig, planStockLauncher } from "gnoblin/config";
+import { desugarConfig, defaultConfig, mergeConfig, outputRequest, planStockLauncher } from "gnoblin/config";
 import type {
     BindingAction,
     ConfigListeners,
     ConfigPlan,
     GnoblinConfig,
     GnoblinHost,
+    OutputConfig,
     PlannedKey,
     ResolvedAction,
 } from "gnoblin/config";
@@ -227,6 +228,11 @@ interface Host {
         declared(): boolean;
     };
     lock: LockBackend;
+    /** `Output.apply`: the request text goes to the compositor, whose answer comes back under the token. */
+    outputs: {
+        apply(node: NodeId, text: string): number | undefined;
+        takeAnswers(): { token: number; error: string }[];
+    };
     entry?: Entry;
 }
 
@@ -351,6 +357,8 @@ export class CollectionListener {
  * there when it started.
  */
 export class OutputListener {
+    /** An `apply` asked of this output was answered: `error` is null when it took effect, else why it did not. */
+    onApplied?(output: Output, error: string | null): void;
     /** The output appeared: it was plugged in, or made by the compositor. */
     onConnected?(output: Output): void;
     /** The output is gone. Its last values stay readable; `connected` is false. */
@@ -1260,6 +1268,9 @@ export class Workspace {
 
 const OUTPUT_KEYS = [
     "name",
+    "connector",
+    "identity",
+    "mirror_of",
     "make",
     "model",
     "x",
@@ -1275,6 +1286,8 @@ const OUTPUT_KEYS = [
 
 /** What listeners were last told about an output, to raise an event only for a real change. */
 interface OutputSeen {
+    /** Whether the output has no place of its own: it mirrors another or is off. It has no desk then. */
+    detached: boolean;
     mode: string;
     scale: number;
     x: number;
@@ -1287,6 +1300,7 @@ const outputSeen = new WeakMap<object, OutputSeen>();
 
 function publishedOutput(node: NodeId): OutputSeen {
     return {
+        detached: host.published(node, "mirror_of") !== "" || host.published(node, "enabled") === false,
         mode: host.published(node, "mode") as string,
         scale: host.published(node, "output_scale") as number,
         x: host.published(node, "x") as number,
@@ -1345,6 +1359,22 @@ export class Output {
         return read<string>(this, "model");
     }
 
+    /** The connector the display is plugged into (`DP-1`): what `defineConfig({ outputs })` and `mirrorOf` name. */
+    get connector(): string {
+        return read<string>(this, "connector");
+    }
+
+    /** The monitor's EDID identity (`MAN:product:serial`), empty for a display that reports none. */
+    get identity(): string {
+        return read<string>(this, "identity");
+    }
+
+    /** The output this one shows an exact copy of, or null when it shows its own picture. */
+    get mirrorOf(): Output | null {
+        const source = read<string>(this, "mirror_of");
+        return source === "" ? null : (liveOutputs().find((one) => one.connector === source) ?? null);
+    }
+
     /** The mode being driven, `WxH@Hz`. */
     get mode(): string {
         return read<string>(this, "mode");
@@ -1386,6 +1416,22 @@ export class Output {
 
     get position(): { x: number; y: number } {
         return { x: this.x, y: this.y };
+    }
+
+    /**
+     * Configures the display through the compositor's transactional output engine and keeps the result as this
+     * monitor's profile, so the same monitor on the same port gets it back after an unplug. A key left out keeps its
+     * value. The whole arrangement is checked before hardware is touched; if the backend then refuses a mode, the
+     * earlier changes are put back and the last good arrangement stays. A bad value throws here, naming the key.
+     * The compositor's answer arrives a frame later on the returned `OutputApplication` and `onApplied`.
+     */
+    apply(options: OutputConfig & { mirrorOf?: Output | string | null }): OutputApplication {
+        return applyOutput(this, options, `${this}.apply`);
+    }
+
+    /** Shows an exact copy of `source` (scaled to fit, letterboxed) on this display, or stops mirroring with null. */
+    mirror(source: Output | null): OutputApplication {
+        return applyOutput(this, { mirrorOf: source }, `${this}.mirror`);
     }
 
     /** The whole output in the compositor's coordinates. */
@@ -1702,13 +1748,13 @@ class WorkspaceCollection extends MutableCollection<Workspace> {
     readonly sets = new WorkspaceSets({
         declared: () => new Set((workspaceRoot.list as Workspace[]).map((workspace) => workspace.id)),
         outputs: () => ({
-            names: liveOutputs().map((output) => output.name),
+            names: deskOutputs().map((output) => output.name),
             primary: primaryOutput()?.name ?? "",
         }),
         show: (id, output) =>
             showWorkspace(id, {
                 duration: SLIDE_SECONDS,
-                ...(output === undefined ? {} : { output: liveOutputs().find((one) => one.name === output) }),
+                ...(output === undefined ? {} : { output: deskOutputs().find((one) => one.name === output) }),
             }),
         report: (message) => {
             reports.push({ site: "gnoblin.workspaces.sets", error: new Error(message) });
@@ -1850,9 +1896,14 @@ function liveOutputs(): Output[] {
     return outputRoot.list as Output[];
 }
 
+/** The outputs that have a desk: every connected output but a mirror and one that is off. */
+function deskOutputs(): Output[] {
+    return liveOutputs().filter((output) => deskByOutput.has(output));
+}
+
 /** The output flagged primary, or the first one; null while the tree has none. */
 function primaryOutput(): Output | null {
-    const list = liveOutputs();
+    const list = deskOutputs();
     return list.find((output) => output.primary) ?? list[0] ?? null;
 }
 
@@ -3007,7 +3058,7 @@ function snapshotWorkspaces(): WorkspaceSnapshot {
             id: workspace.id,
             clients: (wsState(workspace).clientsState.list as Client[]).map((client) => stateOf(client).node),
         })),
-        outputs: liveOutputs().flatMap((output) => {
+        outputs: deskOutputs().flatMap((output) => {
             const shown = deskByOutput.get(output)?.shown;
             return shown === null || shown === undefined ? [] : [{ output: output.name, workspace: shown.id }];
         }),
@@ -3035,7 +3086,7 @@ function reconcileWorkspaces(previous: WorkspaceSnapshot): void {
     // Each output shows what it showed; the primary output's workspace is the one the snapshot calls active.
     const wanted: [Desk, Workspace][] = [];
     for (const entry of previous.outputs ?? []) {
-        const output = liveOutputs().find((one) => one.name === entry.output);
+        const output = deskOutputs().find((one) => one.name === entry.output);
         const workspace = (workspaceRoot.list as Workspace[]).find((one) => one.id === entry.workspace);
         const desk = output === undefined ? undefined : deskByOutput.get(output);
         if (desk !== undefined && workspace !== undefined) {
@@ -3099,6 +3150,35 @@ function adoptScreen(node: NodeId, announce: boolean): void {
     const output = new Output(CREATE, node);
     outputsByNode.set(node, output);
     outputRoot.list.push(output);
+    // A mirror and an output that is off have no place in the desktop, so they get no desk: nothing is laid out there.
+    const wasParked = (outputSeen.get(output) as OutputSeen).detached ? false : giveDesk(output);
+    if (!announce) {
+        configureOutput(output);
+        return;
+    }
+    queueFor(outputRoot, "onAdded", [output, outputRoot.self]);
+    recompute(outputRoot, output);
+    emitMember(output, holders(outputRoot, output), "onConnected", [output]);
+    const desk = deskByOutput.get(output);
+    // The windows that waited hidden come back, and one takes the keyboard when nobody holds it.
+    if (
+        wasParked &&
+        desk !== undefined &&
+        desk.shown !== null &&
+        host.input.seats().length > 0 &&
+        focusedClient() === null
+    ) {
+        const first = (wsState(desk.shown).clientsState.list as Client[]).find((one) => one.alive && !one.minimised);
+        first?.focus();
+    }
+    configureOutput(output);
+}
+
+/**
+ * Gives an output a desk: the output-less desk a tree kept (or a parked one that waited for it), else a new one that
+ * shows the first workspace no desk shows. Returns whether the desk was parked.
+ */
+function giveDesk(output: Output): boolean {
     let desk = desks.find((candidate) => candidate.output === null);
     if (desk === undefined) {
         desk = { output: null, shown: null, parked: false };
@@ -3112,17 +3192,7 @@ function adoptScreen(node: NodeId, announce: boolean): void {
     if (desk.shown !== null) {
         wsState(desk.shown).dirty = true;
     }
-    if (!announce) {
-        return;
-    }
-    queueFor(outputRoot, "onAdded", [output, outputRoot.self]);
-    recompute(outputRoot, output);
-    emitMember(output, holders(outputRoot, output), "onConnected", [output]);
-    // The windows that waited hidden come back, and one takes the keyboard when nobody holds it.
-    if (wasParked && desk.shown !== null && host.input.seats().length > 0 && focusedClient() === null) {
-        const first = (wsState(desk.shown).clientsState.list as Client[]).find((one) => one.alive && !one.minimised);
-        first?.focus();
-    }
+    return wasParked;
 }
 
 /**
@@ -3132,6 +3202,15 @@ function adoptScreen(node: NodeId, announce: boolean): void {
  */
 function releaseScreen(output: Output): void {
     const held = leave(outputRoot, output, outputsByNode, OUTPUT_KEYS);
+    takeDesk(output);
+    emitMember(output, held, "onDisconnected", [output]);
+    for (const state of held) {
+        queueFor(state, "onRemoved", [output, state.self]);
+    }
+}
+
+/** Takes an output's desk away: its windows move to the workspace another output shows, or the desk parks. */
+function takeDesk(output: Output): void {
     const desk = deskByOutput.get(output);
     if (desk !== undefined) {
         desk.output = null;
@@ -3163,9 +3242,92 @@ function releaseScreen(output: Output): void {
         }
     }
     deskByOutput.delete(output);
-    emitMember(output, held, "onDisconnected", [output]);
-    for (const state of held) {
-        queueFor(state, "onRemoved", [output, state.self]);
+}
+
+/** The compositor's answer to an `Output.apply`, filled in a frame after the call. */
+export interface OutputApplication {
+    /** Whether the compositor has answered. */
+    readonly done: boolean;
+    /** Null while waiting and on success; else why the arrangement was left as it was, naming the key. */
+    readonly error: string | null;
+}
+
+interface PendingApplication {
+    output: Output;
+    result: { done: boolean; error: string | null };
+    /** The config path (`outputs.DP-1`) to name in a notice when the compositor refuses; null for a script's own call. */
+    path: string | null;
+}
+
+const applications = new Map<number, PendingApplication>();
+
+/** Sends one request for `output` to the compositor and tracks its answer. */
+function applyOutput(
+    output: Output,
+    options: OutputConfig & { mirrorOf?: Output | string | null },
+    target: string,
+    path: string | null = null,
+): OutputApplication {
+    if (!stateOf(output).alive) {
+        throw new GnoblinError("destroyed", target, "the output is gone");
+    }
+    const { mirrorOf, ...rest } = options;
+    const source = mirrorOf instanceof Output ? mirrorOf.connector : mirrorOf;
+    const request = outputRequest(mirrorOf === undefined ? rest : { ...rest, mirrorOf: source }, target);
+    const token = host.outputs.apply(stateOf(output).node, request);
+    if (token === undefined) {
+        throw new GnoblinError("destroyed", target, "the output is gone");
+    }
+    const result = { done: false, error: null as string | null };
+    applications.set(token, { output, result, path });
+    return {
+        get done() {
+            return result.done;
+        },
+        get error() {
+            return result.error;
+        },
+    };
+}
+
+/** Hands each answer to its application, tells the output's listeners, and reports a refused config entry. */
+function settleApplications(): void {
+    for (const answer of host.outputs.takeAnswers()) {
+        const pending = applications.get(answer.token);
+        if (pending === undefined) {
+            continue;
+        }
+        applications.delete(answer.token);
+        pending.result.done = true;
+        pending.result.error = answer.error === "" ? null : answer.error;
+        if (pending.result.error !== null && pending.path !== null) {
+            // `mode: ...` is a key's own refusal, so it extends the path; anything else is about the entry as a whole.
+            const keyed = /^[a-z_]+: /.test(pending.result.error);
+            say(`${pending.path}${keyed ? "." : ": "}${pending.result.error}`);
+        }
+        if (stateOf(pending.output).alive) {
+            emitMember(pending.output, holders(outputRoot, pending.output), "onApplied", [
+                pending.output,
+                pending.result.error,
+            ]);
+        }
+    }
+}
+
+/** The `outputs` table of the running config, applied to each output as it appears and to the ones already here. */
+let configuredOutputs: Readonly<Record<string, OutputConfig>> = {};
+
+/** Applies the config entry for this output's connector, if the config has one. */
+function configureOutput(output: Output): void {
+    const setting = configuredOutputs[output.connector];
+    if (setting === undefined) {
+        return;
+    }
+    const path = `outputs.${output.connector}`;
+    try {
+        applyOutput(output, setting, `config.${path}`, path);
+    } catch (error) {
+        say(`${path}: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
 
@@ -3174,6 +3336,14 @@ function outputChanged(output: Output): void {
     const seen = outputSeen.get(output) as OutputSeen;
     const now = publishedOutput(stateOf(output).node);
     const held = holders(outputRoot, output);
+    if (now.detached !== seen.detached) {
+        seen.detached = now.detached;
+        if (now.detached) {
+            takeDesk(output);
+        } else {
+            giveDesk(output);
+        }
+    }
     if (now.mode !== seen.mode) {
         seen.mode = now.mode;
         emitMember(output, held, "onModeChanged", [output, now.mode]);
@@ -3309,6 +3479,7 @@ function changed(client: Client): void {
 
 function plan(created: NodeId[], touched: NodeId[], destroyed: NodeId[]): number {
     launches.frame();
+    settleApplications();
     // The destroyed list is deepest first. Departures go before arrivals so a collection never holds a
     // dead member while it is told of a new one.
     for (const node of destroyed) {
@@ -4221,6 +4392,10 @@ class Gnoblin {
         bindKeys([...plan.bindings, ...planStockLauncher(merged)]);
         installStock(plan);
         replaceStyle(scopeStyle(clientRoot).style, plan.style);
+        configuredOutputs = plan.outputs;
+        for (const output of liveOutputs()) {
+            configureOutput(output);
+        }
         attachOn(merged.on ?? {});
         documentPatch = JSON.stringify(plan.document);
         autostartList = JSON.stringify(plan.autostart);

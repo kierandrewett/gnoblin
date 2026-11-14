@@ -893,3 +893,194 @@ fn a_reload_puts_each_output_back_on_the_workspace_it_showed() {
         .expect("a value");
     assert_eq!(shown, "output-0=1 output-1=3");
 }
+
+// ---- Output.apply, Output.mirror, defineConfig({ outputs }) ------------------------------------------------------------
+
+/// A shell over two screens that name their connectors: `A` is `DP-1` (1000 by 800) and `B` is `HDMI-1` (600 by 400).
+fn world_with_connectors(config: &str) -> Rig {
+    let init = format!("defineConfig({{ decorations: false, {config} }});\n");
+    let mut rig = rig_setup(IMPORTS, &init, |comp| {
+        for (id, name, connector, rect, primary) in [
+            (A, "output-0", "DP-1", (0.0, 0.0, 1000.0, 800.0), true),
+            (B, "output-1", "HDMI-1", (1000.0, 0.0, 600.0, 400.0), false),
+        ] {
+            comp.add_node(
+                id,
+                ROOT,
+                "screen",
+                vec![
+                    ("name", text(name)),
+                    ("connector", text(connector)),
+                    ("x", MirrorValue::Double(rect.0)),
+                    ("y", MirrorValue::Double(rect.1)),
+                    ("width", MirrorValue::Double(rect.2)),
+                    ("height", MirrorValue::Double(rect.3)),
+                    ("primary", MirrorValue::Bool(primary)),
+                ],
+            );
+        }
+    });
+    rig.settle();
+    rig
+}
+
+#[test]
+fn apply_sends_the_request_and_the_compositors_answer_reaches_the_application_and_the_listeners() {
+    let mut rig = world_with_connectors("");
+    exec(
+        &mut rig,
+        "g.log = [];\n\
+         gnoblin.outputs.addListener(new (class extends OutputListener {\n\
+             onApplied(o, error) { g.log.push(o.connector + ' ' + error); }\n\
+         })());\n\
+         g.app = gnoblin.outputs.at(1).apply({ mode: '1920x1080@60', scale: 1.25, position: [1000, 0], enabled: true });",
+    );
+    settle(&mut rig);
+    let sent = rig.comp.applies();
+    assert_eq!(sent.len(), 1, "one call per apply: {sent:?}");
+    assert_eq!(sent[0].0, B);
+    assert_eq!(
+        sent[0].1,
+        "mode=1920x1080@60\nscale=1.25\nposition=1000,0\nenabled=true"
+    );
+    assert_eq!(
+        rig.eval("`${g.app.done} ${g.app.error}`"),
+        "false null",
+        "nothing is known until it answers"
+    );
+
+    rig.comp.answer(sent[0].2, "ok", "");
+    settle(&mut rig);
+    assert_eq!(rig.eval("`${g.app.done} ${g.app.error}`"), "true null");
+    assert_eq!(rig.eval("g.log.join('|')"), "HDMI-1 null");
+
+    // A refusal is the compositor's text, under the same object and to the same listeners.
+    exec(&mut rig, "g.refused = gnoblin.outputs.at(1).apply({ mode: '1x1@1' });");
+    settle(&mut rig);
+    let token = rig.comp.applies()[1].2;
+    rig.comp
+        .answer(token, "", "mode: HDMI-1: the backend refused the change");
+    settle(&mut rig);
+    assert_eq!(
+        rig.eval("g.refused.error"),
+        "mode: HDMI-1: the backend refused the change"
+    );
+    assert_eq!(
+        rig.eval("g.log.join('|')"),
+        "HDMI-1 null|HDMI-1 mode: HDMI-1: the backend refused the change"
+    );
+}
+
+#[test]
+fn a_bad_value_throws_naming_the_key_and_sends_nothing() {
+    let mut rig = world_with_connectors("");
+    let thrown = |rig: &mut Rig, options: &str| {
+        rig.eval(&format!(
+            "try {{ gnoblin.outputs.at(1).apply({options}); 'none' }} catch (e) {{ e.constructor.name + ': ' + e.message }}"
+        ))
+    };
+    let scale = thrown(&mut rig, "{ scale: 9 }");
+    assert!(scale.starts_with("RangeError: ") && scale.contains(".scale"), "{scale}");
+    let mode = thrown(&mut rig, "{ mode: '1080p' }");
+    assert!(mode.starts_with("TypeError: ") && mode.contains(".mode"), "{mode}");
+    let key = thrown(&mut rig, "{ colour: 'red' }");
+    assert!(key.starts_with("TypeError: ") && key.contains(".colour"), "{key}");
+    let position = thrown(&mut rig, "{ position: [1.5, 0] }");
+    assert!(position.contains(".position"), "{position}");
+    let mirror = thrown(&mut rig, "{ mirrorOf: 3 }");
+    assert!(mirror.contains(".mirrorOf"), "{mirror}");
+    assert_eq!(
+        rig.comp.applies().len(),
+        0,
+        "a request that does not check is never sent"
+    );
+}
+
+#[test]
+fn mirror_names_the_source_by_connector_and_null_stops_it() {
+    let mut rig = world_with_connectors("");
+    exec(
+        &mut rig,
+        "gnoblin.outputs.at(1).mirror(gnoblin.outputs.at(0)); gnoblin.outputs.at(1).mirror(null);",
+    );
+    settle(&mut rig);
+    let sent: Vec<String> = rig.comp.applies().into_iter().map(|(_, text, _)| text).collect();
+    assert_eq!(sent, vec!["mirror_of=DP-1".to_owned(), "mirror_of=".to_owned()]);
+}
+
+#[test]
+fn the_outputs_table_of_the_config_is_applied_by_connector_and_a_refusal_names_the_key_path() {
+    let mut rig =
+        world_with_connectors("outputs: { 'HDMI-1': { scale: 1.25, position: [0, 800] }, 'DP-9': { scale: 2 } }");
+    let sent = rig.comp.applies();
+    assert_eq!(
+        sent.len(),
+        1,
+        "one call for the one connected output the table names: {sent:?}"
+    );
+    assert_eq!((sent[0].0, sent[0].1.as_str()), (B, "scale=1.25\nposition=0,800"));
+
+    rig.comp
+        .answer(sent[0].2, "", "position: HDMI-1 and DP-1 would overlap");
+    let diagnostics = rig.settle();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|line| line == "outputs.HDMI-1.position: HDMI-1 and DP-1 would overlap"),
+        "the notice carries the key path: {diagnostics:?}"
+    );
+
+    // A refusal about the entry as a whole has no key of its own.
+    exec(&mut rig, "g.o = gnoblin.outputs.at(1).apply({ scale: 1 });");
+    settle(&mut rig);
+    let token = rig.comp.applies()[1].2;
+    rig.comp.answer(token, "", "no output would stay enabled");
+    let diagnostics = rig.settle();
+    assert!(
+        diagnostics.iter().all(|line| !line.starts_with("outputs.")),
+        "a script's own apply reports on its application, not as a config notice: {diagnostics:?}"
+    );
+}
+
+#[test]
+fn a_config_output_entry_that_does_not_check_fails_the_config_naming_the_path() {
+    let init = "defineConfig({ outputs: { 'DP-1': { scale: 9 } } });\n";
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let root = std::fs::canonicalize(dir.path()).expect("the temp dir exists");
+    std::fs::write(root.join("init.ts"), format!("{IMPORTS}{init}")).expect("init.ts is written");
+    let mut shell =
+        gnoblin_js::JsShell::new(Box::new(FakeCompositor::new()), honest_config(&root)).expect("the shell boots");
+    let error = shell
+        .load_entry(std::path::Path::new("init.ts"))
+        .expect_err("the config does not check");
+    assert!(error.to_string().contains("config.outputs.DP-1.scale"), "{error}");
+}
+
+#[test]
+fn a_mirrored_or_disabled_output_has_no_desk_and_gets_one_back_when_it_is_ordinary_again() {
+    let mut rig = world_with_connectors("workspaces: [{ id: '1' }, { id: '2' }]");
+    assert_eq!(shown(&mut rig), "output-0=1 output-1=2");
+
+    // The compositor publishes the mirror: the output keeps its screen node and loses its desk.
+    rig.comp.external_set(B, "mirror_of", text("DP-1"));
+    settle(&mut rig);
+    assert_eq!(shown(&mut rig), "output-0=1 output-1=undefined");
+    assert_eq!(rig.eval("gnoblin.outputs.at(1).mirrorOf?.connector ?? 'none'"), "DP-1");
+    assert_eq!(
+        rig.eval("gnoblin.outputs.at(0).mirrorOf === null ? 'null' : 'set'"),
+        "null"
+    );
+    assert_eq!(
+        rig.eval("gnoblin.outputs.length.toString()"),
+        "2",
+        "the output is still in the collection"
+    );
+
+    rig.comp.external_set(B, "mirror_of", text(""));
+    settle(&mut rig);
+    assert_eq!(shown(&mut rig), "output-0=1 output-1=2");
+
+    rig.comp.external_set(B, "enabled", MirrorValue::Bool(false));
+    settle(&mut rig);
+    assert_eq!(shown(&mut rig), "output-0=1 output-1=undefined");
+}
