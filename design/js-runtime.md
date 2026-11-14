@@ -101,12 +101,12 @@ config through `globalThis.gnoblin.__register` when the host provides it; `desug
 spec-review.md section 4 as a plain-data plan. `defaultConfig` is one floating `desktop` workspace, `Super+1` and the
 media keys of `data/default-config`.
 
-Declared only: `Binding` (the four lifecycle hooks; `onStart` declines) and `BindingCollection` have no input wiring, so
-the `triggers` option of the layouts is stored resolved but binds nothing and the stock drag behaviours (move, resize,
-swap, split resize) are not written; `style` and `outputs` are stored and have no native effect; `rules`, `on` and
-`setup` are in the plan for the host to apply. Not ported: `Dwindle` (it needs per-workspace tree state), `Strip`, the
-launcher (`Super+space`), `Super+Left` and `Super+Right` (Strip only) and the `Swipe3` workspace slide, which depend on
-shell classes that have no JS counterpart yet.
+`Binding` and `BindingCollection` are wired by the input module (see "P3c status"): the `triggers` option of
+`FloatingLayout` registers its `move` and `resize` bindings, which go live when an input context attaches the layout.
+The swap and split-resize drag behaviours (`MasterStackLayout`, `GridLayout`) are not written; `style` and `outputs`
+are stored and have no native effect; `rules`, `on` and `setup` are in the plan for the host to apply. Not ported:
+`Dwindle` (it needs per-workspace tree state), `Strip`, the launcher (`Super+space`), `Super+Left` and `Super+Right`
+(Strip only) and the `Swipe3` workspace slide, which depend on shell classes that have no JS counterpart yet.
 
 ## Hot reload
 
@@ -191,9 +191,82 @@ collection)` at once for each member already in the collection, in collection or
 - **`gnoblin.spawn(command)`.** A string is a command line, an array is an argv. The shell does not start
   processes: `JsShell::set_spawner` takes the host's callback (`JsSpawnRequest::Command` or `Argv`), and a refusal
   or a missing spawner throws `GnoblinError` `spawn-failed`. A top-level `spawn` in `init.ts` runs on every load.
-- **Not done.** Input events, chords, gestures and call answers from the compositor are consumed and dropped: the
-  binding lane owns them. `JsShell` owns its generation: wiring it into `JsHost` staging, so a reload swaps shells,
-  is P5's. The compositor-side `where` evaluation is not built.
+- **Not done.** Pointer and key events addressed to nodes and call answers from the compositor are consumed and
+  dropped; claimed chords and gestures go to the input module (see "P3c status"). `JsShell` owns its generation:
+  wiring it into `JsHost` staging, so a reload swaps shells, is P5's (`JsShell::retire` is the hook it calls before
+  the swap). The compositor-side `where` evaluation is not built.
+
+## P3c status
+
+Key bindings, touchpad gestures and pointer drag bindings: `data/js/gnoblin/bindings.ts` (the grammar and the binding
+classes), `data/js/gnoblin/input.ts` (`gnoblin.input` and the matcher) and `crates/gnoblin-js/src/input.rs` (the host
+functions: seat claims and the seat's published state). The tests are `crates/gnoblin-js/tests/input.rs`, over a fake
+tree link that records claims and plays back chords, gestures, pointer positions and window deaths.
+
+- **Trigger grammar (spec-review 1.22).** `parseTrigger` is the only parser, in TypeScript so a binding rejects a bad
+  spelling when it is built, with or without a host. A trigger is modifiers joined with `+`, then one key, mouse
+  button (`MouseLeft`, `MouseMiddle`, `MouseRight`, with an optional `Drag` or `Click`), wheel, or a gesture alone
+  (`Swipe3`, `Swipe3Left`, `Pinch4In`: 2 to 5 fingers, optional direction). Modifier names are case-insensitive:
+  `Shift`, `Ctrl` (`Control`, `Primary`), `Alt` (`Mod1`), `Meta`, `Super` (`Logo`), `Hyper`; `Mod2` to `Mod5` are
+  refused as the compositor refuses them. A key is a keysym name, never the character it types, so `Super+1` and
+  `Super+Shift+1` are two triggers and `Super+!` is an error. The canonical spelling orders the modifiers
+  `Shift, Ctrl, Alt, Meta, Super, Hyper`, writes a single letter in lower case and the common key names one way
+  (`Enter` is `Return`, `pagedown` is `Page_Down`), so two spellings of one trigger are one trigger. A lone `Super`
+  is a tap. A literal plus is `plus`. There are no sequences. An error names the offending token. The compositor's
+  own chord spelling (`<Shift><Super>1`) is derived from the canonical one (`claimOf`), and is the only place that
+  knows it. Key names are not checked against the keymap: the compositor decides, and drops a claim it cannot parse.
+  The declaration file types the trigger as template literal unions.
+- **Claims.** `InputContext.bind(trigger, fn | Binding)` returns the binding; `binding.unbind()` (or
+  `bindings.remove(id)`) takes it away. Each distinct chord is one `Seat.claim` (pointer chords with `grab`, so the
+  release comes back; a drag and a click of one button share the claim), each gesture kind and finger count one
+  `Seat.claim_gesture`, and a binding for one device claims with that device's name. Ids are allocated per shell,
+  from 1, never reused. A claim is released with the last binding that needs it, and every claim on `retire`. Claims
+  are queued writes, so they travel with the frame's transaction. A function bound to a drag, or to a wheel (no
+  compositor claim exists for it), throws at `bind`.
+- **Frame loop.** The compositor's `chord` and `gesture` signals are parked by `JsShell::frame` and handed to the
+  input module after the listeners are planned. The module only schedules: each hook runs as its own call under the
+  per-call budget (`entry_budget`), a throw is reported once per site and never stops the others, and calls that do
+  not fit the frame's budget wait for the next frame. The pointer is not an event stream: a drag reads `pointer_x`
+  and `pointer_y` from the mirror once per frame, and at most one sample waits behind the scripts, which read the
+  latest position when they run (latest wins). Gesture updates merge the same way. `onStart`, `onEnd` and `onCancel`
+  are never merged or dropped.
+- **Drags.** A press records the pointer and the client under it (`InputContext.hitTest`: the topmost client in tree
+  order whose bounds hold the point). Once the pointer is `threshold` (default 4) pixels away, the candidates are asked
+  `onStart` in precedence order; the first to return a state object owns the drag, and its `event.position` is the
+  press position, so a binding that measures from `position` measures from the press. A release with no drag is a
+  click (`onPress`); a pointer that went past the threshold and was declined is neither. State lives in the gesture,
+  per context, never on the binding. A client dying mid-drag, the binding being removed or given another trigger, a
+  second press on the same claim and `JsShell::retire` each call `onCancel` once.
+- **Gestures.** A directed gesture (`Swipe3Left`) starts when its direction is known (12 touchpad units of centroid
+  movement, 0.1 of scale for a pinch); an undirected one starts at the begin. `event.progress` is 0 to 1 along the
+  binding's own direction (400 units for a swipe, 0.5 of scale for a pinch). A function bound to a gesture runs once
+  when the gesture ends past 48 units (0.12 of scale).
+- **Precedence (spec-review 1.21).** Device, then layout, then context, with `priority` ordering only inside a tier; a
+  binding that declines (`onStart` returns `false`, `onPress` returns `false`) lets the next candidate have the input.
+  Registration refuses two bindings of one collection that match one trigger at one priority
+  (`BindingConflictError`, naming both ids); a layout binding and a context binding for one trigger are not a conflict,
+  the layout's wins for its clients. A claim for one device shadows the all-devices claim in the compositor, so the
+  context's and layouts' bindings for that trigger are candidates of the device's claim too.
+- **Stock bindings.** `ClientMoveBinding` (Super+MouseLeft+Drag) and `ClientResizeBinding` (Super+MouseRight+Drag,
+  `edges: "quadrant"` by default, the corner picked from the initial pointer position and never changed, a minimum of
+  100 by 80 held against the opposite corner) are TypeScript over `client.bounds` and `event.position`; they write
+  `floatingBounds` on release and restore the start on cancel. `FloatingLayout` registers both as `move` and `resize`
+  (`undefined` keeps the default trigger, `null` leaves the binding out, spec-review 1.19). Not written: the `snap`
+  option, `edges: "nearest"`, `ClientSwapBinding`, `SplitResizeBinding`, `WorkspaceSwitchBinding`.
+- **Layouts.** `InputContext.attachLayout(layout, owns?)` makes a layout's bindings live for the clients `owns` accepts
+  (default: a client whose workspace's `layout` is that layout, which needs the workspace lane's `Workspace.layout`;
+  until it exists a caller passes `owns`). Bindings the layout gains or loses afterwards follow.
+- **Contexts and devices.** One `InputContext` per seat node; `focusedClient` and `pointer` read through to the seat,
+  `activeDisplay` is `null`. `devices` is parsed from `Seat.device`; a device's `bind` claims for its name. A context
+  or device the seat loses is disposed and its drags cancelled. `new InputContext` is not available: contexts are the
+  compositor's seats.
+- **Proved only against the fake link.** That the real compositor takes these claims. In particular `Seat.claim` in
+  `gnoblin-wayland` parses a shell claim as a keyboard chord (`ChordKind::Key`), so a pointer-button chord such as
+  `<Super>Button1` is logged and dropped today: pointer drag bindings need a compositor claim for pointer chords that
+  reports the press and release (the grammar's `Button1` to `Button3` already exist in `gnoblin-input`'s
+  `ChordKind::Pointer`). Key chord and gesture claims use the calls the Lua shell makes, byte for byte, but were not
+  run against the compositor. Pointer coordinates are assumed to share a space with client `x` and `y`. `Wheel`
+  has no claim. The tree order as z-order for `hitTest` is assumed.
 
 ## P3b status
 
