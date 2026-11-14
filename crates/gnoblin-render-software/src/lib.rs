@@ -81,7 +81,7 @@ mod shape;
 mod stereo;
 mod view;
 pub use stereo::{Frustum, StereoRig, ViewRig, eye_sizes, render_rig};
-pub use view::{ViewCamera, ViewImage, ViewProjection, eye_pixel_matrix, render_view};
+pub use view::{ViewCamera, ViewImage, ViewProjection, eye_pixel_matrix, pick_view, render_view};
 
 gnoblin_log::logger!(log = "render");
 

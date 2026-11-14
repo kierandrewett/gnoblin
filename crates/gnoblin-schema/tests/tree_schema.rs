@@ -130,6 +130,7 @@ fn node_carries_the_section_2_4_properties_with_their_defaults() {
         ("visible", DefaultValue::Bool(true)),
         ("clip", DefaultValue::Bool(false)),
         ("input", DefaultValue::Bool(true)),
+        ("input_mode", DefaultValue::Text("forward".to_owned())),
         ("secure", DefaultValue::Bool(false)),
     ];
     for (name, default) in defaults {

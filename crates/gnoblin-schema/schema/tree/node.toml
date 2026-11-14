@@ -134,6 +134,17 @@ type = "bool"
 since = "0.2.0"
 default = true
 
+# What a hit on the node does when `input` is set: `forward` (the default) or `capture`. On a `view` with a `source`,
+# `forward` takes the pointer into the source: a window's client gets it in surface coordinates and the shell is sent
+# nothing for the View, and `capture` lands on the View itself, so the shell is sent its edges and the client none.
+# On any other node, and on a View with no source, the two are the same: the shell is sent the edges. A write of any
+# other text is refused `bad-value`. `input = false` is the third state, `none`: the pick skips the node.
+[[object.property]]
+name = "input_mode"
+type = "string"
+since = "0.2.0"
+default = "forward"
+
 # Never captured by a `view`.
 [[object.property]]
 name = "secure"

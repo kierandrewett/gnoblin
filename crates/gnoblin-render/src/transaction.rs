@@ -1117,6 +1117,11 @@ fn write_value(work: &mut Scene, node: NodeId, key: &str, value: &TreeValue) -> 
     {
         return Err(Code::OutOfRange);
     }
+    if let ("input_mode", TreeValue::Text(mode)) = (key, value)
+        && !matches!(mode.as_str(), "forward" | "capture")
+    {
+        return Err(Code::BadValue);
+    }
     if let TreeValue::ListDouble(axes) = value
         && matches!(key, "rotation" | "scale")
         && axes.len() != 3

@@ -45,7 +45,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use gnoblin_render::Scene;
-use gnoblin_types::{NodeId, Rect, Size, Vec3};
+use gnoblin_types::{NodeId, PointF, Rect, Size, Vec3};
 
 use gnoblin_render_frame::image::Image;
 
@@ -589,6 +589,95 @@ fn invert3(m: &[[f64; 3]; 3]) -> Option<[[f64; 3]; 3]> {
         .flatten()
         .all(|value| value.is_finite())
         .then_some(inverse)
+}
+
+/// What a pointer at `pixel` of the picture [`render_view`] draws of `root` through `camera` lands on: the node drawn
+/// last (topmost) where the pixel maps into it that takes input and that `accept` admits, with the point in that
+/// node's own plane. `None` when nothing there takes the pointer, and for a picture that is blank.
+///
+/// It is the inverse of the drawing rules, node for node and in the same order, so a pointer lands on what the
+/// picture shows under it: an invisible node, one outside a clipping ancestor, one behind the camera or beyond
+/// `near`..`far`, and a node whose plane cannot be inverted are never picked. Two rules are the scene's own pick and
+/// not the picture's: a node takes the pointer where `input` is set and the point is inside its rectangle or the
+/// rectangle it also takes hits over, so a node with no pixels of its own takes it as on the main screen; and opacity
+/// does not matter, as it does not on the main screen, so a window that is fading in is picked as it would be there.
+#[must_use]
+pub fn pick_view(
+    scene: &Scene,
+    root: NodeId,
+    camera: &ViewCamera,
+    size: Size,
+    pixel: PointF,
+    accept: &dyn Fn(NodeId) -> bool,
+) -> Option<(NodeId, PointF)> {
+    let depths_valid =
+        camera.near.is_finite() && camera.far.is_finite() && camera.near > 0.0 && camera.far > camera.near;
+    if !pixel.is_finite() || size.width == 0 || size.height == 0 || !depths_valid {
+        return None;
+    }
+    let context = ViewContext {
+        scene,
+        root,
+        eye: eye_matrix(camera),
+        rows: projection_rows(camera.projection, size)?,
+        near: camera.near,
+        far: camera.far,
+        size,
+        restrict_scan: true,
+    };
+    let mut best = None;
+    pick_node(&context, root, &mut Vec::new(), pixel, accept, &mut best);
+    best
+}
+
+/// [`draw_node`]'s walk with a pick in place of the paint: `best` ends as the last node the pixel lands on.
+fn pick_node(
+    ctx: &ViewContext<'_>,
+    id: NodeId,
+    clips: &mut Vec<Clipper>,
+    pixel: PointF,
+    accept: &dyn Fn(NodeId) -> bool,
+    best: &mut Option<(NodeId, PointF)>,
+) {
+    if ctx.scene.visible(id) != Some(true) {
+        return;
+    }
+    let Some(plane) = PlaneMap::new(ctx.scene, ctx.root, id, &ctx.eye, &ctx.rows) else {
+        return;
+    };
+    let Some(bounds) = ctx.scene.bounds(id) else {
+        return;
+    };
+    let clipping = ctx.scene.clip(id) == Some(true);
+    let children = ctx.scene.children(id).unwrap_or(&[]);
+    if clipping {
+        clips.push(Clipper { plane, bounds });
+    }
+    for child in children.iter().filter(|child| ctx.scene.behind(**child) == Some(true)) {
+        pick_node(ctx, *child, clips, pixel, accept, best);
+    }
+    if clipping {
+        clips.pop();
+    }
+    if let Some((u, v)) = plane.locate(pixel.x, pixel.y)
+        && plane
+            .depth(u, v)
+            .is_some_and(|depth| depth >= ctx.near && depth <= ctx.far)
+        && clips.iter().all(|clip| clip.admits(pixel.x, pixel.y))
+        && ctx.scene.takes_hit_at(id, PointF { x: u, y: v })
+        && accept(id)
+    {
+        *best = Some((id, PointF { x: u, y: v }));
+    }
+    if clipping {
+        clips.push(Clipper { plane, bounds });
+    }
+    for child in children.iter().filter(|child| ctx.scene.behind(**child) != Some(true)) {
+        pick_node(ctx, *child, clips, pixel, accept, best);
+    }
+    if clipping {
+        clips.pop();
+    }
 }
 
 #[cfg(test)]
@@ -1195,6 +1284,149 @@ mod tests {
         assert!(
             painted > 100,
             "the seeds draw something in most scenes, not black pictures: {painted}"
+        );
+    }
+
+    /// The node a pointer lands on is the one the picture shows under it: over seeded scenes of opaque rotated,
+    /// nested and clipped nodes under orthographic and perspective cameras, the pick at every pixel centre is the node
+    /// whose colour the picture has there, and nothing where the picture is black.
+    #[test]
+    fn a_pick_lands_on_the_node_the_picture_shows_under_the_pixel() {
+        const PALETTE: [[u8; 4]; 4] = [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255], [255, 255, 0, 255]];
+        let size = Size::new(72, 56);
+        let mut landed = 0;
+        for seed in 1..=120_u64 {
+            let mut random = Stream(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+            let mut scene = Scene::new();
+            let root = node(&mut scene, 1, None, Rect::new(0, 0, size.width, size.height));
+            let mut buffers = HashMap::new();
+            for index in 0..1 + seed % 4 {
+                let bounds = Rect::new(
+                    random.between(-40.0, 60.0) as i32,
+                    random.between(-40.0, 50.0) as i32,
+                    random.between(4.0, 90.0) as u32,
+                    random.between(4.0, 80.0) as u32,
+                );
+                let parent = if index > 0 && seed % 2 == 0 { 2 } else { 1 };
+                let child = node(&mut scene, 2 + index, Some(parent), bounds);
+                let mut transform = *scene.transform(child).expect("the child has a transform");
+                transform.base.rotation_degrees = Vec3 {
+                    x: random.between(-60.0, 60.0),
+                    y: random.between(-60.0, 60.0),
+                    z: random.between(-180.0, 180.0),
+                };
+                scene.set_transform(child, transform).expect("the transform is set");
+                if index == 0 && seed % 5 == 0 {
+                    scene.set_clip(child, true).expect("the clip is set");
+                }
+                buffers.insert(child, solid(6, 5, PALETTE[index as usize]));
+            }
+            let camera = if seed % 3 == 0 {
+                ortho_centred(size.width as i32, size.height as i32)
+            } else {
+                ViewCamera {
+                    position: Vec3 {
+                        x: random.between(0.0, 72.0),
+                        y: random.between(0.0, 56.0),
+                        z: random.between(-20.0, 400.0),
+                    },
+                    rotation_degrees: Vec3 {
+                        x: random.between(-20.0, 20.0),
+                        y: random.between(-20.0, 20.0),
+                        z: random.between(-20.0, 20.0),
+                    },
+                    projection: ViewProjection::Perspective {
+                        vertical_fov_degrees: random.between(35.0, 110.0),
+                    },
+                    near: 0.5,
+                    far: 5000.0,
+                }
+            };
+            let image = render(&scene, root, &camera, size, &buffers);
+            let drawn = |id: NodeId| buffers.contains_key(&id);
+            for y in 0..size.height as i32 {
+                for x in 0..size.width as i32 {
+                    let at = PointF {
+                        x: f64::from(x) + 0.5,
+                        y: f64::from(y) + 0.5,
+                    };
+                    let shown = buffers
+                        .iter()
+                        .find(|(_, buffer)| buffer.colour_at(0, 0) == Some(pixel(&image, x, y)))
+                        .map(|(id, _)| *id);
+                    let picked = pick_view(&scene, root, &camera, size, at, &drawn);
+                    assert_eq!(
+                        picked.map(|(id, _)| id),
+                        shown,
+                        "seed {seed}: the pick at ({x}, {y}) is not what the picture shows"
+                    );
+                    if let Some((id, local)) = picked {
+                        let bounds = scene.bounds(id).expect("a picked node has bounds");
+                        assert!(
+                            local.x >= f64::from(bounds.x)
+                                && local.x < f64::from(bounds.x) + f64::from(bounds.width)
+                                && local.y >= f64::from(bounds.y)
+                                && local.y < f64::from(bounds.y) + f64::from(bounds.height),
+                            "seed {seed}: the point {local:?} is inside the node it picked"
+                        );
+                        landed += 1;
+                    }
+                }
+            }
+        }
+        assert!(landed > 1000, "the seeds land on nodes in most scenes: {landed}");
+    }
+
+    /// A pick reports the point in the node's own plane, and leaves out what the picture leaves out: a node that does
+    /// not take input, one the caller refuses, an invisible one and what a clipping parent clips away.
+    #[test]
+    fn a_pick_reports_the_nodes_own_plane_and_skips_what_does_not_take_the_pointer() {
+        let mut scene = Scene::new();
+        let root = node(&mut scene, 1, None, Rect::new(0, 0, 100, 80));
+        let below = node(&mut scene, 2, Some(1), Rect::new(0, 0, 100, 80));
+        let above = node(&mut scene, 3, Some(1), Rect::new(10, 10, 50, 40));
+        let camera = ortho_centred(100, 80);
+        let size = Size::new(100, 80);
+        let at = PointF { x: 30.5, y: 20.5 };
+        let any = |_: NodeId| true;
+        let picked = |scene: &Scene, accept: &dyn Fn(NodeId) -> bool| {
+            pick_view(scene, root, &camera, size, at, accept).map(|(id, _)| id)
+        };
+
+        let (id, local) = pick_view(&scene, root, &camera, size, at, &any).expect("a node takes the pointer");
+        assert_eq!(id, above, "the later sibling is on top");
+        assert!(
+            (local.x - 30.5).abs() < 1e-9 && (local.y - 20.5).abs() < 1e-9,
+            "{local:?}"
+        );
+
+        assert_eq!(
+            picked(&scene, &|node| node != above),
+            Some(below),
+            "a refused node passes the pick down"
+        );
+        scene.set_input(above, false).expect("input is unset");
+        assert_eq!(
+            picked(&scene, &any),
+            Some(below),
+            "a node without input passes the pick down"
+        );
+        scene.set_input(above, true).expect("input is set");
+        scene.set_visible(above, false).expect("the node is hidden");
+        assert_eq!(picked(&scene, &any), Some(below), "an invisible node is not picked");
+        scene.set_visible(above, true).expect("the node is shown");
+
+        scene.set_clip(below, true).expect("the clip is set");
+        let off = PointF { x: 70.5, y: 10.5 };
+        scene
+            .set_bounds(below, Rect::new(0, 0, 50, 80))
+            .expect("the parent is narrowed");
+        let outside = node(&mut scene, 4, Some(2), Rect::new(60, 0, 30, 30));
+        let clipped = pick_view(&scene, root, &camera, size, off, &any).map(|(id, _)| id);
+        assert_ne!(
+            clipped,
+            Some(outside),
+            "a clipping parent keeps its child to its own rectangle"
         );
     }
 }

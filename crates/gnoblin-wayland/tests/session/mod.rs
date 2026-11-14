@@ -328,6 +328,8 @@ pub struct App {
     pub pointer: Option<wl_pointer::WlPointer>,
     /// The last serial a `wl_pointer.button` carried.
     pub button_serial: Option<u32>,
+    /// Every `wl_pointer.button` that arrived, as the button and whether it went down, in order.
+    pub pointer_buttons: Vec<(u32, bool)>,
     /// How many times the keyboard entered a surface of this client.
     pub keyboard_enters: u32,
     /// How many times the pointer entered a surface of this client.
@@ -819,7 +821,17 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
         _: &QueueHandle<Self>,
     ) {
         match event {
-            wl_pointer::Event::Button { serial, .. } => state.button_serial = Some(serial),
+            wl_pointer::Event::Button {
+                serial,
+                button,
+                state: button_state,
+                ..
+            } => {
+                state.button_serial = Some(serial);
+                state
+                    .pointer_buttons
+                    .push((button, button_state == WEnum::Value(wl_pointer::ButtonState::Pressed)));
+            }
             wl_pointer::Event::Enter {
                 surface_x, surface_y, ..
             } => {

@@ -1179,6 +1179,18 @@ impl Scene {
         self.nodes.get(&id).map(Node::input)
     }
 
+    /// Whether a point of a node's own plane would hit it: the node takes input, and the point lies in its rectangle
+    /// or in the rectangle it also takes hits over. This is the rule the pick applies to each node, for a pick that
+    /// does not go through [`Scene::hit_test_where`] (a ray passing into a View).
+    #[must_use]
+    pub fn takes_hit_at(&self, id: NodeId, local: PointF) -> bool {
+        self.nodes.get(&id).is_some_and(|node| {
+            node.input
+                && (contains_point(node.bounds, local)
+                    || node.hit_extent.is_some_and(|extent| contains_point(extent, local)))
+        })
+    }
+
     /// A node's effective opacity: its own opacity times every ancestor's, up to the
     /// root, or `None` for an unknown node. A child of a half-transparent parent is
     /// therefore at most half opaque, however opaque it is on its own.

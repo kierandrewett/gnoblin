@@ -100,7 +100,7 @@ use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::shm;
 use gnoblin_render_frame::view_scene::{ClipPlane, ViewEye, ViewOp, ViewScene, ViewTexture, size_fits};
 use gnoblin_render_software::{
-    Frustum, StereoRig, ViewCamera, ViewProjection, ViewRig, eye_pixel_matrix, eye_sizes, render_rig,
+    Frustum, StereoRig, ViewCamera, ViewProjection, ViewRig, eye_pixel_matrix, eye_sizes, pick_view, render_rig,
 };
 
 use crate::log;
@@ -142,6 +142,19 @@ const VIEW_FOV: f64 = 60.0;
 const VIEW_METRES: f64 = 0.001;
 /// The distance between a stereo camera's eyes when it sets none, in metres.
 const VIEW_IPD: f64 = 0.063;
+/// How many Views a pointer ray may pass into one after another, so Views that show each other end the ray.
+const VIEW_DEPTH: u8 = 4;
+
+/// Where a pointer ray lands once the Views it passes into have had it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Landing {
+    /// A window, with the point in the window node's local space: the client's.
+    Window(WindowId, PointF),
+    /// A node that is not a window, with the point in its local space: the shell's.
+    Node(NodeId, PointF),
+    /// Nothing: the ray went into a View's picture where nothing takes input.
+    Nowhere,
+}
 
 /// A View node's rendered picture: the size it was drawn at, the image of its source
 /// subtree (or `None` when it has no source or the source cannot be drawn), and the view
@@ -1466,6 +1479,18 @@ impl Composer {
         views
     }
 
+    /// Whether `node` is `root` or below it.
+    fn is_within(&self, node: NodeId, root: NodeId) -> bool {
+        let mut current = Some(node);
+        while let Some(id) = current {
+            if id == root {
+                return true;
+            }
+            current = self.scene.parent(id);
+        }
+        false
+    }
+
     /// `root` and every node below it.
     fn subtree(&self, root: NodeId) -> Vec<NodeId> {
         let mut nodes = Vec::new();
@@ -2738,15 +2763,22 @@ impl Composer {
         self.scene.content_bounds(node).map(gnoblin_types::RectF::to_pixel)
     }
 
-    /// The window drawn under a point on the output plane, and the point in that window's local space, which is
+    /// The window a ray at a point on the output plane lands on, and the point in that window's local space, which is
     /// relative to the window geometry's origin (the surface point is that point plus the geometry's origin in the
     /// surface). The topmost window wins, and a window `accept` refuses passes the point through to what lies under it.
+    ///
+    /// A View above the windows that forwards its input takes the ray into its source first (see
+    /// [`Composer::shell_node_at`]): the window is then the one the View's picture shows under the ray, wherever that
+    /// window is drawn on the output, and a ray that lands on nothing in the picture lands on no window.
     #[must_use]
     pub fn window_at(&self, point: PointF, accept: &dyn Fn(WindowId) -> bool) -> Option<(WindowId, PointF)> {
-        let hit = self
-            .scene
-            .hit_test_where(point, &|node| self.window_of(node).is_some_and(accept))?;
-        Some((self.window_of(hit.node)?, hit.local))
+        let hit = self.scene.hit_test_where(point, &|node| {
+            self.window_of(node).is_some_and(accept) || self.forwards_input(node)
+        })?;
+        match self.landing(hit.node, hit.local, VIEW_DEPTH) {
+            Landing::Window(window, local) if accept(window) => Some((window, local)),
+            _ => None,
+        }
     }
 
     /// The window whose node is `node`.
@@ -3210,22 +3242,87 @@ impl Composer {
             .map(|(window, _)| *window)
     }
 
-    /// The shell's node drawn topmost under a point on the output plane, with the point in that
-    /// node's local space. A window above it wins: only a topmost node that is not a window is the
-    /// shell's, so a shell node under a window is not reported. A node the compositor created since
-    /// the last frame and has not yet published in a batch is skipped (F29): the shell has not
-    /// heard of it, so it cannot be sent input, and the pick falls through to what lies under it.
+    /// The shell's node a ray at a point on the output plane lands on, with the point in that node's local space. A
+    /// window above it wins: only a topmost node that is not a window is the shell's, so a shell node under a window is
+    /// not reported. A node the compositor created since the last frame and has not yet published in a batch is
+    /// skipped (F29): the shell has not heard of it, so it cannot be sent input, and the pick falls through to what
+    /// lies under it.
+    ///
+    /// A View is where `input_mode` decides. `capture` lands on the View itself, so it is the shell's. `forward` (the
+    /// default) takes the ray into the View's source, through the camera the picture was drawn with, and lands on what
+    /// the picture shows there: a window is the client's and the shell is sent nothing for the View, another node of
+    /// the source is the shell's, and a point where the picture shows nothing that takes input lands on nothing. A
+    /// View that has no source has nothing to forward to and is the shell's like any other node.
     #[must_use]
     pub fn shell_node_at(&self, point: PointF) -> Option<(NodeId, PointF)> {
-        let unpublished = |node: NodeId| {
-            self.tree_changes
-                .iter()
-                .any(|change| matches!(change, TreeChange::Created { node: created, .. } if *created == node))
-        };
         let hit = self
             .scene
-            .hit_test_where(point, &|node| self.window_of(node).is_some() || !unpublished(node))?;
-        self.window_of(hit.node).is_none().then_some((hit.node, hit.local))
+            .hit_test_where(point, &|node| self.window_of(node).is_some() || !self.unpublished(node))?;
+        match self.landing(hit.node, hit.local, VIEW_DEPTH) {
+            Landing::Node(node, local) => Some((node, local)),
+            Landing::Window(..) | Landing::Nowhere => None,
+        }
+    }
+
+    /// Whether a node the compositor created has not been published in a batch yet.
+    fn unpublished(&self, node: NodeId) -> bool {
+        self.tree_changes
+            .iter()
+            .any(|change| matches!(change, TreeChange::Created { node: created, .. } if *created == node))
+    }
+
+    /// Whether a ray that hits `node` goes on into the node's source: a View that takes input in `forward` mode and
+    /// has a source that exists.
+    fn forwards_input(&self, node: NodeId) -> bool {
+        self.forwarded_source(node).is_some()
+    }
+
+    /// The source a ray that hits `view` goes into, or `None` when it does not go anywhere: the node is not a View, its
+    /// `input_mode` is `capture`, or it has no source.
+    fn forwarded_source(&self, view: NodeId) -> Option<NodeId> {
+        if self.scene.class(view) != Some("view") || self.scene.text(view, "input_mode") == Some("capture") {
+            return None;
+        }
+        self.scene
+            .source(view)
+            .filter(|source| self.scene.node(*source).is_some())
+    }
+
+    /// Where a ray that hit `node` at `local` (in the node's own plane) lands, once the Views it passes into have had
+    /// it. `depth` bounds how many Views a ray may pass through, so a ring of Views that show each other ends.
+    fn landing(&self, node: NodeId, local: PointF, depth: u8) -> Landing {
+        if let Some(window) = self.window_of(node) {
+            return Landing::Window(window, local);
+        }
+        let Some(source) = self.forwarded_source(node) else {
+            return Landing::Node(node, local);
+        };
+        let Some(depth) = depth.checked_sub(1) else {
+            return Landing::Nowhere;
+        };
+        match self.through_view(node, source, local) {
+            Some((inner, inner_local)) => self.landing(inner, inner_local, depth),
+            None => Landing::Nowhere,
+        }
+    }
+
+    /// The node of `source` that `view`'s picture shows at `local`, a point of the View's own plane, with the point in
+    /// that node's plane: the pixel of the picture is the point less the View's origin, as the picture is drawn at the
+    /// View's size. A stereo View's picture is two eyes side by side and none of it is a pointer's, so a ray lands on
+    /// nothing there, as it does in a picture that cannot be drawn.
+    fn through_view(&self, view: NodeId, source: NodeId, local: PointF) -> Option<(NodeId, PointF)> {
+        let bounds = self.scene.bounds(view)?;
+        let size = Size::new(bounds.width, bounds.height);
+        if self.is_within(view, source) {
+            return None;
+        }
+        let ViewRig::Mono(camera) = self.view_rig(view, size) else {
+            return None;
+        };
+        let pixel = PointF::new(local.x - f64::from(bounds.x), local.y - f64::from(bounds.y));
+        pick_view(&self.scene, source, &camera, size, pixel, &|node| {
+            self.window_of(node).is_some() || !self.unpublished(node)
+        })
     }
 
     /// Whether the shell holds the tree's placement, so window requests are the shell's to decide.
@@ -7311,6 +7408,201 @@ mod tests {
             .shell_node_at(PointF::new(10.0, 20.0))
             .expect("the node is picked once its batch has taken it");
         assert_eq!(node, above);
+    }
+
+    /// A View a shell makes: a node of class `view` at `bounds` above everything inserted so far, showing `source`.
+    fn view_showing(composer: &mut Composer, id: u64, bounds: Rect, source: Option<NodeId>) -> NodeId {
+        let view = NodeId::new(id);
+        composer.with_scene(|scene| {
+            scene
+                .insert_as(gnoblin_render::Actor::Shell, view, NodeSpec::new(bounds))
+                .expect("the shell may insert a node below the base");
+            scene.set_class(view, Some("view".to_owned())).expect("a class");
+            scene.set_source(view, source).expect("a source");
+        });
+        view
+    }
+
+    /// A window at the output's origin, and its node. The node is the size of the window's content, 40 by 50, and its
+    /// picture is what a View of it shows.
+    fn window_to_show(composer: &mut Composer, id: u64) -> (WindowId, NodeId) {
+        // A window that maps fades in from transparent, and a node that draws nothing takes no pointer.
+        composer.set_reduced_motion(true);
+        let window = WindowId::new(id);
+        composer.insert_window(window, Rect::new(0, 0, 100, 100));
+        composer.set_window_content(window, Some(content()));
+        let node = composer.window_node(window).expect("the window has a node");
+        (window, node)
+    }
+
+    /// A ray over a forwarding View lands on the window the View shows, at the point of the picture under it, and not
+    /// on the View: the shell has no pick, and the window pick is the source's window.
+    #[test]
+    fn a_ray_over_a_forwarding_view_lands_on_its_source_window_at_the_point_of_the_picture() {
+        let (mut composer, _) = screen();
+        let (window, node) = window_to_show(&mut composer, 1);
+        // The View is 100 by 100 at (200, 0): its pixel is the point less its origin, and the picture shows the
+        // window node's rectangle at the source plane's origin.
+        view_showing(&mut composer, 10, Rect::new(200, 0, 100, 100), Some(node));
+        let over = PointF::new(230.0, 40.0);
+        assert!(
+            composer.shell_node_at(over).is_none(),
+            "the shell is sent nothing for a forwarding View"
+        );
+        let (landed, local) = composer
+            .window_at(over, &|_| true)
+            .expect("the window is under the picture's pixel");
+        assert_eq!(landed, window);
+        assert_eq!(
+            local,
+            PointF::new(30.0, 40.0),
+            "the point of the picture, in the window's space"
+        );
+    }
+
+    /// `capture` lands on the View: the shell's pick, in the View's plane, and no window is under the ray. Setting the
+    /// mode back to `forward` (or to anything that is not `capture`) forwards again.
+    #[test]
+    fn a_ray_over_a_capturing_view_lands_on_the_view_and_no_window() {
+        let (mut composer, _) = screen();
+        let (_window, node) = window_to_show(&mut composer, 1);
+        let view = view_showing(&mut composer, 10, Rect::new(200, 0, 100, 100), Some(node));
+        composer.with_scene(|scene| {
+            scene
+                .set_value(view, "input_mode", TreeValue::Text("capture".to_owned()))
+                .expect("the mode is stored");
+        });
+        let over = PointF::new(230.0, 40.0);
+        let (picked, local) = composer.shell_node_at(over).expect("the View is the shell's");
+        assert_eq!(picked, view);
+        assert_eq!(local, over);
+        assert!(
+            composer.window_at(over, &|_| true).is_none(),
+            "the client is not under a capturing View"
+        );
+        composer.with_scene(|scene| {
+            scene
+                .set_value(view, "input_mode", TreeValue::Text("forward".to_owned()))
+                .expect("the mode is stored");
+        });
+        assert!(composer.shell_node_at(over).is_none());
+        assert!(composer.window_at(over, &|_| true).is_some());
+    }
+
+    /// `none` is a miss: a View without input passes the ray to what lies under it, a window or a shell node.
+    #[test]
+    fn a_ray_over_a_view_without_input_goes_to_what_lies_under_it() {
+        let (mut composer, _) = screen();
+        let (shown, source) = window_to_show(&mut composer, 1);
+        let below = WindowId::new(2);
+        composer.insert_window(below, Rect::new(200, 0, 100, 100));
+        composer.set_window_content(below, Some(content()));
+        let view = view_showing(&mut composer, 10, Rect::new(200, 0, 100, 100), Some(source));
+        let over = PointF::new(230.0, 40.0);
+        assert_eq!(
+            composer.window_at(over, &|_| true).map(|(window, _)| window),
+            Some(shown)
+        );
+        composer.with_scene(|scene| scene.set_input(view, false).expect("input is unset"));
+        assert_eq!(
+            composer.window_at(over, &|_| true).map(|(window, _)| window),
+            Some(below),
+            "the window under the View takes the ray"
+        );
+        assert!(composer.shell_node_at(over).is_none());
+    }
+
+    /// A View with no source has nothing to forward to, so it is the shell's like any other node; a View whose source
+    /// does not show anything that takes input at the point swallows the ray.
+    #[test]
+    fn a_view_with_no_source_is_the_shells_and_a_pixel_of_nothing_lands_nowhere() {
+        let (mut composer, _) = screen();
+        let (_, node) = window_to_show(&mut composer, 1);
+        let empty = view_showing(&mut composer, 10, Rect::new(200, 0, 100, 100), None);
+        let (picked, _) = composer
+            .shell_node_at(PointF::new(230.0, 40.0))
+            .expect("a View with no source is a node");
+        assert_eq!(picked, empty);
+
+        // The second View is 200 wide and its picture shows the 40 wide window at its left edge only.
+        view_showing(&mut composer, 11, Rect::new(400, 0, 200, 100), Some(node));
+        let blank = PointF::new(550.0, 40.0);
+        assert!(composer.shell_node_at(blank).is_none());
+        assert!(
+            composer.window_at(blank, &|_| true).is_none(),
+            "nothing in the picture takes the ray"
+        );
+        assert!(composer.window_at(PointF::new(420.0, 40.0), &|_| true).is_some());
+    }
+
+    /// A ray into a View whose source holds a shell node is that node's: the shell hears of the node, in the node's
+    /// own plane, and a View that shows itself through another ends the ray.
+    #[test]
+    fn a_ray_through_a_view_to_a_shell_node_is_the_nodes_and_a_ring_of_views_ends() {
+        let (mut composer, _) = screen();
+        let inner = NodeId::new(5);
+        composer.with_scene(|scene| {
+            scene
+                .insert_as(
+                    gnoblin_render::Actor::Shell,
+                    inner,
+                    NodeSpec::new(Rect::new(0, 0, 60, 60)),
+                )
+                .expect("the shell may insert a node below the base");
+        });
+        let view = view_showing(&mut composer, 10, Rect::new(300, 100, 100, 100), Some(inner));
+        let (picked, local) = composer
+            .shell_node_at(PointF::new(320.0, 130.0))
+            .expect("the node in the picture is the shell's");
+        assert_eq!(picked, inner);
+        assert_eq!(local, PointF::new(20.0, 30.0));
+        assert!(
+            composer.shell_node_at(PointF::new(390.0, 190.0)).is_none(),
+            "the part of the picture the node does not cover is nothing"
+        );
+
+        // Two Views that show each other: the ray passes into each in turn and ends.
+        let other = view_showing(&mut composer, 11, Rect::new(300, 100, 100, 100), Some(view));
+        composer.with_scene(|scene| scene.set_source(view, Some(other)).expect("a source"));
+        assert!(composer.shell_node_at(PointF::new(320.0, 130.0)).is_none());
+    }
+
+    /// The camera a View is drawn with decides where the picture's pixel is in the source: an orthographic camera
+    /// moved along the plane shows another part of it, so the same pixel lands on a different point of the window.
+    #[test]
+    fn the_point_a_ray_lands_on_follows_the_views_camera() {
+        let (mut composer, _) = screen();
+        let (window, node) = window_to_show(&mut composer, 1);
+        let view = view_showing(&mut composer, 10, Rect::new(200, 0, 100, 100), Some(node));
+        let camera = NodeId::new(11);
+        composer.with_scene(|scene| {
+            scene
+                .insert_as(
+                    gnoblin_render::Actor::Shell,
+                    camera,
+                    NodeSpec::new(Rect::new(0, 0, 0, 0)),
+                )
+                .expect("the shell may insert a node below the base");
+            scene.set_class(camera, Some("camera".to_owned())).expect("a class");
+            scene.set_camera(view, Some(camera)).expect("a camera");
+            let mut transform = *scene.transform(camera).expect("the camera has a transform");
+            // The image's centre is the camera's position: (80, 50) puts the picture's origin at (30, 0).
+            transform.base.offset = Vec3 {
+                x: 80.0,
+                y: 50.0,
+                z: 100.0,
+            };
+            scene.set_transform(camera, transform).expect("the camera is placed");
+        });
+        let (landed, local) = composer
+            .window_at(PointF::new(205.0, 40.0), &|_| true)
+            .expect("the picture shows the window there");
+        assert_eq!(landed, window);
+        assert_eq!(
+            local,
+            PointF::new(35.0, 40.0),
+            "pixel 5 of a picture whose origin is 30 is plane point 35"
+        );
     }
 
     #[test]

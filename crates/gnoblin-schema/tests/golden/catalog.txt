@@ -335,6 +335,7 @@ object camera since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
+  property input_mode type string since 0.2.0 secret false
   property secure type bool since 0.2.0 secret false
   property tags type list<string> since 0.2.0 secret false
   property effects type list<object:effect> since 0.2.0 secret false
@@ -367,6 +368,7 @@ object canvas since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
+  property input_mode type string since 0.2.0 secret false
   property secure type bool since 0.2.0 secret false
   property tags type list<string> since 0.2.0 secret false
   property effects type list<object:effect> since 0.2.0 secret false
@@ -390,6 +392,7 @@ object controller since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
+  property input_mode type string since 0.2.0 secret false
   property secure type bool since 0.2.0 secret false
   property tags type list<string> since 0.2.0 secret false
   property effects type list<object:effect> since 0.2.0 secret false
@@ -440,6 +443,7 @@ object lock since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
+  property input_mode type string since 0.2.0 secret false
   property secure type bool since 0.2.0 secret false
   property tags type list<string> since 0.2.0 secret false
   property effects type list<object:effect> since 0.2.0 secret false
@@ -583,6 +587,7 @@ object node since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
+  property input_mode type string since 0.2.0 secret false
   property secure type bool since 0.2.0 secret false
   property tags type list<string> since 0.2.0 secret false
   property effects type list<object:effect> since 0.2.0 secret false
@@ -604,6 +609,7 @@ object screen since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
+  property input_mode type string since 0.2.0 secret false
   property secure type bool since 0.2.0 secret false
   property tags type list<string> since 0.2.0 secret false
   property effects type list<object:effect> since 0.2.0 secret false
@@ -646,6 +652,7 @@ object seat since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
+  property input_mode type string since 0.2.0 secret false
   property secure type bool since 0.2.0 secret false
   property tags type list<string> since 0.2.0 secret false
   property effects type list<object:effect> since 0.2.0 secret false
@@ -726,6 +733,7 @@ object surface since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
+  property input_mode type string since 0.2.0 secret false
   property secure type bool since 0.2.0 secret false
   property tags type list<string> since 0.2.0 secret false
   property effects type list<object:effect> since 0.2.0 secret false
@@ -750,6 +758,7 @@ object tween since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
+  property input_mode type string since 0.2.0 secret false
   property secure type bool since 0.2.0 secret false
   property tags type list<string> since 0.2.0 secret false
   property effects type list<object:effect> since 0.2.0 secret false
@@ -774,6 +783,7 @@ object view since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
+  property input_mode type string since 0.2.0 secret false
   property secure type bool since 0.2.0 secret false
   property tags type list<string> since 0.2.0 secret false
   property effects type list<object:effect> since 0.2.0 secret false
@@ -799,6 +809,7 @@ object window since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
+  property input_mode type string since 0.2.0 secret false
   property secure type bool since 0.2.0 secret false
   property tags type list<string> since 0.2.0 secret false
   property effects type list<object:effect> since 0.2.0 secret false
@@ -836,6 +847,7 @@ object workspace since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
+  property input_mode type string since 0.2.0 secret false
   property secure type bool since 0.2.0 secret false
   property tags type list<string> since 0.2.0 secret false
   property effects type list<object:effect> since 0.2.0 secret false
@@ -1715,35 +1727,37 @@ message Camera {
     // since 0.2.0
     bool input = 15;
     // since 0.2.0
-    bool secure = 16;
+    string input_mode = 16;
+    // since 0.2.0
+    bool secure = 17;
     // since 0.2.0; list
-    repeated string tags = 17;
+    repeated string tags = 18;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 18;
+    repeated Effect.Properties effects = 19;
     // since 0.2.0; list
-    repeated string skipped = 19;
+    repeated string skipped = 20;
     // since 0.2.0
-    string projection = 20;
+    string projection = 21;
     // since 0.2.0
-    double metres = 21;
+    double metres = 22;
     // since 0.2.0
-    double near = 22;
+    double near = 23;
     // since 0.2.0
-    double far = 23;
+    double far = 24;
     // since 0.2.0
-    double fov = 24;
+    double fov = 25;
     // since 0.2.0
-    double ipd = 25;
+    double ipd = 26;
     // since 0.2.0
-    double fov_left = 26;
+    double fov_left = 27;
     // since 0.2.0
-    double fov_right = 27;
+    double fov_right = 28;
     // since 0.2.0
-    double fov_up = 28;
+    double fov_up = 29;
     // since 0.2.0
-    double fov_down = 29;
+    double fov_down = 30;
     // since 0.2.0
-    uint64 layer_budget = 30;
+    uint64 layer_budget = 31;
   }
 
   // Signal `destroyed`, since 0.2.0.
@@ -1785,15 +1799,17 @@ message Canvas {
     // since 0.2.0
     bool input = 15;
     // since 0.2.0
-    bool secure = 16;
-    // since 0.2.0; list
-    repeated string tags = 17;
-    // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 18;
-    // since 0.2.0; list
-    repeated string skipped = 19;
+    string input_mode = 16;
     // since 0.2.0
-    bytes content = 20;
+    bool secure = 17;
+    // since 0.2.0; list
+    repeated string tags = 18;
+    // since 0.2.0; list of record `effect`: the properties of one value
+    repeated Effect.Properties effects = 19;
+    // since 0.2.0; list
+    repeated string skipped = 20;
+    // since 0.2.0
+    bytes content = 21;
   }
 
   // Method `measure`, since 0.2.0.
@@ -1838,33 +1854,35 @@ message Controller {
     // since 0.2.0
     bool input = 15;
     // since 0.2.0
-    bool secure = 16;
+    string input_mode = 16;
+    // since 0.2.0
+    bool secure = 17;
     // since 0.2.0; list
-    repeated string tags = 17;
+    repeated string tags = 18;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 18;
+    repeated Effect.Properties effects = 19;
     // since 0.2.0; list
-    repeated string skipped = 19;
+    repeated string skipped = 20;
     // since 0.2.0
-    string hand = 20;
+    string hand = 21;
     // since 0.2.0
-    bool tracked = 21;
+    bool tracked = 22;
     // since 0.2.0
-    double trigger = 22;
+    double trigger = 23;
     // since 0.2.0
-    double grip = 23;
+    double grip = 24;
     // since 0.2.0
-    double thumbstick_x = 24;
+    double thumbstick_x = 25;
     // since 0.2.0
-    double thumbstick_y = 25;
+    double thumbstick_y = 26;
     // since 0.2.0
-    bool thumbstick_click = 26;
+    bool thumbstick_click = 27;
     // since 0.2.0
-    bool primary = 27;
+    bool primary = 28;
     // since 0.2.0
-    bool secondary = 28;
+    bool secondary = 29;
     // since 0.2.0; list
-    repeated string claimed = 29;
+    repeated string claimed = 30;
   }
 
   // Signal `destroyed`, since 0.2.0.
@@ -1949,17 +1967,19 @@ message Lock {
     // since 0.2.0
     bool input = 15;
     // since 0.2.0
-    bool secure = 16;
+    string input_mode = 16;
+    // since 0.2.0
+    bool secure = 17;
     // since 0.2.0; list
-    repeated string tags = 17;
+    repeated string tags = 18;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 18;
+    repeated Effect.Properties effects = 19;
     // since 0.2.0; list
-    repeated string skipped = 19;
+    repeated string skipped = 20;
     // since 0.2.0
-    string state = 20;
+    string state = 21;
     // since 0.2.0
-    bool engaged = 21;
+    bool engaged = 22;
   }
 
   // Method `lock`, since 0.2.0.
@@ -2283,13 +2303,15 @@ message Node {
     // since 0.2.0
     bool input = 15;
     // since 0.2.0
-    bool secure = 16;
+    string input_mode = 16;
+    // since 0.2.0
+    bool secure = 17;
     // since 0.2.0; list
-    repeated string tags = 17;
+    repeated string tags = 18;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 18;
+    repeated Effect.Properties effects = 19;
     // since 0.2.0; list
-    repeated string skipped = 19;
+    repeated string skipped = 20;
   }
 
   // Signal `destroyed`, since 0.2.0.
@@ -2331,47 +2353,49 @@ message Screen {
     // since 0.2.0
     bool input = 15;
     // since 0.2.0
-    bool secure = 16;
+    string input_mode = 16;
+    // since 0.2.0
+    bool secure = 17;
     // since 0.2.0; list
-    repeated string tags = 17;
+    repeated string tags = 18;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 18;
+    repeated Effect.Properties effects = 19;
     // since 0.2.0; list
-    repeated string skipped = 19;
+    repeated string skipped = 20;
     // since 0.2.0; object id of `node`
-    string source = 20;
+    string source = 21;
     // since 0.2.0
-    uint64 fps = 21;
+    uint64 fps = 22;
     // since 0.2.0; object id of `node`
-    string camera = 22;
+    string camera = 23;
     // since 0.2.0
-    string make = 23;
+    string make = 24;
     // since 0.2.0
-    string model = 24;
+    string model = 25;
     // since 0.2.0
-    double screen_x = 25;
+    double screen_x = 26;
     // since 0.2.0
-    double screen_y = 26;
+    double screen_y = 27;
     // since 0.2.0
-    double screen_width = 27;
+    double screen_width = 28;
     // since 0.2.0
-    double screen_height = 28;
+    double screen_height = 29;
     // since 0.2.0
-    double output_scale = 29;
+    double output_scale = 30;
     // since 0.2.0
-    string transform = 30;
+    string transform = 31;
     // since 0.2.0
-    bool primary = 31;
+    bool primary = 32;
     // since 0.2.0
-    bool enabled = 32;
+    bool enabled = 33;
     // since 0.2.0
-    string mode = 33;
+    string mode = 34;
     // since 0.2.0
-    string connector = 34;
+    string connector = 35;
     // since 0.2.0
-    string identity = 35;
+    string identity = 36;
     // since 0.2.0
-    string mirror_of = 36;
+    string mirror_of = 37;
   }
 
   // Method `capture`, since 0.2.0.
@@ -2425,53 +2449,55 @@ message Seat {
     // since 0.2.0
     bool input = 15;
     // since 0.2.0
-    bool secure = 16;
+    string input_mode = 16;
+    // since 0.2.0
+    bool secure = 17;
     // since 0.2.0; list
-    repeated string tags = 17;
+    repeated string tags = 18;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 18;
+    repeated Effect.Properties effects = 19;
     // since 0.2.0; list
-    repeated string skipped = 19;
+    repeated string skipped = 20;
     // since 0.2.0; object id of `node`
-    string focus = 20;
+    string focus = 21;
     // since 0.2.0; object id of `node`
-    string screen = 21;
+    string screen = 22;
     // since 0.2.0
-    double pointer_x = 22;
+    double pointer_x = 23;
     // since 0.2.0
-    double pointer_y = 23;
+    double pointer_y = 24;
     // since 0.2.0; list
-    repeated string device = 24;
+    repeated string device = 25;
     // since 0.2.0
-    bool edge_tiling = 25;
+    bool edge_tiling = 26;
     // since 0.2.0
-    string drag_constraint = 26;
+    string drag_constraint = 27;
     // since 0.2.0
-    string focus_mode = 27;
+    string focus_mode = 28;
     // since 0.2.0
-    string focus_new_windows = 28;
+    string focus_new_windows = 29;
     // since 0.2.0
-    bool raise_on_click = 29;
+    bool raise_on_click = 30;
     // since 0.2.0
-    bool auto_raise = 30;
+    bool auto_raise = 31;
     // since 0.2.0
-    int64 auto_raise_delay = 31;
+    int64 auto_raise_delay = 32;
     // since 0.2.0
-    bool focus_change_on_pointer_rest = 32;
+    bool focus_change_on_pointer_rest = 33;
     // since 0.2.0
-    string double_click = 33;
+    string double_click = 34;
     // since 0.2.0
-    string middle_click = 34;
+    string middle_click = 35;
     // since 0.2.0
-    string right_click = 35;
+    string right_click = 36;
     // since 0.2.0; list
-    repeated string workspaces = 36;
+    repeated string workspaces = 37;
     // since 0.2.0
-    bool reduced_motion = 37;
+    bool reduced_motion = 38;
     // since 0.2.0; list
-    repeated string effect_kinds = 38;
+    repeated string effect_kinds = 39;
     // since 0.2.0
-    bool decorations_available = 39;
+    bool decorations_available = 40;
   }
 
   // Method `warp`, since 0.2.0.
@@ -2606,19 +2632,21 @@ message Surface {
     // since 0.2.0
     bool input = 15;
     // since 0.2.0
-    bool secure = 16;
+    string input_mode = 16;
+    // since 0.2.0
+    bool secure = 17;
     // since 0.2.0; list
-    repeated string tags = 17;
+    repeated string tags = 18;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 18;
+    repeated Effect.Properties effects = 19;
     // since 0.2.0; list
-    repeated string skipped = 19;
+    repeated string skipped = 20;
     // since 0.2.0
-    string role = 20;
+    string role = 21;
     // since 0.2.0
-    bool mapped = 21;
+    bool mapped = 22;
     // since 0.2.0
-    string app_id = 22;
+    string app_id = 23;
   }
 
   // Signal `destroyed`, since 0.2.0.
@@ -2660,19 +2688,21 @@ message Tween {
     // since 0.2.0
     bool input = 15;
     // since 0.2.0
-    bool secure = 16;
+    string input_mode = 16;
+    // since 0.2.0
+    bool secure = 17;
     // since 0.2.0; list
-    repeated string tags = 17;
+    repeated string tags = 18;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 18;
+    repeated Effect.Properties effects = 19;
     // since 0.2.0; list
-    repeated string skipped = 19;
+    repeated string skipped = 20;
     // since 0.2.0
-    double progress = 20;
+    double progress = 21;
     // since 0.2.0
-    bool paused = 21;
+    bool paused = 22;
     // since 0.2.0
-    bool reverse = 22;
+    bool reverse = 23;
   }
 
   // Signal `destroyed`, since 0.2.0.
@@ -2714,19 +2744,21 @@ message View {
     // since 0.2.0
     bool input = 15;
     // since 0.2.0
-    bool secure = 16;
-    // since 0.2.0; list
-    repeated string tags = 17;
-    // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 18;
-    // since 0.2.0; list
-    repeated string skipped = 19;
-    // since 0.2.0; object id of `node`
-    string source = 20;
+    string input_mode = 16;
     // since 0.2.0
-    uint64 fps = 21;
+    bool secure = 17;
+    // since 0.2.0; list
+    repeated string tags = 18;
+    // since 0.2.0; list of record `effect`: the properties of one value
+    repeated Effect.Properties effects = 19;
+    // since 0.2.0; list
+    repeated string skipped = 20;
     // since 0.2.0; object id of `node`
-    string camera = 22;
+    string source = 21;
+    // since 0.2.0
+    uint64 fps = 22;
+    // since 0.2.0; object id of `node`
+    string camera = 23;
   }
 
   // Method `capture`, since 0.2.0.
@@ -2771,39 +2803,41 @@ message Window {
     // since 0.2.0
     bool input = 15;
     // since 0.2.0
-    bool secure = 16;
+    string input_mode = 16;
+    // since 0.2.0
+    bool secure = 17;
     // since 0.2.0; list
-    repeated string tags = 17;
+    repeated string tags = 18;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 18;
+    repeated Effect.Properties effects = 19;
     // since 0.2.0; list
-    repeated string skipped = 19;
+    repeated string skipped = 20;
     // since 0.2.0
-    string title = 20;
+    string title = 21;
     // since 0.2.0
-    string app_id = 21;
+    string app_id = 22;
     // since 0.2.0
-    bool focused = 22;
+    bool focused = 23;
     // since 0.2.0
-    bool fullscreen = 23;
+    bool fullscreen = 24;
     // since 0.2.0
-    bool maximised = 24;
+    bool maximised = 25;
     // since 0.2.0
-    bool minimised = 25;
+    bool minimised = 26;
     // since 0.2.0; object id of `workspace`
-    string workspace = 26;
+    string workspace = 27;
     // since 0.2.0
-    bool tiled = 27;
+    bool tiled = 28;
     // since 0.2.0
-    bool unresponsive = 28;
+    bool unresponsive = 29;
     // since 0.2.0; object id of `window`
-    string parent_window = 29;
+    string parent_window = 30;
     // since 0.2.0
-    bool from_launcher = 30;
+    bool from_launcher = 31;
     // since 0.2.0
-    string decoration = 31;
+    string decoration = 32;
     // since 0.2.0
-    string decoration_wanted = 32;
+    string decoration_wanted = 33;
   }
 
   // Method `focus`, since 0.2.0.
@@ -2854,19 +2888,21 @@ message Workspace {
     // since 0.2.0
     bool input = 15;
     // since 0.2.0
-    bool secure = 16;
+    string input_mode = 16;
+    // since 0.2.0
+    bool secure = 17;
     // since 0.2.0; list
-    repeated string tags = 17;
+    repeated string tags = 18;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 18;
+    repeated Effect.Properties effects = 19;
     // since 0.2.0; list
-    repeated string skipped = 19;
+    repeated string skipped = 20;
     // since 0.2.0
-    uint64 index = 20;
+    uint64 index = 21;
     // since 0.2.0
-    bool active = 21;
+    bool active = 22;
     // since 0.2.0; object id of `screen`
-    string output = 22;
+    string output = 23;
   }
 
   // Method `activate`, since 0.2.0.

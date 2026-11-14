@@ -1143,6 +1143,7 @@ mod tests {
             ("visible", Some(DefaultValue::Bool(true))),
             ("clip", Some(DefaultValue::Bool(false))),
             ("input", Some(DefaultValue::Bool(true))),
+            ("input_mode", Some(DefaultValue::Text("forward".to_owned()))),
             ("secure", Some(DefaultValue::Bool(false))),
             ("tags", Some(DefaultValue::List(Vec::new()))),
             ("effects", Some(DefaultValue::List(Vec::new()))),

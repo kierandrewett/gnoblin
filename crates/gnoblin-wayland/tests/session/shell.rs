@@ -25,15 +25,22 @@ struct WindowTable;
 
 impl ClassInfo for WindowTable {
     fn has_class(&self, class: &str) -> bool {
-        matches!(class, "node" | "window" | "seat" | "screen")
+        matches!(class, "node" | "window" | "seat" | "screen" | "view")
+    }
+
+    fn is_a(&self, class: &str, ancestor: &str) -> bool {
+        class == ancestor || (ancestor == "node" && matches!(class, "window" | "view"))
     }
 
     fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
         let kind = match (class, key) {
             ("window", "maximised" | "fullscreen" | "minimised")
-            | ("node" | "window", "visible")
+            | ("node" | "window" | "view", "visible" | "input")
             | ("seat", "decorations_available") => ValueType::Bool,
-            ("node" | "window", "x" | "y" | "width" | "height") => ValueType::Double,
+            ("node" | "window" | "view", "x" | "y" | "width" | "height") => ValueType::Double,
+            ("node" | "window" | "view", "input_mode") => ValueType::Text,
+            ("node" | "window" | "view", "rotation" | "scale") => ValueType::ListDouble,
+            ("view", "source") => ValueType::Node("node".to_owned()),
             _ => return None,
         };
         Some(PropertyInfo {
@@ -261,18 +268,24 @@ impl Shell {
     /// transaction refused as stale because the compositor published meanwhile is built again against the new serial.
     #[track_caller]
     pub fn write(&self, node: NodeId, values: &[(&str, TreeValue)]) {
+        let ops = values
+            .iter()
+            .map(|(key, value)| TreeOp::Set {
+                node,
+                key: (*key).to_owned(),
+                value: value.clone(),
+                timing: None,
+            })
+            .collect();
+        self.run(ops);
+    }
+
+    /// Applies `ops` as one transaction, built again against the new serial when the compositor published meanwhile.
+    #[track_caller]
+    fn run(&self, ops: Vec<TreeOp>) {
         let deadline = Instant::now() + TIMEOUT;
         loop {
-            let ops = values
-                .iter()
-                .map(|(key, value)| TreeOp::Set {
-                    node,
-                    key: (*key).to_owned(),
-                    value: value.clone(),
-                    timing: None,
-                })
-                .collect();
-            match self.transact(TreeTransaction::new(ops)) {
+            match self.transact(TreeTransaction::new(ops.clone())) {
                 Ok(()) => return,
                 Err(code) => assert!(
                     matches!(code, Code::StaleBase) && Instant::now() < deadline,
@@ -280,6 +293,30 @@ impl Shell {
                 ),
             }
         }
+    }
+
+    /// Makes a node of `class` under `parent` (or the root), with `values` written, in one transaction, as a shell
+    /// builds a View or a plain node.
+    #[track_caller]
+    pub fn create(&self, class: &str, node: NodeId, parent: Option<NodeId>, values: &[(&str, TreeValue)]) {
+        let mut ops = vec![TreeOp::New {
+            class: class.to_owned(),
+            id: node,
+        }];
+        ops.extend(values.iter().map(|(key, value)| TreeOp::Set {
+            node,
+            key: (*key).to_owned(),
+            value: value.clone(),
+            timing: None,
+        }));
+        if let Some(parent) = parent {
+            ops.push(TreeOp::Insert {
+                node,
+                parent,
+                index: None,
+            });
+        }
+        self.run(ops);
     }
 
     /// Every screen node the compositor announced, in the order it did.
