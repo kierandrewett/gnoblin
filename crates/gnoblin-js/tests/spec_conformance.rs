@@ -5,7 +5,8 @@
 //! Snippet fixtures are inventoried above `PRELUDE`; the reference `init.js` runs without that prelude.
 //! `UPDATE_SPEC=1` updates the report and permits only intentional progress (`fails` -> `runs`).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -256,7 +257,7 @@ fn verify_input_hashes(files: &[(String, PathBuf)], manifest: &toml::Value) {
     );
     for (name, path) in files {
         let bytes = fs::read(path).expect("spec input reads");
-        let digest = format!("{:x}", Sha256::digest(bytes));
+        let digest = sha256(&bytes);
         let recorded = expected[name].as_str().expect("each recorded SHA-256 is a string");
         assert_eq!(
             digest, recorded,
@@ -271,6 +272,14 @@ fn spec_dir() -> PathBuf {
 
 fn expected_path() -> PathBuf {
     spec_dir().join("expected.toml")
+}
+
+fn sha256(bytes: &[u8]) -> String {
+    let mut output = String::with_capacity(64);
+    for byte in Sha256::digest(bytes) {
+        write!(&mut output, "{byte:02x}").expect("writing a SHA-256 digest to String cannot fail");
+    }
+    output
 }
 
 fn table_path() -> PathBuf {
@@ -793,7 +802,7 @@ fn normalise(text: &str) -> String {
 
 fn check_expected_statuses(rows: &[Row], update: bool) {
     let mut manifest_text = fs::read_to_string(expected_path()).expect("expected.toml reads");
-    let mut manifest = expected_manifest();
+    let manifest = expected_manifest();
     let statuses = manifest["statuses"].as_table().expect("expected.toml has [statuses]");
     let expected_names: BTreeSet<_> = statuses.keys().map(String::as_str).collect();
     let actual_names: BTreeSet<_> = rows.iter().map(|row| row.file.as_str()).collect();
@@ -913,7 +922,7 @@ fn the_owners_reference_init_js_runs_unchanged() {
         .as_str()
         .expect("init.js checksum is recorded");
     assert_eq!(
-        format!("{:x}", Sha256::digest(&input)),
+        sha256(&input),
         expected_hash,
         "owner init.js must remain byte-for-byte unchanged"
     );
