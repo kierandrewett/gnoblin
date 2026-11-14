@@ -680,7 +680,7 @@ fn a_config_that_is_not_in_the_closed_set_is_refused_naming_the_key() {
     assert_eq!(
         got,
         lines(&[
-            "TypeError: config has no \"colour\"; expected one of gaps, style, outputs, workspaces, keys, rules, on, setup",
+            "TypeError: config has no \"colour\"; expected one of gaps, style, outputs, workspaces, keys, rules, on, setup, decorations",
             "Error: keys[\"Super+1\"] shows workspace \"nowhere\", which the config does not declare",
             "TypeError: keys[\"Super+X\"] must be spawn(...), show(...), \"close\" or a function",
             "TypeError: a key: an empty part after \"Super\"; write a literal plus as \"plus\" (token \"\" in \"Super+\")",
@@ -726,6 +726,29 @@ fn the_default_config_is_one_floating_desktop_with_the_stock_keys() {
             r#"{"kind":"spawn","argv":["wpctl","set-volume","@DEFAULT_AUDIO_SINK@","5%+"]}"#,
             "true",
             "0",
+        ])
+    );
+}
+
+#[test]
+fn decorations_are_on_in_the_default_config_and_off_in_one_that_does_not_ask() {
+    let got = run(r#"
+        emit([
+            desugarConfig(defaultConfig).decorations,
+            desugarConfig({}).decorations,
+            desugarConfig({ decorations: true }).decorations,
+            desugarConfig({ decorations: false }).decorations,
+            thrown(() => desugarConfig({ decorations: "yes" } as any)),
+        ].join("\n"));
+    "#);
+    assert_eq!(
+        got,
+        lines(&[
+            "true",
+            "false",
+            "true",
+            "false",
+            "TypeError: config.decorations: must be true or false",
         ])
     );
 }

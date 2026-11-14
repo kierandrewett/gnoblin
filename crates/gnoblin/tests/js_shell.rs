@@ -182,7 +182,6 @@ fn scene(ipc: &Path) -> Vec<Window> {
 /// One canvas as the compositor's tree holds it.
 #[derive(Clone, Debug)]
 struct Canvas {
-    id: u64,
     parent: u64,
     width: f64,
     height: f64,
@@ -209,7 +208,6 @@ fn canvases(ipc: &Path) -> Vec<Canvas> {
         .map(|node| {
             let prop = |key: &str| node.props.iter().find(|prop| prop.key == key);
             Canvas {
-                id: node.id,
                 parent: node.parent,
                 width: prop("width").map_or(0.0, |prop| prop.value_double),
                 height: prop("height").map_or(0.0, |prop| prop.value_double),
@@ -855,9 +853,17 @@ fn a_script_draws_a_box_and_a_titlebar_and_the_compositor_holds_what_it_painted(
     let config = tempfile::tempdir().expect("a config directory");
     fs::write(
         config.path().join("init.ts"),
-        r##"import { Box, defineConfig } from "gnoblin";
+        r##"import { Box, defineConfig, gnoblin } from "gnoblin";
 
 defineConfig({ decorations: true });
+
+// The compositor gives a window no size until the shell does, and a titlebar is as wide as its window.
+gnoblin.clients.addListener({
+    onAdded(client: { width: number; height: number }): void {
+        client.width = 300;
+        client.height = 200;
+    },
+});
 
 // A canvas of its own: a node with no parent, as a script's first canvas is.
 export const swatch = new Box({ width: 120, height: 40, fill: "#336699" });
