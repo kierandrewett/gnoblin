@@ -857,9 +857,11 @@ impl JsShell {
             let state = &mut *self.state.borrow_mut();
             if settled {
                 state.tick.settle();
-            } else {
-                state.tick.refresh(&state.mirror);
             }
+            // A node the builder still holds a copy of (pending writes that a shut gate kept from the last frame, or
+            // a transaction in flight) must show what the compositor has written natively since the copy was made: a
+            // read of its `decoration` is the compositor's word, not the copy's.
+            state.tick.refresh(&state.mirror);
             // A node a later batch of this frame destroyed has nothing to wrap or to touch, and a node made
             // in this frame is born with its final values, so only older nodes raise change events.
             created.retain(|node| state.mirror.node(*node).is_some());

@@ -803,9 +803,15 @@ impl TxBuilder {
         SentWrites { nodes, held, props }
     }
 
-    /// Brings the carried nodes up to date with `base` at the start of a tick: the properties come from the mirror
-    /// (a native write shows) with the in-flight writes on top, and a child the compositor destroyed is gone from
-    /// the list. Their place and children stay as the shell left them until the mirror holds the same.
+    /// Brings what the builder holds up to date with `base` at the start of a tick.
+    ///
+    /// A node the builder holds a copy of (one a sent transaction moved, or one this builder has pending writes on) is
+    /// a copy as of the tick that made it. The compositor writes properties of its own on such a node (`decoration`,
+    /// `focused`, a window's size), and a read of the copy must show them, so each property comes from the mirror. The
+    /// exceptions are a property the shell wrote that the compositor has not taken yet (in a transaction in flight or
+    /// in a pending op), which keeps the shell's value, and a reference to a node this builder destroyed, which stays
+    /// nil as `destroy` left it. A child the compositor destroyed is gone from the list. A carried node's place and
+    /// children stay as the shell left them until the mirror holds the same.
     pub fn refresh(&mut self, base: &TreeMirror) {
         // A node the mirror held and no longer does was destroyed by the compositor.
         let gone: Vec<NodeId> = self
@@ -840,15 +846,50 @@ impl TxBuilder {
         for (id, children) in updates {
             if let Some(Some(record)) = self.overlay.get_mut(&id) {
                 record.children = children;
-                if let Some(held) = base.node(id) {
-                    record.props.clone_from(&held.props);
-                    if let Some(props) = self.in_flight.get(&id) {
-                        record
-                            .props
-                            .extend(props.iter().map(|(key, value)| (key.clone(), value.clone())));
-                    }
+            }
+        }
+        self.rebase_props(base);
+    }
+
+    /// Reads the properties of every copy the overlay holds of a node the mirror holds from the mirror, but for the
+    /// ones the shell wrote and the compositor has not taken (see [`refresh`](Self::refresh)).
+    fn rebase_props(&mut self, base: &TreeMirror) {
+        let destroyed: Vec<NodeId> = self
+            .overlay
+            .iter()
+            .filter(|(_, entry)| entry.is_none())
+            .map(|(id, _)| *id)
+            .collect();
+        let mut pending: BTreeMap<NodeId, Vec<&str>> = BTreeMap::new();
+        for op in &self.ops {
+            if let TxOp::Set { node, key, .. } = op {
+                pending.entry(*node).or_default().push(key);
+            }
+        }
+        let written = |id: NodeId, key: &str| {
+            pending.get(&id).is_some_and(|keys| keys.contains(&key))
+                || self.in_flight.get(&id).is_some_and(|props| props.contains_key(key))
+        };
+        let nil = MirrorValue::Node(NIL);
+        for (id, entry) in &mut self.overlay {
+            let (Some(record), Some(held)) = (entry.as_mut(), base.node(*id)) else {
+                continue;
+            };
+            for (key, value) in &held.props {
+                if written(*id, key) {
+                    continue;
+                }
+                let value = match value {
+                    MirrorValue::Node(target) if destroyed.contains(target) => &nil,
+                    other => other,
+                };
+                if record.props.get(key) != Some(value) {
+                    record.props.insert(key.clone(), value.clone());
                 }
             }
+            record
+                .props
+                .retain(|key, _| held.props.contains_key(key) || written(*id, key));
         }
     }
 

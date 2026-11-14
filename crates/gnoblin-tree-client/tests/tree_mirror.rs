@@ -326,6 +326,51 @@ fn what_a_sent_transaction_wrote_is_read_by_the_next_builder_until_the_mirror_sa
     assert_eq!(next.get(&moved, 2, "opacity"), None);
 }
 
+/// A transaction that cannot be sent (the one before it is in flight) leaves its writes pending in the builder, and the
+/// copies of the nodes they touch with them. The compositor writes properties of its own on those nodes in the
+/// meantime, and the next tick's read of one is the compositor's word, not the copy's: a shell that read the copy's
+/// `decoration` after the batch that changed it decided from a value that was no longer so.
+#[test]
+fn a_node_with_pending_writes_shows_what_the_compositor_wrote_natively_since_the_copy_was_made() {
+    let mut mirror = base_mirror();
+    let mut native = change(MirrorChangeKind::Set, 2);
+    native.key = "decoration".to_owned();
+    native.value = Some(MirrorValue::Text("client".to_owned()));
+    mirror
+        .apply_changes(6, &[native.clone()])
+        .expect("the first batch applies");
+
+    // The shell writes node 2 and destroys its child 4; both stay pending, so the builder holds a copy of node 2 that
+    // says `client`.
+    let mut tx = TxBuilder::new();
+    tx.set(&mirror, 2, "y", MirrorValue::Double(5.0), None, None)
+        .expect("2 exists");
+    tx.destroy(&mirror, 4).expect("4 exists");
+    assert_eq!(
+        tx.get(&mirror, 2, "decoration"),
+        Some(&MirrorValue::Text("client".to_owned()))
+    );
+
+    // The compositor changes it, and the transaction that was in flight is answered.
+    native.value = Some(MirrorValue::Text("server".to_owned()));
+    mirror.apply_changes(7, &[native]).expect("the second batch applies");
+    tx.settle();
+    tx.refresh(&mirror);
+
+    assert_eq!(
+        tx.get(&mirror, 2, "decoration"),
+        Some(&MirrorValue::Text("server".to_owned())),
+        "the compositor's word, not the copy's"
+    );
+    assert_eq!(
+        tx.get(&mirror, 2, "y"),
+        Some(&MirrorValue::Double(5.0)),
+        "what the shell wrote and has not sent still reads as written"
+    );
+    assert!(tx.node(&mirror, 4).is_none(), "and the pending destroy still holds");
+    assert_eq!(tx.ops().len(), 2, "nothing was added to what is sent");
+}
+
 #[test]
 fn a_write_to_a_node_the_tree_does_not_have_is_refused_locally() {
     let mirror = base_mirror();
