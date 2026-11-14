@@ -1330,3 +1330,61 @@ fn a_session_that_starts_with_an_entry_starts_its_autostart_commands_at_load() {
         rig.role.diagnostics()
     );
 }
+
+#[test]
+fn a_reload_keeps_the_dialog_slot_for_a_generation_with_a_listener_and_releases_it_for_one_without() {
+    // The slot is claimed on the shell's own connection, so a reload that released it and claimed it again would leave
+    // the compositor a moment with nobody observing its dialogs. The slot a generation inherits is the one it keeps.
+    let slots = FakeSlots::default();
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
+    let listening = init("gnoblin.dialogs.addListener(new DialogListener());");
+    fs::write(root.join("init.ts"), &listening).expect("init.ts");
+    let mut config = honest_role_config(&root);
+    config.watch = false;
+    let mut role = JsRole::over_link(
+        Box::new(FakeLink(compositor())),
+        JsRoleLinks {
+            slots: Some(Box::new(slots.clone())),
+            config: Some(Box::new(FakeDoc::default())),
+            ..JsRoleLinks::default()
+        },
+        config,
+    )
+    .expect("a role");
+    role.tick().expect("a frame");
+    assert_eq!(slots.calls(), vec!["claim_slot dialogs.observe"]);
+
+    // The same listener in the next generation: the claim stays, and nothing is sent.
+    fs::write(root.join("init.ts"), format!("{listening}// touched\n")).expect("init.ts");
+    assert!(role.reload_now().ok);
+    role.tick().expect("a frame");
+    role.tick().expect("a frame");
+    assert_eq!(
+        slots.calls(),
+        vec!["claim_slot dialogs.observe"],
+        "a reload that keeps its listener neither releases the slot nor claims it again"
+    );
+
+    // A generation with no listener gives the slot up in its first frame.
+    fs::write(root.join("init.ts"), init("")).expect("init.ts");
+    assert!(role.reload_now().ok);
+    role.tick().expect("a frame");
+    assert_eq!(
+        slots.calls(),
+        vec!["claim_slot dialogs.observe", "release_slot dialogs.observe"]
+    );
+
+    // And a later one with a listener claims it afresh.
+    fs::write(root.join("init.ts"), &listening).expect("init.ts");
+    assert!(role.reload_now().ok);
+    role.tick().expect("a frame");
+    assert_eq!(
+        slots.calls(),
+        vec![
+            "claim_slot dialogs.observe",
+            "release_slot dialogs.observe",
+            "claim_slot dialogs.observe"
+        ]
+    );
+}

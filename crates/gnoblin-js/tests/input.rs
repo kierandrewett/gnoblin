@@ -3,9 +3,10 @@
 //!
 //! The grammar is tested against the stock library alone (no host). Everything else runs a real `JsShell`
 //! over `FakeLink`, an in-memory compositor that records the seat claims the shell makes and plays back
-//! scripted chords, `pointer_chord` drags, gestures, pointer positions and window deaths. Nothing here proves
-//! that the real compositor takes these claims: the fake accepts every claim it is sent. The real one is
-//! driven by `crates/gnoblin/tests/js_shell.rs`.
+//! scripted chords, `pointer_chord` drags, gestures, pointer positions and window deaths. Like the real one, it
+//! refuses a claim for a chord that another claim already holds (`Compositor::refused` lists them), so a shell that
+//! claims in the wrong order is seen. Nothing here proves that the real compositor takes these claims. The real one
+//! is driven by `crates/gnoblin/tests/js_shell.rs`.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -14,7 +15,7 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 
-use gnoblin_js::{JsConfig, JsGeneration, JsManualClock, JsShell, JsShellConfig, stock_modules};
+use gnoblin_js::{JsConfig, JsGeneration, JsManualClock, JsRole, JsRoleLinks, JsShell, JsShellConfig, stock_modules};
 use gnoblin_tree_client::tree_mirror::{
     Attached, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeChord, TreeGesture,
     TreeIncoming, TreeLink, TreePointerChord, TreeTx, TxOp, TxReply,
@@ -22,7 +23,7 @@ use gnoblin_tree_client::tree_mirror::{
 use tempfile::TempDir;
 
 mod common;
-use common::{honest_config, timed_config};
+use common::{honest_config, honest_role_config, timed_config};
 
 // -- the trigger grammar -----------------------------------------------------------------------------------
 
@@ -269,6 +270,9 @@ struct Compositor {
     claim_seats: BTreeMap<i64, u64>,
     /// The pointer chord drags in flight, by claim id.
     drags: BTreeMap<i64, FakeDrag>,
+    /// The claims the compositor refused because another live claim holds the same chord, gesture or device:
+    /// `(method, text)`.
+    refused: Vec<(String, String)>,
 }
 
 /// A pointer chord's drag as the fake compositor streams it: where it began and what the chord is.
@@ -333,18 +337,29 @@ impl FakeLink {
                     text,
                     ..
                 } => match method.as_str() {
-                    "claim" | "claim_gesture" => {
+                    "claim" | "claim_gesture" | "claim_device" => {
                         let id = le(&args[0..8]);
-                        c.claim_seats.insert(id, *node);
-                        let second = le(&args[8..16]);
-                        c.claims.insert(id, (method.clone(), text.expose().to_owned()));
-                        c.calls.push((method.clone(), id, second, text.expose().to_owned()));
-                    }
-                    "claim_device" => {
-                        let id = le(&args[0..8]);
-                        c.claim_seats.insert(id, *node);
-                        c.claims.insert(id, (method.clone(), text.expose().to_owned()));
-                        c.calls.push((method.clone(), id, 0, text.expose().to_owned()));
+                        let text = text.expose().to_owned();
+                        let second = if method == "claim_device" { 0 } else { le(&args[8..16]) };
+                        c.calls.push((method.clone(), id, second, text.clone()));
+                        let held = c.claims.iter().any(|(other, (held_method, held_text))| {
+                            // A gesture is held by its kind and its finger count: three and four fingers are two.
+                            let same_fingers = method != "claim_gesture"
+                                || c.calls
+                                    .iter()
+                                    .any(|call| call.0 == *method && call.1 == *other && call.2 == second);
+                            *other != id
+                                && held_method == method
+                                && *held_text == text
+                                && c.claim_seats.get(other) == Some(node)
+                                && same_fingers
+                        });
+                        if held {
+                            c.refused.push((method.clone(), text));
+                        } else {
+                            c.claim_seats.insert(id, *node);
+                            c.claims.insert(id, (method.clone(), text));
+                        }
                     }
                     "unclaim" => {
                         let id = le(&args[0..8]);
@@ -2141,4 +2156,172 @@ fn a_short_swipe_slides_back_and_leaves_the_shown_workspace_alone() {
         "the workspace that was pulled in is hidden again"
     );
     assert_eq!(rig.eval("gnoblin.clients.at(0).visible"), "true");
+}
+
+// -- a reload hands the claims over --------------------------------------------------------------------------
+
+/// A role over the fake compositor whose entry is `init`, the directory it reads and the directory's guard.
+fn role_over(comp: &Comp, init: &str) -> (JsRole, std::path::PathBuf, TempDir) {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
+    fs::write(root.join("init.ts"), init).expect("init.ts");
+    let mut config = honest_role_config(&root);
+    config.watch = false;
+    let role = JsRole::over_link(Box::new(FakeLink(comp.clone())), JsRoleLinks::default(), config).expect("a role");
+    (role, root, dir)
+}
+
+/// An entry with one monocle workspace (a layout with no bindings of its own), then `rest`.
+fn hand_off_entry(rest: &str) -> String {
+    format!(
+        "import {{ gnoblin, FloatingLayout, Workspace }} from \"gnoblin\";\n\
+         gnoblin.workspaces.add(new Workspace({{ id: \"main\", layout: \"monocle\" }}));\n\
+         const input = gnoblin.input.primary;\n{rest}"
+    )
+}
+
+/// What the fake compositor holds: the chords, gestures and devices other than pointer chords, sorted, and how many
+/// pointer chords there are (their text is the compositor's own spelling of a button).
+fn held(comp: &Comp) -> (Vec<String>, usize) {
+    let mut all = comp.claimed();
+    let pointer = all.iter().filter(|text| text.contains("Button")).count();
+    all.retain(|text| !text.contains("Button"));
+    all.sort();
+    (all, pointer)
+}
+
+fn sorted(items: &[&str]) -> Vec<String> {
+    let mut items: Vec<String> = items.iter().map(|item| (*item).to_owned()).collect();
+    items.sort();
+    items
+}
+
+/// Reloads the role and checks the swap's own transaction: the compositor holds exactly `expected` the moment the
+/// reload returns, none of its claims was refused, and every release came before every claim, which is what keeps a
+/// chord from being refused for the old generation still holding it.
+#[track_caller]
+fn reload_and_check(role: &mut JsRole, root: &Path, comp: &Comp, source: &str, expected: (Vec<String>, usize)) {
+    let mark = comp.borrow().calls.len();
+    fs::write(root.join("init.ts"), source).expect("init.ts is rewritten");
+    let report = role.reload_now();
+    assert!(report.ok, "{:?}", report.errors);
+    assert_eq!(
+        held(comp),
+        expected,
+        "the claims the compositor holds once the swap is sent"
+    );
+    let calls: Vec<String> = comp.borrow().calls[mark..].iter().map(|call| call.0.clone()).collect();
+    let last_release = calls.iter().rposition(|method| method == "unclaim");
+    let first_claim = calls.iter().position(|method| method != "unclaim");
+    assert!(
+        last_release
+            .zip(first_claim)
+            .is_none_or(|(release, claim)| release < claim),
+        "a claim was sent before a release: {calls:?}"
+    );
+    assert!(
+        comp.borrow().refused.is_empty(),
+        "the compositor refused claims: {:?}",
+        comp.borrow().refused
+    );
+    role.tick().expect("a frame");
+    assert_eq!(held(comp), expected, "the claims after the next frame");
+}
+
+#[test]
+fn a_reload_releases_the_old_claims_before_it_claims_the_new_ones_so_no_chord_is_refused_or_left_unheld() {
+    let comp = world(false);
+    let all = "input.bind(\"Super+1\", () => {});\n\
+               input.bind(\"Super+2\", () => {});\n\
+               input.bind(\"Swipe3\", () => {});\n\
+               input.attachLayout(new FloatingLayout(), () => true);\n\
+               input.devices[0].bindingOnly = true;\n";
+    let (mut role, root, _dir) = role_over(&comp, &hand_off_entry(all));
+    role.tick().expect("a frame");
+    assert_eq!(
+        held(&comp),
+        (sorted(&["<Super>1", "<Super>2", "Macro Pad", "swipe"]), 2),
+        "the first generation's claims: two chords, the swipe, the device and the layout's move and resize"
+    );
+    assert!(comp.borrow().refused.is_empty());
+
+    // Two chords stay and one goes; a chord is added; the swipe, the device and the layout's drags stay.
+    reload_and_check(
+        &mut role,
+        &root,
+        &comp,
+        &hand_off_entry(
+            "input.bind(\"Super+1\", () => {});\n\
+             input.bind(\"Super+3\", () => {});\n\
+             input.bind(\"Swipe3\", () => {});\n\
+             input.attachLayout(new FloatingLayout(), () => true);\n\
+             input.devices[0].bindingOnly = true;\n",
+        ),
+        (sorted(&["<Super>1", "<Super>3", "Macro Pad", "swipe"]), 2),
+    );
+
+    // Everything that is not a chord goes: the device, the swipe and the layout are released, not left behind.
+    reload_and_check(
+        &mut role,
+        &root,
+        &comp,
+        &hand_off_entry("input.bind(\"Super+1\", () => {});\n"),
+        (sorted(&["<Super>1"]), 0),
+    );
+
+    // The same file again: every claim is made again behind its own release.
+    reload_and_check(
+        &mut role,
+        &root,
+        &comp,
+        &hand_off_entry("input.bind(\"Super+1\", () => {});\n"),
+        (sorted(&["<Super>1"]), 0),
+    );
+
+    // Five in a row that swap one chord for another.
+    for round in 4..9 {
+        reload_and_check(
+            &mut role,
+            &root,
+            &comp,
+            &hand_off_entry(&format!(
+                "input.bind(\"Super+1\", () => {{}});\ninput.bind(\"Super+{round}\", () => {{}});\n"
+            )),
+            (sorted(&["<Super>1", &format!("<Super>{round}")]), 0),
+        );
+    }
+}
+
+#[test]
+fn a_reload_that_fails_after_it_claimed_leaves_the_claims_as_they_were_and_the_next_reload_claims_the_chord() {
+    let comp = world(false);
+    let (mut role, root, _dir) = role_over(&comp, &hand_off_entry("input.bind(\"Super+1\", () => {});\n"));
+    role.tick().expect("a frame");
+    let before = comp.borrow().calls.len();
+
+    // The entry claims `Super+9` and then throws: the stage is dropped, and so is the claim it made.
+    fs::write(
+        root.join("init.ts"),
+        hand_off_entry("input.bind(\"Super+9\", () => {});\nthrow new Error(\"late\");\n"),
+    )
+    .expect("init.ts");
+    let report = role.reload_now();
+    assert!(!report.ok);
+    role.tick().expect("a frame");
+    assert_eq!(held(&comp), (sorted(&["<Super>1"]), 0));
+    assert_eq!(
+        comp.borrow().calls.len(),
+        before,
+        "a failed stage sent no claim and no release: {:?}",
+        &comp.borrow().calls[before..]
+    );
+
+    // The chord is free to claim: the failed stage left no record of it that would stand in for a claim.
+    reload_and_check(
+        &mut role,
+        &root,
+        &comp,
+        &hand_off_entry("input.bind(\"Super+1\", () => {});\ninput.bind(\"Super+9\", () => {});\n"),
+        (sorted(&["<Super>1", "<Super>9"]), 0),
+    );
 }

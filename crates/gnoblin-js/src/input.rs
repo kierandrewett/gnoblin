@@ -10,6 +10,12 @@
 //!   gesture kind, behind the device name and a line feed when the claim is for one device. A claim is queued
 //!   like any write and travels at the end of the frame. The compositor takes a claim it cannot parse
 //!   silently (it logs and drops it), so a refusal is not visible here.
+//! - **Hand-off.** The compositor refuses a chord that another claim already holds, and a reload stages the new
+//!   generation while the old one is still the one holding its claims. A claim a staged generation makes is
+//!   therefore kept here (it has its id at once, and the script goes on) and sent only when the generation takes
+//!   over, behind the unclaims of the old one: the compositor applies one transaction's calls in order, so the
+//!   chords are free when the new claims arrive and there is no moment in which a chord is held by nobody. A
+//!   stage that fails drops what it kept.
 //! - **Messages.** A claimed chord or gesture arrives on the tree link as [`TreeIncoming::Chord`] or
 //!   [`TreeIncoming::Gesture`]. The shell parks them in [`JsInput::inbox`] and hands the frame's batch to the
 //!   module in one call, ahead of the listener queue it then drains.
@@ -71,6 +77,10 @@ pub(crate) struct JsInput {
     last_claim: i64,
     /// The seat each live claim was made on, so `unclaim` finds the node and a stale id is a no-op.
     claims: HashMap<i64, NodeId>,
+    /// Whether a generation is being staged: its claims wait in `staged` instead of being sent.
+    staging: bool,
+    /// The claims a staged generation made, in order, which go out when it takes over and never if it does not.
+    staged: Vec<StagedClaim>,
     /// Chords and gestures that arrived since the last frame's dispatch, oldest first.
     pub inbox: Vec<JsInputMessage>,
     /// The pointer edges on windows that arrived since the last frame's dispatch, oldest first.
@@ -86,6 +96,8 @@ impl JsInput {
         Self {
             last_claim: 0,
             claims: HashMap::new(),
+            staging: false,
+            staged: Vec::new(),
             inbox: Vec::new(),
             window_events: Vec::new(),
             origin: clock.now(),
@@ -336,13 +348,55 @@ fn claim_args(id: i64, second: i64) -> Vec<u8> {
     args
 }
 
-/// Queues a call on `seat` and records the claim it makes: `second` is the claim's second integer (a chord's grab flag, a
-/// gesture's finger count; a device claim has none) and `text` what the compositor reads as its text. Refused when the
-/// seat is not a live seat node or the device name is not one line.
+/// A claim made while a generation was being staged, kept until that generation takes over.
+pub(crate) struct StagedClaim {
+    id: i64,
+    seat: NodeId,
+    method: &'static str,
+    second: Option<i64>,
+    text: String,
+}
+
+/// Sends a claim as a call on its seat and records it as held. Fails when the seat is not a node of the tree (a seat
+/// that is gone took its claims with it).
+fn send_claim(state: &mut HostState, claim: StagedClaim) -> bool {
+    let HostState {
+        mirror,
+        tick,
+        tokens,
+        input,
+        ..
+    } = state;
+    *tokens += 1;
+    let args = match claim.second {
+        Some(second) => claim_args(claim.id, second),
+        None => claim.id.to_le_bytes().to_vec(),
+    };
+    if tick
+        .call(
+            mirror,
+            claim.seat,
+            claim.method,
+            args,
+            *tokens,
+            SecretText::new(claim.text),
+        )
+        .is_err()
+    {
+        return false;
+    }
+    input.claims.insert(claim.id, claim.seat);
+    true
+}
+
+/// Makes a claim on `seat` and records it: `second` is the claim's second integer (a chord's grab flag, a gesture's
+/// finger count; a device claim has none) and `text` what the compositor reads as its text. The call is queued like any
+/// write, or kept until the generation being staged takes over (see the module's "Hand-off"). Refused when the seat is
+/// not a live seat node or the device name is not one line.
 fn queue_claim(
     state: &mut HostState,
     seat: NodeId,
-    method: &str,
+    method: &'static str,
     second: Option<i64>,
     text: String,
     device: &str,
@@ -351,11 +405,7 @@ fn queue_claim(
         return JsClaimOutcome::Refused("invalid-value");
     }
     let HostState {
-        mirror,
-        tick,
-        tokens,
-        input,
-        ..
+        mirror, tick, input, ..
     } = state;
     let is_seat = tick
         .node(mirror, seat)
@@ -364,19 +414,22 @@ fn queue_claim(
         return JsClaimOutcome::Refused("unknown-node");
     }
     let id = input.last_claim + 1;
-    *tokens += 1;
-    let args = match second {
-        Some(second) => claim_args(id, second),
-        None => id.to_le_bytes().to_vec(),
+    let claim = StagedClaim {
+        id,
+        seat,
+        method,
+        second,
+        text,
     };
-    if tick
-        .call(mirror, seat, method, args, *tokens, SecretText::new(text))
-        .is_err()
-    {
+    if input.staging {
+        input.last_claim = id;
+        input.staged.push(claim);
+        return JsClaimOutcome::Claimed(id);
+    }
+    if !send_claim(state, claim) {
         return JsClaimOutcome::Refused("unknown-node");
     }
-    input.last_claim = id;
-    input.claims.insert(id, seat);
+    state.input.last_claim = id;
     JsClaimOutcome::Claimed(id)
 }
 
@@ -419,7 +472,8 @@ pub(crate) fn claim_device(state: &mut HostState, seat: NodeId, device: &str) ->
     queue_claim(state, seat, "claim_device", None, device.to_owned(), device)
 }
 
-/// Gives a claim up. An id this shell does not hold is ignored, so a double release cannot touch another claim.
+/// Gives a claim up. An id this shell does not hold is ignored, so a double release cannot touch another claim. A claim
+/// the staged generation made and has not sent is dropped without a call.
 pub(crate) fn unclaim(state: &mut HostState, id: i64) {
     let HostState {
         mirror,
@@ -428,6 +482,10 @@ pub(crate) fn unclaim(state: &mut HostState, id: i64) {
         input,
         ..
     } = state;
+    if let Some(at) = input.staged.iter().position(|claim| claim.id == id) {
+        input.staged.remove(at);
+        return;
+    }
     let Some(seat) = input.claims.remove(&id) else {
         return;
     };
@@ -441,6 +499,43 @@ pub(crate) fn unclaim(state: &mut HostState, id: i64) {
         *tokens,
         SecretText::default(),
     );
+}
+
+/// A generation is about to be staged: what it claims is kept, not sent, until it takes over.
+pub(crate) fn begin_staging(state: &mut HostState) {
+    state.input.staging = true;
+    state.input.staged.clear();
+}
+
+/// The stage failed: the claims it kept are dropped, and the running generation's are as they were.
+pub(crate) fn abandon_staging(state: &mut HostState) {
+    state.input.staging = false;
+    state.input.staged.clear();
+}
+
+/// The staged generation takes over: claims are sent as they are made again, and the ones it kept are handed back to
+/// be sent by [`send_staged`] once the old generation's have been released.
+pub(crate) fn end_staging(state: &mut HostState) -> Vec<StagedClaim> {
+    state.input.staging = false;
+    std::mem::take(&mut state.input.staged)
+}
+
+/// Gives up every claim still held, in the order they were made. The old generation gives its own up when it ends; this
+/// is for one whose script threw before it had, which would otherwise keep its chords from the new generation.
+pub(crate) fn release_all(state: &mut HostState) {
+    let mut ids: Vec<i64> = state.input.claims.keys().copied().collect();
+    ids.sort_unstable();
+    for id in ids {
+        unclaim(state, id);
+    }
+}
+
+/// Sends the claims a staged generation kept, in the order it made them. A claim whose seat is gone is dropped: the
+/// script that holds its id releases it later, which then finds nothing.
+pub(crate) fn send_staged(state: &mut HostState, staged: Vec<StagedClaim>) {
+    for claim in staged {
+        send_claim(state, claim);
+    }
 }
 
 /// The frame's chord, gesture and pointer messages as script objects, for the module's `input` entry.

@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use gnoblin_backend::InputEvent;
+use gnoblin_backend::{InputEvent, RawTouchpadKind, RawTouchpadPhase, RawTouchpadSample};
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::wire::{PortalRequest, VerifiedCaller};
 use gnoblin_client::{Client, ClientError, PortalOutcome, PortalTicket};
@@ -62,7 +62,9 @@ struct Session {
     stop: StopHandle,
     /// Where a test sends the input a device would: it takes the seat path a real pointer's events take.
     input: InputTap,
-    thread: Option<JoinHandle<()>>,
+    /// The compositor's thread. It returns what the compositor logged when the session was started to record its log
+    /// ([`Session::start_logged`]), and nothing otherwise.
+    thread: Option<JoinHandle<Vec<String>>>,
 }
 
 impl Session {
@@ -70,8 +72,18 @@ impl Session {
         Self::start_with(|_| {})
     }
 
+    /// A session that keeps what the compositor logs, for the test that reads its warnings. Recording takes every
+    /// event, the debug ones too, so only a test that reads the log asks for it.
+    fn start_logged() -> Self {
+        Self::boot(|_| {}, true)
+    }
+
     /// A session whose configuration `tune` has changed (a liveness timeout, say).
     fn start_with(tune: impl FnOnce(&mut SessionConfig)) -> Self {
+        Self::boot(tune, false)
+    }
+
+    fn boot(tune: impl FnOnce(&mut SessionConfig), record: bool) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         // The compositor refuses an IPC directory that is not private, as `$XDG_RUNTIME_DIR` is.
         fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).expect("the directory mode");
@@ -92,7 +104,14 @@ impl Session {
         let thread = std::thread::Builder::new()
             .name("compositor".to_owned())
             .spawn(move || {
-                Compositor::run(config).expect("the compositor runs until it is stopped");
+                if !record {
+                    Compositor::run(config).expect("the compositor runs until it is stopped");
+                    return Vec::new();
+                }
+                let events = logged(|| {
+                    Compositor::run(config).expect("the compositor runs until it is stopped");
+                });
+                events.into_iter().map(|event| event.message).collect()
             })
             .expect("the session thread");
         let session = Self {
@@ -118,12 +137,19 @@ impl Session {
     }
 }
 
+impl Session {
+    /// Stops the compositor and returns every message it logged, oldest first. A second call returns nothing.
+    fn finish(&mut self) -> Vec<String> {
+        self.stop.request();
+        self.thread
+            .take()
+            .map_or_else(Vec::new, |thread| thread.join().unwrap_or_default())
+    }
+}
+
 impl Drop for Session {
     fn drop(&mut self) {
-        self.stop.request();
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
+        self.finish();
     }
 }
 
@@ -4236,4 +4262,385 @@ fn the_keyboard_moves_and_resizes_a_real_window_keeps_it_on_return_and_puts_it_b
     );
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
     shell.finish();
+}
+
+// ---- a reload hands every seat claim over -------------------------------------------------------------------------
+
+const KEY_1: u32 = 2;
+const KEY_T: u32 = 20;
+const KEY_Y: u32 = 21;
+const KEY_SPACE: u32 = 57;
+const KEY_F1: u32 = 59;
+const KEY_MUTE: u32 = 113;
+const KEY_VOLUMEDOWN: u32 = 114;
+const KEY_VOLUMEUP: u32 = 115;
+const KEY_NEXTSONG: u32 = 163;
+const KEY_PLAYPAUSE: u32 = 164;
+const KEY_PREVIOUSSONG: u32 = 165;
+const KEY_MICMUTE: u32 = 248;
+
+/// The window every round of the claim test works on.
+const CLAIMED_APP: &str = "org.example.claims";
+
+/// A key chord a test presses: the trigger the shell binds it by, the modifiers held and the key that ends it.
+#[derive(Clone)]
+struct Chord {
+    trigger: String,
+    held: Vec<u32>,
+    key: u32,
+}
+
+impl Chord {
+    fn new(trigger: &str, held: &[u32], key: u32) -> Self {
+        Self {
+            trigger: trigger.to_owned(),
+            held: held.to_vec(),
+            key,
+        }
+    }
+
+    /// `Super+F<n>`, the key a round of the claim test adds and the next one takes away.
+    fn function(n: u32) -> Self {
+        Self::new(&format!("Super+F{n}"), &[KEY_LEFTMETA], KEY_F1 + n - 1)
+    }
+}
+
+/// The keys of the stock config: `Super+1` to `Super+9`, `Super+Left`, `Super+Right`, `Super+space` and the media keys.
+fn stock_chords() -> Vec<Chord> {
+    let mut chords: Vec<Chord> = (1..=9)
+        .map(|n| Chord::new(&format!("Super+{n}"), &[KEY_LEFTMETA], KEY_1 + n - 1))
+        .collect();
+    chords.extend([
+        Chord::new("Super+Left", &[KEY_LEFTMETA], KEY_LEFT),
+        Chord::new("Super+Right", &[KEY_LEFTMETA], KEY_RIGHT),
+        Chord::new("Super+space", &[KEY_LEFTMETA], KEY_SPACE),
+        Chord::new("XF86AudioRaiseVolume", &[], KEY_VOLUMEUP),
+        Chord::new("XF86AudioLowerVolume", &[], KEY_VOLUMEDOWN),
+        Chord::new("XF86AudioMute", &[], KEY_MUTE),
+        Chord::new("XF86AudioMicMute", &[], KEY_MICMUTE),
+        Chord::new("XF86AudioPlay", &[], KEY_PLAYPAUSE),
+        Chord::new("XF86AudioNext", &[], KEY_NEXTSONG),
+        Chord::new("XF86AudioPrev", &[], KEY_PREVIOUSSONG),
+    ]);
+    chords
+}
+
+fn key_event(session: &Session, keycode: u32, pressed: bool) {
+    send(
+        session,
+        InputEvent::Key {
+            device: DeviceId::VIRTUAL,
+            keycode,
+            pressed,
+        },
+    );
+}
+
+/// Holds the chord's modifiers, taps its key and lets the modifiers go, as a keyboard does.
+fn press_chord(session: &Session, chord: &Chord) {
+    for held in &chord.held {
+        key_event(session, *held, true);
+    }
+    tap_key(session, chord.key);
+    for held in chord.held.iter().rev() {
+        key_event(session, *held, false);
+    }
+}
+
+/// A three-finger swipe on a touchpad: its begin, two moves and its end.
+fn swipe(session: &Session, fingers: u8) {
+    for (phase, dx) in [
+        (RawTouchpadPhase::Begin, 0.0),
+        (RawTouchpadPhase::Update, 30.0),
+        (RawTouchpadPhase::Update, 30.0),
+        (RawTouchpadPhase::End, 0.0),
+    ] {
+        send(
+            session,
+            InputEvent::Touchpad(RawTouchpadSample {
+                device: DeviceId::new(1),
+                phase,
+                kind: RawTouchpadKind::Swipe,
+                fingers,
+                dx,
+                dy: 0.0,
+                scale: 1.0,
+                angle: 0.0,
+            }),
+        );
+    }
+}
+
+/// The `init.ts` of the claim test. An empty `defineConfig` is the stock config, and the user's keys go over it. The
+/// prelude replaces every binding's action with a count, by trigger, and `probe()` reports the counts of the running
+/// generation. The actions themselves do not run: the media keys would start `wpctl` and `playerctl`, `Super+space` the
+/// launcher, and the workspace keys and the slide would move the window the test drags, so a binding that was reached is
+/// the proof, and what it would have done is the stock library's own tests'.
+const COUNTING_CONFIG: &str = r#"import { defineConfig, gnoblin } from "gnoblin";
+
+const fired: Record<string, number> = {};
+(globalThis as { probe?: () => string }).probe = () => JSON.stringify(fired);
+
+type Counted = {
+    trigger: string;
+    counted?: boolean;
+    onPress?: (...args: unknown[]) => unknown;
+    onStart?: (...args: unknown[]) => unknown;
+};
+
+function count(binding: Counted): void {
+    if (binding.counted) {
+        return;
+    }
+    binding.counted = true;
+    const trigger = binding.trigger;
+    const hook = trigger.startsWith("Swipe") ? "onStart" : "onPress";
+    const original = binding[hook];
+    if (typeof original !== "function") {
+        return;
+    }
+    binding[hook] = function (): unknown {
+        fired[trigger] = (fired[trigger] ?? 0) + 1;
+        // A gesture's `onStart` that declines leaves the gesture unhandled, and a key's `onPress` has nothing to return.
+        return hook === "onStart" ? false : undefined;
+    };
+}
+
+const bindings = gnoblin.input.primary.bindings;
+for (const binding of bindings) {
+    count(binding as unknown as Counted);
+}
+bindings.watch({ added: (binding) => count(binding as unknown as Counted) });
+
+// The window starts every generation at a known place, away from the screen's edges, which a move sticks to. The stock
+// layout leaves a window that has floating bounds alone.
+gnoblin.clients.addListener({
+    onAdded(client: { x: number; y: number; width: number; height: number; floatingBounds?: object }): void {
+        client.x = 300;
+        client.y = 200;
+        client.width = 200;
+        client.height = 150;
+        client.floatingBounds = { x: 300, y: 200, width: 200, height: 150 };
+    },
+});
+
+defineConfig({
+    keys: {
+KEYS    },
+});
+"#;
+
+/// The user's keys of round `round`: `Super+t` throughout, `Super+y` until the last round takes it away, and
+/// `Super+F<round + 1>`, which each round adds and the next one removes.
+fn round_chords(round: u32, last: u32) -> Vec<Chord> {
+    let mut chords = vec![Chord::new("Super+t", &[KEY_LEFTMETA], KEY_T)];
+    if round < last {
+        chords.push(Chord::new("Super+y", &[KEY_LEFTMETA], KEY_Y));
+    }
+    chords.push(Chord::function(round + 1));
+    chords
+}
+
+fn counting_config(user: &[Chord]) -> String {
+    let keys: String = user
+        .iter()
+        .map(|chord| format!("        \"{}\": () => undefined,\n", chord.trigger))
+        .collect();
+    COUNTING_CONFIG.replace("KEYS", &keys)
+}
+
+/// How many times each binding's action ran in the running generation, by trigger.
+fn fired(shell: &Shell) -> BTreeMap<String, u64> {
+    serde_json::from_str(&shell.probe()).unwrap_or_default()
+}
+
+/// The compositor's and the shell's lines that say a claim was refused or unusable.
+fn claim_trouble(lines: &[String]) -> Vec<&String> {
+    lines
+        .iter()
+        .filter(|line| {
+            line.contains("claim")
+                && ["already bound", "refused", "does not parse", "not a valid"]
+                    .iter()
+                    .any(|what| line.contains(what))
+        })
+        .collect()
+}
+
+/// Waits until the running generation has run the action of `trigger` at least once. A claim that never took shows as a
+/// chord that never fires, so the failure carries what the compositor said of its claims.
+#[track_caller]
+fn wait_fired(session: &mut Session, mapper: &mut Mapper, shell: &Shell, trigger: &str) {
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        mapper.roundtrip();
+        if fired(shell).contains_key(trigger) {
+            return;
+        }
+        if Instant::now() >= deadline {
+            let compositor = session.finish();
+            panic!(
+                "{trigger} never fired after the reload; the counts are {:?}; the compositor logged about claims {:#?}; \
+                 the shell's diagnostics are {:?}",
+                fired(shell),
+                claim_trouble(&compositor),
+                shell.diagnostics()
+            );
+        }
+        std::thread::sleep(POLL);
+    }
+}
+
+/// One round of the claim test, run on the generation the shell has now: every default chord, the user's keys and the
+/// swipe fire once; the key the last round added and this one removed reaches the client again; a drag still moves the
+/// window.
+#[track_caller]
+fn check_claims_of_round(
+    session: &mut Session,
+    mapper: &mut Mapper,
+    shell: &Shell,
+    heard: &support::KeyLog,
+    round: u32,
+    last: u32,
+) {
+    let ipc = session.ipc();
+    let user = round_chords(round, last);
+    let canary = user.last().expect("a round adds a key").clone();
+
+    // The claims of a generation reach the compositor in the frame that swaps it in or a few after it. The key this round
+    // added is in the same transaction as every other, so once it fires they all are in place, and a chord that does not
+    // fire after that is one that was never claimed. The press is repeated, because a press before the claim is nobody's.
+    let deadline = Instant::now() + PATIENCE;
+    'ready: loop {
+        press_chord(session, &canary);
+        let until = Instant::now() + Duration::from_secs(1);
+        while Instant::now() < until {
+            mapper.roundtrip();
+            if fired(shell).contains_key(&canary.trigger) {
+                break 'ready;
+            }
+            std::thread::sleep(POLL);
+        }
+        assert!(
+            Instant::now() < deadline,
+            "round {round}: the key this generation added never fired"
+        );
+    }
+
+    let mark = heard.pressed().len();
+    let mut present = stock_chords();
+    present.extend(user.iter().filter(|chord| chord.trigger != canary.trigger).cloned());
+    for chord in &present {
+        press_chord(session, chord);
+    }
+    swipe(session, 3);
+    for trigger in present.iter().map(|chord| chord.trigger.as_str()).chain(["Swipe3"]) {
+        wait_fired(session, mapper, shell, trigger);
+    }
+    // A chord that fired twice is as wrong as one that did not fire: the counts are read after the client had time to
+    // be told of anything that was not withheld.
+    idle(mapper, Duration::from_millis(300));
+    let counts = fired(shell);
+    for trigger in present.iter().map(|chord| chord.trigger.as_str()).chain(["Swipe3"]) {
+        assert_eq!(counts.get(trigger), Some(&1), "round {round}: {trigger} in {counts:?}");
+    }
+    let listened = &heard.pressed()[mark..];
+    for chord in &present {
+        assert!(
+            !listened.contains(&chord.key),
+            "round {round}: the client heard the key of {}, so nobody held its claim: {listened:?}",
+            chord.trigger
+        );
+    }
+
+    // What the last reload took away is released: it does nothing and the client types it again.
+    let mut gone: Vec<Chord> = Vec::new();
+    if round > 0 {
+        gone.push(Chord::function(round));
+    }
+    if round == last {
+        gone.push(Chord::new("Super+y", &[KEY_LEFTMETA], KEY_Y));
+    }
+    let mark = heard.pressed().len();
+    for chord in &gone {
+        press_chord(session, chord);
+    }
+    let deadline = Instant::now() + PATIENCE;
+    while !gone.iter().all(|chord| heard.pressed()[mark..].contains(&chord.key)) {
+        mapper.roundtrip();
+        assert!(
+            Instant::now() < deadline,
+            "round {round}: a key the reload removed never reached the client, so its claim is still held: {:?}",
+            &heard.pressed()[mark..]
+        );
+        std::thread::sleep(POLL);
+    }
+    let counts = fired(shell);
+    for chord in &gone {
+        assert!(
+            !counts.contains_key(&chord.trigger),
+            "round {round}: the removed {} still ran its action: {counts:?}",
+            chord.trigger
+        );
+    }
+
+    // The layout's pointer chord: Super+Button1 moves the window by the pointer's delta, from where the generation put it.
+    let start = (300.0, 200.0, 200.0, 150.0);
+    wait_for("the window at its start", session, mapper, shell, || {
+        rect_of(&ipc, CLAIMED_APP) == Some(start)
+    });
+    let moved = (350.0, 240.0, 200.0, 150.0);
+    begin_drag(
+        session,
+        mapper,
+        shell,
+        CLAIMED_APP,
+        BTN_LEFT,
+        (350, 250),
+        (400, 290),
+        moved,
+    );
+    end_drag(session, mapper, CLAIMED_APP, BTN_LEFT, moved);
+}
+
+#[test]
+fn a_reload_hands_every_seat_claim_over_so_each_shortcut_fires_once_and_a_removed_one_is_released() {
+    // Six reloads in a row, each adding a key and taking away the last one's, and the sixth also taking `Super+y` away.
+    const LAST: u32 = 6;
+    let mut session = Session::start_logged();
+    let mut mapper = Mapper::connect(&session.wayland());
+    let heard = mapper.keyboard();
+    let config = tempfile::tempdir().expect("a config directory");
+    let init = config.path().join("init.ts");
+    save(&init, &counting_config(&round_chords(0, LAST)));
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let ipc = session.ipc();
+    wait_for("the shell runs", &session, &mut mapper, &shell, || {
+        shell.generation() >= 1
+    });
+    mapper.map_window(CLAIMED_APP, "Claims");
+    wait_for("the window has the focus", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, CLAIMED_APP).is_some() && focused_app(&shell).as_deref() == Some(CLAIMED_APP)
+    });
+
+    for round in 0..=LAST {
+        if round > 0 {
+            let before = shell.generation();
+            save(&init, &counting_config(&round_chords(round, LAST)));
+            wait_for("the reload", &session, &mut mapper, &shell, || {
+                shell.generation() > before
+            });
+        }
+        check_claims_of_round(&mut session, &mut mapper, &shell, &heard, round, LAST);
+    }
+
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    let shell_log = shell.finish();
+    let compositor_log = session.finish();
+    assert!(
+        claim_trouble(&shell_log).is_empty() && claim_trouble(&compositor_log).is_empty(),
+        "a claim was refused: the shell logged {:#?}, the compositor {:#?}",
+        claim_trouble(&shell_log),
+        claim_trouble(&compositor_log)
+    );
 }

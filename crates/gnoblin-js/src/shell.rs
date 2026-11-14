@@ -44,7 +44,7 @@ use crate::error::{JsError, JsErrorKind};
 use crate::generation::{JsConfig, JsGeneration};
 use crate::host_idle::{JsIdle, JsIdleConnector, commands_from_js, reading_to_js};
 use crate::host_session::JsSessionLink;
-use crate::input::{JsInputMessage, messages_to_js};
+use crate::input::{self, JsInputMessage, messages_to_js};
 use crate::stock::stock_modules_in;
 use crate::supervisor::{JsClock, JsSystemClock};
 use crate::ts::strip_types;
@@ -279,16 +279,21 @@ impl JsShell {
     /// Marks the start of a stage. A generation staged through [`JsStaging`] evaluates the user's entry against
     /// the live tree, so a top-level write such as `client.x = 5` lands in the shell's pending writes before it
     /// is known that the stage succeeds. The mark is what [`abandon_stage`](Self::abandon_stage) returns them to.
+    /// The seat claims the staged generation makes are kept apart for the same reason: they are sent only when the
+    /// generation takes over, after the old one's have been released.
     pub fn begin_stage(&mut self) {
         let tick = self.state.borrow().tick.clone();
         self.stage_mark = Some(tick);
+        input::begin_staging(&mut self.state.borrow_mut());
     }
 
-    /// Ends a stage that failed: the pending writes go back to what they were at [`begin_stage`](Self::begin_stage).
-    /// The running generation was never touched.
+    /// Ends a stage that failed: the pending writes go back to what they were at [`begin_stage`](Self::begin_stage),
+    /// and the claims it kept are dropped. The running generation was never touched.
     pub fn abandon_stage(&mut self) {
+        let mut state = self.state.borrow_mut();
+        input::abandon_staging(&mut state);
         if let Some(tick) = self.stage_mark.take() {
-            self.state.borrow_mut().tick = tick;
+            state.tick = tick;
         }
     }
 
@@ -296,9 +301,11 @@ impl JsShell {
     ///
     /// The tree is the compositor's and the mirror is shared, so every window keeps its id and its place: nothing
     /// is re-created or moved. The order is the one the input and workspace lanes wrote their hooks for: the old
-    /// generation's workspace snapshot is read, then it is [`retire`](Self::retire)d (its drags are cancelled and
-    /// its seat claims released, in the transaction that also carries the new generation's own claims, so no
-    /// chord is ever unclaimed between them), then the new generation takes over. It has run its entry (a
+    /// generation's workspace snapshot is read, then it ends (its drags are cancelled, its seat claims and the
+    /// dialog observation's requests are given back), then the new generation's claims are sent behind the old
+    /// ones' releases in the same transaction, so a chord is never refused for being held and never held by nobody,
+    /// and the new generation takes over. Its dialog slot, if it has a listener, is the one the old generation
+    /// held, and is not released and claimed again. It has run its entry (a
     /// listener it added was told of the windows already there), so it is finished like a loaded entry
     /// (`finishLoad`: a config that declared no workspace gets the stock one) and the windows go back to the
     /// workspaces of the same id ([`reconcile`](Self::reconcile)), without being offered to the layout as
@@ -325,7 +332,12 @@ impl JsShell {
             }
             Err(other) => return Err(other),
         };
-        match self.retire() {
+        // The new generation's claims were kept while it was staged. They go out behind everything the old one
+        // gives up, in one transaction: the compositor applies a transaction's calls in order, so each chord is
+        // free when its new claim arrives. A claim the old generation did not release (its script threw first) is
+        // released here, or its chord would be refused to the new generation.
+        let staged = input::end_staging(&mut self.state.borrow_mut());
+        match self.end_generation(true) {
             Ok(frame) => diagnostics.extend(frame.diagnostics),
             Err(JsShellError::Js(error)) => {
                 self.count_strike(&error);
@@ -333,6 +345,12 @@ impl JsShell {
             }
             Err(other) => return Err(other),
         }
+        {
+            let mut state = self.state.borrow_mut();
+            input::release_all(&mut state);
+            input::send_staged(&mut state, staged);
+        }
+        self.send_transaction()?;
 
         self.stage_mark = None;
         self.generation = generation;
@@ -805,12 +823,23 @@ impl JsShell {
 
     /// Ends the generation's hold on input: every drag and gesture a binding is running gets its `onCancel`
     /// once, under the call budget, and every seat claim is released, so no pointer or chord stays captured
-    /// by a generation that is going away. The caller runs this before it drops or replaces the shell (a
-    /// reload swaps generations, a shutdown ends it). The `unclaim` calls travel in the transaction this
+    /// by a generation that is going away. The caller runs this before it drops the shell (a shutdown ends it;
+    /// a reload swaps generations through [`swap_generation`](Self::swap_generation), which keeps what the next
+    /// generation takes over). The `unclaim` calls travel in the transaction this
     /// sends; when an earlier transaction is still in flight they wait for the next [`JsShell::frame`]. The
     /// compositor releases a connection's claims by itself when the shell dies, so a crash cannot leave a
     /// chord claimed.
     pub fn retire(&mut self) -> Result<JsFrame, JsShellError> {
+        let frame = self.end_generation(false)?;
+        self.send_transaction()?;
+        Ok(frame)
+    }
+
+    /// What [`retire`](Self::retire) does short of sending the transaction. `keep_slots` leaves the `dialogs.observe`
+    /// claim with the shell instead of releasing it: a reload keeps it for the generation that takes over, which
+    /// releases it itself in its first frame if it has no dialog listener, so the compositor never sees a moment in
+    /// which nobody observes its dialogs.
+    fn end_generation(&mut self, keep_slots: bool) -> Result<JsFrame, JsShellError> {
         let mut diagnostics = Vec::new();
         let pending: usize = self.call_entry(self.frame_budget, |entry| {
             entry.get::<_, Function<'_>>("cancelAll")?.call(())
@@ -819,13 +848,16 @@ impl JsShell {
         self.state.borrow_mut().input.inbox.clear();
         self.state.borrow_mut().input.forget_window_events();
         self.run_pending(pending, started, &mut diagnostics)?;
-        self.dialogs.retire();
+        if keep_slots {
+            self.dialogs.hand_over();
+        } else {
+            self.dialogs.retire();
+        }
         let holders: Vec<String> = self.call_entry(self.entry_budget, |entry| {
             entry.get::<_, Function<'_>>("idleHolders")?.call(())
         })?;
         self.idle.retire(&holders);
         self.collect_reports(&mut diagnostics)?;
-        self.send_transaction()?;
         Ok(JsFrame { diagnostics })
     }
 

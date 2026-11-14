@@ -259,6 +259,11 @@ Saving `init.ts`, or any module it imports, reloads the shell after a short paus
 request: see [`gnoblinctl config reload`](/gnoblinctl#config). Windows keep their identity through a reload, and the new
 config is told about every window that exists.
 
+Your keys keep working through a reload. The shortcuts, touchpad gestures, pointer chords and binding-only devices of the
+old config are given up and the new config's are taken in one step, so a key is never refused for being held.
+
+A key you removed from the file stops working at that reload and reaches the focused application again.
+
 A file that fails to load (a syntax error, a throw, a script that runs away) leaves the running config in place. The failure
 is logged once as `file:line:column: message`, in your `.ts` coordinates, and `gnoblinctl config reload` exits 1 with the
 same text.

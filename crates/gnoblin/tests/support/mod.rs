@@ -20,7 +20,7 @@ use gnoblin_proto::tree::tree::{AttachArgs, AttachedPayload, ChangesPayload, Sna
 use gnoblin_proto::{Envelope, Kind, Version, read_frame, write_frame};
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+    wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
 use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xdg_activation_v1};
@@ -353,6 +353,21 @@ impl PointerLog {
     }
 }
 
+/// The keys the compositor has given the client's keyboard, shared like [`PointerLog`]. The compositor withholds the
+/// final key of a chord that a shell claimed, so a key this client heard is one nobody claimed. The modifiers are heard
+/// either way: they are not the chord until the key that ends it comes.
+#[derive(Clone, Default)]
+pub struct KeyLog {
+    pressed: Arc<Mutex<Vec<u32>>>,
+}
+
+impl KeyLog {
+    /// The evdev codes of the key presses the client was given, oldest first.
+    pub fn pressed(&self) -> Vec<u32> {
+        self.pressed.lock().expect("the key log").clone()
+    }
+}
+
 /// What the client has heard from the compositor.
 #[derive(Default)]
 pub struct App {
@@ -366,6 +381,10 @@ pub struct App {
     configures: BTreeMap<u32, (i32, i32, Vec<u32>)>,
     /// What the pointer has been told, once the client listens to it.
     log: PointerLog,
+    /// The seat's keyboard, once the client asked for the seat.
+    keyboard: Option<wl_keyboard::WlKeyboard>,
+    /// What the keyboard has been told.
+    keys: KeyLog,
 }
 
 /// A Wayland client that maps toplevels with a buffer, as an application does.
@@ -505,6 +524,13 @@ impl Mapper {
         self.app.log.clone()
     }
 
+    /// What the client's keyboard has been told, which stays current as the client is dispatched. The client listens to
+    /// the keyboard from the first call, and has the keys from then on.
+    pub fn keyboard(&mut self) -> KeyLog {
+        self.listen_pointer();
+        self.app.keys.clone()
+    }
+
     /// The serial of the last button press the compositor sent this client, if it has sent one.
     pub fn press_serial(&self) -> Option<u32> {
         (self.app.serial != 0).then_some(self.app.serial)
@@ -590,10 +616,33 @@ impl Dispatch<wl_seat::WlSeat, ()> for App {
         if let wl_seat::Event::Capabilities {
             capabilities: WEnum::Value(capabilities),
         } = event
-            && capabilities.contains(wl_seat::Capability::Pointer)
-            && app.pointer.is_none()
         {
-            app.pointer = Some(seat.get_pointer(qh, ()));
+            if capabilities.contains(wl_seat::Capability::Pointer) && app.pointer.is_none() {
+                app.pointer = Some(seat.get_pointer(qh, ()));
+            }
+            if capabilities.contains(wl_seat::Capability::Keyboard) && app.keyboard.is_none() {
+                app.keyboard = Some(seat.get_keyboard(qh, ()));
+            }
+        }
+    }
+}
+
+impl Dispatch<wl_keyboard::WlKeyboard, ()> for App {
+    fn event(
+        app: &mut Self,
+        _: &wl_keyboard::WlKeyboard,
+        event: wl_keyboard::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_keyboard::Event::Key {
+            key,
+            state: WEnum::Value(wl_keyboard::KeyState::Pressed),
+            ..
+        } = event
+        {
+            app.keys.pressed.lock().expect("the key log").push(key);
         }
     }
 }

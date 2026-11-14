@@ -167,7 +167,26 @@ impl JsDialogs {
     /// Ends the generation's observation: each request it was shown and has not answered is answered `pass`, and
     /// the slot is released. The next generation claims it again when it has a listener.
     pub(crate) fn retire(&mut self) {
+        self.hand_over();
+        let Some(link) = self.link.as_mut() else {
+            return;
+        };
+        if self.claimed {
+            self.claimed = false;
+            if let Err(error) = link.release_slot(SLOT) {
+                log::debug!(area = "dialogs", "{SLOT} was not released: {error}");
+            }
+        }
+    }
+
+    /// Ends the generation's observation for a reload: each request it was shown and has not answered is answered
+    /// `pass`, and the slot stays claimed. The generation that takes over runs `sync` in its first frame, which keeps
+    /// the claim when it has a dialog listener and releases it when it has none, so the compositor never offers a
+    /// request to nobody in between: a request that came while the slot was released would be served by the built-in
+    /// dialog without the new listener seeing it.
+    pub(crate) fn hand_over(&mut self) {
         let held = std::mem::take(&mut self.held);
+        self.gave_up = false;
         let Some(link) = self.link.as_mut() else {
             return;
         };
@@ -176,13 +195,6 @@ impl JsDialogs {
                 log::debug!(area = "dialogs", request, "the pass was not delivered: {error}");
             }
         }
-        if self.claimed {
-            self.claimed = false;
-            if let Err(error) = link.release_slot(SLOT) {
-                log::debug!(area = "dialogs", "{SLOT} was not released: {error}");
-            }
-        }
-        self.gave_up = false;
     }
 }
 
