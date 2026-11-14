@@ -985,7 +985,7 @@ declare module "gnoblin" {
 
     /** A scene container that owns a layout and holds clients. */
     export class Workspace extends Node {
-        readonly clients: Collection<Client>;
+        readonly clients: MutableCollection<Client>;
         /** What the workspace is called where a name is shown. */
         name: string;
         /** The position in `gnoblin.workspaces`, or -1 while it is not in it. */
@@ -1228,6 +1228,11 @@ declare module "gnoblin" {
          */
         remove(idOrItem: string | T): boolean;
         clear(): void;
+        /**
+         * Trades the places of two members in the collection's order. A workspace's `clients` is the order its layout
+         * places by, so two clients of a tiled workspace trade tiles at the next frame. Both must be members.
+         */
+        swap(a: T, b: T): void;
     }
 
     /** Data-only match on a member's properties; each value is compared with `===`. */
@@ -1527,11 +1532,37 @@ declare module "gnoblin" {
         edges: "quadrant" | "nearest" | ResizeCorner;
         constructor(options?: Partial<PointerDragBindingOptions> & { edges?: "quadrant" | "nearest" | ResizeCorner });
     }
+    /**
+     * Super+MouseLeft drag in a tiling layout: drop the tile you hold on another and the two trade places in the
+     * workspace's order. The order changes once, on release; a release outside every tile, over the tile itself or after
+     * a cancel changes nothing. A window that is not tiled, or is fullscreen or maximised, declines.
+     */
     export class ClientSwapBinding extends PointerDragBinding {
-        constructor(options?: Partial<BindingOptions>);
+        constructor(options?: Partial<PointerDragBindingOptions>);
     }
+    /**
+     * A divider a layout lets a drag move (`Layout.findSplit`). Moving the pointer `span` pixels along `axis` changes
+     * `ratio` by 1, in the direction `direction` says; the divider follows the pointer.
+     */
+    export interface LayoutSplit {
+        /** `x` for a divider the pointer's horizontal movement carries, `y` for one its vertical movement does. */
+        readonly axis: "x" | "y";
+        /** Pixels of pointer travel that change `ratio` by 1. Always above zero. */
+        readonly span: number;
+        /** 1 when moving the pointer right or down grows `ratio`, -1 when it shrinks it. */
+        readonly direction: 1 | -1;
+        readonly min: number;
+        readonly max: number;
+        ratio: number;
+        /** Puts the split back as it was when `findSplit` returned it: a drag cancelled. */
+        reset(): void;
+    }
+    /**
+     * Super+MouseRight drag in a tiling layout: the divider nearest the press follows the pointer, live, and a cancel puts
+     * it back. A layout with no divider (a grid), or a window that is not tiled, fullscreen or maximised, declines.
+     */
     export class SplitResizeBinding extends PointerDragBinding {
-        constructor(options?: Partial<BindingOptions>);
+        constructor(options?: Partial<PointerDragBindingOptions>);
     }
 
     /** The bindings of one layout, device or context, by id. */
@@ -1691,6 +1722,16 @@ declare module "gnoblin" {
         onClientAdded?(client: Client, context: LayoutContext): void;
         onClientRemoved?(client: Client, context: LayoutContext): void;
         onAreaChanged?(oldArea: Rect, newArea: Rect): void;
+        /**
+         * The workspace traded the places of `a` and `b` in its order (`workspace.clients.swap`). A layout that places by
+         * order has nothing to do; one that keeps its own record of who sits where trades them there.
+         */
+        onClientsSwapped?(a: Client, b: Client): void;
+        /**
+         * The divider a drag that pressed `client` at `point` would move, or null when the layout has none there. A layout
+         * with dividers answers from the geometry of its last compute; `SplitResizeBinding` drives what it returns.
+         */
+        findSplit?(client: Client, point: Vec2): LayoutSplit | null;
         compute?(context: LayoutContext): Placement[];
     }
 
@@ -1718,14 +1759,24 @@ declare module "gnoblin" {
         });
     }
     export class GridLayout extends Layout {
-        constructor(options?: { columns?: number | "auto"; gap?: number });
+        constructor(options?: { columns?: number | "auto"; gap?: number; triggers?: Pick<LayoutTriggers, "swap"> });
     }
     export class MonocleLayout extends Layout {}
     export class DwindleLayout extends Layout {
         split: "aspect" | "horizontal" | "vertical";
         ratio: number;
         gap: number | undefined;
-        constructor(options?: { split?: "aspect" | "horizontal" | "vertical"; ratio?: number; gap?: number });
+        /**
+         * How many times a drag changed the ratio of one split. A split a drag set keeps a ratio of its own, and the
+         * workspace computes again when this counter changes.
+         */
+        readonly revision: number;
+        constructor(options?: {
+            split?: "aspect" | "horizontal" | "vertical";
+            ratio?: number;
+            gap?: number;
+            triggers?: Pick<LayoutTriggers, "swap" | "resize">;
+        });
     }
     /** Places exactly as `MonocleLayout` does. */
     export class KioskLayout extends MonocleLayout {}

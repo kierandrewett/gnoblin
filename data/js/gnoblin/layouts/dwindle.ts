@@ -8,7 +8,14 @@
 // goes collapses its split, a node that arrives is inserted. That makes `compute` depend on its history, so one
 // instance must serve one workspace. Every walk is a loop over an explicit stack: a run of windows that each split
 // the last one makes a tree as deep as it is long, and the engine's call stack is short.
+//
+// It registers two default bindings in `layout.bindings`: `swap` (Super+MouseLeft+Drag, `ClientSwapBinding`) trades the
+// places of two leaves in the tree, and `resize` (Super+MouseRight+Drag, `SplitResizeBinding`) drags one split. A dragged
+// split keeps a ratio of its own, which `layout.ratio` no longer sets for it; a cancelled drag gives the split back to
+// `layout.ratio`. `triggers` replaces a trigger, and `null` leaves that binding out.
 
+import { ClientSwapBinding, resolveTriggers, SplitResizeBinding } from "gnoblin/bindings";
+import type { LayoutSplit, Point } from "gnoblin/bindings";
 import { checkGap, clamp, Layout, tile, tilingGeometry } from "gnoblin/layout";
 import type { LayoutContext, LayoutNode, Placement, Rect } from "gnoblin/layout";
 
@@ -20,20 +27,27 @@ export interface DwindleOptions {
     ratio?: number;
     /** Overrides the workspace's inner gap. */
     gap?: number;
+    /** `undefined` keeps the default trigger, a string replaces it and `null` leaves the binding out. */
+    triggers?: { swap?: string | null; resize?: string | null };
 }
+
+const DEFAULT_TRIGGERS = { swap: "Super+MouseLeft+Drag", resize: "Super+MouseRight+Drag" } as const;
 
 const SPLITS: readonly string[] = ["aspect", "horizontal", "vertical"];
 const MIN_RATIO = 0.1;
 const MAX_RATIO = 0.9;
 
 interface Leaf {
-    readonly leaf: LayoutNode;
+    /** The node in this place of the tree. A swap puts the other one here. */
+    leaf: LayoutNode;
     parent: Split | null;
 }
 
 /** `"h"` puts `a` left of `b`; `"v"` puts `a` above `b`. */
 interface Split {
     readonly dir: "h" | "v";
+    /** The first child's share a drag set for this split alone, or null while the split follows the layout's `ratio`. */
+    ratio: number | null;
     a: Tree;
     b: Tree;
     parent: Split | null;
@@ -45,8 +59,8 @@ function isLeaf(tree: Tree): tree is Leaf {
     return "leaf" in tree;
 }
 
-/** The rectangle of every leaf under `root` inside `area`. */
-function cells(root: Tree, area: Rect, gap: number, ratio: number): Map<LayoutNode, Rect> {
+/** The rectangle of every leaf under `root` inside `area`; with `splits`, the rectangle each split divides as well. */
+function cells(root: Tree, area: Rect, gap: number, ratio: number, splits?: Map<Split, Rect>): Map<LayoutNode, Rect> {
     const out = new Map<LayoutNode, Rect>();
     const pending: { node: Tree; rect: Rect }[] = [{ node: root, rect: area }];
     for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
@@ -54,7 +68,8 @@ function cells(root: Tree, area: Rect, gap: number, ratio: number): Map<LayoutNo
         if (isLeaf(node)) {
             out.set(node.leaf, rect);
         } else if (node.dir === "h") {
-            const first = Math.max(0, (rect.width - gap) * ratio);
+            splits?.set(node, rect);
+            const first = Math.max(0, (rect.width - gap) * (node.ratio ?? ratio));
             pending.push({
                 node: node.b,
                 rect: {
@@ -66,7 +81,8 @@ function cells(root: Tree, area: Rect, gap: number, ratio: number): Map<LayoutNo
             });
             pending.push({ node: node.a, rect: { x: rect.x, y: rect.y, width: first, height: rect.height } });
         } else {
-            const first = Math.max(0, (rect.height - gap) * ratio);
+            splits?.set(node, rect);
+            const first = Math.max(0, (rect.height - gap) * (node.ratio ?? ratio));
             pending.push({
                 node: node.b,
                 rect: {
@@ -86,6 +102,13 @@ export class DwindleLayout extends Layout {
     split: DwindleSplit;
     ratio: number;
     gap: number | undefined;
+    readonly triggers: Readonly<Record<"swap" | "resize", string | null>>;
+    /**
+     * How many times a drag changed the ratio of one split. The tree is not a field the workspace can compare, so this
+     * counter is: a change to it is what makes the workspace compute again.
+     */
+    revision = 0;
+    #geometry: { area: Rect; gap: number; ratio: number } | null = null;
     #root: Tree | null = null;
     #leaves = new Map<LayoutNode, Leaf>();
     /** The focus the previous compute saw: the node a new one splits, because the new one takes focus on arrival. */
@@ -96,6 +119,13 @@ export class DwindleLayout extends Layout {
         this.split = options.split ?? "aspect";
         this.ratio = options.ratio ?? 0.5;
         this.gap = checkGap(options.gap, "DwindleLayout");
+        this.triggers = Object.freeze(resolveTriggers(DEFAULT_TRIGGERS, options.triggers));
+        if (this.triggers.swap !== null) {
+            this.bindings.add(new ClientSwapBinding({ id: "swap", trigger: this.triggers.swap }));
+        }
+        if (this.triggers.resize !== null) {
+            this.bindings.add(new SplitResizeBinding({ id: "resize", trigger: this.triggers.resize }));
+        }
     }
 
     compute(context: LayoutContext): Placement[] {
@@ -108,6 +138,7 @@ export class DwindleLayout extends Layout {
         }
         const ratio = clamp(this.ratio, MIN_RATIO, MAX_RATIO);
         const { area, gap } = tilingGeometry(this.gap, context);
+        this.#geometry = { area, gap, ratio };
         const live = new Set<LayoutNode>(nodes);
         for (const node of [...this.#leaves.keys()]) {
             if (!live.has(node)) {
@@ -143,6 +174,53 @@ export class DwindleLayout extends Layout {
         });
     }
 
+    onClientsSwapped(a: LayoutNode, b: LayoutNode): void {
+        const first = this.#leaves.get(a);
+        const second = this.#leaves.get(b);
+        if (first === undefined || second === undefined) {
+            return; // one of them has not been placed yet: the next compute puts it where the order says
+        }
+        first.leaf = b;
+        second.leaf = a;
+        this.#leaves.set(a, second);
+        this.#leaves.set(b, first);
+    }
+
+    /**
+     * The split of the last compute whose divider is nearest `point`, among the splits above `client`'s tile: the ones
+     * that bound the tile or a bigger region around it. A tie goes to the split nearer the tile.
+     */
+    findSplit(client: LayoutNode, point: Point): LayoutSplit | null {
+        const geometry = this.#geometry;
+        const leaf = this.#leaves.get(client);
+        if (geometry === null || this.#root === null || leaf === undefined) {
+            return null;
+        }
+        const regions = new Map<Split, Rect>();
+        cells(this.#root, geometry.area, geometry.gap, geometry.ratio, regions);
+        let best: { split: Split; distance: number; span: number } | null = null;
+        for (let split = leaf.parent; split !== null; split = split.parent) {
+            const region = regions.get(split);
+            if (region === undefined) {
+                continue;
+            }
+            const along = split.dir === "h" ? region.width : region.height;
+            const first = Math.max(0, (along - geometry.gap) * (split.ratio ?? geometry.ratio));
+            const divider = (split.dir === "h" ? region.x : region.y) + first + geometry.gap / 2;
+            const distance = Math.abs((split.dir === "h" ? point.x : point.y) - divider);
+            if (along - geometry.gap > 0 && (best === null || distance < best.distance)) {
+                best = { split, distance, span: along - geometry.gap };
+            }
+        }
+        if (best === null) {
+            return null;
+        }
+        const bump = (): void => {
+            this.revision += 1;
+        };
+        return new DwindleDivider(best.split, best.span, geometry.ratio, bump);
+    }
+
     #leafFor(node: LayoutNode, parent: Split | null): Leaf {
         const leaf: Leaf = { leaf: node, parent };
         this.#leaves.set(node, leaf);
@@ -161,7 +239,7 @@ export class DwindleLayout extends Layout {
     /** Replaces the leaf `target` with a split of `target` and the new leaf `node`. */
     #insert(target: LayoutNode, node: LayoutNode, dir: "h" | "v"): void {
         const old = this.#leaves.get(target) as Leaf;
-        const split: Split = { dir, a: old, b: old, parent: old.parent };
+        const split: Split = { dir, ratio: null, a: old, b: old, parent: old.parent };
         split.b = this.#leafFor(node, split);
         this.#replace(old, split);
         old.parent = split;
@@ -191,5 +269,41 @@ export class DwindleLayout extends Layout {
         } else {
             parent.b = next;
         }
+    }
+}
+
+/** One split of a dwindle tree as a divider a drag moves. A split the drag set has a ratio of its own until `reset`. */
+class DwindleDivider implements LayoutSplit {
+    readonly axis: "x" | "y";
+    readonly span: number;
+    readonly direction = 1;
+    readonly min = MIN_RATIO;
+    readonly max = MAX_RATIO;
+    readonly #changed: () => void;
+    readonly #split: Split;
+    readonly #inherited: number;
+    readonly #original: number | null;
+
+    constructor(split: Split, span: number, inherited: number, changed: () => void) {
+        this.#changed = changed;
+        this.#split = split;
+        this.#inherited = inherited;
+        this.#original = split.ratio;
+        this.axis = split.dir === "h" ? "x" : "y";
+        this.span = span;
+    }
+
+    get ratio(): number {
+        return clamp(this.#split.ratio ?? this.#inherited, MIN_RATIO, MAX_RATIO);
+    }
+
+    set ratio(value: number) {
+        this.#split.ratio = clamp(value, MIN_RATIO, MAX_RATIO);
+        this.#changed();
+    }
+
+    reset(): void {
+        this.#split.ratio = this.#original;
+        this.#changed();
     }
 }

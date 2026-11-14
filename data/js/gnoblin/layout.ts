@@ -3,6 +3,7 @@
 // goldens it produced are the reference).
 
 import { BindingCollection } from "gnoblin/bindings";
+import type { LayoutSplit, Point } from "gnoblin/bindings";
 
 export interface Rect {
     x: number;
@@ -58,6 +59,17 @@ export interface Layout {
     onClientAdded?(client: LayoutNode, context: LayoutContext): void;
     onClientRemoved?(client: LayoutNode, context: LayoutContext): void;
     onAreaChanged?(oldArea: Rect, newArea: Rect): void;
+    /**
+     * The workspace traded the places of `a` and `b` in its order (`workspace.clients.swap`). A layout that places by
+     * order has nothing to do, as the next compute reads the new order; one that keeps its own record of who sits
+     * where (a tree) trades them there.
+     */
+    onClientsSwapped?(a: LayoutNode, b: LayoutNode): void;
+    /**
+     * The divider a drag that pressed `client` at `point` would move, or null when the layout has none there. A layout
+     * with dividers answers from the geometry of its last compute; `SplitResizeBinding` drives what it returns.
+     */
+    findSplit?(client: LayoutNode, point: Point): LayoutSplit | null;
 }
 
 /** The workspace's gaps: `inner` between tiles, `outer` between the tiles and the area's edge. */

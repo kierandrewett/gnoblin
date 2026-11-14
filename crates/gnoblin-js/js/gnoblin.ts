@@ -1124,6 +1124,7 @@ export class Workspace {
                 add: (client) => transferClient(this, client as Client),
                 remove: (client) => detachClient(this, client as Client),
                 clear: () => clearClients(this),
+                swapped: (a, b) => swapClients(this, a as Client, b as Client),
             },
         });
         wsStates.set(this, {
@@ -1203,7 +1204,7 @@ export class Workspace {
         state.dirty = true;
     }
 
-    get clients(): Collection<Client> {
+    get clients(): MutableCollection<Client> {
         return wsState(this).clients;
     }
 
@@ -1424,6 +1425,8 @@ interface Mutation {
     /** False when the collection refuses to let the member go; anything else is taken as done. */
     remove(member: Member): boolean | void;
     clear(): void;
+    /** Told after two members traded places in the order. */
+    swapped?(a: Member, b: Member): void;
 }
 
 interface CollectionState extends Source {
@@ -1656,6 +1659,26 @@ export class MutableCollection<T extends Member> extends Collection<T> {
     clear(): void {
         this.mutation("clear").clear();
     }
+
+    /**
+     * Trades the places of two members in the collection's order. A workspace's `clients` is the order its layout
+     * places by, so two clients of a tiled workspace trade tiles at the next frame. Both must be members.
+     */
+    swap(a: T, b: T): void {
+        const mutation = this.mutation("swap");
+        const list = collectionState(this).list;
+        const first = list.indexOf(a);
+        const second = list.indexOf(b);
+        if (first < 0 || second < 0) {
+            throw new GnoblinError("not-a-member", "Collection.swap", "both members must be in the collection");
+        }
+        if (first === second) {
+            return;
+        }
+        list[first] = b;
+        list[second] = a;
+        mutation.swapped?.(a, b);
+    }
 }
 
 /** The workspaces of the script, which also say which of them each output shows. */
@@ -1878,6 +1901,13 @@ function guard(site: string, body: () => void): void {
     } catch (error) {
         reports.push({ site, error });
     }
+}
+
+/** A workspace's clients traded places: its layout computes again, and one with a record of its own trades them there. */
+function swapClients(workspace: Workspace, a: Client, b: Client): void {
+    const state = wsState(workspace);
+    state.dirty = true;
+    guard(`${workspace}.layout.onClientsSwapped`, () => state.layout.onClientsSwapped?.(a, b));
 }
 
 /** Puts `client` in `workspace`, which it is not in. */

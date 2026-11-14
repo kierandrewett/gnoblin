@@ -731,6 +731,25 @@ impl FakeCompositor {
             }));
     }
 
+    /// One phase of the drag of a claimed pointer chord (`start`, `update`, `end` or `cancel`): the pointer is at `at`
+    /// and the press was at `from`. `chord` is the claim's text, such as `<Super>Button1`.
+    pub fn pointer_chord(&self, claim: i64, chord: &str, phase: &str, from: (f64, f64), at: (f64, f64)) {
+        let (modifiers, button) = chord.rsplit_once("Button").expect("a pointer chord");
+        self.0.borrow_mut().queue.push(TreeIncoming::PointerChord(
+            gnoblin_tree_client::tree_mirror::TreePointerChord {
+                claim,
+                phase: phase.to_owned(),
+                x: at.0,
+                y: at.1,
+                dx: at.0 - from.0,
+                dy: at.1 - from.1,
+                button: button.parse().expect("a button number"),
+                modifiers: modifiers.to_owned(),
+                time: 0,
+            },
+        ));
+    }
+
     /// The texts of the live claims, in the order they were made, a line feed shown as `|`.
     pub fn claimed(&self) -> Vec<String> {
         self.0

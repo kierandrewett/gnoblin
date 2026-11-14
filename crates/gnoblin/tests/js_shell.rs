@@ -1202,13 +1202,7 @@ fn rect_of(ipc: &Path, app: &str) -> Option<(f64, f64, f64, f64)> {
 }
 
 /// Holds Super and presses `code` at `from`, moves the pointer to `first`, and returns once the compositor holds
-/// `expected` for `app`: the drag is live and has moved the window.
-///
-/// The shell's claims of its chords reach the compositor a few frames after the shell starts. A press that comes before
-/// that is nobody's claim: the compositor gives it to the window, and the window's client hears it. That tells the two
-/// apart with no time guessed. A press the client heard moved nothing, is let go of, and the gesture is repeated; one the
-/// client did not hear is the shell's, and the window follows it, however long the shell takes to say so. Super and the
-/// button stay down for the caller to release with [`end_drag`].
+/// `expected` for `app`: the drag is live and has moved the window. See [`begin_chord`].
 #[track_caller]
 #[allow(clippy::too_many_arguments)]
 fn begin_drag(
@@ -1220,6 +1214,33 @@ fn begin_drag(
     from: (i32, i32),
     first: (i32, i32),
     expected: (f64, f64, f64, f64),
+) {
+    let ipc = session.ipc();
+    begin_chord(session, mapper, shell, app, code, from, first, || {
+        rect_of(&ipc, app) == Some(expected)
+    });
+}
+
+/// Holds Super and presses `code` at `from`, moves the pointer to `first`, and returns once `took` says the shell's drag
+/// has begun.
+///
+/// The shell's claims of its chords reach the compositor a few frames after the shell starts. A press that comes before
+/// that is nobody's claim: the compositor gives it to the window, and the window's client hears it. That tells the two
+/// apart with no time guessed. A press the client heard started nothing, is let go of, and the gesture is repeated; one
+/// the client did not hear is the shell's, and `took` becomes true however long the shell takes to say so. Super and the
+/// button stay down for the caller to release with [`end_drag`] or by hand. `app` is the window under the press, named in
+/// a failure.
+#[track_caller]
+#[allow(clippy::too_many_arguments)]
+fn begin_chord(
+    session: &Session,
+    mapper: &mut Mapper,
+    shell: &Shell,
+    app: &str,
+    code: u32,
+    from: (i32, i32),
+    first: (i32, i32),
+    mut took: impl FnMut() -> bool,
 ) {
     let ipc = session.ipc();
     let pointer = mapper.pointer();
@@ -1242,7 +1263,7 @@ fn begin_drag(
             shell,
             || {
                 unclaimed = pointer.presses() > heard;
-                unclaimed || rect_of(&ipc, app) == Some(expected)
+                unclaimed || took()
             },
         );
         if !unclaimed {
@@ -1252,8 +1273,7 @@ fn begin_drag(
         super_key(session, false);
         assert!(
             Instant::now() < deadline,
-            "no drag ever took the window: {attempts} presses reached its client instead, and it is at {:?}, \
-             expected {expected:?}",
+            "no drag ever took hold: {attempts} presses reached the client of {app} instead, and it is at {:?}",
             rect_of(&ipc, app)
         );
         std::thread::sleep(POLL);
@@ -1417,6 +1437,136 @@ fn super_drags_move_and_resize_a_real_window_through_the_pointer_chord_stream() 
         log.iter().all(|message| !message.contains("claim")),
         "the shell logged nothing about a claim: {log:?}"
     );
+}
+
+/// An `init.ts` with a `MasterStackLayout` workspace whose two default drag bindings count the drags they take, so a test
+/// knows the shell's drag has begun (nothing moves on screen when a swap begins). `probe` reports the counts and the
+/// workspace's order of windows.
+fn write_tiling_drag_config(dir: &Path) {
+    fs::write(
+        dir.join("init.ts"),
+        r#"import { MasterStackLayout, Workspace, gnoblin } from "gnoblin";
+
+const layout = new MasterStackLayout();
+gnoblin.workspaces.add(new Workspace({ id: "desk", layout }));
+
+const started: Record<string, number> = { swap: 0, resize: 0 };
+for (const id of ["swap", "resize"]) {
+    const binding = layout.bindings.get(id) as unknown as { onStart(event: unknown): unknown };
+    const onStart = binding.onStart.bind(binding);
+    binding.onStart = (event: unknown): unknown => {
+        const state = onStart(event);
+        if (state) {
+            started[id] += 1;
+        }
+        return state;
+    };
+}
+(globalThis as unknown as { probe: () => string }).probe = () =>
+    JSON.stringify({ ...started, order: gnoblin.workspaces.get("desk")?.clients.map((client) => client.appId) });
+"#,
+    )
+    .expect("init.ts");
+}
+
+/// How many drags of `binding` (`swap` or `resize`) the shell has begun, and the workspace's order of windows.
+fn tiling_probe(shell: &Shell, binding: &str) -> (u64, Vec<String>) {
+    let probe: serde_json::Value = serde_json::from_str(&shell.probe()).unwrap_or(serde_json::Value::Null);
+    let order = probe["order"]
+        .as_array()
+        .map(|order| order.iter().filter_map(|app| app.as_str().map(str::to_owned)).collect())
+        .unwrap_or_default();
+    (probe[binding].as_u64().unwrap_or(0), order)
+}
+
+/// The rectangle a tiled edge pair `(start, extent)` is placed at: each edge floored on its own, as `tile` does.
+fn tiled_span(start: f64, extent: f64) -> (f64, f64) {
+    let left = (start + 1e-6).floor();
+    (left, (start + extent + 1e-6).floor() - left)
+}
+
+#[test]
+fn super_drags_swap_two_real_tiles_and_move_the_master_stack_divider_through_the_pointer_chord_stream() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    write_tiling_drag_config(config.path());
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    let (width, height) = screen_size(&ipc);
+    let (a, b) = ("org.example.first", "org.example.second");
+    mapper.map_window(a, "First");
+    mapper.map_window(b, "Second");
+    // The master takes half the screen's width, and the stack the rest: a at the left, b at the right.
+    let (master_x, master_w) = tiled_span(0.0, width * 0.5);
+    let (stack_x, stack_w) = tiled_span(width * 0.5, width - width * 0.5);
+    let left = Some((master_x, 0.0, master_w, height));
+    let right = Some((stack_x, 0.0, stack_w, height));
+    wait_for(
+        "a master at the left and a stack at the right",
+        &session,
+        &mut mapper,
+        &shell,
+        || rect_of(&ipc, a) == left && rect_of(&ipc, b) == right,
+    );
+    let middle = (height / 2.0) as i32;
+    let over_a = ((master_w / 2.0) as i32, middle);
+    let over_b = ((stack_x + stack_w / 2.0) as i32, middle);
+
+    // Super+Button1 from a to b: nothing is drawn differently while the pointer is down, and the two trade places when it
+    // is let go. The compositor holds the swap as the rectangles the shell wrote for the new order.
+    let (swaps, _) = tiling_probe(&shell, "swap");
+    begin_chord(&session, &mut mapper, &shell, a, BTN_LEFT, over_a, over_b, || {
+        tiling_probe(&shell, "swap").0 > swaps
+    });
+    assert_eq!(
+        (rect_of(&ipc, a), rect_of(&ipc, b)),
+        (left, right),
+        "the tiles are where they were while the pointer is down"
+    );
+    button(&session, BTN_LEFT, false);
+    super_key(&session, false);
+    wait_for("the tiles traded places", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, a) == right && rect_of(&ipc, b) == left
+    });
+    assert_eq!(tiling_probe(&shell, "swap").1, [b, a], "the workspace's order is b, a");
+
+    // Super+Button3 in the stack tile (now a) moves the divider as far as the pointer goes: the master (now b) gains 100
+    // pixels and the stack loses them, at the pointer's own pace.
+    let ratio = 0.5 + 100.0 / width;
+    let (master_x, master_w) = tiled_span(0.0, width * ratio);
+    let (stack_x, stack_w) = tiled_span(width * ratio, width - width * ratio);
+    let (resizes, _) = tiling_probe(&shell, "resize");
+    begin_chord(
+        &session,
+        &mut mapper,
+        &shell,
+        a,
+        BTN_RIGHT,
+        (over_b.0 + 20, middle),
+        (over_b.0 + 120, middle),
+        || tiling_probe(&shell, "resize").0 > resizes,
+    );
+    wait_for("the master follows the pointer", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, b) == Some((master_x, 0.0, master_w, height))
+            && rect_of(&ipc, a) == Some((stack_x, 0.0, stack_w, height))
+    });
+    button(&session, BTN_RIGHT, false);
+    super_key(&session, false);
+    // The ratio is committed: the tiles stay where the drag left them.
+    for _ in 0..20 {
+        mapper.roundtrip();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(
+        (rect_of(&ipc, b), rect_of(&ipc, a)),
+        (
+            Some((master_x, 0.0, master_w, height)),
+            Some((stack_x, 0.0, stack_w, height))
+        ),
+        "the divider stays where the pointer left it"
+    );
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 }
 
 /// The size of the compositor's first screen, as the shell tiles in it.

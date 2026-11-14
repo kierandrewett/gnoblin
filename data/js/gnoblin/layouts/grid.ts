@@ -1,8 +1,11 @@
 // GridLayout: a near-square grid of the nodes in child order. Geometry is data/lua/gnoblin/shell/tiling.lua
 // `GridLayout`. `fill` is "row" (left to right, then down) or "column" (top to bottom, then right); a partly
 // filled last row or column is left-aligned. `columns` fixes the column count, which the Lua class cannot.
+// It registers one default binding in `layout.bindings`: `swap` (Super+MouseLeft+Drag, `ClientSwapBinding`) trades the
+// places of two cells. A grid has no divider to drag, so it has no resize binding. `triggers` replaces the trigger, and
+// `null` leaves the binding out.
 
-import { resolveTriggers } from "gnoblin/bindings";
+import { ClientSwapBinding, resolveTriggers } from "gnoblin/bindings";
 import { checkGap, Layout, tile, tilingGeometry } from "gnoblin/layout";
 import type { LayoutContext, Placement } from "gnoblin/layout";
 
@@ -14,7 +17,7 @@ export interface GridOptions {
     fill?: GridFill;
     /** Overrides the workspace's inner gap. */
     gap?: number;
-    /** `null` turns a binding off. The bindings themselves are not wired yet; the resolved spellings are kept. */
+    /** `undefined` keeps the default trigger, a string replaces it and `null` leaves the binding out. */
     triggers?: { swap?: string | null };
 }
 
@@ -32,6 +35,9 @@ export class GridLayout extends Layout {
         this.fill = options.fill ?? "row";
         this.gap = checkGap(options.gap, "GridLayout");
         this.triggers = Object.freeze(resolveTriggers(DEFAULT_TRIGGERS, options.triggers));
+        if (this.triggers.swap !== null) {
+            this.bindings.add(new ClientSwapBinding({ id: "swap", trigger: this.triggers.swap }));
+        }
     }
 
     compute(context: LayoutContext): Placement[] {
