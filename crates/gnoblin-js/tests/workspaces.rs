@@ -11,12 +11,15 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 
-use gnoblin_js::{JsConfig, JsGeneration, JsShell, JsShellConfig, stock_modules};
+use gnoblin_js::{JsConfig, JsGeneration, JsManualClock, JsShell, stock_modules};
 use gnoblin_tree_client::tree_mirror::{
     Attached, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeIncoming, TreeLink, TreeTx,
     TxOp, TxReply,
 };
 use tempfile::TempDir;
+
+mod common;
+use common::timed_config;
 
 struct Node {
     class: String,
@@ -243,10 +246,17 @@ fn sent(comp: &Comp) -> Vec<Vec<TxOp>> {
 /// A booted shell with its entry module loaded.
 struct Rig {
     shell: JsShell,
+    clock: JsManualClock,
     _dir: TempDir,
 }
 
 impl Rig {
+    /// Moves the shell's clock forward by `ms` milliseconds: a slide is over when the test says so, not when the
+    /// machine got there.
+    fn advance(&self, ms: u64) {
+        self.clock.advance(Duration::from_millis(ms));
+    }
+
     fn frame(&mut self) -> Vec<String> {
         self.shell.frame().expect("a frame").diagnostics
     }
@@ -271,10 +281,15 @@ fn rig(comp: &Comp, init: &str) -> Rig {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("init.ts"), init).expect("init.ts is written");
-    let mut shell = JsShell::new(Box::new(FakeLink(comp.clone())), JsShellConfig::new(&root)).expect("the shell boots");
+    let (config, clock) = timed_config(&root);
+    let mut shell = JsShell::new(Box::new(FakeLink(comp.clone())), config).expect("the shell boots");
     let diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
-    Rig { shell, _dir: dir }
+    Rig {
+        shell,
+        clock,
+        _dir: dir,
+    }
 }
 
 const PRELUDE: &str = "import { Workspace, Layout, FloatingLayout, MasterStackLayout, GridLayout, CollectionListener, \
@@ -1190,7 +1205,7 @@ fn a_slide_animates_both_workspaces_with_the_lua_curve_and_hides_the_old_one_whe
         flag(&comp, 10, "visible").unwrap_or(true),
         "the leaving window is drawn while it slides"
     );
-    std::thread::sleep(Duration::from_millis(450));
+    rig.advance(450);
     rig.settle();
     assert_eq!(
         flag(&comp, 10, "visible"),
@@ -1276,7 +1291,7 @@ fn after_runs_its_function_once_at_the_first_frame_past_the_time() {
     let mut rig = rig(&comp, &init("g.ran = 0;\ngnoblin.after(0.2, () => { g.ran += 1; });\n"));
     rig.settle();
     assert_eq!(rig.eval("g.ran"), "0", "not before its time");
-    std::thread::sleep(Duration::from_millis(300));
+    rig.advance(300);
     rig.settle();
     assert_eq!(rig.eval("g.ran"), "1");
     rig.settle();

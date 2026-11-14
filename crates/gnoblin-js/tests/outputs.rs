@@ -878,8 +878,8 @@ fn a_reload_puts_each_output_back_on_the_workspace_it_showed() {
         "{IMPORTS}defineConfig({{ workspaces: [{{ id: \"1\" }}, {{ id: \"2\" }}, {{ id: \"3\" }}], decorations: false }});\n"
     );
     std::fs::write(root.join("init.ts"), init).expect("init.ts is written");
-    let mut second = gnoblin_js::JsShell::new(Box::new(rig.comp.clone()), gnoblin_js::JsShellConfig::new(&root))
-        .expect("the shell boots");
+    let mut second =
+        gnoblin_js::JsShell::new(Box::new(rig.comp.clone()), honest_config(&root)).expect("the shell boots");
     second
         .load_entry(std::path::Path::new("init.ts"))
         .expect("init.ts loads");

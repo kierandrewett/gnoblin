@@ -292,7 +292,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::cell::{Cell, RefCell};
+    use std::cell::RefCell;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::rc::Rc;
@@ -303,25 +303,26 @@ mod tests {
     use super::JsReloader;
     use crate::error::JsErrorKind;
     use crate::generation::{JsConfig, JsGeneration};
-    use crate::supervisor::{JsClock, JsFault, JsHealth, JsStrikePolicy, JsSupervisor};
+    use crate::supervisor::{JsFault, JsHealth, JsManualClock, JsStrikePolicy, JsSupervisor};
     use crate::watch::ConfigWatcher;
 
-    const DEBOUNCE: Duration = Duration::from_millis(80);
-    const PATIENCE: Duration = Duration::from_secs(5);
+    /// The quiet time that ends a burst of saves. A test writes its burst in microseconds, but a loaded machine can
+    /// stall the writing thread for far longer than a short debounce, and the stalled burst would split in two. The
+    /// debounce is longer than any stall a test machine is likely to see.
+    const DEBOUNCE: Duration = Duration::from_secs(1);
+    const PATIENCE: Duration = Duration::from_secs(10);
+    /// Long enough that an event already on its way has arrived; it never decides whether a burst was one.
     const QUIET: Duration = Duration::from_millis(600);
-
-    #[derive(Clone, Default)]
-    struct FakeClock(Rc<Cell<Duration>>);
-
-    impl JsClock for FakeClock {
-        fn now(&self) -> Duration {
-            self.0.get()
-        }
-    }
+    /// What a stage of an honest module may use. A test asserts what a stage does, never how fast it was.
+    const HONEST_BUDGET: Duration = Duration::from_secs(5);
+    /// The budget of a fixture whose module loops for ever, and of the honest module loaded beside it. Short
+    /// enough that a runaway stage is cheap, long enough that the honest stage cannot trip it. A test of a runaway
+    /// stage asserts that it was interrupted, never when.
+    const RUNAWAY_BUDGET: Duration = Duration::from_millis(500);
 
     type Commits = Rc<RefCell<Vec<u64>>>;
     type TestCommit = Box<dyn FnMut(&JsGeneration) -> Result<(), String>>;
-    type TestReloader = JsReloader<TestCommit, FakeClock>;
+    type TestReloader = JsReloader<TestCommit, JsManualClock>;
 
     /// A reloader over a temp root that records the id of every generation it was asked to commit.
     struct Fixture {
@@ -335,7 +336,20 @@ mod tests {
         fixture_with(files, |_| Ok(()))
     }
 
+    /// Like [`fixture`], for modules that loop: every stage has the short [`RUNAWAY_BUDGET`].
+    fn runaway_fixture(files: &[(&str, &str)]) -> Fixture {
+        build(files, RUNAWAY_BUDGET, |_| Ok(()))
+    }
+
     fn fixture_with(files: &[(&str, &str)], accept: impl Fn(u64) -> Result<(), String> + 'static) -> Fixture {
+        build(files, HONEST_BUDGET, accept)
+    }
+
+    fn build(
+        files: &[(&str, &str)],
+        budget: Duration,
+        accept: impl Fn(u64) -> Result<(), String> + 'static,
+    ) -> Fixture {
         let dir = tempfile::tempdir().expect("a temp dir");
         let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
         for (name, text) in files {
@@ -349,9 +363,8 @@ mod tests {
             Ok(())
         });
         let mut config = JsConfig::new(&root);
-        // Short enough that a runaway loop in a test is cheap.
-        config.stage_budget = Duration::from_millis(100);
-        let supervisor = JsSupervisor::new(JsStrikePolicy::default(), FakeClock::default());
+        config.stage_budget = budget;
+        let supervisor = JsSupervisor::new(JsStrikePolicy::default(), JsManualClock::default());
         let reloader = JsReloader::new(config, "init.ts", commit, supervisor);
         Fixture {
             _dir: dir,
@@ -448,7 +461,7 @@ mod tests {
 
     #[test]
     fn a_runaway_config_is_reported_as_a_budget_failure_and_is_not_a_strike() {
-        let mut fx = fixture(&[("init.ts", V1)]);
+        let mut fx = runaway_fixture(&[("init.ts", V1)]);
         assert!(fx.reloader.reload_now().ok);
         write(&fx.root, "init.ts", "while (true) {}\n");
         for _ in 0..5 {
@@ -560,7 +573,7 @@ mod tests {
 
     #[test]
     fn three_interrupted_restages_degrade_and_keep_the_last_good_generation() {
-        let mut fx = fixture(&[("init.ts", V1)]);
+        let mut fx = runaway_fixture(&[("init.ts", V1)]);
         assert!(fx.reloader.reload_now().ok);
         // The file on disk now loops, so every restage is interrupted.
         write(&fx.root, "init.ts", "while (true) {}\n");
@@ -586,7 +599,7 @@ mod tests {
 
     #[test]
     fn degraded_with_no_good_generation_runs_none() {
-        let mut fx = fixture(&[("init.ts", "while (true) {}\n")]);
+        let mut fx = runaway_fixture(&[("init.ts", "while (true) {}\n")]);
         let first = fx.reloader.reload_now();
         assert!(!first.ok);
         assert!(fx.reloader.current().is_none());

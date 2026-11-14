@@ -5,10 +5,12 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::Arc;
+use std::time::Duration;
 
-use gnoblin_js::{JsShell, JsShellConfig};
+use gnoblin_js::{JsManualClock, JsRoleConfig, JsShell, JsShellConfig};
 use gnoblin_tree_client::tree_mirror::{
     Attached, EventFields, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeEvent,
     TreeIncoming, TreeLink, TreeTx, TxOp, TxReply,
@@ -522,15 +524,64 @@ impl TreeLink for FakeCompositor {
     }
 }
 
+// ---- time ---------------------------------------------------------------------------------------------------------
+//
+// The rule for every test in this crate (design/js-runtime.md, "Unit test timing"): no assertion may rest on how fast
+// the machine is. A script that is not meant to run out of time gets `HONEST_BUDGET`, and anything that waits
+// (an arming window, a fade, a delay, `gnoblin.timers.after`) waits on the injected clock of `timed_config`, which
+// moves only when the test moves it. A test that is about a budget runs a script that never ends, keeps the budget
+// short and asserts that it was interrupted, never when.
+
+/// What one honest script of a test may use per call. The product default is 100 ms for a listener call, which a
+/// machine that is busy for a tenth of a second would exhaust in a script that is doing nothing wrong.
+pub const HONEST_BUDGET: Duration = Duration::from_secs(5);
+
+/// The budget of a test about a script that never ends. Short, so the loop is cheap; no shorter than half a second,
+/// because whatever honest script the same budget covers (the shell's own calls in a frame, a listener beside the
+/// runaway one) must not be able to trip it. Such a test asserts that the script was interrupted, never when.
+pub const RUNAWAY_BUDGET: Duration = Duration::from_millis(500);
+
+/// A shell config for a test whose scripts are honest: `root`, with call and frame budgets a loaded machine cannot
+/// exhaust, and the real clock.
+pub fn honest_config(root: impl Into<PathBuf>) -> JsShellConfig {
+    let mut config = JsShellConfig::new(root);
+    config.entry_budget = HONEST_BUDGET;
+    config.frame_budget = HONEST_BUDGET * 2;
+    config
+}
+
+/// Like [`honest_config`], with a clock that stands at zero until the test advances it, and the handle to advance it.
+pub fn timed_config(root: impl Into<PathBuf>) -> (JsShellConfig, JsManualClock) {
+    let clock = JsManualClock::default();
+    let mut config = honest_config(root);
+    config.clock = Arc::new(clock.clone());
+    (config, clock)
+}
+
+/// A runtime role over `root` for a test whose scripts are honest, with the budgets of [`honest_config`].
+pub fn honest_role_config(root: impl Into<PathBuf>) -> JsRoleConfig {
+    let mut config = JsRoleConfig::new(root, None);
+    config.shell.entry_budget = HONEST_BUDGET;
+    config.shell.frame_budget = HONEST_BUDGET * 2;
+    config
+}
+
 // ---- the rig ------------------------------------------------------------------------------------------------------
 pub struct Rig {
     pub shell: JsShell,
     pub comp: FakeCompositor,
     pub load_diagnostics: Vec<String>,
+    pub clock: JsManualClock,
     pub _dir: TempDir,
 }
 
 impl Rig {
+    /// Moves the shell's clock forward by `ms` milliseconds. The frames that follow see the time pass; no real time
+    /// does.
+    pub fn advance(&self, ms: u64) {
+        self.clock.advance(Duration::from_millis(ms));
+    }
+
     pub fn frame(&mut self) -> Vec<String> {
         self.shell.frame().expect("a frame").diagnostics
     }
@@ -572,16 +623,14 @@ pub fn rig_setup(imports: &str, init_body: &str, setup: impl FnOnce(&FakeComposi
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("init.ts"), format!("{imports}{init_body}\n")).expect("init.ts is written");
-    // A loaded machine can starve the shell's thread past the default 100 ms: these tests are not about budgets.
-    let mut config = JsShellConfig::new(&root);
-    config.entry_budget = std::time::Duration::from_secs(10);
-    config.frame_budget = std::time::Duration::from_secs(30);
+    let (config, clock) = timed_config(&root);
     let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
     let load_diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
     Rig {
         shell,
         comp,
         load_diagnostics,
+        clock,
         _dir: dir,
     }
 }

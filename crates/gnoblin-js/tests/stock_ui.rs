@@ -640,7 +640,7 @@ fn force_quit_does_nothing_until_the_alert_is_armed_then_kills_the_windows_proce
         card(&mut rig).is_some() && calls_of(&rig, "kill") == 0,
         "Force quit ignores an early press"
     );
-    std::thread::sleep(std::time::Duration::from_millis(1200));
+    rig.advance(1200);
     rig.settle();
     dialog_key(&mut rig, "Return");
     assert_eq!(calls_of(&rig, "kill"), 1, "an armed Force quit calls kill once");
@@ -661,7 +661,7 @@ fn a_press_on_a_button_works_like_the_key_and_a_press_on_the_card_keeps_the_keyb
         Some(MirrorValue::Node(at)),
         "a press on the card focuses it"
     );
-    std::thread::sleep(std::time::Duration::from_millis(1200));
+    rig.advance(1200);
     rig.settle();
     let force = number(
         &mut rig,
@@ -866,7 +866,7 @@ fn a_toast_adds_one_card_to_the_screen_fades_in_and_removes_itself() {
     );
     assert!(!rig.comp.canvases_showing("saved").is_empty());
     assert_eq!(rig.eval("`${t.x},${t.y}`"), "660,44", "the top right corner");
-    std::thread::sleep(std::time::Duration::from_millis(150));
+    rig.advance(150);
     rig.settle();
     assert_eq!(number(&mut rig, "uiCanvasCount()"), before, "and it is gone");
 }

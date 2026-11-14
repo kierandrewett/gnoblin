@@ -14,15 +14,17 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 use std::rc::Rc;
-use std::thread::sleep;
 use std::time::Duration;
 
-use gnoblin_js::{JsConfig, JsGeneration, JsShell, JsShellConfig, stock_modules};
+use gnoblin_js::{JsConfig, JsGeneration, JsManualClock, JsShell, stock_modules};
 use gnoblin_tree_client::tree_mirror::{
     Attached, EventFields, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeEvent,
     TreeIncoming, TreeLink, TreePointerChord, TreeTx, TxOp, TxReply,
 };
 use tempfile::TempDir;
+
+mod common;
+use common::timed_config;
 
 // -- the pure functions, run in a bare generation -----------------------------------------------------------
 
@@ -993,10 +995,17 @@ fn world(seat: Vec<(&str, MirrorValue)>) -> Comp {
 
 struct Rig {
     shell: JsShell,
+    clock: JsManualClock,
     _dir: TempDir,
 }
 
 impl Rig {
+    /// Moves the shell's clock forward by `ms` milliseconds: a delay is over when the test says so, not when the
+    /// machine got there.
+    fn advance(&self, ms: u64) {
+        self.clock.advance(Duration::from_millis(ms));
+    }
+
     fn frame(&mut self) -> Vec<String> {
         let diagnostics = self.shell.frame().expect("a frame").diagnostics;
         // A rule's `cornerRadius` is kept in the client's style and noticed once as not drawn.
@@ -1027,10 +1036,15 @@ fn boot(comp: &Comp, init: &str) -> Rig {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("init.ts"), format!("{PRELUDE}{init}")).expect("init.ts is written");
-    let mut shell = JsShell::new(Box::new(FakeLink(comp.clone())), JsShellConfig::new(&root)).expect("the shell boots");
+    let (config, clock) = timed_config(&root);
+    let mut shell = JsShell::new(Box::new(FakeLink(comp.clone())), config).expect("the shell boots");
     let diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
-    let mut rig = Rig { shell, _dir: dir };
+    let mut rig = Rig {
+        shell,
+        clock,
+        _dir: dir,
+    };
     rig.frame();
     rig.frame();
     comp.ops();
@@ -1230,7 +1244,7 @@ fn auto_raise_lifts_the_hovered_focused_window_after_the_delay_unless_the_pointe
         ["set:5.focus=3"],
         "entering focuses at once; the raise waits"
     );
-    sleep(Duration::from_millis(80));
+    rig.advance(80);
     rig.frame();
     assert_eq!(
         comp.ops(),
@@ -1243,7 +1257,7 @@ fn auto_raise_lifts_the_hovered_focused_window_after_the_delay_unless_the_pointe
     comp.edge(3, "leave");
     rig.frame();
     comp.ops();
-    sleep(Duration::from_millis(80));
+    rig.advance(80);
     rig.frame();
     assert!(comp.ops().is_empty(), "a leave cancels the pending raise");
 }
@@ -1255,7 +1269,7 @@ fn auto_raise_is_off_by_default_and_a_window_that_lost_focus_is_not_raised() {
     comp.edge(3, "enter");
     rig.frame();
     comp.ops();
-    sleep(Duration::from_millis(30));
+    rig.advance(30);
     rig.frame();
     assert!(comp.ops().is_empty(), "auto_raise is false");
     let comp = world(vec![
@@ -1267,7 +1281,7 @@ fn auto_raise_is_off_by_default_and_a_window_that_lost_focus_is_not_raised() {
     rig.frame();
     assert_eq!(comp.ops(), ["set:5.focus=3"]);
     comp.external(5, "focus", MirrorValue::Node(4));
-    sleep(Duration::from_millis(80));
+    rig.advance(80);
     rig.frame();
     assert!(
         comp.ops().is_empty(),
@@ -1286,13 +1300,13 @@ fn a_pointer_rest_focuses_after_the_rest_time_and_a_leave_cancels_it() {
     comp.edge(4, "enter");
     rig.frame();
     assert!(comp.ops().is_empty(), "a rest is not an entry");
-    sleep(Duration::from_millis(260));
+    rig.advance(260);
     rig.frame();
     assert_eq!(comp.ops(), ["set:5.focus=4"]);
     comp.edge(4, "enter");
     comp.edge(4, "leave");
     rig.frame();
-    sleep(Duration::from_millis(260));
+    rig.advance(260);
     rig.frame();
     assert!(comp.ops().is_empty(), "the pointer left before it rested");
 }

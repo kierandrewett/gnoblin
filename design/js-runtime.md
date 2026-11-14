@@ -1452,6 +1452,33 @@ The rules behind the table:
 A change to these tests is proven with `cargo test -p gnoblin` run several times in a row, once while two busy loops per
 CPU run beside it, and once with `--test-threads=1`.
 
+### Unit test timing
+
+The tests of `crates/gnoblin-js` (`tests/**` and the `#[cfg(test)]` modules of `src/`) run on the same busy machines, and
+they follow the rule of the section above: no assertion may rest on a wall-clock assumption under one second, and nothing
+sleeps for a time it guessed. A test that passes alone and fails one run in twenty hides the regression it would have
+caught, so this was measured, not assumed: `cargo test -p gnoblin-js` ten times in a row passes, and four times while two
+busy loops per CPU run beside it passes. Both are the proof a change to these tests needs.
+
+- **Time is injected.** `JsShellConfig::clock` is the one clock the scripts read: `gnoblin.timers.now`, and through it every
+  timer, `after`, fade, slide, alert arming window, launch deadline and focus delay. It is a `JsClock`: `JsSystemClock` in
+  the product, and in a test a `JsManualClock`, which stands at zero until the test calls `advance`. The rigs of
+  `tests/common` build one (`timed_config`, `Rig::advance`), so a test of a slide or an arming window says how much time
+  passed, and no real time does.
+- **An honest script gets `HONEST_BUDGET`, 5 s,** for each call and 10 s for a frame (`honest_config`, and
+  `honest_role_config` for a role). The product's 100 ms per listener call and 500 ms per frame are a limit on a script
+  that hangs the shell, not on a machine that did not schedule the thread for a tenth of a second.
+- **A test about a budget runs a script that never ends,** under a short budget (`RUNAWAY_BUDGET`, 500 ms: not shorter,
+  because the honest calls the same budget covers must not be able to trip it), and asserts that the script was
+  interrupted, never when. A script that must outlast a frame budget outlasts it by a factor of two, and the frame budget
+  is a few hundred milliseconds so that no other frame of the test comes near it. Where a loop could hang the run if the
+  interrupt failed, the loop ends by itself after 30 s.
+- **The shell installs its bundled library under at least 5 s** (`HOST_INSTALL_BUDGET`), whatever `stage_budget` says, so
+  a stage budget shortened to trip a runaway entry does not fail the boot.
+- **Real time stays only where the code under test reads the real clock:** a file watcher's debounce (one second in the
+  tests: the burst is written in microseconds, and a stall longer than the debounce would split it) and a spawned
+  process's own timeout. Those tests wait for a state, with a deadline of seconds.
+
 ## Questions for the owner (the agent has a default for each)
 
 1. Initial workspace rule for a new toplevel. Default: the workspace shown by the display under the

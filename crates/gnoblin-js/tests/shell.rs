@@ -13,12 +13,15 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 
-use gnoblin_js::{JsRole, JsRoleConfig, JsRoleLinks, JsShell, JsShellConfig, JsShellError};
+use gnoblin_js::{JsRole, JsRoleLinks, JsShell, JsShellConfig, JsShellError};
 use gnoblin_tree_client::tree_mirror::{
     Attached, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeIncoming, TreeLink, TreeTx,
     TxOp, TxReply,
 };
 use tempfile::TempDir;
+
+mod common;
+use common::{RUNAWAY_BUDGET, honest_config, honest_role_config};
 
 struct Node {
     class: String,
@@ -350,7 +353,7 @@ fn rig_with(comp: &Comp, init: &str, tweak: impl FnOnce(&mut JsShellConfig)) -> 
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("init.ts"), init).expect("init.ts is written");
-    let mut config = JsShellConfig::new(&root);
+    let mut config = honest_config(&root);
     tweak(&mut config);
     let mut shell = JsShell::new(Box::new(FakeLink(comp.clone())), config).expect("the shell boots");
     let load_diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
@@ -844,7 +847,7 @@ fn a_listener_that_never_returns_is_stopped_counts_a_strike_and_the_others_still
          gnoblin.clients.addListener(new Spin());\n\
          gnoblin.clients.addListener(new After());\n",
     );
-    let mut rig = rig_with(&comp, &init, |config| config.entry_budget = Duration::from_millis(50));
+    let mut rig = rig_with(&comp, &init, |config| config.entry_budget = RUNAWAY_BUDGET);
     let link = FakeLink(comp.clone());
     link.external_set(3, "focused", MirrorValue::Bool(false));
     link.external_set(4, "focused", MirrorValue::Bool(true));
@@ -1062,8 +1065,9 @@ fn an_entry_that_throws_is_an_error_with_its_ts_location_and_a_budget_trip_count
     )
     .expect("bad.ts");
     fs::write(root.join("loop.ts"), "while (true) {}\n").expect("loop.ts");
-    let mut config = JsShellConfig::new(&root);
-    config.js.stage_budget = Duration::from_millis(100);
+    let mut config = honest_config(&root);
+    // Short, so the loop is cheap. The shell installs its own library under its own budget, however short this is.
+    config.js.stage_budget = RUNAWAY_BUDGET;
     let mut shell = JsShell::new(Box::new(FakeLink(comp)), config).expect("the shell boots");
     match shell.load_entry(Path::new("bad.ts")) {
         Err(JsShellError::Js(error)) => {
@@ -1074,6 +1078,18 @@ fn an_entry_that_throws_is_an_error_with_its_ts_location_and_a_budget_trip_count
     assert_eq!(shell.strikes(), 0);
     assert!(shell.load_entry(Path::new("loop.ts")).is_err());
     assert_eq!(shell.strikes(), 1);
+}
+
+#[test]
+fn a_stage_budget_too_short_for_the_embedded_library_does_not_stop_the_shell_from_booting() {
+    // The library is compiled in the call that installs it. A budget chosen to bound a user's entry file, here one
+    // millisecond, must not be the budget of that install: no machine installs the library in a millisecond.
+    let comp = two_windows();
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
+    let mut config = honest_config(&root);
+    config.js.stage_budget = Duration::from_millis(1);
+    JsShell::new(Box::new(FakeLink(comp)), config).expect("the shell boots");
 }
 
 /// Every `x` write the shell has sent, as (node, value), oldest first.
@@ -1110,7 +1126,7 @@ fn a_role_swaps_in_a_reloaded_generation_over_the_same_windows_and_a_failed_relo
     let mut role = JsRole::over_link(
         Box::new(FakeLink(comp.clone())),
         JsRoleLinks::default(),
-        JsRoleConfig::new(&root, None),
+        honest_role_config(&root),
     )
     .expect("a role");
     let booted = role.generation_id();
@@ -1414,9 +1430,7 @@ fn a_console_error_carries_its_message_and_where_in_the_expression_it_was() {
 #[test]
 fn a_runaway_expression_is_interrupted_and_the_shell_and_the_console_go_on() {
     let comp = two_windows();
-    let mut rig = rig_with(&comp, "export {};\n", |config| {
-        config.entry_budget = Duration::from_millis(50)
-    });
+    let mut rig = rig_with(&comp, "export {};\n", |config| config.entry_budget = RUNAWAY_BUDGET);
     let dir = tempfile::tempdir().expect("a temp dir");
     let path = dir.path().join("js.sock");
     let mut console = JsConsole::bind(&path).expect("the console listens");
@@ -1427,7 +1441,13 @@ fn a_runaway_expression_is_interrupted_and_the_shell_and_the_console_go_on() {
         let runaway = prompt.ask("while (true) {}", &mut serve);
         assert_eq!(runaway["ok"], json!(false), "{runaway}");
         assert_eq!(runaway["error"]["kind"], json!("budget"), "{runaway}");
-        assert!(runaway["error"]["message"].as_str().expect("message").contains("50 ms"));
+        assert!(
+            runaway["error"]["message"]
+                .as_str()
+                .expect("message")
+                .contains(&format!("{} ms", RUNAWAY_BUDGET.as_millis())),
+            "the message names the budget: {runaway}"
+        );
         // A loop that catches what it can still cannot swallow the interrupt.
         let stubborn = prompt.ask("for (;;) { try { while (true) {} } catch (e) {} }", &mut serve);
         assert_eq!(stubborn["error"]["kind"], json!("budget"), "{stubborn}");
@@ -1532,7 +1552,7 @@ fn the_role_serves_its_console_between_frames_and_a_reload_drops_what_the_prompt
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("init.ts"), "export {};\n").expect("init.ts");
     let site = root.join("js.sock");
-    let mut config = JsRoleConfig::new(&root, None);
+    let mut config = honest_role_config(&root);
     config.watch = false;
     config.console = JsConsoleSite::At(site.clone());
     let role = std::cell::RefCell::new(

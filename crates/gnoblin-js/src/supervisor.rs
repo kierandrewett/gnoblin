@@ -11,13 +11,17 @@
 //! so the strike counting and the cool-down are tested with a clock the test moves.
 
 use std::collections::VecDeque;
-use std::sync::OnceLock;
+use std::fmt::Debug;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
 use crate::error::{JsError, JsErrorKind};
 
-/// A monotonic clock, injectable so the policy can be tested without sleeping.
-pub trait JsClock {
+/// A monotonic clock, injectable so the policy, and the shell's timers, can be tested without sleeping.
+///
+/// `Send + Sync` so a config that holds one can cross threads; `Debug` so the config stays printable.
+pub trait JsClock: Debug + Send + Sync {
     /// The time since an arbitrary fixed origin. It never goes backwards.
     fn now(&self) -> Duration;
 }
@@ -30,8 +34,29 @@ pub struct JsSystemClock;
 
 impl JsClock for JsSystemClock {
     fn now(&self) -> Duration {
-        static ORIGIN: OnceLock<Instant> = OnceLock::new();
-        ORIGIN.get_or_init(Instant::now).elapsed()
+        static ORIGIN: LazyLock<Instant> = LazyLock::new(Instant::now);
+        ORIGIN.elapsed()
+    }
+}
+
+/// A clock the caller moves: it reads zero until [`advance`](Self::advance) is called and never moves on its own.
+///
+/// A test of anything driven by time (an arming window, a fade, a delay) gives one clone to the code under test and
+/// keeps another, so the outcome never depends on how fast or slow the machine runs. Clones share one time.
+#[derive(Debug, Clone, Default)]
+pub struct JsManualClock(Arc<AtomicU64>);
+
+impl JsManualClock {
+    /// Moves the clock forward by `by`.
+    pub fn advance(&self, by: Duration) {
+        let nanos = u64::try_from(by.as_nanos()).unwrap_or(u64::MAX);
+        self.0.fetch_add(nanos, Ordering::Relaxed);
+    }
+}
+
+impl JsClock for JsManualClock {
+    fn now(&self) -> Duration {
+        Duration::from_nanos(self.0.load(Ordering::Relaxed))
     }
 }
 
@@ -195,35 +220,27 @@ impl<C: JsClock> JsSupervisor<C> {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::Cell;
-    use std::rc::Rc;
     use std::time::Duration;
 
-    use super::{JsClock, JsFault, JsFaultAction, JsHealth, JsStrikePolicy, JsSupervisor};
+    use super::{JsClock, JsFault, JsFaultAction, JsHealth, JsManualClock, JsStrikePolicy, JsSupervisor};
     use crate::error::{JsError, JsErrorKind};
-
-    /// A clock the test moves by hand.
-    #[derive(Clone, Default)]
-    struct FakeClock(Rc<Cell<Duration>>);
-
-    impl FakeClock {
-        fn advance(&self, by: Duration) {
-            self.0.set(self.0.get() + by);
-        }
-    }
-
-    impl JsClock for FakeClock {
-        fn now(&self) -> Duration {
-            self.0.get()
-        }
-    }
 
     fn secs(n: u64) -> Duration {
         Duration::from_secs(n)
     }
 
-    fn supervisor() -> (JsSupervisor<FakeClock>, FakeClock) {
-        let clock = FakeClock::default();
+    #[test]
+    fn a_manual_clock_reads_zero_until_it_is_advanced_and_its_clones_share_the_time() {
+        let clock = JsManualClock::default();
+        let other = clock.clone();
+        assert_eq!(clock.now(), Duration::ZERO);
+        other.advance(Duration::from_millis(40));
+        other.advance(Duration::from_millis(2));
+        assert_eq!(clock.now(), Duration::from_millis(42), "a clone moves the same time");
+    }
+
+    fn supervisor() -> (JsSupervisor<JsManualClock>, JsManualClock) {
+        let clock = JsManualClock::default();
         // Start away from zero so "since" values are distinguishable from a default.
         clock.advance(secs(1000));
         (JsSupervisor::new(JsStrikePolicy::default(), clock.clone()), clock)
@@ -301,7 +318,7 @@ mod tests {
 
     #[test]
     fn a_custom_policy_is_honoured() {
-        let clock = FakeClock::default();
+        let clock = JsManualClock::default();
         let policy = JsStrikePolicy {
             max_strikes: 1,
             window: secs(1),

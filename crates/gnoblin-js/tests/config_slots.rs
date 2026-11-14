@@ -13,7 +13,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use gnoblin_js::{
-    JsConfigCommit, JsConfigLink, JsLinkError, JsRole, JsRoleConfig, JsRoleLinks, JsShell, JsShellConfig, JsSpawnError,
+    JsConfigCommit, JsConfigLink, JsLinkError, JsRole, JsRoleLinks, JsShell, JsShellConfig, JsSpawnError,
     JsSpawnRequest,
 };
 use gnoblin_tree_client::slot_link::{SlotEvent, SlotLink};
@@ -22,6 +22,9 @@ use gnoblin_tree_client::tree_mirror::{
     TxOp, TxReply,
 };
 use tempfile::TempDir;
+
+mod common;
+use common::{RUNAWAY_BUDGET, honest_config, honest_role_config};
 
 // --- the fake tree ---------------------------------------------------------------------------------------------
 
@@ -380,7 +383,7 @@ impl Rig {
 }
 
 fn shell_config(root: &Path) -> JsShellConfig {
-    JsShellConfig::new(root)
+    honest_config(root)
 }
 
 /// A shell booted over the fakes with `init` as its entry. `document` is what the compositor holds already.
@@ -483,7 +486,7 @@ fn a_refused_value_fails_the_config_with_the_key_path_and_commits_nothing() {
             ..JsRoleLinks::default()
         },
         {
-            let mut config = JsRoleConfig::new(&root, None);
+            let mut config = honest_role_config(&root);
             config.watch = false;
             config
         },
@@ -515,7 +518,7 @@ fn role_rig(first: &str, document: Option<&str>) -> RoleRig {
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("init.ts"), first).expect("init.ts");
     let doc = document.map_or_else(FakeDoc::default, FakeDoc::with);
-    let mut config = JsRoleConfig::new(&root, None);
+    let mut config = honest_role_config(&root);
     config.watch = false;
     let role = JsRole::over_link(
         Box::new(FakeLink(compositor())),
@@ -628,7 +631,7 @@ fn a_document_the_compositor_refuses_is_a_diagnostic_and_the_shell_keeps_running
         .expect("init");
         let doc = FakeDoc::default();
         doc.0.borrow_mut().refuse = Some("config-rejected: no".to_owned());
-        let mut config = JsRoleConfig::new(&root, None);
+        let mut config = honest_role_config(&root);
         config.watch = false;
         let role = JsRole::over_link(
             Box::new(FakeLink(compositor())),
@@ -928,7 +931,7 @@ fn a_listener_that_runs_out_its_budget_is_skipped_and_the_request_passes() {
              gnoblin.dialogs.addListener(new After());",
         ),
         None,
-        |config| config.entry_budget = Duration::from_millis(30),
+        |config| config.entry_budget = RUNAWAY_BUDGET,
     );
     rig.frame();
     rig.slots.offer(3, "consent:Screenshot", "m", "app");
@@ -960,12 +963,14 @@ fn retiring_answers_a_held_request_pass_and_releases_the_slot() {
     let mut rig = rig_with(
         &init(
             "class Slow extends DialogListener {\n\
-             \x20   onConsentRequest() { const until = Date.now() + 25; while (Date.now() < until) {} }\n\
+             \x20   onConsentRequest() { const until = Date.now() + 600; while (Date.now() < until) {} }\n\
              }\n\
              gnoblin.dialogs.addListener(new Slow());",
         ),
         None,
-        |config| config.frame_budget = Duration::from_millis(10),
+        // The listener outlasts the frame budget by a wide margin, and every other call of every frame uses a small
+        // part of it, so no other frame of this test can be the one a busy machine tips over.
+        |config| config.frame_budget = Duration::from_millis(300),
     );
     rig.frame();
     rig.slots.offer(4, "consent:Screenshot", "m", "app");

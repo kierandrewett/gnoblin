@@ -134,19 +134,16 @@ mod tests {
                 "const n: number = 1;\n\nthrow new Error('broken config ' + n);\n",
             ),
             ("syntax.ts", "const ok = 1;\nconst broken = ;\n"),
-            ("loops.ts", "while (true) {}\n"),
             ("missing.ts", "import './nowhere.ts';\n"),
         ]);
-        let mut config = JsConfig::new(&root);
-        config.stage_budget = Duration::from_millis(100);
-        let mut host = JsHost::new(config);
+        // The default budget: these modules are honest, and what they do is asserted, never how fast.
+        let mut host = JsHost::new(JsConfig::new(&root));
         let good = host.stage(Path::new("good.ts")).expect("good.ts stages");
         host.commit(good);
 
         let cases = [
             ("throws.ts", JsErrorKind::Exception),
             ("syntax.ts", JsErrorKind::Ts),
-            ("loops.ts", JsErrorKind::Budget),
             ("missing.ts", JsErrorKind::Load),
             ("absent.ts", JsErrorKind::Load),
         ];
@@ -159,6 +156,25 @@ mod tests {
                 "after {entry}"
             );
         }
+    }
+
+    #[test]
+    fn a_runaway_stage_leaves_the_current_generation_callable() {
+        let (_dir, root) = root_with(&[
+            ("good.ts", "globalThis.version = (): number => 1;\n"),
+            ("loops.ts", "while (true) {}\n"),
+        ]);
+        let mut config = JsConfig::new(&root);
+        // Short so the loop is cheap, long enough that the one-line module beside it cannot trip it. Only the kind
+        // of the failure is asserted, never how long the interrupt took.
+        config.stage_budget = Duration::from_millis(500);
+        let mut host = JsHost::new(config);
+        let good = host.stage(Path::new("good.ts")).expect("good.ts stages");
+        host.commit(good);
+
+        let error = host.stage(Path::new("loops.ts")).expect_err("the stage is interrupted");
+        assert_eq!(error.kind, JsErrorKind::Budget, "{error}");
+        assert_eq!(version(host.current().expect("the current generation survives")), 1);
     }
 
     #[test]

@@ -19,10 +19,9 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use common::{FakeCompositor, Rig, rig_setup};
+use common::{FakeCompositor, Rig, rig_setup, timed_config};
 use gnoblin_js::{
-    JsLinkError, JsOperationError, JsSessionEvent, JsSessionLink, JsSessionStatus, JsSessionVerb, JsShell,
-    JsShellConfig, strip_types,
+    JsLinkError, JsOperationError, JsSessionEvent, JsSessionLink, JsSessionStatus, JsSessionVerb, JsShell, strip_types,
 };
 use gnoblin_tree_client::tree_mirror::MirrorValue;
 
@@ -110,7 +109,8 @@ fn rig(init_body: &str) -> (Rig, FakeSession) {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("init.ts"), format!("{PRELUDE}{init_body}\n")).expect("init.ts is written");
-    let mut shell = JsShell::new(Box::new(comp.clone()), JsShellConfig::new(&root)).expect("the shell boots");
+    let (config, clock) = timed_config(&root);
+    let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
     let session = FakeSession::default();
     shell.set_session_link(Box::new(session.clone()));
     let load_diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
@@ -119,6 +119,7 @@ fn rig(init_body: &str) -> (Rig, FakeSession) {
         shell,
         comp,
         load_diagnostics,
+        clock,
         _dir: dir,
     };
     rig.settle();
@@ -412,9 +413,11 @@ fn timeout_fails_timed_out_after_its_deadline_and_is_cleared_when_the_source_fin
          g.quick = gnoblin.session.lock();
          g.limited = g.quick.timeout(0.05);");
     session.finish(2, Ok(serde_json::json!({ "dispatched": true })));
-    until(&mut rig, "the slow operation times out", |rig| {
-        rig.ts("g.slow.status") == "failed"
-    });
+    rig.settle();
+    assert_eq!(rig.ts("g.slow.status"), "pending", "its deadline has not come");
+    rig.advance(60);
+    rig.settle();
+    assert_eq!(rig.ts("g.slow.status"), "failed");
     assert_eq!(rig.ts("g.slow.error.code"), "timed_out");
     assert_eq!(rig.ts("g.limited.status"), "succeeded", "the source finished first");
     assert_eq!(
@@ -458,7 +461,10 @@ fn a_timer_runs_once_at_the_first_frame_past_its_time_and_never_after_cancel() {
         rig.ts("[g.fired.pending, g.cancelled.pending, g.cancelled.cancel()].join()"),
         "true,false,false"
     );
-    until(&mut rig, "the timer ran", |rig| rig.ts("g.log.length") != "0");
+    rig.advance(29);
+    rig.settle();
+    assert_eq!(rig.ts("g.log.length"), "0", "not before its time");
+    rig.advance(2);
     rig.settle();
     assert_eq!(
         rig.ts("g.log.join()"),
@@ -475,13 +481,27 @@ fn a_timer_runs_once_at_the_first_frame_past_its_time_and_never_after_cancel() {
 fn timers_now_is_monotonic_milliseconds_and_gnoblin_after_is_the_seconds_spelling() {
     let (mut rig, _session) =
         rig("g.t0 = gnoblin.timers.now(); g.alias = gnoblin.after(0.02, () => g.log.push('after'));");
-    assert_eq!(rig.ts("gnoblin.timers.now() >= g.t0"), "true");
+    assert_eq!(
+        rig.ts("Math.round(gnoblin.timers.now() - g.t0)"),
+        "0",
+        "the shell's clock moves only when the test moves it, however long the frames before took"
+    );
     assert_eq!(
         rig.ts("g.alias.constructor.name"),
         "Timer",
         "the alias returns the timer"
     );
-    until(&mut rig, "gnoblin.after ran", |rig| rig.ts("g.log.join()") == "after");
+    rig.advance(10);
+    rig.settle();
+    assert_eq!(rig.ts("g.log.join()"), "", "not before its time");
+    assert_eq!(
+        rig.ts("Math.round(gnoblin.timers.now() - g.t0)"),
+        "10",
+        "the clock reads what the test gave it"
+    );
+    rig.advance(20);
+    rig.settle();
+    assert_eq!(rig.ts("g.log.join()"), "after");
 }
 
 #[test]
@@ -515,7 +535,9 @@ fn a_timer_delay_outside_one_day_or_not_a_number_is_refused_and_the_pending_coun
 fn a_timer_that_throws_is_reported_and_the_next_timer_still_runs() {
     let (mut rig, _session) = rig("gnoblin.timers.after(30, () => { throw new Error('timer broke'); });
          gnoblin.timers.after(30, () => g.log.push('next'));");
-    let diagnostics = until(&mut rig, "both timers ran", |rig| rig.ts("g.log.length") == "1");
+    rig.advance(40);
+    let diagnostics = rig.settle();
+    assert_eq!(rig.ts("g.log.length"), "1", "both timers ran");
     assert!(
         diagnostics.iter().any(|line| line.contains("timer broke")),
         "{diagnostics:?}"
@@ -532,7 +554,7 @@ fn retiring_the_generation_cancels_its_timers_pending_operations_and_handlers() 
     session.signal("gnoblin.session.bell", 1, serde_json::json!({ "count": 1 }));
     session.finish(1, Ok(serde_json::json!({ "dispatched": true })));
     rig.settle();
-    std::thread::sleep(Duration::from_millis(80));
+    rig.advance(80);
     rig.settle();
     assert_eq!(
         rig.ts("[g.timer.pending, g.log.length, g.op.status].join()"),

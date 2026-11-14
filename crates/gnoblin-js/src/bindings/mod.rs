@@ -13,11 +13,14 @@ mod props;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use gnoblin_proto::tree::effect;
 use gnoblin_tree_client::tree_mirror::{MirrorValue, NodeId, NodeRecord, TreeMirror, TxBuilder};
 use rquickjs::{Array, Ctx, IntoJs, Object, Value};
 use thiserror::Error;
+
+use crate::supervisor::JsClock;
 
 pub(crate) use host::{adopt_windows, install, parents_first, spawn};
 
@@ -70,14 +73,21 @@ pub(crate) struct HostState {
 pub(crate) type SharedState = Rc<RefCell<HostState>>;
 
 impl HostState {
+    /// State over `mirror` that reads the real clock: what the unit tests of the host functions need.
+    #[cfg(test)]
     pub(crate) fn new(mirror: TreeMirror) -> Self {
+        Self::with_clock(mirror, Arc::new(crate::supervisor::JsSystemClock))
+    }
+
+    /// State over `mirror` whose scripts read `clock`.
+    pub(crate) fn with_clock(mirror: TreeMirror, clock: Arc<dyn JsClock>) -> Self {
         Self {
             mirror,
             tick: TxBuilder::new(),
             graveyard: HashMap::new(),
             spawner: None,
             tokens: 0,
-            input: crate::input::JsInput::new(),
+            input: crate::input::JsInput::new(clock),
             handles: NodeHandles::default(),
             ui: crate::ui::JsUiState::default(),
             xr: crate::xr::JsXrState::default(),

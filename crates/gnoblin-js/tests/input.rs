@@ -14,12 +14,15 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 
-use gnoblin_js::{JsConfig, JsGeneration, JsShell, JsShellConfig, stock_modules};
+use gnoblin_js::{JsConfig, JsGeneration, JsManualClock, JsShell, JsShellConfig, stock_modules};
 use gnoblin_tree_client::tree_mirror::{
     Attached, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeChord, TreeGesture,
     TreeIncoming, TreeLink, TreePointerChord, TreeTx, TxOp, TxReply,
 };
 use tempfile::TempDir;
+
+mod common;
+use common::{honest_config, timed_config};
 
 // -- the trigger grammar -----------------------------------------------------------------------------------
 
@@ -637,10 +640,17 @@ fn world(second: bool) -> Comp {
 struct Rig {
     shell: JsShell,
     comp: Comp,
+    clock: JsManualClock,
     _dir: TempDir,
 }
 
 impl Rig {
+    /// Moves the shell's clock forward by `ms` milliseconds: a slide, a fade or a delay is over when the test says so,
+    /// not when the machine got there.
+    fn advance(&self, ms: u64) {
+        self.clock.advance(Duration::from_millis(ms));
+    }
+
     fn frame(&mut self) -> Vec<String> {
         self.shell.frame().expect("a frame").diagnostics
     }
@@ -663,7 +673,7 @@ fn rig_with(comp: &Comp, init: &str, tweak: impl FnOnce(&mut JsShellConfig)) -> 
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("init.ts"), init).expect("init.ts is written");
-    let mut config = JsShellConfig::new(&root);
+    let (mut config, clock) = timed_config(&root);
     tweak(&mut config);
     let mut shell = JsShell::new(Box::new(FakeLink(comp.clone())), config).expect("the shell boots");
     let diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
@@ -671,6 +681,7 @@ fn rig_with(comp: &Comp, init: &str, tweak: impl FnOnce(&mut JsShellConfig)) -> 
     let mut rig = Rig {
         shell,
         comp: comp.clone(),
+        clock,
         _dir: dir,
     };
     // The claims the entry made travel with the first frame.
@@ -1282,9 +1293,11 @@ fn a_drag_that_is_behind_reads_the_latest_pointer_and_never_queues_a_second_upda
         &comp,
         &entry(&format!(
             "{PROBE}input.bind(\"Super+MouseLeft+Drag\", new Probe(\"p\", \"Super+MouseLeft+Drag\"));\n\
-             input.bind(\"Super+k\", () => {{ const t = Date.now(); while (Date.now() - t < 60) {{}} log.push(\"slow\"); }});\n"
+             input.bind(\"Super+k\", () => {{ const t = Date.now(); while (Date.now() - t < 600) {{}} log.push(\"slow\"); }});\n"
         )),
-        |config| config.frame_budget = Duration::from_millis(25),
+        // The slow handler outlasts the frame budget by a wide margin, and every other frame uses a small part of it, so
+        // no frame of this test can be the one a busy machine tips over.
+        |config| config.frame_budget = Duration::from_millis(300),
     );
     let drag = comp.claim_id("<Super>Button1");
     comp.set_pointer(5, 50.0, 60.0);
@@ -1926,7 +1939,7 @@ fn retiring_the_shell_cancels_what_is_running_once_and_releases_every_claim() {
 fn bare_shell(comp: &Comp) -> (JsShell, TempDir) {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    let shell = JsShell::new(Box::new(FakeLink(comp.clone())), JsShellConfig::new(&root)).expect("the shell boots");
+    let shell = JsShell::new(Box::new(FakeLink(comp.clone())), honest_config(&root)).expect("the shell boots");
     (shell, dir)
 }
 
@@ -2086,7 +2099,7 @@ fn the_stock_swipe_pulls_the_next_workspace_in_under_the_fingers_and_a_long_swip
         "true",
         "the leaving windows stay drawn while they slide"
     );
-    std::thread::sleep(Duration::from_millis(120));
+    rig.advance(120);
     rig.frame();
     rig.frame();
     assert_eq!(
@@ -2116,7 +2129,7 @@ fn a_short_swipe_slides_back_and_leaves_the_shown_workspace_alone() {
     assert_eq!(comp.prop(4, "x"), rest_b + 875.0);
     comp.gesture(id, "end", -50.0, 0.0);
     rig.frame();
-    std::thread::sleep(Duration::from_millis(280));
+    rig.advance(280);
     rig.frame();
     rig.frame();
     assert_eq!(rig.eval("gnoblin.workspaces.where({ active: true }).at(0).id"), "a");

@@ -14,7 +14,7 @@
 use std::fs;
 use std::path::Path;
 
-use gnoblin_js::{JsShell, JsShellConfig};
+use gnoblin_js::JsShell;
 use gnoblin_paint::{PaintList, PaintOp, Rgba8, decode, encode};
 mod common;
 use common::*;
@@ -684,7 +684,7 @@ fn every_window_has_a_titlebar_of_its_own_including_the_ones_there_at_boot() {
         format!("{IMPORTS}defineConfig({{ decorations: true }});\n"),
     )
     .expect("init.ts");
-    let mut shell = JsShell::new(Box::new(comp.clone()), JsShellConfig::new(&root)).expect("the shell boots");
+    let mut shell = JsShell::new(Box::new(comp.clone()), honest_config(&root)).expect("the shell boots");
     shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
     for _ in 0..6 {
         shell.frame().expect("a frame");
@@ -724,7 +724,7 @@ fn the_close_button_of_a_decorated_window_closes_that_window() {
         rig.comp.calls().is_empty(),
         "the window fades out before it is asked to close"
     );
-    std::thread::sleep(std::time::Duration::from_millis(260));
+    rig.advance(260);
     rig.settle();
     assert_eq!(rig.comp.calls(), [(3, "close".to_owned())]);
 }

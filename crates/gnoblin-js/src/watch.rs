@@ -275,10 +275,14 @@ mod tests {
 
     use super::{ConfigWatcher, is_editor_junk, is_module_file};
 
-    const DEBOUNCE: Duration = Duration::from_millis(80);
+    /// The quiet time that ends a burst. A test writes its burst in microseconds, but a loaded machine can stall the
+    /// writing thread for far longer than a short debounce, and the stalled burst would be reported as two requests.
+    /// The debounce is longer than any stall a test machine is likely to see.
+    const DEBOUNCE: Duration = Duration::from_secs(1);
     /// Long enough for inotify to deliver and the debounce to pass on a loaded CI machine.
-    const PATIENCE: Duration = Duration::from_secs(5);
-    /// Long enough to be sure nothing was queued, after the debounce has passed.
+    const PATIENCE: Duration = Duration::from_secs(10);
+    /// Long enough that an event already on its way has arrived, so a test that expects none sees none. It never
+    /// decides whether a burst was one request: the debounce does.
     const QUIET: Duration = Duration::from_millis(600);
 
     fn config_dir() -> (TempDir, PathBuf) {

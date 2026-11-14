@@ -11,17 +11,18 @@
 
 use std::fs;
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use gnoblin_js::{JsShell, JsShellConfig};
+use gnoblin_js::{JsManualClock, JsShell};
 use gnoblin_tree_client::tree_mirror::MirrorValue;
 
 mod common;
-use common::FakeCompositor;
+use common::{FakeCompositor, timed_config};
 
 struct Rig {
     shell: JsShell,
     comp: FakeCompositor,
+    clock: JsManualClock,
     _dir: tempfile::TempDir,
 }
 
@@ -50,15 +51,9 @@ impl Rig {
         self.eval("log.join(',')")
     }
 
-    /// Frames until `check` holds, within a deadline: a launch's own deadline is real time.
-    #[track_caller]
-    fn until(&mut self, what: &str, mut check: impl FnMut(&mut Rig) -> bool) {
-        let deadline = Instant::now() + Duration::from_secs(20);
-        while !check(self) {
-            assert!(Instant::now() < deadline, "never reached: {what}");
-            self.frame();
-            std::thread::sleep(Duration::from_millis(10));
-        }
+    /// Moves the shell's clock forward: a launch's deadline is on that clock, so no real time has to pass.
+    fn advance(&self, ms: u64) {
+        self.clock.advance(Duration::from_millis(ms));
     }
 }
 
@@ -74,10 +69,16 @@ fn rig(body: &str, windows: &[(u64, &str)]) -> Rig {
         format!("const g = globalThis as any;\ng.g = g;\ng.log = [];\n{body}\n"),
     )
     .expect("init.ts is written");
-    let mut shell = JsShell::new(Box::new(comp.clone()), JsShellConfig::new(&root)).expect("the shell boots");
+    let (config, clock) = timed_config(&root);
+    let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
     let diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
-    Rig { shell, comp, _dir: dir }
+    Rig {
+        shell,
+        comp,
+        clock,
+        _dir: dir,
+    }
 }
 
 const BEGIN: &str = "g.l = gnoblin.launches.begin('t1', 'org.example.App', {\n\
@@ -202,7 +203,9 @@ fn the_deadline_times_the_launch_out_and_a_later_window_changes_nothing() {
         });",
         &[],
     );
-    rig.until("the launch timed out", |rig| rig.eval("g.l.state") == "timed_out");
+    rig.settle();
+    assert_eq!(rig.eval("g.l.state"), "pending", "its deadline has not come");
+    rig.advance(150);
     rig.settle();
     assert_eq!(rig.log(), "timed-out,closed:timed_out");
     assert_eq!(rig.eval("g.l.revision"), "1");

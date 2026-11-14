@@ -13,10 +13,10 @@ use std::fs;
 use std::path::Path;
 use std::rc::Rc;
 
-use gnoblin_js::{JsIdleLink, JsIdleReading, JsLinkError, JsShell, JsShellConfig};
+use gnoblin_js::{JsIdleLink, JsIdleReading, JsLinkError, JsShell};
 
 mod common;
-use common::FakeCompositor;
+use common::{FakeCompositor, honest_config};
 
 #[derive(Default)]
 struct Idle {
@@ -125,7 +125,7 @@ fn rig_with(body: &str, connected: bool) -> Rig {
     )
     .expect("init.ts is written");
     let idle = FakeIdle::default();
-    let mut shell = JsShell::new(Box::new(FakeCompositor::new()), JsShellConfig::new(&root)).expect("the shell boots");
+    let mut shell = JsShell::new(Box::new(FakeCompositor::new()), honest_config(&root)).expect("the shell boots");
     if connected {
         let state = idle.clone();
         shell.set_idle_connector(Box::new(move || {

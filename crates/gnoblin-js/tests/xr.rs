@@ -9,7 +9,7 @@
 use std::fs;
 use std::path::Path;
 
-use gnoblin_js::{JsShell, JsShellConfig};
+use gnoblin_js::JsShell;
 use gnoblin_tree_client::tree_mirror::{MirrorValue, TxOp};
 
 mod common;
@@ -198,7 +198,7 @@ fn load(declared: bool, body: &str, setup: impl FnOnce(&FakeCompositor)) -> Resu
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("init.ts"), body).expect("init.ts is written");
-    let mut config = JsShellConfig::new(&root);
+    let mut config = honest_config(&root);
     config.xr_declared = declared;
     let mut shell = JsShell::new(Box::new(comp), config).expect("the shell boots");
     shell

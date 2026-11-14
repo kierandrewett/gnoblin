@@ -47,6 +47,7 @@ use crate::host_idle::{JsIdle, JsIdleConnector, commands_from_js, reading_to_js}
 use crate::host_session::JsSessionLink;
 use crate::input::{JsInputMessage, messages_to_js};
 use crate::stock::stock_modules_in;
+use crate::supervisor::{JsClock, JsSystemClock};
 use crate::ts::strip_types;
 use crate::workspaces::{JsWorkspaceSnapshot, coalesce_sets};
 
@@ -74,6 +75,10 @@ const BOOT_WAIT: Duration = Duration::from_secs(5);
 /// The pause between boot polls while the reply is still on its way.
 const BOOT_POLL: Duration = Duration::from_millis(5);
 
+/// The least time the embedded library's install may use, whatever the config's `stage_budget`: the bundled modules
+/// are compiled in that call, and a budget chosen to bound a user's entry must not starve them.
+const HOST_INSTALL_BUDGET: Duration = Duration::from_secs(5);
+
 /// Calls whose text is content and not a secret, so a retry may send it again. The same list the Lua
 /// shell keeps; no JavaScript call carries text yet, so this only holds the rule in place.
 const PLAIN_TEXT_CALLS: &[&str] = &["measure", "claim", "claim_gesture", "claim_device", "capture"];
@@ -93,6 +98,10 @@ pub struct JsShellConfig {
     /// Whether the session declared XR (`GNOBLIN_XR=1`). A config may then import `gnoblin/extensions/xr` before the
     /// headset's session has started; without it that import works only once the program's `xr` seat is in the tree.
     pub xr_declared: bool,
+    /// The monotonic clock the scripts read (`gnoblin.timers.now`, and so every timer, fade, delay and arming window).
+    /// The real clock by default; a test that must not depend on how fast the machine is gives it a
+    /// [`JsManualClock`](crate::JsManualClock) and moves it.
+    pub clock: Arc<dyn JsClock>,
 }
 
 impl JsShellConfig {
@@ -104,6 +113,7 @@ impl JsShellConfig {
             frame_budget: Duration::from_millis(500),
             stock_dir: None,
             xr_declared: false,
+            clock: Arc::new(JsSystemClock),
         }
     }
 }
@@ -212,7 +222,7 @@ impl JsShell {
         link.attach(ATTACH_VERSION).map_err(|e| JsShellError::Link(e.0))?;
         let (mirror, incoming) = boot_mirror(link.as_mut())?;
         let boot_ready = bindings::parents_first(&mirror);
-        let state: SharedState = Rc::new(RefCell::new(HostState::new(mirror)));
+        let state: SharedState = Rc::new(RefCell::new(HostState::with_clock(mirror, Arc::clone(&config.clock))));
         state.borrow_mut().xr = crate::xr::JsXrState::declared(config.xr_declared);
 
         let host_module = strip_types(Path::new("gnoblin/host.ts"), HOST_MODULE).map_err(JsError::from)?;
@@ -1172,9 +1182,10 @@ impl JsShell {
     }
 }
 
-/// Installs the host functions in `generation` and loads `gnoblin/host`, under `budget`.
+/// Installs the host functions in `generation` and loads `gnoblin/host`, under `budget` or
+/// [`HOST_INSTALL_BUDGET`], whichever is longer.
 fn install_host(generation: &JsGeneration, state: &SharedState, budget: Duration) -> Result<(), JsError> {
-    generation.call_budgeted(budget, |ctx| {
+    generation.call_budgeted(budget.max(HOST_INSTALL_BUDGET), |ctx| {
         bindings::install(ctx, state)?;
         Module::import(ctx, HOST_MODULE_NAME)?.finish::<Value<'_>>().map(drop)
     })

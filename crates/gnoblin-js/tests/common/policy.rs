@@ -146,8 +146,8 @@ pub fn next_generation(rig: &Rig, config: &str) -> Rig {
         "{IMPORTS}defineConfig({{ workspaces: [{{ id: \"1\" }}, {{ id: \"2\" }}, {{ id: \"3\" }}], decorations: false, {config} }});\n"
     );
     std::fs::write(root.join("init.ts"), init).expect("init.ts is written");
-    let mut shell = gnoblin_js::JsShell::new(Box::new(rig.comp.clone()), gnoblin_js::JsShellConfig::new(&root))
-        .expect("the shell boots");
+    let (config, clock) = timed_config(&root);
+    let mut shell = gnoblin_js::JsShell::new(Box::new(rig.comp.clone()), config).expect("the shell boots");
     let load_diagnostics = shell
         .load_entry(std::path::Path::new("init.ts"))
         .expect("init.ts loads");
@@ -155,6 +155,7 @@ pub fn next_generation(rig: &Rig, config: &str) -> Rig {
         shell,
         comp: rig.comp.clone(),
         load_diagnostics,
+        clock,
         _dir: dir,
     }
 }

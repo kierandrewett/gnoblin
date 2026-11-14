@@ -15,13 +15,13 @@ use std::fs;
 use std::path::Path;
 use std::rc::Rc;
 
-use gnoblin_js::{JsShell, JsShellConfig};
+use gnoblin_js::JsShell;
 use gnoblin_model::DeclineReason;
 use gnoblin_tree_client::slot_link::{SlotEvent, SlotLink};
 use gnoblin_tree_client::tree_mirror::LinkError;
 
 mod common;
-use common::FakeCompositor;
+use common::{FakeCompositor, honest_config};
 
 #[derive(Default)]
 struct Slots {
@@ -156,7 +156,7 @@ fn rig_with(body: &str, linked: bool) -> Rig {
     )
     .expect("init.ts is written");
     let slots = FakeSlots::default();
-    let mut shell = JsShell::new(Box::new(FakeCompositor::new()), JsShellConfig::new(&root)).expect("the shell boots");
+    let mut shell = JsShell::new(Box::new(FakeCompositor::new()), honest_config(&root)).expect("the shell boots");
     if linked {
         shell.set_auth_link(Box::new(slots.clone()));
     }

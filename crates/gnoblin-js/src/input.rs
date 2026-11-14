@@ -17,7 +17,8 @@
 //!   published, which is also what a drag samples once per frame.
 
 use std::collections::HashMap;
-use std::time::Instant;
+use std::sync::Arc;
+use std::time::Duration;
 
 use gnoblin_secret::SecretText;
 use gnoblin_tree_client::tree_mirror::{
@@ -26,6 +27,7 @@ use gnoblin_tree_client::tree_mirror::{
 use rquickjs::{Array, Ctx, Function, IntoJs, Object, Value};
 
 use crate::bindings::{HostState, NodeHandles, SharedState, parents_first};
+use crate::supervisor::JsClock;
 
 /// A claimed chord, gesture or pointer drag the compositor reported, parked until the frame hands it to the module.
 #[derive(Clone, Debug, PartialEq)]
@@ -73,19 +75,28 @@ pub(crate) struct JsInput {
     pub inbox: Vec<JsInputMessage>,
     /// The pointer edges on windows that arrived since the last frame's dispatch, oldest first.
     window_events: Vec<JsWindowPointer>,
-    /// The origin of `now`.
-    epoch: Instant,
+    /// The clock `now` reads: the shell's own, or the one a test injected.
+    clock: Arc<dyn JsClock>,
+    /// What the clock read when this was made, so `now` counts from the shell's start as it always has.
+    origin: Duration,
 }
 
 impl JsInput {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(clock: Arc<dyn JsClock>) -> Self {
         Self {
             last_claim: 0,
             claims: HashMap::new(),
             inbox: Vec::new(),
             window_events: Vec::new(),
-            epoch: Instant::now(),
+            origin: clock.now(),
+            clock,
         }
+    }
+
+    /// Milliseconds since the shell started, on the shell's clock: the monotonic time every script timer, fade and
+    /// arming window reads.
+    pub(crate) fn now_ms(&self) -> f64 {
+        self.clock.now().saturating_sub(self.origin).as_secs_f64() * 1000.0
     }
 
     /// Keeps a pointer event addressed to a window of the tree; any other event is not input's.
@@ -613,9 +624,7 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
     let shared = state.clone();
     input.set(
         "now",
-        Function::new(ctx.clone(), move || -> f64 {
-            shared.borrow().input.epoch.elapsed().as_secs_f64() * 1000.0
-        })?,
+        Function::new(ctx.clone(), move || -> f64 { shared.borrow().input.now_ms() })?,
     )?;
 
     host.set("input", input)
