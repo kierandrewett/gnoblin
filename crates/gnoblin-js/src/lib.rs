@@ -47,6 +47,7 @@ mod lock;
 mod reload;
 mod role;
 mod runner;
+mod script_console;
 mod shell;
 mod stock;
 mod supervisor;
@@ -80,6 +81,7 @@ pub use runner::{
     FRAME_WAIT, JsRoleError, JsRoleRunner, JsRuntimeChoice, MIGRATION_DOC, SHELL_VM_VARIABLE, TEST_CRASH_VARIABLE,
     WATCH_VARIABLE, choose_runtime, choose_runtime_from_environment,
 };
+pub use script_console::{JsConsoleLevel, JsConsoleLine, MAX_LINE_BYTES, MAX_LINES_PER_SECOND};
 pub use shell::{JsFrame, JsShell, JsShellConfig, JsShellError, JsStaging, STALE_RETRIES};
 pub use stock::{STARTER_CONFIG, stock_modules, stock_modules_in};
 pub use supervisor::{

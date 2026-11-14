@@ -1606,3 +1606,67 @@ fn two_shells_do_not_share_a_console_and_the_socket_goes_with_its_server() {
         "nothing answers once the server is gone"
     );
 }
+
+#[test]
+fn what_an_expression_prints_through_console_comes_back_in_the_reply_and_goes_to_the_log() {
+    let comp = two_windows();
+    let rig = rig(&comp, "export {};\n");
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let path = dir.path().join("js.sock");
+    let mut console = JsConsole::bind(&path).expect("the console listens");
+    let mut prompt = Prompt::connect(&path);
+    let mut serve = || console.serve(&rig.shell);
+
+    let mut replies = Vec::new();
+    let events = gnoblin_log::event::capture::logged_with_levels(|| {
+        replies.push(prompt.ask("console.log('hello', 3); console.warn('careful'); 7", &mut serve));
+        replies.push(prompt.ask("console.error('before'); null.x", &mut serve));
+        replies.push(prompt.ask("1 + 1", &mut serve));
+    });
+
+    let printed = &replies[0]["output"];
+    assert_eq!(value_of(&replies[0]), &json!(7));
+    assert_eq!(printed.as_array().map(Vec::len), Some(2), "{printed}");
+    assert_eq!(
+        (&printed[0]["level"], &printed[0]["text"]),
+        (&json!("info"), &json!("hello 3"))
+    );
+    assert_eq!(
+        (&printed[1]["level"], &printed[1]["text"]),
+        (&json!("warn"), &json!("careful"))
+    );
+    let site = printed[0]["site"].as_str().expect("a call site");
+    assert!(site.starts_with("<console>:1:"), "{site}");
+
+    assert_eq!(replies[1]["ok"], json!(false), "the expression threw");
+    assert_eq!(
+        (&replies[1]["output"][0]["level"], &replies[1]["output"][0]["text"]),
+        (&json!("error"), &json!("before")),
+        "what ran before the throw is still shown"
+    );
+    assert_eq!(
+        replies[2]["output"],
+        json!([]),
+        "an expression that prints nothing has an empty list"
+    );
+
+    let script: Vec<String> = events
+        .iter()
+        .filter(|(_, event)| {
+            event
+                .fields
+                .iter()
+                .any(|(name, value)| name == "area" && value == "\"script\"")
+        })
+        .map(|(level, event)| format!("{level} {}", event.message))
+        .collect();
+    assert_eq!(script.len(), 3, "{script:?}");
+    assert!(
+        script[0].starts_with("INFO <console>:1:") && script[0].ends_with(": hello 3"),
+        "{script:?}"
+    );
+    assert!(
+        script[1].starts_with("WARN <console>:1:") && script[1].ends_with(": careful"),
+        "{script:?}"
+    );
+}

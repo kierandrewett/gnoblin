@@ -351,3 +351,75 @@ fn a_shell_that_goes_away_mid_session_is_an_error_not_a_hang() {
     assert!(run.err.contains("the shell closed the console"), "{}", run.err);
     hangup.join().expect("the server ends");
 }
+
+/// A reply whose expression printed `lines` (level, text) through `console` before it ended.
+fn printing(mut reply: Value, lines: &[(&str, &str)]) -> Value {
+    reply["output"] = lines
+        .iter()
+        .map(|(level, text)| json!({"level": level, "site": "<console>:1:1", "text": text}))
+        .collect();
+    reply
+}
+
+#[test]
+fn the_prompt_prints_what_an_expression_logged_before_its_value_warnings_on_standard_error() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let server = serve(&socket(&dir), |expr| {
+        if expr == "boom" {
+            printing(
+                failure("exception", "boom is not defined", 1, 1),
+                &[("error", "before the throw")],
+            )
+        } else {
+            printing(
+                ok(json!(7), "7"),
+                &[("info", "hello 3"), ("warn", "careful"), ("debug", "detail")],
+            )
+        }
+    });
+    let options = ConsoleOptions {
+        eval: None,
+        json: false,
+        interactive: false,
+    };
+    let run = drive(socket(&dir), &options, "go\nboom\n");
+    assert_eq!(run.code, 1);
+    assert_eq!(
+        run.out, "hello 3\ndetail\n7\n",
+        "log, info and debug go to standard output, before the value"
+    );
+    assert!(
+        run.err.starts_with("careful\nbefore the throw\n"),
+        "warn and error go to standard error, and a failed expression keeps what it printed: {}",
+        run.err
+    );
+    assert!(run.err.contains("boom is not defined"), "{}", run.err);
+    server.join().expect("the server ends");
+}
+
+#[test]
+fn eval_keeps_standard_output_for_the_value_and_sends_what_was_logged_to_standard_error() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let server = serve(&socket(&dir), |_| {
+        printing(ok(json!(7), "7"), &[("info", "hello 3"), ("warn", "careful")])
+    });
+    let run = drive(socket(&dir), &eval("console.log('hello', 3); 7"), "");
+    assert_eq!((run.code, run.out.as_str()), (0, "7\n"), "{}", run.err);
+    assert_eq!(run.err, "hello 3\ncareful\n");
+    server.join().expect("the server ends");
+
+    // `--json` prints the whole reply, and with it the lines, once.
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let server = serve(&socket(&dir), |_| printing(ok(json!(7), "7"), &[("info", "hello 3")]));
+    let options = ConsoleOptions {
+        eval: Some("console.log('hello', 3); 7"),
+        json: true,
+        interactive: false,
+    };
+    let run = drive(socket(&dir), &options, "");
+    assert_eq!(run.code, 0);
+    let reply: Value = serde_json::from_str(run.out.trim()).expect("a reply");
+    assert_eq!(reply["output"][0]["text"], json!("hello 3"));
+    assert_eq!(run.err, "");
+    server.join().expect("the server ends");
+}

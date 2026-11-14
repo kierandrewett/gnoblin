@@ -57,3 +57,5 @@ toml.workspace = true
 # The paint list tests compare the toolkit's bytes with the compositor's own encoder and decoder
 # (`tests/ui.rs`); the shell itself never links the painter.
 gnoblin-paint.workspace = true
+# The console tests read what a script logged through `console`, with the level each line was logged at.
+gnoblin-log = { path = "../gnoblin-log", features = ["capture"] }

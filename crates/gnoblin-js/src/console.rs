@@ -14,6 +14,9 @@
 //! - `{"id", "ok": false, "error": {"kind", "message", "location", "stack"}}`: `kind` is `exception`, `budget`,
 //!   `memory`, `request` or `engine`, `location` is `{"file", "line", "column"}` (the file of a console expression
 //!   is `<console>`) or null.
+//! - Both replies carry `output`, what the expression printed through `console.log` and its siblings: a list of
+//!   `{"level", "site", "text"}` in the order they were logged (`level` is `debug`, `info`, `warn` or `error`; `site`
+//!   is `<console>:line:col` or null). The same lines are in the log; `output` is how the prompt shows them.
 //!
 //! # Where an expression runs
 //!
@@ -49,6 +52,7 @@ use thiserror::Error;
 
 use crate::error::{JsError, JsErrorKind};
 use crate::generation::JsGeneration;
+use crate::script_console::JsConsoleLine;
 use crate::shell::JsShell;
 
 gnoblin_log::logger!(log = "js");
@@ -369,7 +373,9 @@ fn answer(shell: &JsShell, line: &[u8], max_bytes: usize) -> Json {
     let Some(expr) = request.get("expr").and_then(Json::as_str) else {
         return failure(&id, "request", "a request needs an `expr` string");
     };
-    match evaluate_in(shell, expr, max_bytes) {
+    let (generation, budget) = shell.console_target();
+    let (outcome, output) = evaluate_capturing(generation, budget, expr, max_bytes);
+    let mut reply = match outcome {
         Ok(rendered) => match serde_json::from_str::<Map<String, Json>>(&rendered) {
             Ok(mut reply) => {
                 reply.insert("id".to_owned(), id);
@@ -383,7 +389,19 @@ fn answer(shell: &JsShell, line: &[u8], max_bytes: usize) -> Json {
             ),
         },
         Err(error) => error_reply(&id, &error),
-    }
+    };
+    // What the expression logged through `console`, in order, whether it ended well or not.
+    reply["output"] = output_json(&output);
+    reply
+}
+
+fn output_json(lines: &[JsConsoleLine]) -> Json {
+    Json::Array(
+        lines
+            .iter()
+            .map(|line| json!({"level": line.level.name(), "site": line.site, "text": line.text}))
+            .collect(),
+    )
 }
 
 fn failure(id: &Json, kind: &str, message: &str) -> Json {
@@ -430,7 +448,20 @@ fn console_location(stack: &str) -> Option<(u32, u32)> {
 /// reply's JSON. Not counted as a strike when it runs past its budget.
 pub fn evaluate_in(shell: &JsShell, source: &str, max_bytes: usize) -> Result<String, JsError> {
     let (generation, budget) = shell.console_target();
-    evaluate(generation, budget, source, max_bytes)
+    evaluate_capturing(generation, budget, source, max_bytes).0
+}
+
+/// [`evaluate`], with the lines the expression logged through `console` kept apart from the log's own record, so the
+/// reply can carry them to the prompt.
+fn evaluate_capturing(
+    generation: &JsGeneration,
+    budget: Duration,
+    source: &str,
+    max_bytes: usize,
+) -> (Result<String, JsError>, Vec<JsConsoleLine>) {
+    generation.capture_console();
+    let outcome = evaluate(generation, budget, source, max_bytes);
+    (outcome, generation.take_console())
 }
 
 fn evaluate(generation: &JsGeneration, budget: Duration, source: &str, max_bytes: usize) -> Result<String, JsError> {

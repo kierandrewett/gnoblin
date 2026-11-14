@@ -103,6 +103,25 @@ generation, so the shell does not restart over it.
 - A value that does not fit the size cap (64 KiB of text) is cut, and the reply says `"truncated": true`; the prompt
   prints a warning. Ask for less with `.map` or `.slice`.
 
+## Printing with `console`
+
+`console` is a global of every script, so `console.log("hi")` works in `init.ts`, in a listener and at the prompt. At
+the prompt the lines an expression prints come out before its value:
+
+- `log`, `info` and `debug` go to standard output.
+- `warn` and `error` go to standard error.
+- With `--eval` all of them go to standard error, so standard output stays the value alone.
+
+```text
+gnoblin> gnoblin.clients.forEach((c) => console.log("%s: %s", c.appId, c.title)); gnoblin.clients.length
+foot: Terminal
+firefox: Mozilla Firefox
+2
+```
+
+The same lines are in the log, as the section on [debugging](typescript-shell.md#debugging) says. The prompt shows only
+what the expression you just ran printed; lines that a listener printed meanwhile are in the log only.
+
 ## The inspector helpers
 
 `inspect` returns plain data: numbers, strings, booleans, arrays and objects of those, nothing live. Keep a result
@@ -155,6 +174,23 @@ The console is newline-delimited JSON on the socket, so a tool can speak it with
 
 A failure has `"ok": false` and an `error` with `kind` (`exception`, `budget`, `memory`, `request` or `engine`),
 `message`, `location` (`{"file": "<console>", "line": 1, "column": 5}` or `null`) and `stack`.
+
+Both kinds of reply carry `output`, the lines the expression printed through `console`, in order:
+
+```json
+{
+    "id": 2,
+    "ok": true,
+    "type": "number",
+    "value": 7,
+    "text": "7",
+    "truncated": false,
+    "output": [{ "level": "info", "site": "<console>:1:1", "text": "hello 3" }]
+}
+```
+
+`level` is `debug`, `info`, `warn` or `error`, `site` is where the call was (`<console>:line:column`), and `text` is the
+formatted line. A failed expression keeps the lines it printed before it threw.
 
 ## See also
 

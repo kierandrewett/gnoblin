@@ -771,6 +771,45 @@ gnoblin.clients.addListener({
     });
 }
 
+/// An `init.ts` that prints at load and from a listener, with every call on a line and a column the test knows.
+const CONSOLE_INIT: &str = r#"import { gnoblin } from "gnoblin";
+console.log("init says hi", gnoblin.clients.length);
+let heard = 0;
+(globalThis as any).probe = () => String(heard);
+gnoblin.clients.addListener({
+    onAdded(client: { appId: string }): void {
+        heard += 1;
+        console.warn("heard %s", client.appId);
+    },
+});
+"#;
+
+#[test]
+fn a_scripts_console_calls_reach_the_session_log_with_their_ts_call_sites() {
+    let session = Session::start();
+    let mut mapper = Mapper::connect(&session.wayland());
+    let config = tempfile::tempdir().expect("a config directory");
+    save(&config.path().join("init.ts"), CONSOLE_INIT);
+    let shell = Shell::start(&session, config.path(), |_| {});
+
+    // A listener runs in a later frame than the load, so both kinds of call are proved.
+    mapper.map_window("org.example.logger", "Logger");
+    wait_for("the listener heard the window", &session, &mut mapper, &shell, || {
+        shell.probe() == "1"
+    });
+    let log = shell.finish();
+
+    assert!(
+        log.iter().any(|message| message == "init.ts:2:29: init says hi 0"),
+        "the load's call is in the log as `init.ts:LINE:COL`: {log:#?}"
+    );
+    assert!(
+        log.iter()
+            .any(|message| message == "init.ts:8:34: heard org.example.logger"),
+        "the listener's call is too, from its own frame: {log:#?}"
+    );
+}
+
 /// The workspaces the stock config declares, as the shell's view lists them: the Lua stock config's four.
 const STOCK_WORKSPACES: &str = "1:FloatingLayout,2:FloatingLayout,3:FloatingLayout,4:FloatingLayout";
 

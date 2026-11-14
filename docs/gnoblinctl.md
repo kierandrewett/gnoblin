@@ -386,7 +386,15 @@ gnoblinctl console --eval 'gnoblin.clients.length'
   as `null`.
 - `--json` prints each reply as the shell sent it: `ok`, `type`, `value`,
   `text` and `truncated`, or `error` with `kind`, `message`, `location` and
-  `stack`.
+  `stack`, and in both `output`, the lines the expression printed through
+  `console`.
+
+What an expression prints through `console` comes out before its value:
+
+- `log`, `info` and `debug` go to standard output.
+- `warn` and `error` go to standard error.
+- With `--eval` all of them go to standard error, so standard output stays the
+  value alone.
 
 With no shell listening, `console` exits 1 with an error block that names the
 socket it tried and a hint:

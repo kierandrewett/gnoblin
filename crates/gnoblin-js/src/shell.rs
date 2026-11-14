@@ -227,6 +227,8 @@ impl JsShell {
 
         let host_module = strip_types(Path::new("gnoblin/host.ts"), HOST_MODULE).map_err(JsError::from)?;
         let mut js = config.js.clone();
+        // The console's rate limit counts on the clock the scripts read, so a test that moves it moves that too.
+        js.clock = Arc::clone(&config.clock);
         let embedded = Arc::make_mut(&mut js.embedded);
         // The user-facing `gnoblin` module is the stock index plus the host's exports, so one import line
         // reaches `defineConfig` and `ClientListener` alike. The stock sources stay as they are: their own
@@ -816,6 +818,7 @@ impl JsShell {
         self.run_dialogs(&mut diagnostics)?;
         self.run_compositor_links(&mut diagnostics)?;
         self.collect_reports(&mut diagnostics)?;
+        self.generation.flush_console();
 
         self.send_transaction()?;
         Ok(JsFrame { diagnostics })
@@ -858,6 +861,7 @@ impl JsShell {
         })?;
         self.idle.retire(&holders);
         self.collect_reports(&mut diagnostics)?;
+        self.generation.flush_console();
         Ok(JsFrame { diagnostics })
     }
 

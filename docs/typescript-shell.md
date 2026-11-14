@@ -271,6 +271,53 @@ same text.
 Set `GNOBLIN_JS_WATCH=0` to turn the watcher off, for a config directory on a file system that cannot be watched. The shell
 then reloads only when asked.
 
+## Debugging
+
+`console` is a global, so `console.log("hi")` works anywhere in your config, in a listener and in the
+[console](/js-console). `log` and `info` write at info level, `warn` at warn, `error` at error and `debug` at debug:
+
+```ts
+import { ClientListener, gnoblin } from "gnoblin";
+import type { Client } from "gnoblin";
+
+class Trace extends ClientListener {
+    onFocusChanged(client: Client, focused: boolean) {
+        console.log("%s focus is %j", client.appId, focused);
+        if (!focused) console.warn("lost focus:", client.title);
+    }
+}
+gnoblin.clients.addListener(new Trace());
+```
+
+Each call is one record in the log, component `js` and field `area=script`, and its message starts with where the call
+was, as `init.ts:6:53` (the file relative to your config directory, the line and column in your `.ts`):
+
+```text
+INFO  runtime/js  init.ts:6:53: foot focus is true  area=script
+```
+
+Read it with `gnoblinctl log --follow` (see [Logging](/guides/logging)). The console prints what an expression printed
+before the value, so you can try a call at the prompt.
+
+What a call prints:
+
+- Strings print as they are. `%s`, `%d`, `%i`, `%f`, `%j`, `%o`, `%O`, `%c` and `%%` in a first string format the arguments
+  after it, as in Node; the arguments that are left follow, separated by spaces.
+- An object prints as one line of JSON, with `[Circular]` where it contains itself and `[Function name]` for a function.
+- An `Error` prints its message and its stack, with every frame in your `.ts` coordinates.
+- `console.assert(condition, ...)` logs at error level, starting with `Assertion failed`, when the condition is false. It
+  never throws.
+- `console.table(data)` logs the data as one line of JSON. It does not draw a table.
+
+How much a script can print:
+
+- A call logs at most 4 KiB. A longer text is cut and says how many bytes it dropped.
+- A generation logs at most 200 calls in a second, so a loop cannot flood the log. The rest are dropped, and when the next
+  second begins one line says how many: `801 console lines dropped: a generation logs at most 200 a second`.
+
+The line is the line of the call. The column is the position the engine reports, rounded to the nearest token of your
+source: the last argument when it is a name, else the method (`log`). A call that spans lines reports the line it ends on.
+
 ## Session, processes and timers
 
 The shell has more than windows:

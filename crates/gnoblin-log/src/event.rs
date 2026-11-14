@@ -162,13 +162,13 @@ pub mod capture {
     use std::sync::{Arc, Mutex};
 
     use tracing::span::{Attributes, Id, Record};
-    use tracing::{Event, Metadata, Subscriber};
+    use tracing::{Event, Level, Metadata, Subscriber};
 
     use super::Logged;
 
-    /// Keeps the [`Logged`] parts of every event it is given.
+    /// Keeps the level and the [`Logged`] parts of every event it is given.
     #[derive(Clone, Default)]
-    struct Recorder(Arc<Mutex<Vec<Logged>>>);
+    struct Recorder(Arc<Mutex<Vec<(Level, Logged)>>>);
 
     impl Subscriber for Recorder {
         fn enabled(&self, _: &Metadata<'_>) -> bool {
@@ -184,7 +184,10 @@ pub mod capture {
         fn record_follows_from(&self, _: &Id, _: &Id) {}
 
         fn event(&self, event: &Event<'_>) {
-            self.0.lock().expect("the capture lock").push(Logged::from_event(event));
+            self.0
+                .lock()
+                .expect("the capture lock")
+                .push((*event.metadata().level(), Logged::from_event(event)));
         }
 
         fn enter(&self, _: &Id) {}
@@ -194,6 +197,11 @@ pub mod capture {
 
     /// The parts of the events `run` logs, in order.
     pub fn logged(run: impl FnOnce()) -> Vec<Logged> {
+        logged_with_levels(run).into_iter().map(|(_, event)| event).collect()
+    }
+
+    /// The events `run` logs, in order, each with the level it was logged at.
+    pub fn logged_with_levels(run: impl FnOnce()) -> Vec<(Level, Logged)> {
         let recorder = Recorder::default();
         tracing::subscriber::with_default(recorder.clone(), run);
         let events = recorder.0.lock().expect("the capture lock");

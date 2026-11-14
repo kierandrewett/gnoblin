@@ -212,6 +212,27 @@ fn report_failure(reply: &Json, theme: &OutputTheme, err: &mut dyn Write) {
     let _ = writeln!(err, "{}", error_block(theme, &report));
 }
 
+/// What the expression printed through `console`, before its value: each line's text, and whether it is a `warn` or
+/// an `error`, which a terminal shows on standard error.
+fn printed_lines(reply: &Json) -> impl Iterator<Item = (bool, &str)> {
+    reply["output"].as_array().into_iter().flatten().map(|line| {
+        let to_err = matches!(line["level"].as_str(), Some("warn" | "error"));
+        (to_err, line["text"].as_str().unwrap_or_default())
+    })
+}
+
+/// At the prompt `log`, `info` and `debug` go to standard output and `warn` and `error` to standard error, as a Node
+/// prompt does.
+fn print_output(reply: &Json, out: &mut dyn Write, err: &mut dyn Write) {
+    for (to_err, text) in printed_lines(reply) {
+        let _ = if to_err {
+            writeln!(err, "{text}")
+        } else {
+            writeln!(out, "{text}")
+        };
+    }
+}
+
 fn warn_truncated(reply: &Json, theme: &OutputTheme, err: &mut dyn Write) {
     if reply["truncated"] == Json::Bool(true) {
         let text = "the value was cut at the size cap; ask for less (`.slice`, `.map`) to see the rest";
@@ -231,6 +252,12 @@ fn one_shot(
         Ok(reply) => reply,
         Err(reason) => return fail(err, screen.theme, "the console conversation broke", Some(reason)),
     };
+    if !screen.json {
+        // Standard output is the value alone, so what the expression printed goes to standard error.
+        for (_, text) in printed_lines(&reply) {
+            let _ = writeln!(err, "{text}");
+        }
+    }
     if is_ok(&reply) {
         // `undefined` has no JSON form; it prints as `null`, and `--json` keeps the difference (`type`).
         let printed = if screen.json {
@@ -341,10 +368,12 @@ fn prompt(
             let _ = writeln!(out, "{reply}");
             failed |= !is_ok(&reply);
         } else if is_ok(&reply) {
+            print_output(&reply, out, err);
             let _ = writeln!(out, "{}", reply["text"].as_str().unwrap_or("undefined"));
             warn_truncated(&reply, screen.theme, err);
         } else {
             failed = true;
+            print_output(&reply, out, err);
             report_failure(&reply, screen.theme, err);
         }
     }

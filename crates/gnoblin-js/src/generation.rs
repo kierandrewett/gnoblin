@@ -23,6 +23,8 @@ use rquickjs::{Context, Ctx, Error, Exception, FromJs, Module, Runtime, Value};
 
 use crate::error::{JsError, JsErrorKind, JsLoadError, JsLocation};
 use crate::loader::{JsLoadState, JsLoader, JsResolver};
+use crate::script_console::{JsConsoleLine, JsScriptConsole};
+use crate::supervisor::{JsClock, JsSystemClock};
 
 /// What a generation is built from. Cheap to clone, so a host builds every generation from one value.
 #[derive(Debug, Clone)]
@@ -37,6 +39,9 @@ pub struct JsConfig {
     pub memory_limit: usize,
     /// The native stack limit in bytes, which bounds recursion.
     pub max_stack_size: usize,
+    /// The clock the generation's `console` counts its rate limit on. The shell sets it to its own clock, so a test
+    /// that moves that clock moves this one; the real clock otherwise.
+    pub clock: Arc<dyn JsClock>,
 }
 
 impl JsConfig {
@@ -48,6 +53,7 @@ impl JsConfig {
             stage_budget: Duration::from_secs(5),
             memory_limit: 64 << 20,
             max_stack_size: 512 << 10,
+            clock: Arc::new(JsSystemClock),
         }
     }
 
@@ -129,6 +135,7 @@ pub struct JsGeneration {
     runtime: Runtime,
     budget: Arc<JsBudget>,
     load: Rc<JsLoadState>,
+    console: Rc<JsScriptConsole>,
     config: JsConfig,
     id: u64,
 }
@@ -183,11 +190,15 @@ impl JsGeneration {
             .build(&runtime)
             .map_err(engine)?;
 
+        let console = JsScriptConsole::new(config, Rc::clone(&load));
+        context.with(|ctx| console.install(&ctx)).map_err(engine)?;
+
         Ok(Self {
             context,
             runtime,
             budget,
             load,
+            console,
             config: config.clone(),
             id,
         })
@@ -210,6 +221,7 @@ impl JsGeneration {
             runtime: self.runtime.clone(),
             budget: Arc::clone(&self.budget),
             load: Rc::clone(&self.load),
+            console: Rc::clone(&self.console),
             config: self.config.clone(),
             id: self.id,
         }
@@ -337,7 +349,7 @@ impl JsGeneration {
         };
         let (stack, location) = match stack {
             Some(text) => {
-                let (remapped, location) = self.remap_stack(&text);
+                let (remapped, location) = remap_stack(&self.load, &text);
                 (Some(remapped), location)
             }
             None => (None, None),
@@ -350,46 +362,62 @@ impl JsGeneration {
         }
     }
 
-    /// Rewrites every frame of `stack` whose file has a source map, and returns the location of the first
-    /// frame that has a file and a line.
-    fn remap_stack(&self, stack: &str) -> (String, Option<JsLocation>) {
-        let mut out = String::with_capacity(stack.len());
-        let mut first = None;
-        for line in stack.lines() {
-            let rewritten = match split_frame(line) {
-                Some(frame) => {
-                    let (line_no, column) = self
-                        .load
-                        .remap(frame.file, frame.line, frame.column)
-                        .unwrap_or((frame.line, frame.column));
-                    first.get_or_insert_with(|| JsLocation {
-                        file: PathBuf::from(frame.file),
-                        line: line_no,
-                        column,
-                    });
-                    format!("{}{}:{line_no}:{column}{}", frame.before, frame.file, frame.after)
-                }
-                None => line.to_owned(),
-            };
-            out.push_str(&rewritten);
-            out.push('\n');
-        }
-        (out, first)
+    /// Starts keeping the lines the script logs through `console`, until [`take_console`](Self::take_console).
+    /// The console evaluates one expression at a time, so a capture never nests.
+    pub(crate) fn capture_console(&self) {
+        self.console.begin_capture();
+    }
+
+    /// Stops keeping console lines and returns the ones logged since [`capture_console`](Self::capture_console).
+    pub(crate) fn take_console(&self) -> Vec<JsConsoleLine> {
+        self.console.end_capture()
+    }
+
+    /// Reports the lines the console dropped in a second that is over, when the script has not called it since. The
+    /// shell calls it once a frame, so a notice is not held back by a script that stopped logging.
+    pub(crate) fn flush_console(&self) {
+        self.console.roll();
     }
 }
 
+/// Rewrites every frame of `stack` whose file has a source map, and returns the location of the first
+/// frame that has a file and a line.
+pub(crate) fn remap_stack(load: &JsLoadState, stack: &str) -> (String, Option<JsLocation>) {
+    let mut out = String::with_capacity(stack.len());
+    let mut first = None;
+    for line in stack.lines() {
+        let rewritten = match split_frame(line) {
+            Some(frame) => {
+                let (line_no, column) = load
+                    .remap(frame.file, frame.line, frame.column)
+                    .unwrap_or((frame.line, frame.column));
+                first.get_or_insert_with(|| JsLocation {
+                    file: PathBuf::from(frame.file),
+                    line: line_no,
+                    column,
+                });
+                format!("{}{}:{line_no}:{column}{}", frame.before, frame.file, frame.after)
+            }
+            None => line.to_owned(),
+        };
+        out.push_str(&rewritten);
+        out.push('\n');
+    }
+    (out, first)
+}
+
 /// One stack line split around its `file:line:column`.
-struct JsFrame<'a> {
+pub(crate) struct JsFrame<'a> {
     before: &'a str,
-    file: &'a str,
-    line: u32,
-    column: u32,
+    pub(crate) file: &'a str,
+    pub(crate) line: u32,
+    pub(crate) column: u32,
     after: &'a str,
 }
 
 /// Splits a QuickJS frame (`    at fn (file:1:2)` or `    at file:1:2`), or `None` for a line that is
 /// not a frame with a position, such as a native frame.
-fn split_frame(line: &str) -> Option<JsFrame<'_>> {
+pub(crate) fn split_frame(line: &str) -> Option<JsFrame<'_>> {
     let trimmed = line.trim_end();
     let indent = trimmed.len() - trimmed.trim_start().len();
     let (head, tail) = trimmed.split_at(indent + trimmed.trim_start().strip_prefix("at ").map(|_| 3)?);
