@@ -129,6 +129,19 @@ pub struct MirrorChange {
     pub removed: Vec<NodeId>,
 }
 
+/// How an animated write plays, for [`TickTx::set_animated`].
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TxAnimation {
+    /// The duration in seconds; `None` is an instant set.
+    pub seconds: Option<f64>,
+    /// The seconds to wait before the animation starts; `None` is none.
+    pub delay: Option<f64>,
+    /// The `tween` node whose `progress`, `paused` and `reverse` drive the animation; `None` is none.
+    pub tween: Option<NodeId>,
+    /// The curve's samples; `None` is instant.
+    pub samples: Option<Vec<f64>>,
+}
+
 /// One write, as sent in a transaction.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TxOp {
@@ -141,6 +154,10 @@ pub enum TxOp {
         key: String,
         value: MirrorValue,
         seconds: Option<f64>,
+        /// The seconds the animation waits before it starts; `None` is none.
+        delay: Option<f64>,
+        /// The `tween` node whose play state drives the animation; `None` is none.
+        tween: Option<NodeId>,
         samples: Option<Vec<f64>>,
     },
     Insert {
@@ -294,6 +311,14 @@ pub enum TreeIncoming {
         token: u64,
         result: Vec<u8>,
         error: String,
+    },
+    /// A timed `set` ended (`track_ended`): `node`'s `property` reached its target (`completed`) or was cut short.
+    /// `tween` is the `tween` node the write joined, or `None`.
+    TrackEnded {
+        node: NodeId,
+        property: String,
+        completed: bool,
+        tween: Option<NodeId>,
     },
     Event(TreeEvent),
     Chord(TreeChord),
@@ -919,14 +944,34 @@ impl TxBuilder {
         seconds: Option<f64>,
         samples: Option<Vec<f64>>,
     ) -> Result<(), TxError> {
+        let animation = TxAnimation {
+            seconds,
+            samples,
+            ..TxAnimation::default()
+        };
+        self.set_animated(base, node, key, value, animation)
+    }
+
+    /// Set a property as `animation` says: a duration and a curve, and optionally a delay and the `tween` node that
+    /// drives the track once it plays.
+    pub fn set_animated(
+        &mut self,
+        base: &TreeMirror,
+        node: NodeId,
+        key: &str,
+        value: MirrorValue,
+        animation: TxAnimation,
+    ) -> Result<(), TxError> {
         let record = self.touch(base, node).ok_or(TxError::UnknownNode(node))?;
         record.props.insert(key.to_owned(), value.clone());
         self.ops.push(TxOp::Set {
             node,
             key: key.to_owned(),
             value,
-            seconds,
-            samples,
+            seconds: animation.seconds,
+            delay: animation.delay,
+            tween: animation.tween,
+            samples: animation.samples,
         });
         Ok(())
     }

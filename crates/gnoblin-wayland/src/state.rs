@@ -3561,6 +3561,10 @@ impl Host for State {
         for node in self.composer.take_lock_requested() {
             self.tree.requested(node);
         }
+        // The shell's animations that ended by the compositor's clock since the last frame lead this frame's batch.
+        for end in self.composer.take_shell_track_ends() {
+            self.tree.track_ended(end);
+        }
         // A window's node is created on the frame after it maps, so the focus is published
         // again here once the node it names exists.
         let focused = self.keyboard_focus_window();
@@ -3572,6 +3576,10 @@ impl Host for State {
         // The shell's timed writes play as tracks, or land at once under reduced motion.
         let motion = self.tree.take_motion();
         self.composer.apply_shell_motion(motion);
+        // What those writes ended (a track a plain write took, a write that landed at once) rides the next batch.
+        for end in self.composer.take_shell_track_ends() {
+            self.tree.track_ended(end);
+        }
         // A `secure` the shell wrote on a window's node marks the window for capture.
         self.composer.follow_shell_secure();
         // A capture whose target now holds secure content ends before the frame's replies go out, so a mark is

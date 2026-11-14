@@ -1,0 +1,45 @@
+namespace = "tree"
+version = "0.2.0"
+
+# The `tween` class: the play state of the animated writes that joined it (design/node-core.md, "Tweens").
+# Draws nothing and has no place. A shell that wants to scrub, hold or reverse an animation makes one, then names it
+# in the `tween` field of each animated `set` of the animation (`messages.toml`, `op`); every track those writes start
+# joins it. Writing the node's properties drives all of those tracks at once, in the order the writes apply:
+#
+# - `paused` holds the tracks where they are. A track that starts while it is `true` starts held, at its start value.
+# - `reverse` runs the tracks back towards their start values; a track that gets there is over, ends `cancelled`
+#   in the `track_ended` signal, and the start value stays on the node.
+# - `progress` moves every track to that fraction of its own duration (before its curve), drawn at once. It does not
+#   end a track and does not change `paused`, so a gesture writes it any number of times, forward and back. Writing 1
+#   to a track that is not paused lets it end at the next frame; writing 1 to a paused one holds it at its target.
+#
+# The compositor does not write the node: `progress` is what the shell last wrote, not a clock. A track that is over
+# is gone from the group; destroying the node leaves the tracks playing on their own. A write to a property that a
+# track runs on (a plain `set`, or a newer animation) takes that property from the group, as it takes it from any
+# animation.
+[[object]]
+name = "tween"
+since = "0.2.0"
+base = "node"
+
+# The fraction of its duration the tracks of the group are moved to, `0` to `1`; any other number is refused
+# `out-of-range`.
+[[object.property]]
+name = "progress"
+type = "double"
+since = "0.2.0"
+default = 0.0
+
+# Whether the tracks of the group are held.
+[[object.property]]
+name = "paused"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# Whether the tracks of the group run backwards.
+[[object.property]]
+name = "reverse"
+type = "bool"
+since = "0.2.0"
+default = false

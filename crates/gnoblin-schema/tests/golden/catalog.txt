@@ -492,6 +492,11 @@ object tree since 0.2.0 secret false
     field token type uint since 0.2.0 secret false
     field result type bytes since 0.2.0 secret false
     field error type string since 0.2.0 secret false
+  signal track_ended since 0.2.0 secret false
+    field node type uint since 0.2.0 secret false
+    field property type string since 0.2.0 secret false
+    field reason type string since 0.2.0 secret false
+    field tween type uint since 0.2.0 secret false
 object op since 0.2.0 secret false
   property kind type string since 0.2.0 secret false
   property node type uint since 0.2.0 secret false
@@ -525,6 +530,8 @@ object op since 0.2.0 secret false
   property text type string since 0.2.0 secret true
   property token type uint since 0.2.0 secret false
   property value_bytes type bytes since 0.2.0 secret false
+  property delay type double since 0.2.0 secret false
+  property tween type uint since 0.2.0 secret false
 object change since 0.2.0 secret false
   property kind type string since 0.2.0 secret false
   property node type uint since 0.2.0 secret false
@@ -710,6 +717,29 @@ object surface since 0.2.0 secret false
   property role type string since 0.2.0 secret false
   property mapped type bool since 0.2.0 secret false
   property app_id type string since 0.2.0 secret false
+  signal destroyed since 0.2.0 secret false
+object tween since 0.2.0 secret false
+  property id type uint since 0.2.0 secret false
+  property parent type object:node since 0.2.0 secret false
+  property name type string since 0.2.0 secret false
+  property x type double since 0.2.0 secret false
+  property y type double since 0.2.0 secret false
+  property z type double since 0.2.0 secret false
+  property rotation type list<double> since 0.2.0 secret false
+  property scale type list<double> since 0.2.0 secret false
+  property width type double since 0.2.0 secret false
+  property height type double since 0.2.0 secret false
+  property opacity type double since 0.2.0 secret false
+  property visible type bool since 0.2.0 secret false
+  property clip type bool since 0.2.0 secret false
+  property input type bool since 0.2.0 secret false
+  property secure type bool since 0.2.0 secret false
+  property tags type list<string> since 0.2.0 secret false
+  property effects type list<object:effect> since 0.2.0 secret false
+  property skipped type list<string> since 0.2.0 secret false
+  property progress type double since 0.2.0 secret false
+  property paused type bool since 0.2.0 secret false
+  property reverse type bool since 0.2.0 secret false
   signal destroyed since 0.2.0 secret false
 object view since 0.2.0 secret false
   property id type uint since 0.2.0 secret false
@@ -1624,7 +1654,7 @@ enum GnoblinError {
 //
 // Namespace: tree
 // Version: 0.2.0
-// Schema: crates/gnoblin-schema/schema (camera.toml, canvas.toml, controller.toml, effect.toml, lock.toml, messages.toml, node.toml, screen.toml, seat.toml, surface.toml, view.toml, window.toml, workspace.toml)
+// Schema: crates/gnoblin-schema/schema (camera.toml, canvas.toml, controller.toml, effect.toml, lock.toml, messages.toml, node.toml, screen.toml, seat.toml, surface.toml, tween.toml, view.toml, window.toml, workspace.toml)
 
 syntax = "proto3";
 
@@ -2029,6 +2059,18 @@ message Tree {
     // since 0.2.0
     string error = 3;
   }
+
+  // Signal `track_ended`, since 0.2.0.
+  message TrackEndedPayload {
+    // since 0.2.0
+    uint64 node = 1;
+    // since 0.2.0
+    string property = 2;
+    // since 0.2.0
+    string reason = 3;
+    // since 0.2.0
+    uint64 tween = 4;
+  }
 }
 
 // Object `op`, since 0.2.0.
@@ -2099,6 +2141,10 @@ message Op {
     uint64 token = 31;
     // since 0.2.0
     bytes value_bytes = 32;
+    // since 0.2.0
+    double delay = 33;
+    // since 0.2.0
+    uint64 tween = 34;
   }
 }
 
@@ -2520,6 +2566,58 @@ message Surface {
     bool mapped = 20;
     // since 0.2.0
     string app_id = 21;
+  }
+
+  // Signal `destroyed`, since 0.2.0.
+  message DestroyedPayload {}
+}
+
+// Object `tween`, since 0.2.0.
+message Tween {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    uint64 id = 1;
+    // since 0.2.0; object id of `node`
+    string parent = 2;
+    // since 0.2.0
+    string name = 3;
+    // since 0.2.0
+    double x = 4;
+    // since 0.2.0
+    double y = 5;
+    // since 0.2.0
+    double z = 6;
+    // since 0.2.0; list
+    repeated double rotation = 7;
+    // since 0.2.0; list
+    repeated double scale = 8;
+    // since 0.2.0
+    double width = 9;
+    // since 0.2.0
+    double height = 10;
+    // since 0.2.0
+    double opacity = 11;
+    // since 0.2.0
+    bool visible = 12;
+    // since 0.2.0
+    bool clip = 13;
+    // since 0.2.0
+    bool input = 14;
+    // since 0.2.0
+    bool secure = 15;
+    // since 0.2.0; list
+    repeated string tags = 16;
+    // since 0.2.0; list of record `effect`: the properties of one value
+    repeated Effect.Properties effects = 17;
+    // since 0.2.0; list
+    repeated string skipped = 18;
+    // since 0.2.0
+    double progress = 19;
+    // since 0.2.0
+    bool paused = 20;
+    // since 0.2.0
+    bool reverse = 21;
   }
 
   // Signal `destroyed`, since 0.2.0.

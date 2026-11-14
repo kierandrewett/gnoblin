@@ -298,6 +298,8 @@ fn transact_encodes_every_op_kind_and_poll_decodes_the_reply() {
                 key: "visible".to_owned(),
                 value: MirrorValue::Bool(true),
                 seconds: Some(0.5),
+                delay: None,
+                tween: None,
                 samples: Some(vec![0.0, 1.0]),
             },
             TxOp::Call {

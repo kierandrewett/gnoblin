@@ -12,7 +12,7 @@ use std::time::Duration;
 use gnoblin_proto::tree::seat::{ChordPayload, GesturePayload, PointerChordPayload};
 use gnoblin_proto::tree::tree::{
     AnswerPayload, AttachArgs, AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload,
-    TransactArgs,
+    TrackEndedPayload, TransactArgs,
 };
 use gnoblin_proto::tree::{change, op, snapshot_node};
 use gnoblin_proto::{Envelope, Kind, LENGTH_PREFIX_LEN, MAX_FRAME_LEN, read_frame, write_frame};
@@ -184,14 +184,18 @@ fn to_op(op: &TxOp) -> op::Properties {
             key,
             value,
             seconds,
+            delay,
+            tween,
             samples,
         } => {
             let mut wire = op::Properties {
                 kind: "set".to_owned(),
                 node: *node,
                 key: key.clone(),
-                // An instant set has neither a duration nor samples on the wire.
+                // An instant set has neither a duration, a delay, a `tween` nor samples on the wire.
                 seconds: seconds.unwrap_or(0.0),
+                delay: delay.unwrap_or(0.0),
+                tween: tween.unwrap_or_default(),
                 samples: samples.clone().unwrap_or_default(),
                 ..Default::default()
             };
@@ -401,6 +405,17 @@ fn to_incoming(envelope: &Envelope) -> Result<TreeIncoming, LinkError> {
                 token: payload.token,
                 result: payload.result,
                 error: payload.error,
+            })
+        }
+        (Some(Kind::Event(_)), "track_ended") => {
+            let payload = envelope
+                .payload_as::<TrackEndedPayload>()
+                .ok_or_else(|| undecodable(member))?;
+            Ok(TreeIncoming::TrackEnded {
+                node: payload.node,
+                property: payload.property,
+                completed: payload.reason == "completed",
+                tween: (payload.tween != 0).then_some(payload.tween),
             })
         }
         _ => Err(LinkError(format!(

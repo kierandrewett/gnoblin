@@ -86,9 +86,12 @@ use smithay::utils::Transform;
 use gnoblin_animation::{Easing, PropertyValue, SampledCurve, VisualProperty, VisualTransform};
 use gnoblin_paint::{SharedPainter, decode};
 use gnoblin_render::scene_ids::NodeIdAllocator;
-use gnoblin_render::transaction::{Animation, Motion, TreeChange, TreeValue, land_at_once, visual_property};
+use gnoblin_render::transaction::{
+    Animation, Motion, ShellTrackEnd, TreeChange, TreeValue, TweenControl, animated_properties, land_at_once,
+};
 use gnoblin_render::{
-    Damage, Effects, Mat4, NodeKind, NodeSpec, Pass, Projection, Scene, TrackSpec, TrackStart, TweenPlayer,
+    Damage, Effects, Mat4, NodeKind, NodeSpec, Pass, Projection, Scene, TrackEnd, TrackEndReason, TrackSpec,
+    TrackStart, TweenPlayer,
 };
 use gnoblin_types::{Color, NodeId, OutputId, Point, PointF, Rect, RectF, Scale, Size, TrackId, Vec3, WindowId};
 
@@ -339,6 +342,19 @@ enum CloseEnd {
     Hide,
 }
 
+/// A timed `set` of the shell that has tracks running: one for a number, three for a `rotation` or a `scale`.
+#[derive(Clone, Debug)]
+struct ShellPlay {
+    node: NodeId,
+    key: String,
+    /// The `tween` node the write joined.
+    group: Option<NodeId>,
+    /// How many of its tracks have not ended.
+    live: usize,
+    /// Whether every track that ended so far completed.
+    completed: bool,
+}
+
 /// A window that is closing: the picture it kept and the crop it was drawn with.
 #[derive(Clone, Debug)]
 struct Closing {
@@ -478,6 +494,16 @@ pub struct Composer {
     /// The live track of each property the shell animated with a timed `set`, so a later write to
     /// the same property ends or supersedes it.
     shell_tracks: BTreeMap<(NodeId, VisualProperty), TrackId>,
+    /// The timed `set`s of the shell whose tracks are still running, by an id of their own.
+    shell_plays: BTreeMap<u64, ShellPlay>,
+    /// The id the next play takes.
+    next_play: u64,
+    /// The play each running shell track belongs to.
+    track_plays: BTreeMap<TrackId, u64>,
+    /// The running tracks of each `tween` node's group, which its `progress`, `paused` and `reverse` drive.
+    groups: BTreeMap<NodeId, BTreeSet<TrackId>>,
+    /// The timed `set`s that have ended since the tree last took them, for the `track_ended` signal.
+    shell_ends: Vec<ShellTrackEnd>,
     /// When set, a change lands at once instead of being animated.
     reduced_motion: bool,
     /// Where the cursor was last drawn, in global layout coordinates, or `None` when hidden.
@@ -588,6 +614,11 @@ impl Composer {
             motion: TweenPlayer::new(),
             tracks: BTreeMap::new(),
             shell_tracks: BTreeMap::new(),
+            shell_plays: BTreeMap::new(),
+            next_play: 0,
+            track_plays: BTreeMap::new(),
+            groups: BTreeMap::new(),
+            shell_ends: Vec::new(),
             reduced_motion: false,
             cursor: None,
             flash: None,
@@ -2299,6 +2330,12 @@ impl Composer {
     pub fn advance_motion(&mut self, elapsed_ms: u32) {
         self.view_clock_ms = self.view_clock_ms.saturating_add(u64::from(elapsed_ms));
         self.motion.advance(&mut self.scene, elapsed_ms);
+        self.reap_motion_ends();
+        self.advance_flash(elapsed_ms);
+    }
+
+    /// Forgets the tracks the player ended, finishing a closing window's fade and noting the end of each shell write.
+    fn reap_motion_ends(&mut self) {
         for end in self.motion.take_ended() {
             let owner = self
                 .tracks
@@ -2307,6 +2344,7 @@ impl Composer {
                 .map(|(key, _)| *key);
             self.tracks.retain(|_, track| *track != end.track);
             self.shell_tracks.retain(|_, track| *track != end.track);
+            self.note_shell_track_end(&end);
             if let Some((window, VisualProperty::Opacity)) = owner
                 && let Some(on_end) = self
                     .windows
@@ -2317,14 +2355,13 @@ impl Composer {
                 self.finish_fade(window, on_end);
             }
         }
-        self.advance_flash(elapsed_ms);
     }
 
-    /// Applies what the shell's writes to animated properties asked of the tracks, in the order the
-    /// writes applied. A timed `set` plays a track to its target; with reduced motion on, or for a
-    /// property the scene cannot tween (a width or height), the target lands at once instead, so a
-    /// shell that forgot to shorten its durations still gets instant changes. A write to a
-    /// property ends the track running on it either way.
+    /// Applies what the shell's writes to animated properties and to `tween` nodes asked of the tracks, in the
+    /// order the writes applied. A timed `set` plays a track to its target for each property it moves (three
+    /// axes for a `rotation` or a `scale`); with reduced motion on, or for a key the scene cannot tween, the target
+    /// lands at once instead, so a shell that forgot to shorten its durations still gets instant changes. A write
+    /// to a property ends the track running on it either way.
     ///
     /// Reduced motion is read when the write is applied: a track already running when it turns on
     /// finishes, and the next write lands at once.
@@ -2332,13 +2369,16 @@ impl Composer {
         for item in motion {
             match item {
                 Motion::Settle { node, key } => {
-                    if let Some(property) = visual_property(&key) {
-                        self.end_shell_track(node, property);
+                    for property in animated_properties(&key) {
+                        self.end_shell_track(node, *property);
                     }
                 }
                 Motion::Play(animation) => self.play_shell_animation(&animation),
+                Motion::Control { node, control } => self.control_shell_group(node, control),
             }
         }
+        // The ends this caused (a track superseded or cancelled by a write) are known now, not at the next turn.
+        self.reap_motion_ends();
     }
 
     /// How many tracks the shell's timed writes have running.
@@ -2354,18 +2394,18 @@ impl Composer {
         }
     }
 
-    /// Plays one timed `set`, or lands its target at once when it cannot be played.
+    /// Plays one timed `set`, or lands its target at once when it cannot be played (reduced motion, a duration
+    /// that rounds to nothing, a key the scene cannot tween). Either way the write ends once, and the shell is told.
     fn play_shell_animation(&mut self, animation: &Animation) {
-        let property = visual_property(&animation.key);
-        if let Some(property) = property {
-            self.end_shell_track(animation.node, property);
+        let properties = animated_properties(&animation.key);
+        for property in properties {
+            self.end_shell_track(animation.node, *property);
         }
-        if let Some(property) = property.filter(|_| !self.reduced_motion)
-            && self.start_shell_track(animation, property)
-        {
+        if !self.reduced_motion && self.start_shell_tracks(animation, properties) {
             return;
         }
-        if let Err(code) = land_at_once(&mut self.scene, animation) {
+        let landed = land_at_once(&mut self.scene, animation);
+        if let Err(code) = &landed {
             log::warn!(
                 area = "render",
                 node = %animation.node,
@@ -2374,34 +2414,156 @@ impl Composer {
                 "an animated set could not land: the node keeps its value"
             );
         }
+        self.shell_ends.push(ShellTrackEnd {
+            node: animation.node,
+            key: animation.key.clone(),
+            group: animation.group,
+            completed: landed.is_ok(),
+        });
     }
 
-    /// Starts the track for a timed `set`. `false` when the duration rounds to nothing or the scene
-    /// refuses the track, so the caller lands the target at once.
+    /// The value each of `properties` ends at for a timed `set`: a number for the one property of a number key, one
+    /// axis each for a three-axis list. `None` for any other pairing, so nothing is started half way.
+    #[allow(clippy::cast_possible_truncation)]
+    fn shell_targets(animation: &Animation, properties: &[VisualProperty]) -> Option<Vec<(VisualProperty, f32)>> {
+        match (&animation.value, properties) {
+            (TreeValue::Double(target), [property]) => Some(vec![(*property, *target as f32)]),
+            (TreeValue::ListDouble(axes), properties) if axes.len() == properties.len() && !properties.is_empty() => {
+                Some(
+                    properties
+                        .iter()
+                        .copied()
+                        .zip(axes.iter().map(|axis| *axis as f32))
+                        .collect(),
+                )
+            }
+            _ => None,
+        }
+    }
+
+    /// Starts the tracks of a timed `set`, one for each of `properties`. `false` when the duration rounds to
+    /// nothing or the scene refuses a track, in which case none is left running and the caller lands the target at
+    /// once.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    fn start_shell_track(&mut self, animation: &Animation, property: VisualProperty) -> bool {
-        let TreeValue::Double(target) = animation.value else {
+    fn start_shell_tracks(&mut self, animation: &Animation, properties: &[VisualProperty]) -> bool {
+        let Some(targets) = Self::shell_targets(animation, properties) else {
             return false;
         };
         let duration_ms = (animation.seconds * 1000.0).round() as u32;
+        let delay_ms = (animation.delay * 1000.0).round() as u32;
         let Ok(curve) = SampledCurve::new(animation.samples.clone()) else {
             return false;
         };
         if duration_ms == 0 {
             return false;
         }
-        let mut spec = TrackSpec::new(animation.node, property, PropertyValue::number(target as f32));
-        spec.duration_ms = duration_ms;
-        let Ok(track) = self.motion.start_sampled(&mut self.scene, spec, curve) else {
-            return false;
-        };
+        let mut started: Vec<(VisualProperty, TrackId)> = Vec::with_capacity(targets.len());
+        for (property, target) in targets {
+            let mut spec = TrackSpec::new(animation.node, property, PropertyValue::number(target));
+            spec.duration_ms = duration_ms;
+            spec.delay_ms = delay_ms;
+            match self.motion.start_sampled(&mut self.scene, spec, curve.clone()) {
+                Ok(track) => started.push((property, track)),
+                Err(_) => {
+                    // The ones already running are stopped; their ends are not the shell's, no play holds them yet.
+                    for (_, track) in started {
+                        let _ = self.motion.cancel(track);
+                    }
+                    return false;
+                }
+            }
+        }
         // The node keeps the target as its value, so a snapshot read mid-track agrees with the change the
         // shell's mirror was told.
         let _ = self
             .scene
             .set_value(animation.node, &animation.key, animation.value.clone());
-        self.shell_tracks.insert((animation.node, property), track);
+        let play = self.next_play;
+        self.next_play = self.next_play.saturating_add(1);
+        let group = animation.group.filter(|group| self.scene.contains(*group));
+        let paused = group.is_some_and(|group| self.scene.value(group, "paused") == Some(&TreeValue::Bool(true)));
+        let reverse = group.is_some_and(|group| self.scene.value(group, "reverse") == Some(&TreeValue::Bool(true)));
+        for (property, track) in &started {
+            self.shell_tracks.insert((animation.node, *property), *track);
+            self.track_plays.insert(*track, play);
+            if let Some(group) = group {
+                self.groups.entry(group).or_default().insert(*track);
+            }
+            // A track that joins a held or reversed group starts that way: the group's state is the shell's last
+            // word on it, whatever order the writes came in.
+            if paused {
+                let _ = self.motion.pause(*track);
+            }
+            if reverse {
+                let _ = self.motion.set_reverse(*track, true);
+            }
+        }
+        self.shell_plays.insert(
+            play,
+            ShellPlay {
+                node: animation.node,
+                key: animation.key.clone(),
+                group,
+                live: started.len(),
+                completed: true,
+            },
+        );
         true
+    }
+
+    /// Moves, holds or turns the tracks that joined the `tween` node `group`.
+    fn control_shell_group(&mut self, group: NodeId, control: TweenControl) {
+        let tracks: Vec<TrackId> = self
+            .groups
+            .get(&group)
+            .map(|tracks| tracks.iter().copied().collect())
+            .unwrap_or_default();
+        for track in tracks {
+            // A track that ended between the write and here is gone from the player and the group is tidied by
+            // its end; the refusal is that, not a fault.
+            let _ = match control {
+                TweenControl::Progress(progress) => self.motion.seek(&mut self.scene, track, progress),
+                TweenControl::Paused(true) => self.motion.pause(track),
+                TweenControl::Paused(false) => self.motion.resume(track),
+                TweenControl::Reverse(reverse) => self.motion.set_reverse(track, reverse),
+            };
+        }
+    }
+
+    /// Notes that a player track ended: when it was the last of its timed `set`, the shell is owed the end.
+    fn note_shell_track_end(&mut self, end: &TrackEnd) {
+        let Some(play) = self.track_plays.remove(&end.track) else {
+            return;
+        };
+        let Some(entry) = self.shell_plays.get_mut(&play) else {
+            return;
+        };
+        if let Some(group) = entry.group
+            && let Some(tracks) = self.groups.get_mut(&group)
+        {
+            tracks.remove(&end.track);
+            if tracks.is_empty() {
+                self.groups.remove(&group);
+            }
+        }
+        entry.live = entry.live.saturating_sub(1);
+        entry.completed &= end.reason == TrackEndReason::Completed;
+        if entry.live == 0
+            && let Some(done) = self.shell_plays.remove(&play)
+        {
+            self.shell_ends.push(ShellTrackEnd {
+                node: done.node,
+                key: done.key,
+                group: done.group,
+                completed: done.completed,
+            });
+        }
+    }
+
+    /// Takes the ends of the shell's timed `set`s since the last call, in the order they ended, for the tree to
+    /// publish as `track_ended`.
+    pub fn take_shell_track_ends(&mut self) -> Vec<ShellTrackEnd> {
+        std::mem::take(&mut self.shell_ends)
     }
 
     /// Whether a visual bell's flash is still on screen, so the caller keeps frames coming.
@@ -3718,7 +3880,9 @@ impl Composer {
         let mut landing = Vec::new();
         let target = self.placed_target(entry);
         for property in VisualProperty::ALL {
-            let value = property.get(&target);
+            let Some(value) = property.get(&target) else {
+                continue;
+            };
             self.cancel_track(window, property);
             if self.scene.property(node, property).ok() == Some(value) {
                 continue;

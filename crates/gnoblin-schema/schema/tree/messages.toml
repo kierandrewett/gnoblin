@@ -265,6 +265,37 @@ name = "error"
 type = "string"
 since = "0.2.0"
 
+# A track that an animated `set` started has ended. The compositor sends it once per `set` that carried `seconds`,
+# when the last of that write's tracks (`rotation` and `scale` are three) is over, so a shell learns the end of an
+# animation from the compositor's clock and not from its own. `node` and `property` name the write (`property` is the
+# schema key: `x`, `opacity`, `rotation`). `reason` is `completed` when the track reached its target, and
+# `cancelled` for every other end: it ran back to its start (`tween.reverse`), a plain write or a newer animation took
+# the property, or the node went. `tween` is the `tween` node the write joined, zero when it joined none. It is sent
+# for an end the shell caused too (its own plain write to the property), as the last word on the track.
+[[object.signal]]
+name = "track_ended"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "node"
+type = "uint"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "property"
+type = "string"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "reason"
+type = "string"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "tween"
+type = "uint"
+since = "0.2.0"
+
 # One op in a transaction. The schema has no unions, so `kind` selects the fields that are
 # read; the others are ignored. Each `value_*` is read only when `value_kind` names it.
 [[object]]
@@ -447,6 +478,21 @@ since = "0.2.0"
 [[object.property]]
 name = "value_bytes"
 type = "bytes"
+since = "0.2.0"
+
+# The seconds an animated `set` waits before it starts, holding the start value meanwhile. Absent is none; at most 3600.
+# Appended after `value_bytes`.
+[[object.property]]
+name = "delay"
+type = "double"
+since = "0.2.0"
+
+# The `tween` node an animated `set` joins, so that node's `progress`, `paused` and `reverse` drive the track it
+# starts (`tween.toml`); zero is none, and the track only plays. A node that is not live is refused `unknown-node`,
+# one that is not a `tween` `wrong-type`. Appended after `delay`.
+[[object.property]]
+name = "tween"
+type = "uint"
 since = "0.2.0"
 
 # One entry of a change batch. `kind` is `created`, `parented`, `set` or `destroyed`; the

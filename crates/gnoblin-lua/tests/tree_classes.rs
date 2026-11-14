@@ -9,8 +9,9 @@ use gnoblin_lua::tree_core::{ClassSpec, PropSpec, TreeCore, TreeValueKind, tree_
 use gnoblin_schema::{Catalog, DefaultValue, Namespace, ObjectType, Property, Type};
 use gnoblin_tree_client::tree_mirror::{MirrorValue, TreeMirror};
 
-/// The ten tree classes, by their Lua names.
-const TEN: [&str; 10] = [
+/// The tree classes, by their Lua names: the ten of design/node-core.md, the XR program's `Controller` and the
+/// transition play state's `Tween`.
+const TEN: [&str; 12] = [
     "Node",
     "Surface",
     "Window",
@@ -21,6 +22,8 @@ const TEN: [&str; 10] = [
     "Seat",
     "Workspace",
     "Lock",
+    "Controller",
+    "Tween",
 ];
 
 /// The Lua name of a schema object: its name with the first letter capitalised.

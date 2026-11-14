@@ -863,10 +863,7 @@ mod tests {
             node: NodeId::new(5),
             key: "name".to_owned(),
             value: TreeValue::Text("xr".to_owned()),
-            timing: Some(gnoblin_render::transaction::Timing {
-                seconds: 1.0,
-                samples: Vec::new(),
-            }),
+            timing: Some(gnoblin_render::transaction::Timing::new(1.0, Vec::new())),
         };
         assert_eq!(observer_ops(&[new_seat(5), animated], &BTreeSet::new()), Err(1));
     }

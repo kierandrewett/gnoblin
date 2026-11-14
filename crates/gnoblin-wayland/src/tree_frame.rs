@@ -20,8 +20,8 @@ use std::time::{Duration, Instant};
 use gnoblin_input::GestureDelivery;
 use gnoblin_paint::SharedPainter;
 use gnoblin_render::transaction::{
-    ClassInfo, Code, Motion, PropertyInfo, SeatInput, TreeApplied, TreeCall, TreeChange, TreeOp, TreeRefusal,
-    TreeTransaction, TreeValue, validate_and_apply,
+    ClassInfo, Code, Motion, PropertyInfo, SeatInput, ShellTrackEnd, TreeApplied, TreeCall, TreeChange, TreeOp,
+    TreeRefusal, TreeTransaction, TreeValue, validate_and_apply,
 };
 use gnoblin_render::tree_revision::TreeRevisions;
 use gnoblin_render::{Actor, Scene};
@@ -77,6 +77,8 @@ pub struct TreeBatch {
     pub events: Vec<FrameTreeEvent>,
     /// Answers to `authenticate` calls the compositor settled, in the order they settled.
     pub answers: Vec<TreeAnswer>,
+    /// Timed `set`s of the shell that ended since the last batch, in the order they ended.
+    pub tracks: Vec<ShellTrackEnd>,
 }
 
 /// The outcome of one `authenticate` call, for the shell to see in the next batch.
@@ -669,6 +671,8 @@ pub struct TreeFrame {
     motion: Vec<Motion>,
     /// Answers to authentications and `measure` calls, published with the next batch.
     answers: Vec<TreeAnswer>,
+    /// Ends of the shell's timed `set`s, published with the next batch.
+    tracks: Vec<ShellTrackEnd>,
     /// Measures the text of a `Canvas`'s `measure` call.
     painter: SharedPainter,
     /// Nodes the published batches destroyed, with the subtrees they took, since the compositor last
@@ -709,6 +713,7 @@ impl TreeFrame {
             view_captures: Vec::new(),
             motion: Vec::new(),
             answers: Vec::new(),
+            tracks: Vec::new(),
             painter: hooks.painter,
             destroyed: Vec::new(),
             reaped: None,
@@ -843,6 +848,14 @@ impl TreeFrame {
     pub fn answer(&mut self, token: u64, result: String, error: String) {
         self.answers.push(TreeAnswer { token, result, error });
         // The answer rides the next published batch, so a frame must run to publish it.
+        self.queue.wake();
+    }
+
+    /// Queue the end of a timed `set` of the shell; the next published batch carries it as `track_ended`. It changes
+    /// no scene, so it bumps no serial.
+    pub fn track_ended(&mut self, end: ShellTrackEnd) {
+        self.tracks.push(end);
+        // It rides the next published batch, so a frame must run to publish it.
         self.queue.wake();
     }
 
@@ -1041,7 +1054,8 @@ impl TreeFrame {
             self.revisions.record(self.serial, &batch.changes);
         }
         batch.answers = std::mem::take(&mut self.answers);
-        if changed || !batch.events.is_empty() || !batch.answers.is_empty() {
+        batch.tracks = std::mem::take(&mut self.tracks);
+        if changed || !batch.events.is_empty() || !batch.answers.is_empty() || !batch.tracks.is_empty() {
             batch.serial = self.serial;
             (self.publish)(batch);
         }

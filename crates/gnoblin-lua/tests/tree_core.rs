@@ -161,6 +161,8 @@ fn writes_are_seen_by_this_tick_and_the_mirror_is_unchanged_until_the_tx_is_take
                 key: "x".to_owned(),
                 value: MirrorValue::Double(4.0),
                 seconds: None,
+                delay: None,
+                tween: None,
                 samples: None,
             },
             TxOp::Set {
@@ -168,6 +170,8 @@ fn writes_are_seen_by_this_tick_and_the_mirror_is_unchanged_until_the_tx_is_take
                 key: "title".to_owned(),
                 value: MirrorValue::Text("main".to_owned()),
                 seconds: None,
+                delay: None,
+                tween: None,
                 samples: None,
             },
         ]

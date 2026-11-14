@@ -790,10 +790,7 @@ impl Live {
     /// One frame in which the shell writes `key` on the window: tweened over `seconds` when given,
     /// at once otherwise. Whether the write applied.
     fn write(&mut self, key: &str, value: f64, seconds: Option<f64>) -> bool {
-        let timing = seconds.map(|seconds| Timing {
-            seconds,
-            samples: vec![0.0, 0.5, 1.0],
-        });
+        let timing = seconds.map(|seconds| Timing::new(seconds, vec![0.0, 0.5, 1.0]));
         submit(
             &self.frame,
             self.serial,
@@ -882,12 +879,19 @@ fn with_reduced_motion_off_a_timed_set_runs_a_tween_to_its_target() {
 }
 
 #[test]
-fn a_property_the_scene_cannot_tween_lands_at_once_with_reduced_motion_off() {
+fn a_size_tweens_in_whole_pixels_and_lands_on_its_target() {
     let mut live = Live::new();
+    let start = live.width();
+    let target = start + 100;
 
-    assert!(live.write("width", 80.0, Some(0.5)));
+    assert!(live.write("width", f64::from(target), Some(0.5)));
 
-    assert_eq!(live.width(), 80, "a resize has no track to play, so the target lands");
+    assert_eq!(live.width(), start, "the node starts at its size");
+    assert_eq!(live.composer.shell_tracks_running(), 1, "a width is a track");
+    live.composer.advance_motion(250);
+    assert_eq!(live.width(), start + 50, "halfway through the size is halfway there");
+    live.composer.advance_motion(250);
+    assert_eq!(live.width(), target, "and it lands on its target");
     assert_eq!(live.composer.shell_tracks_running(), 0);
     take_batches();
 }

@@ -502,6 +502,8 @@ impl ShellVm {
                 // The Lua shell claims no pointer chord (its drags are the compositor's own), so a drag that
                 // reaches it has nobody to tell.
                 TreeIncoming::PointerChord(_) => {}
+                // The Lua shell's animations end by its own clock; it never reads the compositor's word on one.
+                TreeIncoming::TrackEnded { .. } => {}
                 TreeIncoming::Attached(_) | TreeIncoming::Snapshot { .. } => {
                     return Err(ShellVmError::Link("attach or snapshot after boot".to_owned()));
                 }
@@ -860,6 +862,8 @@ mod refusal_tests {
             key: "width".to_owned(),
             value: MirrorValue::Text("wide".to_owned()),
             seconds: None,
+            delay: None,
+            tween: None,
             samples: None,
         };
         assert_eq!(

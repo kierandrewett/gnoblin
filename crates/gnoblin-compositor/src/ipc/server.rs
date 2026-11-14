@@ -1636,6 +1636,13 @@ impl Dispatcher {
                 &tree_host::answer_payload(answer),
             ));
         }
+        for end in &batch.tracks {
+            connection.send(&Envelope::event_message(
+                tree_host::NAMESPACE,
+                tree_host::member::TRACK_ENDED,
+                &tree_host::track_ended_payload(end),
+            ));
+        }
         for event in &batch.events {
             match &event.event {
                 TreeFrameInput::Chord(chord) => connection.send(&Envelope::event_message(

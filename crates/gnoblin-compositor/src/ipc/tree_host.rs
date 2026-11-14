@@ -16,11 +16,12 @@ use gnoblin_input::GestureDelivery;
 use gnoblin_paint::SharedPainter;
 use gnoblin_proto::tree::seat::{ChordPayload, GesturePayload, PointerChordPayload};
 use gnoblin_proto::tree::tree::{
-    AnswerPayload, AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload, TransactArgs,
+    AnswerPayload, AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload, TrackEndedPayload,
+    TransactArgs,
 };
 use gnoblin_proto::tree::{change, op, snapshot_node};
 use gnoblin_render::transaction::{
-    ClassInfo, Code, PointerInput, Timing, TreeChange, TreeOp, TreeRefusal, TreeTransaction, TreeValue,
+    ClassInfo, Code, PointerInput, ShellTrackEnd, Timing, TreeChange, TreeOp, TreeRefusal, TreeTransaction, TreeValue,
 };
 use gnoblin_secret::SecretText;
 use gnoblin_types::{ClientId, NodeId};
@@ -52,6 +53,7 @@ pub mod member {
     pub const GESTURE: &str = "gesture";
     pub const POINTER_CHORD: &str = "pointer_chord";
     pub const ANSWER: &str = "answer";
+    pub const TRACK_ENDED: &str = "track_ended";
 }
 
 /// The shell's tree as the dispatcher sees it. Clones share one queue, one session and one
@@ -337,6 +339,18 @@ pub fn answer_payload(answer: &TreeAnswer) -> AnswerPayload {
         token: answer.token,
         result: answer.result.clone().into_bytes(),
         error: answer.error.clone(),
+    }
+}
+
+/// The end of one timed `set` of the shell, as the `track_ended` event: `completed` when it reached its target and
+/// `cancelled` for every other end.
+#[must_use]
+pub fn track_ended_payload(end: &ShellTrackEnd) -> TrackEndedPayload {
+    TrackEndedPayload {
+        node: end.node.get(),
+        property: end.key.clone(),
+        reason: if end.completed { "completed" } else { "cancelled" }.to_owned(),
+        tween: end.group.map_or(0, NodeId::get),
     }
 }
 
@@ -707,14 +721,17 @@ fn pointer_input(op: &op::Properties) -> Result<PointerInput, Code> {
     })
 }
 
-/// The timing of a `set`: an instant set has neither a duration nor samples. A duration of
-/// zero with samples is kept, so the layer refuses it as out of range.
+/// The timing of a `set`: an instant set has none of a duration, samples, a delay or a `tween`. A duration of
+/// zero with samples is kept, so the layer refuses it as out of range; so is a delay or a `tween` with no duration,
+/// which asks for an animation the write does not carry.
 fn timing(op: &op::Properties) -> Option<Timing> {
-    if op.seconds == 0.0 && op.samples.is_empty() {
+    if op.seconds == 0.0 && op.samples.is_empty() && op.delay == 0.0 && op.tween == 0 {
         None
     } else {
         Some(Timing {
             seconds: op.seconds,
+            delay: op.delay,
+            group: (op.tween != 0).then(|| NodeId::new(op.tween)),
             samples: op.samples.clone(),
         })
     }
