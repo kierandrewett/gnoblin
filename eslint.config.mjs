@@ -66,6 +66,7 @@ export default [
         rules: {
             "@typescript-eslint/no-empty-object-type": "off",
             "@typescript-eslint/no-unsafe-function-type": "off",
+            "@typescript-eslint/no-unsafe-declaration-merging": "off",
         },
     },
     { files: ["**/*.cjs"], languageOptions: { sourceType: "commonjs" } },
