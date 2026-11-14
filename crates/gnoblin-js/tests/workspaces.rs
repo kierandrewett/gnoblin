@@ -846,7 +846,24 @@ fn a_reload_keeps_the_windows_on_the_workspace_of_the_same_id() {
                 output: String::new(),
                 workspace: "desktop".into(),
             }],
-            kept: Vec::new(),
+            kept: vec![
+                gnoblin_js::JsKeptWindow {
+                    node: 3,
+                    floating: None,
+                    windowed: None,
+                    left_at: None,
+                    snapped: None,
+                    bar: Some(0.0),
+                },
+                gnoblin_js::JsKeptWindow {
+                    node: 4,
+                    floating: None,
+                    windowed: None,
+                    left_at: None,
+                    snapped: None,
+                    bar: Some(0.0),
+                },
+            ],
         }
     );
     // The first shell is gone, as a restarted runtime's connection is: its undelivered echoes go with it.

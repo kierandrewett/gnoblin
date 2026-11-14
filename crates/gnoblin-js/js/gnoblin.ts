@@ -3444,9 +3444,8 @@ function keptWindows(): KeptWindow[] {
         const rects = windowState.kept(client);
         const snap = snapRecord(client);
         const leftAt = (client as unknown as { floatingBounds?: Rect | null }).floatingBounds ?? null;
-        // A window that had no bar is the first sight of the next generation, which fits it to the bar it has then.
-        const fitted = fittedBar.get(client) ?? 0;
-        const bar = fitted > 0 ? fitted : null;
+        // Keep a known zero too: a later generation must detect a bar appearing after one without a bar.
+        const bar = fittedBar.get(client) ?? null;
         if (rects.floating === null && rects.windowed === null && snap === null && leftAt === null && bar === null) {
             continue;
         }

@@ -3153,8 +3153,28 @@ fn a_window_that_draws_its_own_title_bar_gets_no_second_one_and_a_server_side_wi
         &init,
         "import { defineConfig } from \"gnoblin\";\ndefineConfig({ decorations: true });\n",
     );
+    wait_for(
+        "the decorations-on reload committed",
+        &session,
+        &mut asks,
+        &shell,
+        || shell.generation() > generation,
+    );
+    wait_for(
+        "the compositor restored server-side decorations",
+        &session,
+        &mut asks,
+        &shell,
+        || {
+            decorations_declared(&ipc)
+                && snapshot(&ipc)
+                    .iter()
+                    .find(|node| node.class == "window" && node.app_id == "org.example.asks")
+                    .is_some_and(|window| prop_text(window, "decoration") == "server")
+        },
+    );
     wait_for("the reload brought the bar back", &session, &mut asks, &shell, || {
-        shell.generation() > generation && bar_and_content(&ipc, "org.example.asks").is_some_and(|(bar, y)| y >= bar)
+        bar_and_content(&ipc, "org.example.asks").is_some_and(|(bar, y)| y >= bar)
     });
     asks.roundtrip();
     assert_eq!(asks.decoration_modes(0).last(), Some(&Mode::ServerSide));
