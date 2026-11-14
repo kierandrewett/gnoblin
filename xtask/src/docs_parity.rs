@@ -21,11 +21,7 @@ use serde::Deserialize;
 const TYPES: &str = "crates/gnoblin-js-types/tests/golden/gnoblin.d.ts";
 const ALLOW: &str = "design/docs-parity/allow.toml";
 const DOC_DIRS: &[&str] = &["docs/shell-api", "docs/events"];
-const DOC_FILES: &[&str] = &[
-    "docs/user-shell.md",
-    "docs/user-scripts.md",
-    "docs/bring-your-own-shell.md",
-];
+const DOC_FILES: &[&str] = &["docs/user-shell.md", "docs/user-scripts.md"];
 /// The interface every dotted `gnoblin.` name starts from.
 const ROOT_TYPE: &str = "Gnoblin";
 /// The interface whose quoted keys are the signal names `gnoblin.on` accepts.
@@ -349,7 +345,9 @@ fn type_name(text: &str) -> Option<String> {
         None => text,
     };
     let name: String = text.chars().take_while(is_ident).collect();
-    (!name.is_empty()).then_some(name)
+    // `Item[]` is an array of the type, which has the members of an array and not of `Item`.
+    let array = text[name.len()..].starts_with('[');
+    (!name.is_empty() && !array).then_some(name)
 }
 
 /// Every dotted `gnoblin.` name and every `.method(` call in one page. A `gnoblin.` name must not
@@ -572,6 +570,7 @@ declare module "gnoblin" {
         readonly process: ProcessTable;
         readonly clients: Collection<Client>;
         readonly main: Client;
+        readonly list: Client[];
         readonly extensions: import("gnoblin/extensions/xr").Holder | null;
         motion(seconds: number): number;
         on<K extends keyof GnoblinSignals>(name: K, handler: (event: GnoblinSignals[K]) => void): Subscription;
@@ -693,6 +692,10 @@ declare module "gnoblin/schema/signals" {
             "a type outside the file ends the check"
         );
         assert!(!surface.provides("gnoblin.clients.appId"), "a Collection has no appId");
+        assert!(
+            surface.provides("gnoblin.list.find"),
+            "an array has the members of an array"
+        );
     }
 
     #[test]

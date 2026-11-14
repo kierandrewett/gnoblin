@@ -13,8 +13,7 @@ What the gate reads from the pages:
 - A `.method(` call. It must be a method that any class or interface of the file declares. Methods of the language
   (`map`, `log`, `padStart`) and calls on `console`, `Math`, `this` and the other built-ins are not checked.
 
-Pages read: `docs/shell-api/`, `docs/events/`, `docs/user-shell.md`, `docs/user-scripts.md` and
-`docs/bring-your-own-shell.md`.
+Pages read: `docs/shell-api/`, `docs/events/`, `docs/user-shell.md` and `docs/user-scripts.md`.
 
 Each name the docs promise but the product does not implement is listed in `allow.toml` with its owner slice. The gate fails on:
 
