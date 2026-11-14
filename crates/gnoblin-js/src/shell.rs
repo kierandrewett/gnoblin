@@ -589,12 +589,32 @@ impl JsShell {
         Ok(())
     }
 
-    /// The idle state of one frame: the connection is opened or closed to match what the script wants, the newest
-    /// reading goes to its watches (their handlers run under the usual budgets), and the holds it asked for are sent.
+    /// Sends the holds the script has asked for since the last send; one the compositor refuses is told to the script.
+    fn send_idle_commands(&mut self, diagnostics: &mut Vec<String>) -> Result<(), JsShellError> {
+        let commands = self.call_entry(self.entry_budget, |entry| {
+            let list: Array<'_> = entry.get::<_, Function<'_>>("takeIdleCommands")?.call(())?;
+            commands_from_js(&list)
+        })?;
+        if !commands.is_empty() {
+            for holder in self.idle.run(&commands, diagnostics) {
+                self.call_entry(self.entry_budget, move |entry| {
+                    entry.get::<_, Function<'_>>("idleFailed")?.call::<_, ()>((holder,))
+                })?;
+            }
+        }
+        Ok(())
+    }
+
+    /// The idle state of one frame: the connection is opened or closed to match what the script wants, the holds it
+    /// asked for are sent, and then the newest reading goes to its watches (their handlers run under the usual budgets).
     fn run_idle(&mut self, wanted: bool, diagnostics: &mut Vec<String>) -> Result<(), JsShellError> {
         if wanted {
             self.idle.sync(true, diagnostics);
         }
+        // Holds go out before the reading is handed to the watches: the first reading after a connect predates the
+        // script's own holds, and a watch that heard it would fire `onIdle` for a session the script has just kept
+        // awake. The poll that follows sees the compositor's count with the holds in it.
+        self.send_idle_commands(diagnostics)?;
         let poll = self.idle.poll(diagnostics);
         let started = Instant::now();
         if poll.lost {
@@ -610,17 +630,8 @@ impl JsShell {
             })?;
             self.run_pending(pending, started, diagnostics)?;
         }
-        let commands = self.call_entry(self.entry_budget, |entry| {
-            let list: Array<'_> = entry.get::<_, Function<'_>>("takeIdleCommands")?.call(())?;
-            commands_from_js(&list)
-        })?;
-        if !commands.is_empty() {
-            for holder in self.idle.run(&commands, diagnostics) {
-                self.call_entry(self.entry_budget, move |entry| {
-                    entry.get::<_, Function<'_>>("idleFailed")?.call::<_, ()>((holder,))
-                })?;
-            }
-        }
+        // A handler may have asked for holds too, and they go before the connection can close.
+        self.send_idle_commands(diagnostics)?;
         // The last hold given back leaves the connection with nothing to do.
         let wanted: u32 = self.call_entry(self.entry_budget, |entry| {
             entry.get::<_, Function<'_>>("wants")?.call(())
