@@ -699,13 +699,33 @@ fn check_writable(
 /// The class and name of the one camera an observer may write: the XR extension's head camera.
 const OBSERVER_CAMERA: (&str, &str) = ("camera", "head");
 
+/// The properties of a `controller` an observer writes: its pose and the values of the hand. `claimed` is not among
+/// them, the shell writes it.
+pub const OBSERVER_CONTROLLER_KEYS: [&str; 13] = [
+    "x",
+    "y",
+    "z",
+    "rotation",
+    "hand",
+    "tracked",
+    "trigger",
+    "grip",
+    "thumbstick_x",
+    "thumbstick_y",
+    "thumbstick_click",
+    "primary",
+    "secondary",
+];
+
 /// What an observer's `set` may touch, beyond naming the seat it made in the same transaction: the `x`, `y`, `z` and
 /// `rotation` of the camera named `head` (the head pose the XR extension measures) and that camera's read-only
-/// `layer_budget` (the runtime's layer limit). It may not animate, and it may write nothing else. `Ok(true)` means the
+/// `layer_budget` (the runtime's layer limit), and the pose and values of a `controller` (the XR extension's hands,
+/// which are read-only for everyone else). It may not animate, and it may write nothing else. `Ok(true)` means the
 /// write is one of the observer's own read-only properties, so the schema's `readonly` does not refuse it.
 ///
 /// The pure check that runs before the transaction is queued (`ipc::tree::observer_ops`) cannot see the scene, so
-/// it admits these keys on any node; this is the check that holds them to the head camera.
+/// it admits the pose keys on any node; this is the check that holds them to the head camera and to controllers. The
+/// pure check is the one that holds a controller's other values to the controllers the observer made.
 fn observer_write(
     work: &Scene,
     created: &BTreeSet<NodeId>,
@@ -719,11 +739,19 @@ fn observer_write(
     if timed {
         return Err(Code::NotHolder);
     }
+    let class = work.class(node);
+    if class == Some("controller") && OBSERVER_CONTROLLER_KEYS.contains(&key) {
+        return Ok(true);
+    }
     if created.contains(&node) {
         // The seat the observer is making: only its name, which the pure check already holds to.
-        return if key == "name" { Ok(false) } else { Err(Code::NotHolder) };
+        return if class == Some("seat") && key == "name" {
+            Ok(false)
+        } else {
+            Err(Code::NotHolder)
+        };
     }
-    let head = work.class(node) == Some(OBSERVER_CAMERA.0) && work.text(node, "name") == Some(OBSERVER_CAMERA.1);
+    let head = class == Some(OBSERVER_CAMERA.0) && work.text(node, "name") == Some(OBSERVER_CAMERA.1);
     match key {
         "x" | "y" | "z" | "rotation" if head => Ok(false),
         "layer_budget" if head => Ok(true),

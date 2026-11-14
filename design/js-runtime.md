@@ -1155,10 +1155,15 @@ Design: `design/js-xr.md` (which spec class is a tree node, a JS class or new na
 - **Proven on the real compositor** (`crates/gnoblin/tests/js_shell.rs`, the last test): an observer makes the `xr` seat,
   the stock shell builds the room with a head camera and a View per real window, and the room goes with the seat. The
   seat is the only thing of the program in that test.
-- **Not built.** The program does not publish `controller` nodes, so no controller exists and no drag starts on a
-  headset (`design/js-xr.md`, "New native work"); the grip still reaches the window as `BTN_RIGHT`; the TypeScript rules
-  have no `xr = false` key (`accept` replaces it); `ViewRotateBinding`, `ViewScaleBinding` and `ThrowViewBinding`; a View
-  of a workspace. XR5 (a stalled script does not block pose writes or layers) is unverified.
+- **Controllers (lane XrControllers).** The program publishes `controller` nodes (`design/js-xr.md`, "New native work",
+  now built): the `controller` schema class, an observer may make and write it, `extensions/gnoblin-xr` writes one for
+  each hand and obeys `controller.claimed`. Proven against the fake runtime and a fake owner, and on the compositor's
+  wire (`tests/tree_ipc.rs`). Not done: the TypeScript bindings do not yet write `claimed` (a script cannot write a list
+  of texts), so the grip still reaches the window as `BTN_RIGHT` under a `Grip+Drag`; no test drives the JS
+  `ViewMoveBinding` from the real program's nodes on a real compositor. No headset was used.
+- **Not built.** The TypeScript rules have no `xr = false` key (`accept` replaces it); `ViewRotateBinding`,
+  `ViewScaleBinding` and `ThrowViewBinding`; a View of a workspace. XR5 (a stalled script does not block pose writes or
+  layers) is unverified.
 
 ## Real-compositor tests
 

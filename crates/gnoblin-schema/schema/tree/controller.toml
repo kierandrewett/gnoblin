@@ -1,0 +1,95 @@
+namespace = "tree"
+version = "0.2.0"
+
+# The `controller` class: one tracked hand of the XR program (design/js-xr.md, "Only the controllers need a schema
+# addition"). Draws nothing. The XR program, an observer on the owner socket, makes one for each hand while the runtime
+# tracks it, writes it at most once a frame and destroys it when the hand is lost or the program's connection closes.
+# The shell reads every property but `claimed`. The aim ray's pose is the node's own `x`, `y`, `z` and `rotation`, in
+# the placement frame the XR program draws the room in (metres, y up, the viewer at the origin looking down negative z),
+# so a View and a controller are in one space. The ray points along the pose's negative z.
+[[object]]
+name = "controller"
+since = "0.2.0"
+base = "node"
+
+# `left` or `right`. Written once, when the node is made.
+[[object.property]]
+name = "hand"
+type = "string"
+since = "0.2.0"
+default = ""
+readonly = true
+
+# Whether the runtime locates the hand's aim pose now. The program destroys the node when a hand is lost for good, so
+# a node that stays has been tracked: `false` is a hand that is briefly out of sight, and its pose is the last one.
+[[object.property]]
+name = "tracked"
+type = "bool"
+since = "0.2.0"
+default = false
+readonly = true
+
+# How far the trigger is pulled, 0 to 1.
+[[object.property]]
+name = "trigger"
+type = "double"
+since = "0.2.0"
+default = 0.0
+readonly = true
+
+# How far the grip is squeezed, 0 to 1.
+[[object.property]]
+name = "grip"
+type = "double"
+since = "0.2.0"
+default = 0.0
+readonly = true
+
+# The thumbstick's deflection, -1 to 1 on each axis, x to the right and y up.
+[[object.property]]
+name = "thumbstick_x"
+type = "double"
+since = "0.2.0"
+default = 0.0
+readonly = true
+
+[[object.property]]
+name = "thumbstick_y"
+type = "double"
+since = "0.2.0"
+default = 0.0
+readonly = true
+
+# Whether the thumbstick is pressed in.
+[[object.property]]
+name = "thumbstick_click"
+type = "bool"
+since = "0.2.0"
+default = false
+readonly = true
+
+# The lower face button (A on the right hand, X on the left) and the upper one (B, Y).
+[[object.property]]
+name = "primary"
+type = "bool"
+since = "0.2.0"
+default = false
+readonly = true
+
+[[object.property]]
+name = "secondary"
+type = "bool"
+since = "0.2.0"
+default = false
+readonly = true
+
+# The inputs a shell binding owns, from `trigger`, `grip`, `thumbstick`, `primary` and `secondary`. The XR program
+# withholds a claimed input from the window under the ray: a claimed `grip` is not sent as `BTN_RIGHT`, a claimed
+# `trigger` is not sent as `BTN_LEFT` and a claimed `thumbstick` does not scroll, while the value is still written above
+# for the shell to read. `primary`, `secondary` and the thumbstick click reach no window, so claiming them changes
+# nothing. A button the window already holds when the claim arrives is released first, so none stays down. Written by
+# the shell, never by the program. A name that is not one of the five claims nothing.
+[[object.property]]
+name = "claimed"
+type = "list<string>"
+since = "0.2.0"

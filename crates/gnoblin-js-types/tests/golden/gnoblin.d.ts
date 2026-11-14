@@ -319,6 +319,29 @@ declare module "gnoblin/schema/tree" {
         measure(): Reply;
     }
 
+    /** Schema object `tree.controller` (since 0.2.0). */
+    export interface Controller extends Node {
+        /** Default `""`. */
+        readonly hand: string;
+        /** Default `false`. */
+        readonly tracked: boolean;
+        /** Default `0`. */
+        readonly trigger: number;
+        /** Default `0`. */
+        readonly grip: number;
+        /** Schema name `thumbstick_x`. Default `0`. */
+        readonly thumbstickX: number;
+        /** Schema name `thumbstick_y`. Default `0`. */
+        readonly thumbstickY: number;
+        /** Schema name `thumbstick_click`. Default `false`. */
+        readonly thumbstickClick: boolean;
+        /** Default `false`. */
+        readonly primary: boolean;
+        /** Default `false`. */
+        readonly secondary: boolean;
+        claimed: string[];
+    }
+
     /** Schema record `tree.effect` (since 0.2.0): a value, not an identity. */
     export interface Effect {
         kind: string;

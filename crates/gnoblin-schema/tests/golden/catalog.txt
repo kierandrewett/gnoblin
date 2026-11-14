@@ -372,6 +372,36 @@ object canvas since 0.2.0 secret false
   property content type bytes since 0.2.0 secret false
   method measure since 0.2.0 secret false function false
   signal destroyed since 0.2.0 secret false
+object controller since 0.2.0 secret false
+  property id type uint since 0.2.0 secret false
+  property parent type object:node since 0.2.0 secret false
+  property name type string since 0.2.0 secret false
+  property x type double since 0.2.0 secret false
+  property y type double since 0.2.0 secret false
+  property z type double since 0.2.0 secret false
+  property rotation type list<double> since 0.2.0 secret false
+  property scale type list<double> since 0.2.0 secret false
+  property width type double since 0.2.0 secret false
+  property height type double since 0.2.0 secret false
+  property opacity type double since 0.2.0 secret false
+  property visible type bool since 0.2.0 secret false
+  property clip type bool since 0.2.0 secret false
+  property input type bool since 0.2.0 secret false
+  property secure type bool since 0.2.0 secret false
+  property tags type list<string> since 0.2.0 secret false
+  property effects type list<object:effect> since 0.2.0 secret false
+  property skipped type list<string> since 0.2.0 secret false
+  property hand type string since 0.2.0 secret false
+  property tracked type bool since 0.2.0 secret false
+  property trigger type double since 0.2.0 secret false
+  property grip type double since 0.2.0 secret false
+  property thumbstick_x type double since 0.2.0 secret false
+  property thumbstick_y type double since 0.2.0 secret false
+  property thumbstick_click type bool since 0.2.0 secret false
+  property primary type bool since 0.2.0 secret false
+  property secondary type bool since 0.2.0 secret false
+  property claimed type list<string> since 0.2.0 secret false
+  signal destroyed since 0.2.0 secret false
 object effect since 0.2.0 secret false
   property kind type string since 0.2.0 secret false
   property downscale type uint since 0.2.0 secret false
@@ -1588,7 +1618,7 @@ enum GnoblinError {
 //
 // Namespace: tree
 // Version: 0.2.0
-// Schema: crates/gnoblin-schema/schema (camera.toml, canvas.toml, effect.toml, lock.toml, messages.toml, node.toml, screen.toml, seat.toml, surface.toml, view.toml, window.toml, workspace.toml)
+// Schema: crates/gnoblin-schema/schema (camera.toml, canvas.toml, controller.toml, effect.toml, lock.toml, messages.toml, node.toml, screen.toml, seat.toml, surface.toml, view.toml, window.toml, workspace.toml)
 
 syntax = "proto3";
 
@@ -1708,6 +1738,72 @@ message Canvas {
 
   // Method `measure`, since 0.2.0.
   message MeasureArgs {}
+
+  // Signal `destroyed`, since 0.2.0.
+  message DestroyedPayload {}
+}
+
+// Object `controller`, since 0.2.0.
+message Controller {
+  // Property values, carried by a property diff. Field numbers never change.
+  message Properties {
+    // since 0.2.0
+    uint64 id = 1;
+    // since 0.2.0; object id of `node`
+    string parent = 2;
+    // since 0.2.0
+    string name = 3;
+    // since 0.2.0
+    double x = 4;
+    // since 0.2.0
+    double y = 5;
+    // since 0.2.0
+    double z = 6;
+    // since 0.2.0; list
+    repeated double rotation = 7;
+    // since 0.2.0; list
+    repeated double scale = 8;
+    // since 0.2.0
+    double width = 9;
+    // since 0.2.0
+    double height = 10;
+    // since 0.2.0
+    double opacity = 11;
+    // since 0.2.0
+    bool visible = 12;
+    // since 0.2.0
+    bool clip = 13;
+    // since 0.2.0
+    bool input = 14;
+    // since 0.2.0
+    bool secure = 15;
+    // since 0.2.0; list
+    repeated string tags = 16;
+    // since 0.2.0; list of record `effect`: the properties of one value
+    repeated Effect.Properties effects = 17;
+    // since 0.2.0; list
+    repeated string skipped = 18;
+    // since 0.2.0
+    string hand = 19;
+    // since 0.2.0
+    bool tracked = 20;
+    // since 0.2.0
+    double trigger = 21;
+    // since 0.2.0
+    double grip = 22;
+    // since 0.2.0
+    double thumbstick_x = 23;
+    // since 0.2.0
+    double thumbstick_y = 24;
+    // since 0.2.0
+    bool thumbstick_click = 25;
+    // since 0.2.0
+    bool primary = 26;
+    // since 0.2.0
+    bool secondary = 27;
+    // since 0.2.0; list
+    repeated string claimed = 28;
+  }
 
   // Signal `destroyed`, since 0.2.0.
   message DestroyedPayload {}

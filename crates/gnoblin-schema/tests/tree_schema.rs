@@ -39,10 +39,11 @@ const CLASSES: &[&str] = &[
     "seat",
     "workspace",
     "lock",
+    "controller",
 ];
 
 #[test]
-fn the_ten_classes_exist_in_the_tree_namespace() {
+fn the_eleven_classes_exist_in_the_tree_namespace() {
     let catalog = stock();
     for class in CLASSES {
         object(&catalog, class);
@@ -63,10 +64,53 @@ fn the_classes_derive_as_node_core_says() {
         ("seat", Some("node")),
         ("workspace", Some("node")),
         ("lock", Some("node")),
+        ("controller", Some("node")),
     ];
     for (name, base) in bases {
         assert_eq!(object(&catalog, name).base.as_deref(), *base, "the base of `{name}`");
     }
+}
+
+#[test]
+fn a_controller_is_a_node_with_a_pose_and_the_values_of_a_hand_and_the_shell_writes_only_its_claims() {
+    let catalog = stock();
+    let controller = object(&catalog, "controller");
+    let property = |name: &str| {
+        controller
+            .properties
+            .iter()
+            .find(|property| property.name == name)
+            .unwrap_or_else(|| panic!("a controller has no `{name}`"))
+    };
+    // The pose is the node's own: the aim ray in x y z rotation.
+    for name in ["x", "y", "z", "rotation"] {
+        property(name);
+    }
+    let measured = [
+        ("hand", "string", DefaultValue::Text(String::new())),
+        ("tracked", "bool", DefaultValue::Bool(false)),
+        ("trigger", "double", DefaultValue::Double(0.0)),
+        ("grip", "double", DefaultValue::Double(0.0)),
+        ("thumbstick_x", "double", DefaultValue::Double(0.0)),
+        ("thumbstick_y", "double", DefaultValue::Double(0.0)),
+        ("thumbstick_click", "bool", DefaultValue::Bool(false)),
+        ("primary", "bool", DefaultValue::Bool(false)),
+        ("secondary", "bool", DefaultValue::Bool(false)),
+    ];
+    for (name, ty, default) in measured {
+        let property = property(name);
+        assert_eq!(property.ty, Type::parse(ty).unwrap(), "the type of `{name}`");
+        assert_eq!(property.default.as_ref(), Some(&default), "the default of `{name}`");
+        assert!(property.readonly, "`{name}` is the program's: the shell reads it");
+    }
+    let claimed = property("claimed");
+    assert_eq!(claimed.ty, Type::parse("list<string>").unwrap());
+    assert!(!claimed.readonly, "the shell writes the claims");
+    assert!(!claimed.animated);
+    assert!(
+        controller.signals.iter().all(|signal| signal.name == "destroyed"),
+        "a controller has no signals of its own"
+    );
 }
 
 #[test]

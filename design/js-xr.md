@@ -1,7 +1,7 @@
 # XR on the JS shell (P9)
 
-Status: built and tested against a fake tree and, for the room, a real compositor. No headset, no OpenXR runtime and no
-`gnoblin-xr` binary ran for it.
+Status: the controllers are built in the program and the compositor and tested against a fake runtime and a fake owner;
+the room is tested against a real compositor. No headset, no OpenXR runtime and no `gnoblin-xr` binary ran for it.
 
 Owner-spec section 13 asks for a native `.so` extension. J7 replaces that with the out-of-process program of D34 and
 D35, so this document says what each spec class becomes in that model. See `design/js-runtime.md` (J7, "P9 XR status"),
@@ -32,21 +32,21 @@ D35, so this document says what each spec class becomes in that model. See `desi
 "Provided" means the program or the compositor already publishes it. "JS" is policy in `data/js/gnoblin/xr.ts` and
 `scene.ts`. "New" names the schema addition.
 
-| Spec class or feature                  | Status                      | What it is here                                                                                                                                                               |
-| -------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `View` (section 8)                     | Provided + JS               | The `view` class. A JS `View` sets `source` to a client and reparents nothing. A workspace is not a tree node, so it cannot be shown yet.                                     |
-| `XRCamera3D`                           | Provided + JS               | The `camera` named `head`, `projection = "stereo"`. The program writes its pose and `layer_budget`. The class is a `Camera3D` that fixes the name and takes `near` in metres. |
-| `XRViewport`                           | JS                          | The node named `room` and the camera named `head`. Assigning it to `session.viewport` names them and mounts the room. `composition: "projection"` sets each View's `camera`.  |
-| Session                                | Provided + JS               | The `xr` seat. `alive` and `connected` follow it; `layerBudget` reads `head.layer_budget`; `session.input` is the seat's `InputContext`; `head.pose` reads the head camera.   |
-| `XRExtension`                          | JS                          | `gnoblin.extensions.xr`: null with no session. `extensions.addListener` hears sessions begin and end; `extensions.configure("xr", ...)` shapes the stock room.                |
-| `gnoblin/extensions/xr`                | JS + loader                 | A module that throws at load unless XR is declared (`GNOBLIN_XR=1`) or the seat exists. The classes live in `gnoblin/xr`, which is always embedded.                           |
-| Room and ring                          | JS                          | `XRRoom` and `SpatialLayout`: the port of `xr.lua` (`arrangeRing`), radius and spacing in metres, one View per client, none for dialogs or secure clients.                    |
-| Head-locked panel                      | Provided + JS               | A `View` under `head`. `room.pinToHead(client, { x, y, z })` in metres. The program draws it in view space.                                                                   |
-| Controllers                            | **New: `controller` class** | See below. Today the program sends the right hand's aim ray as pointer events on the `xr` seat and publishes no pose or button value.                                         |
-| `ViewMoveBinding`                      | JS over `controller`        | 6-DoF grab. Writes the View's `x y z rotation`; never the client. A moved View is pinned: the ring leaves it alone.                                                           |
-| `ViewResizeBinding`                    | JS over `controller`        | Writes the View's uniform `scale` on every update, no window write. On release, if aspect or density asks, it writes the window's `width` and `height` once.                  |
-| Ray-drag of a far panel                | JS over `controller`        | `ViewMoveBinding({ tracking: "ray" })`: the panel keeps its distance from the hand and its offset from the ray.                                                               |
-| `ViewRotate`, `ViewScale`, `ThrowView` | Not built                   | Spec snippets 070 and 071. They would be JS over the same `controller` values.                                                                                                |
+| Spec class or feature                  | Status                             | What it is here                                                                                                                                                               |
+| -------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `View` (section 8)                     | Provided + JS                      | The `view` class. A JS `View` sets `source` to a client and reparents nothing. A workspace is not a tree node, so it cannot be shown yet.                                     |
+| `XRCamera3D`                           | Provided + JS                      | The `camera` named `head`, `projection = "stereo"`. The program writes its pose and `layer_budget`. The class is a `Camera3D` that fixes the name and takes `near` in metres. |
+| `XRViewport`                           | JS                                 | The node named `room` and the camera named `head`. Assigning it to `session.viewport` names them and mounts the room. `composition: "projection"` sets each View's `camera`.  |
+| Session                                | Provided + JS                      | The `xr` seat. `alive` and `connected` follow it; `layerBudget` reads `head.layer_budget`; `session.input` is the seat's `InputContext`; `head.pose` reads the head camera.   |
+| `XRExtension`                          | JS                                 | `gnoblin.extensions.xr`: null with no session. `extensions.addListener` hears sessions begin and end; `extensions.configure("xr", ...)` shapes the stock room.                |
+| `gnoblin/extensions/xr`                | JS + loader                        | A module that throws at load unless XR is declared (`GNOBLIN_XR=1`) or the seat exists. The classes live in `gnoblin/xr`, which is always embedded.                           |
+| Room and ring                          | JS                                 | `XRRoom` and `SpatialLayout`: the port of `xr.lua` (`arrangeRing`), radius and spacing in metres, one View per client, none for dialogs or secure clients.                    |
+| Head-locked panel                      | Provided + JS                      | A `View` under `head`. `room.pinToHead(client, { x, y, z })` in metres. The program draws it in view space.                                                                   |
+| Controllers                            | **New: `controller` class, built** | See "Native work". The program writes one node for each hand.                                                                                                                 |
+| `ViewMoveBinding`                      | JS over `controller`               | 6-DoF grab. Writes the View's `x y z rotation`; never the client. A moved View is pinned: the ring leaves it alone.                                                           |
+| `ViewResizeBinding`                    | JS over `controller`               | Writes the View's uniform `scale` on every update, no window write. On release, if aspect or density asks, it writes the window's `width` and `height` once.                  |
+| Ray-drag of a far panel                | JS over `controller`               | `ViewMoveBinding({ tracking: "ray" })`: the panel keeps its distance from the hand and its offset from the ray.                                                               |
+| `ViewRotate`, `ViewScale`, `ThrowView` | Not built                          | Spec snippets 070 and 071. They would be JS over the same `controller` values.                                                                                                |
 
 ## Frames and units
 
@@ -56,22 +56,25 @@ D35, so this document says what each spec class becomes in that model. See `desi
   in radians about X, then Y, then Z (`xr_scene::math::euler_degrees`). `room` is a translation.
 - The program reads only the first component of a View's `scale`. A panel has one scale.
 
-## New native work
+## Native work
 
-Only the controllers need a schema addition. Nothing below is built.
+Built (lane XrControllers). No headset was used; it is proven against the fake runtime and fake owners only.
 
 1. **`controller` class** (`schema/tree/controller.toml`), base `node`. The aim ray's pose is `x y z rotation`, in the
-   placement frame (the one `xr_scene::pick` casts in). Read-only properties: `hand`, `tracked`, `trigger` and `grip` (0
-   to 1), `thumbstick_x`, `thumbstick_y`, `thumbstick_click`, `primary`, `secondary`.
-2. **Who writes it.** The program, as an observer: one `controller` for each hand, written at most once a frame. The
-   compositor must let an observer make that class and write those properties, and destroy the nodes when the
-   connection closes (as it does for the seat).
-3. **Arbitration.** The program sends grip as `BTN_RIGHT` to the window under the ray. A binding that owns Grip needs a
-   shell-writable `controller.claimed` list that the program obeys.
-4. **Optional: per-axis scale.** With it a resize preview could change the aspect; today it grows evenly.
-
-The shell side of 1 to 3 is tested against `controller` nodes the tests make. Until the program writes them, a headset
-session has no controllers and no drag starts.
+   placement frame (the one `xr_scene::pick` casts in) and in the room's node units, y up, as a View's pose is. Read-only
+   properties: `hand`, `tracked`, `trigger` and `grip` (0 to 1), `thumbstick_x`, `thumbstick_y`, `thumbstick_click`,
+   `primary`, `secondary`.
+2. **Who writes it.** The program, as an observer: one `controller` for each hand, made when the runtime reports the hand
+   as active and destroyed when it does not. The compositor lets an observer make that class and write those properties
+   on controllers it made, and destroys them when the connection closes (as it does for the seat).
+3. **Arbitration.** The shell-writable `controller.claimed` list names inputs (`trigger`, `grip`, `thumbstick`,
+   `primary`, `secondary`); the program withholds a claimed trigger, grip or thumbstick from the window under the ray.
+4. **Choices the design left open.** `tracked` is false when the pose cannot be located and the node keeps its last pose.
+   There are no controller signals (the design says none are new). Claim names are lowercase. Writes are thinned to
+   about 90 a second, under the compositor's allowance of 120, which controllers have apart from the head's. Another
+   observer may write a controller's pose (as any may write the head's) but not its other values.
+5. **Not built: per-axis scale.** With it a resize preview could change the aspect; today it grows evenly. The
+   TypeScript bindings do not write `claimed` yet.
 
 ## Acceptance (owner-spec section 21)
 

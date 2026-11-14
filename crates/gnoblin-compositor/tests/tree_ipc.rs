@@ -2584,3 +2584,212 @@ fn the_shells_own_writes_to_the_head_camera_are_not_disturbed_by_an_observer_wri
     );
     session.stop().expect("the session stops cleanly");
 }
+
+// ---------------------------------------------------------------------------
+// The controllers: the hands the XR program makes as an observer (design/js-xr.md).
+
+/// A hand made the way the XR program makes it: new, then its values, and no parent.
+fn unparented_controller(id: u64, hand: &str) -> Vec<op::Properties> {
+    vec![
+        op::Properties {
+            kind: "new".to_owned(),
+            class: "controller".to_owned(),
+            id,
+            ..Default::default()
+        },
+        set_text(id, "hand", hand),
+        set_bool(id, "tracked", true),
+        set_double(id, "x", 0.25),
+        set_double(id, "y", 1.1),
+        set_double(id, "z", -0.4),
+        set_list(id, "rotation", vec![0.0, 0.5, 0.0]),
+        set_double(id, "grip", 1.0),
+    ]
+}
+
+fn set_texts(node: u64, key: &str, value: &[&str]) -> op::Properties {
+    op::Properties {
+        kind: "set".to_owned(),
+        node,
+        key: key.to_owned(),
+        value_kind: "list_text".to_owned(),
+        value_texts: value.iter().map(|text| (*text).to_owned()).collect(),
+        ..Default::default()
+    }
+}
+
+/// The shell holds the tree and an observer, the XR program, has made a right hand. Returns both wires, the hand's id
+/// and the batch the shell heard the hand arrive in.
+fn hand_session(session: &Session) -> (Wire, Wire, u64, ChangesPayload) {
+    let mut shell = Wire::connect(session.socket());
+    attach_and_snapshot(&mut shell, 1);
+    let mut observer = Wire::connect(session.socket());
+    let (attached, _) = attach_observer(&mut observer, 1);
+    let hand = u64::from(attached.epoch as u32) << 32 | 1;
+    transact(&mut observer, 2, 0, 0, unparented_controller(hand, "right"));
+    let made: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(made.applied, "the observer makes its controller: {made:?}");
+    let arrived: ChangesPayload = event(&mut shell, "changes");
+    (shell, observer, hand, arrived)
+}
+
+#[test]
+fn an_observer_makes_a_controller_and_the_shell_hears_its_class_and_values() {
+    let session = Session::start();
+    let (_shell, _observer, hand, heard) = hand_session(&session);
+    let created = heard
+        .changes
+        .iter()
+        .find(|c| c.kind == "created" && c.node == hand)
+        .expect("created");
+    assert_eq!(created.class, "controller");
+    let value = |key: &str| heard.changes.iter().find(|c| c.node == hand && c.key == key);
+    assert_eq!(value("hand").map(|c| c.value_text.as_str()), Some("right"));
+    assert_eq!(value("tracked").map(|c| c.value_bool), Some(true));
+    assert_eq!(value("grip").map(|c| c.value_double), Some(1.0));
+    assert_eq!(value("x").map(|c| c.value_double), Some(0.25));
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn only_the_shell_writes_the_claimed_list_and_only_the_observer_writes_the_rest() {
+    let session = Session::start();
+    let (mut shell, mut observer, hand, arrived) = hand_session(&session);
+
+    // The observer's claim is refused.
+    transact(&mut observer, 3, 0, 0, vec![set_texts(hand, "claimed", &["grip"])]);
+    let refused: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert_eq!(
+        (refused.applied, refused.code.as_str()),
+        (false, "not-holder"),
+        "{refused:?}"
+    );
+
+    // The shell's claim applies and the observer hears it.
+    let claimed = apply(
+        &mut shell,
+        4,
+        arrived.serial,
+        vec![set_texts(hand, "claimed", &["grip", "thumbstick"])],
+    );
+    let heard = changes_until(&mut observer, |all| {
+        all.iter().any(|c| c.node == hand && c.key == "claimed")
+    });
+    let list = heard.iter().find(|c| c.key == "claimed").expect("claimed");
+    assert_eq!(list.value_texts, ["grip", "thumbstick"]);
+
+    // The shell does not write a value the program measures.
+    transact(&mut shell, 5, claimed, claimed + 1, vec![set_double(hand, "grip", 0.0)]);
+    let readonly: ReplyPayload = reply_skipping_changes(&mut shell, "transact");
+    assert_eq!(readonly.code, "read-only", "{readonly:?}");
+
+    // The observer keeps writing the values after the claim.
+    transact(
+        &mut observer,
+        6,
+        claimed,
+        claimed + 1,
+        vec![set_double(hand, "grip", 0.5)],
+    );
+    let wrote: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(wrote.applied, "{wrote:?}");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_controller_is_destroyed_by_its_observer_when_the_hand_is_lost_and_with_the_connection() {
+    let session = Session::start();
+    let (mut shell, mut observer, hand, _) = hand_session(&session);
+    // A lost hand: the observer destroys the node itself.
+    let second = hand + 1;
+    transact(&mut observer, 3, 0, 0, unparented_controller(second, "left"));
+    let made: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(made.applied, "{made:?}");
+    transact(&mut observer, 4, made.serial, made.serial + 1, vec![destroy_op(second)]);
+    let gone: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(gone.applied, "the observer destroys its own controller: {gone:?}");
+    changes_until(&mut shell, |all| {
+        all.iter().any(|c| c.kind == "destroyed" && c.node == second)
+    });
+
+    drop(observer);
+    let heard = changes_until(&mut shell, |all| {
+        all.iter().any(|c| c.kind == "destroyed" && c.node == hand)
+    });
+    assert!(heard.iter().any(|c| c.kind == "destroyed" && c.node == hand));
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_second_observer_cannot_write_or_destroy_the_first_observers_controller_values() {
+    let session = Session::start();
+    let (_shell, _first, hand, _) = hand_session(&session);
+    let mut second = Wire::connect(session.socket());
+    attach_observer(&mut second, 1);
+    transact(&mut second, 2, 0, 0, vec![set_double(hand, "trigger", 1.0)]);
+    let refused: ReplyPayload = reply_skipping_changes(&mut second, "transact");
+    assert_eq!(
+        refused.code, "not-holder",
+        "a value of a controller it did not make: {refused:?}"
+    );
+    transact(&mut second, 3, 0, 0, vec![destroy_op(hand)]);
+    let refused: ReplyPayload = reply_skipping_changes(&mut second, "transact");
+    assert_eq!(refused.code, "not-holder", "destroying it: {refused:?}");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_burst_of_controller_writes_is_rate_limited_and_the_head_pose_keeps_its_own_allowance() {
+    let session = Session::start();
+    let mut shell = Wire::connect(session.socket());
+    let (held, _) = attach_and_snapshot(&mut shell, 1);
+    let head = 1000;
+    transact(&mut shell, 2, 0, 1, create_camera(head, held.root, "head"));
+    let applied: ReplyPayload = reply_skipping_changes(&mut shell, "transact");
+    assert!(applied.applied, "{applied:?}");
+    let mut observer = Wire::connect(session.socket());
+    let (attached, _) = attach_observer(&mut observer, 1);
+    let hand = u64::from(attached.epoch as u32) << 32 | 1;
+    transact(&mut observer, 2, 0, 0, unparented_controller(hand, "right"));
+    let made: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(made.applied, "{made:?}");
+
+    let sent = 60_u64;
+    for request_id in 0..sent {
+        transact(
+            &mut observer,
+            10 + request_id,
+            0,
+            0,
+            vec![set_double(hand, "x", request_id as f64)],
+        );
+    }
+    let (mut applied, mut limited) = (0_u64, 0_u64);
+    for _ in 0..sent {
+        let reply: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+        match reply.code.as_str() {
+            "" => applied += 1,
+            "rate-limited" => limited += 1,
+            // Writes that got past the cap were built on one serial and each changes the hand the next names.
+            "stale-base" => applied += 1,
+            other => panic!("a refusal that is not the cap: {other}: {reply:?}"),
+        }
+    }
+    assert!(
+        applied >= 1 && applied <= 12,
+        "the cap held: {applied} of {sent} got past it"
+    );
+    assert!(limited >= 40, "the rest were refused rate-limited: {limited} of {sent}");
+
+    // The hands spent their allowance, not the head's: a pose write applies at once.
+    transact(
+        &mut observer,
+        1000,
+        made.serial,
+        made.serial + 1,
+        vec![set_double(head, "x", 1.0)],
+    );
+    let pose: ReplyPayload = reply_skipping_changes(&mut observer, "transact");
+    assert!(pose.applied, "the head's allowance is its own: {pose:?}");
+    session.stop().expect("the session stops cleanly");
+}

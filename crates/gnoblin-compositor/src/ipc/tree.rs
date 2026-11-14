@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use gnoblin_render::Scene;
 use gnoblin_render::transaction::{
-    ClassInfo, Code, PropertyInfo, TreeApplied, TreeOp, TreeRefusal, TreeValue, ValueType,
+    ClassInfo, Code, OBSERVER_CONTROLLER_KEYS, PropertyInfo, TreeApplied, TreeOp, TreeRefusal, TreeValue, ValueType,
 };
 use gnoblin_schema::{Catalog, DefaultValue, Namespace, ObjectType, SchemaError, Type as SchemaType};
 use gnoblin_types::NodeId;
@@ -93,7 +93,8 @@ pub enum AttachMode {
     /// The shell: it holds the tree, and only one connection at a time may.
     Holder,
     /// A reader beside the shell. It hears the snapshot and every change, never holds the tree, and may only make
-    /// and destroy its own seats and send pointer input (design/node-core.md, F2b).
+    /// and destroy its own seats and controllers, write those controllers' values, and send pointer input
+    /// (design/node-core.md, F2b; design/js-xr.md).
     Observer,
 }
 
@@ -109,16 +110,18 @@ impl AttachMode {
     }
 }
 
-/// The tree's attachments: which connection holds the tree, which observe it, and the seats each observer made.
-/// The scene and its serial belong to the frame that applies transactions, so this owns only the claims.
+/// The tree's attachments: which connection holds the tree, which observe it, and the seats and controllers each
+/// observer made. The scene and its serial belong to the frame that applies transactions, so this owns only the claims.
 #[derive(Debug, Default)]
 pub struct TreeSession {
     epoch: u32,
     holder: Option<TreeHolder>,
-    /// Each observing connection, with the seat nodes it made and so may destroy.
+    /// Each observing connection, with the seat and controller nodes it made and so may destroy.
     observers: BTreeMap<TreeHolder, BTreeSet<NodeId>>,
     /// How fast each observer may write the head camera.
     limiters: BTreeMap<TreeHolder, PoseLimiter>,
+    /// How fast each observer may write its controllers, apart from the head so that one does not starve the other.
+    controller_limiters: BTreeMap<TreeHolder, PoseLimiter>,
 }
 
 /// What an attach grants: the epoch of the new hold. The serial is read from the frame, so the
@@ -150,7 +153,7 @@ impl TreeSession {
 
     /// Attach `observer` as a reader. Any number may, beside a holder or none, and only the session owner's
     /// connection may (`not-owner` otherwise). The connection that holds the tree cannot also observe it
-    /// (`shell-already-attached`). Attaching again keeps the seats the observer made and raises its epoch.
+    /// (`shell-already-attached`). Attaching again keeps the nodes the observer made and raises its epoch.
     pub fn attach_observer(&mut self, observer: TreeHolder, is_owner: bool) -> Result<TreeAttachment, TreeRefusal> {
         if !is_owner {
             return Err(refusal(Code::NotOwner));
@@ -171,10 +174,11 @@ impl TreeSession {
         }
     }
 
-    /// Ends the observation of `observer` and returns the seats it made, which the caller destroys. `None` when
-    /// the connection was not observing.
+    /// Ends the observation of `observer` and returns the seats and controllers it made, which the caller destroys.
+    /// `None` when the connection was not observing.
     pub fn release_observer(&mut self, observer: TreeHolder) -> Option<BTreeSet<NodeId>> {
         self.limiters.remove(&observer);
+        self.controller_limiters.remove(&observer);
         self.observers.remove(&observer)
     }
 
@@ -202,18 +206,18 @@ impl TreeSession {
         self.observers.keys().copied().collect()
     }
 
-    /// The seats `observer` made and may destroy.
+    /// The seats and controllers `observer` made and may destroy.
     #[must_use]
-    pub fn seats_of(&self, observer: TreeHolder) -> BTreeSet<NodeId> {
+    pub fn made_by(&self, observer: TreeHolder) -> BTreeSet<NodeId> {
         self.observers.get(&observer).cloned().unwrap_or_default()
     }
 
-    /// Records the seats an applied observer transaction made and destroyed.
-    pub fn record_seats(&mut self, observer: TreeHolder, made: &[NodeId], destroyed: &[NodeId]) {
-        if let Some(seats) = self.observers.get_mut(&observer) {
-            seats.extend(made.iter().copied());
+    /// Records the nodes an applied observer transaction made and destroyed.
+    pub fn record_made(&mut self, observer: TreeHolder, made: &[NodeId], destroyed: &[NodeId]) {
+        if let Some(nodes) = self.observers.get_mut(&observer) {
+            nodes.extend(made.iter().copied());
             for node in destroyed {
-                seats.remove(node);
+                nodes.remove(node);
             }
         }
     }
@@ -222,6 +226,11 @@ impl TreeSession {
     /// that is not attached has none.
     pub fn admit_pose(&mut self, observer: TreeHolder, now: Instant) -> bool {
         self.observers.contains_key(&observer) && self.limiters.entry(observer).or_default().admit(now)
+    }
+
+    /// Whether `observer` may write its controllers now: an allowance of its own, in the same terms as the head's.
+    pub fn admit_controllers(&mut self, observer: TreeHolder, now: Instant) -> bool {
+        self.observers.contains_key(&observer) && self.controller_limiters.entry(observer).or_default().admit(now)
     }
 }
 
@@ -272,20 +281,47 @@ impl PoseLimiter {
 /// frame holds them to that camera (`gnoblin_render::transaction`); this is the check that needs no scene.
 const OBSERVER_CAMERA_KEYS: [&str; 5] = ["x", "y", "z", "rotation", "layer_budget"];
 
-/// The index of the first op in `ops` that writes the head camera, if any. Such a transaction spends the observer's
-/// [`PoseLimiter`] allowance.
-#[must_use]
-pub fn writes_head_camera(ops: &[TreeOp]) -> Option<usize> {
+/// The nodes a transaction's `new` ops make, in no particular order.
+fn made_in(ops: &[TreeOp]) -> BTreeSet<NodeId> {
     ops.iter()
-        .position(|op| matches!(op, TreeOp::Set { key, .. } if OBSERVER_CAMERA_KEYS.contains(&key.as_str())))
+        .filter_map(|op| match op {
+            TreeOp::New { id, .. } => Some(*id),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The index of the first op in `ops` that writes the head camera, if any: a pose or budget key on a node the
+/// observer did not make (`owned`, or made by this transaction), which the frame then holds to the camera named `head`.
+/// Such a transaction spends the observer's [`PoseLimiter`] allowance.
+#[must_use]
+pub fn writes_head_camera(ops: &[TreeOp], owned: &BTreeSet<NodeId>) -> Option<usize> {
+    let made = made_in(ops);
+    ops.iter().position(|op| {
+        matches!(op, TreeOp::Set { node, key, .. }
+            if OBSERVER_CAMERA_KEYS.contains(&key.as_str()) && !owned.contains(node) && !made.contains(node))
+    })
+}
+
+/// The index of the first op in `ops` that writes a value of a node the observer made (`owned`, or made by this
+/// transaction): its controllers. Such a transaction spends the observer's controller allowance.
+#[must_use]
+pub fn writes_controller(ops: &[TreeOp], owned: &BTreeSet<NodeId>) -> Option<usize> {
+    let made = made_in(ops);
+    ops.iter().position(|op| {
+        matches!(op, TreeOp::Set { node, key, .. }
+            if OBSERVER_CONTROLLER_KEYS.contains(&key.as_str()) && (owned.contains(node) || made.contains(node)))
+    })
 }
 
 /// What an observer's transaction makes and destroys, or the index of the first op an observer may not send.
 ///
-/// An observer may send a `new` of class `seat`, a `set` of that seat's `name` in the same transaction, a `destroy`
-/// of a seat it made (`owned`), an `input` on a seat it made, a `lock` call, and a `set` of the head camera's pose
-/// and `layer_budget` (the frame checks that the node is that camera). Everything else is the holder's. The returned
-/// seats are the ones made and destroyed, for the caller to record once the transaction applies.
+/// An observer may send a `new` of class `seat` or `controller`, a `set` of a seat's `name` in the same transaction, a
+/// `set` of the pose and values of a controller it made (`owned`, or made in this transaction; never its `claimed`
+/// list, which is the shell's), a `destroy` of a node it made, an `input` on a seat it made, a `lock` call, and a
+/// `set` of the head camera's pose and `layer_budget` (the frame checks that the node is that camera). Everything else
+/// is the holder's. The returned nodes are the ones made and destroyed, for the caller to record once the transaction
+/// applies.
 ///
 /// # Errors
 ///
@@ -295,7 +331,7 @@ pub fn observer_ops(ops: &[TreeOp], owned: &BTreeSet<NodeId>) -> Result<(Vec<Nod
     let mut destroyed: Vec<NodeId> = Vec::new();
     for (index, op) in ops.iter().enumerate() {
         let allowed = match op {
-            TreeOp::New { class, id } if class == "seat" => {
+            TreeOp::New { class, id } if class == "seat" || class == "controller" => {
                 made.push(*id);
                 true
             }
@@ -304,7 +340,12 @@ pub fn observer_ops(ops: &[TreeOp], owned: &BTreeSet<NodeId>) -> Result<(Vec<Nod
                 key,
                 timing: None,
                 ..
-            } => (key == "name" && made.contains(node)) || OBSERVER_CAMERA_KEYS.contains(&key.as_str()),
+            } => {
+                let own = owned.contains(node) || made.contains(node);
+                (key == "name" && made.contains(node))
+                    || (own && OBSERVER_CONTROLLER_KEYS.contains(&key.as_str()))
+                    || OBSERVER_CAMERA_KEYS.contains(&key.as_str())
+            }
             TreeOp::Destroy { node } => {
                 let own = owned.contains(node) || made.contains(node);
                 if own {
@@ -690,12 +731,12 @@ mod tests {
     }
 
     #[test]
-    fn releasing_an_observer_returns_the_seats_it_made() {
+    fn releasing_an_observer_returns_the_nodes_it_made() {
         let mut session = attached_session();
         session.attach_observer(OTHER_HOLDER, true).expect("attach");
-        session.record_seats(OTHER_HOLDER, &[NodeId::new(7), NodeId::new(8)], &[]);
-        session.record_seats(OTHER_HOLDER, &[], &[NodeId::new(7)]);
-        assert_eq!(session.seats_of(OTHER_HOLDER), BTreeSet::from([NodeId::new(8)]));
+        session.record_made(OTHER_HOLDER, &[NodeId::new(7), NodeId::new(8)], &[]);
+        session.record_made(OTHER_HOLDER, &[], &[NodeId::new(7)]);
+        assert_eq!(session.made_by(OTHER_HOLDER), BTreeSet::from([NodeId::new(8)]));
         assert_eq!(
             session.release_observer(OTHER_HOLDER),
             Some(BTreeSet::from([NodeId::new(8)]))
@@ -866,9 +907,97 @@ mod tests {
 
     #[test]
     fn a_pose_write_is_found_by_its_first_op() {
-        assert_eq!(writes_head_camera(&[new_seat(5), camera_set(3, "y")]), Some(1));
-        assert_eq!(writes_head_camera(&[new_seat(5), set_name(5, "name")]), None);
-        assert_eq!(writes_head_camera(&[]), None);
+        let none = BTreeSet::new();
+        assert_eq!(writes_head_camera(&[new_seat(5), camera_set(3, "y")], &none), Some(1));
+        assert_eq!(writes_head_camera(&[new_seat(5), set_name(5, "name")], &none), None);
+        assert_eq!(writes_head_camera(&[], &none), None);
+    }
+
+    fn new_controller(id: u64) -> TreeOp {
+        TreeOp::New {
+            class: "controller".to_owned(),
+            id: NodeId::new(id),
+        }
+    }
+
+    #[test]
+    fn an_observer_may_make_a_controller_write_its_values_and_destroy_it() {
+        let owned = BTreeSet::from([NodeId::new(9)]);
+        let ops = [
+            new_controller(5),
+            camera_set(5, "x"),
+            camera_set(5, "rotation"),
+            camera_set(5, "hand"),
+            camera_set(5, "trigger"),
+            camera_set(9, "grip"),
+            camera_set(9, "thumbstick_click"),
+            TreeOp::Destroy { node: NodeId::new(9) },
+        ];
+        let (made, destroyed) = observer_ops(&ops, &owned).expect("every op is allowed");
+        assert_eq!(made, vec![NodeId::new(5)]);
+        assert_eq!(destroyed, vec![NodeId::new(9)]);
+    }
+
+    #[test]
+    fn an_observer_may_not_write_the_values_of_a_controller_it_did_not_make_nor_its_claimed_list() {
+        let owned = BTreeSet::from([NodeId::new(9)]);
+        for key in [
+            "hand",
+            "tracked",
+            "trigger",
+            "grip",
+            "thumbstick_x",
+            "primary",
+            "secondary",
+        ] {
+            assert_eq!(
+                observer_ops(&[camera_set(3, key)], &owned),
+                Err(0),
+                "{key} of a node that is not its own"
+            );
+        }
+        assert_eq!(observer_ops(&[camera_set(9, "claimed")], &owned), Err(0));
+        assert_eq!(
+            observer_ops(&[new_controller(5), camera_set(5, "claimed")], &owned),
+            Err(1)
+        );
+        assert_eq!(observer_ops(&[camera_set(9, "opacity")], &owned), Err(0));
+    }
+
+    #[test]
+    fn a_controller_write_does_not_spend_the_head_cameras_allowance() {
+        let owned = BTreeSet::from([NodeId::new(9)]);
+        let hands = [camera_set(9, "x"), camera_set(9, "rotation"), camera_set(9, "grip")];
+        assert_eq!(writes_head_camera(&hands, &owned), None);
+        assert_eq!(writes_controller(&hands, &owned), Some(0));
+        // A controller that is made and written in one transaction is the same.
+        let made = [new_controller(5), camera_set(5, "y")];
+        assert_eq!(writes_head_camera(&made, &BTreeSet::new()), None);
+        assert_eq!(writes_controller(&made, &BTreeSet::new()), Some(1));
+        // The head's pose is the head's, whoever else the observer made.
+        let head = [camera_set(3, "x")];
+        assert_eq!(writes_head_camera(&head, &owned), Some(0));
+        assert_eq!(writes_controller(&head, &owned), None);
+    }
+
+    #[test]
+    fn the_controllers_have_an_allowance_apart_from_the_head() {
+        let mut session = TreeSession::default();
+        session.attach_observer(HOLDER, true).expect("observe");
+        let t0 = Instant::now();
+        assert_eq!(
+            (0..20).filter(|_| session.admit_pose(HOLDER, t0)).count(),
+            POSE_BURST as usize
+        );
+        assert_eq!(
+            (0..20).filter(|_| session.admit_controllers(HOLDER, t0)).count(),
+            POSE_BURST as usize,
+            "the head's spent allowance leaves the hands theirs"
+        );
+        assert!(
+            !session.admit_controllers(TreeHolder::new(77), t0),
+            "a connection that is not observing has none"
+        );
     }
 
     #[test]

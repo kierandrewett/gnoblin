@@ -32,7 +32,7 @@ use gnoblin_wayland::{
 use super::server::IpcEvent;
 use super::tree::{
     AttachMode, TreeAttached, TreeClasses, TreeHolder, TreeReply, TreeSession, TreeSnapshot, observer_ops, snapshot_of,
-    tree_listing, writes_head_camera,
+    tree_listing, writes_controller, writes_head_camera,
 };
 use super::tree_effects::{pass_from_wire, wire_from_pass};
 
@@ -170,34 +170,34 @@ impl TreeHostHandle {
     }
 
     /// Release what `client` has: the hold, when it is the holder, or its observation, when it is an observer. An
-    /// observer's seats are destroyed with its connection, and so are the nodes a holder made (design/node-core.md,
-    /// section 4.6 step 5), except the seats observers made.
+    /// observer's seats and controllers are destroyed with its connection, and so are the nodes a holder made
+    /// (design/node-core.md, section 4.6 step 5), except the nodes observers made.
     pub fn detach(&self, client: ClientId) {
         let shared = Arc::clone(&self.session);
-        let (released, seats) = {
+        let (released, made) = {
             let mut session = lock(&shared);
             let before = session.holder();
             session.detach(holder(client));
             (before != session.holder(), session.release_observer(holder(client)))
         };
         if released {
-            let seats = Arc::clone(&shared);
+            let kept = Arc::clone(&shared);
             self.queue.reap_shell_nodes(move || {
-                let session = lock(&seats);
+                let session = lock(&kept);
                 session
                     .observers()
                     .into_iter()
-                    .flat_map(|observer| session.seats_of(observer))
+                    .flat_map(|observer| session.made_by(observer))
                     .collect()
             });
             // The frame clears the flag at its next read, so the wm places windows again.
             self.queue
                 .read(move |scene, _| scene.set_shell_places(lock(&shared).holder().is_some()));
         }
-        for seat in seats.into_iter().flatten() {
-            // One transaction for each seat, so one already gone does not keep the rest alive. It is admitted
+        for node in made.into_iter().flatten() {
+            // One transaction for each node, so one already gone does not keep the rest alive. It is admitted
             // whoever holds the tree, and nobody waits for its answer.
-            let tx = TreeTransaction::new(vec![TreeOp::Destroy { node: seat }]);
+            let tx = TreeTransaction::new(vec![TreeOp::Destroy { node }]);
             self.queue
                 .submit(self.serial.load(Ordering::Acquire), tx, || true, |_, _| {});
         }
@@ -213,7 +213,7 @@ impl TreeHostHandle {
             let session = lock(&self.session);
             (
                 session.holder() == Some(me),
-                session.is_observer(me).then(|| session.seats_of(me)),
+                session.is_observer(me).then(|| session.made_by(me)),
             )
         };
         if !is_holder && owned.is_none() {
@@ -226,18 +226,25 @@ impl TreeHostHandle {
             Ok(tx) => tx,
             Err(refusal) => return Some(self.refusal(refusal.code, refusal.failed_op)),
         };
-        // An observer's seats, as the transaction would make and destroy them. They are recorded once it applies.
-        let mut seats = None;
+        // An observer's seats and controllers, as the transaction would make and destroy them. They are recorded once
+        // it applies.
+        let mut made = None;
         if let Some(owned) = owned.filter(|_| !is_holder) {
             match observer_ops(&tx.ops, &owned) {
-                Ok(touched) => seats = Some(touched),
+                Ok(touched) => made = Some(touched),
                 Err(index) => {
                     return Some(self.refusal(Code::NotHolder, i32::try_from(index).unwrap_or(-1)));
                 }
             }
-            // The head pose is a measurement that arrives every frame: each observer may write it only so fast.
-            if let Some(index) = writes_head_camera(&tx.ops)
+            // The head pose and the hands are measurements that arrive every frame: each observer may write each only
+            // so fast.
+            if let Some(index) = writes_head_camera(&tx.ops, &owned)
                 && !lock(&self.session).admit_pose(me, Instant::now())
+            {
+                return Some(self.refusal(Code::RateLimited, i32::try_from(index).unwrap_or(-1)));
+            }
+            if let Some(index) = writes_controller(&tx.ops, &owned)
+                && !lock(&self.session).admit_controllers(me, Instant::now())
             {
                 return Some(self.refusal(Code::RateLimited, i32::try_from(index).unwrap_or(-1)));
             }
@@ -256,8 +263,8 @@ impl TreeHostHandle {
             }
         };
         self.queue.submit(base_serial, tx, admitted, move |serial, result| {
-            if let (Some((made, destroyed)), Ok(_)) = (&seats, &result) {
-                lock(&session).record_seats(me, made, destroyed);
+            if let (Some((made, destroyed)), Ok(_)) = (&made, &result) {
+                lock(&session).record_made(me, made, destroyed);
             }
             let _ = events.send(IpcEvent::TreeReply {
                 client,

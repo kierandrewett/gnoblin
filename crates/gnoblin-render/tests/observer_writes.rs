@@ -1,8 +1,10 @@
-//! What an observer's transaction may write beyond its own seat: the XR extension's head pose and layer budget.
+//! What an observer's transaction may write beyond its own seat: the XR extension's head pose and layer budget, and the
+//! `controller` nodes it makes for the hands.
 //!
 //! An observer connection (`tree.attach` mode `observer`) is the owner's, but it does not hold the tree. It may set
-//! `x`, `y`, `z` and `rotation` on the camera named `head`, and the camera's read-only `layer_budget`. Nothing else.
-//! Every refusal leaves the scene exactly as it was.
+//! `x`, `y`, `z` and `rotation` on the camera named `head`, and the camera's read-only `layer_budget`. It may make
+//! `controller` nodes and write their pose and read-only values, but not their shell-written `claimed` list. Nothing
+//! else. Every refusal leaves the scene exactly as it was.
 
 mod common;
 
@@ -18,7 +20,7 @@ struct Table;
 
 impl ClassInfo for Table {
     fn has_class(&self, class: &str) -> bool {
-        matches!(class, "camera" | "node" | "seat")
+        matches!(class, "camera" | "node" | "seat" | "controller")
     }
 
     fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
@@ -28,6 +30,12 @@ impl ClassInfo for Table {
             ("camera" | "node", "name") => (ValueType::Text, false),
             ("camera", "layer_budget") => (ValueType::Uint, true),
             ("seat", "name") => (ValueType::Text, false),
+            ("controller", "x" | "y" | "z") => (ValueType::Double, false),
+            ("controller", "trigger" | "grip" | "thumbstick_x" | "thumbstick_y") => (ValueType::Double, true),
+            ("controller", "rotation") => (ValueType::ListDouble, false),
+            ("controller", "hand") => (ValueType::Text, true),
+            ("controller", "tracked" | "thumbstick_click" | "primary" | "secondary") => (ValueType::Bool, true),
+            ("controller", "claimed") => (ValueType::ListText, false),
             _ => return None,
         };
         Some(PropertyInfo {
@@ -46,6 +54,8 @@ const ROOT: u64 = COMPOSITOR_ID_BASE | 1;
 const HEAD: u64 = 10;
 const OTHER_CAMERA: u64 = 11;
 const PLAIN: u64 = 12;
+const HAND: u64 = 13;
+const NEW_HAND: u64 = 14;
 
 fn id(raw: u64) -> NodeId {
     NodeId::new(raw)
@@ -72,6 +82,7 @@ fn scene() -> Scene {
     named(&mut scene, HEAD, "camera", "head");
     named(&mut scene, OTHER_CAMERA, "camera", "other");
     named(&mut scene, PLAIN, "node", "head");
+    named(&mut scene, HAND, "controller", "");
     scene
 }
 
@@ -228,4 +239,109 @@ fn an_observer_may_not_animate_the_pose() {
         }),
     };
     assert_eq!(refusal(&mut scene, as_observer(vec![timed])), (0, Code::NotHolder));
+}
+
+fn make_hand(node: u64) -> TreeOp {
+    TreeOp::New {
+        class: "controller".into(),
+        id: id(node),
+    }
+}
+
+fn hand_values(node: u64) -> Vec<TreeOp> {
+    vec![
+        set(node, "hand", TreeValue::Text("right".into())),
+        set(node, "tracked", TreeValue::Bool(true)),
+        set(node, "x", TreeValue::Double(0.25)),
+        set(node, "y", TreeValue::Double(1.1)),
+        set(node, "z", TreeValue::Double(-0.4)),
+        set(node, "rotation", TreeValue::ListDouble(vec![0.1, 0.2, 0.3])),
+        set(node, "trigger", TreeValue::Double(0.5)),
+        set(node, "grip", TreeValue::Double(1.0)),
+        set(node, "thumbstick_x", TreeValue::Double(-1.0)),
+        set(node, "thumbstick_y", TreeValue::Double(0.0)),
+        set(node, "thumbstick_click", TreeValue::Bool(true)),
+        set(node, "primary", TreeValue::Bool(true)),
+        set(node, "secondary", TreeValue::Bool(false)),
+    ]
+}
+
+#[test]
+fn an_observer_makes_a_controller_and_writes_every_value_of_it_in_one_transaction() {
+    let mut scene = scene();
+    let mut ops = vec![make_hand(NEW_HAND)];
+    ops.extend(hand_values(NEW_HAND));
+    let applied = validate_and_apply(&mut scene, &Table, Actor::Shell, as_observer(ops)).expect("applied");
+    assert!(matches!(applied.changes.first(), Some(TreeChange::Created { class, .. }) if class == "controller"));
+    assert_eq!(
+        scene.value(id(NEW_HAND), "grip"),
+        Some(&TreeValue::Double(1.0)),
+        "the value is in the scene"
+    );
+}
+
+#[test]
+fn an_observer_writes_the_values_of_a_controller_it_made_in_a_later_transaction() {
+    let mut scene = scene();
+    validate_and_apply(&mut scene, &Table, Actor::Shell, as_observer(hand_values(HAND))).expect("applied");
+    assert_eq!(scene.value(id(HAND), "trigger"), Some(&TreeValue::Double(0.5)));
+}
+
+#[test]
+fn an_observer_may_not_write_the_claimed_list_of_a_controller() {
+    let mut scene = scene();
+    let claim = set(HAND, "claimed", TreeValue::ListText(vec!["grip".into()]));
+    assert_eq!(refusal(&mut scene, as_observer(vec![claim])), (0, Code::NotHolder));
+    // Not even in the transaction that makes the node.
+    let ops = vec![
+        make_hand(NEW_HAND),
+        set(NEW_HAND, "claimed", TreeValue::ListText(vec!["grip".into()])),
+    ];
+    assert_eq!(refusal(&mut scene, as_observer(ops)), (1, Code::NotHolder));
+}
+
+#[test]
+fn the_holder_writes_the_claimed_list_and_nothing_else_of_a_controller() {
+    let mut scene = scene();
+    let claim = TreeTransaction::new(vec![set(HAND, "claimed", TreeValue::ListText(vec!["grip".into()]))]);
+    validate_and_apply(&mut scene, &Table, Actor::Shell, claim).expect("the shell claims");
+    assert_eq!(
+        scene.value(id(HAND), "claimed"),
+        Some(&TreeValue::ListText(vec!["grip".into()]))
+    );
+    for (key, value) in [("grip", TreeValue::Double(1.0)), ("tracked", TreeValue::Bool(true))] {
+        let write = TreeTransaction::new(vec![set(HAND, key, value)]);
+        assert_eq!(refusal(&mut scene, write), (0, Code::ReadOnly), "{key}");
+    }
+}
+
+#[test]
+fn an_observer_may_not_write_controller_values_to_a_node_that_is_not_a_controller() {
+    let mut scene = scene();
+    for node in [HEAD, PLAIN, OTHER_CAMERA] {
+        let write = as_observer(vec![set(node, "trigger", TreeValue::Double(1.0))]);
+        assert_eq!(refusal(&mut scene, write), (0, Code::NotHolder), "node {node}");
+    }
+}
+
+#[test]
+fn an_observer_may_not_animate_a_controller() {
+    let mut scene = scene();
+    let timed = TreeOp::Set {
+        node: id(HAND),
+        key: "x".into(),
+        value: TreeValue::Double(1.0),
+        timing: Some(gnoblin_render::transaction::Timing {
+            seconds: 1.0,
+            samples: vec![0.0, 1.0],
+        }),
+    };
+    assert_eq!(refusal(&mut scene, as_observer(vec![timed])), (0, Code::NotHolder));
+}
+
+#[test]
+fn an_observer_may_not_write_anything_else_of_a_controller() {
+    let mut scene = scene();
+    let write = as_observer(vec![set(HAND, "opacity", TreeValue::Double(0.5))]);
+    assert_eq!(refusal(&mut scene, write), (0, Code::NotHolder));
 }

@@ -154,7 +154,7 @@ const CAMERA: &[JsPropDef] = &[
 ];
 
 /// A `controller`: one tracked hand of the XR program (`design/js-xr.md`, "New native work"). The program writes
-/// every property, so a script reads them all and writes none.
+/// every property but `claimed`, so a script reads them all and writes only the claims of its own bindings.
 const CONTROLLER: &[JsPropDef] = &[
     def("name", JsPropKind::Text, false),
     def("hand", JsPropKind::Text, false),
@@ -170,6 +170,7 @@ const CONTROLLER: &[JsPropDef] = &[
     def("thumbstick_click", JsPropKind::Flag, false),
     def("primary", JsPropKind::Flag, false),
     def("secondary", JsPropKind::Flag, false),
+    def("claimed", JsPropKind::Texts, true),
 ];
 
 /// The methods a script may call on a window. `kill` is the not-responding alert's Force quit: the compositor
@@ -300,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn a_script_may_make_and_place_a_room_a_camera_and_a_view_and_may_only_read_a_controller() {
+    fn a_script_may_make_and_place_a_room_a_camera_and_a_view_and_may_only_read_a_controller_but_claim_its_inputs() {
         for class in ["node", "Node", "view", "camera"] {
             assert!(defs_for(class).is_some(), "{class}");
         }
@@ -322,8 +323,17 @@ mod tests {
             "the XR program writes the budget"
         );
         assert_eq!(writable("view", "source"), Some(true));
-        let all_read_only = defs_for("controller").into_iter().flatten().all(|def| !def.writable);
-        assert!(all_read_only, "the program writes every property of a controller");
+        let controller_writes: Vec<&str> = defs_for("controller")
+            .into_iter()
+            .flatten()
+            .filter(|def| def.writable)
+            .map(|def| def.name)
+            .collect();
+        assert_eq!(
+            controller_writes,
+            ["claimed"],
+            "the program writes every property of a controller but the claims"
+        );
         // A property at its schema default is absent from the mirror, so the table supplies it.
         let metres = defs_for("camera")
             .into_iter()
@@ -337,5 +347,54 @@ mod tests {
             .find(|def| def.name == "input")
             .expect("input");
         assert_eq!(default_value(input), MirrorValue::Bool(true));
+    }
+
+    /// The class the XR program publishes is the schema's, not a shape this table made up: every property the schema's
+    /// `controller.toml` declares is in the table with the kind of its type, and a script may write exactly the ones
+    /// the schema does not mark read-only (`claimed`). The table also carries the node's own pose and name, which a
+    /// script reads.
+    #[test]
+    fn the_controller_table_is_the_schemas_controller() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../gnoblin-schema/schema/tree/controller.toml"
+        );
+        let text = std::fs::read_to_string(path).expect("the schema file is in the repository");
+        let document: toml::Table = text.parse().expect("the schema file is TOML");
+        let object = document["object"]
+            .as_array()
+            .and_then(|objects| objects.first())
+            .expect("an object");
+        assert_eq!(object["name"].as_str(), Some("controller"));
+        assert_eq!(object["base"].as_str(), Some("node"));
+        let properties = object["property"].as_array().expect("properties");
+        let table = defs_for("controller").expect("the controller table");
+        for property in properties {
+            let name = property["name"].as_str().expect("a name");
+            let ty = property["type"].as_str().expect("a type");
+            let readonly = property.get("readonly").and_then(toml::Value::as_bool).unwrap_or(false);
+            let def = table
+                .iter()
+                .find(|def| def.name == name)
+                .unwrap_or_else(|| panic!("the controller table has no `{name}`"));
+            let kind = match ty {
+                "string" => JsPropKind::Text,
+                "bool" => JsPropKind::Flag,
+                "double" => JsPropKind::Double,
+                "list<string>" => JsPropKind::Texts,
+                other => panic!("`{name}` has a type the table does not know: {other}"),
+            };
+            assert_eq!(def.kind, kind, "the kind of `{name}`");
+            assert_eq!(
+                def.writable, !readonly,
+                "a script writes `{name}` exactly when the schema does"
+            );
+        }
+        for inherited in ["name", "x", "y", "z", "rotation"] {
+            assert!(
+                table.iter().any(|def| def.name == inherited && !def.writable),
+                "`{inherited}` of the node is read by scripts"
+            );
+        }
     }
 }
