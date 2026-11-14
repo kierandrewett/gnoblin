@@ -15,10 +15,12 @@ declare module "gnoblin" {
 
     // -- Geometry and transforms ---------------------------------------------
 
+    /** A point in logical pixels. */
     export interface Vec2 {
         x: number;
         y: number;
     }
+    /** A point or direction in three dimensions. */
     export interface Vec3 {
         x: number;
         y: number;
@@ -26,17 +28,21 @@ declare module "gnoblin" {
     }
     /** Rotation about each axis, in radians. */
     export type Euler3 = Vec3;
+    /** A rotation as a unit quaternion. */
     export interface Quaternion {
         x: number;
         y: number;
         z: number;
         w: number;
     }
+    /** A width and height in logical pixels. */
     export interface Size2D {
         width: number;
         height: number;
     }
+    /** A rectangle: the top-left corner and the size, in logical pixels. */
     export interface Rect extends Vec2, Size2D {}
+    /** Where a node sits in 3D: position, rotation and scale. */
     export interface Transform3D {
         position: Vec3;
         rotation: Quaternion | Euler3;
@@ -70,13 +76,19 @@ declare module "gnoblin" {
         constructor(code: string, target: string, message: string);
     }
 
+    /** A node in the scene graph. Clients, workspaces and outputs are all nodes. */
     export class Node extends NativeObject {
+        /** The node above this one, or null for the root. */
         readonly parent: Node | null;
+        /** Child nodes, in stacking order. */
         readonly children: Collection<Node>;
+        /** Position, rotation and scale relative to the parent. */
         transform: Transform3D;
         /** Clamped to `[0, 1]`. */
         opacity: number;
+        /** A hidden node is not drawn, and neither are its children. */
         visible: boolean;
+        /** The style this node draws with. See docs/js-style.md. */
         style: Style;
         /** Set on layout-bearing containers such as a `Workspace`. */
         layout?: Layout | null;
@@ -86,14 +98,19 @@ declare module "gnoblin" {
         rotation: Quaternion | Euler3;
         /** Convenience accessor for `transform.scale`. */
         scale: number | Vec3;
+        /** Adds `node` as a child of this node. */
         add(node: Node): void;
+        /** Removes `node` from this node's children. It is not destroyed. */
         remove(node: Node): void;
+        /** Destroys this node. Further reads of `alive` give false, and writes throw. */
         destroy(): void;
     }
 
     /** A managed Wayland toplevel (not a `wl_client` connection). */
     export class Client extends Node {
+        /** The app id the client set, such as `org.gnome.Console`. */
         readonly appId: string;
+        /** The window title the client last set. */
         readonly title: string;
         /** Whether the window holds the keyboard focus. */
         readonly focused: boolean;
@@ -104,11 +121,13 @@ declare module "gnoblin" {
         height: number;
         /** Gives the window the keyboard focus: a write of the seat's `focus`, which is how a shell hands it out. */
         focus(): void;
+        /** The size the client last committed to, in logical pixels. */
         readonly committedSize: Size2D;
         /** The logical size the client is asked to take (its configure request). */
         size: Size2D;
         /** The geometry the layout gave the client. */
         bounds: Rect;
+        /** The workspace that holds the window, or null when it has none. */
         readonly workspace: Workspace | null;
         /**
          * The window this one is a dialog of (`xdg_toplevel.set_parent`), or null. A dialog is centred in its parent when
@@ -174,6 +193,7 @@ declare module "gnoblin" {
          * A key that is not a writable property is a `TypeError`. Without `options` the change is atomic and immediate.
          */
         set(props: Record<string, unknown>, options?: TransitionOptions): Transition;
+        /** Asks the window to close, as its close button does. The client may refuse. */
         close(): void;
         /** Puts the window on top of every other window. */
         raise(): void;
@@ -192,6 +212,7 @@ declare module "gnoblin" {
         readonly decorationWanted: string;
         /** Whether the window is maximised. Writing asks the compositor to maximise or restore it. */
         maximised: boolean;
+        /** Whether the window is minimised. Writing asks the compositor to minimise or restore it. */
         minimised: boolean;
         /** The room a titlebar takes above the content: `bounds` is the content, the frame is the content with this on top. */
         readonly frameInset: number;
@@ -203,6 +224,7 @@ declare module "gnoblin" {
     /** The curves `Client.animate` knows, named as the retired shell's `ease` table named them. */
     export type ClientEasing = "linear" | "out" | "out-cubic" | "in-cubic" | "in-out";
 
+    /** The properties `Client.animate` can tween. A property left out stays where it is. */
     export interface ClientAnimation {
         x?: number;
         y?: number;
@@ -224,6 +246,7 @@ declare module "gnoblin" {
     /** The easings of a transition: the ones of `Client.animate`, and the CSS names of the spec (`ease-out` is `out`, `ease-in-out` is `in-out`, `ease-in` is `in-cubic`). */
     export type TransitionEasing = ClientEasing | "ease-out" | "ease-in-out" | "ease-in";
 
+    /** Options for a `set` or `requestTransition`. */
     export interface TransitionOptions {
         /** Milliseconds, 0 or more. Default 250. Zero commits the change at once, still as one transaction. */
         duration?: number;
@@ -263,6 +286,7 @@ declare module "gnoblin" {
 
     /** A scene container that owns a layout and holds clients. */
     export class Workspace extends Node {
+        /** The clients on this workspace. */
         readonly clients: MutableCollection<Client>;
         /** What the workspace is called where a name is shown. */
         name: string;
@@ -286,15 +310,18 @@ declare module "gnoblin" {
          * moves when no window of the workspace has the focus, and a step past either end leaves it where it is.
          */
         walk(step: number): void;
+        /** Creates a workspace to add to `gnoblin.workspaces`. */
         constructor(options: WorkspaceOptions);
     }
 
+    /** What `new Workspace` takes. `id` must be unique among the workspaces. */
     export interface WorkspaceOptions {
         id: string;
         layout?: Layout | LayoutName;
         gaps?: Partial<Gaps>;
     }
 
+    /** Space in logical pixels: `inner` between windows, `outer` at the edge of the work area. */
     export interface Gaps {
         inner: number;
         outer: number;
@@ -302,6 +329,7 @@ declare module "gnoblin" {
 
     // -- Styles (docs/js-style.md) --------------------------------------------
 
+    /** One radius per corner, in pixels. */
     export interface CornerRadii {
         topLeft: number;
         topRight: number;
@@ -314,6 +342,7 @@ declare module "gnoblin" {
     export abstract class StyleElement {
         toJSON(): Record<string, unknown>;
     }
+    /** Options for a `Border`. Every field is optional. */
     export interface BorderInit {
         width?: number;
         color?: Color;
@@ -330,6 +359,7 @@ declare module "gnoblin" {
         offset: number;
         inset: boolean;
     }
+    /** Options for a `Shadow`. Every field is optional. */
     export interface ShadowInit {
         x?: number;
         y?: number;
@@ -351,34 +381,43 @@ declare module "gnoblin" {
         color: Color;
         inset: boolean;
     }
+    /** Blurs what is behind the window. See `Style.backdropFilter`. */
     export class BlurFilter extends StyleElement {
         constructor(init?: { radius?: number });
         /** From 0 to 100. Default 12. The compositor blurs at a fixed radius: a positive one switches the blur on. */
         radius: number;
     }
+    /** Changes colour saturation. 1 leaves it as it is. */
     export class SaturateFilter extends StyleElement {
         constructor(init?: { amount?: number });
         /** From 0 to 2. Default 1. */
         amount: number;
     }
+    /** Changes brightness. 1 leaves it as it is. */
     export class BrightnessFilter extends StyleElement {
         constructor(init?: { amount?: number });
         /** From 0 to 2. Default 1. */
         amount: number;
     }
+    /** Changes contrast. 1 leaves it as it is. */
     export class ContrastFilter extends StyleElement {
         constructor(init?: { amount?: number });
         /** From 0 to 2. Default 1. */
         amount: number;
     }
+    /** Any filter element. */
     export type Filter = BlurFilter | SaturateFilter | BrightnessFilter | ContrastFilter;
     /** A filter, or the shorthand: `{ blur: 18 }` is a `BlurFilter` of radius 18. */
     export type FilterInit =
         Filter | { blur: number } | { saturate: number } | { brightness: number } | { contrast: number };
+    /** A `Border`, or the options to make one. */
     export type BorderLike = Border | BorderInit;
+    /** A `Shadow`, or the options to make one. */
     export type ShadowLike = Shadow | ShadowInit;
+    /** The names of the style properties, as `unset` and `ComputedStyle.origin` use them. */
     export type StyleProperty =
         "opacity" | "filter" | "backdropFilter" | "cornerRadius" | "borders" | "shadows" | "background";
+    /** The values a `ClientStyle` takes at construction. Every field is optional. */
     export interface ClientStyleInit {
         opacity?: number;
         cornerRadius?: number | CornerRadii;
@@ -426,12 +465,14 @@ declare module "gnoblin" {
         get shadows(): Shadow[];
         set shadows(value: readonly ShadowLike[] | undefined);
     }
+    /** A resolved border, as `ComputedStyle.borders` holds it. */
     export interface BorderValue {
         readonly width: number;
         readonly color: Color;
         readonly offset: number;
         readonly inset: boolean;
     }
+    /** A resolved shadow, as `ComputedStyle.shadows` holds it. */
     export interface ShadowValue {
         readonly x: number;
         readonly y: number;
@@ -440,6 +481,7 @@ declare module "gnoblin" {
         readonly color: Color;
         readonly inset: boolean;
     }
+    /** A resolved filter, as `ComputedStyle.filter` holds it. */
     export type FilterValue =
         | { readonly kind: "blur"; readonly radius: number }
         | { readonly kind: "saturate"; readonly amount: number }
@@ -505,6 +547,7 @@ declare module "gnoblin" {
          * before it (the one after it, for the first), which is shown where it was.
          */
         remove(idOrItem: string | T): boolean;
+        /** Removes every member the collection lets go of, as `remove` does. */
         clear(): void;
         /**
          * Trades the places of two members in the collection's order. A workspace's `clients` is the order its layout
@@ -513,7 +556,7 @@ declare module "gnoblin" {
         swap(a: T, b: T): void;
     }
 
-    /** Data-only match on a member's properties; each value is compared with `===`. */
+    /** A property match: each key must equal the given value. Function-valued properties cannot be matched. */
     export type Query<T> = { [K in keyof T]?: T[K] extends Function ? never : T[K] };
 
     // -- Listeners (owner-spec section 4) -------------------------------------
@@ -542,6 +585,7 @@ declare module "gnoblin" {
         readonly button: number;
     }
 
+    /** Observes one client, or every client of a collection. Each method gets the client first. */
     export class ClientListener extends MemberListener<Client> {
         onTitleChanged?(client: Client, title: string): void;
         onAppIdChanged?(client: Client, appId: string): void;
@@ -599,7 +643,9 @@ declare module "gnoblin" {
     export class Output extends NativeObject {
         /** The name the compositor gives the output: what a workspace set's entry and `outputs.where({ name })` use. */
         readonly name: string;
+        /** The manufacturer as the display reports it. */
         readonly make: string;
+        /** The model name as the display reports it. */
         readonly model: string;
         /** The connector the display is plugged into (`DP-1`): what `defineConfig({ outputs })` and `mirrorOf` name. */
         readonly connector: string;
@@ -611,14 +657,18 @@ declare module "gnoblin" {
         readonly mode: string;
         /** The factor the output composes at: 2 is a HiDPI panel. */
         readonly scale: number;
+        /** The rotation and flip the output is driven with. */
         readonly transform: string;
         /** Whether this is the primary output, the one the stock bars and `gnoblin.workspaces.area` are on. */
         readonly primary: boolean;
+        /** Whether the output is switched on. */
         readonly enabled: boolean;
+        /** The top-left corner in the compositor's coordinates. */
         readonly x: number;
         readonly y: number;
         readonly width: number;
         readonly height: number;
+        /** The top-left corner: the same as `x` and `y`. */
         readonly position: { x: number; y: number };
         /** The whole output in the compositor's coordinates. */
         readonly bounds: Rect;
@@ -651,11 +701,13 @@ declare module "gnoblin" {
     export type Modifier = "Shift" | "Ctrl" | "Alt" | "Meta" | "Super" | "Hyper";
     /** Every spelling of a modifier a trigger accepts (`Control`, `Primary`, `Mod1`, `Logo` are aliases). */
     export type ModifierName = Modifier | "Control" | "Primary" | "Mod1" | "Logo";
+    /** The modifiers a trigger may start with, up to three, each followed by `+`. */
     type ModifierPrefix =
         | ""
         | `${ModifierName}+`
         | `${ModifierName}+${ModifierName}+`
         | `${ModifierName}+${ModifierName}+${ModifierName}+`;
+    /** The pointer buttons a trigger can name. */
     export type MouseButton = "MouseLeft" | "MouseMiddle" | "MouseRight";
     /** `Super+MouseLeft+Drag` drags; `Super+MouseLeft` and `Super+MouseLeft+Click` click. */
     export type PointerTrigger =
@@ -675,11 +727,13 @@ declare module "gnoblin" {
     export type KeyTrigger = `${ModifierPrefix}${string}`;
     export type Trigger = PointerTrigger | WheelTrigger | GestureTrigger | KeyTrigger;
 
+    /** The fields every parsed trigger has. */
     interface TriggerBase {
         /** The canonical spelling. Two spellings of one trigger have one `text`. */
         readonly text: string;
         readonly modifiers: readonly Modifier[];
     }
+    /** A trigger as `parseTrigger` returns it, tagged by `kind`. */
     export type ParsedTrigger =
         | (TriggerBase & { readonly kind: "key"; readonly key: string })
         | (TriggerBase & { readonly kind: "pointer"; readonly button: MouseButton; readonly action: "click" | "drag" })
@@ -699,16 +753,18 @@ declare module "gnoblin" {
           });
     /** Throws a `TriggerError` naming the token that is wrong. */
     export function parseTrigger(trigger: string, what?: string): ParsedTrigger;
+    /** Thrown when a trigger string is not valid. `token` is the bad part and `trigger` the whole string. */
     export class TriggerError extends TypeError {
         readonly token: string;
         readonly trigger: string;
     }
-    /** Two bindings of one collection match one trigger at one priority. */
+    /** Thrown when two bindings in one collection match the same trigger at the same priority. `ids` names them. */
     export class BindingConflictError extends Error {
         readonly trigger: string;
         readonly ids: readonly [string, string];
     }
 
+    /** Options for a `Binding`. */
     export interface BindingOptions {
         id: string;
         trigger: Trigger;
@@ -717,6 +773,7 @@ declare module "gnoblin" {
         priority?: number;
     }
 
+    /** A binding that runs an action when its trigger fires. */
     export class Binding {
         readonly id: string;
         /** Assigning a new trigger moves the binding and cancels a drag it runs. */
