@@ -1466,6 +1466,38 @@ The rules behind the table:
 
 A change to these tests is proven with `cargo test -p gnoblin` run several times in a row, once while two busy loops per
 CPU run beside it, and once with `--test-threads=1`.
+## Lock status
+
+The session lock screen (lane JsLock; `docs/session-lock.md`, `design/js-research/popups-portals.md` row 9, decision J8).
+
+- **Lock screen.** `data/js/gnoblin/lock.ts` ports `lock.lua` and adds the clock: `LockScreen` (`frame()` once a frame, by
+  `runLockFrame` ahead of the toolkit's frame), `PasswordEntry` (a `Box` that keeps typed characters as code points and
+  overwrites them when it submits), `LockStyle`. It reads the `lock` node's `state` (`__gnoblinHost.lock`,
+  `crates/gnoblin-js/src/lock.rs`), mounts its scrim under the lock node so the compositor draws it over the cover, writes
+  the node's `engaged`, takes the seat's focus for the entry and gives it back, and sends the password as the call's secret
+  text. The toolkit gained `Canvas.onKey` (`UiKeyEvent`), `uiFocus` and `uiFocused`; a key event reaches only the canvas
+  that holds the seat's focus.
+- **Rust side.** The cover now draws, for the compositor's own lock only, the canvases under the `lock` node once the shell
+  holds the tree and has engaged the lock (`Composer::compose_lock_ui`; it redraws when the subtree changes). The lock card
+  (`LockUi`, `LockCardService`, `lock_card.rs` in `gnoblin-wayland`) is wanted when the lock is the compositor's own and
+  proven and no shell holds the lock screen, with a 1 s grace while a shell is attached. A shell that detaches has its
+  `engaged` released. The card is the last layer of the frame and takes every key while up; a shell may not use the card's
+  reserved check token. `ipc/localtime.rs` reads the time zone (TZif and its POSIX footer) because the compositor links no
+  time library and forbids unsafe code.
+- **Limits, honestly.** A JavaScript string cannot be wiped: the password is in the script engine's heap in the string
+  built for the `authenticate` call and in the key events that carried it, until the collector frees them. The entry's own
+  buffer is cleared, and the Rust card, which has no script, wipes. A `SecureEntry` node (popups-portals.md, 4.3) would
+  remove it. The lock screen is part of the runtime: there is no config key to turn it off yet.
+- **Proven against the fake link** (`crates/gnoblin-js/tests/lock.rs`, 23 tests): the Lua test's cases (engage, wait for a
+  screen, attach while locked, unlock before the screen, external unlock and a later lock, Enter sends the typed password as
+  secret text, ok, wrong password, rate limited) and the clock, focus, keys after the unlock and password-in-the-tree cases.
+- **Proven against the real compositor** (`crates/gnoblin-compositor/tests/lock_card.rs`, `crates/gnoblin/tests/js_lock.rs`,
+  scripted password check in place of PAM): no shell, right password unlocks; wrong password stays locked and the card
+  still works; a shell that holds the lock screen keeps the card away and its death brings the card; a shell that attaches
+  takes over; the JavaScript shell paints its screen under the lock node, answers a wrong password on it and unlocks.
+- **Not proven.** Pixels: no test reads the output picture of the card or of the shell's screen. Real PAM. Several
+  outputs: both draw on the first output. A shell reload while locked (the grace period is tested only by the policy, not
+  by a reload).
 
 ### Unit test timing
 

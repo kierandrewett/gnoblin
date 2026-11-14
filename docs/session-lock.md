@@ -187,6 +187,88 @@ The answers are tested through the compositor's lock path with a scripted authen
 - `a_wrong_password_keeps_the_session_locked_and_repeated_ones_are_rate_limited`
 - `a_check_that_cannot_run_keeps_the_session_locked_and_answers_without_the_password`
 
+## The lock screen, and the lock card when there is none
+
+When the compositor holds the lock itself, something has to take the password. The lock is the compositor's own when it
+was taken through the `lock` node: `gnoblinctl`, the screensaver service or logind.
+
+The stock JavaScript shell takes the password with a lock screen of its own. `data/js/gnoblin/lock.ts` draws a clock and a
+masked password entry over the cover, under the `lock` node:
+
+- It comes up when `state` leaves `not-locked`. A shell that starts while the session is locked finds the state already
+  there.
+- It sets the node's `engaged` while it is up, and sends the password with `authenticate`.
+- It never decides anything: only an accepted check unlocks.
+- A wrong password clears the entry and says `Wrong password.`, and a rate-limited one says how long to wait.
+- An Enter pressed while a check runs is not a second attempt, and a key typed after the unlock is dropped.
+
+### The lock card
+
+If no shell holds the lock screen, the compositor draws a lock card of its own over the cover. It shows a padlock, the time
+of day, a masked entry and one line for the last attempt. Enter sends the password to the same PAM check, and a wrong
+one is answered on the card.
+
+The card is wanted when both of these hold:
+
+- The lock is the compositor's own and the cover is proven (`locked`). An `ext-session-lock-v1` client's lock is that
+  client's to draw and check, so the card is never drawn over it.
+- No shell holds the lock screen: none holds the tree, or one does and has not set `engaged`.
+
+A shell that is attached gets one second to engage before the card is drawn, and the same second after it lets go, so a
+reload does not flash the card. A shell that disconnects releases `engaged`, so the card is back at once, and the next shell
+starts from a lock nobody holds.
+
+When a shell engages the lock, the card is dropped with anything typed into it, and the shell's screen is drawn from the
+same frame. The session stays locked throughout and the desktop is never drawn.
+
+The card cannot be reached from a script:
+
+- It is not a tree node.
+- It is the last layer of the frame, above the shell's own lock screen.
+- It has no Escape key or button.
+- While it is up, every key goes to it and to no shell node, client or binding.
+
+The cover and the input gate are unchanged. The card's colours, radius and font follow `dialogs.style`, clamped like the
+other built-in dialogs. The time of day is read from `$TZ` or `/etc/localtime`, including the rule at the end of a TZif
+file. A zone the card cannot read shows UTC.
+
+### What this protects, and what it cannot
+
+The compositor's card keeps the password in a wiped buffer from the first key, and the check runs on a worker the shell
+never sees.
+
+The shell's screen cannot do as much, because the password passes through the script. The entry keeps what is typed as
+an array of code points, not as a string.
+
+It overwrites the array when the call is made. The one string the password is built into lives for the call to
+`authenticate`.
+
+A JavaScript string cannot be wiped. That copy, and the one in each key event, stay in the script engine's heap until the
+collector frees them, and the engine may have copied them again.
+
+The shell is the compositor's own trusted peer for the lock, but a script that wants to keep a password can. Replace the
+stock screen only with code you trust.
+
+### Tests
+
+- `crates/gnoblin-js/tests/lock.rs` runs against a fake compositor:
+    - the screen engages on a lock, waits for a screen, shows to a shell attached to a locked session, and comes down on an
+      unlock and on `ok`;
+    - the password is sent as the call's secret text and never an argument, and a wrong, busy, failed and rate-limited check
+      is answered with the entry cleared;
+    - the clock, the focus given back, an Enter during a check and keys after the unlock;
+    - the password is in no node of the tree.
+- `crates/gnoblin-compositor/tests/lock_card.rs` runs against the real compositor with a scripted check in place of PAM.
+  With no shell the right password unlocks the session. A wrong one does not, and the card still takes the right one after
+  it. A shell that holds the lock screen keeps the card away, one that dies brings it back, and one that attaches while the
+  card is up takes over.
+- `crates/gnoblin/tests/js_lock.rs` runs the JavaScript shell against the real compositor. It covers no shell and the card,
+  the shell's screen painted under the `lock` node and engaged, a wrong password answered on it, and the right one
+  unlocking and the screen coming down.
+
+No test reads the output's pixels. That the card and the shell's screen are drawn over the cover is shown by the tree's
+paint lists and the compositor's frame path, not by a screenshot.
+
 ## Portal and remote access while locked
 
 Remote and portal streams are routed by the selected portal backend. While the

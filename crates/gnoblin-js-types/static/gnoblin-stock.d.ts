@@ -2619,6 +2619,71 @@ declare module "gnoblin" {
         readonly message: Text;
     }
     export function toast(text: string, options?: ToastOptions): Toast;
+    /** The compositor's answer to a password check: `result` is `ok`, or the wait in milliseconds under `rate-limited`. */
+    export interface LockAnswer {
+        token: number;
+        result: string;
+        error: string;
+    }
+    /** What the stock lock screen needs of the shell host. A test attaches a fake one. */
+    export interface LockBackend {
+        state(): string;
+        node(): number | undefined;
+        screen(): number[] | undefined;
+        engage(engaged: boolean): string | undefined;
+        authenticate(password: string): number | undefined;
+        takeAnswers(): LockAnswer[];
+    }
+    /** Everything that sets how the lock screen looks and what it says. */
+    export interface LockStyle {
+        scrimFill: string;
+        cardWidth: number;
+        cardHeight: number;
+        cardRadius: number;
+        cardPadding: number;
+        cardGap: number;
+        cardFill: string;
+        cardTop: number;
+        clockSize: number;
+        clockColor: string;
+        entryHeight: number;
+        entryRadius: number;
+        entryFill: string;
+        entrySize: number;
+        entryColor: string;
+        entryLimit: number;
+        messageSize: number;
+        hintColor: string;
+        errorColor: string;
+        hint: string;
+        checking: string;
+        denied: string;
+        busy: string;
+        failed: string;
+        rateLimited: string;
+    }
+    export const defaultLockStyle: Readonly<LockStyle>;
+    /** The time of day as `HH:MM`, in the machine's time zone. */
+    export function formatClock(milliseconds: number): string;
+    /** The password entry of the lock screen: it keeps what was typed as code points, never as a string. */
+    export class PasswordEntry {
+        enabled: boolean;
+        limit: number;
+        readonly length: number;
+        onSubmit: ((password: string) => void) | null;
+        /** Overwrites what was typed, then forgets it. */
+        clear(): void;
+    }
+    /** The stock lock screen: up while the session is locked, down when it is not. */
+    export class LockScreen {
+        readonly style: LockStyle;
+        readonly shown: boolean;
+        constructor(backend: LockBackend, style?: LockStyle);
+        frame(): void;
+        release(): void;
+    }
+    /** The lock screen of the running generation. */
+    export function lockScreen(): LockScreen | null;
 
     // -- Inspector (owner-spec section 18) ------------------------------------
 

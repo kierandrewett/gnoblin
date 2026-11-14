@@ -198,7 +198,7 @@ interface Shown {
     entry: PasswordEntry;
     message: Text;
     /** The node that had the keyboard before the screen took it, given back when the screen comes down. */
-    before: number | undefined;
+    before: number | null;
 }
 
 /**
@@ -281,7 +281,11 @@ export class LockScreen {
         const before = uiFocused();
         entry.onSubmit = (password) => this.#submit(password);
         this.#shown = { scrim, clock, entry, message, before };
-        uiFocus(entry.node);
+        try {
+            uiFocus(entry.node);
+        } catch {
+            // The compositor refused the focus (the tree has no seat yet): the screen is up all the same.
+        }
         this.#backend.engage(true);
     }
 
@@ -345,8 +349,12 @@ export class LockScreen {
         // took the focus while the screen was going down keeps it.
         const held = uiFocused() === shown.entry.node;
         shown.scrim.destroy();
-        if (held && shown.before !== undefined) {
-            uiFocus(shown.before);
+        if (held && shown.before !== null) {
+            try {
+                uiFocus(shown.before);
+            } catch {
+                // The window that had the keyboard is gone: nothing to give it back to.
+            }
         }
         this.#backend.engage(false);
     }

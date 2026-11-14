@@ -46,6 +46,12 @@ pub struct Window {
 
 /// Attaches a fresh observer connection and reads its snapshot. The stream goes on to carry the compositor's changes.
 fn attach_observer(ipc: &Path) -> (UnixStream, Vec<snapshot_node::Properties>) {
+    let (stream, nodes, _serial) = observe_at(ipc);
+    (stream, nodes)
+}
+
+/// [`attach_observer`], and the serial the attach was answered at.
+fn observe_at(ipc: &Path) -> (UnixStream, Vec<snapshot_node::Properties>, u64) {
     let transport = UnixTransport::connect(ipc).expect("the session is listening");
     let mut stream = Client::connect(transport, version())
         .expect("the handshake")
@@ -68,7 +74,7 @@ fn attach_observer(ipc: &Path) -> (UnixStream, Vec<snapshot_node::Properties>) {
         ),
     )
     .expect("the attach");
-    let _attached: AttachedPayload = read_frame(&mut stream)
+    let attached: AttachedPayload = read_frame(&mut stream)
         .expect("the attach reply frame")
         .expect("an attach reply")
         .payload_as()
@@ -85,12 +91,52 @@ fn attach_observer(ipc: &Path) -> (UnixStream, Vec<snapshot_node::Properties>) {
             break;
         }
     }
-    (stream, nodes)
+    (stream, nodes, attached.serial)
 }
 
 /// Every node of the compositor's tree, read through a fresh observer connection.
 pub fn snapshot(ipc: &Path) -> Vec<snapshot_node::Properties> {
     attach_observer(ipc).1
+}
+
+/// Takes the session lock the way the screensaver service does: an observer's `lock` call on the lock node.
+pub fn take_lock(ipc: &Path) {
+    let (mut stream, nodes, serial) = observe_at(ipc);
+    let lock = nodes
+        .iter()
+        .find(|node| node.class == "lock")
+        .expect("the tree has a lock node")
+        .id;
+    write_frame(
+        &mut stream,
+        &Envelope::request_message(
+            "tree",
+            "transact",
+            10,
+            &gnoblin_proto::tree::tree::TransactArgs {
+                base_serial: serial,
+                serial: serial + 1,
+                ops: vec![gnoblin_proto::tree::op::Properties {
+                    kind: "call".to_owned(),
+                    node: lock,
+                    method: "lock".to_owned(),
+                    ..Default::default()
+                }],
+            },
+        ),
+    )
+    .expect("the lock call");
+    // The reply comes after any change the transaction made; the call changes nothing, so it is the next reply.
+    loop {
+        let envelope = read_frame(&mut stream)
+            .expect("a frame")
+            .expect("the session answers the lock call");
+        if envelope.member == "transact" {
+            let reply: gnoblin_proto::tree::tree::ReplyPayload = envelope.payload_as().expect("the reply decodes");
+            assert!(reply.applied, "an observer takes the lock: {reply:?}");
+            return;
+        }
+    }
 }
 
 /// An observer that stays attached and follows the compositor's changes, so what it reports is what the compositor

@@ -72,6 +72,9 @@ gnoblin-paint = { path = "../gnoblin-paint" }
 # of the tap's events and the ids they carry.
 gnoblin-backend = { path = "../gnoblin-backend" }
 gnoblin-types = { path = "../gnoblin-types" }
+# The lock tests give the session a scripted password check in place of PAM (`LockCheck`, `FakeAuthenticator`).
+gnoblin-lock-auth = { path = "../gnoblin-lock-auth" }
+gnoblin-wayland = { path = "../gnoblin-wayland" }
 # The configuration and dialog tests read the document the compositor holds, ask it for a consent dialog the way
 # the portal does (a request's options are the model's `Fields`) and refuse nothing a fake could answer.
 gnoblin-model = { path = "../gnoblin-model" }
