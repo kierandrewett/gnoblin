@@ -376,6 +376,12 @@ compositor stands in only for the unit tests of `swap_generation` (`crates/gnobl
   decimal id (`host.label`), the one `gnoblinctl` prints. (2) The compositor makes a window with no parent and the shell
   parents it, so the collections are built from every node of the mirror (`TreeMirror::ids`), the root's tree first,
   and not from a walk of the root.
+- **Protocol facts the real compositor showed.** It sends no change message for a transaction that changed no node (a
+  call-only one still advances its serial), so `JsShell` moves the mirror to the serial of an applied reply
+  (`TreeMirror::advance_serial`) and opens the in-flight gate for an applied transaction that published nothing;
+  without it the next batch is a `Gap` or every later write waits for ever. The stock floating layout places an
+  arrival after the listeners have run, so a config that wants its own listener to place windows declares a workspace
+  with the base `Layout`, as the tests do.
 - **Not done.** The second owner connection for slots and dialogs, input events and chords (the binding lane), the
   `gnoblinctl reload` request path into `JsRole::reload_now`, and the stock config plan applied as a runtime (the
   shell with no `init.ts` runs bare, not as `defaultConfig`).

@@ -445,6 +445,12 @@ impl TreeMirror {
         self.node(id)?.props.get(key)
     }
 
+    /// Moves the serial forward to `serial` without a change batch, for a serial the compositor advanced and
+    /// published no changes for (a transaction that only made calls). Never moves it back.
+    pub fn advance_serial(&mut self, serial: u64) {
+        self.serial = self.serial.max(serial);
+    }
+
     /// Apply one change batch published at `serial`.
     ///
     /// A batch at or before the mirror's serial is stale and ignored (F24). A batch past

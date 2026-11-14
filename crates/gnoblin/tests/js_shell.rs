@@ -344,7 +344,7 @@ struct Status {
 struct Shell {
     stop: Arc<AtomicBool>,
     status: Arc<Mutex<Status>>,
-    thread: Option<JoinHandle<Vec<String>>>,
+    thread: Mutex<Option<JoinHandle<Vec<String>>>>,
 }
 
 impl Shell {
@@ -401,7 +401,7 @@ impl Shell {
         Self {
             stop,
             status,
-            thread: Some(thread),
+            thread: Mutex::new(Some(thread)),
         }
     }
 
@@ -429,20 +429,16 @@ impl Shell {
     }
 
     /// Stops the shell and returns every message it logged.
-    fn finish(mut self) -> Vec<String> {
+    fn finish(&self) -> Vec<String> {
         self.stop.store(true, Ordering::Relaxed);
-        self.thread
-            .take()
-            .map_or_else(Vec::new, |thread| thread.join().expect("the shell thread ends"))
+        let thread = self.thread.lock().expect("the thread lock").take();
+        thread.map_or_else(Vec::new, |thread| thread.join().expect("the shell thread ends"))
     }
 }
 
 impl Drop for Shell {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
+        self.finish();
     }
 }
 
@@ -456,18 +452,25 @@ fn wait_for(what: &str, session: &Session, mapper: &mut Mapper, shell: &Shell, m
         if check() {
             return;
         }
-        assert!(
-            shell.ended().is_none(),
-            "the shell ended while waiting for {what}: {:?}",
-            shell.ended()
-        );
-        assert!(
-            Instant::now() < deadline,
-            "never reached: {what}; shell diagnostics {:?}; the shell sees {:?}; the compositor's scene {:?}",
-            shell.diagnostics(),
-            shell.view(),
-            scene(&session.ipc())
-        );
+        if shell.ended().is_some() {
+            let log = shell.finish();
+            panic!(
+                "the shell ended while waiting for {what}: {:?}; the shell logged {:#?}",
+                shell.ended(),
+                &log[log.len().saturating_sub(60)..]
+            );
+        }
+        if Instant::now() >= deadline {
+            let log = shell.finish();
+            panic!(
+                "never reached: {what}; shell diagnostics {:?}; the shell sees {:?}; the compositor's scene {:?}; \
+                 the shell logged {:#?}",
+                shell.diagnostics(),
+                shell.view(),
+                scene(&session.ipc()),
+                &log[log.len().saturating_sub(60)..]
+            );
+        }
         std::thread::sleep(Duration::from_millis(10));
     }
 }
@@ -481,8 +484,12 @@ fn write_config(dir: &Path, places: &str) {
     .expect("slots.ts");
     fs::write(
         dir.join("init.ts"),
-        r#"import { gnoblin } from "gnoblin";
+        r#"import { Layout, Workspace, gnoblin } from "gnoblin";
 import { places } from "./slots.ts";
+
+// A workspace whose layout places nothing, so the listener below is the only thing that moves a window: the
+// stock floating layout would place each arrival itself, after the listeners have run.
+gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new Layout() }));
 
 enum Mode {
     Tiled,
@@ -620,8 +627,9 @@ fn init_ts_places_the_windows_reloads_on_save_with_the_same_ids_and_keeps_the_ol
 /// spun would spin again in the restarted generation. This one marks the window first (a write to `y` that the
 /// shell has sent by the time the generation is restaged, and that the restaged generation reads back), so only
 /// the first generation to see the window hangs.
-const SPIN_ONCE: &str = r#"import { gnoblin } from "gnoblin";
+const SPIN_ONCE: &str = r#"import { Layout, Workspace, gnoblin } from "gnoblin";
 
+gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new Layout() }));
 gnoblin.clients.addListener({
     onAdded(client: { appId: string; x: number; y: number }): void {
         if (client.appId === "org.example.spin") {
@@ -710,8 +718,9 @@ fn a_handler_that_always_hangs_exhausts_the_restarts_and_the_last_generation_kee
     let config = tempfile::tempdir().expect("a config directory");
     fs::write(
         config.path().join("init.ts"),
-        r#"import { gnoblin } from "gnoblin";
+        r#"import { Layout, Workspace, gnoblin } from "gnoblin";
 
+gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new Layout() }));
 gnoblin.clients.addListener({
     onAdded(client: { appId: string; x: number; y: number }): void {
         if (client.appId === "org.example.spin") {

@@ -314,7 +314,9 @@ impl JsShell {
             Ok(()) => {}
             Err(JsShellError::Js(error)) => {
                 self.count_strike(&error);
-                diagnostics.push(format!("the new generation could not take over the workspaces: {error}"));
+                diagnostics.push(format!(
+                    "the new generation could not take over the workspaces: {error}"
+                ));
             }
             Err(other) => return Err(other),
         }
@@ -695,8 +697,16 @@ impl JsShell {
             self.retry = kept;
             return;
         }
-        if self.in_flight == Some(sent_serial) && !reply.applied {
-            // A refused transaction never advances the serial, so the gate opens now.
+        if reply.applied {
+            // The compositor sends no change message for a transaction that changed no node: one that only
+            // calls (`focus`, `claim`) still advances its serial, and one that wrote the values already there
+            // does not. Its change messages precede its reply, so every one up to `reply.serial` has been
+            // read, and the mirror catches up to the serial it answers with.
+            self.state.borrow_mut().mirror.advance_serial(reply.serial);
+        }
+        if self.in_flight == Some(sent_serial) && (!reply.applied || reply.serial < sent_serial) {
+            // A refused transaction never advances the serial, and an applied one that changed nothing
+            // published none: the gate opens now, as nothing is left to wait for.
             self.in_flight = None;
         }
         log::debug!(

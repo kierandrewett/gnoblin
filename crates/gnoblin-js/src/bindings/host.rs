@@ -11,15 +11,6 @@ use rquickjs::{Ctx, Function, Object, Value};
 use super::props::{JsPropKind, default_value, defs_for, may_call};
 use super::{HostState, JsHostValue, JsSpawnRequest, NodeHandles, SharedState};
 
-/// The largest id a script number holds exactly.
-const MAX_EXACT_ID: f64 = 9_007_199_254_740_991.0;
-
-/// The whole number a script number holds exactly, or `None` when it cannot be one (a property that holds a
-/// number). A node a script names goes through [`HostState::handles`], whose numbers are not the ids.
-fn node_id(raw: f64) -> Option<NodeId> {
-    (raw.is_finite() && (0.0..=MAX_EXACT_ID).contains(&raw) && raw.fract() == 0.0).then_some(raw as NodeId)
-}
-
 /// Every node of the mirror, parents before their children. The root's tree comes first, in tree order; then
 /// each tree that has no parent (the compositor makes a window unparented, and a shell parents it), by id.
 pub(crate) fn parents_first(mirror: &TreeMirror) -> Vec<NodeId> {
@@ -274,7 +265,7 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
 mod tests {
     use gnoblin_tree_client::tree_mirror::{MirrorValue, SnapshotNode, TreeMirror};
 
-    use super::{JsScriptValue, call, ids_of_class, node_id, parents_first, read, write};
+    use super::{JsScriptValue, call, ids_of_class, parents_first, read, write};
     use crate::bindings::{HostState, JsHostValue, NodeHandles};
 
     fn node(id: u64, parent: u64, class: &str, props: Vec<(String, MirrorValue)>) -> SnapshotNode {
@@ -324,15 +315,6 @@ mod tests {
         for bad in [-1.0, 1.5, f64::NAN, f64::INFINITY, 1e300] {
             assert_eq!(handles.resolve(bad), None, "{bad}");
         }
-    }
-
-    #[test]
-    fn ids_are_whole_non_negative_numbers() {
-        assert_eq!(node_id(7.0), Some(7));
-        assert_eq!(node_id(-1.0), None);
-        assert_eq!(node_id(1.5), None);
-        assert_eq!(node_id(f64::NAN), None);
-        assert_eq!(node_id(1e300), None);
     }
 
     #[test]
