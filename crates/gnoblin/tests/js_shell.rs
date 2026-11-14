@@ -3126,6 +3126,105 @@ fn a_window_on_a_second_virtual_output_follows_to_the_first_when_it_is_unplugged
         &shell,
         || rect_of(&ipc, first) == Some(back) && rect_of(&ipc, second) == Some(back) && !hidden(&ipc, first),
     );
+
+// ---- the host API: session, process, timers, events ---------------------------------------------------------------
+
+/// A config that records what the host API did, for the probe: a timer that ran, a program that ended, the session's
+/// status as the compositor published it, and a reload it asked for.
+const HOST_API_INIT: &str = r#"import { ProcessListener, gnoblin } from "gnoblin";
+
+const state: Record<string, unknown> = {
+    timers: 0,
+    exits: [],
+    status: gnoblin.session.status(),
+    signals: [],
+    reload: null,
+};
+(globalThis as { probe?: () => string }).probe = () => JSON.stringify(state);
+
+gnoblin.timers.after(20, () => {
+    state.timers = (state.timers as number) + 1;
+});
+
+class Exits extends ProcessListener {
+    onExit(process: { argv: readonly string[]; exitCode: number | null }, code: number | null): void {
+        (state.exits as unknown[]).push([process.argv.join(" "), code]);
+    }
+}
+gnoblin.process.addListener(new Exits());
+gnoblin.process.spawn(["sh", "-c", "exit 7"]);
+gnoblin.process.spawn(["sh", "-c", "printf hello"], { stdout: "capture" }).wait().onComplete((exit) => {
+    state.captured = exit?.stdout;
+});
+
+// The compositor raises `reload_requested` on its session object when a privileged caller asks for a reload, and
+// the script's own request is one: the signal comes back to the script that asked.
+gnoblin.on("gnoblin.session.reload-requested", (event) => {
+    (state.signals as unknown[]).push(event.generation);
+});
+gnoblin.timers.after(50, () => {
+    gnoblin.runtime.reloadConfig().onComplete((value, error) => {
+        state.reload = error === undefined ? ["ok", value] : [error.code, error.message];
+    });
+});
+"#;
+
+#[test]
+fn a_script_reads_the_sessions_status_runs_a_timer_and_a_process_and_is_told_of_a_reload_by_the_real_compositor() {
+    let session = Session::start();
+    let mut mapper = Mapper::connect(&session.wayland());
+    let config = tempfile::tempdir().expect("a config directory");
+    save(&config.path().join("init.ts"), HOST_API_INIT);
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let ipc = session.ipc();
+    let probe = |shell: &Shell| -> serde_json::Value {
+        serde_json::from_str(&shell.probe()).unwrap_or(serde_json::Value::Null)
+    };
+
+    // The session status is the compositor's: a shell with no session connection says `unavailable`.
+    wait_for("the script's probe answers", &session, &mut mapper, &shell, || {
+        probe(&shell)["status"]["state"] == "running"
+    });
+    let status = probe(&shell)["status"].clone();
+    assert_eq!(status["revision"], 0, "no lock change has happened in this session: {status}");
+    assert!(status["lockAvailable"].is_boolean(), "{status}");
+
+    // A timer ran once and each process ended, with its exit code and its captured output, on the shell's frame loop.
+    wait_for("the timer ran and both programs ended", &session, &mut mapper, &shell, || {
+        let state = probe(&shell);
+        state["timers"] == 1 && state["exits"].as_array().is_some_and(|exits| exits.len() == 2)
+    });
+    let state = probe(&shell);
+    let mut exits: Vec<String> = state["exits"]
+        .as_array()
+        .expect("the exits")
+        .iter()
+        .map(|exit| exit.to_string())
+        .collect();
+    exits.sort();
+    assert_eq!(exits, [r#"["sh -c exit 7",7]"#, r#"["sh -c printf hello",0]"#]);
+    wait_for("the captured output arrived", &session, &mut mapper, &shell, || {
+        probe(&shell)["captured"] == "hello"
+    });
+
+    // The script asked for a reload. The compositor raised `reload_requested` and waits for a runtime to answer; this
+    // test is the runtime, and refuses, so the operation fails with the typed error and the compositor's reason, and
+    // the running generation, which asked, is still there to hear it.
+    wait_for("the compositor raised reload_requested", &session, &mut mapper, &shell, || {
+        probe(&shell)["signals"].as_array().is_some_and(|signals| !signals.is_empty())
+    });
+    let generation = shell.generation();
+    owner_client(&ipc)
+        .reject_config("init.ts:3:1: the test refuses this document")
+        .expect("the rejection is accepted");
+    wait_for("the reload failed", &session, &mut mapper, &shell, || probe(&shell)["reload"].is_array());
+    let reload = probe(&shell)["reload"].clone();
+    assert_eq!(reload[0], "config_rejected", "{reload}");
+    assert!(
+        reload[1].as_str().is_some_and(|message| message.contains("the test refuses this document")),
+        "{reload}"
+    );
+    assert_eq!(shell.generation(), generation, "a refused reload leaves the generation that asked");
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
     shell.finish();
 }

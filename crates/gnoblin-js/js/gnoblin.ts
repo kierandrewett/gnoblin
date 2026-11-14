@@ -70,6 +70,10 @@ import { attachScene, sceneForget, sceneReleaseAll } from "gnoblin/scene";
 import type { SceneBackend } from "gnoblin/scene";
 import { Extensions, XRRuntime } from "gnoblin/xr";
 import type { XRWorld } from "gnoblin/xr";
+import { HostApi } from "gnoblin/session";
+import type { SignalEvent, Version } from "gnoblin/session";
+import type { Subscription, Timer } from "gnoblin/operation";
+import type { Process, SpawnOptions } from "gnoblin/process";
 
 type NodeId = number;
 type Scalar = string | number | boolean;
@@ -135,6 +139,8 @@ interface Entry {
     loadDefault(): void;
     snapshot(): WorkspaceSnapshot;
     reconcile(previous: WorkspaceSnapshot): void;
+    /** The host API's frame: what the host collected since the last one, as JSON; returns how many calls wait. */
+    apiFrame(batch: string): number;
 }
 
 interface Host {
@@ -156,7 +162,15 @@ interface Host {
     screens(): NodeId[];
     /** The screen the main seat's pointer is on, or undefined while the seat names none. */
     pointerScreen(): NodeId | undefined;
-    spawn(command: string | string[]): string | undefined;
+    /** The host API (`gnoblin/session`): JSON in, JSON out. */
+    api: {
+        spawn(argv: string, options: string): string;
+        kill(id: number, signal: string): string | undefined;
+        begin(verb: string): string;
+        status(): string | undefined;
+        version(): string;
+        signals(): string;
+    };
     input: InputHost;
     ui: Omit<UiBackend, "now">;
     /** The scene nodes the XR module makes and finds (`gnoblin/scene`, `gnoblin/xr`). */
@@ -1980,29 +1994,15 @@ function showWorkspace(workspace: Workspace | string, options: ShowOptions = {})
     }
 }
 
-/** Work that waits for a time: the end of a slide. Run at the start of each layout pass. */
-const timers: { at: number; run: () => void }[] = [];
-
-function after(seconds: number, run: () => void): void {
+/** Work that waits for a time: the end of a slide, a script's `gnoblin.after`. Queued at the first frame past the time. */
+function after(seconds: number, run: () => void): Timer {
     if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {
         throw new TypeError("gnoblin.after: seconds must be a finite number of at least 0");
     }
     if (typeof run !== "function") {
         throw new TypeError("gnoblin.after: needs a function to run");
     }
-    timers.push({ at: host.input.now() + seconds * 1000, run });
-}
-
-function runTimers(): void {
-    if (timers.length === 0) {
-        return;
-    }
-    const now = host.input.now();
-    const due = timers.filter((timer) => timer.at <= now);
-    for (const timer of due) {
-        timers.splice(timers.indexOf(timer), 1);
-        guard("gnoblin.after", timer.run);
-    }
+    return hostApi.timers.after(seconds * 1000, run);
 }
 
 /** The workspace a window that has none joins: the one the output under the pointer shows, else the initial rule's. */
@@ -2572,7 +2572,6 @@ function applyStyles(): void {
  * are written. A workspace that is not shown stays dirty until it is.
  */
 function layout(): number {
-    runTimers();
     fillDesks();
     // A workspace no output shows hears its hooks for the primary output's area; one an output shows, for that output's.
     const fallback = screenArea();
@@ -3468,6 +3467,41 @@ const xrWorld: XRWorld = {
 
 const xrRuntime = new XRRuntime(xrWorld);
 
+/** Counts the operations of this module, so a log line can name one. */
+let operationIds = 0;
+
+const hostApi = new HostApi(
+    {
+        schedule: (site, task) => {
+            queue.push({ site, task });
+        },
+        now: () => host.input.now(),
+        spawn: (argv, options) => host.api.spawn(argv, options),
+        kill: (id, signal) => host.api.kill(id, signal),
+        begin: (verb) => host.api.begin(verb),
+        status: () => host.api.status(),
+        version: () => host.api.version(),
+        signals: () => host.api.signals(),
+        operationId: () => ++operationIds,
+        error: (code, target, message) => new GnoblinError(code, target, message),
+        // The entry module runs before the first `ready`: a reload asked for from there would ask again after it.
+        loading: () => !opened,
+    },
+    {
+        windows: () => [...clientRoot.list],
+        workspaces: () => [...workspaceRoot.list],
+        // `gnoblin.outputs` is the outputs module's; a shell without it has no `Output` kind to search.
+        outputs: () => {
+            if (!("outputs" in gnoblin) || typeof gnoblin.outputs !== "object" || gnoblin.outputs === null) {
+                return null;
+            }
+            const outputs = gnoblin.outputs as Iterable<object>;
+            return [...outputs];
+        },
+        focusedWindow: () => (clientRoot.self as Collection<Client>).focused,
+    },
+);
+
 class Gnoblin {
     /** The optional extensions: `gnoblin.extensions.xr` is null until the XR program has a session (docs/xr.md). */
     readonly extensions = new Extensions(xrRuntime);
@@ -3480,22 +3514,23 @@ class Gnoblin {
     /** Policy over the compositor's own consent and passphrase dialogs: listeners that may refuse a request. */
     readonly dialogs = dialogs;
 
+    /** The programs this shell started: `spawn`, `list`, `byId` and the listeners told when one ends. */
+    readonly process = hostApi.process;
+    /** Calls that run later, on the frame loop: `after`, and the monotonic clock `now`. */
+    readonly timers = hostApi.timers;
+    /** The session: its state, and the verbs that log out, suspend, power off or lock it. */
+    readonly session = hostApi.session;
+    /** What a script asks of the process that runs it: `reloadConfig`. */
+    readonly runtime = hostApi.runtime;
+    /** The windows in the order they were last focused. */
+    readonly focus = hostApi.focus;
+
     /**
-     * Starts a program. A string is one command line for the host to run; an array is the program and its
-     * arguments. The shell's host decides how, and a shell with no spawner rejects the call.
+     * Starts a program and returns its `Process`. A string is one command line for `/bin/sh`; an array is the
+     * program and its arguments. The same as `gnoblin.process.spawn`.
      */
-    spawn(command: string | string[]): void {
-        const valid =
-            typeof command === "string"
-                ? command.length > 0
-                : Array.isArray(command) && command.length > 0 && command.every((part) => typeof part === "string");
-        if (!valid) {
-            throw new TypeError("gnoblin.spawn: expects a command string or a non-empty array of strings");
-        }
-        const message = host.spawn(command);
-        if (message != null) {
-            throw new GnoblinError("spawn-failed", "gnoblin.spawn", message);
-        }
+    spawn(command: string | string[], options?: SpawnOptions): Process {
+        return hostApi.process.spawn(command, options);
     }
 
     /** Shows a workspace, given as itself or by id, on the output under the pointer. See `WorkspaceCollection.show`. */
@@ -3503,9 +3538,40 @@ class Gnoblin {
         showWorkspace(workspace, options);
     }
 
-    /** Runs `run` once, `seconds` from now: at the first frame after that time. */
-    after(seconds: number, run: () => void): void {
-        after(seconds, run);
+    /** Runs `run` once, `seconds` from now: at the first frame after that time. `gnoblin.timers.after` takes ms. */
+    after(seconds: number, run: () => void): Timer {
+        return after(seconds, run);
+    }
+
+    /** The build identity: `gnoblin`, `gnome`, `mutter`, `js`, `api`, `gitRemote`, `gitSha` and `buildId`. */
+    version(): Version {
+        return hostApi.version();
+    }
+
+    /**
+     * The live objects of one kind (`Window`, `Workspace`, and `Output` where the shell has outputs) that match a
+     * table of field values or a predicate, in list order. An unknown kind or field throws and names what works.
+     */
+    find(kind: string, filter?: Record<string, string | number | boolean> | ((object: never) => unknown)): object[] {
+        return hostApi.find(kind, filter);
+    }
+
+    /**
+     * Calls `fn` for every `name` the compositor raises, `namespace.object.signal` (hyphens are accepted for
+     * underscores). An unknown name throws and lists the near ones.
+     */
+    on(name: string, fn: (event: SignalEvent) => void): Subscription {
+        return hostApi.bus.on(name, fn);
+    }
+
+    /** Like `on`, for the first signal only. */
+    once(name: string, fn: (event: SignalEvent) => void): Subscription {
+        return hostApi.bus.once(name, fn);
+    }
+
+    /** Detaches a subscription, or every handler `fn` of the event `name`. */
+    off(target: Subscription | string, fn?: (event: SignalEvent) => void): void {
+        hostApi.bus.off(target, fn);
     }
 
     /**
@@ -3711,11 +3777,16 @@ host.entry = {
         }
         return queue.length;
     },
+    apiFrame: (batch) => {
+        hostApi.frame(batch);
+        return queue.length;
+    },
     cancelAll: () => {
         input.cancelAll();
         xrRuntime.release();
         sceneReleaseAll();
         uiReleaseAll();
+        hostApi.retire();
         return queue.length;
     },
 };

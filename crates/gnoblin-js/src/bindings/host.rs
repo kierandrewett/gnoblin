@@ -275,16 +275,6 @@ pub(crate) fn spawn(state: &mut HostState, request: &JsSpawnRequest) -> Option<S
     spawner(request).err().map(|error| error.0)
 }
 
-/// The request a script's `spawn` argument names: a string, or an array of strings.
-fn request_of<'js>(value: &Value<'js>) -> Option<JsSpawnRequest> {
-    if let Some(text) = value.as_string() {
-        return text.to_string().ok().map(JsSpawnRequest::Command);
-    }
-    let array = value.as_array()?;
-    let argv: Option<Vec<String>> = array.iter::<String>().map(Result::ok).collect();
-    argv.map(JsSpawnRequest::Argv)
-}
-
 fn script_value<'js>(value: &Value<'js>) -> JsScriptValue {
     if let Some(flag) = value.as_bool() {
         JsScriptValue::Flag(flag)
@@ -434,21 +424,13 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
         })?,
     )?;
 
-    let shared = state.clone();
-    host.set(
-        "spawn",
-        Function::new(ctx.clone(), move |command: Value<'js>| -> Option<String> {
-            let Some(request) = request_of(&command) else {
-                return Some("the command must be a string or an array of strings".to_owned());
-            };
-            spawn(&mut shared.borrow_mut(), &request)
-        })?,
-    )?;
+    // `gnoblin.spawn` and `gnoblin.process` are the module's own (`data/js/gnoblin/session.ts`) over `host.api`.
 
     crate::input::install(ctx, &host, state)?;
     crate::ui::install(ctx, &host, state)?;
     crate::xr::install(ctx, &host, state)?;
     crate::config::install(ctx, &host, state)?;
+    crate::host_api::install(ctx, &host, state)?;
 
     ctx.globals().set("__gnoblinHost", host)
 }

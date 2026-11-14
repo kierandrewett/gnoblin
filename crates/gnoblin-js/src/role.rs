@@ -40,6 +40,7 @@ use crate::bindings::{JsSpawnError, JsSpawnRequest};
 use crate::config::{JsClientConfigLink, JsConfigLink};
 use crate::console::{JsConsole, JsConsoleSite, console_enabled, console_socket_path};
 use crate::generation::JsGeneration;
+use crate::host_session::{JsClientSessionLink, JsSessionLink};
 use crate::reload::{JsReloader, ReloadReport};
 use crate::shell::{JsShell, JsShellConfig, JsShellError};
 use crate::supervisor::{JsFault, JsHealth, JsStrikePolicy, JsSupervisor, JsSystemClock};
@@ -117,6 +118,8 @@ pub struct JsRoleLinks {
     pub slots: Option<Box<dyn SlotLink>>,
     /// For the configuration document: the settings a `defineConfig` sets.
     pub config: Option<Box<dyn JsConfigLink>>,
+    /// For the session: `gnoblin.session`, `gnoblin.runtime.reloadConfig` and the schema's signals.
+    pub session: Option<Box<dyn JsSessionLink>>,
 }
 
 /// The reloader's commit: it hands a generation that evaluated cleanly to the role, which swaps it into the
@@ -194,11 +197,22 @@ impl JsRole {
                 None
             }
         };
+        let session: Option<Box<dyn JsSessionLink>> = match JsClientSessionLink::connect(&path, version) {
+            Ok(link) => Some(Box::new(link)),
+            Err(error) => {
+                log::warn!(
+                    area = "shell-vm",
+                    "the shell has no session connection ({error}); gnoblin.session calls are refused"
+                );
+                None
+            }
+        };
         Self::over_link(
             Box::new(link),
             JsRoleLinks {
                 slots,
                 config: document,
+                session,
             },
             config,
         )
@@ -215,6 +229,9 @@ impl JsRole {
         }
         if let Some(document) = links.config {
             shell.set_config_link(document);
+        }
+        if let Some(session) = links.session {
+            shell.set_session_link(session);
         }
         let staging = shell.staging();
 
@@ -442,26 +459,18 @@ impl JsRole {
     }
 }
 
-/// `gnoblin.spawn`: starts the program in a process group of its own with no terminal input or output, and reaps
-/// it when it ends. A string is one command line for `/bin/sh`; an array is the program and its arguments.
+/// An autostart command: starts the program in a process group of its own with no terminal input or output, and
+/// reaps it when it ends. The program and its arguments are run without a shell.
 fn spawn_detached(request: &JsSpawnRequest) -> Result<(), JsSpawnError> {
     use std::os::unix::process::CommandExt as _;
 
-    let (mut command, name) = match request {
-        JsSpawnRequest::Command(line) => {
-            let mut command = Command::new("/bin/sh");
-            command.arg("-c").arg(line);
-            (command, line.clone())
-        }
-        JsSpawnRequest::Argv(argv) => {
-            let Some((program, arguments)) = argv.split_first() else {
-                return Err(JsSpawnError("an empty argv names no program".to_owned()));
-            };
-            let mut command = Command::new(program);
-            command.args(arguments);
-            (command, program.clone())
-        }
+    let JsSpawnRequest::Argv(argv) = request;
+    let Some((program, arguments)) = argv.split_first() else {
+        return Err(JsSpawnError("an empty argv names no program".to_owned()));
     };
+    let mut command = Command::new(program);
+    command.args(arguments);
+    let name = program;
     command
         .stdin(Stdio::null())
         .stdout(Stdio::null())

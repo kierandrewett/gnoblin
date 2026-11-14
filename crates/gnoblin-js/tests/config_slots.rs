@@ -480,6 +480,7 @@ fn a_refused_value_fails_the_config_with_the_key_path_and_commits_nothing() {
         JsRoleLinks {
             slots: None,
             config: Some(Box::new(doc.clone())),
+            ..JsRoleLinks::default()
         },
         {
             let mut config = JsRoleConfig::new(&root, None);
@@ -521,6 +522,7 @@ fn role_rig(first: &str, document: Option<&str>) -> RoleRig {
         JsRoleLinks {
             slots: None,
             config: Some(Box::new(doc.clone())),
+            ..JsRoleLinks::default()
         },
         config,
     )
@@ -633,6 +635,7 @@ fn a_document_the_compositor_refuses_is_a_diagnostic_and_the_shell_keeps_running
             JsRoleLinks {
                 slots: None,
                 config: Some(Box::new(doc.clone())),
+                ..JsRoleLinks::default()
             },
             config,
         )

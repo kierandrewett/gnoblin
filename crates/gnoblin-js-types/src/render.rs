@@ -84,8 +84,52 @@ pub fn render_dts(catalog: &Catalog) -> String {
         write_namespace(&mut out, catalog, namespace);
     }
     out.push('\n');
+    write_signal_events(&mut out, catalog, &namespaces);
+    out.push('\n');
     out.push_str(STOCK_DTS);
     out
+}
+
+/// `gnoblin/schema/signals`: every schema signal by its `namespace.object.signal` name, with the event
+/// `gnoblin.on` hands a handler. The runtime builds that event from the compositor's signal: its name, the identity
+/// of the object that raised it, and each field under its camelCase name.
+fn write_signal_events(out: &mut String, catalog: &Catalog, namespaces: &[Namespace]) {
+    let _ = writeln!(out, "declare module \"{SHARED_MODULE}/signals\" {{");
+    out.push_str("    /** Every schema signal, by the name `gnoblin.on` takes, and the event its handler receives. */\n");
+    out.push_str("    export interface GnoblinSignals {\n");
+    for namespace in namespaces {
+        for object in catalog.objects(namespace) {
+            for signal in &object.signals {
+                let name = format!("{namespace}.{}.{}", object.name, signal.name);
+                let mut members = format!(
+                    "readonly name: {}; readonly object: number;",
+                    string_literal(&name)
+                );
+                for field in &signal.fields {
+                    let _ = write!(
+                        members,
+                        " readonly {}: {};",
+                        param_ident(&field.name, &["name", "object"]),
+                        event_type(&field.ty)
+                    );
+                }
+                let _ = writeln!(out, "        {}: {{ {members} }};", string_literal(&name));
+            }
+        }
+    }
+    out.push_str("    }\n");
+    out.push_str("}\n");
+}
+
+/// A schema type as the event carries it: an identity is the object's number.
+fn event_type(ty: &Type) -> String {
+    match ty {
+        Type::Bool => "boolean".to_owned(),
+        Type::Int | Type::Uint | Type::Double | Type::ObjectRef(_) => "number".to_owned(),
+        Type::Text => "string".to_owned(),
+        Type::Bytes => "number[]".to_owned(),
+        Type::List(inner) => format!("{}[]", event_type(inner)),
+    }
 }
 
 fn write_header(out: &mut String, catalog: &Catalog, namespaces: &[Namespace]) {

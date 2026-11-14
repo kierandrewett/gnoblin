@@ -33,6 +33,7 @@ use gnoblin_tree_client::tree_mirror::{
 };
 use rquickjs::convert::Coerced;
 use rquickjs::{Array, FromJs, Function, Module, Object, Value};
+use serde_json::Value as Json;
 use thiserror::Error;
 
 use crate::autostart::{self, JsAutostart};
@@ -41,6 +42,7 @@ use crate::config::{JsApplied, JsConfigLink, parse_patch};
 use crate::dialogs::{JsDialogs, events_to_js, verdicts_from_js};
 use crate::error::{JsError, JsErrorKind};
 use crate::generation::{JsConfig, JsGeneration};
+use crate::host_session::JsSessionLink;
 use crate::input::{JsInputMessage, messages_to_js};
 use crate::stock::stock_modules_in;
 use crate::ts::strip_types;
@@ -383,6 +385,25 @@ impl JsShell {
         self.dialogs.set_link(link);
     }
 
+    /// Gives the shell its connection for the session: `gnoblin.session`, `gnoblin.runtime.reloadConfig` and the
+    /// schema's signals of `gnoblin.on` run over it. Without one the session verbs are refused `unavailable`.
+    pub fn set_session_link(&mut self, link: Box<dyn JsSessionLink>) {
+        self.state.borrow_mut().api.session = Some(link);
+    }
+
+    /// The host API's frame: what happened outside the script (a process ended, the compositor finished a call or
+    /// raised a signal) goes to the module, which queues the listeners; then its timers are checked. The listeners
+    /// run under the usual per-call budget, so one that never returns costs a strike and not the frame.
+    fn run_host_api(&mut self, diagnostics: &mut Vec<String>) -> Result<(), JsShellError> {
+        let events = self.state.borrow_mut().api.poll();
+        let batch = Json::Array(events).to_string();
+        let started = Instant::now();
+        let pending: usize = self.call_entry(self.frame_budget, move |entry| {
+            entry.get::<_, Function<'_>>("apiFrame")?.call((batch,))
+        })?;
+        self.run_pending(pending, started, diagnostics)
+    }
+
     /// Gives the shell its connection for the configuration document. A generation's document settings are
     /// validated against, and committed to, the document that connection reads. Without one a config that sets
     /// document keys is validated against an empty document and nothing is committed, which is reported.
@@ -651,6 +672,7 @@ impl JsShell {
         let outcome = self.dispatch(&created, &touched, &destroyed, started, &mut diagnostics);
         self.state.borrow_mut().graveyard.clear();
         outcome?;
+        self.run_host_api(&mut diagnostics)?;
         self.run_layouts(&mut diagnostics)?;
         self.run_ui(&mut diagnostics)?;
         self.run_dialogs(&mut diagnostics)?;

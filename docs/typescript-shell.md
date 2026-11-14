@@ -181,6 +181,17 @@ same text.
 Set `GNOBLIN_JS_WATCH=0` to turn the watcher off, for a config directory on a file system that cannot be watched. The shell
 then reloads only when asked.
 
+## Session, processes and timers
+
+The shell has more than windows:
+
+- `gnoblin.session` logs out, suspends, powers off and locks.
+- `gnoblin.process` starts programs and reports how they end.
+- `gnoblin.timers` runs a function later, and `gnoblin.on` listens for the compositor's signals.
+- `gnoblin.find`, `gnoblin.focus.history` and `gnoblin.version()` read what the shell holds.
+
+See [JavaScript session, process and timer API](/js-host-api).
+
 ## Console and inspector
 
 `gnoblinctl console` opens a live prompt into the running shell, and `inspect.clients()`, `inspect.workspaces()`,

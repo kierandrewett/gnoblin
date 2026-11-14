@@ -13,9 +13,7 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 
-use gnoblin_js::{
-    JsRole, JsRoleConfig, JsRoleLinks, JsShell, JsShellConfig, JsShellError, JsSpawnError, JsSpawnRequest,
-};
+use gnoblin_js::{JsRole, JsRoleConfig, JsRoleLinks, JsShell, JsShellConfig, JsShellError};
 use gnoblin_tree_client::tree_mirror::{
     Attached, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeIncoming, TreeLink, TreeTx,
     TxOp, TxReply,
@@ -886,50 +884,6 @@ fn ready_is_announced_for_snapshot_nodes_parents_first_after_the_entry_ran_and_f
     FakeLink(comp.clone()).create_window(7, "late", "foot");
     rig.frame();
     assert_eq!(rig.eval("log.slice(5).join()"), "added:7,ready:7");
-}
-
-#[test]
-fn spawn_reaches_the_hosts_spawner_with_a_command_line_or_an_argv() {
-    let comp = two_windows();
-    let mut rig = rig(&comp, "export {};\n");
-    let seen: Rc<RefCell<Vec<JsSpawnRequest>>> = Rc::default();
-    let record = Rc::clone(&seen);
-    rig.shell.set_spawner(Box::new(move |request| {
-        record.borrow_mut().push(request.clone());
-        match request {
-            JsSpawnRequest::Command(line) if line == "refuse-me" => Err(JsSpawnError("not on this machine".into())),
-            _ => Ok(()),
-        }
-    }));
-    rig.eval("gnoblin.spawn('foot -e htop'); gnoblin.spawn(['foot', '-e', 'htop']); 0");
-    assert_eq!(
-        *seen.borrow(),
-        [
-            JsSpawnRequest::Command("foot -e htop".into()),
-            JsSpawnRequest::Argv(vec!["foot".into(), "-e".into(), "htop".into()]),
-        ]
-    );
-    assert_eq!(
-        rig.eval("(() => { try { gnoblin.spawn('refuse-me'); } catch (e) { return [e.name, e.code, e.message].join('|'); } })()"),
-        "GnoblinError|spawn-failed|gnoblin.spawn: not on this machine"
-    );
-    for bad in ["''", "[]", "42", "['a', 1]", "undefined"] {
-        let outcome = rig.eval(&format!(
-            "(() => {{ try {{ gnoblin.spawn({bad}); }} catch (e) {{ return e.name; }} }})()"
-        ));
-        assert_eq!(outcome, "TypeError", "{bad}");
-    }
-    assert_eq!(seen.borrow().len(), 3, "a bad argument never reaches the spawner");
-}
-
-#[test]
-fn spawn_without_a_spawner_throws_a_typed_error() {
-    let comp = two_windows();
-    let mut rig = rig(&comp, "export {};\n");
-    assert_eq!(
-        rig.eval("(() => { try { gnoblin.spawn('foot'); } catch (e) { return e.code + '|' + e.message; } })()"),
-        "spawn-failed|gnoblin.spawn: no spawner is attached to this shell"
-    );
 }
 
 #[test]

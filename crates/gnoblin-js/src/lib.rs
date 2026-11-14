@@ -31,6 +31,9 @@ mod dialogs;
 mod error;
 mod generation;
 mod host;
+mod host_api;
+mod host_process;
+mod host_session;
 mod input;
 mod loader;
 mod reload;
@@ -53,6 +56,10 @@ pub use console::{
 pub use error::{JsError, JsErrorKind, JsLoadError, JsLocation, JsTsError};
 pub use generation::{JsConfig, JsGeneration};
 pub use host::{JsHost, JsPrepare};
+pub use host_process::{JsExit, JsProcessError, JsProcesses, JsSpawnOptions, JsStarted, JsStream};
+pub use host_session::{
+    JsClientSessionLink, JsOperationError, JsSessionEvent, JsSessionLink, JsSessionStatus, JsSessionVerb,
+};
 pub use loader::{JsLoadState, JsLoader, JsResolver};
 pub use reload::{JsDiagnostic, JsReloader, ReloadReport};
 pub use role::{JsRole, JsRoleConfig, JsRoleLinks, RELOAD_DEBOUNCE, config_dir, entry_in};

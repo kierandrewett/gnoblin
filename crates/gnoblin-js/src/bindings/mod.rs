@@ -21,11 +21,9 @@ use thiserror::Error;
 
 pub(crate) use host::{adopt_windows, install, parents_first, spawn};
 
-/// What a script asked the host to start.
+/// What the shell asked the host to start with the session: one of the config's `autostart` commands.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum JsSpawnRequest {
-    /// One command line, for the host to run as it runs a launcher entry or a shell line.
-    Command(String),
     /// A program and its arguments, run without a shell.
     Argv(Vec<String>),
 }
@@ -35,8 +33,9 @@ pub enum JsSpawnRequest {
 #[error("{0}")]
 pub struct JsSpawnError(pub String);
 
-/// What `gnoblin.spawn` calls. The shell does not start processes itself: the host owns that, so a test
-/// can record the request and the runtime role can route it through the session's launcher.
+/// What starts the config's `autostart` commands. `gnoblin.spawn` is not routed through it: a script's programs are
+/// `gnoblin.process`, which the shell owns and reaps. The host owns autostart, so a test can record the requests and
+/// the runtime role can route them through the session's launcher.
 pub type JsSpawner = Box<dyn FnMut(&JsSpawnRequest) -> Result<(), JsSpawnError>>;
 
 /// Everything the host functions share with the shell's frame loop.
@@ -64,6 +63,8 @@ pub(crate) struct HostState {
     pub xr: crate::xr::JsXrState,
     /// The configuration document: the link to the compositor's, and what the shell last committed to it.
     pub config: crate::config::ConfigState,
+    /// The session connection and the processes the script started (`gnoblin.session`, `gnoblin.process`).
+    pub api: crate::host_api::JsHostApi,
 }
 
 pub(crate) type SharedState = Rc<RefCell<HostState>>;
@@ -81,6 +82,7 @@ impl HostState {
             ui: crate::ui::JsUiState::default(),
             xr: crate::xr::JsXrState::default(),
             config: crate::config::ConfigState::new(),
+            api: crate::host_api::JsHostApi::default(),
         }
     }
 }

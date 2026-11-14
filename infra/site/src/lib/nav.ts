@@ -165,6 +165,7 @@ export const NAV: NavSection[] = [
             { label: "JavaScript UI toolkit", slug: "js-ui" },
             { label: "JavaScript window style", slug: "js-style" },
             { label: "JavaScript outputs and desks", slug: "js-outputs" },
+            { label: "JavaScript session and process API", slug: "js-host-api" },
             {
                 label: "Lua runtime API",
                 slug: "shell-api",
