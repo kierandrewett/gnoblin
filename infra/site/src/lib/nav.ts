@@ -164,6 +164,7 @@ export const NAV: NavSection[] = [
             { label: "Lua language support", slug: "lua-language-support" },
             { label: "JavaScript UI toolkit", slug: "js-ui" },
             { label: "JavaScript window style", slug: "js-style" },
+            { label: "JavaScript outputs and desks", slug: "js-outputs" },
             {
                 label: "Lua runtime API",
                 slug: "shell-api",

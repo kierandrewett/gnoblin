@@ -119,8 +119,8 @@ The compositor changes nothing until the shell answers, and the stock shell answ
 | `move`, `resize` | Starts the drag of `Super` with the left or right button. A tiled, maximised or fullscreen window is left alone. |
 | `close`          | Asks the client to close.                                                                                        |
 
-A fullscreen window hides the bars while it shows on the workspace on show, and they return when it leaves, minimises
-or closes. A tiling layout leaves a fullscreen or maximised window where it is.
+A fullscreen window hides the bars on its output while it shows on the workspace that output shows, and they return when
+it leaves, minimises or closes. A tiling layout leaves a fullscreen or maximised window where it is.
 
 ### Answering a request yourself
 
@@ -160,6 +160,13 @@ request with the stock behaviour of another kind:
 - `enterFullscreen` and `leaveFullscreen`
 - `minimise` and `unminimise`
 - `present`, `raise` and `lower`
+
+## Outputs
+
+With more than one output each shows its own workspace, bars sit on one output, a window moves between outputs with
+`client.moveToOutput(output)`, and the windows of an unplugged output move to another output or wait hidden for the next.
+A dialog stays centred in its parent and goes wherever the parent goes. The page is
+[Outputs and desks in TypeScript](/js-outputs).
 
 ## Reloading
 
