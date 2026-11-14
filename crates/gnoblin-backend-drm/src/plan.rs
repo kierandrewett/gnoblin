@@ -54,6 +54,10 @@
 //!    takes the connector list it is given, so a caller that re-plans after the hotplug never
 //!    produces an operation for the removed connector:
 //!    `a_replanned_hotplug_has_no_operation_for_the_removed_connector`.
+//! 8. **A live output is re-moded to a timing it never listed, or while it is dark.** [`modeset`] decides it from the
+//!    connector and the state the output is in, before anything is allocated or committed:
+//!    `a_mode_the_connector_does_not_list_is_refused_before_the_kernel`,
+//!    `a_dark_output_and_an_undriven_one_are_refused`.
 
 use std::collections::BTreeMap;
 
@@ -458,6 +462,95 @@ pub fn ops(
         ops.push(Op::Power(Power::Off));
     }
     Ok(ops)
+}
+
+/// What a change of one live output's mode or scale needs from the kernel.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ModesetStep {
+    /// The output already drives that mode at that scale: nothing is asked of the kernel.
+    Unchanged,
+    /// Only the scale changes. The CRTC keeps its mode blob, so nothing is committed: the session composes at the
+    /// new scale from the next frame and the output repaints in full. `state` is the output after the change.
+    Scale(OutputState),
+    /// The mode changes, which is an atomic modeset: new buffers, a test-only commit, then the real one. `state` is
+    /// the output after the change; it carries the previous VRR, orientation and tint, because a modeset changes the
+    /// timings and nothing else the output was set to.
+    Mode(OutputState),
+}
+
+/// Why a change of one live output's mode or scale was refused before the kernel was asked.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum ModesetRefusal {
+    /// The mode has no pixels on an axis.
+    DegenerateMode(DisplayMode),
+    /// The connector does not list the mode.
+    UnsupportedMode {
+        /// The connector.
+        connector: String,
+        /// The mode that was asked for.
+        mode: DisplayMode,
+    },
+    /// The connector has no monitor or no CRTC to drive it, so there is no output to change.
+    NotDriven(String),
+    /// The output is dark. A modeset would light it, which is a power change and not a mode change.
+    Dark(String),
+}
+
+impl std::fmt::Display for ModesetRefusal {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DegenerateMode(mode) => write!(formatter, "{mode:?} covers no pixels"),
+            Self::UnsupportedMode { connector, mode } => write!(formatter, "{connector} does not list {mode:?}"),
+            Self::NotDriven(connector) => write!(formatter, "{connector} has no monitor or CRTC to drive"),
+            Self::Dark(connector) => write!(formatter, "{connector} is off, so its mode is not changed"),
+        }
+    }
+}
+
+impl std::error::Error for ModesetRefusal {}
+
+/// Decides what changing `connector` from `current` to `mode` and `scale` asks of the kernel.
+///
+/// This is the whole of the decision and it reads no device: a refusal here costs the hardware nothing, which is why
+/// the order is fixed: no pixels, an output that is not driven, an output that is dark, then a mode the connector does
+/// not list.
+///
+/// # Errors
+///
+/// [`ModesetRefusal`] naming why the change cannot be made.
+pub fn modeset(
+    connector: &Connector,
+    current: &OutputState,
+    mode: DisplayMode,
+    scale: Scale,
+) -> Result<ModesetStep, ModesetRefusal> {
+    if mode.width == 0 || mode.height == 0 {
+        return Err(ModesetRefusal::DegenerateMode(mode));
+    }
+    if !connector.connected {
+        return Err(ModesetRefusal::NotDriven(connector.name.clone()));
+    }
+    if current.power == Power::Off {
+        return Err(ModesetRefusal::Dark(connector.name.clone()));
+    }
+    if mode != current.mode && !connector.modes.contains(&mode) {
+        return Err(ModesetRefusal::UnsupportedMode {
+            connector: connector.name.clone(),
+            mode,
+        });
+    }
+    let after = OutputState {
+        mode,
+        scale,
+        ..*current
+    };
+    Ok(if mode != current.mode {
+        ModesetStep::Mode(after)
+    } else if scale != current.scale {
+        ModesetStep::Scale(after)
+    } else {
+        ModesetStep::Unchanged
+    })
 }
 
 /// What each connector was last confirmed to be doing, for rollback.
@@ -909,5 +1002,94 @@ mod tests {
         let connectors = [connector("DP-1", 1, &[FULL_HD])];
         let now = [seen("DP-1", true, &[FULL_HD]), seen("DP-9", true, &[FOUR_K])];
         assert!(hotplug(&connectors, &now).is_empty());
+    }
+
+    fn lit_full_hd() -> OutputState {
+        OutputState::lit(FULL_HD, Scale::integral(1), Orientation::Normal)
+    }
+
+    #[test]
+    fn a_mode_the_connector_lists_is_a_modeset() {
+        let connector = connector("DP-1", 1, &[FULL_HD, FOUR_K]);
+        let step = modeset(&connector, &lit_full_hd(), FOUR_K, Scale::integral(1)).expect("listed");
+        let ModesetStep::Mode(after) = step else {
+            panic!("a new mode is a modeset: {step:?}");
+        };
+        assert_eq!(after.mode, FOUR_K);
+    }
+
+    #[test]
+    fn a_mode_the_connector_does_not_list_is_refused_before_the_kernel() {
+        let connector = connector("DP-1", 1, &[FULL_HD]);
+        let refusal = modeset(&connector, &lit_full_hd(), FOUR_K, Scale::integral(1)).expect_err("not listed");
+        assert_eq!(
+            refusal,
+            ModesetRefusal::UnsupportedMode {
+                connector: "DP-1".to_owned(),
+                mode: FOUR_K
+            }
+        );
+    }
+
+    #[test]
+    fn a_mode_with_no_pixels_is_refused() {
+        let connector = connector("DP-1", 1, &[FULL_HD]);
+        let none = DisplayMode::new(0, 1080, 60_000);
+        assert_eq!(
+            modeset(&connector, &lit_full_hd(), none, Scale::integral(1)),
+            Err(ModesetRefusal::DegenerateMode(none))
+        );
+    }
+
+    #[test]
+    fn a_scale_alone_is_not_a_modeset() {
+        let connector = connector("DP-1", 1, &[FULL_HD, FOUR_K]);
+        let step = modeset(&connector, &lit_full_hd(), FULL_HD, Scale::integral(2)).expect("scale");
+        let ModesetStep::Scale(after) = step else {
+            panic!("a scale-only change commits no mode: {step:?}");
+        };
+        assert_eq!((after.mode, after.scale), (FULL_HD, Scale::integral(2)));
+    }
+
+    #[test]
+    fn the_current_mode_and_scale_ask_nothing_of_the_kernel() {
+        let connector = connector("DP-1", 1, &[FULL_HD]);
+        assert_eq!(
+            modeset(&connector, &lit_full_hd(), FULL_HD, Scale::integral(1)),
+            Ok(ModesetStep::Unchanged)
+        );
+    }
+
+    #[test]
+    fn a_dark_output_and_an_undriven_one_are_refused() {
+        let driven = connector("DP-1", 1, &[FULL_HD, FOUR_K]);
+        let dark = OutputState::dark(FULL_HD, Scale::integral(1), Orientation::Normal);
+        assert_eq!(
+            modeset(&driven, &dark, FOUR_K, Scale::integral(1)),
+            Err(ModesetRefusal::Dark("DP-1".to_owned()))
+        );
+        let mut undriven = connector("DP-2", 2, &[FULL_HD, FOUR_K]);
+        undriven.connected = false;
+        assert_eq!(
+            modeset(&undriven, &lit_full_hd(), FOUR_K, Scale::integral(1)),
+            Err(ModesetRefusal::NotDriven("DP-2".to_owned()))
+        );
+    }
+
+    #[test]
+    fn a_modeset_keeps_the_vrr_orientation_and_tint_the_output_had() {
+        let connector = connector("DP-1", 1, &[FULL_HD, FOUR_K]);
+        let before = OutputState {
+            vrr: true,
+            kelvin: Some(3400),
+            ..lit_full_hd()
+        };
+        let ModesetStep::Mode(after) = modeset(&connector, &before, FOUR_K, Scale::integral(2)).expect("listed") else {
+            panic!("a new mode is a modeset");
+        };
+        assert!(after.vrr, "variable refresh survives a mode change");
+        assert_eq!(after.kelvin, Some(3400), "the tint survives a mode change");
+        assert_eq!(after.orientation, Orientation::Normal);
+        assert_eq!(after.scale, Scale::integral(2));
     }
 }

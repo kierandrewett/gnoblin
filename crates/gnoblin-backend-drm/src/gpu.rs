@@ -12,7 +12,7 @@
 //! plane, which is the render path that comes after this slice. A power-off is committed at
 //! once, because [`DrmSurface::clear`] is itself a commit.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 use std::io;
 use std::path::PathBuf;
@@ -312,6 +312,8 @@ impl Port {
 pub struct Hardware {
     device: DrmDevice,
     ports: Vec<Port>,
+    /// The gamma table last written to each connector's CRTC, so a modeset can write it again.
+    gamma: BTreeMap<String, GammaRamp>,
 }
 
 impl Hardware {
@@ -320,6 +322,21 @@ impl Hardware {
             .iter()
             .find(|port| port.connector.name == name)
             .ok_or_else(|| format!("the GPU has no connector named {name}"))
+    }
+
+    /// Writes `ramp` to the CRTC of connector `name` without remembering it.
+    fn write_gamma(&self, name: &str, ramp: &GammaRamp) -> Result<(), String> {
+        let port = self.port(name)?;
+        ramp.matches(port.connector.gamma_length)
+            .map_err(|error| error.to_string())?;
+        let crtc = port
+            .crtc()
+            .ok_or_else(|| format!("{name} has no CRTC to take a gamma table"))?;
+        let (red, green, blue) = ramp.channels();
+        self.device
+            .device_fd()
+            .set_gamma(crtc, red, green, blue)
+            .map_err(|error| error.to_string())
     }
 }
 
@@ -348,16 +365,9 @@ impl Kms for Hardware {
             )),
             Op::Vrr(enabled) => port.surface()?.use_vrr(*enabled).map_err(|error| error.to_string()),
             Op::Gamma(ramp) => {
-                ramp.matches(port.connector.gamma_length)
-                    .map_err(|error| error.to_string())?;
-                let crtc = port
-                    .crtc()
-                    .ok_or_else(|| format!("{name} has no CRTC to take a gamma table"))?;
-                let (red, green, blue) = ramp.channels();
-                self.device
-                    .device_fd()
-                    .set_gamma(crtc, red, green, blue)
-                    .map_err(|error| error.to_string())
+                self.write_gamma(name, ramp)?;
+                self.gamma.insert(name.to_owned(), ramp.clone());
+                Ok(())
             }
             Op::Power(Power::On) => Ok(()),
             Op::Power(Power::Off) => port.surface()?.clear().map_err(|error| error.to_string()),
@@ -490,7 +500,11 @@ impl Gpu {
         let device_fd = device.device_fd().clone();
         Ok(Self {
             seat,
-            state: GpuState::Live(Hardware { device, ports }),
+            state: GpuState::Live(Hardware {
+                device,
+                ports,
+                gamma: BTreeMap::new(),
+            }),
             device_fd,
             notifier: Some(notifier),
             flips: Arc::new(Mutex::new(VecDeque::new())),
@@ -553,7 +567,7 @@ impl Gpu {
     /// When the kernel cannot be read the whole pass is skipped: an unreadable connector would
     /// otherwise look unplugged.
     fn reprobe(&mut self, changes: &mut Vec<HardwareChange>) {
-        let GpuState::Live(Hardware { device, ports }) = &mut self.state else {
+        let GpuState::Live(Hardware { device, ports, gamma }) = &mut self.state else {
             return;
         };
         let resources = match device.resource_handles() {
@@ -594,6 +608,7 @@ impl Gpu {
                     port.connector.gamma_length = 0;
                     port.state = PortState::Unbound;
                     self.applied.forget(&name);
+                    gamma.remove(&name);
                     changes.push(HardwareChange::OutputRemoved(port.connector.id));
                 }
                 Hotplug::Plugged(name) => {
@@ -732,19 +747,118 @@ impl Gpu {
             .find(|port| port.crtc() == Some(crtc))
             .ok_or_else(|| format!("no output is scanned out by CRTC {crtc:?}"))?;
         let surface = port.surface()?;
-        let plane = PlaneState {
-            handle: surface.plane(),
-            config: Some(PlaneConfig {
-                src: Rectangle::<f64, Buffer>::from_size((f64::from(size.w), f64::from(size.h)).into()),
-                dst: Rectangle::from_size(size),
-                transform: Transform::Normal,
-                alpha: 1.0,
-                damage_clips: None,
-                fb: framebuffer,
-                fence: None,
-            }),
+        surface
+            .page_flip([scanout_plane(surface, framebuffer, size)], true)
+            .map_err(|error| error.to_string())
+    }
+
+    /// The live hardware, or why there is none.
+    fn hardware(&self) -> Result<&Hardware, String> {
+        self.state
+            .live()
+            .ok_or_else(|| "the primary GPU was removed".to_owned())
+    }
+
+    /// The port of `output` and the kernel's timing for `mode`, which the connector must offer.
+    fn port_for_mode(&self, output: OutputId, mode: DisplayMode) -> Result<(&Port, Mode), String> {
+        let port = self
+            .hardware()?
+            .ports
+            .iter()
+            .find(|port| port.connector.id == output)
+            .ok_or_else(|| format!("the GPU has no output {output}"))?;
+        let kernel = port
+            .modes
+            .iter()
+            .find(|(offered, _)| *offered == mode)
+            .map(|(_, kernel)| *kernel)
+            .ok_or_else(|| format!("{} does not offer the mode {mode:?}", port.connector.name))?;
+        Ok((port, kernel))
+    }
+
+    /// An atomic commit with `TEST_ONLY` that drives `output` at `mode`, scanning `framebuffer` out over the whole
+    /// mode. The surface is as it was afterwards, whatever the answer: the mode is staged only for the length of the
+    /// test, because smithay tests a staged mode and a plane state separately.
+    ///
+    /// # Errors
+    ///
+    /// The reason the kernel refused, or that the connector does not offer the mode.
+    pub fn test_mode(
+        &self,
+        output: OutputId,
+        mode: DisplayMode,
+        framebuffer: framebuffer::Handle,
+        size: Size<i32, Physical>,
+    ) -> Result<(), String> {
+        let (port, kernel) = self.port_for_mode(output, mode)?;
+        let surface = port.surface()?;
+        let committed = surface.current_mode();
+        // Staging the mode runs the kernel's own test with a scratch buffer of that size.
+        surface.use_mode(kernel).map_err(|error| error.to_string())?;
+        let tested = surface
+            .test_state([scanout_plane(surface, framebuffer, size)], true)
+            .map_err(|error| error.to_string());
+        let restored = surface
+            .use_mode(committed)
+            .map_err(|error| format!("the committed mode could not be staged again after the test: {error}"));
+        tested.and(restored)
+    }
+
+    /// The real atomic commit: stages `mode` on `output` and commits it with `framebuffer` scanned out. The call
+    /// blocks, and the kernel orders it after any flip in flight, so the buffers the output had are no longer scanned
+    /// out when it returns. No completion event is requested.
+    ///
+    /// # Errors
+    ///
+    /// The reason the kernel refused. The mode may still be staged: [`Gpu::unstage_mode`] puts it back.
+    pub fn commit_mode(
+        &self,
+        output: OutputId,
+        mode: DisplayMode,
+        framebuffer: framebuffer::Handle,
+        size: Size<i32, Physical>,
+    ) -> Result<(), String> {
+        let (port, kernel) = self.port_for_mode(output, mode)?;
+        let surface = port.surface()?;
+        surface.use_mode(kernel).map_err(|error| error.to_string())?;
+        surface
+            .commit([scanout_plane(surface, framebuffer, size)], false)
+            .map_err(|error| error.to_string())
+    }
+
+    /// Stages the mode `output` was last committed at again, undoing a staged mode that was not committed.
+    ///
+    /// # Errors
+    ///
+    /// The reason the kernel refused, or that the GPU has no surface for `output`.
+    pub fn unstage_mode(&self, output: OutputId) -> Result<(), String> {
+        let port = self
+            .hardware()?
+            .ports
+            .iter()
+            .find(|port| port.connector.id == output)
+            .ok_or_else(|| format!("the GPU has no output {output}"))?;
+        let surface = port.surface()?;
+        surface
+            .use_mode(surface.current_mode())
+            .map_err(|error| error.to_string())
+    }
+
+    /// Writes the gamma table last loaded on `output` to its CRTC again, which a modeset can lose. An output that
+    /// never had a table loaded has nothing to write.
+    ///
+    /// # Errors
+    ///
+    /// The reason the kernel refused the table.
+    pub fn reapply_gamma(&self, output: OutputId) -> Result<(), String> {
+        let hardware = self.hardware()?;
+        let Some(port) = hardware.ports.iter().find(|port| port.connector.id == output) else {
+            return Err(format!("the GPU has no output {output}"));
         };
-        surface.page_flip([plane], true).map_err(|error| error.to_string())
+        match hardware.gamma.get(&port.connector.name) {
+            Some(ramp) => hardware.write_gamma(&port.connector.name, ramp),
+            None => Ok(()),
+        }
     }
 
     /// Applies a plan to the hardware, rolling back on the first refusal.
@@ -821,6 +935,26 @@ impl Gpu {
     #[must_use]
     pub fn applied(&self) -> &Applied {
         &self.applied
+    }
+}
+
+/// The primary plane of `surface` scanning `framebuffer` out over the whole of a mode of `size`.
+fn scanout_plane(
+    surface: &DrmSurface,
+    framebuffer: framebuffer::Handle,
+    size: Size<i32, Physical>,
+) -> PlaneState<'static> {
+    PlaneState {
+        handle: surface.plane(),
+        config: Some(PlaneConfig {
+            src: Rectangle::<f64, Buffer>::from_size((f64::from(size.w), f64::from(size.h)).into()),
+            dst: Rectangle::from_size(size),
+            transform: Transform::Normal,
+            alpha: 1.0,
+            damage_clips: None,
+            fb: framebuffer,
+            fence: None,
+        }),
     }
 }
 

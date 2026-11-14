@@ -899,9 +899,25 @@ pub trait Backend<S: Host + 'static> {
     }
 
     /// Drive `output` at `mode` and `scale`. Backends that cannot re-mode a live output
-    /// refuse, which is the default.
+    /// refuse, which is the default. A backend that can reports [`OutputControls::configure`].
+    ///
+    /// The change is all or nothing: on `Err` the output keeps the mode and scale it had, its buffers and its
+    /// controls (gamma, power), so the caller can roll a multi-output configuration back by configuring the outputs
+    /// it already changed to what they were.
     fn configure_output(&mut self, output: OutputId, _mode: DisplayMode, _scale: Scale) -> Result<(), BackendError> {
         Err(BackendError::Unsupported(output))
+    }
+
+    /// Checks that [`Backend::configure_output`] would accept `mode` and `scale` on `output`, without changing it.
+    /// The default refuses, like `configure_output`: a backend that cannot re-mode cannot test a re-mode.
+    fn test_output(&mut self, output: OutputId, _mode: DisplayMode, _scale: Scale) -> Result<(), BackendError> {
+        Err(BackendError::Unsupported(output))
+    }
+
+    /// Every mode `output` can be driven in, the one it is driven in now included, or an empty list for an unknown
+    /// output. The default is the one mode the output is in, which is every mode a virtual output has.
+    fn output_modes(&self, output: OutputId) -> Vec<DisplayMode> {
+        self.output(output).map(|known| vec![known.mode]).unwrap_or_default()
     }
 }
 
@@ -915,6 +931,8 @@ pub struct OutputControls {
     pub gamma: bool,
     /// Output power can be switched on and off.
     pub power: bool,
+    /// A live output can be given another mode or scale ([`Backend::configure_output`]).
+    pub configure: bool,
 }
 
 /// One gamma ramp: a table per colour channel, each as long as [`Backend::gamma_size`].
@@ -946,10 +964,14 @@ pub enum BackendError {
     /// The output exists but this backend has no scan-out path for it yet, so no frame can be
     /// presented to it. Distinct from [`BackendError::UnknownOutput`]: the output is real.
     Unpresentable(OutputId),
-    /// The backend cannot control this output's gamma or power state.
+    /// The backend cannot make this change to this output: a gamma or power control it lacks, or a mode it does not
+    /// list or cannot re-mode to.
     Unsupported(OutputId),
     /// The gamma ramp's length does not match the output's table size.
     InvalidGamma(OutputId),
+    /// The kernel refused to drive the output at the mode it was asked for, in its test or in the commit. The output
+    /// keeps the mode, scale and buffers it had.
+    ModesetRefused(OutputId),
 }
 
 impl fmt::Display for BackendError {
@@ -969,7 +991,13 @@ impl fmt::Display for BackendError {
             Self::Unsupported(output) => {
                 write!(
                     formatter,
-                    "the backend has no gamma or power control for output {output}"
+                    "the backend cannot make that change to output {output}: no such control, or no such mode"
+                )
+            }
+            Self::ModesetRefused(output) => {
+                write!(
+                    formatter,
+                    "the kernel refused to drive output {output} at that mode; it keeps its previous mode"
                 )
             }
             Self::InvalidGamma(output) => {

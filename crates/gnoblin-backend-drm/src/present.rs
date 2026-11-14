@@ -32,6 +32,7 @@
 //! | Clean    | `vblank`            | unchanged                       | `false`                       |
 //! | Dirty    | `vblank`            | unchanged                       | `false`                       |
 //! | any      | `resume`            | Dirty, no front, not failing    |                               |
+//! | any      | `after_modeset`     | Dirty, front = the committed slot | abandons a flip in flight    |
 //!
 //! The guarantees this table gives the frame path:
 //!
@@ -43,6 +44,9 @@
 //!    the first.
 //! 4. **Resume starts from nothing.** Nothing is known to be on screen afterwards, and a vblank
 //!    from before the switch is ignored.
+//! 5. **A modeset abandons the flip in flight and its completion is not mistaken for another.**
+//!    `after_modeset` makes the committed slot the front, and the one completion report the
+//!    abandoned flip still owes is ignored, so it cannot complete a flip queued after the modeset.
 
 /// The number of buffers an output cycles through. Two is the double buffer a flip needs: one
 /// slot is scanned out while the other is drawn into.
@@ -93,6 +97,9 @@ enum PresenterState {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Presenter {
     state: PresenterState,
+    /// Flips that were in flight when a modeset replaced the buffers. The kernel still reports their completion, and
+    /// that report must not complete a flip queued after the modeset.
+    abandoned: u32,
 }
 
 impl Default for Presenter {
@@ -110,6 +117,7 @@ impl Presenter {
                 front: None,
                 failing: false,
             },
+            abandoned: 0,
         }
     }
 
@@ -212,6 +220,12 @@ impl Presenter {
     ///
     /// Returns whether a flip completed.
     pub fn vblank(&mut self) -> bool {
+        // The completion of a flip a modeset abandoned: the kernel delivers it, and it says nothing about the flip
+        // queued since.
+        if self.abandoned > 0 {
+            self.abandoned -= 1;
+            return false;
+        }
         // A vblank with nothing queued is stale: it can arrive after a resume abandoned the
         // flip it belonged to. Moving the front on it would show a buffer nobody drew.
         match self.state {
@@ -234,11 +248,36 @@ impl Presenter {
     /// flip queued before the switch is abandoned, so the output redraws in full.
     pub fn resume(&mut self) {
         // After a seat switch the kernel may have reset the CRTC, so the presenter cannot know
-        // which buffer is scanned out. Forgetting the front forces a full redraw.
+        // which buffer is scanned out. Forgetting the front forces a full redraw. A flip that was
+        // abandoned before the switch is not waited for either: counting it would swallow the first
+        // completion of the new session and wedge the output.
         self.state = PresenterState::Dirty {
             front: None,
             failing: false,
         };
+        self.abandoned = 0;
+    }
+
+    /// A modeset committed `front` as the buffer on screen, over new buffers. The output repaints in full into the
+    /// other slot.
+    ///
+    /// A flip that was in flight is abandoned: its buffers are about to be dropped, so nothing may wait for it
+    /// or draw as if it were pending. The kernel orders the blocking modeset commit after that flip and still reports
+    /// its completion, so the presenter remembers to ignore exactly that one report.
+    pub fn after_modeset(&mut self, front: usize) {
+        if matches!(self.state, PresenterState::InFlight { .. }) {
+            self.abandoned = self.abandoned.saturating_add(1);
+        }
+        self.state = PresenterState::Dirty {
+            front: Some(front),
+            failing: false,
+        };
+    }
+
+    /// How many completion reports the presenter will ignore because a modeset abandoned their flips.
+    #[must_use]
+    pub fn abandoned(&self) -> u32 {
+        self.abandoned
     }
 }
 
@@ -595,5 +634,54 @@ mod tests {
         in_flight.mark_dirty();
         in_flight.resume();
         assert_eq!(in_flight.state, expected);
+    }
+
+    #[test]
+    fn a_modeset_makes_the_committed_slot_the_front_and_draws_the_other() {
+        let mut presenter = Presenter::new();
+        presenter.after_modeset(0);
+        assert_eq!(presenter.front(), Some(0));
+        assert!(presenter.is_dirty(), "the output repaints in full after a modeset");
+        assert_eq!(
+            presenter.step(),
+            FrameStep::Draw { slot: 1 },
+            "the committed buffer is on screen and is not drawn into"
+        );
+        assert_eq!(presenter.abandoned(), 0, "no flip was in flight, so none is owed");
+    }
+
+    #[test]
+    fn a_modeset_over_a_flip_in_flight_abandons_it_and_ignores_its_completion_once() {
+        let mut presenter = Presenter::new();
+        present(&mut presenter, 0);
+        assert_eq!(presenter.pending(), Some(0));
+        presenter.after_modeset(0);
+        assert_eq!(
+            presenter.pending(),
+            None,
+            "nothing waits for a flip on buffers that were dropped"
+        );
+        assert_eq!(presenter.abandoned(), 1);
+        // The new session of buffers flips before the abandoned flip's report arrives.
+        assert_eq!(presenter.step(), FrameStep::Draw { slot: 1 });
+        presenter.flip_submitted(1);
+        assert!(
+            !presenter.vblank(),
+            "the abandoned flip's report does not complete the new flip"
+        );
+        assert_eq!(presenter.pending(), Some(1), "the new flip is still in flight");
+        assert!(presenter.vblank(), "the next report is the new flip's own");
+        assert_eq!(presenter.front(), Some(1));
+        assert_eq!(presenter.abandoned(), 0);
+    }
+
+    #[test]
+    fn a_resume_forgets_the_completions_a_modeset_was_waiting_for() {
+        let mut presenter = Presenter::new();
+        present(&mut presenter, 0);
+        presenter.after_modeset(0);
+        presenter.resume();
+        present(&mut presenter, 0);
+        assert!(presenter.vblank(), "nothing from before the switch is owed any more");
     }
 }

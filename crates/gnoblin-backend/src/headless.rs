@@ -1045,6 +1045,7 @@ impl<S: Host + 'static> Backend<S> for Headless {
         OutputControls {
             gamma: true,
             power: true,
+            configure: true,
         }
     }
 
@@ -1088,6 +1089,19 @@ impl<S: Host + 'static> Backend<S> for Headless {
             }
         }
         self.resize(output, mode, scale)
+    }
+
+    fn test_output(&mut self, output: OutputId, mode: DisplayMode, _scale: Scale) -> Result<(), BackendError> {
+        // A virtual output has no kernel to ask: it can be given any mode with pixels, which is what `resize` checks
+        // before it touches anything.
+        self.index(output).ok_or(BackendError::UnknownOutput(output))?;
+        if mode.width == 0 || mode.height == 0 {
+            return Err(BackendError::DegenerateMode {
+                width: mode.width,
+                height: mode.height,
+            });
+        }
+        Ok(())
     }
 }
 
@@ -1192,6 +1206,44 @@ mod tests {
             Some(Size::new(1024, 768)),
             "the output kept its mode"
         );
+    }
+
+    #[test]
+    fn a_test_asks_whether_a_mode_would_be_driven_and_changes_nothing() {
+        /// The backend through the trait, as the compositor holds it.
+        fn driver(backend: &mut Headless) -> &mut dyn Backend<Recorder> {
+            backend
+        }
+        let mut backend = Headless::new();
+        let output = backend.outputs[0].id;
+        assert!(
+            driver(&mut backend).output_controls().configure,
+            "the virtual output advertises the mode control"
+        );
+        let wanted = DisplayMode::new(800, 600, 60_000);
+        driver(&mut backend)
+            .test_output(output, wanted, Scale::integral(2))
+            .expect("a mode with pixels would be driven");
+        assert_eq!(
+            backend.logical_size(output),
+            Some(Size::new(1024, 768)),
+            "a test changes nothing"
+        );
+        assert_eq!(
+            driver(&mut backend).test_output(output, DisplayMode::new(800, 0, 60_000), Scale::integral(1)),
+            Err(BackendError::DegenerateMode { width: 800, height: 0 })
+        );
+        let stranger = OutputId::new(99);
+        assert_eq!(
+            driver(&mut backend).test_output(stranger, wanted, Scale::integral(1)),
+            Err(BackendError::UnknownOutput(stranger))
+        );
+        assert_eq!(
+            driver(&mut backend).output_modes(output),
+            vec![DEFAULT_MODE],
+            "a virtual output lists the one mode it is in"
+        );
+        assert!(driver(&mut backend).output_modes(stranger).is_empty());
     }
 
     #[test]

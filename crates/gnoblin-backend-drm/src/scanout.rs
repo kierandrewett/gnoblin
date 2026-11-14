@@ -20,13 +20,16 @@ use smithay::utils::{Physical, Size as PhysicalSize};
 
 use crate::frame::Scanout;
 use crate::gpu::Gpu;
+use crate::modeset::{COMMITTED_SLOT, ModesetKernel};
 use crate::present::SLOTS;
 use gnoblin_backend::{DmabufCopy, DmabufCopyError, DmabufImportError, DmabufSupport};
+use gnoblin_output::DisplayMode;
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_gles::egl;
 use gnoblin_render_gles::{Gles, ScanBuffer};
+use gnoblin_types::OutputId;
 
 use crate::log;
 
@@ -355,6 +358,60 @@ impl Scanout for Flip<'_> {
         let size = self.buffers.size;
         let framebuffer = *self.buffers.slots.get(slot)?.framebuffer.as_ref();
         self.gpu.queue_flip(self.crtc, framebuffer, size)
+    }
+}
+
+/// The kernel and the allocator behind one output's mode change, for [`crate::modeset::configure`].
+///
+/// Built fresh for each call, so it borrows the GPU and the buffer device only for that call.
+pub(crate) struct LiveModeset<'a> {
+    /// The GPU whose surface is committed.
+    pub(crate) gpu: &'a Gpu,
+    /// The device the new buffers are allocated on.
+    pub(crate) device: &'a Device,
+    /// The output whose mode changes.
+    pub(crate) output: OutputId,
+    /// The CRTC that scans the output out, which names the plane formats the buffers must suit.
+    pub(crate) crtc: crtc::Handle,
+}
+
+impl ModesetKernel for LiveModeset<'_> {
+    type Buffers = Buffers;
+
+    fn allocate(&mut self, size: Size) -> Result<Buffers, RenderError> {
+        let formats = self.gpu.plane_formats(self.crtc).ok_or(RenderError::Unavailable)?;
+        let mut buffers = Buffers::new(self.device, size, &formats)?;
+        buffers.ensure(COMMITTED_SLOT).map_err(|error| {
+            log::warn!(area = "drm", output = %self.output, %error, "the buffer for the new mode could not be made");
+            RenderError::Unavailable
+        })?;
+        // The memory a buffer is made from is not defined. An empty frame is opaque black, so the first thing on the
+        // new mode is a black screen and never what the memory held before.
+        let Buffers { gles, slots, .. } = &mut buffers;
+        let entry = slots.get_mut(COMMITTED_SLOT).map_err(|error| {
+            log::warn!(area = "drm", output = %self.output, %error, "the buffer for the new mode is missing");
+            RenderError::Unavailable
+        })?;
+        gles.draw_scanout(&mut entry.scan, &OutputFrame::new(), Scale::integral(1))?;
+        Ok(buffers)
+    }
+
+    fn test(&mut self, mode: DisplayMode, buffers: &Buffers) -> Result<(), String> {
+        let framebuffer = *buffers.slots.get(COMMITTED_SLOT)?.framebuffer.as_ref();
+        self.gpu.test_mode(self.output, mode, framebuffer, buffers.size)
+    }
+
+    fn commit(&mut self, mode: DisplayMode, buffers: &Buffers) -> Result<(), String> {
+        let framebuffer = *buffers.slots.get(COMMITTED_SLOT)?.framebuffer.as_ref();
+        self.gpu.commit_mode(self.output, mode, framebuffer, buffers.size)
+    }
+
+    fn unstage(&mut self) -> Result<(), String> {
+        self.gpu.unstage_mode(self.output)
+    }
+
+    fn reapply_gamma(&mut self) -> Result<(), String> {
+        self.gpu.reapply_gamma(self.output)
     }
 }
 

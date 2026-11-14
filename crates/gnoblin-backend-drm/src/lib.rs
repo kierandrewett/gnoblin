@@ -6,6 +6,7 @@
 //! | Module       | Owns                                                                | Tested without a device |
 //! | ------------ | ------------------------------------------------------------------- | ----------------------- |
 //! | [`plan`]     | the output state, the ordered kernel operations, the rollback record | yes                     |
+//! | `modeset`    | the order of a mode change and the rule for each way it fails        | yes, on a fake kernel   |
 //! | [`gamma`]    | the lookup table and the length check before the ioctl               | yes                     |
 //! | crate root (here) | the [`Backend`] implementation: devices, outputs, dispatch         | no                      |
 //!
@@ -47,6 +48,8 @@ pub mod gamma;
 pub mod gpu;
 /// The libinput devices: the seat's pointers, touch and keyboards, and how their events map.
 pub mod libinput;
+/// Changing the mode or scale of a live output: the order of operations and every way it fails.
+pub(crate) mod modeset;
 /// The pure planning of output state and kernel operations.
 pub mod plan;
 /// The per-output swapchain state machine: which buffer is drawn and when a flip may queue.
@@ -61,7 +64,7 @@ pub mod udev;
 use std::fmt;
 use std::io;
 
-use gnoblin_types::{OutputId, Scale};
+use gnoblin_types::{Orientation, OutputId, Scale};
 use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::drm::control::crtc;
 
@@ -69,7 +72,7 @@ use crate::frame::{Presented, present};
 use crate::libinput::Libinput;
 use crate::libinput::map::Screen;
 use crate::present::{OutputPresenter, Presenter, complete_flips};
-use crate::scanout::{Buffers, Device as ScanoutDevice, Flip};
+use crate::scanout::{Buffers, Device as ScanoutDevice, Flip, LiveModeset};
 use crate::session::{SeatEvent, SeatState, Transition};
 use gnoblin_backend::{
     Backend, BackendError, BackendEvent, DmabufImportError, DmabufSupport, Host, InputEvent, InputSource, Output,
@@ -77,7 +80,7 @@ use gnoblin_backend::{
 };
 use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_render_frame::image::Image;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 gnoblin_log::logger!(log = "backend");
 
@@ -134,6 +137,10 @@ pub struct Drm {
     scanout: ScanoutDevice,
     /// Each output's scan-out buffers, allocated on its first draw and dropped on resume.
     buffers: HashMap<OutputId, Buffers>,
+    /// The outputs switched off, which a mode change refuses: lighting them is a power change.
+    dark: HashSet<OutputId>,
+    /// Changes the backend made itself, reported by the next dispatch.
+    pending: Vec<BackendEvent>,
     input: Input,
     /// Whether the seat is ours, which decides whether the device may be used.
     seat: SeatState,
@@ -249,6 +256,8 @@ impl Drm {
             channels,
             scanout,
             buffers: HashMap::new(),
+            dark: HashSet::new(),
+            pending: Vec::new(),
             input,
             seat: SeatState::new(),
         })
@@ -263,6 +272,64 @@ impl Drm {
                 logical: output.logical_size(),
             })
             .collect()
+    }
+
+    /// What a mode or scale change on `output` is decided from: its connector as the kernel lists it, the state it is in
+    /// now, the index of its swapchain and the CRTC that scans it out.
+    ///
+    /// # Errors
+    ///
+    /// [`BackendError::UnknownOutput`] for an output this backend does not drive, and
+    /// [`BackendError::Unpresentable`] for one that has no CRTC to present on.
+    fn modeset_target(
+        &self,
+        output: OutputId,
+    ) -> Result<(plan::Connector, plan::OutputState, usize, crtc::Handle), BackendError> {
+        let known = self
+            .outputs
+            .iter()
+            .find(|known| known.id == output)
+            .ok_or(BackendError::UnknownOutput(output))?;
+        let connector = self
+            .gpu
+            .outputs()
+            .find(|connector| connector.id == output)
+            .cloned()
+            .ok_or(BackendError::UnknownOutput(output))?;
+        let index = self
+            .channels
+            .iter()
+            .position(|channel| channel.id == output)
+            .ok_or(BackendError::Unpresentable(output))?;
+        let state = if self.dark.contains(&output) {
+            plan::OutputState::dark(known.mode, known.scale, Orientation::Normal)
+        } else {
+            plan::OutputState::lit(known.mode, known.scale, Orientation::Normal)
+        };
+        Ok((connector, state, index, self.channels[index].crtc))
+    }
+
+    /// Puts a change that was made into what the backend reports: the output's mode and scale, the extent libinput
+    /// states absolute positions in, and one [`BackendEvent::OutputResized`] for the next dispatch.
+    fn record_reconfigured(&mut self, output: OutputId, state: &plan::OutputState) {
+        if let Some(known) = self.outputs.iter_mut().find(|known| known.id == output) {
+            known.mode = state.mode;
+            known.scale = state.scale;
+        }
+        let screens = self.screens();
+        if let Input::Live(libinput) = &mut self.input {
+            libinput.set_screens(screens);
+        }
+        // One pending change per output, so the latest size wins and a storm of changes cannot deliver sizes that
+        // are already gone.
+        self.pending.retain(
+            |event| !matches!(event, BackendEvent::OutputResized { output: changed, .. } if *changed == output),
+        );
+        self.pending.push(BackendEvent::OutputResized {
+            output,
+            mode: state.mode,
+            scale: state.scale,
+        });
     }
 
     /// The seat was taken away: release the device and stop delivering input.
@@ -318,6 +385,7 @@ impl Drm {
                 self.outputs.retain(|output| output.id != id);
                 self.channels.retain(|channel| channel.id != id);
                 self.buffers.remove(&id);
+                self.dark.remove(&id);
                 vec![BackendEvent::OutputDisconnected(id)]
             }
             gpu::HardwareChange::OutputAdded(id) => {
@@ -492,6 +560,7 @@ impl<S: Host + 'static> Backend<S> for Drm {
         gnoblin_backend::OutputControls {
             gamma: true,
             power: true,
+            configure: true,
         }
     }
 
@@ -518,7 +587,75 @@ impl<S: Host + 'static> Backend<S> for Drm {
     fn set_power(&mut self, output: OutputId, on: bool) -> Result<(), BackendError> {
         self.gpu
             .set_power(output, on)
-            .map_err(|error| control_error(output, error))
+            .map_err(|error| control_error(output, error))?;
+        if on {
+            self.dark.remove(&output);
+        } else {
+            self.dark.insert(output);
+        }
+        Ok(())
+    }
+
+    fn output_modes(&self, output: OutputId) -> Vec<gnoblin_output::DisplayMode> {
+        self.gpu
+            .outputs()
+            .find(|connector| connector.id == output)
+            .map(|connector| connector.modes.clone())
+            .unwrap_or_default()
+    }
+
+    fn configure_output(
+        &mut self,
+        output: OutputId,
+        mode: gnoblin_output::DisplayMode,
+        scale: Scale,
+    ) -> Result<(), BackendError> {
+        let (connector, current, index, crtc) = self.modeset_target(output)?;
+        // The buffers leave the map for the length of the call so the kernel adapter can borrow the rest of the
+        // backend; a refused change gives them back untouched.
+        let mut buffers = self.buffers.remove(&output);
+        let mut kernel = LiveModeset {
+            gpu: &self.gpu,
+            device: &self.scanout,
+            output,
+            crtc,
+        };
+        let result = modeset::configure(
+            &mut kernel,
+            &connector,
+            &current,
+            mode,
+            scale,
+            &mut buffers,
+            &mut self.channels[index].presenter,
+        );
+        if let Some(buffers) = buffers {
+            self.buffers.insert(output, buffers);
+        }
+        let outcome = result.map_err(|error| modeset_error(output, &error))?;
+        if let Some(reason) = &outcome.gamma_failure {
+            log::warn!(area = "drm", output = %output, %reason, "the gamma table could not be written again after the modeset");
+        }
+        if outcome.kind != modeset::ModesetKind::Unchanged {
+            self.record_reconfigured(output, &outcome.state);
+        }
+        Ok(())
+    }
+
+    fn test_output(
+        &mut self,
+        output: OutputId,
+        mode: gnoblin_output::DisplayMode,
+        scale: Scale,
+    ) -> Result<(), BackendError> {
+        let (connector, current, _, crtc) = self.modeset_target(output)?;
+        let mut kernel = LiveModeset {
+            gpu: &self.gpu,
+            device: &self.scanout,
+            output,
+            crtc,
+        };
+        modeset::check(&mut kernel, &connector, &current, mode, scale).map_err(|error| modeset_error(output, &error))
     }
 
     fn dispatch(&mut self, host: &mut S) -> Vec<BackendEvent> {
@@ -528,7 +665,7 @@ impl<S: Host + 'static> Backend<S> for Drm {
                 SeatEvent::Activated => self.resume(),
             }
         }
-        let mut events = Vec::new();
+        let mut events = std::mem::take(&mut self.pending);
         for change in self.gpu.sync_hardware() {
             events.extend(self.apply_hardware(change));
         }
@@ -572,10 +709,40 @@ fn control_error(output: OutputId, error: gpu::ControlError) -> BackendError {
     }
 }
 
+/// The backend error a mode or scale change is reported as, using the vocabulary the headless backend has.
+///
+/// A mode with no pixels is [`BackendError::DegenerateMode`]; a mode the connector does not list is
+/// [`BackendError::Unsupported`]; an output with no monitor, no CRTC or no light is [`BackendError::Unpresentable`];
+/// buffers that cannot be made are [`BackendError::Render`]; a kernel refusal in the test or the commit is logged with
+/// its reason and reported as [`BackendError::ModesetRefused`]. In every case the output stays as it was.
+fn modeset_error(output: OutputId, error: &modeset::ModesetError) -> BackendError {
+    match error {
+        modeset::ModesetError::Refused(plan::ModesetRefusal::DegenerateMode(mode)) => BackendError::DegenerateMode {
+            width: mode.width,
+            height: mode.height,
+        },
+        modeset::ModesetError::Refused(plan::ModesetRefusal::UnsupportedMode { .. }) => {
+            BackendError::Unsupported(output)
+        }
+        modeset::ModesetError::Refused(plan::ModesetRefusal::NotDriven(_) | plan::ModesetRefusal::Dark(_)) => {
+            BackendError::Unpresentable(output)
+        }
+        modeset::ModesetError::Buffers(error) => BackendError::Render(*error),
+        modeset::ModesetError::Test(_) | modeset::ModesetError::Commit { .. } => {
+            log::warn!(area = "drm", output = %output, reason = %error, "the kernel refused a mode change; the output keeps its mode");
+            BackendError::ModesetRefused(output)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{InputRefusal, Refused};
-    use gnoblin_backend::InputSource;
+    use super::{InputRefusal, Refused, modeset_error};
+    use crate::modeset::ModesetError;
+    use crate::plan::ModesetRefusal;
+    use gnoblin_backend::{BackendError, InputSource};
+    use gnoblin_output::DisplayMode;
+    use gnoblin_types::OutputId;
 
     #[test]
     fn a_refused_input_source_never_yields_an_event() {
@@ -591,5 +758,37 @@ mod tests {
     fn a_refusal_names_what_is_missing() {
         let text = InputRefusal::NotOpened.to_string();
         assert!(text.contains("libinput"), "{text}");
+    }
+
+    #[test]
+    fn a_mode_change_is_refused_in_the_headless_backends_vocabulary() {
+        let output = OutputId::new(3);
+        let mode = DisplayMode::new(1280, 720, 60_000);
+        let unlisted = ModesetError::Refused(ModesetRefusal::UnsupportedMode {
+            connector: "DP-1".to_owned(),
+            mode,
+        });
+        assert_eq!(modeset_error(output, &unlisted), BackendError::Unsupported(output));
+        let degenerate = ModesetError::Refused(ModesetRefusal::DegenerateMode(DisplayMode::new(0, 720, 60_000)));
+        assert_eq!(
+            modeset_error(output, &degenerate),
+            BackendError::DegenerateMode { width: 0, height: 720 }
+        );
+        let dark = ModesetError::Refused(ModesetRefusal::Dark("DP-1".to_owned()));
+        assert_eq!(modeset_error(output, &dark), BackendError::Unpresentable(output));
+        let no_crtc = ModesetError::Refused(ModesetRefusal::NotDriven("DP-1".to_owned()));
+        assert_eq!(modeset_error(output, &no_crtc), BackendError::Unpresentable(output));
+    }
+
+    #[test]
+    fn a_kernel_refusal_is_one_error_whether_the_test_or_the_commit_refused() {
+        let output = OutputId::new(3);
+        let test = ModesetError::Test("EINVAL".to_owned());
+        let commit = ModesetError::Commit {
+            reason: "EINVAL".to_owned(),
+            rollback_failure: None,
+        };
+        assert_eq!(modeset_error(output, &test), BackendError::ModesetRefused(output));
+        assert_eq!(modeset_error(output, &commit), BackendError::ModesetRefused(output));
     }
 }
