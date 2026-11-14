@@ -23,7 +23,6 @@ import type {
 import { DialogManager } from "gnoblin/dialogs";
 import type { DialogEvent } from "gnoblin/dialogs";
 import { AuthenticationManager } from "gnoblin/authentication";
-import type { AuthenticationEvent, AuthenticationReply } from "gnoblin/authentication";
 import { IdleMonitor } from "gnoblin/idle";
 import type { IdleCommand, IdleReading } from "gnoblin/idle";
 import { LaunchFeedback } from "gnoblin/launches";
@@ -136,7 +135,7 @@ interface Entry {
     takeVerdicts(): Verdict[];
     /** Whether a dialog listener is attached, so the shell holds the observation slot. */
     dialogsWanted(): boolean;
-    /** What the script needs of the compositor beyond the tree: bit 1 is idle state, bit 2 the authentication slot. */
+    /** What the script needs of the compositor beyond the tree: bit 1 is idle state. */
     wants(): number;
     /** The compositor's newest idle reading; returns how many calls wait. */
     idleReading(reading: IdleReading): number;
@@ -148,10 +147,6 @@ interface Entry {
     idleHolders(): string[];
     /** The compositor refused the idle hold `holder`. */
     idleFailed(holder: string): void;
-    /** What the compositor sent for the authentication slot; returns how many calls wait. */
-    authenticationEvents(events: AuthenticationEvent[]): number;
-    /** The answers the authentication provider settled, each once. */
-    takeAuthenticationReplies(): AuthenticationReply[];
     /** Lays out the workspaces that changed, once each; returns how many it laid out. */
     layout(): number;
     /** Runs the UI toolkit's frame: measurements and pointer events in, every canvas arranged and painted. */
@@ -3613,12 +3608,8 @@ const idleMonitor = new IdleMonitor({
     },
 });
 
-/** The session's authentication agent (`gnoblin.authentication`). */
-const authentication = new AuthenticationManager({
-    schedule: (site, task) => {
-        queue.push({ site, task });
-    },
-});
+/** Observation of the session's polkit authentications (`gnoblin.authentication`), over the dialog observation. */
+const authentication = new AuthenticationManager(dialogs);
 
 /** Launch feedback (`gnoblin.launches`): a launch is started by the window that answers it. */
 const launches = new LaunchFeedback({
@@ -3846,11 +3837,11 @@ class Gnoblin {
     readonly outputs = outputRoot.self as Collection<Output>;
     /** The seats of the compositor as input contexts, with the bindings that run on their chords and drags. */
     readonly input = input;
-    /** Policy over the compositor's own consent and passphrase dialogs: listeners that may refuse a request. */
+    /** Policy over the compositor's own consent, passphrase and authentication dialogs: listeners that may refuse a request. */
     readonly dialogs = dialogs;
     /** Watches for the session going idle, and holds that keep it awake. */
     readonly idle = idleMonitor;
-    /** The session's authentication agent: a provider that answers the polkit requests. */
+    /** The session's polkit authentications: listeners that watch them and may refuse one. Nothing here can allow one. */
     readonly authentication = authentication;
     /** Launch feedback: the busy state between asking for an application and its window. */
     readonly launches = launches;
@@ -4114,7 +4105,7 @@ host.entry = {
         return taken;
     },
     dialogsWanted: () => dialogs.wanted,
-    wants: () => (idleMonitor.wanted ? 1 : 0) | (authentication.wanted ? 2 : 0),
+    wants: () => (idleMonitor.wanted ? 1 : 0),
     idleReading: (reading) => {
         idleMonitor.deliver(reading);
         return queue.length;
@@ -4126,11 +4117,6 @@ host.entry = {
     takeIdleCommands: () => idleMonitor.takeCommands(),
     idleHolders: () => idleMonitor.holders(),
     idleFailed: (holder) => idleMonitor.failed(holder),
-    authenticationEvents: (events) => {
-        authentication.deliver(events);
-        return queue.length;
-    },
-    takeAuthenticationReplies: () => authentication.takeReplies(),
     layout,
     finishLoad: ensureDefaultWorkspace,
     loadDefault: () => gnoblin.__register(defaultConfig),

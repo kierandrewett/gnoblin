@@ -203,6 +203,10 @@ pub struct SessionConfig {
     /// connections are then not the owner's: they are refused every owner member. Privileged
     /// role connections are the guardian's and stay the owner's either way.
     pub ipc_owner_uid: Option<u32>,
+    /// The `polkit-agent-helper-1` the polkit dialog runs, or [`None`] to look for the distribution's
+    /// (`GNOBLIN_POLKIT_HELPER`, then the usual install paths). A test passes a fake helper here, so no test
+    /// touches the machine's PAM or polkitd.
+    pub polkit_helper: Option<PathBuf>,
     /// The EIS endpoint's consent gate. The endpoint is served at `eis.sock` beside the IPC
     /// socket, and every connection on it waits until the gate grants it input.
     pub eis: EisGate,
@@ -468,6 +472,7 @@ impl Compositor {
             config.started_with.take().unwrap_or_else(|| {
                 gnoblin_config::Config::from_json_bytes(b"{}").expect("the empty document is valid")
             }),
+            config.polkit_helper.take(),
         )
         .map_err(Error::Ipc)?;
 

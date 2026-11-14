@@ -179,7 +179,7 @@ impl DialogUi for SecretUi {
 
 /// A padlock, drawn from shapes so it needs no icon font. It is part of the dialog the compositor
 /// draws, so a prompt that shows it is the compositor's own.
-fn lock_icon(ui: &mut Ui) {
+pub(crate) fn lock_icon(ui: &mut Ui) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(22.0, 26.0), Sense::hover());
     let color = ui.visuals().strong_text_color();
     let painter = ui.painter();

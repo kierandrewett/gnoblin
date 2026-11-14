@@ -1355,6 +1355,7 @@ dependencies = [
  "gnoblin-lua",
  "gnoblin-model",
  "gnoblin-paint",
+ "gnoblin-polkit-auth",
  "gnoblin-portal",
  "gnoblin-portal-core",
  "gnoblin-portal-ui",
@@ -1610,6 +1611,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-polkit-auth"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-log",
+ "gnoblin-secret",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "gnoblin-portal"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -1770,6 +1782,7 @@ dependencies = [
  "gnoblin-client",
  "gnoblin-log",
  "gnoblin-model",
+ "gnoblin-polkit-auth",
  "gnoblin-proto",
  "gnoblin-schema",
  "gnoblin-types",
@@ -1817,6 +1830,7 @@ dependencies = [
  "futures-lite",
  "gnoblin-log",
  "gnoblin-model",
+ "gnoblin-polkit-auth",
  "gnoblin-service-core",
  "gnoblin-service-testkit",
  "gnoblin-types",

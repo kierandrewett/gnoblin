@@ -27,6 +27,7 @@
 mod applied;
 mod consent;
 mod path;
+mod polkit;
 mod portal;
 mod privileged;
 mod reload;

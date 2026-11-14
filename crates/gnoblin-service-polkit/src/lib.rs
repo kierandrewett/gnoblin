@@ -1,24 +1,27 @@
 //! The polkit authentication agent: `org.freedesktop.PolicyKit1.AuthenticationAgent`.
 //!
-//! polkitd calls the agent that registered for the session. The agent shows the
-//! prompt, authenticates the user, and the reply to `BeginAuthentication` is how
-//! polkitd learns whether the user consented. This module is that interface, and
-//! nothing else in the crate knows a bus name.
+//! polkitd calls the agent that registered for the session (`BeginAuthentication`). This agent does not check a
+//! password and does not decide anything: it offers the request to the compositor, which draws its own dialog and
+//! runs polkit's setuid helper, `polkit-agent-helper-1`, for the identity the user chose. That helper is what runs
+//! PAM, and only when PAM says yes it tells polkitd itself (`AuthenticationAgentResponse2`, which polkitd accepts
+//! from root alone) before it prints `SUCCESS`. The reply to `BeginAuthentication` is only the agent's note that the
+//! dialog ended, and polkitd reads whether the user authenticated from the helper's call, not from this reply
+//! (design/js-research/polkit.md). This module is that interface, and nothing else in the crate knows a bus name.
 //!
 //! Three properties of the interface shape the code:
 //!
 //! - **The reply waits for the user.** `BeginAuthentication` is answered only once
-//!   a provider answered the request it became, so the handler is `async` and awaits
+//!   the compositor ended the request it became, so the handler is `async` and awaits
 //!   one channel per request. A synchronous handler would hold the connection's
 //!   dispatcher and `CancelAuthentication` could never arrive, which is the hang
 //!   this shape exists to prevent.
-//! - **A cancel ends the call.** polkitd names a cookie, not a request, so the
+//! - **A cancel ends the call and the dialog.** polkitd names a cookie, not a request, so the
 //!   cookie is what [`Agent::cancel_cookie`] matches. The waiting handler then
-//!   returns a D-Bus `Cancelled` error rather than leaving polkitd to time out.
-//! - **No secret is held here.** polkit's password never reaches this crate:
-//!   polkitd runs the authentication through its own helper, and the request that
-//!   this agent offers carries the action, message, icon, details and identities.
-//!   A log line therefore has nothing to redact for this slot.
+//!   returns a D-Bus `Cancelled` error rather than leaving polkitd to time out, and the
+//!   compositor is told to withdraw the request so its dialog closes and the helper stops.
+//! - **No password is held here.** It is typed into the compositor's dialog and goes from there to the helper's
+//!   standard input. The payload this agent offers carries the action, message, icon, details, the identities
+//!   and polkitd's cookie, which the helper needs.
 //!
 //! The object path and the authority's name are polkit's, not Gnoblin's: an agent
 //! that used its own would never be called. They are constants here so a test can
@@ -37,10 +40,10 @@
 //! 4. **An answer arrives that no handler is waiting for.** It is delivered to the
 //!    request's channel exactly once, because the channel is inserted under the same
 //!    lock that offers the request: `an_answer_arrives_once`.
-//! 5. **The identity the provider reported is treated as authority.** It never
+//! 5. **The identity the compositor reported is treated as authority.** It never
 //!    leaves this module except as a log line, and the reply to polkitd says only
-//!    "allowed":
-//!    `the_reply_carries_no_identity`.
+//!    "allowed": `the_reply_carries_no_identity`. polkitd's own record, made by the
+//!    helper, is the authority.
 
 #![forbid(unsafe_code)]
 
@@ -382,7 +385,15 @@ impl Polkit {
     /// A cookie that names nothing is not an error: polkitd cancels requests that
     /// already finished.
     async fn cancel_authentication(&self, cookie: String) -> fdo::Result<()> {
-        let finished = self.lock().agent.cancel_cookie(&cookie);
+        let finished = {
+            let mut shared = self.lock();
+            let finished = shared.agent.cancel_cookie(&cookie);
+            if let Some(finished) = &finished {
+                // The compositor's dialog and its helper are closed, not left to the request's deadline.
+                shared.agent.offerer_mut().withdraw(finished.request);
+            }
+            finished
+        };
         if let Some(finished) = finished {
             log::info!(request = finished.request.get(), "polkitd cancelled an authentication");
             self.settle(vec![finished]);

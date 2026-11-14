@@ -1,10 +1,13 @@
-//! The compositor's own passphrase dialog for `prompt.secret`, and the queue of requests it serves.
+//! The compositor's own passphrase and polkit dialogs, and the queue of requests they serve.
 //!
 //! A stock shell draws the prompt for the keyring when it claims the `prompt.secret` slot. This is the
 //! built-in that serves the request when none does, so a session with no shell, a crashed runtime or a
 //! script that never claimed the slot can still unlock the keyring (design/js-research/popups-portals.md,
-//! row 5, and section 5). The request layer decides when a request is the built-in's ([`super::requests`]):
-//! it holds the request and its deadline, and this module only draws it and reports how the user ended it.
+//! row 5, and section 5). The same service draws the polkit authentication dialog for `auth.polkit`, which no
+//! shell may claim: the compositor runs polkit's helper and the user's password never reaches a script
+//! (row 6, and design/js-research/polkit.md). The request layer decides when a request is the built-in's
+//! ([`super::requests`]): it holds the request and its deadline, and this module only draws it and reports how the
+//! user ended it.
 //!
 //! [`SecretService`] never touches a socket. [`SecretService::pump`] and the other entry points return the
 //! [`SecretAction`]s the dispatcher turns into an answer or a decline on the request.
@@ -22,23 +25,25 @@
 //!
 //! - Several prompts at once: they queue, and the next one opens when the one on screen ends.
 //! - The request ends while its dialog is open (deadline, requester gone): [`SecretService::close`] drops the
-//!   dialog and its text without an answer.
+//!   dialog and its text without an answer, and a polkit dialog's helper is killed with it.
 //! - The session locks: every prompt is declined, as the consent dialogs are refused `locked`, and a prompt
 //!   that arrives while locked is declined at once.
 //! - An Enter on an empty entry is ignored, so a slipped key never answers with nothing.
 
 use std::collections::VecDeque;
 
+use gnoblin_polkit_auth::AuthRequest;
 use gnoblin_portal::{SecretResult, SecretUi};
 use gnoblin_portal_core::model::ScreenKey;
 use gnoblin_portal_ui::style::DialogStyle;
-use gnoblin_portal_ui::ui::{DialogScheme, DialogShell, Setup, press_events, release_events};
+use gnoblin_portal_ui::ui::{DialogScheme, DialogShell, DialogUi, Setup, press_events, release_events};
 use gnoblin_render_frame::frame::Overlay;
 use gnoblin_render_frame::image::Image;
 use gnoblin_secret::SecretText;
 use gnoblin_types::{KeyState, OutputId, Rect, RequestId, Size, Tick};
 use gnoblin_wayland::{Modal, ModalEvent};
 
+use super::polkit::{HelperPath, Outcome, PolkitDialog};
 use super::portal::{dialog_placement, frame_point, screen_key};
 use super::requests::SecretPrompt;
 use crate::log;
@@ -60,6 +65,14 @@ pub(crate) enum SecretAction {
         /// The passphrase, wiped when it drops.
         secret: SecretText,
     },
+    /// polkit's helper said the user authenticated as this identity (`unix-user:alice`). The helper has already told
+    /// polkitd; the answer lets the agent end its `BeginAuthentication`.
+    Authenticated {
+        /// The request that was authenticated.
+        request: RequestId,
+        /// Who authenticated, as polkit writes an identity.
+        identity: String,
+    },
     /// The user declined, or the dialog could not be shown.
     Decline(RequestId),
 }
@@ -73,25 +86,49 @@ pub(crate) struct SecretScene {
     pub actions: Vec<SecretAction>,
 }
 
+/// A request the built-in dialogs serve, before its dialog is on screen.
+enum Prompt {
+    Secret(SecretPrompt),
+    Polkit(AuthRequest),
+}
+
+/// The card on screen: what draws and takes the keys.
+enum Card {
+    Secret(SecretUi),
+    Polkit(Box<PolkitDialog>),
+}
+
+impl Card {
+    /// The card as the dialog shell draws it.
+    fn ui(&mut self) -> &mut dyn DialogUi {
+        match self {
+            Card::Secret(ui) => ui,
+            Card::Polkit(dialog) => dialog.ui_mut(),
+        }
+    }
+}
+
 /// The prompt on screen.
 struct Active {
     request: RequestId,
-    ui: SecretUi,
+    card: Card,
     /// Set by any input and by a new prompt; cleared when the frame is drawn.
     dirty: bool,
 }
 
-/// The built-in passphrase dialog session.
+/// The built-in passphrase and polkit dialog session.
 pub(crate) struct SecretService {
     shell: DialogShell,
     setup: Setup,
     now: Tick,
     active: Option<Active>,
     /// Prompts waiting for the one on screen to end, oldest first.
-    pending: VecDeque<(RequestId, SecretPrompt)>,
+    pending: VecDeque<(RequestId, Prompt)>,
     /// The output the modal is shown on, while it is shown.
     shown: Option<OutputId>,
     locked: bool,
+    /// Where polkit's helper is, for the polkit dialogs.
+    helper: HelperPath,
 }
 
 impl SecretService {
@@ -112,7 +149,14 @@ impl SecretService {
             pending: VecDeque::new(),
             shown: None,
             locked: false,
+            helper: HelperPath::default(),
         }
+    }
+
+    /// Runs polkit's helper from `helper` instead of looking for it.
+    pub(crate) fn with_helper(mut self, helper: HelperPath) -> Self {
+        self.helper = helper;
+        self
     }
 
     /// Takes the dialog scheme from a committed configuration, as the consent dialog does.
@@ -152,6 +196,15 @@ impl SecretService {
 
     /// Opens the prompt for `request`, or queues it behind the one on screen.
     pub(crate) fn open(&mut self, request: RequestId, prompt: SecretPrompt) -> Vec<SecretAction> {
+        self.enqueue(request, Prompt::Secret(prompt))
+    }
+
+    /// Opens the polkit dialog for `request`, or queues it behind the one on screen.
+    pub(crate) fn open_polkit(&mut self, request: RequestId, auth: AuthRequest) -> Vec<SecretAction> {
+        self.enqueue(request, Prompt::Polkit(auth))
+    }
+
+    fn enqueue(&mut self, request: RequestId, prompt: Prompt) -> Vec<SecretAction> {
         if self.locked {
             return vec![SecretAction::Decline(request)];
         }
@@ -159,7 +212,7 @@ impl SecretService {
             area = "secret",
             request = request.get(),
             queued = self.active.is_some(),
-            "the built-in passphrase dialog took a prompt"
+            "the built-in dialog took a prompt"
         );
         if self.active.is_some() {
             self.pending.push_back((request, prompt));
@@ -205,13 +258,16 @@ impl SecretService {
         let Some(active) = self.active.as_mut() else {
             return Vec::new();
         };
-        match key {
-            ScreenKey::Escape => active.ui.cancel(),
-            ScreenKey::Enter => active.ui.submit(),
-            ScreenKey::Backspace => active.ui.backspace(),
-            ScreenKey::Space => active.ui.type_char(' '),
-            ScreenKey::Text(character) => active.ui.type_char(character),
-            ScreenKey::Tab | ScreenKey::Up | ScreenKey::Down => return Vec::new(),
+        match &mut active.card {
+            Card::Secret(ui) => match key {
+                ScreenKey::Escape => ui.cancel(),
+                ScreenKey::Enter => ui.submit(),
+                ScreenKey::Backspace => ui.backspace(),
+                ScreenKey::Space => ui.type_char(' '),
+                ScreenKey::Text(character) => ui.type_char(character),
+                ScreenKey::Tab | ScreenKey::Up | ScreenKey::Down => return Vec::new(),
+            },
+            Card::Polkit(dialog) => dialog.key(key),
         }
         active.dirty = true;
         self.settle()
@@ -234,7 +290,8 @@ impl SecretService {
             }
         }
         let placement = self.placement(output);
-        let mut actions = Vec::new();
+        // What polkit's helper said since the last pump: a prompt, a message, its verdict.
+        let mut actions = self.settle();
         for event in events.iter() {
             actions.extend(self.route(event, placement));
         }
@@ -251,12 +308,15 @@ impl SecretService {
         SecretScene { modal, actions }
     }
 
-    fn start(&mut self, request: RequestId, prompt: SecretPrompt) {
-        let mut ui = SecretUi::new(prompt.title, prompt.message, prompt.subject);
-        self.shell.layout(&mut ui, self.now);
+    fn start(&mut self, request: RequestId, prompt: Prompt) {
+        let mut card = match prompt {
+            Prompt::Secret(prompt) => Card::Secret(SecretUi::new(prompt.title, prompt.message, prompt.subject)),
+            Prompt::Polkit(auth) => Card::Polkit(Box::new(PolkitDialog::new(auth, self.helper.clone()))),
+        };
+        self.shell.layout(card.ui(), self.now);
         self.active = Some(Active {
             request,
-            ui,
+            card,
             dirty: true,
         });
     }
@@ -267,26 +327,39 @@ impl SecretService {
         }
     }
 
-    /// Takes how the open prompt ended, if it did, and opens the next one.
+    /// Takes how the open prompt ended, if it did, and opens the next one. A polkit dialog is also asked what its
+    /// helper said, so this is what moves it along.
     fn settle(&mut self) -> Vec<SecretAction> {
         let Some(active) = self.active.as_mut() else {
             return Vec::new();
         };
-        let Some(result) = active.ui.take_result() else {
-            return Vec::new();
-        };
         let request = active.request;
+        let action = match &mut active.card {
+            Card::Secret(ui) => match ui.take_result() {
+                Some(SecretResult::Answered(secret)) => SecretAction::Answer { request, secret },
+                Some(SecretResult::Declined) => SecretAction::Decline(request),
+                None => return Vec::new(),
+            },
+            Card::Polkit(dialog) => {
+                let step = dialog.advance();
+                if step.changed {
+                    active.dirty = true;
+                }
+                match step.outcome {
+                    Some(Outcome::Authenticated { identity }) => SecretAction::Authenticated { request, identity },
+                    Some(Outcome::Declined) => SecretAction::Decline(request),
+                    None => return Vec::new(),
+                }
+            }
+        };
         self.active = None;
         self.start_next();
         log::debug!(
             area = "secret",
             request = request.get(),
-            "the built-in passphrase dialog ended a prompt"
+            "the built-in dialog ended a prompt"
         );
-        vec![match result {
-            SecretResult::Answered(secret) => SecretAction::Answer { request, secret },
-            SecretResult::Declined => SecretAction::Decline(request),
-        }]
+        vec![action]
     }
 
     /// The rectangle the open dialog sits at on `output`, or `None` when no prompt is open.
@@ -323,12 +396,12 @@ impl SecretService {
                     return Vec::new();
                 };
                 // Hit testing needs the frame that laid the buttons out.
-                self.shell.layout(&mut active.ui, now);
+                self.shell.layout(active.card.ui(), now);
                 let events = match state {
                     KeyState::Pressed => press_events(fx, fy),
                     KeyState::Released => release_events(fx, fy),
                 };
-                let _ = self.shell.run(&mut active.ui, events, now);
+                let _ = self.shell.run(active.card.ui(), events, now);
                 active.dirty = true;
                 self.settle()
             }
@@ -342,7 +415,7 @@ impl SecretService {
             return None;
         }
         active.dirty = false;
-        let frame = self.shell.render(&mut active.ui, self.now);
+        let frame = self.shell.render(active.card.ui(), self.now);
         let width = u32::try_from(frame.width()).ok()?;
         let height = u32::try_from(frame.height()).ok()?;
         let image = Image::new(Size::new(width, height), frame.width() * 4, frame.bytes().to_vec())?;
@@ -654,5 +727,134 @@ mod tests {
         ];
         assert!(service.pump(output(), &mut click).actions.is_empty());
         assert!(service.is_open());
+    }
+
+    // --- polkit authentication ------------------------------------------------------------------------------------
+
+    /// Pumps the service until `ready` holds or a prompt ended, and returns how prompts ended, ten seconds at most.
+    fn pump_for(service: &mut SecretService, mut ready: impl FnMut(&SecretService) -> bool) -> Vec<SecretAction> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let mut actions = Vec::new();
+        while actions.is_empty() && !ready(service) {
+            actions.extend(service.pump(output(), &mut []).actions);
+            assert!(std::time::Instant::now() < deadline, "the dialog did not get there");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        actions
+    }
+
+    fn asking(service: &SecretService) -> bool {
+        matches!(service.active.as_ref().map(|active| &active.card), Some(Card::Polkit(dialog)) if dialog.is_asking())
+    }
+
+    /// A service with a polkit dialog open for this process's own account, behind the fake helper that accepts
+    /// `hunter2`, and the account's name.
+    fn polkit_open() -> (SecretService, super::super::polkit::fake::Fake, String) {
+        let (uid, name) = super::super::polkit::fake::me();
+        let helper = super::super::polkit::fake::password_helper(&name);
+        let mut service = SecretService::new().with_helper(helper.path());
+        assert!(
+            service
+                .open_polkit(FIRST, super::super::polkit::fake::request(uid))
+                .is_empty()
+        );
+        (service, helper, name)
+    }
+
+    #[test]
+    fn a_polkit_dialog_authenticates_only_on_the_helpers_success() {
+        let (mut service, _helper, name) = polkit_open();
+        assert!(service.is_open());
+        // A key typed before PAM asks is nobody's answer, so the test waits for the prompt first.
+        assert!(pump_for(&mut service, asking).is_empty());
+        type_text(&mut service, "hunter2");
+        let mut actions = service.key(ScreenKey::Enter);
+        actions.extend(pump_for(&mut service, |_| false));
+        assert_eq!(
+            actions,
+            vec![SecretAction::Authenticated {
+                request: FIRST,
+                identity: format!("unix-user:{name}"),
+            }]
+        );
+        assert!(!service.is_open(), "the dialog is gone once the helper said so");
+    }
+
+    #[test]
+    fn a_wrong_polkit_password_is_not_an_authentication() {
+        let (mut service, _helper, name) = polkit_open();
+        pump_for(&mut service, asking);
+        type_text(&mut service, "nope");
+        assert!(
+            service.key(ScreenKey::Enter).is_empty(),
+            "a password is not an answer until the helper says so"
+        );
+        // The helper failed, so the dialog is still open and asks again; the right password then succeeds.
+        assert!(pump_for(&mut service, asking).is_empty());
+        assert!(service.is_open(), "a failure is not an answer");
+        type_text(&mut service, "hunter2");
+        let mut actions = service.key(ScreenKey::Enter);
+        actions.extend(pump_for(&mut service, |_| false));
+        assert_eq!(
+            actions,
+            vec![SecretAction::Authenticated {
+                request: FIRST,
+                identity: format!("unix-user:{name}"),
+            }]
+        );
+    }
+
+    #[test]
+    fn escape_declines_a_polkit_dialog_and_a_lock_declines_it_too() {
+        let (mut service, _helper, _) = polkit_open();
+        pump_for(&mut service, asking);
+        assert_eq!(service.key(ScreenKey::Escape), vec![SecretAction::Decline(FIRST)]);
+        assert!(!service.is_open());
+
+        let (mut service, _helper, _) = polkit_open();
+        pump_for(&mut service, asking);
+        assert_eq!(service.set_locked(true), vec![SecretAction::Decline(FIRST)]);
+    }
+
+    #[test]
+    fn the_polkit_dialog_is_a_secure_modal_and_closing_it_ends_it_without_an_answer() {
+        let (mut service, _helper, _) = polkit_open();
+        pump_for(&mut service, asking);
+        let modal = service
+            .pump(output(), &mut [])
+            .modal
+            .expect("the dialog is shown")
+            .expect("as a modal");
+        assert!(modal.overlay().is_secure(), "a capture leaves the dialog out");
+        service.close(FIRST);
+        assert!(!service.is_open());
+        assert!(service.pump(output(), &mut []).actions.is_empty());
+    }
+
+    #[test]
+    fn no_log_line_and_no_debug_output_holds_the_polkit_password() {
+        let logged = gnoblin_log::event::capture::logged(|| {
+            let (mut service, _helper, _) = polkit_open();
+            pump_for(&mut service, asking);
+            let mut events: Vec<ModalEvent> = "hunter2"
+                .chars()
+                .map(|character| ModalEvent::Text { character })
+                .collect();
+            events.push(ModalEvent::Key {
+                keycode: 28,
+                state: KeyState::Pressed,
+            });
+            let scene = service.pump(output(), &mut events);
+            let shown = format!("{:?} {events:?}", scene.actions);
+            assert!(!shown.contains("hunter2"), "{shown}");
+            let actions = pump_for(&mut service, |_| false);
+            assert_eq!(actions.len(), 1, "the password was accepted");
+            assert!(!format!("{actions:?}").contains("hunter2"));
+        });
+        assert!(!logged.is_empty(), "the dialog logged that it took and ended a prompt");
+        for line in &logged {
+            let shown = format!("{} {} {}", line.component, line.message, line.fields_line());
+            assert!(!shown.contains("hunter2"), "{shown}");
+        }
     }
 }

@@ -122,12 +122,12 @@ fn a_shell_claims_answers_and_the_answer_reaches_the_host() {
 
     // A shell takes the slot over, which is the plan's claim rule.
     shell
-        .claim_slot("auth.polkit", Provider::Shell)
+        .claim_slot("location.agent", Provider::Shell)
         .expect("a shell may claim the slot");
 
     let request = services
         .offer(
-            "auth.polkit",
+            "location.agent",
             "Authentication required",
             "Authenticate to run /usr/bin/mount",
             b"",
@@ -148,7 +148,7 @@ fn a_shell_claims_answers_and_the_answer_reaches_the_host() {
         panic!("the offer is the first event the provider sees");
     };
     assert_eq!(offered, request);
-    assert_eq!(slot, "auth.polkit");
+    assert_eq!(slot, "location.agent");
     assert_eq!(title, "Authentication required");
     assert_eq!(message, "Authenticate to run /usr/bin/mount");
 
@@ -180,6 +180,59 @@ fn a_shell_claims_answers_and_the_answer_reaches_the_host() {
         Some(&b"alice"[..]),
         "only the host reads the answer"
     );
+}
+
+#[test]
+fn a_shell_cannot_claim_the_polkit_slot_and_only_the_services_role_offers_it() {
+    // The failure this prevents: a script claims `auth.polkit` and answers a polkit request itself, so a script
+    // decides whether somebody authenticated. The compositor draws the dialog and runs polkit's helper; a shell
+    // watches it through `dialogs.observe`, and the only connection that offers the requests is the services role.
+    let (session, mut ends) = Session::start_privileged(&["services"]);
+    let mut services = role_client(&mut ends, "services");
+    let mut shell = socket_client(&session);
+
+    let (denied, message) = refusal(
+        shell
+            .claim_slot("auth.polkit", Provider::Shell)
+            .expect_err("a shell may not claim auth.polkit"),
+    );
+    assert_eq!(denied, code::DENIED, "{message}");
+    assert!(
+        message.contains("dialogs.observe"),
+        "the refusal says what to use instead: {message}"
+    );
+
+    let (denied, _) = refusal(
+        shell
+            .offer("auth.polkit", "t", "m", b"", Duration::from_secs(30))
+            .expect_err("a shell may not offer an authentication"),
+    );
+    assert_eq!(denied, code::DENIED);
+    let (denied, _) = refusal(
+        services
+            .offer("auth.polkit", "t", "m", b"", Duration::from_secs(30))
+            .expect_err("the services role offers only once it has claimed the slot"),
+    );
+    assert_eq!(denied, code::DENIED);
+
+    services
+        .claim_slot("auth.polkit", Provider::Services)
+        .expect("the services role claims its own slot");
+    // A payload that is not the agent's is not one to authenticate: the request ends and nothing is answered.
+    let request = services
+        .offer(
+            "auth.polkit",
+            "action",
+            "message",
+            b"not a payload",
+            Duration::from_secs(30),
+        )
+        .expect("the compositor takes the offer");
+    match services.next_event().expect("the request ends") {
+        Event::RequestFinished { request: ended, .. } => assert_eq!(ended, request),
+        other => panic!("expected the request to end, got {other:?}"),
+    }
+    drop(session);
 }
 
 #[test]
@@ -219,7 +272,7 @@ fn the_session_publishes_who_provides_each_slot() {
     let (session, _ends) = Session::start_privileged(&["services"]);
     let mut shell = socket_client(&session);
     shell
-        .claim_slot("auth.polkit", Provider::Shell)
+        .claim_slot("location.agent", Provider::Shell)
         .expect("a shell may claim the slot");
     let snapshot = shell.subscribe(Filter::All).expect("the snapshot");
     let session_object = snapshot
@@ -228,7 +281,7 @@ fn the_session_publishes_who_provides_each_slot() {
         .find(|view| view.ty().to_string() == "gnoblin.session")
         .unwrap_or_else(|| panic!("the session object is published: {snapshot:?}"));
     assert_eq!(
-        session_object.property("slot_auth_polkit"),
+        session_object.property("slot_location_agent"),
         Some(&Value::Text("shell".to_owned())),
         "the shell that claimed the slot provides it"
     );

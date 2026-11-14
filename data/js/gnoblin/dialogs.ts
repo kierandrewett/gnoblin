@@ -1,4 +1,4 @@
-// `gnoblin.dialogs`: policy over the compositor's own consent and passphrase dialogs.
+// `gnoblin.dialogs`: policy over the compositor's own consent, passphrase and authentication dialogs.
 //
 // The compositor draws these dialogs itself (a script never does) and a shell that observes them is shown each
 // request for a short window before the dialog opens. A listener can do one thing with a request: refuse it,
@@ -18,12 +18,19 @@
 //     }
 //     defineConfig({ setup: (gnoblin) => gnoblin.dialogs.addListener(new NoScreenshots()) });
 //
+// A polkit authentication is the third kind of request. It is watched through `gnoblin.authentication`
+// (`AuthenticationListener`, in `gnoblin/authentication`), which this manager serves on the same observation slot:
+// the compositor draws the password dialog and checks the password with polkit's helper, and a script can only
+// refuse the request.
+//
 // The manager is plain TypeScript over two functions of the host (`DialogHost`), so it runs without a compositor.
 // A listener runs as a queued call under the same wall-clock budget as every other listener: one that throws is
 // reported once and the next listener still runs, and one that runs past its budget is interrupted.
 
-/** What a request is: a consent dialog for a portal request, or the compositor's passphrase prompt. */
-export type DialogKind = "consent" | "secret";
+import type { AuthenticationListener, AuthenticationRequest } from "gnoblin/authentication";
+
+/** What a request is: a consent dialog for a portal request, the compositor's passphrase prompt, or a polkit authentication. */
+export type DialogKind = "consent" | "secret" | "auth";
 
 /**
  * A request the compositor is about to open a dialog for. It lives for the observation window and no longer:
@@ -35,7 +42,8 @@ export interface DialogRequest {
     readonly appId: string;
     /**
      * What is asked about. For a consent request, the portal interface (`Screenshot`, `ScreenCast`, ...). For a
-     * passphrase request, the app's own prompt text, which is the app's words and not to be trusted as identity.
+     * passphrase request, the app's own prompt text, which is the app's words and not to be trusted as identity. For
+     * an authentication, the program asking.
      */
     readonly subject: string;
     /** When the compositor takes the request back, in milliseconds on its own clock. */
@@ -117,17 +125,63 @@ class ObservedRequest<K extends DialogKind> implements DialogRequest {
     }
 }
 
-/** A request the manager holds, by its kind, so a listener's method gets the request type it declares. */
-type Observed = ObservedRequest<"consent"> | ObservedRequest<"secret">;
+/** A polkit authentication, as an `AuthenticationListener` sees it. */
+class ObservedAuthentication extends ObservedRequest<"auth"> implements AuthenticationRequest {
+    readonly actionId: string;
+    readonly message: string;
+    readonly identities: readonly string[];
 
-/** The kind and subject of an offer, from the title the compositor gave it: `consent:<interface>` or `secret`. */
-function classify(event: DialogEvent): { kind: DialogKind; subject: string } | null {
+    constructor(actionId: string, message: string, requester: string, identities: readonly string[], deadline: number) {
+        // polkit names a process and never an application, so the verified application id is always empty.
+        super("auth", "", requester, deadline);
+        this.actionId = actionId;
+        this.message = message;
+        this.identities = Object.freeze([...identities]);
+    }
+}
+
+/** A request the manager holds, by its kind, so a listener's method gets the request type it declares. */
+type Observed = ObservedRequest<"consent"> | ObservedRequest<"secret"> | ObservedAuthentication;
+
+/** What the compositor told of an offer, read by its kind. */
+type Classified =
+    | { kind: "consent" | "secret"; subject: string }
+    | { kind: "auth"; actionId: string; requester: string; identities: string[] };
+
+/** The part of an authentication the compositor shows an observer: `{ actionId, requester, identities }` as JSON. */
+function readAuthentication(text: string): { actionId: string; requester: string; identities: string[] } {
+    let parsed: unknown = null;
+    try {
+        parsed = JSON.parse(text);
+    } catch {
+        // A payload that is not JSON leaves every field empty: the request is still observed, and still refusable.
+    }
+    const object =
+        parsed !== null && typeof parsed === "object"
+            ? (parsed as { [key: string]: unknown })
+            : ({} as { [key: string]: unknown });
+    const identities = Array.isArray(object.identities) ? object.identities : [];
+    return {
+        actionId: typeof object.actionId === "string" ? object.actionId : "",
+        requester: typeof object.requester === "string" ? object.requester : "",
+        identities: identities.filter((identity): identity is string => typeof identity === "string"),
+    };
+}
+
+/**
+ * The kind and subject of an offer, from the title the compositor gave it: `consent:<interface>`, `secret` or `auth`.
+ * An authentication's own details are in its subject, as JSON.
+ */
+function classify(event: DialogEvent): Classified | null {
     const title = event.title ?? "";
     if (title.startsWith("consent:")) {
         return { kind: "consent", subject: title.slice("consent:".length) };
     }
     if (title === "secret") {
         return { kind: "secret", subject: event.message ?? "" };
+    }
+    if (title === "auth") {
+        return { kind: "auth", ...readAuthentication(event.subject ?? "") };
     }
     return null;
 }
@@ -137,8 +191,8 @@ function describe(listener: object): string {
     return name !== undefined && name !== "" ? name : "listener";
 }
 
-/** Runs the method of `listener` that takes `request`'s kind. */
-function notify(listener: DialogListener, request: Observed): void {
+/** Runs the method of `listener` that takes a consent or passphrase request. */
+function notify(listener: DialogListener, request: ObservedRequest<"consent"> | ObservedRequest<"secret">): void {
     if (request.kind === "consent") {
         listener.onConsentRequest?.(request);
     } else {
@@ -150,6 +204,7 @@ function notify(listener: DialogListener, request: Observed): void {
 export class DialogManager {
     readonly #host: DialogHost;
     readonly #listeners: DialogListener[] = [];
+    readonly #authListeners: AuthenticationListener[] = [];
     readonly #held = new Map<number, Observed>();
 
     constructor(host: DialogHost) {
@@ -161,9 +216,14 @@ export class DialogManager {
         return [...this.#listeners];
     }
 
+    /** The authentication listeners (`gnoblin.authentication`), in the order they were added. */
+    get authenticationListeners(): readonly AuthenticationListener[] {
+        return [...this.#authListeners];
+    }
+
     /** Whether the shell should hold the observation slot: it is held while any listener could use it. */
     get wanted(): boolean {
-        return this.#listeners.length > 0;
+        return this.#listeners.length > 0 || this.#authListeners.length > 0;
     }
 
     addListener(listener: DialogListener): void {
@@ -179,6 +239,20 @@ export class DialogManager {
         const index = this.#listeners.indexOf(listener);
         if (index >= 0) {
             this.#listeners.splice(index, 1);
+        }
+    }
+
+    /** Adds a listener of polkit authentications. The shell calls this for `gnoblin.authentication`. */
+    addAuthenticationListener(listener: AuthenticationListener): void {
+        if (!this.#authListeners.includes(listener)) {
+            this.#authListeners.push(listener);
+        }
+    }
+
+    removeAuthenticationListener(listener: AuthenticationListener): void {
+        const index = this.#authListeners.indexOf(listener);
+        if (index >= 0) {
+            this.#authListeners.splice(index, 1);
         }
     }
 
@@ -206,25 +280,47 @@ export class DialogManager {
             this.#host.verdict(id, false, "");
             return;
         }
-        const appId = event.subject ?? "";
         const deadline = event.deadline ?? 0;
-        const request: Observed =
-            found.kind === "consent"
-                ? new ObservedRequest("consent", appId, found.subject, deadline)
-                : new ObservedRequest("secret", appId, found.subject, deadline);
-        this.#held.set(id, request);
-        const method = found.kind === "consent" ? "onConsentRequest" : "onSecretRequest";
+        let request: Observed;
         // One call per listener, so one that throws or runs out its budget leaves the others their turn, then one
         // that settles the request: it runs last because the queue runs in order.
-        for (const listener of [...this.#listeners]) {
-            if (typeof listener[method] === "function") {
-                this.#host.schedule(`${describe(listener)}.${method}`, () => {
-                    if (this.#listeners.includes(listener)) {
-                        notify(listener, request);
-                    }
-                });
+        if (found.kind === "auth") {
+            const authentication = new ObservedAuthentication(
+                found.actionId,
+                event.message ?? "",
+                found.requester,
+                found.identities,
+                deadline,
+            );
+            request = authentication;
+            for (const listener of [...this.#authListeners]) {
+                if (typeof listener.onAuthenticationRequest === "function") {
+                    this.#host.schedule(`${describe(listener)}.onAuthenticationRequest`, () => {
+                        if (this.#authListeners.includes(listener)) {
+                            listener.onAuthenticationRequest?.(authentication);
+                        }
+                    });
+                }
+            }
+        } else {
+            const appId = event.subject ?? "";
+            const observed =
+                found.kind === "consent"
+                    ? new ObservedRequest("consent", appId, found.subject, deadline)
+                    : new ObservedRequest("secret", appId, found.subject, deadline);
+            request = observed;
+            const method = found.kind === "consent" ? "onConsentRequest" : "onSecretRequest";
+            for (const listener of [...this.#listeners]) {
+                if (typeof listener[method] === "function") {
+                    this.#host.schedule(`${describe(listener)}.${method}`, () => {
+                        if (this.#listeners.includes(listener)) {
+                            notify(listener, observed);
+                        }
+                    });
+                }
             }
         }
+        this.#held.set(id, request);
         this.#host.schedule("dialogs.settle", () => {
             this.#held.delete(id);
             const outcome = ObservedRequest.outcome(request);

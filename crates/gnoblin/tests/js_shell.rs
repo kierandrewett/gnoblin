@@ -16,7 +16,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::os::unix::fs::PermissionsExt as _;
+use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,11 +31,11 @@ use gnoblin_client::{Client, ClientError, PortalOutcome, PortalTicket};
 use gnoblin_compositor::{Compositor, InputTap, OutputTap, SessionConfig, StopHandle};
 use gnoblin_js::{JsHealth, JsRole, JsRoleConfig};
 use gnoblin_log::event::capture::logged;
-use gnoblin_model::{Fields, Filter, RequestCompletion, TypeKey, Value};
+use gnoblin_model::{Fields, Filter, Provider, RequestCompletion, TypeKey, Value};
 use gnoblin_proto::tree::op;
 use gnoblin_proto::tree::tree::{AttachArgs, AttachedPayload, ReplyPayload, SnapshotPayload, TransactArgs};
 use gnoblin_proto::{Envelope, Kind, read_frame, write_frame};
-use gnoblin_types::{DeviceId, OutputId, Point, Version};
+use gnoblin_types::{DeviceId, OutputId, Point, RequestId, Version};
 
 mod support;
 use support::{Mapper, Watcher, flag_of, ids, scene, screens, snapshot, spots};
@@ -3601,6 +3601,9 @@ impl Services {
         let session = Session::start_with(move |config| {
             config.privileged = privileged;
             config.guardian = Some(UnixStream::from(compositor_control));
+            // A request nobody refuses opens the compositor's polkit dialog, which runs polkit's helper. No test
+            // runs the machine's: a helper that is not there is the dialog's error to show.
+            config.polkit_helper = Some(PathBuf::from("/nonexistent/polkit-agent-helper-1"));
         });
         Self {
             _guardian: guardian,
@@ -3620,206 +3623,191 @@ impl Services {
             .expect("a read deadline");
         client
     }
-
-    /// Who provides the `auth.polkit` slot, as the session object publishes it.
-    fn provider(&self) -> String {
-        let mut client = owner_client(&self.session.ipc());
-        let snapshot = client.subscribe(Filter::All).expect("the snapshot");
-        snapshot
-            .objects()
-            .iter()
-            .find(|view| view.ty().to_string() == "gnoblin.session")
-            .and_then(|view| match view.property("slot_auth_polkit") {
-                Some(Value::Text(provider)) => Some(provider.clone()),
-                _ => None,
-            })
-            .expect("the session object names the slot's provider")
-    }
 }
 
-const AUTHENTICATION: &str = r#"import { AuthenticationProvider, gnoblin } from "gnoblin";
+const AUTHENTICATION: &str = r#"import { AuthenticationListener, gnoblin } from "gnoblin";
 
 const seen: string[] = [];
-class Prompt extends AuthenticationProvider {
-    onRequest(request) {
-        seen.push(`${request.subject}:${request.title}`);
-        if (request.subject === "org.example.allow") {
-            request.allow("unix-user:test");
-        } else if (request.subject === "org.example.deny") {
-            request.decline("denied");
+class Policy extends AuthenticationListener {
+    onAuthenticationRequest(request) {
+        seen.push(
+            [
+                request.actionId,
+                request.subject,
+                request.appId,
+                request.identities.join("+"),
+                typeof request.allow,
+                JSON.stringify(request),
+            ].join("|"),
+        );
+        if (request.actionId === "org.example.deny") {
+            request.decline("not today");
         }
-        // Any other request is left open, as a prompt the user has not answered yet.
     }
 }
-gnoblin.authentication.setProvider(new Prompt());
+gnoblin.authentication.addListener(new Policy());
 (globalThis as { probe?: () => string }).probe = () => seen.join(",");
 "#;
 
-/// The next event the services connection is sent that `pick` takes, within the patience of a test.
-#[track_caller]
-fn services_event<T>(
-    services: &mut Client<UnixTransport>,
-    what: &str,
-    mut pick: impl FnMut(gnoblin_client::Event) -> Option<T>,
-) -> T {
-    let deadline = Instant::now() + PATIENCE;
-    loop {
-        match services.next_event() {
-            Ok(event) => {
-                if let Some(found) = pick(event) {
-                    return found;
-                }
-            }
-            Err(ClientError::Idle) => {}
-            Err(error) => panic!("the services connection failed while waiting for {what}: {error}"),
-        }
-        assert!(Instant::now() < deadline, "never reached: {what}");
-    }
+/// The cookie polkitd gave the authentication, which only polkit's helper may see.
+const POLKIT_COOKIE: &str = "42-secret-cookie";
+
+/// The payload the services role's polkit agent offers for one authentication of this process's user.
+fn polkit_payload(action: &str) -> Vec<u8> {
+    let uid = fs::metadata("/proc/self")
+        .expect("this process has a /proc entry")
+        .uid();
+    serde_json::to_vec(&serde_json::json!({
+        "cookie": POLKIT_COOKIE,
+        "action_id": action,
+        "message": "Authenticate to mount",
+        "icon_name": "",
+        "details": {},
+        "identities": [{ "kind": "unix-user", "uid": uid }],
+        "requester": "pkexec",
+    }))
+    .expect("the payload is JSON")
 }
 
-/// The shell holds the `auth.polkit` slot while a provider is set, so the services role's offer reaches the script, and
-/// what the script settles goes back: an identity is an answer only the offering host reads, a decline is a refusal.
-/// A reload that drops the provider gives the slot back to the services role.
+/// What the services role is told of `request` within `within`: how it ended, or `None` while it is still open.
+#[track_caller]
+fn completion_within(
+    offerer: &mut Client<UnixTransport>,
+    request: RequestId,
+    within: Duration,
+) -> Option<RequestCompletion> {
+    let deadline = Instant::now() + within;
+    while Instant::now() < deadline {
+        match offerer.next_event() {
+            Ok(gnoblin_client::Event::RequestFinished {
+                request: ended,
+                completion,
+            }) if ended == request => return Some(completion),
+            Ok(_) | Err(ClientError::Idle) => {}
+            Err(error) => panic!("the services connection failed: {error}"),
+        }
+    }
+    None
+}
+
+/// Offers an authentication of `action` the way the services role's agent does.
+#[track_caller]
+fn offer_authentication(offerer: &mut Client<UnixTransport>, action: &str) -> RequestId {
+    offerer
+        .offer(
+            "auth.polkit",
+            action,
+            "Authenticate to mount",
+            &polkit_payload(action),
+            Duration::from_secs(600),
+        )
+        .expect("the compositor takes the authentication")
+}
+
+/// Offers requests the listener refuses until one is refused, which shows the shell is observing: the shell claims
+/// the observation in its first frames, and a request that came before is the dialog's, so it is withdrawn.
+#[track_caller]
+fn until_observed(session: &Session, mapper: &mut Mapper, shell: &Shell, offerer: &mut Client<UnixTransport>) {
+    wait_for("the listener refuses a request", session, mapper, shell, || {
+        let request = offer_authentication(offerer, "org.example.deny");
+        match completion_within(offerer, request, Duration::from_millis(1_500)) {
+            Some(RequestCompletion::Refused(_)) => true,
+            Some(other) => panic!("the request ended another way: {other:?}"),
+            None => {
+                offerer.decline(request).expect("the offerer withdraws its request");
+                let _ = completion_within(offerer, request, Duration::from_secs(5));
+                false
+            }
+        }
+    });
+}
+
+/// A listener sees an authentication's action, who asks and who may authenticate, never its cookie, and has no way to
+/// allow it: a request it declines is refused, and one it leaves alone is the compositor's dialog's, which stays open
+/// until the user or the requester ends it.
 #[test]
-fn an_authentication_provider_answers_polkit_requests_and_gives_the_slot_back_on_reload() {
+fn an_authentication_listener_sees_a_request_without_its_cookie_and_can_only_refuse_it() {
     let mut services = Services::start();
     let mut offerer = services.role_client();
+    offerer
+        .claim_slot("auth.polkit", Provider::Services)
+        .expect("the services role claims its slot");
     let mut mapper = Mapper::connect(&services.session.wayland());
     let config = tempfile::tempdir().expect("a config directory");
     save(&config.path().join("init.ts"), AUTHENTICATION);
     let shell = Shell::start(&services.session, config.path(), |_| {});
-    wait_for(
-        "the shell holds the slot",
-        &services.session,
-        &mut mapper,
-        &shell,
-        || services.provider() == "shell",
-    );
+    until_observed(&services.session, &mut mapper, &shell, &mut offerer);
 
-    let allowed = offerer
-        .offer(
-            "auth.polkit",
-            "Authentication required",
-            "Authenticate to mount",
-            b"org.example.allow",
-            Duration::from_secs(60),
-        )
-        .expect("the slot has a provider");
-    let answer = services_event(&mut offerer, "the provider's answer", |event| match event {
-        gnoblin_client::Event::RequestAnswered { request, answer } if request == allowed => Some(answer),
-        _ => None,
-    });
+    let left_alone = offer_authentication(&mut offerer, "org.example.other");
     assert_eq!(
-        answer.as_slice(),
-        b"unix-user:test",
-        "the answer is the identity and only it"
+        completion_within(&mut offerer, left_alone, Duration::from_millis(1_500)),
+        None,
+        "a request the listener leaves alone is the dialog's, and nobody answered it"
     );
-
-    let denied = offerer
-        .offer(
-            "auth.polkit",
-            "Authentication required",
-            "Authenticate to mount",
-            b"org.example.deny",
-            Duration::from_secs(60),
-        )
-        .expect("the slot has a provider");
-    let completion = services_event(&mut offerer, "the refusal", |event| match event {
-        gnoblin_client::Event::RequestFinished { request, completion } if request == denied => Some(completion),
-        _ => None,
-    });
-    assert!(matches!(completion, RequestCompletion::Refused(_)), "{completion:?}");
-
-    // A request the script leaves open ends when the shell does: the compositor knows the shell holds it.
-    let open = offerer
-        .offer(
-            "auth.polkit",
-            "Authentication required",
-            "Authenticate to mount",
-            b"org.example.later",
-            Duration::from_secs(60),
-        )
-        .expect("the slot has a provider");
     wait_for(
-        "the script saw all three requests",
+        "the listener saw the request",
         &services.session,
         &mut mapper,
         &shell,
-        || shell.probe().matches("Authentication required").count() == 3,
+        || shell.probe().contains("org.example.other"),
     );
-
-    let before = shell.generation();
-    save(&config.path().join("init.ts"), "// no provider\n");
-    wait_for(
-        "the reload released the slot",
-        &services.session,
-        &mut mapper,
-        &shell,
-        || shell.generation() > before && services.provider() == "services",
-    );
-    let completion = services_event(
-        &mut offerer,
-        "the open request ended with the generation",
-        |event| match event {
-            gnoblin_client::Event::RequestFinished { request, completion } if request == open => Some(completion),
-            _ => None,
-        },
-    );
+    let probe = shell.probe();
     assert!(
-        matches!(completion, RequestCompletion::Refused(_) | RequestCompletion::Ended),
-        "a request a retired generation held is ended, not left to its deadline: {completion:?}"
+        probe.contains("org.example.other|pkexec||unix-user:"),
+        "the listener sees the action, the program asking, no application id and who may authenticate: {probe}"
     );
+    assert!(probe.contains("|undefined|"), "there is no `allow` to call: {probe}");
+    assert!(
+        !probe.contains(POLKIT_COOKIE),
+        "the cookie never reaches a script: {probe}"
+    );
+    assert!(!probe.contains("cookie"), "nor does the field that holds it: {probe}");
+
+    // The requester gives up (polkitd cancelled it): the dialog closes and the request ends without an answer.
+    offerer.decline(left_alone).expect("the offerer withdraws its request");
+    assert_eq!(
+        completion_within(&mut offerer, left_alone, Duration::from_secs(5)),
+        Some(RequestCompletion::Ended)
+    );
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
     shell.finish();
 }
 
-/// A shell that goes away without a word, with a request open, is the case a crash is: the compositor holds the claim
-/// and ends the request when the connection closes, so polkit's caller is not left to the request's deadline, and the
-/// slot is the services role's again.
+/// A shell that goes away with an authentication in front of it, which is the case a crash is, leaves the compositor's
+/// dialog holding the request: it is neither answered by the departure nor left to a script, and its requester can
+/// still withdraw it.
 #[test]
-fn an_open_authentication_request_ends_at_once_when_the_shell_goes_away() {
+fn an_authentication_stays_the_dialogs_when_the_observing_shell_goes_away() {
     let mut services = Services::start();
     let mut offerer = services.role_client();
+    offerer
+        .claim_slot("auth.polkit", Provider::Services)
+        .expect("the services role claims its slot");
     let mut mapper = Mapper::connect(&services.session.wayland());
     let config = tempfile::tempdir().expect("a config directory");
     save(&config.path().join("init.ts"), AUTHENTICATION);
     let shell = Shell::start(&services.session, config.path(), |_| {});
+    until_observed(&services.session, &mut mapper, &shell, &mut offerer);
+
+    let open = offer_authentication(&mut offerer, "org.example.later");
     wait_for(
-        "the shell holds the slot",
-        &services.session,
-        &mut mapper,
-        &shell,
-        || services.provider() == "shell",
-    );
-    let open = offerer
-        .offer(
-            "auth.polkit",
-            "Authentication required",
-            "Authenticate to mount",
-            b"org.example.later",
-            Duration::from_secs(600),
-        )
-        .expect("the slot has a provider");
-    wait_for(
-        "the script saw the request",
+        "the listener saw the request",
         &services.session,
         &mut mapper,
         &shell,
         || shell.probe().contains("org.example.later"),
     );
     shell.finish();
-    let completion = services_event(&mut offerer, "the request ended with the shell", |event| match event {
-        gnoblin_client::Event::RequestFinished { request, completion } if request == open => Some(completion),
-        _ => None,
-    });
-    assert!(
-        !matches!(completion, RequestCompletion::TimedOut | RequestCompletion::Answered),
-        "a request the shell held ends with it, not at its deadline: {completion:?}"
+    assert_eq!(
+        completion_within(&mut offerer, open, Duration::from_millis(1_500)),
+        None,
+        "the shell's departure neither answers nor ends a request the dialog holds"
     );
-    let deadline = Instant::now() + PATIENCE;
-    while services.provider() != "services" {
-        assert!(Instant::now() < deadline, "the slot went back to the services role");
-        std::thread::sleep(POLL);
-    }
+    offerer.decline(open).expect("the offerer withdraws its request");
+    assert_eq!(
+        completion_within(&mut offerer, open, Duration::from_secs(5)),
+        Some(RequestCompletion::Ended)
+    );
 }
 
 // ---- the keyboard move and resize of a window -------------------------------------------------------------------

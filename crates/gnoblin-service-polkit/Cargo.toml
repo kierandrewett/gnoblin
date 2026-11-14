@@ -29,6 +29,9 @@ gnoblin-log = { path = "../gnoblin-log" }
 gnoblin-service-testkit = { path = "../gnoblin-service-testkit" }
 # The tests drive the agent's object through a real client connection and await its replies.
 futures-lite.workspace = true
+# The chain test plays the compositor's half: it reads the agent's payload and runs the helper the way the
+# compositor's dialog does.
+gnoblin-polkit-auth = { path = "../gnoblin-polkit-auth" }
 
 [lints]
 workspace = true

@@ -68,51 +68,43 @@ until the same name is released. Keep your holders few and named for what they a
 
 ## Authentication
 
-When a program needs administrator rights, polkit asks an authentication agent. The compositor offers each request to the
-holder of the `auth.polkit` slot, and `gnoblin.authentication` lets your config hold it.
+When a program needs administrator rights, polkit asks an authentication agent. The compositor draws the password
+dialog itself and checks the password with polkit's own helper, `polkit-agent-helper-1`. A script never draws it, reads
+the password or says that a password was right. `gnoblin.authentication` lets your config watch the requests and refuse
+one.
 
 ```ts
-import { AuthenticationProvider, defineConfig } from "gnoblin";
+import { AuthenticationListener, defineConfig } from "gnoblin";
 
-class Prompt extends AuthenticationProvider {
-    onRequest(request) {
-        // Show request.title and request.message, then, once the user has proved who they are:
-        request.allow("unix-user:kieran");
-        // or, if they say no:
-        // request.decline("denied");
+class NoRoot extends AuthenticationListener {
+    onAuthenticationRequest(request) {
+        if (request.identities.includes("unix-user:root") && request.subject !== "pkexec") {
+            request.decline("only pkexec may ask for root");
+        }
     }
 }
 
-defineConfig({ setup: (gnoblin) => gnoblin.authentication.setProvider(new Prompt()) });
+defineConfig({ setup: (gnoblin) => gnoblin.authentication.addListener(new NoRoot()) });
 ```
 
-The shell holds the slot while a provider is set. With none, the services role's built-in agent holds it, and a reload
-that drops the provider gives it back.
+A listener is shown each request for a short window before the dialog opens, and may refuse it. A request carries:
 
-A request carries these fields:
-
-- `id`, `title` and `message`: what a prompt shows.
-- `subject`: text the offering agent chose. The compositor does not read it.
+- `actionId`: the polkit action, such as `org.freedesktop.policykit.exec`.
+- `message`: the sentence polkit wants shown.
+- `subject`: the program asking, such as `pkexec`. It is text from polkit, not an identity to trust.
+- `appId`: always empty, because polkit names a process and not an application.
+- `identities`: who may authenticate, written `unix-user:alice`.
 - `deadline`: when the compositor takes the request back.
 
-The shell claims a request as it is offered, so a shell that goes away ends it at once and not at its deadline.
+There is no `allow` and no way to read or give a password. `request.decline(reason)` is the only call: polkit is told the
+request is not authorized and the dialog never opens. The reason is for the log. A listener that does nothing, throws or
+runs past its budget leaves the request to the dialog.
 
-| Call                      | What the compositor reads                                                       |
-| ------------------------- | ------------------------------------------------------------------------------- |
-| `request.allow(identity)` | A non-empty identity of at most 256 bytes: the user authenticated as this.      |
-| `request.decline(reason)` | A refusal. `reason` is `"locked"`, `"denied"` (the default) or `"unavailable"`. |
-
-A request settles once; a later call does nothing. A request nobody settles ends as timed out at its deadline.
-
-- `request.open` is `true` until it is settled or has ended.
-- `request.completion` says how it ended: `answered`, `ended`, `refused`, `timed-out` or `lost`.
-- `provider.onFinished(request)` runs when it has ended.
-- A request still open when the generation ends is declined as `unavailable`.
-
-Nothing in the compositor checks who the user is. The provider is trusted to have done that before it calls `allow`, which
-is why only the shell that holds the slot can answer.
+The cookie polkit gives the request never reaches a script. A shell cannot claim the `auth.polkit` slot, so a reload or a
+crash of the shell leaves a request in the compositor's dialog, where the user or the requester can still end it.
 
 Polkit allows one agent per session. If `polkit-gnome`, `polkit-mate` or another agent is running, it remains the agent.
+See [authentication prompts](/shell-api/authentication) for how the dialog and the helper work.
 
 ## Launch feedback
 

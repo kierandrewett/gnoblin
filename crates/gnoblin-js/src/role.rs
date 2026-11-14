@@ -129,9 +129,6 @@ pub struct JsRoleLinks {
     pub config: Option<Box<dyn JsConfigLink>>,
     /// For the session: `gnoblin.session`, `gnoblin.runtime.reloadConfig` and the schema's signals.
     pub session: Option<Box<dyn JsSessionLink>>,
-    /// For the authentication slot (`gnoblin.authentication`): a connection of its own, so a provider's claim and
-    /// answers never queue behind the dialog observation's.
-    pub auth: Option<Box<dyn SlotLink>>,
     /// Opens the connection for the compositor's idle state when a script first wants it (`gnoblin.idle`).
     pub idle: Option<JsIdleConnector>,
 }
@@ -221,16 +218,6 @@ impl JsRole {
                 None
             }
         };
-        let auth: Option<Box<dyn SlotLink>> = match ClientSlotLink::connect(&path, version) {
-            Ok(link) => Some(Box::new(link)),
-            Err(error) => {
-                log::warn!(
-                    area = "shell-vm",
-                    "the shell has no authentication connection ({error}); the built-in agent serves polkit requests"
-                );
-                None
-            }
-        };
         let idle_path = path.clone();
         let idle: JsIdleConnector = Box::new(move || {
             JsClientIdleLink::connect(&idle_path, version).map(|link| Box::new(link) as Box<dyn JsIdleLink>)
@@ -241,7 +228,6 @@ impl JsRole {
                 slots,
                 config: document,
                 session,
-                auth,
                 idle: Some(idle),
             },
             config,
@@ -268,9 +254,6 @@ impl JsRole {
         }
         if let Some(session) = links.session {
             shell.set_session_link(session);
-        }
-        if let Some(auth) = links.auth {
-            shell.set_auth_link(auth);
         }
         if let Some(idle) = links.idle {
             shell.set_idle_connector(idle);

@@ -1,10 +1,14 @@
 //! The `auth.polkit` state machine: one polkit request, one offer, one answer.
 //!
 //! A `BeginAuthentication` call from polkitd becomes a [`Proposition`] offered to
-//! the compositor, a shell claims it and answers with the [`Decision`] the user
-//! made, and the D-Bus call returns that decision. Nothing in between holds the
-//! password: polkit's own authentication runs in polkit's helper, and this crate
-//! never sees a secret for this slot.
+//! the compositor. The compositor draws its own dialog and runs polkit's helper
+//! (`polkit-agent-helper-1`) to check the password, and answers with the identity
+//! the helper authenticated; the D-Bus call returns that decision. This crate never
+//! sees a password, and nothing that draws a prompt answers for the helper: polkitd
+//! only accepts an authentication from the helper, which runs as root
+//! (design/js-research/polkit.md). The slot registry mirrors the compositor's, which
+//! refuses a shell's claim of `auth.polkit`, so in a session the provider is the
+//! services role or nobody.
 //!
 //! Three rules shape the state machine, and each is a failure mode from the plan:
 //!
@@ -105,18 +109,20 @@ pub struct Proposition {
     pub request: PolkitRequest,
     /// What the request is about, as opaque bytes the compositor carries unread. A
     /// provider answers by subject rather than by the sentence it shows, so a request
-    /// with no subject is one a provider can only answer by its message. Empty for
-    /// polkit and GeoClue, which name themselves through the request itself.
+    /// with no subject is one a provider can only answer by its message. For polkit it is the
+    /// [`gnoblin_polkit_auth::AuthRequest`] the compositor's dialog and helper need (the cookie, the
+    /// identities); GeoClue names itself through the request and leaves it empty.
     pub subject: Vec<u8>,
 }
 
 impl Proposition {
     /// The proposition for one polkit request.
     pub fn new(request: PolkitRequest) -> Proposition {
+        let subject = auth_request(&request).encode();
         Proposition {
             slot: CapabilitySlot::AuthPolkit,
             request,
-            subject: Vec::new(),
+            subject,
         }
     }
 
@@ -206,6 +212,11 @@ pub struct Offered {
 pub trait Offerer {
     /// Offer one request, announcing it to the connections allowed to claim it.
     fn offer(&mut self, proposition: &Proposition, deadline: Tick) -> Result<RequestId, Refusal>;
+
+    /// Tell the compositor nobody wants the answer to `request` any more: polkitd cancelled it, so its dialog must
+    /// close and the helper behind it stop. The compositor ends the request itself at its deadline, so an offerer
+    /// that cannot say so is late, not wrong.
+    fn withdraw(&mut self, _request: RequestId) {}
 }
 
 /// A boxed offerer is an offerer, so the D-Bus layer can hold whichever connection the
@@ -214,6 +225,39 @@ impl Offerer for Box<dyn Offerer + Send> {
     fn offer(&mut self, proposition: &Proposition, deadline: Tick) -> Result<RequestId, Refusal> {
         (**self).offer(proposition, deadline)
     }
+
+    fn withdraw(&mut self, request: RequestId) {
+        (**self).withdraw(request);
+    }
+}
+
+/// What the compositor's dialog and polkit's helper need of one `BeginAuthentication`, in the payload the offer
+/// carries. A `unix-user` identity is the only kind the helper can authenticate, so the others are carried only so
+/// they can be shown as unsupported.
+fn auth_request(request: &PolkitRequest) -> gnoblin_polkit_auth::AuthRequest {
+    let identities = request
+        .identities
+        .iter()
+        .map(|identity| match (identity.kind.as_str(), identity.details.get("uid")) {
+            ("unix-user", Some(Value::Uint(uid))) => match u32::try_from(*uid) {
+                Ok(uid) => gnoblin_polkit_auth::Identity::UnixUser { uid },
+                Err(_) => gnoblin_polkit_auth::Identity::Other {
+                    kind: identity.kind.clone(),
+                },
+            },
+            _ => gnoblin_polkit_auth::Identity::Other {
+                kind: identity.kind.clone(),
+            },
+        })
+        .collect();
+    gnoblin_polkit_auth::AuthRequest::new(
+        request.cookie.clone(),
+        request.action_id.clone(),
+        request.message.clone(),
+        request.icon_name.clone(),
+        request.details.clone(),
+        identities,
+    )
 }
 
 /// Why a request could not be started, answered or finished.

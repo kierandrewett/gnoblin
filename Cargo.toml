@@ -65,6 +65,7 @@ members = [
     "crates/gnoblin-output",
     "crates/gnoblin-paint",
     "crates/gnoblin-pipewire-export",
+    "crates/gnoblin-polkit-auth",
     "crates/gnoblin-parity",
     "crates/gnoblin-proto",
     "crates/gnoblin-render",

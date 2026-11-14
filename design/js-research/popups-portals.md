@@ -283,3 +283,5 @@ Today's equivalents: `seat.data.prompts = false` and `seat.data.alerts = false` 
 10. **Hold time on reload:** 2 s before the fallback appears. Acceptable, or show the Rust dialog immediately and swap after the claim returns?
 11. **Chooser UIs:** keep routing file and app choosers to xdg-desktop-portal-gtk/kde (`gnoblin-portals.conf`), or wire the built-ins? The JS design above does not depend on it.
 12. **Lock fallback scope:** password entry only, or entry plus clock and the notification count? Anything more makes the Rust lock a second lock screen to maintain.
+
+**Row 6 and question 6 are answered in `polkit.md`.** The setuid helper, not the agent, tells polkitd; the compositor now draws the dialog and runs the helper, a shell cannot claim `auth.polkit`, and `gnoblin.authentication.addListener` may only refuse.

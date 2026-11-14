@@ -182,6 +182,12 @@ impl Offerer for Host {
             Err(OfferFailure::Refused { reason }) => Err(Refusal::Connection { reason }),
         }
     }
+
+    fn withdraw(&mut self, request: RequestId) {
+        // The offerer's own decline is how the compositor learns nobody wants the request any more: it closes the
+        // dialog and stops the helper behind it.
+        Host::decline(self, request);
+    }
 }
 
 /// An agent the caller links into the services role.

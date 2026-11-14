@@ -13,6 +13,9 @@ workspace = true
 [dependencies]
 # Text that must not leak (a seat claim's chord, a password): redacted `Debug`, wiped on drop.
 gnoblin-secret.workspace = true
+# polkit authentication: the request the services role offers, and polkit's own helper that verifies the password
+# (design/js-research/polkit.md). The compositor runs it, so no script decides whether a password was right.
+gnoblin-polkit-auth = { path = "../gnoblin-polkit-auth" }
 # The Wayland engine this process runs: the protocol handlers, the seat, the window
 # manager glue and the frame hook.
 gnoblin-wayland = { path = "../gnoblin-wayland" }

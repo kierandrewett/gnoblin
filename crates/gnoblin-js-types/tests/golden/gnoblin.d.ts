@@ -2010,8 +2010,8 @@ declare module "gnoblin" {
         style?: DialogStyleConfig;
     }
 
-    /** What a request is: a consent dialog for a portal request, or the compositor's passphrase prompt. */
-    export type DialogKind = "consent" | "secret";
+    /** What a request is: a consent dialog for a portal request, the compositor's passphrase prompt, or a polkit authentication. */
+    export type DialogKind = "consent" | "secret" | "auth";
 
     /** A request the compositor is about to open a dialog for. It lives for the observation window and no longer. */
     export interface DialogRequest {
@@ -2020,7 +2020,7 @@ declare module "gnoblin" {
         readonly appId: string;
         /**
          * What is asked about: the portal interface of a consent request (`Screenshot`), the app's own prompt text of a
-         * passphrase request (not to be trusted as identity).
+         * passphrase request (not to be trusted as identity), the program asking for an authentication.
          */
         readonly subject: string;
         /** When the compositor takes the request back, in milliseconds on its own clock. */
@@ -2099,43 +2099,35 @@ declare module "gnoblin" {
 
     // -- Authentication -------------------------------------------------------
 
-    /** How a provider can decline: the user is not there to answer, said no, or the prompt cannot be shown. */
-    export type AuthenticationDecline = "locked" | "denied" | "unavailable";
-
-    /** An authentication request a provider holds. */
-    export interface AuthenticationRequest {
-        readonly id: number;
-        readonly title: string;
+    /**
+     * A polkit authentication the compositor is about to open its dialog for. It lives for the observation window and
+     * no longer. It carries nothing the password check needs: the compositor draws the dialog, asks for the password
+     * in it and checks it with polkit's own helper, and a script can only refuse the request.
+     */
+    export interface AuthenticationRequest extends DialogRequest {
+        readonly kind: "auth";
+        /** The polkit action, for example `org.freedesktop.policykit.exec`. */
+        readonly actionId: string;
+        /** The sentence polkit wants shown, in the session's language. */
         readonly message: string;
-        /** What the request is about, as the offering agent chose it; the compositor does not interpret it. */
+        /** Always empty: polkit names a process, not an application, so the program asking is `subject`. */
+        readonly appId: string;
+        /** The program asking, as polkit reports it (`pkexec`, a process name), or the empty string. */
         readonly subject: string;
-        /** When the compositor takes the request back, on its own clock in milliseconds. */
-        readonly deadline: number;
-        /** True until the request is settled or has ended. */
-        readonly open: boolean;
-        /** `answered`, `ended`, `refused`, `timed-out` or `lost`; null while it is open. */
-        readonly completion: string | null;
-        /** The user authenticated as `identity`, a non-empty name of at most 256 bytes. */
-        allow(identity: string): void;
-        /** The request is refused; `reason` defaults to `"denied"`. */
-        decline(reason?: AuthenticationDecline): void;
+        /** Who may authenticate, as polkit writes them: `unix-user:alice`. */
+        readonly identities: readonly string[];
     }
 
-    /** Answers the session's authentication requests. Every method is optional. */
-    export class AuthenticationProvider {
-        onRequest?(request: AuthenticationRequest): void;
-        onFinished?(request: AuthenticationRequest): void;
+    /** Watches the session's polkit authentications. Every method is optional. */
+    export class AuthenticationListener {
+        /** An authentication is about to be asked of the user; `request.decline(reason)` refuses it. There is no `allow`. */
+        onAuthenticationRequest?(request: AuthenticationRequest): void;
     }
 
     export interface AuthenticationManager {
-        /** The provider that answers requests, or null when the built-in agent does. */
-        readonly provider: AuthenticationProvider | null;
-        /** The requests the provider has been offered that have not ended. */
-        readonly requests: readonly AuthenticationRequest[];
-        /** Makes `provider` the session's authentication agent, replacing the one there was. */
-        setProvider(provider: AuthenticationProvider): void;
-        /** Gives the slot back to the built-in agent. */
-        clearProvider(): void;
+        readonly listeners: readonly AuthenticationListener[];
+        addListener(listener: AuthenticationListener): void;
+        removeListener(listener: AuthenticationListener): void;
     }
 
     // -- Launch feedback ------------------------------------------------------
@@ -2330,8 +2322,8 @@ declare module "gnoblin" {
         /** The compositor's seats as input contexts, with the bindings that run on their chords and drags. */
         readonly input: InputManager;
         /**
-         * Policy over the compositor's own consent and passphrase dialogs. Attached listeners may refuse a request
-         * before its dialog opens; nothing here allows one or reads a secret.
+         * Policy over the compositor's own consent, passphrase and authentication dialogs. Attached listeners may refuse a
+         * request before its dialog opens; nothing here allows one or reads a secret.
          */
         readonly dialogs: DialogManager;
         /** The programs this shell started: `spawn`, `list`, `byId`, and listeners told when one ends. */
@@ -2346,7 +2338,7 @@ declare module "gnoblin" {
         readonly focus: FocusHistory;
         /** Watches for the session going idle, and holds that keep it awake. */
         readonly idle: IdleMonitor;
-        /** The session's authentication agent: a provider that answers the polkit requests. */
+        /** The session's polkit authentications: listeners that watch them and may refuse one. Nothing here can allow one. */
         readonly authentication: AuthenticationManager;
         /** Launch feedback: the busy state between asking for an application and its window. */
         readonly launches: LaunchFeedback;

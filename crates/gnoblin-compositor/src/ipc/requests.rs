@@ -69,6 +69,7 @@ use gnoblin_model::{
     CapabilitySlot, DeclineReason, Fields, Provider, RequestBroker, RequestCompletion, RequestEvent, RequestId,
     RequestOutcome, Slots, Tick,
 };
+use gnoblin_polkit_auth::{AuthRequest, PayloadError};
 use gnoblin_types::{ClientId, OwnerId};
 
 /// The connection a request the compositor's own dialog serves is held by. It is no real connection, so no
@@ -91,12 +92,42 @@ pub(crate) const OBSERVE_MS: u64 = 250;
 pub(crate) const OBSERVE_DENY: &[u8] = b"deny";
 
 /// What an observer is told the kind of a request is: `consent:<interface>` for a portal request, `secret` for a
-/// passphrase request. A passphrase request's own title is the app's text and is not part of the kind.
+/// passphrase request, `auth` for a polkit authentication. A passphrase request's own title is the app's text and is
+/// not part of the kind.
 fn observed_title(slot: CapabilitySlot, title: &str) -> String {
     match slot {
         CapabilitySlot::PromptSecret => "secret".to_owned(),
+        CapabilitySlot::AuthPolkit => "auth".to_owned(),
         _ => format!("consent:{title}"),
     }
+}
+
+/// What an observer is told the subject of a request is. A polkit authentication's subject is the agent's payload,
+/// which carries the cookie the helper names the authentication by: an observer gets only the part of it a policy
+/// needs. Any other request's subject is carried as it is.
+fn observed_subject(offer: &Offer) -> Vec<u8> {
+    match offer.slot {
+        CapabilitySlot::AuthPolkit => AuthRequest::decode(&offer.subject)
+            .map(|request| request.observed())
+            .unwrap_or_default(),
+        _ => offer.subject.clone(),
+    }
+}
+
+/// Whether the compositor's own dialog serves the slot's requests when no shell does: the passphrase prompt when
+/// nobody claimed it, and polkit authentication always, because the compositor and not a script verifies the
+/// password (design/js-research/polkit.md).
+fn builtin_slot(slot: CapabilitySlot) -> bool {
+    matches!(slot, CapabilitySlot::PromptSecret | CapabilitySlot::AuthPolkit)
+}
+
+/// Which dialog serves a request the compositor holds itself.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum BuiltinKind {
+    /// The passphrase dialog.
+    Secret,
+    /// The polkit authentication dialog, which runs polkit's helper.
+    Polkit,
 }
 
 /// The offer record of a `portal.ui` request: the compositor's own offer on behalf of `requested_by`.
@@ -125,6 +156,10 @@ pub(crate) struct SecretPrompt {
     /// What the request is about, shown as who asks.
     pub subject: String,
 }
+
+/// What the compositor's polkit dialog shows and runs for one request: the agent's payload, or the reason it could
+/// not be read (the request then fails closed).
+pub(crate) type AuthPrompt = Result<AuthRequest, PayloadError>;
 
 /// One request that is live in the broker.
 #[derive(Clone, Debug)]
@@ -248,18 +283,29 @@ impl Requests {
             code: wire::code::UNKNOWN_SLOT,
             message: error.to_string(),
         })?;
-        // A `prompt.secret` nobody draws is served by the compositor's own dialog, so the keyring can always
-        // be unlocked. Every other slot with no provider still fails at once. When a shell observes the built-in
-        // dialogs it is shown the request first, for a short window, before the dialog opens.
-        let (provider, builtin, observer) = match self.provider_of(slot, offered_by) {
-            Ok(provider) => (provider, false, false),
-            Err(refusal) if slot == CapabilitySlot::PromptSecret && refusal.code == wire::code::NO_PROVIDER => {
-                match self.dialogs_observer().filter(|observer| *observer != offered_by) {
-                    Some(observer) => (observer, false, true),
-                    None => (builtin_client(), true, false),
-                }
+        // The compositor's own dialog serves `auth.polkit`, always, and a `prompt.secret` nobody draws, so the
+        // keyring can always be unlocked and a script is never the one that decides a password. Every other slot
+        // with no provider still fails at once. When a shell observes the built-in dialogs it is shown the request
+        // first, for a short window, before the dialog opens.
+        let (provider, builtin, observer) = if slot == CapabilitySlot::AuthPolkit {
+            // Only the services role, which claimed the slot, hears polkitd and so offers its requests: any other
+            // connection would be asking the compositor's trusted dialog to show text it chose.
+            if self.claims.get(&slot) != Some(&offered_by) {
+                return Err(RequestRefusal {
+                    code: wire::code::DENIED,
+                    message: "`auth.polkit` requests are offered by the services role, which claims the slot"
+                        .to_owned(),
+                });
             }
-            Err(refusal) => return Err(refusal),
+            self.builtin_route(offered_by)
+        } else {
+            match self.provider_of(slot, offered_by) {
+                Ok(provider) => (provider, false, false),
+                Err(refusal) if slot == CapabilitySlot::PromptSecret && refusal.code == wire::code::NO_PROVIDER => {
+                    self.builtin_route(offered_by)
+                }
+                Err(refusal) => return Err(refusal),
+            }
         };
         let request = self.broker.offer(deadline);
         // The metadata is in place before the broker's events are drained, so the
@@ -378,6 +424,16 @@ impl Requests {
         }
     }
 
+    /// Where a request the built-in dialog serves goes first: the shell that observes the dialogs, when there is one
+    /// and it is not the connection that asked, else the dialog itself. Returns the provider, whether the dialog
+    /// holds the request, and whether the provider only observes it.
+    fn builtin_route(&self, offered_by: ClientId) -> (ClientId, bool, bool) {
+        match self.dialogs_observer().filter(|observer| *observer != offered_by) {
+            Some(observer) => (observer, false, true),
+            None => (builtin_client(), true, false),
+        }
+    }
+
     /// Claim a slot, so offers for it come to this connection.
     ///
     /// `secret.derive` is internal: only the session owner's connection, providing it, may
@@ -401,6 +457,17 @@ impl Requests {
             return Err(RequestRefusal {
                 code: wire::code::DENIED,
                 message: "`portal.ui` is claimed by a shell, which draws the dialog itself".to_owned(),
+            });
+        }
+        // `auth.polkit` is not a shell's to claim at all: the compositor draws the dialog and runs polkit's helper
+        // itself, so no script is in the path that decides whether a password was right. A shell watches it, and may
+        // refuse it, through `dialogs.observe`.
+        if slot == CapabilitySlot::AuthPolkit && provider != Provider::Services {
+            return Err(RequestRefusal {
+                code: wire::code::DENIED,
+                message: "`auth.polkit` is served by the compositor's own dialog; a shell observes it with \
+                          `dialogs.observe`"
+                    .to_owned(),
             });
         }
         // `dialogs.observe` is a shell's to claim, like `portal.ui`: the services role has no dialogs to look at.
@@ -482,7 +549,7 @@ impl Requests {
         mut answer: Vec<u8>,
     ) -> Result<Vec<FrameDelivery>, RequestRefusal> {
         // What an observer answers is a verdict, not an answer: it is read here and wiped, and never leaves.
-        if self.observed_secret(request) {
+        if self.observed_prompt(request) {
             let deny = answer.as_slice() == OBSERVE_DENY;
             answer.zeroize();
             return self.observer_verdict(owner, request, deny);
@@ -519,9 +586,20 @@ impl Requests {
         request: RequestId,
         reason: Option<DeclineReason>,
     ) -> Result<Vec<FrameDelivery>, RequestRefusal> {
+        // The services role that offered a polkit authentication withdraws it this way when polkitd cancels it:
+        // nobody is left to want the answer, so the dialog closes and the helper stops. It is the offerer's own
+        // request, not an answer, and it never reaches the user as a refusal.
+        if self
+            .offers
+            .get(&request)
+            .is_some_and(|offer| offer.slot == CapabilitySlot::AuthPolkit && offer.offered_by == owner)
+        {
+            let _ = self.broker.abandon(request);
+            return Ok(self.drain());
+        }
         // An observer that declines is not looking at the request after all: it is no objection, and the built-in
         // dialog serves it. Refusing is `deny`, which is an answer.
-        if self.observed_secret(request) {
+        if self.observed_prompt(request) {
             return self.observer_verdict(owner, request, false);
         }
         // A decline is the claimant's answer, and it stays one even for `prompt.secret`: the stock shell's
@@ -544,7 +622,7 @@ impl Requests {
         let overdue: Vec<RequestId> = self
             .offers
             .iter()
-            .filter(|(_, offer)| offer.observer && offer.slot == CapabilitySlot::PromptSecret)
+            .filter(|(_, offer)| offer.observer && builtin_slot(offer.slot))
             .filter(|(_, offer)| offer.observe_until.is_some_and(|until| now >= until))
             .map(|(request, _)| *request)
             .collect();
@@ -572,11 +650,11 @@ impl Requests {
         self.take_over(request);
     }
 
-    /// Whether `request` is a passphrase request an observer is looking at.
-    fn observed_secret(&self, request: RequestId) -> bool {
+    /// Whether `request` is a request an observer is looking at before the built-in dialog opens.
+    fn observed_prompt(&self, request: RequestId) -> bool {
         self.offers
             .get(&request)
-            .is_some_and(|offer| offer.observer && offer.slot == CapabilitySlot::PromptSecret)
+            .is_some_and(|offer| offer.observer && builtin_slot(offer.slot))
     }
 
     /// An observer's verdict on a passphrase request: `deny` refuses it by policy, anything else is no objection.
@@ -645,10 +723,7 @@ impl Requests {
             .offers
             .iter()
             .filter(|(_, offer)| {
-                offer.slot == CapabilitySlot::PromptSecret
-                    && !offer.builtin
-                    && offer.provider == client
-                    && offer.offered_by != client
+                builtin_slot(offer.slot) && !offer.builtin && offer.provider == client && offer.offered_by != client
             })
             .map(|(request, _)| *request)
             .collect();
@@ -744,7 +819,7 @@ impl Requests {
                                 CapabilitySlot::DialogsObserve.name(),
                                 &observed_title(offer.slot, &offer.title),
                                 &offer.message,
-                                &offer.subject,
+                                &observed_subject(&offer),
                             ),
                         });
                         continue;
@@ -835,14 +910,38 @@ impl Requests {
         std::mem::take(&mut self.secret_ended)
     }
 
-    /// What the built-in dialog shows for `request`, or `None` once it is not a live built-in request.
+    /// What the built-in passphrase dialog shows for `request`, or `None` once it is not a live built-in passphrase
+    /// request.
     pub(crate) fn secret_prompt(&self, request: RequestId) -> Option<SecretPrompt> {
-        let offer = self.offers.get(&request).filter(|offer| offer.builtin)?;
+        let offer = self
+            .offers
+            .get(&request)
+            .filter(|offer| offer.builtin && offer.slot == CapabilitySlot::PromptSecret)?;
         Some(SecretPrompt {
             title: offer.title.clone(),
             message: offer.message.clone(),
             subject: String::from_utf8_lossy(&offer.subject).into_owned(),
         })
+    }
+
+    /// Which built-in dialog serves `request`, or `None` once it is not a live built-in request.
+    pub(crate) fn builtin_kind(&self, request: RequestId) -> Option<BuiltinKind> {
+        let offer = self.offers.get(&request).filter(|offer| offer.builtin)?;
+        match offer.slot {
+            CapabilitySlot::PromptSecret => Some(BuiltinKind::Secret),
+            CapabilitySlot::AuthPolkit => Some(BuiltinKind::Polkit),
+            _ => None,
+        }
+    }
+
+    /// What the built-in polkit dialog shows and runs for `request`: the agent's payload, or why it could not be
+    /// read. `None` once the request is not a live built-in polkit request.
+    pub(crate) fn auth_prompt(&self, request: RequestId) -> Option<AuthPrompt> {
+        let offer = self
+            .offers
+            .get(&request)
+            .filter(|offer| offer.builtin && offer.slot == CapabilitySlot::AuthPolkit)?;
+        Some(AuthRequest::decode(&offer.subject))
     }
 
     /// The user typed `answer` into the built-in dialog. The host that offered the request reads it, as it
@@ -927,22 +1026,207 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_services_originated_offer_still_goes_to_the_offering_connection() {
+    // --- auth.polkit: the compositor verifies, nothing else answers ------------------------------------------------
+
+    /// The agent's payload for one authentication, as the services role offers it.
+    fn auth_payload() -> Vec<u8> {
+        AuthRequest::new(
+            "7-secret-cookie".to_owned(),
+            "org.freedesktop.policykit.exec".to_owned(),
+            "Authentication is needed".to_owned(),
+            String::new(),
+            std::collections::BTreeMap::new(),
+            vec![gnoblin_polkit_auth::Identity::UnixUser { uid: 0 }],
+        )
+        .encode()
+    }
+
+    /// A request layer whose `auth.polkit` is claimed by `SERVICES`, as the services role does at startup.
+    fn with_polkit_agent() -> Requests {
         let mut requests = Requests::new();
-        let (request, _) = requests
-            .offer(
-                SERVICES,
-                "auth.polkit",
-                "Authenticate",
-                "Confirm",
-                b"",
-                Tick::new(1_000),
-            )
-            .expect("the services role provides auth.polkit by default");
-        let offer = requests.offers.get(&request).expect("the offer is recorded");
-        assert_eq!(offer.provider, SERVICES, "the provider is the connection that offered");
-        assert_eq!(offer.offered_by, SERVICES);
+        requests
+            .claim_slot(SERVICES, CapabilitySlot::AuthPolkit, Provider::Services, true)
+            .expect("the services role claims auth.polkit");
+        requests
+    }
+
+    fn offer_auth(
+        requests: &mut Requests,
+        offered_by: ClientId,
+    ) -> Result<(RequestId, Vec<FrameDelivery>), RequestRefusal> {
+        requests.offer(
+            offered_by,
+            "auth.polkit",
+            "org.freedesktop.policykit.exec",
+            "Authentication is needed",
+            &auth_payload(),
+            Tick::new(120_000),
+        )
+    }
+
+    #[test]
+    fn a_shell_cannot_claim_auth_polkit_so_no_script_answers_a_password() {
+        let mut requests = Requests::new();
+        let refusal = requests
+            .claim_slot(SHELL, CapabilitySlot::AuthPolkit, Provider::Shell, true)
+            .expect_err("a shell claim is refused");
+        assert_eq!(refusal.code, wire::code::DENIED);
+        assert!(refusal.message.contains("dialogs.observe"), "{}", refusal.message);
+        assert!(
+            requests
+                .claim_slot(SERVICES, CapabilitySlot::AuthPolkit, Provider::Services, true)
+                .is_ok(),
+            "the services role still holds the slot"
+        );
+    }
+
+    #[test]
+    fn only_the_services_claimant_offers_an_authentication() {
+        let mut requests = with_polkit_agent();
+        for stranger in [SHELL, HOST] {
+            let refusal = offer_auth(&mut requests, stranger).expect_err("a stranger's offer is refused");
+            assert_eq!(refusal.code, wire::code::DENIED);
+        }
+        assert!(
+            Requests::new()
+                .offer(SERVICES, "auth.polkit", "t", "m", &auth_payload(), Tick::new(1_000))
+                .is_err(),
+            "the services role has to have claimed the slot first"
+        );
+        assert!(offer_auth(&mut requests, SERVICES).is_ok());
+    }
+
+    #[test]
+    fn an_authentication_is_held_by_the_built_in_dialog_and_never_sent_back_to_the_services_role() {
+        let mut requests = with_polkit_agent();
+        let (request, deliveries) = offer_auth(&mut requests, SERVICES).expect("the dialog takes it");
+        assert!(
+            deliveries.is_empty(),
+            "nothing is offered to a provider that could answer it"
+        );
+        assert_eq!(requests.take_secret_opened(), vec![request]);
+        assert_eq!(requests.builtin_kind(request), Some(BuiltinKind::Polkit));
+        assert!(
+            requests.secret_prompt(request).is_none(),
+            "it is not a passphrase prompt"
+        );
+        let prompt = requests
+            .auth_prompt(request)
+            .expect("the dialog reads the offer")
+            .expect("the payload is the agent's");
+        assert_eq!(prompt.cookie, "7-secret-cookie");
+        assert_eq!(prompt.action_id, "org.freedesktop.policykit.exec");
+    }
+
+    #[test]
+    fn only_the_built_in_dialog_ends_an_authentication_as_authenticated() {
+        let mut requests = with_polkit_agent();
+        let (request, _) = offer_auth(&mut requests, SERVICES).expect("the dialog takes it");
+        // Neither the host that offered it, nor a shell, nor anybody else can claim or answer it.
+        for connection in [SERVICES, SHELL, HOST] {
+            assert!(requests.claim_request(connection, request).is_err());
+            assert!(
+                requests
+                    .answer(connection, request, b"unix-user:root".to_vec())
+                    .is_err()
+            );
+        }
+        let deliveries = requests.answer_builtin(request, b"unix-user:alice".to_vec());
+        assert!(
+            carries(&deliveries, SERVICES, b"unix-user:alice"),
+            "the agent that offered the request reads who authenticated"
+        );
+        assert_eq!(
+            requests.take_secret_ended(),
+            vec![request],
+            "and the dialog is told it is over"
+        );
+    }
+
+    #[test]
+    fn the_services_role_withdraws_an_authentication_polkitd_cancelled() {
+        let mut requests = with_polkit_agent();
+        let (request, _) = offer_auth(&mut requests, SERVICES).expect("the dialog takes it");
+        let _ = requests.take_secret_opened();
+        let deliveries = requests
+            .decline(SERVICES, request, None)
+            .expect("the offerer withdraws its own request");
+        assert!(deliveries.iter().any(|delivery| delivery.client == SERVICES));
+        assert_eq!(
+            requests.take_secret_ended(),
+            vec![request],
+            "the dialog and its helper stop"
+        );
+        assert!(
+            requests.decline(SHELL, request, None).is_err(),
+            "a stranger cannot withdraw it"
+        );
+    }
+
+    #[test]
+    fn a_departed_services_role_ends_the_authentication_and_its_dialog() {
+        let mut requests = with_polkit_agent();
+        let (request, _) = offer_auth(&mut requests, SERVICES).expect("the dialog takes it");
+        let _ = requests.take_secret_opened();
+        let _ = requests.departed(SERVICES);
+        assert_eq!(requests.take_secret_ended(), vec![request]);
+    }
+
+    #[test]
+    fn an_observer_is_shown_an_authentication_without_its_cookie_and_may_only_refuse_it() {
+        let mut requests = observed();
+        requests
+            .claim_slot(SERVICES, CapabilitySlot::AuthPolkit, Provider::Services, true)
+            .expect("the services role claims auth.polkit");
+        let (request, deliveries) = offer_auth(&mut requests, SERVICES).expect("the observer is offered it");
+        assert!(carries(&deliveries, SHELL, b"dialogs.observe"));
+        assert!(carries(&deliveries, SHELL, b"auth"), "the observer is told its kind");
+        assert!(
+            carries(&deliveries, SHELL, b"org.freedesktop.policykit.exec"),
+            "and the action"
+        );
+        assert!(
+            !carries(&deliveries, SHELL, b"7-secret-cookie"),
+            "the cookie never reaches a script"
+        );
+        assert!(
+            requests.take_secret_opened().is_empty(),
+            "the dialog waits for the observer"
+        );
+
+        requests.claim_request(SHELL, request).expect("the observer claims it");
+        let refused = requests
+            .answer(SHELL, request, b"deny".to_vec())
+            .expect("the observer's verdict is taken");
+        assert!(
+            refused.iter().any(|delivery| delivery.client == SERVICES),
+            "the agent learns it was refused"
+        );
+        assert!(
+            requests.take_secret_opened().is_empty(),
+            "a refused authentication never opens the dialog"
+        );
+    }
+
+    #[test]
+    fn an_observer_cannot_allow_an_authentication() {
+        let mut requests = observed();
+        requests
+            .claim_slot(SERVICES, CapabilitySlot::AuthPolkit, Provider::Services, true)
+            .expect("the services role claims auth.polkit");
+        let (request, _) = offer_auth(&mut requests, SERVICES).expect("the observer is offered it");
+        requests.claim_request(SHELL, request).expect("the observer claims it");
+        // The word an identity answer would use is a verdict like any other, and not `deny`: no objection.
+        let deliveries = requests
+            .answer(SHELL, request, b"unix-user:root".to_vec())
+            .expect("the verdict is read, and is not `deny`");
+        assert!(
+            !carries(&deliveries, SERVICES, b"unix-user:root"),
+            "no answer of an observer reaches the agent as an identity"
+        );
+        // The dialog takes the request, and the observer's later answer finds it held by someone else.
+        assert_eq!(requests.take_secret_opened(), vec![request]);
+        assert!(requests.answer(SHELL, request, b"unix-user:root".to_vec()).is_err());
     }
 
     #[test]

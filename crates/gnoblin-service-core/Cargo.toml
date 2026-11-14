@@ -21,6 +21,8 @@ gnoblin-types = { path = "../gnoblin-types" }
 # Every refusal, cancellation and failed offer is logged once, and never with the
 # material of an answer.
 gnoblin-log = { path = "../gnoblin-log" }
+# The payload a polkit offer carries to the compositor's dialog and to polkit's helper: the cookie, the identities.
+gnoblin-polkit-auth = { path = "../gnoblin-polkit-auth" }
 
 [dev-dependencies]
 # The IPC test serves the checked-in schema through the in-process link, so the slot

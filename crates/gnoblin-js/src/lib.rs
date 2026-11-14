@@ -38,7 +38,6 @@ mod error;
 mod generation;
 mod host;
 mod host_api;
-mod host_auth;
 mod host_idle;
 mod host_process;
 mod host_session;

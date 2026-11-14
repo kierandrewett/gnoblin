@@ -1,0 +1,21 @@
+[package]
+name = "gnoblin-polkit-auth"
+description = "polkit authentication that no script can decide: the request the agent hands the compositor, and the conversation with polkit-agent-helper-1."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# A password is only ever a `SecretText` on its way to the helper: its Debug is redacted and it is wiped on drop.
+gnoblin-secret = { path = "../gnoblin-secret" }
+# Every spawn, failure and end is logged once, and never with the material of a password.
+gnoblin-log = { path = "../gnoblin-log" }
+# The request the agent offers is carried to the compositor as one JSON document in the offer's subject.
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

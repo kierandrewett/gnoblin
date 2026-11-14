@@ -91,9 +91,10 @@ use gnoblin_wayland::{
 
 use super::applied::StartedDocuments;
 use super::consent::Consent;
+use super::polkit::HelperPath;
 use super::portal::{MALFORMED, PortalScope, PortalService, UNKNOWN_KEY, parse_key, resolve_portal_scope};
 use super::reload::{Reload, ReloadVerdict};
-use super::requests::{FrameDelivery, OBSERVE_MS, Requests};
+use super::requests::{BuiltinKind, FrameDelivery, OBSERVE_MS, Requests};
 use super::secret::{SecretAction, SecretService};
 use super::tree::{AttachMode, TreeAttached, TreeReply, TreeSnapshot};
 use super::tree_host::{
@@ -256,6 +257,7 @@ impl IpcServer {
         eis: crate::eis::EisGate,
         owner_uid: Option<u32>,
         started_with: gnoblin_config::Config,
+        polkit_helper: Option<std::path::PathBuf>,
     ) -> Result<IpcServer, IpcError> {
         let path = prepared.path().to_path_buf();
         let listener = UnixListener::bind(&path).map_err(|source| IpcError::Bind {
@@ -279,7 +281,7 @@ impl IpcServer {
             reload: Reload::default(),
             applied: StartedDocuments::new(started_with),
             portal: PortalService::new(),
-            secret: SecretService::new(),
+            secret: SecretService::new().with_helper(polkit_helper.map(HelperPath::fixed).unwrap_or_default()),
             connections: BTreeMap::new(),
             readers: Arc::clone(&readers),
             start: Instant::now(),
@@ -2596,30 +2598,48 @@ impl Dispatcher {
         self.deliver_replies(scene.replies);
     }
 
-    /// Opens the passphrase dialog for the requests the request layer handed to it and closes it for those that
+    /// Opens the built-in dialog for the requests the request layer handed to it and closes it for those that
     /// ended, however they ended.
     fn settle_secret_prompts(&mut self) {
         for request in self.requests.take_secret_ended() {
             self.secret.close(request);
         }
         for request in self.requests.take_secret_opened() {
-            // A request that ended since it was handed over has nothing left to ask.
-            let Some(prompt) = self.requests.secret_prompt(request) else {
-                continue;
+            let actions = match self.requests.builtin_kind(request) {
+                // A request that ended since it was handed over has nothing left to ask.
+                None => continue,
+                Some(BuiltinKind::Secret) => {
+                    let Some(prompt) = self.requests.secret_prompt(request) else {
+                        continue;
+                    };
+                    self.secret.open(request, prompt)
+                }
+                Some(BuiltinKind::Polkit) => match self.requests.auth_prompt(request) {
+                    Some(Ok(auth)) => self.secret.open_polkit(request, auth),
+                    // An offer that is not the agent's payload is not one to authenticate: it fails closed.
+                    Some(Err(error)) => {
+                        log::warn!(area = "polkit", request = request.get(), %error, "a polkit offer was unreadable and is refused");
+                        vec![SecretAction::Decline(request)]
+                    }
+                    None => continue,
+                },
             };
-            let actions = self.secret.open(request, prompt);
             self.apply_secret_actions(actions);
         }
     }
 
-    /// Finishes the requests the passphrase dialog ended: an answer goes to the host that asked, a decline ends
-    /// the request with no answer.
+    /// Finishes the requests the built-in dialogs ended: an answer goes to the host that asked, a decline ends the
+    /// request with no answer. A polkit authentication is answered with the identity polkit's helper authenticated,
+    /// and only the dialog that ran the helper can say so.
     fn apply_secret_actions(&mut self, actions: Vec<SecretAction>) {
         for action in actions {
             let deliveries = match action {
                 SecretAction::Answer { request, secret } => self
                     .requests
                     .answer_builtin(request, secret.expose().as_bytes().to_vec()),
+                SecretAction::Authenticated { request, identity } => {
+                    self.requests.answer_builtin(request, identity.into_bytes())
+                }
                 SecretAction::Decline(request) => self.requests.decline_builtin(request),
             };
             self.deliver(deliveries);
