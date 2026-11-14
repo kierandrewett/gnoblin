@@ -20,7 +20,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -75,7 +75,10 @@ impl JsSessionVerb {
 
     /// The verb a script's name stands for.
     pub fn named(name: &str) -> Option<Self> {
-        Self::ALL.iter().find(|(known, _)| *known == name).map(|(_, verb)| *verb)
+        Self::ALL
+            .iter()
+            .find(|(known, _)| *known == name)
+            .map(|(_, verb)| *verb)
     }
 
     /// The method of the `session` object this verb calls, for the verbs the object serves.
@@ -206,12 +209,12 @@ fn client_error(error: &ClientError) -> JsOperationError {
 
 /// What the status thread knows of the graph: each object's type, and the session's properties.
 #[derive(Default)]
-struct Graph {
+struct JsSessionGraph {
     types: HashMap<ObjectId, (String, String)>,
     session: Option<ObjectId>,
 }
 
-impl Graph {
+impl JsSessionGraph {
     fn learn(&mut self, view: &ObjectView, status: &Mutex<JsSessionStatus>) {
         let (namespace, name) = (view.ty().namespace().to_owned(), view.ty().name().to_owned());
         if namespace == "gnoblin" && name == "session" {
@@ -237,7 +240,7 @@ fn apply_property(status: &Mutex<JsSessionStatus>, property: &str, value: &Value
     }
 }
 
-enum Command {
+enum JsSessionCommand {
     Call { ticket: u64, method: &'static str },
 }
 
@@ -245,13 +248,13 @@ enum Command {
 /// link is dropped.
 fn serve(
     mut client: Client<UnixTransport>,
-    commands: &Receiver<Command>,
+    commands: &Receiver<JsSessionCommand>,
     events: &Sender<JsSessionEvent>,
     status: &Mutex<JsSessionStatus>,
     stop: &AtomicBool,
     graph_ready: &Sender<Result<(), JsLinkError>>,
 ) {
-    let mut graph = Graph::default();
+    let mut graph = JsSessionGraph::default();
     match client.subscribe(Filter::All) {
         Ok(snapshot) => {
             for view in snapshot.objects() {
@@ -266,32 +269,27 @@ fn serve(
     }
     let mut pending: HashMap<OperationId, u64> = HashMap::new();
     while !stop.load(Ordering::Relaxed) {
-        loop {
-            match commands.try_recv() {
-                Ok(Command::Call { ticket, method }) => {
-                    let Some(session) = graph.session else {
-                        let _ = events.send(JsSessionEvent::Finished {
-                            ticket,
-                            outcome: Err(JsOperationError {
-                                code: "unavailable".to_owned(),
-                                message: "the compositor publishes no session object".to_owned(),
-                            }),
-                        });
-                        continue;
-                    };
-                    match client.call(session, method, &Fields::new()) {
-                        Ok(operation) => {
-                            pending.insert(operation.id(), ticket);
-                        }
-                        Err(error) => {
-                            let _ = events.send(JsSessionEvent::Finished {
-                                ticket,
-                                outcome: Err(client_error(&error)),
-                            });
-                        }
-                    }
+        while let Ok(JsSessionCommand::Call { ticket, method }) = commands.try_recv() {
+            let Some(session) = graph.session else {
+                let _ = events.send(JsSessionEvent::Finished {
+                    ticket,
+                    outcome: Err(JsOperationError {
+                        code: "unavailable".to_owned(),
+                        message: "the compositor publishes no session object".to_owned(),
+                    }),
+                });
+                continue;
+            };
+            match client.call(session, method, &Fields::new()) {
+                Ok(operation) => {
+                    pending.insert(operation.id(), ticket);
                 }
-                Err(TryRecvError::Empty | TryRecvError::Disconnected) => break,
+                Err(error) => {
+                    let _ = events.send(JsSessionEvent::Finished {
+                        ticket,
+                        outcome: Err(client_error(&error)),
+                    });
+                }
             }
         }
         match client.next_event() {
@@ -320,9 +318,7 @@ fn serve(
                         });
                     }
                 }
-                Observation::Finished {
-                    operation, outcome, ..
-                } => {
+                Observation::Finished { operation, outcome, .. } => {
                     if let Some(ticket) = pending.remove(&operation) {
                         let _ = events.send(JsSessionEvent::Finished {
                             ticket,
@@ -347,7 +343,7 @@ pub struct JsClientSessionLink {
     path: PathBuf,
     version: Version,
     status: Arc<Mutex<JsSessionStatus>>,
-    commands: Sender<Command>,
+    commands: Sender<JsSessionCommand>,
     events: Receiver<JsSessionEvent>,
     /// Where the short threads of `lock` and `reload-config` report. They own a clone.
     late: Sender<JsSessionEvent>,
@@ -464,10 +460,12 @@ impl JsSessionLink for JsClientSessionLink {
             })?,
             other => {
                 let Some(method) = other.method() else {
-                    return Err(JsLinkError("this verb is not a method of the session object".to_owned()));
+                    return Err(JsLinkError(
+                        "this verb is not a method of the session object".to_owned(),
+                    ));
                 };
                 self.commands
-                    .send(Command::Call { ticket, method })
+                    .send(JsSessionCommand::Call { ticket, method })
                     .map_err(|_| JsLinkError("the session connection is gone".to_owned()))?;
             }
         }
@@ -478,7 +476,10 @@ impl JsSessionLink for JsClientSessionLink {
         let events: Vec<JsSessionEvent> = self.events.try_iter().collect();
         if events.iter().any(|event| matches!(event, JsSessionEvent::Lost(_))) {
             self.lost = true;
-            log::warn!(area = "session", "the session connection is lost; session calls are refused");
+            log::warn!(
+                area = "session",
+                "the session connection is lost; session calls are refused"
+            );
         }
         events
     }
@@ -506,7 +507,10 @@ mod tests {
             assert_eq!(JsSessionVerb::named(name), Some(verb));
         }
         assert_eq!(JsSessionVerb::named("explode"), None);
-        let methods = JsSessionVerb::ALL.iter().filter(|(_, verb)| verb.method().is_some()).count();
+        let methods = JsSessionVerb::ALL
+            .iter()
+            .filter(|(_, verb)| verb.method().is_some())
+            .count();
         assert_eq!(methods, 5);
     }
 
@@ -533,7 +537,11 @@ mod tests {
 
     #[test]
     fn model_values_become_json() {
-        let list = Value::List(vec![Value::Uint(1), Value::Object(ObjectId::new(9)), Value::Text("x".into())]);
+        let list = Value::List(vec![
+            Value::Uint(1),
+            Value::Object(ObjectId::new(9)),
+            Value::Text("x".into()),
+        ]);
         assert_eq!(value_to_json(&list).to_string(), r#"[1,9,"x"]"#);
     }
 }

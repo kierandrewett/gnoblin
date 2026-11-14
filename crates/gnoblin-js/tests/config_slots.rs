@@ -1175,9 +1175,7 @@ impl Launches {
     fn attach(&self, role: &mut JsRole) {
         let (started, refuse) = (Rc::clone(&self.started), Rc::clone(&self.refuse));
         role.shell_mut().set_spawner(Box::new(move |request| {
-            let JsSpawnRequest::Argv(argv) = request else {
-                return Err(JsSpawnError("autostart starts argv lists".to_owned()));
-            };
+            let JsSpawnRequest::Argv(argv) = request;
             if refuse.borrow().contains(&argv[0]) {
                 return Err(JsSpawnError(format!("cannot start {}: not found", argv[0])));
             }

@@ -151,7 +151,7 @@ and, where the shell has outputs, `Output`.
 - A function filter keeps the objects it returns a truthy value for.
 - An unknown kind or field throws and names what works.
 
-`gnoblin.focus.history(filter?)` returns the live windows in the order they were focused, the latest first. Windows never
+`gnoblin.focus.history(filter?)` returns the live windows in the order they were focused, last focused first. Windows never
 seen focused follow in list order, and minimised windows are included.
 
 The filter has three keys:

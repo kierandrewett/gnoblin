@@ -401,6 +401,9 @@ impl JsShell {
         let pending: usize = self.call_entry(self.frame_budget, move |entry| {
             entry.get::<_, Function<'_>>("apiFrame")?.call((batch,))
         })?;
+        if pending == 0 {
+            return Ok(());
+        }
         self.run_pending(pending, started, diagnostics)
     }
 

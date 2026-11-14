@@ -15,24 +15,25 @@ use common::rig_with;
 
 /// Members the d.ts declares that a lane has not yet put in the runtime. Each entry names the lane that lands it and
 /// is deleted by that lane: the test fails once the runtime has the member, so an entry cannot outlive its reason.
-const NOT_YET_IN_RUNTIME: &[&str] = &[
-    // JsOutputs adds `gnoblin.outputs` (the live outputs as a collection).
-    "outputs",
-];
+const NOT_YET_IN_RUNTIME: &[&str] = &[];
 
 /// The members the runtime keeps for itself: the hooks `defineConfig` and the inspector call.
 const INTERNAL: &[&str] = &["constructor", "__register", "__effectiveConfig"];
 
 /// The names `interface Gnoblin { .. }` declares, from the static declarations.
 fn declared_members(dts: &str) -> BTreeSet<String> {
-    let start = dts.find("export interface Gnoblin {").expect("the d.ts declares interface Gnoblin");
+    let start = dts
+        .find("export interface Gnoblin {")
+        .expect("the d.ts declares interface Gnoblin");
     let body = &dts[start..];
     let end = body.find("\n    }\n").expect("interface Gnoblin ends");
     let mut names = BTreeSet::new();
     for line in body[..end].lines().skip(1) {
         // A member sits at the interface's own indent; its doc comment and any wrapped line sit deeper or start
         // with a comment marker.
-        let Some(rest) = line.strip_prefix("        ") else { continue };
+        let Some(rest) = line.strip_prefix("        ") else {
+            continue;
+        };
         if rest.starts_with([' ', '/', '*']) {
             continue;
         }
@@ -74,7 +75,10 @@ fn the_runtime_and_the_declarations_name_the_same_members_of_gnoblin() {
     .expect("the stock declarations are checked in");
     let declared = declared_members(&dts);
     let runtime = runtime_members();
-    assert!(declared.contains("clients") && declared.contains("process"), "the d.ts parse found the members: {declared:?}");
+    assert!(
+        declared.contains("clients") && declared.contains("process"),
+        "the d.ts parse found the members: {declared:?}"
+    );
 
     let undeclared: Vec<&String> = runtime.difference(&declared).collect();
     assert!(

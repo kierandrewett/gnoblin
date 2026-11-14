@@ -1213,6 +1213,28 @@ Design: `design/js-xr.md` (which spec class is a tree node, a JS class or new na
   `ViewScaleBinding` and `ThrowViewBinding`; a View of a workspace. XR5 (a stalled script does not block pose writes or
   layers) is unverified.
 
+## Host API A status
+
+User docs: `docs/js-host-api.md`. Rust: `crates/gnoblin-js/src/host_{api,process,session}.rs` (`__gnoblinHost.api`, JSON in and
+out). TypeScript: `data/js/gnoblin/{operation,process,session}.ts`, wired in `js/gnoblin.ts` (`HostApi`, `apiFrame`).
+
+- **Session.** The shell holds one more owner connection (`JsClientSessionLink`, a thread of its own). It subscribes to the
+  whole graph, keeps the `session` object's lock properties for `status()`, calls `logout`, `poweroff`, `reboot`, `suspend`
+  and `hibernate` on it and forwards every signal. `lock` and `reload-config` run on short connections of their own, so a
+  reload that waits for this very process cannot hold the status thread. A refusal is an `Operation` failure with the
+  code of `docs/shell-api/errors.md`.
+- **Frame.** `run_host_api` runs before the layouts: it drains the session and process events into `apiFrame`, which settles
+  operations, delivers signals and exits and fires due timers, all as queued calls under the call budget.
+- **Processes** are children of the runtime (a waiter thread each, process groups, timeout, captured output). A captured
+  stream is a string. `gnoblin.spawn` returns the handle; the host spawner now serves `autostart` only.
+- **Reload.** A successful reload replaces the generation that asked, so its callbacks are gone; a refused one reaches them.
+- **Proven on the real compositor** (`js_shell.rs`): status, a timer, two processes with exit events and captured output,
+  and `reloadConfig` through the compositor's `reload_requested` signal to a typed `config_rejected`. The power verbs and
+  `lock` are proven against a fake link only: calling them for real would suspend the machine.
+- **Not built.** `process.on("changed")`/`watch`, `Window.process`, `session.activity`, `capabilities`, `focus.policy`,
+  `runtime.status`, `settings`. The spec's `gnoblin.requestTransition` is NOT implemented (planned as P8b); it was removed
+  from `gnoblin-stock.d.ts` so the declarations match the runtime (`tests/dts_match.rs`).
+
 ## Real-compositor tests
 
 `crates/gnoblin/tests/js_shell.rs` runs the shell against a headless compositor in the test's own process, and

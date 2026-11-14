@@ -3126,6 +3126,7 @@ fn a_window_on_a_second_virtual_output_follows_to_the_first_when_it_is_unplugged
         &shell,
         || rect_of(&ipc, first) == Some(back) && rect_of(&ipc, second) == Some(back) && !hidden(&ipc, first),
     );
+}
 
 // ---- the host API: session, process, timers, events ---------------------------------------------------------------
 
@@ -3187,13 +3188,22 @@ fn a_script_reads_the_sessions_status_runs_a_timer_and_a_process_and_is_told_of_
     });
     let status = probe(&shell)["status"].clone();
     assert_eq!(status["lockAvailable"], true, "{status}");
-    assert_eq!(status["lockState"], "unlocked", "the compositor's own published lock state: {status}");
+    assert_eq!(
+        status["lockState"], "unlocked",
+        "the compositor's own published lock state: {status}"
+    );
 
     // A timer ran once and each process ended, with its exit code and its captured output, on the shell's frame loop.
-    wait_for("the timer ran and both programs ended", &session, &mut mapper, &shell, || {
-        let state = probe(&shell);
-        state["timers"] == 1 && state["exits"].as_array().is_some_and(|exits| exits.len() == 2)
-    });
+    wait_for(
+        "the timer ran and both programs ended",
+        &session,
+        &mut mapper,
+        &shell,
+        || {
+            let state = probe(&shell);
+            state["timers"] == 1 && state["exits"].as_array().is_some_and(|exits| exits.len() == 2)
+        },
+    );
     let state = probe(&shell);
     let mut exits: Vec<String> = state["exits"]
         .as_array()
@@ -3210,21 +3220,37 @@ fn a_script_reads_the_sessions_status_runs_a_timer_and_a_process_and_is_told_of_
     // The script asked for a reload. The compositor raised `reload_requested` and waits for a runtime to answer; this
     // test is the runtime, and refuses, so the operation fails with the typed error and the compositor's reason, and
     // the running generation, which asked, is still there to hear it.
-    wait_for("the compositor raised reload_requested", &session, &mut mapper, &shell, || {
-        probe(&shell)["signals"].as_array().is_some_and(|signals| !signals.is_empty())
-    });
+    wait_for(
+        "the compositor raised reload_requested",
+        &session,
+        &mut mapper,
+        &shell,
+        || {
+            probe(&shell)["signals"]
+                .as_array()
+                .is_some_and(|signals| !signals.is_empty())
+        },
+    );
     let generation = shell.generation();
     owner_client(&ipc)
         .reject_config("init.ts:3:1: the test refuses this document")
         .expect("the rejection is accepted");
-    wait_for("the reload failed", &session, &mut mapper, &shell, || probe(&shell)["reload"].is_array());
+    wait_for("the reload failed", &session, &mut mapper, &shell, || {
+        probe(&shell)["reload"].is_array()
+    });
     let reload = probe(&shell)["reload"].clone();
     assert_eq!(reload[0], "config_rejected", "{reload}");
     assert!(
-        reload[1].as_str().is_some_and(|message| message.contains("the test refuses this document")),
+        reload[1]
+            .as_str()
+            .is_some_and(|message| message.contains("the test refuses this document")),
         "{reload}"
     );
-    assert_eq!(shell.generation(), generation, "a refused reload leaves the generation that asked");
+    assert_eq!(
+        shell.generation(),
+        generation,
+        "a refused reload leaves the generation that asked"
+    );
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
     shell.finish();
 }

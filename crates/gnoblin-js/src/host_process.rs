@@ -57,18 +57,43 @@ const SIGNALS: &[(&str, Signal)] = &[
     ("cont", Signal::CONT),
 ];
 
+/// The codes of `docs/shell-api/errors.md` a process call can fail with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum JsProcessCode {
+    /// A limit or an option is wrong.
+    InvalidArgument,
+    /// The program or the process is not there.
+    NotFound,
+    /// Too many processes run.
+    Busy,
+    /// The system refused for another reason.
+    Internal,
+}
+
+impl JsProcessCode {
+    /// The spelling a script sees.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::InvalidArgument => "invalid_argument",
+            Self::NotFound => "not_found",
+            Self::Busy => "busy",
+            Self::Internal => "internal",
+        }
+    }
+}
+
 /// Why a spawn or a kill was refused. The code is what the script's error carries.
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
 #[error("{message}")]
 pub struct JsProcessError {
     /// `invalid_argument`, `not_found`, `busy` or `internal`, the codes `docs/shell-api/errors.md` lists.
-    pub code: &'static str,
+    pub code: JsProcessCode,
     /// What the script's author reads.
     pub message: String,
 }
 
 impl JsProcessError {
-    fn new(code: &'static str, message: impl Into<String>) -> Self {
+    fn new(code: JsProcessCode, message: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),
@@ -81,20 +106,23 @@ impl JsProcessError {
 #[serde(rename_all = "lowercase")]
 pub enum JsStream {
     /// Writes to the runtime's own output, which the session log records.
+    #[serde(rename = "inherit")]
     #[default]
-    Inherit,
+    Log,
     /// Drops the output.
-    Discard,
+    #[serde(rename = "discard")]
+    Drop,
     /// Keeps the output, up to `outputLimit` bytes, for the end event.
-    Capture,
+    #[serde(rename = "capture")]
+    Keep,
 }
 
 impl JsStream {
     fn stdio(self) -> Stdio {
         match self {
-            Self::Inherit => Stdio::inherit(),
-            Self::Discard => Stdio::null(),
-            Self::Capture => Stdio::piped(),
+            Self::Log => Stdio::inherit(),
+            Self::Drop => Stdio::null(),
+            Self::Keep => Stdio::piped(),
         }
     }
 }
@@ -143,7 +171,7 @@ pub struct JsStarted {
     pub pid: u32,
 }
 
-struct Running {
+struct JsRunning {
     pid: u32,
     /// True once the waiter has reaped the child, under the lock the waiter reaps with, so a signal is never
     /// sent to a process id the kernel may already have handed to something else.
@@ -153,7 +181,7 @@ struct Running {
 /// The processes a shell started and has not seen end.
 pub struct JsProcesses {
     next_id: u64,
-    running: BTreeMap<u64, Running>,
+    running: BTreeMap<u64, JsRunning>,
     ends: Receiver<(u64, JsExit)>,
     sender: Sender<(u64, JsExit)>,
 }
@@ -172,7 +200,7 @@ impl Default for JsProcesses {
 
 /// The program, its arguments and the options, refused with the name of the thing that is wrong.
 fn checked(argv: &[String], options: &JsSpawnOptions) -> Result<(), JsProcessError> {
-    let invalid = |message: String| Err(JsProcessError::new("invalid_argument", message));
+    let invalid = |message: String| Err(JsProcessError::new(JsProcessCode::InvalidArgument, message));
     if argv.is_empty() || argv.len() > MAX_ARGV {
         return invalid(format!("argv holds 1 to {MAX_ARGV} strings, not {}", argv.len()));
     }
@@ -210,7 +238,9 @@ fn checked(argv: &[String], options: &JsSpawnOptions) -> Result<(), JsProcessErr
     if let Some(seconds) = options.timeout
         && !(seconds > 0.0 && seconds <= MAX_TIMEOUT_SECONDS)
     {
-        return invalid(format!("timeout is more than 0 and at most {MAX_TIMEOUT_SECONDS} seconds"));
+        return invalid(format!(
+            "timeout is more than 0 and at most {MAX_TIMEOUT_SECONDS} seconds"
+        ));
     }
     Ok(())
 }
@@ -325,7 +355,7 @@ impl JsProcesses {
         checked(argv, options)?;
         if self.running.len() >= MAX_RUNNING {
             return Err(JsProcessError::new(
-                "busy",
+                JsProcessCode::Busy,
                 format!("{MAX_RUNNING} processes are already running"),
             ));
         }
@@ -347,9 +377,9 @@ impl JsProcesses {
         }
         let mut child = command.spawn().map_err(|error| {
             let code = if error.kind() == std::io::ErrorKind::NotFound {
-                "not_found"
+                JsProcessCode::NotFound
             } else {
-                "internal"
+                JsProcessCode::Internal
             };
             JsProcessError::new(code, format!("cannot start {}: {error}", argv[0]))
         })?;
@@ -384,8 +414,10 @@ impl JsProcesses {
                 // The shell may be gone: nobody is left to tell.
                 let _ = sender.send((id, exit));
             })
-            .map_err(|error| JsProcessError::new("internal", format!("cannot watch the process: {error}")))?;
-        self.running.insert(id, Running { pid, reaped });
+            .map_err(|error| {
+                JsProcessError::new(JsProcessCode::Internal, format!("cannot watch the process: {error}"))
+            })?;
+        self.running.insert(id, JsRunning { pid, reaped });
         Ok(JsStarted { id, pid })
     }
 
@@ -399,11 +431,16 @@ impl JsProcesses {
         let Some((_, signal)) = SIGNALS.iter().find(|(name, _)| *name == signal) else {
             let names: Vec<&str> = SIGNALS.iter().map(|(name, _)| *name).collect();
             return Err(JsProcessError::new(
-                "invalid_argument",
+                JsProcessCode::InvalidArgument,
                 format!("no signal named {signal:?}; the signals are {}", names.join(", ")),
             ));
         };
-        let not_found = || JsProcessError::new("not_found", format!("process {id} has ended or was never started"));
+        let not_found = || {
+            JsProcessError::new(
+                JsProcessCode::NotFound,
+                format!("process {id} has ended or was never started"),
+            )
+        };
         let running = self.running.get(&id).ok_or_else(not_found)?;
         let reaped = running.reaped.lock().map_err(|_| not_found())?;
         if *reaped {
@@ -440,7 +477,7 @@ impl Drop for JsProcesses {
 mod tests {
     use std::time::{Duration, Instant};
 
-    use super::{JsProcessError, JsProcesses, JsSpawnOptions, JsStream};
+    use super::{JsProcessCode, JsProcessError, JsProcesses, JsSpawnOptions, JsStream};
 
     fn argv(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|part| (*part).to_owned()).collect()
@@ -517,8 +554,10 @@ mod tests {
         let exit = end_of(&mut processes, started.id);
         assert_eq!(exit.exit_code, None);
         assert_eq!(exit.signal.as_deref(), Some("kill"));
-        let error = processes.kill(started.id, "term").expect_err("an ended process has nothing to kill");
-        assert_eq!(error.code, "not_found");
+        let error = processes
+            .kill(started.id, "term")
+            .expect_err("an ended process has nothing to kill");
+        assert_eq!(error.code, JsProcessCode::NotFound);
     }
 
     #[test]
@@ -538,7 +577,7 @@ mod tests {
         let error = processes
             .spawn(&argv(&["/nonexistent/gnoblin-test"]), &JsSpawnOptions::default())
             .expect_err("no such program");
-        assert_eq!(error.code, "not_found");
+        assert_eq!(error.code, JsProcessCode::NotFound);
         for (parts, json, needle) in [
             (argv(&[]), "{}", "argv holds"),
             (argv(&["true"]), r#"{"cwd":"relative"}"#, "cwd"),
@@ -549,14 +588,14 @@ mod tests {
             let JsProcessError { code, message } = processes
                 .spawn(&parts, &options(json))
                 .expect_err("the options are refused");
-            assert_eq!(code, "invalid_argument");
+            assert_eq!(code, JsProcessCode::InvalidArgument);
             assert!(message.contains(needle), "{message} names {needle}");
         }
         assert!(processes.kill(99, "term").is_err());
         assert_eq!(
             processes.kill(1, "nope").expect_err("a bad signal").code,
-            "invalid_argument"
+            JsProcessCode::InvalidArgument
         );
-        assert_eq!(JsStream::default(), JsStream::Inherit);
+        assert_eq!(JsStream::default(), JsStream::Log);
     }
 }

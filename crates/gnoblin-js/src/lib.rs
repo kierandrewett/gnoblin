@@ -56,7 +56,7 @@ pub use console::{
 pub use error::{JsError, JsErrorKind, JsLoadError, JsLocation, JsTsError};
 pub use generation::{JsConfig, JsGeneration};
 pub use host::{JsHost, JsPrepare};
-pub use host_process::{JsExit, JsProcessError, JsProcesses, JsSpawnOptions, JsStarted, JsStream};
+pub use host_process::{JsExit, JsProcessCode, JsProcessError, JsProcesses, JsSpawnOptions, JsStarted, JsStream};
 pub use host_session::{
     JsClientSessionLink, JsOperationError, JsSessionEvent, JsSessionLink, JsSessionStatus, JsSessionVerb,
 };

@@ -3778,8 +3778,10 @@ host.entry = {
         return queue.length;
     },
     apiFrame: (batch) => {
+        // Only what this frame queued: calls an earlier stage left over wait for the frame's own budget.
+        const before = queue.length;
         hostApi.frame(batch);
-        return queue.length;
+        return queue.length - before;
     },
     cancelAll: () => {
         input.cancelAll();

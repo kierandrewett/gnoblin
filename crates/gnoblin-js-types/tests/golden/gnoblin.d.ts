@@ -667,6 +667,53 @@ declare module "gnoblin/schema/tree" {
     }
 }
 
+declare module "gnoblin/schema/signals" {
+    /** Every schema signal, by the name `gnoblin.on` takes, and the event its handler receives. */
+    export interface GnoblinSignals {
+        "gnoblin.config.reload_failed": { readonly name: "gnoblin.config.reload_failed"; readonly object: number; readonly path: string; readonly error: string; readonly sequence: number; readonly time: number; };
+        "gnoblin.config.reloaded": { readonly name: "gnoblin.config.reloaded"; readonly object: number; readonly path: string; readonly revision: number; readonly warnings: string[]; readonly notApplied: string[]; readonly sequence: number; readonly time: number; };
+        "gnoblin.operation.completed": { readonly name: "gnoblin.operation.completed"; readonly object: number; readonly operationId: number; readonly method: string; readonly ok: boolean; readonly error: string; readonly sequence: number; readonly time: number; };
+        "gnoblin.output.closed": { readonly name: "gnoblin.output.closed"; readonly object: number; };
+        "gnoblin.output.added": { readonly name: "gnoblin.output.added"; readonly object: number; readonly outputId: string; readonly output: number; };
+        "gnoblin.output.changed": { readonly name: "gnoblin.output.changed"; readonly object: number; readonly outputId: string; readonly output: number; readonly changed: string[]; };
+        "gnoblin.output.removed": { readonly name: "gnoblin.output.removed"; readonly object: number; readonly outputId: string; readonly last: number; };
+        "gnoblin.request.offered": { readonly name: "gnoblin.request.offered"; readonly object: number; readonly request: number; readonly deadline: number; readonly slot: string; readonly title: string; readonly message: string; readonly subject: number[]; };
+        "gnoblin.request.finished": { readonly name: "gnoblin.request.finished"; readonly object: number; readonly request: number; readonly completion: string; readonly reason: string; };
+        "gnoblin.session.ready": { readonly name: "gnoblin.session.ready"; readonly object: number; };
+        "gnoblin.session.bell": { readonly name: "gnoblin.session.bell"; readonly object: number; readonly count: number; };
+        "gnoblin.session.reload_requested": { readonly name: "gnoblin.session.reload_requested"; readonly object: number; readonly generation: number; };
+        "gnoblin.session.lock_state_changed": { readonly name: "gnoblin.session.lock_state_changed"; readonly object: number; readonly state: string; readonly revision: number; };
+        "gnoblin.window.closed": { readonly name: "gnoblin.window.closed"; readonly object: number; };
+        "gnoblin.window.created": { readonly name: "gnoblin.window.created"; readonly object: number; readonly window: number; };
+        "gnoblin.window.changed": { readonly name: "gnoblin.window.changed"; readonly object: number; readonly windowId: number; readonly changed: string[]; readonly window: number; };
+        "gnoblin.window.menu_requested": { readonly name: "gnoblin.window.menu_requested"; readonly object: number; readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly source: string; readonly seat: string; };
+        "gnoblin.workspace.created": { readonly name: "gnoblin.workspace.created"; readonly object: number; readonly workspace: number; };
+        "gnoblin.workspace.removed": { readonly name: "gnoblin.workspace.removed"; readonly object: number; readonly workspaceId: number; readonly last: number; };
+        "tree.camera.destroyed": { readonly name: "tree.camera.destroyed"; readonly object: number; };
+        "tree.canvas.destroyed": { readonly name: "tree.canvas.destroyed"; readonly object: number; };
+        "tree.controller.destroyed": { readonly name: "tree.controller.destroyed"; readonly object: number; };
+        "tree.lock.destroyed": { readonly name: "tree.lock.destroyed"; readonly object: number; };
+        "tree.lock.requested": { readonly name: "tree.lock.requested"; readonly object: number; };
+        "tree.tree.attached": { readonly name: "tree.tree.attached"; readonly object: number; readonly epoch: number; readonly root: number; readonly serial: number; };
+        "tree.tree.snapshot": { readonly name: "tree.tree.snapshot"; readonly object: number; readonly serial: number; readonly chunk: number; readonly last: boolean; readonly nodes: number[]; };
+        "tree.tree.reply": { readonly name: "tree.tree.reply"; readonly object: number; readonly serial: number; readonly applied: boolean; readonly failedOp: number; readonly code: string; readonly removed: number[]; };
+        "tree.tree.changes": { readonly name: "tree.tree.changes"; readonly object: number; readonly serial: number; readonly changes: number[]; };
+        "tree.tree.event": { readonly name: "tree.tree.event"; readonly object: number; readonly frame: number; readonly seq: number; readonly node: number; readonly kind: string; readonly x: number; readonly y: number; readonly button: number; readonly key: string; readonly text: string; readonly dx: number; readonly dy: number; readonly request: string; readonly pressed: boolean; };
+        "tree.tree.answer": { readonly name: "tree.tree.answer"; readonly object: number; readonly token: number; readonly result: number[]; readonly error: string; };
+        "tree.node.destroyed": { readonly name: "tree.node.destroyed"; readonly object: number; };
+        "tree.screen.destroyed": { readonly name: "tree.screen.destroyed"; readonly object: number; };
+        "tree.screen.mode_changed": { readonly name: "tree.screen.mode_changed"; readonly object: number; };
+        "tree.seat.destroyed": { readonly name: "tree.seat.destroyed"; readonly object: number; };
+        "tree.seat.chord": { readonly name: "tree.seat.chord"; readonly object: number; readonly id: number; readonly chord: string; readonly state: string; };
+        "tree.seat.gesture": { readonly name: "tree.seat.gesture"; readonly object: number; readonly id: number; readonly kind: string; readonly fingers: number; readonly phase: string; readonly dx: number; readonly dy: number; readonly scale: number; readonly rotation: number; };
+        "tree.seat.pointer_chord": { readonly name: "tree.seat.pointer_chord"; readonly object: number; readonly phase: string; readonly claim: number; readonly x: number; readonly y: number; readonly dx: number; readonly dy: number; readonly button: number; readonly modifiers: string; readonly time: number; };
+        "tree.surface.destroyed": { readonly name: "tree.surface.destroyed"; readonly object: number; };
+        "tree.view.destroyed": { readonly name: "tree.view.destroyed"; readonly object: number; };
+        "tree.window.destroyed": { readonly name: "tree.window.destroyed"; readonly object: number; };
+        "tree.workspace.destroyed": { readonly name: "tree.workspace.destroyed"; readonly object: number; };
+    }
+}
+
 // ---------------------------------------------------------------------------
 // The stock library: `import { ... } from "gnoblin"`.
 //
@@ -679,6 +726,8 @@ declare module "gnoblin/schema/tree" {
 // ---------------------------------------------------------------------------
 
 declare module "gnoblin" {
+    import type { GnoblinSignals } from "gnoblin/schema/signals";
+
     // -- Geometry and transforms ---------------------------------------------
 
     export interface Vec2 {
@@ -2082,17 +2131,235 @@ declare module "gnoblin" {
          * before its dialog opens; nothing here allows one or reads a secret.
          */
         readonly dialogs: DialogManager;
+        /** The programs this shell started: `spawn`, `list`, `byId`, and listeners told when one ends. */
+        readonly process: ProcessTable;
+        /** Calls that run later on the frame loop, and the monotonic clock. */
+        readonly timers: Timers;
+        /** The session's state, and the verbs that log out, suspend, power off or lock it. */
+        readonly session: Session;
+        /** What a script asks of the process that runs it. */
+        readonly runtime: Runtime;
+        /** The windows in the order they were last focused. */
+        readonly focus: FocusHistory;
         /**
-         * Run `staging` once, now, and send every property write it makes as one
-         * transaction that the compositor animates. It is not called per frame, and
-         * `spawn`, I/O and `await` are not allowed inside it.
+         * Starts a program and returns its `Process`: a command line for `/bin/sh`, or an array of the program and
+         * its arguments. The same as `gnoblin.process.spawn`.
          */
-        requestTransition(staging: () => void, options?: TransitionOptions): Transition;
-        /** Starts a program: a command line for the shell, or an array of the program and its arguments. */
-        spawn(command: string | readonly string[]): void;
+        spawn(command: string | readonly string[], options?: SpawnOptions): Process;
         show(workspace: Workspace | string, options?: ShowOptions): void;
         /** Runs `run` once, `seconds` from now: at the first frame after that time. */
-        after(seconds: number, run: () => void): void;
+        after(seconds: number, run: () => void): Timer;
+        /** The build identity. A field the build does not know is `"unknown"`; remote credentials are removed. */
+        version(): Version;
+        /**
+         * The live objects of one kind that match a table of field values or a predicate, in list order. The kinds
+         * are `Window`, `Workspace` and `Output`. An unknown kind or field throws and names what works.
+         */
+        find(kind: "Window", filter?: FindFilter<Client>): Client[];
+        find(kind: "Workspace", filter?: FindFilter<Workspace>): Workspace[];
+        find(kind: "Output", filter?: FindFilter<Output>): Output[];
+        /**
+         * Calls `handler` for every `name` the compositor raises (`namespace.object.signal`; hyphens are accepted for
+         * underscores). An unknown name throws and lists the near ones.
+         */
+        on<K extends keyof GnoblinSignals>(name: K, handler: (event: GnoblinSignals[K]) => void): Subscription;
+        on(name: string, handler: (event: SignalEvent) => void): Subscription;
+        /** Like `on`, for the first signal only. */
+        once<K extends keyof GnoblinSignals>(name: K, handler: (event: GnoblinSignals[K]) => void): Subscription;
+        once(name: string, handler: (event: SignalEvent) => void): Subscription;
+        /** Detaches a subscription, or every `handler` attached to the event `name`. */
+        off(target: Subscription): void;
+        off(name: string, handler: (event: never) => void): void;
+    }
+
+    // -- The host API: operations, timers, processes, the session ------------
+
+    export type FindFilter<T> = Partial<Record<keyof T & string, string | number | boolean>> | ((object: T) => unknown);
+
+    export interface SignalEvent {
+        /** `namespace.object.signal`, with underscores. */
+        readonly name: string;
+        /** The identity of the object that raised it. */
+        readonly object: number;
+        readonly [field: string]: unknown;
+    }
+
+    /** Stops a handler or a callback before it runs. Calling it twice is harmless. */
+    export interface Subscription {
+        unsubscribe(): void;
+    }
+
+    /** The codes of `docs/shell-api/errors.md`, and the reload's own. */
+    export type OperationErrorCode =
+        | "invalid_argument"
+        | "not_found"
+        | "unsupported"
+        | "denied"
+        | "busy"
+        | "cancelled"
+        | "timed_out"
+        | "unavailable"
+        | "internal"
+        | "config_rejected";
+
+    export interface OperationError {
+        readonly code: OperationErrorCode;
+        readonly message: string;
+    }
+
+    export type OperationStatus = "pending" | "succeeded" | "failed";
+
+    /** The result of a call that finishes later. Settled once, with a value or with a typed error. */
+    export class Operation<T> {
+        readonly id: number;
+        readonly method: string;
+        readonly status: OperationStatus;
+        readonly value: T | undefined;
+        readonly error: OperationError | undefined;
+        /** Calls `fn(value, error)` once when the operation settles, as a queued call under the listener budget. */
+        onComplete(fn: (value: T | undefined, error: OperationError | undefined) => void): Subscription;
+        /** A new operation that succeeds with `fn(value)`, or fails with the same error. */
+        map<U>(fn: (value: T) => U): Operation<U>;
+        /** A new operation that fails `timed_out` if this one has not settled in `seconds`. Does not cancel this one. */
+        timeout(seconds: number): Operation<T>;
+        /** Stops waiting: the operation fails `cancelled`. False when it had already settled. */
+        cancel(): boolean;
+    }
+
+    /** A pending call of a function at a time. */
+    export class Timer {
+        readonly id: number;
+        /** The time it runs at, in milliseconds on the monotonic clock. */
+        readonly at: number;
+        readonly pending: boolean;
+        /** Stops the timer. False when it had already run or was cancelled. */
+        cancel(): boolean;
+    }
+
+    export interface Timers {
+        /** The monotonic clock in milliseconds. Only the difference between two readings is meaningful. */
+        now(): number;
+        /** How many timers are waiting. */
+        readonly size: number;
+        /** Runs `fn` once, `ms` milliseconds from now (0 to a day), as a queued call under the listener budget. */
+        after(ms: number, fn: () => void): Timer;
+    }
+
+    export type LockState = "unlocked" | "covering" | "locked" | "failsafe";
+
+    export interface SessionStatus {
+        /** `running` while the shell has a connection to the compositor, `unavailable` when it has none. */
+        readonly state: "running" | "unavailable";
+        readonly lockAvailable: boolean;
+        /** How many lock state changes the session has published. */
+        readonly revision: number;
+        /** Present only while `lockAvailable` is true: unavailable does not mean unlocked. */
+        readonly lockState?: LockState;
+    }
+
+    export interface Accepted {
+        readonly accepted: true;
+    }
+
+    export interface LockRequest {
+        readonly dispatched: boolean;
+    }
+
+    export interface Session {
+        status(): SessionStatus;
+        logout(): Operation<Accepted>;
+        poweroff(): Operation<Accepted>;
+        reboot(): Operation<Accepted>;
+        suspend(): Operation<Accepted>;
+        hibernate(): Operation<Accepted>;
+        lock(): Operation<LockRequest>;
+    }
+
+    export interface ReloadResult {
+        readonly ok: true;
+        readonly action: "config reload";
+        readonly settingsRevision: number;
+        readonly warnings: readonly string[];
+        readonly notApplied: readonly string[];
+    }
+
+    export interface Runtime {
+        /** Asks for the reload `gnoblinctl config reload` asks for. Throws while the configuration loads. */
+        reloadConfig(): Operation<ReloadResult>;
+    }
+
+    export interface Version {
+        readonly gnoblin: string;
+        readonly gnome: string;
+        readonly mutter: string;
+        readonly js: string;
+        readonly api: string;
+        readonly gitRemote: string;
+        readonly gitSha: string;
+        readonly buildId: string;
+    }
+
+    export interface FocusHistoryFilter {
+        workspaceId?: string;
+        monitorId?: string;
+        /** 1 to 256; 50 by default. */
+        limit?: number;
+    }
+
+    export interface FocusHistory {
+        /** The live windows, most recently focused first, then the rest in list order. */
+        history(filter?: FocusHistoryFilter): Client[];
+    }
+
+    export type StreamMode = "inherit" | "discard" | "capture";
+    export type ProcessSignal = "term" | "kill" | "int" | "hup" | "usr1" | "usr2" | "stop" | "cont";
+
+    export interface SpawnOptions {
+        cwd?: string;
+        env?: Record<string, string>;
+        stdin?: string;
+        stdout?: StreamMode;
+        stderr?: StreamMode;
+        outputLimit?: number;
+        /** Seconds before the group gets SIGTERM, and SIGKILL two seconds later. */
+        timeout?: number;
+    }
+
+    export interface ProcessExit {
+        readonly exitCode: number | null;
+        readonly signal: string | null;
+        readonly timedOut: boolean;
+        readonly stdout: string | null;
+        readonly stderr: string | null;
+        readonly stdoutTruncated: boolean;
+        readonly stderrTruncated: boolean;
+    }
+
+    export class Process {
+        readonly id: number;
+        readonly pid: number;
+        readonly argv: readonly string[];
+        readonly alive: boolean;
+        readonly status: "running" | "exited";
+        readonly exitCode: number | null;
+        readonly signal: string | null;
+        readonly timedOut: boolean;
+        readonly exit: ProcessExit | null;
+        wait(): Operation<ProcessExit>;
+        kill(signal?: ProcessSignal): Operation<null>;
+    }
+
+    export class ProcessListener {
+        /** A process ended. `code` is its exit status, or null when a signal ended it. */
+        onExit?(process: Process, code: number | null): void;
+    }
+
+    export interface ProcessTable {
+        spawn(command: string | readonly string[], options?: SpawnOptions): Process;
+        list(): Process[];
+        byId(id: number): Process | null;
+        addListener(listener: ProcessListener): void;
+        removeListener(listener: ProcessListener): void;
     }
 
     export interface ShowOptions {

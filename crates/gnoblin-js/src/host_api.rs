@@ -34,7 +34,7 @@ fn refusal(code: &str, message: &str) -> String {
 }
 
 fn process_refusal(error: &JsProcessError) -> String {
-    refusal(error.code, &error.message)
+    refusal(error.code.as_str(), &error.message)
 }
 
 impl JsHostApi {
@@ -183,11 +183,7 @@ fn public_remote(remote: &str) -> String {
 }
 
 /// Where the sidecar may be, best first: the override, beside the executable's prefix, then the data directories.
-fn sidecar_paths(
-    override_path: Option<&str>,
-    executable: Option<&Path>,
-    data_dirs: Option<&str>,
-) -> Vec<PathBuf> {
+fn sidecar_paths(override_path: Option<&str>, executable: Option<&Path>, data_dirs: Option<&str>) -> Vec<PathBuf> {
     let mut paths: Vec<PathBuf> = override_path
         .filter(|path| !path.is_empty())
         .map(PathBuf::from)
@@ -196,7 +192,9 @@ fn sidecar_paths(
     if let Some(prefix) = executable.and_then(Path::parent).and_then(Path::parent) {
         paths.push(prefix.join("share/gnoblin/version.ini"));
     }
-    let dirs = data_dirs.filter(|dirs| !dirs.is_empty()).unwrap_or("/usr/local/share/:/usr/share/");
+    let dirs = data_dirs
+        .filter(|dirs| !dirs.is_empty())
+        .unwrap_or("/usr/local/share/:/usr/share/");
     paths.extend(
         dirs.split(':')
             .filter(|dir| !dir.is_empty())
@@ -222,7 +220,7 @@ fn version_record(sidecar: &str) -> String {
         "mutter": field("mutter"),
         "js": "quickjs-ng",
         "api": format!("{major}.{minor}.{patch}"),
-        "gitRemote": public_remote(&values.iter().find(|(name, _)| name == "git_remote").map_or("", |(_, value)| value.as_str())),
+        "gitRemote": public_remote(values.iter().find(|(name, _)| name == "git_remote").map_or("", |(_, value)| value.as_str())),
         "gitSha": field("git_sha"),
         "buildId": field("build_id"),
     })
@@ -266,7 +264,12 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
             let mut state = shared.borrow_mut();
             // An id is a small integer a script was handed; anything else names no process.
             let id = if id.is_finite() && id >= 0.0 { id as u64 } else { 0 };
-            state.api.processes.kill(id, &signal).err().map(|error| process_refusal(&error))
+            state
+                .api
+                .processes
+                .kill(id, &signal)
+                .err()
+                .map(|error| process_refusal(&error))
         })?,
     )?;
 
@@ -325,7 +328,11 @@ mod tests {
 
     #[test]
     fn the_sidecar_is_looked_for_at_the_override_then_the_prefix_then_the_data_dirs() {
-        let paths = sidecar_paths(Some("/o/version.ini"), Some(Path::new("/usr/bin/gnoblin")), Some("/a:/b"));
+        let paths = sidecar_paths(
+            Some("/o/version.ini"),
+            Some(Path::new("/usr/bin/gnoblin")),
+            Some("/a:/b"),
+        );
         let paths: Vec<&str> = paths.iter().map(|path| path.to_str().unwrap_or("")).collect();
         assert_eq!(
             paths,

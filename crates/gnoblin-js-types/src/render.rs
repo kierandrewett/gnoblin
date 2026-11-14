@@ -95,16 +95,15 @@ pub fn render_dts(catalog: &Catalog) -> String {
 /// of the object that raised it, and each field under its camelCase name.
 fn write_signal_events(out: &mut String, catalog: &Catalog, namespaces: &[Namespace]) {
     let _ = writeln!(out, "declare module \"{SHARED_MODULE}/signals\" {{");
-    out.push_str("    /** Every schema signal, by the name `gnoblin.on` takes, and the event its handler receives. */\n");
+    out.push_str(
+        "    /** Every schema signal, by the name `gnoblin.on` takes, and the event its handler receives. */\n",
+    );
     out.push_str("    export interface GnoblinSignals {\n");
     for namespace in namespaces {
         for object in catalog.objects(namespace) {
             for signal in &object.signals {
                 let name = format!("{namespace}.{}.{}", object.name, signal.name);
-                let mut members = format!(
-                    "readonly name: {}; readonly object: number;",
-                    string_literal(&name)
-                );
+                let mut members = format!("readonly name: {}; readonly object: number;", string_literal(&name));
                 for field in &signal.fields {
                     let _ = write!(
                         members,
