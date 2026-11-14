@@ -508,6 +508,27 @@ mod tests {
     }
 
     #[test]
+    fn a_missing_import_is_reported_at_the_importing_line() {
+        let root = root_with(&[
+            // The imports are used: the stripper drops an import nothing refers to, as TypeScript does.
+            (
+                "init.ts",
+                "const a = 1;\nimport { b } from './sub/b.ts';\nexport const x = a + b;\n",
+            ),
+            ("sub/b.ts", "import { c } from './absent.ts';\nexport const b = c;\n"),
+        ]);
+        let generation = generation(&root);
+        let error = generation
+            .eval_module(Path::new("init.ts"))
+            .expect_err("./absent.ts does not exist");
+        assert_eq!(error.kind, JsErrorKind::Load, "{error}");
+        assert!(error.message.contains("./absent.ts"), "{error}");
+        let at = error.location.as_ref().expect("the import has a position");
+        assert_eq!(at.file, root.path.join("sub/b.ts"));
+        assert_eq!((at.line, at.column), (1, 19), "{error}");
+    }
+
+    #[test]
     fn import_that_climbs_out_of_the_root_is_refused() {
         let dir = tempfile::tempdir().expect("a temp dir");
         let base = fs::canonicalize(dir.path()).expect("exists");

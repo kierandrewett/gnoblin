@@ -22,6 +22,7 @@ use clap::{Arg, ArgAction, ArgMatches, Command, value_parser};
 use gnoblin_model::Fields;
 
 use crate::args;
+use crate::js;
 use crate::logs::{self, Filter};
 use crate::tree::{self, CliObject};
 use crate::verbs;
@@ -47,6 +48,10 @@ pub(crate) enum Invocation {
     Completions { shell: Shell, output: Option<PathBuf> },
     /// Print the logged records, or follow them.
     Log { request: Box<logs::LogRequest> },
+    /// Check a file without connecting: a module by loading it, anything else as `config validate`.
+    Check { file: PathBuf, types: bool, json: bool },
+    /// Write the editor files for a TypeScript configuration.
+    TypesInit { dir: Option<PathBuf>, json: bool },
     /// A hand-written verb: the session's state, the version, or a config check.
     Verb { verb: verbs::Verb, json: bool },
 }
@@ -157,6 +162,8 @@ pub(crate) fn command_tree() -> Command {
     root.subcommand(ipc_command())
         .subcommand(completions_command())
         .subcommand(log_command())
+        .subcommand(check_command())
+        .subcommand(types_command())
 }
 
 /// A hand-written verb and a schema object with one name are one command: the verb's
@@ -312,6 +319,49 @@ fn completions_command() -> Command {
         )
 }
 
+/// `check FILE [--types]`.
+fn check_command() -> Command {
+    Command::new("check")
+        .about("Check a configuration file without connecting to a session.")
+        .long_about(
+            "Check a configuration file without connecting to a session. A .ts, .mts, .js or .mjs file is loaded \
+             through the shell runtime's own loader, so a syntax error, an import that does not resolve and a \
+             top-level throw are reported at the line you wrote. Any other file is checked as `config validate` \
+             checks it.",
+        )
+        .arg(
+            Arg::new("file")
+                .value_name("FILE")
+                .required(true)
+                .value_parser(value_parser!(PathBuf))
+                .help("The file to check."),
+        )
+        .arg(
+            Arg::new("types")
+                .long("types")
+                .action(ArgAction::SetTrue)
+                .help("Also run an external TypeScript compiler over a .ts or .js file, when one is installed."),
+        )
+}
+
+/// `types <COMMAND>`.
+fn types_command() -> Command {
+    Command::new("types")
+        .about("Editor support for a TypeScript configuration.")
+        .subcommand_required(true)
+        .arg_required_else_help(true)
+        .subcommand(
+            Command::new("init")
+                .about("Write gnoblin.d.ts and, when absent, tsconfig.json, so an editor works with no build step.")
+                .arg(
+                    Arg::new("dir")
+                        .value_name("DIR")
+                        .value_parser(value_parser!(PathBuf))
+                        .help("Where to write them; defaults to the config directory, $XDG_CONFIG_HOME/gnoblin."),
+                ),
+        )
+}
+
 /// `log` with its filters, time bounds and follow options.
 fn log_command() -> Command {
     Command::new("log")
@@ -427,6 +477,15 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocati
         "ipc" => ipc_invocation(sub)?,
         "completions" => completions_invocation(sub)?,
         "log" => log_invocation(sub, json)?,
+        "check" => check_invocation(sub, json)?,
+        "types" => {
+            let (name, init) = sub.subcommand().expect("a subcommand is required");
+            debug_assert_eq!(name, "init");
+            Invocation::TypesInit {
+                dir: init.get_one::<PathBuf>("dir").cloned(),
+                json,
+            }
+        }
         "ping" => Invocation::Verb {
             verb: verbs::Verb::Ping,
             json,
@@ -450,6 +509,25 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocati
         }
     };
     Ok(invocation)
+}
+
+/// The `check` subcommand. `--types` is for a module only: the configuration check has no types.
+fn check_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usage> {
+    let file = matches
+        .get_one::<PathBuf>("file")
+        .cloned()
+        .expect("clap requires the file");
+    let types = matches.get_flag("types");
+    if types && !js::is_module(&file) {
+        return Err(Usage {
+            text: format!(
+                "error: --types needs a .ts, .mts, .js or .mjs file, and {} is not one\n",
+                file.display()
+            ),
+            help: false,
+        });
+    }
+    Ok(Invocation::Check { file, types, json })
 }
 
 /// The `ipc` subcommands.

@@ -57,8 +57,9 @@ To diagnose it:
 3. If the compositor answers but a command exits 4, the compositor and the
    client speak different IPC versions. Upgrade the one that is older.
 
-`gnoblinctl config validate FILE` does not connect to a session. It works
-before Gnoblin is running.
+`gnoblinctl config validate FILE`, `gnoblinctl check FILE` and
+`gnoblinctl types init` do not connect to a session. They work before Gnoblin
+is running.
 
 ## Exit codes
 
@@ -198,6 +199,118 @@ A file that does not parse exits 1 with `invalid-config`, and names the line:
 ```text
 gnoblinctl: invalid-config: /home/node/cli-e2e/bad.lua:1: syntax error near 'is'
 ```
+
+## Check and types
+
+`gnoblinctl check FILE` checks a configuration file without a session. The
+extension decides what it does:
+
+- A `.ts`, `.mts`, `.js` or `.mjs` file is loaded through the shell runtime's
+  own module loader.
+- Any other file is checked as `gnoblinctl config validate FILE` checks it.
+
+The exit code is 0 when the file is fine, 1 when it found a problem and 2 for a
+wrong command line.
+
+```sh
+gnoblinctl check init.ts
+```
+
+```text
+ok  init.ts  module graph loads (2 files)
+```
+
+### What a module check finds
+
+The module loads in a throwaway runtime with a one second budget. It reports:
+
+- a syntax error
+- an import that does not resolve
+- an import cycle that fails
+- a throw at the top level
+
+Each is `file:line:column` in the `.ts` text you wrote, in an error block on
+standard error:
+
+```text
+error: init.ts:2:16: Unexpected token
+hint:  fix the syntax at that position; types are stripped here, not checked
+       (see `--types`)
+```
+
+A missing import names the specifier and the file that wrote it:
+
+```text
+error: lib/helper.ts:1:22: `./gone.ts` not found under the config root
+       (tried /home/me/.config/gnoblin/lib/gone.ts)
+hint:  import `./` or `../` paths under the config directory, or `gnoblin`
+       modules
+```
+
+An import that nothing in the file uses is dropped when types are stripped, as
+TypeScript drops it, so the check never loads it.
+
+The throwaway runtime has no compositor. The `gnoblin` imports and the global
+`gnoblin` are bound to an inert value that accepts any use. The check covers
+your own code and not the names you take from the shell. A wrong name from
+`gnoblin` is for `--types` to find.
+
+### Type checking
+
+`--types` also runs an external TypeScript compiler over the file. Gnoblin does
+not ship one. The first of these that exists is used:
+
+- `$GNOBLIN_TSC`
+- `node_modules/.bin/tsc` beside the file
+- `tsc`, `tsc6` or `tsgo` on `PATH`
+
+The compiler gets the generated `gnoblin.d.ts` and a `tsconfig.json` made for
+the run in a temporary directory, so nothing is written next to your
+configuration. Its output is passed through unchanged, and a compiler that
+reports errors makes the command exit 1.
+
+```sh
+gnoblinctl check init.ts --types
+```
+
+When no compiler is found, the step prints one line and exits 0:
+
+```text
+type check skipped: no TypeScript compiler found; install one with `npm i -g typescript` or set GNOBLIN_TSC
+```
+
+`--types` on a file that is not a module is refused with exit 2.
+
+With `--json`, `check` prints one document:
+
+- `ok` and `problems`, each with `kind`, `file`, `line`, `column` and `message`
+- with `--types`, a `types` object that carries the compiler's output as text
+
+### Editor files
+
+`gnoblinctl types init [DIR]` writes the files an editor needs, so completion
+and diagnostics work with no build step. `DIR` defaults to the config
+directory, `$XDG_CONFIG_HOME/gnoblin` or `~/.config/gnoblin`.
+
+- `gnoblin.d.ts` is generated from the object schema and rewritten each time,
+  so an upgrade reaches the editor.
+- `tsconfig.json` is written only when it is absent. Once it exists it is
+  yours, and a second run leaves it alone.
+
+```sh
+gnoblinctl types init
+```
+
+```text
+ok  gnoblin.d.ts refreshed: /home/me/.config/gnoblin/gnoblin.d.ts
+ok  tsconfig.json created: /home/me/.config/gnoblin/tsconfig.json
+```
+
+When `tsconfig.json` is already there, the second line is an `info` line that
+says it was kept, with its path. A directory that cannot be written exits 1 with
+an error block.
+
+With `--json` it prints `types`, `tsconfig` and `tsconfig_created`.
 
 ## Logs
 

@@ -22,6 +22,22 @@ gnoblinctl config validate FILE
 
 `config validate` needs no running session.
 
+## TypeScript configuration
+
+```sh
+gnoblinctl check init.ts
+gnoblinctl check init.ts --types
+gnoblinctl types init [DIR]
+```
+
+- `check` loads the module graph and reports a syntax error, a missing import
+  or a top-level throw at its `.ts` line.
+- `check --types` also runs an installed TypeScript compiler.
+- `types init` writes `gnoblin.d.ts` and `tsconfig.json` for your editor.
+
+Neither needs a running session. See the
+[gnoblinctl reference](../gnoblinctl.md#check-and-types).
+
 ## Objects
 
 Every object type the compositor exposes has the same verbs:

@@ -91,6 +91,7 @@ mod cli;
 mod commands;
 mod connection;
 mod dump;
+mod js;
 mod logs;
 mod output;
 mod tree;
@@ -134,6 +135,18 @@ pub fn run(
         cli::Invocation::IpcDump { source } => dump::run(&source, out, err),
         cli::Invocation::Completions { shell, output } => completions(shell, output, out, err),
         cli::Invocation::Log { request } => logs::run(&request, out, err),
+        cli::Invocation::Check { file, types, json } => {
+            if js::is_module(&file) {
+                js::check(&file, types, json, out, err)
+            } else {
+                // Not a module the shell runtime loads: the configuration check, as `config validate`.
+                match verbs::validate(&file, json, out) {
+                    Ok(code) => code,
+                    Err(failure) => failure.report(err, json),
+                }
+            }
+        }
+        cli::Invocation::TypesInit { dir, json } => js::types_init(dir.as_deref(), json, out, err),
         cli::Invocation::Verb {
             verb: verbs::Verb::ConfigValidate { path },
             json,

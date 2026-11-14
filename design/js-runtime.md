@@ -72,8 +72,13 @@ Done criteria (headless, on Agent37):
 `tsconfig.json` into the config directory (`ensure_user_files`: the declarations are refreshed on every call, the
 `tsconfig.json` only when absent). One interface per schema object; a signal `mode_changed` is
 `onModeChanged(handler)`. The hand-written stock library (`defineConfig`, `Client`, `Collection<T>`, `Layout`, ...) is
-checked in as `static/gnoblin-stock.d.ts` and marked proposed. `gnoblinctl check` and `gnoblinctl types init` are not
-done.
+checked in as `static/gnoblin-stock.d.ts` and marked proposed. `gnoblinctl check FILE` (a `.ts`, `.mts`, `.js` or
+`.mjs` file loads through the `gnoblin-js` loader in a throwaway generation with a 1 s budget; any other file keeps the
+configuration check) and `gnoblinctl types init [DIR]` are done (`crates/gnoblinctl/src/js.rs`). `check --types` runs an
+external `$GNOBLIN_TSC`, `node_modules/.bin/tsc`, `tsc`, `tsc6` or `tsgo`, with the generated declarations in a temporary
+directory, and says so on one line when none is installed. The check has no host, so the global `gnoblin` and the
+`gnoblin` and `gnoblin/<module>` imports are bound to an inert stub; wrong names from the shell are `--types`'s to find.
+`gnoblinctl reload` is not done: it needs the supervisor process.
 
 ### P4 status
 

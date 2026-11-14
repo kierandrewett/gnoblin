@@ -82,7 +82,7 @@ fn error_at(path: &Path, source: &str, diagnostic: &OxcDiagnostic) -> JsTsError 
 /// The 1-based line and column of byte `offset` in `source`. The column counts characters, the way
 /// an editor shows it. An offset past the end, or inside a character, is clamped back to the last
 /// character boundary before it.
-fn position(source: &str, offset: usize) -> (u32, u32) {
+pub(crate) fn position(source: &str, offset: usize) -> (u32, u32) {
     let mut end = offset.min(source.len());
     while !source.is_char_boundary(end) {
         end -= 1;

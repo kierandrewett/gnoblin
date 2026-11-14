@@ -26,8 +26,8 @@ use oxc_sourcemap::SourceMap;
 use rquickjs::loader::{ImportAttributes, Loader, Resolver};
 use rquickjs::{Ctx, Error, Module, Result};
 
-use crate::error::{JsError, JsLoadError};
-use crate::ts::strip_types;
+use crate::error::{JsError, JsLoadError, JsLocation};
+use crate::ts::{position, strip_types};
 
 /// What the resolver and loader of one generation share with it: the source maps of the `.ts` files
 /// loaded so far, and the structured error behind the last failed load.
@@ -144,10 +144,43 @@ impl Resolver for JsResolver {
         _attributes: Option<ImportAttributes<'js>>,
     ) -> Result<String> {
         self.resolve_name(base, name).map_err(|error| {
-            let message = self.state.fail(error.into());
+            let message = self.state.fail(at_import(base, name, error));
             Error::new_resolving_message(base, name, message)
         })
     }
+}
+
+/// `error` as a [`JsError`] placed at the import that caused it, so a missing module is reported at
+/// the line of the `import` that names it rather than with no position.
+///
+/// The position is found by looking for the quoted specifier in the importer's source on disk. That is
+/// the first textual match, so a string that merely looks like the specifier earlier in the file can
+/// win; it is only a failure report, and the specifier is in the message either way. When the importer
+/// is not a readable file, or the text is not found, the importer is named in the message instead.
+fn at_import(base: &str, name: &str, error: JsLoadError) -> JsError {
+    let mut error = JsError::from(error);
+    let importer = Path::new(base);
+    if !importer.is_absolute() {
+        return error;
+    }
+    let site = fs::read_to_string(importer).ok().and_then(|source| {
+        let offset = ['"', '\'']
+            .iter()
+            .filter_map(|quote| source.find(&format!("{quote}{name}{quote}")))
+            .min()?;
+        Some(position(&source, offset))
+    });
+    match site {
+        Some((line, column)) => {
+            error.location = Some(JsLocation {
+                file: importer.to_path_buf(),
+                line,
+                column,
+            });
+        }
+        None => error.message = format!("{} (imported from {base})", error.message),
+    }
+    error
 }
 
 /// The loader: reads a resolved module and hands QuickJS its JavaScript.

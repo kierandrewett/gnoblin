@@ -1967,6 +1967,8 @@ dependencies = [
  "gnoblin-cli-style",
  "gnoblin-client",
  "gnoblin-config",
+ "gnoblin-js",
+ "gnoblin-js-types",
  "gnoblin-log",
  "gnoblin-lua",
  "gnoblin-model",
