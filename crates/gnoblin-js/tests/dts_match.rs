@@ -104,13 +104,7 @@ fn the_runtime_and_the_declarations_name_the_same_members_of_gnoblin() {
 
 /// Value exports the d.ts declares in `declare module "gnoblin"` that a lane has not put in the runtime, each with the
 /// lane that lands it. The test fails once the runtime has the export, so an entry cannot outlive its reason.
-const DECLARED_NOT_IN_RUNTIME: &[(&str, &str)] = &[
-    ("ClientSwapBinding", "JsTilingBindings: Super+drag swaps two tiles"),
-    (
-        "SplitResizeBinding",
-        "JsTilingBindings: Super+right drag moves a divider",
-    ),
-];
+const DECLARED_NOT_IN_RUNTIME: &[(&str, &str)] = &[];
 
 /// Exports the runtime has that the d.ts does not declare, each with why. A name here is not a promise to a script
 /// author: it is plumbing the stock modules share. The test fails once the d.ts declares the name.
