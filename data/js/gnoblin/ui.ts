@@ -665,6 +665,7 @@ export class Canvas {
     /** Sends a pointer event to this canvas and then up its parents until a handler stops it. */
     dispatch(event: UiPointerEvent): void {
         const name = HANDLERS[event.kind];
+        // eslint-disable-next-line @typescript-eslint/no-this-alias -- `at` is the mutable parent-walk cursor.
         for (let at: Canvas | null = this; at !== null && !event.stopped; at = at.parent) {
             const handler = name === undefined ? undefined : at[name];
             if (typeof handler === "function") {
@@ -679,6 +680,7 @@ export class Canvas {
 
     /** Sends a key to this canvas and then up its parents until a handler stops it. */
     dispatchKey(event: UiKeyEvent): void {
+        // eslint-disable-next-line @typescript-eslint/no-this-alias -- `at` is the mutable parent-walk cursor.
         for (let at: Canvas | null = this; at !== null && !event.stopped; at = at.parent) {
             const handler = at.onKey;
             if (typeof handler === "function") {

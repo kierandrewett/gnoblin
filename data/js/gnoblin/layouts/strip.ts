@@ -212,7 +212,7 @@ export function ring(count: number, focus: number, area: Rect, options: RingOpti
 }
 
 /** Options of `Carousel3dLayout`. It takes the same fields as `RingOptions`. */
-export interface Carousel3dOptions extends RingOptions {}
+export type Carousel3dOptions = RingOptions;
 
 /**
  * Cards on a ring, the focused node at the front; with no focus among the nodes the first is. Each placement is the

@@ -141,7 +141,9 @@ function failure(error: unknown): string {
     return `[Error: ${error instanceof Error ? error.message : String(error)}]`;
 }
 
-function describeFunction(value: Function): string {
+type InspectFunction = ((...args: never[]) => unknown) & { readonly name: string };
+
+function describeFunction(value: InspectFunction): string {
     const source = Function.prototype.toString.call(value);
     const name = value.name === "" ? "(anonymous)" : value.name;
     return source.startsWith("class") ? `[class ${name}]` : `[Function ${name}]`;
@@ -174,7 +176,7 @@ function walk(value: unknown, state: Walk, depth: number): Shown {
             return leaf(state, text, JSON.stringify(text));
         }
         case "function": {
-            const text = describeFunction(value);
+            const text = describeFunction(value as InspectFunction);
             return leaf(state, text, text);
         }
         default:
