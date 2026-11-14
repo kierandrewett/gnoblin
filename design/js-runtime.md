@@ -1255,19 +1255,30 @@ Design: `design/js-xr.md` (which spec class is a tree node, a JS class or new na
 - **Bindings.** `Binding.readTrigger` is a static hook, so an XR binding keeps the `Binding` lifecycle, `enabled`,
   `priority` and the `BindingCollection` API with its own trigger grammar (`ControllerTriggerParts`, `Grip+Drag`). No seat
   claims one. They are in `SpatialLayout.bindings`, which a script turns off and replaces like any collection.
-- **Proven against the fake tree** (`crates/gnoblin-js/tests/xr.rs`, 44 cases): absent XR, the import gate, XR1, the
+- **Proven against the fake tree** (`crates/gnoblin-js/tests/xr.rs`, 50 cases): absent XR, the import gate, XR1, the
   Lua room cases and ring goldens, XR3 move (View only), the ray-drag, XR4 resize (zero window writes while dragging,
   one transaction on release, none when aspect and density hold), cancel, throw, disable and replace, XR6 secure, the
   `docs/xr.md` snippets.
-- **Proven on the real compositor** (`crates/gnoblin/tests/js_shell.rs`, the last test): an observer makes the `xr` seat,
+- **Proven on the real compositor** (`crates/gnoblin/tests/js_shell.rs`, the two XR tests): an observer makes the `xr` seat,
   the stock shell builds the room with a head camera and a View per real window, and the room goes with the seat. The
   seat is the only thing of the program in that test.
 - **Controllers (lane XrControllers).** The program publishes `controller` nodes (`design/js-xr.md`, "New native work",
   now built): the `controller` schema class, an observer may make and write it, `extensions/gnoblin-xr` writes one for
   each hand and obeys `controller.claimed`. Proven against the fake runtime and a fake owner, and on the compositor's
-  wire (`tests/tree_ipc.rs`). Not done: the TypeScript bindings do not yet write `claimed` (a script cannot write a list
-  of texts), so the grip still reaches the window as `BTN_RIGHT` under a `Grip+Drag`; no test drives the JS
-  `ViewMoveBinding` from the real program's nodes on a real compositor. No headset was used.
+  wire (`tests/tree_ipc.rs`).
+- **Claims (lane JsXrClaims).** The host converts a script's array of strings to the tree's `list<string>` value
+  (`JsScriptValue::Texts`, checked against the property's allowed names) and `controller.claimed` is writable.
+  `XRController.claim(owner, names)` and `release(owner)` keep one claim for each owner and write the union; the runtime
+  claims the buttons of a drag binding's trigger when `onStart` accepts and releases them on end, cancel, a throw, the
+  binding's removal, the session's end and `retire`. Proven on the fake link (`crates/gnoblin-js/tests/xr.rs`, the
+  "Claims" cases: claim and release of both stock bindings and a ray drag, two owners, the typed errors, every way a
+  drag ends, `retire`) and on a real compositor (`crates/gnoblin/tests/js_shell.rs`, `the_stock_grab_claims_the_grip_...`:
+  an observer plays the program, the stock shell's `ViewMoveBinding` writes `claimed = ["grip"]` on the real `controller`
+  node, the compositor refuses the observer the same write, and the list is empty again when the drag ends and when the
+  shell dies). A shell's detach now clears the `claimed` of every controller (`reap_transactions`). The program's
+  withholding of a claimed grip from the window is proven against the fake runtime and a fake owner only
+  (`extensions/gnoblin-xr`, `bridge/controller_nodes.rs`); no real program, runtime or headset ran it. The claim is made
+  after `chordSettleMs`, so the window sees a short right click of the grip's first 50 ms. No headset was used.
 - **Not built.** The TypeScript rules have no `xr = false` key (`accept` replaces it); `ViewRotateBinding`,
   `ViewScaleBinding` and `ThrowViewBinding`; a View of a workspace. XR5 (a stalled script does not block pose writes or
   layers) is unverified.

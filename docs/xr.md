@@ -411,6 +411,32 @@ bindings.get("resize").enabled = false;
 A binding of your own extends `XRControllerDragBinding` and is added the same way. `event.view` is the panel under the
 ray when the drag began, `event.controller.pose` and `event.ray` are the hand, and `event.hit` is where the ray struck.
 
+### Claiming a controller's inputs
+
+A drag takes its buttons from the window under the ray:
+
+- The runtime claims the buttons of the binding's trigger on the controller that started the drag, as `onStart` accepts.
+- It gives them back when the drag ends, however it ends: the buttons are released, the hand is lost, the binding is
+  removed or throws, the session ends or the shell reloads.
+- A `Grip+Drag` claims `grip`, and a `Grip+Trigger+Drag` claims `trigger` and `grip`.
+- A binding that needs other inputs overrides `claims()`.
+
+A script can claim inputs of its own on a controller. Each owner has one claim, a later one of the same owner replaces
+it, and the node holds the union of every owner's, so a claim made for a menu is not undone when a drag ends:
+
+```ts
+const hand = xr.sessions.at(0)?.controllers.get("60");
+const menu = {};
+hand?.claim(menu, ["thumbstick"]);
+hand?.release(menu);
+```
+
+The names are the five of the table above, in lower case. A list that is anything else throws a `TypeError` that names
+`Controller#<id>.claimed`, and a controller that is gone throws a `SceneError`. `hand.claimed` reads the union.
+
+The compositor gives a shell's claims back when the shell goes (a crash, a kill), because the program would otherwise
+withhold the input for ever.
+
 ## Testing without a headset
 
 `scripts/xr-smoke.sh` runs the whole stack on an Agent37 instance with no GPU, no seat and no headset. It runs as root
@@ -450,11 +476,13 @@ Logs, the tree dump and the pictures are left in `/tmp/xr-smoke`.
 
 ## What is not built
 
-- **The shell does not claim inputs yet.** The program obeys `controller.claimed` (see "Controller nodes"), but the
-  TypeScript bindings do not write it: a script cannot write a list of texts yet. Until they do, a `Grip+Drag` also sends
-  the grip as `BTN_RIGHT` to the window under the ray.
+- **The claim comes after the press.** A drag starts when its buttons have been down for 50 ms, and the claim is made then.
+  The window under the ray has had the right button pressed by the grip by that time, and the program releases it when the
+  claim arrives, so the window sees a short right click of the grip's first 50 ms. Claiming a button earlier would
+  withhold it from the window whenever a binding might use it.
 - **Controllers are proven only against a fake runtime.** The two-hand OpenXR actions compile and the tests pass with
-  scripted hands; no headset, and no Monado run of the new actions, has seen them. No headset was used.
+  scripted hands; no headset, and no Monado run of the new actions, has seen them. No headset was used. The program's
+  withholding of a claimed input is checked against the fake runtime only.
 - **A panel has one scale.** The program reads the first component of a View's `scale`, so a resize previews the growth
   evenly and the aspect changes when the client's new size lands.
 - **A stalled script.** The program writes the head pose and submits layers without waiting for the shell, and the

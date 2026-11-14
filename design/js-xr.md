@@ -1,7 +1,9 @@
 # XR on the JS shell (P9)
 
 Status: the controllers are built in the program and the compositor and tested against a fake runtime and a fake owner;
-the room is tested against a real compositor. No headset, no OpenXR runtime and no `gnoblin-xr` binary ran for it.
+the room and the shell's claims of a controller are tested against a real compositor. The program's withholding of a
+claimed input is proven against the fake runtime only. No headset, no OpenXR runtime and no `gnoblin-xr` binary ran for
+it.
 
 Owner-spec section 13 asks for a native `.so` extension. J7 replaces that with the out-of-process program of D34 and
 D35, so this document says what each spec class becomes in that model. See `design/js-runtime.md` (J7, "P9 XR status"),
@@ -43,7 +45,7 @@ D35, so this document says what each spec class becomes in that model. See `desi
 | Room and ring                          | JS                                 | `XRRoom` and `SpatialLayout`: the port of `xr.lua` (`arrangeRing`), radius and spacing in metres, one View per client, none for dialogs or secure clients.                    |
 | Head-locked panel                      | Provided + JS                      | A `View` under `head`. `room.pinToHead(client, { x, y, z })` in metres. The program draws it in view space.                                                                   |
 | Controllers                            | **New: `controller` class, built** | See "Native work". The program writes one node for each hand.                                                                                                                 |
-| `ViewMoveBinding`                      | JS over `controller`               | 6-DoF grab. Writes the View's `x y z rotation`; never the client. A moved View is pinned: the ring leaves it alone.                                                           |
+| `ViewMoveBinding`                      | JS over `controller`               | 6-DoF grab. Writes the View's `x y z rotation`; never the client. A moved View is pinned: the ring leaves it alone. Claims its trigger's buttons for the drag.                |
 | `ViewResizeBinding`                    | JS over `controller`               | Writes the View's uniform `scale` on every update, no window write. On release, if aspect or density asks, it writes the window's `width` and `height` once.                  |
 | Ray-drag of a far panel                | JS over `controller`               | `ViewMoveBinding({ tracking: "ray" })`: the panel keeps its distance from the hand and its offset from the ray.                                                               |
 | `ViewRotate`, `ViewScale`, `ThrowView` | Not built                          | Spec snippets 070 and 071. They would be JS over the same `controller` values.                                                                                                |
@@ -69,12 +71,23 @@ Built (lane XrControllers). No headset was used; it is proven against the fake r
    on controllers it made, and destroys them when the connection closes (as it does for the seat).
 3. **Arbitration.** The shell-writable `controller.claimed` list names inputs (`trigger`, `grip`, `thumbstick`,
    `primary`, `secondary`); the program withholds a claimed trigger, grip or thumbstick from the window under the ray.
+   The shell side (lane JsXrClaims): a script writes the list through `XRController.claim(owner, names)`. The shell keeps
+   one claim for each owner and each controller and writes the union, in the schema's order, only when it changes, so
+   two owners do not clobber each other. The host converts a JS array of strings to the tree's `list<string>` value and
+   refuses anything but the five lowercase names as `invalid-value`, which the module turns into a `TypeError` naming
+   `Controller#<id>.claimed`. `XRRuntime` claims the buttons of a drag binding's trigger when the drag starts and
+   releases them on `onEnd`, `onCancel`, a throw, the binding's removal, the session's end and `retire`. The compositor
+   clears a controller's `claimed` when the shell's connection goes (`TreeQueue::reap_shell_nodes`), so a crash cannot
+   leave an input withheld. An observer's write of `claimed` is refused `not-holder`.
 4. **Choices the design left open.** `tracked` is false when the pose cannot be located and the node keeps its last pose.
    There are no controller signals (the design says none are new). Claim names are lowercase. Writes are thinned to
    about 90 a second, under the compositor's allowance of 120, which controllers have apart from the head's. Another
    observer may write a controller's pose (as any may write the head's) but not its other values.
-5. **Not built: per-axis scale.** With it a resize preview could change the aspect; today it grows evenly. The
-   TypeScript bindings do not write `claimed` yet.
+5. **Not built: per-axis scale.** With it a resize preview could change the aspect; today it grows evenly.
+6. **Not built: an earlier claim.** The drag claims its buttons when it starts, after `chordSettleMs` (50 ms), so the
+   window under the ray has already been given the grip's `BTN_RIGHT` press; the program releases it as the claim
+   arrives. A claim made while a chord might still be forming would withhold the grip from the window whenever a binding
+   could use it.
 
 ## Acceptance (owner-spec section 21)
 
@@ -86,3 +99,4 @@ Built (lane XrControllers). No headset was used; it is proven against the fake r
 | XR5    | **Unverified.** The program's pose writer has one write in flight and a 250 ms timeout; no test stalls a shell while the program runs       |
 | XR6    | `xr6_a_secure_client_never_gets_a_view...` (policy) and `view_secure_tests.rs` in `gnoblin-backend` (the compositor masks it)               |
 | Room   | `crates/gnoblin/tests/js_shell.rs`: a real compositor, a real shell and an observer that makes the seat                                     |
+| Claims | `js_shell.rs`: an observer plays the program, the stock grab claims the grip on its `controller`, and the compositor clears it              |
