@@ -102,7 +102,7 @@ impl JsConfigLink for JsClientConfigLink {
 
 /// How an application of the patch ended.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Applied {
+pub(crate) enum JsApplied {
     /// The document in force already says what the patch and the removals make it say; nothing was committed.
     Unchanged,
     /// The document was committed.
@@ -163,16 +163,16 @@ impl ConfigState {
     ///
     /// The message of a refusal: the validator's problems, or the compositor's reason. The document in force
     /// and what the shell remembers of it are unchanged.
-    pub(crate) fn apply(&mut self, patch: &Value, retract: bool) -> Result<Applied, String> {
+    pub(crate) fn apply(&mut self, patch: &Value, retract: bool) -> Result<JsApplied, String> {
         let owned = leaves(patch);
         // A shell with no connection to the document and nothing to say about it has nothing to commit.
         if self.link.is_none() && owned.is_empty() {
-            return Ok(Applied::Unchanged);
+            return Ok(JsApplied::Unchanged);
         }
         let (current, document) = self.validated(patch, retract)?;
         if current == document {
             self.owned = owned;
-            return Ok(Applied::Unchanged);
+            return Ok(JsApplied::Unchanged);
         }
         let Some(link) = self.link.as_mut() else {
             return Err("the shell has no configuration connection".to_owned());
@@ -180,7 +180,7 @@ impl ConfigState {
         let bytes = document.to_json().to_string().into_bytes();
         let committed = link.commit(&bytes).map_err(|error| error.0)?;
         self.owned = owned;
-        Ok(Applied::Committed(committed))
+        Ok(JsApplied::Committed(committed))
     }
 
     /// The document in force, as a tree. An empty one when nothing is committed or there is no link.

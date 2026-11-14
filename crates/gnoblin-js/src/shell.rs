@@ -36,7 +36,7 @@ use rquickjs::{Array, FromJs, Function, Module, Object, Value};
 use thiserror::Error;
 
 use crate::bindings::{self, HostState, JsSpawner, SharedState};
-use crate::config::{Applied, JsConfigLink, parse_patch};
+use crate::config::{JsApplied, JsConfigLink, parse_patch};
 use crate::dialogs::{JsDialogs, events_to_js, verdicts_from_js};
 use crate::error::{JsError, JsErrorKind};
 use crate::generation::{JsConfig, JsGeneration};
@@ -382,8 +382,8 @@ impl JsShell {
         };
         let outcome = self.state.borrow_mut().config.apply(&patch, retract);
         match outcome {
-            Ok(Applied::Unchanged) => {}
-            Ok(Applied::Committed(committed)) => {
+            Ok(JsApplied::Unchanged) => {}
+            Ok(JsApplied::Committed(committed)) => {
                 log::info!(
                     area = "config",
                     revision = committed.revision,
