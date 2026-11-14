@@ -419,6 +419,8 @@ pub struct Mapper {
     /// The window geometry (`xdg_surface.set_window_geometry`: x, y, width, height in surface coordinates) every window
     /// sets before its first buffer, as a client that draws a title bar outside its main surface does.
     geometry: Option<(i32, i32, i32, i32)>,
+    /// What the windows draw outside their window geometry: the first buffer's size less the geometry's.
+    margin: (i32, i32),
     seat: Option<wl_seat::WlSeat>,
     /// The protocol objects of every window mapped, kept so they stay mapped.
     windows: Vec<(
@@ -456,6 +458,7 @@ impl Mapper {
             windows: Vec::new(),
             server_side: false,
             geometry: None,
+            margin: (0, 0),
             decorations: Vec::new(),
         }
     }
@@ -520,11 +523,39 @@ impl Mapper {
         surface.damage(0, 0, width, height);
         if let Some((x, y, geometry_width, geometry_height)) = self.geometry {
             xdg.set_window_geometry(x, y, geometry_width, geometry_height);
+            self.margin = (width - geometry_width, height - geometry_height);
         }
         surface.commit();
         self.roundtrip();
         self.windows.push((surface, xdg, toplevel));
         self.decorations.push(decoration);
+    }
+
+    /// Answers the last configure of window number `window` the way a client that draws outside its window geometry
+    /// does: its window geometry becomes the size it was configured to, at the origin it set, redrawn as
+    /// [`Self::commit_geometry`] does. Returns the window geometry it committed, or `None` while the window has had no
+    /// configure that names a size.
+    pub fn redraw_to_configure(&mut self, window: usize) -> Option<(i32, i32, i32, i32)> {
+        let (width, height) = self
+            .configured(window)
+            .filter(|&(width, height)| width > 0 && height > 0)?;
+        let (x, y, _, _) = self.geometry?;
+        self.commit_geometry(window, (x, y, width, height));
+        Some((x, y, width, height))
+    }
+
+    /// Commits a new window geometry `(x, y, width, height)` for window number `window`, with a buffer of that size
+    /// plus what the client draws around its window (the margin the first buffer had over the first geometry).
+    pub fn commit_geometry(&mut self, window: usize, geometry: (i32, i32, i32, i32)) {
+        let (x, y, width, height) = geometry;
+        let (buffer_width, buffer_height) = (width + self.margin.0, height + self.margin.1);
+        let buffer = self.buffer(buffer_width, buffer_height);
+        let (surface, xdg, _) = &self.windows[window];
+        xdg.set_window_geometry(x, y, width, height);
+        surface.attach(Some(&buffer), 0, 0);
+        surface.damage(0, 0, buffer_width, buffer_height);
+        surface.commit();
+        self.roundtrip();
     }
 
     /// Asks the compositor to make window number `window` (in the order they were mapped) fullscreen.

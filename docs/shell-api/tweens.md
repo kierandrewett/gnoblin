@@ -32,7 +32,7 @@ The properties you can animate:
 
 | Property                    | Value               | Meaning                                    |
 | --------------------------- | ------------------- | ------------------------------------------ |
-| `x`, `y`, `width`, `height` | number              | The window's content rectangle, in pixels. |
+| `x`, `y`, `width`, `height` | number              | The window geometry, no shadow, in pixels. |
 | `opacity`                   | number, 0 to 1      | How opaque the window is.                  |
 | `z`                         | number              | The window's place in depth.               |
 | `rotation`                  | `[x, y, z]` numbers | Rotation about each axis, in radians.      |

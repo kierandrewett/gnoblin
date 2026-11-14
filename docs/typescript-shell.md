@@ -171,6 +171,12 @@ export default defineConfig({
 
 ![Three terminals tiled by a dwindle layout](images/js-shell/dwindle.png)
 
+A client that draws its own title bar, as `foot` does when decorations are off, keeps it. The window is its window
+geometry, the bar included, so a window the shell places at the top-left corner has its bar on the screen and is the
+size the shell asked for:
+
+![A terminal that draws its own title bar, at the top-left corner of the screen](images/js-shell/csd-own.png)
+
 The window menu opens on a right click on a titlebar, and with `Alt+Space`:
 
 ![The window menu open under a titlebar](images/js-shell/window-menu.png)

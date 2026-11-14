@@ -1934,11 +1934,10 @@ fn windows_too_big_for_a_free_spot_cascade_and_never_land_exactly_on_each_other(
 }
 
 /// Live verification: foot draws its title bar in a subsurface above its main surface and says so with a window geometry
-/// of (0, -26, 700, 500) around a 700 by 474 buffer. The window is the geometry, 700 by 500. The tree publishes the
-/// surface's rectangle instead (`publish_geometry` in `compose.rs`: the geometry less its offset, at the buffer's size), 700
-/// by 474; a first run of the shipped binary with the stock bar held such a window at 700 by 448. Run it with `--ignored`.
+/// of (0, -26, 700, 500) around a 700 by 474 buffer. The window is the geometry, 700 by 500, and the tree publishes that
+/// rectangle (`publish_geometry` in `compose.rs`); a first run of the shipped binary, which published the buffer's 700 by
+/// 474, held such a window at 700 by 448.
 #[test]
-#[ignore = "open defect (design/js-runtime.md, Live verification, #4): the tree publishes the buffer size, 700 by 474, not the window geometry"]
 fn a_client_side_decorated_window_is_held_at_its_window_geometry_not_its_buffer_less_its_bar() {
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
@@ -1955,6 +1954,113 @@ fn a_client_side_decorated_window_is_held_at_its_window_geometry_not_its_buffer_
         (700.0, 500.0),
         "the window is its geometry, the bar included"
     );
+}
+
+/// The window node is the window geometry for each shape of client-drawn surround: a bar above the surface (a negative
+/// origin, as foot sets it), a shadow margin on every side (as a GTK client does), and no geometry at all, which is the
+/// buffer.
+#[test]
+fn a_window_is_its_window_geometry_for_a_bar_a_shadow_margin_and_none() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let ipc = session.ipc();
+    let socket = session.wayland();
+    let mut bar = Mapper::connect(&socket).with_window_geometry((0, -26, 300, 200));
+    let mut shadow = Mapper::connect(&socket).with_window_geometry((12, 12, 300, 200));
+    let mut plain = Mapper::connect(&socket);
+    bar.map_window_sized("org.example.bar", "Bar", 300, 174);
+    shadow.map_window_sized("org.example.shadow", "Shadow", 324, 224);
+    plain.map_window_sized("org.example.plain", "Plain", 280, 190);
+    wait_for("the three windows placed", &session, &mut plain, &shell, || {
+        ["org.example.bar", "org.example.shadow", "org.example.plain"]
+            .iter()
+            .all(|app| rect_of(&ipc, app).is_some_and(|(_, _, width, _)| width > 0.0))
+    });
+    let size = |app: &str| rect_of(&ipc, app).map(|(_, _, width, height)| (width, height));
+    assert_eq!(
+        size("org.example.bar"),
+        Some((300.0, 200.0)),
+        "the bar is inside the window"
+    );
+    assert_eq!(
+        size("org.example.shadow"),
+        Some((300.0, 200.0)),
+        "the shadow margin is outside the window"
+    );
+    assert_eq!(
+        size("org.example.plain"),
+        Some((280.0, 190.0)),
+        "no geometry is the buffer"
+    );
+}
+
+/// Asking the window for the size it publishes gives the same geometry back: a client that draws a 26 pixel bar outside
+/// its main surface was configured to 474 and shrank to 448, and so on for every round trip.
+#[test]
+fn a_configure_round_trip_keeps_the_geometry_five_times_over() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland()).with_window_geometry((0, -26, 700, 500));
+    let ipc = session.ipc();
+    mapper.map_window_sized("org.example.trip", "Round trip", 700, 474);
+    wait_for("the window placed", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, "org.example.trip").is_some_and(|(_, _, width, _)| width > 0.0)
+    });
+    for trip in 1..=5 {
+        // The shell asks for the size the tree holds, and the client answers as one that draws its own bar.
+        mapper.roundtrip();
+        if let Some(committed) = mapper.redraw_to_configure(0) {
+            assert_eq!(committed.2, 700, "trip {trip}: the configure kept the width");
+            assert_eq!(
+                committed.3, 500,
+                "trip {trip}: the configure kept the height, the bar included"
+            );
+        }
+        wait_for("the window held", &session, &mut mapper, &shell, || {
+            rect_of(&ipc, "org.example.trip").is_some_and(|(_, _, width, height)| (width, height) == (700.0, 500.0))
+        });
+    }
+    let (_, _, width, height) = rect_of(&ipc, "org.example.trip").expect("the window");
+    assert_eq!((width, height), (700.0, 500.0), "five round trips lost nothing");
+}
+
+/// Fullscreen fills the output with the window geometry: the shadow margin is past the screen's edge, not inside it.
+#[test]
+fn a_fullscreen_window_with_a_shadow_margin_fills_the_screen_with_its_geometry() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland()).with_window_geometry((12, 12, 300, 200));
+    let ipc = session.ipc();
+    mapper.map_window_sized("org.example.full", "Fullscreen", 324, 224);
+    wait_for("the window placed", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, "org.example.full").is_some_and(|(_, _, width, _)| width > 0.0)
+    });
+    let (screen_width, screen_height) = screen_size(&ipc);
+    let fills = Some((0.0, 0.0, screen_width, screen_height));
+    mapper.fullscreen(0);
+    wait_for("the geometry fills the screen", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, "org.example.full") == fills
+    });
+    // The client answers the configure with a geometry that size and a buffer with its margin around it: the window is
+    // still the screen, and the margin is outside it.
+    let deadline = Instant::now() + PATIENCE;
+    while !mapper.configured(0).is_some_and(|(width, _)| width > 0) {
+        assert!(Instant::now() < deadline, "the client was never configured to a size");
+        mapper.roundtrip();
+        std::thread::sleep(POLL);
+    }
+    let committed = mapper.redraw_to_configure(0).expect("a configure that names a size");
+    assert_eq!(
+        (f64::from(committed.2), f64::from(committed.3)),
+        (screen_width, screen_height),
+        "the client was asked for the screen's size as its window geometry"
+    );
+    wait_for("the screen still filled", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, "org.example.full") == fills
+    });
 }
 
 /// An `init.ts` whose workspace tiles by halves side by side and, one second after the shell's clock starts, changes to

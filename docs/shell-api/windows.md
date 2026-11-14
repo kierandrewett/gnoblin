@@ -56,8 +56,8 @@ the result. Coordinates are logical pixels in the compositor's space, and an out
 | `appId`                     | string              | The application id the client set. Empty when it set none.                          |
 | `title`                     | string              | The window title.                                                                   |
 | `focused`                   | boolean             | Whether the window holds the keyboard focus. Read-only.                             |
-| `x`, `y`, `width`, `height` | number              | The window's content rectangle. A write moves or resizes the window.                |
-| `bounds`                    | `Rect`              | `{ x, y, width, height }` of the content. A write sets all four.                    |
+| `x`, `y`, `width`, `height` | number              | The window geometry, shadow left out. A write moves or resizes it.                  |
+| `bounds`                    | `Rect`              | `{ x, y, width, height }` of the window geometry. A write sets all four.            |
 | `maximised`                 | boolean             | Whether the window is maximised. A write maximises or restores it.                  |
 | `minimised`                 | boolean             | Whether the window is hidden by minimising. A write hides or shows it.              |
 | `fullscreen`                | boolean             | Whether the window covers its output. A write enters or leaves it.                  |
@@ -84,6 +84,26 @@ A value of the wrong type throws a `TypeError` that names the property. Any othe
 - `destroyed`: the window is gone.
 - `read-only`: the property cannot be written.
 - `refused`: the compositor refused the change.
+
+## Window geometry and capture
+
+A window's `bounds` are its window geometry: the part of its surface the user sees as the window. The geometry is what
+the client sets with `xdg_surface.set_window_geometry`, and the whole surface while it set none.
+
+A client that draws a shadow around its window, or a title bar of its own outside its main surface, has that drawn, but
+it is not the window. A maximised or fullscreen window fills its output with the geometry, and the shadow lies past the
+screen's edge.
+
+The size you write to `width` and `height` is the size the client is asked for, so a window asked for the size it
+reports has that size back.
+
+What is outside the geometry is still drawn, and is hit where the client's input region says so. The two ways to take a
+picture of a window differ in what they hold:
+
+- A capture of a window (screencopy, toplevel capture and a screen cast) is the pixels the output shows over the window
+  geometry. A shadow outside it is not in the picture, and a window that overlaps it is.
+- A `View` of a window draws the window's own surface cut to the geometry, with the window's subsurfaces and popups
+  as they are drawn on the output.
 
 ## Methods
 

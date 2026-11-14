@@ -1797,7 +1797,7 @@ four that are clean product states and are in `docs/typescript-shell.md`, "What 
 | 1   | `master-stack.png`                | A black column at x = 1023: `tile()` floored each width on its own, so a master of 607.2 and a stack of 404.8 at 619.2 ended at 619 + 404 = 1023. Every tiled layout had it (grid with 3 columns on 1000 px ended at 999; the Lua shell had the same).                                                                                                             | Fixed in `data/js/gnoblin/layout.ts` (`tile` floors edges). Tests: `stock_layouts.rs`, real: `a_master_stack_workspace_with_a_ratio_and_a_gap_fills_the_screen_to_both_edges`. The Lua goldens that pinned the sliver are changed.                                                                                                                |
 | 2   | `cascade.png` (before the fix)    | Three windows of the default size: the second and the third landed at exactly (324, 268). `placeRect` pushes a cascade that found no free spot back inside the area, pinning every later window to the far corner, so the third hid the second.                                                                                                                    | Fixed in `FloatingLayout.onClientAdded` (`apartFrom` steps back by the cascade step). `placeRect` and its golden table are unchanged. Tests: `stock_layouts.rs`, real: `windows_too_big_for_a_free_spot_cascade_and_never_land_exactly_on_each_other`.                                                                                            |
 | 3   | `master-stack.png`, `dwindle.png` | The owner's `defineConfig({ workspaces })` draws no titlebars. `docs/typescript-config.md` says so in its table (`decorations` is "not layered") and contradicts itself two paragraphs above ("A key you leave out keeps its default"). With foot as the client, foot then draws its own title bar, which is outside its window and off screen for the top row.    | Open, by design, owner's call: should `decorations` default to `true` for a config that leaves it out? The doc and the screenshots in `docs/` say what is.                                                                                                                                                                                        |
-| 4   | `csd-own.png`                     | Double bars are fixed (below). What is left is the window geometry of a client that draws its bar above its main surface: see "The 52 px, diagnosed".                                                                                                                                                                                                              | Open: the compositor's window node must be the geometry. Test ignored until then.                                                                                                                                                                                                                                                                 |
+| 4   | `csd-own.png`                     | Fixed: the window is its geometry, so foot's bar is on screen and the window is 700 by 500 (below, "The 52 px, fixed").                                                                                                                                                                                                                                            | Fixed in the compositor: the window node is the window geometry. Test: `a_client_side_decorated_window_is_held_at_its_window_geometry_not_its_buffer_less_its_bar`, no longer ignored.                                                                                                                                                            |
 | 5   | `shadows-gles.png`                | The shadow is the window node's, so it is cast by the content and not by the frame: it has nothing at the titlebar's side. The shadow effect has no rectangle of its own to grow.                                                                                                                                                                                  | Open. Needs the effect to take an extent, in the compositor.                                                                                                                                                                                                                                                                                      |
 | 6   | `master-stack.log`                | A reload logged 19 `a seat claim's chord is already bound for that device` and one `a seat gesture claim was refused` at WARN. The new generation claimed each stock key while the old one still held it, so the compositor refused the duplicate, and the old generation's release then freed the chord: after the reload nobody held it and the key did nothing. | Fixed (lane JsReloadClaims). A staged generation's claims wait for the swap and go out behind the old generation's releases, in one transaction ("Hot reload", "Seat claims across a reload"). Tests: `crates/gnoblin-js/tests/input.rs`, real: `a_reload_hands_every_seat_claim_over_so_each_shortcut_fires_once_and_a_removed_one_is_released`. |
 | 7   | every `.log`                      | The guardian wrapped each INFO line a child prints on stderr as `WARN guardian/raw INFO ...`, so a healthy start was a page of warnings: `is_structured` looked for the bracketed form `INFO  [role] ...`, and the console prints `INFO   role/component  message`.                                                                                                | Fixed (lane JsReloadClaims) in `crates/gnoblin-session/src/raw.rs`: a line the child formatted itself is passed on with its own level. Tests in the same file.                                                                                                                                                                                    |
@@ -1825,7 +1825,7 @@ global, tiling bindings, transitions, outputs and the idle fixes, on an Agent37 
   defect 1 stays fixed). `cascade`: the third window no longer hides the second (defect 2 stays fixed).
 - `csd-own` (foot, `decorations: false`): **no bar is visible.** Foot draws its own, but its bar is a subsurface above its
   main surface and the window sits at y = 0, so the bar is off screen, and the window is 448 high, not 500. That is the
-  height loss of defect 4's first run, still there: see below.
+  height loss of defect 4's first run, which was still there on this run and is fixed since: see "The 52 px, fixed".
 - `reload-tiled`: three tiled windows before and after `gnoblinctl config reload` are byte-identical PNGs.
 - `transition-mid`: a `requestTransition` moving a window 600 px right over 6 s, captured 2 s in, shows the window at
   x = 212 (linear: 200), and `transition-end` shows it at 600. The script catches the middle frame by a long duration on
@@ -1838,20 +1838,55 @@ global, tiling bindings, transitions, outputs and the idle fixes, on an Agent37 
   card is drawn by the compositor crate's `LockCardService`, whose test `Session` runs `Compositor::run` and does not hand
   out the control handle. A test would need that handle exposed; the card's colours are therefore unproven.
 
-### The 52 px, diagnosed (not yet fixed)
+### The 52 px, fixed
 
 A client that draws its bar in a subsurface above its main surface (foot: `set_window_geometry(0, -26, 700, 500)`, a 700 by
-474 buffer) has two rectangles, and the tree only knows one. `publish_geometry` (`crates/gnoblin-backend/src/render/compose.rs`)
-publishes the window node's `width` and `height` as the **buffer** size, 700 by 474, and the node's position is the main
+474 buffer) has two rectangles, and the tree knew one. `publish_geometry` (`crates/gnoblin-backend/src/render/compose.rs`)
+published the window node's `width` and `height` as the **buffer** size, 700 by 474, and the node's position as the main
 surface's origin. The shell writes a window's `width` and `height` back, and the compositor sends them as the
-`xdg_toplevel.configure` size, which is a **window geometry** size: 474 asked of foot gives a 448 buffer, with its 26 px bar
-inside the 474. Each round trip loses the bar's height, and a window placed at y = 0 has its bar at y = -26. Asserted from the
-scene by `a_client_side_decorated_window_is_held_at_its_window_geometry_not_its_buffer_less_its_bar` in
-`crates/gnoblin/tests/js_shell.rs` (a `Mapper` that sets `set_window_geometry`): it reads 700 by 474 where the geometry is 700
-by 500, and is `#[ignore]`d until the fix. The fix is in the compositor, not the shell: the window node must be the
-geometry (publish its size, and draw the surface at the node's origin less the geometry's offset when a shell places it, as
-`target()` already does when none does), which touches the render and the tree publish paths and their tests, and was not
-done in this run.
+`xdg_toplevel.configure` size, which is a **window geometry** size: 474 asked of foot gave a 448 buffer, with its 26 px bar
+inside the 474. Each round trip lost the bar's height, and a window placed at y = 0 had its bar at y = -26.
+
+The fix is in the compositor, at the root: **the window node is the window geometry.**
+
+- `x`, `y`, `width` and `height` of a window node are the `xdg_surface.set_window_geometry` rectangle in global
+  coordinates, and the whole surface while the client set none (xdg-shell's default). `publish_geometry` publishes that,
+  `window_node_size` (the size a configure asks for) is that size, and `window_frame` is that rectangle. A configure then
+  asks for what the tree publishes, so the round trip is stable.
+- The surface is drawn at the node's origin less the geometry's offset (`Drawn::local` in `push_surface`, 3D models
+  included), a surface hung from it (a subsurface or a popup of the window's own surface) is placed in the node's plane
+  (`tree_origin`), and what lies outside the node is the node's **draw extent**: it is drawn and damaged with the node
+  (`Scene::set_draw_extent`; a commit damages the shadow) and is not the window. The node's hit extent is the surface
+  tree's bounds in the same plane, so the pointer still reaches what the client's input region admits outside the
+  geometry (a GTK resize border), and `surface_under` turns the node's point back into the surface's coordinates before
+  the input region and the subsurfaces are asked. A popup is found from the surface's own origin, the frame less the
+  geometry's offset (`window_popup_under`).
+- Fallback placement, cascade, centring, tiling, maximise and fullscreen already worked in geometry (the policy's record is
+  the geometry, adopted from `set_window_geometry`), so a maximised window fills the output with its geometry and the
+  client's shadow lies past the screen's edge.
+- A capture of a window (screencopy, toplevel capture, a cast) copies the output's pixels over the window geometry, so
+  the shadow outside it is not in it; a View of a window draws its own surface cut to the geometry
+  (`view_crop`, `geometry_crop`), and its subsurfaces and popups whole. `docs/shell-api/windows.md`, "Window geometry and
+  capture", states the rule.
+
+Proven by (each case fails on the tree before the fix, except the pixel cases of a shell-less session, which were already
+right and are kept as guards):
+
+- `crates/gnoblin-backend/src/render/surface_tree_tests.rs`: the published rectangle for geometry origins (0, 0),
+  (0, -26) and (12, 12) with larger buffers, an unset geometry, a changed geometry republished, the surface drawn at the
+  frame less the offset, damage of the shadow, a bar above the surface, a popup, the pick and its hit extent, maximise
+  filling the output, and a View cut to the geometry.
+- `crates/gnoblin-wayland/tests/window_geometry.rs` (real client, a shell that holds the tree): the node a shell reads for
+  each origin, an unset geometry, a geometry committed later, five configure round trips that lose no bar, and the
+  pointer in surface coordinates with and without an input region over the shadow; `tests/surface_tree.rs`: the pixels of
+  a shadow margin, a bar above the surface and a popup anchored in the geometry, on both renderers.
+- `crates/gnoblin/tests/js_shell.rs`, with the shipped shell: `a_client_side_decorated_window_is_held_at_its_window_geometry_not_its_buffer_less_its_bar`
+  (no longer ignored), a bar, a shadow margin and no geometry, five round trips, and fullscreen filling the screen.
+
+Live, `scripts/js-shell-screenshots.sh csd-own` on the fixed tree (release build on an Agent37 instance): foot's own bar is
+on the screen at the top-left corner, and `csd-own.windows.json` and `csd-own.clients.json` say the window is 700 by 500 at
+(0, 0) (before: 700 by 448, its bar at y = -26). `csd-double` is unchanged: the shell's 28 px bar, the window at
+(0, 28), 700 by 500. The picture is `docs/images/js-shell/csd-own.png`.
 
 ## Questions for the owner (the agent has a default for each)
 
