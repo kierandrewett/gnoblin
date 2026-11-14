@@ -244,6 +244,9 @@ impl Shell {
                             return;
                         }
                     };
+                    // `connect` has loaded the entry, so the generation is known before the first frame: a test that reads it
+                    // as "the generation that booted" must not read the zero the status starts at.
+                    shared.lock().expect("the status lock").generation = role.generation_id();
                     while !stopped.load(Ordering::Relaxed) {
                         let ticked = role.tick();
                         {
