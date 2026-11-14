@@ -78,6 +78,44 @@ is dropped. `seat:claim_device(name)` does the same without a binding and return
 - The claim goes with the shell. A shell that exits, crashes or is restarted leaves the pad typing again until the
   next shell claims it.
 
+## Claiming a pointer drag
+
+A claim whose chord ends in a pointer button takes that button's drag.
+
+- `Seat.claim` takes the chord as text: `<Super>Button1`, `<Super>Button3`, or the back button on its own, `Button8`.
+- The button is a number from 1 to 9, as X11 and GTK number them: 1 is left, 2 middle, 3 right, 8 back and 9 forward.
+- `Button1` to `Button7` need a modifier, so a claim cannot take the ordinary click.
+- A claim for one pointer takes the pointer's name as its first line, as a keyboard chord does.
+- `grab` has no effect on a pointer claim: the release always comes back.
+
+With exactly the chord's modifiers held, a press of the button is withheld from every client and from the shell's
+nodes. The owner hears the drag on the seat as the `pointer_chord` signal instead of the `chord` signal:
+
+| Field       | Meaning                                                                                             |
+| ----------- | --------------------------------------------------------------------------------------------------- |
+| `phase`     | `start` at the press, `update` as the pointer moves, `end` at the release, `cancel` when it is cut. |
+| `claim`     | The id the shell gave the claim.                                                                    |
+| `x`, `y`    | Where the pointer is, in global logical coordinates.                                                |
+| `dx`, `dy`  | How far the pointer has come since the press. Both are 0 at `start`.                                |
+| `button`    | The chord's button number.                                                                          |
+| `modifiers` | The chord's modifiers as it spells them, such as `<Super>`. Empty for `Button8`.                    |
+| `time`      | The input event's time in milliseconds.                                                             |
+
+- The drag belongs to the button. Letting go of the modifier first does not end it: `end` comes with the release.
+- No client hears the pointer move while the drag lasts, so a window that follows the drag does not see the pointer
+  cross it. The seat's `pointer_x` and `pointer_y` follow the pointer as usual. When the drag ends the pointer is given
+  the surface under it.
+- `update` comes at most once a frame and carries the place the pointer has reached, so a shell that is slower than the pointer is
+  told where it is, not where it was. `start`, `end` and `cancel` are never merged or dropped.
+- A press with other modifiers held, a press of another button, and a press while the session is locked are not the
+  claim's: the client gets them as it always did, and the shell hears nothing.
+- A session that locks during a drag ends it with `cancel`, once. A pointer that is unplugged during a drag does the
+  same. Neither sends anything after it.
+- A shell that exits, crashes or is restarted, or that gives the claim up with `Seat.unclaim`, ends the drag without
+  a word to anyone. The button's release is withheld from the client as its press was, so the client sees a click it
+  never started only if the shell makes one.
+- Two claims of one chord for one pointer (or for every pointer) are refused: the second is dropped.
+
 ## Limits
 
 A key is down for the seat once any keyboard holds it, and up once none does. That is what a client is told.

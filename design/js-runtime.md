@@ -263,13 +263,71 @@ tree link that records claims and plays back chords, gestures, pointer positions
   `activeDisplay` is `null`. `devices` is parsed from `Seat.device`; a device's `bind` claims for its name. A context
   or device the seat loses is disposed and its drags cancelled. `new InputContext` is not available: contexts are the
   compositor's seats.
-- **Proved only against the fake link.** That the real compositor takes these claims. In particular `Seat.claim` in
-  `gnoblin-wayland` parses a shell claim as a keyboard chord (`ChordKind::Key`), so a pointer-button chord such as
-  `<Super>Button1` is logged and dropped today: pointer drag bindings need a compositor claim for pointer chords that
-  reports the press and release (the grammar's `Button1` to `Button3` already exist in `gnoblin-input`'s
-  `ChordKind::Pointer`). Key chord and gesture claims use the calls the Lua shell makes, byte for byte, but were not
-  run against the compositor. Pointer coordinates are assumed to share a space with client `x` and `y`. `Wheel`
-  has no claim. The tree order as z-order for `hitTest` is assumed.
+- **Proved only against the fake link.** That the real compositor takes these claims. The compositor reads a pointer
+  chord such as `<Super>Button1` as a pointer claim and streams its drag (see "Pointer chord claims"); the input module
+  does not consume that stream yet. Key chord and gesture claims use the calls the Lua shell makes, byte for byte, but
+  were not run against the compositor. Pointer coordinates are assumed to share a space with client `x` and `y`.
+  `Wheel` has no claim. The tree order as z-order for `hitTest` is assumed.
+
+## Pointer chord claims
+
+What the compositor offers a shell that wants to move or resize a window by dragging with JavaScript only (package
+P3c, "Drags"). `crates/gnoblin-wayland/src/pointer_chord.rs` implements it and does not know any scripting language.
+
+**The claim.** The same call as a key chord, on the seat node: `Seat.claim(id, chord, grab, device)`. The call's
+arguments are the little-endian `i64`s `id` and `grab`, and its text is the chord, or the device's name, a line feed and
+the chord. `claim` in `crates/gnoblin-js/src/input.rs` already makes exactly this call, so `input.claim(seat, chord,
+grab, device)` with a pointer chord is the whole API. `grab` is ignored for a pointer chord: the release always comes
+back. The compositor reads a chord that ends in a button name as a pointer chord and any other as a key chord.
+
+- The chord is modifiers in angle brackets and then `Button1` to `Button9` (`<Super>Button1`,
+  `<Control><Alt>Button2`), or `Button8` or `Button9` alone. The numbers are X11's: 1 left, 2 middle, 3 right, 8 back, 9
+  forward, so `MouseLeft`, `MouseMiddle` and `MouseRight` are 1, 2 and 3. `Button1` to `Button7` need a modifier, and a
+  claim without one is dropped. `claimOf` already writes the modifiers in brackets, in the compositor's order.
+- One holder per chord and `device`: a second claim of the same chord for the same device is refused as a keyboard
+  chord's is, with the same silence (the claim call applies, the compositor logs and drops it). A claim for one device
+  wins over a claim for every device on that device. The modifiers match exactly: `<Super>Button1` is not
+  `<Shift><Super>Button1`, and Caps Lock and Num Lock do not count.
+- `Seat.unclaim(id)` ends the claim. Ids share one number space with `claim_gesture`, as before.
+
+**The stream.** While a claim matches, the compositor withholds the button's press from every client and from the
+shell's nodes and delivers the drag as the seat's `pointer_chord` signal. It arrives on the tree link as
+`TreeIncoming::PointerChord(TreePointerChord)` (`crates/gnoblin-tree-client/src/tree_mirror.rs`), one message per
+signal, in order:
+
+| Field       | Type   | Meaning                                                                                |
+| ----------- | ------ | -------------------------------------------------------------------------------------- |
+| `phase`     | string | `start`, `update`, `end` or `cancel`.                                                  |
+| `claim`     | int    | The id `claim` returned.                                                               |
+| `x`, `y`    | double | The pointer in global logical coordinates, the same space as the seat's `pointer_x`.   |
+| `dx`, `dy`  | double | The pointer's movement since `start`. Both 0 at `start`.                               |
+| `button`    | int    | The chord's button number (1, 2, 3, 8, 9).                                             |
+| `modifiers` | string | The chord's modifiers as `claimOf` writes them, `<Super>`; empty for a bare `Button8`. |
+| `time`      | int    | The input event's time in milliseconds, wrapping at 2^32.                              |
+
+- `start` is sent when the button is pressed with the chord's exact modifiers held and the session unlocked. `end` is
+  sent when the button is released, whether the modifiers are still held or not. Between them `update` is sent when the
+  pointer has moved, at most once per frame, with the latest place: a shell that runs once per frame needs no coalescing
+  of its own. `start`, `end` and `cancel` are never merged or dropped.
+- No client hears the button or the pointer's motion during the drag, and the shell's nodes hear neither: the shell has
+  the pointer. The seat's `pointer_x` and `pointer_y` follow it. When the drag ends the pointer is given the surface it
+  is over.
+- `cancel` is the compositor ending a drag whose owner is alive: the session locked, or the pointer's device was
+  removed. It is the last signal of the drag, and there is no `end` after it.
+- A claim that goes while its drag is live (`unclaim`, a replaced claim, the seat's destruction, or the shell's
+  connection closing) ends the drag silently: no `end` and no `cancel`, because the owner is gone or has said it does
+  not want the drag. The button's release is withheld from clients as the press was, so no client sees a button it
+  never saw pressed, and none is left with one down. A shell that restarts and claims afresh starts clean.
+- A press that does not match (other modifiers, another button, a locked session) is not the claim's: clients get it
+  and the shell hears nothing. A second press of a button already captured on the same pointer cancels the first
+  drag.
+- Everything is per pointer and button: two buttons held together are two drags, each with its own `start` place.
+
+**What the JS side does with it** (the input module's job, not written yet). `start` is the press, `update` the
+sample a drag takes from the mirror's `pointer_x` and `pointer_y` today, `end` the release and `cancel` the
+`onCancel`; `dx` and `dy` are measured from the press by the compositor. `JsShell::frame` drops
+`TreeIncoming::PointerChord` for now: parking it in `JsInput::inbox` beside `Chord` and `Gesture` is the whole host
+change.
 
 ## P3b status
 
