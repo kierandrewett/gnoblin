@@ -2753,8 +2753,9 @@ for (const node of host.windows()) {
 }
 
 Object.defineProperty(globalThis, "gnoblin", { value: gnoblin, enumerable: false });
-// The console's helpers: `inspect.clients()` and the rest are typed at a console prompt without an import.
-Object.defineProperty(globalThis, "inspect", { value: inspect, enumerable: false });
+// The console's helpers: `inspect.clients()` and the rest are typed at a console prompt without an import. Unlike
+// `gnoblin` the name is a convenience and not part of the object model, so a script may replace it.
+Object.defineProperty(globalThis, "inspect", { value: inspect, enumerable: false, writable: true, configurable: true });
 host.entry = {
     render: (value, maxBytes) => inspect.render(value, { maxBytes }),
     ui: runUiFrame,
