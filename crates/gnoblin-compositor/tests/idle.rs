@@ -134,10 +134,13 @@ struct Holds {
 
 impl Holds {
     fn connect(session: &Session) -> Holds {
-        Holds {
-            client: ipc(session),
-            idle: idle_id(session),
-        }
+        let idle = idle_id(session);
+        let mut client = ipc(session);
+        // A completion is delivered to the connections subscribed to the object it belongs to.
+        client
+            .subscribe(Filter::Object(idle))
+            .expect("the idle object's snapshot");
+        Holds { client, idle }
     }
 
     fn call(&mut self, method: &str, holder: &str) -> OperationOutcome {

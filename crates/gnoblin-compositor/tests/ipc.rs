@@ -741,6 +741,9 @@ fn an_inhibit_is_counted_until_it_is_released() {
     let session = Session::start();
     let idle = idle_id(&session);
     let mut client = ipc(&session);
+    client
+        .subscribe(Filter::Object(ObjectId::new(idle)))
+        .expect("the snapshot");
     assert_eq!(inhibitors(&session), 0);
 
     assert!(idle_hold(&mut client, idle, "inhibit", "a").is_done());
@@ -760,6 +763,9 @@ fn the_holder_cap_refuses_the_257th_inhibit() {
     let session = Session::start();
     let idle = idle_id(&session);
     let mut client = ipc(&session);
+    client
+        .subscribe(Filter::Object(ObjectId::new(idle)))
+        .expect("the snapshot");
     for holder in 0..256 {
         assert!(idle_hold(&mut client, idle, "inhibit", &holder.to_string()).is_done());
     }
