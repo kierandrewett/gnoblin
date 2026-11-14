@@ -3,6 +3,7 @@
 // config reaches them through the `gnoblin` global or through `setup(gnoblin)`.
 
 export * from "gnoblin/bindings";
+export * from "gnoblin/focus";
 export * from "gnoblin/input";
 export * from "gnoblin/layout";
 export * from "gnoblin/layouts/floating";
@@ -15,5 +16,7 @@ export * from "gnoblin/layouts/strip";
 export * from "gnoblin/sets";
 export * from "gnoblin/gestures";
 export * from "gnoblin/config";
+export * from "gnoblin/rules";
+export * from "gnoblin/snap";
 export * from "gnoblin/titlebar";
 export * from "gnoblin/ui";

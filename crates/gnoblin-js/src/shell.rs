@@ -461,8 +461,9 @@ impl JsShell {
                 TreeIncoming::Reply(reply) => self.handle_reply(&reply, &mut diagnostics),
                 // A claimed chord, gesture or pointer drag is parked for the input module, which the frame hands it
                 // to once the listeners are planned. A pointer event addressed to a canvas of the UI toolkit and the
-                // answer to one of its measurements are parked for the toolkit's frame. Every other event and answer
-                // has no JavaScript API: it is consumed so it does not pile up.
+                // answer to one of its measurements are parked for the toolkit's frame, and a pointer edge on a window
+                // for its client's listeners. Every other event and answer has no JavaScript API: it is consumed so it
+                // does not pile up.
                 TreeIncoming::Chord(chord) => self.state.borrow_mut().input.inbox.push(JsInputMessage::Chord(chord)),
                 TreeIncoming::Gesture(gesture) => self
                     .state
@@ -472,7 +473,9 @@ impl JsShell {
                     .push(JsInputMessage::Gesture(gesture)),
                 TreeIncoming::Event(event) => {
                     let state = &mut *self.state.borrow_mut();
-                    state.ui.accept_event(&event, &state.handles);
+                    if !state.ui.accept_event(&event, &state.handles) {
+                        state.input.accept_window_event(&state.mirror, &state.handles, &event);
+                    }
                 }
                 TreeIncoming::Answer { token, result, error } => {
                     self.state.borrow_mut().ui.accept_answer(token, &result, &error);
@@ -526,6 +529,7 @@ impl JsShell {
         })?;
         let started = Instant::now();
         self.state.borrow_mut().input.inbox.clear();
+        self.state.borrow_mut().input.forget_window_events();
         self.run_pending(pending, started, &mut diagnostics)?;
         self.collect_reports(&mut diagnostics)?;
         self.send_transaction()?;
@@ -557,6 +561,12 @@ impl JsShell {
             entry
                 .get::<_, Function<'_>>("plan")?
                 .call((created, touched, destroyed))
+        })?;
+        // The pointer's edges on windows go to the clients' listeners after the plan, so a client made in this frame
+        // is one the listeners know, and before the input matcher, so a press that focuses a window is heard first.
+        let _queued: usize = self.call_entry(self.frame_budget, |entry| {
+            let events = self.state.borrow_mut().input.take_window_events(entry.ctx())?;
+            entry.get::<_, Function<'_>>("pointer")?.call((events,))
         })?;
         // The input matcher runs after the plan, so a client that died in this frame has already cancelled
         // its drags when the frame's chord messages are read. It runs every frame, with or without messages:

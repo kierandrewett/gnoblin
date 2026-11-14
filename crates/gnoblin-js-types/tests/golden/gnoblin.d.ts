@@ -729,7 +729,14 @@ declare module "gnoblin" {
         readonly workspace: Workspace | null;
         /** Where the user left the client in a floating layout. */
         floatingBounds?: Rect;
-        readonly fullscreen: boolean;
+        /** Whether the window covers its output. Writing asks the compositor to make it fullscreen or restore it. */
+        fullscreen: boolean;
+        /** From 0 to 1; the compositor clamps a value outside that. */
+        opacity: number;
+        /** Whether the window is kept out of screen captures. */
+        secure: boolean;
+        /** A floating client is left out of its workspace's tiling and keeps its place. Only the script knows it. */
+        floating: boolean;
         style: ClientStyle;
         readonly computedStyle: Readonly<ClientStyle>;
         /** Whether the window sits in a tiled layout, so its client drops the border and rounding it draws itself. */
@@ -742,6 +749,8 @@ declare module "gnoblin" {
          */
         animate(values: ClientAnimation, options: AnimateOptions): void;
         close(): void;
+        /** Puts the window on top of every other window. */
+        raise(): void;
     }
 
     /** Rotation about each axis in radians, or the scale along each axis: three numbers. */
@@ -855,8 +864,22 @@ declare module "gnoblin" {
         onDestroyed?(item: T): void;
     }
 
+    /** A pointer edge on a window, in the window's own coordinates; `button` is 0 for every edge but a press and a release. */
+    export interface ClientPointerEvent {
+        readonly x: number;
+        readonly y: number;
+        readonly button: number;
+    }
+
     export class ClientListener extends MemberListener<Client> {
         onTitleChanged?(client: Client, title: string): void;
+        onAppIdChanged?(client: Client, appId: string): void;
+        /** The pointer crossed into the window. */
+        onPointerEnter?(client: Client, event: ClientPointerEvent): void;
+        onPointerMotion?(client: Client, event: ClientPointerEvent): void;
+        onPointerLeave?(client: Client, event: ClientPointerEvent): void;
+        onPointerPress?(client: Client, event: ClientPointerEvent): void;
+        onPointerRelease?(client: Client, event: ClientPointerEvent): void;
         onFocusChanged?(client: Client, focused: boolean): void;
         onGeometryChanged?(client: Client, geometry: Rect): void;
         onClosed?(client: Client): void;
@@ -997,6 +1020,8 @@ declare module "gnoblin" {
         /** Pointer drags only: the rectangle a dragged window stays in, and the seat's `drag_constraint`. */
         readonly workArea?: Rect;
         readonly dragConstraint?: string;
+        /** Pointer drags only: the seat's `edge_tiling`, or the config's `edgeTiling`: whether a drop on an edge tiles the window. */
+        readonly edgeTiling?: boolean;
         /** Gestures only: `begin`, `update`, `end` or `cancel`. */
         readonly phase?: string;
         /** Gestures only: movement since the begin in touchpad units, the spread (1 is unchanged) and the rotation in radians. A pointer drag's `dx` and `dy` are pixels from the press. */
@@ -1044,13 +1069,20 @@ declare module "gnoblin" {
     export function constrainRect(rect: Rect, area: Rect, mode: DragConstraint): Rect;
     /** Super+MouseLeft drag: the client follows the pointer. */
     export class ClientMoveBinding extends PointerDragBinding {
-        constructor(options?: Partial<PointerDragBindingOptions>);
+        /** How near a screen edge, in pixels, a drop tiles the window (default 4); `false` never tiles. Needs edge tiling on. */
+        snap: number | false;
+        constructor(options?: Partial<PointerDragBindingOptions> & { snap?: number | false });
     }
     export type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
-    /** Super+MouseRight drag: the corner chosen at the press follows the pointer; it never changes mid-drag. */
+    /** The one side that moves with the pointer when `edges` is `nearest`. */
+    export type ResizeEdge = "left" | "right" | "top" | "bottom";
+    /**
+     * Super+MouseRight drag: the corner chosen at the press follows the pointer; it never changes mid-drag. With
+     * `edges: "nearest"` the side nearest the press moves alone.
+     */
     export class ClientResizeBinding extends PointerDragBinding {
-        edges: "quadrant" | ResizeCorner;
-        constructor(options?: Partial<PointerDragBindingOptions> & { edges?: "quadrant" | ResizeCorner });
+        edges: "quadrant" | "nearest" | ResizeCorner;
+        constructor(options?: Partial<PointerDragBindingOptions> & { edges?: "quadrant" | "nearest" | ResizeCorner });
     }
     export class ClientSwapBinding extends PointerDragBinding {
         constructor(options?: Partial<BindingOptions>);
@@ -1081,6 +1113,18 @@ declare module "gnoblin" {
         readonly bindings: BindingCollection;
         bind(trigger: Trigger, action: ((event: BindingEvent) => void | false) | Binding): Binding;
     }
+    /** The window management settings a seat publishes (the schema's `seat` keys in camel case, the compositor's words). */
+    export interface SeatSettings {
+        readonly edgeTiling: boolean;
+        /** `click`, `hover` or `hover-strict`. */
+        readonly focusMode: string;
+        /** `allow` or `prevent`. */
+        readonly focusNewWindows: string;
+        readonly raiseOnClick: boolean;
+        readonly autoRaise: boolean;
+        readonly autoRaiseDelay: number;
+        readonly focusChangeOnPointerRest: boolean;
+    }
     /** One seat: its devices, its focus, its pointer and the bindings that run on its chords and drags. */
     export interface InputContext {
         readonly name: string;
@@ -1091,6 +1135,10 @@ declare module "gnoblin" {
         /** Not wired: displays have no JavaScript object yet. */
         readonly activeDisplay: null;
         readonly pointer: Vec2;
+        /** What the seat publishes, with the config's `edgeTiling` and `dragConstraint` over it. */
+        readonly settings: SeatSettings;
+        /** Takes the keyboard focus from every window. */
+        clearFocus(): void;
         /**
          * Claims the chord on the seat and runs `action` on it. Returns the binding; `unbind()` releases the
          * claim once no binding needs it. A drag trigger needs a `PointerDragBinding`, not a function.
@@ -1313,13 +1361,200 @@ declare module "gnoblin" {
     export function focusColumn(direction: "left" | "right"): FocusColumnAction;
     export function binding(create: () => Binding): BindingAction;
 
-    export interface WindowRule {
-        /** Data-only match, so the compositor can evaluate it. */
-        appId?: string;
-        title?: string;
-        workspace?: string;
-        style?: ClientStyle;
+    /** A glob (`*` any run, `?` one character) that matches the whole text, or a RegExp tested anywhere in it. */
+    export type Pattern = string | RegExp;
+    export interface RuleStyle {
+        cornerRadius?: number;
+        /** From 0 to 1. Applied to the window. */
+        opacity?: number;
+        shadows?: readonly unknown[];
     }
+    /**
+     * A window rule: data, so it can be checked and diffed. The query keys must all hold; the first matching rule
+     * applies, and one with `all: true` lets the next matching rule apply too. Docs: docs/config/window_rule.md.
+     */
+    export interface RuleConfig {
+        appId?: Pattern;
+        title?: Pattern;
+        /** Refused: the tree publishes no window role. */
+        role?: Pattern;
+        focused?: boolean;
+        /** The id of the workspace the window is on. */
+        onWorkspace?: string;
+        /** The workspace id the window is sent to. */
+        workspace?: string;
+        floating?: boolean;
+        size?: { width: number; height: number };
+        position?: { x: number; y: number };
+        style?: RuleStyle;
+        fullscreen?: boolean;
+        maximised?: boolean;
+        secure?: boolean;
+        /** The window does not take focus when it appears. */
+        skipFocus?: boolean;
+        all?: boolean;
+        /** Apply again when appId or title changes, and undo what the rule set when it stops matching. */
+        reapply?: boolean;
+    }
+    export interface RuleEffects {
+        workspace?: string;
+        floating?: boolean;
+        size?: { width: number; height: number };
+        position?: { x: number; y: number };
+        opacity?: number;
+        cornerRadius?: number;
+        shadows?: readonly unknown[];
+        fullscreen?: boolean;
+        maximised?: boolean;
+        secure?: boolean;
+        skipFocus?: boolean;
+    }
+    /** A rule after `compileRules` has checked it. */
+    export interface CompiledRule {
+        readonly index: number;
+        readonly effects: Readonly<RuleEffects>;
+        readonly all: boolean;
+        readonly reapply: boolean;
+    }
+    /** The window as a rule reads it. */
+    export interface RuleView {
+        readonly appId: string;
+        readonly title: string;
+        readonly focused: boolean;
+        readonly workspace: string | null;
+    }
+    /** Checks and compiles rules; throws a TypeError naming the rule's index and the field. */
+    export function compileRules(rules: readonly RuleConfig[], workspaces?: ReadonlySet<string> | null): CompiledRule[];
+    export function compilePattern(value: unknown, where: string): object;
+    export function matchesPattern(pattern: object, text: string): boolean;
+    export function ruleMatches(rule: CompiledRule, view: RuleView): boolean;
+    /** The rules that apply to a window, in list order: the first match, then on while a rule says `all`. */
+    export function matchingRules(rules: readonly CompiledRule[], view: RuleView): CompiledRule[];
+    /** What a list of rules sets together: the later rule wins for each field. */
+    export function mergeEffects(rules: readonly CompiledRule[]): RuleEffects;
+    export function effectsFor(rules: readonly CompiledRule[], view: RuleView): RuleEffects;
+    /** What an undone rule leaves a window with. */
+    export const RULE_DEFAULTS: { readonly secure: false; readonly fullscreen: false; readonly maximised: false; readonly opacity: 1 };
+    /** What the rule engine asks of the shell. */
+    export interface RuleHost<C extends object> {
+        view(client: C): RuleView;
+        alive(client: C): boolean;
+        isArrival(client: C): boolean;
+        moveToWorkspace(client: C, id: string): boolean;
+        setFloating(client: C, on: boolean): void;
+        setSize(client: C, size: { width: number; height: number }): void;
+        setBounds(client: C, rect: Rect): void;
+        bounds(client: C): Rect;
+        setFullscreen(client: C, on: boolean): void;
+        setMaximised(client: C, on: boolean): void;
+        setSecure(client: C, on: boolean): void;
+        setOpacity(client: C, value: number): void;
+    }
+    /** Applies rules to the windows of a collection it is attached to; `defineConfig` attaches one. */
+    export class RuleEngine<C extends object> {
+        constructor(rules: readonly CompiledRule[], host: RuleHost<C>);
+        skipsFocus(client: C): boolean;
+        styleOf(client: C): { cornerRadius?: number; shadows?: readonly unknown[] };
+        onAdded(client: C): void;
+        onTitleChanged(client: C): void;
+        onAppIdChanged(client: C): void;
+    }
+
+    export type FocusMode = "click" | "sloppy" | "follow-mouse";
+    export type NewWindowPolicy = "allow" | "prevent";
+    /** The `focus` key of a config. A key left out is the seat's. */
+    export interface FocusConfig {
+        mode?: FocusMode;
+        newWindows?: NewWindowPolicy;
+        raiseOnClick?: boolean;
+        autoRaise?: boolean;
+        /** Milliseconds. */
+        autoRaiseDelay?: number;
+        changeOnPointerRest?: boolean;
+    }
+    export interface FocusSettings {
+        readonly mode: FocusMode;
+        readonly newWindows: NewWindowPolicy;
+        readonly raiseOnClick: boolean;
+        readonly autoRaise: boolean;
+        readonly autoRaiseDelay: number;
+        readonly changeOnPointerRest: boolean;
+    }
+    export const FOCUS_DEFAULTS: FocusSettings;
+    /** The defaults with `user` on top; an unknown key or a bad value throws, naming `where`. */
+    export function focusSettings(user?: FocusConfig, where?: string, base?: FocusSettings): FocusSettings;
+    /** The seat's published settings in the library's words (hover is sloppy, hover-strict is follow-mouse). */
+    export function seatFocusSettings(seat: SeatSettings): FocusSettings;
+    export function opensFocused(settings: FocusSettings, fromLauncher: boolean): boolean;
+    export function hoverFocus(settings: FocusSettings, hovering: boolean, entered: boolean): boolean;
+    export function autoRaiseSeconds(settings: FocusSettings): number;
+    export const REST_SECONDS: number;
+    export function restFocus(settings: FocusSettings): boolean;
+    export function leaveClears(settings: FocusSettings): boolean;
+    export type FocusEvent =
+        | { readonly kind: "added"; readonly fromLauncher?: boolean; readonly skipFocus?: boolean }
+        | { readonly kind: "enter" | "motion"; readonly held: boolean }
+        | { readonly kind: "leave"; readonly focused: boolean; readonly heldHere: boolean }
+        | { readonly kind: "press" };
+    export interface FocusDecision {
+        readonly focus: boolean;
+        readonly clear: boolean;
+        readonly raise: boolean;
+        /** Seconds, or null. */
+        readonly focusAfter: number | null;
+        readonly raiseAfter: number | null;
+    }
+    /** What to do about one event under `settings`. Pure. */
+    export function focusDecision(settings: FocusSettings, event: FocusEvent): FocusDecision;
+    /** What the focus policy asks of the shell. */
+    export interface FocusHost<C extends object> {
+        settings(): FocusSettings;
+        focused(client: C): boolean;
+        focus(client: C): void;
+        clearFocus(): void;
+        raise(client: C): void;
+        now(): number;
+        isArrival(client: C): boolean;
+        skipsFocus(client: C): boolean;
+        alive(client: C): boolean;
+    }
+    /** Attached to a collection of clients: focus on a new window, hover and click focus, raise and auto raise. */
+    export class FocusPolicy<C extends object> {
+        constructor(host: FocusHost<C>);
+        onAdded(client: C): void;
+        onPointerEnter(client: C): void;
+        onPointerMotion(client: C): void;
+        onPointerLeave(client: C): void;
+        onPointerPress(client: C): void;
+        onPointerRelease(): void;
+        onClosed(client: C): void;
+        /** Runs the timers that are due. */
+        frame(): void;
+    }
+
+    /** The part of the work area a window tiles to. */
+    export type SnapZone = "left" | "right" | "top";
+    /** How near an edge the pointer must be to name it: 4 pixels. */
+    export const SNAP_MARGIN: number;
+    export function edgeTilingEnabled(value: unknown): boolean;
+    export function edgeZone(x: number, y: number, area: Rect, margin?: number): SnapZone | null;
+    export function tileRect(zone: string, area: Rect): Rect | null;
+    export interface SnapClient {
+        bounds: Rect;
+        maximised?: boolean;
+        floatingBounds?: Rect | null;
+    }
+    export interface SnapOptions {
+        edgeTiling: boolean;
+        area: Rect;
+    }
+    /** Tiles a client to a zone; false (and nothing moves) when edge tiling is off or the zone does not tile. */
+    export function snapClient(client: SnapClient, zone: string, options: SnapOptions): boolean;
+    /** Puts a snapped client back where it floated. False when it is not snapped. */
+    export function unsnapClient(client: SnapClient): boolean;
+    export function snappedZone(client: object): SnapZone | null;
+    /** Ends the snapped state without moving the client. */
+    export function forgetSnap(client: object): void;
 
     export interface OutputSetting {
         /** `"3440x1440@144"` or `"preferred"`. */
@@ -1349,7 +1584,13 @@ declare module "gnoblin" {
          * `keys` for `Super+space` takes precedence.
          */
         launcher?: string | readonly string[];
-        rules?: readonly WindowRule[];
+        rules?: readonly RuleConfig[];
+        /** Focus settings; a key left out is the seat's. */
+        focus?: FocusConfig;
+        /** Whether dropping a dragged window on a screen edge tiles it; left out, the seat's `edge_tiling`. */
+        edgeTiling?: boolean;
+        /** Where a dragged window may go; left out, the seat's `drag_constraint`. */
+        dragConstraint?: DragConstraint;
         on?: ConfigEvents;
         /** The escape hatch: runs after the declarative part and may use any class. */
         setup?(gnoblin: Gnoblin): void | Promise<void>;

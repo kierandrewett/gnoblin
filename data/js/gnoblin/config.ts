@@ -12,7 +12,10 @@
 //   outputs             outputs, stored as written (no native effect yet)          OutputProfile + Display
 //   workspaces          workspaces[] with a Layout instance and the gaps           gnoblin.workspaces.add
 //   keys                bindings[] of { trigger, action }, actions a closed union  input.primary.bind
-//   rules               rules[], a data-only query and its actions                 clients.where(query)
+//   rules               rules[], compiled from data: a query and its actions        a RuleEngine on gnoblin.clients
+//   focus               focus, the FocusConfig as written (settings the seat lacks)  a FocusPolicy on gnoblin.clients
+//   edgeTiling          edgeTiling, a flag that overrides the seat's edge_tiling     DragEvent.edgeTiling
+//   dragConstraint      dragConstraint, overrides the seat's drag_constraint         DragEvent.dragConstraint
 //   on                  listeners[] of { event, handler }                          typed listener sugar
 //   setup(gnoblin)      setup, run by the host after the declarative part          the full object API
 //
@@ -22,10 +25,14 @@
 // The host does not apply a user's config alone: it layers it over `defaultConfig` with `mergeConfig`, so a
 // config that says nothing about keys still has the stock ones. The rule is in the comment on `mergeConfig`.
 
-import { checkTrigger, parseTrigger } from "gnoblin/bindings";
-import type { Binding } from "gnoblin/bindings";
+import { checkTrigger, dragConstraintMode, parseTrigger } from "gnoblin/bindings";
+import type { Binding, DragConstraint } from "gnoblin/bindings";
+import { focusSettings } from "gnoblin/focus";
+import type { FocusConfig } from "gnoblin/focus";
 import { WorkspaceSlideBinding } from "gnoblin/gestures";
 import type { Gaps, Layout } from "gnoblin/layout";
+import { compileRules } from "gnoblin/rules";
+import type { RuleConfig } from "gnoblin/rules";
 import { checkGaps, rejectUnknown, resolveLayout } from "gnoblin/workspace";
 import type { StockLayoutName } from "gnoblin/workspace";
 
@@ -114,14 +121,6 @@ export interface WorkspaceConfig {
     layout?: StockLayoutName | Layout;
 }
 
-/** A data-only rule: the query keys `appId` and `title` (exact match), the action keys `workspace` and `style`. */
-export interface RuleConfig {
-    appId?: string;
-    title?: string;
-    workspace?: string;
-    style?: StyleConfig;
-}
-
 export interface ConfigListeners {
     clientAdded?(client: unknown): void;
     clientRemoved?(client: unknown): void;
@@ -142,7 +141,14 @@ export interface GnoblinConfig {
      * `Super+space` takes precedence.
      */
     launcher?: string | readonly string[];
+    /** Window rules: the first matching rule wins, `all: true` lets the next one apply too. See `gnoblin/rules`. */
     rules?: readonly RuleConfig[];
+    /** Focus settings. A key left out is the seat's (the compositor's `window_management` config). */
+    focus?: FocusConfig;
+    /** Whether dropping a dragged window on a screen edge tiles it. Left out, the seat's `edge_tiling`. */
+    edgeTiling?: boolean;
+    /** Where a dragged window may go. Left out, the seat's `drag_constraint`. */
+    dragConstraint?: DragConstraint;
     on?: ConfigListeners;
     /** Runs after the declarative part and may use any class of the object API. */
     setup?(gnoblin: GnoblinHost): void;
@@ -172,6 +178,11 @@ export interface ConfigPlan {
     readonly workspaces: readonly PlannedWorkspace[];
     readonly bindings: readonly PlannedKey[];
     readonly rules: readonly RuleConfig[];
+    /** The `focus` keys the config set, checked, and no others. */
+    readonly focus: FocusConfig;
+    /** `null` when the config says nothing, so the seat's value stands. */
+    readonly edgeTiling: boolean | null;
+    readonly dragConstraint: DragConstraint | null;
     readonly listeners: readonly PlannedListener[];
     readonly setup: ((gnoblin: GnoblinHost) => void) | undefined;
 }
@@ -263,9 +274,11 @@ const TOP_LEVEL_KEYS = [
     "on",
     "setup",
     "decorations",
+    "focus",
+    "edgeTiling",
+    "dragConstraint",
 ];
 const LISTENER_EVENTS = ["clientAdded", "clientRemoved", "titleChanged"];
-const RULE_KEYS = ["appId", "title", "workspace", "style"];
 
 /** The config the shell runs when the user has none: one floating `desktop` workspace and the stock keys. */
 export const defaultConfig: Readonly<GnoblinConfig> = deepFreeze({
@@ -307,6 +320,7 @@ export function defineConfig(config: GnoblinConfig): GnoblinConfig {
  * - `gaps`, `style` and `outputs` merge by key, the user's value winning; a nested object (a shadow) is one value.
  * - `keys` merge by trigger, compared in canonical spelling, so `"super+1"` replaces the base's `"Super+1"`. A base
  *   key that shows a workspace the merged config does not declare is dropped: it would name nothing.
+ * - `focus` merges by key; `edgeTiling` and `dragConstraint` are the user's when they give one.
  * - `on` merges by event, and `setup` is the user's when they give one. `decorations` is not layered: a config that
  *   does not ask for titlebars has none (only the stock config itself turns them on).
  *
@@ -334,6 +348,10 @@ export function mergeConfig(base: GnoblinConfig, user: GnoblinConfig): GnoblinCo
     const rules = user.rules ?? base.rules;
     const setup = user.setup ?? base.setup;
     const launcher = user.launcher ?? base.launcher;
+    // The focus keys merge by key, so a config that sets one keeps the base's others; the other two are single values.
+    const focus = base.focus === undefined && user.focus === undefined ? undefined : { ...base.focus, ...user.focus };
+    const edgeTiling = user.edgeTiling ?? base.edgeTiling;
+    const dragConstraint = user.dragConstraint ?? base.dragConstraint;
     return {
         gaps: { ...base.gaps, ...user.gaps },
         style: { ...base.style, ...user.style },
@@ -345,6 +363,9 @@ export function mergeConfig(base: GnoblinConfig, user: GnoblinConfig): GnoblinCo
         ...(setup === undefined ? {} : { setup }),
         ...(user.decorations === undefined ? {} : { decorations: user.decorations }),
         ...(launcher === undefined ? {} : { launcher }),
+        ...(focus === undefined ? {} : { focus }),
+        ...(edgeTiling === undefined ? {} : { edgeTiling }),
+        ...(dragConstraint === undefined ? {} : { dragConstraint }),
     };
 }
 
@@ -365,6 +386,9 @@ export function desugarConfig(config: GnoblinConfig): ConfigPlan {
         workspaces,
         bindings: [...planKeys(config.keys ?? {}, ids), ...planLauncher(config.launcher, config.keys ?? {})],
         rules: planRules(config.rules ?? [], ids),
+        focus: planFocus(config.focus),
+        edgeTiling: checkEdgeTiling(config.edgeTiling),
+        dragConstraint: checkDragConstraint(config.dragConstraint),
         listeners: planListeners(config.on ?? {}),
         setup: checkSetup(config.setup),
     };
@@ -450,22 +474,29 @@ function resolveAction(action: KeyAction, where: string, workspaces: ReadonlySet
 }
 
 function planRules(rules: readonly RuleConfig[], workspaces: ReadonlySet<string>): RuleConfig[] {
-    return rules.map((rule, i) => {
-        const where = `rules[${i}]`;
-        rejectUnknown(rule, RULE_KEYS, where);
-        if (rule.appId === undefined && rule.title === undefined) {
-            throw new TypeError(`${where} needs a query: appId or title`);
-        }
-        for (const key of ["appId", "title", "workspace"] as const) {
-            if (rule[key] !== undefined && typeof rule[key] !== "string") {
-                throw new TypeError(`${where}.${key} must be a string`);
-            }
-        }
-        if (rule.workspace !== undefined && !workspaces.has(rule.workspace)) {
-            throw new Error(`${where} moves to workspace "${rule.workspace}", which the config does not declare`);
-        }
-        return rule;
-    });
+    // Compiling is the check: it throws naming the rule's index and the field. The host compiles again to run them.
+    compileRules(rules, workspaces);
+    return [...rules];
+}
+
+/** The keys of `focus` the config set. Checked against the documented defaults, so a bad value fails the stage. */
+function planFocus(focus: FocusConfig | undefined): FocusConfig {
+    if (focus === undefined) {
+        return {};
+    }
+    focusSettings(focus, "config.focus");
+    return Object.fromEntries(Object.entries(focus).filter(([, value]) => value !== undefined));
+}
+
+function checkEdgeTiling(edgeTiling: GnoblinConfig["edgeTiling"]): boolean | null {
+    if (edgeTiling !== undefined && typeof edgeTiling !== "boolean") {
+        throw new TypeError("config.edgeTiling: must be true or false");
+    }
+    return edgeTiling ?? null;
+}
+
+function checkDragConstraint(constraint: GnoblinConfig["dragConstraint"]): DragConstraint | null {
+    return constraint === undefined ? null : dragConstraintMode(constraint);
 }
 
 function planListeners(on: ConfigListeners): PlannedListener[] {

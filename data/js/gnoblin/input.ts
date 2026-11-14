@@ -49,6 +49,22 @@ import type {
     TriggerClaim,
 } from "gnoblin/bindings";
 
+/**
+ * The window management settings the compositor publishes on a seat, as the host reads them (the schema's names in
+ * camel case, the compositor's words for the values). Each is the schema default until the compositor says otherwise.
+ */
+export interface SeatSettings {
+    readonly edgeTiling: boolean;
+    /** `click`, `hover` or `hover-strict`. */
+    readonly focusMode: string;
+    /** `allow` or `prevent`. */
+    readonly focusNewWindows: string;
+    readonly raiseOnClick: boolean;
+    readonly autoRaise: boolean;
+    readonly autoRaiseDelay: number;
+    readonly focusChangeOnPointerRest: boolean;
+}
+
 /** What a seat says and does, as plain functions over node ids. The shell's Rust host implements it. */
 export interface InputHost {
     seats(): number[];
@@ -61,6 +77,10 @@ export interface InputHost {
     devices(seat: number): string[];
     /** The seat's `drag_constraint`: `work_area` or `minimum_strip`. */
     dragConstraint(seat: number): string;
+    /** The seat's window management settings, or undefined for a seat the tree no longer has. */
+    settings(seat: number): SeatSettings | undefined;
+    /** Queues the seat's keyboard focus going to no window; a refusal code, or undefined when queued. */
+    clearFocus(seat: number): string | undefined;
     /** A claim id, or a refusal code. */
     claim(seat: number, chord: string, grab: boolean, device: string): number | string;
     claimGesture(seat: number, kind: string, fingers: number, device: string): number | string;
@@ -83,6 +103,17 @@ export interface InputWorld {
     report(site: string, error: unknown): void;
     error(code: string, target: string, message: string): Error;
 }
+
+/** What a seat the host has no record of reads as: the schema defaults. */
+const SEAT_DEFAULTS: SeatSettings = Object.freeze({
+    edgeTiling: false,
+    focusMode: "click",
+    focusNewWindows: "prevent",
+    raiseOnClick: true,
+    autoRaise: false,
+    autoRaiseDelay: 500,
+    focusChangeOnPointerRest: false,
+});
 
 /** A claimed chord that changed state, as the compositor sends it. */
 export interface InputChordMessage {
@@ -417,6 +448,19 @@ export class InputContext {
     /** The client with keyboard focus, or null. Read through to the seat on every call. */
     get focusedClient(): BindingClient | null {
         return this.#world.clientOf(this.#host.focus(this.#seat)) ?? null;
+    }
+
+    /** The window management settings the seat publishes, with the shell's overrides from the config on top. */
+    get settings(): SeatSettings {
+        return this.#host.settings(this.#seat) ?? SEAT_DEFAULTS;
+    }
+
+    /** Takes the keyboard focus from every window. */
+    clearFocus(): void {
+        const code = this.#host.clearFocus(this.#seat);
+        if (code != null) {
+            throw this.#world.error("refused", `InputContext "${this.name}".clearFocus`, `the host refused (${code})`);
+        }
     }
 
     /** Not wired: displays have no JavaScript object yet. */
@@ -909,6 +953,7 @@ export class InputContext {
             button: press.button,
             workArea: this.#world.workArea() ?? undefined,
             dragConstraint: this.#host.dragConstraint(this.#seat),
+            edgeTiling: this.settings.edgeTiling,
         });
     }
 

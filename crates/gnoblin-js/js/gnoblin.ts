@@ -11,7 +11,14 @@
 // listener that throws or never returns does not stop the others.
 
 import { desugarConfig, defaultConfig, mergeConfig } from "gnoblin/config";
-import type { BindingAction, GnoblinConfig, GnoblinHost, PlannedKey, ResolvedAction } from "gnoblin/config";
+import type {
+    BindingAction,
+    ConfigPlan,
+    GnoblinConfig,
+    GnoblinHost,
+    PlannedKey,
+    ResolvedAction,
+} from "gnoblin/config";
 import { StripLayout } from "gnoblin/layouts/strip";
 import { Layout } from "gnoblin/layout";
 import type { Gaps, LayoutContext } from "gnoblin/layout";
@@ -26,8 +33,12 @@ import {
     resolveLayout,
 } from "gnoblin/workspace";
 import type { CheckedPlacement, StockLayoutName, WorkspaceOptions } from "gnoblin/workspace";
+import { FOCUS_DEFAULTS, FocusPolicy, focusSettings, seatFocusSettings } from "gnoblin/focus";
+import type { FocusConfig, FocusSettings } from "gnoblin/focus";
 import { InputManager } from "gnoblin/input";
 import type { InputHost, InputMessage } from "gnoblin/input";
+import { RuleEngine, compileRules } from "gnoblin/rules";
+import type { RuleHost, RuleView } from "gnoblin/rules";
 import { attachUi, runUiFrame, uiNodeGone, uiReleaseAll } from "gnoblin/ui";
 import type { UiBackend } from "gnoblin/ui";
 import { Decorations } from "gnoblin/titlebar";
@@ -59,6 +70,8 @@ interface Entry {
     next(): number;
     pending(): number;
     ready(nodes: NodeId[]): number;
+    /** Tells the clients' listeners of the pointer's edges on windows; returns how many calls wait. */
+    pointer(events: WindowPointerEvent[]): number;
     /** Hands the frame's claimed chords and gestures to the input matcher; returns how many calls wait. */
     input(messages: InputMessage[]): number;
     /** Cancels what the input matcher has in flight and releases every claim; returns how many calls wait. */
@@ -85,6 +98,8 @@ interface Host {
     /** The same write, carried out over `seconds` along `samples` (progress from 0 to 1). */
     animate(node: NodeId, key: string, value: HostValue, seconds: number, samples: number[]): string | undefined;
     call(node: NodeId, method: string): string | undefined;
+    /** Queues the moves that put a window on top of the others. */
+    raise(node: NodeId): string | undefined;
     windows(): NodeId[];
     screens(): NodeId[];
     spawn(command: string | string[]): string | undefined;
@@ -117,9 +132,30 @@ export class GnoblinError extends Error {
     }
 }
 
+/** A pointer edge on a window: where, in the window's own coordinates, and which button (0 for the others). */
+export interface ClientPointerEvent {
+    readonly x: number;
+    readonly y: number;
+    readonly button: number;
+}
+
+/** A pointer edge as the host hands it over: the node it is on, `enter`, `motion`, `leave`, `press` or `release`. */
+interface WindowPointerEvent extends ClientPointerEvent {
+    node: NodeId;
+    kind: string;
+}
+
 /** Observes the events of a client: attach it to one client, or to a collection for every member. */
 export class ClientListener {
     onTitleChanged?(client: Client, title: string): void;
+    onAppIdChanged?(client: Client, appId: string): void;
+    /** The pointer crossed into the window. `event` is in the window's own coordinates. */
+    onPointerEnter?(client: Client, event: ClientPointerEvent): void;
+    onPointerMotion?(client: Client, event: ClientPointerEvent): void;
+    onPointerLeave?(client: Client, event: ClientPointerEvent): void;
+    /** A button went down on the window. The window's client hears it too. */
+    onPointerPress?(client: Client, event: ClientPointerEvent): void;
+    onPointerRelease?(client: Client, event: ClientPointerEvent): void;
     onFocusChanged?(client: Client, focused: boolean): void;
     onGeometryChanged?(client: Client, geometry: Rect): void;
     onClosed?(client: Client): void;
@@ -230,11 +266,13 @@ const CLIENT_KEYS = [
     "z",
     "rotation",
     "scale",
+    "secure",
 ];
 
 /** What listeners were last told about a client, to raise an event only for a real change. */
 interface Seen {
     title: string;
+    appId: string;
     focused: boolean;
     x: number;
     y: number;
@@ -250,6 +288,8 @@ interface NodeState {
     listeners: object[];
     readied: boolean;
     seen: Seen | null;
+    /** The script's own flag: a floating client is left out of its workspace's tiling. */
+    floating: boolean;
 }
 
 const states = new WeakMap<object, NodeState>();
@@ -281,6 +321,7 @@ function freeze(object: object, keys: string[]): void {
 function publishedValues(node: NodeId): Seen {
     return {
         title: host.published(node, "title") as string,
+        appId: host.published(node, "app_id") as string,
         focused: host.published(node, "focused") as boolean,
         x: host.published(node, "x") as number,
         y: host.published(node, "y") as number,
@@ -419,6 +460,7 @@ export class Client {
             listeners: [],
             readied: false,
             seen: publishedValues(node),
+            floating: false,
         });
     }
 
@@ -442,8 +484,44 @@ export class Client {
         return read<boolean>(this, "focused");
     }
 
+    /** Whether the window covers its output. Writing asks the compositor to make it fullscreen or restore it. */
     get fullscreen(): boolean {
         return read<boolean>(this, "fullscreen");
+    }
+
+    set fullscreen(value: boolean) {
+        writeFlag(this, "fullscreen", value);
+    }
+
+    /** Whether the window is kept out of screen captures. */
+    get secure(): boolean {
+        return read<boolean>(this, "secure");
+    }
+
+    set secure(value: boolean) {
+        writeFlag(this, "secure", value);
+    }
+
+    /**
+     * Whether the window floats on a workspace whose layout tiles: a floating client is not given to the layout's
+     * `compute`, so it keeps the place it has. Only the script knows this; the compositor does not.
+     */
+    get floating(): boolean {
+        return stateOf(this).floating;
+    }
+
+    set floating(value: boolean) {
+        if (typeof value !== "boolean") {
+            throw new TypeError(`Client#${host.label(stateOf(this).node)}.floating: must be true or false`);
+        }
+        const state = stateOf(this);
+        if (state.floating !== value) {
+            state.floating = value;
+            const own = wsOf(this);
+            if (own) {
+                own.dirty = true;
+            }
+        }
     }
 
     get x(): number {
@@ -594,6 +672,7 @@ export class Client {
         callMethod(this, "close");
     }
 
+    /** Gives the window the keyboard focus: a write of the seat's `focus`, which is how a shell hands it out. */
     focus(): void {
         callMethod(this, "focus");
     }
@@ -644,6 +723,19 @@ export class Client {
             if (code != null) {
                 refuse(code, target, "client");
             }
+        }
+    }
+
+    /** Puts the window on top of every other window. */
+    raise(): void {
+        const state = stateOf(this);
+        const target = `Client#${host.label(state.node)}.raise()`;
+        if (!state.alive) {
+            throw new GnoblinError("destroyed", target, "the client is gone");
+        }
+        const code = host.raise(state.node);
+        if (code != null) {
+            refuse(code, target, "client");
         }
     }
 
@@ -1545,7 +1637,9 @@ function layout(): number {
                 }
                 guard(`${workspace}.layout.compute`, () => {
                     const site = `${workspace}.layout.compute`;
-                    applyPlacements(children, checkPlacements(target.compute(context), children, site));
+                    // A client the script floats (a window rule, `client.floating`) keeps its own place.
+                    const tiled = children.filter((client) => !stateOf(client).floating);
+                    applyPlacements(tiled, checkPlacements(target.compute({ ...context, children: tiled }), tiled, site));
                 });
                 laidOut += 1;
             }
@@ -1671,6 +1765,10 @@ function changed(client: Client): void {
         seen.title = now.title;
         emitMember(client, held, "onTitleChanged", [client, now.title]);
     }
+    if (now.appId !== seen.appId) {
+        seen.appId = now.appId;
+        emitMember(client, held, "onAppIdChanged", [client, now.appId]);
+    }
     if (now.focused !== seen.focused) {
         seen.focused = now.focused;
         emitMember(client, held, "onFocusChanged", [client, now.focused]);
@@ -1701,6 +1799,28 @@ function plan(created: NodeId[], touched: NodeId[], destroyed: NodeId[]): number
             if (own) {
                 recompute(own.clientsState, client);
             }
+        }
+    }
+    return queue.length;
+}
+
+/** The listener method that hears each pointer edge on a window. */
+const POINTER_METHODS: Readonly<Record<string, string>> = {
+    enter: "onPointerEnter",
+    motion: "onPointerMotion",
+    leave: "onPointerLeave",
+    press: "onPointerPress",
+    release: "onPointerRelease",
+};
+
+/** Queues the clients' pointer listeners for the edges the compositor reported on windows this frame. */
+function pointer(events: WindowPointerEvent[]): number {
+    for (const event of events) {
+        const client = clientsByNode.get(event.node);
+        const method = POINTER_METHODS[event.kind];
+        if (client && method && stateOf(client).alive) {
+            const { x, y, button } = event;
+            emitMember(client, clientHolders(client), method, [client, { x, y, button }]);
         }
     }
     return queue.length;
@@ -1739,7 +1859,25 @@ function takeErrors(): ErrorReport[] {
     return taken;
 }
 
-const input = new InputManager(host.input, {
+/** What the config says about the seat's settings: a null leaves what the compositor published. */
+const seatOverrides: { edgeTiling: boolean | null; dragConstraint: string | null } = {
+    edgeTiling: null,
+    dragConstraint: null,
+};
+
+/** The host's input functions, with the config's `edgeTiling` and `dragConstraint` over the seat's own. */
+const seatHost: InputHost = {
+    ...host.input,
+    dragConstraint: (seat) => seatOverrides.dragConstraint ?? host.input.dragConstraint(seat),
+    settings(seat) {
+        const published = host.input.settings(seat);
+        return published && seatOverrides.edgeTiling !== null
+            ? { ...published, edgeTiling: seatOverrides.edgeTiling }
+            : published;
+    },
+};
+
+const input = new InputManager(seatHost, {
     clientOf: (node) => clientsByNode.get(node),
     stack: () => host.windows().flatMap((node) => clientsByNode.get(node) ?? []),
     workArea: screenArea,
@@ -1756,6 +1894,126 @@ const input = new InputManager(host.input, {
 attachUi(host.ui, (site, error) => {
     reports.push({ site, error });
 });
+
+/** Where a window that a rule made fullscreen or maximised was, so turning the rule off puts it back. */
+const beforeCover = new WeakMap<Client, Rect>();
+
+/** Fullscreen or maximised: the flag, and the area the window fills. A fullscreen window does not maximise. */
+function cover(client: Client, key: "fullscreen" | "maximised", on: boolean): void {
+    if (on) {
+        if (key === "maximised" && client.fullscreen) {
+            return;
+        }
+        if (!beforeCover.has(client)) {
+            beforeCover.set(client, client.bounds);
+        }
+        client[key] = true;
+        const area = screenArea();
+        if (area !== null) {
+            writeBounds(client, area);
+        }
+        return;
+    }
+    client[key] = false;
+    const before = beforeCover.get(client);
+    if (before !== undefined && !client.fullscreen && !client.maximised) {
+        beforeCover.delete(client);
+        writeBounds(client, before);
+    }
+}
+
+/**
+ * Whether the first seat holds its keyboard focus on `client`. The stock policy and the rules read the seat, not
+ * `client.focused`: a shell gives focus by writing the seat's `focus`, and a real compositor was seen not to keep a
+ * window's own `focused` current while a shell holds the tree.
+ */
+function hasFocus(client: Client): boolean {
+    const seat = host.input.seats()[0];
+    return seat !== undefined && clientsByNode.get(host.input.focus(seat)) === client;
+}
+
+/** What a window rule reads and writes of a client: the host's end of `RuleEngine`. */
+const ruleHost: RuleHost<Client> = {
+    view: (client): RuleView => ({
+        appId: client.appId,
+        title: client.title,
+        focused: hasFocus(client),
+        workspace: client.workspace?.id ?? null,
+    }),
+    alive: (client) => client.alive,
+    isArrival: (client) => !preexisting.has(client),
+    moveToWorkspace(client, id) {
+        const target = workspaceRoot.list.find((workspace) => workspace.id === id);
+        if (target === undefined) {
+            return false;
+        }
+        transferClient(target as Workspace, client);
+        return true;
+    },
+    setFloating: (client, on) => {
+        client.floating = on;
+    },
+    setSize: (client, size) => {
+        (client as unknown as { size?: { width: number; height: number } }).size = size;
+    },
+    setBounds: (client, rect) => {
+        client.bounds = rect;
+        (client as unknown as { floatingBounds?: Rect }).floatingBounds = { ...rect };
+    },
+    bounds: (client) => client.bounds,
+    setFullscreen: (client, on) => cover(client, "fullscreen", on),
+    setMaximised: (client, on) => cover(client, "maximised", on),
+    setSecure: (client, on) => {
+        client.secure = on;
+    },
+    setOpacity: (client, value) => {
+        client.opacity = value;
+    },
+};
+
+/** The config's `focus` keys, over the seat's settings, over the documented defaults. */
+let focusOverrides: FocusConfig = {};
+
+function currentFocusSettings(): FocusSettings {
+    const seat = host.input.seats()[0];
+    const published = seat === undefined ? undefined : seatHost.settings(seat);
+    const base = published === undefined ? FOCUS_DEFAULTS : seatFocusSettings(published);
+    return focusSettings(focusOverrides, "config.focus", base);
+}
+
+/** The stock window rules and focus policy, once a config is registered. */
+let stock: { rules: RuleEngine<Client>; focus: FocusPolicy<Client> } | null = null;
+
+function installStock(plan: ConfigPlan): void {
+    if (stock !== null) {
+        clientRoot.self.removeListener(stock.rules);
+        clientRoot.self.removeListener(stock.focus);
+    }
+    seatOverrides.edgeTiling = plan.edgeTiling;
+    seatOverrides.dragConstraint = plan.dragConstraint;
+    focusOverrides = plan.focus;
+    const rules = new RuleEngine(compileRules(plan.rules), ruleHost);
+    const focus = new FocusPolicy<Client>({
+        settings: currentFocusSettings,
+        focused: hasFocus,
+        // A tree with no seat has nowhere to put the focus.
+        focus: (client) => {
+            if (host.input.seats().length > 0) {
+                client.focus();
+            }
+        },
+        clearFocus: () => input.primary.clearFocus(),
+        raise: (client) => client.raise(),
+        now: () => host.input.now(),
+        isArrival: (client) => !preexisting.has(client),
+        skipsFocus: (client) => rules.skipsFocus(client),
+        alive: (client) => client.alive,
+    });
+    stock = { rules, focus };
+    // The rules hear a new window first: `skipFocus` is what the focus policy reads when it hears the same one.
+    clientRoot.self.addListener(rules);
+    clientRoot.self.addListener(focus);
+}
 
 /** The stock titlebars, once a config asks for them. */
 let decorations: Decorations | null = null;
@@ -1815,6 +2073,7 @@ class Gnoblin {
             decorate();
         }
         bindKeys(plan.bindings);
+        installStock(plan);
     }
 }
 
@@ -1888,8 +2147,14 @@ host.entry = {
     loadDefault: () => gnoblin.__register(defaultConfig),
     snapshot: snapshotWorkspaces,
     reconcile: reconcileWorkspaces,
+    pointer,
     input: (messages) => {
         input.deliver(messages);
+        try {
+            stock?.focus.frame();
+        } catch (error) {
+            reports.push({ site: "FocusPolicy.frame", error });
+        }
         return queue.length;
     },
     cancelAll: () => {

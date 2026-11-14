@@ -680,7 +680,7 @@ fn a_config_that_is_not_in_the_closed_set_is_refused_naming_the_key() {
     assert_eq!(
         got,
         lines(&[
-            "TypeError: config has no \"colour\"; expected one of gaps, style, outputs, workspaces, keys, launcher, rules, on, setup, decorations",
+            "TypeError: config has no \"colour\"; expected one of gaps, style, outputs, workspaces, keys, launcher, rules, on, setup, decorations, focus, edgeTiling, dragConstraint",
             "Error: keys[\"Super+1\"] shows workspace \"nowhere\", which the config does not declare",
             "TypeError: keys[\"Super+X\"] must be spawn(...), show(...), show.position(...), focusColumn(...), binding(...), \"close\" or a function",
             "TypeError: a key: an empty part after \"Super\"; write a literal plus as \"plus\" (token \"\" in \"Super+\")",
@@ -688,9 +688,9 @@ fn a_config_that_is_not_in_the_closed_set_is_refused_naming_the_key() {
             "Error: workspaces[1]: a workspace with id \"a\" is already declared",
             "TypeError: workspaces[0].layout must be a Layout or one of floating, master-stack, grid, monocle, dwindle, kiosk, strip, carousel-3d, got spiral",
             "TypeError: workspaces[0] has no \"tiled\"; expected one of id, layout",
-            "TypeError: rules[0] needs a query: appId or title",
-            "Error: rules[0] moves to workspace \"elsewhere\", which the config does not declare",
-            "TypeError: rules[0] has no \"match\"; expected one of appId, title, workspace, style",
+            "TypeError: rules[0]: needs a query: appId, title, focused or onWorkspace",
+            "Error: rules[0].workspace: moves to workspace \"elsewhere\", which the config does not declare",
+            "TypeError: rules[0] has no \"match\"; expected one of appId, title, role, focused, onWorkspace, workspace, floating, size, position, style, fullscreen, maximised, secure, skipFocus, all, reapply",
             "RangeError: gaps.inner must be a finite number of at least 0, got -1",
             "TypeError: gaps has no \"middle\"; expected one of inner, outer",
             "TypeError: on has no \"clientMoved\"; expected one of clientAdded, clientRemoved, titleChanged",

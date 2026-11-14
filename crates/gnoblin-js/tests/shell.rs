@@ -621,22 +621,54 @@ fn a_destroyed_window_is_not_alive_keeps_its_values_and_rejects_writes_naming_th
 }
 
 #[test]
-fn close_and_focus_are_calls_on_the_window() {
+fn close_is_a_call_on_the_window_and_focus_is_a_write_of_the_seats_focus() {
+    // The compositor answers no `focus` call on a window (only `close` and `kill`); a shell gives focus by writing
+    // the seat's `focus`, as the Lua shell's `seat.focus = window` does (crates/gnoblin/tests/js_shell.rs proves it).
     let comp = two_windows();
+    comp.borrow_mut().nodes.insert(
+        9,
+        node(
+            "seat",
+            1,
+            vec![("name", text("seat0")), ("focus", MirrorValue::Node(3))],
+        ),
+    );
     let mut rig = rig(
         &comp,
         "gnoblin.clients.get('4').focus();\ngnoblin.clients.get('3').close();\n",
     );
     rig.frame();
     let log = sent(&comp);
-    let calls: Vec<(u64, &str)> = log[0]
+    let ops: Vec<String> = log[0]
         .iter()
         .map(|op| match op {
-            TxOp::Call { node, method, .. } => (*node, method.as_str()),
-            other => panic!("expected a call, got {other:?}"),
+            TxOp::Call { node, method, .. } => format!("call:{node}:{method}"),
+            TxOp::Set {
+                node,
+                key,
+                value: MirrorValue::Node(target),
+                ..
+            } => format!("set:{node}.{key}={target}"),
+            other => panic!("expected a call or a seat write, got {other:?}"),
         })
         .collect();
-    assert_eq!(calls, [(4, "focus"), (3, "close")]);
+    assert_eq!(ops, ["set:9.focus=4", "call:3:close"]);
+}
+
+#[test]
+fn focus_has_nowhere_to_go_in_a_tree_with_no_seat() {
+    let comp = two_windows();
+    let mut rig = rig(
+        &comp,
+        "let thrown = 'no error';\n\
+         try { gnoblin.clients.get('4').focus(); } catch (e) { thrown = `${(e as Error).name}: ${(e as Error).message}`; }\n\
+         (globalThis as any).thrown = thrown;\n",
+    );
+    assert_eq!(
+        rig.eval("thrown"),
+        "GnoblinError: Client#4.focus(): the host refused the write (no-seat)"
+    );
+    rig.frame();
 }
 
 /// A listener that records every membership event of a collection, and the one it is attached to.

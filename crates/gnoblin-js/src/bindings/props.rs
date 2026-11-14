@@ -50,7 +50,7 @@ const WINDOW: &[JsPropDef] = &[
     def("title", JsPropKind::Text, false),
     def("app_id", JsPropKind::Text, false),
     def("focused", JsPropKind::Flag, false),
-    def("fullscreen", JsPropKind::Flag, false),
+    def("fullscreen", JsPropKind::Flag, true),
     def("maximised", JsPropKind::Flag, true),
     def("minimised", JsPropKind::Flag, true),
     animated("x", JsPropKind::Double),
@@ -68,6 +68,8 @@ const WINDOW: &[JsPropDef] = &[
     animated("z", JsPropKind::Double),
     animated("rotation", JsPropKind::Doubles),
     animated("scale", JsPropKind::Doubles),
+    // Whether the window is kept out of screen captures.
+    def("secure", JsPropKind::Flag, true),
 ];
 
 /// An output. Its size is the work area the layout driver tiles in, `primary` picks the screen the primary display
@@ -139,6 +141,7 @@ mod tests {
         assert_eq!(
             writable,
             [
+                "fullscreen",
                 "maximised",
                 "minimised",
                 "x",
@@ -150,12 +153,13 @@ mod tests {
                 "opacity",
                 "z",
                 "rotation",
-                "scale"
+                "scale",
+                "secure"
             ]
         );
         for def in defs_for("window").into_iter().flatten().filter(|def| def.writable) {
             let want = match def.name {
-                "maximised" | "minimised" | "tiled" | "visible" => JsPropKind::Flag,
+                "fullscreen" | "maximised" | "minimised" | "tiled" | "visible" | "secure" => JsPropKind::Flag,
                 "rotation" | "scale" => JsPropKind::Doubles,
                 _ => JsPropKind::Double,
             };

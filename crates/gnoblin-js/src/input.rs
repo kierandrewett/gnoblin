@@ -20,10 +20,12 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use gnoblin_secret::SecretText;
-use gnoblin_tree_client::tree_mirror::{MirrorValue, NodeId, TreeChord, TreeGesture, TreePointerChord, lua_class};
+use gnoblin_tree_client::tree_mirror::{
+    MirrorValue, NIL, NodeId, TreeChord, TreeEvent, TreeGesture, TreeMirror, TreePointerChord, lua_class,
+};
 use rquickjs::{Array, Ctx, Function, IntoJs, Object, Value};
 
-use crate::bindings::{HostState, SharedState, parents_first};
+use crate::bindings::{HostState, NodeHandles, SharedState, parents_first};
 
 /// A claimed chord, gesture or pointer drag the compositor reported, parked until the frame hands it to the module.
 #[derive(Clone, Debug, PartialEq)]
@@ -31,6 +33,34 @@ pub(crate) enum JsInputMessage {
     Chord(TreeChord),
     Gesture(TreeGesture),
     Pointer(TreePointerChord),
+}
+
+/// A pointer edge on a window, in the window's own coordinates: the compositor tells the shell where the pointer
+/// enters, moves over, presses on, releases on and leaves a window, and the focus and raise policy follows them.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct JsWindowPointer {
+    /// The window, as the script's number for the node.
+    node: f64,
+    kind: String,
+    x: f64,
+    y: f64,
+    button: f64,
+}
+
+/// The event kinds a window's `ClientListener` hears. A scroll is not one: nothing in the stock policy reads it.
+const WINDOW_POINTER_KINDS: &[&str] = &["press", "release", "motion", "enter", "leave"];
+
+impl JsWindowPointer {
+    /// The event as a script object: `{ node, kind, x, y, button }`.
+    fn to_js<'js>(&self, ctx: &Ctx<'js>) -> rquickjs::Result<Object<'js>> {
+        let item = Object::new(ctx.clone())?;
+        item.set("node", self.node)?;
+        item.set("kind", self.kind.as_str())?;
+        item.set("x", self.x)?;
+        item.set("y", self.y)?;
+        item.set("button", self.button)?;
+        Ok(item)
+    }
 }
 
 /// Everything input keeps on the host between frames.
@@ -41,6 +71,8 @@ pub(crate) struct JsInput {
     claims: HashMap<i64, NodeId>,
     /// Chords and gestures that arrived since the last frame's dispatch, oldest first.
     pub inbox: Vec<JsInputMessage>,
+    /// The pointer edges on windows that arrived since the last frame's dispatch, oldest first.
+    window_events: Vec<JsWindowPointer>,
     /// The origin of `now`.
     epoch: Instant,
 }
@@ -51,8 +83,46 @@ impl JsInput {
             last_claim: 0,
             claims: HashMap::new(),
             inbox: Vec::new(),
+            window_events: Vec::new(),
             epoch: Instant::now(),
         }
+    }
+
+    /// Keeps a pointer event addressed to a window of the tree; any other event is not input's.
+    pub(crate) fn accept_window_event(
+        &mut self,
+        mirror: &TreeMirror,
+        handles: &NodeHandles,
+        event: &TreeEvent,
+    ) -> bool {
+        let on_window = mirror
+            .node(event.node)
+            .is_some_and(|record| lua_class(&record.class) == "Window");
+        if !on_window || !WINDOW_POINTER_KINDS.contains(&event.kind.as_str()) {
+            return false;
+        }
+        self.window_events.push(JsWindowPointer {
+            node: handles.to_script(event.node),
+            kind: event.kind.clone(),
+            x: event.fields.x,
+            y: event.fields.y,
+            button: event.fields.button as f64,
+        });
+        true
+    }
+
+    /// Takes the frame's window pointer events as a script array, oldest first.
+    pub(crate) fn take_window_events<'js>(&mut self, ctx: &Ctx<'js>) -> rquickjs::Result<Array<'js>> {
+        let list = Array::new(ctx.clone())?;
+        for (index, event) in std::mem::take(&mut self.window_events).iter().enumerate() {
+            list.set(index, event.to_js(ctx)?)?;
+        }
+        Ok(list)
+    }
+
+    /// Drops what has not been handed to the script, for a generation that is going away.
+    pub(crate) fn forget_window_events(&mut self) {
+        self.window_events.clear();
     }
 
     /// How many claims are held, for a test.
@@ -80,7 +150,7 @@ impl<'js> IntoJs<'js> for JsClaimOutcome {
 }
 
 /// The seat nodes, in tree order.
-fn seats(state: &HostState) -> Vec<f64> {
+fn seat_nodes(state: &HostState) -> Vec<NodeId> {
     parents_first(&state.mirror)
         .into_iter()
         .filter(|id| {
@@ -89,6 +159,13 @@ fn seats(state: &HostState) -> Vec<f64> {
                 .node(*id)
                 .is_some_and(|record| lua_class(&record.class) == "Seat")
         })
+        .collect()
+}
+
+/// The seat nodes as the numbers a script holds.
+fn seats(state: &HostState) -> Vec<f64> {
+    seat_nodes(state)
+        .into_iter()
         .map(|id| state.handles.to_script(id))
         .collect()
 }
@@ -131,6 +208,93 @@ fn drag_constraint(state: &HostState, seat: NodeId) -> String {
         Some(MirrorValue::Text(text)) => text.clone(),
         _ => "work_area".to_owned(),
     }
+}
+
+/// The window management settings the compositor publishes on a seat, which the stock focus policy and edge tiling
+/// read. Each is the schema's default (`crates/gnoblin-schema/schema/tree/seat.toml`) until the compositor says
+/// otherwise, and the values are passed on as they are: the script's checks refuse a word it does not know, by name.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct JsSeatSettings {
+    edge_tiling: bool,
+    focus_mode: String,
+    focus_new_windows: String,
+    raise_on_click: bool,
+    auto_raise: bool,
+    auto_raise_delay: f64,
+    focus_change_on_pointer_rest: bool,
+}
+
+impl JsSeatSettings {
+    fn of(state: &HostState, seat: NodeId) -> Self {
+        let flag = |key: &str, default: bool| match seat_prop(state, seat, key) {
+            Some(MirrorValue::Bool(value)) => *value,
+            _ => default,
+        };
+        let word = |key: &str, default: &str| match seat_prop(state, seat, key) {
+            Some(MirrorValue::Text(text)) => text.clone(),
+            _ => default.to_owned(),
+        };
+        let delay = match seat_prop(state, seat, "auto_raise_delay") {
+            Some(MirrorValue::Int(ms)) => *ms as f64,
+            Some(MirrorValue::Uint(ms)) => *ms as f64,
+            Some(MirrorValue::Double(ms)) => *ms,
+            _ => 500.0,
+        };
+        Self {
+            edge_tiling: flag("edge_tiling", false),
+            focus_mode: word("focus_mode", "click"),
+            focus_new_windows: word("focus_new_windows", "prevent"),
+            raise_on_click: flag("raise_on_click", true),
+            auto_raise: flag("auto_raise", false),
+            auto_raise_delay: delay,
+            focus_change_on_pointer_rest: flag("focus_change_on_pointer_rest", false),
+        }
+    }
+}
+
+impl<'js> IntoJs<'js> for JsSeatSettings {
+    fn into_js(self, ctx: &Ctx<'js>) -> rquickjs::Result<Value<'js>> {
+        let object = Object::new(ctx.clone())?;
+        object.set("edgeTiling", self.edge_tiling)?;
+        object.set("focusMode", self.focus_mode)?;
+        object.set("focusNewWindows", self.focus_new_windows)?;
+        object.set("raiseOnClick", self.raise_on_click)?;
+        object.set("autoRaise", self.auto_raise)?;
+        object.set("autoRaiseDelay", self.auto_raise_delay)?;
+        object.set("focusChangeOnPointerRest", self.focus_change_on_pointer_rest)?;
+        Ok(object.into_value())
+    }
+}
+
+/// Queues a write of the seat's keyboard focus: `target` is a node, or `NIL` for none. Refused when `seat` is not a
+/// live seat node.
+fn write_focus(state: &mut HostState, seat: NodeId, target: NodeId) -> Option<&'static str> {
+    let HostState { mirror, tick, .. } = state;
+    let is_seat = tick
+        .node(mirror, seat)
+        .is_some_and(|record| lua_class(&record.class) == "Seat");
+    if !is_seat {
+        return Some("unknown-node");
+    }
+    tick.set(mirror, seat, "focus", MirrorValue::Node(target), None, None)
+        .err()
+        .map(|_| "unknown-node")
+}
+
+/// Queues the seat's keyboard focus going to no node: the stock follow-mouse policy does it when the pointer leaves
+/// the focused window for the desktop.
+fn clear_focus(state: &mut HostState, seat: NodeId) -> Option<&'static str> {
+    write_focus(state, seat, NIL)
+}
+
+/// Queues the first seat's keyboard focus going to `window`. The compositor answers no `focus` call on a window; the
+/// focus is the seat's, and a shell gives it by writing the seat's `focus` (the Lua shell's `seat.focus = window`).
+/// Refused with `no-seat` when the tree has no seat.
+pub(crate) fn focus_window(state: &mut HostState, window: NodeId) -> Option<&'static str> {
+    let Some(seat) = seat_nodes(state).first().copied() else {
+        return Some("no-seat");
+    };
+    write_focus(state, seat, window)
 }
 
 fn devices(state: &HostState, seat: NodeId) -> Vec<String> {
@@ -341,6 +505,27 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
 
     let shared = state.clone();
     input.set(
+        "settings",
+        Function::new(ctx.clone(), move |seat: f64| -> Option<JsSeatSettings> {
+            let state = shared.borrow();
+            Some(JsSeatSettings::of(&state, state.handles.resolve(seat)?))
+        })?,
+    )?;
+
+    let shared = state.clone();
+    input.set(
+        "clearFocus",
+        Function::new(ctx.clone(), move |seat: f64| -> Option<&'static str> {
+            let mut state = shared.borrow_mut();
+            let Some(seat) = state.handles.resolve(seat) else {
+                return Some("unknown-node");
+            };
+            clear_focus(&mut state, seat)
+        })?,
+    )?;
+
+    let shared = state.clone();
+    input.set(
         "devices",
         Function::new(ctx.clone(), move |seat: f64| -> Vec<String> {
             let state = shared.borrow();
@@ -404,7 +589,10 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
 mod tests {
     use gnoblin_tree_client::tree_mirror::{MirrorValue, SnapshotNode, TreeMirror, TxOp};
 
-    use super::{JsClaimOutcome, claim, claim_args, claim_gesture, devices, focus, pointer, seat_name, seats, unclaim};
+    use super::{
+        JsClaimOutcome, JsSeatSettings, claim, claim_args, claim_gesture, clear_focus, devices, focus, pointer,
+        seat_name, seats, unclaim,
+    };
     use crate::bindings::HostState;
 
     fn node(id: u64, parent: u64, class: &str, props: Vec<(String, MirrorValue)>) -> SnapshotNode {
@@ -450,6 +638,56 @@ mod tests {
         // A node that is not a seat answers as an absent one.
         assert_eq!(pointer(&state, 3), [0.0, 0.0]);
         assert_eq!(seat_name(&state, 99), "");
+    }
+
+    #[test]
+    fn clearing_the_focus_queues_a_write_of_no_node_and_only_a_seat_takes_it() {
+        let mut state = state();
+        assert_eq!(
+            clear_focus(&mut state, 3),
+            Some("unknown-node"),
+            "a window is not a seat"
+        );
+        assert_eq!(clear_focus(&mut state, 99), Some("unknown-node"));
+        assert!(state.tick.ops().is_empty());
+        assert_eq!(clear_focus(&mut state, 4), None);
+        assert!(matches!(
+            state.tick.ops(),
+            [TxOp::Set { node: 4, key, value: MirrorValue::Node(0), .. }] if key == "focus"
+        ));
+    }
+
+    #[test]
+    fn seat_settings_are_the_schema_defaults_until_the_compositor_publishes_them() {
+        let defaults = JsSeatSettings::of(&state(), 4);
+        assert_eq!(
+            defaults,
+            JsSeatSettings {
+                edge_tiling: false,
+                focus_mode: "click".into(),
+                focus_new_windows: "prevent".into(),
+                raise_on_click: true,
+                auto_raise: false,
+                auto_raise_delay: 500.0,
+                focus_change_on_pointer_rest: false,
+            }
+        );
+        let published = vec![
+            ("edge_tiling".to_owned(), MirrorValue::Bool(true)),
+            ("focus_mode".to_owned(), MirrorValue::Text("hover".into())),
+            ("raise_on_click".to_owned(), MirrorValue::Bool(false)),
+            ("auto_raise_delay".to_owned(), MirrorValue::Int(120)),
+        ];
+        let nodes = [node(1, 0, "node", Vec::new()), node(4, 1, "seat", published)];
+        let state = HostState::new(TreeMirror::from_snapshot(1, 1, 1, &nodes).expect("a mirror"));
+        let settings = JsSeatSettings::of(&state, 4);
+        assert!(settings.edge_tiling && !settings.raise_on_click);
+        assert_eq!(settings.focus_mode, "hover");
+        assert_eq!(settings.auto_raise_delay, 120.0);
+        assert_eq!(
+            settings.focus_new_windows, "prevent",
+            "an unpublished key keeps its default"
+        );
     }
 
     #[test]

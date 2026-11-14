@@ -16,6 +16,9 @@
 // A key is a keysym name, never a character that depends on the layout: `Super+1` and `Super+Shift+1` are two
 // triggers, and `Super+!` is refused (write `Super+Shift+1` or `Super+exclam`). A literal plus is `plus`.
 
+import { SNAP_MARGIN, edgeZone, forgetSnap, snapClient } from "gnoblin/snap";
+import type { SnapClient } from "gnoblin/snap";
+
 /** The modifiers a trigger may name, in the order a canonical trigger writes them. */
 export type TriggerModifier = "Shift" | "Ctrl" | "Alt" | "Meta" | "Super" | "Hyper";
 export type TriggerButton = "MouseLeft" | "MouseMiddle" | "MouseRight";
@@ -374,8 +377,8 @@ export interface Rect {
 export interface BindingClient {
     readonly alive: boolean;
     readonly fullscreen: boolean;
-    /** A maximised client declines a move and a resize: the layout, not the pointer, decides its size. */
-    readonly maximised?: boolean;
+    /** A maximised client declines a move and a resize: the layout, not the pointer, decides its size. A snap un-maximises it. */
+    maximised?: boolean;
     /** A minimised client is not under the pointer, so the hit test skips it. */
     readonly minimised?: boolean;
     bounds: Rect;
@@ -406,6 +409,8 @@ export interface DragEvent extends BindingEvent {
     readonly button?: number;
     readonly workArea?: Rect;
     readonly dragConstraint?: string;
+    /** The seat's `edge_tiling` (or the config's `edgeTiling`): whether a drop on a screen edge tiles the window. */
+    readonly edgeTiling?: boolean;
     readonly deltaTime: number;
     readonly modifiers: ReadonlySet<string>;
     readonly trigger: string;
@@ -751,13 +756,30 @@ export interface MoveState {
     startBounds: Rect;
 }
 
+export interface ClientMoveOptions extends Partial<PointerDragBindingOptions> {
+    /**
+     * Edge tiling on release: how near a screen edge, in pixels, the pointer must be for the drop to tile the window
+     * (left and right take half the work area, top all of it). Default `SNAP_MARGIN`. `false` never tiles. Only when
+     * the seat's `edge_tiling` (or the config's `edgeTiling`) is on, as in the Lua shell; off, a drop is just a move.
+     */
+    snap?: number | false;
+}
+
 /**
  * Super+MouseLeft drag: the client follows the pointer by the distance it has moved since the press. Written
- * against the client's `bounds` and the event's `position` alone; there is no native grab behind it.
+ * against the client's `bounds` and the event's `position` alone; there is no native grab behind it. A drop within
+ * `snap` pixels of a screen edge tiles the window when edge tiling is on (`gnoblin/snap`).
  */
 export class ClientMoveBinding extends PointerDragBinding {
-    constructor(options: Partial<PointerDragBindingOptions> = {}) {
+    snap: number | false;
+
+    constructor(options: ClientMoveOptions = {}) {
         super({ ...options, id: options.id ?? "move", trigger: options.trigger ?? "Super+MouseLeft+Drag" });
+        const snap = options.snap ?? SNAP_MARGIN;
+        if (snap !== false && (typeof snap !== "number" || !Number.isFinite(snap) || snap < 0)) {
+            throw new TypeError(`ClientMoveBinding snap must be false or a distance of 0 or more, got ${String(snap)}`);
+        }
+        this.snap = snap;
     }
 
     onStart(event: DragEvent): MoveState | false {
@@ -765,6 +787,8 @@ export class ClientMoveBinding extends PointerDragBinding {
         if (!client || !position || !draggable(client)) {
             return false;
         }
+        // A snapped window the user takes hold of is no longer tiled to its zone.
+        forgetSnap(client);
         return { client, startPointer: { ...position }, startBounds: { ...client.bounds } };
     }
 
@@ -781,10 +805,18 @@ export class ClientMoveBinding extends PointerDragBinding {
             : target;
     }
 
-    onEnd(_event: DragEvent, state: object): void {
+    onEnd(event: DragEvent, state: object): void {
         const { client } = state as MoveState;
-        if (client.alive) {
-            client.floatingBounds = { ...client.bounds };
+        if (!client.alive) {
+            return;
+        }
+        client.floatingBounds = { ...client.bounds };
+        if (this.snap === false || event.edgeTiling !== true || !event.workArea || !event.position) {
+            return;
+        }
+        const zone = edgeZone(event.position.x, event.position.y, event.workArea, this.snap);
+        if (zone !== null) {
+            snapClient(client as SnapClient, zone, { edgeTiling: true, area: event.workArea });
         }
     }
 
@@ -799,20 +831,37 @@ export class ClientMoveBinding extends PointerDragBinding {
 /** Where a resize drag holds the client: the corner that moves with the pointer. */
 export type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 
+/** The one side that moves with the pointer when `edges` is `nearest`. */
+export type ResizeEdge = "left" | "right" | "top" | "bottom";
+
 export interface ClientResizeOptions extends Partial<PointerDragBindingOptions> {
-    /** `quadrant` (default) picks the corner nearest the pointer at the press; or name the corner. */
-    edges?: "quadrant" | ResizeCorner;
+    /**
+     * `quadrant` (default) picks the corner nearest the pointer at the press and moves two sides; `nearest` picks the
+     * side nearest the pointer and moves that one alone; or name the corner.
+     */
+    edges?: "quadrant" | "nearest" | ResizeCorner;
 }
 
-/** What `ClientResizeBinding.onStart` keeps for one drag. `corner` never changes during the drag. */
+/** What `ClientResizeBinding.onStart` keeps for one drag. `corner` (a corner, or one side) never changes during the drag. */
 export interface ResizeState {
     client: BindingClient;
     start: Rect;
     pointer: Point;
-    corner: ResizeCorner;
+    corner: ResizeCorner | ResizeEdge;
 }
 
 const CORNERS: readonly string[] = ["top-left", "top-right", "bottom-left", "bottom-right"];
+
+/** The side of a `width` by `height` client that a press at `where` is nearest to. A tie goes to left, then top. */
+function nearestEdge(where: Point, width: number, height: number): ResizeEdge {
+    const gaps: [ResizeEdge, number][] = [
+        ["left", where.x],
+        ["top", where.y],
+        ["right", width - where.x],
+        ["bottom", height - where.y],
+    ];
+    return gaps.reduce((best, gap) => (gap[1] < best[1] ? gap : best))[0];
+}
 
 /** The fewest pixels a client may be resized to when it states no minimum of its own. */
 const MIN_SIZE = { width: 100, height: 80 };
@@ -823,14 +872,14 @@ const MIN_SIZE = { width: 100, height: 80 };
  * not switch corners.
  */
 export class ClientResizeBinding extends PointerDragBinding {
-    edges: "quadrant" | ResizeCorner;
+    edges: "quadrant" | "nearest" | ResizeCorner;
 
     constructor(options: ClientResizeOptions = {}) {
         super({ ...options, id: options.id ?? "resize", trigger: options.trigger ?? "Super+MouseRight+Drag" });
         const edges = options.edges ?? "quadrant";
-        if (edges !== "quadrant" && !CORNERS.includes(edges)) {
+        if (edges !== "quadrant" && edges !== "nearest" && !CORNERS.includes(edges)) {
             throw new TypeError(
-                `ClientResizeBinding edges must be quadrant or one of ${CORNERS.join(", ")}, got ${String(edges)}`,
+                `ClientResizeBinding edges must be quadrant, nearest or one of ${CORNERS.join(", ")}, got ${String(edges)}`,
             );
         }
         this.edges = edges;
@@ -843,10 +892,14 @@ export class ClientResizeBinding extends PointerDragBinding {
         }
         const start = { ...client.bounds };
         const where = event.localPosition ?? { x: position.x - start.x, y: position.y - start.y };
-        const corner =
-            this.edges === "quadrant"
-                ? (`${where.y < start.height / 2 ? "top" : "bottom"}-${where.x < start.width / 2 ? "left" : "right"}` as ResizeCorner)
-                : this.edges;
+        let corner: ResizeCorner | ResizeEdge;
+        if (this.edges === "quadrant") {
+            corner = `${where.y < start.height / 2 ? "top" : "bottom"}-${where.x < start.width / 2 ? "left" : "right"}`;
+        } else if (this.edges === "nearest") {
+            corner = nearestEdge(where, start.width, start.height);
+        } else {
+            corner = this.edges;
+        }
         return { client, start, pointer: { ...position }, corner };
     }
 
@@ -857,31 +910,41 @@ export class ClientResizeBinding extends PointerDragBinding {
         }
         const delta = moved(pointer, event.position);
         const r = { ...start };
-        if (corner.endsWith("left")) {
+        // The sides that move with the pointer: a corner moves two, an edge moves one.
+        const left = corner.endsWith("left");
+        const right = corner.endsWith("right");
+        const top = corner.startsWith("top");
+        const bottom = corner.startsWith("bottom");
+        if (left) {
             r.x += delta.x;
             r.width -= delta.x;
-        } else {
+        } else if (right) {
             r.width += delta.x;
         }
-        if (corner.startsWith("top")) {
+        if (top) {
             r.y += delta.y;
             r.height -= delta.y;
-        } else {
+        } else if (bottom) {
             r.height += delta.y;
         }
         const min = client.minSize ?? MIN_SIZE;
         const max = client.maxSize;
         // The opposite corner is the anchor: a client held at its limit stops there and does not slide.
-        const limitedWidth = Math.max(min.width, Math.min(r.width, max?.width ?? Infinity));
-        if (corner.endsWith("left")) {
-            r.x += r.width - limitedWidth;
+        // An axis no side moves on keeps the size it had, whatever the limits say.
+        if (left || right) {
+            const limitedWidth = Math.max(min.width, Math.min(r.width, max?.width ?? Infinity));
+            if (left) {
+                r.x += r.width - limitedWidth;
+            }
+            r.width = limitedWidth;
         }
-        r.width = limitedWidth;
-        const limitedHeight = Math.max(min.height, Math.min(r.height, max?.height ?? Infinity));
-        if (corner.startsWith("top")) {
-            r.y += r.height - limitedHeight;
+        if (top || bottom) {
+            const limitedHeight = Math.max(min.height, Math.min(r.height, max?.height ?? Infinity));
+            if (top) {
+                r.y += r.height - limitedHeight;
+            }
+            r.height = limitedHeight;
         }
-        r.height = limitedHeight;
         client.bounds = r;
     }
 

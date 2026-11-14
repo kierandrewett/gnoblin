@@ -177,7 +177,14 @@ const VIEW_PROBE: &str = r#"(() => {
     })();
     const spaces = gnoblin.workspaces.map((w) => `${w.id}:${w.layout.constructor.name}`).join(",");
     return `${gnoblin.clients.length} clients, ${gnoblin.workspaces.length} workspaces [${spaces}] keys[${keys}]: ` +
-        gnoblin.clients.map((c) => `${c.appId}@${c.x},${c.y}`).join(";");
+        gnoblin.clients.map((c) => `${c.appId}@${c.x},${c.y}`).join(";") +
+        " | focus=" + (() => {
+            try {
+                return gnoblin.input.primary.focusedClient?.appId;
+            } catch (error) {
+                return "no seat";
+            }
+        })();
 })()"#;
 
 /// What the shell thread reports, refreshed after every frame.
@@ -1275,4 +1282,167 @@ fn a_strip_workspace_places_two_real_windows_in_columns_and_scrolls_to_the_focus
         rect_of(&ipc, "org.example.first") == first && rect_of(&ipc, "org.example.second") == second
     });
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+}
+
+/// A config directory whose `init.ts` declares one workspace that places nothing and one window rule: a window of
+/// `org.example.placed` goes to (321, 123) and is 222 by 111. No listener of the script touches a window.
+fn write_rules_config(dir: &Path) {
+    fs::write(
+        dir.join("init.ts"),
+        r#"import { Layout, defineConfig } from "gnoblin";
+
+defineConfig({
+    workspaces: [{ id: "desk", layout: new Layout() }],
+    rules: [
+        { appId: "org.example.placed", position: { x: 321, y: 123 }, size: { width: 222, height: 111 } },
+    ],
+});
+"#,
+    )
+    .expect("init.ts");
+}
+
+#[test]
+fn a_window_rule_places_a_newly_mapped_window_of_its_app_and_leaves_another_alone() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    write_rules_config(config.path());
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    // A window the shell found at boot is not the rules' to place, so the windows map once the config is running.
+    wait_for("the shell runs the config", &session, &mut mapper, &shell, || {
+        shell.generation() > 0 && shell.view().contains(", 1 workspaces")
+    });
+
+    let (other, placed) = ("org.example.other", "org.example.placed");
+    mapper.map_window(other, "Other");
+    wait_for("the shell sees the other window", &session, &mut mapper, &shell, || {
+        shell.view().contains(other) && rect_of(&ipc, other).is_some()
+    });
+    let untouched = rect_of(&ipc, other).expect("the other window is in the scene");
+    mapper.map_window(placed, "Placed");
+    wait_for("the rule places its window", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, placed) == Some((321.0, 123.0, 222.0, 111.0))
+    });
+    // The shell has now run the rule against both windows: the second one needed the same frames the first did.
+    std::thread::sleep(Duration::from_millis(300));
+    mapper.roundtrip();
+    assert_eq!(
+        rect_of(&ipc, other),
+        Some(untouched),
+        "the window of another app is where it was: {:?}",
+        scene(&ipc)
+    );
+    assert_ne!(
+        (untouched.0, untouched.1),
+        (321.0, 123.0),
+        "the other window did not happen to start at the rule's place"
+    );
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    shell.finish();
+}
+
+/// A config directory whose rules put `org.example.under` at (300, 200) and `org.example.over` at (400, 260), both
+/// 200 by 150 so they overlap, and whose listener moves a window one pixel to the right whenever a press lands on it.
+fn write_click_config(dir: &Path) {
+    fs::write(
+        dir.join("init.ts"),
+        r#"import { Layout, defineConfig, gnoblin } from "gnoblin";
+
+defineConfig({
+    workspaces: [{ id: "desk", layout: new Layout() }],
+    rules: [
+        { appId: "org.example.under", position: { x: 300, y: 200 }, size: { width: 200, height: 150 } },
+        { appId: "org.example.over", position: { x: 400, y: 260 }, size: { width: 200, height: 150 } },
+    ],
+});
+
+// The press is the proof of which window the compositor picked: a window that heard it moves one pixel.
+gnoblin.clients.addListener({
+    onPointerPress(client: { x: number }): void {
+        client.x = client.x + 1;
+    },
+});
+"#,
+    )
+    .expect("init.ts");
+}
+
+/// The app id of the window the seat's keyboard focus is on, as the shell reads the seat the compositor publishes. A
+/// window's own `focused` is not kept current while a shell holds the tree, so the seat is where focus is read.
+fn focused_app(shell: &Shell) -> Option<String> {
+    let view = shell.view();
+    let (_, focus) = view.split_once(" | focus=")?;
+    (focus != "undefined").then(|| focus.to_owned())
+}
+
+/// A press and release of the left button at `at`, with the pointer moved there first.
+fn click(session: &Session, at: (i32, i32)) {
+    motion(session, at.0, at.1);
+    std::thread::sleep(Duration::from_millis(40));
+    button(session, BTN_LEFT, true);
+    std::thread::sleep(Duration::from_millis(40));
+    button(session, BTN_LEFT, false);
+}
+
+#[test]
+fn a_click_focuses_and_raises_a_real_window_so_the_compositor_picks_it_over_the_one_above() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    write_click_config(config.path());
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    wait_for("the shell runs the config", &session, &mut mapper, &shell, || {
+        shell.generation() > 0 && shell.view().contains(", 1 workspaces")
+    });
+    let (under, over) = ("org.example.under", "org.example.over");
+    mapper.map_window(under, "Under");
+    mapper.map_window(over, "Over");
+    wait_for("both windows at their places", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, under) == Some((300.0, 200.0, 200.0, 150.0))
+            && rect_of(&ipc, over) == Some((400.0, 260.0, 200.0, 150.0))
+    });
+    // A window the shell found new takes the focus: the last one mapped has it.
+    wait_for("the new window takes the focus", &session, &mut mapper, &shell, || {
+        focused_app(&shell).as_deref() == Some(over)
+    });
+
+    // Where only the window below shows: the press is its, the shell focuses and raises it. The claims and the
+    // pointer need a moment to settle, so the click is repeated until the window has heard it.
+    let deadline = Instant::now() + PATIENCE;
+    while rect_of(&ipc, under).map(|rect| rect.0) != Some(301.0) {
+        click(&session, (320, 210));
+        let attempt = Instant::now() + Duration::from_millis(1000);
+        while Instant::now() < attempt && rect_of(&ipc, under).map(|rect| rect.0) != Some(301.0) {
+            mapper.roundtrip();
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the click never reached the window below: {:?}",
+            scene(&ipc)
+        );
+    }
+    wait_for("the window below has the focus", &session, &mut mapper, &shell, || {
+        focused_app(&shell).as_deref() == Some(under)
+    });
+
+    // Where both show: the compositor gives the press to the window it draws on top. It is the one that was clicked
+    // only if the raise reached the compositor's stacking.
+    click(&session, (450, 300));
+    wait_for("a press lands on one of the two", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, under).map(|rect| rect.0) == Some(302.0) || rect_of(&ipc, over).map(|rect| rect.0) == Some(401.0)
+    });
+    assert_eq!(
+        rect_of(&ipc, under).map(|rect| rect.0),
+        Some(302.0),
+        "the raised window is the one the compositor picked: {:?}",
+        scene(&ipc)
+    );
+    assert_eq!(rect_of(&ipc, over).map(|rect| rect.0), Some(400.0));
+    assert_eq!(focused_app(&shell).as_deref(), Some(under));
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    shell.finish();
 }
