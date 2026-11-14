@@ -1,6 +1,7 @@
 # Spec-native shell: what removing `defineConfig` touches, what the shell already runs of the owner's examples, and how to replace it
 
-Lane SpecNativeAudit. Status: inventory, harness and design only; **nothing is removed in this lane**.
+Lane SpecNativeAudit. Status: inventory, harness and design. Lane SpecCore landed steps 3 and 4 of the removal plan (3.11); the
+`defineConfig` path is deprecated and still present, and no part of the boot path uses it.
 
 The owner reviewed the TypeScript shell and said they never asked for `defineConfig`. It was added by the agent (proposed in
 design/js-research/spec-review.md section 4, adopted as decision J4 in design/js-runtime.md). The owner chose to remove it. The
@@ -712,6 +713,81 @@ Step 5 can run in parallel with step 6 once step 3 lands. Steps 6 and 7 are larg
 3. May a user file replace the stock default entirely (3.4), so a file that sets only a style has no workspace keys?
 4. `add` of a binding whose id exists: replace by id, or refuse (fences 066, 068, 117)?
 5. Reverse the "Display, Viewport and Camera are not built" decision (2.4)? Without it the reference `init.js` cannot load.
+
+### 3.11 Landed in lane SpecCore: the zero-config default, the boot path and the dropped settings
+
+The owner decided (3.10): remove `defineConfig`, keep the spec as the whole API, no `gnoblin.settings`, the user's `init.ts`
+replaces the stock default, and a binding `add` with a duplicate id stays refused. Steps 3 and 4 of 3.9 landed as follows, in
+two pushes. The deprecated `defineConfig` path (`mergeConfig`, `desugarConfig`, `defaultConfig`, `__register`) still works, so
+that the tests and pages that use it keep passing; nothing in the boot path uses it. The next lanes rewrite those tests, the
+converter and the pages, then delete it (step 8).
+
+**The stock default is code.** `data/js/gnoblin/starter.ts` (embedded as `gnoblin/starter`) exports `installDefaults(gnoblin)`:
+four floating workspaces, `startDecorations()`, `startWindowMenu()`, `startNotRespondingAlert()`, `Super+1` to `Super+9`,
+`Super+Left` and `Super+Right` over a `StripLayout`, the `Swipe3` `WorkspaceSlideBinding`, seven media keys and `Super+space`
+opening the launcher, all written as `input.bind` and `gnoblin.workspaces.add` calls. `data/js/starter/init.ts`, what
+`gnoblinctl config init` writes, is the same statements as a commented file in the owner's style. The two are held together by
+`the_starter_file_and_install_defaults_are_the_same_statements` (`crates/gnoblin-js/tests/starter_parity.rs`). The same file
+boots four ways over one fake compositor and all four digests (workspaces, claimed keys and gestures, titlebars, menu, alert,
+the focus a new window takes, and the effect of nine key presses) must equal the world `defineConfig(defaultConfig)` made:
+`every_way_to_boot_the_stock_default_builds_the_world_define_config_made`.
+
+**The boot path.** With no `init.ts` the shell runs `installDefaults` (`loadDefault`). With an `init.ts` it runs that file and
+nothing else: no merge, no stock keys, no stock workspaces, and a file that declares none gets the one floating `desktop` of
+`ensureDefaultWorkspace`. What a user file never has to ask for stays: the lock screen and the focus policy, now attached by the
+runtime for every config (click focus, new windows focused, the built-in edge snapping). The document the role commits is
+what the device objects wrote (`Keyboard`, `Mouse`, `Touchpad` settings, in the `input` section) and an empty document
+otherwise. `evaluate_document` (the keyring's first-boot decision) boots a throwaway `JsShell` over an inert tree (the root and
+one seat, no windows, no outputs) under the 1 s budget, runs the entry and reads `JsShell::declared_document`: a spec-style
+file loads as written and is not stubbed. A config that decides a setting from live state sees an empty world there, as 3.5
+describes.
+
+**Names of the three helpers.** `titlebar.ts` already exports a class `Decorations` and `menus.ts` a widget `WindowMenu`,
+so the helpers 3.1 called by those names are functions on the `gnoblin` module: `startDecorations`, `startWindowMenu` and
+`startNotRespondingAlert`. Each is idempotent. A config that does not call one does not have that part
+(`titlebars_the_window_menu_and_the_alert_are_started_by_helpers_and_only_once`).
+
+**Spec-native equivalents of the keys that have a spec object**, each with the test that sets it that way:
+
+<!-- prettier-ignore-start -->
+
+| Old key | Spec-native way | Test |
+| --- | --- | --- |
+| `style` | `gnoblin.clients.style.<property> = ...` | `style.rs`: `st1_a_global_radius_reaches_current_and_future_clients_and_spares_an_explicit_one` |
+| `workspaces` | `new Workspace({ id, name, layout })`, `gnoblin.workspaces.add` | `starter_parity.rs` (four workspaces, boot four ways) |
+| `gaps` | `Workspace.gaps` (`outer`), a layout's `gap` (`inner`) | `spec_native_settings.rs`: `gaps_are_the_workspaces_and_the_layouts_own_properties` |
+| `keys`, `launcher` key | `gnoblin.input.primary.bind(trigger, fn)`; a second binding of one trigger at one priority is refused | `spec_native_settings.rs`: `a_key_is_input_bind_and_a_key_bound_twice_is_refused`; `starter_parity.rs` (the presses) |
+| `gestureActions` | `input.bind("Swipe4Up", fn)`, `input.bind("Swipe3", new WorkspaceSlideBinding())` | `spec_native_settings.rs`: `a_touchpad_gesture_is_input_bind_on_a_gesture_trigger`; `starter_parity.rs` |
+| `decorations`, `menus`, `alerts` | `startDecorations()`, `startWindowMenu()`, `startNotRespondingAlert()` | `spec_native_settings.rs`: `titlebars_the_window_menu_and_the_alert_are_started_by_helpers_and_only_once` |
+| `outputs` | `new OutputProfile({ match, mode, scale, transform, position })`, `gnoblin.outputs.profiles.add`, `Output.apply` | `displays.rs`: `a_profile_applies_its_settings_as_one_request_and_places_its_neighbour_from_the_answer` and the three after it |
+| `dialogs` (the listeners) | `gnoblin.dialogs.addListener(...)` | `config_slots.rs`: `the_slot_is_claimed_while_a_listener_is_attached_and_not_before` |
+| `on` | `gnoblin.clients.addListener(...)` | `spec_conformance.rs`, fences 005 and 007 |
+| `setup` | the body of the file | every spec-style test |
+| `input`, `inputSources` (the device settings) | `Keyboard.repeatRate`, `Mouse.sensitivity`, `Touchpad.naturalScroll`, ... written to the `input` section | `input_devices.rs`: `device_settings_are_committed_in_the_input_section_of_the_document` |
+
+<!-- prettier-ignore-end -->
+
+**Dropped settings (follow-up scope).** No object in the owner's specification carries these, and the decision is to invent
+none. The boot path no longer reads them. They stay in `defineConfig` only for as long as the compatibility path does. A future
+home is a question for the specification, so the last column says what the setting needs, not where it goes.
+
+<!-- prettier-ignore-start -->
+
+| Old key | What it did | What a spec-compatible home would need |
+| --- | --- | --- |
+| `rules` | The data-only window rules engine: match on app id, title, focus or workspace and set floating, size, position, style, fullscreen, maximised, secure, skip-focus, with later-rule-wins and re-application. | The spec's way is a listener plus `where(...).style` (spec 4 and 6). `floating`, `fullscreen`, `maximised`, `secure` and skip-focus are read-only or absent on `Client`, so recipes cannot write them yet. |
+| `focus` (`mode`, `newWindows`, `raiseOnClick`, `autoRaise`, `autoRaiseDelay`, `changeOnPointerRest`) | Seat-wide focus policy knobs over the document's `windowManagement` section. | A focus policy on the seat. The spec has none. The runtime keeps click focus with new windows focused and raise on click. |
+| `edgeTiling`, `dragConstraint` | Whether dragging a window to a screen edge snaps it, and whether drags stay in the work area. | A snapping policy on the seat or the layout. The runtime keeps edge snapping on. |
+| `autostart` | Commands started once per session, guarded against a second keyring. | A session-scoped startup list. `gnoblin.spawn` in `init.ts` runs again on every reload. The document's `autostart` section and the guardian's handling of it are unchanged. |
+| `protocols` | Which Wayland protocols the compositor advertises. | A compositor-wide settings object. |
+| `touchpadGestures` | Drawn-path touchpad gestures that start a command. | A path gesture trigger. Cardinal swipes and pinches are `input.bind`. |
+| `keyring` | `keyring.enabled`, read at first boot before the runtime has committed anything. | A compositor-wide settings object read before the session starts. The keyring keeps its default (enabled), and `evaluate_document` reports no JS source for it. |
+| `dialogs.style` | The look of the compositor's dialogs. | A style object on the dialog manager. The `gnoblin.dialogs` listeners stay. |
+| `workspaceSets` | Named groups of workspaces shown together, activated by name. | None: the spec has no sets (9E). `sets.ts` stays until the compatibility path is deleted. |
+| `launcher` | A command for `Super+space` instead of the stock entry. | Nothing is missing: bind the key yourself. The starter binds `openLauncher`, and a user who wants another command deletes that line. |
+| `compositor`, `windowManagement`, `appearance`, `accessibility`, `layerShell`, `auth`, `location`, `compat`, `capture`, `monitors`, `xwayland`, `logging`, `cursor` | The document's sections as `defineConfig` keys. | A compositor-wide settings object (the proposed `gnoblin.settings`, refused) or one object for each. Today only the device settings of `input` reach the document. |
+
+<!-- prettier-ignore-end -->
 
 ## Appendix: docs pages that mention the identifiers
 
