@@ -3546,6 +3546,47 @@ fn an_idle_hold_delays_the_watch_and_a_reload_that_retires_its_generation_gives_
     shell.finish();
 }
 
+/// A hold belongs to the connection that made it. A shell that dies without retiring (`finish` stops its loop and drops
+/// the role, which closes its sockets and gives nothing back, as a killed process does) leaves no hold behind: the
+/// compositor counts none, and a watch of the next shell hears the session go idle.
+#[test]
+fn the_compositor_gives_back_the_idle_hold_of_a_shell_that_died_without_retiring() {
+    let session = Session::start();
+    let ipc = session.ipc();
+    let mut mapper = Mapper::connect(&session.wayland());
+    let config = tempfile::tempdir().expect("a config directory");
+    write_idle_config(config.path(), r#"gnoblin.idle.inhibit("js-shell-test");"#);
+    let shell = Shell::start(&session, config.path(), |_| {});
+    wait_for("the compositor counts the hold", &session, &mut mapper, &shell, || {
+        idle_object(&ipc).1 == 1
+    });
+    assert_eq!(shell.probe(), "", "the held shell's watch has not fired");
+
+    shell.finish();
+    wait_for(
+        "the compositor gave the dead shell's hold back",
+        &session,
+        &mut mapper,
+        &shell,
+        || idle_object(&ipc).1 == 0,
+    );
+
+    // The clock resumes for whoever watches it next: nothing holds the session awake any more.
+    let next = tempfile::tempdir().expect("a config directory");
+    write_idle_config(next.path(), "");
+    let watcher = Shell::start(&session, next.path(), |_| {});
+    wait_for(
+        "a watch of the next shell heard the session go idle",
+        &session,
+        &mut mapper,
+        &watcher,
+        || watcher.probe() == "idle",
+    );
+    assert_eq!(idle_object(&ipc).1, 0);
+    assert!(watcher.diagnostics().is_empty(), "{:?}", watcher.diagnostics());
+    watcher.finish();
+}
+
 /// The shell's launch registry over real windows: a window of the application starts the launch, the deadline times
 /// another out, and the application ID is matched the way the page says.
 #[test]

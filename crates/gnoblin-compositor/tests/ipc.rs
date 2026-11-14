@@ -720,20 +720,37 @@ fn inhibitors(session: &Session) -> u64 {
     }
 }
 
+/// Calls `method` on the `idle` object with `holder`, on a connection the caller keeps open:
+/// a hold lives only as long as the connection that made it.
+#[track_caller]
+fn idle_hold(
+    client: &mut Client<UnixTransport>,
+    idle: u64,
+    method: &str,
+    holder: &str,
+) -> gnoblin_model::OperationOutcome {
+    let arguments = Fields::from([("holder".to_owned(), Value::Text(holder.to_owned()))]);
+    let operation = client
+        .call(ObjectId::new(idle), method, &arguments)
+        .expect("the call is served");
+    client.await_operation(operation).expect("the completion")
+}
+
 #[test]
 fn an_inhibit_is_counted_until_it_is_released() {
     let session = Session::start();
-    let idle = idle_id(&session).to_string();
+    let idle = idle_id(&session);
+    let mut client = ipc(&session);
     assert_eq!(inhibitors(&session), 0);
 
-    session.ctl(&["idle", "call", &idle, "inhibit", "holder=a"]).ok();
+    assert!(idle_hold(&mut client, idle, "inhibit", "a").is_done());
     assert_eq!(inhibitors(&session), 1);
 
     // Holding again under the same name changes nothing.
-    session.ctl(&["idle", "call", &idle, "inhibit", "holder=a"]).ok();
+    assert!(idle_hold(&mut client, idle, "inhibit", "a").is_done());
     assert_eq!(inhibitors(&session), 1);
 
-    session.ctl(&["idle", "call", &idle, "uninhibit", "holder=a"]).ok();
+    assert!(idle_hold(&mut client, idle, "uninhibit", "a").is_done());
     assert_eq!(inhibitors(&session), 0);
     session.stop().expect("the session stops cleanly");
 }
@@ -741,18 +758,19 @@ fn an_inhibit_is_counted_until_it_is_released() {
 #[test]
 fn the_holder_cap_refuses_the_257th_inhibit() {
     let session = Session::start();
-    let idle = idle_id(&session).to_string();
+    let idle = idle_id(&session);
+    let mut client = ipc(&session);
     for holder in 0..256 {
-        session
-            .ctl(&["idle", "call", &idle, "inhibit", &format!("holder={holder}")])
-            .ok();
+        assert!(idle_hold(&mut client, idle, "inhibit", &holder.to_string()).is_done());
     }
     assert_eq!(inhibitors(&session), 256);
 
-    let refusal = session.ctl(&["idle", "call", &idle, "inhibit", "holder=overflow"]);
-    assert_eq!(refusal.code, 1, "a refused call exits 1: {}", refusal.out);
-    let said = format!("{}{}", refusal.out, refusal.err);
-    assert!(said.contains("too-many-inhibitors"), "{said}");
+    let refusal = idle_hold(&mut client, idle, "inhibit", "overflow");
+    assert_eq!(
+        refusal,
+        gnoblin_model::OperationOutcome::Failed(gnoblin_types::ErrorCode::from_static("too-many-inhibitors")),
+        "a refused hold completes too-many-inhibitors"
+    );
     assert_eq!(inhibitors(&session), 256, "the refused hold was not recorded");
     session.stop().expect("the session stops cleanly");
 }

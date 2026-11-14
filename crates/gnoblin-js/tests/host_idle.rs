@@ -383,6 +383,26 @@ fn a_lost_connection_is_reported_once_and_an_idle_watch_is_active_again() {
 }
 
 #[test]
+fn a_lost_connection_ends_the_scripts_holds_because_the_compositor_gave_them_back() {
+    // The compositor keeps a hold for the connection that made it, so a connection that ends takes its holds along; a
+    // script must not keep believing in one.
+    let mut rig = rig("g.h = gnoblin.idle.inhibit('player');\ng.w = gnoblin.idle.watch(100);");
+    rig.frame();
+    assert_eq!(rig.eval("g.h.alive"), "true");
+    rig.idle.0.borrow_mut().fail_poll = Some("the socket closed".to_owned());
+    let diagnostics = rig.frame();
+    assert!(diagnostics[0].contains("given back its holds"), "{diagnostics:?}");
+    assert_eq!(rig.eval("g.h.alive"), "false");
+    rig.eval("g.h.release()");
+    rig.shell.retire().expect("a retire");
+    assert_eq!(
+        rig.idle.calls(),
+        ["inhibit player"],
+        "nothing is given back for a hold that is already gone"
+    );
+}
+
+#[test]
 fn retiring_gives_every_hold_back_and_closes_the_connection() {
     let mut rig =
         rig("g.h = gnoblin.idle.inhibit('player');\ngnoblin.idle.inhibit('other');\ng.w = gnoblin.idle.watch(100);");
