@@ -8,10 +8,12 @@
 // The shell drains those calls under per-listener budgets, then `layout` computes placements and styles.
 // `ready` completes initial adoption; `cancelAll` releases generation-owned resources on retirement.
 //
-// Sections below follow that flow and the object model:
-// host bridge and errors; listeners and shared object state; Client, Workspace, Output and collections;
-// workspaces, desks, geometry, layout and styles; snapshots and reconciliation; host events and input;
-// stock policy, decorations and services; config registration; `gnoblin` facade and inspector setup.
+// Section order: host contract and bridge; staged writes; errors and listeners; Client; Workspace and Output;
+// output properties and collections; root collections; collection events and workspace membership; layout visibility
+// and slides; client styles; layout driver; generation snapshots; native lifecycle; output configuration and events;
+// frame events and listener queue; input and focus; window policy and actions; decorations and session services;
+// config callbacks and integrations; XR and session API bridges; transition rollback and animation; public facade;
+// console and shell entry.
 // Public classes and helpers are exported for the stock `gnoblin` index and user configuration imports.
 //
 // Reads use the host mirror plus staged writes. Destroyed nodes retain their last values for reads and reject writes.
