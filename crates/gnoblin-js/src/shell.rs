@@ -42,6 +42,7 @@ use crate::config::{JsApplied, JsConfigLink, parse_patch};
 use crate::dialogs::{JsDialogs, events_to_js, verdicts_from_js};
 use crate::error::{JsError, JsErrorKind};
 use crate::generation::{JsConfig, JsGeneration};
+use crate::host_api::JsTrackEnd;
 use crate::host_idle::{JsIdle, JsIdleConnector, commands_from_js, reading_to_js};
 use crate::host_session::JsSessionLink;
 use crate::input::{self, JsInputMessage, messages_to_js};
@@ -206,6 +207,8 @@ pub struct JsShell {
     reported: HashMap<String, u64>,
     /// How many times a call ran past its wall-clock or memory budget in this generation.
     strikes: u32,
+    /// How many queued listener calls ran (`dispatches`).
+    dispatches: u64,
     /// The shell's connection for slots, and the observation of the compositor's own dialogs on it.
     dialogs: JsDialogs,
     /// The shell's connection for the compositor's idle state (`gnoblin.idle`), opened while a script wants it.
@@ -264,6 +267,7 @@ impl JsShell {
             stale_refusals: 0,
             reported: HashMap::new(),
             strikes: 0,
+            dispatches: 0,
             dialogs: JsDialogs::new(),
             idle: JsIdle::new(),
             autostart: JsAutostart::default(),
@@ -646,6 +650,12 @@ impl JsShell {
         self.strikes
     }
 
+    /// How many queued listener calls the frames have run in all: the work a script's handlers did. A transition the
+    /// compositor plays on its own runs none between the commit and its end, which is what this counts.
+    pub const fn dispatches(&self) -> u64 {
+        self.dispatches
+    }
+
     /// Evaluates the user's entry module, a path under the config root. Returns the failures of listener
     /// calls that ran while it loaded (a replay on `addListener`). An error loading the module is `Err`,
     /// and counts a strike when it is a budget trip.
@@ -784,6 +794,22 @@ impl JsShell {
                     if !state.ui.accept_answer(token, &result, &error) {
                         state.lock.accept_answer(token, &result, &error);
                     }
+                }
+                TreeIncoming::TrackEnded {
+                    node,
+                    property,
+                    completed,
+                    tween,
+                } => {
+                    // The compositor's clock says an animation is over: the transition module settles on it.
+                    let state = &mut *self.state.borrow_mut();
+                    let end = JsTrackEnd {
+                        node: state.handles.to_script(node),
+                        property,
+                        completed,
+                        tween: tween.map_or(0.0, |tween| state.handles.to_script(tween)),
+                    };
+                    state.api.track_ends.push(end);
                 }
                 TreeIncoming::PointerChord(drag) => {
                     self.state.borrow_mut().input.inbox.push(JsInputMessage::Pointer(drag));
@@ -924,6 +950,7 @@ impl JsShell {
                 ));
                 break;
             }
+            self.dispatches = self.dispatches.saturating_add(1);
             match self.call_entry(self.entry_budget, |entry| {
                 entry.get::<_, Function<'_>>("next")?.call(())
             }) {

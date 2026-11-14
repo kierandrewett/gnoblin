@@ -178,8 +178,24 @@ interface Host {
     set(node: NodeId, key: string, value: HostValue): string | undefined;
     /** What `set` would answer, without queuing the write; `timed` also refuses a property the tree cannot animate. */
     check(node: NodeId, key: string, value: HostValue, timed: boolean): string | undefined;
-    /** The same write, carried out over `seconds` along `samples` (progress from 0 to 1). */
-    animate(node: NodeId, key: string, value: HostValue, seconds: number, samples: number[]): string | undefined;
+    /**
+     * The same write, carried out over `seconds` along `samples` (progress from 0 to 1), after `delay` seconds when
+     * given, and driven by the `tween` node when one is named (0 is none).
+     */
+    animate(
+        node: NodeId,
+        key: string,
+        value: HostValue,
+        seconds: number,
+        samples: number[],
+        delay?: number,
+        tween?: number,
+    ): string | undefined;
+    /** The `tween` nodes a transition's tracks join (`data/js/gnoblin/transition.ts`). */
+    tween: {
+        create(): NodeId | string;
+        destroy(node: NodeId): string | undefined;
+    };
     call(node: NodeId, method: string): string | undefined;
     /** Queues the moves that put a window on top of the others. */
     raise(node: NodeId): string | undefined;
@@ -4039,7 +4055,20 @@ const transitions = new TransitionEngine({
         (host.get(node, "height") as number) > 0 &&
         host.get(node, "visible") !== false,
     label: nodeName,
-    after,
+    makeTween: () => {
+        const made = host.tween.create();
+        if (typeof made !== "number") {
+            throw new GnoblinError(
+                String(made),
+                "gnoblin.requestTransition",
+                "the shell could not make the node that holds the transition's play state",
+            );
+        }
+        return made;
+    },
+    dropTween: (tween) => {
+        host.tween.destroy(tween);
+    },
     schedule: (site, task) => {
         queue.push({ site, task });
     },
@@ -4047,6 +4076,7 @@ const transitions = new TransitionEngine({
     settle: settleStaged,
     error: (code, target, message) => new GnoblinError(code, target, message),
 });
+hostApi.onTrackEnded = (event) => transitions.trackEnded(event);
 
 class Gnoblin {
     /** The optional extensions: `gnoblin.extensions.xr` is null until the XR program has a session (docs/xr.md). */
@@ -4375,6 +4405,7 @@ host.entry = {
         input.cancelAll();
         xrRuntime.release();
         sceneReleaseAll();
+        transitions.release();
         lockRelease();
         uiReleaseAll();
         hostApi.retire();

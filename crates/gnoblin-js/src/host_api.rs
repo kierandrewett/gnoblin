@@ -22,11 +22,24 @@ use crate::host_session::{JsSessionEvent, JsSessionLink, JsSessionVerb};
 /// The `gnoblin.version` field when the build sidecar does not supply it.
 const UNKNOWN: &str = "unknown";
 
-/// What the shell holds for the host API: the session connection, if it has one, and the processes it started.
+/// A timed write the compositor says has ended (`track_ended`), in the numbers a script holds for the nodes.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct JsTrackEnd {
+    pub(crate) node: f64,
+    pub(crate) property: String,
+    /// Whether every track of the write reached its target.
+    pub(crate) completed: bool,
+    /// The `tween` node the write joined, 0 for none.
+    pub(crate) tween: f64,
+}
+
+/// What the shell holds for the host API: the session connection, if it has one, the processes it started and the
+/// timed writes that ended since the last frame.
 #[derive(Default)]
 pub(crate) struct JsHostApi {
     pub(crate) session: Option<Box<dyn JsSessionLink>>,
     pub(crate) processes: JsProcesses,
+    pub(crate) track_ends: Vec<JsTrackEnd>,
 }
 
 fn refusal(code: &str, message: &str) -> String {
@@ -62,6 +75,15 @@ impl JsHostApi {
         }
         for (id, exit) in self.processes.drain() {
             events.push(exit_event(id, &exit));
+        }
+        for end in self.track_ends.drain(..) {
+            events.push(json!({
+                "kind": "trackEnded",
+                "node": end.node,
+                "property": end.property,
+                "completed": end.completed,
+                "tween": end.tween,
+            }));
         }
         events
     }

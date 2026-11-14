@@ -394,6 +394,8 @@ declare module "gnoblin/schema/tree" {
         onEvent(handler: (target: this, frame: number, seq: number, node: number, kind: string, x: number, y: number, button: number, key: string, text: string, dx: number, dy: number, request: string, pressed: boolean) => void): Unsubscribe;
         /** Signal `answer`. */
         onAnswer(handler: (target: this, token: number, result: Uint8Array, error: string) => void): Unsubscribe;
+        /** Signal `track_ended`. */
+        onTrackEnded(handler: (target: this, node: number, property: string, reason: string, tween: number) => void): Unsubscribe;
     }
 
     /** Schema record `tree.op` (since 0.2.0): a value, not an identity. */
@@ -443,6 +445,8 @@ declare module "gnoblin/schema/tree" {
         token: number;
         /** Schema name `value_bytes`. */
         valueBytes: Uint8Array;
+        delay: number;
+        tween: number;
     }
 
     /** Schema record `tree.change` (since 0.2.0): a value, not an identity. */
@@ -622,6 +626,16 @@ declare module "gnoblin/schema/tree" {
         readonly appId: string;
     }
 
+    /** Schema object `tree.tween` (since 0.2.0). */
+    export interface Tween extends Node {
+        /** Default `0`. */
+        progress: number;
+        /** Default `false`. */
+        paused: boolean;
+        /** Default `false`. */
+        reverse: boolean;
+    }
+
     /** Schema object `tree.view` (since 0.2.0). */
     export interface View extends Node {
         source: Node | null;
@@ -706,6 +720,7 @@ declare module "gnoblin/schema/signals" {
         "tree.tree.changes": { readonly name: "tree.tree.changes"; readonly object: number; readonly serial: number; readonly changes: number[]; };
         "tree.tree.event": { readonly name: "tree.tree.event"; readonly object: number; readonly frame: number; readonly seq: number; readonly node: number; readonly kind: string; readonly x: number; readonly y: number; readonly button: number; readonly key: string; readonly text: string; readonly dx: number; readonly dy: number; readonly request: string; readonly pressed: boolean; };
         "tree.tree.answer": { readonly name: "tree.tree.answer"; readonly object: number; readonly token: number; readonly result: number[]; readonly error: string; };
+        "tree.tree.track_ended": { readonly name: "tree.tree.track_ended"; readonly object: number; readonly node: number; readonly property: string; readonly reason: string; readonly tween: number; };
         "tree.node.destroyed": { readonly name: "tree.node.destroyed"; readonly object: number; };
         "tree.screen.destroyed": { readonly name: "tree.screen.destroyed"; readonly object: number; };
         "tree.screen.mode_changed": { readonly name: "tree.screen.mode_changed"; readonly object: number; };
@@ -714,6 +729,7 @@ declare module "gnoblin/schema/signals" {
         "tree.seat.gesture": { readonly name: "tree.seat.gesture"; readonly object: number; readonly id: number; readonly kind: string; readonly fingers: number; readonly phase: string; readonly dx: number; readonly dy: number; readonly scale: number; readonly rotation: number; };
         "tree.seat.pointer_chord": { readonly name: "tree.seat.pointer_chord"; readonly object: number; readonly phase: string; readonly claim: number; readonly x: number; readonly y: number; readonly dx: number; readonly dy: number; readonly button: number; readonly modifiers: string; readonly time: number; };
         "tree.surface.destroyed": { readonly name: "tree.surface.destroyed"; readonly object: number; };
+        "tree.tween.destroyed": { readonly name: "tree.tween.destroyed"; readonly object: number; };
         "tree.view.destroyed": { readonly name: "tree.view.destroyed"; readonly object: number; };
         "tree.window.destroyed": { readonly name: "tree.window.destroyed"; readonly object: number; };
         "tree.workspace.destroyed": { readonly name: "tree.workspace.destroyed"; readonly object: number; };

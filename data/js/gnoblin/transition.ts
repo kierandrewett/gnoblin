@@ -52,6 +52,13 @@ export interface TransitionOptions {
     duration?: number;
     /** Default `"out"`, as `Client.animate`'s. */
     easing?: TransitionEasing;
+    /** Milliseconds, 0 or more, the compositor holds the start state before the animation begins. Default 0. */
+    delay?: number;
+    /**
+     * Default true. False stages the transition with its tracks held at the start: `progress` scrubs them, `play()`
+     * and `reverse()` run them, `pause()` holds them.
+     */
+    autoplay?: boolean;
 }
 
 /** What `finished` and `onFinished` deliver: `cancelled` is true when `cancel()` or a newer transition took every track. */
@@ -67,10 +74,15 @@ export interface TransitionSubscription {
 /** A value as it goes to the tree: a number, a flag, a text, a list of numbers or effect objects. */
 type Value = unknown;
 
-/** The timed write a staged value is sent as, when it has a curve of its own (`Client.animate` inside a callback). */
+/**
+ * The timed write a staged value is sent as, when it has a curve of its own (`Client.animate` inside a callback). A
+ * transition adds the `delay` in seconds before it starts and the `tween` node whose play state drives it.
+ */
 interface Curve {
     seconds: number;
     samples: number[];
+    delay?: number;
+    tween?: number;
 }
 
 interface Staged {
@@ -84,7 +96,16 @@ interface Staged {
 export interface StageBackend {
     get(node: number, key: string): Value;
     set(node: number, key: string, value: Value): string | undefined;
-    animate(node: number, key: string, value: Value, seconds: number, samples: number[]): string | undefined;
+    /** A timed write: `delay` seconds before it starts (0 for none), joining the `tween` node (0 for none). */
+    animate(
+        node: number,
+        key: string,
+        value: Value,
+        seconds: number,
+        samples: number[],
+        delay?: number,
+        tween?: number,
+    ): string | undefined;
     /** What `set` would answer, without queuing the write; with `timed` it also refuses a property the tree cannot animate. */
     check(node: number, key: string, value: Value, timed: boolean): string | undefined;
 }
@@ -166,7 +187,7 @@ export class Staging {
     land(node: number, key: string, value: Value, curve: Curve | null): string | undefined {
         return curve === null
             ? this.#backend.set(node, key, value)
-            : this.#backend.animate(node, key, value, curve.seconds, curve.samples);
+            : this.#backend.animate(node, key, value, curve.seconds, curve.samples, curve.delay ?? 0, curve.tween ?? 0);
     }
 
     /** Throws for a call that has a side effect, while a callback is staging. Otherwise does nothing. */
@@ -196,8 +217,13 @@ export interface TransitionHost {
     placed(node: number): boolean;
     /** The name of a node in an error path: `Client#3`. */
     label(node: number): string;
-    /** Runs `fn` `seconds` from now, at the first frame past it. */
-    after(seconds: number, fn: () => void): { cancel(): boolean };
+    /**
+     * Makes the compositor's `tween` node, the play state its tracks join (`progress`, `paused`, `reverse`), and
+     * returns its id. Throws when the shell can make no more nodes.
+     */
+    makeTween(): number;
+    /** Destroys a `tween` node made by `makeTween`. */
+    dropTween(tween: number): void;
     /** Queues `task` after the calls already queued, under the listener budget. `site` names it in a report. */
     schedule(site: string, task: () => void): void;
     /** Takes what a callback can change that is not a tree write, and returns what puts it back. */
@@ -207,17 +233,40 @@ export interface TransitionHost {
     error: MakeError;
 }
 
+/** The compositor's word that a timed write ended (`track_ended`), as the host hands it over. */
+export interface TrackEndedEvent {
+    /** The node the write was to. */
+    node: number;
+    /** The property's tree key: `x`, `opacity`, `rotation`. */
+    property: string;
+    /** True when the track reached its target; false for every other end. */
+    completed: boolean;
+    /** The `tween` node the write joined; 0 for none. */
+    tween: number;
+}
+
 const PLACE_KEYS = ["x", "y", "width", "height"];
 
 let counter = 0;
+
+/** What a transition asks of the compositor's tracks: the engine's side of `progress`, `play`, `pause`, `reverse` and `cancel`. */
+interface TransitionControl {
+    seek(progress: number): void;
+    pause(paused: boolean): void;
+    reverse(reverse: boolean): void;
+    cancel(): void;
+}
 
 /**
  * One call of `requestTransition`. `finished` settles once, with `{ cancelled }`; `onFinished` runs a plain callback
  * once as a queued call, one added after the settle runs after the current call returns.
  *
- * What is not here, and why: `progress`, `play`, `pause`, `reverse` and `finish` need the native tween player to take an
- * external progress. It advances tracks by elapsed milliseconds and cannot be set to a value
- * (`crates/gnoblin-render/src/tween.rs`), so `autoplay: false` is refused.
+ * The compositor plays the tracks and says when they end (`track_ended`), so a transition ends when its tracks do and
+ * not when the shell's clock says so. With `autoplay: false` the tracks start held at the start value: `progress`
+ * moves them to a point of their duration, `play()` lets them run on, `reverse()` runs them back, `pause()` holds them.
+ * The target state is committed when the transition is requested (the layout, the styles and the tree all hold it),
+ * and what is drawn is the compositor's interpolation; a transition that runs back to its start puts the start values
+ * back and settles `{ cancelled: true }`.
  */
 export class Transition {
     readonly id: number;
@@ -228,15 +277,18 @@ export class Transition {
     #callbacks: { run: (result: TransitionResult) => void; live: boolean }[] = [];
     #promise: Promise<TransitionResult> | null = null;
     #resolve: ((result: TransitionResult) => void) | null = null;
-    #cancel: (transition: Transition) => void;
-    #timer: { cancel(): boolean } | null = null;
+    #control: TransitionControl | null;
+    #progress = 0;
+    #paused: boolean;
+    #reversed = false;
 
     /** Only the engine makes transitions: a script receives one from `requestTransition`. */
-    constructor(host: TransitionHost, duration: number, cancel: (transition: Transition) => void) {
+    constructor(host: TransitionHost, duration: number, autoplay: boolean, control: TransitionControl | null) {
         this.id = counter += 1;
         this.duration = duration;
         this.#host = host;
-        this.#cancel = cancel;
+        this.#paused = !autoplay;
+        this.#control = control;
     }
 
     /** True from the call until the transition finishes or is cancelled. */
@@ -244,9 +296,77 @@ export class Transition {
         return this.#state === "running";
     }
 
-    /** True once `cancel()` or a newer transition took every track. */
+    /** True once `cancel()` or a newer transition took every track, or it ran back to its start. */
     get cancelled(): boolean {
         return this.#state === "cancelled";
+    }
+
+    /** Whether the tracks are held: `autoplay: false` until `play()` or `reverse()`, and after `pause()`. */
+    get paused(): boolean {
+        return this.#paused;
+    }
+
+    /** Whether the tracks run back to their start. */
+    get reversed(): boolean {
+        return this.#reversed;
+    }
+
+    /**
+     * Where the tracks were last put, from 0 (the start) to 1 (the target), before the easing. Writing it moves every
+     * track to that point of its duration at once and draws it; it does not play or pause. Reading it gives what was
+     * last written, 0 before that: the compositor does not report a running transition's place.
+     */
+    get progress(): number {
+        return this.#progress;
+    }
+
+    set progress(value: number) {
+        if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
+            throw new RangeError(`Transition.progress: expects a number from 0 to 1, not ${String(value)}`);
+        }
+        this.#host.staging.forbid("Transition.progress");
+        if (this.#state !== "running") {
+            return;
+        }
+        this.#progress = value;
+        this.#control?.seek(value);
+    }
+
+    /** Lets the tracks run on towards the target, from where they are. */
+    play(): void {
+        this.#host.staging.forbid("Transition.play()");
+        if (this.#state !== "running") {
+            return;
+        }
+        this.#paused = false;
+        this.#reversed = false;
+        this.#control?.reverse(false);
+        this.#control?.pause(false);
+    }
+
+    /** Holds the tracks where they are. */
+    pause(): void {
+        this.#host.staging.forbid("Transition.pause()");
+        if (this.#state !== "running") {
+            return;
+        }
+        this.#paused = true;
+        this.#control?.pause(true);
+    }
+
+    /**
+     * Runs the tracks back towards their start from where they are. When they get there the transition settles
+     * `{ cancelled: true }` and the start values are back in the tree.
+     */
+    reverse(): void {
+        this.#host.staging.forbid("Transition.reverse()");
+        if (this.#state !== "running") {
+            return;
+        }
+        this.#paused = false;
+        this.#reversed = true;
+        this.#control?.reverse(true);
+        this.#control?.pause(false);
     }
 
     /**
@@ -290,13 +410,9 @@ export class Transition {
      */
     cancel(): void {
         if (this.#state === "running") {
-            this.#cancel(this);
+            this.#control?.cancel();
+            this.settle(true);
         }
-    }
-
-    /** Arms the timer that ends the transition `seconds` from now. Engine only. */
-    arm(timer: { cancel(): boolean }): void {
-        this.#timer = timer;
     }
 
     /** Settles the transition. Engine only: a second settle does nothing. */
@@ -305,8 +421,6 @@ export class Transition {
             return;
         }
         this.#state = cancelled ? "cancelled" : "finished";
-        this.#timer?.cancel();
-        this.#timer = null;
         const result: TransitionResult = Object.freeze({ cancelled });
         this.#resolve?.(result);
         for (const entry of this.#callbacks.splice(0)) {
@@ -329,17 +443,38 @@ export class Transition {
     }
 }
 
-/** A track a transition started: where its property ends, so `cancel` can land it. */
+/** A track a transition started: where its property starts and ends, so `cancel` can land it and a rollback restore it. */
 interface Owned {
     node: number;
     key: string;
     value: Value;
+    from: Value;
 }
 
-/** The checked options: the seconds of the animation and the samples of its easing. */
+/** One transition with tracks running, as the engine keeps it. */
+interface Active {
+    /** The transition itself, set once it is made: its control, which the tracks' writes go through, is made first. */
+    transition: Transition | null;
+    /** The compositor's `tween` node its tracks joined. */
+    tween: number;
+    /** The tracks that have not ended, by `node:key`. */
+    owned: Map<string, Owned>;
+    /** Every property it wrote with a track, by `node:key`, so a rollback can put the start values back. */
+    all: Map<string, Owned>;
+    /** The properties a newer write took from it: they are the newer write's now. */
+    released: Set<string>;
+    /** Whether any track ended other than by reaching its target. */
+    cancelled: boolean;
+    /** Whether `reverse()` is the last word on its direction. */
+    reversed: boolean;
+}
+
+/** The checked options: the seconds of the animation, its delay, the samples of its easing and whether it plays. */
 interface Timing {
     ms: number;
+    delayMs: number;
     samples: number[];
+    autoplay: boolean;
 }
 
 function easingOf(name: unknown): ((t: number) => number) | undefined {
@@ -354,25 +489,14 @@ function easingOf(name: unknown): ((t: number) => number) | undefined {
 
 function checkOptions(options: TransitionOptions | undefined, site: string): Timing {
     if (options === undefined) {
-        return { ms: DEFAULT_DURATION_MS, samples: curveSamples(EASINGS.out) };
+        return { ms: DEFAULT_DURATION_MS, delayMs: 0, samples: curveSamples(EASINGS.out), autoplay: true };
     }
     if (options === null || typeof options !== "object") {
         throw new TypeError(`${site}: options must be an object`);
     }
-    const known = ["duration", "easing"];
-    const extra = options as Record<string, unknown>;
-    for (const key of Object.keys(extra)) {
-        const refused =
-            (key === "autoplay" && extra.autoplay !== true && extra.autoplay !== undefined) ||
-            (key === "delay" && extra.delay !== 0 && extra.delay !== undefined);
-        if (refused) {
-            throw new TypeError(
-                `${site}: ${key} is not supported: the compositor's tween player has no ${
-                    key === "delay" ? "delay on a timed write" : "external progress to scrub"
-                } (docs/js-transitions.md, "Not built")`,
-            );
-        }
-        if (!known.includes(key) && key !== "autoplay" && key !== "delay") {
+    const known = ["duration", "easing", "delay", "autoplay"];
+    for (const key of Object.keys(options)) {
+        if (!known.includes(key)) {
             throw new TypeError(`${site}: unknown option "${key}" (known: ${known.join(", ")})`);
         }
     }
@@ -380,12 +504,20 @@ function checkOptions(options: TransitionOptions | undefined, site: string): Tim
     if (typeof duration !== "number" || !Number.isFinite(duration) || duration < 0) {
         throw new TypeError(`${site}: duration must be a finite number of milliseconds of at least 0`);
     }
+    const delay = options.delay ?? 0;
+    if (typeof delay !== "number" || !Number.isFinite(delay) || delay < 0) {
+        throw new TypeError(`${site}: delay must be a finite number of milliseconds of at least 0`);
+    }
+    const autoplay = options.autoplay ?? true;
+    if (typeof autoplay !== "boolean") {
+        throw new TypeError(`${site}: autoplay must be true or false`);
+    }
     const easing = easingOf(options.easing ?? "out");
     if (easing === undefined) {
         const names = [...Object.keys(EASINGS), ...Object.keys(EASING_ALIASES)];
         throw new TypeError(`${site}: easing must be one of ${names.join(", ")}`);
     }
-    return { ms: duration, samples: curveSamples(easing) };
+    return { ms: duration, delayMs: delay, samples: curveSamples(easing), autoplay };
 }
 
 function isThenable(value: unknown): boolean {
@@ -400,8 +532,10 @@ function isThenable(value: unknown): boolean {
 /** Runs callbacks as transitions over a host, and keeps which transition owns which property. */
 export class TransitionEngine {
     #host: TransitionHost;
-    /** The transition whose track runs on each `node:key`, and where that track ends. */
-    #owners = new Map<string, { transition: Transition; owned: Owned }>();
+    /** The transition whose track runs on each `node:key`. */
+    #owners = new Map<string, Active>();
+    /** The transitions with tracks running, by the `tween` node their tracks joined. */
+    #active = new Map<number, Active>();
 
     constructor(host: TransitionHost) {
         this.#host = host;
@@ -409,9 +543,23 @@ export class TransitionEngine {
         host.staging.onWrite = (node, key) => this.#release(`${node}:${key}`);
     }
 
-    /** How many tracks a transition owns now, for a test: `running` transitions and their properties. */
+    /** How many tracks transitions own now, for a test: `running` transitions and their properties. */
     get owned(): number {
         return this.#owners.size;
+    }
+
+    /** How many transitions have tracks running. */
+    get running(): number {
+        return this.#active.size;
+    }
+
+    /** Ends the generation's hold on the compositor: the `tween` nodes of transitions still running go. */
+    release(): void {
+        for (const active of this.#active.values()) {
+            this.#host.dropTween(active.tween);
+        }
+        this.#active.clear();
+        this.#owners.clear();
     }
 
     request(callback: () => void, options?: TransitionOptions): Transition {
@@ -448,16 +596,36 @@ export class TransitionEngine {
         return this.#commit(entries, timing);
     }
 
+    /**
+     * The compositor's word that a timed write ended. A track that is not one a transition still owns is ignored: a
+     * newer write took the property, or the transition was cancelled, and the transition has already settled for it.
+     */
+    trackEnded(event: TrackEndedEvent): void {
+        const active = this.#active.get(event.tween);
+        if (active === undefined) {
+            return;
+        }
+        const id = `${event.node}:${event.property}`;
+        if (!active.owned.delete(id)) {
+            return;
+        }
+        this.#owners.delete(id);
+        if (!event.completed) {
+            active.cancelled = true;
+        }
+        if (active.owned.size === 0) {
+            this.#finish(active);
+        }
+    }
+
     #commit(entries: Staged[], timing: Timing): Transition {
         const host = this.#host;
         const seconds = host.motion(timing.ms / 1000);
-        const transition = new Transition(host, seconds * 1000, (stopped) => this.#cancel(stopped));
-        const refused: string[] = [];
+        // Under reduced motion nothing waits either.
+        const delay = seconds > 0 ? timing.delayMs / 1000 : 0;
         // A node that was not drawn (no size, or hidden) has no place to tween from: its place is written at once.
         const appears = new Map<number, boolean>();
-        let longest = 0;
-        let tracks = 0;
-        for (const entry of entries) {
+        const plan = entries.map((entry) => {
             const curve = entry.curve ?? (seconds > 0 ? { seconds, samples: timing.samples } : null);
             let appearing = appears.get(entry.node);
             if (appearing === undefined) {
@@ -469,32 +637,73 @@ export class TransitionEngine {
                 curve.seconds > 0 &&
                 host.animated(entry.key) &&
                 !(appearing && PLACE_KEYS.includes(entry.key));
+            return { entry, curve: timed ? curve : null };
+        });
+        const tracks = plan.filter((item) => item.curve !== null).length;
+        // The tracks join a `tween` node of the compositor, so that its word on how each ended names this transition.
+        const tween = tracks > 0 ? host.makeTween() : null;
+        const active: Active | null =
+            tween === null
+                ? null
+                : {
+                      transition: null,
+                      tween,
+                      owned: new Map(),
+                      all: new Map(),
+                      released: new Set(),
+                      cancelled: false,
+                      reversed: false,
+                  };
+        const control: TransitionControl | null =
+            active === null
+                ? null
+                : {
+                      seek: (progress) => host.staging.land(active.tween, "progress", progress, null),
+                      pause: (paused) => host.staging.land(active.tween, "paused", paused, null),
+                      reverse: (reverse) => {
+                          active.reversed = reverse;
+                          host.staging.land(active.tween, "reverse", reverse, null);
+                      },
+                      cancel: () => this.#cancel(active),
+                  };
+        const transition = new Transition(host, seconds * 1000, timing.autoplay, control);
+        if (active !== null && tween !== null) {
+            active.transition = transition;
+            if (!timing.autoplay) {
+                host.staging.land(tween, "paused", true, null);
+            }
+        }
+        const refused: string[] = [];
+        for (const { entry, curve } of plan) {
             const id = `${entry.node}:${entry.key}`;
             this.#release(id);
-            const sent = timed ? curve : null;
+            const from = copy(host.staging.get(entry.node, entry.key));
+            const sent = curve === null || tween === null ? null : { ...curve, delay, tween };
             const code = host.staging.land(entry.node, entry.key, entry.value, sent);
             if (code !== undefined && code !== null && code !== "unknown-node") {
                 refused.push(`${host.label(entry.node)}.${entry.key} (${code})`);
                 continue;
             }
-            if (sent !== null) {
-                this.#owners.set(id, { transition, owned: { node: entry.node, key: entry.key, value: entry.value } });
-                longest = Math.max(longest, sent.seconds);
-                tracks += 1;
+            if (sent !== null && active !== null) {
+                const owned = { node: entry.node, key: entry.key, value: entry.value, from };
+                active.owned.set(id, owned);
+                active.all.set(id, owned);
+                this.#owners.set(id, active);
             }
         }
         if (refused.length > 0) {
+            if (active !== null) {
+                this.#forget(active);
+            }
             throw host.error("refused", "gnoblin.requestTransition", `the host refused ${refused.join(", ")}`);
         }
-        if (tracks === 0) {
+        if (active === null) {
             host.schedule(`Transition#${transition.id}`, () => transition.settle(false));
+        } else if (active.owned.size === 0) {
+            // Every track was refused as for an unknown node: there is nothing for the compositor to end.
+            this.#finish(active);
         } else {
-            transition.arm(
-                host.after(longest, () => {
-                    this.#forget(transition);
-                    transition.settle(false);
-                }),
-            );
+            this.#active.set(active.tween, active);
         }
         return transition;
     }
@@ -506,29 +715,51 @@ export class TransitionEngine {
             return;
         }
         this.#owners.delete(id);
-        if (![...this.#owners.values()].some((other) => other.transition === held.transition)) {
-            held.transition.settle(true);
+        held.owned.delete(id);
+        held.released.add(id);
+        if (held.owned.size === 0) {
+            // A transition that lost its last property to a newer write is over, cancelled; one that lost some goes on.
+            held.cancelled = true;
+            this.#finish(held);
         }
     }
 
-    #forget(transition: Transition): void {
-        for (const [id, held] of this.#owners) {
-            if (held.transition === transition) {
-                this.#owners.delete(id);
+    /**
+     * A transition whose tracks have all ended: it settles, `{ cancelled: true }` when any did not reach its target.
+     * One that ran back to its start has the start values put back first (a property a newer write took stays the
+     * newer write's).
+     */
+    #finish(active: Active): void {
+        this.#active.delete(active.tween);
+        if (active.reversed && active.cancelled) {
+            for (const [id, owned] of active.all) {
+                if (!active.released.has(id)) {
+                    this.#host.staging.land(owned.node, owned.key, owned.from, null);
+                }
             }
         }
+        this.#host.dropTween(active.tween);
+        active.transition?.settle(active.cancelled);
     }
 
-    #cancel(transition: Transition): void {
-        for (const [id, held] of [...this.#owners]) {
-            if (held.transition !== transition) {
-                continue;
-            }
+    /** A transition that failed to commit forgets what it took, and its `tween` node goes. */
+    #forget(active: Active): void {
+        for (const id of active.owned.keys()) {
+            this.#owners.delete(id);
+        }
+        this.#active.delete(active.tween);
+        this.#host.dropTween(active.tween);
+    }
+
+    #cancel(active: Active): void {
+        for (const [id, owned] of [...active.owned]) {
+            active.owned.delete(id);
             this.#owners.delete(id);
             // The instant write lands the end value and ends the track the compositor runs on the property.
-            this.#host.staging.land(held.owned.node, held.owned.key, held.owned.value, null);
+            this.#host.staging.land(owned.node, owned.key, owned.value, null);
         }
-        transition.settle(true);
+        this.#active.delete(active.tween);
+        this.#host.dropTween(active.tween);
     }
 }
 

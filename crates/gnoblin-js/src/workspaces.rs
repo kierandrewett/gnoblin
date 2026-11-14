@@ -204,6 +204,8 @@ mod tests {
             key: key.to_owned(),
             value: MirrorValue::Double(value),
             seconds: None,
+            delay: None,
+            tween: None,
             samples: None,
         }
     }
@@ -230,6 +232,8 @@ mod tests {
             key: "x".to_owned(),
             value: MirrorValue::Double(9.0),
             seconds: Some(0.2),
+            delay: None,
+            tween: None,
             samples: None,
         };
         let destroy = TxOp::Destroy { node: 5 };

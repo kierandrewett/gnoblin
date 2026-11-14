@@ -208,6 +208,14 @@ const CONTROLLER: &[JsPropDef] = &[
     texts_of("claimed", CLAIMABLE_INPUTS),
 ];
 
+/// A `tween`: the play state of the tracks a transition's timed writes started (`tween.toml`). The shell makes one for
+/// each transition with tracks, writes `progress` to scrub them, `paused` to hold them and `reverse` to run them back.
+const TWEEN: &[JsPropDef] = &[
+    def("progress", JsPropKind::Double, true),
+    def("paused", JsPropKind::Flag, true),
+    def("reverse", JsPropKind::Flag, true),
+];
+
 /// The methods a script may call on a window. `kill` is the not-responding alert's Force quit: the compositor
 /// refuses its own process, init and a process that did not open the window.
 const WINDOW_METHODS: &[&str] = &["focus", "close", "kill"];
@@ -222,6 +230,7 @@ pub(crate) fn defs_for(class: &str) -> Option<&'static [JsPropDef]> {
         "View" => Some(VIEW),
         "Camera" => Some(CAMERA),
         "Controller" => Some(CONTROLLER),
+        "Tween" => Some(TWEEN),
         _ => None,
     }
 }

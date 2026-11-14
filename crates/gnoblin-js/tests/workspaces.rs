@@ -1184,6 +1184,7 @@ fn a_slide_animates_both_workspaces_with_the_lua_curve_and_hides_the_old_one_whe
                 value: MirrorValue::Double(to),
                 seconds: Some(seconds),
                 samples: Some(samples),
+                ..
             } if key == "x" => Some((
                 *node,
                 *to,

@@ -403,6 +403,16 @@ impl FakeCompositor {
         });
     }
 
+    /// The compositor's word that the timed write of `node`'s `property` ended, as `track_ended` carries it.
+    pub fn track_ended(&self, node: u64, property: &str, completed: bool, tween: Option<u64>) {
+        self.0.borrow_mut().queue.push(TreeIncoming::TrackEnded {
+            node,
+            property: property.to_owned(),
+            completed,
+            tween,
+        });
+    }
+
     pub fn measures(&self) -> Vec<Measure> {
         self.0.borrow().measures.clone()
     }

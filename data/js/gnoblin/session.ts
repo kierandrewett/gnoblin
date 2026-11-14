@@ -19,6 +19,7 @@ import { Operation, Timers } from "gnoblin/operation";
 import type { ClockHost, OperationErrorCode, OperationHost, Subscription } from "gnoblin/operation";
 import { ProcessTable } from "gnoblin/process";
 import type { ExitEvent } from "gnoblin/process";
+import type { TrackEndedEvent } from "gnoblin/transition";
 
 /** The lock states the compositor reports. */
 export type LockState = "unlocked" | "covering" | "locked" | "failsafe";
@@ -130,7 +131,12 @@ interface LostMessage {
     message: string;
 }
 
-type HostEvent = OperationEvent | SignalMessage | LostMessage | ExitEvent;
+/** The compositor's `track_ended` signal, as the host collects it (`data/js/gnoblin/transition.ts`). */
+interface TrackEndedMessage extends TrackEndedEvent {
+    kind: "trackEnded";
+}
+
+type HostEvent = OperationEvent | SignalMessage | LostMessage | ExitEvent | TrackEndedMessage;
 
 // ---- the event bus -----------------------------------------------------------------------------------------------
 
@@ -635,6 +641,8 @@ export class HostApi {
     #host: Host;
     #sources: ApiSources;
     #calls: Calls;
+    /** Told of each timed write the compositor says has ended; `gnoblin.requestTransition` is the one that listens. */
+    onTrackEnded: (event: TrackEndedEvent) => void = () => {};
 
     constructor(host: Host, sources: ApiSources) {
         this.#host = host;
@@ -686,6 +694,9 @@ export class HostApi {
                     break;
                 case "exit":
                     this.process.deliver(event);
+                    break;
+                case "trackEnded":
+                    this.onTrackEnded(event);
                     break;
             }
         }

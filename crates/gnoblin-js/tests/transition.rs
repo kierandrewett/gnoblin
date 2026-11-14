@@ -33,6 +33,7 @@ fn writes(rig: &Rig, mark: usize) -> Vec<Write> {
                 value,
                 seconds,
                 samples,
+                ..
             } => Some(Write {
                 node,
                 key,
@@ -64,6 +65,27 @@ fn plain(rig: &Rig, mark: usize) -> Vec<(u64, String)> {
         .collect();
     keys.sort();
     keys
+}
+
+/// The compositor says the latest timed write of `node`'s `key` sent after `from` has ended.
+fn end_timed(rig: &Rig, from: usize, node: u64, key: &str, completed: bool) {
+    let tween = rig
+        .comp
+        .ops_since(from)
+        .into_iter()
+        .rev()
+        .find_map(|op| match op {
+            TxOp::Set {
+                node: target,
+                key: written,
+                seconds: Some(_),
+                tween,
+                ..
+            } if target == node && written == key => Some(tween),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("no timed write of {node}.{key} after {from}"));
+    rig.comp.track_ended(node, key, completed, tween);
 }
 
 fn double(value: &MirrorValue) -> f64 {
@@ -182,23 +204,23 @@ fn an_easing_name_is_the_clients_or_a_css_alias_and_anything_else_is_refused_bef
     assert_eq!(
         thrown(
             &mut rig,
-            "gnoblin.requestTransition(() => { g.calls += 1; }, { autoplay: false })"
+            "gnoblin.requestTransition(() => { g.calls += 1; }, { autoplay: 'no' })"
         ),
-        "TypeError: gnoblin.requestTransition: autoplay is not supported: the compositor's tween player has no external progress to scrub (docs/js-transitions.md, \"Not built\")"
+        "TypeError: gnoblin.requestTransition: autoplay must be true or false"
     );
     assert_eq!(
         thrown(
             &mut rig,
-            "gnoblin.requestTransition(() => { g.calls += 1; }, { delay: 10 })"
+            "gnoblin.requestTransition(() => { g.calls += 1; }, { delay: -10 })"
         ),
-        "TypeError: gnoblin.requestTransition: delay is not supported: the compositor's tween player has no delay on a timed write (docs/js-transitions.md, \"Not built\")"
+        "TypeError: gnoblin.requestTransition: delay must be a finite number of milliseconds of at least 0"
     );
     assert_eq!(
         thrown(
             &mut rig,
             "gnoblin.requestTransition(() => { g.calls += 1; }, { speed: 2 })"
         ),
-        "TypeError: gnoblin.requestTransition: unknown option \"speed\" (known: duration, easing)"
+        "TypeError: gnoblin.requestTransition: unknown option \"speed\" (known: duration, easing, delay, autoplay)"
     );
     assert_eq!(
         rig.eval("String(g.calls)"),
@@ -526,10 +548,10 @@ fn the_newest_transition_owns_a_property_and_the_older_one_goes_on_with_the_rest
         "true",
         "the older one still owns x and goes on"
     );
-    rig.advance(150);
+    end_timed(&rig, mark, 3, "opacity", true);
     settle(&mut rig);
     assert_eq!(rig.eval("g.log.join()"), "second:false");
-    rig.advance(300);
+    end_timed(&rig, 0, 3, "x", true);
     settle(&mut rig);
     assert_eq!(rig.eval("g.log.join()"), "second:false,first:false");
     // A transition that loses every property is over at once, cancelled.
@@ -564,7 +586,7 @@ fn finished_resolves_once_with_cancelled_and_cancel_lands_the_end_values_at_once
     settle(&mut rig);
     assert_eq!(rig.eval("String(g.t.running)"), "true");
     assert_eq!(rig.eval("g.log.join()"), "", "nothing before the time");
-    rig.advance(250);
+    end_timed(&rig, 0, 4, "opacity", true);
     settle(&mut rig);
     assert_eq!(rig.eval("g.log.join()"), "u:false", "the shorter one ends on its own");
     let mark = rig.comp.sent_count();
@@ -582,7 +604,9 @@ fn finished_resolves_once_with_cancelled_and_cancel_lands_the_end_values_at_once
         "callback:true,promise:true|u:false",
         "settled once, cancelled"
     );
-    rig.advance(1000);
+    // The compositor's late word on the tracks the cancel already took changes nothing.
+    end_timed(&rig, 0, 3, "opacity", false);
+    end_timed(&rig, 0, 3, "x", false);
     settle(&mut rig);
     assert_eq!(
         rig.eval(log),
@@ -633,4 +657,154 @@ fn set_is_one_transition_of_one_object_and_refuses_what_is_not_a_property() {
     assert!(!timed(&rig, mark).is_empty());
     assert_eq!(plain(&rig, mark), Vec::<(u64, String)>::new());
     assert_eq!(rig.eval("g.ws.layout instanceof g.Half ? 'half' : 'other'"), "half");
+}
+
+/// The `tween` node the shell made after `mark`, and the plain writes it made to it: `(key, value)`.
+fn tween_writes(rig: &Rig, mark: usize) -> (u64, Vec<(String, MirrorValue)>) {
+    let ops = rig.comp.ops_since(mark);
+    let tween = ops
+        .iter()
+        .find_map(|op| match op {
+            TxOp::New { id, class } if class == "tween" => Some(*id),
+            _ => None,
+        })
+        .expect("a transition with tracks makes a tween node");
+    let writes = ops
+        .iter()
+        .filter_map(|op| match op {
+            TxOp::Set {
+                node,
+                key,
+                value,
+                seconds: None,
+                ..
+            } if *node == tween => Some((key.clone(), value.clone())),
+            _ => None,
+        })
+        .collect();
+    (tween, writes)
+}
+
+#[test]
+fn a_transition_with_tracks_joins_a_tween_node_and_ends_when_the_compositor_says_so() {
+    let mut rig = two("new Layout()");
+    let mark = rig.comp.sent_count();
+    exec(
+        &mut rig,
+        "g.log = []; g.t = gnoblin.requestTransition(() => { g.a.opacity = 0.5; g.a.x = 70; }, { duration: 200, delay: 100 }); \
+         g.t.finished.then((r) => g.log.push('done:' + r.cancelled));",
+    );
+    settle(&mut rig);
+    let (tween, writes) = tween_writes(&rig, mark);
+    assert!(
+        writes.is_empty(),
+        "autoplay leaves the tween at its defaults: {writes:?}"
+    );
+    let delays: Vec<_> = rig
+        .comp
+        .ops_since(mark)
+        .into_iter()
+        .filter_map(|op| match op {
+            TxOp::Set {
+                seconds: Some(_),
+                delay,
+                tween: joined,
+                ..
+            } => Some((delay, joined)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        delays,
+        [(Some(0.1), Some(tween)), (Some(0.1), Some(tween))],
+        "delay and group"
+    );
+    // The shell's own clock does not end it, however long passes.
+    rig.advance(5000);
+    settle(&mut rig);
+    assert_eq!(rig.eval("g.log.join()"), "");
+    end_timed(&rig, mark, 3, "opacity", true);
+    settle(&mut rig);
+    assert_eq!(rig.eval("g.log.join()"), "", "one track is still running");
+    end_timed(&rig, mark, 3, "x", true);
+    settle(&mut rig);
+    assert_eq!(rig.eval("g.log.join()"), "done:false");
+    let destroyed = rig
+        .comp
+        .ops_since(mark)
+        .into_iter()
+        .any(|op| matches!(op, TxOp::Destroy { node } if node == tween));
+    assert!(destroyed, "the tween node goes with the transition");
+}
+
+#[test]
+fn autoplay_false_holds_the_tracks_and_progress_play_and_reverse_write_the_tween() {
+    let mut rig = two("new Layout()");
+    let x0 = rig.comp.number(3, "x");
+    let mark = rig.comp.sent_count();
+    exec(
+        &mut rig,
+        "g.log = []; g.calls = 0; \
+         g.t = gnoblin.requestTransition(() => { g.a.x = x0 + 50; }, { duration: 800, easing: 'in-out', autoplay: false }); \
+         g.t.finished.then((r) => g.log.push('done:' + r.cancelled));"
+            .replace("x0", &x0.to_string())
+            .as_str(),
+    );
+    settle(&mut rig);
+    let (_, held) = tween_writes(&rig, mark);
+    assert_eq!(held, [("paused".to_owned(), MirrorValue::Bool(true))]);
+    assert_eq!(rig.eval("String(g.t.paused)"), "true");
+    let dispatches = rig.shell.dispatches();
+    for (value, expected) in [(0.4, 0.4), (0.1, 0.1), (1.0, 1.0)] {
+        let mark = rig.comp.sent_count();
+        exec(&mut rig, &format!("g.t.progress = {value};"));
+        settle(&mut rig);
+        let (_, writes) = (
+            0,
+            rig.comp
+                .ops_since(mark)
+                .into_iter()
+                .filter_map(|op| match op {
+                    TxOp::Set { key, value, .. } if key == "progress" => Some(value),
+                    _ => None,
+                })
+                .collect::<Vec<_>>(),
+        );
+        assert_eq!(writes, [MirrorValue::Double(expected)], "one write per scrub");
+    }
+    assert_eq!(
+        rig.shell.dispatches(),
+        dispatches,
+        "a scrub runs no handler of the script's"
+    );
+    assert_eq!(
+        thrown(&mut rig, "g.t.progress = 1.5"),
+        "RangeError: Transition.progress: expects a number from 0 to 1, not 1.5"
+    );
+    let mark = rig.comp.sent_count();
+    exec(&mut rig, "g.t.reverse();");
+    settle(&mut rig);
+    let writes: Vec<_> = rig
+        .comp
+        .ops_since(mark)
+        .into_iter()
+        .filter_map(|op| match op {
+            TxOp::Set { key, value, .. } => Some((key, value)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        writes,
+        [
+            ("reverse".to_owned(), MirrorValue::Bool(true)),
+            ("paused".to_owned(), MirrorValue::Bool(false))
+        ]
+    );
+    // The compositor runs it back and says it got to the start: cancelled, and the start value is back.
+    end_timed(&rig, 0, 3, "x", false);
+    let mark = rig.comp.sent_count();
+    settle(&mut rig);
+    assert_eq!(rig.eval("g.log.join()"), "done:true");
+    assert_eq!(rig.comp.number(3, "x"), x0, "the start value is put back");
+    assert!(plain(&rig, mark).contains(&(3, "x".to_owned())));
 }

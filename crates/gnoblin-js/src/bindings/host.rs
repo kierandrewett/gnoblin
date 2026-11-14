@@ -6,7 +6,8 @@
 //! `unknown-method`), which `js/gnoblin.ts` turns into an error naming the member.
 
 use gnoblin_proto::tree::effect;
-use gnoblin_tree_client::tree_mirror::{MirrorValue, NIL, NodeId, TreeMirror, lua_class};
+use gnoblin_tree_client::tree_mirror::{MirrorValue, NIL, NodeId, TreeMirror, TxAnimation, lua_class};
+use rquickjs::function::Opt;
 use rquickjs::{Ctx, Function, Object, Value};
 
 use super::props::{JsPropDef, JsPropKind, default_value, defs_for, may_call};
@@ -173,6 +174,30 @@ pub(crate) fn write(
     value: &JsScriptValue,
     animation: Option<JsCurve<'_>>,
 ) -> Option<&'static str> {
+    write_play(state, node, key, value, animation, 0.0, None)
+}
+
+/// [`write`] for an animation that waits `delay` seconds before it starts and joins `tween`, the `tween` node whose
+/// `progress`, `paused` and `reverse` drive it. A delay or a `tween` without a curve is a write that cannot be.
+pub(crate) fn write_play(
+    state: &mut HostState,
+    node: NodeId,
+    key: &str,
+    value: &JsScriptValue,
+    animation: Option<JsCurve<'_>>,
+    delay: f64,
+    tween: Option<NodeId>,
+) -> Option<&'static str> {
+    if !delay.is_finite() || delay < 0.0 || (animation.is_none() && (delay > 0.0 || tween.is_some())) {
+        return Some("invalid-value");
+    }
+    if let Some(tween) = tween {
+        match state.tick.node(&state.mirror, tween) {
+            None => return Some("unknown-node"),
+            Some(record) if lua_class(&record.class) != "Tween" => return Some("invalid-value"),
+            Some(_) => {}
+        }
+    }
     let value = match prepare(state, node, key, value, animation) {
         Ok(value) => value,
         Err(code) => return Some(code),
@@ -182,7 +207,13 @@ pub(crate) fn write(
         Some((seconds, samples)) => (Some(seconds), Some(samples.to_vec())),
         None => (None, None),
     };
-    tick.set(mirror, node, key, value, seconds, samples)
+    let animation = TxAnimation {
+        seconds,
+        delay: (delay > 0.0).then_some(delay),
+        tween,
+        samples,
+    };
+    tick.set_animated(mirror, node, key, value, animation)
         .err()
         .map(|_| "unknown-node")
 }
@@ -378,23 +409,40 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
         )?,
     )?;
 
-    // `animate(node, key, value, seconds, samples)`: the same write, carried out over `seconds` along `samples`.
+    // `animate(node, key, value, seconds, samples, delay?, tween?)`: the same write, carried out over `seconds` along
+    // `samples`, after `delay` seconds, and driven by the `tween` node when one is named (0 is none).
     let shared = state.clone();
     host.set(
         "animate",
         Function::new(
             ctx.clone(),
-            move |node: f64, key: String, value: Value<'js>, seconds: f64, samples: Vec<f64>| -> Option<&'static str> {
+            move |node: f64,
+                  key: String,
+                  value: Value<'js>,
+                  seconds: f64,
+                  samples: Vec<f64>,
+                  delay: Opt<f64>,
+                  tween: Opt<f64>|
+                  -> Option<&'static str> {
                 let mut state = shared.borrow_mut();
                 let Some(node) = state.handles.resolve(node) else {
                     return Some("unknown-node");
                 };
-                write(
+                let tween = match tween.0.filter(|script| *script != 0.0) {
+                    Some(script) => match state.handles.resolve(script) {
+                        Some(tween) => Some(tween),
+                        None => return Some("unknown-node"),
+                    },
+                    None => None,
+                };
+                write_play(
                     &mut state,
                     node,
                     &key,
                     &script_value(&value),
                     Some((seconds, &samples[..])),
+                    delay.0.unwrap_or(0.0),
+                    tween,
                 )
             },
         )?,
@@ -792,6 +840,8 @@ mod tests {
                 key: "x".to_owned(),
                 value: MirrorValue::Double(7.0),
                 seconds: Some(0.25),
+                delay: None,
+                tween: None,
                 samples: Some(vec![0.0, 0.5, 1.0]),
             })
         );

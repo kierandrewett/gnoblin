@@ -1364,25 +1364,30 @@ same `prepare` that a queued write goes through), the staging block at the top o
   `Client.animate` plus `ease-out`, `ease-in-out` and `ease-in`. The nested call, an async callback and a side effect
   (`call`, `raise`, `lower`, spawn, kill, a session verb) are errors. `set(props)` without options is atomic and immediate.
   `finished` is a promise that never rejects and `onFinished` a queued callback, both with `{ cancelled }`. The end is the
-  shell's clock (`after`), because the tree has no event for a track that ended.
+  compositor's `track_ended`, not the shell's clock.
 - **Acceptance rows** (`spec-review.md`, "Animation"):
 
-| Row | Status                                                                                                                                                                                                                                            |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AN1 | Done: once, one transaction, a returned Promise refused (`tests/transition.rs`).                                                                                                                                                                  |
-| AN2 | Partly: the layout is computed once and every window gets timed writes by node id, a window with no place just appears; the real compositor holds the end rectangles. Not done: `progress` 0.5 against a golden pose, a tween of a size (native). |
-| AN3 | Not done: there is no camera (native and spec work).                                                                                                                                                                                              |
-| AN4 | Partly: no JS runs after the commit (the callback count stays 1 across frames). The native counter of handler dispatches over 750 ms is not built.                                                                                                |
-| AN5 | Not done: hit testing against the drawn pixel is native.                                                                                                                                                                                          |
-| AN6 | Partly: `cancel` from running and from ended, `{ cancelled }` once. Not done: scrubbing and `reverse`, which need an external progress on the tween player (`docs/js-transitions.md`, "Not built").                                               |
-| AN7 | Done: an invalid value, a stale (destroyed) client and a throwing layout abort with the previous state and the path in the error.                                                                                                                 |
-| AN8 | Done: the newest owns a property and the older goes on with the rest, one with none left ends cancelled, a nested call is an error.                                                                                                               |
+| Row | Status                                                                                                                                                                                                                                          |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AN1 | Done: once, one transaction, a returned Promise refused (`tests/transition.rs`).                                                                                                                                                                |
+| AN2 | Done at the player and the shell: the layout is computed once and every window gets timed writes by node id; golden poses at 0, 0.25, 0.5 and 1 for position, opacity, scale and rotation, and a size tween in whole pixels.                    |
+| AN3 | Not done: there is no camera (native and spec work).                                                                                                                                                                                            |
+| AN4 | Partly: no JS runs between the commit and the end (the callback count stays 1 across frames), a scrub is one write and `JsShell::dispatches` stays put over three scrubs (fake link). Not done: the same against a real compositor over 750 ms. |
+| AN5 | Done at the scene: while a track is seeked, `Scene::hit_test` uses the presented rectangle, position, scale and rotation, and a point inside only the target does not hit (`tween_scrub.rs`).                                                   |
+| AN6 | Done over the fake link: `cancel` from running and from ended, `{ cancelled }` once; `progress`, `play()`, `pause()` and `reverse()` write the `tween`, a transition run back to its start settles cancelled and puts the start values back.    |
+| AN7 | Done: an invalid value, a stale (destroyed) client and a throwing layout abort with the previous state and the path in the error.                                                                                                               |
+| AN8 | Done: the newest owns a property and the older goes on with the rest, one with none left ends cancelled, a nested call is an error.                                                                                                             |
 
-- **Not built** (native work first): scrubbing (`TweenPlayer` has no seek, pause or direction), `delay` (the tree op has no
-  field), tweening `width`, `height`, `rotation` and `scale` (`visual_property` maps only `opacity`, `x`, `y`, `z`, and
-  a non-number lands at once), tweening effects and corner radius, `Camera2D`/`Camera3D`, a tree event for a track that
-  ended. Spec examples 076 to 079 (`arcLayout.radius`, `camera3D`, `display.viewport`, a `View`) need objects the runtime
-  does not have.
+- **Native tweens** (lane TweenNative). `TweenPlayer` seeks to a point of a track, pauses, runs backwards and settles
+  (`finish`: forward, back or cancel); a track interpolates `width` and `height` (whole pixels), and `rotation` and `scale`
+  per axis as the node stores them; the timed write has `delay`; a `tween` node (`tween.toml`, `design/node-core.md`,
+  "Tweens") holds the play state of the tracks that join it; the compositor sends `track_ended`, which `finished` settles
+  on. `crates/gnoblin-render/tests/tween_scrub.rs` has the golden poses and the hit tests, `crates/gnoblin-js/tests/transition.rs`
+  the scrub, reverse, delay and end over the fake link.
+- **Not built**: a real-compositor test of a scrub with an injected clock (the fake link only proves what the shell
+  writes), tweening effects and corner radius, `Camera2D`/`Camera3D`, a tree surface for `TweenPlayer::finish`, a
+  quaternion rotation path. Spec examples 076 to 079 (`arcLayout.radius`, `camera3D`, `display.viewport`, a `View`) need
+  objects the runtime does not have.
 
 ## P8 console status
 

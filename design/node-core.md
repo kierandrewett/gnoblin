@@ -656,6 +656,21 @@ Handlers' writes are collected and sent as one transaction when `tick` returns. 
 clock in milliseconds, recorded as input. Timers fire by `now`. The shell reads the wall clock only through `sys.date`,
 which is recorded.
 
+### 6.4 Tweens
+
+A timed `set` plays one track for each scene property it moves: a number is one, `width` and `height` are the node's
+size (whole pixels), and `rotation` and `scale` are three, one for each axis, because the node stores them per axis. The
+`set` may carry `delay` (seconds, held at the start value) and `tween`, the id of a `tween` node (`tween.toml`).
+
+A `tween` node is the play state of the tracks that joined it. Writing its `paused` holds them, `reverse` runs them back
+towards their start values and `progress` (0 to 1) moves each to that fraction of its own duration, drawn at once, without
+ending it. A track run back to its start ends `cancelled`. The writes act in the order they apply; a track that starts
+while the node is paused or reversed starts that way. The compositor never writes the node, so `progress` is what the
+shell last wrote. While a track runs, hit testing uses the transforms and rectangles it presents, not the target.
+
+The compositor reports the end of each `set` that carried `seconds` as the `track_ended` signal (`node`, `property`,
+`reason` of `completed` or `cancelled`, `tween`), once, when the last of that write's tracks is over.
+
 ## 7. Determinism and replay
 
 ### 7.1 What is recorded

@@ -48,25 +48,44 @@ The callback has three limits, and each is an error that changes nothing:
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `duration` | Milliseconds, 0 or more. Default 250. 0 commits the change at once, still as one transaction. `Client.animate` and `gnoblin.after` take seconds.                    |
 | `easing`   | `linear`, `out`, `out-cubic`, `in-cubic` and `in-out` (the names `Client.animate` takes), and the CSS names `ease-out`, `ease-in-out` and `ease-in`. Default `out`. |
+| `delay`    | Milliseconds, 0 or more. The compositor holds the start state this long before the animation begins. Default 0; none under reduced motion.                          |
+| `autoplay` | Default true. False holds the tracks at the start until `play()` or `reverse()`; `progress` scrubs them.                                                            |
 
 `ease-out` is `out`, `ease-in-out` is `in-out` and `ease-in` is `in-cubic`. Any other option is a `TypeError` that names the
-known ones. `autoplay: false` and `delay` are refused too, and the error says why (see "Not built").
+known ones.
 
 ## The `Transition`
 
 `requestTransition` returns a `Transition`.
 
-| Member           | Meaning                                                                                                         |
-| ---------------- | --------------------------------------------------------------------------------------------------------------- |
-| `running`        | True until it ends or is cancelled.                                                                             |
-| `cancelled`      | True once `cancel()` or a newer transition took every property it animated.                                     |
-| `duration`       | The milliseconds it takes: the duration asked for, or 0 under reduced motion.                                   |
-| `finished`       | A promise that resolves once with `{ cancelled }` and never rejects.                                            |
-| `onFinished(fn)` | Calls `fn({ cancelled })` once as a queued call, like any listener. Returns a subscription to stop it.          |
-| `cancel()`       | Writes the end values of what it still animates at once, which ends the tracks. Resolves `{ cancelled: true }`. |
+| Member           | Meaning                                                                                                                    |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `running`        | True until it ends or is cancelled.                                                                                        |
+| `cancelled`      | True once `cancel()` or a newer transition took every property it animated, or it ran back to its start.                   |
+| `duration`       | The milliseconds it takes: the duration asked for, or 0 under reduced motion.                                              |
+| `progress`       | 0 to 1, settable (`RangeError` outside it). Moves every track to that point of its duration. Reads the last value written. |
+| `paused`         | Whether the tracks are held: `autoplay: false` until `play()` or `reverse()`, and after `pause()`.                         |
+| `reversed`       | Whether the tracks run back to their start.                                                                                |
+| `play()`         | Lets the tracks run on towards the target from where they are.                                                             |
+| `pause()`        | Holds the tracks where they are.                                                                                           |
+| `reverse()`      | Runs the tracks back towards their start from where they are.                                                              |
+| `finished`       | A promise that resolves once with `{ cancelled }` and never rejects.                                                       |
+| `onFinished(fn)` | Calls `fn({ cancelled })` once as a queued call, like any listener. Returns a subscription to stop it.                     |
+| `cancel()`       | Writes the end values of what it still animates at once, which ends the tracks. Resolves `{ cancelled: true }`.            |
 
 Cancelling puts what is drawn on the end state, which the transition committed when it began. It does not go back. The end
-is the shell's clock reaching the duration, so a transition ends when the shell's timers say so.
+is the compositor's: each track ends in a `track_ended` signal, so a transition settles when its tracks do, by the
+compositor's clock and not the shell's.
+
+With `autoplay: false` the tracks start held at the start value.
+
+- The target state is committed when the transition is requested: the layout, the styles and the tree hold it. What is
+  drawn is the compositor's interpolation.
+- Writing `progress` moves every track to that point of its own duration at once. Hit testing follows the pose that is
+  drawn.
+- A transition that runs back to its start puts the start values back and settles `{ cancelled: true }`.
+- The tracks join a `tween` node of the compositor (`design/node-core.md`, "Tweens"). A transition makes it when it has
+  tracks and destroys it when it ends.
 
 ## One object: `set`
 
@@ -122,22 +141,17 @@ A style `cornerRadius`, `borders` and `background` are not written to the tree f
 
 ## Not built
 
-These need work in the compositor and its tween player first. The shell does not fake them.
+These are still missing, in the compositor or the spec's model. The shell does not fake them.
 
-- **Scrubbing** (`autoplay: false`, `progress`, `reverse()`, `play()`, `pause()`, `finish()`). `TweenPlayer::advance` takes
-  the elapsed milliseconds and derives every track's progress from its own elapsed time (`gnoblin-render/src/tween.rs`).
-  There is no way to set a track's progress, to hold it, or to run it backwards. It needs `TweenPlayer::seek`, a pause and a
-  direction, a tree write that names a transition and carries its progress, and hit testing against the presented
-  transforms.
-- **`delay`.** A timed write carries a duration and samples. `TrackSpec` has a `delay_ms`; the tree op has no field for it.
-- **Tweening a size, a rotation or a scale.** `visual_property` maps only `opacity`, `x`, `y` and `z`, and a timed write
-  that is not a number lands at once. It needs tracks for the width and height (there is no `VisualProperty` for them), and
-  the rotation and scale lists split into their axis tracks.
 - **Effects and corner radius.** A shadow, a blur and a corner radius are not tween tracks. A style change of them lands at
   once.
 - **A camera.** `Camera2D` and `Camera3D` do not exist yet, so a projection blend has nothing to interpolate.
-- **The end of a track.** The tree has no event for a track that ended, so `finished` follows the shell's clock and not the
-  compositor's.
+- **The place of a running transition.** The compositor reports the end of a track and nothing before it, so `progress`
+  reads what the script last wrote and not where an autoplaying track is. `finish()` (settle forward or back at once) is
+  the player's (`TweenPlayer::finish`) and has no tree surface yet: a script cancels, or runs the tracks with `play()` and
+  `reverse()`.
+- **Rotation as one orientation.** A rotation tweens per axis, as the node stores it (three angles), so a path through
+  several axes is not the spherical shortest path the spec describes for a quaternion.
 
 ## Proof
 
