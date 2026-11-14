@@ -1218,3 +1218,417 @@ fn a_role_swaps_in_a_reloaded_generation_over_the_same_windows_and_a_failed_relo
         x_writes(&comp)
     );
 }
+
+// ---- the console ---------------------------------------------------------------------------------------------------
+
+use std::io::{Read as _, Write as _};
+use std::os::unix::net::UnixStream;
+
+use gnoblin_js::{JsConsole, JsConsoleSite, evaluate_in};
+use serde_json::{Value as Json, json};
+
+/// One connection to a console server that the test polls, as the role's loop polls it between frames.
+struct Prompt {
+    stream: UnixStream,
+    pending: Vec<u8>,
+    next_id: u64,
+}
+
+impl Prompt {
+    fn connect(path: &Path) -> Self {
+        let stream = UnixStream::connect(path).expect("the console accepts");
+        stream.set_nonblocking(true).expect("a non-blocking socket");
+        Self {
+            stream,
+            pending: Vec::new(),
+            next_id: 1,
+        }
+    }
+
+    /// Sends one line as it is, and waits for the reply line while `serve` polls the server.
+    fn raw(&mut self, line: &str, serve: &mut dyn FnMut()) -> Json {
+        self.stream.write_all(line.as_bytes()).expect("the request is written");
+        self.stream.write_all(b"\n").expect("the newline is written");
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        loop {
+            serve();
+            let mut chunk = [0u8; 4096];
+            match self.stream.read(&mut chunk) {
+                Ok(0) => panic!("the console closed the connection"),
+                Ok(count) => self.pending.extend_from_slice(&chunk[..count]),
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(error) => panic!("reading the reply: {error}"),
+            }
+            if let Some(end) = self.pending.iter().position(|byte| *byte == b'\n') {
+                let line: Vec<u8> = self.pending.drain(..=end).collect();
+                return serde_json::from_slice(&line).expect("a reply is one JSON object");
+            }
+            assert!(std::time::Instant::now() < deadline, "no reply to {line}");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    /// Evaluates `expr` and returns the whole reply; its id is checked to be the request's.
+    fn ask(&mut self, expr: &str, serve: &mut dyn FnMut()) -> Json {
+        let id = self.next_id;
+        self.next_id += 1;
+        let reply = self.raw(&json!({"id": id, "expr": expr}).to_string(), serve);
+        assert_eq!(reply["id"], json!(id), "the reply answers its request: {reply}");
+        reply
+    }
+}
+
+/// The value of an expression that is expected to succeed.
+fn value_of(reply: &Json) -> &Json {
+    assert_eq!(reply["ok"], json!(true), "the expression failed: {reply}");
+    &reply["value"]
+}
+
+#[test]
+fn the_console_evaluates_in_the_running_generation_and_renders_what_it_finds() {
+    let comp = two_windows();
+    let rig = rig(&comp, "export {};\n");
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let path = dir.path().join("js.sock");
+    let mut console = JsConsole::bind(&path).expect("the console listens");
+    let mut prompt = Prompt::connect(&path);
+    let mut serve = || console.serve(&rig.shell);
+
+    let reply = prompt.ask("gnoblin.clients.length", &mut serve);
+    assert_eq!(
+        (value_of(&reply), &reply["type"], &reply["text"]),
+        (&json!(2), &json!("number"), &json!("2"))
+    );
+    assert_eq!(reply["truncated"], json!(false));
+    assert_eq!(
+        value_of(&prompt.ask("gnoblin.clients.map(c => c.appId)", &mut serve)),
+        &json!(["foot", "firefox"])
+    );
+    assert_eq!(
+        value_of(&prompt.ask("gnoblin.clients.focused?.title", &mut serve)),
+        &json!("term"),
+        "a tree with no seat reads the focus from the window's own `focused`"
+    );
+
+    // A client prints as its kind, its id and its members; a collection is an array of summaries.
+    let client = prompt.ask("gnoblin.clients.at(0)", &mut serve);
+    assert_eq!(client["type"], json!("Client"));
+    let text = client["text"].as_str().expect("text");
+    assert!(
+        text.starts_with("Client#3 { appId: \"foot\", title: \"term\", focused: true"),
+        "{text}"
+    );
+    assert_eq!(
+        value_of(&client),
+        &json!({"$class": "Client", "id": "3", "appId": "foot", "title": "term", "focused": true,
+            "fullscreen": false, "floating": false, "x": 10, "y": 20, "width": 300, "height": 200,
+            "workspace": client["value"]["workspace"]})
+    );
+    let collection = prompt.ask("gnoblin.clients", &mut serve);
+    assert_eq!(collection["type"], json!("Collection"));
+    assert_eq!(
+        value_of(&collection),
+        &json!([
+            {"$class": "Client", "id": "3", "appId": "foot", "title": "term"},
+            {"$class": "Client", "id": "4", "appId": "firefox", "title": "web"},
+        ])
+    );
+    assert!(
+        collection["text"]
+            .as_str()
+            .expect("text")
+            .starts_with("Collection(2) [ Client#3 {")
+    );
+
+    // Functions, cycles, undefined, an object literal and a settled promise.
+    let function = prompt.ask("(function greet() {})", &mut serve);
+    assert_eq!(
+        (value_of(&function), &function["text"]),
+        (&json!("[Function greet]"), &json!("[Function greet]"))
+    );
+    assert_eq!(
+        value_of(&prompt.ask("(() => 1)", &mut serve)),
+        &json!("[Function (anonymous)]")
+    );
+    assert_eq!(
+        value_of(&prompt.ask(
+            "(() => { const a = { name: 'a' }; a.self = a; return a; })()",
+            &mut serve
+        )),
+        &json!({"name": "a", "self": "[Circular]"})
+    );
+    let nothing = prompt.ask("undefined", &mut serve);
+    assert_eq!(
+        (&nothing["ok"], &nothing["type"], nothing.get("value")),
+        (&json!(true), &json!("undefined"), None)
+    );
+    assert_eq!(
+        value_of(&prompt.ask("{a: 1, b: [1, 2]}", &mut serve)),
+        &json!({"a": 1, "b": [1, 2]})
+    );
+    assert_eq!(value_of(&prompt.ask("Promise.resolve(7)", &mut serve)), &json!(7));
+    assert_eq!(value_of(&prompt.ask("NaN", &mut serve)), &json!("NaN"));
+
+    // Variables defined at the prompt stay for the next expression.
+    // A declaration has no value, as at any prompt.
+    assert_eq!(prompt.ask("var counter = 41", &mut serve)["type"], json!("undefined"));
+    assert_eq!(value_of(&prompt.ask("counter + 1", &mut serve)), &json!(42));
+    assert_eq!(
+        prompt.ask("let held = gnoblin.clients.at(1)", &mut serve)["ok"],
+        json!(true)
+    );
+    assert_eq!(value_of(&prompt.ask("held.title", &mut serve)), &json!("web"));
+    assert_eq!(
+        value_of(&prompt.ask("sloppy = 5", &mut serve)),
+        &json!(5),
+        "an undeclared name is a global, not an error"
+    );
+}
+
+#[test]
+fn a_rendering_that_outgrows_the_cap_is_cut_and_says_so() {
+    let comp = two_windows();
+    let rig = rig(&comp, "export {};\n");
+    let big = evaluate_in(&rig.shell, "Array.from({ length: 5000 }, (_, i) => i)", 200).expect("it renders");
+    let big: Json = serde_json::from_str(&big).expect("JSON");
+    assert_eq!(big["truncated"], json!(true));
+    let items = big["value"].as_array().expect("an array");
+    assert!(items.len() < 100, "the array is cut: {}", items.len());
+    assert!(
+        items
+            .last()
+            .and_then(Json::as_str)
+            .is_some_and(|text| text.contains("more")),
+        "{items:?}"
+    );
+    let long = evaluate_in(&rig.shell, "'x'.repeat(100000)", 65536).expect("it renders");
+    let long: Json = serde_json::from_str(&long).expect("JSON");
+    assert_eq!(long["truncated"], json!(true));
+    assert!(long["value"].as_str().expect("a string").len() <= 4096);
+}
+
+#[test]
+fn a_console_error_carries_its_message_and_where_in_the_expression_it_was() {
+    let comp = two_windows();
+    let rig = rig(&comp, "export {};\n");
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let path = dir.path().join("js.sock");
+    let mut console = JsConsole::bind(&path).expect("the console listens");
+    let mut prompt = Prompt::connect(&path);
+    let mut serve = || console.serve(&rig.shell);
+
+    let syntax = prompt.ask("1 +", &mut serve);
+    assert_eq!(syntax["ok"], json!(false), "{syntax}");
+    assert_eq!(syntax["error"]["kind"], json!("exception"));
+    assert!(!syntax["error"]["message"].as_str().expect("a message").is_empty());
+    assert_eq!(syntax["error"]["location"]["file"], json!("<console>"), "{syntax}");
+    assert_eq!(syntax["error"]["location"]["line"], json!(1), "{syntax}");
+
+    let thrown = prompt.ask("1;\n2;\nnull.x", &mut serve);
+    assert_eq!(thrown["ok"], json!(false), "{thrown}");
+    assert_eq!(thrown["error"]["location"]["file"], json!("<console>"), "{thrown}");
+    assert_eq!(thrown["error"]["location"]["line"], json!(3), "{thrown}");
+    assert!(
+        thrown["error"]["stack"]
+            .as_str()
+            .expect("a stack")
+            .contains("<console>")
+    );
+
+    let custom = prompt.ask("throw new Error('boom')", &mut serve);
+    assert_eq!(custom["error"]["message"], json!("boom"));
+
+    let bad = prompt.raw("this is not json", &mut serve);
+    assert_eq!(
+        (&bad["ok"], &bad["error"]["kind"]),
+        (&json!(false), &json!("request")),
+        "{bad}"
+    );
+    let missing = prompt.raw(r#"{"id": 9}"#, &mut serve);
+    assert_eq!(
+        (&missing["id"], &missing["error"]["kind"]),
+        (&json!(9), &json!("request")),
+        "{missing}"
+    );
+    assert_eq!(
+        value_of(&prompt.ask("1 + 1", &mut serve)),
+        &json!(2),
+        "the connection survives a bad request"
+    );
+}
+
+#[test]
+fn a_runaway_expression_is_interrupted_and_the_shell_and_the_console_go_on() {
+    let comp = two_windows();
+    let mut rig = rig_with(&comp, "export {};\n", |config| {
+        config.entry_budget = Duration::from_millis(50)
+    });
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let path = dir.path().join("js.sock");
+    let mut console = JsConsole::bind(&path).expect("the console listens");
+    let mut prompt = Prompt::connect(&path);
+    {
+        let mut serve = || console.serve(&rig.shell);
+        assert_eq!(prompt.ask("var kept = 'still here'", &mut serve)["ok"], json!(true));
+        let runaway = prompt.ask("while (true) {}", &mut serve);
+        assert_eq!(runaway["ok"], json!(false), "{runaway}");
+        assert_eq!(runaway["error"]["kind"], json!("budget"), "{runaway}");
+        assert!(runaway["error"]["message"].as_str().expect("message").contains("50 ms"));
+        // A loop that catches what it can still cannot swallow the interrupt.
+        let stubborn = prompt.ask("for (;;) { try { while (true) {} } catch (e) {} }", &mut serve);
+        assert_eq!(stubborn["error"]["kind"], json!("budget"), "{stubborn}");
+        assert_eq!(
+            value_of(&prompt.ask("kept", &mut serve)),
+            &json!("still here"),
+            "the session survives the interrupt"
+        );
+        assert_eq!(value_of(&prompt.ask("gnoblin.clients.length", &mut serve)), &json!(2));
+    }
+    assert_eq!(
+        rig.shell.strikes(),
+        0,
+        "a console expression is not a strike against the generation"
+    );
+    rig.frame();
+    assert_eq!(rig.eval("gnoblin.clients.length"), "2", "the shell still answers");
+}
+
+#[test]
+fn a_write_made_at_the_prompt_travels_in_the_next_frames_transaction() {
+    let comp = two_windows();
+    let mut rig = rig(&comp, "export {};\n");
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let path = dir.path().join("js.sock");
+    let mut console = JsConsole::bind(&path).expect("the console listens");
+    let mut prompt = Prompt::connect(&path);
+    assert_eq!(
+        value_of(&prompt.ask("gnoblin.clients.at(0).x = 100", &mut || console.serve(&rig.shell))),
+        &json!(100)
+    );
+    rig.frame();
+    let wrote = sent(&comp).into_iter().flatten().any(
+        |op| matches!(op, TxOp::Set { node: 3, ref key, ref value, .. } if key == "x" && *value == MirrorValue::Double(100.0)),
+    );
+    assert!(wrote, "{:?}", sent(&comp));
+}
+
+#[test]
+fn the_inspector_helpers_return_plain_data() {
+    let comp = two_windows();
+    let mut rig = rig(
+        &comp,
+        "import { defineConfig } from \"gnoblin\";\ndefineConfig({ gaps: { inner: 7 } });\n",
+    );
+    rig.frame();
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let path = dir.path().join("js.sock");
+    let mut console = JsConsole::bind(&path).expect("the console listens");
+    let mut prompt = Prompt::connect(&path);
+    let mut serve = || console.serve(&rig.shell);
+
+    let clients = prompt.ask("inspect.clients()", &mut serve);
+    let clients = value_of(&clients).as_array().expect("an array");
+    assert_eq!(clients.len(), 2);
+    assert_eq!(clients[0]["appId"], json!("foot"));
+    assert_eq!(clients[0]["focused"], json!(true));
+    assert_eq!(clients[1]["focused"], json!(false));
+    assert_eq!(clients[0]["workspace"], json!("desktop"));
+    assert_eq!(clients[0]["x"], json!(10));
+
+    let workspaces = prompt.ask("inspect.workspaces()", &mut serve);
+    let workspaces = value_of(&workspaces).as_array().expect("an array");
+    assert_eq!(workspaces[0]["id"], json!("desktop"));
+    assert_eq!(workspaces[0]["layout"], json!("FloatingLayout"));
+    assert_eq!(workspaces[0]["clients"], json!(["3", "4"]));
+    assert_eq!(
+        value_of(&prompt.ask("gnoblin.workspaces.map(ws => [ws.id, ws.clients.length])", &mut serve)),
+        &json!([["desktop", 2]])
+    );
+
+    assert_eq!(
+        value_of(&prompt.ask("inspect.bindings()", &mut serve)),
+        &json!([]),
+        "a tree with no seat binds nothing"
+    );
+
+    let config = prompt.ask("inspect.config()", &mut serve);
+    let config = value_of(&config);
+    assert_eq!(config["gaps"]["inner"], json!(7), "the user's value");
+    assert_eq!(
+        config["workspaces"][0]["id"],
+        json!("desktop"),
+        "the stock workspace the user left alone"
+    );
+    assert_eq!(config["keys"]["XF86AudioMute"]["kind"], json!("spawn"), "a stock key");
+}
+
+#[test]
+fn a_shell_whose_entry_never_called_define_config_has_no_effective_config() {
+    let comp = two_windows();
+    let rig = rig(&comp, "export {};\n");
+    let config = evaluate_in(&rig.shell, "inspect.config()", 65536).expect("it renders");
+    let config: Json = serde_json::from_str(&config).expect("JSON");
+    assert_eq!(config["type"], json!("null"));
+}
+
+#[test]
+fn the_role_serves_its_console_between_frames_and_a_reload_drops_what_the_prompt_defined() {
+    let comp = two_windows();
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
+    fs::write(root.join("init.ts"), "export {};\n").expect("init.ts");
+    let site = root.join("js.sock");
+    let mut config = JsRoleConfig::new(&root, None);
+    config.watch = false;
+    config.console = JsConsoleSite::At(site.clone());
+    let role = std::cell::RefCell::new(
+        JsRole::over_link(Box::new(FakeLink(comp.clone())), JsRoleLinks::default(), config).expect("the role boots"),
+    );
+    let mut prompt = Prompt::connect(&site);
+    let mut serve = || role.borrow_mut().tick().expect("a frame");
+
+    assert_eq!(
+        value_of(&prompt.ask("globalThis.mark = 'set at the prompt'", &mut serve)),
+        &json!("set at the prompt")
+    );
+    assert_eq!(value_of(&prompt.ask("mark", &mut serve)), &json!("set at the prompt"));
+    assert_eq!(
+        value_of(&prompt.ask("gnoblin.clients.at(0).y = 55", &mut serve)),
+        &json!(55)
+    );
+    let wrote = sent(&comp).into_iter().flatten().any(
+        |op| matches!(op, TxOp::Set { node: 3, ref key, ref value, .. } if key == "y" && *value == MirrorValue::Double(55.0)),
+    );
+    assert!(
+        wrote,
+        "the write the prompt made left in the frame that followed it: {:?}",
+        sent(&comp)
+    );
+
+    let report = role.borrow_mut().reload_now();
+    assert!(report.ok, "{:?}", report.errors);
+    let after = prompt.ask("typeof mark", &mut serve);
+    assert_eq!(
+        value_of(&after),
+        &json!("undefined"),
+        "a reload starts a new generation, so the prompt's variables are gone"
+    );
+    assert_eq!(
+        value_of(&prompt.ask("gnoblin.clients.length", &mut serve)),
+        &json!(2),
+        "the console follows the new generation"
+    );
+}
+
+#[test]
+fn two_shells_do_not_share_a_console_and_the_socket_goes_with_its_server() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let path = dir.path().join("js.sock");
+    let first = JsConsole::bind(&path).expect("the first listens");
+    assert!(JsConsole::bind(&path).is_err(), "a live console is not replaced");
+    drop(first);
+    assert!(
+        UnixStream::connect(&path).is_err(),
+        "nothing answers once the server is gone"
+    );
+}

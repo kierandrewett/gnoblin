@@ -39,6 +39,8 @@ gnoblin-proto = { path = "../gnoblin-proto" }
 gnoblin-config = { path = "../gnoblin-config" }
 # The document crosses the owner socket as JSON; the shell reads the one in force and writes the next.
 serde_json.workspace = true
+# The console reads its peer's uid from the kernel (`SO_PEERCRED`) and compares it with its own.
+rustix = { workspace = true, features = ["net", "process"] }
 # The log facade every crate logs through.
 gnoblin-log = { path = "../gnoblin-log" }
 

@@ -16,6 +16,8 @@
 //!   model in `js/gnoblin.ts` (the `gnoblin/host` module), over the host functions in `bindings`, with the
 //!   frame loop of `ShellVm`. A workspace is a script object: [`JsWorkspaceSnapshot`] carries which window was on
 //!   which one from a shell to the next that reloads.
+//! - [`JsConsole`] is the live console: a Unix socket that evaluates what `gnoblinctl console` sends in the running
+//!   generation, between frames, and answers with the value rendered by `data/js/gnoblin/inspect.ts`.
 //! - [`JsRole`] is the runtime role's shell: it connects a [`JsShell`] to the owner socket, loads the user's
 //!   `init.ts`, and owns the watcher, reloader and supervisor that swap a new generation in or keep the old one.
 //!   It holds the shell's two other owner connections: one for slots (the dialog observation of `gnoblin.dialogs`)
@@ -24,6 +26,7 @@
 mod autostart;
 mod bindings;
 mod config;
+mod console;
 mod dialogs;
 mod error;
 mod generation;
@@ -42,6 +45,10 @@ mod workspaces;
 
 pub use bindings::{JsSpawnError, JsSpawnRequest, JsSpawner};
 pub use config::{JsClientConfigLink, JsConfigCommit, JsConfigLink, JsLinkError};
+pub use console::{
+    CONSOLE_FILE, CONSOLE_SOCKET, CONSOLE_VARIABLE, DEFAULT_MAX_BYTES, JsConsole, JsConsoleError, JsConsoleSite,
+    MAX_REQUEST, console_enabled, console_socket_path, evaluate_in, peer_allowed,
+};
 pub use error::{JsError, JsErrorKind, JsLoadError, JsLocation, JsTsError};
 pub use generation::{JsConfig, JsGeneration};
 pub use host::{JsHost, JsPrepare};

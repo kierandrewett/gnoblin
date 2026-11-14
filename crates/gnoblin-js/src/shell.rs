@@ -467,6 +467,12 @@ impl JsShell {
         self.generation.id()
     }
 
+    /// The running generation and the budget one call of it has, for the console: a console expression runs in the
+    /// shell's own generation under the listeners' budget, and a trip of it is not a strike (see `console`).
+    pub(crate) fn console_target(&self) -> (&JsGeneration, Duration) {
+        (&self.generation, self.entry_budget)
+    }
+
     /// Routes `gnoblin.spawn` to `spawner`. Without one, `spawn` throws a `GnoblinError`.
     pub fn set_spawner(&mut self, spawner: JsSpawner) {
         self.state.borrow_mut().spawner = Some(spawner);

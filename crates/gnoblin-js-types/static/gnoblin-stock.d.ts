@@ -344,6 +344,11 @@ declare module "gnoblin" {
      */
     export interface Collection<T> extends Iterable<T> {
         readonly length: number;
+        /**
+         * The member that holds the keyboard focus, or null: the first seat's focus, and with no seat the member whose own
+         * `focused` is set. Only clients take the focus, so another collection's is null.
+         */
+        readonly focused: T | null;
         at(index: number): T | undefined;
         get(id: string): T | undefined;
         find(predicate: (item: T) => boolean): T | undefined;
@@ -680,6 +685,25 @@ declare module "gnoblin" {
          */
         attachLayout(layout: Layout, owns?: (client: Client) => boolean): void;
         detachLayout(layout: Layout): void;
+        /**
+         * Every binding registered on this context, whoever bound it, and where it ranks among the bindings of the
+         * same trigger. Plain data, for the inspector.
+         */
+        describeBindings(): InputBindingInfo[];
+    }
+    /** What `InputContext.describeBindings` says of one registered binding. */
+    export interface InputBindingInfo {
+        readonly context: string;
+        readonly id: string;
+        readonly trigger: string;
+        readonly kind: string;
+        readonly owner: "context" | "layout" | "device";
+        readonly layout: string | null;
+        readonly device: string | null;
+        readonly priority: number;
+        readonly enabled: boolean;
+        /** 1 is the binding a press of the trigger reaches first; a binding that declines hands the press to rank 2. */
+        readonly rank: number;
     }
     export interface InputManager {
         readonly contexts: readonly InputContext[];
@@ -1813,6 +1837,96 @@ declare module "gnoblin" {
         readonly message: Text;
     }
     export function toast(text: string, options?: ToastOptions): Toast;
+
+    // -- Inspector (owner-spec section 18) ------------------------------------
+
+    /** What a registered kind reports of one instance, for the console's renderer. */
+    export interface InspectView {
+        /** The kind's name, as it prints: `Client`, `Workspace`. */
+        readonly name: string;
+        /** The instance's id; it prints as `Name#id`. */
+        readonly id?: string;
+        /** Everything worth showing of the instance when it is the value itself. */
+        readonly fields: Readonly<Record<string, unknown>>;
+        /** The few fields shown when the instance is one of many, or nested. Defaults to `fields`. */
+        readonly brief?: Readonly<Record<string, unknown>>;
+        /** A collection's members; it renders as an array of their briefs. */
+        readonly items?: readonly unknown[];
+    }
+    /** What the console gets back for one value. */
+    export interface Rendered {
+        readonly type: string;
+        readonly value?: unknown;
+        readonly text: string;
+        readonly truncated: boolean;
+    }
+    export interface RenderOptions {
+        /** The most text the rendering may hold before it stops adding to it. Default 65536. */
+        readonly maxBytes?: number;
+        /** How deep objects and arrays are walked. Default 6. */
+        readonly maxDepth?: number;
+    }
+    /** A client as plain data. */
+    export interface ClientInfo {
+        readonly id: string;
+        readonly appId: string;
+        readonly title: string;
+        readonly focused: boolean;
+        readonly fullscreen: boolean;
+        readonly floating: boolean;
+        readonly x: number;
+        readonly y: number;
+        readonly width: number;
+        readonly height: number;
+        /** The id of the workspace the client is on, or null. */
+        readonly workspace: string | null;
+    }
+    /** A workspace as plain data. */
+    export interface WorkspaceInfo {
+        readonly id: string;
+        readonly name: string;
+        readonly index: number;
+        readonly active: boolean;
+        /** The layout's class name. */
+        readonly layout: string;
+        /** The ids of the clients on it. */
+        readonly clients: readonly string[];
+    }
+    /** One binding registered on an input context, and where it ranks among the ones with the same trigger. */
+    export interface BindingInfo {
+        readonly context: string;
+        readonly id: string;
+        readonly trigger: string;
+        readonly kind: string;
+        /** Who bound it: the context itself, a layout attached to it, or one device of it. */
+        readonly owner: "context" | "layout" | "device";
+        readonly layout: string | null;
+        readonly device: string | null;
+        readonly priority: number;
+        readonly enabled: boolean;
+        /** 1 is the binding a press reaches first, 2 the one it falls to when 1 declines. */
+        readonly rank: number;
+    }
+    /**
+     * The inspector helpers: plain data about the running shell. `inspect` is also a global of the console
+     * (`gnoblinctl console`), so `inspect.clients()` needs no import there.
+     */
+    export const inspect: {
+        /** Every client as plain data. */
+        clients(): ClientInfo[];
+        /** Every workspace as plain data, with the ids of the clients on it. */
+        workspaces(): WorkspaceInfo[];
+        /** The bindings registered on every input context; a shell with no seat has none. */
+        bindings(): BindingInfo[];
+        /** The effective config as plain data: the user's over the stock one; null when `defineConfig` never ran. */
+        config(): unknown;
+        /** The value as the console shows it: JSON text of `{ type, value?, text, truncated }`. */
+        render(value: unknown, options?: RenderOptions): string;
+        /** The value as plain JSON-able data. */
+        plain(value: unknown, options?: RenderOptions): unknown;
+        /** Teaches the renderer what an instance of `ctor` shows. */
+        register<T>(ctor: abstract new (...args: never[]) => T, describe: (value: T) => InspectView): void;
+    };
 
     export const gnoblin: Gnoblin;
 }

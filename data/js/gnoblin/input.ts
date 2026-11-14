@@ -208,6 +208,26 @@ interface Registration {
     readonly claim: ClaimEntry;
 }
 
+/** Which of two registrations of one trigger runs first: the higher tier, then the higher priority, then the older. */
+function byPrecedence(a: Registration, b: Registration): number {
+    return b.tier - a.tier || b.binding.priority - a.binding.priority || a.order - b.order;
+}
+
+/** What `InputContext.describeBindings` says of one registered binding. */
+export interface InputBindingInfo {
+    readonly context: string;
+    readonly id: string;
+    readonly trigger: string;
+    readonly kind: string;
+    readonly owner: "context" | "layout" | "device";
+    readonly layout: string | null;
+    readonly device: string | null;
+    readonly priority: number;
+    readonly enabled: boolean;
+    /** 1 is the binding a press of the trigger reaches first; a binding that declines hands the press to rank 2. */
+    readonly rank: number;
+}
+
 /** One pointer chord from its start to its end or cancel. */
 interface PointerPress {
     readonly claim: ClaimEntry;
@@ -482,6 +502,39 @@ export class InputContext {
      */
     bind(trigger: string, action: ((event: BindingEvent) => void | false) | Binding): Binding {
         return bindIn(this.bindings, trigger, action, `InputContext "${this.name}"`);
+    }
+
+    /**
+     * Every binding registered on this context, whoever bound it (the context, a layout attached to it, one of its
+     * devices) and where it ranks among the bindings of the same trigger. Plain data, for the inspector.
+     */
+    describeBindings(): InputBindingInfo[] {
+        const groups = new Map<string, Registration[]>();
+        for (const registration of this.#registrations) {
+            const group = groups.get(registration.specKey) ?? [];
+            group.push(registration);
+            groups.set(registration.specKey, group);
+        }
+        const owners = ["context", "layout", "device"] as const;
+        const described: InputBindingInfo[] = [];
+        for (const group of groups.values()) {
+            group.sort(byPrecedence);
+            for (const [index, registration] of group.entries()) {
+                described.push({
+                    context: this.name,
+                    id: registration.binding.id,
+                    trigger: registration.binding.trigger,
+                    kind: registration.parsed.kind,
+                    owner: owners[registration.tier] ?? "context",
+                    layout: registration.layout === null ? null : registration.layout.constructor.name,
+                    device: registration.device === "" ? null : registration.device,
+                    priority: registration.binding.priority,
+                    enabled: registration.binding.enabled,
+                    rank: index + 1,
+                });
+            }
+        }
+        return described;
     }
 
     /** The topmost client whose bounds hold `position`, or null. */
@@ -796,7 +849,7 @@ export class InputContext {
                 list.push(registration);
             }
         }
-        return list.sort((a, b) => b.tier - a.tier || b.binding.priority - a.binding.priority || a.order - b.order);
+        return list.sort(byPrecedence);
     }
 
     // -- events -------------------------------------------------------------------------------------------

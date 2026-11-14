@@ -45,6 +45,7 @@ import type { RuleHost, RuleView } from "gnoblin/rules";
 import { attachUi, runUiFrame, uiNodeGone, uiReleaseAll } from "gnoblin/ui";
 import type { UiBackend } from "gnoblin/ui";
 import { defaultTitlebarStyle, Decorations } from "gnoblin/titlebar";
+import { inspect } from "gnoblin/inspect";
 import { WorkspaceSets } from "gnoblin/sets";
 import { snappedZone, unsnapClient } from "gnoblin/snap";
 import type { SnapClient } from "gnoblin/snap";
@@ -120,6 +121,8 @@ interface Entry {
     layout(): number;
     /** Runs the UI toolkit's frame: measurements and pointer events in, every canvas arranged and painted. */
     ui(): void;
+    /** Renders a console value for the socket: JSON text of `{ type, value?, text, truncated }`. */
+    render(value: unknown, maxBytes?: number): string;
     /** Gives a config that declared no workspace the stock one. */
     finishLoad(): void;
     /** Registers the stock config alone, for a shell that has no user entry to run. */
@@ -1061,6 +1064,14 @@ export class Collection<T extends Member> implements Iterable<T> {
 
     at(index: number): T | undefined {
         return itemsOf(collectionState(this)).at(index) as T | undefined;
+    }
+
+    /**
+     * The member that holds the keyboard focus, or null: the first seat's focus, and with no seat the member whose
+     * own `focused` is set. Only clients take the focus, so another collection's is null.
+     */
+    get focused(): T | null {
+        return focusedAmong(itemsOf(collectionState(this))) as T | null;
     }
 
     get(id: string): T | undefined {
@@ -2344,6 +2355,19 @@ function hasFocus(client: Client): boolean {
     return seat !== undefined && clientsByNode.get(host.input.focus(seat)) === client;
 }
 
+/**
+ * The member of `list` that holds the keyboard focus. With a seat it is the one the seat's focus names; a tree with
+ * no seat has no seat focus to read, so the member whose own `focused` is set is the answer.
+ */
+function focusedAmong(list: readonly Member[]): Member | null {
+    const seat = host.input.seats()[0];
+    if (seat === undefined) {
+        return list.find((member) => member instanceof Client && member.focused) ?? null;
+    }
+    const held = clientsByNode.get(host.input.focus(seat));
+    return list.find((member) => member === held) ?? null;
+}
+
 /** What a window rule reads and writes of a client: the host's end of `RuleEngine`. */
 const ruleHost: RuleHost<Client> = {
     view: (client): RuleView => ({
@@ -2555,6 +2579,9 @@ function startAlerts(): void {
     }
 }
 
+/** The merged config of the last `__register`, which is what the inspector reports as the effective one. */
+let effectiveConfig: GnoblinConfig | null = null;
+
 class Gnoblin {
     readonly clients = clientRoot.self as Collection<Client>;
     readonly workspaces = workspaceRoot.self as WorkspaceCollection;
@@ -2602,6 +2629,7 @@ class Gnoblin {
         const merged = mergeConfig(defaultConfig, config);
         const plan = desugarConfig(merged);
         checkDocument(plan.document);
+        effectiveConfig = merged;
         for (const planned of plan.workspaces) {
             addWorkspace(new Workspace({ id: planned.id, layout: planned.layout, gaps: planned.gaps }));
         }
@@ -2621,6 +2649,11 @@ class Gnoblin {
         documentPatch = JSON.stringify(plan.document);
         autostartList = JSON.stringify(plan.autostart);
         plan.setup?.(gnoblin as unknown as GnoblinHost);
+    }
+
+    /** The config `__register` last merged over the stock one, for the inspector; null before any. */
+    __effectiveConfig(): GnoblinConfig | null {
+        return effectiveConfig;
     }
 }
 
@@ -2677,12 +2710,53 @@ function bindKeys(keys: readonly PlannedKey[]): void {
 
 export const gnoblin = new Gnoblin();
 
+// What the console shows of the host's own objects. A client is the short block of what a person asks about a window;
+// nested inside another value (a collection's member) it is only its id, app and title.
+inspect.register(Client, (client) => ({
+    name: "Client",
+    id: client.id,
+    fields: {
+        appId: client.appId,
+        title: client.title,
+        focused: focusedAmong([client]) === client,
+        fullscreen: client.fullscreen,
+        floating: client.floating,
+        x: client.x,
+        y: client.y,
+        width: client.width,
+        height: client.height,
+        workspace: client.workspace?.id ?? null,
+        ...(client.alive ? {} : { alive: false }),
+    },
+    brief: { appId: client.appId, title: client.title },
+}));
+inspect.register(Workspace, (workspace) => ({
+    name: "Workspace",
+    id: workspace.id,
+    fields: {
+        name: workspace.name,
+        index: workspace.index,
+        active: workspace.active,
+        layout: workspace.layout.constructor.name,
+        clients: workspace.clients.length,
+    },
+    brief: { name: workspace.name, active: workspace.active },
+}));
+inspect.register(Collection, (collection) => ({
+    name: "Collection",
+    fields: {},
+    items: [...collection],
+}));
+
 for (const node of host.windows()) {
     adopt(node, false);
 }
 
 Object.defineProperty(globalThis, "gnoblin", { value: gnoblin, enumerable: false });
+// The console's helpers: `inspect.clients()` and the rest are typed at a console prompt without an import.
+Object.defineProperty(globalThis, "inspect", { value: inspect, enumerable: false });
 host.entry = {
+    render: (value, maxBytes) => inspect.render(value, { maxBytes }),
     ui: runUiFrame,
     plan,
     next,

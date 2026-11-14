@@ -38,6 +38,7 @@ use gnoblin_tree_client::tree_mirror::TreeLink;
 
 use crate::bindings::{JsSpawnError, JsSpawnRequest};
 use crate::config::{JsClientConfigLink, JsConfigLink};
+use crate::console::{JsConsole, JsConsoleSite, console_enabled, console_socket_path};
 use crate::generation::JsGeneration;
 use crate::reload::{JsReloader, ReloadReport};
 use crate::shell::{JsShell, JsShellConfig, JsShellError};
@@ -87,6 +88,8 @@ pub struct JsRoleConfig {
     /// (`gnoblinctl config reload`): for a config directory on a file system that cannot be watched, and for a
     /// test that proves the request path and not the watcher.
     pub watch: bool,
+    /// Where the console listens. See [`JsConsoleSite`].
+    pub console: JsConsoleSite,
 }
 
 impl JsRoleConfig {
@@ -102,6 +105,7 @@ impl JsRoleConfig {
             policy: JsStrikePolicy::default(),
             debounce: RELOAD_DEBOUNCE,
             watch: true,
+            console: JsConsoleSite::default(),
         }
     }
 }
@@ -134,6 +138,8 @@ pub struct JsRole {
     ended: Option<JsShellError>,
     /// The user's entry module, which may not exist.
     entry: PathBuf,
+    /// The console socket, polled before each frame; `None` when it is off or could not be made.
+    console: Option<JsConsole>,
 }
 
 impl JsRole {
@@ -143,8 +149,15 @@ impl JsRole {
     /// socket). The handshake is the role's own: the version this build serves, sent as a client. The
     /// compositor grants the owner connection by the peer's credentials, so the session owner's second
     /// connection is the one that can attach the tree.
-    pub fn connect(env: &dyn Fn(&str) -> Option<String>, config: JsRoleConfig) -> Result<Self, JsShellError> {
+    pub fn connect(env: &dyn Fn(&str) -> Option<String>, mut config: JsRoleConfig) -> Result<Self, JsShellError> {
         let path = socket_path(env).map_err(JsShellError::Link)?;
+        if config.console == JsConsoleSite::Environment {
+            // The console follows the owner socket's directory, and `GNOBLIN_JS_CONSOLE=0` turns it off.
+            config.console = match console_socket_path(env) {
+                Ok(site) if console_enabled(env) => JsConsoleSite::At(site),
+                _ => JsConsoleSite::Off,
+            };
+        }
         let transport = UnixTransport::connect(&path)
             .map_err(|error| JsShellError::Link(format!("cannot connect to {}: {error}", path.display())))?;
         let version = {
@@ -240,7 +253,15 @@ impl JsRole {
             diagnostics: Vec::new(),
             ended: None,
             entry: config.entry.clone(),
+            console: None,
         };
+        if let JsConsoleSite::At(site) = &config.console {
+            // A shell without a console is still a shell: the reason is logged and the loop goes on.
+            match JsConsole::bind(site) {
+                Ok(console) => role.console = Some(console),
+                Err(error) => log::warn!(area = "console", "the console is not served: {error}"),
+            }
+        }
         if config.entry.is_file() {
             if !role.reload_now().ok {
                 // The entry is broken at startup: the shell still has to work, so the stock config runs until the
@@ -272,6 +293,11 @@ impl JsRole {
         }
         if let Some(request) = self.watcher.as_ref().and_then(|w| w.next_request(Duration::ZERO)) {
             self.staged(|reloader| reloader.reload_for(&request));
+        }
+        // Console expressions run here, between frames: never beside one, so what they read and write is the state
+        // the frame after them sees.
+        if let Some(console) = self.console.as_mut() {
+            console.serve(&self.shell);
         }
         let frame = self.shell.frame()?;
         for diagnostic in frame.diagnostics {

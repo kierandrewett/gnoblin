@@ -1855,6 +1855,248 @@ fn a_window_that_stops_answering_gets_the_alert_and_wait_and_force_quit_close_it
     assert!(
         log.iter().all(|line| !line.contains("threw")),
         "the shell logged a throw: {log:#?}"
+
+// ---- the console ---------------------------------------------------------------------------------------------------
+
+/// A client of the shell's console socket. The test thread keeps the Wayland client answering while it waits, as every
+/// wait in this file does.
+struct ConsoleClient {
+    stream: UnixStream,
+    pending: Vec<u8>,
+    next_id: u64,
+}
+
+impl ConsoleClient {
+    /// Connects once the shell is listening.
+    fn connect(path: &Path, mapper: &mut Mapper) -> Self {
+        let deadline = Instant::now() + PATIENCE;
+        let stream = loop {
+            mapper.roundtrip();
+            match UnixStream::connect(path) {
+                Ok(stream) => break stream,
+                Err(error) => assert!(
+                    Instant::now() < deadline,
+                    "the shell never served a console at {}: {error}",
+                    path.display()
+                ),
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        stream.set_nonblocking(true).expect("a non-blocking socket");
+        Self {
+            stream,
+            pending: Vec::new(),
+            next_id: 1,
+        }
+    }
+
+    /// Evaluates `expr` and returns the reply, whatever it is.
+    #[track_caller]
+    fn ask(&mut self, expr: &str, mapper: &mut Mapper) -> serde_json::Value {
+        use std::io::{Read as _, Write as _};
+
+        let id = self.next_id;
+        self.next_id += 1;
+        let request = serde_json::json!({"id": id, "expr": expr});
+        let mut line = request.to_string();
+        line.push('\n');
+        self.stream.write_all(line.as_bytes()).expect("the request is written");
+        let deadline = Instant::now() + PATIENCE;
+        loop {
+            mapper.roundtrip();
+            let mut chunk = [0u8; 4096];
+            match self.stream.read(&mut chunk) {
+                Ok(0) => panic!("the console closed the connection while {expr} ran"),
+                Ok(count) => self.pending.extend_from_slice(&chunk[..count]),
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(error) => panic!("reading the console's reply: {error}"),
+            }
+            if let Some(end) = self.pending.iter().position(|byte| *byte == b'\n') {
+                let reply: Vec<u8> = self.pending.drain(..=end).collect();
+                let reply: serde_json::Value = serde_json::from_slice(&reply).expect("a reply is JSON");
+                assert_eq!(
+                    reply["id"],
+                    serde_json::json!(id),
+                    "the reply answers its request: {reply}"
+                );
+                return reply;
+            }
+            assert!(Instant::now() < deadline, "no reply to {expr}");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    /// The value of an expression that is expected to succeed.
+    #[track_caller]
+    fn value(&mut self, expr: &str, mapper: &mut Mapper) -> serde_json::Value {
+        let reply = self.ask(expr, mapper);
+        assert_eq!(reply["ok"], serde_json::json!(true), "{expr} failed: {reply}");
+        reply["value"].clone()
+    }
+}
+
+#[test]
+fn the_console_reads_and_writes_the_live_shell_and_survives_errors_and_runaways() {
+    let session = Session::start();
+    // No init.ts: the stock config runs, with its seat claims and its keys.
+    let config = tempfile::tempdir().expect("a config directory");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    let ipc_dir = ipc.parent().expect("the socket's directory").to_path_buf();
+    wait_for("the shell runs", &session, &mut mapper, &shell, || {
+        shell.view().contains(", 1 workspaces")
+    });
+    let mut console = ConsoleClient::connect(&ipc_dir.join("js.sock"), &mut mapper);
+    assert_eq!(
+        fs::metadata(ipc_dir.join("js.sock"))
+            .expect("the console socket")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600,
+        "the socket is private to its owner"
+    );
+
+    let (first, second) = ("org.example.first", "org.example.second");
+    mapper.map_window(first, "First");
+    mapper.map_window(second, "Second");
+    wait_for("the shell sees both windows", &session, &mut mapper, &shell, || {
+        shell.view().starts_with("2 clients")
+    });
+
+    // Reads: the object model of init.ts, live.
+    assert_eq!(
+        console.value("gnoblin.clients.length", &mut mapper),
+        serde_json::json!(2)
+    );
+    let mut apps: Vec<String> = serde_json::from_value(console.value("gnoblin.clients.map(c => c.appId)", &mut mapper))
+        .expect("an array of strings");
+    apps.sort();
+    assert_eq!(apps, [first, second]);
+    let counts = console.value("gnoblin.workspaces.map(ws => [ws.id, ws.clients.length])", &mut mapper);
+    assert_eq!(counts, serde_json::json!([["desktop", 2]]));
+    let described = console.ask("gnoblin.clients.at(0)", &mut mapper);
+    assert_eq!(described["type"], serde_json::json!("Client"), "{described}");
+    assert!(
+        described["text"]
+            .as_str()
+            .is_some_and(|text| text.starts_with("Client#") && text.contains("appId: \"org.example.")),
+        "{described}"
+    );
+    wait_for("the new window has the focus", &session, &mut mapper, &shell, || {
+        focused_app(&shell).is_some()
+    });
+    let focus = console.value("gnoblin.clients.focused?.appId", &mut mapper);
+    assert_eq!(
+        focus.as_str(),
+        focused_app(&shell).as_deref(),
+        "`clients.focused` is the seat's focus"
+    );
+
+    // The inspector helpers see the stock bindings the shell claimed on the real seat.
+    let bindings = console.value("inspect.bindings()", &mut mapper);
+    let mute = bindings
+        .as_array()
+        .expect("an array")
+        .iter()
+        .find(|binding| binding["trigger"] == "XF86AudioMute")
+        .unwrap_or_else(|| panic!("the stock mute key is bound: {bindings}"));
+    assert_eq!(
+        (&mute["owner"], &mute["rank"]),
+        (&serde_json::json!("context"), &serde_json::json!(1))
+    );
+    let config_keys = console.value("Object.keys(inspect.config().keys).length", &mut mapper);
+    assert!(config_keys.as_u64().is_some_and(|count| count > 5), "{config_keys}");
+
+    // A syntax error is an error with a location, and the shell is as it was.
+    let generation = shell.generation();
+    let syntax = console.ask("gnoblin.clients.map(", &mut mapper);
+    assert_eq!(syntax["ok"], serde_json::json!(false), "{syntax}");
+    assert_eq!(
+        syntax["error"]["location"]["file"],
+        serde_json::json!("<console>"),
+        "{syntax}"
+    );
+    assert_eq!(syntax["error"]["location"]["line"], serde_json::json!(1), "{syntax}");
+    assert_eq!(
+        console.value("gnoblin.clients.length", &mut mapper),
+        serde_json::json!(2)
+    );
+
+    // A runaway is interrupted by the budget; the console and the shell still answer, and the generation is not
+    // restarted over it.
+    let runaway = console.ask("while (true) {}", &mut mapper);
+    assert_eq!(runaway["error"]["kind"], serde_json::json!("budget"), "{runaway}");
+    assert_eq!(console.value("1 + 1", &mut mapper), serde_json::json!(2));
+    mapper.map_window("org.example.third", "Third");
+    wait_for(
+        "the shell sees a window mapped after the runaway",
+        &session,
+        &mut mapper,
+        &shell,
+        || shell.view().starts_with("3 clients"),
+    );
+    assert_eq!(
+        console.value("gnoblin.clients.length", &mut mapper),
+        serde_json::json!(3)
+    );
+    assert_eq!(shell.generation(), generation, "the generation was not restarted");
+
+    // A write at the prompt reaches the compositor's scene.
+    let app = console.value("gnoblin.clients.at(0).appId", &mut mapper);
+    let app = app.as_str().expect("an app id").to_owned();
+    assert_eq!(
+        console.value("gnoblin.clients.at(0).x = 10", &mut mapper),
+        serde_json::json!(10)
+    );
+    wait_for(
+        "the compositor holds the window where the prompt put it",
+        &session,
+        &mut mapper,
+        &shell,
+        || rect_of(&ipc, &app).map(|rect| rect.0) == Some(10.0),
+    );
+    assert_eq!(
+        console.value("gnoblin.clients.at(0).x", &mut mapper),
+        serde_json::json!(10)
+    );
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    shell.finish();
+}
+
+#[test]
+fn the_console_is_off_when_the_variable_says_so_and_its_socket_goes_with_the_shell() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    let ipc_dir = session.ipc().parent().expect("the socket's directory").to_path_buf();
+    let socket = session.ipc().to_str().expect("a UTF-8 socket path").to_owned();
+
+    let off = {
+        let socket = socket.clone();
+        move |name: &str| match name {
+            "GNOBLIN_IPC_SOCKET" => Some(socket.clone()),
+            "GNOBLIN_JS_CONSOLE" => Some("0".to_owned()),
+            _ => None,
+        }
+    };
+    let mut disabled =
+        JsRole::connect(&off, JsRoleConfig::new(config.path(), None)).expect("the shell connects without a console");
+    disabled.tick().expect("a frame");
+    assert!(
+        !ipc_dir.join("js.sock").exists(),
+        "GNOBLIN_JS_CONSOLE=0 serves no console"
+    );
+    drop(disabled);
+
+    let on = move |name: &str| (name == "GNOBLIN_IPC_SOCKET").then(|| socket.clone());
+    let mut served = JsRole::connect(&on, JsRoleConfig::new(config.path(), None)).expect("the shell connects");
+    served.tick().expect("a frame");
+    assert!(ipc_dir.join("js.sock").exists(), "the console is on by default");
+    drop(served);
+    assert!(
+        !ipc_dir.join("js.sock").exists(),
+        "the socket goes with the shell that served it"
     );
 }
 
