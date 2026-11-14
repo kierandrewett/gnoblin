@@ -306,9 +306,9 @@ mod tests {
             let aimed = Ray::from_pose(&pose_along(&ray));
             let length = direction.iter().map(|c| c * c).sum::<f64>().sqrt();
             assert_eq!(aimed.origin, ray.origin);
-            for axis in 0..3 {
+            for (got, want) in aimed.direction.into_iter().zip(direction) {
                 assert!(
-                    (aimed.direction[axis] - direction[axis] / length).abs() < 1e-9,
+                    (got - want / length).abs() < 1e-9,
                     "{direction:?}: {:?}",
                     aimed.direction
                 );

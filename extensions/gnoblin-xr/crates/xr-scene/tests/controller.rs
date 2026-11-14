@@ -88,12 +88,8 @@ fn the_identity_aim_at_the_origin_is_a_node_at_the_origin_with_no_turn() {
 fn the_position_is_in_node_units_and_y_is_not_mirrored_as_the_head_cameras_is() {
     let placed = placed_pose(&pose([0.25, 1.1, -0.4], IDENTITY), METRES).expect("pose");
     let want = [250.0, 1100.0, -400.0];
-    for axis in 0..3 {
-        assert!(
-            (placed.position[axis] - want[axis]).abs() < 1e-9,
-            "axis {axis}: {:?}",
-            placed.position
-        );
+    for (axis, (got, want)) in placed.position.into_iter().zip(want).enumerate() {
+        assert!((got - want).abs() < 1e-9, "axis {axis}: {:?}", placed.position);
     }
 }
 
@@ -115,9 +111,9 @@ fn a_view_placed_where_the_controller_is_comes_out_where_the_controller_is() {
         let aim = pose([0.3, 1.4, -0.8], orientation);
         let placed = placed_pose(&aim, METRES).expect("a usable pose");
         let comes_out = view_at(&placed, METRES);
-        for axis in 0..3 {
+        for (axis, (got, want)) in comes_out.position.into_iter().zip(aim.position).enumerate() {
             assert!(
-                (comes_out.position[axis] - aim.position[axis]).abs() < 1e-9,
+                (got - want).abs() < 1e-9,
                 "turn {a} {b} {c}, axis {axis}: {:?}",
                 comes_out.position
             );

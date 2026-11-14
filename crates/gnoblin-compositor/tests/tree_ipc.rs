@@ -2776,7 +2776,7 @@ fn a_burst_of_controller_writes_is_rate_limited_and_the_head_pose_keeps_its_own_
         }
     }
     assert!(
-        applied >= 1 && applied <= 12,
+        (1..=12).contains(&applied),
         "the cap held: {applied} of {sent} got past it"
     );
     assert!(limited >= 40, "the rest were refused rate-limited: {limited} of {sent}");
