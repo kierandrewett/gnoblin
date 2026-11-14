@@ -1,7 +1,7 @@
 //! Lua source to a tree the converter can read.
 //!
 //! The parser (`full_moon`) gives a syntax tree and each node's position; nothing is run. This module turns an
-//! expression into an [`Lv`]: a value with the file, line and text it came from, or a [`Kind::Failed`] that says why it
+//! expression into an [`Lv`]: a value with the file, line and text it came from, or a [`LuaKind::Failed`] that says why it
 //! has no static value. A table literal, a string, a number, a boolean, `nil`, the arithmetic of numbers, the
 //! concatenation of two strings and a name bound earlier to such a value are static. A call, a function, an index, a
 //! comparison and every other operator are not.
@@ -26,12 +26,12 @@ pub(crate) struct Span {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Lv {
     pub span: Span,
-    pub kind: Kind,
+    pub kind: LuaKind,
 }
 
 /// What a value is.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum Kind {
+pub(crate) enum LuaKind {
     Str(String),
     Int(i64),
     Float(f64),
@@ -40,14 +40,14 @@ pub(crate) enum Kind {
     /// A table written with positional elements only.
     List(Vec<Lv>),
     /// A table written with keys only; `{}` is a table with no field.
-    Table(Vec<Field>),
+    Table(Vec<LuaField>),
     /// Not a static value: why.
     Failed(String),
 }
 
 /// One `key = value` of a table.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Field {
+pub(crate) struct LuaField {
     /// The key, or empty when the key is not a literal string.
     pub key: String,
     /// The whole field as written.
@@ -59,20 +59,20 @@ impl Lv {
     pub(crate) fn failed(span: Span, reason: impl Into<String>) -> Lv {
         Lv {
             span,
-            kind: Kind::Failed(reason.into()),
+            kind: LuaKind::Failed(reason.into()),
         }
     }
 
     pub(crate) fn as_str(&self) -> Option<&str> {
         match &self.kind {
-            Kind::Str(text) => Some(text),
+            LuaKind::Str(text) => Some(text),
             _ => None,
         }
     }
 
     pub(crate) fn as_bool(&self) -> Option<bool> {
         match self.kind {
-            Kind::Bool(value) => Some(value),
+            LuaKind::Bool(value) => Some(value),
             _ => None,
         }
     }
@@ -80,17 +80,17 @@ impl Lv {
     /// The elements of a list, and of the empty table that is also an empty list.
     pub(crate) fn elements(&self) -> Option<&[Lv]> {
         match &self.kind {
-            Kind::List(items) => Some(items),
-            Kind::Table(fields) if fields.is_empty() => Some(&[]),
+            LuaKind::List(items) => Some(items),
+            LuaKind::Table(fields) if fields.is_empty() => Some(&[]),
             _ => None,
         }
     }
 
     /// The fields of a table, and of the empty list that is also an empty table.
-    pub(crate) fn fields(&self) -> Option<&[Field]> {
+    pub(crate) fn fields(&self) -> Option<&[LuaField]> {
         match &self.kind {
-            Kind::Table(fields) => Some(fields),
-            Kind::List(items) if items.is_empty() => Some(&[]),
+            LuaKind::Table(fields) => Some(fields),
+            LuaKind::List(items) if items.is_empty() => Some(&[]),
             _ => None,
         }
     }
@@ -98,13 +98,13 @@ impl Lv {
     /// What kind of thing this is, for a message.
     pub(crate) fn describe(&self) -> &'static str {
         match self.kind {
-            Kind::Str(_) => "a string",
-            Kind::Int(_) | Kind::Float(_) => "a number",
-            Kind::Bool(_) => "a boolean",
-            Kind::Nil => "nil",
-            Kind::List(_) => "a list",
-            Kind::Table(_) => "a table",
-            Kind::Failed(_) => "a value computed at run time",
+            LuaKind::Str(_) => "a string",
+            LuaKind::Int(_) | LuaKind::Float(_) => "a number",
+            LuaKind::Bool(_) => "a boolean",
+            LuaKind::Nil => "nil",
+            LuaKind::List(_) => "a list",
+            LuaKind::Table(_) => "a table",
+            LuaKind::Failed(_) => "a value computed at run time",
         }
     }
 }
@@ -133,12 +133,12 @@ impl SourceFile<'_> {
 }
 
 /// The names bound so far: a file's locals and the globals every file shares.
-pub(crate) struct Scope<'a> {
+pub(crate) struct LuaScope<'a> {
     pub locals: &'a HashMap<String, Lv>,
     pub globals: &'a HashMap<String, Lv>,
 }
 
-impl Scope<'_> {
+impl LuaScope<'_> {
     fn get(&self, name: &str) -> Option<&Lv> {
         self.locals.get(name).or_else(|| self.globals.get(name))
     }
@@ -160,17 +160,17 @@ pub(crate) fn parse(source: &str) -> Result<full_moon::ast::Ast, (usize, String)
         })
 }
 
-/// The static value of `expr`, or a [`Kind::Failed`] saying why it has none.
-pub(crate) fn lower(file: &SourceFile<'_>, scope: &Scope<'_>, expr: &Expression) -> Lv {
+/// The static value of `expr`, or a [`LuaKind::Failed`] saying why it has none.
+pub(crate) fn lower(file: &SourceFile<'_>, scope: &LuaScope<'_>, expr: &Expression) -> Lv {
     let span = file.span(expr);
     let kind = match expr {
         Expression::Number(token) => number(&token.token().to_string()),
         Expression::String(token) => string(token),
         Expression::Symbol(token) => match token.token().token_type() {
-            TokenType::Symbol { symbol: Symbol::True } => Kind::Bool(true),
-            TokenType::Symbol { symbol: Symbol::False } => Kind::Bool(false),
-            TokenType::Symbol { symbol: Symbol::Nil } => Kind::Nil,
-            _ => Kind::Failed("a vararg is only known at run time".to_owned()),
+            TokenType::Symbol { symbol: Symbol::True } => LuaKind::Bool(true),
+            TokenType::Symbol { symbol: Symbol::False } => LuaKind::Bool(false),
+            TokenType::Symbol { symbol: Symbol::Nil } => LuaKind::Nil,
+            _ => LuaKind::Failed("a vararg is only known at run time".to_owned()),
         },
         Expression::Parentheses { expression, .. } => return lower(file, scope, expression),
         Expression::UnaryOperator { unop, expression } => {
@@ -189,25 +189,25 @@ pub(crate) fn lower(file: &SourceFile<'_>, scope: &Scope<'_>, expr: &Expression)
             let name = token.token().to_string();
             match scope.get(&name) {
                 Some(bound) => return bound.clone(),
-                None => Kind::Failed(format!("`{name}` is not a value the converter knows")),
+                None => LuaKind::Failed(format!("`{name}` is not a value the converter knows")),
             }
         }
-        Expression::Var(_) => Kind::Failed("an index of a value is evaluated at run time".to_owned()),
-        Expression::FunctionCall(_) => Kind::Failed("a function call is evaluated at run time".to_owned()),
-        Expression::Function(_) => Kind::Failed("a function".to_owned()),
-        _ => Kind::Failed("an expression the converter does not evaluate".to_owned()),
+        Expression::Var(_) => LuaKind::Failed("an index of a value is evaluated at run time".to_owned()),
+        Expression::FunctionCall(_) => LuaKind::Failed("a function call is evaluated at run time".to_owned()),
+        Expression::Function(_) => LuaKind::Failed("a function".to_owned()),
+        _ => LuaKind::Failed("an expression the converter does not evaluate".to_owned()),
     };
     Lv { span, kind }
 }
 
 fn lower_table<'a>(
     file: &SourceFile<'_>,
-    scope: &Scope<'_>,
+    scope: &LuaScope<'_>,
     fields: impl Iterator<Item = &'a AstField>,
     span: Span,
 ) -> Lv {
     let mut positional: Vec<Lv> = Vec::new();
-    let mut keyed: Vec<Field> = Vec::new();
+    let mut keyed: Vec<LuaField> = Vec::new();
     for field in fields {
         let field_span = file.span(field);
         match field {
@@ -219,10 +219,10 @@ fn lower_table<'a>(
                 let key = lower(file, scope, key);
                 let value = lower(file, scope, value);
                 match key.kind {
-                    Kind::Str(text) if !text.is_empty() => add_field(&mut keyed, text, field_span, value),
+                    LuaKind::Str(text) if !text.is_empty() => add_field(&mut keyed, text, field_span, value),
                     _ => {
                         let failed = Lv::failed(field_span.clone(), "a key that is not a literal string");
-                        keyed.push(Field {
+                        keyed.push(LuaField {
                             key: String::new(),
                             span: field_span,
                             value: failed,
@@ -233,7 +233,7 @@ fn lower_table<'a>(
             AstField::NoKey(expr) => positional.push(lower(file, scope, expr)),
             _ => {
                 let failed = Lv::failed(field_span.clone(), "a table field the converter does not read");
-                keyed.push(Field {
+                keyed.push(LuaField {
                     key: String::new(),
                     span: field_span,
                     value: failed,
@@ -242,49 +242,49 @@ fn lower_table<'a>(
         }
     }
     let kind = if positional.is_empty() {
-        Kind::Table(keyed)
+        LuaKind::Table(keyed)
     } else if keyed.is_empty() {
-        Kind::List(positional)
+        LuaKind::List(positional)
     } else {
-        Kind::Failed("a table that mixes a list and keys".to_owned())
+        LuaKind::Failed("a table that mixes a list and keys".to_owned())
     };
     Lv { span, kind }
 }
 
 /// Adds a field; a key written twice keeps the later value in the earlier place, as the table would.
-fn add_field(fields: &mut Vec<Field>, key: String, span: Span, value: Lv) {
+fn add_field(fields: &mut Vec<LuaField>, key: String, span: Span, value: Lv) {
     match fields.iter_mut().find(|field| field.key == key) {
         Some(existing) => {
             existing.span = span;
             existing.value = value;
         }
-        None => fields.push(Field { key, span, value }),
+        None => fields.push(LuaField { key, span, value }),
     }
 }
 
-fn number(text: &str) -> Kind {
+fn number(text: &str) -> LuaKind {
     let lower = text.to_ascii_lowercase();
     if let Some(hex) = lower.strip_prefix("0x") {
         return match i64::from_str_radix(hex, 16) {
-            Ok(value) => Kind::Int(value),
-            Err(_) => Kind::Failed("a hexadecimal number the converter does not read".to_owned()),
+            Ok(value) => LuaKind::Int(value),
+            Err(_) => LuaKind::Failed("a hexadecimal number the converter does not read".to_owned()),
         };
     }
     if let Ok(value) = lower.parse::<i64>() {
-        return Kind::Int(value);
+        return LuaKind::Int(value);
     }
     match lower.parse::<f64>() {
-        Ok(value) if value.is_finite() => Kind::Float(value),
-        _ => Kind::Failed("a number the converter does not read".to_owned()),
+        Ok(value) if value.is_finite() => LuaKind::Float(value),
+        _ => LuaKind::Failed("a number the converter does not read".to_owned()),
     }
 }
 
-fn string(token: &TokenReference) -> Kind {
+fn string(token: &TokenReference) -> LuaKind {
     let TokenType::StringLiteral {
         literal, quote_type, ..
     } = token.token().token_type()
     else {
-        return Kind::Failed("a string the converter does not read".to_owned());
+        return LuaKind::Failed("a string the converter does not read".to_owned());
     };
     let raw = literal.to_string();
     if *quote_type == StringLiteralQuoteType::Brackets {
@@ -293,11 +293,11 @@ fn string(token: &TokenReference) -> Kind {
             .strip_prefix("\r\n")
             .or_else(|| raw.strip_prefix('\n'))
             .unwrap_or(&raw);
-        return Kind::Str(body.to_owned());
+        return LuaKind::Str(body.to_owned());
     }
     match unescape(&raw) {
-        Ok(text) => Kind::Str(text),
-        Err(reason) => Kind::Failed(reason),
+        Ok(text) => LuaKind::Str(text),
+        Err(reason) => LuaKind::Failed(reason),
     }
 }
 
@@ -366,22 +366,22 @@ fn push_byte(out: &mut String, byte: Option<u32>) -> Result<(), String> {
     }
 }
 
-fn unary(operator: &str, operand: Kind) -> Kind {
+fn unary(operator: &str, operand: LuaKind) -> LuaKind {
     match (operator, operand) {
-        ("-", Kind::Int(value)) => value
+        ("-", LuaKind::Int(value)) => value
             .checked_neg()
-            .map_or_else(|| Kind::Failed("a number out of range".to_owned()), Kind::Int),
-        ("-", Kind::Float(value)) => Kind::Float(-value),
-        ("not", Kind::Bool(value)) => Kind::Bool(!value),
-        _ => Kind::Failed("an operator over something that is not a static number or boolean".to_owned()),
+            .map_or_else(|| LuaKind::Failed("a number out of range".to_owned()), LuaKind::Int),
+        ("-", LuaKind::Float(value)) => LuaKind::Float(-value),
+        ("not", LuaKind::Bool(value)) => LuaKind::Bool(!value),
+        _ => LuaKind::Failed("an operator over something that is not a static number or boolean".to_owned()),
     }
 }
 
-fn binary(operator: &str, left: Kind, right: Kind) -> Kind {
-    let unsupported = || Kind::Failed("an operator over something that is not static".to_owned());
+fn binary(operator: &str, left: LuaKind, right: LuaKind) -> LuaKind {
+    let unsupported = || LuaKind::Failed("an operator over something that is not static".to_owned());
     match (operator, left, right) {
-        ("..", Kind::Str(a), Kind::Str(b)) => Kind::Str(a + &b),
-        ("+" | "-" | "*" | "/", Kind::Int(a), Kind::Int(b)) => {
+        ("..", LuaKind::Str(a), LuaKind::Str(b)) => LuaKind::Str(a + &b),
+        ("+" | "-" | "*" | "/", LuaKind::Int(a), LuaKind::Int(b)) => {
             let exact = match operator {
                 "+" => a.checked_add(b),
                 "-" => a.checked_sub(b),
@@ -389,27 +389,29 @@ fn binary(operator: &str, left: Kind, right: Kind) -> Kind {
                 _ => None,
             };
             match exact {
-                Some(value) => Kind::Int(value),
+                Some(value) => LuaKind::Int(value),
                 // `/` is a float in Lua whatever its operands, and an overflow becomes one too.
                 None => float_arithmetic(operator, a as f64, b as f64),
             }
         }
-        ("+" | "-" | "*" | "/", a @ (Kind::Int(_) | Kind::Float(_)), b @ (Kind::Int(_) | Kind::Float(_))) => {
-            float_arithmetic(operator, as_float(&a), as_float(&b))
-        }
+        (
+            "+" | "-" | "*" | "/",
+            a @ (LuaKind::Int(_) | LuaKind::Float(_)),
+            b @ (LuaKind::Int(_) | LuaKind::Float(_)),
+        ) => float_arithmetic(operator, as_float(&a), as_float(&b)),
         _ => unsupported(),
     }
 }
 
-fn as_float(kind: &Kind) -> f64 {
+fn as_float(kind: &LuaKind) -> f64 {
     match kind {
-        Kind::Int(value) => *value as f64,
-        Kind::Float(value) => *value,
+        LuaKind::Int(value) => *value as f64,
+        LuaKind::Float(value) => *value,
         _ => 0.0,
     }
 }
 
-fn float_arithmetic(operator: &str, a: f64, b: f64) -> Kind {
+fn float_arithmetic(operator: &str, a: f64, b: f64) -> LuaKind {
     let value = match operator {
         "+" => a + b,
         "-" => a - b,
@@ -417,9 +419,9 @@ fn float_arithmetic(operator: &str, a: f64, b: f64) -> Kind {
         _ => a / b,
     };
     if value.is_finite() {
-        Kind::Float(value)
+        LuaKind::Float(value)
     } else {
-        Kind::Failed("a number out of range".to_owned())
+        LuaKind::Failed("a number out of range".to_owned())
     }
 }
 
@@ -435,7 +437,7 @@ pub(crate) fn dotted_path<'a>(
     };
     let mut path = vec![name.token().to_string()];
     let empty = HashMap::new();
-    let scope = Scope {
+    let scope = LuaScope {
         locals: &empty,
         globals: &empty,
     };
@@ -467,7 +469,7 @@ pub(crate) fn call_target<'a>(
 }
 
 /// The arguments of a call, each lowered: `f(a, b)` has two, `f "text"` one string, `f { ... }` one table.
-pub(crate) fn lower_args(file: &SourceFile<'_>, scope: &Scope<'_>, args: &FunctionArgs) -> Vec<Lv> {
+pub(crate) fn lower_args(file: &SourceFile<'_>, scope: &LuaScope<'_>, args: &FunctionArgs) -> Vec<Lv> {
     match args {
         FunctionArgs::Parentheses { arguments, .. } => arguments.iter().map(|expr| lower(file, scope, expr)).collect(),
         FunctionArgs::String(token) => vec![Lv {
@@ -501,7 +503,7 @@ mod tests {
             source: &text,
         };
         let empty = HashMap::new();
-        let scope = Scope {
+        let scope = LuaScope {
             locals: &empty,
             globals: &empty,
         };
@@ -509,42 +511,42 @@ mod tests {
         lower(&file, &scope, expr)
     }
 
-    fn kind(source: &str) -> Kind {
+    fn kind(source: &str) -> LuaKind {
         value(source).kind
     }
 
     #[test]
     fn literals_are_static() {
-        assert_eq!(kind("\"click\""), Kind::Str("click".to_owned()));
-        assert_eq!(kind("'a b'"), Kind::Str("a b".to_owned()));
-        assert_eq!(kind("5000"), Kind::Int(5000));
-        assert_eq!(kind("0x1F"), Kind::Int(31));
-        assert_eq!(kind("0.5"), Kind::Float(0.5));
-        assert_eq!(kind("1e3"), Kind::Float(1000.0));
-        assert_eq!(kind("true"), Kind::Bool(true));
-        assert_eq!(kind("nil"), Kind::Nil);
-        assert_eq!(kind("(7)"), Kind::Int(7));
+        assert_eq!(kind("\"click\""), LuaKind::Str("click".to_owned()));
+        assert_eq!(kind("'a b'"), LuaKind::Str("a b".to_owned()));
+        assert_eq!(kind("5000"), LuaKind::Int(5000));
+        assert_eq!(kind("0x1F"), LuaKind::Int(31));
+        assert_eq!(kind("0.5"), LuaKind::Float(0.5));
+        assert_eq!(kind("1e3"), LuaKind::Float(1000.0));
+        assert_eq!(kind("true"), LuaKind::Bool(true));
+        assert_eq!(kind("nil"), LuaKind::Nil);
+        assert_eq!(kind("(7)"), LuaKind::Int(7));
     }
 
     #[test]
     fn strings_decode_their_escapes_and_long_strings_stay_raw() {
-        assert_eq!(kind(r#""a\nb\t\"q\"\\""#), Kind::Str("a\nb\t\"q\"\\".to_owned()));
-        assert_eq!(kind(r#""\x41\65\u{e9}""#), Kind::Str("AA\u{e9}".to_owned()));
-        assert_eq!(kind("[[^org%.x$]]"), Kind::Str("^org%.x$".to_owned()));
-        assert_eq!(kind("[==[a]]b]==]"), Kind::Str("a]]b".to_owned()));
-        assert_eq!(kind("[[\nfirst]]"), Kind::Str("first".to_owned()));
-        assert!(matches!(kind(r#""\xff""#), Kind::Failed(_)));
+        assert_eq!(kind(r#""a\nb\t\"q\"\\""#), LuaKind::Str("a\nb\t\"q\"\\".to_owned()));
+        assert_eq!(kind(r#""\x41\65\u{e9}""#), LuaKind::Str("AA\u{e9}".to_owned()));
+        assert_eq!(kind("[[^org%.x$]]"), LuaKind::Str("^org%.x$".to_owned()));
+        assert_eq!(kind("[==[a]]b]==]"), LuaKind::Str("a]]b".to_owned()));
+        assert_eq!(kind("[[\nfirst]]"), LuaKind::Str("first".to_owned()));
+        assert!(matches!(kind(r#""\xff""#), LuaKind::Failed(_)));
     }
 
     #[test]
     fn arithmetic_of_numbers_and_joined_strings_are_static() {
-        assert_eq!(kind("5 * 1000"), Kind::Int(5000));
-        assert_eq!(kind("-3"), Kind::Int(-3));
-        assert_eq!(kind("-0.5"), Kind::Float(-0.5));
-        assert_eq!(kind("1 / 4"), Kind::Float(0.25));
-        assert_eq!(kind("2 + 0.5"), Kind::Float(2.5));
-        assert_eq!(kind("\"a\" .. \"b\""), Kind::Str("ab".to_owned()));
-        assert_eq!(kind("not false"), Kind::Bool(true));
+        assert_eq!(kind("5 * 1000"), LuaKind::Int(5000));
+        assert_eq!(kind("-3"), LuaKind::Int(-3));
+        assert_eq!(kind("-0.5"), LuaKind::Float(-0.5));
+        assert_eq!(kind("1 / 4"), LuaKind::Float(0.25));
+        assert_eq!(kind("2 + 0.5"), LuaKind::Float(2.5));
+        assert_eq!(kind("\"a\" .. \"b\""), LuaKind::Str("ab".to_owned()));
+        assert_eq!(kind("not false"), LuaKind::Bool(true));
     }
 
     #[test]
@@ -558,7 +560,7 @@ mod tests {
             "#list",
             "unknown",
         ] {
-            assert!(matches!(kind(source), Kind::Failed(_)), "{source}");
+            assert!(matches!(kind(source), LuaKind::Failed(_)), "{source}");
         }
     }
 
@@ -570,12 +572,12 @@ mod tests {
         let fields = table.fields().expect("a table");
         assert_eq!(fields.len(), 2);
         assert_eq!(fields[0].key, "a");
-        assert_eq!(fields[0].value.kind, Kind::Int(2), "the later `a` wins");
+        assert_eq!(fields[0].value.kind, LuaKind::Int(2), "the later `a` wins");
         assert_eq!(fields[1].key, "b-c");
-        assert!(matches!(kind("{ 1, a = 2 }"), Kind::Failed(_)));
+        assert!(matches!(kind("{ 1, a = 2 }"), LuaKind::Failed(_)));
         assert!(matches!(
             value("{ [f()] = 1 }").fields().expect("fields")[0].value.kind,
-            Kind::Failed(_)
+            LuaKind::Failed(_)
         ));
         assert!(value("{}").elements().is_some() && value("{}").fields().is_some());
     }
@@ -586,7 +588,7 @@ mod tests {
         let fields = table.fields().expect("a table");
         assert_eq!(fields[1].span.line, 3);
         assert_eq!(fields[1].span.text, "b = f()");
-        assert!(matches!(fields[1].value.kind, Kind::Failed(_)));
+        assert!(matches!(fields[1].value.kind, LuaKind::Failed(_)));
         assert_eq!(fields[1].value.span.text, "f()");
     }
 
@@ -612,7 +614,7 @@ mod tests {
         let empty = HashMap::new();
         let bound = value("42");
         locals.insert("limit".to_owned(), bound.clone());
-        let scope = Scope {
+        let scope = LuaScope {
             locals: &locals,
             globals: &empty,
         };

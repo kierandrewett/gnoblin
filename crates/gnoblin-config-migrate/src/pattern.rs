@@ -68,7 +68,7 @@ enum Atom {
 }
 
 /// One item and its repeat.
-struct Item {
+struct PatternItem {
     atom: Atom,
     repeat: Repeat,
 }
@@ -77,7 +77,7 @@ struct Item {
 struct Parsed {
     start: bool,
     end: bool,
-    items: Vec<Item>,
+    items: Vec<PatternItem>,
 }
 
 /// Translates a Lua pattern. See the module documentation for what is supported.
@@ -137,7 +137,7 @@ fn parse(pattern: &str) -> Result<Parsed, String> {
             }
             i += 1;
         }
-        items.push(Item { atom, repeat });
+        items.push(PatternItem { atom, repeat });
     }
     if depth != 0 {
         return Err("an unclosed `(`".to_owned());

@@ -14,7 +14,7 @@ use full_moon::ast::{Assignment, Block, FunctionCall, LocalAssignment, Stmt, Var
 use full_moon::node::Node;
 
 use crate::chord::{ChordTranslation, translate_chord};
-use crate::lua::{self, Field, Kind, Lv, Scope, SourceFile, Span};
+use crate::lua::{self, LuaField, LuaKind, LuaScope, Lv, SourceFile, Span};
 use crate::names;
 use crate::pattern::{PatternTranslation, translate_lua_pattern};
 use crate::value::{self, COMMENT, Val};
@@ -58,27 +58,29 @@ const STOCK_WORKSPACES: &[&str] = &["1", "2", "3", "4"];
 
 /// A command to start: a command line the runtime splits on spaces, or the program and its arguments.
 #[derive(Clone, Debug, PartialEq)]
-enum Command {
+enum StartCommand {
     Line(String),
     Argv(Vec<String>),
 }
 
-impl Command {
+impl StartCommand {
     /// What identifies the command: the program and its arguments.
     fn identity(&self) -> Vec<String> {
         match self {
-            Command::Line(line) => line.split_whitespace().map(str::to_owned).collect(),
-            Command::Argv(argv) => argv.clone(),
+            StartCommand::Line(line) => line.split_whitespace().map(str::to_owned).collect(),
+            StartCommand::Argv(argv) => argv.clone(),
         }
     }
 
     fn value(&self) -> Val {
         match self {
-            Command::Line(line) => Val::Str(line.clone()),
-            Command::Argv(argv) if argv.len() == 1 && !argv[0].is_empty() && !argv[0].contains(char::is_whitespace) => {
+            StartCommand::Line(line) => Val::Str(line.clone()),
+            StartCommand::Argv(argv)
+                if argv.len() == 1 && !argv[0].is_empty() && !argv[0].contains(char::is_whitespace) =>
+            {
                 Val::Str(argv[0].clone())
             }
-            Command::Argv(argv) => Val::List(argv.iter().cloned().map(Val::Str).collect()),
+            StartCommand::Argv(argv) => Val::List(argv.iter().cloned().map(Val::Str).collect()),
         }
     }
 }
@@ -87,7 +89,7 @@ impl Command {
 struct AutostartItem {
     name: Option<String>,
     span: Span,
-    command: Option<Command>,
+    command: Option<StartCommand>,
     enabled: bool,
 }
 
@@ -251,19 +253,19 @@ impl<'a> Engine<'a> {
     /// A value of a section as a `Val`: a comment for what cannot be converted.
     fn convert_value(&mut self, lv: &Lv) -> Val {
         match &lv.kind {
-            Kind::Str(text) => Val::Str(text.clone()),
-            Kind::Int(number) => Val::Int(*number),
-            Kind::Float(number) => Val::Float(*number),
-            Kind::Bool(flag) => Val::Bool(*flag),
-            Kind::Nil => Val::Note(self.report(&lv.span, "nil leaves a hole in a list", CONSTRUCTS)),
-            Kind::List(items) => {
+            LuaKind::Str(text) => Val::Str(text.clone()),
+            LuaKind::Int(number) => Val::Int(*number),
+            LuaKind::Float(number) => Val::Float(*number),
+            LuaKind::Bool(flag) => Val::Bool(*flag),
+            LuaKind::Nil => Val::Note(self.report(&lv.span, "nil leaves a hole in a list", CONSTRUCTS)),
+            LuaKind::List(items) => {
                 let mut out = Vec::with_capacity(items.len());
                 for item in items {
                     out.push(self.convert_value(item));
                 }
                 Val::List(out)
             }
-            Kind::Table(fields) => {
+            LuaKind::Table(fields) => {
                 let mut entries = Vec::with_capacity(fields.len());
                 for field in fields {
                     if let Some(entry) = self.field_entry(field) {
@@ -272,18 +274,18 @@ impl<'a> Engine<'a> {
                 }
                 Val::Map(entries)
             }
-            Kind::Failed(reason) => Val::Note(self.report(&lv.span, reason, LIMITS)),
+            LuaKind::Failed(reason) => Val::Note(self.report(&lv.span, reason, LIMITS)),
         }
     }
 
     /// One field of a section as an entry of the output, or `None` for a field set to `nil`.
-    fn field_entry(&mut self, field: &Field) -> Option<(String, Val)> {
+    fn field_entry(&mut self, field: &LuaField) -> Option<(String, Val)> {
         match &field.value.kind {
-            Kind::Failed(reason) => {
+            LuaKind::Failed(reason) => {
                 let lines = self.report(&field.span, reason, LIMITS);
                 Some((COMMENT.to_owned(), Val::Note(lines)))
             }
-            Kind::Nil => None,
+            LuaKind::Nil => None,
             _ => {
                 let key = names::setting_name(&field.key);
                 if key == field.key && field.key.bytes().any(|b| b.is_ascii_uppercase()) {
@@ -397,7 +399,7 @@ impl<'a> Engine<'a> {
             "gnoblin.configure" => {
                 let args = lua::lower_args(
                     file,
-                    &Scope {
+                    &LuaScope {
                         locals,
                         globals: &self.globals,
                     },
@@ -407,7 +409,7 @@ impl<'a> Engine<'a> {
                     [only] if only.fields().is_some() => self.configure(file, only),
                     [only] => {
                         let reason = match &only.kind {
-                            Kind::Failed(reason) => reason.clone(),
+                            LuaKind::Failed(reason) => reason.clone(),
                             _ => format!("`gnoblin.configure` takes a table, not {}", only.describe()),
                         };
                         self.leave_out(&file.name, &span, &reason, LIMITS);
@@ -418,7 +420,7 @@ impl<'a> Engine<'a> {
             "gnoblin.load" => {
                 let args = lua::lower_args(
                     file,
-                    &Scope {
+                    &LuaScope {
                         locals,
                         globals: &self.globals,
                     },
@@ -487,17 +489,17 @@ impl<'a> Engine<'a> {
             let value = match expressions.get(index) {
                 None => Lv {
                     span: file.span(token),
-                    kind: Kind::Nil,
+                    kind: LuaKind::Nil,
                 },
                 Some(expr) => {
-                    let scope = Scope {
+                    let scope = LuaScope {
                         locals: &*locals,
                         globals: &self.globals,
                     };
                     lua::lower(file, &scope, expr)
                 }
             };
-            if let Kind::Failed(reason) = &value.kind {
+            if let LuaKind::Failed(reason) = &value.kind {
                 failure.get_or_insert_with(|| reason.clone());
                 locals.remove(&name);
             } else {
@@ -523,14 +525,14 @@ impl<'a> Engine<'a> {
             return;
         };
         let value = {
-            let scope = Scope {
+            let scope = LuaScope {
                 locals,
                 globals: &self.globals,
             };
             lua::lower(file, &scope, expr)
         };
         let span = file.span(stmt);
-        if let Kind::Failed(reason) = &value.kind {
+        if let LuaKind::Failed(reason) = &value.kind {
             if let Var::Name(token) = variable {
                 self.globals.remove(&token.token().to_string());
             }
@@ -607,17 +609,17 @@ impl<'a> Engine<'a> {
         }
     }
 
-    fn field_left_out(&mut self, file: &SourceFile<'_>, field: &Field, reason: &str) {
+    fn field_left_out(&mut self, file: &SourceFile<'_>, field: &LuaField, reason: &str) {
         self.leave_out(&file.name, &field.span, reason, CONSTRUCTS);
     }
 
-    fn section(&mut self, file: &SourceFile<'_>, field: &Field) {
+    fn section(&mut self, file: &SourceFile<'_>, field: &LuaField) {
         match &field.value.kind {
-            Kind::Failed(reason) => {
+            LuaKind::Failed(reason) => {
                 self.leave_out(&file.name, &field.span, reason, LIMITS);
                 return;
             }
-            Kind::Nil => return,
+            LuaKind::Nil => return,
             _ => {}
         }
         let key = field.key.as_str();
@@ -659,7 +661,7 @@ impl<'a> Engine<'a> {
 
     // --- workspaces --------------------------------------------------------------------------------------------
 
-    fn section_workspaces(&mut self, file: &SourceFile<'_>, field: &Field) {
+    fn section_workspaces(&mut self, file: &SourceFile<'_>, field: &LuaField) {
         let Some(items) = field.value.elements() else {
             self.field_left_out(file, field, "`workspaces` is a list of tables with an id and a name");
             return;
@@ -676,7 +678,7 @@ impl<'a> Engine<'a> {
     fn workspace(&mut self, item: &Lv, seen: &mut Vec<String>) -> Val {
         let Some(fields) = item.fields() else {
             let reason = match &item.kind {
-                Kind::Failed(reason) => reason.clone(),
+                LuaKind::Failed(reason) => reason.clone(),
                 _ => "a workspace is a table with an id and a name".to_owned(),
             };
             return Val::Note(self.report(&item.span, &reason, CONSTRUCTS));
@@ -685,10 +687,10 @@ impl<'a> Engine<'a> {
         let mut id: Option<String> = None;
         for field in fields {
             match (field.key.as_str(), &field.value.kind) {
-                ("id", Kind::Str(text)) if !text.is_empty() => id = Some(text.clone()),
-                ("name", Kind::Str(text)) => entries.push(("name".to_owned(), Val::Str(text.clone()))),
-                (_, Kind::Nil) => {}
-                (_, Kind::Failed(reason)) => {
+                ("id", LuaKind::Str(text)) if !text.is_empty() => id = Some(text.clone()),
+                ("name", LuaKind::Str(text)) => entries.push(("name".to_owned(), Val::Str(text.clone()))),
+                (_, LuaKind::Nil) => {}
+                (_, LuaKind::Failed(reason)) => {
                     let lines = self.report(&field.span, reason, LIMITS);
                     entries.push((COMMENT.to_owned(), Val::Note(lines)));
                 }
@@ -718,7 +720,7 @@ impl<'a> Engine<'a> {
 
     // --- autostart ---------------------------------------------------------------------------------------------
 
-    fn section_autostart(&mut self, file: &SourceFile<'_>, field: &Field) {
+    fn section_autostart(&mut self, file: &SourceFile<'_>, field: &LuaField) {
         let Some(fields) = field.value.fields() else {
             // A list of commands.
             match field.value.elements() {
@@ -745,8 +747,8 @@ impl<'a> Engine<'a> {
         let mut list = Vec::new();
         for item in items {
             let command = match &item.kind {
-                Kind::Str(line) if !line.trim().is_empty() => Some(Command::Line(line.clone())),
-                Kind::Failed(reason) => {
+                LuaKind::Str(line) if !line.trim().is_empty() => Some(StartCommand::Line(line.clone())),
+                LuaKind::Failed(reason) => {
                     self.leave_out(&file.name, &item.span, reason, LIMITS);
                     None
                 }
@@ -765,10 +767,10 @@ impl<'a> Engine<'a> {
         self.reserve(&file.name, "autostart");
     }
 
-    fn autostart_entry(&mut self, file: &SourceFile<'_>, entry: &Field, table: &mut Vec<AutostartItem>) {
-        if entry.key.is_empty() || matches!(entry.value.kind, Kind::Failed(_)) {
+    fn autostart_entry(&mut self, file: &SourceFile<'_>, entry: &LuaField, table: &mut Vec<AutostartItem>) {
+        if entry.key.is_empty() || matches!(entry.value.kind, LuaKind::Failed(_)) {
             let reason = match &entry.value.kind {
-                Kind::Failed(reason) => reason.clone(),
+                LuaKind::Failed(reason) => reason.clone(),
                 _ => "an autostart entry needs a name".to_owned(),
             };
             self.leave_out(&file.name, &entry.span, &reason, LIMITS);
@@ -796,15 +798,15 @@ impl<'a> Engine<'a> {
         table[at].span = entry.span.clone();
         for setting in fields {
             match (setting.key.as_str(), &setting.value.kind) {
-                (_, Kind::Nil) => {}
-                (_, Kind::Failed(reason)) => self.leave_out(&file.name, &setting.span, reason, LIMITS),
+                (_, LuaKind::Nil) => {}
+                (_, LuaKind::Failed(reason)) => self.leave_out(&file.name, &setting.span, reason, LIMITS),
                 ("command", _) => {
                     if let Some(command) = self.command_of(file, &setting.value) {
                         table[at].command = Some(command);
                     }
                 }
-                ("enable", Kind::Bool(flag)) => table[at].enabled = *flag,
-                ("when", Kind::Str(when)) if when == "on_login" => {}
+                ("enable", LuaKind::Bool(flag)) => table[at].enabled = *flag,
+                ("when", LuaKind::Str(when)) if when == "on_login" => {}
                 (key, _) => {
                     let reason = format!("`{key}` is not read: an autostart entry has a command and `enable`");
                     self.field_left_out(file, setting, &reason);
@@ -814,13 +816,15 @@ impl<'a> Engine<'a> {
     }
 
     /// A command given as an argv, or as one command line.
-    fn command_of(&mut self, file: &SourceFile<'_>, value: &Lv) -> Option<Command> {
+    fn command_of(&mut self, file: &SourceFile<'_>, value: &Lv) -> Option<StartCommand> {
         match &value.kind {
-            Kind::Str(line) if !line.trim().is_empty() => Some(Command::Line(line.clone())),
-            Kind::List(items) => {
+            LuaKind::Str(line) if !line.trim().is_empty() => Some(StartCommand::Line(line.clone())),
+            LuaKind::List(items) => {
                 let argv: Option<Vec<String>> = items.iter().map(|item| item.as_str().map(str::to_owned)).collect();
                 match argv {
-                    Some(argv) if argv.first().is_some_and(|program| !program.is_empty()) => Some(Command::Argv(argv)),
+                    Some(argv) if argv.first().is_some_and(|program| !program.is_empty()) => {
+                        Some(StartCommand::Argv(argv))
+                    }
                     _ => {
                         self.leave_out(
                             &file.name,
@@ -845,7 +849,7 @@ impl<'a> Engine<'a> {
 
     // --- shortcuts ---------------------------------------------------------------------------------------------
 
-    fn section_shortcuts(&mut self, file: &SourceFile<'_>, field: &Field, section: KeySection) {
+    fn section_shortcuts(&mut self, file: &SourceFile<'_>, field: &LuaField, section: KeySection) {
         let Some(entries) = field.value.fields() else {
             let reason = format!("`{}` is a table of shortcuts by name", section.name());
             self.field_left_out(file, field, &reason);
@@ -859,10 +863,10 @@ impl<'a> Engine<'a> {
         }
     }
 
-    fn shortcut(&mut self, file: &SourceFile<'_>, entry: &Field, section: KeySection) {
-        if entry.key.is_empty() || matches!(entry.value.kind, Kind::Failed(_)) {
+    fn shortcut(&mut self, file: &SourceFile<'_>, entry: &LuaField, section: KeySection) {
+        if entry.key.is_empty() || matches!(entry.value.kind, LuaKind::Failed(_)) {
             let reason = match &entry.value.kind {
-                Kind::Failed(reason) => reason.clone(),
+                LuaKind::Failed(reason) => reason.clone(),
                 _ => "a shortcut needs a name".to_owned(),
             };
             self.leave_out(&file.name, &entry.span, &reason, LIMITS);
@@ -901,9 +905,9 @@ impl<'a> Engine<'a> {
         self.shortcuts[at].span = entry.span.clone();
         for setting in fields {
             match (setting.key.as_str(), &setting.value.kind) {
-                (_, Kind::Nil) => {}
-                (_, Kind::Failed(reason)) => self.leave_out(&file.name, &setting.span, reason, LIMITS),
-                ("binding", Kind::Str(chord)) => {
+                (_, LuaKind::Nil) => {}
+                (_, LuaKind::Failed(reason)) => self.leave_out(&file.name, &setting.span, reason, LIMITS),
+                ("binding", LuaKind::Str(chord)) => {
                     self.shortcuts[at].binding = Some((chord.clone(), setting.span.clone()));
                 }
                 ("command", _) => {
@@ -911,10 +915,10 @@ impl<'a> Engine<'a> {
                         self.shortcuts[at].command = Some(argv);
                     }
                 }
-                ("trigger", Kind::Str(edge)) if edge == "press" || edge == "release" => {
+                ("trigger", LuaKind::Str(edge)) if edge == "press" || edge == "release" => {
                     self.shortcuts[at].release = edge == "release";
                 }
-                ("enable", Kind::Bool(flag)) => self.shortcuts[at].enabled = *flag,
+                ("enable", LuaKind::Bool(flag)) => self.shortcuts[at].enabled = *flag,
                 (key @ ("binding" | "trigger" | "enable"), _) => {
                     let reason = format!("`{key}` is not the kind of value a shortcut takes");
                     self.field_left_out(file, setting, &reason);
@@ -930,8 +934,8 @@ impl<'a> Engine<'a> {
     /// The argv of a shortcut's command: a list of strings, or one word.
     fn shortcut_command(&mut self, file: &SourceFile<'_>, value: &Lv) -> Option<Vec<String>> {
         match &value.kind {
-            Kind::Str(word) if !word.is_empty() && !word.contains(char::is_whitespace) => Some(vec![word.clone()]),
-            Kind::Str(_) => {
+            LuaKind::Str(word) if !word.is_empty() && !word.contains(char::is_whitespace) => Some(vec![word.clone()]),
+            LuaKind::Str(_) => {
                 self.leave_out(
                     &file.name,
                     &value.span,
@@ -941,7 +945,7 @@ impl<'a> Engine<'a> {
                 None
             }
             _ => match self.command_of(file, value) {
-                Some(Command::Argv(argv)) => Some(argv),
+                Some(StartCommand::Argv(argv)) => Some(argv),
                 _ => None,
             },
         }
@@ -965,7 +969,7 @@ impl<'a> Engine<'a> {
     fn rule(&mut self, item: &Lv) -> RuleOut {
         let Some(fields) = item.fields() else {
             let reason = match &item.kind {
-                Kind::Failed(reason) => reason.clone(),
+                LuaKind::Failed(reason) => reason.clone(),
                 _ => "a rule is a table".to_owned(),
             };
             return RuleOut::Note(self.report(&item.span, &reason, CONSTRUCTS));
@@ -975,24 +979,24 @@ impl<'a> Engine<'a> {
         let mut has_query = false;
         for field in fields {
             match (field.key.as_str(), &field.value.kind) {
-                (_, Kind::Nil) => {}
+                (_, LuaKind::Nil) => {}
                 ("match", _) => match self.rule_match(item, field, &mut entries) {
                     Ok(found) => has_query = found,
                     Err(note) => return RuleOut::Note(note),
                 },
-                (_, Kind::Failed(reason)) => {
+                (_, LuaKind::Failed(reason)) => {
                     self.report(&field.span, reason, LIMITS);
                 }
-                ("workspace", Kind::Str(id)) if !id.is_empty() => {
+                ("workspace", LuaKind::Str(id)) if !id.is_empty() => {
                     entries.push(("workspace", Val::Str(id.clone())));
                     workspace = Some((id.clone(), field.span.clone()));
                 }
-                ("workspace", Kind::Table(_)) => {
+                ("workspace", LuaKind::Table(_)) => {
                     match field.value.fields().and_then(|f| f.iter().find(|x| x.key == "id")) {
-                        Some(Field {
+                        Some(LuaField {
                             value:
                                 Lv {
-                                    kind: Kind::Str(id), ..
+                                    kind: LuaKind::Str(id), ..
                                 },
                             ..
                         }) if !id.is_empty() => {
@@ -1002,14 +1006,14 @@ impl<'a> Engine<'a> {
                         _ => self.field_dropped(field, "workspace is a table with the id of a workspace"),
                     }
                 }
-                (key @ ("maximised" | "fullscreen" | "secure"), Kind::Bool(flag)) => {
+                (key @ ("maximised" | "fullscreen" | "secure"), LuaKind::Bool(flag)) => {
                     let key = static_key(key);
                     entries.push((key, Val::Bool(*flag)));
                 }
-                ("opacity", Kind::Int(_) | Kind::Float(_)) => {
+                ("opacity", LuaKind::Int(_) | LuaKind::Float(_)) => {
                     let opacity = match field.value.kind {
-                        Kind::Int(number) => number as f64,
-                        Kind::Float(number) => number,
+                        LuaKind::Int(number) => number as f64,
+                        LuaKind::Float(number) => number,
                         _ => 0.0,
                     };
                     if (0.0..=1.0).contains(&opacity) {
@@ -1061,7 +1065,7 @@ impl<'a> Engine<'a> {
     }
 
     /// Lists a rule field as left out. The rule keeps its other fields: a field of an action only narrows the rule.
-    fn field_dropped(&mut self, field: &Field, reason: &str) {
+    fn field_dropped(&mut self, field: &LuaField, reason: &str) {
         self.report(&field.span, reason, CONSTRUCTS);
     }
 
@@ -1070,12 +1074,12 @@ impl<'a> Engine<'a> {
     fn rule_match(
         &mut self,
         rule: &Lv,
-        field: &Field,
+        field: &LuaField,
         entries: &mut Vec<(&'static str, Val)>,
     ) -> Result<bool, Vec<String>> {
         let Some(keys) = field.value.fields() else {
             let why = match &field.value.kind {
-                Kind::Failed(why) => why.clone(),
+                LuaKind::Failed(why) => why.clone(),
                 _ => "`match` is a table".to_owned(),
             };
             let reason = format!("the rule at line {} was left out: {why}", rule.span.line);
@@ -1088,12 +1092,12 @@ impl<'a> Engine<'a> {
                 this.report(&key.span, &reason, CONSTRUCTS)
             };
             match (key.key.as_str(), &key.value.kind) {
-                (_, Kind::Nil) => {}
-                (_, Kind::Failed(reason)) => {
+                (_, LuaKind::Nil) => {}
+                (_, LuaKind::Failed(reason)) => {
                     let reason = format!("the rule at line {} was left out: {reason}", rule.span.line);
                     return Err(self.report(&key.span, &reason, LIMITS));
                 }
-                (name @ ("app_id" | "title"), Kind::Str(pattern)) => {
+                (name @ ("app_id" | "title"), LuaKind::Str(pattern)) => {
                     let target = if name == "app_id" { "appId" } else { "title" };
                     match translate_lua_pattern(pattern) {
                         PatternTranslation::Unmapped(why) => {
@@ -1108,11 +1112,11 @@ impl<'a> Engine<'a> {
                         }
                     }
                 }
-                ("focused", Kind::Bool(flag)) => {
+                ("focused", LuaKind::Bool(flag)) => {
                     entries.push(("focused", Val::Bool(*flag)));
                     found = true;
                 }
-                ("workspace_id", Kind::Str(id)) if !id.is_empty() => {
+                ("workspace_id", LuaKind::Str(id)) if !id.is_empty() => {
                     entries.push(("onWorkspace", Val::Str(id.clone())));
                     found = true;
                 }
@@ -1147,7 +1151,7 @@ impl<'a> Engine<'a> {
     fn workspace_set(&mut self, item: &Lv) -> SetOut {
         let Some(fields) = item.fields() else {
             let reason = match &item.kind {
-                Kind::Failed(reason) => reason.clone(),
+                LuaKind::Failed(reason) => reason.clone(),
                 _ => "a workspace set is a table with a name and entries".to_owned(),
             };
             return SetOut::Note(self.report(&item.span, &reason, CONSTRUCTS));
@@ -1156,7 +1160,7 @@ impl<'a> Engine<'a> {
         let mut entries: Vec<(String, Option<String>)> = Vec::new();
         for field in fields {
             match (field.key.as_str(), &field.value.kind) {
-                ("name", Kind::Str(text)) => name = Some(text.clone()),
+                ("name", LuaKind::Str(text)) => name = Some(text.clone()),
                 ("entries", _) => match self.set_entries(&field.value) {
                     Ok(list) => entries = list,
                     Err(why) => {
@@ -1164,8 +1168,8 @@ impl<'a> Engine<'a> {
                         return SetOut::Note(self.report(&field.span, &reason, CONSTRUCTS));
                     }
                 },
-                (_, Kind::Nil) => {}
-                (_, Kind::Failed(reason)) => {
+                (_, LuaKind::Nil) => {}
+                (_, LuaKind::Failed(reason)) => {
                     let reason = format!("the set at line {} was left out: {reason}", item.span.line);
                     return SetOut::Note(self.report(&field.span, &reason, LIMITS));
                 }
@@ -1202,10 +1206,10 @@ impl<'a> Engine<'a> {
             let mut output: Option<String> = None;
             for field in fields {
                 match (field.key.as_str(), &field.value.kind) {
-                    ("workspace", Kind::Str(id)) => workspace = Some(id.clone()),
-                    ("workspace", Kind::Int(id)) => workspace = Some(id.to_string()),
-                    ("output", Kind::Str(name)) => output = Some(name.clone()),
-                    (_, Kind::Nil) => {}
+                    ("workspace", LuaKind::Str(id)) => workspace = Some(id.clone()),
+                    ("workspace", LuaKind::Int(id)) => workspace = Some(id.to_string()),
+                    ("output", LuaKind::Str(name)) => output = Some(name.clone()),
+                    (_, LuaKind::Nil) => {}
                     (key, _) => {
                         return Err(format!(
                             "`{key}` is not an entry key: an entry has a workspace and an output"

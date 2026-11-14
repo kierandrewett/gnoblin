@@ -258,14 +258,14 @@ pub(crate) fn run(request: &MigrateRequest, out: &mut dyn Write, err: &mut dyn W
 }
 
 /// Why a file in the way is not written over.
-struct Refusal {
+struct WriteRefusal {
     path: PathBuf,
     why: String,
 }
 
-fn overwrite_refusal(target: &Path) -> Option<Refusal> {
+fn overwrite_refusal(target: &Path) -> Option<WriteRefusal> {
     if target.exists() {
-        return Some(Refusal {
+        return Some(WriteRefusal {
             path: target.to_path_buf(),
             why: "the shell would keep reading it".to_owned(),
         });
@@ -273,7 +273,7 @@ fn overwrite_refusal(target: &Path) -> Option<Refusal> {
     // A `init.ts` written beside an `init.js` is read instead of it, as `config init` also refuses.
     let sibling = target.with_file_name(JS_INIT);
     if target.file_name().is_some_and(|name| name == TS_INIT) && sibling.exists() {
-        return Some(Refusal {
+        return Some(WriteRefusal {
             path: sibling,
             why: format!("an {TS_INIT} written here would be read instead of it"),
         });
