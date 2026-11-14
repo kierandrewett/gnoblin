@@ -2044,9 +2044,12 @@ fn protocols_and_touchpad_gestures_reach_the_compositors_document_and_a_reload_t
     });
 }
 
-/// What the compositor holds on the window node of `app` for its style: the effects as `(kind, offset_y, blur_radius,
-/// colour)` and the opacity (1 when the node holds none, which is the schema's default).
-fn style_of(ipc: &Path, app: &str) -> Option<(Vec<(String, f64, f64, String)>, f64)> {
+/// One effect as the style tests compare it: `(kind, offset_y, blur_radius, colour)`.
+type EffectRow = (String, f64, f64, String);
+
+/// What the compositor holds on the window node of `app` for its style: the effects and the opacity (1 when the node
+/// holds none, which is the schema's default).
+fn style_of(ipc: &Path, app: &str) -> Option<(Vec<EffectRow>, f64)> {
     let node = support::snapshot(ipc)
         .into_iter()
         .find(|node| node.class == "window" && node.app_id == app)?;

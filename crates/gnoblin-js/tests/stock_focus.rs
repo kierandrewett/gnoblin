@@ -987,7 +987,11 @@ struct Rig {
 impl Rig {
     fn frame(&mut self) -> Vec<String> {
         let diagnostics = self.shell.frame().expect("a frame").diagnostics;
-        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        // A rule's `cornerRadius` is kept in the client's style and noticed once as not drawn.
+        assert!(
+            diagnostics.iter().all(|d| d.starts_with("not applied: style.")),
+            "{diagnostics:?}"
+        );
         diagnostics
     }
 
