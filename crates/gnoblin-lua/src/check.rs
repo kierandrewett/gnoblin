@@ -20,7 +20,8 @@ use gnoblin_model::Graph;
 use gnoblin_schema::{Catalog, Schema, SchemaError, parse_schema};
 
 use crate::host::Host;
-use crate::role::{enabled_autostart, version};
+use crate::role::version;
+use gnoblin_config::enabled_autostart;
 
 include!(concat!(env!("OUT_DIR"), "/stock_files.rs"));
 

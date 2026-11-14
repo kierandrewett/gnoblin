@@ -33,7 +33,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use gnoblin_client::{Client, ClientError, Event, Transport};
-use gnoblin_config::{Config, ConfigPath, Report, SearchPaths, Value, locate};
+use gnoblin_config::{Config, ConfigPath, Report, SearchPaths, Value, locate_lua};
 use gnoblin_model::{
     Fields, Filter, ObjectId, ObjectView, Observation, OperationId, OperationOutcome, Tick, Value as ModelValue,
 };
@@ -530,7 +530,7 @@ impl<T: Transport + 'static> Host<T> {
     /// reported and skipped, and the rest of the document stands, which is the
     /// login behaviour the plan keeps for salvage.
     pub fn run_config(&mut self, paths: &SearchPaths) -> Result<RunReport, HostError> {
-        let path = locate(paths).map_err(HostError::Locate)?;
+        let path = locate_lua(paths).map_err(HostError::Locate)?;
         self.reset_runtime()?;
         // The shipped root is the installed prefix; the user root is the directory of the
         // configuration file being evaluated, so a `require` there resolves from one place.
@@ -627,7 +627,7 @@ impl<T: Transport + 'static> Host<T> {
                 self.restore(previous)?;
                 // The file is named only if it can be located; without a path there is nothing
                 // to name in the signal, so the refusal is returned without one.
-                if let Ok(path) = locate(paths) {
+                if let Ok(path) = locate_lua(paths) {
                     self.announce_reload_failure(path.path(), &error.to_string());
                 }
                 return Err(error);

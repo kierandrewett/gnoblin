@@ -57,6 +57,8 @@
 pub mod appearance;
 /// What a running session does when a setting changes: applied live, read at start, or unused.
 pub mod apply;
+/// Which autostart entries start, and the keyring conflict rule both runtime roles apply.
+pub mod autostart;
 /// The typed configuration document and the salvage that keeps its valid sections.
 pub mod document;
 /// The validation engine: reads one setting and reports the diagnostic for a wrong one.
@@ -88,6 +90,8 @@ pub mod generated {
     include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 }
 
+/// The enabled autostart entries of a document, and the rule against a second keyring daemon.
+pub use autostart::{enabled_autostart, keyring_conflict};
 /// The typed document, the sections it carries, and the salvage that keeps valid sections.
 pub use document::{CARRIED_SECTIONS, Config, Salvaged, TOP_LEVEL_KEYS, salvage};
 /// Generated enums, settings and the alias table, all from `schema/config.toml`.
@@ -110,7 +114,7 @@ pub use keyring::{
 /// The last-good store, its on-disk format version and its load result.
 pub use last_good::{FORMAT, Resolution, Status, Store, StoreError, StoredDocument};
 /// Config path lookup: the located path, its origin and the search order.
-pub use locate::{ConfigPath, LocateError, Origin, SearchPaths, locate};
+pub use locate::{ConfigPath, Language, LocateError, Origin, SearchPaths, locate, locate_lua};
 /// Reads the `logging` section from the environment before the subscriber exists.
 pub use logging::logging_from_environment;
 /// Merges layered documents into one, last layer wins.
