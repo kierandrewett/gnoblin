@@ -112,6 +112,21 @@ llvmpipe). The extension workspace needs none of these packages to build. The `w
 `scripts/wlcs.sh`. The XR smoke test (`scripts/xr-smoke.sh`) installs its own packages and is not part of CI on a
 hosted runner.
 
+## Full suite
+
+```sh
+cargo test --workspace --no-fail-fast
+```
+
+Run it on Agent37 through `lanes/a37-gate.sh run ID TREE test --workspace --no-fail-fast`, with the output sent to a log
+file. A warm run takes about 14 minutes there (the first run adds the build). `--no-fail-fast` makes one failure list
+every other failure instead of hiding them. Shell tests wait on observed state with generous deadlines, never on sleeps
+or on the time a fade takes; the stock config load has a wall-clock budget, so also run `cargo test -p gnoblin` with
+busy loops of twice `nproc` running beside it.
+
+A failing test is never labelled "unrelated" without a baseline run of the same test on a pristine
+`origin/rust-compositor` tree. Until the baseline is red too, the failure belongs to the change under test.
+
 ## Boundaries
 
 Keep upstream submodules at their pinned commits. Put Gnoblin overlays in
