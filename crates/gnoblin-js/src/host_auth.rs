@@ -212,10 +212,10 @@ impl JsAuth {
         self.decline_held();
         if self.claimed {
             self.claimed = false;
-            if let Some(link) = self.link.as_mut() {
-                if let Err(error) = link.release_slot(SLOT) {
-                    log::debug!(area = "auth", "{SLOT} was not released: {error}");
-                }
+            if let Some(link) = self.link.as_mut()
+                && let Err(error) = link.release_slot(SLOT)
+            {
+                log::debug!(area = "auth", "{SLOT} was not released: {error}");
             }
         }
         self.gave_up = false;
