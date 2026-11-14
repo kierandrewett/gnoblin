@@ -1,6 +1,8 @@
-// The stock overview (data/retired shell/gnoblin/shell/overview.retired shell): while it is on, every workspace is shown at full strength;
-// while it is off, all but the active workspace are dimmed. A workspace is the script's, so what is dimmed is the opacity
-// of its windows.
+// The stock overview: while it is on, every workspace is shown at full strength; while it is off, all but the active
+// workspace are dimmed. A workspace is the script's, so what is dimmed is the opacity of its windows.
+//
+// It owns the on/off flag and the opacity writes. It does not draw thumbnails or move windows. Read
+// `gnoblin/workspace` for what a workspace is.
 
 /** What the overview needs of a workspace. A `Workspace` of the host module is one. */
 export interface OverviewWorkspace {
@@ -8,13 +10,15 @@ export interface OverviewWorkspace {
     readonly clients: Iterable<{ opacity: number }>;
 }
 
-/** How strong a window of a workspace that is not shown looks when the overview is off. */
+/** How strong a window of a workspace that is not shown looks when the overview is off (0 is clear, 1 is full). */
 export const DIMMED_OPACITY = 0.4;
 
+/** The overview's switch. `toggle()` flips it and sets the opacity of every window of every workspace to match. */
 export class Overview {
     #on = false;
     readonly #workspaces: () => Iterable<OverviewWorkspace>;
 
+    /** `workspaces` is called on each toggle, so workspaces made later are covered. */
     constructor(workspaces: () => Iterable<OverviewWorkspace>) {
         this.#workspaces = workspaces;
     }

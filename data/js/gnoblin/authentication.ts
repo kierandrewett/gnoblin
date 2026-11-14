@@ -1,30 +1,9 @@
 // `gnoblin.authentication`: watch the session's polkit authentications, and refuse one by policy.
 //
-// When a program needs administrator rights, polkit asks the session's authentication agent. The compositor draws the
-// dialog itself, asks for the password in it, and checks the password with polkit's own helper
-// (`polkit-agent-helper-1`); a script is never in that path. It cannot draw the dialog, cannot read what is typed in
-// it, and cannot say that a password was right. What a script may do is watch: a shell that listens is shown each
-// request for a short window before the dialog opens, and may refuse it (a policy that only ever makes things
-// stricter).
-//
-//     import { AuthenticationListener, defineConfig } from "gnoblin";
-//
-//     class NoRoot extends AuthenticationListener {
-//         onAuthenticationRequest(request) {
-//             if (request.identities.includes("unix-user:root") && request.subject !== "pkexec") {
-//                 request.decline("only pkexec may ask for root");
-//             }
-//         }
-//     }
-//     defineConfig({ setup: (gnoblin) => gnoblin.authentication.addListener(new NoRoot()) });
-//
-// There is no `allow`, no password, and no way to give an identity: the slot the shell holds accepts only the verdict
-// `deny`, and everything else (a listener that did nothing, one that threw, one that ran out its budget, no shell at
-// all) leaves the request to the compositor's dialog. Listeners run as queued calls under the same wall-clock budget as
-// every other listener.
-//
-// The manager is a view of `gnoblin.dialogs`: the compositor offers an authentication on the same observation slot as
-// its consent and passphrase dialogs, so a shell that listens to both holds one slot.
+// The compositor draws the polkit dialog and checks the password itself; a script is never in that path. A script
+// sees each request for a short window before the dialog opens and may only decline it. This module owns the
+// listener class, the request type and the manager view. It does not own the dialog. Read `gnoblin/dialogs`
+// first: the manager is a view of `gnoblin.dialogs`, which holds the one observation slot.
 
 import type { DialogManager, DialogRequest } from "gnoblin/dialogs";
 
@@ -49,7 +28,24 @@ export interface AuthenticationRequest extends DialogRequest {
     readonly identities: readonly string[];
 }
 
-/** Watches the session's polkit authentications. Every method is optional. */
+/**
+ * Watches the session's polkit authentications. Every method is optional.
+ *
+ * A script cannot draw the dialog, read what is typed in it, or say that a password was right. The slot the shell
+ * holds accepts only the verdict `deny`: a listener that did nothing, one that threw, one that ran out its budget,
+ * and no shell at all all leave the request to the compositor's dialog. There is no `allow`, no password and no way
+ * to give an identity. Listeners run as queued calls under the same wall-clock budget as every other listener.
+ *
+ * @example
+ * class NoRoot extends AuthenticationListener {
+ *     onAuthenticationRequest(request) {
+ *         if (request.identities.includes("unix-user:root") && request.subject !== "pkexec") {
+ *             request.decline("only pkexec may ask for root");
+ *         }
+ *     }
+ * }
+ * defineConfig({ setup: (gnoblin) => gnoblin.authentication.addListener(new NoRoot()) });
+ */
 export class AuthenticationListener {
     /**
      * An authentication is about to be asked of the user. `request.decline(reason)` refuses it: polkitd is told it was
@@ -62,6 +58,7 @@ export class AuthenticationListener {
 export class AuthenticationManager {
     readonly #dialogs: DialogManager;
 
+    /** `dialogs` is the manager whose observation slot carries the authentications. */
     constructor(dialogs: DialogManager) {
         this.#dialogs = dialogs;
     }
@@ -71,6 +68,7 @@ export class AuthenticationManager {
         return this.#dialogs.authenticationListeners;
     }
 
+    /** Adds a listener. Throws a `TypeError` when `listener` is not an object. */
     addListener(listener: AuthenticationListener): void {
         if (listener === null || typeof listener !== "object") {
             throw new TypeError("gnoblin.authentication.addListener: expects an AuthenticationListener");
@@ -78,6 +76,7 @@ export class AuthenticationManager {
         this.#dialogs.addAuthenticationListener(listener);
     }
 
+    /** Removes a listener that was added. A listener that is not there is ignored. */
     removeListener(listener: AuthenticationListener): void {
         this.#dialogs.removeAuthenticationListener(listener);
     }

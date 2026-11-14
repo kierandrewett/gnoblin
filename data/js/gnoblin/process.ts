@@ -1,23 +1,10 @@
 // `gnoblin.process`: the programs a script starts, and how each one ends.
 //
-//     import { ProcessListener } from "gnoblin";
-//
-//     const job = gnoblin.process.spawn(["date", "+%H:%M"], { stdout: "capture" });
-//     job.wait().onComplete((exit) => console.log(exit?.stdout));
-//
-//     class Watch extends ProcessListener {
-//         onExit(process, code) {
-//             console.log(process.argv.join(" "), "ended with", code);
-//         }
-//     }
-//     gnoblin.process.addListener(new Watch());
-//
 // The shell's host owns the children (nothing else can reap them), so a `Process` is a handle: `alive`, `exitCode`
 // and the rest change as the host reports, once a frame, and the listeners run as queued calls under the usual
-// budget. A string is one command line for `/bin/sh`; an array is the program, found on `PATH`, and its arguments.
-// Each program starts in a process group of its own, so `kill` and `timeout` reach the programs it starts too.
-//
-// The module is plain TypeScript over the host's functions (`ProcessHost`), so it runs without a shell.
+// budget. This module owns the handle, the option checks and the listener list. It is plain TypeScript over the
+// host's functions (`ProcessHost`), so it runs without a shell. Read `gnoblin/operation` first for `Operation`,
+// which `wait()` and `kill()` return.
 
 import { Operation } from "gnoblin/operation";
 import type { OperationHost } from "gnoblin/operation";
@@ -28,6 +15,7 @@ export type StreamMode = "inherit" | "discard" | "capture";
 /** The signals `Process.kill` sends, to the process group. */
 export type ProcessSignal = "term" | "kill" | "int" | "hup" | "usr1" | "usr2" | "stop" | "cont";
 
+/** The options of `spawn`. Every one is optional; a name that is not listed is refused with a `TypeError`. */
 export interface SpawnOptions {
     /** The working directory: an absolute path. The runtime's own by default. */
     cwd?: string;
@@ -35,7 +23,9 @@ export interface SpawnOptions {
     env?: Record<string, string>;
     /** Text written to standard input, at most 1 MiB, which is then closed. Standard input is empty by default. */
     stdin?: string;
+    /** Where standard output goes. `inherit` by default. */
     stdout?: StreamMode;
+    /** Where standard error goes. `inherit` by default. */
     stderr?: StreamMode;
     /** Bytes kept from each captured stream, 0 to 4194304. 65536 by default. */
     outputLimit?: number;
@@ -53,9 +43,11 @@ export interface ProcessExit {
     readonly timedOut: boolean;
     /** What standard output held, for a stream set to `capture`; null otherwise. */
     readonly stdout: string | null;
+    /** What standard error held, for a stream set to `capture`; null otherwise. */
     readonly stderr: string | null;
     /** Standard output passed `outputLimit` and the rest was dropped. */
     readonly stdoutTruncated: boolean;
+    /** Standard error passed `outputLimit` and the rest was dropped. */
     readonly stderrTruncated: boolean;
 }
 
@@ -80,12 +72,14 @@ export interface ProcessHost extends OperationHost {
     error(code: string, target: string, message: string): Error;
 }
 
+// The values `StreamMode` and `ProcessSignal` allow, as lists to check a script's argument against.
 const STREAMS: readonly string[] = ["inherit", "discard", "capture"];
 const SIGNALS: readonly string[] = ["term", "kill", "int", "hup", "usr1", "usr2", "stop", "cont"];
 
 /** The event the host reports when a process ends. */
 export interface ExitEvent extends ProcessExit {
     kind: "exit";
+    /** The id of the process that ended. */
     id: number;
 }
 
@@ -94,8 +88,11 @@ export interface ExitEvent extends ProcessExit {
  * ended are `null` until then.
  */
 export class Process {
+    /** The id the shell gave the process. It is the handle's identity within this generation. */
     readonly id: number;
+    /** The operating system's process id. */
     readonly pid: number;
+    /** The program and its arguments. A command string is `["/bin/sh", "-c", command]`. */
     readonly argv: readonly string[];
     #table: ProcessTable;
     #exit: ProcessExit | null = null;
@@ -109,22 +106,27 @@ export class Process {
         this.argv = argv;
     }
 
+    /** True from the spawn until the host reports the end. */
     get alive(): boolean {
         return this.#exit === null;
     }
 
+    /** `running` until the host reports the end, then `exited`. */
     get status(): "running" | "exited" {
         return this.#exit === null ? "running" : "exited";
     }
 
+    /** The exit status, or null while the process runs and after a signal ended it. */
     get exitCode(): number | null {
         return this.#exit?.exitCode ?? null;
     }
 
+    /** The name of the signal that ended the process, or null. */
     get signal(): string | null {
         return this.#exit?.signal ?? null;
     }
 
+    /** True when the `timeout` option ended the process. */
     get timedOut(): boolean {
         return this.#exit?.timedOut ?? false;
     }
@@ -165,6 +167,7 @@ export class Process {
     }
 }
 
+/** Reads JSON the host produced. The host never sends malformed JSON, so a parse failure is a host bug and throws. */
 function parse(text: string): Record<string, unknown> {
     return JSON.parse(text) as Record<string, unknown>;
 }
@@ -218,6 +221,7 @@ export class ProcessTable {
     #running = new Map<number, Process>();
     #listeners: ProcessListener[] = [];
 
+    /** `host` owns the children and the clock; the table only keeps the handles and the listeners. */
     constructor(host: ProcessHost) {
         this.#host = host;
     }
@@ -258,6 +262,7 @@ export class ProcessTable {
         return this.#running.get(id) ?? null;
     }
 
+    /** Adds a listener once. Throws a `TypeError` when `listener` is not an object. */
     addListener(listener: ProcessListener): void {
         if (listener === null || typeof listener !== "object") {
             throw new TypeError("gnoblin.process.addListener: expects a ProcessListener");
@@ -267,6 +272,7 @@ export class ProcessTable {
         }
     }
 
+    /** Removes a listener. A listener that is not there is ignored. */
     removeListener(listener: ProcessListener): void {
         const index = this.#listeners.indexOf(listener);
         if (index >= 0) {
@@ -294,10 +300,12 @@ export class ProcessTable {
         }
     }
 
+    /** The operation behind `Process.wait`. Only a `Process` calls this. */
     waitOperation(process: Process): Operation<ProcessExit> {
         return new Operation<ProcessExit>(this.#host, this.#host.operationId(), `process.wait#${process.id}`);
     }
 
+    /** Sends `signal` to the process group. The host's answer decides: `not_found` once the process has ended. */
     killOperation(process: Process, signal: ProcessSignal): Operation<null> {
         if (typeof signal !== "string" || !SIGNALS.includes(signal)) {
             throw new TypeError(`process.kill: the signal is one of ${SIGNALS.join(", ")}`);
@@ -314,6 +322,7 @@ export class ProcessTable {
     }
 }
 
+/** The name of a listener's class, for the report when one of its calls throws; `listener` when it has none. */
 function describe(listener: object): string {
     const name: string | undefined = listener.constructor?.name;
     return name !== undefined && name !== "" ? name : "listener";
