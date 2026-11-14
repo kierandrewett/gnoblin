@@ -3186,8 +3186,8 @@ fn a_script_reads_the_sessions_status_runs_a_timer_and_a_process_and_is_told_of_
         probe(&shell)["status"]["state"] == "running"
     });
     let status = probe(&shell)["status"].clone();
-    assert_eq!(status["revision"], 0, "no lock change has happened in this session: {status}");
-    assert!(status["lockAvailable"].is_boolean(), "{status}");
+    assert_eq!(status["lockAvailable"], true, "{status}");
+    assert_eq!(status["lockState"], "unlocked", "the compositor's own published lock state: {status}");
 
     // A timer ran once and each process ended, with its exit code and its captured output, on the shell's frame loop.
     wait_for("the timer ran and both programs ended", &session, &mut mapper, &shell, || {
