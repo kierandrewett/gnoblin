@@ -1466,6 +1466,7 @@ The rules behind the table:
 
 A change to these tests is proven with `cargo test -p gnoblin` run several times in a row, once while two busy loops per
 CPU run beside it, and once with `--test-threads=1`.
+
 ## Lock status
 
 The session lock screen (lane JsLock; `docs/session-lock.md`, `design/js-research/popups-portals.md` row 9, decision J8).
@@ -1475,7 +1476,7 @@ The session lock screen (lane JsLock; `docs/session-lock.md`, `design/js-researc
   overwrites them when it submits), `LockStyle`. It reads the `lock` node's `state` (`__gnoblinHost.lock`,
   `crates/gnoblin-js/src/lock.rs`), mounts its scrim under the lock node so the compositor draws it over the cover, writes
   the node's `engaged`, takes the seat's focus for the entry and gives it back, and sends the password as the call's secret
-  text. The toolkit gained `Canvas.onKey` (`UiKeyEvent`), `uiFocus` and `uiFocused`; a key event reaches only the canvas
+  text. It uses the toolkit's `Canvas.onKey` (`UiKeyEvent`), `uiFocus` and `uiFocused`; a key event reaches only the canvas
   that holds the seat's focus.
 - **Rust side.** The cover now draws, for the compositor's own lock only, the canvases under the `lock` node once the shell
   holds the tree and has engaged the lock (`Composer::compose_lock_ui`; it redraws when the subtree changes). The lock card
