@@ -1523,6 +1523,7 @@ dependencies = [
  "rustix 1.1.6",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror 2.0.21",
  "toml",
