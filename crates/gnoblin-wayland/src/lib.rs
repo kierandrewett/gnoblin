@@ -249,8 +249,8 @@ pub use observation::{
     ObservedWindow, ObservedWorkspace, Observer, SessionSnapshot,
 };
 pub use observation::{PresentAnswer, WindowChange, WindowChangeRefusal, WindowVisual, WindowVisualRefusal};
-/// Output configuration types a host reports and applies, and the host trait.
-pub use output_config::{HeadInfo, HeadRequest, ModeInfo, ModeRequest, OutputConfigHost};
+/// Output configuration types the output management protocol reports and asks for.
+pub use output_config::{HeadInfo, HeadRequest, ModeInfo, ModeRequest};
 /// Output control: the trait a backend implements and the no-op default.
 pub use output_control::{NoOutputControl, OutputControl};
 /// The window management options a configuration carries, and the choices in them.

@@ -2006,6 +2006,9 @@ impl Dispatcher {
             (Some(ty), _, _, _) if ty == "idle" && (method == "inhibit" || method == "uninhibit") => {
                 self.idle_call(client, envelope, object, &method, &arguments);
             }
+            (Some(_), _, _, Some((output, _))) if method == "apply" => {
+                self.output_apply_call(client, envelope, object, &method, &arguments, output);
+            }
             (None, _, _, _) => self.refuse(
                 client,
                 envelope,
@@ -2363,6 +2366,60 @@ impl Dispatcher {
             Some(Err(refusal)) => Some(OperationOutcome::Failed(window_refusal_code(refusal))),
             // The loop did not answer, which means it is stopping: the operation is left
             // pending rather than given an outcome this server would have invented.
+            None => None,
+        };
+        self.finish(object, &operation, outcome);
+    }
+
+    /// Serves `output.apply`: the whole configuration of one output, handed to the loop as the `key=value` text a
+    /// shell's `screen.apply` takes, so it runs through the same engine: the layout is resolved first, every mode and
+    /// scale is tested on the backend, the outputs are driven in order, and a refusal puts back what was driven. The
+    /// operation completes `done` only when the arrangement was driven and kept; a refusal completes with a code naming
+    /// the key it refused (`mode-refused`, `scale-refused`, `position-refused`, `enabled-refused`,
+    /// `transform-refused`, or `refused`). A connection that is not the session owner's is refused `denied` before the
+    /// graph sees the call.
+    fn output_apply_call(
+        &mut self,
+        client: ClientId,
+        envelope: &Envelope,
+        object: gnoblin_types::ObjectId,
+        method: &str,
+        arguments: &gnoblin_model::Fields,
+        output: gnoblin_types::OutputId,
+    ) {
+        if !self.is_owner(client) {
+            self.refuse(
+                client,
+                envelope,
+                wire::code::DENIED,
+                &format!("`{method}` needs the session owner's connection, which this connection is not"),
+            );
+            return;
+        }
+        let text = match output_apply_text(arguments) {
+            Ok(text) => text,
+            Err(message) => {
+                self.refuse(client, envelope, wire::code::UNKNOWN_MEMBER, &message);
+                return;
+            }
+        };
+        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
+            Ok(operation) => operation,
+            Err(error) => {
+                let code = refusal_code(&error);
+                self.refuse(client, envelope, code, &error.to_string());
+                return;
+            }
+        };
+        self.reply_with_operation(client, envelope, &operation);
+        // The change is made in the loop, so the diff it caused is published before the completion reaches the client.
+        let applied = self.control.output_apply(output, &text);
+        self.sync();
+        let outcome = match applied {
+            Some(Ok(())) => Some(OperationOutcome::Done),
+            Some(Err(reason)) => Some(OperationOutcome::Failed(output_refusal_code(&reason))),
+            // The loop did not answer, so it is stopping: the operation is left pending rather than given an outcome
+            // this server would have invented.
             None => None,
         };
         self.finish(object, &operation, outcome);
@@ -2873,6 +2930,44 @@ fn object_argument(arguments: &gnoblin_model::Fields, name: &str) -> Option<gnob
         Some(gnoblin_model::Value::Object(object)) => Some(*object),
         _ => None,
     }
+}
+
+/// The `key=value` text a shell's `screen.apply` takes, from the arguments of `output.apply`.
+///
+/// The method carries the whole configuration of one output, so every key is written. An empty `mode` keeps the mode
+/// the output has. `primary` is accepted and not applied: the layout derives the primary output, and an `apply` has no
+/// say in it. A transform other than `0` (normal) is refused here with the reason, as the engine refuses it: nothing
+/// draws a rotation.
+fn output_apply_text(arguments: &gnoblin_model::Fields) -> Result<String, String> {
+    let missing = |name: &str| format!("`apply` needs its `{name}`");
+    let x = int_argument(arguments, "x").ok_or_else(|| missing("x"))?;
+    let y = int_argument(arguments, "y").ok_or_else(|| missing("y"))?;
+    let scale = double_argument(arguments, "scale").ok_or_else(|| missing("scale"))?;
+    let transform = uint_argument(arguments, "transform").ok_or_else(|| missing("transform"))?;
+    let enabled = bool_argument(arguments, "enabled").ok_or_else(|| missing("enabled"))?;
+    let mode = text_argument(arguments, "mode").ok_or_else(|| missing("mode"))?;
+    if transform != 0 {
+        return Err("transform: this compositor draws only `normal` (0)".to_owned());
+    }
+    let mut text = format!("position={x},{y}\nscale={scale}\ntransform=normal\nenabled={enabled}\n");
+    if !mode.is_empty() {
+        text.push_str(&format!("mode={mode}\n"));
+    }
+    Ok(text)
+}
+
+/// The code `output.apply` completes with when the engine refused the arrangement: it names the key the reason begins
+/// with, because a completion carries a code and the engine's sentence is logged where it was refused.
+fn output_refusal_code(reason: &str) -> ErrorCode {
+    let key = reason.split(':').next().unwrap_or_default();
+    ErrorCode::from_static(match key {
+        "mode" => "mode-refused",
+        "scale" => "scale-refused",
+        "position" => "position-refused",
+        "enabled" => "enabled-refused",
+        "transform" => "transform-refused",
+        _ => "refused",
+    })
 }
 
 /// The code a window verb completes with when the window manager refused it. The window's

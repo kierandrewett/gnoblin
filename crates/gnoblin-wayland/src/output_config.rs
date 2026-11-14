@@ -1,14 +1,14 @@
-//! The host seam of `zwlr_output_management_v1`: what the outputs look like, and how the
-//! host applies or tests a layout a client asked for.
+//! What `zwlr_output_management_v1` reports for each output, and how a configuration a client asked for is applied.
 //!
-//! The protocol handler runs inside the Wayland dispatch, which holds the
-//! [`State`](crate::State) but not the backend. The host (the composition root) gives the
-//! compositor a [`HeadInfo`] snapshot whenever the outputs change, and answers each queued
-//! configuration through [`OutputConfigHost::apply`]. The host owns rollback: a `false`
-//! answer means it changed nothing, or restored what it changed.
+//! The protocol handler runs inside the Wayland dispatch, which holds the [`State`](crate::State) and, once the loop
+//! hands it in, the backend. [`State::output_heads`] is the snapshot a client reads: every mode the backend lists for
+//! the output, the one in use, the layout position and whether the output is on. A configuration is not applied here:
+//! [`State::apply_head_requests`] turns each head's request into a change to the output's profile and runs them
+//! through [`State::apply_output_changes`], the engine a shell's `screen.apply` and the IPC's `output.apply` use, so
+//! all three get the same checks, the same test before the first output is driven, and the same rollback.
 
 use gnoblin_backend::Backend;
-use gnoblin_output::DisplayMode;
+use gnoblin_output::{DisplayMode, ProfileChange};
 use gnoblin_types::{OutputId, Scale};
 
 use crate::State;
@@ -71,68 +71,118 @@ pub struct ModeRequest {
 }
 
 /// What a configuration asks for one head. A `None` field keeps the head's current value.
+///
+/// A request is read against the head as it is now and laid over the output's profile, so a request that names what
+/// the head already has changes nothing. A transform other than `0` and adaptive sync are refused.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HeadRequest {
     /// The head this request configures.
     pub head: OutputId,
-    /// Whether the head should be on. The backend host refuses `false`, since no backend can switch an output off.
+    /// Whether the head should be on. A configuration must leave at least one head on.
     pub enabled: bool,
-    /// The mode to drive the head in, or `None` to keep the current one.
+    /// The mode to drive the head in, or `None` to keep the current one. A mode the backend does not list is refused.
     pub mode: Option<ModeRequest>,
-    /// The position to move the head to, or `None` to keep it. The backend host refuses a move.
+    /// The position to move the head to, or `None` to keep it.
     pub position: Option<(i32, i32)>,
-    /// The `wl_output` transform to apply, or `None` to keep it. The backend host refuses any value but `0`.
+    /// The `wl_output` transform to apply, or `None` to keep it. Any value but `0` is refused.
     pub transform: Option<i32>,
     /// The scale to apply, or `None` to keep it.
     pub scale: Option<f64>,
-    /// Whether adaptive sync should be on, or `None` to keep it. The backend host refuses `true`.
+    /// Whether adaptive sync should be on, or `None` to keep it. `true` is refused.
     pub adaptive_sync: Option<bool>,
 }
 
-/// The host side of output configuration.
-pub trait OutputConfigHost {
-    /// The outputs as they are now.
-    fn heads(&self) -> Vec<HeadInfo>;
-
-    /// Applies `requests`, or only checks them when `test_only` is set.
+impl HeadRequest {
+    /// The change to the output's profile this request makes against `head`, the head as it is now.
     ///
-    /// `Ok` means the whole layout was accepted (and, when not a test, is now in effect).
-    /// `Err` means nothing was left changed: the host rolls back any part it had applied.
-    fn apply(&mut self, requests: &[HeadRequest], test_only: bool) -> Result<(), String>;
-}
-
-/// The composition root's host: the backend's outputs, configured through
-/// [`Backend::configure_output`].
-///
-/// The layout owns positions, transforms and adaptive sync, and no backend can switch an
-/// output off yet, so those requests are refused rather than silently ignored. A mode must
-/// be one the head lists, which is the mode it is driven in now.
-pub(crate) struct BackendOutputConfig<'a> {
-    backend: &'a mut dyn Backend<State>,
-    positions: Vec<(OutputId, (i32, i32))>,
-}
-
-impl<'a> BackendOutputConfig<'a> {
-    /// Wraps the backend together with the layout positions the host reports for each output.
-    pub(crate) fn new(backend: &'a mut dyn Backend<State>, positions: Vec<(OutputId, (i32, i32))>) -> Self {
-        Self { backend, positions }
+    /// A field that names what the head already has changes nothing, so a client that sends its whole configuration
+    /// back does not turn every output's automatic placement into a stored one. A transform other than normal and
+    /// adaptive sync are refused as the shell's `apply` refuses them: nothing draws a rotation and nothing drives
+    /// variable refresh.
+    ///
+    /// # Errors
+    ///
+    /// Why the request cannot be made, naming the head.
+    fn to_change(&self, head: &HeadInfo) -> Result<ProfileChange, String> {
+        let mut change = ProfileChange::default();
+        if self.enabled != head.enabled {
+            change.enabled = Some(self.enabled);
+        }
+        if let Some(mode) = self.mode {
+            let (Ok(width), Ok(height), Ok(refresh)) = (
+                u32::try_from(mode.width),
+                u32::try_from(mode.height),
+                u32::try_from(mode.refresh_mhz),
+            ) else {
+                return Err(format!("{}: the requested mode is not a mode", head.name));
+            };
+            let requested = DisplayMode::new(width, height, refresh);
+            let current = head.current.and_then(|index| head.modes.get(index));
+            let is_current = current.is_some_and(|current| {
+                current.width == mode.width && current.height == mode.height && current.refresh_mhz == mode.refresh_mhz
+            });
+            if !is_current {
+                change.mode = Some(Some(requested));
+            }
+        }
+        if let Some(position) = self.position
+            && position != head.position
+        {
+            change.position = Some(Some(position));
+        }
+        if self.transform.is_some_and(|transform| transform != 0) {
+            return Err(format!("{}: transforms are not supported", head.name));
+        }
+        if self.adaptive_sync == Some(true) {
+            return Err(format!("{}: adaptive sync is not supported", head.name));
+        }
+        if let Some(scale) = self.scale {
+            if !scale.is_finite() || !(0.5..=4.0).contains(&scale) {
+                return Err(format!("{}: scale {scale} is out of range", head.name));
+            }
+            let target = Scale::from_percent((scale * 100.0).round() as u32);
+            if (target.as_f64() - head.scale).abs() > f64::EPSILON {
+                change.scale = Some(Some(target));
+            }
+        }
+        Ok(change)
     }
 }
 
-impl OutputConfigHost for BackendOutputConfig<'_> {
-    fn heads(&self) -> Vec<HeadInfo> {
-        self.backend
+impl State {
+    /// The layout position of each output, for the heads the host publishes.
+    pub(crate) fn output_positions(&self) -> Vec<(OutputId, (i32, i32))> {
+        self.output_ids()
+            .into_iter()
+            .filter_map(|id| self.output_rect(id).map(|rect| (id, (rect.x, rect.y))))
+            .collect()
+    }
+
+    /// The outputs as the protocol reports them: every mode the backend can drive each in, the one it is driven in
+    /// now, its place in the layout and whether the desktop gives it one. A mirror is on; an output that is off is not.
+    pub(crate) fn output_heads(&self, backend: &dyn Backend<State>) -> Vec<HeadInfo> {
+        let positions = self.output_positions();
+        backend
             .outputs()
             .iter()
             .map(|output| {
-                let mode = ModeInfo {
-                    width: i32::try_from(output.mode.width).unwrap_or(i32::MAX),
-                    height: i32::try_from(output.mode.height).unwrap_or(i32::MAX),
-                    refresh_mhz: i32::try_from(output.mode.refresh_mhz).unwrap_or(i32::MAX),
-                    preferred: true,
-                };
-                let position = self
-                    .positions
+                let mut offered = backend.output_modes(output.id);
+                // The mode in use is always one of the modes a head lists, whatever the backend's own list says.
+                if !offered.contains(&output.mode) {
+                    offered.insert(0, output.mode);
+                }
+                let modes: Vec<ModeInfo> = offered
+                    .iter()
+                    .enumerate()
+                    .map(|(index, mode)| ModeInfo {
+                        width: i32::try_from(mode.width).unwrap_or(i32::MAX),
+                        height: i32::try_from(mode.height).unwrap_or(i32::MAX),
+                        refresh_mhz: i32::try_from(mode.refresh_mhz).unwrap_or(i32::MAX),
+                        // A backend lists the monitor's preferred mode first.
+                        preferred: index == 0,
+                    })
+                    .collect();
+                let position = positions
                     .iter()
                     .find(|(id, _)| *id == output.id)
                     .map_or((0, 0), |(_, position)| *position);
@@ -144,9 +194,12 @@ impl OutputConfigHost for BackendOutputConfig<'_> {
                     model: output.connector.clone(),
                     serial: String::new(),
                     physical_mm: (0, 0),
-                    modes: vec![mode],
-                    current: Some(0),
-                    enabled: true,
+                    current: offered.iter().position(|mode| *mode == output.mode),
+                    modes,
+                    enabled: self
+                        .output_policy
+                        .shadow(output.id)
+                        .is_none_or(|shadow| shadow.source.is_some()),
                     position,
                     transform: 0,
                     scale: output.scale.as_f64(),
@@ -156,84 +209,29 @@ impl OutputConfigHost for BackendOutputConfig<'_> {
             .collect()
     }
 
-    fn apply(&mut self, requests: &[HeadRequest], test_only: bool) -> Result<(), String> {
+    /// Applies the heads a `zwlr_output_configuration_v1` asked for, or only checks them when `test_only` is set, through
+    /// the same engine as a shell's `screen.apply` ([`State::apply_output_changes`]).
+    ///
+    /// `Ok` means the whole configuration was accepted and, when not a test, is in effect. `Err` means nothing was left
+    /// changed: the engine put back whatever it had driven.
+    pub(crate) fn apply_head_requests(
+        &mut self,
+        backend: &mut dyn Backend<State>,
+        requests: &[HeadRequest],
+        test_only: bool,
+    ) -> Result<(), String> {
         if requests.iter().all(|request| !request.enabled) {
             return Err("a configuration must leave at least one output enabled".to_owned());
         }
-        let heads = self.heads();
-        let mut plans = Vec::new();
+        let heads = self.output_heads(backend);
+        let mut changes = Vec::with_capacity(requests.len());
         for request in requests {
             let Some(head) = heads.iter().find(|head| head.id == request.head) else {
                 return Err("the configuration names a head this host does not drive".to_owned());
             };
-            if !request.enabled {
-                return Err(format!("{}: switching an output off is not supported", head.name));
-            }
-            if request.position.is_some_and(|position| position != head.position) {
-                return Err(format!("{}: moving an output is not supported", head.name));
-            }
-            if request.transform.is_some_and(|transform| transform != 0) {
-                return Err(format!("{}: transforms are not supported", head.name));
-            }
-            if request.adaptive_sync == Some(true) {
-                return Err(format!("{}: adaptive sync is not supported", head.name));
-            }
-            let current = head.modes[0];
-            if request.mode.is_some_and(|mode| {
-                mode.width != current.width || mode.height != current.height || mode.refresh_mhz != current.refresh_mhz
-            }) {
-                return Err(format!("{}: the requested mode is not offered", head.name));
-            }
-            let Some(scale) = request.scale else {
-                continue;
-            };
-            if !scale.is_finite() || !(0.5..=4.0).contains(&scale) {
-                return Err(format!("{}: scale {scale} is out of range", head.name));
-            }
-            let Some(output) = self.backend.outputs().iter().find(|output| output.id == request.head) else {
-                return Err("the configuration names a head this host does not drive".to_owned());
-            };
-            let target = Scale::from_percent((scale * 100.0).round() as u32);
-            if target != output.scale {
-                plans.push((output.id, output.mode, output.scale, target));
-            }
+            changes.push((request.head, request.to_change(head)?));
         }
-        if test_only {
-            return Ok(());
-        }
-        let steps: Vec<OutputChange> = plans
-            .into_iter()
-            .map(|(id, mode, before, after)| OutputChange {
-                id,
-                mode,
-                before_mode: mode,
-                before,
-                after,
-            })
-            .collect();
-        apply_in_order(&steps, |id, mode, scale| {
-            self.backend
-                .configure_output(id, mode, scale)
-                .map_err(|error| error.to_string())
-        })
-        .map_err(|failure| {
-            failure.describe(|id| {
-                heads
-                    .iter()
-                    .find(|head| head.id == id)
-                    .map_or_else(|| format!("output {}", id.get()), |head| head.name.clone())
-            })
-        })
-    }
-}
-
-impl State {
-    /// The layout position of each output, for the heads the host publishes.
-    pub(crate) fn output_positions(&self) -> Vec<(OutputId, (i32, i32))> {
-        self.output_ids()
-            .into_iter()
-            .filter_map(|id| self.output_rect(id).map(|rect| (id, (rect.x, rect.y))))
-            .collect()
+        self.apply_output_changes(backend, &changes, test_only)
     }
 }
 

@@ -297,7 +297,7 @@ fn removing_an_output_fails_its_gamma_control() {
 
 #[test]
 fn an_unsupported_backend_does_not_offer_gamma_control() {
-    Session::start_without_output_controls().run(|handle| {
+    Session::start_without_output_controls(None).run(|handle| {
         let mut client = Connected::connect(handle.socket(), App::default());
         client.roundtrip();
         assert!(
@@ -389,7 +389,7 @@ fn removing_an_output_fails_its_power_object() {
 
 #[test]
 fn an_unsupported_backend_does_not_offer_power_control() {
-    Session::start_without_output_controls().run(|handle| {
+    Session::start_without_output_controls(None).run(|handle| {
         let mut client = Connected::connect(handle.socket(), App::default());
         client.roundtrip();
         assert!(

@@ -18,7 +18,7 @@ use wayland_protocols_wlr::output_management::v1::client::{
     zwlr_output_configuration_v1::{self, ZwlrOutputConfigurationV1},
     zwlr_output_head_v1::{self, ZwlrOutputHeadV1},
     zwlr_output_manager_v1::{self, ZwlrOutputManagerV1},
-    zwlr_output_mode_v1::ZwlrOutputModeV1,
+    zwlr_output_mode_v1::{self, ZwlrOutputModeV1},
 };
 
 /// What the manager has told one head.
@@ -26,6 +26,8 @@ use wayland_protocols_wlr::output_management::v1::client::{
 struct Head {
     name: String,
     scale: f64,
+    /// The mode object the head said it is driven in.
+    current_mode: Option<ObjectId>,
 }
 
 /// What the manager has told the client.
@@ -33,6 +35,10 @@ struct Head {
 struct App {
     /// The serial of the first `done`, once received.
     done_serial: Option<u32>,
+    /// The serial of the latest `done`: the one a configuration built now is valid for.
+    latest_serial: Option<u32>,
+    /// The size each announced mode said it has, keyed by object.
+    mode_sizes: HashMap<ObjectId, (i32, i32)>,
     /// The scale the output last told the client it composes at.
     wl_output_scale: Option<i32>,
     /// Whether the manager announced it is finished.
@@ -55,6 +61,12 @@ impl App {
             .filter_map(|handle| self.head_state.get(&handle.id()).cloned())
             .collect()
     }
+
+    /// The size of the mode the first head is driven in, as the client last heard it.
+    fn size(&self) -> Option<(i32, i32)> {
+        let head = self.current().into_iter().next()?;
+        self.mode_sizes.get(&head.current_mode?).copied()
+    }
 }
 
 impl Dispatch<ZwlrOutputManagerV1, ()> for App {
@@ -73,6 +85,7 @@ impl Dispatch<ZwlrOutputManagerV1, ()> for App {
             }
             zwlr_output_manager_v1::Event::Done { serial } => {
                 state.done_serial.get_or_insert(serial);
+                state.latest_serial = Some(serial);
             }
             zwlr_output_manager_v1::Event::Finished => state.finished = true,
             _ => {}
@@ -104,6 +117,7 @@ impl Dispatch<ZwlrOutputHeadV1, ()> for App {
         match event {
             zwlr_output_head_v1::Event::Name { name } => entry.name = name,
             zwlr_output_head_v1::Event::Scale { scale } => entry.scale = scale,
+            zwlr_output_head_v1::Event::CurrentMode { mode } => entry.current_mode = Some(mode.id()),
             _ => {}
         }
     }
@@ -162,7 +176,20 @@ impl Dispatch<wl_output::WlOutput, ()> for App {
         }
     }
 }
-wayland_client::delegate_noop!(App: ignore ZwlrOutputModeV1);
+impl Dispatch<ZwlrOutputModeV1, ()> for App {
+    fn event(
+        state: &mut Self,
+        mode: &ZwlrOutputModeV1,
+        event: zwlr_output_mode_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zwlr_output_mode_v1::Event::Size { width, height } = event {
+            state.mode_sizes.insert(mode.id(), (width, height));
+        }
+    }
+}
 wayland_client::delegate_noop!(App: ignore ZwlrOutputConfigurationHeadV1);
 
 /// Binds the manager and waits for the first `done`, so the heads are all known.
@@ -348,5 +375,131 @@ fn a_global_scale_committed_after_start_reaches_the_published_heads() {
         client.wait_until("the wl_output scale the system setting gives", |state| {
             state.wl_output_scale == Some(1)
         });
+    });
+}
+
+/// A configuration for the first head that asks for a custom mode, built on the serial the client heard last.
+fn mode_configuration(
+    client: &Connected<App>,
+    manager: &ZwlrOutputManagerV1,
+    width: i32,
+    height: i32,
+) -> ZwlrOutputConfigurationV1 {
+    let serial = client.state.latest_serial.expect("bound");
+    let configuration = manager.create_configuration(serial, &client.qh, ());
+    let head = client.state.handles[0].clone();
+    configuration
+        .enable_head(&head, &client.qh, ())
+        .set_custom_mode(width, height, 60_000);
+    configuration
+}
+
+#[test]
+fn a_configuration_with_a_new_mode_is_applied_and_published_to_every_client() {
+    Session::start(Some(ClientRole::Privileged)).run(|handle| {
+        let mut client = Connected::connect(handle.socket(), App::default());
+        let manager = bind_manager(&mut client);
+        assert_eq!(
+            client.state.size(),
+            Some((1024, 768)),
+            "the headless output starts at its default"
+        );
+        mode_configuration(&client, &manager, 800, 600).apply();
+        client.wait_until("the verdict", |state| state.outcome.is_some());
+        assert_eq!(client.state.outcome, Some("succeeded"));
+        client.wait_until("the new mode", |state| state.size() == Some((800, 600)));
+
+        let mut second = Connected::connect(handle.socket(), App::default());
+        let _manager = bind_manager(&mut second);
+        assert_eq!(
+            second.state.size(),
+            Some((800, 600)),
+            "the next client reads the mode that is driven"
+        );
+        assert!(second.state.size().is_some());
+    });
+}
+
+#[test]
+fn a_test_only_mode_configuration_asks_the_backend_and_drives_nothing() {
+    Session::start(Some(ClientRole::Privileged)).run(|handle| {
+        let mut client = Connected::connect(handle.socket(), App::default());
+        let manager = bind_manager(&mut client);
+        mode_configuration(&client, &manager, 800, 600).test();
+        client.wait_until("the verdict", |state| state.outcome.is_some());
+        assert_eq!(
+            client.state.outcome,
+            Some("succeeded"),
+            "the backend would take the mode"
+        );
+        let mut second = Connected::connect(handle.socket(), App::default());
+        let _manager = bind_manager(&mut second);
+        assert_eq!(second.state.size(), Some((1024, 768)), "a test changes nothing");
+    });
+}
+
+#[test]
+fn a_mode_the_backend_refuses_is_failed_and_leaves_the_output_as_it_was() {
+    Session::start(Some(ClientRole::Privileged)).run(|handle| {
+        let mut client = Connected::connect(handle.socket(), App::default());
+        let manager = bind_manager(&mut client);
+        // The driver refuses the next modeset, as one that cannot drive the timing does.
+        handle.backend.refuse_configure_after(0);
+        mode_configuration(&client, &manager, 1280, 720).apply();
+        client.wait_until("the verdict", |state| state.outcome.is_some());
+        assert_eq!(client.state.outcome, Some("failed"));
+
+        let mut second = Connected::connect(handle.socket(), App::default());
+        let _manager = bind_manager(&mut second);
+        assert_eq!(second.state.size(), Some((1024, 768)), "the refused mode was not kept");
+        client.wait_until("the heads the loop republished or kept", |state| state.size().is_some());
+
+        // The refusal is not remembered: the same configuration, asked again, is applied.
+        client.state.outcome = None;
+        let serial_now = client.state.latest_serial;
+        let retry = mode_configuration(&client, &manager, 1280, 720);
+        assert_eq!(client.state.latest_serial, serial_now);
+        retry.apply();
+        client.wait_until("the verdict", |state| state.outcome.is_some());
+        assert_eq!(client.state.outcome, Some("succeeded"));
+    });
+}
+
+#[test]
+fn a_configuration_built_before_the_layout_changed_is_cancelled() {
+    Session::start(Some(ClientRole::Privileged)).run(|handle| {
+        let mut client = Connected::connect(handle.socket(), App::default());
+        let manager = bind_manager(&mut client);
+        let first_serial = client.state.latest_serial.expect("bound");
+        // Two configurations on the same layout: the first is applied, the second waits in the client.
+        let waiting = mode_configuration(&client, &manager, 640, 480);
+        mode_configuration(&client, &manager, 800, 600).apply();
+        client.wait_until("the verdict", |state| state.outcome.is_some());
+        assert_eq!(client.state.outcome, Some("succeeded"));
+        client.wait_until("the layout's new serial", |state| {
+            state.latest_serial.is_some_and(|serial| serial != first_serial)
+        });
+
+        client.state.outcome = None;
+        waiting.apply();
+        client.wait_until("the verdict", |state| state.outcome.is_some());
+        assert_eq!(
+            client.state.outcome,
+            Some("cancelled"),
+            "a configuration built on the old layout is not applied over the new one"
+        );
+        assert_eq!(client.state.size(), Some((800, 600)));
+    });
+}
+
+#[test]
+fn a_backend_that_cannot_change_modes_fails_the_configuration() {
+    Session::start_without_output_controls(Some(ClientRole::Privileged)).run(|handle| {
+        let mut client = Connected::connect(handle.socket(), App::default());
+        let manager = bind_manager(&mut client);
+        mode_configuration(&client, &manager, 800, 600).apply();
+        client.wait_until("the verdict", |state| state.outcome.is_some());
+        assert_eq!(client.state.outcome, Some("failed"));
+        assert_eq!(client.state.size(), Some((1024, 768)));
     });
 }

@@ -49,7 +49,6 @@ use gnoblin_backend::{Backend, BackendEvent, Host, InputEvent};
 use gnoblin_cursor::{DEFAULT_CURSOR_SIZE, DEFAULT_CURSOR_THEME, ProviderKind};
 use gnoblin_render_frame::image::Image;
 
-use crate::output_config::OutputConfigHost;
 use gnoblin_capture::{SessionId, Target};
 use gnoblin_config::Protocols;
 use gnoblin_output::LayoutError;
@@ -91,6 +90,12 @@ pub const DEFAULT_PRIVILEGED_SOCKET_NAME: &str = "gnoblin-wayland-privileged.soc
 /// delay and not work; the limit exists so a stopped loop answers "no" instead of
 /// hanging the caller.
 pub const FOCUS_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// How long [`ControlHandle::output_apply`] waits for the loop's answer.
+///
+/// Unlike a focus, an output change is work: on hardware it allocates buffers and commits a modeset, which a panel
+/// takes a second or two to settle. The limit exists so a stopped loop answers "no" instead of hanging the caller.
+pub const OUTPUT_APPLY_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// How long [`ControlHandle::start_cast`] waits for the loop's answer.
 ///
@@ -471,7 +476,7 @@ impl Server {
                 }
             })
             .map_err(|error| StartupError::EventLoop(error.into()))?;
-        let heads = crate::output_config::BackendOutputConfig::new(backend.as_mut(), state.output_positions()).heads();
+        let heads = state.output_heads(backend.as_ref());
         state.publish_output_heads(heads);
         // The keyboard is configured before the socket is bound, so the first client that
         // connects already sees the keymap the document asked for.
@@ -648,6 +653,11 @@ impl Server {
                                 // The answer follows the drawing change, so the caller's next
                                 // read of the window's pose sees it.
                                 let _ = reply.send(state.window_visual(window, change));
+                            }
+                            Command::OutputApply { output, text, reply } => {
+                                // Queued here and run once this turn's dispatch has finished, where the backend it
+                                // drives is held; the answer is sent from that run.
+                                state.queue_output_apply(output, text, reply);
                             }
                             Command::IdleHold {
                                 client,
@@ -970,6 +980,21 @@ impl ControlHandle {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::WindowVisual { window, change, reply });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// Applies one output configuration, as the IPC's `output.apply` does: `text` is the `key=value` lines a shell's
+    /// `screen.apply` takes, and it goes through the same transactional engine. `Some(Ok(()))` means the arrangement
+    /// was driven and kept, `Some(Err(reason))` says why it was refused and the last good arrangement stands, and
+    /// [`None`] means the loop did not answer within [`OUTPUT_APPLY_TIMEOUT`].
+    #[must_use]
+    pub fn output_apply(&self, output: OutputId, text: &str) -> Option<Result<(), String>> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::OutputApply {
+            output,
+            text: text.to_owned(),
+            reply,
+        });
+        answer.recv_timeout(OUTPUT_APPLY_TIMEOUT).ok()
     }
 
     /// Adds (`held` true) or removes one named idle holder of the IPC connection `client`. A
@@ -1419,6 +1444,13 @@ enum Command {
         change: WindowVisual,
         reply: std::sync::mpsc::SyncSender<Result<(), WindowVisualRefusal>>,
     },
+    /// An output configuration from the IPC, and the channel its answer goes back on: `Ok(())` when the arrangement was
+    /// driven and kept, `Err` with the reason when it was not.
+    OutputApply {
+        output: OutputId,
+        text: String,
+        reply: std::sync::mpsc::SyncSender<Result<(), String>>,
+    },
     /// Adds or removes one idle holder of one connection; see `ControlHandle::idle_hold`.
     IdleHold {
         client: ClientId,
@@ -1623,19 +1655,13 @@ fn bind_owner_only(path: &Path) -> Result<UnixListener, StartupError> {
     Ok(listener)
 }
 
-/// Applies any `zwlr_output_configuration_v1` the clients queued this turn, then publishes
-/// the heads when the outputs changed or a configuration did.
+/// Applies any `zwlr_output_configuration_v1` the clients queued this turn through the output engine, then publishes
+/// the heads when the outputs changed and a configuration has not already published them.
 fn sync_output_manager(state: &mut State, backend: &mut dyn Backend<State>, outputs_changed: bool) {
-    let positions = state.output_positions();
-    let mut host = crate::output_config::BackendOutputConfig::new(backend, positions);
-    let applied = state.apply_output_configs(&mut host);
-    let heads = (applied || outputs_changed).then(|| host.heads());
-    drop(host);
-    if let Some(heads) = heads {
+    let published = state.apply_output_configs(backend);
+    if outputs_changed && !published {
+        let heads = state.output_heads(backend);
         state.publish_output_heads(heads);
-    }
-    if applied {
-        state.sync_outputs(backend.outputs());
     }
 }
 

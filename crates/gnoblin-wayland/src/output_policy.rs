@@ -15,9 +15,12 @@
 //!
 //! # Applying
 //!
-//! `apply` is transactional. The request is read, laid over the output's profile, and the whole candidate layout is
-//! resolved first, so an overlap, a gap or a mirror of a missing output is refused by name before hardware is
-//! touched. Only then are the modes and scales driven, in order; if the backend refuses one, the earlier ones are
+//! `apply` is transactional, and it is one engine ([`State::apply_output_changes`]) for a shell's `screen.apply`, the
+//! IPC's `output.apply` and a `zwlr_output_configuration_v1`. The request is read, laid over the output's profile, and
+//! the whole candidate layout is resolved first, so an overlap, a gap or a mirror of a missing output is refused by
+//! name before hardware is touched. Every mode and scale the candidate would drive is then tested on the backend
+//! ([`Backend::test_output`]), so a configuration one output cannot take is refused before any output has gone through
+//! a modeset. Only then are the modes and scales driven, in order; if the backend refuses one, the earlier ones are
 //! put back and the last good arrangement, which was never replaced, stays. Only a fully driven candidate becomes the
 //! profile.
 
@@ -51,10 +54,19 @@ pub(crate) struct OutputShadow {
     pub(crate) scale: gnoblin_types::Scale,
 }
 
+/// Where the answer to a queued `apply` goes.
+#[derive(Debug)]
+enum ApplyAnswer {
+    /// A shell's call on a screen node: answered under its token.
+    Token(u64),
+    /// A call from the IPC (`gnoblin-ctl output call apply`), answered on the channel the caller waits on.
+    Channel(std::sync::mpsc::SyncSender<Result<(), String>>),
+}
+
 /// An `apply` call waiting for the loop, which holds the backend.
 #[derive(Debug)]
 struct PendingApply {
-    token: u64,
+    answer: ApplyAnswer,
     output: Option<OutputId>,
     text: String,
 }
@@ -233,11 +245,26 @@ impl State {
         for call in calls {
             let output = self.output_of_node(call.node);
             self.output_policy.applies.push(PendingApply {
-                token: call.token,
+                answer: ApplyAnswer::Token(call.token),
                 output,
                 text: call.text.expose().to_owned(),
             });
         }
+    }
+
+    /// Takes an `apply` on `output` from the IPC, to be run by the loop once it holds the backend. The answer is
+    /// sent on `reply` when it has run: `Ok` when the arrangement was driven and kept, the reason when it was not.
+    pub(crate) fn queue_output_apply(
+        &mut self,
+        output: OutputId,
+        text: String,
+        reply: std::sync::mpsc::SyncSender<Result<(), String>>,
+    ) {
+        self.output_policy.applies.push(PendingApply {
+            answer: ApplyAnswer::Channel(reply),
+            output: Some(output),
+            text,
+        });
     }
 
     /// The output a screen node stands for, real or shadow.
@@ -260,11 +287,18 @@ impl State {
                 Some(output) => self.apply_output(backend, output, &pending.text),
                 None => Err("the output is not connected".to_owned()),
             };
-            match result {
-                Ok(()) => self.tree.answer(pending.token, "ok".to_owned(), String::new()),
-                Err(reason) => {
+            match (pending.answer, result) {
+                (ApplyAnswer::Token(token), Ok(())) => self.tree.answer(token, "ok".to_owned(), String::new()),
+                (ApplyAnswer::Token(token), Err(reason)) => {
                     log::info!(area = "output", %reason, "an output configuration was refused");
-                    self.tree.answer(pending.token, String::new(), reason);
+                    self.tree.answer(token, String::new(), reason);
+                }
+                (ApplyAnswer::Channel(reply), result) => {
+                    if let Err(reason) = &result {
+                        log::info!(area = "output", %reason, "an output configuration was refused");
+                    }
+                    // The caller may have stopped waiting; its answer is then of no use to anyone.
+                    let _ = reply.send(result);
                 }
             }
         }
@@ -273,41 +307,59 @@ impl State {
     /// Applies one request to one output through the transactional path described in the module docs.
     fn apply_output(&mut self, backend: &mut dyn Backend<State>, output: OutputId, text: &str) -> Result<(), String> {
         let change = ProfileChange::parse(text).map_err(|error| error.to_string())?;
-        if change
-            .orientation
-            .is_some_and(|orientation| orientation != Orientation::Normal)
-        {
+        self.apply_output_changes(backend, &[(output, change)], false)
+    }
+
+    /// Applies changes to one or more outputs as one transaction, or only checks them when `test_only` is set.
+    ///
+    /// This is the one engine behind a shell's `screen.apply`, the IPC's `output.apply` and a
+    /// `zwlr_output_configuration_v1`: each lays its changes over the profiles, the whole candidate layout is
+    /// resolved, every mode and scale it would drive is tested on the backend, and only then are the outputs driven
+    /// in order, with the earlier ones put back if one is refused. `Err` means nothing was left changed.
+    pub(crate) fn apply_output_changes(
+        &mut self,
+        backend: &mut dyn Backend<State>,
+        changes: &[(OutputId, ProfileChange)],
+        test_only: bool,
+    ) -> Result<(), String> {
+        if changes.iter().any(|(_, change)| {
+            change
+                .orientation
+                .is_some_and(|orientation| orientation != Orientation::Normal)
+        }) {
             // The renderers draw an output upright only; accepting a rotation would report one the pixels do not show.
             return Err("transform: this compositor draws only `normal`".to_owned());
         }
         let outputs: Vec<Output> = backend.outputs().to_vec();
-        let target = outputs
-            .iter()
-            .find(|candidate| candidate.id == output)
-            .ok_or_else(|| "the output is not connected".to_owned())?;
         let sightings: Vec<OutputSighting<'_>> = outputs.iter().map(sighting).collect();
-        let next = self
-            .output_policy
-            .profiles
-            .find(sighting(target))
-            .cloned()
-            .unwrap_or_else(|| OutputProfile::new(&target.connector, target.identity.clone()))
-            .with(&change);
         let mut candidate = self.output_policy.profiles.clone();
-        if let Some(source) = &next.mirror_of {
-            let named = outputs.iter().find(|candidate| &candidate.connector == source);
-            let Some(named) = named.filter(|named| named.id != output) else {
-                return Err(format!("mirror_of: {source} is not another connected output"));
-            };
-            let source_profile = candidate.find(sighting(named));
-            if source_profile.is_some_and(|profile| !profile.enabled) {
-                return Err(format!("mirror_of: {source} is off"));
+        for (output, change) in changes {
+            let target = outputs
+                .iter()
+                .find(|candidate_output| candidate_output.id == *output)
+                .ok_or_else(|| "the output is not connected".to_owned())?;
+            let next = candidate
+                .find(sighting(target))
+                .cloned()
+                .unwrap_or_else(|| OutputProfile::new(&target.connector, target.identity.clone()))
+                .with(change);
+            if let Some(source) = &next.mirror_of {
+                let named = outputs
+                    .iter()
+                    .find(|candidate_output| &candidate_output.connector == source);
+                let Some(named) = named.filter(|named| named.id != *output) else {
+                    return Err(format!("mirror_of: {source} is not another connected output"));
+                };
+                let source_profile = candidate.find(sighting(named));
+                if source_profile.is_some_and(|profile| !profile.enabled) {
+                    return Err(format!("mirror_of: {source} is off"));
+                }
+                if source_profile.is_some_and(|profile| profile.mirror_of.is_some()) {
+                    return Err(format!("mirror_of: {source} is itself a mirror"));
+                }
             }
-            if source_profile.is_some_and(|profile| profile.mirror_of.is_some()) {
-                return Err(format!("mirror_of: {source} is itself a mirror"));
-            }
+            candidate.keep(next);
         }
-        candidate.keep(next);
 
         // The layout is resolved for the modes and scales the candidate would drive, so a refusal here costs the
         // hardware nothing.
@@ -322,7 +374,7 @@ impl State {
             })
             .collect();
         if let Err(error) = compute(&descriptors, &candidate.layout(&sightings)) {
-            return Err(match attribute(&error, &change) {
+            return Err(match changes.iter().find_map(|(_, change)| attribute(&error, change)) {
                 Some(key) => format!("{key}: {error}"),
                 None => error.to_string(),
             });
@@ -341,19 +393,36 @@ impl State {
                 })
             })
             .collect();
+        let name = |id: OutputId| {
+            outputs
+                .iter()
+                .find(|candidate_output| candidate_output.id == id)
+                .map_or_else(|| format!("output {}", id.get()), |found| found.connector.clone())
+        };
+        let key = if changes.iter().any(|(_, change)| change.mode.is_some()) {
+            "mode"
+        } else {
+            "scale"
+        };
+        if !steps.is_empty() && !backend.output_controls().configure {
+            return Err(format!("{key}: this backend cannot change an output's mode or scale"));
+        }
+        // Every change is tested before the first is driven, so a configuration one output cannot take is refused
+        // without any output having flickered through a modeset it then has to undo.
+        for step in &steps {
+            backend
+                .test_output(step.id, step.mode, step.after)
+                .map_err(|error| format!("{key}: {}: the backend refused the change: {error}", name(step.id)))?;
+        }
+        if test_only {
+            return Ok(());
+        }
         if let Err(failure) = apply_in_order(&steps, |id, mode, scale| {
             backend
                 .configure_output(id, mode, scale)
                 .map_err(|error| error.to_string())
         }) {
-            let message = failure.describe(|id| {
-                outputs
-                    .iter()
-                    .find(|candidate_output| candidate_output.id == id)
-                    .map_or_else(|| format!("output {}", id.get()), |found| found.connector.clone())
-            });
-            let key = if change.mode.is_some() { "mode" } else { "scale" };
-            return Err(format!("{key}: {message}"));
+            return Err(format!("{key}: {}", failure.describe(name)));
         }
         self.output_policy.profiles = candidate;
         self.sync_outputs(backend.outputs());

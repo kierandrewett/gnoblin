@@ -4,8 +4,8 @@
 //! carrying the configuration serial after every change. A client builds a configuration
 //! against that serial: it enables or disables heads and sets a mode, position, transform,
 //! scale or adaptive sync on each. `test` asks whether the host would accept the layout
-//! and changes nothing; `apply` asks the host to make it so. The host is the
-//! [`OutputConfigHost`](crate::output_config::OutputConfigHost).
+//! and changes nothing; `apply` asks the compositor to make it so, through the same engine a shell's
+//! `screen.apply` uses ([`State::apply_head_requests`](crate::State)).
 //!
 //! ## Failure modes first
 //!
@@ -19,8 +19,8 @@
 //! 6. **Reusing a configuration after `apply` or `test`.** Protocol error `already_used`.
 //! 7. **A head config for a head not in the configuration.** Protocol error `unconfigured_head`
 //!    on apply.
-//! 8. **A host that refuses the layout.** The configuration `failed`s; the host is the one
-//!    that rolls back. A `test` never changes state.
+//! 8. **The engine refuses the layout.** The configuration `failed`s and the engine has put back whatever it had
+//!    driven. A `test` never changes state.
 //! 9. **A client that disconnects mid-configuration.** Its pending requests are dropped
 //!    because its objects are no longer alive.
 //! 10. **No host support.** The global is not offered.
@@ -173,11 +173,13 @@ impl State {
 
     /// Answers the configurations the client asked for, in the order they were made.
     ///
-    /// The host runs each one after the dispatch that queued it. A configuration whose serial
-    /// is stale is `cancelled`; a head that vanished is `failed`; otherwise the host's answer
-    /// is `succeeded` or `failed`.
-    pub(crate) fn apply_output_configs(&mut self, host: &mut dyn crate::output_config::OutputConfigHost) -> bool {
-        let mut changed = false;
+    /// The loop runs each one after the dispatch that queued it, through the engine a shell's `screen.apply` uses
+    /// ([`State::apply_head_requests`]). A configuration whose serial is stale is `cancelled`; a head that vanished is
+    /// `failed`; otherwise the answer is `succeeded` or `failed`. A configuration that changed the outputs publishes the
+    /// new heads at once, which bumps the serial, so a configuration queued behind it that was built on the old layout
+    /// is `cancelled` and not applied over a layout it never saw. Returns whether heads were published.
+    pub(crate) fn apply_output_configs(&mut self, backend: &mut dyn gnoblin_backend::Backend<State>) -> bool {
+        let mut published = false;
         for pending in self.output_manager.take_pending() {
             if !pending.object.is_alive() {
                 continue;
@@ -196,18 +198,22 @@ impl State {
                 log::debug!(area = "output-manager", "a configuration named a head that is gone");
                 continue;
             }
-            match host.apply(&pending.requests, pending.test_only) {
+            match self.apply_head_requests(backend, &pending.requests, pending.test_only) {
                 Ok(()) => {
-                    changed |= !pending.test_only;
+                    if !pending.test_only {
+                        let heads = self.output_heads(backend);
+                        self.publish_output_heads(heads);
+                        published = true;
+                    }
                     pending.object.succeeded();
                 }
                 Err(error) => {
-                    log::debug!(area = "output-manager", %error, "the host refused the configuration");
+                    log::debug!(area = "output-manager", %error, "the configuration was refused");
                     pending.object.failed();
                 }
             }
         }
-        changed
+        published
     }
 }
 

@@ -247,11 +247,11 @@ impl Session {
         )
     }
 
-    /// A session whose backend reports no gamma or power control, so neither protocol
-    /// is advertised.
-    pub fn start_without_output_controls() -> Self {
+    /// A session whose backend reports no gamma, power or mode control, so none of those protocols is advertised and
+    /// a mode change is refused.
+    pub fn start_without_output_controls(role: Option<ClientRole>) -> Self {
         Self::boot(
-            None,
+            role,
             false,
             gnoblin_wayland::MonitorSettings::default(),
             WmOptions::default(),
