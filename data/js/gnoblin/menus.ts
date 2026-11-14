@@ -1,24 +1,8 @@
-// The stock window menu, ported from data/retired shell/gnoblin/shell/menus.retired shell.
-//
-// The compositor asks for a window's menu in three ways, and each reaches the shell as a `menu` request on the window's
-// node: a client's `xdg_toplevel.show_window_menu` (with a serial the compositor issued), the keyboard's window-menu key,
-// and the `window.request_menu` call of a program. The titlebar's right click asks too: its action is the seat's
-// `right_click`, and it defaults to `menu`. All of them end in `windowMenu.show(client, x, y)`.
-//
-// The menu is a layer over the screen that takes every press, with a card of entries on it. What it guarantees, each with
-// its test in crates/gnoblin-js/tests/stock_ui.rs (the cases of tests/retired shell/retired corpus menus):
-//   * It opens with its corner at the anchor, moved back inside the screen when it would run off it.
-//   * Up, Down, Home, End, Tab and Shift+Tab move the selection over the entries that are on. A letter jumps to the next
-//     entry that starts with it. Return and Space run the selection, Right opens a submenu and Left or Escape closes
-//     it, and Escape closes the menu. The pointer selects what it is over and a left click runs it.
-//   * A press anywhere else closes it, and is not passed on: it is the click that dismissed the menu.
-//   * One menu is open at a time. Asking for another closes the first. It closes when the window closes and when the
-//     session locks, and none opens over a lock screen.
-//   * A menu for a `secure` window is `secure`, so a View capture masks it.
-//   * The keys go to the menu while it is open, and the keyboard goes back to where it was when it closes.
-//
-// To change what the menu offers, assign `windowMenu.items`; to draw something else, assign `windowMenu.show`. Turn the
-// stock menu off with `defineConfig({ menus: false })`.
+// The stock window menu, ported from data/lua/gnoblin/shell/menus.lua. It owns the menu card, its keys and submenus.
+// The compositor sends a `menu` request for a window: a client's `show_window_menu`, the window-menu key, or a
+// titlebar's right click. Each request ends in `windowMenu.show`. Its entries come from `windowMenu.items`; assign
+// either to change it. `crates/gnoblin-js/tests/stock_ui.rs` drives the menu. Turn it off with
+// `defineConfig({ menus: false })`.
 
 import { Box, Text, onUiFrame, onUiRequest, uiFocus, uiFocused, uiLocked, uiPointer, uiScreen } from "gnoblin/ui";
 import type { PaintOp, UiKeyEvent, UiPointerEvent } from "gnoblin/ui";
@@ -69,11 +53,15 @@ export interface MenuClient {
     maximised: boolean;
     minimised: boolean;
     close(): void;
-    /** Keyboard move and resize modes (`gnoblin/reposition`): a `Client` has them; for a client that does not, the two entries are shown off. */
+    /**
+     * Keyboard move and resize modes (`gnoblin/reposition`): a `Client` has them; for a client that does not, the two
+     * entries are shown off.
+     */
     moveWithKeys?(): void;
     resizeWithKeys?(): void;
 }
 
+/** One workspace as a menu entry shows it: `active` marks the workspace the user is on. */
 export interface MenuWorkspace {
     readonly id: string;
     readonly name: string;
@@ -91,7 +79,10 @@ export interface MenuWorld {
     raise(client: MenuClient): void;
     /** Maximises or restores a window as the shell does it. Without it the `maximised` flag is written. */
     maximise?(client: MenuClient, on: boolean): void;
-    /** Minimises a window as the shell does it, which hands the keyboard focus on. Without it the `minimised` flag is written. */
+    /**
+     * Minimises a window as the shell does it, which hands the keyboard focus on. Without it the `minimised` flag is
+     * written.
+     */
     minimise?(client: MenuClient): void;
     /** Whether the window sits where an edge snap put it, and the way back from there. */
     snapped?(client: MenuClient): boolean;
@@ -412,7 +403,9 @@ export class MenuItem extends Box implements NavRow {
 /** A column of entries on a card. It takes the presses on its padding, so a press there is not a click away. */
 export class MenuPanel extends Box {
     rows: MenuItem[] = [];
-    /** Where the card goes along x, given the card: the first card's is the anchor, a submenu's is beside its parent. */
+    /**
+     * Where the card goes along x. The first card's is the anchor; a submenu's sits beside its parent.
+     */
     placeX: (panel: MenuPanel) => number = () => 0;
 
     constructor(secure: boolean) {
@@ -674,9 +667,9 @@ export function defaultMenuItems(client: MenuClient, controller: WindowMenus, wo
 // ---- the controller ----------------------------------------------------------------------------------------------
 
 /**
- * The window menu of the shell: it answers the compositor's menu requests, opens one menu at a time and keeps the keyboard
- * where it was. `items` and `show` are the two places to change it: assign either (`windowMenu.items = (client) => [...]`)
- * to change what the menu offers or to draw another.
+ * The window menu of the shell: it answers the compositor's menu requests, opens one menu at a time and keeps the
+ * keyboard where it was. `items` and `show` are the two places to change it: assign either
+ * (`windowMenu.items = (client) => [...]`) to change what the menu offers or to draw another.
  */
 export class WindowMenus {
     #world: MenuWorld | null = null;
@@ -771,7 +764,9 @@ export class WindowMenus {
         return this.#above.has(client);
     }
 
-    /** Pins `client` over the windows that are not pinned, or lets it go. Raising keeps pinned windows over the others. */
+    /**
+     * Pins `client` above the windows that are not pinned, or lets it go. Raising keeps pinned windows over the others.
+     */
     setAbove(client: MenuClient, on: boolean): void {
         if (on) {
             this.#above.add(client);

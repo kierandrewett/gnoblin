@@ -1,21 +1,8 @@
 // `gnoblin.idle`: run code when the session has had no input for a set time, and hold the session awake.
-//
 // The compositor publishes how long the session has been idle (`idle_ms` of the `idle` object) and how many holds keep
-// it awake (`inhibitors`: Wayland idle-inhibit surfaces and the holders `inhibit` recorded). A watch is a threshold over
-// that reading and nothing else, so it works the same for a script as for the compositor's own idle notifications:
-// an inhibitor delays `onIdle` as it delays a screen blank, and one that appears while the session is idle resumes it.
-//
-//     import { defineConfig } from "gnoblin";
-//
-//     defineConfig({
-//         setup: (gnoblin) => {
-//             gnoblin.idle.watch(300_000, {
-//                 onIdle: () => console.log("five minutes without input"),
-//                 onResume: () => console.log("the user is back"),
-//             });
-//         },
-//     });
-//
+// it awake (`inhibitors`: Wayland idle-inhibit surfaces and the holders `inhibit` recorded). A watch is a threshold
+// over that reading and nothing else, so a script's watch behaves like the compositor's own idle notifications: an
+// inhibitor delays `onIdle` as it delays a screen blank, and one that appears while the session is idle resumes it.
 // The manager is plain TypeScript over two functions of the host (`IdleHost`), so it runs without a compositor. A
 // handler runs as a queued call under the same wall-clock budget as every other listener: one that throws is reported
 // once and the next still runs, and one that runs past its budget is interrupted.

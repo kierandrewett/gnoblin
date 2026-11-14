@@ -1,19 +1,10 @@
-// The host API that is not about windows: `gnoblin.session`, `gnoblin.runtime`, `gnoblin.process`,
-// `gnoblin.timers`, `gnoblin.on`, `gnoblin.find`, `gnoblin.focus` and `gnoblin.version`.
-//
-//     gnoblin.session.suspend().onComplete((value, error) => {
-//         if (error) console.log(error.code, error.message);
-//     });
-//     gnoblin.on("gnoblin.session.bell", (event) => console.log("bell", event.count));
-//     const terminals = gnoblin.find("Window", { appId: "foot" });
-//
+// The host API that is not about windows: `gnoblin.session`, `gnoblin.runtime`, `gnoblin.process`, `gnoblin.timers`,
+// `gnoblin.on`, `gnoblin.find`, `gnoblin.focus` and `gnoblin.version`.
 // `HostApi` is plain TypeScript over a few functions of the shell (`ApiHost`), so it runs without a compositor. The
 // shell calls `frame` once a frame with what happened outside the script: a call the compositor finished, a signal it
 // raised, a process that ended. Every listener and callback runs as a queued call under the usual wall-clock budget.
-//
-// Errors are typed. A call that cannot be made at all throws (`TypeError` for a bad argument). A call that is made
-// and refused returns an `Operation` that fails with an `OperationError` whose `code` is one of the codes of
-// `docs/shell-api/errors.md`.
+// Errors are typed. A call that cannot be made at all throws (`TypeError` for a bad argument). A call that is made and
+// refused returns an `Operation` that fails with an `OperationError`; its `code` is one of `docs/shell-api/errors.md`.
 
 import { Operation, Timers } from "gnoblin/operation";
 import type { ClockHost, OperationErrorCode, OperationHost, Subscription } from "gnoblin/operation";
@@ -140,7 +131,7 @@ type HostEvent = OperationEvent | SignalMessage | LostMessage | ExitEvent | Trac
 
 // ---- the event bus -----------------------------------------------------------------------------------------------
 
-/** The most handlers the bus holds, as the retired host's. */
+/** The most handlers the bus holds, as the retired Lua host's. */
 export const MAX_HANDLERS = 1024;
 
 function camel(name: string): string {
@@ -381,7 +372,10 @@ export class Session {
         return { state: "running", ...(JSON.parse(text) as Omit<SessionStatus, "state">) };
     }
 
-    /** Ends the session. The compositor exits with the logout code and the session wrapper returns to the login manager. */
+    /**
+     * Ends the session. The compositor exits with the logout code, and the session wrapper returns to the login
+     * manager.
+     */
     logout(): Operation<Accepted> {
         return this.#calls.begin("logout", "session.logout");
     }
@@ -395,7 +389,9 @@ export class Session {
         return this.#calls.begin("reboot", "session.reboot");
     }
 
-    /** Suspends to RAM. The session locks first. Fails `denied`, `unsupported`, `busy`, `unavailable` or `timed_out`. */
+    /**
+     * Suspends to RAM. The session locks first. Fails `denied`, `unsupported`, `busy`, `unavailable` or `timed_out`.
+     */
     suspend(): Operation<Accepted> {
         return this.#calls.begin("suspend", "session.suspend");
     }

@@ -1,15 +1,8 @@
 // Operations and timers: what an asynchronous call of the host returns, and the clock that runs its deadlines.
-//
 // An `Operation` is the result of a call that finishes later: `gnoblin.session.poweroff()`, `process.kill()`,
-// `gnoblin.runtime.reloadConfig()`. It is settled once, with a value or with a typed error, and the callbacks
-// added to it run as queued calls under the same wall-clock budget as every listener: one that throws is reported
-// and the next callback still runs, and a callback added after the operation settled runs once, after the current
-// call returns.
-//
-//     gnoblin.session.suspend().onComplete((value, error) => {
-//         if (error) console.log(error.code, error.message);
-//     });
-//
+// `gnoblin.runtime.reloadConfig()`. It settles once, with a value or with a typed error. Its callbacks run as queued
+// calls under the same wall-clock budget as every listener: one that throws is reported and the next callback still
+// runs. A callback added after the operation settled runs once, after the current call returns.
 // Both classes are plain TypeScript over a small host (`OperationHost`), so they run without a compositor.
 
 /** What an operation can fail with. The codes are the ones `docs/shell-api/errors.md` lists, plus the reload's own. */
@@ -31,6 +24,7 @@ export interface OperationError {
     readonly message: string;
 }
 
+/** Where an operation is. It starts `pending` and ends as `succeeded` or `failed`; it never goes back. */
 export type OperationStatus = "pending" | "succeeded" | "failed";
 
 /** Stops a callback or a handler before it runs. Calling it twice is harmless. */
@@ -51,7 +45,7 @@ export interface OperationHost extends ClockHost {
     after(ms: number, fn: () => void): { cancel(): boolean };
 }
 
-/** The ceiling on pending timers, as the retired host's. A config past it is looping. */
+/** The ceiling on pending timers, as the retired Lua host's. A config past it is looping. */
 export const MAX_TIMERS = 1024;
 
 /** The longest delay a timer takes, in milliseconds: a day. */

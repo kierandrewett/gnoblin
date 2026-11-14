@@ -7,7 +7,10 @@
 
 import type { AuthenticationListener, AuthenticationRequest } from "gnoblin/authentication";
 
-/** What a request is: a consent dialog for a portal request, the compositor's passphrase prompt, or a polkit authentication. */
+/**
+ * What a request is: a consent dialog for a portal request, the compositor's passphrase prompt, or a polkit
+ * authentication.
+ */
 export type DialogKind = "consent" | "secret" | "auth";
 
 /**
@@ -83,7 +86,9 @@ export interface DialogHost {
  * carry different things by `title`: see `classify`.
  */
 export interface DialogEvent {
-    /** `offered`: a request opened. `finished`: its window ended. `lost`: the slot was lost and every request is void. */
+    /**
+     * `offered`: a request opened. `finished`: its window ended. `lost`: the slot was lost and every request is void.
+     */
     kind: "offered" | "finished" | "lost";
     /** The compositor's id for the request. */
     request?: number;
@@ -119,7 +124,10 @@ class ObservedRequest<K extends DialogKind> implements DialogRequest {
         this.deadline = deadline;
     }
 
-    /** The first call wins. A call after the window has closed does nothing. Throws a `TypeError` for a non-string reason. */
+    /**
+     * The first call wins. A call after the window has closed does nothing. Throws a `TypeError` for a non-string
+     * reason.
+     */
     decline(reason: string = "policy"): void {
         if (typeof reason !== "string") {
             throw new TypeError("request.decline: the reason must be a string");

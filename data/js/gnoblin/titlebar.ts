@@ -1,13 +1,9 @@
-// The stock titlebar: a `Box` row of a drag area that holds the title, and the minimise, maximise and close
-// buttons, drawn as a child of the window's node (design/archive/node-api-refactor.md, decision 2a).
-//
-// Everything that sets how it looks is a plain field of `TitlebarStyle`, so a config can hand its own style over
-// (`new Titlebar(client, { ...defaultTitlebarStyle, focusedFill: "#223" })`), and a later `defineConfig({ style })`
-// can build one from its keys. `Decorations` gives one titlebar to each window the compositor told is server-decorated
-// (a window that draws its own title bar gets none) and takes it away when the window leaves or draws its own again.
-//
-// The bar sits above the window's content, never over it: its y is minus its height, so it lies in the room the layout
-// driver keeps free above the client (`Decorations.insetOf`). docs/js-ui.md, "Titlebar", says why.
+// The stock titlebar: a `Box` row with a drag area that holds the title and the minimise, maximise and close buttons.
+// It is drawn as a child of the window's node (design/archive/node-api-refactor.md, Decision 2, option (a)).
+// Every look setting is a field of `TitlebarStyle`. A config passes its own style, or changes keys through
+// `defineConfig({ style })`. `Decorations` keeps one bar per decorated window and reports its height with `insetOf`.
+// The layout driver leaves that height free above each window, so the bar and the content never overlap.
+// docs/js-ui.md, "Titlebar", says why.
 
 import { Box, Icon, Text, uiNow, uiSeatAction } from "gnoblin/ui";
 import type { UiPointerEvent } from "gnoblin/ui";
@@ -15,6 +11,7 @@ import type { UiPointerEvent } from "gnoblin/ui";
 /** The three window buttons, which a style can order, leave out or give other icons. */
 export type TitlebarButton = "minimise" | "maximise" | "close";
 
+/** The look of a titlebar. Lengths are pixels. */
 export interface TitlebarStyle {
     height: number;
     /** Space between the bar's edge and what it holds. */
@@ -36,7 +33,7 @@ export interface TitlebarStyle {
     icons: Readonly<Record<TitlebarButton, string>>;
 }
 
-/** The look of the retired shell's titlebar, with the window buttons beside the close button. */
+/** The look of the retired Lua shell's titlebar, with the window buttons beside the close button. */
 export const defaultTitlebarStyle: Readonly<TitlebarStyle> = {
     height: 28,
     padding: 6,
@@ -70,7 +67,9 @@ export interface TitlebarClient {
     maximised: boolean;
     minimised: boolean;
     close(): void;
-    /** Moves `opacity` and `scale` over time: the fade of a window that is closing. Without it the window just closes. */
+    /**
+     * Moves `opacity` and `scale` over time: the fade of a closing window. Without it the window just closes.
+     */
     animate?(
         values: { opacity?: number; scale?: [number, number, number] },
         options: { duration: number; easing?: string },
@@ -83,13 +82,20 @@ export interface TitlebarHooks {
     menu?(client: TitlebarClient): void;
     /** The seat's `lower` action: put the window under the others. */
     lower?(client: TitlebarClient): void;
-    /** Maximises or restores the window as the shell does it, which leaves room for the bar. Else the flag is written. */
+    /**
+     * Maximises or restores the window as the shell does it, which leaves room for the bar. Else the flag is
+     * written.
+     */
     maximise?(client: TitlebarClient, on: boolean): void;
-    /** Minimises the window as the shell does it, which hands the keyboard focus to another window. Else the flag is written. */
+    /**
+     * Minimises the window as the shell does it: the keyboard focus goes to another window. Else the flag is written.
+     */
     minimise?(client: TitlebarClient): void;
     /** The seconds an animation takes: 0 while the seat asks for reduced motion. Absent, the seconds it was given. */
     motion?(seconds: number): number;
-    /** A button went down on the bar itself (not on one of its buttons): the window is pressed, so it takes the focus. */
+    /**
+     * A button went down on the bar itself, not on one of its buttons: the window is pressed and takes the focus.
+     */
     press?(client: TitlebarClient, event: { x: number; y: number; button: number }): void;
     /** The button that went down on the bar came up. */
     release?(client: TitlebarClient, event: { x: number; y: number; button: number }): void;
@@ -103,9 +109,12 @@ const MIDDLE = 274;
 /** Two presses within this many milliseconds on the bar are a double click. */
 const DOUBLE_CLICK_MS = 500;
 
-/** The retired shell's fade on close: out over 0.18 s, as a window shrinks to 0.92 of its size. */
+/** The retired Lua shell's fade on close: out over 0.18 s, as a window shrinks to 0.92 of its size. */
 export const CLOSE_FADE_MS = 180;
-/** A window that is still there this long after it was asked to close (a client that asks "save changes?") comes back. */
+/**
+ * A window still there this long after it was asked to close comes back, so a client that asks "save changes?" is
+ * not left faded out.
+ */
 export const CLOSE_RESTORE_MS = 1500;
 const RESTORE_SECONDS = 0.12;
 
@@ -164,7 +173,10 @@ export class Titlebar extends Box {
         }
     }
 
-    /** The room the bar takes above the client: its height, or nothing while the window is fullscreen and the bar hidden. */
+    /**
+     * The room the bar takes above the client: its height, or nothing while the window is fullscreen and the bar
+     * hidden.
+     */
     get inset(): number {
         return this.client.fullscreen ? 0 : this.style.height;
     }
@@ -205,7 +217,7 @@ export class Titlebar extends Box {
         const fade = this.hooks.motion?.(CLOSE_FADE_MS / 1000) ?? CLOSE_FADE_MS / 1000;
         client.animate({ opacity: 0, scale: [0.92, 0.92, 1] }, { duration: fade, easing: "in-cubic" });
         if (fade === 0) {
-            // Reduced motion: nothing to wait for, so the window is asked to close now, and comes back as usual if it stays.
+            // Reduced motion: nothing to wait for, so the window is asked to close now. It comes back if it stays.
             this.#closing = { closeAt: null, restoreAt: this.now() + CLOSE_RESTORE_MS };
             client.close();
             return;
@@ -284,7 +296,7 @@ export class Titlebar extends Box {
             case "minimize":
                 this.#minimise();
                 return;
-            // Maximising along one axis has no stock behaviour yet, as in the retired shell: it does nothing.
+            // Maximising along one axis has no stock behaviour yet, as in the retired Lua shell: it does nothing.
             case "toggle-maximize-horizontally":
             case "toggle-maximize-vertically":
             case "none":
@@ -296,8 +308,9 @@ export class Titlebar extends Box {
 
     override onPress(event: UiPointerEvent): void {
         event.stop();
-        // A left press lands on the window: it takes the focus and, as the seat says, the top. A right or middle press is
-        // left to its action: the window menu a right click opens holds the keyboard, and the press is heard later.
+        // A left press lands on the window: it takes the focus and, as the seat says, the top.
+        // A right or middle press is left to its action: the window menu a right click opens holds the keyboard, and
+        // the press is heard later.
         if (event.button === LEFT) {
             this.hooks.press?.(this.client, { x: event.x, y: event.y, button: event.button });
         }

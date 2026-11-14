@@ -1,10 +1,10 @@
-// The widgets of the retired shell's `ui.retired shell` that the toolkit (`gnoblin/ui`) did not have: `Entry`, a line of text you type
-// into, `Clock`, a text that shows the time, and `Bar`, a strip along the top or bottom of the screen that takes its
-// room from the windows.
+// The widgets of the retired Lua shell's `ui` module that the toolkit (`gnoblin/ui`) did not have: `Entry`, a line of
+// text you type into, `Clock`, a text that shows the time, and `Bar`, a strip along the top or bottom of the screen
+// that takes its room from the windows.
 //
 // `EntryModel` is the editing of an `Entry` without any drawing (the text, the caret, the selection), so it can be
-// tested and reused. The keys an `Entry` reads are the ones the the retired shell `Entry` read: the `key` event of the canvas that
-// holds the keyboard focus, with `key` (the keysym's name) and `text` (what it types).
+// tested and reused. An `Entry` reads the keys the retired Lua one read: the `key` event of the canvas that holds
+// the keyboard focus, with `key` (the keysym's name) and `text` (what it types).
 
 import { Box, Text, uiScreen } from "gnoblin/ui";
 import type { BoxOptions, Color, PaintOp, UiKeyEvent } from "gnoblin/ui";
@@ -172,10 +172,10 @@ const SHIFT = new Set(["Shift_L", "Shift_R"]);
 const CONTROL = new Set(["Control_L", "Control_R"]);
 
 /**
- * A line of text you type into. Give it the keyboard (`entry.focus()`) and it reads the keys: letters type, BackSpace and
- * Delete remove, Left, Right, Home and End move the caret (with Shift held they select), Control+A selects all, and
- * Return calls `onSubmit` with the text. Each key it uses it stops, so a parent does not hear it too; a subclass that
- * wants one more key (Escape) calls `super.onKey(event)` first and then looks at `event.key`.
+ * A line of text you type into. Give it the keyboard (`entry.focus()`) and it reads the keys: letters type,
+ * BackSpace and Delete remove, Left, Right, Home and End move the caret (with Shift held they select), Control+A
+ * selects all, and Return calls `onSubmit` with the text. Each key it uses it stops, so a parent does not hear it
+ * too; a subclass that wants one more key (Escape) calls `super.onKey(event)` first and then looks at `event.key`.
  *
  * The caret and the selection are drawn from the width the compositor measures for the text before them; until its
  * answer arrives a frame later, they are placed by the estimate the toolkit uses for any text.
@@ -428,6 +428,10 @@ export interface BarOutput {
     readonly height: number;
 }
 
+/**
+ * Options for `Bar`. A bar is a strip along one screen edge. `hideWhen` lets it leave the screen when a fullscreen
+ * window covers it.
+ */
 export interface BarOptions extends BoxOptions {
     edge?: BarEdge;
     /** When this returns true the bar is hidden and takes no room: a fullscreen window covers the screen. */
@@ -445,7 +449,8 @@ let primaryOutput: (() => BarOutput | null) | null = null;
 /**
  * Makes every bar give way (hidden, taking no room) while `covered` returns true for the output the bar sits on. The
  * shell passes "a fullscreen window is showing on the workspace that output shows", so a fullscreen window covers the
- * whole output, as the retired shell's `Desk:sync_fullscreen` did. A bar's own `hideWhen` still applies. Null stops it.
+ * whole output, as the retired Lua shell's `Desk:sync_fullscreen` did. A bar's own `hideWhen` still applies. Null
+ * stops it.
  */
 export function barsGiveWayTo(covered: ((output: BarOutput | null) => boolean) | null): void {
     coveredBy = covered;

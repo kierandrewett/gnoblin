@@ -1,22 +1,9 @@
-// The stock "not responding" alert, ported from data/retired shell/gnoblin/shell/alerts.retired shell.
-//
-// The compositor pings every client that has a window. One that leaves a ping unanswered for longer than
-// `window-management.check-alive-timeout` (5000 ms by default; 0 turns the pings off) has its windows marked
-// `unresponsive`, and this module asks the user what to do about each:
-//   * Wait, the default: the alert closes, and does not come back for that window until it has answered a ping and then
-//     stopped answering again.
-//   * Force quit: the window's process is killed (`Client.kill()`). The compositor refuses its own process, init and a
-//     process that is not the one that opened the window.
-//
-// Escape is Wait, Tab, Left and Right move between the buttons, Return or Space presses the focused one, and Force quit
-// does nothing for the first `armSeconds`, so a click or a key already on its way when the alert appears cannot press it.
-// It is `secure` when the window is, since it shows the window's title. It closes by itself when the window answers
-// again, closes, or the session locks, and while the session is locked no alert opens. One alert is open for each window
-// that is unresponsive. It takes the keyboard, because an unresponsive window is the one the user was typing into, and
-// gives it back when it closes. It closes an open window menu first.
-//
-// `AlertTracker` is the state machine alone (which windows get an alert, which are waited on, what an answer does), so
-// it is tested without a compositor. Turn the alert off with `defineConfig({ alerts: false })`.
+// The stock "not responding" alert, ported from data/lua/gnoblin/shell/alerts.lua.
+// The compositor pings every client. A window that misses pings for longer than `window-management.check-alive-timeout`
+// (5000 ms by default; 0 turns pings off) is marked `unresponsive`, and this module offers the user Wait or Force quit.
+// Force quit kills the window's process with `Client.kill()`; the compositor refuses to kill init and its own process.
+// Force quit ignores presses for `armSeconds` after the alert opens, so input already in flight cannot press it.
+// `AlertTracker` is the state machine on its own. Turn the alert off with `defineConfig({ alerts: false })`.
 
 import { Box, Text, onUiFrame, uiFocus, uiFocused, uiLocked, uiNow, uiScreen } from "gnoblin/ui";
 import type { UiKeyEvent, UiPointerEvent } from "gnoblin/ui";
@@ -109,7 +96,10 @@ export class AlertTracker<W extends AlertClient> {
     }
 }
 
-/** Text from a peer is for display only: no control characters, no lone surrogates, and no more than `max` characters. */
+/**
+ * Text from a peer is for display only: no control characters, no lone surrogates, and no more than `max`
+ * characters.
+ */
 export function cleanText(text: string, max: number): string {
     const raw = String(text ?? "");
     if (/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(raw)) {
@@ -164,8 +154,8 @@ class AlertButton extends Box {
 }
 
 /**
- * The alert: what is wrong, and Wait and Force quit. `onChosen` is called once, with the answer. Force quit is off until
- * `arm()`, which the controller calls `armSeconds` after the alert opened.
+ * The alert: what is wrong, and Wait and Force quit. `onChosen` is called once with the answer. Force quit is off
+ * until `arm()`, which the controller calls `armSeconds` after the alert opened.
  */
 export class NotRespondingDialog extends Box {
     readonly choices: AlertButton[];
@@ -268,6 +258,7 @@ export interface AlertWorld {
     closeMenu?(): void;
 }
 
+/** Options for the alert controller. Times are in seconds. */
 export interface AlertOptions {
     /** Seconds Force quit ignores a press after the alert opens. Default 0.5. */
     armSeconds?: number;
@@ -283,9 +274,9 @@ interface Card {
 }
 
 /**
- * Looks at the windows a few times a second, opens the alert for one that has just stopped answering and closes the alert
- * of one that answers again, has gone, or lies under a lock. `unresponsive` is a property the compositor writes, so the
- * alert reads it: it does not wait for a signal there is none of.
+ * Looks at the windows a few times a second, opens the alert for one that has just stopped answering and closes the
+ * alert of one that answers again, has gone, or lies under a lock. `unresponsive` is a property the compositor writes,
+ * so the alert reads it: it does not wait for a signal there is none of.
  */
 export class NotRespondingAlerts {
     armSeconds = 0.5;

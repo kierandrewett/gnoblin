@@ -1,21 +1,9 @@
 // The stock lock screen: a clock and a password entry drawn over the cover while the session is locked.
-//
-// The compositor owns the lock. It covers every output, takes every key and pointer event away from the clients, and
-// checks the password itself (PAM, on a worker thread); only an accepted check unlocks. This screen is what the user
-// types into: it never decides anything. It reads the `lock` node's `state`, records that it is up in `engaged` (which
-// is what lets the compositor route the typed keys to it, and stop drawing its own built-in card), and sends the
-// password with the node's `authenticate` call, whose answer is `ok`, `denied`, `rate-limited` (with the wait in
-// milliseconds), `busy` or `failed: ...`.
-//
-// The screen is a tree of canvases mounted under the lock node, so the compositor draws it over the cover. It is
-// made when the state leaves `not-locked` (a shell that attaches to a session that is already locked finds the state
-// there, so a restart or a late shell shows it too) and destroyed when the state returns to `not-locked`.
-//
-// The password: the entry keeps what was typed as an array of code points, not as a string, and overwrites it as soon
-// as the call is made. The one string it is ever turned into lives only for the call to `authenticate`. A JavaScript
-// string cannot be wiped, so that copy, and the one in the key event that carried each character, stay in the engine's
-// heap until the collector frees them; that is the limit of this screen, and the Rust built-in card (no script) does
-// not have it. The screen never draws, logs or stores the password: the entry draws one `*` per character.
+// The compositor owns the lock and checks the password. This screen only collects the typed keys, reads the `lock`
+// node's `state`, and sends the password with `authenticate`. It is made and destroyed as the state leaves and returns
+// to `not-locked`. A JavaScript string cannot be wiped, so the copy handed to `authenticate` lives on the engine heap
+// until it is collected. `PasswordEntry` overwrites its own characters on submit, and draws one mask character each.
+// The Rust fallback lock card is used when no shell holds the lock screen (docs/session-lock.md).
 
 import { Box, Text, runUiFrame, uiFocus, uiFocused } from "gnoblin/ui";
 import type { PaintOp, UiKeyEvent } from "gnoblin/ui";
@@ -74,6 +62,7 @@ export interface LockStyle {
     rateLimited: string;
 }
 
+/** The stock look of the lock screen. Used unless the shell passes its own `LockStyle`. Lengths are pixels. */
 export const defaultLockStyle: Readonly<LockStyle> = {
     scrimFill: "#11111bf2",
     cardWidth: 360,

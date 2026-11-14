@@ -22,7 +22,10 @@ export interface AuthenticationRequest extends DialogRequest {
      * application, so the program asking is `subject`.
      */
     readonly appId: string;
-    /** The program asking, as polkit reports it (`pkexec`, a process name), or the empty string. Not an identity to trust. */
+    /**
+     * The program asking, as polkit reports it (`pkexec`, a process name), or the empty string. Not an identity to
+     * trust.
+     */
     readonly subject: string;
     /** Who may authenticate, as polkit writes them: `unix-user:alice`. */
     readonly identities: readonly string[];

@@ -1,18 +1,13 @@
-// The shell UI toolkit: `Canvas`, `Box`, `Text`, `Icon` and `Grid`.
+// The shell UI toolkit: `Canvas`, `Box`, `Text`, `Icon` and `Grid`, the classes the stock shell draws with.
 //
-// A `Canvas` is a node of the compositor's tree that shows a paint list (crates/gnoblin-paint/src/list.rs): the
-// rectangles, lines, text and icons its `draw()` returns. A `Box` is a canvas that fills itself and arranges its
-// children as a small flexbox. `Text` and `Icon` are boxes that draw one string or one icon. They are ordinary
-// classes with ordinary fields: change a field and the next frame paints it.
+// A `Canvas` is a node of the compositor's tree whose content is a paint list (crates/gnoblin-paint/src/list.rs):
+// the rectangles, lines, text and icons its `draw()` returns. A `Box` lays out its children; `Text` and `Icon` draw
+// one string or one icon. Fields are plain: change one and the next frame paints it.
 //
-// A frame, once the host calls `runUiFrame`, does this for every tree of canvases that has no canvas parent:
-//
-//   1. the answers to the text measurements asked earlier, and the pointer events the compositor sent, are taken
-//   2. `refresh()` lets a canvas read live state (a titlebar reads its window), then `arrange()` places its children
-//   3. the node's geometry and paint list are written when they differ from what was last written
-//
-// The toolkit talks to the tree through `UiBackend`, which the host module hands over with `attachUi`. The stock
-// modules never import the host, so a test can attach a fake one.
+// The toolkit talks to the tree only through `UiBackend`, which the host hands over with `attachUi`. It never
+// imports the host, so a test can attach a fake. Frames are driven by `runUiFrame`, see its doc.
+
+// ---- The host ----------------------------------------------------------------------------------------------------
 
 /** The functions the shell host provides. Each refusal is a short code (`unknown-node`, `not-owned`, ...). */
 export interface UiBackend {
@@ -73,6 +68,7 @@ export interface UiRawEvent {
 
 type Report = (site: string, error: unknown) => void;
 
+// Set by `attachUi`. Until then making a canvas throws and `runUiFrame` does nothing.
 let backend: UiBackend | null = null;
 let report: Report = () => {};
 
@@ -92,7 +88,7 @@ function host(): UiBackend {
 /** The canvases of this generation, by node. */
 const live = new Map<number, Canvas>();
 
-// ---- the paint list ----------------------------------------------------------------------------------------------
+// ---- The paint list ----------------------------------------------------------------------------------------------
 
 /** A colour is `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`. */
 export type Color = string;
@@ -118,6 +114,19 @@ export type PaintOp =
     | { op: "pushOpacity"; alpha: number }
     | { op: "popOpacity" };
 
+/** Defaults for ops that leave a field out. Sizes are pixels; colours are `0xRRGGBBAA` words. */
+const OPAQUE_WHITE = 0xffffffff;
+const DEFAULT_FONT = "sans";
+const DEFAULT_TEXT_SIZE = 14;
+const DEFAULT_ICON_SIZE = 16;
+const DEFAULT_LINE_WIDTH = 1;
+/** The colour of text when a `Text` names none. Matches the stock menus' text colour. */
+const DEFAULT_TEXT_COLOUR = "#cdd6f4";
+
+/** The paint list's format version. `crates/gnoblin-paint/src/list.rs` refuses any other. */
+const PAINT_LIST_VERSION = 1;
+
+/** The tag byte of each op kind, as `crates/gnoblin-paint/src/list.rs` reads it. */
 const TAG = { rect: 1, line: 2, text: 3, icon: 4, pushClip: 5, popClip: 6, pushOpacity: 7, popOpacity: 8 } as const;
 
 /** Little-endian bytes, as the paint list wants them. */
@@ -190,7 +199,9 @@ export function utf8(text: string): number[] {
     return out;
 }
 
-/** The `0xRRGGBBAA` word of a colour. */
+/**
+ * The `0xRRGGBBAA` word of a colour, or `fallback` when the colour is absent. Throws a `TypeError` for any other form.
+ */
 function colourWord(value: Color | undefined, fallback: number): number {
     if (value === undefined) {
         return fallback;
@@ -209,6 +220,10 @@ function colourWord(value: Color | undefined, fallback: number): number {
     return Number.parseInt(hex, 16);
 }
 
+/**
+ * `value`, or `fallback` when it is absent. Throws on NaN and infinities: the compositor would read them as
+ * garbage.
+ */
 function finite(value: number | undefined, fallback: number): number {
     if (value === undefined) {
         return fallback;
@@ -219,6 +234,7 @@ function finite(value: number | undefined, fallback: number): number {
     return value;
 }
 
+/** Writes one op: its tag byte, then its fields in the order `crates/gnoblin-paint/src/list.rs` reads them. */
 function writeOp(out: ByteWriter, op: PaintOp): void {
     switch (op.op) {
         case "rect":
@@ -238,24 +254,24 @@ function writeOp(out: ByteWriter, op: PaintOp): void {
             out.f32(finite(op.y1, 0));
             out.f32(finite(op.x2, 0));
             out.f32(finite(op.y2, 0));
-            out.f32(finite(op.width, 1));
-            out.u32(colourWord(op.color, 0xffffffff));
+            out.f32(finite(op.width, DEFAULT_LINE_WIDTH));
+            out.u32(colourWord(op.color, OPAQUE_WHITE));
             return;
         case "text":
             out.u8(TAG.text);
             out.f32(finite(op.x, 0));
             out.f32(finite(op.y, 0));
-            out.f32(finite(op.size, 14));
-            out.u32(colourWord(op.color, 0xffffffff));
-            out.str2(op.font ?? "sans");
+            out.f32(finite(op.size, DEFAULT_TEXT_SIZE));
+            out.u32(colourWord(op.color, OPAQUE_WHITE));
+            out.str2(op.font ?? DEFAULT_FONT);
             out.str4(String(op.text));
             return;
         case "icon":
             out.u8(TAG.icon);
             out.f32(finite(op.x, 0));
             out.f32(finite(op.y, 0));
-            out.f32(finite(op.size, 16));
-            out.u32(colourWord(op.color, 0xffffffff));
+            out.f32(finite(op.size, DEFAULT_ICON_SIZE));
+            out.u32(colourWord(op.color, OPAQUE_WHITE));
             out.str2(String(op.name));
             return;
         case "pushClip":
@@ -282,9 +298,10 @@ function writeOp(out: ByteWriter, op: PaintOp): void {
 }
 
 /**
- * The bytes of a canvas's `content` property for `ops`. The encoding is the one the retired shell wrote and the
- * compositor decodes: `"GNPL"`, a version byte, a `u32` op count, then each op as a tag byte and its fields. An op
- * that cannot be written throws an error that names it (`draw op 2: ...`), and nothing is written.
+ * The bytes of a canvas's `content` property for `ops`. The encoding is the one the retired Lua shell wrote
+ * (`data/lua/gnoblin/shell/`) and the compositor decodes: `"GNPL"`, a version byte, a `u32` op count, then each op as a
+ * tag byte and its fields. An op that cannot be written throws an error that names it (`draw op 2: ...`), and nothing
+ * is written.
  */
 export function encodePaintList(ops: readonly PaintOp[]): number[] {
     const body = new ByteWriter();
@@ -297,12 +314,12 @@ export function encodePaintList(ops: readonly PaintOp[]): number[] {
     });
     const out = new ByteWriter();
     out.bytes.push(0x47, 0x4e, 0x50, 0x4c); // "GNPL"
-    out.u8(1);
+    out.u8(PAINT_LIST_VERSION);
     out.u32(ops.length);
     return out.bytes.concat(body.bytes);
 }
 
-// ---- pointer events ----------------------------------------------------------------------------------------------
+// ---- Pointer events ----------------------------------------------------------------------------------------------
 
 /**
  * A pointer event on a canvas. It goes to the canvas the compositor hit and then up through its parents until a
@@ -360,6 +377,7 @@ export class UiKeyEvent {
     }
 }
 
+/** The handler a canvas may define for each pointer event kind the compositor sends. */
 const HANDLERS: Readonly<Record<string, "onPress" | "onRelease" | "onMotion" | "onScroll" | "onEnter" | "onLeave">> = {
     press: "onPress",
     release: "onRelease",
@@ -371,6 +389,7 @@ const HANDLERS: Readonly<Record<string, "onPress" | "onRelease" | "onMotion" | "
 
 // ---- Canvas ------------------------------------------------------------------------------------------------------
 
+/** Options for `Canvas`. Each field given is set before the first frame. Sizes are pixels. */
 export interface CanvasOptions {
     x?: number;
     y?: number;
@@ -413,6 +432,7 @@ export class Canvas {
     #height: number | null = null;
     #alive = true;
     #written: Written = { x: 0, y: 0, width: 0, height: 0, visible: true, opacity: 1, secure: false };
+    // The bytes last written. A frame skips the paint when the new bytes are the same.
     #content: number[] | null = null;
 
     constructor(options: CanvasOptions = {}) {
@@ -575,7 +595,11 @@ export class Canvas {
         }
     }
 
-    /** One frame of this canvas and its children: refresh, arrange, then write what changed. */
+    /**
+     * One frame of this canvas and its children: refresh, arrange, update the children, then write what changed. The
+     * order matters: `arrange()` sets the children's geometry before they update, and this canvas's own paint is
+     * written last, once every size is final.
+     */
     update(): void {
         if (!this.#alive) {
             return;
@@ -588,6 +612,7 @@ export class Canvas {
         guard(this, "draw", () => this.#flush());
     }
 
+    /** Writes the node properties that changed, then the paint list if its bytes changed. */
     #flush(): void {
         const written = this.#written;
         const now = {
@@ -616,6 +641,7 @@ export class Canvas {
         const bytes = encodePaintList(this.draw());
         if (this.#content === null || !sameBytes(this.#content, bytes)) {
             const code = host().paint(this.node, bytes);
+            // The compositor destroyed the node, so the canvas is gone too. Its writes are no longer wanted.
             if (code === "unknown-node") {
                 this.markGone();
                 return;
@@ -644,6 +670,8 @@ export class Canvas {
             if (typeof handler === "function") {
                 guard(at, name as string, () => handler.call(at, event));
             }
+            // Each parent's offset is added after its handler runs, so the next handler sees the event in its
+            // own space.
             event.x += at.x;
             event.y += at.y;
         }
@@ -704,6 +732,7 @@ function sameBytes(a: readonly number[], b: readonly number[]): boolean {
 /** How a box places its children: in a `row`, in a `column`, or `none` (they stay where they are). */
 export type Direction = "row" | "column" | "none";
 
+/** Options for `Box`. Sizes, gaps and padding are pixels. */
 export interface BoxOptions extends CanvasOptions {
     direction?: Direction;
     gap?: number;
@@ -770,6 +799,7 @@ export class Box extends Canvas {
         let at = pad;
         for (const kid of kids) {
             if (kid.grow > 0) {
+                // A growing child takes its share of the free room. A negative share is clamped to zero.
                 const share = Math.max(0, Math.floor((free * kid.grow) / growing));
                 if (column) kid.height = share;
                 else kid.width = share;
@@ -799,7 +829,8 @@ export interface TextMetrics {
 
 /**
  * Until the compositor answers a measurement, a text is sized by a guess: a sans glyph averages half the font size, a
- * line box is one and a half sizes tall and the baseline sits a little over one size below its top.
+ * line box is one and a half sizes tall and the baseline sits a little over one size below its top. The fractions are
+ * rough on purpose: the answer replaces them within a frame, so they only need to keep the layout from jumping.
  */
 export function estimateText(text: string, size: number): TextMetrics {
     let widest = 0;
@@ -814,6 +845,7 @@ export function estimateText(text: string, size: number): TextMetrics {
 /** The measurements asked and not yet answered, by token. */
 const measuring = new Map<number, { text: Text; key: string }>();
 
+/** Options for `Text`. Sizes are pixels. */
 export interface TextOptions extends BoxOptions {
     text?: string;
     size?: number;
@@ -829,11 +861,14 @@ export interface TextOptions extends BoxOptions {
  */
 export class Text extends Box {
     text = "";
-    size = 14;
-    color: Color = "#cdd6f4";
-    font = "sans";
+    size = DEFAULT_TEXT_SIZE;
+    color: Color = DEFAULT_TEXT_COLOUR;
+    font = DEFAULT_FONT;
     ellipsize = false;
+    // The answer in use, and the key it was measured under. It stops applying once the key changes.
     #measured: (TextMetrics & { key: string }) | null = null;
+    // The key last asked. A text asks once per key: the compositor is not asked again for a key it was already asked
+    // about. A changed font, size or text is a new key and asks again.
     #asked: string | null = null;
 
     constructor(options: TextOptions = {}) {
@@ -852,6 +887,8 @@ export class Text extends Box {
 
     /** What the compositor measured for the current font, size and text, or the estimate while it has not yet. */
     metrics(): TextMetrics {
+        // The separator is a control character that does not occur in text, so two different triples do not
+        // share a key.
         const key = `${this.font}\u0001${this.size}\u0001${this.text}`;
         if (this.#measured !== null && this.#measured.key === key) {
             return this.#measured;
@@ -898,6 +935,7 @@ export class Text extends Box {
         if (!this.ellipsize || this.width >= measured.width || measured.width === 0) {
             return this.text;
         }
+        // One character of room is left for the ellipsis.
         const keep = Math.max(0, Math.floor((chars.length * this.width) / measured.width) - 1);
         return `${chars.slice(0, keep).join("")}\u2026`;
     }
@@ -914,6 +952,7 @@ export class Text extends Box {
 
 // ---- Icon --------------------------------------------------------------------------------------------------------
 
+/** Options for `Icon`. */
 export interface IconOptions extends BoxOptions {
     icon?: string;
     size?: number;
@@ -923,8 +962,8 @@ export interface IconOptions extends BoxOptions {
 /** One icon of the icon theme, `size` pixels square unless the node is given another size. */
 export class Icon extends Box {
     icon = "";
-    size = 16;
-    color: Color = "#cdd6f4";
+    size = DEFAULT_ICON_SIZE;
+    color: Color = DEFAULT_TEXT_COLOUR;
 
     constructor(options: IconOptions = {}) {
         super(options);
@@ -948,7 +987,10 @@ export class Icon extends Box {
 
 // ---- Grid --------------------------------------------------------------------------------------------------------
 
-/** Children in a near-square grid of equal cells, `padding` around and `gap` between. */
+/**
+ * Children in a near-square grid of equal cells, `padding` around and `gap` between. Cells are floored to whole pixels,
+ * so the spare pixels collect along the right and bottom edges.
+ */
 export class Grid extends Box {
     override arrange(): void {
         const kids = this.children;
@@ -967,7 +1009,7 @@ export class Grid extends Box {
     }
 }
 
-// ---- the frame ---------------------------------------------------------------------------------------------------
+// ---- The frame ---------------------------------------------------------------------------------------------------
 
 /** The host tells the toolkit a node was destroyed (the compositor closed a window, and its canvases went). */
 export function uiNodeGone(node: number): void {
@@ -989,7 +1031,7 @@ export function uiCanvasCount(): number {
     return live.size;
 }
 
-// ---- what the stock shell reads of the session -------------------------------------------------------------------
+// ---- What the stock shell reads of the session -------------------------------------------------------------------
 
 /** A request the compositor made of a window: `request` is `menu` for its window menu, anchored at `x`, `y`. */
 export interface UiRequest {
@@ -1001,6 +1043,7 @@ export interface UiRequest {
     readonly y: number;
 }
 
+/** Listeners for window requests, in the order they were added. `runUiFrame` delivers each request to all of them. */
 const requestHandlers: ((request: UiRequest) => void)[] = [];
 const frameHooks: (() => void)[] = [];
 
@@ -1064,6 +1107,11 @@ export function uiSeatAction(key: "double_click" | "middle_click" | "right_click
     return host().seatText(key) ?? null;
 }
 
+/**
+ * Delivers what the compositor sent since the last frame. Answers come first, so a handler that reads a text's size
+ * sees the measurement that just arrived. Requests go to the listeners, not to a canvas: a window's menu is not a
+ * canvas event.
+ */
 function deliver(): void {
     const toolkit = host();
     for (const answer of toolkit.takeAnswers()) {
@@ -1097,8 +1145,13 @@ function deliver(): void {
     }
 }
 
-/** One frame of the toolkit: answers and events in, the frame hooks, every canvas tree updated. The host calls it after the layouts. */
+/**
+ * One frame of the toolkit, called by the host after the layouts. In order: the measurements and pointer or key
+ * events the compositor sent are delivered; the frame hooks run; then each root canvas updates its whole tree.
+ * Does nothing until a host is attached.
+ */
 export function runUiFrame(): void {
+    // No host is attached, so there is no tree to update.
     if (backend === null) {
         return;
     }

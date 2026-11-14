@@ -1,31 +1,24 @@
 // `gnoblin.launches`: launch feedback, the "starting" state between asking for an application and its window.
-//
-// A shell calls `begin(token, application)` when it starts a program and shows a busy cursor or a spinner while the
-// launch is `pending`. The launch is `started` when a window of that application appears or takes focus, `timed_out`
-// when the deadline passes first, and `ended` when the shell calls `finish()` (the user cancelled, or the program
-// failed to start).
-//
-//     const launch = gnoblin.launches.begin("fuzzel-1", "org.example.App", {
-//         timeoutMs: 5000,
-//         onStarted: () => hideSpinner(),
-//         onTimedOut: () => hideSpinner(),
-//     });
-//
-// This is the shell's own bookkeeping over the windows it sees: the compositor keeps no launch records, so another
-// client (or a second shell generation) does not see these launches, and a window is not linked to the launch it
-// answered. Matching is by application ID: the window's `appId` and the launch's `application` are compared lowercased
-// with a trailing `.desktop` removed. A window starts only the oldest pending launch it matches.
-//
-// The registry is plain TypeScript over three functions of the host (`LaunchHost`), so it runs without a compositor.
+// A shell calls `begin(token, application)` when it starts a program and shows a spinner while the launch is `pending`.
+// The launch is `started` when a window of that application appears or takes focus, `timed_out` when the deadline
+// passes first, and `ended` when the shell calls `finish()`. The compositor keeps no launch records: these are the
+// shell's own bookkeeping over the windows it sees, and a window is not linked to the launch it answered.
+// Matching compares the window's `appId` and the launch's `application` lowercased, with a trailing `.desktop`
+// removed. A window starts only the oldest pending launch it matches. The registry is plain TypeScript over three
+// functions of the host (`LaunchHost`), so it runs without a compositor.
 
-/** The most launches the registry keeps. The oldest finished one is dropped for a new one; with all pending, `begin` refuses. */
+/**
+ * The most launches the registry keeps. The oldest finished one is dropped for a new one. With all pending, `begin`
+ * refuses.
+ */
 export const MAX_LAUNCHES = 64;
 
 /** The deadline of a launch that gave none, in milliseconds. */
 export const DEFAULT_LAUNCH_TIMEOUT_MS = 3000;
 
-/** The shortest and longest deadline a launch may have. */
+/** The shortest deadline a launch may have, in milliseconds. */
 export const MIN_LAUNCH_TIMEOUT_MS = 100;
+/** The longest deadline a launch may have, in milliseconds. */
 export const MAX_LAUNCH_TIMEOUT_MS = 10_000;
 
 /** Where a launch is. It begins `pending` and leaves it once, for one of the other three. */
@@ -41,7 +34,10 @@ export interface LaunchHandlers {
     onStarted?(launch: Launch): void;
     /** The deadline passed first. */
     onTimedOut?(launch: Launch): void;
-    /** The launch left `pending`, for any reason; it runs after the other handlers. `reason` is the new state, `replaced` or a refusal. */
+    /**
+     * The launch left `pending`, for any reason; it runs after the other handlers. `reason` is the new state,
+     * `replaced` or a refusal.
+     */
     onClosed?(launch: Launch, reason: string): void;
 }
 
@@ -158,7 +154,8 @@ function validate(token: unknown, application: unknown, options: unknown): Launc
     }
     if (typeof application !== "string" || application.length === 0 || application.length > APPLICATION_MAX) {
         throw new TypeError(
-            `gnoblin.launches.begin: the application must be a non-empty string of at most ${APPLICATION_MAX} characters`,
+            `gnoblin.launches.begin: the application must be a non-empty string ` +
+                `of at most ${APPLICATION_MAX} characters`,
         );
     }
     if (options === undefined) {
@@ -177,7 +174,8 @@ function validate(token: unknown, application: unknown, options: unknown): Launc
             timeout > MAX_LAUNCH_TIMEOUT_MS)
     ) {
         throw new RangeError(
-            `gnoblin.launches.begin: timeoutMs must be an integer from ${MIN_LAUNCH_TIMEOUT_MS} to ${MAX_LAUNCH_TIMEOUT_MS}`,
+            `gnoblin.launches.begin: timeoutMs must be an integer ` +
+                `from ${MIN_LAUNCH_TIMEOUT_MS} to ${MAX_LAUNCH_TIMEOUT_MS}`,
         );
     }
     for (const name of ["onChanged", "onStarted", "onTimedOut", "onClosed"]) {
