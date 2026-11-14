@@ -1,6 +1,6 @@
 //! The JavaScript shell: what `ShellVm` is for Lua, over the same tree link.
 //!
-//! [`JsShell`] attaches to the compositor's tree, loads the embedded `gnoblin` module, evaluates the
+//! [`JsShell`] attaches to the compositor's tree, loads the embedded `gnoblin/host` module, evaluates the
 //! user's entry module, and then runs one [`JsShell::frame`] per turn of the runtime loop: it applies the
 //! compositor's batch to the mirror, tells the script's listeners what changed, and sends everything the
 //! script wrote as one transaction.
@@ -24,6 +24,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gnoblin_tree_client::tree_mirror::{
@@ -36,12 +37,18 @@ use thiserror::Error;
 use crate::bindings::{self, HostState, JsSpawner, SharedState};
 use crate::error::{JsError, JsErrorKind};
 use crate::generation::{JsConfig, JsGeneration};
+use crate::stock::stock_modules;
 use crate::ts::strip_types;
 
 gnoblin_log::logger!(log = "js");
 
-/// The embedded `gnoblin` module, in TypeScript. It is stripped when a shell boots, like a user's file.
-const GNOBLIN_MODULE: &str = include_str!("../js/gnoblin.ts");
+/// The object model of the `gnoblin` global (`gnoblin.clients`, `Client`, the listeners), in TypeScript. It
+/// is stripped when a shell boots, like a user's file, and embedded as `gnoblin/host`, which the stock
+/// `gnoblin` module re-exports.
+const HOST_MODULE: &str = include_str!("../js/gnoblin.ts");
+
+/// The import name of [`HOST_MODULE`].
+const HOST_MODULE_NAME: &str = "gnoblin/host";
 
 /// How many times a write the compositor refused `stale-base` is sent again before it is dropped: the
 /// number `gnoblin-lua`'s shell keeps. A node the compositor changes before every landing would refuse the
@@ -143,20 +150,35 @@ pub struct JsShell {
 }
 
 impl JsShell {
-    /// Attaches to the tree and loads the embedded `gnoblin` module, so `gnoblin.clients` is there for the
-    /// entry module. Fails when the link does not deliver a complete snapshot within five seconds.
+    /// Attaches to the tree and loads the `gnoblin/host` module, so `gnoblin.clients` is there for the entry
+    /// module. The stock library is embedded beside it, and `gnoblin` re-exports both. Fails when the link
+    /// does not deliver a complete snapshot within five seconds.
     pub fn new(mut link: Box<dyn TreeLink>, config: JsShellConfig) -> Result<Self, JsShellError> {
         link.attach(ATTACH_VERSION).map_err(|e| JsShellError::Link(e.0))?;
         let (mirror, incoming) = boot_mirror(link.as_mut())?;
         let boot_ready = bindings::parents_first(&mirror);
         let state: SharedState = Rc::new(RefCell::new(HostState::new(mirror)));
 
-        let module = strip_types(Path::new("gnoblin.ts"), GNOBLIN_MODULE).map_err(JsError::from)?;
-        let js = config.js.clone().embed("gnoblin", module.code);
+        let host_module = strip_types(Path::new("gnoblin/host.ts"), HOST_MODULE).map_err(JsError::from)?;
+        let mut js = config.js.clone();
+        let embedded = Arc::make_mut(&mut js.embedded);
+        // The user-facing `gnoblin` module is the stock index plus the host's exports, so one import line
+        // reaches `defineConfig` and `ClientListener` alike. The stock sources stay as they are: their own
+        // tests embed them without a host. A module the caller embedded under a name stays: the caller
+        // knows what it wants.
+        let mut stock = stock_modules();
+        stock
+            .entry("gnoblin".to_owned())
+            .or_default()
+            .push_str(&format!("\nexport * from \"{HOST_MODULE_NAME}\";\n"));
+        for (name, source) in stock {
+            embedded.entry(name).or_insert(source);
+        }
+        embedded.insert(HOST_MODULE_NAME.to_owned(), host_module.code);
         let generation = JsGeneration::new(&js, 1)?;
         generation.call_budgeted(js.stage_budget, |ctx| {
             bindings::install(ctx, &state)?;
-            Module::import(ctx, "gnoblin")?.finish::<Value<'_>>().map(drop)
+            Module::import(ctx, HOST_MODULE_NAME)?.finish::<Value<'_>>().map(drop)
         })?;
 
         Ok(Self {

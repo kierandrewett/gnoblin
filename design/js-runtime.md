@@ -139,14 +139,16 @@ compositor commit are not done: they belong to P3 and the process supervisor.
 ## P3 status
 
 `JsShell` (`crates/gnoblin-js/src/shell.rs`) does for QuickJS what `ShellVm` does for Lua, over `gnoblin-tree-client`.
-The object model is TypeScript, embedded as the `gnoblin` module (`crates/gnoblin-js/js/gnoblin.ts`); the Rust side
+The object model is TypeScript (`crates/gnoblin-js/js/gnoblin.ts`), embedded as `gnoblin/host`. `JsShell` embeds the
+stock library beside it and appends `export * from "gnoblin/host"` to the stock `gnoblin` index, so one
+`import { defineConfig, ClientListener } from "gnoblin"` reaches both; the stock sources are unchanged. The Rust side
 (`src/bindings/`) is a set of plain host functions behind `globalThis.__gnoblinHost`. It runs against a fake
 compositor in `crates/gnoblin-js/tests/shell.rs`; it has not been run against the real compositor.
 
-- **Boot order.** `JsShell::new` attaches, drains the snapshot and loads the `gnoblin` module, so `gnoblin.clients`
-  exists for the entry. `load_entry` evaluates `init.ts`. The first `frame()` announces `ready` for the snapshot's
-  nodes, parents first. Then every `frame()` applies the compositor's batches to the mirror, tells the listeners,
-  and sends one transaction.
+- **Boot order.** `JsShell::new` attaches, drains the snapshot and loads `gnoblin/host`, so `gnoblin.clients` exists
+  for the entry. `load_entry` evaluates `init.ts`. The first `frame()` announces `ready` for the snapshot's nodes,
+  parents first. Then every `frame()` applies the compositor's batches to the mirror, tells the listeners, and sends
+  one transaction.
 - **Protocol rules.** Copied from `ShellVm`, not shared: one transaction in flight, replies matched by position,
   `stale-base` and `unknown-node` refusals sent again ahead of the next frame's writes, `STALE_RETRIES` (3) in a
   row. The tests are the Lua ones ported (hold, stale resend, retry cap, unknown node, refusal report).

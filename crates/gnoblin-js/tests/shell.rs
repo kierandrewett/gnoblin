@@ -379,7 +379,16 @@ fn boot_reads_two_windows_through_gnoblin_clients() {
     let comp = two_windows();
     let mut rig = rig(
         &comp,
-        "import { Client } from \"gnoblin\";\n(globalThis as any).Client = Client;\n",
+        "import { Client, ClientListener, defineConfig } from \"gnoblin\";\n\
+         import * as host from \"gnoblin/host\";\n\
+         (globalThis as any).Client = Client;\n\
+         (globalThis as any).same = host.Client === Client && host.ClientListener === ClientListener;\n\
+         (globalThis as any).stock = typeof defineConfig;\n",
+    );
+    assert_eq!(
+        rig.eval("[same, stock].join()"),
+        "true,function",
+        "`gnoblin` is the stock library and the host objects in one module"
     );
     assert_eq!(rig.eval("gnoblin.clients.length"), "2");
     assert_eq!(rig.eval("gnoblin.clients.at(0).id + gnoblin.clients.at(-1).id"), "34");

@@ -1,5 +1,5 @@
-// The `gnoblin` module: the object model a config sees, over the host functions the Rust shell
-// installs as `globalThis.__gnoblinHost` (crates/gnoblin-js/src/bindings).
+// The `gnoblin/host` module, which the user-facing `gnoblin` module re-exports: the object model a config sees,
+// over the host functions the Rust shell installs as `globalThis.__gnoblinHost` (crates/gnoblin-js/src/bindings).
 //
 // Identity: one JS object per tree node for the life of the generation, so `a === b` holds for the
 // same client wherever it was reached from. Reads go to the host, which answers from the tree mirror
@@ -14,7 +14,7 @@ type NodeId = number;
 type Scalar = string | number | boolean;
 
 /** A rectangle in the compositor's logical coordinates. */
-export interface Rect {
+interface Rect {
     x: number;
     y: number;
     width: number;
