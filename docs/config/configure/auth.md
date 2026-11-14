@@ -13,7 +13,7 @@ export default defineConfig({
 Programs such as `pkexec` ask polkit for administrator rights. Polkit then asks the session's authentication agent
 for a password. The compositor draws the password dialog itself and checks the password with polkit's own helper.
 The shell never sees the password. A script may watch requests and refuse one: see
-[authentication requests](/js-idle-auth-launches).
+[authentication requests](/shell-api/authentication).
 
 | Field         | Type and accepted values | Default | Effect                                                                           |
 | ------------- | ------------------------ | ------- | -------------------------------------------------------------------------------- |

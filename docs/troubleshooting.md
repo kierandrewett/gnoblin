@@ -71,7 +71,7 @@ The top-left ImGui recovery panel appears above application and shell layers
 and shows the error. Choose **Open config** to open its folder, fix the config
 in an editor, then choose **Reload** or run
 `gnoblinctl config reload` from a terminal. Gnoblin keeps failed files unchanged. See
-[configuration recovery](/config/load#recover-from-a-configuration-error).
+[the TypeScript shell](/typescript-shell#with-no-initts).
 
 The panel requires a running compositor. A missing library or a native
 compositor crash prevents it from displaying; inspect the login logs above

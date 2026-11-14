@@ -304,3 +304,139 @@ fn config_validate_runs_on_a_valid_and_an_invalid_file() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Pages whose TypeScript samples are checked: whole directories of `docs/` and single pages. A page that still
+/// documents the legacy Lua role is not listed.
+const TS_DOC_DIRS: &[&str] = &["docs/config", "docs/recipes"];
+const TS_DOC_FILES: &[&str] = &[
+    "docs/config.md",
+    "docs/guides/shortcuts.md",
+    "docs/guides/window_rules.md",
+    "docs/guides/files_and_load_order.md",
+    "docs/guides/autostart.md",
+    "docs/guides/session_settings.md",
+    "docs/guides/theming.md",
+    "docs/guides/wallpapers.md",
+    "docs/guides/window_effects.md",
+    "docs/guides/window_snapping.md",
+    "docs/guides/window_state_shortcuts.md",
+    "docs/guides/animations.md",
+    "docs/guides/cursors.md",
+];
+
+/// The fewest samples the pages must hold, so a parse that stops finding them fails loudly.
+const MINIMUM_TS_SAMPLES: usize = 60;
+
+/// Every `.md` file under `dir`, recursively.
+fn markdown_files(dir: &std::path::Path, found: &mut Vec<std::path::PathBuf>) {
+    let entries = std::fs::read_dir(dir).unwrap_or_else(|error| panic!("{} is readable: {error}", dir.display()));
+    for entry in entries {
+        let path = entry.expect("a directory entry").path();
+        if path.is_dir() {
+            markdown_files(&path, found);
+        } else if path.extension().is_some_and(|extension| extension == "md") {
+            found.push(path);
+        }
+    }
+}
+
+/// The body of every `ts` fence of a page, with the line the fence opens on.
+fn ts_fences(source: &str) -> Vec<(usize, String)> {
+    let mut fences = Vec::new();
+    let mut opened_at = 0usize;
+    let mut in_fence = false;
+    let mut is_ts = false;
+    let mut body = String::new();
+    for (index, raw) in source.lines().enumerate() {
+        if let Some(language) = fence_language(raw) {
+            if in_fence {
+                if is_ts {
+                    fences.push((opened_at, std::mem::take(&mut body)));
+                }
+                in_fence = false;
+                is_ts = false;
+            } else {
+                in_fence = true;
+                is_ts = language == "ts";
+                opened_at = index + 1;
+                body.clear();
+            }
+        } else if in_fence && is_ts {
+            body.push_str(raw.strip_prefix("    ").unwrap_or(raw).trim_end());
+            body.push('\n');
+        }
+    }
+    fences
+}
+
+/// The file a sample names on its first line, as `// keys.ts`: a companion that `init.ts` imports.
+fn companion_name(sample: &str) -> Option<&str> {
+    let first = sample.lines().next()?.strip_prefix("// ")?.trim();
+    (first.ends_with(".ts") && !first.contains(char::is_whitespace)).then_some(first)
+}
+
+/// Whether a sample is a whole file: it starts with an `import` or an `export`. Any other fence is an excerpt.
+fn is_whole_file(sample: &str) -> bool {
+    let first = sample.lines().find(|line| !line.trim().is_empty()).unwrap_or("");
+    first.starts_with("import ") || first.starts_with("export ")
+}
+
+/// Every complete `ts` sample of the config docs is a file `gnoblinctl check` accepts and whose `defineConfig` the
+/// shell's own library accepts. A sample whose first line is `// name.ts` is a file that the next complete sample of
+/// the page imports.
+#[test]
+fn every_complete_typescript_sample_in_the_config_docs_checks() {
+    let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../"));
+    let mut pages: Vec<std::path::PathBuf> = TS_DOC_FILES.iter().map(|file| root.join(file)).collect();
+    for dir in TS_DOC_DIRS {
+        markdown_files(&root.join(dir), &mut pages);
+    }
+    let scratch = std::env::temp_dir().join(format!("gnoblinctl-docs-ts-{}", std::process::id()));
+    let mut checked = 0usize;
+    let mut failures = Vec::new();
+    for page in &pages {
+        let source =
+            std::fs::read_to_string(page).unwrap_or_else(|error| panic!("{} is readable: {error}", page.display()));
+        let name = page.strip_prefix(&root).unwrap_or(page).display().to_string();
+        let mut companions: Vec<(String, String)> = Vec::new();
+        for (line, sample) in ts_fences(&source) {
+            if let Some(file) = companion_name(&sample) {
+                companions.push((file.to_owned(), sample));
+                continue;
+            }
+            if !is_whole_file(&sample) {
+                continue;
+            }
+            checked += 1;
+            let dir = scratch.join(format!("sample-{checked}"));
+            std::fs::create_dir_all(&dir).expect("a scratch directory");
+            for (file, text) in companions.drain(..) {
+                let path = dir.join(file);
+                std::fs::create_dir_all(path.parent().expect("a parent")).expect("a companion directory");
+                std::fs::write(path, text).expect("a companion is written");
+            }
+            let entry = dir.join("init.ts");
+            std::fs::write(&entry, &sample).expect("the sample is written");
+            let path = entry.to_string_lossy().into_owned();
+            let (code, out, err) = run_without_session(&["check", &path]);
+            if code != 0 {
+                failures.push(format!("{name}:{line}: `gnoblinctl check` exits {code}\n{out}{err}"));
+                continue;
+            }
+            if let Err(error) = gnoblin_js::evaluate_document(&entry) {
+                failures.push(format!("{name}:{line}: the config is refused: {error}"));
+            }
+        }
+    }
+    let _ = std::fs::remove_dir_all(&scratch);
+    assert!(
+        checked >= MINIMUM_TS_SAMPLES,
+        "the extractor found only {checked} complete samples (need {MINIMUM_TS_SAMPLES}); the docs moved or the parse broke"
+    );
+    assert!(
+        failures.is_empty(),
+        "{} of {checked} TypeScript samples fail:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}

@@ -13,16 +13,16 @@
             text: "Match windows by app or title and change how they look, where they open and how they behave.",
         },
         {
-            title: "Animation",
-            href: docsHref("config/animation"),
-            text: "Name animations and use them when windows and panels open and close.",
+            title: "Animations",
+            href: docsHref("guides/animations"),
+            text: "What moves on its own, how to turn it off and how to animate a window yourself.",
         },
         {
             title: "Input",
             href: docsHref("config/configure/input"),
             text: "Keyboards, mice, touchpads, tablets and pens.",
         },
-        { title: "Shortcuts", href: docsHref("config/configure/shortcuts"), text: "Bind any command to a key." },
+        { title: "Shortcuts", href: docsHref("guides/shortcuts"), text: "Bind any command to a key." },
         {
             title: "Monitors",
             href: docsHref("config/configure/monitors"),

@@ -40,7 +40,7 @@ The store lives in `$XDG_DATA_HOME/gnoblin/keyring.db`, or under
 `$HOME/.local/share/gnoblin/` when `XDG_DATA_HOME` is unset. It stays locked
 until the login password reaches it. When the login session has no password, the
 keyring asks for it through a passphrase request. A script may refuse the request (see
-[dialogs](/config/configure/dialogs#refusing-a-request-from-a-script)); with no script answering it, the compositor
+[passphrase requests](/shell-api/requests#keyring-passphrase)); with no script answering it, the compositor
 draws its own passphrase dialog.
 
 While the store is locked, an app that saves a new password makes the keyring ask for

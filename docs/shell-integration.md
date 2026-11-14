@@ -54,7 +54,7 @@ Choose a window interface based on what the shell needs:
 | [Compositor bridge](bridge/index.md)                       | A Gnoblin-specific shell             | Live window snapshots, actions, previews, workspaces and input sessions over Gnoblin's runtime socket.                                                                                |
 
 See the [Wayland protocol catalogue](wayland-protocols.md) for advertised globals
-and versions. For persistent keybindings, use the [Lua shortcut config](/config/configure/shortcuts).
+and versions. For persistent keybindings, use the [shortcut config](/guides/shortcuts).
 Use the [window-menu contract](/guides/window_menu) for titlebar
 menus and the [snapping contract](/guides/window_snapping#shell-integration) for
 layout pickers.

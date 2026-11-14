@@ -57,9 +57,9 @@ export const NAV: NavSection[] = [
         id: "config",
         label: "Configure",
         items: [
-            { label: "Config API", slug: "config" },
+            { label: "Configuration", slug: "config" },
             {
-                label: "gnoblin.configure",
+                label: "Settings",
                 slug: "config/configure",
                 items: [
                     { label: "Window management", slug: "config/configure/window_management" },
@@ -76,8 +76,6 @@ export const NAV: NavSection[] = [
                             },
                         ],
                     },
-                    { label: "Keyboard bindings", slug: "config/configure/keybindings" },
-                    { label: "Shortcuts", slug: "config/configure/shortcuts" },
                     { label: "Input sources", slug: "config/configure/input_sources" },
                     { label: "Touchpad gestures", slug: "config/configure/touchpad_gestures" },
                     { label: "Monitors", slug: "config/configure/monitors" },
@@ -95,17 +93,7 @@ export const NAV: NavSection[] = [
                     { label: "XWayland", slug: "config/configure/xwayland" },
                 ],
             },
-            {
-                label: "Lua config API",
-                items: [
-                    { label: "Window rules", slug: "config/window_rule" },
-                    { label: "Animation", slug: "config/animation" },
-                    { label: "Config", slug: "config/config" },
-                    { label: "Load", slug: "config/load" },
-                    { label: "Snapshot", slug: "config/snapshot" },
-                    { label: "Array", slug: "config/array" },
-                ],
-            },
+            { label: "Window rule reference", slug: "config/window_rule" },
             {
                 label: "Guides",
                 items: [
@@ -135,8 +123,6 @@ export const NAV: NavSection[] = [
                     { label: "Complete starter config", slug: "recipes/complete-starter-config" },
                     { label: "Add a shortcut", slug: "recipes/add-a-shortcut" },
                     { label: "Dim unfocused windows", slug: "recipes/dim-unfocused-windows" },
-                    { label: "Round application windows", slug: "recipes/round-application-windows" },
-                    { label: "Turn off layer animations", slug: "recipes/turn-off-layer-animations" },
                     { label: "Combine window rules", slug: "recipes/combine-window-rules" },
                     { label: "Split config files", slug: "recipes/split-config-into-files" },
                     { label: "Writing workspace", slug: "recipes/writing-workspace" },
@@ -146,7 +132,6 @@ export const NAV: NavSection[] = [
                     { label: "Pen display", slug: "recipes/pen-display-workflow" },
                     { label: "Organise config files", slug: "recipes/organize-config-files" },
                     { label: "Named workspaces", slug: "recipes/put-apps-on-named-workspaces" },
-                    { label: "Springy entrance", slug: "recipes/springy-app-entrance" },
                 ],
             },
         ],
