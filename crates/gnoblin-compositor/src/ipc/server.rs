@@ -91,8 +91,8 @@ use gnoblin_wayland::{
 
 use super::applied::StartedDocuments;
 use super::consent::Consent;
-use super::polkit::HelperPath;
 use super::lock_card::LockCardService;
+use super::polkit::HelperPath;
 use super::portal::{MALFORMED, PortalScope, PortalService, UNKNOWN_KEY, parse_key, resolve_portal_scope};
 use super::reload::{Reload, ReloadVerdict};
 use super::requests::{BuiltinKind, FrameDelivery, OBSERVE_MS, Requests};
