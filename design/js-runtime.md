@@ -1160,6 +1160,66 @@ Design: `design/js-xr.md` (which spec class is a tree node, a JS class or new na
   have no `xr = false` key (`accept` replaces it); `ViewRotateBinding`, `ViewScaleBinding` and `ThrowViewBinding`; a View
   of a workspace. XR5 (a stalled script does not block pose writes or layers) is unverified.
 
+## Real-compositor tests
+
+`crates/gnoblin/tests/js_shell.rs` runs the shell against a headless compositor in the test's own process, and
+`crates/gnoblin/tests/support/mod.rs` holds what that file and `js_guardian.rs` share. The tests of a file run in
+parallel, one compositor each, so nothing is shared between them: every session, config directory and file lives in a
+temporary directory of the test's own, and no test reads the machine's runtime directory or config.
+
+- **`Session`** is `Compositor::run` on a thread, with its IPC, Wayland and EIS sockets in a private directory and an
+  input tap that feeds the seat what a device would send. Its liveness pings are off, because a test thread that a busy
+  machine did not schedule is not a hung application. The one test about the not-responding alert turns them on.
+- **`Shell`** is a `JsRole` ticking in a thread of its own, over a config directory of the test's. `Shell::start`
+  returns once the first frame is over. What `generation()`, `diagnostics()`, `view()` and `probe()` read is the snapshot
+  the thread published when its last frame ended. `probe()` is what `globalThis.probe()` returned in the test's
+  `init.ts`, for a state that the compositor's tree does not show.
+- **The scene** is read back through an observer connection (`scene`, `rect_of`, and `Watcher`, which stays attached and
+  follows the changes), so a test asserts what the compositor holds and not what the shell believes.
+- **`Mapper`** is a real Wayland client that maps toplevels with a buffer and answers pings. `Mapper::pointer()` says
+  what its pointer was told: whether the compositor has the pointer over one of its windows, and how many presses it was
+  given. A press that a claimed chord took for the shell is never given to the client, which is how a test tells a
+  claimed press from one that came before the claim.
+
+### Wait on state, with a deadline
+
+A test never sleeps for a time it guessed, and never counts frames to decide that something happened. It waits for the
+state it needs with `wait_for` (the shell and the scene) or `wait_for_scene` (a `Watcher`), bounded by `PATIENCE`. A run
+that passes never waits near it: it is the margin a loaded machine gets, so that a failure is a state that never came and
+not a slow turn. The failure names what it waited for and the last state it saw: the shell's diagnostics and view, the
+compositor's scene and what the shell logged.
+
+| The test needs                         | It waits for                                                            |
+| -------------------------------------- | ----------------------------------------------------------------------- |
+| A window placed                        | the window's rectangle in the scene                                     |
+| A reload                               | `generation()` above the one the shell had, and the effect, in one wait |
+| A refusal or an error                  | `diagnostics()` to hold the text                                        |
+| A press the shell must hear            | `Mapper::pointer().over()`, then one click                              |
+| A claimed pointer chord                | the window to follow, or the press to reach the client (`begin_drag`)   |
+| The compositor to take a shell's close | the fallback policy's placements                                        |
+| A state only the script knows          | `Shell::probe()`                                                        |
+| A dialog request judged                | the compositor to answer it with something other than `busy`            |
+
+The rules behind the table:
+
+- **A snapshot is behind the compositor.** The effects of a frame reach the compositor while the frame runs, and the
+  shell publishes its snapshot when the frame is over. A test that has seen an effect in the scene and then reads
+  `generation()` may read the snapshot from before the frame that made it, so the generation is waited for with the effect.
+- **Budgets are wall-clock.** The shell stops a call, a frame or a staging that outlives its budget, and a loaded machine
+  that does not schedule the thread spends it on an honest script. `Shell::start` gives every budget `HONEST_BUDGET`. Only
+  a test about a runaway script sets its own (`RUNAWAY_CALL`, `RUNAWAY_STAGE`), and keeps them far above what an honest
+  staging takes.
+- **Save a config file the way an editor does.** `save` writes under a name the watcher ignores and renames over the file,
+  so a reload reads the old text or all of the new. A save of two files is two events: when a reload between them must
+  not read a broken `init.ts` with new places, save `init.ts` first.
+- **Do not hammer a booting compositor.** The shell waits a few seconds for its attach, and a compositor that is busy with
+  a test's requests answers it late. A test asks nothing of the dialogs before `Shell::start` has returned.
+- **A check that something did not happen waits for what must have happened first**, such as the next window placed or the
+  reload's generation, and then looks. Where there is no such state it lets the client answer for a short span (`idle`).
+
+A change to these tests is proven with `cargo test -p gnoblin` run several times in a row, once while two busy loops per
+CPU run beside it, and once with `--test-threads=1`.
+
 ## Questions for the owner (the agent has a default for each)
 
 1. Initial workspace rule for a new toplevel. Default: the workspace shown by the display under the
