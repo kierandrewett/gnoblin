@@ -160,6 +160,7 @@ export const NAV: NavSection[] = [
             { label: "Shell files", slug: "user-shell" },
             { label: "TypeScript shell", slug: "typescript-shell" },
             { label: "defineConfig reference", slug: "typescript-config" },
+            { label: "Console and inspector", slug: "js-console" },
             { label: "Lua language support", slug: "lua-language-support" },
             { label: "JavaScript UI toolkit", slug: "js-ui" },
             { label: "JavaScript window style", slug: "js-style" },

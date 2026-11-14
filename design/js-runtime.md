@@ -984,6 +984,82 @@ the frame pass), `effects` and `skipped` in `crates/gnoblin-js/src/bindings/prop
   feature (corner radius, borders, content filters, inset shadows, a blur radius, a background), which the owner must
   schedule as renderer work; a titlebar restore animation still ends at opacity 1, not the style's opacity.
 
+## P8 console status
+
+Lane JsConsole: `crates/gnoblin-js/src/console.rs` (the server), `data/js/gnoblin/inspect.ts` (the renderer and the
+helpers), `crates/gnoblinctl/src/console.rs` (the client). User page: `docs/js-console.md`; the first of the
+introspection tools of owner-spec section 18.
+
+- **Server.** `JsConsole` listens on `js.sock` in the directory of the owner socket (`console_socket_path`: the path
+  `socket_path` gives, with the file name replaced, so it follows `GNOBLIN_IPC_SOCKET` and `XDG_RUNTIME_DIR`), mode 0600.
+  `JsRole::connect` binds it unless `GNOBLIN_JS_CONSOLE=0` (`JsRoleConfig::console`: `Environment`, `Off` or `At(path)`;
+  a role built over a fake link has none unless told where). A shell that cannot bind one (the path is served by another
+  shell, or not writable) logs a warning and runs without it. A stale socket file is replaced; a live one is refused. The
+  file goes with the server.
+- **Peer check.** On every accept the peer's uid is read with `SO_PEERCRED` (`rustix`, as `ipc/privileged.rs` does) and
+  compared with the shell's own: another uid, or credentials that cannot be read, is closed unanswered (`peer_allowed`,
+  unit-tested; a second uid cannot be made in a test). At most 16 connections; a request line is at most 1 MiB.
+- **No thread.** The server is nonblocking and polled by `JsRole::tick` before `JsShell::frame`, so an expression runs on
+  the shell's own thread between two frames, never beside one (J5's single-threaded runtime needs no lock), and its
+  writes (`gnoblin.clients.at(0).x = 10`) leave in the very next frame's transaction. At most four expressions are
+  evaluated per turn, and a connection that has not read its replies is not evaluated for. The cost is the loop's own
+  cadence: a request waits for the next turn.
+- **Budget, no strike.** An expression runs under `JsShellConfig::entry_budget` (100 ms), the listeners' budget (not the
+  2 s the research note suggested for a REPL: a console that holds the shell for 2 s is a visible stall). A trip answers
+  with a `budget` error and is not counted as a strike (`console_target` does not call `count_strike`): the person at the
+  prompt is not a listener the supervisor should restage the generation over, and the restage would drop the session.
+  The interrupt is uncatchable, so `for (;;) { try { while (true) {} } catch {} }` is stopped too.
+- **Session.** A script is evaluated in sloppy mode as `<console>`: `var`, `let` and `const` at the prompt, and an
+  assignment to an undeclared name, are globals of the running generation and persist for every connection until a
+  reload; the reload makes a new generation, so nothing the console defined survives it and nothing is written to disk.
+  Not per connection: a connection-scoped session would need a scope object per socket and a `with` wrapper, which makes
+  `let` at the prompt behave unlike a script. A leading `{` is read as an object literal when the text parses that way (oxc),
+  so `{a: 1}` is the object. A promise the expression returns is shown by its result after the pending jobs run (at most
+  1000), and `await` at the top level is not supported. TypeScript is not stripped.
+- **Rendering.** `entry.render` (the host's `inspect.render`) walks the value once and returns the JSON text of
+  `{ type, value?, text, truncated }`: `value` is plain JSON data, `text` is how a terminal shows it. A cycle is
+  `[Circular]`; a function is `[Function name]`; `NaN`, the infinities and `-0` travel as their names; a class instance
+  carries `$class`. The host registers its kinds with `inspect.register`: a `Client` is
+  `Client#3 { appId, title, focused, ... }` (data `{ "$class": "Client", "id": "3", ... }`) and only app id and title
+  when it is one of many; a `Workspace` likewise; a `Collection` is an array of those briefs. A getter that throws shows as
+  `[Error: message]` for that field. The cap is 64 KiB of text (separators count): what does not fit is replaced by
+  `... N more` and `truncated` is true. Strings are cut at 4096 characters.
+- **Errors.** `{ id, ok: false, error: { kind, message, location, stack } }`; `location` is the first stack frame in
+  `<console>` (so `null.x` on line 3 says line 3, not a frame of the library under it), else the error's own location.
+  A syntax error has one too.
+- **Inspector.** `inspect.clients()`, `inspect.workspaces()`, `inspect.bindings()` and `inspect.config()` return plain
+  data. `bindings()` is `InputContext.describeBindings()` over every seat: id, trigger, kind, owner (`context`, `layout` or
+  `device`), the layout's class or the device's name, `priority`, `enabled` and `rank`, which orders the registrations
+  of one trigger by the comparator a press uses (tier, then priority, then registration order). `config()` is the config
+  `__register` merged over the stock one, kept in the host (`__effectiveConfig`); `null` for an entry that never called
+  `defineConfig`. `gnoblin.clients.focused` (a getter on `Collection`) is the seat's focus, and with no seat the member whose
+  own `focused` is set. `inspect` is a global of the generation (non-enumerable, like `gnoblin`) and is exported by
+  `gnoblin` for `init.ts`.
+- **`gnoblinctl console`.** A plain line loop over standard input (`gnoblinctl` has no line-editor dependency and the
+  deps gate would count one): the terminal's own editing, an in-memory history (`.history`, `!!`, `!N`), `.exit` and
+  Ctrl-D, a `...` continuation after an error that says "end of input", error blocks on standard error with the location
+  and a hint. `--eval` prints the value as JSON and exits 0 or 1 (`undefined` prints `null`; `--json` prints the whole
+  reply); with no shell it is an error block and exit 1, not 3, because the compositor may well be running. Without a
+  terminal on standard input there are no prompts and a failing line exits 1. Arrow-key history needs `rlwrap`.
+- **Proven against the real compositor** (`crates/gnoblin/tests/js_shell.rs`): with the stock config over two mapped
+  windows, the socket is mode 0600 and the console answers `gnoblin.clients.length` (2), the app ids, a `Client` and
+  a collection, `clients.focused` equal to the seat's focus, `inspect.bindings()` with the stock `XF86AudioMute` (owner
+  `context`, rank 1) and `inspect.config()`; a syntax error is an error at `<console>:1` and the shell is as it was;
+  `while (true) {}` is a `budget` error, then the console answers, a window mapped afterwards is seen (3 clients) and the
+  generation id has not changed; `gnoblin.clients.at(0).x = 10` is in the compositor's scene. `GNOBLIN_JS_CONSOLE=0`
+  binds no socket, and the socket goes when the role is dropped.
+- **Proven against the fake link** (`crates/gnoblin-js/tests/shell.rs`, `crates/gnoblin-js/src/console.rs`,
+  `crates/gnoblinctl/tests/console.rs`): the values and their rendering listed above; the cap and `truncated`;
+  error locations on lines 1 and 3; bad requests answered without closing; a runaway with a 50 ms budget, a stubborn one,
+  and no strike; session variables; a role that serves the console between frames and drops the session on reload;
+  `inspect.bindings()` empty on a tree with no seat; the uid predicate; a stale socket file replaced and a live one
+  refused. The client against a scripted server: the value as JSON, `undefined` as `null`, failures with the place and a
+  hint, the truncation warning, history and recall, continuation, piped scripts, `--json`, a shell that goes away.
+- **Not done.** `complete`, `inspect{path|id}`, `gens`, `modules`, `handlers`, `timers`, `stats`, `reload` and `kill` of
+  the research note's protocol; top-level `await`; TypeScript at the prompt; per-connection sessions; the inspector's
+  views of computed styles, transition tracks and layout placements (the object model has none yet); `displays` and
+  `extensions` expressions of spec section 18 (no such objects).
+
 ## Questions for the owner (the agent has a default for each)
 
 1. Initial workspace rule for a new toplevel. Default: the workspace shown by the display under the

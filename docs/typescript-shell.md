@@ -113,6 +113,12 @@ same text.
 Set `GNOBLIN_JS_WATCH=0` to turn the watcher off, for a config directory on a file system that cannot be watched. The shell
 then reloads only when asked.
 
+## Console and inspector
+
+`gnoblinctl console` opens a live prompt into the running shell, and `inspect.clients()`, `inspect.workspaces()`,
+`inspect.bindings()` and `inspect.config()` return what the shell holds as plain data. See
+[Console and inspector](/js-console).
+
 ## When the shell stops
 
 The shell is a client of the compositor. If it exits or is killed, the compositor keeps running and answers every client.

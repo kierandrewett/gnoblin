@@ -40,6 +40,19 @@ gnoblinctl types init [DIR]
 Neither needs a running session. See the
 [gnoblinctl reference](../gnoblinctl.md#check-and-types).
 
+## Console
+
+```sh
+gnoblinctl console
+gnoblinctl console --eval 'gnoblin.clients.length'
+```
+
+- `console` is a live prompt into the running JavaScript shell; `.exit` or Ctrl-D leaves.
+- `console --eval EXPR` prints the value of one expression as JSON.
+
+Both exit 1 when the expression fails or no JavaScript shell is running. See the
+[console guide](../js-console.md) and the [gnoblinctl reference](../gnoblinctl.md#console).
+
 ## Objects
 
 Every object type the compositor exposes has the same verbs:

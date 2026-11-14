@@ -59,7 +59,8 @@ To diagnose it:
 
 `gnoblinctl config validate FILE`, `gnoblinctl config init`, `gnoblinctl check FILE` and
 `gnoblinctl types init` do not connect to a session. They work before Gnoblin
-is running.
+is running. `gnoblinctl console` does not use the compositor's socket either: it
+connects to the JavaScript shell's console (see [Console](#console)).
 
 ## Exit codes
 
@@ -365,6 +366,40 @@ says it was kept, with its path. A directory that cannot be written exits 1 with
 an error block.
 
 With `--json` it prints `types`, `tsconfig` and `tsconfig_created`.
+
+## Console
+
+`gnoblinctl console` opens a live prompt into the running JavaScript shell. Each
+line is evaluated in the shell's own runtime, between frames, with the same
+`gnoblin` global as `init.ts`, and its value is printed. `.exit` or Ctrl-D
+leaves. It needs a session that runs the JavaScript shell
+(`GNOBLIN_SHELL_VM=js`); the guide is [Console and inspector](js-console.md).
+
+```sh
+gnoblinctl console
+gnoblinctl console --eval 'gnoblin.clients.length'
+```
+
+- `--eval EXPR` evaluates one expression and prints its value as JSON. It exits
+  0 when the expression gave a value and 1 when it failed. `undefined` prints
+  as `null`.
+- `--json` prints each reply as the shell sent it: `ok`, `type`, `value`,
+  `text` and `truncated`, or `error` with `kind`, `message`, `location` and
+  `stack`.
+
+With no shell listening, `console` exits 1 with an error block that names the
+socket it tried and a hint:
+
+```text
+error: no JavaScript shell is running
+why:   cannot connect to /run/user/1000/gnoblin/js.sock: No such file or directory
+hint:  start the session with the JavaScript shell (`GNOBLIN_SHELL_VM=js`), and
+       check that `GNOBLIN_JS_CONSOLE` is not `0`
+```
+
+The prompt prints each result's text on standard output and each error as an
+error block on standard error, and goes on. When standard input is not a
+terminal there are no prompts and a failing line makes the exit code 1.
 
 ## Logs
 
