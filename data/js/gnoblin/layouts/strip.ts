@@ -1,8 +1,8 @@
-// Two layouts whose nodes are not tiled, from data/retired shell/gnoblin/shell/strip.retired shell.
+// Two layouts whose nodes are not tiled, from data/lua/gnoblin/shell/strip.lua.
 // StripLayout: a row of columns, one node per column, scrolled so the focused column stays in view.
 // Carousel3dLayout: nodes on a ring seen in perspective, the focused one at the front.
 //
-// Neither floors its rectangles and neither marks its nodes tiled, as the retired classes did not.
+// Neither floors its rectangles and neither marks its nodes tiled, as the Lua classes did not.
 
 import { Layout } from "gnoblin/layout";
 import type { LayoutContext, LayoutNode, Placement, Rect } from "gnoblin/layout";
@@ -34,6 +34,7 @@ function focusable(node: LayoutNode): FocusableNode {
     return node as FocusableNode;
 }
 
+/** Options of `StripLayout`. */
 export interface StripOptions {
     /** A column's width as a fraction of the strip's, held to 0.1 to 1. Default 0.5. */
     column?: number;
@@ -149,6 +150,7 @@ export class StripLayout extends Layout {
     }
 }
 
+/** Options of `ring`, which `Carousel3dLayout` lays its cards out with. */
 export interface RingOptions {
     /** Vertical field of view in degrees. Default 40. */
     fov?: number;
@@ -209,6 +211,7 @@ export function ring(count: number, focus: number, area: Rect, options: RingOpti
     return slots;
 }
 
+/** Options of `Carousel3dLayout`. It takes the same fields as `RingOptions`. */
 export interface Carousel3dOptions extends RingOptions {}
 
 /**

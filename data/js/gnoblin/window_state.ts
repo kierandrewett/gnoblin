@@ -3,7 +3,7 @@
 // The compositor sends a `request` event for each of `maximize unmaximize fullscreen unfullscreen minimize unminimize
 // close raise lower activate move resize menu` and changes nothing until the shell answers, by writing the window's
 // `maximised`, `fullscreen`, `minimised`, its size, or by calling `close`. This module is that answer, ported from the
-// retired shell (`Window:on_request` and its helpers, data/retired shell/gnoblin/shell/init.retired shell), with its tests in
+// Lua shell (`Window:on_request` and its helpers, data/lua/gnoblin/shell/init.lua), with its tests in
 // crates/gnoblin-js/tests/client_requests.rs.
 //
 // Precedence (the contract a script can rely on):
@@ -52,6 +52,7 @@ export type ClientRequestKind =
     | "resize"
     | "menu";
 
+/** Every `ClientRequestKind`, in the order the type lists them. Frozen, so a caller cannot widen the set. */
 export const CLIENT_REQUEST_KINDS: readonly ClientRequestKind[] = Object.freeze([
     "maximize",
     "unmaximize",
@@ -71,7 +72,10 @@ export const CLIENT_REQUEST_KINDS: readonly ClientRequestKind[] = Object.freeze(
 /** How near two sides of a window a resize request's pointer must be for the corner between them to move. */
 export const RESIZE_CORNER_ZONE = 16;
 
-/** A drag a request started ends after this long even when no button edge arrives, so none follows the pointer for ever. */
+/**
+ * A drag a request started ends after this long even when no button edge arrives, so it cannot follow the pointer
+ * indefinitely.
+ */
 export const REQUEST_DRAG_LIMIT_MS = 30_000;
 
 /**
@@ -184,8 +188,9 @@ export class WindowState {
     #drag: RequestDrag | null = null;
 
     /**
-     * The rectangles `client` returns to when it leaves maximised or fullscreen. They live here, in the shell's script, so a
-     * reload takes them with it unless the host carries them across: it reads this before it goes and `keep`s it in the next.
+     * The rectangles `client` returns to when it leaves maximised or fullscreen. They live here, in the shell's script,
+     * so a reload takes them with it unless the host carries them across: it reads this before it goes and `keep`s it
+     * in the next.
      */
     kept(client: StateClient): KeptRects {
         return { floating: this.#floating.get(client) ?? null, windowed: this.#windowed.get(client) ?? null };
@@ -304,8 +309,9 @@ export class WindowState {
     }
 
     /**
-     * Covers the whole output, bars included, and goes last among its siblings. The rectangle it had is kept, so leaving
-     * fullscreen returns a floating, snapped or maximised window to it. Refused (false) when fullscreen already.
+     * Covers the whole output, bars included, and goes last among its siblings. The rectangle it had is kept, so
+     * leaving fullscreen returns a floating, snapped or maximised window to it. Refused (false) when it is already
+     * fullscreen.
      */
     enterFullscreen(client: StateClient): boolean {
         const world = this.#need();
@@ -363,7 +369,9 @@ export class WindowState {
         return true;
     }
 
-    /** Shows the window again. The keyboard goes to it only when nothing holds it. Refused (false) when not minimised. */
+    /**
+     * Shows the window again. The keyboard goes to it only when nothing holds it. Refused (false) when not minimised.
+     */
     unminimise(client: StateClient): boolean {
         const world = this.#need();
         if (!client.minimised) {

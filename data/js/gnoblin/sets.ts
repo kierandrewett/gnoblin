@@ -1,10 +1,11 @@
-// Workspace sets, from data/retired shell/gnoblin/shell/sets.retired shell: a set is `{ name, entries: [{ workspace, output? }] }`, each
-// entry naming a workspace and the output it should show on. `defineSets` and `activateSet` are pure functions over
-// plain data and return the retired module's results; `WorkspaceSets` keeps the list in force and applies a plan.
+// Workspace sets, ported from data/lua/gnoblin/shell/sets.lua: a set is `{ name, entries: [{ workspace, output? }] }`,
+// each entry naming a workspace and the output it should show on. `defineSets` and `activateSet` are pure functions
+// over plain data and return the Lua module's results; `WorkspaceSets` keeps the list in force and applies a plan.
 //
 // A refused list is never partly applied: the previous list stays. An entry whose output is missing falls back to
-// the primary output with a warning, as in the retired shell.
+// the primary output with a warning, as in the Lua shell.
 
+/** One workspace in a set and the output it is for. */
 export interface SetEntry {
     /** A workspace id. */
     workspace: string;
@@ -12,11 +13,13 @@ export interface SetEntry {
     output?: string;
 }
 
+/** A named set of workspaces, each shown on an output. */
 export interface WorkspaceSet {
     name: string;
     entries: SetEntry[];
 }
 
+/** Why a set list or an activation is refused. `kind` names the rule that failed. */
 export type SetError =
     | { kind: "empty_name" }
     | { kind: "duplicate_name"; name: string }
@@ -25,13 +28,16 @@ export type SetError =
     | { kind: "duplicate_output"; set: string; output: string }
     | { kind: "unknown_set"; name: string };
 
+/** A non-fatal note on a plan: the entry's output was missing, so the primary output is used. */
 export type SetWarning = { kind: "output_fallback"; set: string; output: string };
 
+/** One workspace shown on one output. */
 export interface SetPlacement {
     workspace: string;
     output: string;
 }
 
+/** What activating a set does: where each workspace goes, what fell back, and whether anything moved. */
 export interface SetPlan {
     set: string;
     placements: SetPlacement[];
@@ -40,8 +46,10 @@ export interface SetPlan {
     changed: boolean;
 }
 
+/** The outcome of a set operation: the value on success, or the reason it was refused. */
 export type SetResult<T> = { ok: true; value: T } | { ok: false; error: SetError };
 
+/** A deep copy of `list`, so the caller and the sets in force never share an entry. */
 function copy(list: readonly WorkspaceSet[]): WorkspaceSet[] {
     return list.map((set) => ({
         name: set.name,
@@ -88,6 +96,7 @@ export function defineSets(
     return { ok: true, value: copy(incoming) };
 }
 
+/** What `activateSet` and `WorkspaceSets` need to know about the outputs and the workspaces at the time. */
 export interface ActivateOptions {
     /** The workspace ids that exist. */
     declared: ReadonlySet<string>;
@@ -104,7 +113,7 @@ export function activateSet(list: readonly WorkspaceSet[], name: string, options
     let set: WorkspaceSet | undefined;
     for (const candidate of list) {
         if (candidate.name === name) {
-            set = candidate; // the last of the name, as the retired module reads it
+            set = candidate; // the last of the name wins, as the Lua module reads it
         }
     }
     if (set === undefined) {

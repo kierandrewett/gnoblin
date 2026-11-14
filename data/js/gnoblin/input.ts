@@ -85,7 +85,8 @@ export interface InputHost {
     clearFocus(seat: number): string | undefined;
     /**
      * Queues the seat's `decorations_available`: whether this shell draws window decorations. The compositor tells a
-     * client that asks for server-side that the server draws only while it is true. A refusal code, or undefined when queued.
+     * client that asks for server-side that the server draws only while it is true. A refusal code, or undefined
+     * when queued.
      */
     declareDecorations(seat: number, available: boolean): string | undefined;
     /** A claim id, or a refusal code. */
@@ -103,7 +104,9 @@ export interface InputWorld {
     clientOf(node: number): BindingClient | undefined;
     /** Every client, back to front. */
     stack(): BindingClient[];
-    /** The rectangle a dragged window stays in (the work area of its output), or null when the tree has no screen yet. */
+    /**
+     * The rectangle a dragged window stays in (the work area of its output), or null when the tree has no screen yet.
+     */
     workArea(client?: BindingClient): Rect | null;
     /** The layouts the workspaces use now. Their bindings go live in every context while they are in use. */
     layouts(): InputLayout[];
@@ -163,6 +166,7 @@ export interface InputGestureMessage {
     readonly rotation: number;
 }
 
+/** Any message the compositor sends to the input module: a key chord, a pointer event or a gesture. */
 export type InputMessage = InputChordMessage | InputPointerMessage | InputGestureMessage;
 
 /** The layout side of a registration: all the input module reads of a layout is its bindings. */
@@ -185,7 +189,7 @@ const PINCH_DECIDE = 0.1;
 /** Touchpad units for a whole swipe (`progress` 1), and the scale distance for a whole pinch. */
 const SWIPE_TRAVEL = 400;
 const PINCH_TRAVEL = 0.5;
-/** The progress at which a function bound to a gesture fires: the retired shell's 48 units and 0.12 scale. */
+/** The progress at which a function bound to a gesture fires: the Lua shell's 48 units and 0.12 scale. */
 const SWIPE_COMMIT = 48 / SWIPE_TRAVEL;
 const PINCH_COMMIT = 0.12 / PINCH_TRAVEL;
 /** `deltaTime` never exceeds this, so a simulation that integrates it is not thrown by a stall. */
@@ -376,8 +380,8 @@ function bindIn(
     action: ((event: BindingEvent) => void | false) | Binding | false,
     what: string,
 ): Binding {
-    // `false` claims the trigger and does nothing with it: the chord is withheld from clients and nothing runs, as the
-    // retired shell's `seat:bind({ chord = false })` did.
+    // `false` claims the trigger and does nothing with it: the chord is withheld from clients and nothing runs,
+    // as the Lua shell's `seat:bind({ chord = false })` did.
     if (action === false) {
         return bindIn(collection, trigger, () => undefined, what);
     }
@@ -442,9 +446,9 @@ export class InputDevice {
     }
 
     /**
-     * Whether this device is binding-only: its keys reach no client and fire only the bindings made for it or for every
-     * device, so a macro pad never types into a window. Assigning `true` claims the device on the seat; `false` gives the
-     * claim up. The claim is by the device's name, and lasts until the shell goes or it is given up.
+     * Whether this device is binding-only: its keys reach no client and fire only the bindings made for it or for
+     * every device, so a macro pad never types into a window. Assigning `true` claims the device on the seat; `false`
+     * gives the claim up. The claim is by the device's name, and lasts until the shell goes or it is given up.
      */
     get bindingOnly(): boolean {
         return this.context.isBindingOnly(this.name);
@@ -491,6 +495,10 @@ function parseDevice(context: InputContext, item: string): InputDevice | null {
     );
 }
 
+/**
+ * A named input context: the bindings and claims of one seat. It owns the claims for its bindings and decides what each
+ * chord, drag or gesture means, as the header describes. The host and the world are injected, so a test can drive it.
+ */
 export class InputContext {
     readonly name: string;
     readonly bindings = new BindingCollection();
@@ -512,7 +520,9 @@ export class InputContext {
     /** Whether giving up a claim tells the seat: false once the seat itself is gone. */
     #release = true;
     #unfollowOwn: () => void;
-    /** The layouts `syncLayouts` attached, which it also detaches; one attached by hand stays until detached by hand. */
+    /**
+     * The layouts `syncLayouts` attached, which it also detaches. One attached by hand stays until detached by hand.
+     */
     readonly #auto = new Set<InputLayout>();
     /** Layouts whose bindings were refused once, so they are not tried and reported every frame. */
     readonly #failed = new WeakSet<InputLayout>();

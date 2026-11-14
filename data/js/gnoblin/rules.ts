@@ -1,24 +1,27 @@
 // Window rules: `defineConfig({ rules: [...] })`. A rule is data: a query over a window (appId, title, focused,
-// onWorkspace) and the actions to take on a window that matches. Ported from data/retired shell/gnoblin/shell/rules.retired shell and
-// `Window:apply_rules` of data/retired shell/gnoblin/shell/init.retired shell; docs/config/window_rule.md has the retired rule reference and
+// onWorkspace) and the actions to take on a window that matches. Ported from data/lua/gnoblin/shell/rules.lua and
+// `Window:apply_rules` of data/lua/gnoblin/shell/init.lua; docs/config/window_rule.md has the Lua rule reference and
 // the table below the translation of it.
 //
-//   retired rule (seat.data.window_rules)        JavaScript rule (defineConfig)
-//   match = { app_id = "^foo$" }             appId: "foo"        a glob matches the whole text; * is any run, ? one char
-//   match = { app_id = "fire" }              appId: "*fire*"     a retired pattern matched anywhere; a glob needs the stars
-//   match = { app_id = "^org%.x%.(%w+)$" }   appId: /^org\.x\.\w+$/   a RegExp is tested anywhere in the text, so anchor it
-//   match = { title = "..." }                title: "..." or /.../
-//   match = { focused = true }               focused: true
-//   match = { workspace_id = "2" }           onWorkspace: "2"    (`workspace` is the action below)
-//   workspace = { id = "3" }                 workspace: "3"
-//   maximised / fullscreen / secure          the same names, true or false
-//   opacity = 0.9                            style: { opacity: 0.9 }
-//   (last matching rule wins per field)      the same: every matching rule applies in list order, the later wins per field
-//   (stop at a rule)                         `first: true` on a rule: when it matches, no later rule is consulted
-//   (re-evaluated on any rule input change)  re-applied when appId, title or focus changes (`reapply: false` opts a rule out)
-//   xr = false, corners, blur, ...           not ported: the key is an unknown key and is refused by name
+//   Lua rule (seat.data.window_rules)            JavaScript rule (defineConfig)
+//   match = { app_id = "^foo$" }                 appId: "foo"
+//                                                  a glob matches the whole text; * is any run, ? one char
+//   match = { app_id = "fire" }                  appId: "*fire*"
+//                                                  a Lua pattern matched anywhere; a glob needs the stars
+//   match = { app_id = "^org%.x%.(%w+)$" }       appId: /^org\.x\.\w+$/
+//                                                  a RegExp is tested anywhere in the text, so anchor it
+//   match = { title = "..." }                    title: "..." or /.../
+//   match = { focused = true }                   focused: true
+//   match = { workspace_id = "2" }               onWorkspace: "2"    (`workspace` is the action below)
+//   workspace = { id = "3" }                     workspace: "3"
+//   maximised / fullscreen / secure              the same names, true or false
+//   opacity = 0.9                                style: { opacity: 0.9 }
+//   (last matching rule wins per field)          every matching rule applies in list order; the later wins per field
+//   (stop at a rule)                             `first: true` on a rule: when it matches, no later rule is consulted
+//   (re-evaluated on any rule input change)      re-applied on an appId, title or focus change; `reapply: false` opts out
+//   xr = false, corners, blur, ...               not ported: the key is an unknown key and is refused by name
 //
-// New actions the retired rules had no field for: `floating`, `size`, `position`, `skipFocus`.
+// New actions the Lua rules had no field for: `floating`, `size`, `position`, `skipFocus`.
 // `role` has no source: the tree publishes no window role, so a rule that asks for one is refused by name.
 //
 // A rule that matches nothing changes nothing. A malformed rule throws at compile time (`defineConfig` runs it),
@@ -30,6 +33,7 @@ import { rejectUnknown } from "gnoblin/workspace";
 /** A plain glob (`*` any run of characters, `?` one) matching the whole text, or a RegExp tested anywhere in it. */
 export type Pattern = string | RegExp;
 
+/** The visual changes a rule applies to a window. */
 export interface RuleStyle {
     cornerRadius?: number;
     /** From 0 to 1. Applied to the window. */
@@ -37,6 +41,10 @@ export interface RuleStyle {
     shadows?: readonly unknown[];
 }
 
+/**
+ * One entry of `defineConfig({ rules })`. Every query key given (`appId`, `title`, `role`, `focused`, `onWorkspace`)
+ * must hold for the rule to match; the action keys say what to do to a matching window.
+ */
 export interface RuleConfig {
     // The query: every key given must hold.
     appId?: Pattern;
@@ -62,8 +70,8 @@ export interface RuleConfig {
     /** When this rule matches, no later rule is consulted: the rules before it and this one still merge. */
     first?: boolean;
     /**
-     * Apply the rule again when the window's appId, title or focus changes, and undo what it set when it stops matching.
-     * The default is true, as every retired rule was; `false` applies the rule once, when the window appears.
+     * Apply the rule again when the window's appId, title or focus changes, and undo what it set when it stops
+     * matching. The default is true, as every Lua rule was; `false` applies the rule once, when the window appears.
      */
     reapply?: boolean;
 }
@@ -104,6 +112,7 @@ export interface RuleEffects {
     skipFocus?: boolean;
 }
 
+/** A rule after validation: its patterns are compiled and its actions are grouped under `effects`. */
 export interface CompiledRule {
     /** The rule's place in the list, for messages. */
     readonly index: number;
@@ -138,6 +147,11 @@ function globToRegExp(glob: string): RegExp {
     return new RegExp(`^${source}$`, "s");
 }
 
+/**
+ * Compiles a rule's `appId` or `title` value. A string without `*` or `?` must equal the text exactly; a string with
+ * either is a glob; a RegExp is used as given, minus its `g` and `y` flags, which would keep state between tests.
+ * `where` names the field in error messages. Any other type is refused.
+ */
 export function compilePattern(value: unknown, where: string): CompiledPattern {
     if (typeof value === "string") {
         return /[*?]/.test(value)
@@ -151,6 +165,10 @@ export function compilePattern(value: unknown, where: string): CompiledPattern {
     return fail(where, `must be a glob string or a RegExp, got ${describe(value)}`);
 }
 
+/**
+ * Tells whether `text` matches the compiled `pattern`: an exact pattern must equal the text, and any other pattern
+ * is tested against it.
+ */
 export function matchesPattern(pattern: CompiledPattern, text: string): boolean {
     return pattern.exact !== null ? text === pattern.exact : (pattern.expression as RegExp).test(text);
 }
@@ -372,8 +390,8 @@ interface Applied {
 
 /**
  * Applies the rules to the windows of a collection: attach it to `gnoblin.clients`. A rule applies when its window
- * appears and again when appId, title or focus changes (unless the rule says `reapply: false`). A window an earlier generation already had is not
- * touched: a reload does not move the windows the user has placed.
+ * appears and again when appId, title or focus changes (unless the rule says `reapply: false`). A window an earlier
+ * generation already had is not touched: a reload does not move the windows the user has placed.
  */
 export class RuleEngine<C extends object> {
     readonly #rules: readonly CompiledRule[];

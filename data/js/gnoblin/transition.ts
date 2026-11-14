@@ -5,19 +5,20 @@
 //         workspace.layout = other;
 //     }, { duration: 250, easing: "ease-out" });
 //
-// The callback runs once, now. While it runs every write to a node (the host's `set`) is staged, not queued: a read gives
-// the staged value, and nothing reaches the tree until the callback and the layout and style passes after it have
-// finished without an error. Then the staged writes are sent in the shell's one transaction of the frame, each with the
-// duration and the easing's samples that the tree's timed write takes, so the compositor starts a track from the value it
-// draws now to the staged one. A transition that fails leaves the tree as it was and puts back the script state that
-// `snapshot` covers.
+// The callback runs once, now. While it runs every write to a node (the host's `set`) is staged, not queued: a read
+// gives the staged value, and nothing reaches the tree until the callback and the layout and style passes after it
+// have finished without an error. Then the staged writes are sent in the shell's one transaction of the frame, each
+// with the duration and the easing's samples that the tree's timed write takes, so the compositor starts a track from
+// the value it draws now to the staged one. A transition that fails leaves the tree as it was and puts back the
+// script state that `snapshot` covers.
 //
-// Plain TypeScript over a small host (`TransitionHost`), so the staging and the ownership rules run without a compositor.
-// What the native tween player cannot do is not faked here (`docs/js-transitions.md`, "Not built").
+// Plain TypeScript over a small host (`TransitionHost`), so the staging and the ownership rules run without a
+// compositor. What the native tween player cannot do is not faked here (`docs/js-transitions.md`, "Not built").
 
-/** How an animation moves from its start to its end, as the retired shell's `ease` table named them. */
+/** How an animation moves from its start to its end, as the Lua shell's `ease` table named them. */
 export type ClientEasing = "linear" | "out" | "out-cubic" | "in-cubic" | "in-out";
 
+/** The curve for each `ClientEasing`: it maps progress from 0 to 1 onto an eased value that also runs from 0 to 1. */
 export const EASINGS: Readonly<Record<ClientEasing, (t: number) => number>> = {
     linear: (t) => t,
     out: (t) => 1 - (1 - t) ** 2,
@@ -26,7 +27,7 @@ export const EASINGS: Readonly<Record<ClientEasing, (t: number) => number>> = {
     "in-out": (t) => (t < 0.5 ? 2 * t * t : 1 - (2 - 2 * t) ** 2 / 2),
 };
 
-/** The curve is sent as this many steps plus the start: 33 samples, as the retired shell's `node:to` sends. */
+/** The curve is sent as this many steps plus the start: 33 samples, as the Lua shell's `node:to` sends. */
 export const CURVE_STEPS = 32;
 
 /** The samples of `curve`: progress from 0 to 1 over `CURVE_STEPS` steps, which is what a timed write carries. */
@@ -47,6 +48,7 @@ export type TransitionEasing = ClientEasing | "ease-out" | "ease-in-out" | "ease
 /** The milliseconds a transition takes when `duration` is not given. */
 export const DEFAULT_DURATION_MS = 250;
 
+/** The options a transition takes. Every field is optional; the default of each is stated on the field. */
 export interface TransitionOptions {
     /** Milliseconds, 0 or more. Default 250. Zero commits the change at once (still as one transaction). */
     duration?: number;
@@ -61,7 +63,10 @@ export interface TransitionOptions {
     autoplay?: boolean;
 }
 
-/** What `finished` and `onFinished` deliver: `cancelled` is true when `cancel()` or a newer transition took every track. */
+/**
+ * What `finished` and `onFinished` deliver: `cancelled` is true when `cancel()` or a newer transition took every
+ * track.
+ */
 export interface TransitionResult {
     readonly cancelled: boolean;
 }
@@ -92,7 +97,10 @@ interface Staged {
     curve: Curve | null;
 }
 
-/** The host functions staging stands in front of. Codes are the tree's: `unknown-node`, `read-only`, `invalid-value` ... */
+/**
+ * The host functions staging stands in front of. Codes are the tree's: `unknown-node`, `read-only`, `invalid-value`
+ * ...
+ */
 export interface StageBackend {
     get(node: number, key: string): Value;
     set(node: number, key: string, value: Value): string | undefined;
@@ -106,11 +114,17 @@ export interface StageBackend {
         delay?: number,
         tween?: number,
     ): string | undefined;
-    /** What `set` would answer, without queuing the write; with `timed` it also refuses a property the tree cannot animate. */
+    /**
+     * What `set` would answer, without queuing the write; with `timed` it also refuses a property the tree cannot
+     * animate.
+     */
     check(node: number, key: string, value: Value, timed: boolean): string | undefined;
 }
 
-/** Makes the error a failed transition throws: `code` says why, `target` names the member or call, `message` the reason. */
+/**
+ * Makes the error a failed transition throws: `code` says why, `target` names the member or call, `message` the
+ * reason.
+ */
 export type MakeError = (code: string, target: string, message: string) => Error;
 
 const copy = (value: Value): Value => (Array.isArray(value) ? [...value] : value);
@@ -249,7 +263,10 @@ const PLACE_KEYS = ["x", "y", "width", "height"];
 
 let counter = 0;
 
-/** What a transition asks of the compositor's tracks: the engine's side of `progress`, `play`, `pause`, `reverse` and `cancel`. */
+/**
+ * What a transition asks of the compositor's tracks: the engine's side of `progress`, `play`, `pause`, `reverse` and
+ * `cancel`.
+ */
 interface TransitionControl {
     seek(progress: number): void;
     pause(paused: boolean): void;
@@ -443,7 +460,10 @@ export class Transition {
     }
 }
 
-/** A track a transition started: where its property starts and ends, so `cancel` can land it and a rollback restore it. */
+/**
+ * A track a transition started: where its property starts and ends, so `cancel` can land it and a rollback restore
+ * it.
+ */
 interface Owned {
     node: number;
     key: string;
@@ -708,7 +728,9 @@ export class TransitionEngine {
         return transition;
     }
 
-    /** A property written again: the transition that owned it no longer does, and one that has no track left is over. */
+    /**
+     * A property written again: the transition that owned it no longer does, and one that has no track left is over.
+     */
     #release(id: string): void {
         const held = this.#owners.get(id);
         if (held === undefined) {

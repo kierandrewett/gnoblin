@@ -16,9 +16,11 @@ import { DwindleLayout } from "gnoblin/layouts/dwindle";
 import { KioskLayout } from "gnoblin/layouts/kiosk";
 import { Carousel3dLayout, StripLayout } from "gnoblin/layouts/strip";
 
+/** The names `new Workspace({ layout })` takes for a stock layout. */
 export type StockLayoutName =
     "floating" | "master-stack" | "grid" | "monocle" | "dwindle" | "kiosk" | "strip" | "carousel-3d";
 
+/** One factory per stock layout name, so that two workspaces never share a layout instance. */
 const STOCK_LAYOUTS: Readonly<Record<StockLayoutName, () => Layout>> = {
     floating: () => new FloatingLayout(),
     "master-stack": () => new MasterStackLayout(),
@@ -84,7 +86,7 @@ export function nearestKey(key: string, known: readonly string[]): string | unde
 /**
  * Throws a TypeError for the first key of `object` that is not in `known`. The message names the place (`what`),
  * the key, the nearest valid key when one is within two edits, and every valid key. `hints` give a sentence for a
- * name that is not a typo but a different thing, such as the the retired shell-era `shortcuts`; it wins over a nearest key.
+ * name that is not a typo but a different thing, such as the old `shortcuts` section; it wins over a nearest key.
  */
 export function rejectUnknown(
     object: object,
@@ -100,6 +102,7 @@ export function rejectUnknown(
     }
 }
 
+/** The parenthesised advice for an unknown `key`: its hint, else the nearest valid key, else nothing. */
 function adviceFor(key: string, known: readonly string[], hints: Readonly<Record<string, string>>): string {
     if (Object.hasOwn(hints, key)) {
         return ` (${hints[key]})`;
@@ -124,6 +127,7 @@ export function checkGaps(gaps: { inner?: number; outer?: number } | undefined, 
     return { inner: read("inner"), outer: read("outer") };
 }
 
+/** The options `new Workspace(...)` takes. Only `id` is required. */
 export interface WorkspaceOptions {
     id: string;
     /** Shown to people; defaults to the id. */
@@ -133,6 +137,7 @@ export interface WorkspaceOptions {
     gaps?: { inner?: number; outer?: number };
 }
 
+/** `WorkspaceOptions` after `checkWorkspaceOptions`: every field present and valid. */
 export interface CheckedWorkspaceOptions {
     id: string;
     name: string;
@@ -207,6 +212,7 @@ export function fieldsChanged(
     return false;
 }
 
+/** Whether two rectangles are the same. A null side is never equal, so a missing area always counts as changed. */
 export function rectsEqual(a: Rect | null, b: Rect | null): boolean {
     return a !== null && b !== null && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 }
@@ -223,7 +229,9 @@ export interface CheckedPlacement<N extends object> {
     scale: readonly [number, number, number];
 }
 
+/** The rotation of a placement that gives none: no rotation about any axis, in radians. */
 export const NO_ROTATION = [0, 0, 0] as const;
+/** The scale of a placement that gives none: 1 along every axis. */
 export const UNIT_SCALE = [1, 1, 1] as const;
 
 function checkVector(value: unknown, fallback: readonly [number, number, number], what: string) {
@@ -240,7 +248,10 @@ function checkVector(value: unknown, fallback: readonly [number, number, number]
     return [value[0], value[1], value[2]] as const;
 }
 
-/** Checks the four fields of a rectangle and copies them: finite numbers, with sizes of at least zero. */
+/**
+ * `bounds` as a copy, after a check that it is four finite numbers with a width and a height of at least zero.
+ * A script can pass `null` here, which the `?.` turns into the same error as a missing number.
+ */
 function checkBounds(bounds: Rect, at: string): Rect {
     for (const key of ["x", "y", "width", "height"] as const) {
         const value = bounds?.[key];

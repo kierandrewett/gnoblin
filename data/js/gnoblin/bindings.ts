@@ -21,7 +21,9 @@ import type { SnapClient } from "gnoblin/snap";
 
 /** The modifiers a trigger may name, in the order a canonical trigger writes them. */
 export type TriggerModifier = "Shift" | "Ctrl" | "Alt" | "Meta" | "Super" | "Hyper";
+/** A mouse button a trigger can name. */
 export type TriggerButton = "MouseLeft" | "MouseMiddle" | "MouseRight";
+/** A direction a gesture trigger can name: swipes use the four sides, pinches use `in` and `out`. */
 export type TriggerDirection = "left" | "right" | "up" | "down" | "in" | "out";
 
 /** Every spelling a modifier is accepted as, for the declaration file's `Trigger` type. */
@@ -39,11 +41,14 @@ export type GestureTrigger =
     | `Swipe${FingerCount}${"Left" | "Right" | "Up" | "Down"}`
     | `Pinch${FingerCount}`
     | `Pinch${FingerCount}${"In" | "Out"}`;
+/** A mouse button, optionally held with modifiers and optionally followed by `Drag` or `Click`. */
 export type PointerTrigger =
     `${ModifierPrefix}${TriggerButton}` | `${ModifierPrefix}${TriggerButton}+${"Drag" | "Click"}`;
+/** A wheel input, optionally held with modifiers and optionally with a direction. */
 export type WheelTrigger = `${ModifierPrefix}Wheel${"" | "Up" | "Down" | "Left" | "Right"}`;
 /** A key trigger is `modifiers+keysym`; the key names are the compositor's, so the type cannot list them. */
 export type KeyTrigger = `${ModifierPrefix}${string}`;
+/** Any trigger the grammar accepts: a key, a mouse button, a wheel or a gesture. */
 export type Trigger = GestureTrigger | PointerTrigger | WheelTrigger | KeyTrigger;
 
 interface TriggerBase {
@@ -65,11 +70,13 @@ export interface PointerTriggerParts extends TriggerBase {
     readonly action: "click" | "drag";
 }
 
+/** A parsed wheel trigger. `direction` is null when the trigger names none. */
 export interface WheelTriggerParts extends TriggerBase {
     readonly kind: "wheel";
     readonly direction: "up" | "down" | "left" | "right" | null;
 }
 
+/** A parsed touchpad gesture trigger: its finger count and, when named, its direction. */
 export interface GestureTriggerParts extends TriggerBase {
     readonly kind: "gesture";
     readonly gesture: "swipe" | "pinch";
@@ -93,6 +100,7 @@ export interface ControllerTriggerParts extends TriggerBase {
     readonly action: "drag";
 }
 
+/** A trigger after parsing. The `kind` field says which kind of input it names. */
 export type ParsedTrigger =
     KeyTriggerParts | PointerTriggerParts | WheelTriggerParts | GestureTriggerParts | ControllerTriggerParts;
 
@@ -379,11 +387,13 @@ export interface BindingEvent {
     readonly [field: string]: unknown;
 }
 
+/** A position in pixels. */
 export interface Point {
     x: number;
     y: number;
 }
 
+/** A rectangle in pixels: the top-left corner and the size. */
 export interface Rect {
     x: number;
     y: number;
@@ -395,7 +405,10 @@ export interface Rect {
 export interface BindingClient {
     readonly alive: boolean;
     readonly fullscreen: boolean;
-    /** A maximised client declines a move and a resize: the layout, not the pointer, decides its size. A snap un-maximises it. */
+    /**
+     * A maximised client declines a move and a resize: the layout, not the pointer, decides its size. A snap
+     * un-maximises it.
+     */
     maximised?: boolean;
     /** A minimised client is not under the pointer, so the hit test skips it. */
     readonly minimised?: boolean;
@@ -405,7 +418,10 @@ export interface BindingClient {
     /** The most the client may be resized to. Absent means no limit. */
     maxSize?: { width: number; height: number };
     floatingBounds?: Rect | null;
-    /** The room a titlebar takes above the content: the frame that must stay on screen is the content with this much on top. */
+    /**
+     * The room a titlebar takes above the content. The frame, which must stay on screen, is the content with this
+     * much on top.
+     */
     readonly frameInset?: number;
 }
 
@@ -442,6 +458,7 @@ export interface DragEvent extends BindingEvent {
     readonly progress?: number;
 }
 
+/** The options every binding takes. `id` and `trigger` are required; the rest are optional. */
 export interface BindingOptions {
     /** Unique among the bindings of one collection. */
     id: string;
@@ -470,6 +487,9 @@ export class BindingConflictError extends Error {
 
 const owners = new WeakMap<Binding, BindingCollection>();
 
+/**
+ * The base of every binding: an id, a trigger and an enabled flag. A subclass decides what a matched input does.
+ */
 export class Binding {
     readonly id: string;
     enabled: boolean;
@@ -543,6 +563,7 @@ export class Binding {
     onPress?(event: BindingEvent): void | false;
 }
 
+/** Options of `KeyBinding`. */
 export interface KeyBindingOptions extends BindingOptions {
     /** What runs on a press. A subclass may override `onPress` instead. */
     action?: (event: BindingEvent) => void | false;
@@ -568,6 +589,7 @@ export class KeyBinding extends Binding {
 /** A mouse button or wheel trigger that runs a function (a click). Subclassed for drags. */
 export class PointerBinding extends KeyBinding {}
 
+/** Options of `PointerDragBinding` and the drag bindings built on it. */
 export interface PointerDragBindingOptions extends BindingOptions {
     /** How far the pointer must move from the press before `onStart`, in pixels. Default 4. */
     threshold?: number;
@@ -784,11 +806,12 @@ export interface MoveState {
     startBounds: Rect;
 }
 
+/** Options of `ClientMoveBinding`. */
 export interface ClientMoveOptions extends Partial<PointerDragBindingOptions> {
     /**
      * Edge tiling on release: how near a screen edge, in pixels, the pointer must be for the drop to tile the window
      * (left and right take half the work area, top all of it). Default `SNAP_MARGIN`. `false` never tiles. Only when
-     * the seat's `edge_tiling` (or the config's `edgeTiling`) is on, as in the retired shell; off, a drop is just a move.
+     * the seat's `edge_tiling` (or the config's `edgeTiling`) is on, as in the Lua shell; off, a drop is just a move.
      */
     snap?: number | false;
 }
@@ -827,8 +850,9 @@ export class ClientMoveBinding extends PointerDragBinding {
         }
         const delta = moved(startPointer, event.position);
         const target = { ...startBounds, x: startBounds.x + delta.x, y: startBounds.y + delta.y };
-        // The seat's constraint keeps the window reachable. Without a work area there is nothing to keep it in. It is the
-        // frame, the content with its titlebar above, that stays in: a bar dragged off the top could not be grabbed again.
+        // The seat's constraint keeps the window reachable. Without a work area there is nothing to keep it in. The
+        // frame (the content with its titlebar above) is what stays in: a bar dragged off the top could not be
+        // grabbed again.
         if (!event.workArea) {
             client.bounds = target;
             return;
@@ -873,6 +897,7 @@ export type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-ri
 /** The one side that moves with the pointer when `edges` is `nearest`. */
 export type ResizeEdge = "left" | "right" | "top" | "bottom";
 
+/** Options of `ClientResizeBinding`. */
 export interface ClientResizeOptions extends Partial<PointerDragBindingOptions> {
     /**
      * `quadrant` (default) picks the corner nearest the pointer at the press and moves two sides; `nearest` picks the
@@ -881,7 +906,9 @@ export interface ClientResizeOptions extends Partial<PointerDragBindingOptions> 
     edges?: "quadrant" | "nearest" | ResizeCorner;
 }
 
-/** What `ClientResizeBinding.onStart` keeps for one drag. `corner` (a corner, or one side) never changes during the drag. */
+/**
+ * What `ClientResizeBinding.onStart` keeps for one drag. `corner`, a corner or one side, is fixed for the whole drag.
+ */
 export interface ResizeState {
     client: BindingClient;
     start: Rect;
@@ -1004,8 +1031,8 @@ export class ClientResizeBinding extends PointerDragBinding {
 
 /**
  * What the tiling bindings read of a client. `tiled` is the flag a layout sets when it places the client, and it stays
- * set when a script floats the client afterwards, so `floating` and `parentWindow` (a dialog is never tiled) are read as
- * well.
+ * set when a script floats the client afterwards, so `floating` and `parentWindow` (a dialog is never tiled) are
+ * read as well.
  */
 export interface TiledClient extends BindingClient {
     readonly tiled?: boolean;
@@ -1056,8 +1083,9 @@ function tileAt(workspace: OrderedWorkspace, at: Point, except: TiledClient): Ti
 /**
  * Super+MouseLeft drag in a tiling layout: drop the tile you hold on another tile and the two trade places in the
  * workspace's order, so the layout puts each where the other was. Nothing moves while the pointer does: the order
- * changes once, on release, and the layout computes once. A release outside every tile, over the tile itself or after
- * a cancel leaves the order as it was. Only a tiled window takes part; a floating, fullscreen or maximised one declines.
+ * changes once, on release, and the layout computes once. A release outside every tile, over the tile itself or
+ * after a cancel leaves the order as it was. Only a tiled window takes part; a floating, fullscreen or maximised
+ * one declines.
  */
 export class ClientSwapBinding extends PointerDragBinding {
     constructor(options: Partial<PointerDragBindingOptions> = {}) {

@@ -1,6 +1,6 @@
 // The focus policy: click, sloppy and follow-mouse focus, whether a new window takes focus, raise on click and
-// auto raise. Ported from data/retired shell/gnoblin/shell/focus.retired shell (the decisions) and the `Window:on_*` handlers of
-// data/retired shell/gnoblin/shell/init.retired shell (the wiring); the retired tests are the cases tests/stock_focus.rs runs.
+// auto raise. Ported from data/lua/gnoblin/shell/focus.lua (the decisions) and the `Window:on_*` handlers of
+// data/lua/gnoblin/shell/init.lua (the wiring); crates/gnoblin-js/tests/stock_focus.rs runs the cases.
 //
 // The decisions are pure functions of the settings and one event (`focusDecision`), so they are tested with no
 // shell. `FocusPolicy` is the wiring: a listener for a collection of clients that turns the pointer edges the
@@ -17,7 +17,9 @@
 import type { SeatSettings } from "gnoblin/input";
 import { rejectUnknown } from "gnoblin/workspace";
 
+/** The focus modes: `click` focuses on a click, `sloppy` follows the pointer, `follow-mouse` acts on entry only. */
 export type FocusMode = "click" | "sloppy" | "follow-mouse";
+/** Whether a window started from a launcher takes focus (`allow`) or not (`prevent`). */
 export type NewWindowPolicy = "allow" | "prevent";
 
 /** The `focus` key of a config. Every key is optional: a key left out is the seat's. */
@@ -33,6 +35,7 @@ export interface FocusConfig {
     changeOnPointerRest?: boolean;
 }
 
+/** The focus settings in force. Read-only: build them with `focusSettings` or `seatFocusSettings`. */
 export interface FocusSettings {
     readonly mode: FocusMode;
     readonly newWindows: NewWindowPolicy;
@@ -42,7 +45,7 @@ export interface FocusSettings {
     readonly changeOnPointerRest: boolean;
 }
 
-/** What the documented defaults are (docs/config/configure/window_management.md). */
+/** The documented defaults (docs/config/configure/window_management.md). */
 export const FOCUS_DEFAULTS: FocusSettings = Object.freeze({
     mode: "click",
     newWindows: "prevent",
@@ -119,7 +122,9 @@ const SEAT_MODES: Readonly<Record<string, FocusMode>> = {
     "hover-strict": "follow-mouse",
 };
 
-/** The settings the seat publishes, in the library's words. A mode the seat names that the library does not know throws. */
+/**
+ * The settings the seat publishes, in the library's words. A seat mode the library does not know throws a TypeError.
+ */
 export function seatFocusSettings(seat: SeatSettings): FocusSettings {
     const mode = Object.hasOwn(SEAT_MODES, seat.focusMode) ? SEAT_MODES[seat.focusMode] : undefined;
     if (mode === undefined) {

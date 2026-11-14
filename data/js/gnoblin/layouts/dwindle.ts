@@ -1,26 +1,28 @@
-// DwindleLayout: a binary split tree in the style of Hyprland. Geometry is data/retired shell/gnoblin/shell/tiling.retired shell
+// DwindleLayout: a binary split tree in the style of Hyprland. Geometry is data/lua/gnoblin/shell/tiling.lua
 // `Dwindle`. Each new node splits the cell of the node that had focus when it arrived (or the last node's cell) in
 // two. A split keeps the direction it was created with: "horizontal" and "vertical" fix it, "aspect" takes the longer
 // side of the cell at creation. `ratio` is the share of the first child of every split and `gap` separates the two
 // halves of each split.
 //
-// The tree is state the layout keeps between computes, as the retired class kept one per workspace: a node that
+// The tree is state the layout keeps between computes, as the Lua class kept one per workspace: a node that
 // goes collapses its split, a node that arrives is inserted. That makes `compute` depend on its history, so one
 // instance must serve one workspace. Every walk is a loop over an explicit stack: a run of windows that each split
 // the last one makes a tree as deep as it is long, and the engine's call stack is short.
 //
-// It registers two default bindings in `layout.bindings`: `swap` (Super+MouseLeft+Drag, `ClientSwapBinding`) trades the
-// places of two leaves in the tree, and `resize` (Super+MouseRight+Drag, `SplitResizeBinding`) drags one split. A dragged
-// split keeps a ratio of its own, which `layout.ratio` no longer sets for it; a cancelled drag gives the split back to
-// `layout.ratio`. `triggers` replaces a trigger, and `null` leaves that binding out.
+// It registers two default bindings in `layout.bindings`: `swap` (Super+MouseLeft+Drag, `ClientSwapBinding`) trades
+// the places of two leaves in the tree, and `resize` (Super+MouseRight+Drag, `SplitResizeBinding`) drags one split. A
+// dragged split keeps a ratio of its own, which `layout.ratio` no longer sets for it; a cancelled drag gives the split
+// back to `layout.ratio`. `triggers` replaces a trigger, and `null` leaves that binding out.
 
 import { ClientSwapBinding, resolveTriggers, SplitResizeBinding } from "gnoblin/bindings";
 import type { LayoutSplit, Point } from "gnoblin/bindings";
 import { checkGap, clamp, Layout, tile, tilingGeometry } from "gnoblin/layout";
 import type { LayoutContext, LayoutNode, Placement, Rect } from "gnoblin/layout";
 
+/** How a split picks its direction. `aspect` follows the longer side of the cell at creation. */
 export type DwindleSplit = "aspect" | "horizontal" | "vertical";
 
+/** Options of `DwindleLayout`. */
 export interface DwindleOptions {
     split?: DwindleSplit;
     /** The first child's share of every split, held to 0.1 to 0.9. Default 0.5. */
@@ -46,7 +48,9 @@ interface Leaf {
 /** `"h"` puts `a` left of `b`; `"v"` puts `a` above `b`. */
 interface Split {
     readonly dir: "h" | "v";
-    /** The first child's share a drag set for this split alone, or null while the split follows the layout's `ratio`. */
+    /**
+     * The first child's share a drag set for this split alone, or null while the split follows the layout's `ratio`.
+     */
     ratio: number | null;
     a: Tree;
     b: Tree;
@@ -98,6 +102,7 @@ function cells(root: Tree, area: Rect, gap: number, ratio: number, splits?: Map<
     return out;
 }
 
+/** A dwindle tiling layout. Each new node splits the cell it arrives in, as the header describes. */
 export class DwindleLayout extends Layout {
     split: DwindleSplit;
     ratio: number;

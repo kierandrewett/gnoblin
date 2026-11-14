@@ -1,16 +1,18 @@
-// GridLayout: a near-square grid of the nodes in child order. Geometry is data/retired shell/gnoblin/shell/tiling.retired shell
-// `GridLayout`. `fill` is "row" (left to right, then down) or "column" (top to bottom, then right); a partly
-// filled last row or column is left-aligned. `columns` fixes the column count, which the retired class cannot.
-// It registers one default binding in `layout.bindings`: `swap` (Super+MouseLeft+Drag, `ClientSwapBinding`) trades the
-// places of two cells. A grid has no divider to drag, so it has no resize binding. `triggers` replaces the trigger, and
-// `null` leaves the binding out.
+// GridLayout: a near-square grid of the nodes in child order. Geometry is the Lua shell's `GridLayout` in
+// data/lua/gnoblin/shell/tiling.lua. `fill` is "row" (left to right, then down) or "column" (top to bottom, then
+// right); a partly filled last row or column leaves its empty cells at the end. `columns` fixes the column count,
+// which the Lua class cannot. It registers one default binding in `layout.bindings`: `swap` (Super+MouseLeft+Drag,
+// `ClientSwapBinding`) trades the places of two cells. A grid has no divider to drag, so it has no resize binding.
+// `triggers` replaces the trigger, and `null` leaves the binding out.
 
 import { ClientSwapBinding, resolveTriggers } from "gnoblin/bindings";
 import { checkGap, Layout, tile, tilingGeometry } from "gnoblin/layout";
 import type { LayoutContext, Placement } from "gnoblin/layout";
 
+/** How nodes fill the grid: left to right then down (`"row"`, the default), or top to bottom then right. */
 export type GridFill = "row" | "column";
 
+/** The options of `GridLayout`. Every field is optional. */
 export interface GridOptions {
     /** `"auto"` picks a near-square grid; a number fixes the column count. Default `"auto"`. */
     columns?: "auto" | number;
@@ -23,6 +25,7 @@ export interface GridOptions {
 
 const DEFAULT_TRIGGERS = { swap: "Super+MouseLeft+Drag" } as const;
 
+/** A near-square grid of the workspace's nodes. */
 export class GridLayout extends Layout {
     columns: "auto" | number;
     fill: GridFill;

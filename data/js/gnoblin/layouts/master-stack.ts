@@ -1,5 +1,5 @@
 // MasterStackLayout: a master column of `masterCount` nodes and a stack of the rest. Geometry is
-// data/retired shell/gnoblin/shell/tiling.retired shell `Tiling`, rectangle for rectangle: the master takes `ratio` of the
+// data/lua/gnoblin/shell/tiling.lua `Tiling`, rectangle for rectangle: the master takes `ratio` of the
 // free width (height for top and bottom), `gap` separates tiles, and every edge is floored.
 // It registers two default bindings in `layout.bindings`: `swap` (Super+MouseLeft+Drag, `ClientSwapBinding`) trades two
 // tiles' places, and `resize` (Super+MouseRight+Drag, `SplitResizeBinding`) drags the divider between master and
@@ -10,10 +10,12 @@ import type { LayoutSplit, Point } from "gnoblin/bindings";
 import { checkGap, clamp, Layout, tile, tilingGeometry } from "gnoblin/layout";
 import type { LayoutContext, LayoutNode, Placement } from "gnoblin/layout";
 
+/** The edge the master column sits on. */
 export type Orientation = "left" | "right" | "top" | "bottom";
 
 const ORIENTATIONS: readonly Orientation[] = ["left", "right", "top", "bottom"];
 
+/** Options of `MasterStackLayout`. */
 export interface MasterStackOptions {
     /** Share of the free width the master column takes, clamped to 0.1..0.9 when computing. Default 0.5. */
     ratio?: number;
@@ -42,6 +44,7 @@ interface Computed {
     readonly span: number;
 }
 
+/** A tiling layout with one master column on one edge. The other nodes stack in the remaining column. */
 export class MasterStackLayout extends Layout {
     ratio: number;
     masterCount: number;
@@ -109,7 +112,10 @@ export class MasterStackLayout extends Layout {
     }
 }
 
-/** The master's ratio as a divider a drag moves. The layout's own `ratio` field is what changes, so the workspace computes again by itself. */
+/**
+ * The master's ratio as a divider a drag moves. The layout's own `ratio` field is what changes, so the workspace
+ * computes again by itself.
+ */
 class MasterSplit implements LayoutSplit {
     readonly axis: "x" | "y";
     readonly span: number;

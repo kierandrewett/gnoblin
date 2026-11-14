@@ -1,10 +1,15 @@
 // The Layout base class and what every stock layout shares: the context a layout computes from, the
-// placement it returns, and whole-pixel tiling (the retired shell floors every tiled rectangle, and the
-// goldens it produced are the reference).
+// placement it returns, the workspace gaps, and whole-pixel tiling.
+//
+// This module owns the types and the small geometry helpers. It does not hold any layout: the stock ones are in
+// `gnoblin/layouts/*`, and `gnoblin/workspace` is what calls `compute` and applies the placements.
+// Read `gnoblin/workspace` first to see how a layout is driven; read `gnoblin/layouts/master-stack` for the
+// smallest real layout.
 
 import { BindingCollection } from "gnoblin/bindings";
 import type { LayoutSplit, Point } from "gnoblin/bindings";
 
+/** A rectangle in layout pixels: `x` and `y` are the top-left corner, `width` and `height` the size. */
 export interface Rect {
     x: number;
     y: number;
@@ -15,6 +20,10 @@ export interface Rect {
 /** A layout places whatever the host calls a node; the library only needs its identity. */
 export type LayoutNode = object;
 
+/**
+ * Where one node goes. A node the layout leaves out of its result is not touched, and a placement with no
+ * `bounds` leaves its node where it is.
+ */
 export interface Placement<N extends LayoutNode = LayoutNode> {
     node: N;
     bounds?: Rect;
@@ -30,7 +39,12 @@ export interface Placement<N extends LayoutNode = LayoutNode> {
     scale?: readonly [number, number, number];
 }
 
+/**
+ * What the host hands to `Layout.compute` and to the hooks. It is a copy: a layout can keep it, and changing it
+ * does not reach the workspace.
+ */
 export interface LayoutContext<N extends LayoutNode = LayoutNode> {
+    /** The workspace that owns the layout. Untyped, as this module does not import the host. */
     readonly workspace?: unknown;
     /** The nodes to place, in order. */
     readonly children: readonly N[];
@@ -38,9 +52,15 @@ export interface LayoutContext<N extends LayoutNode = LayoutNode> {
     readonly area: Rect;
     /** The workspace's gaps. A layout whose own `gap` is set uses that instead of `gap.inner`. */
     readonly gap?: Gaps;
+    /** The node that has keyboard focus in the workspace, or null. */
     readonly focused?: N | null;
 }
 
+/**
+ * The base class of every layout. A subclass keeps its options as plain own fields and overrides `compute`.
+ * The workspace compares the own fields between frames and computes again when one changed, so a layout needs
+ * no setters. Private (`#x`) fields are not compared.
+ */
 export class Layout {
     readonly bindings = new BindingCollection();
 
@@ -55,6 +75,10 @@ export class Layout {
 
 // Optional hooks live on the interface, not the class: a class field would define an own `undefined`
 // property in the base constructor and hide the method a subclass declares.
+/**
+ * The optional hooks of a `Layout`. They sit on the interface, merged with the class, so a subclass that does not
+ * define one has no own property to hide the inherited method.
+ */
 export interface Layout {
     onClientAdded?(client: LayoutNode, context: LayoutContext): void;
     onClientRemoved?(client: LayoutNode, context: LayoutContext): void;
@@ -107,6 +131,7 @@ export function tilingGeometry(own: number | undefined, context: LayoutContext):
     return { area: insetRect(context.area, context.gap?.outer ?? 0), gap: own ?? context.gap?.inner ?? 0 };
 }
 
+/** `value` limited to the range `low` to `high`. `low` must not be above `high`. */
 export function clamp(value: number, low: number, high: number): number {
     return Math.max(low, Math.min(high, value));
 }
@@ -122,6 +147,8 @@ const EDGE_EPSILON = 1e-6;
  * two floored edges. Flooring the width itself would leave a tile short of where the area ends: a master of 607.2 and a
  * stack of 404.8 that starts at 619.2 are 607 and 404 wide when each is floored apart, and the stack ends at 1023 in an
  * area that ends at 1024.
+ *
+ * The goldens in the tests come from the Lua shell, which floored every tiled rectangle this way.
  */
 export function tile<N extends LayoutNode>(node: N, x: number, y: number, width: number, height: number): Placement<N> {
     const left = Math.floor(x + EDGE_EPSILON);

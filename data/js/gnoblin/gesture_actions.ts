@@ -1,6 +1,6 @@
-// Touchpad gestures that run actions, ported from data/retired shell/gnoblin/shell/gestures.retired shell (`Gestures.actions`,
-// `Gestures.direction`, `Gestures.on_swipe`, `Gestures.on_pinch`). Each case has its test in
-// crates/gnoblin-js/tests/input.rs (the last seven cases of tests/retired shell/retired corpus gestures).
+// Touchpad gestures that run actions, ported from data/lua/gnoblin/shell/gestures.lua (`Gestures.actions`,
+// `Gestures.direction`, `Gestures.on_swipe`, `Gestures.on_pinch`). The cases that cover it are in
+// crates/gnoblin-js/tests/input.rs.
 //
 //   defineConfig({
 //       gestureActions: {
@@ -12,8 +12,8 @@
 // A gesture is bound like a chord (`Swipe3`, `Pinch4`: the gesture and its finger count) and Gnoblin claims it, so no
 // client sees it. An action runs once, when the fingers lift, for the direction the gesture went; a cancelled gesture
 // runs nothing. The five named actions are `gnoblin.gestures.actions`, and a config can give a function instead of a
-// name. The stock shell binds one gesture, the three-finger workspace slide: a gesture bound at its trigger replaces it,
-// so use four fingers to keep both.
+// name. The stock shell binds one gesture, the three-finger workspace slide: a gesture bound at its trigger replaces
+// it, so use four fingers to keep both.
 
 import { GestureBinding } from "gnoblin/bindings";
 import type { DragEvent } from "gnoblin/bindings";
@@ -23,7 +23,12 @@ export const SWIPE_THRESHOLD = 48;
 /** How far from 1 a pinch's scale must be for `onPinch` to act on it. */
 export const PINCH_THRESHOLD = 0.12;
 
+/** A swipe's direction, by the longer axis of the gesture. See `gestureDirection`. */
 export type SwipeDirection = "left" | "right" | "up" | "down";
+/**
+ * A pinch's direction: `in` when the fingers come together, `out` when they spread. The scale must move past the
+ * threshold from 1 for either to count.
+ */
 export type PinchDirection = "in" | "out";
 
 /** The five actions the configuration names. `window.minimize` is accepted for `window.minimise`. */
@@ -35,7 +40,9 @@ export type GestureActionName =
     | "window.minimize"
     | "window.toggle-maximise";
 
-/** The five stock actions. Each takes nothing: it acts on the workspace shown under the pointer or on the focused window. */
+/**
+ * The five stock actions. Each takes nothing and acts on the workspace under the pointer or on the focused window.
+ */
 export interface GestureActions {
     /** Shows the workspace after the shown one; nothing at the last. */
     workspaceNext(): void;
@@ -72,8 +79,8 @@ const SWIPE_WAYS: readonly string[] = ["left", "right", "up", "down"];
 const PINCH_WAYS: readonly string[] = ["in", "out"];
 
 /**
- * The way a gesture has gone: `left`, `right`, `up` or `down` by its longer axis, or `null` while it has moved less than
- * `threshold` (default `SWIPE_THRESHOLD`) touchpad units. A tie goes to the horizontal axis.
+ * The way a gesture has gone: `left`, `right`, `up` or `down` by its longer axis, or `null` while it has moved less
+ * than `threshold` (default `SWIPE_THRESHOLD`) touchpad units. A tie goes to the horizontal axis.
  */
 export function gestureDirection(
     event: { readonly dx?: number; readonly dy?: number },
@@ -124,6 +131,7 @@ function checkMap(map: unknown, ways: readonly string[], what: string): Map<stri
     return checked;
 }
 
+/** Options shared by `onSwipe`, `onPinch` and `gestureActionBinding`. Every field is optional. */
 export interface GestureActionOptions {
     /** The binding's id. Default a generated one. */
     id?: string;
@@ -138,6 +146,7 @@ export interface GestureActionOptions {
     actions?: GestureActions;
 }
 
+// Counter behind the generated binding ids. The ids only need to be unique within this process.
 let serial = 0;
 
 function nextId(): string {
@@ -145,6 +154,7 @@ function nextId(): string {
     return `gesture-actions-${serial}`;
 }
 
+/** The part the swipe and pinch bindings share: it runs the action for the way the gesture went, when it ends. */
 abstract class GestureActionBinding extends GestureBinding {
     readonly threshold: number;
     readonly #map: Map<string, GestureAction>;
@@ -164,6 +174,7 @@ abstract class GestureActionBinding extends GestureBinding {
     /** Which way the gesture went, or `null` when it did not go far enough to count. */
     protected abstract way(event: DragEvent): string | null;
 
+    /** Nothing is kept while the gesture runs: the way is read once, from the event that ends it. */
     onStart(): object {
         return {};
     }
@@ -219,8 +230,8 @@ export function onSwipe(map: SwipeMap, threshold?: number, options: GestureActio
 }
 
 /**
- * A binding that runs `map.out` or `map.in` when a pinch ends: `out` when the contacts spread to at least 1 + `threshold`
- * of their start (default 0.12), `in` when they gathered to at most 1 - threshold.
+ * A binding that runs `map.out` or `map.in` when a pinch ends: `out` when the contacts spread to at least
+ * 1 + `threshold` of their start (default 0.12), `in` when they gathered to at most 1 - threshold.
  */
 export function onPinch(map: PinchMap, threshold?: number, options: GestureActionOptions = {}): PinchActionBinding {
     return new PinchActionBinding(map, threshold === undefined ? options : { ...options, threshold });

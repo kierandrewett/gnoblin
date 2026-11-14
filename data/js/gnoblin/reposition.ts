@@ -1,14 +1,14 @@
-// Moving and resizing a window with the keyboard, ported from data/retired shell/gnoblin/shell/reposition.retired shell. The window menu's Move
-// and Resize start it, so a window can be placed without a pointer.
+// Moving and resizing a window with the keyboard, ported from data/lua/gnoblin/shell/reposition.lua. The window menu's
+// Move and Resize start it, so a window can be placed without a pointer.
 //
 //   Client.moveWithKeys()     the arrow keys move the window by STEP pixels, inside the work area
 //   Client.resizeWithKeys()   Right and Down grow the window by STEP pixels, Left and Up shrink it
 //
-// Return, Enter and Space keep the new place; Escape puts the window back where it was. The mode takes the keyboard while
-// it runs and gives it back to the window when it ends. It ends when the window closes and when the session locks. Only a
-// floating window can be moved this way: a maximised, fullscreen or tiled window is refused (`false`), and a snapped one
-// is unsnapped first, as a drag does. One window is repositioned at a time. Each case has its test in
-// crates/gnoblin-js/tests/reposition.rs (the cases of tests/retired shell/retired corpus reposition).
+// Return, Enter and Space keep the new place; Escape puts the window back where it was. The mode takes the keyboard
+// while it runs and gives it back to the window when it ends. It ends when the window closes and when the session
+// locks. Only a floating window can be moved this way: a maximised, fullscreen or tiled window is refused (`false`),
+// and a snapped one is unsnapped first, as a drag does. One window is repositioned at a time. The cases that cover it
+// are in crates/gnoblin-js/tests/reposition.rs.
 
 import { clampAxis, dragConstraintMode } from "gnoblin/bindings";
 import type { Rect } from "gnoblin/layout";
@@ -19,10 +19,12 @@ import type { UiKeyEvent } from "gnoblin/ui";
 
 /** How far an arrow key moves or resizes the window, in pixels. */
 export const REPOSITION_STEP = 16;
-/** The least size a resize keeps, in pixels. */
+/** The least width a resize keeps, in pixels. */
 export const REPOSITION_MIN_WIDTH = 120;
+/** The least height a resize keeps, in pixels. */
 export const REPOSITION_MIN_HEIGHT = 80;
 
+/** What an interactive drag does to a window: `move` carries it, `resize` changes its size. */
 export type RepositionMode = "move" | "resize";
 
 /** What the mode needs of a window. A `Client` of the host module is one. */
@@ -47,6 +49,7 @@ export interface RepositionWorld {
     focus(client: RepositionClient): void;
 }
 
+/** Arrow key names to the step each moves: `[dx, dy]` in units of `REPOSITION_STEP`. */
 const ARROWS: Readonly<Record<string, readonly [number, number]>> = {
     Left: [-1, 0],
     Right: [1, 0],
@@ -197,8 +200,8 @@ export class Repositioning {
     }
 
     /**
-     * Ends the mode. `keep` keeps where the window is; otherwise it goes back to where the mode found it, snapped again if
-     * it was. False when no mode was running.
+     * Ends the mode. `keep` keeps where the window is; otherwise it goes back to where the mode found it, snapped again
+     * if it was. False when no mode was running.
      */
     finish(keep: boolean): boolean {
         const grab = this.#current;

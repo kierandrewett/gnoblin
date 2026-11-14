@@ -1,6 +1,6 @@
 // Edge tiling: dropping a dragged window on a screen edge tiles it to that part of the work area. Off unless the
-// seat's `edge_tiling` is true. Ported from data/retired shell/gnoblin/shell/snap.retired shell (and `Window:snap` / `Window:unsnap` of
-// data/retired shell/gnoblin/shell/init.retired shell); the retired tests of both are the cases tests/stock_focus.rs runs.
+// seat's `edge_tiling` is true. Ported from data/lua/gnoblin/shell/snap.lua and the snap/unsnap methods of
+// data/lua/gnoblin/shell/init.lua; the cases in crates/gnoblin-js/tests/stock_focus.rs cover this module.
 //
 // The pure functions take plain rectangles. `snapClient` and `unsnapClient` act on anything with `bounds`, which is
 // a `Client`, and keep what they need to undo a snap off the client, so a library that does not own the object
@@ -11,7 +11,7 @@ import type { Rect } from "gnoblin/layout";
 /** The part of the work area a window tiles to: the left or right half, or all of it. */
 export type SnapZone = "left" | "right" | "top";
 
-/** How near an edge the pointer must be to name it, in pixels. the retired shell's `EDGE_MARGIN`: a small fixed zone. */
+/** How near an edge the pointer must be to name it, in pixels. A small fixed zone. */
 export const SNAP_MARGIN = 4;
 
 /** Whether edge tiling is on. Absent is off; anything but a boolean throws. */
