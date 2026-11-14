@@ -174,6 +174,10 @@ pub struct Node {
     input: bool,
     /// A rectangle beyond `bounds` the node also takes hits over, in its local plane.
     hit_extent: Option<Rect>,
+    /// A rectangle beyond `bounds` the node also draws pixels over, in its local plane: a window's buffer past its
+    /// window geometry (a shadow, a bar the client draws outside the window). It is damaged with the node and is not
+    /// hit; the hit extent says where a pointer reaches.
+    draw_extent: Option<Rect>,
     behind: bool,
     owner: Actor,
     parented_by: Option<Actor>,
@@ -267,7 +271,8 @@ impl Node {
 
     /// The local rectangle expanded by the effect chain's padding.
     fn visual_local(&self) -> RectF {
-        self.effects.expand(self.bounds.to_f64())
+        let drawn = self.draw_extent.map_or(self.bounds, |extent| extent.union(self.bounds));
+        self.effects.expand(drawn.to_f64())
     }
 
     /// The matrix that places this node's local plane in its parent's plane.
@@ -588,6 +593,7 @@ impl Scene {
             clip: spec.clip,
             input: spec.input,
             hit_extent: None,
+            draw_extent: None,
             behind: false,
             owner: actor,
             parented_by: spec.parent.map(|_| actor),
@@ -959,6 +965,29 @@ impl Scene {
         let node = self.nodes.get_mut(&id).ok_or(SceneError::UnknownNode(id))?;
         node.hit_extent = extent;
         Ok(())
+    }
+
+    /// Let a node draw pixels over a rectangle larger than its own, in its local plane, or draw only inside its bounds
+    /// again with `None`. A window whose buffer reaches past its window geometry is a node of the geometry's size that
+    /// draws the whole buffer. The old and new extents become damage.
+    pub fn set_draw_extent(&mut self, id: NodeId, extent: Option<Rect>) -> Result<(), SceneError> {
+        if !self.nodes.contains_key(&id) {
+            return Err(SceneError::UnknownNode(id));
+        }
+        if let Some(extent) = extent {
+            check_rect_bounds(extent)?;
+        }
+        self.change(id, |node| node.draw_extent = extent);
+        Ok(())
+    }
+
+    /// The rectangle a node's own plane draws a local rectangle `local` at, on the output plane: where the pixels of a
+    /// node's picture land when the picture does not start at the node's own corner. `None` for a missing node, or
+    /// when a corner lies behind the eye.
+    #[must_use]
+    pub fn project_local(&self, id: NodeId, local: Rect) -> Option<RectF> {
+        let world = self.world_matrix(id)?;
+        project_bounds(&world, local.to_f64())
     }
 
     /// Set a node's own rectangle. The old and new rectangles become damage.
@@ -2097,6 +2126,7 @@ mod tests {
                 clip: false,
                 input: true,
                 hit_extent: None,
+                draw_extent: None,
                 behind: false,
                 owner: Actor::Compositor,
                 parented_by: None,
@@ -2119,6 +2149,7 @@ mod tests {
                 clip: false,
                 input: true,
                 hit_extent: None,
+                draw_extent: None,
                 behind: false,
                 owner: Actor::Compositor,
                 parented_by: Some(Actor::Compositor),
