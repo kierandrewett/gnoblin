@@ -595,8 +595,23 @@ export interface PointerDragBindingOptions extends BindingOptions {
     threshold?: number;
 }
 
-/** The base of the drag behaviours: the host calls `onStart`, `onUpdate` and `onEnd` or `onCancel`. */
-export class PointerDragBinding extends PointerBinding {
+/**
+ * The base of every behaviour that follows an input from its start to its end (owner-spec.md section 11): the host
+ * calls `onStart`, then `onUpdate` per sample, then `onEnd` or `onCancel`, each with the state object `onStart`
+ * returned. Abstract: extend `PointerDragBinding` for a pointer drag, `GestureBinding` for a touchpad gesture, or
+ * this class for a source the library does not know.
+ */
+export class DragBinding extends Binding {
+    constructor(options: BindingOptions) {
+        if (new.target === DragBinding) {
+            throw new TypeError("DragBinding is abstract: extend it, or PointerDragBinding");
+        }
+        super(options);
+    }
+}
+
+/** The base of the pointer drag behaviours: the host calls `onStart`, `onUpdate` and `onEnd` or `onCancel`. */
+export class PointerDragBinding extends DragBinding {
     threshold: number;
 
     constructor(options: PointerDragBindingOptions) {

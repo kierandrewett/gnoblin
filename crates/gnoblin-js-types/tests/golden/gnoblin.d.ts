@@ -805,10 +805,14 @@ declare module "gnoblin" {
     /**
      * Every native object has a stable id and an explicit lifetime. Wrappers for the
      * same native id compare equal within a runtime generation. A destroyed object
-     * reads `alive === false`, and a write or method call on it rejects. A base class for the types only: the runtime
-     * has no such class, so it is not exported and a script cannot import it.
+     * reads `alive === false`, and a write or method call on it rejects. Abstract: `new NativeObject()` throws.
+     *
+     * The runtime class supplies `set` (it writes each property through its own setter and refuses `options`); `id`,
+     * `alive` and the listener methods are those of the subclass, which has a native identity to report: a `Client`,
+     * an `InputContext`, an `InputDevice`. `Client`, `Workspace`, `Output`, `InputContext` and `InputDevice` extend it
+     * at runtime today.
      */
-    abstract class NativeObject {
+    export abstract class NativeObject {
         readonly id: string;
         readonly alive: boolean;
         /** Write several properties at once, optionally as one timed transition. */
@@ -1165,6 +1169,21 @@ declare module "gnoblin" {
     export type BorderLike = Border | BorderInit;
     /** A `Shadow`, or the options to make one. */
     export type ShadowLike = Shadow | ShadowInit;
+    /**
+     * What a style list property (`borders`, `shadows`, `filter`, `backdropFilter`) hands out: an array with the two
+     * mutators of the specification's `ObservableCollection`. Both check and apply at once. A copy of an inherited
+     * list becomes the scope's own list on the first change, as an in-place write does.
+     */
+    export interface StyleList<T, L = T> extends Array<T> {
+        /**
+         * Appends an element, or the literal that makes one, and returns the element. Throws a `RangeError` (a bad
+         * value, or a list that already holds `MAX_STYLE_LIST` entries) or a `TypeError` (not an element of this list,
+         * or one already in it) and leaves the list as it was.
+         */
+        add(entry: L): T;
+        /** Takes `element` out of the list. False when it is not in it. */
+        remove(element: T): boolean;
+    }
     /** The names of the style properties, as `unset` and `ComputedStyle.origin` use them. */
     export type StyleProperty =
         "opacity" | "filter" | "backdropFilter" | "cornerRadius" | "borders" | "shadows" | "background";
@@ -1191,10 +1210,10 @@ declare module "gnoblin" {
         /** From 0 to 1. Written to the window node's `opacity`. */
         opacity: number | undefined;
         /** The chain applied to the window's own content. No renderer draws it yet. */
-        get filter(): Filter[];
+        get filter(): StyleList<Filter, FilterInit>;
         set filter(value: readonly FilterInit[] | undefined);
         /** The chain applied to what is behind the window. A blur in it is the one the compositor draws. */
-        get backdropFilter(): Filter[];
+        get backdropFilter(): StyleList<Filter, FilterInit>;
         set backdropFilter(value: readonly FilterInit[] | undefined);
         /** Takes the named properties back to inheriting. */
         unset(...names: StyleProperty[]): void;
@@ -1210,10 +1229,10 @@ declare module "gnoblin" {
         cornerRadius: number | Readonly<CornerRadii> | undefined;
         /** A colour, or `null` for none. Not drawn by any renderer yet. */
         background: Color | null | undefined;
-        get borders(): Border[];
+        get borders(): StyleList<Border, BorderLike>;
         set borders(value: readonly BorderLike[] | undefined);
         /** Behind the window; the first entry is on top. */
-        get shadows(): Shadow[];
+        get shadows(): StyleList<Shadow, ShadowLike>;
         set shadows(value: readonly ShadowLike[] | undefined);
     }
     /** A resolved border, as `ComputedStyle.borders` holds it. */
@@ -1752,12 +1771,16 @@ declare module "gnoblin" {
     export type DragCancelEvent = DragEvent;
 
     /**
+     * The base of every behaviour that follows an input from its start to its end. Abstract: `new DragBinding()` throws;
+     * extend `PointerDragBinding` for a pointer drag.
+     *
      * `onStart` returns a fresh per-gesture state object, or `false` to decline. Each later callback receives that
      * state, so one binding instance can serve two input contexts at once. A drag starts once the pointer has gone
      * `threshold` pixels from the press. Pointer events reach the shell once per frame, and when scripts are behind
      * the next `onUpdate` reads the latest position; `onStart`, `onEnd` and `onCancel` are never dropped.
      */
-    abstract class DragBinding<S extends object = object> extends Binding {
+    export abstract class DragBinding<S extends object = object> extends Binding {
+        constructor(options: BindingOptions);
         onStart(event: DragStartEvent): S | false;
         onUpdate(event: DragUpdateEvent, state: S): void;
         onEnd(event: DragEndEvent, state: S): void;
@@ -1843,11 +1866,39 @@ declare module "gnoblin" {
         [Symbol.iterator](): Iterator<Binding>;
     }
 
-    export interface InputDevice {
+    /** What `InputDevice.bind` takes beside the trigger and the action. */
+    export interface DeviceBindOptions {
+        /** `true` makes the device binding-only before the binding is made. The only value that means anything. */
+        only?: true;
+    }
+    /**
+     * A physical input device of a seat: the base of `Keyboard`, `Mouse`, `Touchpad`, `Touchscreen` and `Tablet` (a
+     * device none of them fits, a lid switch, is an `InputDevice` itself). Its settings are those of its kind, not of
+     * the one device: the compositor reads them from the configuration document's `input` section, so a write on one
+     * `Mouse` is the setting of every mouse. A setting reads `undefined` until a script writes it, and `undefined`
+     * written back gives it up to the system's. A write the document refuses throws a `RangeError` (a value outside
+     * the setting's range) or a `GnoblinError` (`refused`, the document's own reason); the shell commits the document
+     * with what a script wrote on load and again on the frame after a later write.
+     */
+    export class InputDevice extends NativeObject {
         readonly id: string;
+        /** False once the device was unplugged. */
+        readonly alive: boolean;
         readonly name: string;
         readonly capabilities: readonly string[];
-        readonly context: InputContext;
+        /**
+         * Always true: the compositor cannot disable one device. Assigning `false` throws a `GnoblinError`
+         * (`unsupported`); use `bindingOnly` to keep the device's keys from clients.
+         */
+        enabled: boolean;
+        /**
+         * The context that holds the device. Assigning another moves it: the old context's bindings stop matching its
+         * events (a drag in flight is cancelled, so no button stays held) and the new one's start. Throws a
+         * `GnoblinError` for a context that is not in `gnoblin.input.contexts` (`refused`), for one on another seat
+         * (`unsupported`: the compositor attaches every device to one seat) and for a device that was unplugged
+         * (`destroyed`).
+         */
+        context: InputContext;
         /** Bindings that match only this device's events. They run before a layout's and the context's. */
         readonly bindings: BindingCollection;
         /**
@@ -1866,11 +1917,45 @@ declare module "gnoblin" {
          */
         bindingOnly: boolean;
     }
-    /** What `InputDevice.bind` takes beside the trigger and the action. */
-    export interface DeviceBindOptions {
-        /** `true` makes the device binding-only before the binding is made. The only value that means anything. */
-        only?: true;
+    /** The acceleration profiles a pointer takes. A custom curve has no property. */
+    export type Acceleration = "default" | "flat" | "adaptive";
+    /** A keyboard, or a keyboard with a pointing stick. Its settings are those of every keyboard. */
+    export class Keyboard extends InputDevice {
+        /**
+         * Key repeats per second, from 0.1 to 1000. Written to `input.keyboard.repeat-interval` as the reciprocal in whole
+         * milliseconds, which the compositor applies on commit.
+         */
+        repeatRate: number | undefined;
+        /** Milliseconds a held key waits before it repeats, a whole number from 1 to 10000. Written to `input.keyboard.delay`. */
+        repeatDelay: number | undefined;
     }
+    /**
+     * A mouse, trackball or pointing stick (any pointer that reports no gestures). The compositor accepts and checks its
+     * settings and reports them as not applied until a libinput applier reads them.
+     */
+    export class Mouse extends InputDevice {
+        /** Pointer speed from -1 (slowest) to 1. Written to `input.mouse.speed`. */
+        sensitivity: number | undefined;
+        /** Written to `input.mouse.accel-profile`. */
+        acceleration: Acceleration | undefined;
+        /** Reverses the scroll direction. Written to `input.mouse.natural-scroll`. */
+        naturalScroll: boolean | undefined;
+    }
+    /** A touchpad (a pointer that reports gestures). Settings as for `Mouse`, in the `input.touchpad` group. */
+    export class Touchpad extends InputDevice {
+        /** Pointer speed from -1 (slowest) to 1. Written to `input.touchpad.speed`. */
+        sensitivity: number | undefined;
+        /** Written to `input.touchpad.accel-profile`. */
+        acceleration: Acceleration | undefined;
+        /** Reverses the scroll direction. Written to `input.touchpad.natural-scroll`. */
+        naturalScroll: boolean | undefined;
+        /** Treats a tap as a click. Written to `input.touchpad.tap-to-click`. */
+        tapToClick: boolean | undefined;
+    }
+    /** A touch screen. The compositor has no setting for one: its calibration belongs to the seat. */
+    export class Touchscreen extends InputDevice {}
+    /** A drawing tablet's tool or pad. Tablet settings are keyed by vendor and product, which a device does not carry. */
+    export class Tablet extends InputDevice {}
     /** The window management settings a seat publishes (the schema's `seat` keys in camel case, the compositor's words). */
     export interface SeatSettings {
         readonly edgeTiling: boolean;
@@ -1885,12 +1970,34 @@ declare module "gnoblin" {
         /** The user asked for reduced motion: the shell's animations take no time. */
         readonly reducedMotion: boolean;
     }
-    /** One seat: its devices, its focus, its pointer and the bindings that run on its chords and drags. */
-    export interface InputContext {
+    /** What `new InputContext` takes. */
+    export interface InputContextOptions {
+        /** One non-empty line, unique among the contexts of `gnoblin.input.contexts`. */
+        name: string;
+    }
+    /**
+     * An input context: the logical group of devices the specification exports as a `wl_seat`. It holds devices and the
+     * bindings that run on their chords, drags and gestures.
+     *
+     * The compositor has one input seat and attaches every device to it. The contexts found in
+     * `gnoblin.input.contexts` at start are those seats. A context made with `new InputContext({ name })` and added
+     * with `gnoblin.input.contexts.add` is a context over the primary seat's devices: it holds the devices assigned to
+     * it (`device.context = context`), and its bindings match only the events of those devices. Pointer and keyboard
+     * focus stay the seat's (`focusedClient` reads the same client as the primary's), and a chord only the primary
+     * binds still fires for a device of another context. A context that is not added holds no device and claims
+     * nothing; `pointer`, `clearFocus`, `makeBindingOnly` and `attachLayout` throw a `GnoblinError` (`detached`).
+     */
+    export class InputContext extends NativeObject {
+        constructor(options: InputContextOptions);
+        /** The same as `name`. */
+        readonly id: string;
+        /** False once the context was removed from `gnoblin.input.contexts` or its seat went. */
+        readonly alive: boolean;
         readonly name: string;
+        /** The devices this context holds now, each of which has this as its `context`. */
         readonly devices: readonly InputDevice[];
         readonly bindings: BindingCollection;
-        /** Read through to the seat on every call. */
+        /** Read through to the seat on every call; null for a context that is not in `gnoblin.input.contexts`. */
         readonly focusedClient: Client | null;
         /**
          * The display under this context's pointer, else the primary output's; null while no display has an output.
@@ -1945,11 +2052,42 @@ declare module "gnoblin" {
         /** 1 is the binding a press of the trigger reaches first; a binding that declines hands the press to rank 2. */
         readonly rank: number;
     }
+    /** A live, read-only list: it reads the members each time, so a list kept in a variable shows later changes. */
+    export interface InputList<T> extends Iterable<T> {
+        readonly length: number;
+        /** The member at `index`; a negative index counts from the end. */
+        at(index: number): T | undefined;
+        /** The member whose `id` is `id`. */
+        get(id: string): T | undefined;
+        find(predicate: (member: T) => boolean): T | undefined;
+        /** A snapshot array. */
+        filter(predicate: (member: T) => boolean): T[];
+        /** A snapshot array. */
+        map<U>(mapper: (member: T) => U): U[];
+        /** A snapshot array. */
+        flatMap<U>(mapper: (member: T) => readonly U[]): U[];
+    }
+    /** An `InputList` a script adds members to and removes them from. */
+    export interface MutableInputList<T> extends InputList<T> {
+        /** Adds `member` and returns it. */
+        add(member: T): T;
+        /** Removes `member`. False when it is not in the list. */
+        remove(member: T): boolean;
+    }
     export interface InputManager {
-        readonly contexts: readonly InputContext[];
+        /**
+         * One context per seat the compositor reports, then the ones a script added. `add(context)` takes a context made
+         * with `new InputContext({ name })`: it throws a `GnoblinError` (`duplicate`) for a name that is taken,
+         * (`no-seat`) when the compositor reports no seat and (`destroyed`) for a context that was removed; a name that
+         * is not one non-empty line is a `TypeError`. Adding one that is already there changes nothing. `remove(context)`
+         * hands the context's devices back to their seat's and stops its bindings; it throws (`refused`) for a seat's own
+         * context and returns false for one that is not there.
+         */
+        readonly contexts: MutableInputList<InputContext>;
         /** The first seat. Throws when the compositor reports none. */
         readonly primary: InputContext;
-        readonly devices: readonly InputDevice[];
+        /** Every device of every context, each in the context that holds it. */
+        readonly devices: InputList<InputDevice>;
     }
 
     // -- Layouts (owner-spec section 12) --------------------------------------
@@ -4049,7 +4187,19 @@ declare module "gnoblin" {
         accept?: (client: Client) => boolean;
     }
 
-    export interface Extensions {
+    /** What `for (const ext of gnoblin.extensions)` yields. */
+    export interface ExtensionInfo {
+        readonly id: string;
+        /** `ready` while the extension serves a session, `unloaded` while it is absent. */
+        readonly status: "ready" | "unloaded";
+    }
+
+    /**
+     * The optional native extensions. Iterating it yields one `ExtensionInfo` per extension the shell knows (today
+     * `xr`); the XR program runs out of process, so it is `ready` while it has a session (its `xr` seat is in the tree)
+     * and `unloaded` otherwise, when `xr` is null.
+     */
+    export interface Extensions extends Iterable<ExtensionInfo> {
         /** The XR extension while the program has a session; null otherwise, so `xr?.session` is the guard. */
         readonly xr: import("gnoblin/extensions/xr").XRExtension | null;
         addListener(listener: XRSessionListener): void;

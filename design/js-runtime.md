@@ -1977,6 +1977,16 @@ on the screen at the top-left corner, and `csd-own.windows.json` and `csd-own.cl
 (0, 0) (before: 700 by 448, its bar at y = -26). `csd-double` is unchanged: the shell's 28 px bar, the window at
 (0, 28), 700 by 500. The picture is `docs/images/js-shell/csd-own.png`.
 
+## Input contexts, devices and the extension registry status
+
+Lane SpecInput (design/js-spec-native.md 2.6; docs/shell-api/input.md). `data/js/gnoblin/devices.ts` holds `InputDevice` and
+the `Keyboard`, `Mouse`, `Touchpad`, `Touchscreen` and `Tablet` classes with the settings ledger that
+`gnoblin.ts` merges into the entry's `document()`; `input.ts` holds `InputContext` (public constructor, `attach`, device
+ownership and per-device claims) and `InputManager` (`contexts` and `devices` are live lists from `input_list.ts`);
+`native_object.ts` is the `NativeObject` base. `JsShell::frame` commits the document again when `documentRevision` moved. Tests:
+`crates/gnoblin-js/tests/input_devices.rs`. Not native: a second `wl_seat` with its own focus, per-device (rather than
+per-kind) settings, applying the `input.mouse` and `input.touchpad` groups.
+
 ## Questions for the owner (the agent has a default for each)
 
 1. Initial workspace rule for a new toplevel. Default: the workspace shown by the display under the

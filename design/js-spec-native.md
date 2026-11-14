@@ -301,6 +301,38 @@ cameras"). Where the specification is ambiguous the lane chose the reading that 
   `not applied: camera3d (needs a projected workspace)`.
 - **`Viewport.clearColor`** is kept and reported as not applied.
 
+### 2.6 Input contexts, devices, extension registry and style lists (lane SpecInput)
+
+Built (data/js/gnoblin/{devices,input,input_list,native_object}.ts; tests in crates/gnoblin-js/tests/input_devices.rs):
+
+- **Device classes.** `Keyboard`, `Mouse`, `Touchpad`, `Touchscreen`, `Tablet` extend `InputDevice`, chosen from the seat's
+  capability words (`tablet-*` is a `Tablet`, `touch` a `Touchscreen`, `gesture` a `Touchpad`, `keyboard` a `Keyboard`, other
+  `pointer` a `Mouse`; a lid switch stays an `InputDevice`). `NativeObject` is a runtime export; `Client`, `Workspace`,
+  `Output`, `InputContext` and `InputDevice` extend it. `Node`, `Layout` and `Binding` do not yet (their lanes own those files).
+  `DragBinding` is a runtime export (abstract); `PointerDragBinding` now extends it, so it is no longer a `PointerBinding`.
+- **Device settings** (`sensitivity`, `acceleration`, `naturalScroll`, `tapToClick`, `repeatRate`, `repeatDelay`). The only
+  backing the compositor has is the document's `input` section, which is per kind, not per device: a write on one `Mouse` is
+  every mouse's setting. Reading choice: `sensitivity` is libinput's -1..1 speed, `repeatRate` is repeats per second (the
+  document holds the interval in ms). The keyboard group is applied; mouse and touchpad are accepted and reported "not
+  applied" until a libinput applier reads them (crates/gnoblin-config/src/apply.rs). The shell commits the writes with the
+  entry and again a frame after a later write (`documentRevision`). `enabled = false` is refused (`unsupported`): nothing
+  backs it. Tablet and touchscreen settings are keyed by vendor/product or belong to the seat and are not exposed.
+- **A second `InputContext`.** The compositor has one input seat and attaches every device to it
+  (`DeviceInfo::seat`, `State::device_added`), and a tree `seat` node made by the shell would carry no devices, so a script
+  context is not a second `wl_seat`. It is an object over the primary seat: it holds the devices assigned to it and claims
+  each of its chords per held device (a device-scoped claim). Not native yet: separate keyboard/pointer focus per context, a
+  primary-context chord not firing for another context's device, layout bindings per context, and a device keeping its
+  context across unplug.
+- **Extension registry.** `for (const ext of gnoblin.extensions)` yields `{ id, status }`: `xr` is `ready` while the XR
+  program has a session (its `xr` seat is in the tree) and `unloaded` otherwise; `gnoblin.extensions.xr` is null then.
+- **Style lists.** `style.borders/shadows/filter/backdropFilter` arrays have non-enumerable `add(entry)` and `remove(element)`
+  that check and apply at once; the array-assign and in-place forms still work.
+
+**Open owner question: `bindings.add` with an id that is already there.** Fences 066, 068 and 117 add an XR binding whose id
+(`move`, `resize`) a layout already holds. The shell refuses a duplicate id (`a binding with id "move" is already in this
+collection`) and keeps doing so. Either `add` replaces by id, or the fragments are missing a `remove`. The owner has not
+answered; the three fences stay `fails`, pending the owner decision (replace by id or refuse).
+
 ## Part 3. Replacement design
 
 ### 3.0 Rules

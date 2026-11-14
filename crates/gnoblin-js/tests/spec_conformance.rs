@@ -10,7 +10,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use gnoblin_js::JsShell;
+use gnoblin_js::{JsConfigCommit, JsConfigLink, JsLinkError, JsShell};
 use gnoblin_tree_client::tree_mirror::MirrorValue;
 use sha2::{Digest, Sha256};
 
@@ -19,6 +19,25 @@ use common::{FakeCompositor, ROOT, timed_config};
 
 /// The number of code fences the specification's archive holds, besides `init.js`.
 const SNIPPET_COUNT: usize = 128;
+
+/// The configuration document the rig commits to: it takes every commit and holds the last, as the compositor does, so a
+/// snippet that writes a document setting (a device's `sensitivity`) is not reported for having nowhere to commit it.
+#[derive(Default)]
+struct AcceptingDocument(Vec<u8>);
+
+impl JsConfigLink for AcceptingDocument {
+    fn current(&mut self) -> Result<Option<Vec<u8>>, JsLinkError> {
+        Ok((!self.0.is_empty()).then(|| self.0.clone()))
+    }
+
+    fn commit(&mut self, document: &[u8]) -> Result<JsConfigCommit, JsLinkError> {
+        self.0 = document.to_vec();
+        Ok(JsConfigCommit {
+            revision: 1,
+            notices: Vec::new(),
+        })
+    }
+}
 
 /// The longest error text a table row keeps.
 const ERROR_WIDTH: usize = 200;
@@ -358,6 +377,7 @@ fn boot(files: &[(&str, String)], probe: Option<&str>, session_first: bool) -> R
     let (config, _clock) = timed_config(&root);
     let outcome = (|| {
         let mut shell = JsShell::new(Box::new(comp.clone()), config).map_err(|error| error.to_string())?;
+        shell.set_config_link(Box::new(AcceptingDocument::default()));
         // The frames before the entry let the shell see the tree it booted over: the XR program's session is a seat in
         // it, and `gnoblin.extensions.xr` exists only after the shell has. They also give a window its default
         // workspace, so a fence that makes workspaces of its own must load first.

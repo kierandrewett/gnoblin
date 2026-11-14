@@ -215,6 +215,9 @@ pub struct JsShell {
     idle: JsIdle,
     /// The commands `defineConfig({ autostart })` started, so a reload starts only the new ones.
     autostart: JsAutostart,
+    /// The `documentRevision` the entry reported when the document was last committed. A device setting written
+    /// after that moves it, and the next frame commits the document again.
+    document_revision: u32,
 }
 
 impl JsShell {
@@ -271,6 +274,7 @@ impl JsShell {
             dialogs: JsDialogs::new(),
             idle: JsIdle::new(),
             autostart: JsAutostart::default(),
+            document_revision: 0,
         })
     }
 
@@ -481,10 +485,27 @@ impl JsShell {
         Ok(diagnostics)
     }
 
+    /// The `documentRevision` of the running generation's entry.
+    fn document_revision_now(&self) -> Result<u32, JsShellError> {
+        self.call_entry(self.entry_budget, |entry| {
+            entry.get::<_, Function<'_>>("documentRevision")?.call(())
+        })
+    }
+
+    /// Commits the document again when a device setting was written since the last commit (`Mouse.sensitivity = 0.5`
+    /// in a listener, after the entry has run). A write the entry made while loading is in the first commit.
+    fn commit_document_changes(&mut self, diagnostics: &mut Vec<String>) -> Result<(), JsShellError> {
+        if self.document_revision_now()? != self.document_revision {
+            self.apply_document(diagnostics, true)?;
+        }
+        Ok(())
+    }
+
     /// Commits the running generation's document settings: the patch it declared is laid over the document in
     /// force, after what the last committed generation set is taken back (`retract`), so a key a reload dropped
     /// returns to its default. A refusal is a diagnostic: the document in force stays.
     fn apply_document(&mut self, diagnostics: &mut Vec<String>, retract: bool) -> Result<(), JsShellError> {
+        self.document_revision = self.document_revision_now()?;
         let text: String = self.call_entry(self.entry_budget, |entry| {
             entry.get::<_, Function<'_>>("document")?.call(())
         })?;
@@ -850,6 +871,7 @@ impl JsShell {
         self.state.borrow_mut().graveyard.clear();
         outcome?;
         self.run_host_api(&mut diagnostics)?;
+        self.commit_document_changes(&mut diagnostics)?;
         self.run_layouts(&mut diagnostics)?;
         self.run_ui(&mut diagnostics)?;
         self.run_dialogs(&mut diagnostics)?;

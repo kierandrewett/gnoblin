@@ -594,6 +594,57 @@ function sameEntries(a: readonly StyleElement[], b: readonly StyleElement[]): bo
     return a.length === b.length && a.every((element, at) => element === b[at]);
 }
 
+/**
+ * The array a style list property hands out, with the two mutators the specification's `ObservableCollection` has.
+ * Both check and commit at once, where `push` and `splice` are seen only by the frame comparison (`syncStyleLists`).
+ */
+export interface StyleList<T, L = T> extends Array<T> {
+    /**
+     * Appends an element, or the literal that makes one, and returns the element. Throws, leaving the list as it was,
+     * when the entry is bad, the list is full (`MAX_STYLE_LIST`) or the element is already in it.
+     */
+    add(entry: L): T;
+    /** Takes `element` out of the list. False when it is not in it. */
+    remove(element: T): boolean;
+}
+
+/**
+ * Gives `list` its `add` and `remove`. They are own, non-enumerable properties, so `for...in`, spreading and `JSON`
+ * see a plain array. `commit` makes the list the scope's own after a change (a copy of an inherited list becomes the
+ * override, as the first in-place write to it does).
+ */
+function observable(store: Store, name: ListName, list: StyleElement[], commit: () => void): void {
+    const add = (entry: unknown): StyleElement => {
+        store.scope?.guard?.();
+        const path = pathOf(store, name);
+        if (list.length >= MAX_STYLE_LIST) {
+            return fail(path, `holds at most ${MAX_STYLE_LIST} entries, so another cannot be added`);
+        }
+        const element = LIST_ENTRY[name](entry, `${path}[${list.length}]`, list);
+        if (list.includes(element)) {
+            throw new TypeError(`${path}: that element is already in the list`);
+        }
+        list.push(element);
+        commit();
+        return element;
+    };
+    const remove = (element: StyleElement): boolean => {
+        store.scope?.guard?.();
+        const at = list.indexOf(element);
+        if (at < 0) {
+            return false;
+        }
+        list.splice(at, 1);
+        homes.set(element, { list: null, path: () => element.constructor.name });
+        commit();
+        return true;
+    };
+    Object.defineProperties(list, {
+        add: { value: add, configurable: true, writable: true },
+        remove: { value: remove, configurable: true, writable: true },
+    });
+}
+
 /** Makes `list` the entries of override list `name`, with every element knowing where it sits. */
 function own(store: Store, name: ListName, list: StyleElement[]): void {
     for (const element of list) {
@@ -603,6 +654,10 @@ function own(store: Store, name: ListName, list: StyleElement[]): void {
             beforeWrite: () => store.scope?.guard?.(),
         });
     }
+    observable(store, name, list, () => {
+        own(store, name, list);
+        epoch += 1;
+    });
     store.lists.set(name, list);
     store.seen.set(name, [...list]);
     store.views.delete(name);
@@ -680,6 +735,7 @@ function getList(style: Style, name: ListName): StyleElement[] {
         building -= 1;
     }
     view.seen = [...list];
+    observable(store, name, list, () => commitView(store, name, view));
     store.views.set(name, view);
     return list;
 }
@@ -733,8 +789,8 @@ export class Style {
     }
 
     /** The chain applied to the window's own content. No renderer draws it yet. */
-    get filter(): Filter[] {
-        return getList(this, "filter") as Filter[];
+    get filter(): StyleList<Filter, FilterInit> {
+        return getList(this, "filter") as StyleList<Filter, FilterInit>;
     }
 
     set filter(value: FilterInit[] | undefined) {
@@ -742,8 +798,8 @@ export class Style {
     }
 
     /** The chain applied to what is behind the window. A blur in it is the one the compositor draws. */
-    get backdropFilter(): Filter[] {
-        return getList(this, "backdropFilter") as Filter[];
+    get backdropFilter(): StyleList<Filter, FilterInit> {
+        return getList(this, "backdropFilter") as StyleList<Filter, FilterInit>;
     }
 
     set backdropFilter(value: FilterInit[] | undefined) {
@@ -823,8 +879,8 @@ export class ClientStyle extends Style {
     }
 
     /** Not drawn by any renderer yet. */
-    get borders(): Border[] {
-        return getList(this, "borders") as Border[];
+    get borders(): StyleList<Border, BorderLike> {
+        return getList(this, "borders") as StyleList<Border, BorderLike>;
     }
 
     set borders(value: BorderLike[] | undefined) {
@@ -832,8 +888,8 @@ export class ClientStyle extends Style {
     }
 
     /** Behind the window. The first entry is on top. */
-    get shadows(): Shadow[] {
-        return getList(this, "shadows") as Shadow[];
+    get shadows(): StyleList<Shadow, ShadowLike> {
+        return getList(this, "shadows") as StyleList<Shadow, ShadowLike>;
     }
 
     set shadows(value: ShadowLike[] | undefined) {

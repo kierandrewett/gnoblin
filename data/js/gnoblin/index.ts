@@ -81,6 +81,7 @@ export type {
     ShadowInit,
     ShadowLike,
     ShadowValue,
+    StyleList,
     StyleProperty,
 } from "gnoblin/style";
 export { Camera3D, Node, View } from "gnoblin/scene";
@@ -88,3 +89,7 @@ export { Camera3D, Node, View } from "gnoblin/scene";
 export { Camera2D, Display, OutputProfile, Viewport } from "gnoblin/display";
 export { LockScreen, PasswordEntry, defaultLockStyle, formatClock, lockScreen } from "gnoblin/lock";
 export type { LockAnswer, LockBackend, LockStyle } from "gnoblin/lock";
+// The device classes of a seat and the base class of the shell's objects. The settings ledger stays with the host.
+export { InputDevice, Keyboard, Mouse, Tablet, Touchpad, Touchscreen } from "gnoblin/devices";
+export type { DeviceBindOptions } from "gnoblin/devices";
+export { NativeObject } from "gnoblin/native_object";

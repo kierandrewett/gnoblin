@@ -58,7 +58,7 @@ export function emit(value) {
 const IMPORTS: &str = r#"
 import { area, nodes, fmt, lay, thrown, rect, emit } from "harness";
 import {
-    Binding, BindingCollection, resolveTriggers, Layout, insetRect,
+    Binding, BindingCollection, DragBinding, PointerDragBinding, resolveTriggers, Layout, insetRect,
     FloatingLayout, MasterStackLayout, GridLayout, MonocleLayout,
     defineConfig, desugarConfig, defaultConfig, mergeConfig, spawn, show,
 } from "gnoblin";
@@ -520,6 +520,31 @@ fn bindings_carry_the_lifecycle_hooks_and_a_collection_keeps_them_by_id() {
             "TypeError: Binding id must be a non-empty string",
             r#"TypeError: Binding "x" trigger: an empty part after "Super"; write a literal plus as "plus" (token "" in "Super++")"#,
             r#"RangeError: Binding "x" priority must be a finite number"#,
+        ])
+    );
+}
+
+#[test]
+fn drag_binding_is_the_abstract_base_of_the_pointer_drags() {
+    let got = run(r#"
+        class Mine extends DragBinding {
+            onStart() {
+                return {};
+            }
+        }
+        const mine = new Mine({ id: "mine", trigger: "Super+MouseLeft+Drag" });
+        emit([
+            thrown(() => new DragBinding({ id: "x", trigger: "Super+x" })),
+            [mine instanceof DragBinding, mine instanceof Binding, new PointerDragBinding({ id: "p", trigger: "Super+MouseLeft+Drag" }) instanceof DragBinding].join(","),
+            JSON.stringify(mine.onStart({ timestamp: 0 })),
+        ].join("\n"));
+    "#);
+    assert_eq!(
+        got,
+        lines(&[
+            "TypeError: DragBinding is abstract: extend it, or PointerDragBinding",
+            "true,true,true",
+            "{}",
         ])
     );
 }

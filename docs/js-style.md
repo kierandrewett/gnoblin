@@ -121,6 +121,22 @@ reaches that scope and nobody else:
 client.style.shadows[0].blur = 40; // client now has its own list [40]; other clients still inherit [20]
 ```
 
+A list also takes `add` and `remove`, which check and apply at once. `add` takes an element or the literal that makes one and
+returns the element; `remove` takes an element out and says whether it was there. Both copy an inherited list first, as a
+write to an element does:
+
+```ts
+import { ClientStyle, Border, Shadow, BlurFilter } from "gnoblin";
+
+const style = new ClientStyle({ cornerRadius: 12 });
+style.borders.add(new Border({ width: 2, color: "#7c3aed" }));
+style.shadows.add({ y: 8, blur: 24, color: "#0006" });
+style.backdropFilter.add(new BlurFilter({ radius: 18 }));
+gnoblin.clients.style = style;
+```
+
+A bad entry, a ninth entry and an element that is already in the list throw and leave the list as it was.
+
 After that the client does not follow later edits of the inherited list. You can also change an array in place with
 `push` or `splice`. The shell checks each array once per frame and takes the change then.
 

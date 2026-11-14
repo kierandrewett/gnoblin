@@ -48,6 +48,10 @@ import type {
     Rect,
     TriggerClaim,
 } from "gnoblin/bindings";
+import { InputDevice, classOf } from "gnoblin/devices";
+import type { DeviceHome } from "gnoblin/devices";
+import { NativeObject } from "gnoblin/native_object";
+import { InputList, MutableInputList } from "gnoblin/input_list";
 
 /**
  * The window management settings the compositor publishes on a seat, as the host reads them (the schema's names in
@@ -411,69 +415,6 @@ function bindIn(
     return collection.add(action);
 }
 
-/** A physical input device of a seat. Bindings here match only its own events. */
-export class InputDevice {
-    readonly id: string;
-    readonly name: string;
-    readonly capabilities: readonly string[];
-    readonly context: InputContext;
-    readonly bindings = new BindingCollection();
-
-    constructor(context: InputContext, id: string, name: string, capabilities: readonly string[]) {
-        this.context = context;
-        this.id = id;
-        this.name = name;
-        this.capabilities = capabilities;
-    }
-
-    /**
-     * As `InputContext.bind`, for events from this device. Its bindings run before a layout's or the context's.
-     * `options.only: true` first makes the device binding-only (see `bindingOnly`); `only: false` is refused, because
-     * it is not a way to say nothing.
-     */
-    bind(
-        trigger: string,
-        action: ((event: BindingEvent) => void | false) | Binding | false,
-        options?: DeviceBindOptions,
-    ): Binding {
-        if (options !== undefined && options.only !== undefined && options.only !== true) {
-            throw new TypeError(
-                `InputDevice "${this.name}".bind: only must be true to make the device binding-only, got ${String(options.only)}`,
-            );
-        }
-        if (options?.only === true) {
-            this.bindingOnly = true;
-        }
-        return bindIn(this.bindings, trigger, action, `InputDevice "${this.name}"`);
-    }
-
-    /**
-     * Whether this device is binding-only: its keys reach no client and fire only the bindings made for it or for
-     * every device, so a macro pad never types into a window. Assigning `true` claims the device on the seat; `false`
-     * gives the claim up. The claim is by the device's name, and lasts until the shell goes or it is given up.
-     */
-    get bindingOnly(): boolean {
-        return this.context.isBindingOnly(this.name);
-    }
-
-    set bindingOnly(on: boolean) {
-        if (typeof on !== "boolean") {
-            throw new TypeError(`InputDevice "${this.name}".bindingOnly must be true or false, got ${String(on)}`);
-        }
-        if (on) {
-            this.context.makeBindingOnly(this.name);
-        } else {
-            this.context.releaseBindingOnly(this.name);
-        }
-    }
-}
-
-/** What `InputDevice.bind` takes beside the trigger and the action. */
-export interface DeviceBindOptions {
-    /** `true` makes the device binding-only before the binding is made. The only value that means anything. */
-    only?: true;
-}
-
 /** A device name is one non-empty line: the compositor matches it exactly against what a device reports. */
 function checkDeviceName(name: unknown, what: string): void {
     if (typeof name !== "string" || name === "" || name.includes("\n")) {
@@ -481,38 +422,62 @@ function checkDeviceName(name: unknown, what: string): void {
     }
 }
 
-/** `id:name:caps`: the id up to the first colon and the capabilities after the last, so a name may hold colons. */
-function parseDevice(context: InputContext, item: string): InputDevice | null {
+/** One `id:name:caps` item of a seat's device list: the id up to the first colon, the capabilities after the last. */
+function splitDevice(item: string): { id: string; name: string; capabilities: string[] } | null {
     const first = item.indexOf(":");
     const last = item.lastIndexOf(":");
     if (first <= 0 || last <= first) {
         return null;
     }
     const caps = item.slice(last + 1);
-    return new InputDevice(
-        context,
-        item.slice(0, first),
-        item.slice(first + 1, last),
-        caps === "" ? [] : caps.split(","),
-    );
+    return {
+        id: item.slice(0, first),
+        name: item.slice(first + 1, last),
+        capabilities: caps === "" ? [] : caps.split(","),
+    };
+}
+
+/** What the module reads and does on behalf of every context, set by the `InputManager` of the generation. */
+let runtime: { host: InputHost; world: InputWorld } | null = null;
+
+/** What `new InputContext` takes. */
+export interface InputContextOptions {
+    /** The context's name: one non-empty line, unique among the contexts of `gnoblin.input.contexts`. */
+    name: string;
 }
 
 /**
- * A named input context: the bindings and claims of one seat. It owns the claims for its bindings and decides what each
- * chord, drag or gesture means, as the header describes. The host and the world are injected, so a test can drive it.
+ * An input context, the logical group of devices the specification exports as a `wl_seat` (section 10). It owns the
+ * claims for its bindings and decides what each chord, drag or gesture means, as the header describes.
+ *
+ * The compositor has one input seat and attaches every device to it, so what a context is depends on how it got
+ * into `gnoblin.input.contexts`. The contexts the shell finds there (one per seat the tree reports) are those
+ * seats. One a script makes with `new InputContext({ name })` and adds is a context over the primary seat's devices:
+ * it holds the devices assigned to it (`device.context = ...`), and its bindings match only the events of those
+ * devices, by claiming each chord for each of them. Pointer and keyboard focus stay the seat's: the compositor
+ * keeps one, so `focusedClient` reads the same client as the primary's. A chord that only the primary binds still
+ * fires for a device of another context, because the compositor withholds a chord by claim and a claim for one
+ * device exists only where a binding asked for it.
  */
-export class InputContext {
+export class InputContext extends NativeObject implements DeviceHome {
     readonly name: string;
     readonly bindings = new BindingCollection();
 
     readonly #host: InputHost;
     readonly #world: InputWorld;
-    readonly #seat: number;
+    /** The seat whose claims this context makes; -1 while the context is not in `gnoblin.input.contexts`. */
+    #seat = -1;
+    /** Made by a script: it holds devices of a seat, not a seat. */
+    #virtual = false;
+    #state: "detached" | "live" | "removed" = "detached";
     readonly #claims = new Map<string, ClaimEntry>();
     readonly #claimIds = new Map<number, ClaimEntry>();
     readonly #registrations = new Set<Registration>();
     readonly #layouts = new Map<InputLayout, () => void>();
-    readonly #devices = new Map<string, { device: InputDevice; unfollow: () => void }>();
+    /** Every device the seat reports, whichever context holds it. Only a context that is a seat has any. */
+    readonly #roster = new Map<string, InputDevice>();
+    /** The devices this context holds, each with the call that gives up what its bindings registered. */
+    readonly #owned = new Map<InputDevice, () => void>();
     /** The claim of each binding-only device, by its name. */
     readonly #only = new Map<string, number>();
     readonly #presses = new Map<number, PointerPress>();
@@ -521,7 +486,7 @@ export class InputContext {
     #disposed = false;
     /** Whether giving up a claim tells the seat: false once the seat itself is gone. */
     #release = true;
-    #unfollowOwn: () => void;
+    #unfollowOwn: () => void = () => {};
     /**
      * The layouts `syncLayouts` attached, which it also detaches. One attached by hand stays until detached by hand.
      */
@@ -529,24 +494,45 @@ export class InputContext {
     /** Layouts whose bindings were refused once, so they are not tried and reported every frame. */
     readonly #failed = new WeakSet<InputLayout>();
 
-    /** @internal Made by `InputManager`: one context per seat the compositor reports. */
-    constructor(host: InputHost, world: InputWorld, seat: number) {
-        this.#host = host;
-        this.#world = world;
-        this.#seat = seat;
-        this.name = host.seatName(seat);
-        this.#unfollowOwn = this.#follow(this.bindings, TIER_CONTEXT, () => true, null, "");
+    /**
+     * Makes a context that is in no manager yet: it collects bindings, and holds no device and makes no claim until it
+     * is added to `gnoblin.input.contexts`. Throws a `TypeError` for a name that is not one non-empty line.
+     */
+    constructor(options: InputContextOptions) {
+        super();
+        if (runtime === null) {
+            throw new Error("an InputContext needs the shell's input manager, which this generation has not started");
+        }
+        if (options === null || typeof options !== "object") {
+            throw new TypeError("InputContext: expects an object with a name");
+        }
+        if (typeof options.name !== "string") {
+            throw new TypeError(`InputContext: the name must be text, got ${String(options.name)}`);
+        }
+        this.name = options.name;
+        this.#host = runtime.host;
+        this.#world = runtime.world;
     }
 
-    /** The devices the seat reports now. */
+    /** The name: a context's identity among the contexts of `gnoblin.input.contexts`. */
+    get id(): string {
+        return this.name;
+    }
+
+    /** False once the context was removed from `gnoblin.input.contexts` or its seat went. */
+    get alive(): boolean {
+        return this.#state !== "removed";
+    }
+
+    /** The devices this context holds now. A context that is not in `gnoblin.input.contexts` holds none. */
     get devices(): readonly InputDevice[] {
         this.syncDevices();
-        return [...this.#devices.values()].map((entry) => entry.device);
+        return this.#virtual ? [...this.#owned.keys()] : [...this.#roster.values()].filter((d) => this.#owned.has(d));
     }
 
     /** The client with keyboard focus, or null. Read through to the seat on every call. */
     get focusedClient(): BindingClient | null {
-        return this.#world.clientOf(this.#host.focus(this.#seat)) ?? null;
+        return this.#state === "live" ? (this.#world.clientOf(this.#host.focus(this.#seat)) ?? null) : null;
     }
 
     /** The window management settings the seat publishes, with the shell's overrides from the config on top. */
@@ -556,6 +542,7 @@ export class InputContext {
 
     /** Takes the keyboard focus from every window. */
     clearFocus(): void {
+        this.#live("clearFocus");
         const code = this.#host.clearFocus(this.#seat);
         if (code != null) {
             throw this.#world.error("refused", `InputContext "${this.name}".clearFocus`, `the host refused (${code})`);
@@ -572,6 +559,7 @@ export class InputContext {
 
     /** The pointer in the compositor's logical space. */
     get pointer(): Point {
+        this.#live("pointer");
         const [x, y] = this.#host.pointer(this.#seat);
         return { x, y };
     }
@@ -598,6 +586,7 @@ export class InputContext {
      */
     makeBindingOnly(name: string): void {
         checkDeviceName(name, `InputContext "${this.name}".makeBindingOnly`);
+        this.#live("makeBindingOnly");
         if (this.#only.has(name)) {
             return;
         }
@@ -683,6 +672,7 @@ export class InputContext {
      * that is a client whose workspace's `layout` is this one. Bindings the layout gains or loses later follow.
      */
     attachLayout(layout: InputLayout, owns?: (client: BindingClient) => boolean): void {
+        this.#live("attachLayout");
         if (this.#layouts.has(layout)) {
             throw new Error("this layout is already attached to the input context");
         }
@@ -727,27 +717,142 @@ export class InputContext {
         return this.#claimIds.has(claim);
     }
 
-    /** @internal Brings the device list up to date with the seat's. */
+    /**
+     * @internal Puts the context into `gnoblin.input.contexts` on `seat`: the seat's own context (`virtual` false) makes
+     * claims for its bindings at once; one a script made holds devices and registers its bindings per device.
+     */
+    attach(seat: number, virtual: boolean): void {
+        this.#seat = seat;
+        this.#virtual = virtual;
+        this.#state = "live";
+        if (!virtual) {
+            this.#unfollowOwn = this.#follow(this.bindings, TIER_CONTEXT, () => true, null, "");
+        }
+    }
+
+    /** @internal The seat this context makes claims on, or -1 before it is in `gnoblin.input.contexts`. */
+    get seat(): number {
+        return this.#seat;
+    }
+
+    /** @internal Whether a script made this context, as opposed to the seat's own. */
+    get virtual(): boolean {
+        return this.#virtual;
+    }
+
+    /**
+     * @internal Brings the roster up to date with the seat's device list: a device that appeared joins this context, a
+     * device that went is retired and leaves whichever context held it. Does nothing for a context that is not a seat.
+     */
     syncDevices(): void {
-        const items = this.#host.devices(this.#seat);
+        if (this.#state !== "live" || this.#virtual) {
+            return;
+        }
         const seen = new Set<string>();
-        for (const item of items) {
-            const device = parseDevice(this, item);
-            if (device === null) {
+        for (const item of this.#host.devices(this.#seat)) {
+            const parts = splitDevice(item);
+            if (parts === null) {
                 continue;
             }
-            seen.add(device.id);
-            if (!this.#devices.has(device.id)) {
-                const unfollow = this.#follow(device.bindings, TIER_DEVICE, () => true, null, device.name);
-                this.#devices.set(device.id, { device, unfollow });
+            seen.add(parts.id);
+            if (!this.#roster.has(parts.id)) {
+                const device = new (classOf(parts.capabilities))(this, parts.id, parts.name, parts.capabilities);
+                this.#roster.set(parts.id, device);
+                this.#own(device);
             }
         }
-        for (const [id, entry] of [...this.#devices]) {
+        for (const [id, device] of [...this.#roster]) {
             if (!seen.has(id)) {
-                entry.unfollow();
-                this.#devices.delete(id);
+                this.#roster.delete(id);
+                (device.context as InputContext).#disown(device);
+                device.retire();
             }
         }
+    }
+
+    /** Starts matching the bindings of `device`, and for a context made by a script this context's own, to its events. */
+    #own(device: InputDevice): void {
+        const undo: (() => void)[] = [];
+        try {
+            undo.push(this.#follow(device.bindings, TIER_DEVICE, () => true, null, device.name));
+            if (this.#virtual) {
+                undo.push(this.#follow(this.bindings, TIER_CONTEXT, () => true, null, device.name));
+            }
+        } catch (error) {
+            for (const give of undo) {
+                give();
+            }
+            throw error;
+        }
+        this.#owned.set(device, () => {
+            for (const give of undo) {
+                give();
+            }
+        });
+    }
+
+    /** Stops matching `device`'s events: a drag one of its bindings runs is cancelled, so no button stays held. */
+    #disown(device: InputDevice): void {
+        this.#owned.get(device)?.();
+        this.#owned.delete(device);
+    }
+
+    /** Throws unless the context is in `gnoblin.input.contexts`. */
+    #live(what: string): void {
+        if (this.#state !== "live") {
+            throw this.#world.error(
+                this.#state === "removed" ? "destroyed" : "detached",
+                `InputContext "${this.name}".${what}`,
+                this.#state === "removed"
+                    ? "the context was removed from gnoblin.input.contexts"
+                    : "add the context to gnoblin.input.contexts first",
+            );
+        }
+    }
+
+    /** Makes a binding for one of this context's devices, in the device's own collection. */
+    bindDevice(
+        device: InputDevice,
+        trigger: string,
+        action: ((event: BindingEvent) => void | false) | Binding | false,
+    ): Binding {
+        return bindIn(device.bindings, trigger, action, `InputDevice "${device.name}"`);
+    }
+
+    /**
+     * Moves `device` to context `to`: its bindings, and the bindings `to` made for all its devices, start matching the
+     * device's events, and this context's stop. A drag the old bindings run is cancelled, and the device's
+     * binding-only claim goes with it. Refused (`GnoblinError`) for a context that is not in `gnoblin.input.contexts`
+     * and for one on another seat, because the compositor attaches every device to one seat.
+     */
+    moveDevice(device: InputDevice, to: unknown): void {
+        const target = `${device.path("context")}`;
+        if (!(to instanceof InputContext) || to.#state !== "live") {
+            throw this.#world.error("refused", target, "assign a context that is in gnoblin.input.contexts");
+        }
+        if (to.#seat !== this.#seat) {
+            throw this.#world.error(
+                "unsupported",
+                target,
+                `the compositor attaches "${device.name}" to seat ${this.#seat}, so it cannot move to context "${to.name}"`,
+            );
+        }
+        const wasOnly = this.releaseBindingOnly(device.name);
+        this.#disown(device);
+        try {
+            to.#own(device);
+            if (wasOnly) {
+                to.makeBindingOnly(device.name);
+            }
+        } catch (error) {
+            to.#disown(device);
+            this.#own(device);
+            if (wasOnly) {
+                this.makeBindingOnly(device.name);
+            }
+            throw error;
+        }
+        device.assignContext(to);
     }
 
     /** @internal Takes one message from the compositor and schedules what it means. */
@@ -806,10 +911,12 @@ export class InputContext {
             this.#cancelGesture(run);
         }
         this.#unfollowOwn();
-        for (const entry of this.#devices.values()) {
-            entry.unfollow();
+        for (const give of this.#owned.values()) {
+            give();
         }
-        this.#devices.clear();
+        this.#owned.clear();
+        this.#roster.clear();
+        this.#state = "removed";
         for (const unfollow of [...this.#layouts.values()]) {
             unfollow();
         }
@@ -993,9 +1100,7 @@ export class InputContext {
         const now = this.#host.now();
         const deviceName = registration.device === "" ? null : registration.device;
         const device =
-            deviceName === null
-                ? null
-                : ([...this.#devices.values()].find((entry) => entry.device.name === deviceName)?.device ?? null);
+            deviceName === null ? null : ([...this.#owned.keys()].find((owned) => owned.name === deviceName) ?? null);
         const base: Record<string, unknown> = {
             context: this,
             device,
@@ -1420,54 +1525,132 @@ export class InputContext {
     }
 }
 
-/** `gnoblin.input`: the seats the compositor reports as contexts, and their devices. */
+/**
+ * `gnoblin.input`: the contexts and the devices. The contexts are one per seat the compositor reports, then the ones a
+ * script added (`contexts.add(new InputContext({ name }))`); `primary` is the first seat's.
+ */
 export class InputManager {
+    /** The seats' contexts, then the scripts'. `add` and `remove` are for the scripts' own. */
+    readonly contexts: MutableInputList<InputContext>;
+    /** Every device of every context. */
+    readonly devices: InputList<InputDevice>;
+
     readonly #host: InputHost;
     readonly #world: InputWorld;
-    readonly #contexts = new Map<number, InputContext>();
+    readonly #seats = new Map<number, InputContext>();
+    /** The contexts a script made and added, in the order it added them. */
+    #scripted: InputContext[] = [];
 
     constructor(host: InputHost, world: InputWorld) {
         this.#host = host;
         this.#world = world;
-    }
-
-    /** One context per seat, in tree order. */
-    get contexts(): readonly InputContext[] {
-        this.sync();
-        return [...this.#contexts.values()];
+        runtime = { host, world };
+        this.contexts = new MutableInputList(
+            () => this.#all(),
+            (context) => this.#add(context),
+            (context) => this.#remove(context),
+        );
+        this.devices = new InputList(() => this.#all().flatMap((context) => context.devices));
     }
 
     /** The first seat's context: the ordinary default. Throws when the compositor reports no seat. */
     get primary(): InputContext {
         this.sync();
-        const first = this.#contexts.values().next();
+        const first = this.#seats.values().next();
         if (first.done) {
             throw this.#world.error("no-seat", "gnoblin.input.primary", "the compositor reports no input seat");
         }
         return first.value;
     }
 
-    get devices(): readonly InputDevice[] {
-        return this.contexts.flatMap((context) => context.devices);
+    /** Every context, up to date with the seats. */
+    #all(): InputContext[] {
+        this.sync();
+        return [...this.#seats.values(), ...this.#scripted];
+    }
+
+    /**
+     * Puts a context a script made into `contexts`, over the primary seat's devices. Refused (`GnoblinError`) when the
+     * name is taken, the context was removed, or the compositor reports no seat; a name that is not one non-empty
+     * line is a `TypeError`. Adding a context that is already there changes nothing.
+     */
+    #add(context: InputContext): InputContext {
+        const where = "gnoblin.input.contexts.add";
+        if (!(context instanceof InputContext)) {
+            throw new TypeError(`${where}: expects an InputContext made with new InputContext({ name })`);
+        }
+        const present = this.#all();
+        if (present.includes(context)) {
+            return context;
+        }
+        if (!context.alive) {
+            throw this.#world.error("destroyed", where, `the context "${context.name}" was removed`);
+        }
+        if (context.name === "" || context.name.includes("\n")) {
+            throw new TypeError(`${where}: a context name is one non-empty line, got ${JSON.stringify(context.name)}`);
+        }
+        if (present.some((other) => other.name === context.name)) {
+            throw this.#world.error("duplicate", where, `a context named "${context.name}" is already there`);
+        }
+        const [seat] = this.#seats.values();
+        if (seat === undefined) {
+            throw this.#world.error("no-seat", where, "the compositor reports no input seat to hold the context");
+        }
+        context.attach(seat.seat, true);
+        this.#scripted.push(context);
+        return context;
+    }
+
+    /**
+     * Takes a context a script added out of `contexts`: its devices go back to their seat's context and its bindings
+     * stop. False for a context that is not there. Refused (`GnoblinError`) for a seat's own context.
+     */
+    #remove(context: InputContext): boolean {
+        if ([...this.#seats.values()].includes(context)) {
+            throw this.#world.error(
+                "refused",
+                "gnoblin.input.contexts.remove",
+                `"${context.name}" is a seat the compositor reports; only contexts a script added can be removed`,
+            );
+        }
+        if (!this.#scripted.includes(context)) {
+            return false;
+        }
+        const home = [...this.#seats.values()].find((seat) => seat.seat === context.seat);
+        for (const device of [...context.devices]) {
+            if (home !== undefined) {
+                device.context = home;
+            }
+        }
+        this.#scripted = this.#scripted.filter((other) => other !== context);
+        context.dispose(true);
+        return true;
     }
 
     /** @internal Brings the contexts up to date with the seats, and each context's devices with its seat's. */
     sync(): void {
         const seats = this.#host.seats();
         for (const seat of seats) {
-            if (!this.#contexts.has(seat)) {
-                this.#contexts.set(seat, new InputContext(this.#host, this.#world, seat));
+            if (!this.#seats.has(seat)) {
+                const context = new InputContext({ name: this.#host.seatName(seat) });
+                context.attach(seat, false);
+                this.#seats.set(seat, context);
             }
         }
-        for (const [seat, context] of [...this.#contexts]) {
+        for (const [seat, context] of [...this.#seats]) {
             if (!seats.includes(seat)) {
-                // The compositor released the seat's claims with it; there is nothing to unclaim on.
+                // The compositor released the seat's claims with it; there is nothing to unclaim on. A context a script
+                // made on that seat has nothing left to hold either.
+                for (const scripted of this.#scripted.filter((other) => other.seat === seat)) {
+                    scripted.dispose(false);
+                }
+                this.#scripted = this.#scripted.filter((other) => other.seat !== seat);
                 context.dispose(false);
-                this.#contexts.delete(seat);
+                this.#seats.delete(seat);
             }
         }
         const layouts = this.#world.layouts();
-        for (const context of this.#contexts.values()) {
+        for (const context of this.#seats.values()) {
             context.syncDevices();
             context.syncLayouts(layouts);
         }
@@ -1475,12 +1658,12 @@ export class InputManager {
 
     /** @internal Takes the compositor's chord and gesture messages for this frame and schedules their hooks. */
     deliver(messages: readonly InputMessage[]): void {
-        if (this.#contexts.size === 0 && messages.length === 0 && this.#host.seats().length === 0) {
+        if (this.#seats.size === 0 && messages.length === 0 && this.#host.seats().length === 0) {
             return;
         }
         this.sync();
         for (const message of messages) {
-            for (const context of this.#contexts.values()) {
+            for (const context of [...this.#seats.values(), ...this.#scripted]) {
                 if (context.ownsClaim(message.claim)) {
                     context.receive(message);
                     break;
@@ -1491,16 +1674,17 @@ export class InputManager {
 
     /** @internal A client was destroyed: the gestures on it are cancelled once. */
     clientGone(client: BindingClient): void {
-        for (const context of this.#contexts.values()) {
+        for (const context of [...this.#seats.values(), ...this.#scripted]) {
             context.clientGone(client);
         }
     }
 
     /** @internal The generation is ending: cancel what is in flight and release every claim. */
     cancelAll(): void {
-        for (const context of this.#contexts.values()) {
+        for (const context of [...this.#scripted, ...this.#seats.values()]) {
             context.dispose(true);
         }
-        this.#contexts.clear();
+        this.#scripted = [];
+        this.#seats.clear();
     }
 }

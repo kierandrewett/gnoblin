@@ -1779,6 +1779,13 @@ export function missingExtension(name: string): string {
     );
 }
 
+/** What `for (const ext of gnoblin.extensions)` yields: the extension's id and where it is in its lifecycle. */
+export interface ExtensionInfo {
+    readonly id: string;
+    /** `ready` while the extension serves a session, `unloaded` while it is absent. */
+    readonly status: "ready" | "unloaded";
+}
+
 /** `gnoblin.extensions`: the optional native extensions, each null while absent. */
 export class Extensions {
     readonly #runtime: XRRuntime;
@@ -1790,6 +1797,16 @@ export class Extensions {
     /** The XR extension while the program has a session; null otherwise. */
     get xr(): XRExtension | null {
         return this.#runtime.extension;
+    }
+
+    /**
+     * The extensions the shell knows, one `ExtensionInfo` each (owner-spec.md section 17: `for (const ext of
+     * gnoblin.extensions)`). The XR program is out of process, so its presence is its `xr` seat: `ready` while it has
+     * a session (`gnoblin.extensions.xr` is the object), `unloaded` otherwise (`xr` is null).
+     */
+    [Symbol.iterator](): Iterator<ExtensionInfo> {
+        const xr: ExtensionInfo = { id: "xr", status: this.#runtime.extension === null ? "unloaded" : "ready" };
+        return [Object.freeze(xr)][Symbol.iterator]();
     }
 
     /** Hears `onSessionStarted(session)` and `onSessionEnded(session)` of the XR extension. */

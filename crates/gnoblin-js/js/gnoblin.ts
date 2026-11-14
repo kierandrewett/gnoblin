@@ -53,6 +53,8 @@ import type { CheckedPlacement, StockLayoutName, WorkspaceOptions } from "gnobli
 import { FOCUS_DEFAULTS, FocusPolicy, focusSettings, seatFocusSettings } from "gnoblin/focus";
 import type { FocusConfig, FocusSettings } from "gnoblin/focus";
 import { InputManager } from "gnoblin/input";
+import { attachDeviceSettings, deviceDocument, deviceSettingsRevision, overlayDocument } from "gnoblin/devices";
+import { NativeObject } from "gnoblin/native_object";
 import type { InputHost, InputMessage } from "gnoblin/input";
 import { RULE_DEFAULTS, RuleEngine, compileRules } from "gnoblin/rules";
 import type { RuleHost, RuleView } from "gnoblin/rules";
@@ -153,8 +155,13 @@ interface Entry {
     takeErrors(): ErrorReport[];
     /** What the module could not do, said once per generation: a style property no renderer draws. */
     takeNotices(): string[];
-    /** The config document patch of the running generation, as JSON text: `{}` when it sets none. */
+    /**
+     * The config document patch of the running generation, as JSON text: `{}` when it sets none. It holds what
+     * `defineConfig` declared and the device settings a script wrote (`Mouse.sensitivity` and the like).
+     */
     document(): string;
+    /** A number that moves when a device setting is written: the shell commits `document()` again when it moved. */
+    documentRevision(): number;
     /** The commands the running generation's config starts with the session, as JSON text of argv lists. */
     autostart(): string;
     /** What the compositor sent for the dialog observation slot; returns how many calls wait. */
@@ -743,8 +750,9 @@ const centred = new WeakSet<Client>();
 // Owns the public window API; membership and host-backed values are shared with frame processing.
 
 /** A toplevel window the compositor manages. */
-export class Client {
+export class Client extends NativeObject {
     constructor(token: symbol, node: NodeId) {
+        super();
         if (token !== CREATE) {
             throw new TypeError("a Client is made by the compositor, not by a script");
         }
@@ -1239,9 +1247,10 @@ function wsState(workspace: unknown): WorkspaceState {
  * its windows, the same `Client` objects as `gnoblin.clients`. Removing a workspace, or a window from one,
  * never closes the window.
  */
-export class Workspace {
+export class Workspace extends NativeObject {
     constructor(options: WorkspaceOptions) {
         const checked = checkWorkspaceOptions(options);
+        super();
         const clients = new MutableCollection<Client>(CREATE, {
             ...rootState("Client"),
             mutation: {
@@ -1426,8 +1435,9 @@ function publishedOutput(node: NodeId): OutputSeen {
  * bars on it. It is made and destroyed by the compositor as displays come and go; a destroyed one keeps its last values
  * and reads `connected === false`.
  */
-export class Output {
+export class Output extends NativeObject {
     constructor(token: symbol, node: NodeId) {
+        super();
         if (token !== CREATE) {
             throw new TypeError("an Output is made by the compositor, not by a script");
         }
@@ -4177,6 +4187,11 @@ const input = new InputManager(seatHost, {
     error: (code, target, message) => new GnoblinError(code, target, message),
 });
 
+attachDeviceSettings({
+    check: (patch) => host.config.check(patch, "[]"),
+    error: (code, target, message) => new GnoblinError(code, target, message),
+});
+
 attachUi({ ...host.ui, now: () => host.input.now() }, (site, error) => {
     reports.push({ site, error });
 });
@@ -5209,7 +5224,8 @@ host.entry = {
     ready,
     takeErrors,
     takeNotices: () => notices.splice(0),
-    document: () => documentPatch,
+    document: () => JSON.stringify(overlayDocument(JSON.parse(documentPatch), deviceDocument())),
+    documentRevision: deviceSettingsRevision,
     autostart: () => autostartList,
     dialogs: (events) => {
         dialogs.deliver(events);

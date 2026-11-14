@@ -114,8 +114,6 @@ const RUNTIME_NOT_DECLARED: &[(&str, &str)] = &[
     ("AuthenticationManager", MANAGER),
     ("DialogManager", MANAGER),
     ("IdleMonitor", MANAGER),
-    ("InputContext", MANAGER),
-    ("InputDevice", MANAGER),
     ("InputManager", MANAGER),
     ("LaunchFeedback", MANAGER),
     (

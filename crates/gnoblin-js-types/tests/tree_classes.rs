@@ -232,7 +232,7 @@ fn the_stock_library_follows_the_generated_modules_and_is_marked_proposed() {
         "    export class Workspace extends Node {",
         "    export class Layout extends NativeObject {",
         "    export class Binding {",
-        "    export interface InputContext {",
+        "    export class InputContext extends NativeObject {",
         "    export class ClientListener extends MemberListener<Client> {",
     ] {
         assert!(text.lines().any(|candidate| candidate == line), "missing `{line}`");
