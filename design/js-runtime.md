@@ -1364,8 +1364,14 @@ Design: `design/js-xr.md` (which spec class is a tree node, a JS class or new na
   node, the compositor refuses the observer the same write, and the list is empty again when the drag ends and when the
   shell dies). A shell's detach now clears the `claimed` of every controller (`reap_transactions`). The program's
   withholding of a claimed grip from the window is proven against the fake runtime and a fake owner only
-  (`extensions/gnoblin-xr`, `bridge/controller_nodes.rs`); no real program, runtime or headset ran it. The claim is made
-  after `chordSettleMs`, so the window sees a short right click of the grip's first 50 ms. No headset was used.
+  (`extensions/gnoblin-xr`, `bridge/controller_nodes.rs`, `xr-input/tests/hands.rs`); no real program, runtime or headset
+  ran it. **The claim now comes before the press (lane XrGrip; design/js-xr.md item 6).** The program holds every press
+  of the trigger, grip, face button and stick for `CLAIM_HOLD` (150 ms of display time) and forwards it only if no claim
+  came, a tap as a press then a release, so a grip the shell claims never reaches the window and an unclaimed one reaches
+  it at most one frame after the hold. `session.chordSettleMs` is a getter and setter capped at 60 ms, so the claim fits
+  inside the hold (`the_chord_settle_time_is_a_number_...`, `a_drag_claims_its_grip_after_the_settle_time_...` in
+  `tests/xr.rs`). The real-compositor claims test is unchanged: an observer plays the program there, so it cannot show
+  the program's hold, which is fake-runtime only. No headset was used.
 - **Not built.** The TypeScript rules have no `xr = false` key (`accept` replaces it); `ViewRotateBinding`,
   `ViewScaleBinding` and `ThrowViewBinding`; a View of a workspace. XR5 (a stalled script does not block pose writes or
   layers) is unverified.

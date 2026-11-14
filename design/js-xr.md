@@ -2,8 +2,8 @@
 
 Status: the controllers are built in the program and the compositor and tested against a fake runtime and a fake owner;
 the room and the shell's claims of a controller are tested against a real compositor. The program's withholding of a
-claimed input is proven against the fake runtime only. No headset, no OpenXR runtime and no `gnoblin-xr` binary ran for
-it.
+claimed input, and the hold that gives the shell time to claim before the window sees a press, are proven against the
+fake runtime only. No headset, no OpenXR runtime and no `gnoblin-xr` binary ran for it.
 
 Owner-spec section 13 asks for a native `.so` extension. J7 replaces that with the out-of-process program of D34 and
 D35, so this document says what each spec class becomes in that model. See `design/js-runtime.md` (J7, "P9 XR status"),
@@ -70,7 +70,8 @@ Built (lane XrControllers). No headset was used; it is proven against the fake r
    as active and destroyed when it does not. The compositor lets an observer make that class and write those properties
    on controllers it made, and destroys them when the connection closes (as it does for the seat).
 3. **Arbitration.** The shell-writable `controller.claimed` list names inputs (`trigger`, `grip`, `thumbstick`,
-   `primary`, `secondary`); the program withholds a claimed trigger, grip or thumbstick from the window under the ray.
+   `primary`, `secondary`); the program withholds a claimed trigger, grip or thumbstick from the window under the ray, and
+   holds each press for `CLAIM_HOLD` first so that a claim still reaches a press in time (item 6).
    The shell side (lane JsXrClaims): a script writes the list through `XRController.claim(owner, names)`. The shell keeps
    one claim for each owner and each controller and writes the union, in the schema's order, only when it changes, so
    two owners do not clobber each other. The host converts a JS array of strings to the tree's `list<string>` value and
@@ -84,10 +85,21 @@ Built (lane XrControllers). No headset was used; it is proven against the fake r
    about 90 a second, under the compositor's allowance of 120, which controllers have apart from the head's. Another
    observer may write a controller's pose (as any may write the head's) but not its other values.
 5. **Not built: per-axis scale.** With it a resize preview could change the aspect; today it grows evenly.
-6. **Not built: an earlier claim.** The drag claims its buttons when it starts, after `chordSettleMs` (50 ms), so the
-   window under the ray has already been given the grip's `BTN_RIGHT` press; the program releases it as the claim
-   arrives. A claim made while a chord might still be forming would withhold the grip from the window whenever a binding
-   could use it.
+6. **The claim comes before the press (lane XrGrip).** A drag claims after `chordSettleMs`, so the window used to get the
+   grip's `BTN_RIGHT` for about 50 ms first. **Decision: option A, a hold in the program.** `xr_input::Arbiter` holds
+   every press of the trigger, the grip, the face button and the stick for `CLAIM_HOLD` (150 ms of frame display time)
+   and forwards it only if no claim came. A claim in that time discards the press and the window hears nothing of it, not
+   even a release. With no claim the press goes out at the deadline at the ray the hand had when it went down; a press let
+   go inside the hold is a press then a release a frame apart at the deadline; a stick flick shorter than the hold scrolls
+   nothing. A press the window already holds when a late claim arrives is released, as before. The deadline is the only
+   clock: a dead, slow or absent shell is the same as no claim, so nothing waits for JS, and pose writes and layer
+   submission never see the hold. `chordSettleMs` is capped at 60 ms: settle plus the claim's trip must fit in the hold
+   (the real stock shell on a headless compositor made a claim visible 106 to 125 ms after the press, with 25 ms of test
+   polling in that, so 150 ms is not generous); a claim later than the hold leaks as it did. **Cost:** every click of these
+   inputs lands 150 ms (to the next frame) late, bound to a binding or not. **Rejected:** (B) a standing `claimable` list
+   and a per-press `pass` verdict, which would spare unbound inputs and taps, but needs a new shell-written property, a
+   verdict protocol, a replay in the program and a rule for a shell that dies mid-verdict; (C) a per-input `claim_mode`
+   is B with the flag on the input. B's standing list alone could later drop the hold from inputs no binding uses.
 
 ## Acceptance (owner-spec section 21)
 
@@ -100,3 +112,4 @@ Built (lane XrControllers). No headset was used; it is proven against the fake r
 | XR6    | `xr6_a_secure_client_never_gets_a_view...` (policy) and `view_secure_tests.rs` in `gnoblin-backend` (the compositor masks it)               |
 | Room   | `crates/gnoblin/tests/js_shell.rs`: a real compositor, a real shell and an observer that makes the seat                                     |
 | Claims | `js_shell.rs`: an observer plays the program, the stock grab claims the grip on its `controller`, and the compositor clears it              |
+| Hold   | `xr-input/tests/hands.rs`, `bridge/controller_nodes.rs`: claimed never reaches the window, unclaimed after `CLAIM_HOLD`; fake runtime only  |

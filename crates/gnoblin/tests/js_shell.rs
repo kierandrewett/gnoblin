@@ -3109,11 +3109,21 @@ fn the_stock_grab_claims_the_grip_on_the_real_controller_and_the_claim_goes_with
     let hand = program.controller("right");
     assert!(claims_of(&ipc, hand).is_empty(), "nothing is claimed before a drag");
 
-    // A squeeze starts the stock grab, which takes the grip from the window under the ray.
+    // A squeeze starts the stock grab, which takes the grip from the window under the ray. The grab waits for the
+    // chord to settle (`session.chordSettleMs`, 50 ms), so the claim cannot come on the squeeze itself: the real
+    // program holds the press back from the window for `CLAIM_HOLD` (150 ms) to cover that wait and the claim's trip
+    // to it. The hold itself is the program's and is tested in its workspace; this measures the shell's half.
+    let squeezed = Instant::now();
     program.squeeze(hand, 1.0);
     wait_for("the grab claims the grip", &session, &mut mapper, &shell, || {
         claims_of(&ipc, hand) == ["grip"]
     });
+    let latency = squeezed.elapsed();
+    eprintln!("the stock grab claimed the grip {latency:?} after the squeeze was written");
+    assert!(
+        latency >= Duration::from_millis(50),
+        "claimed after {latency:?}, before the chord had settled"
+    );
     // The compositor refuses the program the claims, which are the shell's to write.
     let refused = program.transact(vec![op::Properties {
         value_texts: Vec::new(),

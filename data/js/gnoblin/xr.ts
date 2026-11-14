@@ -228,6 +228,13 @@ export function arrangeRing<I>(
 /** What a shell may claim on a controller, in the order the node lists it: the names `controller.claimed` accepts. */
 export const CLAIMABLE_INPUTS: readonly string[] = ["trigger", "grip", "thumbstick", "primary", "secondary"];
 
+/**
+ * The longest settle time a chord may have, in milliseconds. The program holds a press back from the window for 150 ms
+ * (`xr_input::CLAIM_HOLD`) to wait for a claim; the claim is made after the settle time and needs about as long again
+ * to travel shell, compositor and program, so a settle time past 60 would claim after the hold.
+ */
+const MAX_CHORD_SETTLE_MS = 60;
+
 const BUTTON_ORDER: readonly ControllerButton[] = ["Trigger", "Grip", "Thumbstick", "Primary", "Secondary"];
 const BUTTON_NAMES: Readonly<Record<string, ControllerButton>> = {
     trigger: "Trigger",
@@ -1291,8 +1298,28 @@ export class XRSession {
     #onViewport: (viewport: XRViewport) => void;
     readonly controllers: XRList<XRController>;
     readonly head: XRTrackedPose;
-    /** The shell's side of grabs, settled once a frame. A chord must have been down this long to start a drag. */
-    chordSettleMs = 50;
+    #chordSettleMs = 50;
+
+    /**
+     * How long, in milliseconds, a chord must have been down before a drag starts, and so before the drag claims its
+     * buttons. Default 50, at most `MAX_CHORD_SETTLE_MS` (60): a larger value reads back as 60.
+     *
+     * The XR program holds every press of the trigger, grip, face button and stick back from the window under the ray
+     * for 150 ms while it waits for a claim (design/js-xr.md, "The claim comes before the press"). A drag claims after
+     * this settle time and the claim then has to reach the program, so a settle time beyond 60 ms would claim after the
+     * hold, and the window would have had the press. A press that nothing claims in the hold reaches the window at the
+     * end of it, so a click waits at most 150 ms.
+     */
+    get chordSettleMs(): number {
+        return this.#chordSettleMs;
+    }
+
+    set chordSettleMs(ms: number) {
+        if (typeof ms !== "number" || Number.isNaN(ms)) {
+            throw new TypeError(`session.chordSettleMs must be a number of milliseconds, got ${String(ms)}`);
+        }
+        this.#chordSettleMs = Math.min(Math.max(ms, 0), MAX_CHORD_SETTLE_MS);
+    }
 
     /** @internal Made by the runtime when the seat appears. */
     constructor(world: XRWorld, seat: NodeNumber, onViewport: (viewport: XRViewport) => void) {

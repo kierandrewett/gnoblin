@@ -1713,3 +1713,67 @@ fn a_controller_that_is_gone_refuses_a_claim_with_a_scene_error_and_forgets_a_re
         "a release of a gone controller is not an error"
     );
 }
+
+// ---- The settle time and the program's hold ------------------------------------------------------------------------
+
+#[test]
+fn the_chord_settle_time_is_a_number_of_milliseconds_the_programs_hold_can_cover() {
+    let mut rig = drag_world("");
+    let settle = |rig: &mut Rig, value: &str| {
+        rig.eval(&format!("gnoblin.extensions.xr.session.chordSettleMs = {value}; 1"));
+        rig.eval("String(gnoblin.extensions.xr.session.chordSettleMs)")
+    };
+    assert_eq!(settle(&mut rig, "40"), "40");
+    assert_eq!(
+        settle(&mut rig, "10000"),
+        "60",
+        "a settle time past 60 ms would claim after the 150 ms the program holds a press for"
+    );
+    assert_eq!(settle(&mut rig, "-5"), "0");
+    assert_eq!(settle(&mut rig, "Infinity"), "60");
+    for bad in ["'50'", "NaN", "null", "undefined"] {
+        let got = thrown(
+            &mut rig,
+            &format!("gnoblin.extensions.xr.session.chordSettleMs = {bad}"),
+        );
+        assert!(
+            got.starts_with("TypeError|session.chordSettleMs must be a number"),
+            "{bad}: {got}"
+        );
+    }
+    assert_eq!(
+        rig.eval("String(gnoblin.extensions.xr.session.chordSettleMs)"),
+        "60",
+        "a refused value changes nothing"
+    );
+}
+
+#[test]
+fn a_drag_claims_its_grip_after_the_settle_time_and_not_on_the_press() {
+    let mut rig = world(&[(800.0, 600.0)], "");
+    xr_arrives(&mut rig);
+    hand(&rig, RIGHT_HAND, "right", 0.0, 0.0, 0.0);
+    rig.settle();
+    assert_eq!(rig.eval("String(gnoblin.extensions.xr.session.chordSettleMs)"), "50");
+    let pressed = std::time::Instant::now();
+    grip(&mut rig, 1.0);
+    assert!(
+        claimed(&rig, RIGHT_HAND).is_empty(),
+        "the claim is not made on the frame of the press: the chord has to settle first"
+    );
+    // The program holds the press for 150 ms, so the claim has to come well inside that on a quiet machine; a loaded
+    // one is given seconds, because this test proves the order, not the speed.
+    let limit = std::time::Duration::from_secs(5);
+    while claimed(&rig, RIGHT_HAND).is_empty() {
+        assert!(pressed.elapsed() < limit, "the grip was never claimed");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let diagnostics = rig.frame();
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    }
+    assert!(
+        pressed.elapsed() >= std::time::Duration::from_millis(50),
+        "claimed after {:?}, before the 50 ms settle time was over",
+        pressed.elapsed()
+    );
+    assert_eq!(claimed(&rig, RIGHT_HAND), ["grip"]);
+}

@@ -257,6 +257,8 @@ controller in the hand.
 
 - **Buttons.** A trigger or grip presses at 75% pull and releases at 25%, so a half pull neither presses nor chatters.
   A click input reports 0 or 1.
+- **Hold.** A press of the trigger, the grip, the face button or the stick reaches the window 150 ms after it began,
+  unless a shell binding claims it first ("Controller nodes"). A scroll starts 150 ms after the stick leaves the deadzone.
 - **Scroll.** A stick inside a 15% deadzone does nothing. Past it, the speed grows from zero to 400 axis units a second
   at full deflection. Push up to scroll up the page. A frame longer than 100 ms scrolls as 100 ms.
 - **Grab.** A press goes to the window under the ray and holds the pointer on it, as a mouse button does. While any
@@ -365,10 +367,21 @@ node at most once a frame, and at most about 90 times a second. The shell reads 
 | `thumbstick_click` `primary` `secondary` | Buttons: A or X, B or Y (menu on controllers with no B).                                          |
 | `claimed`                                | Written by the shell: the inputs `trigger`, `grip`, `thumbstick`, `primary`, `secondary` it owns. |
 
-A claimed input is withheld from the window under the ray:
+A claimed input is withheld from the window under the ray, and a press waits for a claim before the window sees it:
 
+- The program holds every press of the trigger, the grip, the face button and the stick for 150 ms (`CLAIM_HOLD`). A
+  claim that arrives in that time takes the press: the window gets no button event at all for it, not even a release.
+- A press that nobody claims goes to the window when the 150 ms are over, at the ray the hand had when it went down. A
+  click that was over inside the 150 ms arrives as a press and then a release, one frame apart, in that order. A flick of
+  the stick that ends inside the 150 ms scrolls nothing.
+- A shell that is slow, stopped or not running is the same as no claim: the press goes out at the deadline, and the head
+  pose, the controller nodes and the layers are written on every frame meanwhile. The program never waits for the shell.
+- So a click of these inputs lands 150 ms (up to one frame more) after the press, whether or not a binding uses the
+  input. The shell's drag claims after `session.chordSettleMs` (at most 60, so the claim reaches the program inside the
+  hold). A claim that comes later than the hold finds the press already in the window and releases it, as a claim did
+  before the hold.
 - A claimed grip is not `BTN_RIGHT`, a claimed trigger is not `BTN_LEFT` and a claimed thumbstick does not scroll.
-- A button the window already holds when the claim arrives is released.
+- A button the window already holds when a late claim arrives is released.
 - A press that began under a claim never reaches the window.
 - The values are still written for the shell to read.
 
@@ -389,8 +402,8 @@ The bindings follow the ordinary lifecycle, and live in the room layout's `bindi
 A trigger is the buttons held together, then `Drag`, with an optional `Left.` or `Right.` hand:
 
 - The buttons are `Trigger`, `Grip`, `Thumbstick`, `Primary` and `Secondary`.
-- A drag starts when exactly those buttons have been down together for 50 ms (`session.chordSettleMs`). A `Grip`
-  pressed an instant before a `Trigger` is not taken for the start of `Grip+Trigger`.
+- A drag starts when exactly those buttons have been down together for 50 ms (`session.chordSettleMs`, at most 60). A
+  `Grip` pressed an instant before a `Trigger` is not taken for the start of `Grip+Trigger`.
 
 A panel that was moved or resized is pinned: the ring leaves it where it is until `room.unpin(view)`.
 
@@ -476,13 +489,13 @@ Logs, the tree dump and the pictures are left in `/tmp/xr-smoke`.
 
 ## What is not built
 
-- **The claim comes after the press.** A drag starts when its buttons have been down for 50 ms, and the claim is made then.
-  The window under the ray has had the right button pressed by the grip by that time, and the program releases it when the
-  claim arrives, so the window sees a short right click of the grip's first 50 ms. Claiming a button earlier would
-  withhold it from the window whenever a binding might use it.
 - **Controllers are proven only against a fake runtime.** The two-hand OpenXR actions compile and the tests pass with
-  scripted hands; no headset, and no Monado run of the new actions, has seen them. No headset was used. The program's
-  withholding of a claimed input is checked against the fake runtime only.
+  scripted hands; no headset, and no Monado run of the new actions, has seen them. No headset was used.
+    - The program's withholding of a claimed input, and the 150 ms hold that gives the shell time to claim a press before
+      the window sees it, are checked against the fake runtime only. The tests step a scripted clock a frame at a time.
+    - One real-compositor run of the stock shell (headless, `js_shell.rs`) made the grip's claim visible 106 to 125 ms
+      after the squeeze, 25 ms of test polling included. A slow machine can still claim after the hold, and the window
+      then sees the press first.
 - **A panel has one scale.** The program reads the first component of a View's `scale`, so a resize previews the growth
   evenly and the aspect changes when the client's new size lands.
 - **A stalled script.** The program writes the head pose and submits layers without waiting for the shell, and the

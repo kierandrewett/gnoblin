@@ -3138,7 +3138,11 @@ declare module "gnoblin/extensions/xr" {
         readonly input: object | null;
         readonly layerBudget: number;
         viewport: XRViewport | null;
-        /** How long, in milliseconds, a chord must have been down before a drag starts. Default 50. */
+        /**
+         * How long, in milliseconds, a chord must have been down before a drag starts, and so before it claims its
+         * buttons. Default 50; a value above 60 reads back as 60, because the XR program holds a press back from the
+         * window for 150 ms while it waits for the claim.
+         */
         chordSettleMs: number;
     }
     export class XRExtension {
