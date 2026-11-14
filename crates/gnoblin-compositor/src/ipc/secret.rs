@@ -31,6 +31,7 @@ use std::collections::VecDeque;
 
 use gnoblin_portal::{SecretResult, SecretUi};
 use gnoblin_portal_core::model::ScreenKey;
+use gnoblin_portal_ui::style::DialogStyle;
 use gnoblin_portal_ui::ui::{DialogScheme, DialogShell, Setup, press_events, release_events};
 use gnoblin_render_frame::frame::Overlay;
 use gnoblin_render_frame::image::Image;
@@ -101,6 +102,7 @@ impl SecretService {
             height: FRAME_HEIGHT,
             reduced_motion: true,
             scheme: DialogScheme::Dark,
+            style: DialogStyle::default(),
         };
         Self {
             shell: DialogShell::new(setup),
@@ -126,6 +128,7 @@ impl SecretService {
             }
         };
         self.setup.scheme = scheme;
+        self.setup.style = crate::portal::dialog_style(config);
         self.shell = DialogShell::new(self.setup);
         if let Some(active) = self.active.as_mut() {
             active.dirty = true;

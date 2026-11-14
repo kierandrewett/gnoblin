@@ -69,6 +69,7 @@ use std::collections::VecDeque;
 use gnoblin_portal::PortalScreen;
 use gnoblin_portal_core::model::{Dialog, Interface, ScreenKey, Settled};
 use gnoblin_portal_ui::paint::Frame;
+use gnoblin_portal_ui::style::DialogStyle;
 use gnoblin_portal_ui::ui::{DialogScheme, Setup};
 use gnoblin_types::{RequestId, Tick};
 
@@ -145,6 +146,7 @@ impl PortalUi {
                 height,
                 reduced_motion: false,
                 scheme: DialogScheme::Dark,
+                style: DialogStyle::default(),
             },
             now: Tick::default(),
             active: None,
@@ -167,6 +169,12 @@ impl PortalUi {
     /// it opened with, so a configuration change never restyles a dialog mid-request.
     pub fn set_scheme(&mut self, scheme: DialogScheme) {
         self.setup.scheme = scheme;
+    }
+
+    /// Sets the look later dialogs are drawn with, already clamped. As with the scheme, an open dialog keeps the
+    /// look it opened with.
+    pub fn set_style(&mut self, style: DialogStyle) {
+        self.setup.style = style;
     }
 
     /// Sets the largest frame a dialog may take, in pixels. The owner passes the size

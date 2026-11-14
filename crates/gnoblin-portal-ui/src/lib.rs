@@ -12,5 +12,7 @@
 
 /// Painting helpers that turn egui output into frame pixels.
 pub mod paint;
+/// The look a dialog may be given and the limits that keep it safe.
+pub mod style;
 /// The egui dialog shell and the trait every dialog kind implements.
 pub mod ui;

@@ -17,8 +17,9 @@
 use std::f32::consts::PI;
 use std::fmt;
 
-use egui::{Button, Frame, Pos2, Rect, RichText, Sense, Shape, Stroke, Ui, Vec2};
+use egui::{Frame, Pos2, Rect, RichText, Sense, Shape, Stroke, Ui, Vec2};
 use gnoblin_portal_core::model::Settled;
+use gnoblin_portal_ui::style::decision_buttons;
 use gnoblin_portal_ui::ui::DialogUi;
 use gnoblin_secret::SecretText;
 use gnoblin_types::Tick;
@@ -164,14 +165,14 @@ impl DialogUi for SecretUi {
                 ui.set_min_width(300.0);
                 ui.label(RichText::new(format!("{mask}|")).monospace());
             });
-        ui.horizontal(|ui| {
-            if ui.button("Cancel").clicked() {
-                self.cancel();
-            }
-            if ui.add_enabled(self.characters > 0, Button::new("Unlock")).clicked() {
-                self.submit();
-            }
-        });
+        // Cancel is the Deny side: first in every layout and never smaller than Unlock. Unlock waits for a character.
+        let buttons = decision_buttons(ui, "Cancel", "Unlock", self.characters > 0);
+        if buttons.deny.clicked() {
+            self.cancel();
+        }
+        if buttons.accept.clicked() {
+            self.submit();
+        }
         None
     }
 }
@@ -201,7 +202,9 @@ fn lock_icon(ui: &mut Ui) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gnoblin_portal_ui::ui::{DialogScheme, DialogShell, Setup};
+    use gnoblin_portal_core::model::ScreenKey;
+    use gnoblin_portal_ui::style::{ButtonLayout, DialogStyle, StyleRequest};
+    use gnoblin_portal_ui::ui::{DialogScheme, DialogShell, Setup, key_events};
 
     fn setup() -> Setup {
         Setup {
@@ -209,6 +212,7 @@ mod tests {
             height: 300,
             reduced_motion: true,
             scheme: DialogScheme::Dark,
+            style: DialogStyle::default(),
         }
     }
 
@@ -309,5 +313,80 @@ mod tests {
         let full = shell.render(&mut ui, Tick::new(0));
         assert_ne!(empty.bytes(), full.bytes(), "the entry draws what was typed");
         assert_eq!(ui.typed(), 9);
+    }
+
+    /// Every style the tests care about: stock, and the strangest one a caller can reach after clamping.
+    fn styles() -> [DialogStyle; 2] {
+        let extreme = StyleRequest {
+            radius: Some(i64::MAX),
+            accent: Some([27, 27, 27]),
+            font_family: Some("monospace".to_owned()),
+            font_size: Some(i64::MIN),
+            scale: Some(1.0e9),
+            button_layout: Some(ButtonLayout::Stacked),
+        }
+        .clamp();
+        [DialogStyle::default(), extreme]
+    }
+
+    #[test]
+    fn the_lock_the_title_and_the_requester_are_drawn_under_any_style() {
+        for style in styles() {
+            let mut shell = DialogShell::new(Setup { style, ..setup() });
+            let mut ui = dialog();
+            let shown = shell.shown(&mut ui, Tick::new(0));
+            for wanted in ["Unlock the keyring", "Requested by keyring", "Cancel", "Unlock"] {
+                assert!(
+                    shown.texts.iter().any(|text| text == wanted),
+                    "{wanted:?} is missing under {style:?}: {:?}",
+                    shown.texts
+                );
+            }
+            // The padlock's body is the 22 by 15 point rectangle `lock_icon` fills.
+            assert!(
+                shown
+                    .rects
+                    .iter()
+                    .any(|rect| (rect.width() - 22.0).abs() < 0.5 && (rect.height() - 15.0).abs() < 0.5),
+                "the lock icon is missing under {style:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_styled_dialog_still_never_draws_the_typed_text() {
+        for style in styles() {
+            let mut shell = DialogShell::new(Setup { style, ..setup() });
+            let mut ui = dialog();
+            typed(&mut ui, "swordfish");
+            let shown = shell.shown(&mut ui, Tick::new(0));
+            assert!(
+                shown.texts.iter().all(|text| !text.contains("swordfish")),
+                "{:?}",
+                shown.texts
+            );
+            assert!(
+                shown.texts.iter().any(|text| text.starts_with(BULLET)),
+                "one mark per typed character is drawn"
+            );
+        }
+    }
+
+    #[test]
+    fn unlock_is_reached_by_keyboard_under_any_style() {
+        for style in styles() {
+            let mut shell = DialogShell::new(Setup { style, ..setup() });
+            let mut ui = dialog();
+            typed(&mut ui, "pw");
+            shell.layout(&mut ui, Tick::new(0));
+            // Tab walks Cancel then Unlock in every layout, and Enter presses the focused button.
+            for key in [ScreenKey::Tab, ScreenKey::Tab, ScreenKey::Enter] {
+                shell.run(&mut ui, key_events(key, false), Tick::new(0));
+            }
+            assert!(
+                matches!(ui.take_result(), Some(SecretResult::Answered(_))),
+                "Unlock answers under {style:?}"
+            );
+        }
     }
 }

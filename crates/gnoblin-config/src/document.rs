@@ -28,12 +28,13 @@ use std::collections::BTreeMap;
 
 use crate::engine::{Parser, removed, section_table, unknown_keys};
 use crate::generated::{
-    Appearance, Auth, Autostart, CaptureSettings, Compat, Compositor, Cursor, Gesture, Input, InputSources,
+    Appearance, Auth, Autostart, CaptureSettings, Compat, Compositor, Cursor, Dialogs, Gesture, Input, InputSources,
     KeyringConfig, LayerShell, Location, Logging, Monitors, Protocols, Shortcuts, VisualAccessibility,
     WindowManagement, Workspace, Xwayland, parse_appearance, parse_auth, parse_autostart, parse_capture_settings,
-    parse_compat, parse_compositor, parse_cursor, parse_input, parse_input_sources, parse_keyring_config,
-    parse_layer_shell, parse_location, parse_logging, parse_monitors, parse_protocols, parse_shortcuts,
-    parse_touchpad_gestures, parse_visual_accessibility, parse_window_management, parse_workspaces, parse_xwayland,
+    parse_compat, parse_compositor, parse_cursor, parse_dialogs, parse_input, parse_input_sources,
+    parse_keyring_config, parse_layer_shell, parse_location, parse_logging, parse_monitors, parse_protocols,
+    parse_shortcuts, parse_touchpad_gestures, parse_visual_accessibility, parse_window_management, parse_workspaces,
+    parse_xwayland,
 };
 use crate::model::Deprecation;
 use crate::path::Path;
@@ -56,6 +57,8 @@ pub use crate::generated::CARRIED_SECTIONS;
 pub struct Config {
     /// `appearance`: the colour scheme and accent every toolkit is told about.
     pub appearance: Option<Appearance>,
+    /// `dialogs`: how the compositor's own dialogs look.
+    pub dialogs: Option<Dialogs>,
     /// `compositor`: what the compositor draws itself and how.
     pub compositor: Option<Compositor>,
     /// `cursor`: the cursor theme and size.
@@ -191,6 +194,8 @@ impl Config {
                 unknown_keys(entries, &root, &mut out, TOP_LEVEL_KEYS);
                 config.appearance = section_table(entries, "appearance", &root, &mut out)
                     .map(|table| parse_appearance(table, &root.key("appearance"), &mut out));
+                config.dialogs = section_table(entries, "dialogs", &root, &mut out)
+                    .map(|table| parse_dialogs(table, &root.key("dialogs"), &mut out));
                 config.compositor = section_table(entries, "compositor", &root, &mut out)
                     .map(|table| parse_compositor(table, &root.key("compositor"), &mut out));
                 config.cursor = section_table(entries, "cursor", &root, &mut out)
@@ -276,6 +281,7 @@ impl Config {
     pub(crate) fn empty() -> Config {
         Config {
             appearance: None,
+            dialogs: None,
             compositor: None,
             cursor: None,
             accessibility: None,

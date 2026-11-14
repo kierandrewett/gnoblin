@@ -116,6 +116,11 @@ const REWRITE_ONLY_KEYS: &[(&str, &str, &str)] = &[
         "0.2.0",
         "the capture section: whether captures mask or omit secure layers, read by the screencopy and portal paths",
     ),
+    (
+        "dialogs",
+        "0.2.0",
+        "the dialogs section: how the compositor's own consent and passphrase dialogs look, clamped by the dialog crates so a style cannot disguise one",
+    ),
 ];
 
 /// Protocols the rewrite added, which the C reference cannot list.

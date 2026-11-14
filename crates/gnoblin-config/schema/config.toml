@@ -114,6 +114,17 @@ variants = [
 ]
 
 [[enum]]
+name = "DialogButtonLayout"
+setting = "button-layout"
+doc = "Where the Deny and Allow buttons of a built-in dialog sit. Deny is first in every layout."
+variants = [
+    { spelling = "start", doc = "Side by side at the start of the row." },
+    { spelling = "end", doc = "Side by side at the end of the row." },
+    { spelling = "stretch", doc = "Side by side, each taking half the row." },
+    { spelling = "stacked", doc = "One above the other, each the full width of the row." },
+]
+
+[[enum]]
 name = "Protocol"
 setting = "protocols"
 doc = "A Wayland protocol Gnoblin can stop advertising."
@@ -416,6 +427,75 @@ min = 0.0
 max = 1.7976931348623157e308
 accepted = "a list of at least two numbers"
 doc = "Output speed at each evenly spaced input speed."
+since = "0.2.0"
+
+[[record]]
+name = "DialogsFont"
+doc = "The font of a built-in dialog."
+hook = "dialogs_font"
+
+[[record.field]]
+key = "family"
+kind = "text"
+nonempty = true
+accepted = "a font family name of up to 64 characters; `monospace` selects the monospace face"
+doc = "The font family. `monospace` (or `mono`) selects the monospace face; any other name is drawn in the proportional face, because the dialogs draw with the fonts they embed and look up no system font."
+since = "0.2.0"
+
+[[record.field]]
+key = "size"
+kind = "int"
+min = 1
+max = 1000
+accepted = "an integer from 1 to 1000; the dialog uses 12 to 32"
+doc = "The font size in points. A dialog never draws text smaller than 12 or larger than 32, so a value outside that is moved to the nearest."
+since = "0.2.0"
+
+[[record]]
+name = "DialogsStyle"
+doc = "The look of the built-in dialogs."
+hook = "dialogs_style"
+
+[[record.field]]
+key = "radius"
+kind = "int"
+min = 0
+max = 1000
+accepted = "an integer from 0 to 1000; the dialog uses 0 to 24"
+doc = "The corner radius in points. A dialog is never rounder than 24, so a larger value is moved to 24."
+since = "0.2.0"
+
+[[record.field]]
+key = "accent"
+kind = "text"
+nonempty = true
+accepted = "a named accent (blue, teal, green, yellow, orange, red, pink, purple, slate), #rgb or #rrggbb"
+doc = "The accent of the primary button and of a selection. An accent too close to the dialog's own colour is moved toward white or black until it stands out (a contrast ratio of at least 3), and the text on it is black or white, whichever reads better."
+since = "0.2.0"
+
+[[record.field]]
+key = "font"
+kind = "record"
+record = "DialogsFont"
+accepted = "a table with a family and a size"
+doc = "The font of the dialogs."
+since = "0.2.0"
+
+[[record.field]]
+key = "button-layout"
+kind = "enum"
+enum = "DialogButtonLayout"
+accepted = "one of start, end, stretch, stacked"
+doc = "Where the Deny and Allow buttons sit. Deny is first in every layout, holds the initial focus, and is never smaller than Allow."
+since = "0.2.0"
+
+[[record.field]]
+key = "scale"
+kind = "float"
+min = 0.1
+max = 100.0
+accepted = "a number from 0.1 to 100; the dialog uses 1 to 3"
+doc = "The scale of the dialog. A dialog is never drawn smaller than stock, so a value below 1 is moved to 1, and one above 3 to 3."
 since = "0.2.0"
 
 [[record]]
@@ -1659,6 +1739,19 @@ kind = "bool"
 accepted = "a boolean"
 default = { bool = false }
 doc = "Publish the high-contrast preference to applications through the Settings portal and the GNOME accessibility interface key."
+since = "0.2.0"
+
+[[section]]
+key = "dialogs"
+type = "Dialogs"
+doc = "How the compositor's own dialogs (the portal consent dialog and the passphrase prompt) look. A request is clamped so a dialog stays safe: it never becomes harder to read, its buttons never shrink below a floor, and it always shows who is asking, the lock icon and its arm delay."
+
+[[section.field]]
+key = "style"
+kind = "record"
+record = "DialogsStyle"
+accepted = "a table of dialog style settings"
+doc = "The look of the built-in dialogs."
 since = "0.2.0"
 
 [[section]]

@@ -20,6 +20,7 @@ use gnoblin_portal_core::model::{
     FileFilter, ScreenKey,
 };
 use gnoblin_portal_ui::paint::Frame;
+use gnoblin_portal_ui::style::DialogStyle;
 use gnoblin_portal_ui::ui::{DialogScheme, Setup};
 use gnoblin_types::Tick;
 
@@ -50,6 +51,7 @@ fn open_screen(dialog: Dialog, now: u64, scheme: DialogScheme) -> PortalScreen {
         height: HEIGHT,
         reduced_motion: false,
         scheme,
+        style: DialogStyle::default(),
     };
     PortalScreen::new(dialog, setup, Tick::new(now))
 }

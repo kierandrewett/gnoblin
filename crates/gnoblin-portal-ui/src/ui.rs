@@ -5,7 +5,7 @@
 //! shell owns everything else: the context, the textures, the input events and the
 //! rasterised frame. egui owns focus, Tab, arrows and button activation.
 
-use egui::epaint::ClippedShape;
+use egui::epaint::{ClippedShape, Shape};
 use egui::{
     Context, Event, Frame as EguiFrame, Key, Modifiers, PointerButton, Pos2, RawInput, Rect, Theme, ThemePreference,
     Ui, Vec2, Visuals,
@@ -14,9 +14,7 @@ use gnoblin_portal_core::model::{DialogError, DirectoryListing, ScreenKey, Settl
 use gnoblin_types::Tick;
 
 use crate::paint::{Frame, Textures, rasterise};
-
-/// One egui point is one frame pixel. The headless renderer does not scale.
-const PIXELS_PER_POINT: f32 = 1.0;
+use crate::style::{DialogStyle, ResolvedStyle, publish};
 
 /// The narrowest a dialog frame is drawn, in pixels. A dialog with one short line
 /// would otherwise be a sliver. This is a floor on width only: height follows the
@@ -57,6 +55,8 @@ pub struct Setup {
     pub reduced_motion: bool,
     /// The visuals the dialog is drawn with.
     pub scheme: DialogScheme,
+    /// The clamped look: radius, accent, font, scale and button layout.
+    pub style: DialogStyle,
 }
 
 /// One dialog kind. A UI crate implements this around its model; the shell calls it.
@@ -85,6 +85,11 @@ pub struct DialogShell {
     theme: Theme,
     textures: Textures,
     setup: Setup,
+    /// The style as the dialogs read it: the request after clamping, and the accent after correction against this
+    /// theme's dialog colour.
+    resolved: ResolvedStyle,
+    /// The scale the dialog is drawn at now: the style's, lowered when the dialog would not fit its bounds.
+    scale: f32,
     /// The surface size: the content's size, within the bounds.
     size: (usize, usize),
 }
@@ -102,15 +107,25 @@ impl DialogShell {
             Theme::Dark => ThemePreference::Dark,
         });
         ctx.set_visuals_of(theme, visuals);
-        if setup.reduced_motion {
-            ctx.style_mut_of(theme, |style| style.animation_time = 0.0);
-        }
+        let mut resolved = ResolvedStyle::default();
+        ctx.style_mut_of(theme, |style| {
+            if setup.reduced_motion {
+                style.animation_time = 0.0;
+            }
+            resolved = setup.style.apply(style);
+        });
+        // One egui point is `scale` frame pixels' worth of layout: the dialog is laid out in points and drawn at
+        // `scale` pixels to the point.
+        let scale = setup.style.scale();
+        ctx.set_zoom_factor(scale);
         let size = (setup.width, setup.height);
         Self {
             ctx,
             theme,
             textures: Textures::default(),
             setup,
+            resolved,
+            scale,
             size,
         }
     }
@@ -156,14 +171,34 @@ impl DialogShell {
     pub fn render(&mut self, dialog: &mut dyn DialogUi, now: Tick) -> Frame {
         self.fit(dialog, now);
         let (_, shapes, _) = self.run_frame(dialog, Vec::new(), now);
-        let primitives = self.ctx.tessellate(shapes, PIXELS_PER_POINT);
+        let scale = self.pixels_per_point();
+        let primitives = self.ctx.tessellate(shapes, scale);
         let mut frame = Frame::filled(
             self.size.0,
             self.size.1,
             self.ctx.style_of(self.theme).visuals.panel_fill.to_array(),
         );
-        rasterise(&mut frame, &self.textures, &primitives, PIXELS_PER_POINT);
+        rasterise(&mut frame, &self.textures, &primitives, scale);
         frame
+    }
+
+    /// What the dialog draws right now: every line of text and every filled rectangle, in points. For checks that a
+    /// style cannot hide a line the dialog must show (who asks, the lock) or shrink a control below its floor.
+    #[must_use]
+    pub fn shown(&mut self, dialog: &mut dyn DialogUi, now: Tick) -> Shown {
+        self.fit(dialog, now);
+        let (_, shapes, _) = self.run_frame(dialog, Vec::new(), now);
+        let mut shown = Shown::default();
+        for clipped in &shapes {
+            collect(&clipped.shape, &mut shown);
+        }
+        shown
+    }
+
+    /// How many frame pixels one egui point is: the style's scale, or less when the dialog would not fit its bounds
+    /// at that scale (see [`Self::fit`]).
+    const fn pixels_per_point(&self) -> f32 {
+        self.scale
     }
 
     /// Sizes the surface to the dialog's content, within the bounds.
@@ -173,27 +208,52 @@ impl DialogShell {
     /// size is deliberate: a label wraps and a list fills the space it is given, so a
     /// measurement made in a surface already shrunk to an earlier guess could describe
     /// a different dialog.
+    ///
+    /// A style's scale is a request, not a right: a dialog that is taller than its bounds at that scale would have its
+    /// buttons or its requester clipped off the surface, so the scale is lowered, down to stock, until it fits.
     fn fit(&mut self, dialog: &mut dyn DialogUi, now: Tick) {
-        self.size = (self.setup.width, self.setup.height);
-        let (_, _, content) = self.run_frame(dialog, Vec::new(), now);
-        self.size = fitted_size(content, (self.setup.width, self.setup.height));
+        let bounds = (self.setup.width, self.setup.height);
+        self.scale = self.setup.style.scale();
+        let mut content = self.measure(dialog, now, bounds);
+        for _ in 0..3 {
+            let too_big = content.x > bounds.0 as f32 || content.y > bounds.1 as f32;
+            if self.scale <= 1.0 || !too_big {
+                break;
+            }
+            let shrink = (bounds.0 as f32 / content.x).min(bounds.1 as f32 / content.y);
+            self.scale = (self.scale * shrink * 0.98).max(1.0);
+            content = self.measure(dialog, now, bounds);
+        }
+        let min_width = MIN_WIDTH * self.scale;
+        self.size = fitted_size(content, min_width, bounds);
     }
 
+    /// The dialog's content size in frame pixels with the surface at `bounds`.
+    fn measure(&mut self, dialog: &mut dyn DialogUi, now: Tick, bounds: (usize, usize)) -> Vec2 {
+        self.size = bounds;
+        self.run_frame(dialog, Vec::new(), now).2
+    }
+
+    /// Runs one egui frame and returns what settled, the shapes, and the content's size in frame pixels.
     fn run_frame(
         &mut self,
         dialog: &mut dyn DialogUi,
         events: Vec<Event>,
         now: Tick,
     ) -> (Option<Settled>, Vec<ClippedShape>, Vec2) {
+        let scale = self.pixels_per_point();
+        self.ctx.set_zoom_factor(scale);
+        // egui lays out in points; the surface and the pointer are in frame pixels.
         let raw = RawInput {
             screen_rect: Some(Rect::from_min_size(
                 Pos2::ZERO,
-                Vec2::new(self.size.0 as f32, self.size.1 as f32),
+                Vec2::new(self.size.0 as f32 / scale, self.size.1 as f32 / scale),
             )),
             time: Some(now.get() as f64 / 1000.0),
-            events,
+            events: events.into_iter().map(|event| in_points(event, scale)).collect(),
             ..RawInput::default()
         };
+        publish(&self.ctx, self.resolved);
         // The panel frame is egui's stock window frame. A plain `Frame` sizes itself to
         // its content, unlike `CentralPanel`, which always fills the surface: measuring
         // the frame's own rect therefore gives the content's size, margin included.
@@ -209,15 +269,57 @@ impl DialogShell {
         self.textures.update(&output.textures_delta);
         self.textures.free(&output.textures_delta);
         output.textures_delta.clear();
-        (settled, output.shapes, content)
+        (settled, output.shapes, content * scale)
     }
 }
 
-/// The surface size for a dialog whose content, margin included, is `content`: at
-/// least [`MIN_WIDTH`] wide, and never larger than `bounds` on either axis.
+/// What a dialog draws: its lines of text and its filled rectangles, in egui points.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Shown {
+    /// Every line of text, in paint order.
+    pub texts: Vec<String>,
+    /// Every filled or outlined rectangle, in paint order.
+    pub rects: Vec<Rect>,
+}
+
+fn collect(shape: &Shape, shown: &mut Shown) {
+    match shape {
+        Shape::Vec(inner) => {
+            for shape in inner {
+                collect(shape, shown);
+            }
+        }
+        Shape::Text(text) => shown.texts.push(text.galley.text().to_owned()),
+        Shape::Rect(rect) => shown.rects.push(rect.rect),
+        _ => {}
+    }
+}
+
+/// A pointer event moved from frame pixels into egui points. Other events carry no position.
+fn in_points(event: Event, scale: f32) -> Event {
+    let point = |pos: Pos2| Pos2::new(pos.x / scale, pos.y / scale);
+    match event {
+        Event::PointerMoved(pos) => Event::PointerMoved(point(pos)),
+        Event::PointerButton {
+            pos,
+            button,
+            pressed,
+            modifiers,
+        } => Event::PointerButton {
+            pos: point(pos),
+            button,
+            pressed,
+            modifiers,
+        },
+        other => other,
+    }
+}
+
+/// The surface size for a dialog whose content, margin included, is `content` pixels: at
+/// least `min_width` wide, and never larger than `bounds` on either axis.
 #[must_use]
-fn fitted_size(content: Vec2, bounds: (usize, usize)) -> (usize, usize) {
-    let width = content.x.ceil().max(MIN_WIDTH).min(bounds.0 as f32);
+fn fitted_size(content: Vec2, min_width: f32, bounds: (usize, usize)) -> (usize, usize) {
+    let width = content.x.ceil().max(min_width).min(bounds.0 as f32);
     let height = content.y.ceil().min(bounds.1 as f32);
     (width as usize, height as usize)
 }
@@ -317,6 +419,7 @@ mod tests {
             height: 160,
             reduced_motion: false,
             scheme: DialogScheme::Dark,
+            style: DialogStyle::default(),
         }
     }
 

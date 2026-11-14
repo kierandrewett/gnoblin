@@ -55,8 +55,8 @@ use gnoblin_types::OwnerId;
 
 use crate::value::{Fields, Value};
 
-/// How many slots the registry tracks: the published four, `secret.derive` and `portal.ui`.
-const COUNT: usize = 6;
+/// How many slots the registry tracks: the published four, `secret.derive`, `portal.ui` and `dialogs.observe`.
+const COUNT: usize = 7;
 
 /// How many of those slots are published in the session object and the schema.
 const PUBLISHED: usize = 4;
@@ -87,10 +87,16 @@ pub enum CapabilitySlot {
     /// dialog itself, and the built-in dialog stays the fallback whenever the claimant cannot
     /// answer. Not published: nothing reads who holds it, because a claim's reply says.
     PortalUi,
+    /// Internal: the shell's view of the built-in dialogs. Whoever holds it is shown each consent and passphrase
+    /// request the compositor is about to draw itself (its kind, who asks, what was asked, the deadline) for a short
+    /// while before the dialog opens, and may refuse the request by policy. It never draws and never answers
+    /// allow: the compositor's dialog still serves every request the observer does not refuse. No default
+    /// provider, not published, and claimed only by a shell.
+    DialogsObserve,
 }
 
 impl CapabilitySlot {
-    /// The published slots, in publication order. `secret.derive` and `portal.ui` are absent on
+    /// The published slots, in publication order. `secret.derive`, `portal.ui` and `dialogs.observe` are absent on
     /// purpose: they are internal, so no schema or session property names them.
     pub const ALL: [CapabilitySlot; PUBLISHED] = [
         CapabilitySlot::AuthPolkit,
@@ -107,6 +113,7 @@ impl CapabilitySlot {
         CapabilitySlot::IdlePolicy,
         CapabilitySlot::SecretDerive,
         CapabilitySlot::PortalUi,
+        CapabilitySlot::DialogsObserve,
     ];
 
     /// The slot name from the plan's table, which is also the configuration and
@@ -119,6 +126,7 @@ impl CapabilitySlot {
             CapabilitySlot::IdlePolicy => "idle.policy",
             CapabilitySlot::SecretDerive => "secret.derive",
             CapabilitySlot::PortalUi => "portal.ui",
+            CapabilitySlot::DialogsObserve => "dialogs.observe",
         }
     }
 
@@ -135,13 +143,14 @@ impl CapabilitySlot {
             CapabilitySlot::IdlePolicy => "slot_idle_policy",
             CapabilitySlot::SecretDerive => "slot_secret_derive",
             CapabilitySlot::PortalUi => "slot_portal_ui",
+            CapabilitySlot::DialogsObserve => "slot_dialogs_observe",
         }
     }
 
     /// The provider the plan's table gives this slot when nobody claimed it.
     pub const fn default_provider(self) -> Provider {
         match self {
-            CapabilitySlot::PromptSecret | CapabilitySlot::PortalUi => Provider::None,
+            CapabilitySlot::PromptSecret | CapabilitySlot::PortalUi | CapabilitySlot::DialogsObserve => Provider::None,
             CapabilitySlot::AuthPolkit
             | CapabilitySlot::LocationAgent
             | CapabilitySlot::IdlePolicy
@@ -158,6 +167,7 @@ impl CapabilitySlot {
             CapabilitySlot::IdlePolicy => 3,
             CapabilitySlot::SecretDerive => 4,
             CapabilitySlot::PortalUi => 5,
+            CapabilitySlot::DialogsObserve => 6,
         }
     }
 }

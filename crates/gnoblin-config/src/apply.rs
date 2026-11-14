@@ -143,6 +143,7 @@ pub const RULES: &[ApplyRule] = &[
     live("appearance", "accent"),
     live("appearance", "reduced-motion"),
     live("appearance", "high-contrast"),
+    live("dialogs", "style"),
     unused("input", "orientation-lock", "no device applies it yet"),
     unused("input", "mouse", "no device applies the libinput settings yet"),
     unused("input", "touchpad", "no device applies the libinput settings yet"),

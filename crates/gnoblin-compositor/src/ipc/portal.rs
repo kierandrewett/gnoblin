@@ -97,6 +97,9 @@ struct ClaimantOffer {
     window: Option<WindowId>,
     /// When the claimant was offered the request.
     started: Tick,
+    /// Whether the offer is an observation: the observer can only refuse the request, and the built-in dialog serves
+    /// it otherwise.
+    observer: bool,
 }
 
 /// The connection that submitted an admitted request, and the envelope id its
@@ -179,6 +182,7 @@ impl PortalService {
             }
         };
         self.ui.set_scheme(scheme);
+        self.ui.set_style(crate::portal::dialog_style(config));
     }
 
     /// `portal.ui`: admit a request from `client`, which is answered under
@@ -285,7 +289,26 @@ impl PortalService {
             interface,
             window: requested_window(request),
             started: now,
+            observer: false,
         });
+    }
+
+    /// Record that `request` was offered to the `dialogs.observe` holder as broker request `offer`. The observer
+    /// may refuse it ([`PortalService::provider_settled`]); everything else, its silence included, leaves the
+    /// request to the built-in dialog.
+    pub fn offered_to_observer(
+        &mut self,
+        client: ClientId,
+        envelope_id: u64,
+        offer: RequestId,
+        request: &PortalRequest,
+        interface: Interface,
+        now: Tick,
+    ) {
+        self.offered_to_claimant(client, envelope_id, offer, request, interface, now);
+        if let Some(routed) = self.routed.last_mut() {
+            routed.observer = true;
+        }
     }
 
     /// The claimant's offer `offer` ended as `outcome`: settle the requester, or fall back.
@@ -310,6 +333,11 @@ impl PortalService {
             "the portal.ui claimant settled an offer"
         );
         let verdict = match outcome {
+            // An observer can refuse a request and nothing else: its `allow` is not consent, and neither is anything
+            // else it says. The built-in dialog asks the person.
+            RequestOutcome::Answered(answer) if routed.observer => {
+                (answer.as_slice() == ANSWER_DENY).then_some(Verdict::Cancelled(CancelReason::User))
+            }
             RequestOutcome::Answered(answer) if answer.as_slice() == ANSWER_ALLOW => {
                 if now.since(routed.started) < ARMING_MS {
                     Some(Verdict::Cancelled(CancelReason::User))
@@ -349,6 +377,7 @@ impl PortalService {
             envelope_id,
             mut request,
             started,
+            observer,
             ..
         } = routed;
         request.timeout_ms = request.timeout_ms.saturating_sub(now.since(started));
@@ -359,11 +388,20 @@ impl PortalService {
                 Verdict::Cancelled(CancelReason::Timeout),
             )];
         }
-        log::warn!(
-            area = "portal",
-            interface = %request.interface,
-            "the portal.ui claimant did not settle the request; the built-in dialog serves it"
-        );
+        if observer {
+            // An observer that raised no objection is the normal case, not a failure.
+            log::debug!(
+                area = "portal",
+                interface = %request.interface,
+                "the dialogs observer let the request through; the built-in dialog serves it"
+            );
+        } else {
+            log::warn!(
+                area = "portal",
+                interface = %request.interface,
+                "the portal.ui claimant did not settle the request; the built-in dialog serves it"
+            );
+        }
         match self.submit(client, envelope_id, &request, now) {
             Ok(replies) => replies,
             Err(_) => vec![outcome_reply(
@@ -1684,5 +1722,88 @@ mod tests {
             .expect("the request is admitted once the lock lifts");
         assert!(admitted.is_empty(), "the dialog opened instead of refusing");
         assert!(service.wants_pump());
+    }
+
+    /// A service that has shown `request` (envelope id 7, from client 1) to the dialogs observer at tick 0.
+    fn observed(request: &PortalRequest) -> PortalService {
+        let mut service = PortalService::new();
+        let (interface, _) = service.routable(7, request).expect("the request can be routed");
+        service.offered_to_observer(
+            ClientId::new(1),
+            7,
+            RequestId::new(OFFER),
+            request,
+            interface,
+            Tick::ZERO,
+        );
+        service
+    }
+
+    #[test]
+    fn an_observers_deny_refuses_the_request_by_policy() {
+        let mut service = observed(&screenshot());
+        let replies = service.provider_settled(
+            RequestId::new(OFFER),
+            &RequestOutcome::answered(b"deny".to_vec()),
+            Tick::new(10),
+        );
+        assert_eq!(settled(&replies), ("cancelled".to_owned(), "user".to_owned()));
+        assert!(!service.wants_pump(), "no dialog opens for a request that was refused");
+    }
+
+    #[test]
+    fn an_observer_can_never_allow_and_everything_but_deny_leaves_the_request_to_the_dialog() {
+        // The failure this prevents: a script that is only meant to watch consent requests answers `allow`, once
+        // the arming window has passed, and the app gets its screen without a person being asked.
+        let answers: [&[u8]; 4] = [b"allow", b"pass", b"", b"ALLOW"];
+        for answer in answers {
+            let mut service = observed(&screenshot());
+            let replies = service.provider_settled(
+                RequestId::new(OFFER),
+                &RequestOutcome::answered(answer.to_vec()),
+                Tick::new(ARMING_MS * 10),
+            );
+            assert!(replies.is_empty(), "{answer:?} grants nothing by itself");
+            assert!(
+                service.wants_pump(),
+                "{answer:?}: the built-in dialog serves the request"
+            );
+            let replies = service
+                .key("enter", false, Tick::new(ARMING_MS * 10 + 1))
+                .expect("a dialog key");
+            assert_eq!(
+                settled(&replies),
+                ("cancelled".to_owned(), "user".to_owned()),
+                "Deny holds the dialog's focus: nobody agreed"
+            );
+        }
+    }
+
+    #[test]
+    fn an_observer_that_declines_stalls_or_leaves_costs_the_request_nothing() {
+        let failures = [
+            RequestOutcome::Refused(gnoblin_model::DeclineReason::Denied),
+            RequestOutcome::Ended,
+            RequestOutcome::TimedOut,
+        ];
+        for failure in failures {
+            let mut service = observed(&screenshot());
+            let replies = service.provider_settled(RequestId::new(OFFER), &failure, Tick::new(250));
+            assert!(replies.is_empty(), "{failure:?} settles nothing by itself");
+            assert!(
+                service.wants_pump(),
+                "{failure:?}: the built-in dialog serves the request"
+            );
+        }
+    }
+
+    #[test]
+    fn the_dialog_after_an_observer_has_only_the_time_the_observer_left() {
+        let mut service = observed(&screenshot());
+        let replies = service.provider_settled(RequestId::new(OFFER), &RequestOutcome::TimedOut, Tick::new(250));
+        assert!(replies.is_empty());
+        // The request's 30 s ran from tick 0, so the dialog has what remains of it.
+        let replies = service.tick(Tick::new(30_001));
+        assert_eq!(settled(&replies), ("cancelled".to_owned(), "timeout".to_owned()));
     }
 }

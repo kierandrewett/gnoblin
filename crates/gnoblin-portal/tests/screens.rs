@@ -4,6 +4,7 @@ use gnoblin_portal::PortalScreen;
 use gnoblin_portal_core::model::{
     ARM_DELAY_MS, AppChoice, AppChooser, Consent, Dialog, FileChooser, FileChooserMode, Grant, ScreenKey, Settled,
 };
+use gnoblin_portal_ui::style::DialogStyle;
 use gnoblin_portal_ui::ui::{DialogScheme, Setup};
 use gnoblin_types::Tick;
 
@@ -16,6 +17,7 @@ fn setup() -> Setup {
         height: HEIGHT,
         reduced_motion: true,
         scheme: DialogScheme::Dark,
+        style: DialogStyle::default(),
     }
 }
 

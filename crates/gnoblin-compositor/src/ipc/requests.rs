@@ -83,6 +83,38 @@ fn builtin_owner() -> OwnerId {
     OwnerId::new(u64::MAX)
 }
 
+/// How long an observer has to refuse a request the built-in dialog is about to draw, in milliseconds. The
+/// compositor owns the request and its deadline; a shell that does not answer inside this window is skipped.
+pub(crate) const OBSERVE_MS: u64 = 250;
+
+/// The answer an observer gives to refuse a request by policy. Anything else, and silence, is no objection.
+pub(crate) const OBSERVE_DENY: &[u8] = b"deny";
+
+/// What an observer is told the kind of a request is: `consent:<interface>` for a portal request, `secret` for a
+/// passphrase request. A passphrase request's own title is the app's text and is not part of the kind.
+fn observed_title(slot: CapabilitySlot, title: &str) -> String {
+    match slot {
+        CapabilitySlot::PromptSecret => "secret".to_owned(),
+        _ => format!("consent:{title}"),
+    }
+}
+
+/// The offer record of a `portal.ui` request: the compositor's own offer on behalf of `requested_by`.
+fn portal_offer(requested_by: ClientId, provider: ClientId, title: &str, message: &str, subject: &[u8]) -> Offer {
+    Offer {
+        slot: CapabilitySlot::PortalUi,
+        title: title.to_owned(),
+        message: message.to_owned(),
+        subject: subject.to_vec(),
+        provider,
+        offered_by: requested_by,
+        portal: true,
+        builtin: false,
+        observer: false,
+        observe_until: None,
+    }
+}
+
 /// What the compositor's passphrase dialog shows for one request, taken from the offer and never from
 /// anything the user or a script wrote.
 pub(crate) struct SecretPrompt {
@@ -121,6 +153,12 @@ struct Offer {
     /// claimant went away. The request is then held by [`builtin_client`], and the broker still owns
     /// its identity and its deadline.
     builtin: bool,
+    /// Whether the offer is an observation: the connection it was sent to may refuse the request by policy and
+    /// cannot answer it, and the compositor's own dialog serves it unless it is refused.
+    observer: bool,
+    /// When a passphrase observation ends and the built-in dialog opens. A portal observation ends with its own
+    /// broker deadline instead.
+    observe_until: Option<Tick>,
 }
 
 /// One frame the dispatcher has to write, and the connection to write it to.
@@ -171,6 +209,8 @@ pub(crate) struct Requests {
     secret_opened: Vec<RequestId>,
     /// Built-in requests that ended, whoever ended them, so the dialog closes.
     secret_ended: Vec<RequestId>,
+    /// The last time [`Requests::tick`] was given: the clock an observation window starts from.
+    now: Tick,
 }
 
 impl Requests {
@@ -190,6 +230,7 @@ impl Requests {
             portal_outcomes: Vec::new(),
             secret_opened: Vec::new(),
             secret_ended: Vec::new(),
+            now: Tick::ZERO,
         }
     }
 
@@ -208,11 +249,15 @@ impl Requests {
             message: error.to_string(),
         })?;
         // A `prompt.secret` nobody draws is served by the compositor's own dialog, so the keyring can always
-        // be unlocked. Every other slot with no provider still fails at once.
-        let (provider, builtin) = match self.provider_of(slot, offered_by) {
-            Ok(provider) => (provider, false),
+        // be unlocked. Every other slot with no provider still fails at once. When a shell observes the built-in
+        // dialogs it is shown the request first, for a short window, before the dialog opens.
+        let (provider, builtin, observer) = match self.provider_of(slot, offered_by) {
+            Ok(provider) => (provider, false, false),
             Err(refusal) if slot == CapabilitySlot::PromptSecret && refusal.code == wire::code::NO_PROVIDER => {
-                (builtin_client(), true)
+                match self.dialogs_observer().filter(|observer| *observer != offered_by) {
+                    Some(observer) => (observer, false, true),
+                    None => (builtin_client(), true, false),
+                }
             }
             Err(refusal) => return Err(refusal),
         };
@@ -230,6 +275,8 @@ impl Requests {
                 offered_by,
                 portal: false,
                 builtin,
+                observer,
+                observe_until: observer.then(|| self.now.saturating_add(OBSERVE_MS)),
             },
         );
         if builtin {
@@ -253,20 +300,30 @@ impl Requests {
         subject: &[u8],
         deadline: Tick,
     ) -> (RequestId, Vec<FrameDelivery>) {
+        let offer = portal_offer(requested_by, provider, title, message, subject);
+        self.insert_portal_offer(offer, deadline)
+    }
+
+    /// Show a `portal.ui` request to the shell that observes the built-in dialogs, which the compositor draws itself.
+    /// The observer sees it for no longer than `deadline` and can only refuse it: see [`Requests::offer_portal`] for
+    /// how the outcome reaches the portal service, which treats an observer's answer by its own rules.
+    pub(crate) fn offer_observed_portal(
+        &mut self,
+        requested_by: ClientId,
+        observer: ClientId,
+        interface: &str,
+        message: &str,
+        subject: &[u8],
+        deadline: Tick,
+    ) -> (RequestId, Vec<FrameDelivery>) {
+        let mut offer = portal_offer(requested_by, observer, interface, message, subject);
+        offer.observer = true;
+        self.insert_portal_offer(offer, deadline)
+    }
+
+    fn insert_portal_offer(&mut self, offer: Offer, deadline: Tick) -> (RequestId, Vec<FrameDelivery>) {
         let request = self.broker.offer(deadline);
-        self.offers.insert(
-            request,
-            Offer {
-                slot: CapabilitySlot::PortalUi,
-                title: title.to_owned(),
-                message: message.to_owned(),
-                subject: subject.to_vec(),
-                provider,
-                offered_by: requested_by,
-                portal: true,
-                builtin: false,
-            },
-        );
+        self.offers.insert(request, offer);
         (request, self.drain())
     }
 
@@ -276,6 +333,14 @@ impl Requests {
             return None;
         }
         self.claims.get(&CapabilitySlot::PortalUi).copied()
+    }
+
+    /// The connection that claimed `dialogs.observe`, when a shell holds it.
+    pub(crate) fn dialogs_observer(&self) -> Option<ClientId> {
+        if self.slots.provider(CapabilitySlot::DialogsObserve) != Provider::Shell {
+            return None;
+        }
+        self.claims.get(&CapabilitySlot::DialogsObserve).copied()
     }
 
     /// How the compositor's own `portal.ui` offers ended since the last call.
@@ -336,6 +401,13 @@ impl Requests {
             return Err(RequestRefusal {
                 code: wire::code::DENIED,
                 message: "`portal.ui` is claimed by a shell, which draws the dialog itself".to_owned(),
+            });
+        }
+        // `dialogs.observe` is a shell's to claim, like `portal.ui`: the services role has no dialogs to look at.
+        if slot == CapabilitySlot::DialogsObserve && provider != Provider::Shell {
+            return Err(RequestRefusal {
+                code: wire::code::DENIED,
+                message: "`dialogs.observe` is claimed by a shell, which watches the built-in dialogs".to_owned(),
             });
         }
         // A claim names who draws or answers. Claiming `none` would clear another holder's claim
@@ -409,6 +481,12 @@ impl Requests {
         request: RequestId,
         mut answer: Vec<u8>,
     ) -> Result<Vec<FrameDelivery>, RequestRefusal> {
+        // What an observer answers is a verdict, not an answer: it is read here and wiped, and never leaves.
+        if self.observed_secret(request) {
+            let deny = answer.as_slice() == OBSERVE_DENY;
+            answer.zeroize();
+            return self.observer_verdict(owner, request, deny);
+        }
         // The broker drops an answer it refuses without wiping it, so every refusal is decided
         // here first and the value is wiped on the way out. The codes match the broker's.
         let owner = OwnerId::new(owner.get());
@@ -441,6 +519,11 @@ impl Requests {
         request: RequestId,
         reason: Option<DeclineReason>,
     ) -> Result<Vec<FrameDelivery>, RequestRefusal> {
+        // An observer that declines is not looking at the request after all: it is no objection, and the built-in
+        // dialog serves it. Refusing is `deny`, which is an answer.
+        if self.observed_secret(request) {
+            return self.observer_verdict(owner, request, false);
+        }
         // A decline is the claimant's answer, and it stays one even for `prompt.secret`: the stock shell's
         // Escape is a plain decline, so reading it as "cannot draw this" would open a second dialog over a
         // prompt the user just dismissed. Only a claimant that is gone hands the request over.
@@ -455,10 +538,80 @@ impl Requests {
 
     /// Fail every request at or past its deadline.
     pub(crate) fn tick(&mut self, now: Tick) -> Vec<FrameDelivery> {
-        if self.broker.tick(now) == 0 {
+        self.now = now;
+        // A passphrase request whose observer did not settle it in time is the built-in dialog's: a script that is
+        // slow, or wedged, costs the user at most the observation window.
+        let overdue: Vec<RequestId> = self
+            .offers
+            .iter()
+            .filter(|(_, offer)| offer.observer && offer.slot == CapabilitySlot::PromptSecret)
+            .filter(|(_, offer)| offer.observe_until.is_some_and(|until| now >= until))
+            .map(|(request, _)| *request)
+            .collect();
+        let handed = !overdue.is_empty();
+        for request in overdue {
+            self.hand_to_builtin(request);
+        }
+        if self.broker.tick(now) == 0 && !handed {
             return Vec::new();
         }
         self.drain()
+    }
+
+    /// Ends an observation of a passphrase request without refusing it: the observer's claim is given back and the
+    /// compositor's own dialog takes the request, with the identity and the deadline it already had. A request the
+    /// observer was only offered, and never claimed, is just as waiting to be claimed.
+    fn hand_to_builtin(&mut self, request: RequestId) {
+        let observer = self
+            .offers
+            .get(&request)
+            .map(|offer| OwnerId::new(offer.provider.get()));
+        if let Some(observer) = observer {
+            let _ = self.broker.reoffer(request, observer);
+        }
+        self.take_over(request);
+    }
+
+    /// Whether `request` is a passphrase request an observer is looking at.
+    fn observed_secret(&self, request: RequestId) -> bool {
+        self.offers
+            .get(&request)
+            .is_some_and(|offer| offer.observer && offer.slot == CapabilitySlot::PromptSecret)
+    }
+
+    /// An observer's verdict on a passphrase request: `deny` refuses it by policy, anything else is no objection.
+    /// The answer is never the passphrase and never reaches the host that asked, so an observer cannot read or give a
+    /// secret; only the connection that holds the observation may give a verdict.
+    fn observer_verdict(
+        &mut self,
+        owner: ClientId,
+        request: RequestId,
+        deny: bool,
+    ) -> Result<Vec<FrameDelivery>, RequestRefusal> {
+        let holder = OwnerId::new(owner.get());
+        let refusal = match self.broker.state(request) {
+            Some(gnoblin_model::RequestState::Claimed { owner: claimed, .. }) if claimed == holder => None,
+            Some(gnoblin_model::RequestState::Finished(_)) => Some(gnoblin_model::RequestError::Finished { request }),
+            Some(_) => Some(gnoblin_model::RequestError::NotOwner { request, owner: holder }),
+            None => Some(gnoblin_model::RequestError::Unknown { request }),
+        };
+        if let Some(error) = refusal {
+            return Err(RequestRefusal {
+                code: request_code(&error),
+                message: error.to_string(),
+            });
+        }
+        if deny {
+            self.broker
+                .decline_with(request, holder, Some(DeclineReason::Denied))
+                .map_err(|error| RequestRefusal {
+                    code: request_code(&error),
+                    message: error.to_string(),
+                })?;
+        } else {
+            self.hand_to_builtin(request);
+        }
+        Ok(self.drain())
     }
 
     /// A connection ended: end what it held, abandon what it offered, release its
@@ -575,6 +728,27 @@ impl Requests {
                     if offer.builtin {
                         continue;
                     }
+                    if offer.observer {
+                        // An observer is shown the request the built-in dialog is about to draw, under its own
+                        // slot name and for no longer than its observation window.
+                        let until = offer
+                            .observe_until
+                            .filter(|until| *until < deadline)
+                            .unwrap_or(deadline);
+                        deliveries.push(FrameDelivery {
+                            client: offer.provider,
+                            envelope: wire::offer(
+                                0,
+                                request,
+                                until,
+                                CapabilitySlot::DialogsObserve.name(),
+                                &observed_title(offer.slot, &offer.title),
+                                &offer.message,
+                                &offer.subject,
+                            ),
+                        });
+                        continue;
+                    }
                     deliveries.push(FrameDelivery {
                         client: offer.provider,
                         envelope: wire::offer(
@@ -642,6 +816,9 @@ impl Requests {
         if let Some(offer) = self.offers.get_mut(&request) {
             offer.provider = builtin_client();
             offer.builtin = true;
+            // Whoever was observing has had its say: the built-in dialog serves the request from here on.
+            offer.observer = false;
+            offer.observe_until = None;
         }
         if self.broker.claim(request, builtin_owner()).is_ok() {
             self.secret_opened.push(request);
@@ -1416,5 +1593,268 @@ mod tests {
         assert!(requests.claim_request(HOST, request).is_err());
         assert!(requests.answer(HOST, request, b"allow".to_vec()).is_err());
         assert!(requests.take_portal_outcomes().is_empty(), "nothing settled");
+    }
+
+    // --- dialogs.observe -----------------------------------------------------------------------------------------
+
+    /// A request layer whose `dialogs.observe` is held by `SHELL`.
+    fn observed() -> Requests {
+        let mut requests = Requests::new();
+        requests
+            .claim_slot(SHELL, CapabilitySlot::DialogsObserve, Provider::Shell, true)
+            .expect("a shell claims dialogs.observe");
+        requests
+    }
+
+    /// A `prompt.secret` offer from `HOST` while `SHELL` observes: the observer is offered it, the dialog is not
+    /// opened yet.
+    fn observed_secret_request(requests: &mut Requests) -> (RequestId, Vec<FrameDelivery>) {
+        requests
+            .offer(
+                HOST,
+                "prompt.secret",
+                "Unlock",
+                "Passphrase",
+                b"keyring",
+                Tick::new(120_000),
+            )
+            .expect("an observed prompt is offered")
+    }
+
+    #[test]
+    fn only_a_shell_claims_dialogs_observe() {
+        let mut requests = Requests::new();
+        let refusal = requests
+            .claim_slot(SERVICES, CapabilitySlot::DialogsObserve, Provider::Services, true)
+            .expect_err("the services role has no dialogs to look at");
+        assert_eq!(refusal.code, wire::code::DENIED);
+        assert_eq!(requests.dialogs_observer(), None);
+        requests
+            .claim_slot(SHELL, CapabilitySlot::DialogsObserve, Provider::Shell, true)
+            .expect("a shell claims it");
+        assert_eq!(requests.dialogs_observer(), Some(SHELL));
+        assert!(
+            requests
+                .claim_slot(HOST, CapabilitySlot::DialogsObserve, Provider::Shell, true)
+                .is_err(),
+            "a second shell cannot take it from the first"
+        );
+    }
+
+    #[test]
+    fn a_passphrase_request_is_shown_to_the_observer_before_the_dialog_opens() {
+        let mut requests = observed();
+        let (request, deliveries) = observed_secret_request(&mut requests);
+        assert!(
+            carries(&deliveries, SHELL, b"dialogs.observe"),
+            "the observer is offered it"
+        );
+        assert!(carries(&deliveries, SHELL, b"secret"), "and told its kind");
+        assert!(carries(&deliveries, SHELL, b"keyring"), "and who it is about");
+        assert!(
+            requests.take_secret_opened().is_empty(),
+            "the dialog waits for the observer"
+        );
+        assert!(requests.secret_prompt(request).is_none());
+    }
+
+    #[test]
+    fn an_observer_that_raises_no_objection_hands_the_same_request_to_the_dialog() {
+        let mut requests = observed();
+        let (request, _) = observed_secret_request(&mut requests);
+        requests.claim_request(SHELL, request).expect("the observer claims it");
+        let deliveries = requests
+            .answer(SHELL, request, b"pass".to_vec())
+            .expect("a verdict is accepted");
+        assert_eq!(
+            requests.take_secret_opened(),
+            vec![request],
+            "same id, now the dialog's"
+        );
+        assert!(requests.secret_prompt(request).is_some());
+        assert!(
+            deliveries.iter().all(|delivery| delivery.client != HOST),
+            "the host hears nothing yet"
+        );
+    }
+
+    #[test]
+    fn an_observer_that_declines_is_no_objection_either() {
+        let mut requests = observed();
+        let (request, _) = observed_secret_request(&mut requests);
+        requests.claim_request(SHELL, request).expect("the observer claims it");
+        requests.decline(SHELL, request, None).expect("a decline is accepted");
+        assert_eq!(requests.take_secret_opened(), vec![request]);
+    }
+
+    #[test]
+    fn an_observer_that_denies_refuses_the_request_and_the_dialog_never_opens() {
+        let mut requests = observed();
+        let (request, _) = observed_secret_request(&mut requests);
+        requests.claim_request(SHELL, request).expect("the observer claims it");
+        let deliveries = requests
+            .answer(SHELL, request, b"deny".to_vec())
+            .expect("a verdict is accepted");
+        assert!(requests.take_secret_opened().is_empty(), "no dialog opens");
+        assert!(
+            deliveries.iter().any(|delivery| delivery.client == HOST),
+            "the host learns the request was refused"
+        );
+        assert!(
+            !carries(&deliveries, HOST, b"deny"),
+            "the verdict is not an answer: the host is told the request ended, not given a value"
+        );
+        assert!(matches!(
+            requests.broker.state(request),
+            Some(gnoblin_model::RequestState::Finished(
+                gnoblin_model::RequestCompletion::Refused(_)
+            ))
+        ));
+    }
+
+    #[test]
+    fn an_observer_can_neither_give_nor_read_a_passphrase() {
+        let mut requests = observed();
+        let (request, _) = observed_secret_request(&mut requests);
+        requests.claim_request(SHELL, request).expect("the observer claims it");
+        let deliveries = requests
+            .answer(SHELL, request, b"hunter2".to_vec())
+            .expect("a verdict is accepted");
+        assert!(
+            !carries(&deliveries, HOST, b"hunter2"),
+            "an observer's bytes never reach the host as a passphrase"
+        );
+        assert_eq!(
+            requests.take_secret_opened(),
+            vec![request],
+            "anything but `deny` is no objection: the person is still asked"
+        );
+        // What the person types is the host's answer, and only the dialog's.
+        let deliveries = requests.answer_builtin(request, b"correct horse".to_vec());
+        assert!(carries(&deliveries, HOST, b"correct horse"));
+        assert!(
+            requests.answer(SHELL, request, b"deny".to_vec()).is_err(),
+            "the observer is out once the dialog has the request"
+        );
+    }
+
+    #[test]
+    fn only_the_observer_that_holds_a_request_gives_a_verdict() {
+        let mut requests = observed();
+        let (request, _) = observed_secret_request(&mut requests);
+        // Not claimed yet.
+        assert!(requests.answer(SHELL, request, b"deny".to_vec()).is_err());
+        // Claimed by the observer; a stranger cannot give the verdict.
+        requests.claim_request(SHELL, request).expect("the observer claims it");
+        assert!(requests.answer(HOST, request, b"deny".to_vec()).is_err());
+        assert!(requests.decline(HOST, request, None).is_err());
+        assert!(
+            requests.take_secret_opened().is_empty(),
+            "the request is still the observer's"
+        );
+    }
+
+    #[test]
+    fn an_observer_that_stays_silent_is_skipped_when_its_window_ends() {
+        let mut requests = observed();
+        let _ = requests.tick(Tick::new(1_000));
+        let (request, _) = observed_secret_request(&mut requests);
+        let _ = requests.tick(Tick::new(1_000 + OBSERVE_MS - 1));
+        assert!(requests.take_secret_opened().is_empty(), "still inside the window");
+        let _ = requests.tick(Tick::new(1_000 + OBSERVE_MS));
+        assert_eq!(requests.take_secret_opened(), vec![request], "the dialog serves it");
+        assert!(requests.secret_prompt(request).is_some());
+    }
+
+    #[test]
+    fn an_observer_that_claimed_the_request_and_then_stalls_is_skipped_too() {
+        let mut requests = observed();
+        let (request, _) = observed_secret_request(&mut requests);
+        requests.claim_request(SHELL, request).expect("the observer claims it");
+        let _ = requests.tick(Tick::new(OBSERVE_MS));
+        assert_eq!(requests.take_secret_opened(), vec![request]);
+        assert!(
+            requests.answer(SHELL, request, b"deny".to_vec()).is_err(),
+            "a late verdict is refused: the request is the dialog's now"
+        );
+    }
+
+    #[test]
+    fn an_observer_that_leaves_hands_the_request_to_the_dialog_without_losing_it() {
+        let mut requests = observed();
+        let (request, _) = observed_secret_request(&mut requests);
+        requests.claim_request(SHELL, request).expect("the observer claims it");
+        let deliveries = requests.departed(SHELL);
+        assert_eq!(
+            requests.take_secret_opened(),
+            vec![request],
+            "same id, now the dialog's"
+        );
+        assert!(
+            deliveries.iter().all(|delivery| delivery.client != HOST),
+            "the host is not told the request ended"
+        );
+        assert_eq!(requests.dialogs_observer(), None, "its claim went with it");
+    }
+
+    #[test]
+    fn the_observer_that_asked_for_a_passphrase_is_not_its_own_observer() {
+        let mut requests = observed();
+        let (request, deliveries) = requests
+            .offer(
+                SHELL,
+                "prompt.secret",
+                "Unlock",
+                "Passphrase",
+                b"keyring",
+                Tick::new(1_000),
+            )
+            .expect("the dialog serves it");
+        assert!(deliveries.is_empty());
+        assert_eq!(requests.take_secret_opened(), vec![request]);
+    }
+
+    #[test]
+    fn a_claimed_prompt_slot_is_not_observed() {
+        let mut requests = observed();
+        requests
+            .claim_slot(HOST, CapabilitySlot::PromptSecret, Provider::Shell, true)
+            .expect("a shell draws its own prompt");
+        let (_, deliveries) = requests
+            .offer(
+                SERVICES,
+                "prompt.secret",
+                "Unlock",
+                "Passphrase",
+                b"keyring",
+                Tick::new(1_000),
+            )
+            .expect("offered to the claimant");
+        assert!(carries(&deliveries, HOST, b"prompt.secret"));
+        assert!(
+            !carries(&deliveries, SHELL, b"dialogs.observe"),
+            "the claimant draws it, nobody observes"
+        );
+    }
+
+    #[test]
+    fn a_portal_request_is_shown_to_the_observer_under_its_own_slot_and_kind() {
+        let mut requests = observed();
+        let (request, deliveries) = requests.offer_observed_portal(
+            HOST,
+            SHELL,
+            "Screenshot",
+            "Share the screen?",
+            b"org.example",
+            Tick::new(250),
+        );
+        assert!(carries(&deliveries, SHELL, b"dialogs.observe"));
+        assert!(carries(&deliveries, SHELL, b"consent:Screenshot"));
+        assert!(carries(&deliveries, SHELL, b"org.example"));
+        requests.claim_request(SHELL, request).expect("the observer claims it");
+        requests.answer(SHELL, request, b"deny".to_vec()).expect("a verdict");
+        let outcomes = requests.take_portal_outcomes();
+        assert_eq!(outcomes.len(), 1);
+        assert!(matches!(&outcomes[0].1, RequestOutcome::Answered(answer) if answer.as_slice() == b"deny"));
     }
 }

@@ -93,7 +93,7 @@ use super::applied::StartedDocuments;
 use super::consent::Consent;
 use super::portal::{MALFORMED, PortalScope, PortalService, UNKNOWN_KEY, parse_key, resolve_portal_scope};
 use super::reload::{Reload, ReloadVerdict};
-use super::requests::{FrameDelivery, Requests};
+use super::requests::{FrameDelivery, OBSERVE_MS, Requests};
 use super::secret::{SecretAction, SecretService};
 use super::tree::{AttachMode, TreeAttached, TreeReply, TreeSnapshot};
 use super::tree_host::{
@@ -951,10 +951,13 @@ impl Dispatcher {
     }
 
     /// Offer a `portal.ui` request to the shell that claimed the slot, in place of the built-in
-    /// dialog. Returns whether it was offered.
+    /// dialog, or to the shell that observes the built-in dialogs, before it. Returns whether it was offered.
     ///
-    /// Nothing is offered, and the built-in dialog serves the request, when no shell holds the
-    /// slot, the claimant is the requester itself or is gone, the session is locked (the built-in
+    /// The claimant draws the dialog and answers. An observer only sees the request for a short window
+    /// ([`OBSERVE_MS`]) and can refuse it; anything else it does leaves the request to the built-in dialog.
+    ///
+    /// Nothing is offered, and the built-in dialog serves the request, when no shell holds either slot,
+    /// the holder is the requester itself or is gone, the session is locked (the built-in
     /// path refuses it as locked), or the request cannot be routed (an interface the compositor
     /// does not know, an id already held, a timeout too short to leave the built-in a window).
     fn route_to_portal_claimant(
@@ -964,8 +967,12 @@ impl Dispatcher {
         request: &wire::PortalRequest,
         now: Tick,
     ) -> bool {
-        let Some(provider) = self.requests.portal_ui_claimant() else {
-            return false;
+        let (provider, observing) = match self.requests.portal_ui_claimant() {
+            Some(provider) => (provider, false),
+            None => match self.requests.dialogs_observer() {
+                Some(provider) => (provider, true),
+                None => return false,
+            },
         };
         if provider == client || !self.connections.contains_key(&provider) || self.session_locked() {
             return false;
@@ -975,16 +982,33 @@ impl Dispatcher {
         };
         // The subject is the app id the relay verified from the bus, the same identity the
         // built-in dialog shows. The request body never supplies it.
-        let (offer, deliveries) = self.requests.offer_portal(
-            client,
-            provider,
-            &request.interface,
-            &request.prompt,
-            request.caller.app_id().as_bytes(),
-            now.saturating_add(window),
-        );
-        self.portal
-            .offered_to_claimant(client, envelope_id, offer, request, interface, now);
+        let subject = request.caller.app_id().as_bytes();
+        let deliveries = if observing {
+            let deadline = now.saturating_add(window.min(OBSERVE_MS));
+            let (offer, deliveries) = self.requests.offer_observed_portal(
+                client,
+                provider,
+                &request.interface,
+                &request.prompt,
+                subject,
+                deadline,
+            );
+            self.portal
+                .offered_to_observer(client, envelope_id, offer, request, interface, now);
+            deliveries
+        } else {
+            let (offer, deliveries) = self.requests.offer_portal(
+                client,
+                provider,
+                &request.interface,
+                &request.prompt,
+                subject,
+                now.saturating_add(window),
+            );
+            self.portal
+                .offered_to_claimant(client, envelope_id, offer, request, interface, now);
+            deliveries
+        };
         self.deliver(deliveries);
         true
     }
@@ -1343,6 +1367,7 @@ impl Dispatcher {
                 self.store.publish_settings(&config);
                 self.portal.configure(&config);
                 self.secret.configure(&config);
+                crate::portal::report_dialog_style(&config);
                 // Reduced motion turns animations off in the compositor loop. A document that
                 // does not name the key is not reduced, so it animates as before.
                 let reduced_motion = config

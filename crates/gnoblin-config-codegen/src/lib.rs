@@ -342,6 +342,8 @@ pub const HOOKS: &[&str] = &[
     "accel_curve",
     "appearance",
     "compositor",
+    "dialogs_font",
+    "dialogs_style",
     "gesture",
     "gestures",
     "pad_button",

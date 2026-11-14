@@ -14,11 +14,13 @@
 mod negotiate;
 mod outcome;
 mod queue;
+mod style;
 mod ui;
 mod validate;
 
 pub use negotiate::{Effect, Event, InterfaceContract, Negotiation, PortalProvider, Stage};
 pub use outcome::{CancelReason, PortalError, Verdict};
 pub use queue::{Admission, Queue, Refusal};
+pub(crate) use style::{dialog_style, report_dialog_style};
 pub use ui::{PortalUi, SubmitOutcome};
 pub use validate::{Deviation, Request, validate_reply};

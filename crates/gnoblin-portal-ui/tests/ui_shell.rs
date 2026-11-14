@@ -2,6 +2,7 @@
 
 use egui::{Key, Ui};
 use gnoblin_portal_core::model::{ScreenKey, Settled};
+use gnoblin_portal_ui::style::DialogStyle;
 use gnoblin_portal_ui::ui::{DialogScheme, DialogShell, DialogUi, Setup, key_events};
 use gnoblin_types::Tick;
 
@@ -25,6 +26,7 @@ fn shell() -> DialogShell {
         height: 160,
         reduced_motion: true,
         scheme: DialogScheme::Dark,
+        style: DialogStyle::default(),
     })
 }
 

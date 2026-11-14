@@ -22,8 +22,8 @@ use std::collections::BTreeMap;
 use crate::appearance::Accent;
 use crate::engine::{Parser, is_inherit};
 use crate::generated::{
-    AccelCurve, Appearance, Compositor, Gesture, GesturePoint, PadButton, PadButtonAction, Tablet, TouchpadGestures,
-    WindowManagement, Workspace, Workspaces, Xwayland,
+    AccelCurve, Appearance, Compositor, DialogsFont, DialogsStyle, Gesture, GesturePoint, PadButton, PadButtonAction,
+    Tablet, TouchpadGestures, WindowManagement, Workspace, Workspaces, Xwayland,
 };
 use crate::model::Inherit;
 use crate::path::Path;
@@ -436,6 +436,56 @@ pub(crate) fn appearance(
             false
         }
     }
+}
+
+/// `dialogs.style`: the accent is a named accent or an opaque `#rrggbb`, the same forms `appearance.accent` takes.
+///
+/// The accent is later corrected against the dialog's colour, so what this checks is only that it names a colour.
+pub(crate) fn dialogs_style(
+    section: &mut DialogsStyle,
+    _map: &BTreeMap<String, Value>,
+    path: &Path,
+    out: &mut Parser,
+) -> bool {
+    let Some(accent) = &section.accent else {
+        return true;
+    };
+    if Accent::parse(accent).is_err() {
+        out.problem(
+            &path.key("accent"),
+            Fault::UnsupportedValue {
+                expected: "a named accent or #rgb or #rrggbb without alpha".to_owned(),
+            },
+        );
+        return false;
+    }
+    true
+}
+
+/// The longest font family name a dialog takes, in characters.
+const FAMILY_MAX: usize = 64;
+
+/// `dialogs.style.font`: a family name is printable text of bounded length, so it cannot carry a line break into a
+/// log line or a dialog.
+pub(crate) fn dialogs_font(
+    section: &mut DialogsFont,
+    _map: &BTreeMap<String, Value>,
+    path: &Path,
+    out: &mut Parser,
+) -> bool {
+    let Some(family) = &section.family else {
+        return true;
+    };
+    if family.chars().count() > FAMILY_MAX || family.chars().any(char::is_control) {
+        out.problem(
+            &path.key("family"),
+            Fault::UnsupportedValue {
+                expected: "a font family name of up to 64 printable characters".to_owned(),
+            },
+        );
+        return false;
+    }
+    true
 }
 
 /// `tablets.<id>`: an output name, the active-area rule, and unique pad buttons.

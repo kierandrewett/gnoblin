@@ -49,6 +49,7 @@ for the result and event fields.
 - [`gnoblin.configure.layer_shell`](/config/configure/layer_shell)
 - [`gnoblin.configure.protocols`](/config/configure/protocols)
 - [`gnoblin.configure.appearance`](/config/configure/appearance)
+- [`gnoblin.configure.dialogs`](/config/configure/dialogs)
 - [`gnoblin.configure.accessibility`](/config/configure/accessibility)
 - [`gnoblin.configure.cursor`](/config/configure/cursor)
 - [`gnoblin.configure.xwayland`](/config/configure/xwayland)
