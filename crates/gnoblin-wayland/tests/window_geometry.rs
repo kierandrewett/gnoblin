@@ -48,6 +48,9 @@ fn place(shell: &Shell, node: NodeId) {
     );
 }
 
+/// A window geometry: x, y, width and height in the surface's coordinates.
+type Geometry = (i32, i32, i32, i32);
+
 /// A number the compositor last published for `key` on `node`.
 fn number(shell: &Shell, node: NodeId, key: &str) -> f64 {
     match shell.published(node, key) {
@@ -62,9 +65,9 @@ fn number(shell: &Shell, node: NodeId, key: &str) -> f64 {
 fn map_csd(
     client: &mut Client,
     title: &str,
-    geometry: (i32, i32, i32, i32),
+    geometry: Geometry,
     buffer: (i32, i32),
-    input: Option<(i32, i32, i32, i32)>,
+    input: Option<Geometry>,
 ) -> Window {
     let window = client.create_window("org.gnoblin.Geometry", title);
     let pixels = client.buffer(buffer.0, buffer.1);
@@ -103,7 +106,7 @@ fn enter_at(session: &Handle, client: &mut Client, at: Point, entered: u32) {
 fn the_node_a_shell_reads_is_the_window_geometry_for_every_origin_and_buffer() {
     // The geometry the client set and the buffer it committed: at the origin, with a bar above the surface (a negative
     // origin, as foot sets it), with a shadow margin on every side, and a geometry smaller than its buffer.
-    let cases: [((i32, i32, i32, i32), (i32, i32)); 4] = [
+    let cases: [(Geometry, (i32, i32)); 4] = [
         ((0, 0, 200, 150), (200, 150)),
         ((0, -26, 200, 176), (200, 150)),
         ((12, 12, 200, 150), (224, 174)),
