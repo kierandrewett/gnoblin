@@ -13,8 +13,9 @@
 //   workspace = { id = "3" }                 workspace: "3"
 //   maximised / fullscreen / secure          the same names, true or false
 //   opacity = 0.9                            style: { opacity: 0.9 }
-//   (last matching rule wins per field)      first matching rule wins; `all: true` lets the next one also apply
-//   (re-evaluated on any rule input change)  `reapply: true` applies again when appId or title changes
+//   (last matching rule wins per field)      the same: every matching rule applies in list order, the later wins per field
+//   (stop at a rule)                         `first: true` on a rule: when it matches, no later rule is consulted
+//   (re-evaluated on any rule input change)  re-applied when appId, title or focus changes (`reapply: false` opts a rule out)
 //   xr = false, corners, blur, ...           not ported: the key is an unknown key and is refused by name
 //
 // New actions the Lua rules had no field for: `floating`, `size`, `position`, `skipFocus`.
@@ -58,9 +59,12 @@ export interface RuleConfig {
     /** The window does not take focus when it appears. */
     skipFocus?: boolean;
     // How the rule combines.
-    /** After this rule matches, the next matching rule also applies (later rules win per field). */
-    all?: boolean;
-    /** Apply the rule again when the window's appId or title changes, and undo what it set when it stops matching. */
+    /** When this rule matches, no later rule is consulted: the rules before it and this one still merge. */
+    first?: boolean;
+    /**
+     * Apply the rule again when the window's appId, title or focus changes, and undo what it set when it stops matching.
+     * The default is true, as every Lua rule was; `false` applies the rule once, when the window appears.
+     */
     reapply?: boolean;
 }
 
@@ -76,7 +80,7 @@ const ACTION_KEYS = [
     "secure",
     "skipFocus",
 ];
-const OPTION_KEYS = ["all", "reapply"];
+const OPTION_KEYS = ["first", "reapply"];
 const RULE_KEYS = [...QUERY_KEYS, ...ACTION_KEYS, ...OPTION_KEYS];
 
 /** A pattern, compiled: a glob becomes an anchored expression, text with no wildcard stays a plain comparison. */
@@ -108,7 +112,7 @@ export interface CompiledRule {
     readonly focused: boolean | null;
     readonly onWorkspace: string | null;
     readonly effects: Readonly<RuleEffects>;
-    readonly all: boolean;
+    readonly first: boolean;
     readonly reapply: boolean;
 }
 
@@ -286,8 +290,8 @@ export function compileRules(
             focused,
             onWorkspace: rule.onWorkspace ?? null,
             effects: Object.freeze(effects),
-            all: flag(raw, "all", where) ?? false,
-            reapply: flag(raw, "reapply", where) ?? false,
+            first: flag(raw, "first", where) ?? false,
+            reapply: flag(raw, "reapply", where) ?? true,
         });
     });
 }
@@ -302,13 +306,13 @@ export function ruleMatches(rule: CompiledRule, view: RuleView): boolean {
     );
 }
 
-/** The rules that apply to a window, in list order: the first match, then on while a rule says `all`. */
+/** The rules that apply to a window, in list order: every one that matches, up to and including a `first` rule. */
 export function matchingRules(rules: readonly CompiledRule[], view: RuleView): CompiledRule[] {
     const out: CompiledRule[] = [];
     for (const rule of rules) {
         if (ruleMatches(rule, view)) {
             out.push(rule);
-            if (!rule.all) {
+            if (rule.first) {
                 break;
             }
         }
@@ -368,7 +372,7 @@ interface Applied {
 
 /**
  * Applies the rules to the windows of a collection: attach it to `gnoblin.clients`. A rule applies when its window
- * appears and, with `reapply`, again when appId or title changes. A window an earlier generation already had is not
+ * appears and again when appId, title or focus changes (unless the rule says `reapply: false`). A window an earlier generation already had is not
  * touched: a reload does not move the windows the user has placed.
  */
 export class RuleEngine<C extends object> {
@@ -406,6 +410,11 @@ export class RuleEngine<C extends object> {
         this.#reapply(client);
     }
 
+    /** The rule query reads focus, so a change of focus is a change of the rules' input. */
+    onFocusChanged(client: C): void {
+        this.#reapply(client);
+    }
+
     #reapply(client: C): void {
         const state = this.#applied.get(client);
         if (!this.#reapplies || state === undefined || !this.#host.alive(client)) {
@@ -427,23 +436,29 @@ export class RuleEngine<C extends object> {
             }
         }
         if (stopped.length > 0) {
-            // A field a rule stops setting goes back to its default, unless a rule that still matches sets it.
+            // A field a rule stops setting goes back to what a rule that still matches sets, else to its default.
             const kept = mergeEffects(now);
             const undone: RuleEffects = {};
             for (const field of Object.keys(RULE_DEFAULTS) as (keyof typeof RULE_DEFAULTS)[]) {
-                if (stopped.some((rule) => rule.effects[field] !== undefined) && kept[field] === undefined) {
-                    (undone as Record<string, unknown>)[field] = RULE_DEFAULTS[field];
+                if (stopped.some((rule) => rule.effects[field] !== undefined)) {
+                    (undone as Record<string, unknown>)[field] = kept[field] ?? RULE_DEFAULTS[field];
                 }
             }
             this.#apply(client, undone);
             for (const field of ["cornerRadius", "shadows"] as const) {
-                if (stopped.some((rule) => rule.effects[field] !== undefined) && kept[field] === undefined) {
-                    this.#host.setStyle(client, field, undefined);
+                if (stopped.some((rule) => rule.effects[field] !== undefined)) {
+                    this.#host.setStyle(client, field, kept[field]);
                 }
             }
         }
         if (started.length > 0) {
-            this.#apply(client, mergeEffects(started));
+            // A rule that starts to match sets its fields, but a later rule that already matched keeps what it set.
+            const merged = mergeEffects(now);
+            const fresh: RuleEffects = {};
+            for (const field of new Set(started.flatMap((rule) => Object.keys(rule.effects)))) {
+                (fresh as Record<string, unknown>)[field] = (merged as Record<string, unknown>)[field];
+            }
+            this.#apply(client, fresh);
         }
     }
 

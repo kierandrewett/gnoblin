@@ -619,7 +619,7 @@ fn desugaring_a_config_gives_the_plan_of_the_spec_review_table() {
 }
 
 #[test]
-fn a_missing_key_adds_nothing_except_that_no_workspace_means_the_desktop() {
+fn a_missing_key_adds_nothing_except_that_no_workspace_means_the_stock_four() {
     let got = run(r#"
         const plan = desugarConfig({});
         emit([
@@ -639,12 +639,12 @@ fn a_missing_key_adds_nothing_except_that_no_workspace_means_the_desktop() {
         lines(&[
             r#"{"inner":0,"outer":0}"#,
             "{}",
-            "desktop:FloatingLayout",
+            "1:FloatingLayout 2:FloatingLayout 3:FloatingLayout 4:FloatingLayout",
             "0",
             "0",
             "0",
             "true",
-            "1",
+            "4",
             "FloatingLayout",
         ])
     );
@@ -687,10 +687,10 @@ fn a_config_that_is_not_in_the_closed_set_is_refused_naming_the_key() {
             "TypeError: keys[\"Super+X\"] must be spawn(...), show(...), show.position(...), focusColumn(...), binding(...), \"close\" or a function",
             "Error: workspaces[1]: a workspace with id \"a\" is already declared",
             "TypeError: workspaces[0].layout must be a Layout or one of floating, master-stack, grid, monocle, dwindle, kiosk, strip, carousel-3d, got spiral",
-            "TypeError: workspaces[0] has no \"tiled\"; expected one of id, layout",
+            "TypeError: workspaces[0] has no \"tiled\"; expected one of id, name, layout",
             "TypeError: rules[0]: needs a query: appId, title, focused or onWorkspace",
             "Error: rules[0].workspace: moves to workspace \"elsewhere\", which the config does not declare",
-            "TypeError: rules[0] has no \"match\"; expected one of appId, title, role, focused, onWorkspace, workspace, floating, size, position, style, fullscreen, maximised, secure, skipFocus, all, reapply",
+            "TypeError: rules[0] has no \"match\"; expected one of appId, title, role, focused, onWorkspace, workspace, floating, size, position, style, fullscreen, maximised, secure, skipFocus, first, reapply",
             "RangeError: gaps.inner must be a finite number of at least 0, got -1",
             "TypeError: gaps has no \"middle\"; expected one of inner, outer",
             "TypeError: on has no \"clientMoved\" (did you mean \"clientRemoved\"?); expected one of clientAdded, clientRemoved, titleChanged, focusChanged",
@@ -705,7 +705,7 @@ fn a_config_that_is_not_in_the_closed_set_is_refused_naming_the_key() {
 }
 
 #[test]
-fn the_default_config_is_one_floating_desktop_with_the_stock_keys() {
+fn the_default_config_is_four_floating_workspaces_with_the_stock_keys() {
     let got = run(r#"
         const plan = desugarConfig(defaultConfig);
         emit([
@@ -720,7 +720,7 @@ fn the_default_config_is_one_floating_desktop_with_the_stock_keys() {
     assert_eq!(
         got,
         lines(&[
-            "desktop:FloatingLayout",
+            "1:FloatingLayout 2:FloatingLayout 3:FloatingLayout 4:FloatingLayout",
             "Super+1 Super+2 Super+3 Super+4 Super+5 Super+6 Super+7 Super+8 Super+9 Super+Left Super+Right Swipe3 XF86AudioRaiseVolume XF86AudioLowerVolume XF86AudioMute XF86AudioMicMute XF86AudioPlay XF86AudioNext XF86AudioPrev",
             r#"{"kind":"show-position","position":1}"#,
             r#"{"kind":"spawn","argv":["wpctl","set-volume","@DEFAULT_AUDIO_SINK@","5%+"]}"#,
@@ -782,14 +782,14 @@ fn a_user_config_layers_over_the_default_keys_merge_by_trigger_and_workspaces_re
     "#);
     let media = "XF86AudioRaiseVolume XF86AudioLowerVolume XF86AudioMute XF86AudioMicMute XF86AudioPlay XF86AudioNext XF86AudioPrev";
     // The Lua shell's keys: Super+1 to Super+9 show the workspace at that position, so they name something whichever
-    // workspaces the config declares and survive a config that drops `desktop`.
+    // workspaces the config declares and survive a config that drops the stock four.
     let others = "Super+2 Super+3 Super+4 Super+5 Super+6 Super+7 Super+8 Super+9 Super+Left Super+Right Swipe3";
     let stock = format!("Super+1 {others}");
     assert_eq!(
         got,
         lines(&[
-            &format!("desktop | {stock} {media}"),
-            &format!("desktop | {others} {media} super+1 Super+Return"),
+            &format!("1 2 3 4 | {stock} {media}"),
+            &format!("1 2 3 4 | {others} {media} super+1 Super+Return"),
             r#"{"kind":"spawn","argv":["one"]}"#,
             &format!("a b | {stock} {media}"),
             "desktop | show-position",

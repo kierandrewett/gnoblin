@@ -15,7 +15,10 @@ export default defineConfig({
     // The workspaces: Super+1 shows the first, Super+2 the second, and so on.
     // A layout is floating, master-stack, grid, monocle, dwindle, kiosk, strip or carousel-3d.
     workspaces: [
-        { id: "desktop", layout: "floating" },
+        { id: "1", name: "Workspace 1", layout: "floating" },
+        { id: "2", name: "Workspace 2", layout: "floating" },
+        { id: "3", name: "Workspace 3", layout: "floating" },
+        { id: "4", name: "Workspace 4", layout: "floating" },
         // { id: "work", layout: "master-stack" },
     ],
 
@@ -26,7 +29,7 @@ export default defineConfig({
         // "Super+q": "close",
     },
 
-    // Window rules. The first rule that matches a window applies.
+    // Window rules. Every rule that matches a window applies, the later one winning for a field.
     rules: [
         // { appId: "pavucontrol", floating: true },
     ],

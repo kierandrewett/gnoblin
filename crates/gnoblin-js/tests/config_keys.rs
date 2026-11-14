@@ -369,7 +369,16 @@ fn the_starter_as_written_plans_exactly_what_the_stock_config_plans() {
     let (starter, stock) = got.split_once('\n').expect("two lines");
     assert_eq!(starter, stock, "the starter reproduces zero-config");
     let plan: serde_json::Value = serde_json::from_str(stock).expect("the plan is JSON");
-    assert_eq!(plan["workspaces"], serde_json::json!(["desktop:FloatingLayout"]));
+    assert_eq!(
+        plan["workspaces"],
+        serde_json::json!([
+            "1:FloatingLayout",
+            "2:FloatingLayout",
+            "3:FloatingLayout",
+            "4:FloatingLayout"
+        ]),
+        "the Lua stock config's four workspaces"
+    );
     assert_eq!(plan["decorations"], true);
     assert_eq!(plan["autostart"], serde_json::json!([]));
 }
@@ -382,7 +391,13 @@ fn the_starters_examples_plan_what_they_say_when_switched_on() {
     let plan: serde_json::Value = serde_json::from_str(&got).expect("the plan is JSON");
     assert_eq!(
         plan["workspaces"],
-        serde_json::json!(["desktop:FloatingLayout", "work:MasterStackLayout"])
+        serde_json::json!([
+            "1:FloatingLayout",
+            "2:FloatingLayout",
+            "3:FloatingLayout",
+            "4:FloatingLayout",
+            "work:MasterStackLayout"
+        ])
     );
     let keys: Vec<&str> = plan["keys"]
         .as_array()

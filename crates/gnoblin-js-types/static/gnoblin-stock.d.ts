@@ -416,6 +416,12 @@ declare module "gnoblin" {
         onFocusChanged?(client: Client, focused: boolean): void;
         onGeometryChanged?(client: Client, geometry: Rect): void;
         onClosed?(client: Client): void;
+        /**
+         * The client asked for a change of its window. Call `request.handle()` to answer it yourself: the first listener
+         * that does wins, the listeners after it are not called and the built-in answer (`windowState`) does not run. The
+         * client's own listeners are asked before the collections' that hold it.
+         */
+        onRequest?(client: Client, request: ClientRequest<Client>): void;
     }
 
     export class OutputListener extends MemberListener<Output> {
@@ -929,8 +935,9 @@ declare module "gnoblin" {
         shadows?: readonly unknown[];
     }
     /**
-     * A window rule: data, so it can be checked and diffed. The query keys must all hold; the first matching rule
-     * applies, and one with `all: true` lets the next matching rule apply too. Docs: docs/config/window_rule.md.
+     * A window rule: data, so it can be checked and diffed. The query keys must all hold; every matching rule applies
+     * in list order and the later wins for each field, and a rule with `first: true` ends the search where it matches.
+     * Docs: docs/config/window_rule.md.
      */
     export interface RuleConfig {
         appId?: Pattern;
@@ -951,8 +958,12 @@ declare module "gnoblin" {
         secure?: boolean;
         /** The window does not take focus when it appears. */
         skipFocus?: boolean;
-        all?: boolean;
-        /** Apply again when appId or title changes, and undo what the rule set when it stops matching. */
+        /** When this rule matches, no later rule is consulted. */
+        first?: boolean;
+        /**
+         * Apply again when appId, title or focus changes, and undo what the rule set when it stops matching. Default
+         * true; `false` applies the rule once, when the window appears.
+         */
         reapply?: boolean;
     }
     export interface RuleEffects {
@@ -972,7 +983,7 @@ declare module "gnoblin" {
     export interface CompiledRule {
         readonly index: number;
         readonly effects: Readonly<RuleEffects>;
-        readonly all: boolean;
+        readonly first: boolean;
         readonly reapply: boolean;
     }
     /** The window as a rule reads it. */
@@ -1198,6 +1209,8 @@ declare module "gnoblin" {
     /** A workspace of a config: its id and its layout, a stock layout by name or any layout object. */
     export interface WorkspaceConfig {
         id: string;
+        /** What the workspace is called where a name is shown. Default: the id. */
+        name?: string;
         layout?: WorkspaceOptions["layout"];
     }
 
@@ -1623,6 +1636,7 @@ declare module "gnoblin" {
         menu?(client: unknown): void;
         lower?(client: unknown): void;
         maximise?(client: unknown, on: boolean): void;
+        minimise?(client: unknown): void;
     }
     /** The bar above a window's content. A press does what the seat's `double_click`, `middle_click` and `right_click` say. */
     export class Titlebar extends Box {
@@ -1700,6 +1714,8 @@ declare module "gnoblin" {
         readonly shown: boolean;
     }
     export function barInsets(): { top: number; bottom: number };
+    /** Makes every bar give way (hidden, taking no room) while `covered` returns true; null stops it. */
+    export function barsGiveWayTo(covered: (() => boolean) | null): void;
 
     export interface MenuEntry {
         label?: string;
@@ -1774,6 +1790,100 @@ declare module "gnoblin" {
         setAbove(client: MenuClient, on: boolean): void;
     }
     export const windowMenu: WindowMenus;
+
+    /** Every request the compositor makes of a window. `menu` is answered by the window menu. */
+    export type ClientRequestKind =
+        | "maximize"
+        | "unmaximize"
+        | "fullscreen"
+        | "unfullscreen"
+        | "minimize"
+        | "unminimize"
+        | "close"
+        | "raise"
+        | "lower"
+        | "activate"
+        | "move"
+        | "resize"
+        | "menu";
+    export const CLIENT_REQUEST_KINDS: readonly ClientRequestKind[];
+    /** How near two sides of a window a resize request's pointer must be for the corner between them to move. */
+    export const RESIZE_CORNER_ZONE: number;
+    /** A drag a request started ends after this many milliseconds even when no button edge arrives. */
+    export const REQUEST_DRAG_LIMIT_MS: number;
+    /** A request a client made of its window. A listener answers it with `handle()`; see `ClientListener.onRequest`. */
+    export class ClientRequest<C = unknown> {
+        constructor(kind: ClientRequestKind, client: C, x?: number, y?: number);
+        readonly kind: ClientRequestKind;
+        readonly client: C;
+        /** Where a `menu` request is anchored; 0 for every other kind. */
+        readonly x: number;
+        readonly y: number;
+        readonly handled: boolean;
+        /** Takes the request: no later listener hears it and the built-in answer does not run. */
+        handle(): void;
+    }
+    /** What the request policy reads and writes of a window; the host's `Client` satisfies it. */
+    export interface StateClient {
+        readonly alive: boolean;
+        fullscreen: boolean;
+        maximised: boolean;
+        minimised: boolean;
+        readonly tiled: boolean;
+        bounds: Rect;
+        floatingBounds?: Rect | null;
+        readonly frameInset?: number;
+        minSize?: { width: number; height: number };
+        maxSize?: { width: number; height: number };
+    }
+    /** What the request policy needs of the shell around the windows. */
+    export interface WindowStateWorld<C extends StateClient> {
+        clientOf(node: number): C | undefined;
+        siblings(client: C): readonly C[];
+        raise(client: C): void;
+        lower(client: C): void;
+        close(client: C): void;
+        focused(): C | null;
+        focus(client: C | null): void;
+        onActiveWorkspace(client: C): boolean;
+        output(): Rect | null;
+        workArea(): Rect | null;
+        framed(client: C, frame: Rect): Rect;
+        snapped(client: C): boolean;
+        unsnap(client: C): void;
+        dispatch(client: C, request: ClientRequest<C>): void;
+        report(site: string, error: unknown): void;
+        now(): number;
+        dragConstraint(): string | undefined;
+        edgeTiling(): boolean;
+    }
+    /** The stock answers to a window's requests, and the drags that `move` and `resize` start. */
+    export class WindowState {
+        readonly started: boolean;
+        readonly dragging: boolean;
+        start<C extends StateClient>(world: WindowStateWorld<C>): void;
+        /** Answers `kind` for `client` as the built-in policy does. */
+        answer(client: StateClient, kind: ClientRequestKind): void;
+        /** Fills the work area, keeping the floating rectangle. False when maximised or fullscreen already. */
+        maximise(client: StateClient): boolean;
+        unmaximise(client: StateClient): boolean;
+        /** Covers the whole output and goes last among its siblings, keeping the windowed rectangle. False when already. */
+        enterFullscreen(client: StateClient): boolean;
+        leaveFullscreen(client: StateClient): boolean;
+        /** Hides the window and hands the keyboard focus to the topmost sibling still showing. False when already. */
+        minimise(client: StateClient): boolean;
+        unminimise(client: StateClient): boolean;
+        /** Unminimise, focus and raise a window on the active workspace. False when it is on another workspace. */
+        present(client: StateClient): boolean;
+        raise(client: StateClient): void;
+        lower(client: StateClient): void;
+        beginMove(client: StateClient): boolean;
+        beginResize(client: StateClient): boolean;
+        pointerEdge(kind: string): void;
+    }
+    export const windowState: WindowState;
+    /** Whether a listener handled the compositor's request, as the window menu asks before it opens. */
+    export function isRequestHandled(request: { readonly node: number; readonly request: string }): boolean;
 
     export interface AlertClient {
         readonly alive: boolean;

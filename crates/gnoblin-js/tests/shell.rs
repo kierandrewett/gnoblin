@@ -1532,17 +1532,17 @@ fn the_inspector_helpers_return_plain_data() {
     assert_eq!(clients[0]["appId"], json!("foot"));
     assert_eq!(clients[0]["focused"], json!(true));
     assert_eq!(clients[1]["focused"], json!(false));
-    assert_eq!(clients[0]["workspace"], json!("desktop"));
+    assert_eq!(clients[0]["workspace"], json!("1"));
     assert_eq!(clients[0]["x"], json!(10));
 
     let workspaces = prompt.ask("inspect.workspaces()", &mut serve);
     let workspaces = value_of(&workspaces).as_array().expect("an array");
-    assert_eq!(workspaces[0]["id"], json!("desktop"));
+    assert_eq!(workspaces[0]["id"], json!("1"));
     assert_eq!(workspaces[0]["layout"], json!("FloatingLayout"));
     assert_eq!(workspaces[0]["clients"], json!(["3", "4"]));
     assert_eq!(
         value_of(&prompt.ask("gnoblin.workspaces.map(ws => [ws.id, ws.clients.length])", &mut serve)),
-        &json!([["desktop", 2]])
+        &json!([["1", 2], ["2", 0], ["3", 0], ["4", 0]])
     );
 
     assert_eq!(
@@ -1556,7 +1556,7 @@ fn the_inspector_helpers_return_plain_data() {
     assert_eq!(config["gaps"]["inner"], json!(7), "the user's value");
     assert_eq!(
         config["workspaces"][0]["id"],
-        json!("desktop"),
+        json!("1"),
         "the stock workspace the user left alone"
     );
     assert_eq!(config["keys"]["XF86AudioMute"]["kind"], json!("spawn"), "a stock key");

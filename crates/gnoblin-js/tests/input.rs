@@ -1808,7 +1808,7 @@ fn bare_shell(comp: &Comp) -> (JsShell, TempDir) {
 }
 
 #[test]
-fn with_no_entry_the_stock_config_runs_one_floating_desktop_and_claims_the_stock_keys() {
+fn with_no_entry_the_stock_config_runs_four_floating_workspaces_and_claims_the_stock_keys() {
     let comp = world(false);
     let (mut shell, _dir) = bare_shell(&comp);
     let loaded = shell.load_default_config().expect("the stock config loads");
@@ -1820,7 +1820,14 @@ fn with_no_entry_the_stock_config_runs_one_floating_desktop_and_claims_the_stock
         shell
             .eval("gnoblin.workspaces.map((w) => w.id + ':' + w.layout.constructor.name + ':' + w.active).join()")
             .expect("the script runs"),
-        Some("desktop:FloatingLayout:true".to_owned())
+        Some("1:FloatingLayout:true,2:FloatingLayout:false,3:FloatingLayout:false,4:FloatingLayout:false".to_owned()),
+        "the Lua stock config's four workspaces, the first on show"
+    );
+    assert_eq!(
+        shell
+            .eval("gnoblin.workspaces.map((w) => w.name).join()")
+            .expect("the script runs"),
+        Some("Workspace 1,Workspace 2,Workspace 3,Workspace 4".to_owned())
     );
     let claimed = comp.claimed();
     for chord in [

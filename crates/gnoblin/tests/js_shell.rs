@@ -651,6 +651,9 @@ gnoblin.clients.addListener({
     });
 }
 
+/// The workspaces the stock config declares, as the shell's view lists them: the Lua stock config's four.
+const STOCK_WORKSPACES: &str = "1:FloatingLayout,2:FloatingLayout,3:FloatingLayout,4:FloatingLayout";
+
 /// A section of the shell's view: what stands between `open` and the next `]`.
 fn section<'a>(view: &'a str, open: &str) -> &'a str {
     view.split_once(open)
@@ -686,11 +689,11 @@ fn a_shell_with_no_init_file_runs_the_stock_config_and_a_defined_config_layers_o
     let shell = Shell::start(&session, config.path(), |_| {});
     let ipc = session.ipc();
 
-    // No `init.ts`: the stock default config is a real runtime config. It declares one floating `desktop`, and
+    // No `init.ts`: the stock default config is a real runtime config. It declares the four floating workspaces `1` to `4`, and
     // its keys are bound on the seat (through the real compositor, which took the claims or the shell would have
     // reported a refusal).
     wait_for("the stock config runs", &session, &mut mapper, &shell, || {
-        section(&shell.view(), "workspaces [") == "desktop:FloatingLayout"
+        section(&shell.view(), "workspaces [") == STOCK_WORKSPACES
     });
     let keys = shell.view();
     let keys = bound_keys(&keys);
@@ -1953,7 +1956,7 @@ fn the_console_reads_and_writes_the_live_shell_and_survives_errors_and_runaways(
     let ipc = session.ipc();
     let ipc_dir = ipc.parent().expect("the socket's directory").to_path_buf();
     wait_for("the shell runs", &session, &mut mapper, &shell, || {
-        shell.view().contains(", 1 workspaces")
+        shell.view().contains(", 4 workspaces")
     });
     let mut console = ConsoleClient::connect(&ipc_dir.join("js.sock"), &mut mapper);
     assert_eq!(
@@ -1983,7 +1986,7 @@ fn the_console_reads_and_writes_the_live_shell_and_survives_errors_and_runaways(
     apps.sort();
     assert_eq!(apps, [first, second]);
     let counts = console.value("gnoblin.workspaces.map(ws => [ws.id, ws.clients.length])", &mut mapper);
-    assert_eq!(counts, serde_json::json!([["desktop", 2]]));
+    assert_eq!(counts, serde_json::json!([["1", 2], ["2", 0], ["3", 0], ["4", 0]]));
     let described = console.ask("gnoblin.clients.at(0)", &mut mapper);
     assert_eq!(described["type"], serde_json::json!("Client"), "{described}");
     assert!(
@@ -2151,7 +2154,7 @@ fn the_starter_is_the_stock_config_as_written_and_its_examples_work_switched_on(
 
     // No `init.ts`: the zero-config behaviour, which is what the starter must reproduce.
     wait_for("the stock config runs", &session, &mut mapper, &shell, || {
-        section(&shell.view(), "workspaces [") == "desktop:FloatingLayout"
+        section(&shell.view(), "workspaces [") == STOCK_WORKSPACES
     });
     wait_for(
         "the stock config titles the window",
@@ -2198,7 +2201,7 @@ fn the_starter_is_the_stock_config_as_written_and_its_examples_work_switched_on(
     assert_ne!(on, gnoblin_js::STARTER_CONFIG, "the examples were switched on");
     fs::write(&init, &on).expect("init.ts");
     wait_for("the examples are on", &session, &mut mapper, &shell, || {
-        section(&shell.view(), "workspaces [") == "desktop:FloatingLayout,work:MasterStackLayout"
+        section(&shell.view(), "workspaces [") == format!("{STOCK_WORKSPACES},work:MasterStackLayout")
     });
     let view = shell.view();
     let keys = bound_keys(&view);

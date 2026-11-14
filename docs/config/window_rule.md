@@ -71,7 +71,7 @@ export default defineConfig({
     rules: [
         { appId: "org.example.Editor", workspace: "dev", maximised: true },
         { appId: "pinentry*", floating: true, position: { x: 400, y: 300 }, skipFocus: true },
-        { title: /^Secret/, secure: true, reapply: true, all: true },
+        { title: /^Secret/, secure: true },
     ],
 });
 ```
@@ -91,8 +91,8 @@ export default defineConfig({
 | `maximised`   | Boolean                 | `true` fills the work area, `false` puts the window back. A fullscreen window does not    |
 | `secure`      | Boolean                 | `true` masks the window in screen capture                                                 |
 | `skipFocus`   | Boolean                 | The window does not take focus when it opens                                              |
-| `all`         | Boolean                 | After this rule matches, the next matching rule also applies                              |
-| `reapply`     | Boolean                 | Apply again when the app id or title changes, and undo the rule when it stops matching    |
+| `first`       | Boolean                 | When this rule matches, no later rule is consulted                                        |
+| `reapply`     | Boolean                 | Default `true`. `false` applies the rule once, when the window opens                      |
 
 A query key not given matches anything, and a rule needs at least one query key and one action. An unknown key is
 refused by name, so `corners`, `blur` and the other [removed fields](#refused-keys) fail at load. `role` is refused too:
@@ -100,9 +100,9 @@ the compositor publishes no window role.
 
 **Matching.**
 
-- The first matching rule applies. A rule with `all: true` lets the next matching rule apply as well, and the later rule wins for each field they both set.
-- A rule applies when its window opens. With `reapply: true` it applies again when the app id or title changes.
-- A `reapply` rule that stops matching sets `secure`, `fullscreen`, `maximised` and `opacity` back to their defaults, and one that still matches writes nothing.
+- Every matching rule applies, in list order, and the later rule wins for each field they both set. A rule with `first: true` ends the search where it matches: the rules before it and the rule itself still merge, the ones after it are not consulted.
+- A rule applies when its window opens and again when the app id, the title or the focus changes, as the Lua rules always did. Give a rule `reapply: false` to apply it once, when the window opens.
+- A rule that stops matching sets `secure`, `fullscreen`, `maximised`, `opacity`, the corner radius and the shadows back to what a rule that still matches sets, or to their defaults when none does. A rule that still matches writes nothing.
 - A window that was already open when the config loaded is not touched, so a reload does not move windows you have placed.
 
 ### From Lua patterns
@@ -110,23 +110,23 @@ the compositor publishes no window role.
 A glob matches the whole text: `*` is any run of characters and `?` is one character. Everything else is itself, so
 `.` and `%` need no escape. A `RegExp` is tested anywhere in the text, as a Lua pattern was.
 
-| Lua rule                                 | JavaScript rule                                               |
-| ---------------------------------------- | ------------------------------------------------------------- |
-| `match = { app_id = "^foot$" }`          | `appId: "foot"`                                               |
-| `match = { app_id = "fire" }`            | `appId: "*fire*"`                                             |
-| `match = { app_id = "^org%.mozilla%." }` | `appId: "org.mozilla.*"`                                      |
-| `match = { app_id = "^org%.x%.(%w+)$" }` | `appId: /^org\.x\.\w+$/`                                      |
-| `match = { title = "^Secret" }`          | `title: "Secret*"`                                            |
-| `match = { title = "%d+ unread" }`       | `title: /\d+ unread/`                                         |
-| `match = { focused = true }`             | `focused: true`                                               |
-| `match = { workspace_id = "2" }`         | `onWorkspace: "2"`                                            |
-| `workspace = { id = "3" }`               | `workspace: "3"`                                              |
-| `opacity = 0.9`                          | `style: { opacity: 0.9 }`                                     |
-| `maximised`, `fullscreen`, `secure`      | the same names                                                |
-| the last matching rule wins for a field  | `all: true` on every rule but the last                        |
-| re-evaluated when any input changed      | `reapply: true` re-evaluates when the app id or title changed |
-| `xr = false`                             | not ported: the key is refused                                |
-| the WM class when the app id is empty    | not ported: the tree carries no class                         |
+| Lua rule                                 | JavaScript rule                                           |
+| ---------------------------------------- | --------------------------------------------------------- |
+| `match = { app_id = "^foot$" }`          | `appId: "foot"`                                           |
+| `match = { app_id = "fire" }`            | `appId: "*fire*"`                                         |
+| `match = { app_id = "^org%.mozilla%." }` | `appId: "org.mozilla.*"`                                  |
+| `match = { app_id = "^org%.x%.(%w+)$" }` | `appId: /^org\.x\.\w+$/`                                  |
+| `match = { title = "^Secret" }`          | `title: "Secret*"`                                        |
+| `match = { title = "%d+ unread" }`       | `title: /\d+ unread/`                                     |
+| `match = { focused = true }`             | `focused: true`                                           |
+| `match = { workspace_id = "2" }`         | `onWorkspace: "2"`                                        |
+| `workspace = { id = "3" }`               | `workspace: "3"`                                          |
+| `opacity = 0.9`                          | `style: { opacity: 0.9 }`                                 |
+| `maximised`, `fullscreen`, `secure`      | the same names                                            |
+| the last matching rule wins for a field  | the same, with no option; `first: true` stops at a rule   |
+| re-evaluated when any input changed      | `reapply`, on by default: app id, title and focus changes |
+| `xr = false`                             | not ported: the key is refused                            |
+| the WM class when the app id is empty    | not ported: the tree carries no class                     |
 
 In a `RegExp`, the Lua classes `%a`, `%d`, `%w` and `%s` are `[A-Za-z]`, `\d`, `[A-Za-z0-9]` and `\s`, an escaped
 character such as `%.` is `\.`, the lazy `-` is `*?`, and `^` and `$` anchor as they did.

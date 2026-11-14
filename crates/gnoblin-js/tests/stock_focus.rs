@@ -345,7 +345,7 @@ fn a_malformed_rule_throws_at_compile_time_naming_its_index_and_field() {
             bad([{ appId: "x", workspace: "" }]),
             bad(5),
             bad([null]),
-            bad([ok, { appId: "y", secure: true, all: 1 }]),
+            bad([ok, { appId: "y", secure: true, first: 1 }]),
             bad([ok, { appId: "y", style: { opacity: 0.5 }, maximised: true }]),
         ].join("\n"));
     "#);
@@ -354,11 +354,11 @@ fn a_malformed_rule_throws_at_compile_time_naming_its_index_and_field() {
         lines(&[
             "TypeError: rules[0].appId: must be a glob string or a RegExp, got 5",
             "TypeError: rules[0].title: must be a glob string or a RegExp, got [object Object]",
-            "TypeError: rules[0] has no \"fullscren\" (did you mean \"fullscreen\"?); expected one of appId, title, role, focused, onWorkspace, workspace, floating, size, position, style, fullscreen, maximised, secure, skipFocus, all, reapply",
+            "TypeError: rules[0] has no \"fullscren\" (did you mean \"fullscreen\"?); expected one of appId, title, role, focused, onWorkspace, workspace, floating, size, position, style, fullscreen, maximised, secure, skipFocus, first, reapply",
             "TypeError: rules[1].style.opacity: must be a number from 0 to 1, got 1.5",
             "TypeError: rules[0].style.opacity: must be a number from 0 to 1, got \"half\"",
             "TypeError: rules[0].style has no \"shine\"; expected one of cornerRadius, opacity, shadows",
-            "TypeError: rules[0] has no \"corners\"; expected one of appId, title, role, focused, onWorkspace, workspace, floating, size, position, style, fullscreen, maximised, secure, skipFocus, all, reapply",
+            "TypeError: rules[0] has no \"corners\"; expected one of appId, title, role, focused, onWorkspace, workspace, floating, size, position, style, fullscreen, maximised, secure, skipFocus, first, reapply",
             "TypeError: rules[0].maximised: must be true or false, got \"yes\"",
             "TypeError: rules[0].role: the compositor publishes no window role, so a rule cannot match one; use appId or title",
             "TypeError: rules[0]: sets nothing; give it one of workspace, floating, size, position, style, fullscreen, maximised, secure, skipFocus",
@@ -368,46 +368,58 @@ fn a_malformed_rule_throws_at_compile_time_naming_its_index_and_field() {
             "TypeError: rules[0].workspace: must be a workspace id, got \"\"",
             "TypeError: rules must be an array",
             "TypeError: rules[0]: must be an object",
-            "TypeError: rules[1].all: must be true or false, got 1",
+            "TypeError: rules[1].first: must be true or false, got 1",
             "did not throw",
         ])
     );
 }
 
 #[test]
-fn the_first_matching_rule_wins_unless_a_rule_says_all() {
+fn every_matching_rule_merges_in_list_order_and_a_first_rule_ends_the_search() {
     // Lua: "the last matching rule wins for a field", "a later rule that does not set a field leaves the earlier
-    // value", "rules merge in list order". The Lua list merged every matching rule; the JavaScript one stops at the
-    // first match unless the rule has `all: true`, so a Lua list translates by adding `all: true` to each rule.
+    // value", "rules merge in list order: the last matching rule wins for each field, the others are kept". The
+    // JavaScript list merges the same way with the same inputs and expected values. New: `first: true` stops the
+    // search at a rule, and the Lua-era `all` option is gone, so it is refused by name.
     let got = run(&format!(
         r#"{VIEW}
         const show = (e: any) => [e.fullscreen, e.secure, e.maximised].map(String).join("/");
         const foo = {{ appId: "foo" }};
+        const view = {{ appId: "foo", title: "", focused: false, workspace: null }};
         emit([
             show(effects([{{ ...foo, fullscreen: true }}, {{ ...foo, fullscreen: false, secure: true }}], foo)),
-            show(effects([{{ ...foo, fullscreen: true, all: true }}, {{ ...foo, fullscreen: false, secure: true }}], foo)),
-            show(effects([{{ ...foo, secure: true, all: true }}, {{ ...foo, fullscreen: true }}], foo)),
+            show(effects([{{ ...foo, secure: true }}, {{ ...foo, fullscreen: true }}], foo)),
             show(effects([
-                {{ ...foo, fullscreen: true, all: true }},
-                {{ ...foo, secure: true, all: true }},
-                {{ ...foo, fullscreen: false, all: true }},
+                {{ ...foo, fullscreen: true }},
+                {{ ...foo, secure: true }},
+                {{ ...foo, fullscreen: false }},
             ], foo)),
             show(effects([{{ appId: "bar", secure: true }}, {{ ...foo, maximised: true }}], foo)),
             show(effects([{{ ...foo, secure: true }}], {{ appId: "bar" }})),
-            matchingRules(compileRules([{{ ...foo, secure: true, all: true }}, {{ ...foo, fullscreen: true }}, {{ ...foo, maximised: true }}]), {{ appId: "foo", title: "", focused: false, workspace: null }}).map((r) => r.index).join(","),
+            matchingRules(compileRules([{{ ...foo, secure: true }}, {{ ...foo, fullscreen: true }}, {{ ...foo, maximised: true }}]), view).map((r) => r.index).join(","),
+            show(effects([{{ ...foo, secure: true, first: true }}, {{ ...foo, fullscreen: true }}], foo)),
+            show(effects([
+                {{ ...foo, fullscreen: true }},
+                {{ ...foo, secure: true, first: true }},
+                {{ ...foo, maximised: true }},
+            ], foo)),
+            matchingRules(compileRules([{{ ...foo, secure: true }}, {{ ...foo, fullscreen: true, first: true }}, {{ ...foo, maximised: true }}]), view).map((r) => r.index).join(","),
+            thrown(() => compileRules([{{ ...foo, secure: true, all: true }}])).startsWith('TypeError: rules[0] has no "all"'),
         ].join("\n"));
     "#
     ));
     assert_eq!(
         got,
         lines(&[
-            "true/undefined/undefined",
             "false/true/undefined",
             "true/true/undefined",
             "false/true/undefined",
             "undefined/undefined/true",
             "undefined/undefined/undefined",
+            "0,1,2",
+            "undefined/true/undefined",
+            "true/true/undefined",
             "0,1",
+            "true",
         ])
     );
 }
@@ -1366,13 +1378,10 @@ fn a_rule_that_names_a_workspace_the_script_removed_is_reported_once_and_leaves_
 }
 
 #[test]
-fn a_rule_with_reapply_follows_the_app_id_and_undoes_itself_when_it_stops_matching() {
+fn a_rule_follows_the_app_id_and_undoes_itself_when_it_stops_matching() {
     // Lua: "a rule that stops matching clears secure", "an app_id that newly matches a rule applies it".
     let comp = world(vec![]);
-    let mut rig = boot(
-        &comp,
-        &config("rules: [{ appId: \"bank\", secure: true, reapply: true }]"),
-    );
+    let mut rig = boot(&comp, &config("rules: [{ appId: \"bank\", secure: true }]"));
     comp.new_window(8, "notes", "x");
     comp.new_window(9, "bank", "x");
     rig.frame();
@@ -1395,13 +1404,10 @@ fn a_rule_with_reapply_follows_the_app_id_and_undoes_itself_when_it_stops_matchi
 }
 
 #[test]
-fn a_rule_with_reapply_follows_the_title() {
+fn a_rule_follows_the_title() {
     // Lua: "a title change re-evaluates the rules: secure follows the new title".
     let comp = world(vec![]);
-    let mut rig = boot(
-        &comp,
-        &config("rules: [{ title: \"Secret*\", secure: true, reapply: true }]"),
-    );
+    let mut rig = boot(&comp, &config("rules: [{ title: \"Secret*\", secure: true }]"));
     comp.new_window(8, "mail", "Inbox");
     rig.frame();
     assert!(!comp.flag(8, "secure"), "no rule matches the first title");
@@ -1411,10 +1417,39 @@ fn a_rule_with_reapply_follows_the_title() {
 }
 
 #[test]
-fn a_rule_without_reapply_applies_once_when_the_window_appears() {
-    // New: `reapply` is what the Lua rules always did.
+fn a_rule_reads_the_focus_again_when_it_changes() {
+    // Lua: the rules are a binding, so `arrange` runs again when a rule's inputs (title, app id, focus, workspace)
+    // change. Window 8 opens while window 3 holds the focus, so the rule matches; the focus policy then gives 8 the
+    // focus and the rule stops matching; when 3 has it again the rule matches again.
     let comp = world(vec![]);
-    let mut rig = boot(&comp, &config("rules: [{ title: \"Secret*\", secure: true }]"));
+    let mut rig = boot(
+        &comp,
+        &config("rules: [{ appId: \"foo\", focused: false, secure: true }]"),
+    );
+    comp.new_window(8, "foo", "x");
+    rig.frame();
+    comp.external(3, "focused", flag(false));
+    comp.external(8, "focused", flag(true));
+    rig.frame();
+    assert!(
+        !comp.flag(8, "secure"),
+        "a focused window does not match `focused: false`"
+    );
+    comp.external(5, "focus", MirrorValue::Node(3));
+    comp.external(8, "focused", flag(false));
+    comp.external(3, "focused", flag(true));
+    rig.frame();
+    assert!(comp.flag(8, "secure"), "the rule matches again once the focus has gone");
+}
+
+#[test]
+fn a_rule_with_reapply_false_applies_once_when_the_window_appears() {
+    // New: `reapply: false` opts a rule out of what the Lua rules always did.
+    let comp = world(vec![]);
+    let mut rig = boot(
+        &comp,
+        &config("rules: [{ title: \"Secret*\", secure: true, reapply: false }]"),
+    );
     comp.new_window(8, "mail", "Inbox");
     rig.frame();
     comp.external(8, "title", text("Secret plans"));
@@ -1429,10 +1464,7 @@ fn a_rule_without_reapply_applies_once_when_the_window_appears() {
 fn re_applying_rules_that_still_match_writes_nothing() {
     // Lua: "re-applying unchanged rules writes nothing to the core".
     let comp = world(vec![]);
-    let mut rig = boot(
-        &comp,
-        &config("rules: [{ title: \"Secret*\", secure: true, reapply: true }]"),
-    );
+    let mut rig = boot(&comp, &config("rules: [{ title: \"Secret*\", secure: true }]"));
     comp.new_window(8, "mail", "Secret one");
     rig.frame();
     rig.frame();
@@ -1473,16 +1505,16 @@ fn a_rule_can_maximise_fullscreen_and_dim_a_window() {
 }
 
 #[test]
-fn the_first_matching_rule_applies_and_all_lets_the_next_one_apply_too() {
+fn every_matching_rule_applies_and_the_later_wins_until_a_first_rule_ends_the_list() {
     // Lua: "rules merge in list order: the last matching rule wins for each field, the others are kept".
     let comp = world(vec![]);
     let mut rig = boot(
         &comp,
         &config(
             "rules: [\n\
-               { appId: \"foo\", fullscreen: true, all: true },\n\
-               { appId: \"foo\", secure: true, all: true },\n\
-               { appId: \"foo\", fullscreen: false },\n\
+               { appId: \"foo\", fullscreen: true },\n\
+               { appId: \"foo\", secure: true },\n\
+               { appId: \"foo\", fullscreen: false, first: true },\n\
                { appId: \"foo\", maximised: true },\n\
              ]",
         ),
@@ -1494,10 +1526,7 @@ fn the_first_matching_rule_applies_and_all_lets_the_next_one_apply_too() {
         !comp.flag(8, "fullscreen"),
         "the later rule's fullscreen wins over the earlier true"
     );
-    assert!(
-        !comp.flag(8, "maximised"),
-        "the rule after the one without all never ran"
-    );
+    assert!(!comp.flag(8, "maximised"), "the rule after the first rule never ran");
 }
 
 #[test]

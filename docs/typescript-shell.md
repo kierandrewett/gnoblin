@@ -37,7 +37,10 @@ edit it. The lines that start with `// ` are examples. Remove the `// ` to switc
 
 ```ts
 workspaces: [
-    { id: "desktop", layout: "floating" },
+    { id: "1", name: "Workspace 1", layout: "floating" },
+    { id: "2", name: "Workspace 2", layout: "floating" },
+    { id: "3", name: "Workspace 3", layout: "floating" },
+    { id: "4", name: "Workspace 4", layout: "floating" },
     { id: "work", layout: "master-stack" },
 ],
 keys: {
@@ -86,9 +89,9 @@ config has no "autostrt" (did you mean "autostart"?); expected one of gaps, styl
 
 A session with no `init.ts` is not a bare shell. It runs the stock config:
 
-- one floating workspace, `desktop`;
+- four floating workspaces, `1` to `4` (named `Workspace 1` to `Workspace 4`), the same four the Lua stock config had;
 - `Super+1` to `Super+9` show the workspace at that position, sliding over a quarter of a second, and do nothing when
-  there is none;
+  there is none, so `Super+1` to `Super+4` work until you declare more;
 - `Super+Left` and `Super+Right` move focus between the columns of a `strip` workspace;
 - a three-finger swipe slides between workspaces, and the windows follow the fingers;
 - the volume, microphone and media keys run `wpctl` and `playerctl`;

@@ -31,7 +31,8 @@
 // what each `defineConfig` key becomes is in design/js-runtime.md.
 //
 // A key missing from the config adds nothing to the plan. The one exception is `workspaces`: a shell with
-// nowhere to put a window is unusable, so no workspace means the baseline's single floating `desktop`.
+// nowhere to put a window is unusable, so no workspace means the baseline's four floating workspaces, `1` to `4`, the
+// Lua stock config's (data/default-config/config/10-windows.lua).
 //
 // The host does not apply a user's config alone: it layers it over `defaultConfig` with `mergeConfig`, so a
 // config that says nothing about keys still has the stock ones. The rule is in the comment on `mergeConfig`.
@@ -149,6 +150,8 @@ export type { StockLayoutName };
 
 export interface WorkspaceConfig {
     id: string;
+    /** What the workspace is called where a name is shown (the overview, the inspector). Default: the id. */
+    name?: string;
     /** A stock layout by name, or an instance of any Layout. Default `floating`. */
     layout?: StockLayoutName | Layout;
 }
@@ -259,7 +262,7 @@ export interface GnoblinConfig {
      * never the ones already started this session; removing an entry stops nothing.
      */
     autostart?: readonly CommandLine[];
-    /** Window rules: the first matching rule wins, `all: true` lets the next one apply too. See `gnoblin/rules`. */
+    /** Window rules: every matching rule applies in list order and the later wins per field; `first: true` stops at a rule. See `gnoblin/rules`. */
     rules?: readonly RuleConfig[];
     /** Focus settings. A key left out is the seat's (the compositor's `window_management` config). */
     focus?: FocusConfig;
@@ -297,6 +300,7 @@ export interface GnoblinConfig {
 
 export interface PlannedWorkspace {
     readonly id: string;
+    readonly name: string;
     readonly layout: Layout;
     readonly gaps: Gaps;
 }
@@ -515,12 +519,21 @@ function checkShape(config: GnoblinConfig): void {
 
 const LISTENER_EVENTS = ["clientAdded", "clientRemoved", "titleChanged", "focusChanged"];
 
-/** The config the shell runs when the user has none: one floating `desktop` workspace and the stock keys. */
+/**
+ * The config the shell runs when the user has none: four floating workspaces, `1` to `4` (the Lua stock config's), and
+ * the stock keys. Super+1 to Super+4 show them; Super+5 to Super+9 are bound by position and do nothing until a config
+ * declares more workspaces.
+ */
 export const defaultConfig: Readonly<GnoblinConfig> = deepFreeze({
     decorations: true,
     menus: true,
     alerts: true,
-    workspaces: [{ id: "desktop", layout: "floating" }],
+    workspaces: [
+        { id: "1", name: "Workspace 1", layout: "floating" },
+        { id: "2", name: "Workspace 2", layout: "floating" },
+        { id: "3", name: "Workspace 3", layout: "floating" },
+        { id: "4", name: "Workspace 4", layout: "floating" },
+    ],
     keys: {
         // The Lua shell's: Super+1 to Super+9 show the workspace at that position, Super+Left and Super+Right move
         // focus between a strip's columns, and a three-finger swipe slides between workspaces.
@@ -710,15 +723,23 @@ function planWorkspaces(declared: GnoblinConfig["workspaces"], gaps: Gaps): Plan
     const seen = new Set<string>();
     return list.map((workspace, i) => {
         const where = `workspaces[${i}]`;
-        rejectUnknown(workspace, ["id", "layout"], where);
+        rejectUnknown(workspace, ["id", "name", "layout"], where);
         if (typeof workspace.id !== "string" || workspace.id === "") {
             throw new TypeError(`${where}.id must be a non-empty string`);
+        }
+        if (workspace.name !== undefined && typeof workspace.name !== "string") {
+            throw new TypeError(`${where}.name must be a string`);
         }
         if (seen.has(workspace.id)) {
             throw new Error(`${where}: a workspace with id "${workspace.id}" is already declared`);
         }
         seen.add(workspace.id);
-        return { id: workspace.id, layout: resolveLayout(workspace.layout, where), gaps };
+        return {
+            id: workspace.id,
+            name: workspace.name ?? workspace.id,
+            layout: resolveLayout(workspace.layout, where),
+            gaps,
+        };
     });
 }
 

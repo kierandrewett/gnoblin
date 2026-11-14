@@ -1603,14 +1603,16 @@ function removeWorkspace(workspace: Workspace): void {
     }
 }
 
-/** A config that declared no workspace gets the stock one, so there is always somewhere for a window to go. */
+/**
+ * A script that declared no workspace gets one floating `desktop`, so there is always somewhere for a window to go. A
+ * script that never calls `defineConfig` is a program with no keys to switch workspaces, so one is all it needs; the
+ * stock config's four workspaces come with `defineConfig` (`defaultConfig`).
+ */
 function ensureDefaultWorkspace(): void {
     if (workspaceRoot.list.length > 0) {
         return;
     }
-    for (const planned of desugarConfig(defaultConfig).workspaces) {
-        addWorkspace(new Workspace({ id: planned.id, layout: planned.layout, gaps: planned.gaps }));
-    }
+    addWorkspace(new Workspace({ id: "desktop" }));
 }
 
 /** The primary screen's size as a rectangle at the origin: the whole output. Null when the tree has no screen yet. */
@@ -2837,7 +2839,9 @@ class Gnoblin {
         checkDocument(plan.document);
         effectiveConfig = merged;
         for (const planned of plan.workspaces) {
-            addWorkspace(new Workspace({ id: planned.id, layout: planned.layout, gaps: planned.gaps }));
+            addWorkspace(
+                new Workspace({ id: planned.id, name: planned.name, layout: planned.layout, gaps: planned.gaps }),
+            );
         }
         if (plan.decorations) {
             decorate();

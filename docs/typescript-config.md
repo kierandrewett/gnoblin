@@ -19,7 +19,7 @@ A key you leave out keeps its default. Your config is laid over the stock config
 
 | Key                                      | What happens                                                                           |
 | ---------------------------------------- | -------------------------------------------------------------------------------------- |
-| `workspaces`                             | Yours replaces the stock list. Leave it out, or empty, to keep the stock `desktop`.    |
+| `workspaces`                             | Yours replaces the stock list. Leave it out, or empty, to keep the stock `1` to `4`.   |
 | `rules`, `autostart`, `touchpadGestures` | Yours replaces the list as a whole.                                                    |
 | `keys`                                   | Merged by trigger. Your key replaces the stock key with the same trigger.              |
 | `launcher`, `setup`                      | Yours, when you give one.                                                              |
@@ -38,8 +38,13 @@ An `init.ts` that never calls `defineConfig` is a program, not a config. It runs
 
 ### `workspaces`
 
-A list of `{ id, layout }`. `id` is a non-empty string, unique in the list. `layout` is a layout name or a layout
-object, and defaults to `floating`. The first workspace is shown when the shell starts.
+A list of workspaces, each an object with these keys:
+
+- `id`: a non-empty string, unique in the list.
+- `name`: what the workspace is called where a name is shown. It defaults to the id.
+- `layout`: a layout name or a layout object. It defaults to `floating`.
+
+The first workspace is shown when the shell starts. Leave the key out and you get the stock four, `1` to `4`.
 
 ```ts
 workspaces: [
@@ -112,8 +117,9 @@ alerts: true,
 
 ### `rules`
 
-A list of window rules. The first rule that matches a window applies, and a rule with `all: true` lets the next
-matching rule apply as well. See [window rules](/config/window_rule) for every field.
+A list of window rules. Every rule that matches a window applies, in list order, and the later rule wins for each field
+they both set; a rule with `first: true` ends the search where it matches. A rule applies again when the window's app
+id, title or focus changes unless it says `reapply: false`. See [window rules](/config/window_rule) for every field.
 
 ```ts
 rules: [
