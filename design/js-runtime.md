@@ -885,8 +885,9 @@ w = d.width, h = d.height }` in the workspace's own space), and `Desk:sync_fulls
 - **Rules and the stock workspaces** moved in the same lane. Rule lists merge every matching rule (see "Focus, rules and
   snapping status"); the zero-config baseline is four workspaces, `1` to `4`, named `Workspace 1` to `Workspace 4`
   (`defineConfig({ workspaces: [{ id, name, layout }] })` gained `name`), and the starter is rewritten to match.
-- **Not done.** The Lua `refit` of a maximised or snapped window when the bars change, and a request for a window on
-  another output (the shell has one primary screen).
+- **Not done.** The Lua `refit` of a maximised or snapped window when the bars change, a request for a window on
+  another output (the shell has one primary screen), and the kept rectangles across a reload: they live in the
+  generation, so a window that is fullscreen or maximised when the config reloads leaves it where it is.
 
 ## P7 UI toolkit status
 
