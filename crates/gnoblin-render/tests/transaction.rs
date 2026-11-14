@@ -507,10 +507,7 @@ fn f31_seconds_on_a_non_animated_property_is_not_animated() {
         node: window,
         key: "width".into(),
         value: TreeValue::Double(300.0),
-        timing: Some(Timing {
-            seconds: 0.5,
-            samples: LINEAR.to_vec(),
-        }),
+        timing: Some(Timing::new(0.5, LINEAR.to_vec())),
     };
     let refusal = refused(&mut scene, Actor::Shell, vec![op]);
     assert_refused(&refusal, 0, Code::NotAnimated);
@@ -532,10 +529,7 @@ fn f32_bad_samples_are_bad_curve() {
             node: window,
             key: "opacity".into(),
             value: TreeValue::Double(1.0),
-            timing: Some(Timing {
-                seconds: 0.5,
-                samples: samples.clone(),
-            }),
+            timing: Some(Timing::new(0.5, samples.clone())),
         };
         let refusal = refused(&mut scene, Actor::Shell, vec![op]);
         assert_eq!(refusal.code, Code::BadCurve, "samples {samples:?}");
@@ -552,10 +546,7 @@ fn f33_seconds_out_of_range_is_out_of_range() {
             node: window,
             key: "opacity".into(),
             value: TreeValue::Double(1.0),
-            timing: Some(Timing {
-                seconds,
-                samples: LINEAR.to_vec(),
-            }),
+            timing: Some(Timing::new(seconds, LINEAR.to_vec())),
         };
         let refusal = refused(&mut scene, Actor::Shell, vec![op]);
         assert_eq!(refusal.code, Code::OutOfRange, "seconds {seconds}");
@@ -580,10 +571,7 @@ fn animated_set_is_validated_and_stored_in_applied() {
         node: window,
         key: "opacity".into(),
         value: TreeValue::Double(0.0),
-        timing: Some(Timing {
-            seconds: 0.5,
-            samples: LINEAR.to_vec(),
-        }),
+        timing: Some(Timing::new(0.5, LINEAR.to_vec())),
     };
     let applied = validate_and_apply(&mut scene, &Table, Actor::Shell, TreeTransaction::new(vec![op]))
         .expect("a valid animated set applies");
@@ -609,10 +597,7 @@ fn an_untimed_set_of_an_animated_key_settles_after_the_track_it_follows() {
         node: window,
         key: "x".into(),
         value: TreeValue::Double(40.0),
-        timing: Some(Timing {
-            seconds: 0.5,
-            samples: LINEAR.to_vec(),
-        }),
+        timing: Some(Timing::new(0.5, LINEAR.to_vec())),
     };
     let applied = validate_and_apply(
         &mut scene,
@@ -661,10 +646,7 @@ fn landing_a_timed_set_at_once_writes_its_target() {
         node: window,
         key: "opacity".into(),
         value: TreeValue::Double(0.25),
-        timing: Some(Timing {
-            seconds: 2.0,
-            samples: LINEAR.to_vec(),
-        }),
+        timing: Some(Timing::new(2.0, LINEAR.to_vec())),
     };
     let applied = validate_and_apply(&mut scene, &Table, Actor::Shell, TreeTransaction::new(vec![op]))
         .expect("a valid animated set applies");

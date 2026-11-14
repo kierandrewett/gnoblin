@@ -172,6 +172,6 @@ pub use scene::{DEFAULT_DAMAGE_RECT_LIMIT, Hit, Node, NodeKind, NodeSpec, Scene,
 /// Who may create, move and destroy a node: the compositor or the shell.
 pub use scene_ids::Actor;
 /// Animation tracks: the player, its specs and its terminal reports.
-pub use tween::{TrackEnd, TrackEndReason, TrackError, TrackSpec, TrackStart, TweenPlayer};
+pub use tween::{TrackEnd, TrackEndReason, TrackError, TrackSettle, TrackSpec, TrackStart, TweenPlayer};
 
 gnoblin_log::logger!(log = "render");

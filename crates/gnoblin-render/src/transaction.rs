@@ -244,13 +244,31 @@ pub enum ValueType {
     Node(String),
 }
 
-/// An animation's timing: its duration and its curve's samples.
+/// An animation's timing: its delay, its duration and its curve's samples.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Timing {
     /// The duration in seconds, in `(0, 3600]`.
     pub seconds: f64,
+    /// The delay before the animation starts, in seconds, in `[0, 3600]`. The start value is held meanwhile.
+    pub delay: f64,
+    /// The `tween` node the tracks of this write join, so its `progress`, `paused` and `reverse` drive them; `None`
+    /// for a write that only plays. The node must exist and be a `tween` (`unknown-node`, `wrong-type`).
+    pub group: Option<NodeId>,
     /// The curve's samples: finite, starting at 0 and ending at 1, monotonic, within `[0, 1]`.
     pub samples: Vec<f64>,
+}
+
+impl Timing {
+    /// A timing with no delay that joins no `tween`: the animation that only plays.
+    #[must_use]
+    pub fn new(seconds: f64, samples: Vec<f64>) -> Self {
+        Self {
+            seconds,
+            delay: 0.0,
+            group: None,
+            samples,
+        }
+    }
 }
 
 /// One operation of a transaction.
@@ -415,6 +433,10 @@ pub struct Animation {
     pub value: TreeValue,
     /// The duration in seconds.
     pub seconds: f64,
+    /// The delay before it starts, in seconds.
+    pub delay: f64,
+    /// The `tween` node whose `progress`, `paused` and `reverse` drive the tracks of this write, if the write named one.
+    pub group: Option<NodeId>,
     /// The curve's samples.
     pub samples: Vec<f64>,
 }
@@ -432,6 +454,39 @@ pub enum Motion {
         /// The property's key.
         key: String,
     },
+    /// A write to a `tween` node's `progress`, `paused` or `reverse`: the tracks of its group are moved, held or turned.
+    Control {
+        /// The `tween` node written.
+        node: NodeId,
+        /// What the write asks.
+        control: TweenControl,
+    },
+}
+
+/// What a write to a `tween` node asks of the tracks that joined it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum TweenControl {
+    /// `progress`: every track of the group is moved to this fraction of its duration, drawn at once.
+    Progress(f64),
+    /// `paused`: the group's tracks are held (`true`) or let go on.
+    Paused(bool),
+    /// `reverse`: the group's tracks run back to their start (`true`) or forward again.
+    Reverse(bool),
+}
+
+/// The end of one timed `set`, reported to the shell as the `track_ended` signal: the compositor's clock says when an
+/// animation is over, not the shell's.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShellTrackEnd {
+    /// The node the `set` wrote.
+    pub node: NodeId,
+    /// The property's key, as the schema names it.
+    pub key: String,
+    /// The `tween` node the write joined, if it named one.
+    pub group: Option<NodeId>,
+    /// Whether every track of the write reached its target. `false` for any other end: run back to the start,
+    /// taken by a plain write or a newer animation, or the node going.
+    pub completed: bool,
 }
 
 /// A method call, validated and handed to the compositor to run.
@@ -787,16 +842,34 @@ fn set_value(
         key: key.to_owned(),
         value: value.clone(),
     });
+    let control = if work.class(node) == Some("tween") {
+        tween_control(key, value)?
+    } else {
+        None
+    };
     if let Some(timing) = timing {
-        if !info.animated || info.kind != ValueType::Double {
+        let list = info.kind == ValueType::ListDouble && matches!(key, "rotation" | "scale");
+        if !info.animated || !(info.kind == ValueType::Double || list) {
             return Err(Code::NotAnimated);
         }
         check_timing(timing)?;
+        check_group(work, timing.group)?;
+        match value {
+            TreeValue::ListDouble(axes) if axes.len() != 3 => return Err(Code::BadValue),
+            // A size is whole pixels whether it lands at once or in steps: a fraction is refused here, not
+            // when the track ends.
+            TreeValue::Double(amount) if matches!(key, "width" | "height") => {
+                whole_size(*amount)?;
+            }
+            _ => {}
+        }
         applied.motion.push(Motion::Play(Animation {
             node,
             key: key.to_owned(),
             value: value.clone(),
             seconds: timing.seconds,
+            delay: timing.delay,
+            group: timing.group,
             samples: timing.samples.clone(),
         }));
         return Ok(());
@@ -807,6 +880,9 @@ fn set_value(
             node,
             key: key.to_owned(),
         });
+    }
+    if let Some(control) = control {
+        applied.motion.push(Motion::Control { node, control });
     }
     Ok(())
 }
@@ -866,13 +942,13 @@ fn set_seat_name(work: &mut Scene, node: NodeId, value: &TreeValue, applied: &mu
     Ok(())
 }
 
-/// Check a timing: a duration in `(0, 3600]` and a curve from 0 to 1 that is
+/// Check a timing: a duration in `(0, 3600]`, a delay in `[0, 3600]` and a curve from 0 to 1 that is
 /// monotonic and stays within `[0, 1]`.
 fn check_timing(timing: &Timing) -> Result<(), Code> {
-    if !timing.seconds.is_finite() {
+    if !timing.seconds.is_finite() || !timing.delay.is_finite() {
         return Err(Code::NotFinite);
     }
-    if !(timing.seconds > 0.0 && timing.seconds <= MAX_SECONDS) {
+    if !(timing.seconds > 0.0 && timing.seconds <= MAX_SECONDS) || !(0.0..=MAX_SECONDS).contains(&timing.delay) {
         return Err(Code::OutOfRange);
     }
     if timing.samples.iter().any(|sample| !sample.is_finite()) {
@@ -891,6 +967,32 @@ fn check_timing(timing: &Timing) -> Result<(), Code> {
         return Err(Code::BadCurve);
     }
     Ok(())
+}
+
+/// The `tween` a timed `set` joins must be a live `tween` node.
+fn check_group(work: &Scene, group: Option<NodeId>) -> Result<(), Code> {
+    match group {
+        None => Ok(()),
+        Some(node) if !work.contains(node) => Err(Code::UnknownNode),
+        Some(node) if work.class(node) == Some("tween") => Ok(()),
+        Some(_) => Err(Code::WrongType),
+    }
+}
+
+/// What a write to a `tween` node's `progress`, `paused` or `reverse` asks of the tracks of its group; `None` for any
+/// other key. A `progress` outside `[0, 1]` is refused `out-of-range`.
+fn tween_control(key: &str, value: &TreeValue) -> Result<Option<TweenControl>, Code> {
+    Ok(match (key, value) {
+        ("progress", TreeValue::Double(progress)) => {
+            if !(0.0..=1.0).contains(progress) {
+                return Err(Code::OutOfRange);
+            }
+            Some(TweenControl::Progress(*progress))
+        }
+        ("paused", TreeValue::Bool(paused)) => Some(TweenControl::Paused(*paused)),
+        ("reverse", TreeValue::Bool(reverse)) => Some(TweenControl::Reverse(*reverse)),
+        _ => None,
+    })
 }
 
 /// Check a value against its property's kind and caps. `work` resolves node references.
@@ -1083,7 +1185,7 @@ fn whole_size(amount: f64) -> Result<u32, Code> {
 }
 
 /// The scene's visual property a schema key maps to, or `None` for a key the scene does
-/// not store.
+/// not store as one number of the transform.
 pub fn visual_property(key: &str) -> Option<VisualProperty> {
     Some(match key {
         "opacity" => VisualProperty::Opacity,
@@ -1092,6 +1194,29 @@ pub fn visual_property(key: &str) -> Option<VisualProperty> {
         "z" => VisualProperty::OffsetZ,
         _ => return None,
     })
+}
+
+/// The scene properties a timed `set` of `key` moves, one track each: a number is one property, a width or a height
+/// the node's size, and the three-axis `rotation` and `scale` one property per axis (the node model's own rule:
+/// rotation is stored per axis, so it tweens per axis, and a scale is linear). Empty for a key that cannot be
+/// tweened.
+#[must_use]
+pub fn animated_properties(key: &str) -> &'static [VisualProperty] {
+    match key {
+        "opacity" => &[VisualProperty::Opacity],
+        "x" => &[VisualProperty::OffsetX],
+        "y" => &[VisualProperty::OffsetY],
+        "z" => &[VisualProperty::OffsetZ],
+        "width" => &[VisualProperty::Width],
+        "height" => &[VisualProperty::Height],
+        "rotation" => &[
+            VisualProperty::RotationX,
+            VisualProperty::RotationY,
+            VisualProperty::RotationZ,
+        ],
+        "scale" => &[VisualProperty::ScaleX, VisualProperty::ScaleY, VisualProperty::ScaleZ],
+        _ => &[],
+    }
 }
 
 /// The position of `node` among its parent's children, or among the root nodes.

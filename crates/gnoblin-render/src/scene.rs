@@ -843,30 +843,56 @@ impl Scene {
         Ok(())
     }
 
-    /// Read a property.
+    /// Read a property. A width or a height is the node's rectangle's, the others the transform's.
     pub fn property(&self, id: NodeId, property: VisualProperty) -> Result<PropertyValue, SceneError> {
-        self.transform(id)
-            .map(|transform| property.get(transform))
-            .ok_or(SceneError::UnknownNode(id))
+        let node = self.nodes.get(&id).ok_or(SceneError::UnknownNode(id))?;
+        Ok(match property {
+            VisualProperty::Width => PropertyValue::Number(node.bounds.width as f32),
+            VisualProperty::Height => PropertyValue::Number(node.bounds.height as f32),
+            _ => property.get(&node.transform).ok_or(SceneError::UnknownNode(id))?,
+        })
     }
 
     /// Write one property.
     ///
     /// The value is applied to a copy first and the copy is checked for a finite,
     /// invertible transform, so a refused value leaves the node exactly as it was.
-    /// Depth components are ordinary targets and are accepted and stored.
+    /// Depth components are ordinary targets and are accepted and stored. A width or a height
+    /// rounds to whole pixels and sets the node's rectangle, as [`Scene::set_bounds`] does, so a
+    /// tween of a size draws and hit-tests at the size it presents.
     pub fn set_property(
         &mut self,
         id: NodeId,
         property: VisualProperty,
         value: PropertyValue,
     ) -> Result<(), SceneError> {
+        if property.is_size() {
+            return self.set_size(id, property, value);
+        }
         let mut candidate = *self.transform(id).ok_or(SceneError::UnknownNode(id))?;
         property.apply(&mut candidate, value)?;
         clamp_opacity(&mut candidate);
         validate_transform(&candidate)?;
         self.change(id, |node| node.transform = candidate);
         Ok(())
+    }
+
+    fn set_size(&mut self, id: NodeId, property: VisualProperty, value: PropertyValue) -> Result<(), SceneError> {
+        let mut bounds = self.bounds(id).ok_or(SceneError::UnknownNode(id))?;
+        let PropertyValue::Number(size) = property.coerce(value)? else {
+            return Err(PropertyError::NotTransform { property }.into());
+        };
+        if !size.is_finite() {
+            return Err(PropertyError::NonFinite { property }.into());
+        }
+        // The rectangle is whole pixels: a size in between rounds, and a negative one is nothing.
+        let pixels = size.round().max(0.0) as u32;
+        if property == VisualProperty::Width {
+            bounds.width = pixels;
+        } else {
+            bounds.height = pixels;
+        }
+        self.set_bounds(id, bounds)
     }
 
     /// Replace a node's effect chain.

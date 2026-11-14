@@ -527,7 +527,7 @@ fn parse_op(keyword: &str, line: &mut Line<'_>) -> Result<TreeOp, ParseError> {
                 while line.peek().is_some() {
                     samples.push(line.number("a sample")?);
                 }
-                Some(Timing { seconds, samples })
+                Some(Timing::new(seconds, samples))
             } else {
                 None
             };
@@ -659,6 +659,8 @@ impl Player {
                     }
                 }
                 Motion::Play(animation) => self.start_track(animation),
+                // The replay model makes no `tween` node, so nothing writes one.
+                Motion::Control { .. } => {}
             }
         }
         self.reap();
@@ -831,9 +833,11 @@ impl Generator {
                 } else {
                     self.rng.below(801) as f64 - 400.0
                 };
-                let timing = self.rng.chance(50).then(|| Timing {
-                    seconds: SECONDS[self.rng.below(SECONDS.len() as u64) as usize],
-                    samples: CURVES[self.rng.below(CURVES.len() as u64) as usize].to_vec(),
+                let timing = self.rng.chance(50).then(|| {
+                    Timing::new(
+                        SECONDS[self.rng.below(SECONDS.len() as u64) as usize],
+                        CURVES[self.rng.below(CURVES.len() as u64) as usize].to_vec(),
+                    )
                 });
                 TreeOp::Set {
                     node,
@@ -933,10 +937,7 @@ fn set(node: u64, key: &str, value: TreeValue, timing: Option<Timing>) -> TreeOp
 }
 
 fn timed(seconds: f64, samples: &[f64]) -> Option<Timing> {
-    Some(Timing {
-        seconds,
-        samples: samples.to_vec(),
-    })
+    Some(Timing::new(seconds, samples.to_vec()))
 }
 
 /// Six frames: two windows, an animated move, an instant opacity write (the op a

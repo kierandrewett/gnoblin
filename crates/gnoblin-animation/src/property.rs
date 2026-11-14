@@ -124,11 +124,15 @@ pub enum VisualProperty {
     Tint,
     /// Corner radius in logical pixels.
     CornerRadius,
+    /// The node's rectangle width in logical pixels, tweened as whole pixels.
+    Width,
+    /// The node's rectangle height in logical pixels, tweened as whole pixels.
+    Height,
 }
 
 impl VisualProperty {
-    /// Every property, in a fixed order the player and the model test use to
-    /// make a tie deterministic.
+    /// Every transform property, in a fixed order the player and the model test use to
+    /// make a tie deterministic. The two size properties are not listed: a transform holds no size.
     pub const ALL: [Self; 13] = [
         Self::Opacity,
         Self::OffsetX,
@@ -162,6 +166,8 @@ impl VisualProperty {
             Self::ScaleZ => "scale_z",
             Self::Tint => "tint",
             Self::CornerRadius => "corner_radius",
+            Self::Width => "width",
+            Self::Height => "height",
         }
     }
 
@@ -175,10 +181,11 @@ impl VisualProperty {
         }
     }
 
-    /// The value a transform carries for this property.
+    /// The value a transform carries for this property, or `None` for a size: a node's width and height live in its
+    /// rectangle, which `Scene::property` reads.
     #[must_use]
-    pub fn get(self, transform: &VisualTransform) -> PropertyValue {
-        match self {
+    pub fn get(self, transform: &VisualTransform) -> Option<PropertyValue> {
+        Some(match self {
             Self::Opacity => PropertyValue::Number(transform.opacity),
             Self::OffsetX => PropertyValue::Number(transform.base.offset.x as f32),
             Self::OffsetY => PropertyValue::Number(transform.base.offset.y as f32),
@@ -192,7 +199,14 @@ impl VisualProperty {
             Self::ScaleZ => PropertyValue::Number(transform.base.scale.z as f32),
             Self::Tint => PropertyValue::Color(transform.tint),
             Self::CornerRadius => PropertyValue::Number(transform.corner_radius),
-        }
+            Self::Width | Self::Height => return None,
+        })
+    }
+
+    /// Whether the property is the node's size (`Width` or `Height`), held by its rectangle and not by its transform.
+    #[must_use]
+    pub const fn is_size(self) -> bool {
+        matches!(self, Self::Width | Self::Height)
     }
 
     /// Accept a scalar where the property means "the same on both axes".
@@ -241,6 +255,7 @@ impl VisualProperty {
             (Self::ScaleZ, PropertyValue::Number(value)) => transform.base.scale.z = f64::from(value),
             (Self::Tint, PropertyValue::Color(value)) => transform.tint = value,
             (Self::CornerRadius, PropertyValue::Number(value)) => transform.corner_radius = value,
+            (Self::Width | Self::Height, _) => return Err(PropertyError::NotTransform { property: self }),
             // `coerce` above has already matched the kind, so these arms are
             // unreachable; the wildcard keeps the match total without a panic.
             (property, value) => {
@@ -254,9 +269,9 @@ impl VisualProperty {
         Ok(())
     }
 
-    /// The value a default transform carries.
+    /// The value a default transform carries, or `None` for a size.
     #[must_use]
-    pub fn default_value(self) -> PropertyValue {
+    pub fn default_value(self) -> Option<PropertyValue> {
         self.get(&VisualTransform::IDENTITY)
     }
 
@@ -288,6 +303,8 @@ impl VisualProperty {
                 | (Self::ScaleZ, Self::ScaleZ)
                 | (Self::Tint, Self::Tint)
                 | (Self::CornerRadius, Self::CornerRadius)
+                | (Self::Width, Self::Width)
+                | (Self::Height, Self::Height)
         )
     }
 }
@@ -309,6 +326,11 @@ pub enum PropertyError {
         /// The property.
         property: VisualProperty,
     },
+    /// A size property: the node's rectangle holds it, not its transform.
+    NotTransform {
+        /// The property.
+        property: VisualProperty,
+    },
 }
 
 impl std::fmt::Display for PropertyError {
@@ -324,6 +346,13 @@ impl std::fmt::Display for PropertyError {
                 property.name()
             ),
             Self::NonFinite { property } => write!(formatter, "`{}` is not finite", property.name()),
+            Self::NotTransform { property } => {
+                write!(
+                    formatter,
+                    "`{}` is the node's size, not a transform component",
+                    property.name()
+                )
+            }
         }
     }
 }
@@ -346,8 +375,26 @@ mod tests {
         assert_eq!(transform.base.scale, Vec3::new(0.5, 0.5, 1.0));
         assert_eq!(
             VisualProperty::Scale.get(&transform),
-            PropertyValue::Vector2([0.5, 0.5])
+            Some(PropertyValue::Vector2([0.5, 0.5]))
         );
+    }
+
+    #[test]
+    fn a_size_is_not_a_transform_component() {
+        let mut transform = VisualTransform::IDENTITY;
+        assert_eq!(VisualProperty::Width.get(&transform), None);
+        assert_eq!(VisualProperty::Height.default_value(), None);
+        assert_eq!(
+            VisualProperty::Width.apply(&mut transform, PropertyValue::number(10.0)),
+            Err(PropertyError::NotTransform {
+                property: VisualProperty::Width
+            })
+        );
+        assert!(VisualProperty::Width.is_size() && VisualProperty::Height.is_size());
+        assert!(!VisualProperty::OffsetX.is_size());
+        assert!(VisualProperty::Width.conflicts_with(VisualProperty::Width));
+        assert!(!VisualProperty::Width.conflicts_with(VisualProperty::Height));
+        assert!(!VisualProperty::ALL.iter().any(|property| property.is_size()));
     }
 
     #[test]

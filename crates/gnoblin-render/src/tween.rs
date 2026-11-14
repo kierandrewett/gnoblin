@@ -126,6 +126,8 @@ impl TrackSpec {
 pub enum TrackEndReason {
     /// It reached its duration and its target value is on the node.
     Completed,
+    /// It ran backwards to its start and the start value is on the node, or the caller settled it there.
+    RolledBack,
     /// The caller cancelled it; the value stays where it was.
     Cancelled,
     /// A newer track took the property; the value stays where it was.
@@ -178,6 +180,8 @@ pub enum TrackError {
         /// The target value's kind.
         to: ValueKind,
     },
+    /// A scrub position outside `[0, 1]` or not a number.
+    ProgressRange(f64),
     /// The scene refused the write.
     Scene(SceneError),
 }
@@ -195,6 +199,7 @@ impl std::fmt::Display for TrackError {
                 "`{}` cannot animate from a {from:?} value to a {to:?} value",
                 property.name()
             ),
+            Self::ProgressRange(progress) => write!(formatter, "progress {progress} is not a number from 0 to 1"),
             Self::Scene(error) => write!(formatter, "{error}"),
         }
     }
@@ -220,7 +225,7 @@ impl From<SceneError> for TrackError {
     }
 }
 
-/// One live track.
+/// Where a track's position is, and where it is going.
 #[derive(Clone, Debug, PartialEq)]
 struct Track {
     node: NodeId,
@@ -228,8 +233,13 @@ struct Track {
     from: PropertyValue,
     to: PropertyValue,
     duration_ms: u32,
-    delay_ms: u32,
-    elapsed_ms: u64,
+    /// Milliseconds of delay not yet waited out; the track holds its start value until it is zero.
+    delay_left_ms: u32,
+    /// The position inside the duration, `0.0` to `duration_ms`. It is a float so that a seek to a fraction of the
+    /// duration is exact; whole milliseconds added to it stay exact too.
+    at_ms: f64,
+    reverse: bool,
+    paused: bool,
     curve: Curve,
     applied: PropertyValue,
 }
@@ -246,6 +256,39 @@ impl Track {
             value: self.applied,
         }
     }
+
+    /// Moves the position by the time that passed: forward it first waits out the delay, back it just unwinds.
+    fn step(&mut self, elapsed_ms: u32) {
+        if self.reverse {
+            self.at_ms -= f64::from(elapsed_ms);
+            return;
+        }
+        let waited = elapsed_ms.min(self.delay_left_ms);
+        self.delay_left_ms -= waited;
+        self.at_ms += f64::from(elapsed_ms - waited);
+    }
+
+    /// The value at `progress` of the duration: the endpoints exactly, the curve's value between.
+    fn sample(&self, progress: f64) -> Option<PropertyValue> {
+        if progress <= 0.0 {
+            return Some(self.from);
+        }
+        if progress >= 1.0 {
+            return Some(self.to);
+        }
+        self.from.lerp(self.to, self.curve.apply(progress) as f32)
+    }
+}
+
+/// Where [`TweenPlayer::finish`] leaves a track.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TrackSettle {
+    /// On the target value, as if the track had played to its end.
+    Forward,
+    /// On the start value, as if the track had played back to its start.
+    Back,
+    /// Where it is now.
+    Cancel,
 }
 
 /// The scene's animation player.
@@ -294,7 +337,9 @@ impl TweenPlayer {
     ///
     /// Tracks are visited in ascending id order. A track whose node has left the
     /// scene ends without a write, which is how a closed window's animation ends
-    /// even though nobody told the player about the closure.
+    /// even though nobody told the player about the closure. A paused track does not
+    /// move, and a reversed one moves back to its start, where it ends
+    /// [`TrackEndReason::RolledBack`].
     pub fn advance(&mut self, scene: &mut Scene, elapsed_ms: u32) {
         let ids: Vec<TrackId> = self.tracks.keys().copied().collect();
         for id in ids {
@@ -305,36 +350,191 @@ impl TweenPlayer {
                 self.ended.push(track.end(id, TrackEndReason::TargetGone));
                 continue;
             }
-            track.elapsed_ms = track.elapsed_ms.saturating_add(u64::from(elapsed_ms));
-            let total = u64::from(track.delay_ms) + u64::from(track.duration_ms);
-            if track.elapsed_ms >= total {
-                match scene.set_property(track.node, track.property, track.to) {
-                    Ok(()) => {
-                        track.applied = track.to;
-                        self.ended.push(track.end(id, TrackEndReason::Completed));
-                    }
-                    Err(_) => self.ended.push(track.end(id, TrackEndReason::TargetGone)),
-                }
-                continue;
-            }
-            if track.elapsed_ms <= u64::from(track.delay_ms) {
+            if track.paused {
                 self.tracks.insert(id, track);
                 continue;
             }
-            let progress = (track.elapsed_ms - u64::from(track.delay_ms)) as f64 / f64::from(track.duration_ms);
-            let eased = track.curve.apply(progress) as f32;
-            let Some(value) = track.from.lerp(track.to, eased) else {
-                self.ended.push(track.end(id, TrackEndReason::TargetGone));
-                continue;
-            };
-            match scene.set_property(track.node, track.property, value) {
-                Ok(()) => {
-                    track.applied = value;
-                    self.tracks.insert(id, track);
-                }
-                Err(_) => self.ended.push(track.end(id, TrackEndReason::TargetGone)),
-            }
+            track.step(elapsed_ms);
+            self.present(scene, id, track);
         }
+    }
+
+    /// Put a track that just moved on the value its position gives, or end it when the position reached its end
+    /// (forward) or its start (reversed).
+    fn present(&mut self, scene: &mut Scene, id: TrackId, mut track: Track) {
+        let duration = f64::from(track.duration_ms);
+        if track.reverse {
+            if track.at_ms <= 0.0 {
+                let from = track.from;
+                self.conclude(scene, id, track, from, TrackEndReason::RolledBack);
+                return;
+            }
+        } else if track.delay_left_ms == 0 && track.at_ms >= duration {
+            let to = track.to;
+            self.conclude(scene, id, track, to, TrackEndReason::Completed);
+            return;
+        }
+        if track.delay_left_ms > 0 {
+            self.tracks.insert(id, track);
+            return;
+        }
+        // Here `duration` is positive: a forward track below its end and a reversed one above its start both have a
+        // span to be inside.
+        let Some(value) = track.sample(track.at_ms / duration) else {
+            self.ended.push(track.end(id, TrackEndReason::TargetGone));
+            return;
+        };
+        match scene.set_property(track.node, track.property, value) {
+            Ok(()) => {
+                track.applied = value;
+                self.tracks.insert(id, track);
+            }
+            Err(_) => self.ended.push(track.end(id, TrackEndReason::TargetGone)),
+        }
+    }
+
+    /// Write `value` as the track's last, and end it for `reason`.
+    fn conclude(
+        &mut self,
+        scene: &mut Scene,
+        id: TrackId,
+        mut track: Track,
+        value: PropertyValue,
+        reason: TrackEndReason,
+    ) {
+        match scene.set_property(track.node, track.property, value) {
+            Ok(()) => {
+                track.applied = value;
+                self.ended.push(track.end(id, reason));
+            }
+            Err(_) => self.ended.push(track.end(id, TrackEndReason::TargetGone)),
+        }
+    }
+
+    /// Move a track to `progress` of its duration, `0.0` to `1.0`, and draw the value its curve gives there: the
+    /// start value at `0.0` and the target at `1.0`, exactly.
+    ///
+    /// A seek ends neither the track nor its pause, so a gesture can scrub back and forth over one track. It
+    /// clears what is left of the track's delay: the position is now the caller's. A track that is not paused
+    /// and was moved to `1.0` ends at the next [`TweenPlayer::advance`].
+    ///
+    /// # Errors
+    ///
+    /// A progress outside `[0, 1]` or not finite, a track that is not live, or a node that left the scene (which
+    /// ends the track).
+    pub fn seek(&mut self, scene: &mut Scene, id: TrackId, progress: f64) -> Result<(), TrackError> {
+        if !(0.0..=1.0).contains(&progress) {
+            return Err(TrackError::ProgressRange(progress));
+        }
+        let mut track = self.tracks.remove(&id).ok_or(TrackError::UnknownTrack(id))?;
+        if !scene.contains(track.node) {
+            let node = track.node;
+            self.ended.push(track.end(id, TrackEndReason::TargetGone));
+            return Err(TrackError::UnknownNode(node));
+        }
+        track.at_ms = progress * f64::from(track.duration_ms);
+        track.delay_left_ms = 0;
+        let Some(value) = track.sample(progress) else {
+            let node = track.node;
+            self.ended.push(track.end(id, TrackEndReason::TargetGone));
+            return Err(TrackError::UnknownNode(node));
+        };
+        if let Err(error) = scene.set_property(track.node, track.property, value) {
+            self.ended.push(track.end(id, TrackEndReason::TargetGone));
+            return Err(error.into());
+        }
+        track.applied = value;
+        self.tracks.insert(id, track);
+        Ok(())
+    }
+
+    /// Hold a track where it is. A paused track writes nothing and does not end.
+    ///
+    /// # Errors
+    ///
+    /// [`TrackError::UnknownTrack`] when the track is not live.
+    pub fn pause(&mut self, id: TrackId) -> Result<(), TrackError> {
+        self.tracks.get_mut(&id).ok_or(TrackError::UnknownTrack(id))?.paused = true;
+        Ok(())
+    }
+
+    /// Let a paused track move again, in the direction it has.
+    ///
+    /// # Errors
+    ///
+    /// [`TrackError::UnknownTrack`] when the track is not live.
+    pub fn resume(&mut self, id: TrackId) -> Result<(), TrackError> {
+        self.tracks.get_mut(&id).ok_or(TrackError::UnknownTrack(id))?.paused = false;
+        Ok(())
+    }
+
+    /// Set the direction a track moves in: `true` runs it back to its start value, `false` forward to its target.
+    /// The track keeps its position, so it turns round without a jump. A reversed track has no delay left: the
+    /// delay is only ever waited out going forward.
+    ///
+    /// # Errors
+    ///
+    /// [`TrackError::UnknownTrack`] when the track is not live.
+    pub fn set_reverse(&mut self, id: TrackId, reverse: bool) -> Result<(), TrackError> {
+        let track = self.tracks.get_mut(&id).ok_or(TrackError::UnknownTrack(id))?;
+        track.reverse = reverse;
+        if reverse {
+            track.delay_left_ms = 0;
+        }
+        Ok(())
+    }
+
+    /// How far a live track is through its duration, `0.0` to `1.0`, before its curve. `None` when it is not live.
+    #[must_use]
+    pub fn progress(&self, id: TrackId) -> Option<f64> {
+        let track = self.tracks.get(&id)?;
+        Some(if track.duration_ms == 0 {
+            0.0
+        } else {
+            (track.at_ms / f64::from(track.duration_ms)).clamp(0.0, 1.0)
+        })
+    }
+
+    /// Whether a live track is paused.
+    #[must_use]
+    pub fn is_paused(&self, id: TrackId) -> bool {
+        self.tracks.get(&id).is_some_and(|track| track.paused)
+    }
+
+    /// Whether a live track runs backwards.
+    #[must_use]
+    pub fn is_reversed(&self, id: TrackId) -> bool {
+        self.tracks.get(&id).is_some_and(|track| track.reverse)
+    }
+
+    /// End a track now, however far it has got: [`TrackSettle::Forward`] writes its target
+    /// ([`TrackEndReason::Completed`]), [`TrackSettle::Back`] its start value ([`TrackEndReason::RolledBack`]) and
+    /// [`TrackSettle::Cancel`] leaves the value where it is ([`TrackEndReason::Cancelled`]). A track ends once, as
+    /// ever: a second call finds none.
+    ///
+    /// # Errors
+    ///
+    /// [`TrackError::UnknownTrack`] when the track is not live, [`TrackError::UnknownNode`] when its node left the
+    /// scene (which ends it).
+    pub fn finish(&mut self, scene: &mut Scene, id: TrackId, settle: TrackSettle) -> Result<(), TrackError> {
+        let track = self.tracks.remove(&id).ok_or(TrackError::UnknownTrack(id))?;
+        if !scene.contains(track.node) {
+            let node = track.node;
+            self.ended.push(track.end(id, TrackEndReason::TargetGone));
+            return Err(TrackError::UnknownNode(node));
+        }
+        match settle {
+            TrackSettle::Forward => {
+                let to = track.to;
+                self.conclude(scene, id, track, to, TrackEndReason::Completed);
+            }
+            TrackSettle::Back => {
+                let from = track.from;
+                self.conclude(scene, id, track, from, TrackEndReason::RolledBack);
+            }
+            TrackSettle::Cancel => self.ended.push(track.end(id, TrackEndReason::Cancelled)),
+        }
+        Ok(())
     }
 
     /// Cancel a track, leaving the value where it is.
@@ -458,7 +658,7 @@ impl TweenPlayer {
         let transform = scene.transform(spec.node).ok_or(TrackError::UnknownNode(spec.node))?;
         let to = apply_candidate(transform, spec.property, spec.to)?;
         let from = match spec.from {
-            TrackStart::Current => spec.property.get(transform),
+            TrackStart::Current => scene.property(spec.node, spec.property)?,
             TrackStart::Value(value) => apply_candidate(transform, spec.property, value)?,
         };
         if from.kind() != to.kind() {
@@ -520,8 +720,10 @@ impl TweenPlayer {
                 from,
                 to,
                 duration_ms: spec.duration_ms,
-                delay_ms: spec.delay_ms,
-                elapsed_ms: 0,
+                delay_left_ms: spec.delay_ms,
+                at_ms: 0.0,
+                reverse: false,
+                paused: false,
                 curve,
                 applied: from,
             },
@@ -556,8 +758,16 @@ fn apply_candidate(
     property: VisualProperty,
     value: PropertyValue,
 ) -> Result<PropertyValue, TrackError> {
-    let mut candidate = *transform;
     let value = property.coerce(value)?;
+    if property.is_size() {
+        // A size lives in the node's rectangle, not in the transform: it needs to be a finite number, and the scene
+        // rounds it to whole pixels when it is written.
+        if !value.is_finite() {
+            return Err(PropertyError::NonFinite { property }.into());
+        }
+        return Ok(value);
+    }
+    let mut candidate = *transform;
     property.apply(&mut candidate, value)?;
     if !candidate.is_finite() {
         return Err(TrackError::NonFinite { field: "transform" });

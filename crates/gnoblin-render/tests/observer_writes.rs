@@ -233,10 +233,7 @@ fn an_observer_may_not_animate_the_pose() {
         node: id(HEAD),
         key: "x".into(),
         value: TreeValue::Double(1.0),
-        timing: Some(gnoblin_render::transaction::Timing {
-            seconds: 1.0,
-            samples: vec![0.0, 1.0],
-        }),
+        timing: Some(gnoblin_render::transaction::Timing::new(1.0, vec![0.0, 1.0])),
     };
     assert_eq!(refusal(&mut scene, as_observer(vec![timed])), (0, Code::NotHolder));
 }
@@ -331,10 +328,7 @@ fn an_observer_may_not_animate_a_controller() {
         node: id(HAND),
         key: "x".into(),
         value: TreeValue::Double(1.0),
-        timing: Some(gnoblin_render::transaction::Timing {
-            seconds: 1.0,
-            samples: vec![0.0, 1.0],
-        }),
+        timing: Some(gnoblin_render::transaction::Timing::new(1.0, vec![0.0, 1.0])),
     };
     assert_eq!(refusal(&mut scene, as_observer(vec![timed])), (0, Code::NotHolder));
 }
