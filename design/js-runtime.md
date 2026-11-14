@@ -1250,9 +1250,52 @@ the frame pass), `effects` and `skipped` in `crates/gnoblin-js/src/bindings/prop
   shadow), and a reload without the lines takes both off. **Proven against the fake link only:** the cascade
   (ST1 to ST5, ST7), copy on write, the mapping, the notices, the 8-effect cap and the rule routing. **Not proven:**
   that a renderer draws the effects (GLES only, not exercised here), `ST6` (secure masking).
-- **Not done.** `Node.style` and `workspace.style`; animating a style value with `requestTransition`; any renderer
+- **Not done.** `Node.style` and `workspace.style`; any renderer
   feature (corner radius, borders, content filters, inset shadows, a blur radius, a background), which the owner must
   schedule as renderer work; a titlebar restore animation still ends at opacity 1, not the style's opacity.
+
+## Transitions status
+
+Lane JsTransitions. `gnoblin.requestTransition(callback, options)` of owner-spec section 14 over the existing tween player,
+with no native change. Code: `data/js/gnoblin/transition.ts` (the staging, the engine, `Transition`; no host import),
+`crates/gnoblin-js/src/transition.rs` (`__gnoblinHost.check`, the tree's validation of a write without queuing it, the
+same `prepare` that a queued write goes through), the staging block at the top of `crates/gnoblin-js/js/gnoblin.ts`
+(replaces `host.get/set/animate/call/raise/lower` and the spawn, kill and session verbs of `host.api`), `snapshotStyles` in
+`style.ts`. Tests: `crates/gnoblin-js/tests/transition.rs` over the fake link, `a_layout_change_in_a_transition_...` in
+`crates/gnoblin/tests/js_shell.rs` against the real compositor. User page: `docs/js-transitions.md`.
+
+- **Staging.** While the callback runs every node write is checked at once (so the setter that made it throws and names its
+  own path) and kept; reads give the staged value. Then the layout and style passes run once against the staged state
+  (`layout()` of `gnoblin.ts`, with a layout's error failing the transition and not just a report), and the staged writes
+  are sent in the frame's one transaction, each as a timed write (`host.animate`) when the property is animatable and the
+  node has a place, and as a plain write otherwise. The tree starts each track at the value the transform has, which is
+  the drawn one, so a retargeted window does not jump.
+- **Failure.** The staged writes are dropped, and `snapshotScriptState` puts back each workspace's layout, gaps, name and
+  dirty flag, the own fields of the layout it had, and every style (`snapshotStyles`). A layout object the callback
+  assigned keeps field changes made to it; an array edited in place is not seen (`fieldsChanged` is shallow).
+- **Decisions.** Durations are milliseconds, as the spec says (`Client.animate` keeps seconds). Easing names are those of
+  `Client.animate` plus `ease-out`, `ease-in-out` and `ease-in`. The nested call, an async callback and a side effect
+  (`call`, `raise`, `lower`, spawn, kill, a session verb) are errors. `set(props)` without options is atomic and immediate.
+  `finished` is a promise that never rejects and `onFinished` a queued callback, both with `{ cancelled }`. The end is the
+  shell's clock (`after`), because the tree has no event for a track that ended.
+- **Acceptance rows** (`spec-review.md`, "Animation"):
+
+| Row | Status                                                                                                                                                                                                                                            |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AN1 | Done: once, one transaction, a returned Promise refused (`tests/transition.rs`).                                                                                                                                                                  |
+| AN2 | Partly: the layout is computed once and every window gets timed writes by node id, a window with no place just appears; the real compositor holds the end rectangles. Not done: `progress` 0.5 against a golden pose, a tween of a size (native). |
+| AN3 | Not done: there is no camera (native and spec work).                                                                                                                                                                                              |
+| AN4 | Partly: no JS runs after the commit (the callback count stays 1 across frames). The native counter of handler dispatches over 750 ms is not built.                                                                                                |
+| AN5 | Not done: hit testing against the drawn pixel is native.                                                                                                                                                                                          |
+| AN6 | Partly: `cancel` from running and from ended, `{ cancelled }` once. Not done: scrubbing and `reverse`, which need an external progress on the tween player (`docs/js-transitions.md`, "Not built").                                               |
+| AN7 | Done: an invalid value, a stale (destroyed) client and a throwing layout abort with the previous state and the path in the error.                                                                                                                 |
+| AN8 | Done: the newest owns a property and the older goes on with the rest, one with none left ends cancelled, a nested call is an error.                                                                                                               |
+
+- **Not built** (native work first): scrubbing (`TweenPlayer` has no seek, pause or direction), `delay` (the tree op has no
+  field), tweening `width`, `height`, `rotation` and `scale` (`visual_property` maps only `opacity`, `x`, `y`, `z`, and
+  a non-number lands at once), tweening effects and corner radius, `Camera2D`/`Camera3D`, a tree event for a track that
+  ended. Spec examples 076 to 079 (`arcLayout.radius`, `camera3D`, `display.viewport`, a `View`) need objects the runtime
+  does not have.
 
 ## P8 console status
 
@@ -1403,8 +1446,7 @@ out). TypeScript: `data/js/gnoblin/{operation,process,session}.ts`, wired in `js
   and `reloadConfig` through the compositor's `reload_requested` signal to a typed `config_rejected`. The power verbs and
   `lock` are proven against a fake link only: calling them for real would suspend the machine.
 - **Not built.** `process.on("changed")`/`watch`, `Window.process`, `session.activity`, `capabilities`, `focus.policy`,
-  `runtime.status`, `settings`. The spec's `gnoblin.requestTransition` is NOT implemented (planned as P8b); it was removed
-  from `gnoblin-stock.d.ts` so the declarations match the runtime (`tests/dts_match.rs`).
+  `runtime.status`, `settings`. `gnoblin.requestTransition` landed afterwards (see "Transitions status").
 
 ## Real-compositor tests
 

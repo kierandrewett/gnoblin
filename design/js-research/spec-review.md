@@ -243,16 +243,16 @@ IDs map to §21 bullets; **(+)** marks tests I added because §21 leaves the beh
 
 ### Animation (L2578-2586)
 
-| ID  | Test                                                                                                                                                     | Tier  |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
-| AN1 | Callback invoked exactly once; N writes yield exactly one tree transaction; a returned Promise or `await` in the callback is rejected in dev mode (1.14) | F     |
-| AN2 | `flat → arc` (including a _floating_ start, 1.14) interpolates by client id; no bbox jump at t=0 and t=1; `progress` 0.5 matches the golden pose         | F + P |
-| AN3 | Camera 2D↔3D blend: at several `progress` values, projected corner positions are continuous and monotone (no clip pop)                                   | P     |
-| AN4 | No JS runs during a 750 ms transition (counter on handler dispatches stays 0)                                                                            | N     |
-| AN5 | Hit-test at `progress=0.5` returns the client under the _drawn_ pixel, not the target rect                                                               | N + P |
-| AN6 | Scrub 0→0.4→0.1→1, `reverse`, `cancel` from several states: logical state and promise result (`{cancelled}`, 1.14) as specified                          | F     |
-| AN7 | Invalid or stale target aborts the whole transaction; previous state intact; error names path                                                            | F     |
-| AN8 | Overlapping transitions: newest wins per component, others continue; nested call inside a callback follows the decided rule (+)                          | F     |
+| ID  | Test                                                                                                                                                     | Tier  | Status                                                              |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------------------------------------------- |
+| AN1 | Callback invoked exactly once; N writes yield exactly one tree transaction; a returned Promise or `await` in the callback is rejected in dev mode (1.14) | F     | done                                                                |
+| AN2 | `flat → arc` (including a _floating_ start, 1.14) interpolates by client id; no bbox jump at t=0 and t=1; `progress` 0.5 matches the golden pose         | F + P | partly: by-id timed writes and one compute; no scrub, no size tween |
+| AN3 | Camera 2D↔3D blend: at several `progress` values, projected corner positions are continuous and monotone (no clip pop)                                   | P     | not done: no camera                                                 |
+| AN4 | No JS runs during a 750 ms transition (counter on handler dispatches stays 0)                                                                            | N     | partly: no JS after commit; native counter not built                |
+| AN5 | Hit-test at `progress=0.5` returns the client under the _drawn_ pixel, not the target rect                                                               | N + P | not done: native                                                    |
+| AN6 | Scrub 0→0.4→0.1→1, `reverse`, `cancel` from several states: logical state and promise result (`{cancelled}`, 1.14) as specified                          | F     | partly: cancel and `{cancelled}`; no scrub or `reverse`             |
+| AN7 | Invalid or stale target aborts the whole transaction; previous state intact; error names path                                                            | F     | done                                                                |
+| AN8 | Overlapping transitions: newest wins per component, others continue; nested call inside a callback follows the decided rule (+)                          | F     | done                                                                |
 
 ### Runtime, hot reload, extensions, XR (L2588-2598, L1964-2011)
 

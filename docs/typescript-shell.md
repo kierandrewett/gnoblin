@@ -223,6 +223,8 @@ A dialog stays centred in its parent and goes wherever the parent goes. The page
 
 [Window policy in TypeScript](/js-window-policy).
 
+[Animation in TypeScript](/js-transitions): `gnoblin.requestTransition` draws a change of state as one animation.
+
 ## Reloading
 
 Saving `init.ts`, or any module it imports, reloads the shell after a short pause. `gnoblinctl config reload` reloads it on
