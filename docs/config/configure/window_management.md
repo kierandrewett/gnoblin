@@ -167,6 +167,11 @@ behavior.
 
 The stock shell reads these keys from the main seat node, not from its own copy of the configuration. A reload updates the seat, so the shell's next focus, raise or titlebar decision uses the new value. Its auto-raise timer uses `auto_raise_delay` in milliseconds.
 
+The JavaScript shell can override some of these for itself in `defineConfig`. A key it leaves out is the seat's.
+
+- **Focus:** `focus: { mode, newWindows, raiseOnClick, autoRaise, autoRaiseDelay, changeOnPointerRest }`. The modes are `click`, `sloppy` (this page's `hover`) and `follow-mouse` (`hover-strict`).
+- **Edges and drags:** `edgeTiling` and `dragConstraint`.
+
 The main seat node publishes these readonly props, so the shell reads the policy it runs under. A reload publishes only the values it changed:
 
 - **Edges and drags:** `edge_tiling`, `drag_constraint` (`work_area` or `minimum_strip`).
@@ -175,7 +180,7 @@ The main seat node publishes these readonly props, so the shell reads the policy
 
 Some settings are not in this policy, so the shell does not read them from the seat:
 
-- **Window rules:** the stock shell reads them from its own list in `rules.lua`.
+- **Window rules:** the stock Lua shell reads them from its own list in `rules.lua`; the JavaScript shell reads them from `defineConfig({ rules })` ([rules in `init.ts`](/config/window_rule#javascript-rules)).
 - **`attach-modal-dialogs`:** not published.
 - **Workspaces:** `Workspace` nodes in the tree, not seat props; see [Workspaces](/shell-api/workspaces). The seat publishes no workspace list.
 

@@ -105,7 +105,7 @@ of `data/default-config`.
 `Binding` and `BindingCollection` are wired by the input module (see "P3c status"): the `triggers` option of
 `FloatingLayout` registers its `move` and `resize` bindings, which go live when an input context attaches the layout.
 The swap and split-resize drag behaviours (`MasterStackLayout`, `GridLayout`) are not written; `style` and `outputs`
-are stored and have no native effect; `rules`, `on` and `setup` are in the plan for the host to apply. The layouts and
+are stored and have no native effect; `rules` and `focus` are applied (see "Focus, rules and snapping status"); `on` and `setup` are in the plan for the host to apply. The layouts and
 keys that were not ported here (`Dwindle`, `Strip`, `Super+space`, `Super+Left` and `Super+Right`, the `Swipe3` slide)
 are in "P4b status".
 
@@ -336,8 +336,8 @@ tree link that records claims and plays back chords, gestures, pointer positions
   window at least as large as the screen is pinned to its origin), and `minimum_strip` lets it leave as long as 75
   pixels stay inside. The work area is the screen, since the shell has no bars of its own yet. `FloatingLayout`
   registers both as `move` and `resize` (`undefined` keeps the default trigger, `null` leaves the binding out,
-  spec-review 1.19). Not written: the `snap` option, `edges: "nearest"`, `ClientSwapBinding`, `SplitResizeBinding`,
-  `WorkspaceSwitchBinding`.
+  spec-review 1.19). The `snap` option and `edges: "nearest"` are written (see "Focus, rules and snapping status"). Not
+  written: `ClientSwapBinding`, `SplitResizeBinding`, `WorkspaceSwitchBinding`.
 - **Layouts.** The layout of every workspace in `gnoblin.workspaces` is attached to every input context while a
   workspace uses it (checked once per frame): its bindings are live for the clients whose workspace's `layout` it is,
   they follow the layout's `bindings` collection, and they go, cancelling a drag they run, when the workspace takes
@@ -568,6 +568,76 @@ compositor stands in only for the unit tests of `swap_generation` (`crates/gnobl
   the host's application of `style`, `outputs`, `rules`, `on` and `setup`. Removing `init.ts` under a running shell
   keeps its generation until the session restarts.
 
+## Focus, rules and snapping status
+
+Lane JsStockFocus: `data/js/gnoblin/focus.ts`, `rules.ts` and `snap.ts`, ported from `data/lua/gnoblin/shell/focus.lua`,
+`rules.lua` and `snap.lua` and the `Window:on_*`, `apply_rules`, `snap` and `unsnap` wiring of `init.lua`. The tests are
+`crates/gnoblin-js/tests/stock_focus.rs` (the cases of `crates/gnoblin-lua/tests/lua/{focus,rules,snap}_test.lua`, over
+the fake link) and one real-compositor test in `crates/gnoblin/tests/js_shell.rs`. User pages: `docs/config/window_rule.md`
+(the rule fields and the table from Lua patterns) and `docs/config/configure/window_management.md`.
+
+- **Settings.** The compositor publishes `edge_tiling`, `drag_constraint` and the six focus keys on the seat, read-only.
+  `JsShell` reads them through `__gnoblinHost.input.settings(seat)` (`crates/gnoblin-js/src/input.rs`, the schema's
+  defaults until the compositor says otherwise) and `InputContext.settings` hands them out. `defineConfig` has three
+  keys over them: `focus` (`mode`, `newWindows`, `raiseOnClick`, `autoRaise`, `autoRaiseDelay`, `changeOnPointerRest`),
+  `edgeTiling` and `dragConstraint`. A key the config leaves out is the seat's, so the compositor's configuration is
+  the default and the script overrides it for the shell only (a seat prop cannot be written). The focus modes are
+  `click`, `sloppy` (the seat's `hover`) and `follow-mouse` (`hover-strict`: acts on entry only and clears focus when the
+  pointer leaves the focused window); `desugarConfig` checks the keys and the plan holds them as plain data.
+- **Pure core.** `focusSettings`, `opensFocused`, `hoverFocus`, `autoRaiseSeconds`, `restFocus`, `leaveClears` are the
+  Lua functions; `focusDecision(settings, event)` composes them into one decision per event (`added`, `enter`, `motion`,
+  `leave`, `press`), a plain object: focus, clear, raise, and the delays of a rest focus and an auto raise. `edgeZone`,
+  `tileRect` and `edgeTilingEnabled` are `snap.lua`'s, with rectangles written `x, y, width, height`.
+- **Pointer edges on windows.** The compositor sends the shell `enter`, `motion`, `leave`, `press` and `release` events
+  addressed to a window's node (a press on a window is an edge there while a shell holds the tree, so the shell decides
+  focus and raise). `JsShell::frame` parks them (`JsInput::accept_window_event`) and, after the frame's `plan`, calls
+  `entry.pointer(events)`, which queues the clients' `onPointerEnter`, `onPointerMotion`, `onPointerLeave`,
+  `onPointerPress` and `onPointerRelease` with `{ x, y, button }` in the window's own coordinates. A client listener
+  hears one client's edges, a collection listener every member's. Scroll and key events still have no JavaScript API.
+- **Wiring.** `defineConfig` registers a `RuleEngine` and a `FocusPolicy` on `gnoblin.clients`, rules first, so
+  `skipFocus` is known when the focus policy hears the window. The policy keeps two timers (a pointer rest, an auto
+  raise) on `InputManager`'s per-frame hook, with the clock of `__gnoblinHost.input.now`. A new window takes focus
+  (`client.focus()`), except a window the shell found at boot: a reload does not take the user's focus. `client.focus()`
+  is a write of the first seat's `focus` (the Lua shell's `seat.focus = window`), because the compositor answers no
+  `focus` call on a window (`run_window_calls` handles `close` and `kill`); the call it was before did nothing against
+  the real compositor. The policy and the rules read focus from the seat as well (`InputContext.focusedClient`), because
+  an observer connection saw no window's own `focused` set while a shell held the tree. The Lua shell
+  never set `from_launcher`, so `focus_new_windows` has no launcher origin to read yet and the policy passes `false`.
+  A script that never calls `defineConfig` runs bare, with neither.
+- **Raise.** `Client.raise()` calls `__gnoblinHost.raise`: the tree's order is the stacking order, but a window the
+  compositor made has no parent and sorts after the root's tree, so the call first gives every unparented window the root
+  for its parent, in the order it already has, and then moves the window last. A window already on top queues nothing.
+  Unit-tested on a mirror (`bindings/host.rs`), and proved against the real compositor
+  (`a_click_focuses_and_raises_a_real_window_so_the_compositor_picks_it_over_the_one_above`): two overlapping windows,
+  a click on the lower one where only it shows, then a click where both show, which the compositor gives to the lower
+  window because it was raised.
+- **Rules.** A rule is data: the query keys `appId` and `title` (a glob, matched against the whole text, or a RegExp tested
+  anywhere in it), `focused`, `onWorkspace`; the actions `workspace`, `floating`, `size`, `position`, `style`
+  (`opacity` is applied, `cornerRadius` and `shadows` are checked and kept with no native effect, like `config.style`),
+  `fullscreen`, `maximised`, `secure`, `skipFocus`; and `all`, `reapply`. The first matching rule applies, and one with
+  `all: true` lets the next matching rule apply too (later wins per field), so a Lua list becomes JavaScript by adding
+  `all: true` to each rule. A rule applies when its window appears; with `reapply` it applies again when appId or title
+  changes (`ClientListener.onAppIdChanged` is new) and undoes `secure`, `fullscreen`, `maximised` and `opacity` when it
+  stops matching, and a rule that still matches writes nothing. A window the shell found at boot is not touched.
+  `compileRules` runs in `desugarConfig`, so a bad rule fails the stage naming `rules[i]` and the field. `role` is
+  refused by name: the tree publishes no window role. The Lua `xr` field and the app-id fallback to the WM class are not
+  ported (the tree carries no class). A `position` holds the window there (`floatingBounds`), a lone `size` is what the
+  floating layout places it at (`client.size`), and `floating` keeps a window out of the layout's `compute`
+  (`Client.floating`, new; a script-side flag). `maximised` and `fullscreen` write the flag and fill the primary
+  screen's area, and turning the rule off puts the window back. New `Client` members: `fullscreen` (writable), `opacity`,
+  `secure`, `floating`, `raise()`; `opacity` reads 1 and not 0 while the compositor has published none.
+- **Snapping.** `ClientMoveBinding({ snap })` tiles a window dropped within `snap` pixels (default 4, `false` never) of a
+  screen edge when the seat's `edge_tiling` (or the config's `edgeTiling`) is on, as `drag` in `init.lua` did.
+  `snapClient`, `unsnapClient`, `snappedZone` and `forgetSnap` keep the floating rectangle off the client; a maximised
+  window floats first; unsnapping restores the rectangle the window had when it snapped (Lua's `keep_floating`), and
+  a drag that takes hold of a snapped window ends the snapped state. `ClientResizeBinding({ edges: "nearest" })` moves the
+  one side the press is nearest to; `quadrant` still moves a corner.
+- **Not done.** `focus_new_windows` launcher origin (no source), a rule's `role`, `xr`, drawing `cornerRadius` and
+  `shadows`, client requests (`activate`, `raise`) as focus input, the Lua `refit` of a snapped window when the work area
+  changes. Rules do not read `focused` again when focus changes.
+  A press on a titlebar canvas does not focus or raise its window: a canvas's pointer events do not reach the client's
+  listeners, so `Titlebar` would have to ask for it.
+
 ## P7 UI toolkit status
 
 The shell UI toolkit (lane JsUi): `Canvas`, `Box`, `Text`, `Icon`, `Grid` (`data/js/gnoblin/ui.ts`) and the stock
@@ -631,4 +701,4 @@ strokeWidth }`, `line`, `text`, `icon`, `pushClip`, `popClip`, `pushOpacity`, `p
 5. Port `prompts.lua`? Default: no. Rust draws consent. See `popups-portals.md` section 8 for the
    other eleven questions.
 6. Window-rule patterns: `gnoblin-config` depends on `gnoblin-lua-pattern` today. Default: plain
-   globs and regular expressions in `rules`.
+   globs and regular expressions in `rules`. Done: see "Focus, rules and snapping status".

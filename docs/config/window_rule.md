@@ -56,3 +56,77 @@ an unknown field.
 - `frame`
 - `match.type`, `match.layer`, `match.client_type` and `match.workspace_number`: use `match.app_id` or
   `match.workspace_id` instead.
+
+## Rules in `init.ts` {#javascript-rules}
+
+The JavaScript shell reads its rules from `defineConfig({ rules: [...] })` in `init.ts`. A rule is a plain object: the
+query keys the window must meet, the actions to take, and two options. It is checked when the config loads, and a
+mistake names the rule's index and the field (`rules[2].appId: must be a glob string or a RegExp, got 5`).
+
+```ts
+import { defineConfig } from "gnoblin";
+
+export default defineConfig({
+    workspaces: [{ id: "desk" }, { id: "dev" }],
+    rules: [
+        { appId: "org.example.Editor", workspace: "dev", maximised: true },
+        { appId: "pinentry*", floating: true, position: { x: 400, y: 300 }, skipFocus: true },
+        { title: /^Secret/, secure: true, reapply: true, all: true },
+    ],
+});
+```
+
+| Key           | Type                    | Meaning                                                                                   |
+| ------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
+| `appId`       | glob string or `RegExp` | The application ID                                                                        |
+| `title`       | glob string or `RegExp` | The current title                                                                         |
+| `focused`     | Boolean                 | Whether the window has keyboard focus when the rule is read                               |
+| `onWorkspace` | String                  | The id of the workspace the window is on (Lua `match.workspace_id`)                       |
+| `workspace`   | String                  | The id of the workspace the window opens on; the config must declare it                   |
+| `floating`    | Boolean                 | `true` keeps the window out of its workspace's tiling                                     |
+| `size`        | `{ width, height }`     | The size the floating layout places the window at, or its size when `position` is given   |
+| `position`    | `{ x, y }`              | Places the window there; the layout leaves it alone                                       |
+| `style`       | `{ opacity, ... }`      | `opacity` from 0 to 1 is applied; `cornerRadius` and `shadows` are kept and not drawn yet |
+| `fullscreen`  | Boolean                 | `true` covers the screen, `false` puts the window back                                    |
+| `maximised`   | Boolean                 | `true` fills the work area, `false` puts the window back. A fullscreen window does not    |
+| `secure`      | Boolean                 | `true` masks the window in screen capture                                                 |
+| `skipFocus`   | Boolean                 | The window does not take focus when it opens                                              |
+| `all`         | Boolean                 | After this rule matches, the next matching rule also applies                              |
+| `reapply`     | Boolean                 | Apply again when the app id or title changes, and undo the rule when it stops matching    |
+
+A query key not given matches anything, and a rule needs at least one query key and one action. An unknown key is
+refused by name, so `corners`, `blur` and the other [removed fields](#refused-keys) fail at load. `role` is refused too:
+the compositor publishes no window role.
+
+**Matching.**
+
+- The first matching rule applies. A rule with `all: true` lets the next matching rule apply as well, and the later rule wins for each field they both set.
+- A rule applies when its window opens. With `reapply: true` it applies again when the app id or title changes.
+- A `reapply` rule that stops matching sets `secure`, `fullscreen`, `maximised` and `opacity` back to their defaults, and one that still matches writes nothing.
+- A window that was already open when the config loaded is not touched, so a reload does not move windows you have placed.
+
+### From Lua patterns
+
+A glob matches the whole text: `*` is any run of characters and `?` is one character. Everything else is itself, so
+`.` and `%` need no escape. A `RegExp` is tested anywhere in the text, as a Lua pattern was.
+
+| Lua rule                                 | JavaScript rule                                               |
+| ---------------------------------------- | ------------------------------------------------------------- |
+| `match = { app_id = "^foot$" }`          | `appId: "foot"`                                               |
+| `match = { app_id = "fire" }`            | `appId: "*fire*"`                                             |
+| `match = { app_id = "^org%.mozilla%." }` | `appId: "org.mozilla.*"`                                      |
+| `match = { app_id = "^org%.x%.(%w+)$" }` | `appId: /^org\.x\.\w+$/`                                      |
+| `match = { title = "^Secret" }`          | `title: "Secret*"`                                            |
+| `match = { title = "%d+ unread" }`       | `title: /\d+ unread/`                                         |
+| `match = { focused = true }`             | `focused: true`                                               |
+| `match = { workspace_id = "2" }`         | `onWorkspace: "2"`                                            |
+| `workspace = { id = "3" }`               | `workspace: "3"`                                              |
+| `opacity = 0.9`                          | `style: { opacity: 0.9 }`                                     |
+| `maximised`, `fullscreen`, `secure`      | the same names                                                |
+| the last matching rule wins for a field  | `all: true` on every rule but the last                        |
+| re-evaluated when any input changed      | `reapply: true` re-evaluates when the app id or title changed |
+| `xr = false`                             | not ported: the key is refused                                |
+| the WM class when the app id is empty    | not ported: the tree carries no class                         |
+
+In a `RegExp`, the Lua classes `%a`, `%d`, `%w` and `%s` are `[A-Za-z]`, `\d`, `[A-Za-z0-9]` and `\s`, an escaped
+character such as `%.` is `\.`, the lazy `-` is `*?`, and `^` and `$` anchor as they did.
