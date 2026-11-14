@@ -10,3 +10,5 @@ export * from "gnoblin/layouts/grid";
 export * from "gnoblin/layouts/master-stack";
 export * from "gnoblin/layouts/monocle";
 export * from "gnoblin/config";
+export * from "gnoblin/titlebar";
+export * from "gnoblin/ui";

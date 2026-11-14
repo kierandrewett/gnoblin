@@ -57,6 +57,8 @@ pub(crate) struct HostState {
     pub input: crate::input::JsInput,
     /// How node ids cross into script numbers (see [`NodeHandles`]).
     pub handles: NodeHandles,
+    /// What the UI toolkit keeps between frames: the canvases it made, its measurements and the events for it.
+    pub ui: crate::ui::JsUiState,
 }
 
 pub(crate) type SharedState = Rc<RefCell<HostState>>;
@@ -71,6 +73,7 @@ impl HostState {
             tokens: 0,
             input: crate::input::JsInput::new(),
             handles: NodeHandles::default(),
+            ui: crate::ui::JsUiState::default(),
         }
     }
 }

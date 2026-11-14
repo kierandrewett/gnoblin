@@ -33,6 +33,8 @@ const WINDOW: &[JsPropDef] = &[
     def("app_id", JsPropKind::Text, false),
     def("focused", JsPropKind::Flag, false),
     def("fullscreen", JsPropKind::Flag, false),
+    def("maximised", JsPropKind::Flag, true),
+    def("minimised", JsPropKind::Flag, true),
     def("x", JsPropKind::Double, true),
     def("y", JsPropKind::Double, true),
     def("width", JsPropKind::Double, true),
@@ -94,20 +96,23 @@ mod tests {
     }
 
     #[test]
-    fn only_the_geometry_of_a_window_is_writable() {
+    fn only_the_geometry_and_the_maximised_and_minimised_state_of_a_window_are_writable() {
         let writable: Vec<&str> = defs_for("window")
             .into_iter()
             .flatten()
             .filter(|def| def.writable)
             .map(|def| def.name)
             .collect();
-        assert_eq!(writable, ["x", "y", "width", "height"]);
+        assert_eq!(writable, ["maximised", "minimised", "x", "y", "width", "height"]);
         assert!(
             defs_for("window")
                 .into_iter()
                 .flatten()
                 .filter(|def| def.writable)
-                .all(|def| def.kind == JsPropKind::Double)
+                .all(|def| match def.name {
+                    "maximised" | "minimised" => def.kind == JsPropKind::Flag,
+                    _ => def.kind == JsPropKind::Double,
+                })
         );
     }
 

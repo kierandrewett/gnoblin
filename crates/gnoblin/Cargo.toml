@@ -60,3 +60,6 @@ wayland-protocols = { version = "0.32.13", features = ["client"] }
 gnoblin-client = { path = "../gnoblin-client" }
 gnoblin-proto = { path = "../gnoblin-proto" }
 gnoblin-log = { path = "../gnoblin-log", features = ["capture"] }
+# `tests/js_shell.rs` decodes the paint lists the compositor holds and draws one, to read a pixel the shell's script
+# painted.
+gnoblin-paint = { path = "../gnoblin-paint" }

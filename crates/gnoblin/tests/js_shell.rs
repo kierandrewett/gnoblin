@@ -113,9 +113,8 @@ struct Window {
     y: f64,
 }
 
-/// Every window of the compositor's tree, read through a fresh observer connection. A value at its default is not
-/// carried in a snapshot, so it reads as zero.
-fn scene(ipc: &Path) -> Vec<Window> {
+/// Every node of the compositor's tree, read through a fresh observer connection.
+fn observe(ipc: &Path) -> Vec<snapshot_node::Properties> {
     let transport = UnixTransport::connect(ipc).expect("the session is listening");
     let mut stream = Client::connect(transport, version())
         .expect("the handshake")
@@ -156,6 +155,11 @@ fn scene(ipc: &Path) -> Vec<Window> {
         }
     }
     nodes
+}
+
+/// Every window of the compositor's tree. A value at its default is not carried in a snapshot, so it reads as zero.
+fn scene(ipc: &Path) -> Vec<Window> {
+    observe(ipc)
         .into_iter()
         .filter(|node| node.class == "window")
         .map(|node| {
@@ -170,6 +174,48 @@ fn scene(ipc: &Path) -> Vec<Window> {
                 app_id: node.app_id.clone(),
                 x: value("x"),
                 y: value("y"),
+            }
+        })
+        .collect()
+}
+
+/// One canvas as the compositor's tree holds it.
+#[derive(Clone, Debug)]
+struct Canvas {
+    id: u64,
+    parent: u64,
+    width: f64,
+    height: f64,
+    /// The paint list the compositor accepted, decoded; `None` before the shell has painted.
+    list: Option<gnoblin_paint::PaintList>,
+}
+
+impl Canvas {
+    /// The canvas rasterised with the embedded font, so the pixels do not depend on this machine's fonts.
+    fn picture(&self) -> gnoblin_paint::Picture {
+        let list = self.list.as_ref().expect("a painted canvas");
+        gnoblin_paint::CanvasPainter::new(Arc::new(gnoblin_paint::FontSet::embedded()))
+            .paint(list, self.width as u32, self.height as u32)
+            .expect("a canvas of a sane size")
+            .picture
+    }
+}
+
+/// Every canvas of the compositor's tree, read through a fresh observer connection.
+fn canvases(ipc: &Path) -> Vec<Canvas> {
+    observe(ipc)
+        .into_iter()
+        .filter(|node| node.class == "canvas")
+        .map(|node| {
+            let prop = |key: &str| node.props.iter().find(|prop| prop.key == key);
+            Canvas {
+                id: node.id,
+                parent: node.parent,
+                width: prop("width").map_or(0.0, |prop| prop.value_double),
+                height: prop("height").map_or(0.0, |prop| prop.value_double),
+                list: prop("content").map(|content| {
+                    gnoblin_paint::decode(&content.value_bytes).expect("the compositor holds only paint lists")
+                }),
             }
         })
         .collect()
@@ -793,4 +839,110 @@ fn a_shell_with_no_init_file_runs_bare_and_loads_the_file_when_it_appears() {
     wait_for("the new file places the window", &session, &mut mapper, &shell, || {
         spots(&scene(&ipc)).get("org.example.first") == Some(&(21.0, 22.0))
     });
+}
+
+/// The UI toolkit against the real compositor (design/js-runtime.md, "P7 UI toolkit status"): a script makes a `Box`
+/// and asks for decorations, and the compositor's own tree, read through an observer, holds what the shell wrote: a
+/// canvas of the box's size with a paint list the compositor decoded (a list it could not decode would have been
+/// refused `bad-paint` and never stored), and one titlebar canvas under the mapped window with the window's title and
+/// the close icon painted in its subtree. The box's list is then drawn with the compositor's painter and a pixel read.
+#[test]
+fn a_script_draws_a_box_and_a_titlebar_and_the_compositor_holds_what_it_painted() {
+    let session = Session::start();
+    let mut mapper = Mapper::connect(&session.wayland());
+    mapper.map_window("org.example.decorated", "Decorated");
+
+    let config = tempfile::tempdir().expect("a config directory");
+    fs::write(
+        config.path().join("init.ts"),
+        r##"import { Box, defineConfig } from "gnoblin";
+
+defineConfig({ decorations: true });
+
+// A canvas of its own: a node with no parent, as a script's first canvas is.
+export const swatch = new Box({ width: 120, height: 40, fill: "#336699" });
+"##,
+    )
+    .expect("init.ts");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let ipc = session.ipc();
+
+    let mut found: Vec<Canvas> = Vec::new();
+    wait_for(
+        "the swatch, the titlebar and its title painted",
+        &session,
+        &mut mapper,
+        &shell,
+        || {
+            found = canvases(&ipc);
+            let window = scene(&ipc)
+                .into_iter()
+                .find(|window| window.app_id == "org.example.decorated");
+            let titled = found.iter().any(|canvas| {
+                canvas.list.as_ref().is_some_and(|list| {
+                    list.ops
+                        .iter()
+                        .any(|op| matches!(op, gnoblin_paint::PaintOp::Text { text, .. } if text == "Decorated"))
+                })
+            });
+            window.is_some_and(|window| found.iter().any(|canvas| canvas.parent == window.id))
+                && titled
+                && found
+                    .iter()
+                    .any(|canvas| canvas.width == 120.0 && canvas.list.is_some())
+        },
+    );
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+
+    let swatch = found
+        .iter()
+        .find(|canvas| canvas.width == 120.0 && canvas.height == 40.0)
+        .expect("the box is a canvas of its size");
+    assert_eq!(swatch.parent, 0, "the box was never given a parent");
+    assert_eq!(
+        swatch.picture().pixel(10, 10),
+        Some([0x33, 0x66, 0x99, 0xff]),
+        "the compositor's painter draws the box's fill"
+    );
+
+    let window = scene(&ipc)
+        .into_iter()
+        .find(|window| window.app_id == "org.example.decorated")
+        .expect("the mapped window");
+    let bars: Vec<&Canvas> = found.iter().filter(|canvas| canvas.parent == window.id).collect();
+    assert_eq!(bars.len(), 1, "exactly one titlebar under the window: {bars:?}");
+    let fills_bar = |canvas: &Canvas| {
+        canvas.list.as_ref().is_some_and(|list| {
+            list.ops.iter().any(|op| {
+                matches!(op, gnoblin_paint::PaintOp::Rect { fill, .. }
+                    if [fill.r, fill.g, fill.b] == [0x41, 0x45, 0x59] || [fill.r, fill.g, fill.b] == [0x23, 0x26, 0x34])
+            })
+        })
+    };
+    assert!(
+        fills_bar(bars[0]),
+        "the bar is filled with a titlebar colour: {:?}",
+        bars[0]
+    );
+    let icons = found
+        .iter()
+        .filter(|canvas| {
+            canvas.list.as_ref().is_some_and(|list| {
+                list.ops.iter().any(
+                    |op| matches!(op, gnoblin_paint::PaintOp::Icon { name, .. } if name == "window-close-symbolic"),
+                )
+            })
+        })
+        .count();
+    assert_eq!(icons, 1, "one close icon");
+    assert_eq!(
+        found.len(),
+        7,
+        "the box, and the bar with its drag area, title and three buttons: {found:?}"
+    );
+    let log = shell.finish();
+    assert!(
+        log.iter().all(|line| !line.contains("threw")),
+        "the shell logged a throw: {log:#?}"
+    );
 }

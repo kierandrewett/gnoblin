@@ -444,6 +444,59 @@ compositor stands in only for the unit tests of `swap_generation` (`crates/gnobl
   `gnoblinctl reload` request path into `JsRole::reload_now`, and the stock config plan applied as a runtime (the
   shell with no `init.ts` runs bare, not as `defaultConfig`).
 
+## P7 UI toolkit status
+
+The shell UI toolkit (lane JsUi): `Canvas`, `Box`, `Text`, `Icon`, `Grid` (`data/js/gnoblin/ui.ts`) and the stock
+`Titlebar` and `Decorations` (`data/js/gnoblin/titlebar.ts`), over the host functions of `crates/gnoblin-js/src/ui.rs`
+(`__gnoblinHost.ui`). User page: `docs/js-ui.md`. Ordinary ES classes and fields: no class registry, no bound
+properties.
+
+- **Frame.** After the layouts, `JsShell::frame` calls the module's `ui` entry (`runUiFrame`): it takes the answers to
+  measurements and the pointer events parked for the toolkit, then updates every canvas tree that has no canvas parent:
+  `refresh()` (read live state), `arrange()` (a `Box` row or column, or a `Grid`), then the node's geometry and paint
+  list are written when they differ from the last write. A change is therefore one frame of latency and a frame that
+  changed nothing sends nothing (`nothing_is_written_again_for_a_frame_that_changed_nothing`). The Lua shell
+  re-evaluated a binding when a property it read changed; the polling here costs one `draw()` per canvas per frame and
+  needs no change tracking.
+- **Nodes.** A canvas makes its node when it is constructed (`ui.create`: `New` in the frame's transaction, the id made
+  from the attach epoch like `gnoblin-lua`'s) and is destroyed with `destroy()`. A script can write only nodes the
+  toolkit made (`not-owned` otherwise); the geometry keys are `x`, `y`, `width`, `height`, `opacity` and the flags
+  `visible`, `input`, `clip`, and `content` is the paint list. When the compositor destroys a window its canvases go
+  with it, and the frame's destroyed list tells the toolkit (`uiNodeGone`); a reload's `retire` destroys the old
+  generation's canvases (`cancelAll` calls `uiReleaseAll`).
+- **Paint list.** `encodePaintList` writes the bytes the Lua encoder wrote (`"GNPL"`, version, op count, tag and fields,
+  little endian). The ops are TypeScript objects (`{ op: "rect", x, y, width, height, radius, fill, stroke,
+strokeWidth }`, `line`, `text`, `icon`, `pushClip`, `popClip`, `pushOpacity`, `popOpacity`), not the Lua tables.
+- **Text.** `Text` asks the compositor to measure its font, size and text (`ui.measure` is the `measure` call of the
+  canvas class: the size as the bits of an `f64`, the text `font\ntext`). `JsShell` keeps the answers of its own tokens
+  (`TreeIncoming::Answer`) for the toolkit; any other answer is still dropped. Until the answer a text is sized by the
+  Lua estimate, and a late answer for text that has since changed is ignored.
+- **Titlebar.** A `Box` row of a drag area (holding the title), minimise, maximise and close buttons, mounted under the
+  window's node (decision 2a). Every number and colour is a field of `TitlebarStyle`. `defineConfig({ decorations: true
+})` attaches a `Decorations` listener to `gnoblin.clients`: one titlebar per client, there at attach or arriving
+  later. `defaultConfig` sets the key; a config without it has no titlebars, so a config that does not ask is unchanged.
+  The tree has no server-side decoration flag a window could be asked for (a window's decoration mode is always
+  client-side today, `zxdg_decoration_v1.rs`), so every client is decorated. `Client` gains `maximised` and
+  `minimised` (writable) for the buttons.
+- **Proven against the fake link** (`crates/gnoblin-js/tests/ui.rs`, 24 tests): row, column, grow, nesting and grid
+  rectangles (derived from `Box:arrange`; the Lua corpus has no layout case); the measure call's node, size and text; the
+  estimate, the answer, a late answer and a refused measure; the Lua test's `GNPL` bytes for a box, a text, an icon and a
+  squeezed text; one list of every op equal to `gnoblin_paint::encode` and decoded by `gnoblin_paint::decode`; a bad op
+  named and the content left alone; the titlebar's geometry and colours from its style; the buttons, drag and double
+  click through pointer events; a window gets exactly one titlebar, it follows the title, and it is gone with the
+  window; one bar per window including those at boot; no titlebar without the key; the close button closes the window;
+  `retire` destroys the bars.
+- **Proven against the real compositor** (`crates/gnoblin/tests/js_shell.rs`,
+  `a_script_draws_a_box_and_a_titlebar_and_the_compositor_holds_what_it_painted`): a script's `Box` is a canvas node of
+  120 by 40 whose `content` the compositor accepted and the observer reads back, and a mapped window has exactly one
+  titlebar canvas under it with its title and the close icon painted in the tree. A pixel is read by drawing the
+  decoded list with `gnoblin-paint`'s painter (the one the compositor links), not from the compositor's output: a
+  `View` capture was not tried. Real pointer events on a titlebar are not exercised, so the drag is proven against the
+  fake link only.
+- **Not done.** The right and middle click gestures and the fade on close of `decorations.lua`; the titlebar reserves no
+  room above the client (it draws over the top, as the Lua one did); `Bar`, `Clock` and `Entry`; declarations for the
+  toolkit in `gnoblin-stock.d.ts`.
+
 ## Questions for the owner (the agent has a default for each)
 
 1. Initial workspace rule for a new toplevel. Default: the workspace shown by the display under the

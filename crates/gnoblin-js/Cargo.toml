@@ -43,3 +43,6 @@ gnoblin-log = { path = "../gnoblin-log" }
 tempfile = "3.23.0"
 # The stock placement goldens are read from `tests/shell/placement_cases.toml` (tests/stock_layouts.rs).
 toml.workspace = true
+# The paint list tests compare the toolkit's bytes with the compositor's own encoder and decoder
+# (`tests/ui.rs`); the shell itself never links the painter.
+gnoblin-paint.workspace = true

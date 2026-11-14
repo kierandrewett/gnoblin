@@ -27,6 +27,9 @@ import {
 import type { StockLayoutName, WorkspaceOptions } from "gnoblin/workspace";
 import { InputManager } from "gnoblin/input";
 import type { InputHost, InputMessage } from "gnoblin/input";
+import { attachUi, runUiFrame, uiNodeGone, uiReleaseAll } from "gnoblin/ui";
+import type { UiBackend } from "gnoblin/ui";
+import { Decorations } from "gnoblin/titlebar";
 
 type NodeId = number;
 type Scalar = string | number | boolean;
@@ -59,6 +62,8 @@ interface Entry {
     takeErrors(): ErrorReport[];
     /** Lays out the workspaces that changed, once each; returns how many it laid out. */
     layout(): number;
+    /** Runs the UI toolkit's frame: measurements and pointer events in, every canvas arranged and painted. */
+    ui(): void;
     /** Gives a config that declared no workspace the stock one. */
     finishLoad(): void;
     snapshot(): WorkspaceSnapshot;
@@ -76,6 +81,7 @@ interface Host {
     screens(): NodeId[];
     spawn(command: string | string[]): string | undefined;
     input: InputHost;
+    ui: UiBackend;
     entry?: Entry;
 }
 
@@ -199,7 +205,7 @@ function refuse(code: string, target: string, what: string): never {
     }
 }
 
-const CLIENT_KEYS = ["title", "app_id", "focused", "fullscreen", "x", "y", "width", "height"];
+const CLIENT_KEYS = ["title", "app_id", "focused", "fullscreen", "maximised", "minimised", "x", "y", "width", "height"];
 
 /** What listeners were last told about a client, to raise an event only for a real change. */
 interface Seen {
@@ -267,6 +273,22 @@ function writeNumber(client: Client, key: string, value: unknown): void {
     }
     if (typeof value !== "number" || !Number.isFinite(value)) {
         throw new TypeError(`${target}: must be a finite number`);
+    }
+    const code = host.set(state.node, key, value);
+    if (code != null) {
+        refuse(code, target, "client");
+    }
+}
+
+/** The queued write of one flag property, or the error that names the member. */
+function writeFlag(client: Client, key: string, value: unknown): void {
+    const state = stateOf(client);
+    const target = `Client#${host.label(state.node)}.${key}`;
+    if (!state.alive) {
+        throw new GnoblinError("destroyed", target, "the client is gone");
+    }
+    if (typeof value !== "boolean") {
+        throw new TypeError(`${target}: must be true or false`);
     }
     const code = host.set(state.node, key, value);
     if (code != null) {
@@ -380,6 +402,24 @@ export class Client {
         this.y = rect.y;
         this.width = rect.width;
         this.height = rect.height;
+    }
+
+    /** Whether the window is maximised. Writing asks the compositor to maximise or restore it. */
+    get maximised(): boolean {
+        return read<boolean>(this, "maximised");
+    }
+
+    set maximised(value: boolean) {
+        writeFlag(this, "maximised", value);
+    }
+
+    /** Whether the window is minimised. Writing asks the compositor to minimise or restore it. */
+    get minimised(): boolean {
+        return read<boolean>(this, "minimised");
+    }
+
+    set minimised(value: boolean) {
+        writeFlag(this, "minimised", value);
     }
 
     /** The workspace the client is on, or null. */
@@ -1237,6 +1277,7 @@ function plan(created: NodeId[], touched: NodeId[], destroyed: NodeId[]): number
     // The destroyed list is deepest first. Departures go before arrivals so a collection never holds a
     // dead member while it is told of a new one.
     for (const node of destroyed) {
+        uiNodeGone(node);
         release(node);
     }
     for (const node of created) {
@@ -1302,6 +1343,20 @@ const input = new InputManager(host.input, {
     error: (code, target, message) => new GnoblinError(code, target, message),
 });
 
+attachUi(host.ui, (site, error) => {
+    reports.push({ site, error });
+});
+
+/** The stock titlebars, once a config asks for them. */
+let decorations: Decorations | null = null;
+
+function decorate(): void {
+    if (decorations === null) {
+        decorations = new Decorations((client) => stateOf(client).node);
+        clientRoot.self.addListener(decorations);
+    }
+}
+
 class Gnoblin {
     readonly clients = clientRoot.self as Collection<Client>;
     readonly workspaces = workspaceRoot.self as WorkspaceCollection;
@@ -1336,8 +1391,12 @@ class Gnoblin {
      * `Workspace` objects in `gnoblin.workspaces`.
      */
     __register(config: GnoblinConfig): void {
-        for (const planned of desugarConfig(config).workspaces) {
+        const plan = desugarConfig(config);
+        for (const planned of plan.workspaces) {
             addWorkspace(new Workspace({ id: planned.id, layout: planned.layout, gaps: planned.gaps }));
+        }
+        if (plan.decorations) {
+            decorate();
         }
     }
 }
@@ -1350,6 +1409,7 @@ for (const node of host.windows()) {
 
 Object.defineProperty(globalThis, "gnoblin", { value: gnoblin, enumerable: false });
 host.entry = {
+    ui: runUiFrame,
     plan,
     next,
     pending,
@@ -1365,6 +1425,7 @@ host.entry = {
     },
     cancelAll: () => {
         input.cancelAll();
+        uiReleaseAll();
         return queue.length;
     },
 };

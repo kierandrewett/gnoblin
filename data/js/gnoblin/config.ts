@@ -8,6 +8,7 @@
 //   config key          plan                                                      host applies it as
 //   gaps.inner/outer    workspaces[].gaps, passed to layouts as LayoutContext.gap  Workspace.gaps
 //   style               style, stored as written (no native effect yet)            gnoblin.clients.style
+//   decorations         decorations, a flag                                       a Titlebar on every client
 //   outputs             outputs, stored as written (no native effect yet)          OutputProfile + Display
 //   workspaces          workspaces[] with a Layout instance and the gaps           gnoblin.workspaces.add
 //   keys                bindings[] of { trigger, action }, actions a closed union  input.primary.bind
@@ -100,6 +101,8 @@ export interface ConfigListeners {
 export interface GnoblinConfig {
     gaps?: { inner?: number; outer?: number };
     style?: StyleConfig;
+    /** Draws a titlebar on every client (a `Titlebar` canvas under its window). `defaultConfig` turns it on. */
+    decorations?: boolean;
     outputs?: Readonly<Record<string, OutputConfig>>;
     workspaces?: readonly WorkspaceConfig[];
     keys?: Readonly<Record<string, KeyAction>>;
@@ -128,6 +131,7 @@ export interface PlannedListener {
 export interface ConfigPlan {
     readonly gaps: Gaps;
     readonly style: StyleConfig;
+    readonly decorations: boolean;
     readonly outputs: Readonly<Record<string, OutputConfig>>;
     readonly workspaces: readonly PlannedWorkspace[];
     readonly bindings: readonly PlannedKey[];
@@ -176,12 +180,13 @@ function numbered(template: string, workspaces: readonly (string | { readonly id
 
 export const show = Object.assign(showWorkspace, { numbered });
 
-const TOP_LEVEL_KEYS = ["gaps", "style", "outputs", "workspaces", "keys", "rules", "on", "setup"];
+const TOP_LEVEL_KEYS = ["gaps", "style", "outputs", "workspaces", "keys", "rules", "on", "setup", "decorations"];
 const LISTENER_EVENTS = ["clientAdded", "clientRemoved", "titleChanged"];
 const RULE_KEYS = ["appId", "title", "workspace", "style"];
 
 /** The config the shell runs when the user has none: one floating `desktop` workspace and the stock keys. */
 export const defaultConfig: Readonly<GnoblinConfig> = deepFreeze({
+    decorations: true,
     workspaces: [{ id: "desktop", layout: "floating" }],
     keys: {
         ...show.numbered("Super+{n}", ["desktop"]),
@@ -217,6 +222,7 @@ export function desugarConfig(config: GnoblinConfig): ConfigPlan {
     const ids = new Set(workspaces.map((workspace) => workspace.id));
     return {
         gaps,
+        decorations: checkDecorations(config.decorations),
         style: config.style ?? {},
         outputs: config.outputs ?? {},
         workspaces,
@@ -299,6 +305,13 @@ function planListeners(on: ConfigListeners): PlannedListener[] {
         }
         return { event: event as keyof ConfigListeners, handler: handler as PlannedListener["handler"] };
     });
+}
+
+function checkDecorations(decorations: GnoblinConfig["decorations"]): boolean {
+    if (decorations !== undefined && typeof decorations !== "boolean") {
+        throw new TypeError("config.decorations: must be true or false");
+    }
+    return decorations ?? false;
 }
 
 function checkSetup(setup: GnoblinConfig["setup"]): GnoblinConfig["setup"] {

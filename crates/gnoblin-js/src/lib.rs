@@ -31,6 +31,7 @@ mod shell;
 mod stock;
 mod supervisor;
 mod ts;
+mod ui;
 mod watch;
 mod workspaces;
 

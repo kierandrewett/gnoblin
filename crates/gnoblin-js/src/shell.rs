@@ -423,6 +423,7 @@ impl JsShell {
                             destroyed.push(id);
                         }
                     }
+                    state.ui.forget(&destroyed);
                     state
                         .mirror
                         .apply_changes(serial, &changes)
@@ -442,8 +443,9 @@ impl JsShell {
                 }
                 TreeIncoming::Reply(reply) => self.handle_reply(&reply, &mut diagnostics),
                 // A claimed chord or gesture is parked for the input module, which the frame hands it to once
-                // the listeners are planned. Pointer and key events addressed to nodes and call answers have no
-                // JavaScript API: they are consumed so they do not pile up.
+                // the listeners are planned. A pointer event addressed to a canvas of the UI toolkit and the answer
+                // to one of its measurements are parked for the toolkit's frame. Every other event and answer has no
+                // JavaScript API: it is consumed so it does not pile up.
                 TreeIncoming::Chord(chord) => self.state.borrow_mut().input.inbox.push(JsInputMessage::Chord(chord)),
                 TreeIncoming::Gesture(gesture) => self
                     .state
@@ -451,9 +453,16 @@ impl JsShell {
                     .input
                     .inbox
                     .push(JsInputMessage::Gesture(gesture)),
+                TreeIncoming::Event(event) => {
+                    let state = &mut *self.state.borrow_mut();
+                    state.ui.accept_event(&event, &state.handles);
+                }
+                TreeIncoming::Answer { token, result, error } => {
+                    self.state.borrow_mut().ui.accept_answer(token, &result, &error);
+                }
                 // A claimed pointer chord's drag has no JavaScript API yet (the input module consumes it in a later
                 // package): it is dropped here so it does not pile up.
-                TreeIncoming::Event(_) | TreeIncoming::Answer { .. } | TreeIncoming::PointerChord(_) => {}
+                TreeIncoming::PointerChord(_) => {}
                 TreeIncoming::Attached(_) | TreeIncoming::Snapshot { .. } => {
                     return Err(JsShellError::Link("attach or snapshot after boot".to_owned()));
                 }
@@ -479,6 +488,7 @@ impl JsShell {
         self.state.borrow_mut().graveyard.clear();
         outcome?;
         self.run_layouts(&mut diagnostics)?;
+        self.run_ui(&mut diagnostics)?;
         self.collect_reports(&mut diagnostics)?;
 
         self.send_transaction()?;
@@ -589,6 +599,24 @@ impl JsShell {
             Err(JsShellError::Js(error)) if matches!(error.kind, JsErrorKind::Budget | JsErrorKind::Memory) => {
                 self.count_strike(&error);
                 diagnostics.push(format!("the layout pass was stopped: {error}"));
+                Ok(())
+            }
+            Err(other) => Err(other),
+        }
+    }
+
+    /// Runs the UI toolkit's frame: measurement answers and pointer events in, every canvas arranged and painted.
+    /// It runs after the layouts so a titlebar reads the size the layout gave its window. A canvas that throws is a
+    /// diagnostic from the module; running out the budget stops the pass, counts a strike and leaves the rest for the
+    /// next frame.
+    fn run_ui(&mut self, diagnostics: &mut Vec<String>) -> Result<(), JsShellError> {
+        match self.call_entry(self.frame_budget, |entry| {
+            entry.get::<_, Function<'_>>("ui")?.call::<_, ()>(())
+        }) {
+            Ok(()) => Ok(()),
+            Err(JsShellError::Js(error)) if matches!(error.kind, JsErrorKind::Budget | JsErrorKind::Memory) => {
+                self.count_strike(&error);
+                diagnostics.push(format!("the UI pass was stopped: {error}"));
                 Ok(())
             }
             Err(other) => Err(other),
