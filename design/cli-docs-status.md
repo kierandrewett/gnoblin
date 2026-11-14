@@ -36,5 +36,5 @@ Audit of the `gnoblinctl` examples in the user docs against a live headless sess
 
 ## Findings not fixed here
 
-1. `gnoblinctl log --level WARN` shows child stderr lines that were logged at INFO. Child stderr is always logged at WARN in `crates/gnoblin-session/src/raw.rs:241` (`log_line`, `OutputStream::Stderr` arm). Stdout is logged at INFO. The level the child wrote is lost. Fix needs a design choice: parse the child's own level prefix (`is_structured`, `raw.rs:193`) or keep stderr at WARN and document it.
+1. Fixed (lane JsReloadClaims): `gnoblinctl log --level WARN` showed child stderr lines that were logged at INFO, because `is_structured` (`crates/gnoblin-session/src/raw.rs`) looked for the bracketed form `INFO  [role] ...` that the console format no longer prints, so every line a child had formatted itself was wrapped as `WARN guardian/raw`. It now reads the real form (`LEVEL  role/component  message`), and such a line is passed on as the child wrote it, with its own level. A line a child printed that is not one of its log lines is still wrapped, at WARN on stderr and INFO on stdout.
 2. The `output watch` example needs a signal source to show output. The doc now says it prints nothing until stopped, which matches the live run.

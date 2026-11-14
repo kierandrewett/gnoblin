@@ -189,14 +189,32 @@ pub fn bound(line: &str) -> String {
     format!("{}{TRUNCATED}", &line[..end])
 }
 
-/// Whether a line is already a record of the gnoblin log, as the console subscriber prints it:
-/// a level padded to five characters, then the role in brackets.
+/// Whether a line is already a record of the gnoblin log, as the console subscriber prints it
+/// (`gnoblin_log::console::pretty_line`): the level padded to five columns, two spaces, `role/component`, and the
+/// message after two more. A line that is none of that is something a child printed, and is the guardian's to wrap.
+///
+/// The check is the shape of the first two words and nothing more, so a child's own line that happens to start
+/// `INFO  a/b ` is passed on as it is, which is harmless: it is a line, in the child's words.
 pub fn is_structured(line: &str) -> bool {
     ["ERROR", "WARN", "INFO", "DEBUG", "TRACE"].iter().any(|level| {
         line.strip_prefix(level)
-            .and_then(|rest| rest.trim_start().strip_prefix('['))
-            .is_some_and(|rest| rest.contains("] "))
+            .and_then(|rest| rest.strip_prefix("  "))
+            .map(|rest| rest.trim_start_matches(' '))
+            .and_then(|rest| rest.split(' ').next())
+            .is_some_and(is_role_and_component)
     })
+}
+
+/// Whether `word` is `role/component`: two non-empty names of letters, digits, `-`, `_` and `.`.
+fn is_role_and_component(word: &str) -> bool {
+    let name = |part: &str| {
+        !part.is_empty()
+            && part
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    };
+    word.split_once('/')
+        .is_some_and(|(role, component)| name(role) && name(component))
 }
 
 /// Logs raw lines until every sender is gone, reporting drops once a second while they change.
@@ -298,12 +316,49 @@ mod tests {
         assert!(bounded.is_char_boundary(bounded.len() - TRUNCATED.len()));
     }
 
+    /// Lines a child printed through the gnoblin log, as the live session's log of the compositor shows them
+    /// (`LEVEL  role/component  message  key=value`): the level is padded to five columns and there are no brackets.
+    const CHILD_LOG_LINES: [&str; 5] = [
+        "INFO   compositor/ext  Initializing a xkbcommon handler with keymap query  target=smithay::input::keyboard",
+        "WARN   compositor/cursor  cursor theme not found; using the default theme  theme=\"default\"",
+        "ERROR  compositor/wayland  the socket is gone  area=\"ipc\"",
+        "DEBUG  runtime/shell-vm  a frame  frames=3",
+        "TRACE  runtime/js         a column padded to the widest component",
+    ];
+
     #[test]
     fn structured_console_lines_are_not_raw() {
-        assert!(is_structured("INFO  [compositor] gnoblin_wayland: started"));
-        assert!(is_structured("WARN  [guardian] gnoblin_session: slow"));
+        for line in CHILD_LOG_LINES {
+            assert!(is_structured(line), "{line}");
+        }
         assert!(!is_structured("panicked at src/main.rs:3"));
         assert!(!is_structured("INFO started without a role"));
+        assert!(!is_structured("INFO  /usr/lib/thing is missing"));
+        assert!(!is_structured("WARNING  a/b not a level"));
+        assert!(!is_structured("INFO  plain words  after two spaces"));
+        assert!(!is_structured(
+            "INFO  [compositor] the bracketed form the log no longer prints"
+        ));
+    }
+
+    #[test]
+    fn a_child_log_line_is_passed_on_and_never_wrapped_as_a_guardian_warning() {
+        // An INFO line a child printed on stderr used to be wrapped as `WARN guardian/raw INFO ...`, so a healthy start
+        // read as a page of warnings. Only what the child did not format itself reaches the sink, and that is logged at
+        // the level of its stream.
+        let mut text = CHILD_LOG_LINES.join("\n");
+        text.push_str("\na library printed this\n");
+        let (sink, receiver, _) = RawSink::channel();
+        read_lines(
+            "compositor",
+            OutputStream::Stderr,
+            RawPolicy::Redacted,
+            text.as_bytes(),
+            &sink,
+        );
+        drop(sink);
+        let wrapped: Vec<String> = receiver.try_iter().map(|line| line.text).collect();
+        assert_eq!(wrapped, ["a library printed this"]);
     }
 
     #[test]
