@@ -28,6 +28,7 @@ export * from "gnoblin/alerts";
 export * from "gnoblin/launcher";
 export * from "gnoblin/overview";
 export * from "gnoblin/panel";
+export * from "gnoblin/window_state";
 // The style classes and their list elements. The cascade's plumbing (`bindStyle`, `resolveStyle`, ...) stays in the
 // module for the host.
 export {

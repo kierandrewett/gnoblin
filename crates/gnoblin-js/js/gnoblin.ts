@@ -51,7 +51,9 @@ import { snappedZone, unsnapClient } from "gnoblin/snap";
 import type { SnapClient } from "gnoblin/snap";
 import { windowMenu } from "gnoblin/menus";
 import { notRespondingAlerts } from "gnoblin/alerts";
-import { barInsets } from "gnoblin/widgets";
+import { barInsets, barsGiveWayTo } from "gnoblin/widgets";
+import { windowState } from "gnoblin/window_state";
+import type { ClientRequest } from "gnoblin/window_state";
 import {
     ClientStyle,
     MAX_STYLE_LIST,
@@ -221,6 +223,12 @@ export class ClientListener {
     onGeometryChanged?(client: Client, geometry: Rect): void;
     onClosed?(client: Client): void;
     onReady?(client: Client): void;
+    /**
+     * The client asked for a change of its window (`request.kind`): maximize, fullscreen, minimize, activate, move and
+     * so on. Call `request.handle()` to answer it yourself; the first listener to do so wins and the built-in answer
+     * (`windowState`) does not run. The listeners of the client itself are asked before those of the collections.
+     */
+    onRequest?(client: Client, request: ClientRequest<Client>): void;
 }
 
 /** Observes membership: an object joining or leaving a collection. */
@@ -831,6 +839,21 @@ export class Client {
         if (code != null) {
             refuse(code, target, "client");
         }
+        // A fullscreen sibling keeps the top: the Lua `Window:raise` put each back over the window it raised.
+        if (!this.fullscreen) {
+            const own = membership.get(this) ?? null;
+            for (const node of host.windows()) {
+                const other = clientsByNode.get(node);
+                if (
+                    other !== undefined &&
+                    other !== this &&
+                    (membership.get(other) ?? null) === own &&
+                    other.fullscreen
+                ) {
+                    host.raise(node);
+                }
+            }
+        }
     }
 
     /** Puts the window under every other window. */
@@ -881,6 +904,8 @@ interface WorkspaceState {
     area: Rect | null;
     /** The focused client the layout last computed for: a change of focus is a reason to compute again. */
     focusSeen: Client | null;
+    /** The fullscreen and maximised clients the layout last computed for: a change is a reason to compute again. */
+    coverSeen: string;
 }
 
 const wsStates = new WeakMap<object, WorkspaceState>();
@@ -921,6 +946,7 @@ export class Workspace {
             departed: [],
             dirty: true,
             focusSeen: null,
+            coverSeen: "",
             fields: null,
             gapsSeen: [checked.gaps.inner, checked.gaps.outer],
             area: null,
@@ -1587,8 +1613,8 @@ function ensureDefaultWorkspace(): void {
     }
 }
 
-/** The area windows are laid out in: the size of the primary screen. Null when the tree has no screen yet. */
-function screenArea(): Rect | null {
+/** The primary screen's size as a rectangle at the origin: the whole output. Null when the tree has no screen yet. */
+function screenRect(): Rect | null {
     const screens = host.screens();
     const node = screens.find((id) => host.get(id, "primary") === true) ?? screens[0];
     if (node === undefined) {
@@ -1599,12 +1625,21 @@ function screenArea(): Rect | null {
     if (typeof width !== "number" || typeof height !== "number" || !(width > 0) || !(height > 0)) {
         return null;
     }
+    return { x: 0, y: 0, width, height };
+}
+
+/** The area windows are laid out in: the output less what the bars take. Null when the tree has no screen yet. */
+function screenArea(): Rect | null {
+    const output = screenRect();
+    if (output === null) {
+        return null;
+    }
     const insets = barInsets();
     return {
         x: 0,
         y: insets.top,
-        width,
-        height: Math.max(1, height - insets.top - insets.bottom),
+        width: output.width,
+        height: Math.max(1, output.height - insets.top - insets.bottom),
     };
 }
 
@@ -2046,6 +2081,14 @@ function layout(): number {
                 state.focusSeen = focused;
                 state.dirty = true;
             }
+            const covering = children
+                .filter((client) => client.fullscreen || client.maximised)
+                .map((client) => stateOf(client).node)
+                .join(",");
+            if (covering !== state.coverSeen) {
+                state.coverSeen = covering;
+                state.dirty = true;
+            }
             const context: LayoutContext<Client> = {
                 workspace,
                 children,
@@ -2071,8 +2114,11 @@ function layout(): number {
                 }
                 guard(`${workspace}.layout.compute`, () => {
                     const site = `${workspace}.layout.compute`;
-                    // A client the script floats (a window rule, `client.floating`) keeps its own place.
-                    const tiled = children.filter((client) => !stateOf(client).floating);
+                    // A client the script floats (a window rule, `client.floating`) keeps its own place, and so does one
+                    // that covers the output (fullscreen) or fills the work area (maximised).
+                    const tiled = children.filter(
+                        (client) => !stateOf(client).floating && !client.fullscreen && !client.maximised,
+                    );
                     applyPlacements(
                         tiled,
                         checkPlacements(target.compute({ ...context, children: tiled }), tiled, site),
@@ -2255,6 +2301,7 @@ const POINTER_METHODS: Readonly<Record<string, string>> = {
 /** Queues the clients' pointer listeners for the edges the compositor reported on windows this frame. */
 function pointer(events: WindowPointerEvent[]): number {
     for (const event of events) {
+        windowState.pointerEdge(event.kind);
         const client = clientsByNode.get(event.node);
         const method = POINTER_METHODS[event.kind];
         if (client && method && stateOf(client).alive) {
@@ -2334,32 +2381,94 @@ attachUi({ ...host.ui, now: () => host.input.now() }, (site, error) => {
     reports.push({ site, error });
 });
 
-/** Where a window that a rule made fullscreen or maximised was, so turning the rule off puts it back. */
-const beforeCover = new WeakMap<Client, Rect>();
-
-/** Fullscreen or maximised: the flag, and the area the window fills. A fullscreen window does not maximise. */
-function cover(client: Client, key: "fullscreen" | "maximised", on: boolean): void {
-    if (on) {
-        if (key === "maximised" && client.fullscreen) {
-            return;
-        }
-        if (!beforeCover.has(client)) {
-            beforeCover.set(client, client.bounds);
-        }
-        client[key] = true;
-        const area = screenArea();
-        if (area !== null) {
-            writeBounds(client, framed(client, area));
-        }
-        return;
+/** Whether a fullscreen window is showing on the workspace on show: what makes the bars give way. */
+function fullscreenShowing(): boolean {
+    const shown = activeWorkspace;
+    if (shown === null) {
+        return false;
     }
-    client[key] = false;
-    const before = beforeCover.get(client);
-    if (before !== undefined && !client.fullscreen && !client.maximised) {
-        beforeCover.delete(client);
-        writeBounds(client, before);
+    return (wsState(shown).clientsState.list as Client[]).some((client) => client.fullscreen && !client.minimised);
+}
+
+barsGiveWayTo(fullscreenShowing);
+
+/** Calls the `onRequest` of the client's own listeners, then of the collections that hold it, until one handles it. */
+function dispatchRequest(client: Client, request: ClientRequest<Client>): void {
+    const sources: Source[] = [stateOf(client), ...clientHolders(client)];
+    for (const source of sources) {
+        for (const listener of [...source.listeners]) {
+            const handler = handlerOf(listener, "onRequest");
+            if (typeof handler !== "function") {
+                continue;
+            }
+            try {
+                handler.call(listener, client, request);
+            } catch (error) {
+                reports.push({ site: `${describeListener(listener)}.onRequest`, error });
+            }
+            if (request.handled) {
+                return;
+            }
+        }
     }
 }
+
+/** The window the first seat's keyboard focus is on, if it is one of the compositor's. */
+function focusedClient(): Client | null {
+    const seat = host.input.seats()[0];
+    return seat === undefined ? null : (clientsByNode.get(host.input.focus(seat)) ?? null);
+}
+
+/** The stock answers to a client's requests of its window, started with the module so no script has to ask. */
+windowState.start<Client>({
+    clientOf: (node) => clientsByNode.get(node),
+    siblings: (client) => {
+        const own = membership.get(client) ?? null;
+        return host
+            .windows()
+            .flatMap((node) => clientsByNode.get(node) ?? [])
+            .filter((other) => (membership.get(other) ?? null) === own);
+    },
+    raise: (client) => client.raise(),
+    lower: (client) => client.lower(),
+    close: (client) => client.close(),
+    focused: focusedClient,
+    focus: (client) => {
+        // A tree with no seat has nowhere to put the focus.
+        if (host.input.seats().length === 0) {
+            return;
+        }
+        if (client === null) {
+            input.primary.clearFocus();
+        } else {
+            client.focus();
+        }
+    },
+    onActiveWorkspace: (client) => {
+        const own = membership.get(client);
+        return own !== undefined && own === activeWorkspace;
+    },
+    output: screenRect,
+    workArea: screenArea,
+    framed,
+    snapped: (client) => snappedZone(client) !== null,
+    unsnap: (client) => {
+        unsnapClient(client as unknown as SnapClient);
+    },
+    dispatch: dispatchRequest,
+    report: (site, error) => {
+        reports.push({ site, error });
+    },
+    now: () => host.input.now(),
+    dragConstraint: () => {
+        const seat = host.input.seats()[0];
+        return seat === undefined ? undefined : seatHost.dragConstraint(seat);
+    },
+    edgeTiling: () => {
+        const seat = host.input.seats()[0];
+        return seat !== undefined && seatHost.settings(seat)?.edgeTiling === true;
+    },
+});
 
 /**
  * Whether the first seat holds its keyboard focus on `client`. The stock policy and the rules read the seat, not
@@ -2413,8 +2522,20 @@ const ruleHost: RuleHost<Client> = {
         (client as unknown as { floatingBounds?: Rect }).floatingBounds = { ...rect };
     },
     bounds: (client) => client.bounds,
-    setFullscreen: (client, on) => cover(client, "fullscreen", on),
-    setMaximised: (client, on) => cover(client, "maximised", on),
+    setFullscreen: (client, on) => {
+        if (on) {
+            windowState.enterFullscreen(client);
+        } else {
+            windowState.leaveFullscreen(client);
+        }
+    },
+    setMaximised: (client, on) => {
+        if (on) {
+            windowState.maximise(client);
+        } else {
+            windowState.unmaximise(client);
+        }
+    },
     setSecure: (client, on) => {
         client.secure = on;
     },
@@ -2491,7 +2612,16 @@ function decorate(): void {
                     }
                 },
                 lower: (client) => (client as Client).lower(),
-                maximise: (client, on) => cover(client as Client, "maximised", on),
+                maximise: (client, on) => {
+                    if (on) {
+                        windowState.maximise(client as Client);
+                    } else {
+                        windowState.unmaximise(client as Client);
+                    }
+                },
+                minimise: (client) => {
+                    windowState.minimise(client as Client);
+                },
             },
         );
         clientRoot.self.addListener(decorations);
@@ -2574,8 +2704,19 @@ function startMenus(): void {
         moveToWorkspace: (client, workspace) => transferClient(workspace as Workspace, client as Client),
         stack: () => host.windows().flatMap((node) => clientsByNode.get(node) ?? []),
         raise: (client) => (client as Client).raise(),
-        maximise: (client, on) => cover(client as Client, "maximised", on),
-        leaveFullscreen: (client) => cover(client as Client, "fullscreen", false),
+        maximise: (client, on) => {
+            if (on) {
+                windowState.maximise(client as Client);
+            } else {
+                windowState.unmaximise(client as Client);
+            }
+        },
+        minimise: (client) => {
+            windowState.minimise(client as Client);
+        },
+        leaveFullscreen: (client) => {
+            windowState.leaveFullscreen(client as Client);
+        },
         snapped: (client) => snappedZone(client) !== null,
         unsnap: (client) => {
             unsnapClient(client as unknown as SnapClient);

@@ -22,6 +22,7 @@
 
 import { Box, Text, onUiFrame, onUiRequest, uiFocus, uiFocused, uiLocked, uiPointer, uiScreen } from "gnoblin/ui";
 import type { PaintOp, UiKeyEvent, UiPointerEvent } from "gnoblin/ui";
+import { isRequestHandled } from "gnoblin/window_state";
 
 const ITEM_H = 28;
 const SEPARATOR_H = 9;
@@ -90,6 +91,8 @@ export interface MenuWorld {
     raise(client: MenuClient): void;
     /** Maximises or restores a window as the shell does it. Without it the `maximised` flag is written. */
     maximise?(client: MenuClient, on: boolean): void;
+    /** Minimises a window as the shell does it, which hands the keyboard focus on. Without it the `minimised` flag is written. */
+    minimise?(client: MenuClient): void;
     /** Whether the window sits where an edge snap put it, and the way back from there. */
     snapped?(client: MenuClient): boolean;
     unsnap?(client: MenuClient): void;
@@ -637,7 +640,11 @@ export function defaultMenuItems(client: MenuClient, controller: WindowMenus, wo
         {
             label: "Minimise",
             run: (w) => {
-                w.minimised = true;
+                if (world.minimise === undefined) {
+                    w.minimised = true;
+                } else {
+                    world.minimise(w);
+                }
             },
         },
         { separator: true },
@@ -690,7 +697,7 @@ export class WindowMenus {
     start(world: MenuWorld): void {
         this.#world = world;
         onUiRequest((request) => {
-            if (request.request !== "menu") {
+            if (request.request !== "menu" || isRequestHandled(request)) {
                 return;
             }
             const client = world.clientOf(request.node);

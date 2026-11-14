@@ -428,6 +428,17 @@ export interface BarOptions extends BoxOptions {
 /** The bars that are alive, in the order they were made. */
 const bars: Bar[] = [];
 
+let coveredBy: (() => boolean) | null = null;
+
+/**
+ * Makes every bar give way (hidden, taking no room) while `covered` returns true. The shell passes "a fullscreen window
+ * is showing on the workspace on show", so a fullscreen window covers the whole output, as the Lua shell's
+ * `Desk:sync_fullscreen` did. A bar's own `hideWhen` still applies. Null stops it.
+ */
+export function barsGiveWayTo(covered: (() => boolean) | null): void {
+    coveredBy = covered;
+}
+
 /**
  * A strip along the top or bottom of the primary screen, over the windows, that takes its room from them: the layouts
  * place windows in what the bars leave (`barInsets`). It is a row of boxes (`padding` 6, `gap` 12) as wide as the
@@ -447,7 +458,7 @@ export class Bar extends Box {
 
     /** Whether the bar is on show, and so takes room. */
     get shown(): boolean {
-        return this.alive && !(this.hideWhen?.() ?? false);
+        return this.alive && !(this.hideWhen?.() ?? false) && !(coveredBy?.() ?? false);
     }
 
     override refresh(): void {

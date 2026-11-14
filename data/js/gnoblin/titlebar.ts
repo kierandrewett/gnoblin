@@ -84,6 +84,8 @@ export interface TitlebarHooks {
     lower?(client: TitlebarClient): void;
     /** Maximises or restores the window as the shell does it, which leaves room for the bar. Else the flag is written. */
     maximise?(client: TitlebarClient, on: boolean): void;
+    /** Minimises the window as the shell does it, which hands the keyboard focus to another window. Else the flag is written. */
+    minimise?(client: TitlebarClient): void;
 }
 
 /** The buttons of the pointer, as the compositor numbers them (Linux `BTN_LEFT`, `BTN_RIGHT`, `BTN_MIDDLE`). */
@@ -228,7 +230,7 @@ export class Titlebar extends Box {
         } else if (name === "maximise") {
             this.#toggleMaximise();
         } else {
-            this.client.minimised = true;
+            this.#minimise();
         }
     }
 
@@ -239,6 +241,15 @@ export class Titlebar extends Box {
             client.maximised = on;
         } else {
             this.hooks.maximise(client, on);
+        }
+    }
+
+    #minimise(): void {
+        const { client } = this;
+        if (this.hooks.minimise === undefined) {
+            client.minimised = true;
+        } else {
+            this.hooks.minimise(client);
         }
     }
 
@@ -257,7 +268,7 @@ export class Titlebar extends Box {
                 this.hooks.menu?.(client);
                 return;
             case "minimize":
-                client.minimised = true;
+                this.#minimise();
                 return;
             // Maximising along one axis has no stock behaviour yet, as in the Lua shell: it does nothing.
             case "toggle-maximize-horizontally":
