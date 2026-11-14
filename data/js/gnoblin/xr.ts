@@ -17,7 +17,7 @@
 
 import { Binding, BindingCollection } from "gnoblin/bindings";
 import type { ControllerButton, ControllerTriggerParts, DragEvent } from "gnoblin/bindings";
-import { Camera3D, Node, Plane, Ray, Transform3D, Vector3, View, mountOnRoot } from "gnoblin/scene";
+import { Camera3D, Node, Plane, Ray, SceneError, Transform3D, Vector3, View, mountOnRoot } from "gnoblin/scene";
 import type { Camera3DOptions, NodeOptions, SceneBackend } from "gnoblin/scene";
 
 export { Camera3D, Node, Plane, Ray, Transform3D, Vector3, View };
@@ -225,6 +225,9 @@ export function arrangeRing<I>(
 
 // ---- Controllers --------------------------------------------------------------------------------------------------
 
+/** What a shell may claim on a controller, in the order the node lists it: the names `controller.claimed` accepts. */
+export const CLAIMABLE_INPUTS: readonly string[] = ["trigger", "grip", "thumbstick", "primary", "secondary"];
+
 const BUTTON_ORDER: readonly ControllerButton[] = ["Trigger", "Grip", "Thumbstick", "Primary", "Secondary"];
 const BUTTON_NAMES: Readonly<Record<string, ControllerButton>> = {
     trigger: "Trigger",
@@ -294,6 +297,8 @@ export class XRController {
     readonly #world: XRWorld;
     readonly #node: NodeNumber;
     readonly #down = new Set<ControllerButton>();
+    /** What each owner (a binding, a script) has claimed here; the node says the union. */
+    readonly #claims = new Map<object, ReadonlySet<string>>();
     readonly #hand: string;
 
     /** @internal Made by `XRSession`. */
@@ -356,6 +361,78 @@ export class XRController {
     /** The buttons that are down, as of the last frame. */
     get buttons(): ReadonlySet<ControllerButton> {
         return this.#down;
+    }
+
+    /** The inputs the shell withholds from the window under the ray now: the union of every claim, in the order of `CLAIMABLE_INPUTS`. */
+    get claimed(): readonly string[] {
+        return (this.#world.scene.get(this.#node, "claimed") as string[] | undefined) ?? [];
+    }
+
+    /**
+     * Claims `inputs` (any of `trigger`, `grip`, `thumbstick`, `primary`, `secondary`, lowercase) for `owner`, so the XR
+     * program does not pass them to the window under the ray while the claim stands. A claim replaces the same owner's
+     * earlier one; the claims of other owners stay, and the node says the union of them all. It throws a `TypeError`
+     * naming `Controller#id.claimed` for a list that is not one of those names, and a `SceneError` when the controller
+     * is gone or the shell refuses the write (the owner then holds nothing).
+     */
+    claim(owner: object, inputs: readonly string[]): void {
+        const target = `Controller#${this.id}.claimed`;
+        if (typeof owner !== "object" || owner === null) {
+            throw new TypeError(`${target}: a claim needs an owner object, got ${String(owner)}`);
+        }
+        if (!Array.isArray(inputs)) {
+            throw new TypeError(`${target}: claim a list of input names such as ["grip"], got ${String(inputs)}`);
+        }
+        for (const name of inputs) {
+            if (typeof name !== "string") {
+                throw new TypeError(`${target}: an input name is a string, got ${String(name)}`);
+            }
+            if (name !== name.toLowerCase()) {
+                throw new TypeError(
+                    `${target}: input names are lowercase; write "${name.toLowerCase()}", not "${name}"`,
+                );
+            }
+            if (!CLAIMABLE_INPUTS.includes(name)) {
+                throw new TypeError(`${target}: "${name}" is not an input; use ${CLAIMABLE_INPUTS.join(", ")}`);
+            }
+        }
+        if (!this.alive) {
+            throw new SceneError("destroyed", target, "the controller is gone");
+        }
+        const before = this.#claims.get(owner);
+        if (inputs.length === 0) {
+            this.#claims.delete(owner);
+        } else {
+            this.#claims.set(owner, new Set(inputs));
+        }
+        try {
+            this.#flush(target);
+        } catch (error) {
+            if (before === undefined) this.#claims.delete(owner);
+            else this.#claims.set(owner, before);
+            throw error;
+        }
+    }
+
+    /** Drops `owner`'s claim. The claims of other owners stand. A controller that is gone holds none, so it is not an error. */
+    release(owner: object): void {
+        if (!this.#claims.delete(owner) || !this.alive) {
+            return;
+        }
+        this.#flush(`Controller#${this.id}.claimed`);
+    }
+
+    /** Writes the union of the claims, once, when it differs from what the node says. */
+    #flush(target: string): void {
+        const union = CLAIMABLE_INPUTS.filter((name) => [...this.#claims.values()].some((held) => held.has(name)));
+        const now = this.claimed;
+        if (now.length === union.length && now.every((name, at) => name === union[at])) {
+            return;
+        }
+        const code = this.#world.scene.set(this.#node, "claimed", union);
+        if (code !== undefined) {
+            throw new SceneError(code, target, `the shell refused the write (${code})`);
+        }
     }
 
     /** @internal Reads the values once and settles which buttons are down (a pull is down at 0.75, up at 0.25). */
@@ -653,6 +730,15 @@ export class XRControllerDragBinding extends Binding {
     override onEnd(_event: XRDragEvent, _state: object): void {}
 
     override onCancel(_event: XRDragEvent, _state: object): void {}
+
+    /**
+     * The inputs of the controller this binding takes from the window under the ray for as long as its drag runs: by
+     * default the buttons of its trigger, so a `Grip+Drag` does not also right-click the panel it moves. The runtime
+     * claims them as the drag starts and releases them when it ends or is cancelled, however it ends.
+     */
+    claims(): readonly string[] {
+        return this.parsed.buttons.map((button) => button.toLowerCase());
+    }
 }
 
 /** Where a ray struck a panel. */
@@ -1525,9 +1611,15 @@ export class XRRuntime {
 
     #finish(run: Run, hook: "onEnd" | "onCancel", session: XRSession, room: XRRoom, now: number): void {
         this.#runs.delete(run.controller);
+        this.#unclaim(run);
         this.#hook(`${run.binding.id}.${hook}`, () =>
             run.binding[hook](this.#event(session, room, run, now, run.last), run.state),
         );
+    }
+
+    /** Drops what a drag claimed. A controller that is gone holds no claim, so only a refused write is reported. */
+    #unclaim(run: Pick<Run, "controller" | "binding">): void {
+        this.#hook(`${run.binding.id}.release`, () => run.controller.release(run.binding));
     }
 
     #cancelRuns(): void {
@@ -1535,6 +1627,7 @@ export class XRRuntime {
         const room = this.#extension?.room ?? null;
         for (const run of [...this.#runs.values()]) {
             this.#runs.delete(run.controller);
+            this.#unclaim(run);
             if (session !== null && room !== null) {
                 this.#hook(`${run.binding.id}.onCancel`, () =>
                     run.binding.onCancel(this.#event(session, room, run, this.#world.now(), run.last), run.state),
@@ -1615,15 +1708,14 @@ export class XRRuntime {
                     continue;
                 }
                 if (state !== false && typeof state === "object" && state !== null && hit !== null) {
-                    this.#runs.set(controller, {
-                        controller,
-                        binding,
-                        state,
-                        view: hit.view,
-                        hit: hit.point,
-                        last: now,
-                    });
-                    break;
+                    const run: Run = { controller, binding, state, view: hit.view, hit: hit.point, last: now };
+                    this.#runs.set(controller, run);
+                    // The drag owns its buttons from here: the program stops passing them to the window under the ray.
+                    // A claim that cannot be made ends the drag at once, so a binding never runs half-claimed.
+                    if (this.#hook(`${binding.id}.claim`, () => controller.claim(binding, binding.claims()))) {
+                        break;
+                    }
+                    this.#finish(run, "onCancel", session, room, now);
                 }
             }
             if (!this.#runs.has(controller)) {

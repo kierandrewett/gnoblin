@@ -2688,6 +2688,15 @@ declare module "gnoblin/extensions/xr" {
         readonly thumbstick: { x: number; y: number };
         /** The buttons down as of the last frame (a pull is down at 0.75, up at 0.25). */
         readonly buttons: ReadonlySet<ControllerButton>;
+        /** The inputs the shell withholds from the window under the ray now: the union of every owner's claim. */
+        readonly claimed: readonly string[];
+        /**
+         * Claims inputs (`trigger`, `grip`, `thumbstick`, `primary`, `secondary`, lowercase) for `owner`; its earlier claim
+         * is replaced and other owners' claims stand. Throws a `TypeError` naming `Controller#id.claimed` for anything else.
+         */
+        claim(owner: object, inputs: readonly string[]): void;
+        /** Drops `owner`'s claim. */
+        release(owner: object): void;
     }
 
     export class XRList<T extends { readonly id: string }> implements Iterable<T> {
@@ -2761,6 +2770,8 @@ declare module "gnoblin/extensions/xr" {
         onUpdate(event: XRDragEvent, state: object): void;
         onEnd(event: XRDragEvent, state: object): void;
         onCancel(event: XRDragEvent, state: object): void;
+        /** The controller inputs the binding takes from the window under the ray while its drag runs: its trigger's buttons. */
+        claims(): readonly string[];
     }
     export interface ViewMoveOptions extends Partial<XRBindingOptions> {
         /** `controller`: the panel follows the hand. `ray`: it follows where the ray points. */

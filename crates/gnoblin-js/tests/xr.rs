@@ -1401,3 +1401,315 @@ fn the_viewport_snippet_of_the_docs_replaces_the_stock_room_and_names_the_nodes_
         "gnoblin.extensions.xr.session.viewport.composition === 'auto'"
     ));
 }
+
+// ---- Claims: a drag takes its buttons from the window under the ray ----------------------------------------------
+
+/// What the node says is claimed: the shell's last write of `claimed`, in the order it wrote it.
+fn claimed(rig: &Rig, hand: u64) -> Vec<String> {
+    match rig.comp.value(hand, "claimed") {
+        Some(MirrorValue::Texts(names)) => names,
+        None => Vec::new(),
+        other => panic!("`claimed` is a list of names, not {other:?}"),
+    }
+}
+
+/// How many times the shell wrote `claimed` on `hand` since `clear_sent`.
+fn claim_writes(rig: &Rig, hand: u64) -> usize {
+    rig.comp.sets_of(hand).iter().filter(|key| *key == "claimed").count()
+}
+
+/// Runs `body` in the script and lets the frame send what it wrote.
+fn run(rig: &mut Rig, body: &str) {
+    rig.eval(&format!("{body}; 1"));
+    let diagnostics = rig.frame();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+/// Both hands tracked at the origin, a drag world's right hand being the one that grabs.
+fn two_hands(body: &str) -> Rig {
+    let mut rig = drag_world(body);
+    hand(&rig, LEFT_HAND, "left", 0.0, 0.0, 0.0);
+    let diagnostics = rig.settle();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    rig
+}
+
+const SPY: &str = "globalThis.log = []; \
+    gnoblin.extensions.configure('xr', { layout: { triggers: { move: null, resize: null } } }); \
+    globalThis.Spy = class Spy extends XRControllerDragBinding { \
+       onStart(e) { log.push('start'); return { n: 0 }; } \
+       onUpdate(e, s) { s.n++; log.push('update' + s.n + ':' + e.controller.claimed.join('+')); \
+           if (globalThis.boom) throw new Error('boom'); } \
+       onEnd(e, s) { log.push('end'); } \
+       onCancel(e, s) { log.push('cancel'); } };";
+
+#[test]
+fn a_grip_drag_claims_the_grip_of_the_hand_that_started_it_for_the_length_of_the_drag_and_no_longer() {
+    let mut rig = two_hands("");
+    assert!(claimed(&rig, RIGHT_HAND).is_empty() && claimed(&rig, LEFT_HAND).is_empty());
+    rig.comp.clear_sent();
+    grip(&mut rig, 1.0);
+    assert_eq!(claimed(&rig, RIGHT_HAND), ["grip"], "the grip is the drag's");
+    assert!(claimed(&rig, LEFT_HAND).is_empty(), "the other hand is not touched");
+    assert_eq!(rig.comp.sets_of(LEFT_HAND), Vec::<String>::new());
+    move_hand(&mut rig, 100.0, 0.0, 0.0);
+    move_hand(&mut rig, 200.0, 0.0, 0.0);
+    rig.settle();
+    assert_eq!(
+        claimed(&rig, RIGHT_HAND),
+        ["grip"],
+        "still claimed while the hand moves"
+    );
+    assert_eq!(
+        claim_writes(&rig, RIGHT_HAND),
+        1,
+        "one write claims it, not one for each frame of the drag"
+    );
+    assert!(rig.comp.sets_of(WIN).is_empty(), "and the window is untouched");
+    grip(&mut rig, 0.0);
+    assert!(
+        claimed(&rig, RIGHT_HAND).is_empty(),
+        "the end of the drag gives the grip back"
+    );
+    assert_eq!(
+        claim_writes(&rig, RIGHT_HAND),
+        2,
+        "one write to claim and one to release"
+    );
+    // The node says what a script reads.
+    assert_eq!(
+        rig.eval("gnoblin.extensions.xr.session.controllers.get('60').claimed.length"),
+        "0"
+    );
+}
+
+#[test]
+fn a_ray_drag_and_a_resize_claim_the_buttons_of_their_triggers() {
+    let mut rig = drag_world("gnoblin.extensions.configure('xr', { layout: { triggers: { move: null } } });");
+    rig.eval(
+        "gnoblin.extensions.xr.room.layout.bindings.add(new ViewMoveBinding({ id: 'move', trigger: 'Right.Grip+Drag', tracking: 'ray', rotation: 'keep', distance: 'preserve' })); 1",
+    );
+    grip(&mut rig, 1.0);
+    assert_eq!(claimed(&rig, RIGHT_HAND), ["grip"], "a ray drag takes the grip too");
+    grip(&mut rig, 0.0);
+    assert!(claimed(&rig, RIGHT_HAND).is_empty());
+
+    let mut resizing = drag_world("");
+    move_hand(&mut resizing, 200.0, 100.0, 0.0);
+    resizing
+        .comp
+        .external_sets(RIGHT_HAND, vec![("trigger", double(1.0)), ("grip", double(1.0))]);
+    resizing.frame();
+    assert_eq!(
+        claimed(&resizing, RIGHT_HAND),
+        ["trigger", "grip"],
+        "a resize holds both buttons of its chord, in the node's order"
+    );
+    resizing
+        .comp
+        .external_sets(RIGHT_HAND, vec![("trigger", double(0.0)), ("grip", double(0.0))]);
+    resizing.frame();
+    resizing.settle();
+    assert!(claimed(&resizing, RIGHT_HAND).is_empty());
+}
+
+#[test]
+fn a_hand_that_points_at_nothing_or_a_binding_that_declines_claims_nothing() {
+    let mut rig = drag_world("");
+    // Out of reach of every panel: no View is under the ray, so no drag starts.
+    move_hand(&mut rig, 100_000.0, 0.0, 0.0);
+    rig.comp.clear_sent();
+    grip(&mut rig, 1.0);
+    assert!(claimed(&rig, RIGHT_HAND).is_empty());
+    assert_eq!(claim_writes(&rig, RIGHT_HAND), 0);
+
+    let mut declined = drag_world(&format!(
+        "{SPY} globalThis.Decline = class extends Spy {{ onStart() {{ return false; }} }};"
+    ));
+    declined.eval("gnoblin.extensions.xr.room.layout.bindings.add(new Decline({ id: 'no', trigger: 'Grip+Drag' })); 1");
+    declined.comp.clear_sent();
+    grip(&mut declined, 1.0);
+    assert!(claimed(&declined, RIGHT_HAND).is_empty());
+    assert_eq!(
+        claim_writes(&declined, RIGHT_HAND),
+        0,
+        "a binding that said no wrote nothing"
+    );
+}
+
+#[test]
+fn every_way_a_drag_ends_gives_the_claim_back() {
+    // Cancelled: the hand is lost.
+    let mut rig = drag_world("");
+    grip(&mut rig, 1.0);
+    assert_eq!(claimed(&rig, RIGHT_HAND), ["grip"]);
+    rig.comp
+        .external_sets(RIGHT_HAND, vec![("tracked", MirrorValue::Bool(false))]);
+    rig.frame();
+    assert!(
+        claimed(&rig, RIGHT_HAND).is_empty(),
+        "an untracked hand's drag is cancelled"
+    );
+
+    // Cancelled: the drag's binding is removed from the room.
+    let mut removed = drag_world("");
+    grip(&mut removed, 1.0);
+    assert_eq!(claimed(&removed, RIGHT_HAND), ["grip"]);
+    run(
+        &mut removed,
+        "gnoblin.extensions.xr.room.layout.bindings.remove('move')",
+    );
+    assert!(
+        claimed(&removed, RIGHT_HAND).is_empty(),
+        "a removed binding holds nothing"
+    );
+
+    // Cancelled: the controller's hook throws, which is reported and ends only that drag.
+    let mut crashed = drag_world(SPY);
+    crashed.eval("gnoblin.extensions.xr.room.layout.bindings.add(new Spy({ id: 'spy', trigger: 'Grip+Drag' })); 1");
+    crashed.eval("globalThis.boom = true; 1");
+    grip(&mut crashed, 1.0);
+    crashed.comp.external_sets(RIGHT_HAND, vec![("x", double(1.0))]);
+    let diagnostics = crashed.frame();
+    assert!(
+        diagnostics.iter().any(|line| line.contains("boom")),
+        "the throw is reported: {diagnostics:?}"
+    );
+    assert!(
+        claimed(&crashed, RIGHT_HAND).is_empty(),
+        "a crashed drag does not keep the grip"
+    );
+    assert!(
+        crashed.eval("log.join(',')").ends_with(",cancel"),
+        "{}",
+        crashed.eval("log.join(',')")
+    );
+
+    // Cancelled: the session ends under the drag.
+    let mut ended = drag_world("");
+    grip(&mut ended, 1.0);
+    assert_eq!(claimed(&ended, RIGHT_HAND), ["grip"]);
+    ended.comp.destroy(XR_SEAT);
+    ended.settle();
+    assert!(
+        claimed(&ended, RIGHT_HAND).is_empty(),
+        "the end of the session releases what it claimed"
+    );
+}
+
+#[test]
+fn a_generation_that_is_retired_mid_drag_gives_the_claim_back_in_the_transaction_it_sends() {
+    let mut rig = drag_world("");
+    grip(&mut rig, 1.0);
+    // The claim's transaction is answered by the next frame; `retire` sends its own at once only when none is in flight.
+    rig.settle();
+    assert_eq!(claimed(&rig, RIGHT_HAND), ["grip"]);
+    // `retire` is what a reload and a shutdown call before the old generation goes.
+    let frame = rig.shell.retire().expect("the generation retires");
+    assert!(frame.diagnostics.is_empty(), "{:?}", frame.diagnostics);
+    assert!(
+        claimed(&rig, RIGHT_HAND).is_empty(),
+        "the hold is released before the next generation runs"
+    );
+}
+
+#[test]
+fn two_claimants_on_one_hand_keep_their_own_and_the_node_says_the_union() {
+    let mut rig = drag_world("");
+    rig.eval(
+        "globalThis.hand = gnoblin.extensions.xr.session.controllers.get('60'); \
+         globalThis.panel = {}; globalThis.menu = {}; 1",
+    );
+    run(&mut rig, "hand.claim(panel, ['trigger'])");
+    assert_eq!(claimed(&rig, RIGHT_HAND), ["trigger"]);
+    // The drag arrives while the script holds the trigger: both stand, whichever came first.
+    grip(&mut rig, 1.0);
+    assert_eq!(
+        claimed(&rig, RIGHT_HAND),
+        ["trigger", "grip"],
+        "the drag did not take the script's claim"
+    );
+    run(&mut rig, "hand.claim(menu, ['thumbstick', 'grip'])");
+    assert_eq!(
+        claimed(&rig, RIGHT_HAND),
+        ["trigger", "grip", "thumbstick"],
+        "three owners, one list"
+    );
+    grip(&mut rig, 0.0);
+    assert_eq!(
+        claimed(&rig, RIGHT_HAND),
+        ["trigger", "grip", "thumbstick"],
+        "the drag ending does not release a name another owner also holds"
+    );
+    run(&mut rig, "hand.release(menu)");
+    assert_eq!(claimed(&rig, RIGHT_HAND), ["trigger"]);
+    // A claim replaces the same owner's earlier one.
+    run(&mut rig, "hand.claim(panel, ['primary'])");
+    assert_eq!(claimed(&rig, RIGHT_HAND), ["primary"]);
+    run(&mut rig, "hand.claim(panel, [])");
+    assert!(claimed(&rig, RIGHT_HAND).is_empty());
+    // Nothing changed, so nothing is written.
+    rig.comp.clear_sent();
+    run(
+        &mut rig,
+        "hand.release(panel); hand.release(menu); hand.claim(panel, [])",
+    );
+    assert_eq!(claim_writes(&rig, RIGHT_HAND), 0);
+    assert_eq!(claimed(&rig, LEFT_HAND), Vec::<String>::new());
+}
+
+/// What `body` throws, as `Name|message`, or `none`.
+fn thrown(rig: &mut Rig, body: &str) -> String {
+    rig.eval(&format!(
+        "(() => {{ try {{ {body}; return 'none'; }} catch (e) {{ return e.name + '|' + e.message; }} }})()"
+    ))
+}
+
+#[test]
+fn a_claim_that_is_not_a_list_of_lowercase_input_names_is_a_typed_error_naming_the_controllers_claimed() {
+    let mut rig = drag_world("");
+    rig.eval("globalThis.hand = gnoblin.extensions.xr.session.controllers.get('60'); globalThis.me = {}; 1");
+    rig.comp.clear_sent();
+    for (call, expect) in [
+        ("hand.claim(me, 'grip')", "a list"),
+        ("hand.claim(me, null)", "a list"),
+        ("hand.claim(me, { 0: 'grip' })", "a list"),
+        ("hand.claim(me, ['Grip'])", "lowercase"),
+        ("hand.claim(me, ['GRIP'])", "lowercase"),
+        ("hand.claim(me, ['grip', 'bumper'])", "not an input"),
+        ("hand.claim(me, [''])", "not an input"),
+        ("hand.claim(me, [1])", "string"),
+        ("hand.claim(null, ['grip'])", "owner"),
+        ("hand.claim(undefined, ['grip'])", "owner"),
+    ] {
+        let got = thrown(&mut rig, call);
+        assert!(got.starts_with("TypeError|Controller#60.claimed: "), "{call}: {got}");
+        assert!(got.contains(expect), "{call}: {got}");
+    }
+    assert_eq!(claim_writes(&rig, RIGHT_HAND), 0, "a refused claim writes nothing");
+    assert!(claimed(&rig, RIGHT_HAND).is_empty());
+    // A good call still works afterwards, and the refused ones left nothing behind.
+    assert_eq!(thrown(&mut rig, "hand.claim(me, ['grip'])"), "none");
+    rig.frame();
+    assert_eq!(claimed(&rig, RIGHT_HAND), ["grip"]);
+}
+
+#[test]
+fn a_controller_that_is_gone_refuses_a_claim_with_a_scene_error_and_forgets_a_release() {
+    let mut rig = drag_world("");
+    run(
+        &mut rig,
+        "globalThis.hand = gnoblin.extensions.xr.session.controllers.get('60'); globalThis.me = {}; hand.claim(me, ['grip'])",
+    );
+    assert_eq!(claimed(&rig, RIGHT_HAND), ["grip"]);
+    rig.comp.destroy(RIGHT_HAND);
+    rig.settle();
+    assert!(flag(&mut rig, "!hand.alive"));
+    let got = thrown(&mut rig, "hand.claim(me, ['trigger'])");
+    assert!(got.starts_with("SceneError|Controller#60.claimed: "), "{got}");
+    assert_eq!(
+        thrown(&mut rig, "hand.release(me)"),
+        "none",
+        "a release of a gone controller is not an error"
+    );
+}

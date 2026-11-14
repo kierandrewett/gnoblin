@@ -11,7 +11,7 @@
 
 type NodeId = number;
 type Scalar = string | number | boolean;
-type HostValue = Scalar | number[];
+type HostValue = Scalar | number[] | string[];
 
 /** What the scene classes need of the host. The shell's Rust host implements it. */
 export interface SceneBackend {

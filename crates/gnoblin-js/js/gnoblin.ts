@@ -82,8 +82,8 @@ import type { Process, SpawnOptions } from "gnoblin/process";
 
 type NodeId = number;
 type Scalar = string | number | boolean;
-/** What a property holds: a scalar, or the three numbers of a rotation or scale. */
-type HostValue = Scalar | number[];
+/** What a property holds: a scalar, the three numbers of a rotation or scale, or a list of names (a claim list). */
+type HostValue = Scalar | number[] | string[];
 
 /** A rectangle in the compositor's logical coordinates. */
 interface Rect {
