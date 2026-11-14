@@ -148,7 +148,7 @@ The object model is TypeScript (`crates/gnoblin-js/js/gnoblin.ts`), embedded as 
 stock library beside it and appends `export * from "gnoblin/host"` to the stock `gnoblin` index, so one
 `import { defineConfig, ClientListener } from "gnoblin"` reaches both; the stock sources are unchanged. The Rust side
 (`src/bindings/`) is a set of plain host functions behind `globalThis.__gnoblinHost`. It runs against a fake
-compositor in `crates/gnoblin-js/tests/shell.rs`; it has not been run against the real compositor.
+compositor in `crates/gnoblin-js/tests/shell.rs`, and against the real one by P6 role wiring (below).
 
 - **Boot order.** `JsShell::new` attaches, drains the snapshot and loads `gnoblin/host`, so `gnoblin.clients` exists
   for the entry. `load_entry` evaluates `init.ts`. The first `frame()` announces `ready` for the snapshot's nodes,
@@ -193,8 +193,8 @@ collection)` at once for each member already in the collection, in collection or
   or a missing spawner throws `GnoblinError` `spawn-failed`. A top-level `spawn` in `init.ts` runs on every load.
 - **Not done.** Pointer and key events addressed to nodes and call answers from the compositor are consumed and
   dropped; claimed chords and gestures go to the input module (see "P3c status"). `JsShell` owns its generation:
-  wiring it into `JsHost` staging, so a reload swaps shells, is P5's (`JsShell::retire` is the hook it calls before
-  the swap). The compositor-side `where` evaluation is not built.
+  `swap_generation` and the staging hook that wire it into `JsHost` staging are "P6 role wiring" (it calls
+  `JsShell::retire` before the swap). The compositor-side `where` evaluation is not built.
 
 ## P3c status
 
@@ -313,9 +313,72 @@ children, area, gap, focused })` once and writes the placements that differ from
   puts each client back on the workspace of the same id without offering it to the layout, so a floating window keeps
   its place and no second `desktop` appears; a client whose workspace is gone moves to the first workspace and is
   placed as an arrival. The active workspace is kept when it still exists. The tests run two shells in turn over one
-  fake link. Wiring this into `JsReloader` is P5's.
+  fake link. `JsShell::swap_generation` does the same over one shell ("P6 role wiring").
 - **Not done.** Per-display workspaces (`display.viewport.content`), `where` queries on a `Workspace` beyond its
   scalar properties, a `visible` write, and hooks on `Layout` for the binding lane.
+
+## P6 role wiring
+
+`JsRole` (`crates/gnoblin-js/src/role.rs`) is what `ShellRole` is for Lua: the shell the runtime role runs, one frame per
+turn of its loop. It is tested against a real compositor session in `crates/gnoblin/tests/js_shell.rs`; a fake
+compositor stands in only for the unit tests of `swap_generation` (`crates/gnoblin-js/tests/shell.rs`).
+
+- **Selection.** `GNOBLIN_SHELL_VM=js` runs the JavaScript shell and `GNOBLIN_SHELL_VM=js:<dir>` reads the stock
+  `gnoblin` modules from `<dir>` (the layout of `data/js/gnoblin`; a file that is not there is the compiled-in one).
+  Unset, `0` or a directory are what they were: the Lua shell VM. The Lua host still loads `init.lua` and commits the
+  configuration, so only the shell changes. The user's entry is `init.ts` in `$XDG_CONFIG_HOME/gnoblin` (else
+  `$HOME/.config/gnoblin`), falling back to `init.js`. With neither file the shell runs bare and loads `init.ts` when it
+  appears.
+- **Wiring without a cycle.** `gnoblin-js` and `gnoblin-lua` are siblings and neither names the other. `gnoblin-lua`
+  holds a `ShellFrame` trait (`tick(now)`), `ShellSlot::from_env_or_js` and `RoleRunner::run_with_js`; the `gnoblin`
+  binary, which already names both ends, wraps a `JsRole` in a `ShellFrame` and passes the launcher. A build that
+  passes none refuses `js` with one warning and serves without a shell. `xtask deps` lists `gnoblin-js` among the
+  binary's role entry crates for this.
+- **The loop.** `JsRole::connect` reads the socket by the `GNOBLIN_IPC_SOCKET` rule, handshakes as a client at this
+  build's version, and hands the handshaken socket to a `SocketTreeLink`. Each `tick` acts on a reload request, runs
+  `JsShell::frame`, and then acts on strikes. A link failure ends the shell: `tick` returns it, the slot empties and the
+  role keeps serving, as for Lua. There is no second connection for slots and dialogs yet: they belong to the dialogs
+  package. `gnoblin.spawn` starts the program in a process group of its own with no terminal and reaps it.
+- **Reload.** The role owns a `ConfigWatcher` (100 ms debounce), a `JsReloader` and a `JsSupervisor`. The reloader
+  stages the entry in a generation of its own (`JsHost::set_prepare` gives it the shell's host objects over the shell's
+  tree mirror, `JsStaging::prepare`), and the commit closure keeps a second handle on it (`JsGeneration::share`).
+  When the reload is accepted the role calls `JsShell::swap_generation`: it reads the old generation's
+  `workspace_snapshot`, `retire`s it (drags cancelled, seat claims released, in the transaction that carries the new
+  generation's own claims), drops it with its listeners and queued calls, runs `finishLoad` on the new one and
+  `reconcile`s the windows back onto the workspaces of the same id. The new generation has already told its
+  listeners of the windows that exist (replay on `addListener`) and is announced `ready` for every window on the
+  next frame. Windows are nodes of the compositor's
+  tree, so their ids do not change and nothing is re-created or moved. `JsShell::begin_stage` and `abandon_stage` take
+  back a write the staged entry made at its top level (`client.x = 5`) when the stage fails after it.
+- **Failure.** A syntax error, a throw, a budget trip while loading or a stage that is rejected keeps the running
+  generation and logs one warning, `the running generation stays: <file>:<line>:<column>: <message>`, in the
+  author's `.ts` coordinates. The file the error named stays watched, so the edit that fixes it is seen.
+- **Runaway handlers.** A listener call that runs past `entry_budget` (100 ms) is interrupted, reported, and counts a
+  strike on the shell. The role then asks the supervisor: it restages the generation from disk, and three strikes in
+  30 s latch `Degraded`, after which the last generation keeps running and a deliberate reload (a save, or
+  `JsRole::reload_now`) clears the strikes. The shell is a process of its own, so the compositor never waits for a
+  script: the test runs the role in a thread, spins a handler for ever, reads the scene through an observer connection
+  while it spins, and maps one more window afterwards.
+- **Proven against the real compositor** (`crates/gnoblin/tests/js_shell.rs`; slice criteria 1, 3, 4 and 5): `init.ts`
+  with annotations and an enum importing `./slots.ts` places two mapped windows; a rewrite reloads with the same window
+  ids and new places; a syntax error leaves the old behaviour in force (a window mapped afterwards is placed by it) and
+  is logged once as `init.ts:3:<col>`; fixing the file recovers; a `while (true)` in `onAdded` is interrupted and the
+  generation restarts (the restaged one reads the mark the first wrote and does not hang), the scene answers an
+  observer meanwhile and still updates; a handler that hangs in every generation (it hangs the restage too, while it
+  loads) latches `Degraded` after three strikes and the last generation keeps placing windows; a shell with no
+  `init.ts` runs bare and loads the file when it appears. Not proven here: slice criterion 6
+  (killing the process and the Rust fallback), which needs the guardian and the fallback shell.
+- **What the real tree changed in the binding.** The fake compositor's ids are small and its windows hang under the
+  root; the real tree's are not. (1) The compositor's own nodes have ids with bit 63 set, which a script number
+  cannot hold, so a node crosses into script as a number from `NodeHandles` (`bindings/mod.rs`): an id below
+  2^53 - 2^24 is its own number, any other gets a stable handle in the band above, for the life of the shell, so a
+  reloaded generation sees the same number for the same window. `client.id` and the error targets print the real
+  decimal id (`host.label`), the one `gnoblinctl` prints. (2) The compositor makes a window with no parent and the shell
+  parents it, so the collections are built from every node of the mirror (`TreeMirror::ids`), the root's tree first,
+  and not from a walk of the root.
+- **Not done.** The second owner connection for slots and dialogs, input events and chords (the binding lane), the
+  `gnoblinctl reload` request path into `JsRole::reload_now`, and the stock config plan applied as a runtime (the
+  shell with no `init.ts` runs bare, not as `defaultConfig`).
 
 ## Questions for the owner (the agent has a default for each)
 
