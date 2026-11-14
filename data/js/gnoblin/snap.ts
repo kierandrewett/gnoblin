@@ -63,13 +63,14 @@ export interface SnapClient {
     floatingBounds?: Rect | null;
 }
 
-interface Snapped {
+/** What a snap keeps: the zone and the rectangle unsnapping goes back to. */
+export interface SnapRecord {
     zone: SnapZone;
     /** The rectangle `unsnapClient` restores. */
     floating: Rect;
 }
 
-const snapped = new WeakMap<object, Snapped>();
+const snapped = new WeakMap<object, SnapRecord>();
 
 /** What `snapClient` needs of the world: whether edge tiling is on, and the area a window tiles in. */
 export interface SnapOptions {
@@ -113,6 +114,17 @@ export function unsnapClient(client: SnapClient): boolean {
     snapped.delete(client);
     client.bounds = state.floating;
     return true;
+}
+
+/** A copy of what `client`'s snap keeps, or null when it is not snapped: what `restoreSnap` takes back. */
+export function snapRecord(client: object): SnapRecord | null {
+    const state = snapped.get(client);
+    return state === undefined ? null : { zone: state.zone, floating: { ...state.floating } };
+}
+
+/** Snaps `client` again from a record `snapRecord` took, without moving it: the caller put the rectangle back. */
+export function restoreSnap(client: object, record: SnapRecord): void {
+    snapped.set(client, { zone: record.zone, floating: { ...record.floating } });
 }
 
 /** The zone `client` is snapped to, or null. */

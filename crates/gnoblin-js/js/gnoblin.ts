@@ -59,6 +59,8 @@ import { notRespondingAlerts } from "gnoblin/alerts";
 import { barInsets, barsGiveWayTo, barsOnOutputs } from "gnoblin/widgets";
 import { windowState } from "gnoblin/window_state";
 import type { ClientRequest } from "gnoblin/window_state";
+import { repositioning } from "gnoblin/reposition";
+import type { RepositionClient } from "gnoblin/reposition";
 import {
     ClientStyle,
     MAX_STYLE_LIST,
@@ -884,6 +886,20 @@ export class Client {
     /** Gives the window the keyboard focus: a write of the seat's `focus`, which is how a shell hands it out. */
     focus(): void {
         callMethod(this, "focus");
+    }
+
+    /**
+     * Starts moving the window with the arrow keys, 16 pixels a press, inside the work area: Return keeps the place,
+     * Escape puts the window back. Refused (false) for a window that is fullscreen, maximised, tiled or not showing; a
+     * snapped window is unsnapped first. See `gnoblin/reposition`.
+     */
+    moveWithKeys(): boolean {
+        return repositioning.begin(this as unknown as RepositionClient, "move");
+    }
+
+    /** Starts resizing the window with the arrow keys: Right and Down grow it, Left and Up shrink it. */
+    resizeWithKeys(): boolean {
+        return repositioning.begin(this as unknown as RepositionClient, "resize");
     }
 
     /**
@@ -3170,6 +3186,16 @@ windowState.start<Client>({
         const seat = host.input.seats()[0];
         return seat !== undefined && seatHost.settings(seat)?.edgeTiling === true;
     },
+});
+
+/** The keyboard move and resize mode: its keys, its hint and its end are the stock library's; the area is the shell's. */
+repositioning.start({
+    workArea: (client) => workAreaOf(client as unknown as Client),
+    dragConstraint: () => {
+        const seat = mainSeat();
+        return seat === undefined ? undefined : seatHost.dragConstraint(seat);
+    },
+    focus: (client) => (client as unknown as Client).focus(),
 });
 
 /**

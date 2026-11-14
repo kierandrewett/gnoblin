@@ -109,6 +109,16 @@ declare module "gnoblin" {
         moveToWorkspace(workspace: Workspace): boolean;
         /** `moveToWorkspace` to the workspace `output` shows. False when the output is gone or shows none. */
         moveToOutput(output: Output): boolean;
+        /**
+         * Starts moving the window with the arrow keys, 16 pixels a press, inside the work area: Return, Enter and Space
+         * keep the place, Escape puts the window back. The mode holds the keyboard while it runs and gives it back to
+         * the window; it ends when the window closes and when the session locks. False, and nothing starts, for a window
+         * that is fullscreen, maximised, tiled, dead or not showing; a snapped window is unsnapped first. The window
+         * menu's Move runs it.
+         */
+        moveWithKeys(): boolean;
+        /** Starts resizing the window with the arrow keys: Right and Down grow it, Left and Up shrink it, never below 120 by 80. */
+        resizeWithKeys(): boolean;
         /** Where the user left the client in a floating layout. */
         floatingBounds?: Rect;
         /** Whether the window covers its output. Writing asks the compositor to make it fullscreen or restore it. */
@@ -1198,6 +1208,15 @@ declare module "gnoblin" {
     /** Puts a snapped client back where it floated. False when it is not snapped. */
     export function unsnapClient(client: SnapClient): boolean;
     export function snappedZone(client: object): SnapZone | null;
+    /** What a snap keeps: the zone and the rectangle unsnapping goes back to. */
+    export interface SnapRecord {
+        zone: SnapZone;
+        floating: Rect;
+    }
+    /** A copy of what the client's snap keeps, or null when it is not snapped. */
+    export function snapRecord(client: object): SnapRecord | null;
+    /** Snaps the client again from a record `snapRecord` took, without moving it. */
+    export function restoreSnap(client: object, record: SnapRecord): void;
     /** Ends the snapped state without moving the client. */
     export function forgetSnap(client: object): void;
 
@@ -2233,6 +2252,48 @@ declare module "gnoblin" {
         setAbove(client: MenuClient, on: boolean): void;
     }
     export const windowMenu: WindowMenus;
+
+    /** How far an arrow key moves or resizes a window in the keyboard mode, in pixels. */
+    export const REPOSITION_STEP: number;
+    /** The least width a keyboard resize keeps. */
+    export const REPOSITION_MIN_WIDTH: number;
+    /** The least height a keyboard resize keeps. */
+    export const REPOSITION_MIN_HEIGHT: number;
+    export type RepositionMode = "move" | "resize";
+    /** What the keyboard move and resize mode needs of a window. A `Client` is one. */
+    export interface RepositionClient {
+        readonly alive: boolean;
+        readonly fullscreen: boolean;
+        readonly maximised: boolean;
+        readonly tiled: boolean;
+        readonly secure?: boolean;
+        readonly frameInset?: number;
+        readonly workspace: { readonly active: boolean } | null;
+        bounds: Rect;
+        floatingBounds?: Rect | null;
+    }
+    /** What the keyboard mode needs of the shell around it. */
+    export interface RepositionWorld {
+        workArea(client: RepositionClient): Rect | null;
+        dragConstraint(): unknown;
+        focus(client: RepositionClient): void;
+    }
+    /** The node that holds the keyboard while the keyboard mode runs. */
+    export class RepositionGrab extends Box {
+        readonly mode: RepositionMode;
+        readonly client: RepositionClient;
+        readonly from: Rect;
+    }
+    /** The keyboard move and resize mode: at most one window at a time. */
+    export class Repositioning {
+        start(world: RepositionWorld): void;
+        readonly current: RepositionClient | null;
+        readonly grab: RepositionGrab | null;
+        begin(client: RepositionClient, mode: RepositionMode): boolean;
+        step(grab: RepositionGrab, dx: number, dy: number): void;
+        finish(keep: boolean): boolean;
+    }
+    export const repositioning: Repositioning;
 
     /** Every request the compositor makes of a window. `menu` is answered by the window menu. */
     export type ClientRequestKind =

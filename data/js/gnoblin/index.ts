@@ -32,6 +32,7 @@ export * from "gnoblin/launcher";
 export * from "gnoblin/overview";
 export * from "gnoblin/panel";
 export * from "gnoblin/window_state";
+export * from "gnoblin/reposition";
 // The host API of `gnoblin.session`, `gnoblin.process`, `gnoblin.timers` and `gnoblin.on`: the classes a script holds
 // and the shapes it reads. The module that builds them (`HostApi`) stays with the host.
 export { Operation, Timer } from "gnoblin/operation";

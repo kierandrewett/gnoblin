@@ -69,7 +69,7 @@ export interface MenuClient {
     maximised: boolean;
     minimised: boolean;
     close(): void;
-    /** Keyboard move and resize modes: absent in the stock library, where the two entries are shown off. */
+    /** Keyboard move and resize modes (`gnoblin/reposition`): a `Client` has them; for a client that does not, the two entries are shown off. */
     moveWithKeys?(): void;
     resizeWithKeys?(): void;
 }
@@ -598,8 +598,8 @@ export class WindowMenu extends Box {
 
 /**
  * What the window menu offers a window: Restore or Maximise, Minimise, Move, Resize, Always on top, Move to workspace
- * and Close. Move and Resize are the keyboard modes, which the stock library does not have: they are shown off for a
- * client that does not offer `moveWithKeys` and `resizeWithKeys`.
+ * and Close. Move and Resize are the keyboard modes (`gnoblin/reposition`): they are shown off for a window that is not
+ * floating and for a client that does not offer `moveWithKeys` and `resizeWithKeys`.
  */
 export function defaultMenuItems(client: MenuClient, controller: WindowMenus, world: MenuWorld): MenuEntry[] {
     const floating = !(client.maximised || client.fullscreen || client.tiled);

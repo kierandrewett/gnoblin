@@ -3810,4 +3810,126 @@ fn an_open_authentication_request_ends_at_once_when_the_shell_goes_away() {
         assert!(Instant::now() < deadline, "the slot went back to the services role");
         std::thread::sleep(POLL);
     }
+
+// ---- the keyboard move and resize of a window -------------------------------------------------------------------
+
+const KEY_UP: u32 = 103;
+const KEY_LEFT: u32 = 105;
+const KEY_RIGHT: u32 = 106;
+const KEY_DOWN: u32 = 108;
+const KEY_F11: u32 = 87;
+const KEY_F12: u32 = 88;
+
+/// The hint the keyboard mode draws while it runs.
+const MOVE_HINT: &str = "Move: arrow keys, Return to keep it, Escape to cancel";
+const RESIZE_HINT: &str = "Resize: arrow keys, Return to keep it, Escape to cancel";
+
+fn write_reposition_config(dir: &Path) {
+    fs::write(
+        dir.join("init.ts"),
+        r#"import { Layout, defineConfig, gnoblin } from "gnoblin";
+
+defineConfig({
+    workspaces: [{ id: "desk", layout: new Layout() }],
+    rules: [{ appId: "org.example.keys", position: { x: 300, y: 200 }, size: { width: 200, height: 150 } }],
+    keys: {
+        F11: () => {
+            gnoblin.clients.at(0)?.moveWithKeys();
+        },
+        F12: () => {
+            gnoblin.clients.at(0)?.resizeWithKeys();
+        },
+    },
+});
+"#,
+    )
+    .expect("init.ts");
+}
+
+/// Presses `key` until the compositor shows `hint`: the shell's claim of the key reaches the compositor a few frames
+/// after the shell starts, and a press that comes before is the window's and starts nothing.
+#[track_caller]
+fn start_mode(session: &Session, mapper: &mut Mapper, shell: &Shell, key: u32, hint: &str) {
+    let ipc = session.ipc();
+    wait_for("the keyboard mode runs", session, mapper, shell, || {
+        if !shows(&ipc, hint) {
+            tap_key(session, key);
+        }
+        shows(&ipc, hint)
+    });
+}
+
+/// The arrow keys, Return and Escape of a real keyboard move, resize and cancel a real window, and the keyboard goes
+/// back to it. The mode holds the keyboard, so the keys reach it through the compositor's seat and not through a
+/// binding: this is the path the fake link cannot show.
+#[test]
+fn the_keyboard_moves_and_resizes_a_real_window_keeps_it_on_return_and_puts_it_back_on_escape() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    write_reposition_config(config.path());
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    let app = "org.example.keys";
+    wait_for("the shell runs the config", &session, &mut mapper, &shell, || {
+        shell.generation() > 0 && shell.view().contains("F11")
+    });
+    mapper.map_window(app, "Keys");
+    wait_for("the window at its place", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, app) == Some((300.0, 200.0, 200.0, 150.0))
+    });
+
+    start_mode(&session, &mut mapper, &shell, KEY_F11, MOVE_HINT);
+    tap_key(&session, KEY_RIGHT);
+    wait_for("one step right", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, app) == Some((316.0, 200.0, 200.0, 150.0))
+    });
+    tap_key(&session, KEY_DOWN);
+    wait_for("one step down", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, app) == Some((316.0, 216.0, 200.0, 150.0))
+    });
+    tap_key(&session, KEY_ENTER);
+    wait_for(
+        "Return keeps the place and ends the mode",
+        &session,
+        &mut mapper,
+        &shell,
+        || !shows(&ipc, MOVE_HINT),
+    );
+    assert_eq!(rect_of(&ipc, app), Some((316.0, 216.0, 200.0, 150.0)));
+    wait_for(
+        "the keyboard is the window's again",
+        &session,
+        &mut mapper,
+        &shell,
+        || focused_app(&shell).as_deref() == Some(app),
+    );
+
+    // Resize: Down grows, Up shrinks, and Escape puts the size back.
+    start_mode(&session, &mut mapper, &shell, KEY_F12, RESIZE_HINT);
+    tap_key(&session, KEY_DOWN);
+    wait_for("one step taller", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, app) == Some((316.0, 216.0, 200.0, 166.0))
+    });
+    tap_key(&session, KEY_LEFT);
+    wait_for("one step narrower", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, app) == Some((316.0, 216.0, 184.0, 166.0))
+    });
+    tap_key(&session, KEY_UP);
+    wait_for("one step shorter", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, app) == Some((316.0, 216.0, 184.0, 150.0))
+    });
+    tap_key(&session, KEY_ESC);
+    wait_for("Escape restores the rectangle", &session, &mut mapper, &shell, || {
+        !shows(&ipc, RESIZE_HINT) && rect_of(&ipc, app) == Some((316.0, 216.0, 200.0, 150.0))
+    });
+    wait_for(
+        "the keyboard is the window's again",
+        &session,
+        &mut mapper,
+        &shell,
+        || focused_app(&shell).as_deref() == Some(app),
+    );
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    shell.finish();
 }
