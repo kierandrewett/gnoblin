@@ -941,7 +941,7 @@ export function resolveStyle(layers: readonly StyleLayer[]): ComputedStyle {
 
 /** One `effect` of the tree's node `effects` list, with the schema's property names (effect.toml). */
 export interface EffectWire {
-    kind: "blur" | "shadow";
+    kind: "blur" | "shadow" | "border";
     downscale: number;
     passes: number;
     algorithm: string;
@@ -955,6 +955,10 @@ export interface EffectWire {
     blur_radius: number;
     spread: number;
     colour: string;
+    width: number;
+    offset: number;
+    inset: boolean;
+    frame: boolean;
 }
 
 /** The compositor's fixed backdrop blur radius (crates/gnoblin-compositor/src/ipc/tree_effects.rs, `BLUR_RADIUS`). */
@@ -975,6 +979,10 @@ const BLANK: Omit<EffectWire, "kind"> = {
     blur_radius: 12,
     spread: 0,
     colour: "#00000080",
+    width: 0,
+    offset: 0,
+    inset: false,
+    frame: false,
 };
 
 function wireColour(text: Color): string {
@@ -987,17 +995,39 @@ function wireColour(text: Color): string {
 
 /** What a resolved style becomes on the node, and what of it nothing draws. */
 export interface StyleMapping {
-    /** In paint order, first to last: the backdrop blur, then the shadows from the last listed to the first. */
+    /**
+     * In paint order, first to last: the backdrop blur, the shadows from the last listed to the first, then the borders
+     * in list order.
+     */
     effects: EffectWire[];
+    /** The node's `corner_radius`, in logical pixels: the one radius the style asks for, or 0. */
+    cornerRadius: number;
     /** The properties of this style the tree cannot express, one text each, `<property>: <reason>`. */
     unapplied: string[];
 }
 
+/** The radius a style's `cornerRadius` makes on the node, and the reason when the node cannot say it exactly. */
+function nodeRadius(radius: ComputedStyle["cornerRadius"]): { radius: number; note: string | null } {
+    if (typeof radius === "number") {
+        return { radius, note: null };
+    }
+    const corners = [radius.topLeft, radius.topRight, radius.bottomRight, radius.bottomLeft];
+    const largest = Math.max(...corners);
+    return {
+        radius: largest,
+        note: corners.every((corner) => corner === largest)
+            ? null
+            : `cornerRadius: a window has one radius for every corner, so the largest of the four (${largest}) is drawn`,
+    };
+}
+
 /**
- * The tree has two effects (blur and shadow), a node opacity and nothing else, so that is all a style can become:
- * outer shadows and one backdrop blur whose saturation, brightness and contrast are the products of the chain's.
- * `cornerRadius`, `borders`, `background`, `filter` and inset shadows stay in `computedStyle`; each comes back as an
- * `unapplied` text when the style has a non-default value for it.
+ * What a style becomes on the node: a node `corner_radius`, and the `effects` list. Outer `shadows` are `shadow`
+ * effects that follow the window's whole frame (the titlebar included), `borders` are `border` effects, and the
+ * `backdropFilter` is one backdrop blur whose saturation, brightness and contrast are the products of the chain's.
+ * `background`, `filter` and inset shadows stay in `computedStyle`; each comes back as an `unapplied` text when the
+ * style has a non-default value for it. Whether the active renderer draws a kind is the compositor's to say: what it
+ * leaves out is in the node's `skipped` list (`Client#styleWarnings`), not here.
  */
 export function mapStyle(computed: ComputedStyle): StyleMapping {
     const effects: EffectWire[] = [];
@@ -1042,16 +1072,26 @@ export function mapStyle(computed: ComputedStyle): StyleMapping {
             blur_radius: shadow.blur,
             spread: shadow.spread,
             colour: wireColour(shadow.color),
+            // A window's shadow is the whole frame's, titlebar and all, not the content's alone.
+            frame: true,
         });
     }
     if (computed.shadows.some((shadow) => shadow.inset)) {
         unapplied.push("shadows: an inset shadow has no effect kind");
     }
-    if (computed.cornerRadius !== 0 && computed.origin.cornerRadius !== "default") {
-        unapplied.push("cornerRadius: the tree has no corner radius for a window");
+    for (const border of computed.borders) {
+        effects.push({
+            ...BLANK,
+            kind: "border",
+            width: border.width,
+            offset: border.offset,
+            inset: border.inset,
+            colour: wireColour(border.color),
+        });
     }
-    if (computed.borders.length > 0) {
-        unapplied.push("borders: the tree has no border for a window");
+    const { radius, note } = nodeRadius(computed.cornerRadius);
+    if (note !== null) {
+        unapplied.push(note);
     }
     if (computed.background !== null) {
         unapplied.push("background: the tree has no background for a window");
@@ -1059,7 +1099,7 @@ export function mapStyle(computed: ComputedStyle): StyleMapping {
     if (computed.filter.length > 0) {
         unapplied.push("filter: no effect kind filters a window's own content");
     }
-    return { effects, unapplied };
+    return { effects, cornerRadius: radius, unapplied };
 }
 
 /**

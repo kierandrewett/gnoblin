@@ -361,6 +361,10 @@ declare module "gnoblin/schema/tree" {
         blurRadius: number;
         spread: number;
         colour: string;
+        width: number;
+        offset: number;
+        inset: boolean;
+        frame: boolean;
     }
 
     /** Schema object `tree.lock` (since 0.2.0). */
@@ -516,6 +520,8 @@ declare module "gnoblin/schema/tree" {
         height: number;
         /** Default `1`. Animatable. */
         opacity: number;
+        /** Schema name `corner_radius`. Default `0`. Animatable. */
+        cornerRadius: number;
         /** Default `true`. */
         visible: boolean;
         /** Default `false`. */

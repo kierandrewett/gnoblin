@@ -211,7 +211,7 @@ impl<'js> IntoJs<'js> for JsHostValue {
 }
 
 /// The keys of an `effect` object a script writes, named as the schema names them.
-const EFFECT_KEYS: [&str; 14] = [
+const EFFECT_KEYS: [&str; 18] = [
     "kind",
     "downscale",
     "passes",
@@ -226,6 +226,10 @@ const EFFECT_KEYS: [&str; 14] = [
     "blur_radius",
     "spread",
     "colour",
+    "width",
+    "offset",
+    "inset",
+    "frame",
 ];
 
 fn effect_to_js<'js>(ctx: &Ctx<'js>, entry: &effect::Properties) -> rquickjs::Result<Object<'js>> {
@@ -244,6 +248,10 @@ fn effect_to_js<'js>(ctx: &Ctx<'js>, entry: &effect::Properties) -> rquickjs::Re
     object.set("blur_radius", entry.blur_radius)?;
     object.set("spread", entry.spread)?;
     object.set("colour", entry.colour.as_str())?;
+    object.set("width", entry.width)?;
+    object.set("offset", entry.offset)?;
+    object.set("inset", entry.inset)?;
+    object.set("frame", entry.frame)?;
     Ok(object)
 }
 
@@ -270,6 +278,7 @@ pub(crate) fn effect_from_js(object: &Object<'_>) -> Option<effect::Properties> 
         let n = number(name)?;
         (n >= 0.0 && n.fract() == 0.0).then_some(n as u64)
     };
+    let flag = |name: &str| -> Option<bool> { object.get::<_, Option<bool>>(name).ok().map(Option::unwrap_or_default) };
     Some(effect::Properties {
         kind: text("kind")?,
         downscale: whole("downscale")?,
@@ -285,5 +294,9 @@ pub(crate) fn effect_from_js(object: &Object<'_>) -> Option<effect::Properties> 
         blur_radius: number("blur_radius")?,
         spread: number("spread")?,
         colour: text("colour")?,
+        width: number("width")?,
+        offset: number("offset")?,
+        inset: flag("inset")?,
+        frame: flag("frame")?,
     })
 }

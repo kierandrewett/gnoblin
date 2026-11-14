@@ -1337,9 +1337,30 @@ the frame pass), `effects` and `skipped` in `crates/gnoblin-js/src/bindings/prop
   shadow), and a reload without the lines takes both off. **Proven against the fake link only:** the cascade
   (ST1 to ST5, ST7), copy on write, the mapping, the notices, the 8-effect cap and the rule routing. **Not proven:**
   that a renderer draws the effects (GLES only, not exercised here), `ST6` (secure masking).
-- **Not done.** `Node.style` and `workspace.style`; any renderer
-  feature (corner radius, borders, content filters, inset shadows, a blur radius, a background), which the owner must
-  schedule as renderer work; a titlebar restore animation still ends at opacity 1, not the style's opacity.
+- **Not done.** `Node.style` and `workspace.style`; content filters, inset shadows, a blur radius, a background and
+  per-corner radii (a per-corner radius is drawn as the largest of the four); a titlebar restore animation still ends
+  at opacity 1, not the style's opacity.
+- **Native corner radius, borders and frame shadow (lane NativeStyle).** The renderer now draws what the style says.
+  The node has `corner_radius` (`node.toml`, animated) and the `effects` list gains `border` (`width`, `offset`,
+  `inset`, `colour`) and a `frame` flag on `shadow` (`effect.toml`); a node holds at most 8 borders and 8 shadows
+  (`too-large`). The choice is a node property for the radius, not an effect kind, because the radius clips content,
+  decoration, border and shadow together; a per-corner list was not cheap (every renderer's shader takes one radius)
+  and is not drawn. For a window, the shape everything shares is its frame: the content's rectangle united with its
+  decoration children (a titlebar canvas above it). The composer gives each layer of the frame the same
+  `silhouette` (`gnoblin-render-frame`'s `Surface` and `Solid`), so the content and the bar are cut from the frame's
+  corners and not each from their own. The shadow with `frame` follows the silhouette, which is what puts it under the
+  bar. Borders are drawn as one ring layer after the window's subtree, so the stroke runs over the titlebar. The
+  scene's damage for a window with a frame shadow or a border includes the decoration children plus the padding.
+  Which renderer draws what: GLES draws `corner_radius`, `shadow`, `border` and `blur` (one SDF fragment program
+  each: `border.wgsl`, the shared `gnoblin_corner`); the software renderer draws `corner_radius`, `shadow` and
+  `border` as spans (hard edges, a stepped shadow falloff) and skips `blur`; Vulkan draws `corner_radius` (it shares the
+  shaders) and reports every effect kind skipped. A node placed in 3D draws no shadow, border or blur
+  (`unsupported-effect-on-3d`). `seat.effect_kinds` is `blur, shadow, border` on GLES and `shadow, border` on software.
+  A capture draws what the output draws; a secure layer keeps its silhouette in the mask and loses its effects, and no
+  backdrop effect samples a secure layer. **Proven:** GLES probes on llvmpipe (`crates/gnoblin-render-gles/src/shape_tests.rs`),
+  software probes (`shape.rs`), the composer's frame and pixels (`decorated_window_tests.rs`), scene damage, the wire
+  and the JS mapping. **Not proven:** a live screenshot of a rounded, bordered, shadowed decorated window, and a
+  real-compositor `js_shell.rs` test of the new fields.
 
 ## Transitions status
 

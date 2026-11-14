@@ -482,20 +482,22 @@ Each refusal is one `Error.code` (`envelope.proto:64`, kebab case):
 
 A property's value kind comes from its schema type. The mapping is `value_type` in `ipc/tree.rs`; the checks are in `transaction.rs`.
 
-| Schema type           | Value kind   | Checks                                                                                                                                               |
-| --------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bool`                | `Bool`       | kind matches (`wrong-type`)                                                                                                                          |
-| `int`                 | `Int`        | kind matches (`wrong-type`)                                                                                                                          |
-| `uint`                | `Uint`       | kind matches (`wrong-type`)                                                                                                                          |
-| `double`              | `Double`     | kind matches (`wrong-type`); finite (`not-finite`)                                                                                                   |
-| `string`              | `Text`       | kind matches (`wrong-type`); at most 64 KiB (`too-large`)                                                                                            |
-| `bytes`               | `Bytes`      | kind matches (`wrong-type`); at most 1 MiB (`too-large`)                                                                                             |
-| `list<double>`        | `ListDouble` | kind matches (`wrong-type`); at most 4096 items (`too-large`); each finite (`not-finite`)                                                            |
-| `list<string>`        | `ListText`   | kind matches (`wrong-type`); at most 4096 items (`too-large`); each at most 64 KiB (`too-large`)                                                     |
-| `list<object:effect>` | `Effects`    | at most 16 passes (`too-large`); blur and shadow only, a shader pass is `bad-value`; every number finite (`not-finite`) or in range (`out-of-range`) |
-| `object:<C>`          | `Node(C)`    | names a live node whose class is `C` or a subclass, or nil (`unknown-node`, `wrong-type`)                                                            |
+| Schema type           | Value kind   | Checks                                                                                                                                                                                                                |
+| --------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bool`                | `Bool`       | kind matches (`wrong-type`)                                                                                                                                                                                           |
+| `int`                 | `Int`        | kind matches (`wrong-type`)                                                                                                                                                                                           |
+| `uint`                | `Uint`       | kind matches (`wrong-type`)                                                                                                                                                                                           |
+| `double`              | `Double`     | kind matches (`wrong-type`); finite (`not-finite`)                                                                                                                                                                    |
+| `string`              | `Text`       | kind matches (`wrong-type`); at most 64 KiB (`too-large`)                                                                                                                                                             |
+| `bytes`               | `Bytes`      | kind matches (`wrong-type`); at most 1 MiB (`too-large`)                                                                                                                                                              |
+| `list<double>`        | `ListDouble` | kind matches (`wrong-type`); at most 4096 items (`too-large`); each finite (`not-finite`)                                                                                                                             |
+| `list<string>`        | `ListText`   | kind matches (`wrong-type`); at most 4096 items (`too-large`); each at most 64 KiB (`too-large`)                                                                                                                      |
+| `list<object:effect>` | `Effects`    | at most 16 passes (`too-large`), at most 8 `border` and 8 `shadow` of them (`too-large`); blur, shadow and border only, a shader pass is `bad-value`; every number finite (`not-finite`) or in range (`out-of-range`) |
+| `object:<C>`          | `Node(C)`    | names a live node whose class is `C` or a subclass, or nil (`unknown-node`, `wrong-type`)                                                                                                                             |
 
 `TreeClasses::new` checks every property of every `Node` subclass in the catalog and refuses to build when a schema type has no value kind (for example `list<uint>`). That is a load-time error, never a silent gap at set time. A read-only property refuses every write (`read-only`).
+
+Corner radius and borders: the node property `corner_radius` (px, at least 0 or `out-of-range`, animated) rounds the node and, for a window, its whole frame (its rectangle united with the decoration children outside it, such as a titlebar), so the content, the decoration, the `border` effects and a `shadow` with `frame` set share one rounded shape. It is a property and not an effect kind because it clips content, borders and shadow alike, and it is the smaller schema change: the scene already stores a corner radius in the node's transform. One radius serves every corner. A `border` is a stroke of `width` along the shape's edge, outside it (or inside with `inset`), moved `offset` from the edge; borders stack in list order. `skipped` keeps naming the kinds the active renderer does not draw, and `seat.effect_kinds` lists the ones it does.
 
 ### 4.5 Stale base
 

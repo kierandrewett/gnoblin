@@ -94,6 +94,8 @@ const WINDOW: &[JsPropDef] = &[
     // A hidden node is neither drawn nor hit.
     def("visible", JsPropKind::Flag, true),
     animated("opacity", JsPropKind::Double),
+    // The radius of the rounded corners the window's frame (content and titlebar together) is clipped to.
+    animated("corner_radius", JsPropKind::Double),
     // The placement in depth: `z` and the rotation and scale about each axis. A layout that wants a 3D look
     // writes these; the others leave them at their defaults.
     animated("z", JsPropKind::Double),
@@ -307,6 +309,7 @@ mod tests {
                 "tiled",
                 "visible",
                 "opacity",
+                "corner_radius",
                 "z",
                 "rotation",
                 "scale",
@@ -335,7 +338,17 @@ mod tests {
             .collect();
         assert_eq!(
             animated,
-            ["x", "y", "width", "height", "opacity", "z", "rotation", "scale"]
+            [
+                "x",
+                "y",
+                "width",
+                "height",
+                "opacity",
+                "corner_radius",
+                "z",
+                "rotation",
+                "scale"
+            ]
         );
     }
 

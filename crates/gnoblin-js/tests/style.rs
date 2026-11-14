@@ -473,6 +473,59 @@ fn a_resolved_style_becomes_the_node_effects_and_opacity_and_is_rewritten_when_a
 }
 
 #[test]
+fn borders_a_radius_and_a_frame_shadow_reach_the_window_node() {
+    let mut rig = world("");
+    js(
+        &mut rig,
+        r##"
+        gnoblin.clients.style.cornerRadius = 12;
+        gnoblin.clients.style.borders = [{ width: 2, color: "#7c3aed", offset: 3 }, { width: 1, inset: true }];
+        gnoblin.clients.style.shadows = [{ blur: 8 }];
+        return "ok";
+        "##,
+    );
+    let notices = rig.settle();
+    assert!(notices.is_empty(), "everything the style says is drawn: {notices:?}");
+    for node in [3, 4] {
+        let list = effects(&rig, node);
+        let kinds: Vec<&str> = list.iter().map(|e| e.kind.as_str()).collect();
+        assert_eq!(
+            kinds,
+            ["shadow", "border", "border"],
+            "the shadow, then the borders in list order"
+        );
+        assert!(
+            list[0].frame,
+            "a window's shadow follows its whole frame, titlebar included"
+        );
+        assert_eq!(
+            (list[1].width, list[1].offset, list[1].inset, list[1].colour.as_str()),
+            (2.0, 3.0, false, "#7c3aedff")
+        );
+        assert_eq!((list[2].width, list[2].inset), (1.0, true));
+        assert_eq!(rig.comp.number(node, "corner_radius"), 12.0);
+    }
+    // A radius that differs by corner is drawn as its largest, and the style says so once.
+    js(
+        &mut rig,
+        "gnoblin.clients.style.cornerRadius = { topLeft: 4, topRight: 8, bottomRight: 8, bottomLeft: 4 }; return 'ok';",
+    );
+    let notices = rig.settle();
+    assert_eq!(
+        notices,
+        [
+            "not applied: style.cornerRadius: a window has one radius for every corner, so the largest of the four (8) is drawn"
+        ]
+    );
+    assert_eq!(rig.comp.number(3, "corner_radius"), 8.0);
+    // Taking the style away squares the corners and clears the effects.
+    js(&mut rig, "gnoblin.clients.style.reset(); return 'ok';");
+    rig.settle();
+    assert_eq!(rig.comp.number(3, "corner_radius"), 0.0);
+    assert!(effects(&rig, 3).is_empty());
+}
+
+#[test]
 fn what_no_effect_kind_draws_stays_in_computed_style_with_a_warning_and_a_notice() {
     let mut rig = world("");
     js(
@@ -491,8 +544,6 @@ fn what_no_effect_kind_draws_stays_in_computed_style_with_a_warning_and_a_notice
         notices,
         [
             "not applied: style.backdropFilter: the compositor blurs at a fixed radius of 12, so a BlurFilter's radius only switches the blur on",
-            "not applied: style.cornerRadius: the tree has no corner radius for a window",
-            "not applied: style.borders: the tree has no border for a window",
             "not applied: style.background: the tree has no background for a window",
             "not applied: style.filter: no effect kind filters a window's own content",
         ]
@@ -501,26 +552,49 @@ fn what_no_effect_kind_draws_stays_in_computed_style_with_a_warning_and_a_notice
         &mut rig,
         "const c = gnoblin.clients.get('3'); return JSON.stringify([c.computedStyle.cornerRadius, c.computedStyle.borders.length, c.styleWarnings.length]);",
     );
-    assert_eq!(out, "[12,1,5]", "the values are still there");
+    assert_eq!(out, "[12,1,3]", "the values are still there");
     // A second window with the same style says nothing more.
     rig.comp.create_window(9, "late", "foot");
     assert!(rig.settle().is_empty());
 }
 
 #[test]
-fn a_style_that_makes_more_than_eight_effects_is_reported_and_the_node_keeps_what_it_had() {
+fn a_border_the_renderer_does_not_draw_is_a_warning_from_the_compositors_skipped_list_and_not_a_notice() {
+    let mut rig = world("");
+    rig.comp.external_set(
+        3,
+        "skipped",
+        MirrorValue::Texts(vec!["border: unsupported-by-renderer".to_owned()]),
+    );
+    js(&mut rig, "gnoblin.clients.style.borders = [{ width: 2 }]; return 'ok';");
+    assert!(
+        rig.settle().is_empty(),
+        "the style does not claim the compositor cannot draw a border"
+    );
+    let out = js(
+        &mut rig,
+        "return JSON.stringify(gnoblin.clients.get('3').styleWarnings);",
+    );
+    assert_eq!(
+        out,
+        r#"["the compositor does not draw the effect border: unsupported-by-renderer"]"#
+    );
+}
+
+#[test]
+fn a_style_that_makes_more_than_sixteen_effects_is_reported_and_the_node_keeps_what_it_had() {
     let mut rig = world("");
     js(&mut rig, "gnoblin.clients.style.shadows = [{ blur: 1 }]; return 'ok';");
     rig.settle();
     js(
         &mut rig,
-        "gnoblin.clients.style.shadows = new Array(8).fill({ blur: 2 }); gnoblin.clients.style.backdropFilter = [{ blur: 12 }]; return 'ok';",
+        "gnoblin.clients.style.shadows = new Array(8).fill({ blur: 2 }); gnoblin.clients.style.borders = new Array(8).fill({ width: 1 }); gnoblin.clients.style.backdropFilter = [{ blur: 12 }]; return 'ok';",
     );
     let diagnostics = rig.settle();
     assert!(
         diagnostics
             .iter()
-            .any(|d| d.contains("a window carries at most 8 effects, the style makes 9")),
+            .any(|d| d.contains("a window carries at most 16 effects, the style makes 17")),
         "{diagnostics:?}"
     );
     assert_eq!(effects(&rig, 3).len(), 1, "the earlier list stays");

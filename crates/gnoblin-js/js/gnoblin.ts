@@ -69,7 +69,6 @@ import { repositioning } from "gnoblin/reposition";
 import type { RepositionClient } from "gnoblin/reposition";
 import {
     ClientStyle,
-    MAX_STYLE_LIST,
     bindStyle,
     layeredList,
     mapStyle,
@@ -2552,6 +2551,8 @@ interface ClientStyleState {
     effects: string | null;
     /** The opacity last written, or the node's own when nothing was written yet. */
     opacity: number | null;
+    /** The corner radius last written, or the node's own when nothing was written yet. */
+    cornerRadius: number | null;
 }
 
 const clientStyles = new WeakMap<Client, ClientStyleState>();
@@ -2578,6 +2579,7 @@ function styleState(client: Client): ClientStyleState {
             notes: [],
             effects: null,
             opacity: null,
+            cornerRadius: null,
         };
         clientStyles.set(client, state);
     }
@@ -2722,7 +2724,16 @@ function* everyStyle(): Generator<Style> {
     }
 }
 
-/** Writes what a client's resolved style becomes on its node: the effects list and the opacity, when they changed. */
+/**
+ * The most effects the compositor's tree keeps on one node (`MAX_EFFECTS` in crates/gnoblin-render/src/transaction.rs).
+ * A style lists at most `MAX_STYLE_LIST` shadows and as many borders, and one backdrop blur makes the seventeenth.
+ */
+const MAX_NODE_EFFECTS = 16;
+
+/**
+ * Writes what a client's resolved style becomes on its node: the effects list, the opacity and the corner radius,
+ * each when it changed.
+ */
 function applyClientStyle(client: Client, state: ClientStyleState, layers: StyleLayer[]): void {
     const node = stateOf(client).node;
     const label = `Client#${host.label(node)}.style`;
@@ -2741,9 +2752,9 @@ function applyClientStyle(client: Client, state: ClientStyleState, layers: Style
             });
         }
     };
-    if (mapping.effects.length > MAX_STYLE_LIST) {
+    if (mapping.effects.length > MAX_NODE_EFFECTS) {
         const error = new RangeError(
-            `${label}: a window carries at most ${MAX_STYLE_LIST} effects, the style makes ${mapping.effects.length}`,
+            `${label}: a window carries at most ${MAX_NODE_EFFECTS} effects, the style makes ${mapping.effects.length}`,
         );
         state.notes = [...state.notes, error.message];
         reports.push({ site: label, error });
@@ -2766,6 +2777,11 @@ function applyClientStyle(client: Client, state: ClientStyleState, layers: Style
         refused("opacity", host.set(node, "opacity", computed.opacity));
     }
     state.opacity = computed.opacity;
+    const radiusBefore = state.cornerRadius ?? (host.published(node, "corner_radius") as number);
+    if (mapping.cornerRadius !== radiusBefore) {
+        refused("corner radius", host.set(node, "corner_radius", mapping.cornerRadius));
+    }
+    state.cornerRadius = mapping.cornerRadius;
 }
 
 /**

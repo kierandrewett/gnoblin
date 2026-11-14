@@ -66,15 +66,15 @@ client.style.shadows = []; // a value: no shadows
 
 ## Properties
 
-| Property         | Accepts                                   | Default | Drawn               |
-| ---------------- | ----------------------------------------- | ------- | ------------------- |
-| `opacity`        | a number from 0 to 1                      | 1       | by every renderer   |
-| `shadows`        | a list of `Shadow`, at most 8             | none    | outer shadows: GLES |
-| `backdropFilter` | a list of filters, at most 8              | none    | a blur: GLES        |
-| `cornerRadius`   | a number of at least 0, or one per corner | 0       | not drawn           |
-| `borders`        | a list of `Border`, at most 8             | none    | not drawn           |
-| `filter`         | a list of filters, at most 8              | none    | not drawn           |
-| `background`     | a colour or `null`                        | `null`  | not drawn           |
+| Property         | Accepts                                   | Default | Drawn                                 |
+| ---------------- | ----------------------------------------- | ------- | ------------------------------------- |
+| `opacity`        | a number from 0 to 1                      | 1       | by every renderer                     |
+| `shadows`        | a list of `Shadow`, at most 8             | none    | outer shadows: GLES and software      |
+| `backdropFilter` | a list of filters, at most 8              | none    | a blur: GLES                          |
+| `cornerRadius`   | a number of at least 0, or one per corner | 0       | one radius: GLES, software and Vulkan |
+| `borders`        | a list of `Border`, at most 8             | none    | GLES and software                     |
+| `filter`         | a list of filters, at most 8              | none    | not drawn                             |
+| `background`     | a colour or `null`                        | `null`  | not drawn                             |
 
 A colour is `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`. A property that no renderer draws is still stored and reported
 in `computedStyle`; see "What is drawn" below.
@@ -138,20 +138,51 @@ is reported when it is applied and the node keeps the effects it had.
 
 ## What is drawn
 
-The tree has two effect kinds (blur and shadow) and a node opacity. A style becomes:
+The tree has three effect kinds (blur, shadow and border), a node `corner_radius` and a node opacity. A style becomes:
 
 - `opacity` as the window node's `opacity`.
-- The outer `shadows` as `shadow` effects, painted from the last to the first so the first is on top.
+- `cornerRadius` as the node's `corner_radius`. It rounds the window's whole frame: the content, the titlebar above it,
+  the borders and the shadow share one rounded shape, so a rounded decorated window has four rounded corners. One
+  radius serves every corner: a per-corner radius is drawn as the largest of the four and reported
+  `not applied: style.cornerRadius: ...`.
+- The outer `shadows` as `shadow` effects with `frame` set, painted from the last to the first so the first is on top.
+  A shadow follows the window's frame, the titlebar included, not the content alone.
+- `borders` as `border` effects in list order, after the shadows. A border is a stroke of `width` along the frame's
+  rounded edge: outside it by default, inside it with `inset`, moved `offset` pixels from the edge. Borders with
+  different offsets make concentric rings.
 - `backdropFilter` as one `blur` effect when it has a `BlurFilter` of radius above 0. The compositor blurs at a fixed
   radius of 12, so the radius only switches the blur on. The `SaturateFilter`, `BrightnessFilter` and `ContrastFilter`
   of the chain multiply into the blur's saturation, brightness and contrast, each at most 2. Without a blur in the
   chain they have nothing to draw.
 
-GLES draws blur and shadow. The software and Vulkan renderers draw none: the effects stay on the node and the node's
-`skipped` list names them, which a client reads as `client.styleWarnings`.
+| Kind or property | GLES | Software                         | Vulkan                 |
+| ---------------- | ---- | -------------------------------- | ---------------------- |
+| `corner_radius`  | yes  | yes (hard edge)                  | yes                    |
+| `shadow`         | yes  | yes (hard edge, stepped falloff) | no, reported `skipped` |
+| `border`         | yes  | yes (hard edge)                  | no, reported `skipped` |
+| `blur`           | yes  | no, reported `skipped`           | no, reported `skipped` |
 
-`cornerRadius`, `borders`, `background`, `filter` and inset shadows have no effect kind. They stay in `computedStyle`,
-and each one a style sets is reported once per reload as `not applied: style.<property>: <reason>`.
+A node placed in 3D (a rotation about x or y, a `z`, or a perspective camera above it) draws no shadow, border or blur,
+and its `skipped` list says `unsupported-effect-on-3d`; its corner radius is still drawn.
+
+What the active renderer does not draw stays on the node, and the node's `skipped` list names it
+(`border: unsupported-by-renderer`). A client reads it as `client.styleWarnings`; `seat.effect_kinds` lists the kinds
+the renderer draws. The style itself reports only what no renderer could draw.
+
+`background`, `filter` and inset shadows have no effect kind. They stay in `computedStyle`, and each one a style sets is
+reported once per reload as `not applied: style.<property>: <reason>`.
+
+A window holds at most 16 effects (at most 8 shadows and 8 borders, and the blur).
+
+```ts
+defineConfig({
+    style: {
+        cornerRadius: 12,
+        borders: [{ width: 1, color: "#ffffff33", inset: true }],
+        shadows: [{ y: 8, blur: 24, color: "#00000066" }],
+    },
+});
+```
 
 ## Reload
 
