@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use std::os::fd::AsFd as _;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -285,6 +286,27 @@ pub fn ids(windows: &[Window]) -> BTreeMap<String, u64> {
 /// The `xdg_toplevel` state a configure carries when the window is fullscreen.
 pub const STATE_FULLSCREEN: u32 = 2;
 
+/// What the pointer of a Wayland client has been told, shared so that a test can read it inside a wait that holds the
+/// client. The compositor gives a client the pointer events of the windows it owns, and withholds the press of a
+/// button that a claimed chord takes for the shell, so a press that this client heard is one nobody claimed.
+#[derive(Clone, Default)]
+pub struct PointerLog {
+    presses: Arc<AtomicU32>,
+    over: Arc<AtomicBool>,
+}
+
+impl PointerLog {
+    /// How many button presses the compositor has given the client.
+    pub fn presses(&self) -> u32 {
+        self.presses.load(Ordering::SeqCst)
+    }
+
+    /// Whether the compositor has the pointer over one of the client's windows.
+    pub fn over(&self) -> bool {
+        self.over.load(Ordering::SeqCst)
+    }
+}
+
 /// What the client has heard from the compositor.
 #[derive(Default)]
 pub struct App {
@@ -296,6 +318,8 @@ pub struct App {
     token: Option<String>,
     /// The size and the states of each toplevel's last configure, by the toplevel's protocol id.
     configures: BTreeMap<u32, (i32, i32, Vec<u32>)>,
+    /// What the pointer has been told, once the client listens to it.
+    log: PointerLog,
 }
 
 /// A Wayland client that maps toplevels with a buffer, as an application does.
@@ -406,9 +430,15 @@ impl Mapper {
         self.app.configures.get(&id).map(|(width, height, _)| (*width, *height))
     }
 
-    /// Binds the seat's pointer, so the client is told the serial of a button press. A press the compositor sends
-    /// this client afterwards is what `press_serial` reports.
+    /// Binds the seat's pointer, so the client is told the serial of a button press and the events that [`pointer`]
+    /// reports. A press the compositor sends this client afterwards is what `press_serial` reports. Listening twice is
+    /// listening once.
+    ///
+    /// [`pointer`]: Self::pointer
     pub fn listen_pointer(&mut self) {
+        if self.seat.is_some() {
+            return;
+        }
         let seat: wl_seat::WlSeat = self
             .globals
             .bind(&self.qh, 1..=5, ())
@@ -416,6 +446,13 @@ impl Mapper {
         self.seat = Some(seat);
         self.roundtrip();
         self.roundtrip();
+    }
+
+    /// What the client's pointer has been told, which stays current as the client is dispatched. The client listens to
+    /// the pointer from the first call.
+    pub fn pointer(&mut self) -> PointerLog {
+        self.listen_pointer();
+        self.app.log.clone()
     }
 
     /// The serial of the last button press the compositor sent this client, if it has sent one.
@@ -520,13 +557,18 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let wl_pointer::Event::Button {
-            serial,
-            state: WEnum::Value(wl_pointer::ButtonState::Pressed),
-            ..
-        } = event
-        {
-            app.serial = serial;
+        match event {
+            wl_pointer::Event::Enter { .. } => app.log.over.store(true, Ordering::SeqCst),
+            wl_pointer::Event::Leave { .. } => app.log.over.store(false, Ordering::SeqCst),
+            wl_pointer::Event::Button {
+                serial,
+                state: WEnum::Value(wl_pointer::ButtonState::Pressed),
+                ..
+            } => {
+                app.serial = serial;
+                app.log.presses.fetch_add(1, Ordering::SeqCst);
+            }
+            _ => {}
         }
     }
 }
