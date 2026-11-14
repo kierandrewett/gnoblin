@@ -6,7 +6,7 @@
 
 use std::fmt;
 
-use xr_input::ControllerState;
+use xr_input::Hands;
 use xr_layers::{SubmittedLayer, SwapchainId};
 use xr_scene::Pose;
 
@@ -107,12 +107,13 @@ pub trait Runtime {
     /// The head's pose in the local reference space at `display_time`, if the
     /// runtime tracks it.
     fn locate_head(&mut self, display_time: i64) -> Result<Option<Pose>>;
-    /// The controller at `display_time`: the pointing ray (the aim pose of the right-hand controller, or the gaze
-    /// when none is tracked) in the local reference space, and the select, secondary and scroll inputs. A runtime with
-    /// no input source, as a headless session is, reports [`ControllerState::default`]: no ray and nothing pressed.
-    fn locate_controller(&mut self, display_time: i64) -> Result<ControllerState> {
+    /// Both controllers at `display_time`: each one's aim pose in the local reference space and its inputs, and the
+    /// head pose as the gaze the pointer falls back on when the right hand has no aim pose. A hand that is `None` has
+    /// no controller the runtime reports as active. A runtime with no input source, as a headless session is, reports
+    /// [`Hands::default`]: no controller, no gaze, nothing pressed.
+    fn locate_hands(&mut self, display_time: i64) -> Result<Hands> {
         let _ = display_time;
-        Ok(ControllerState::default())
+        Ok(Hands::default())
     }
     /// What the session offers. The default is nothing.
     fn capabilities(&self) -> Capabilities {

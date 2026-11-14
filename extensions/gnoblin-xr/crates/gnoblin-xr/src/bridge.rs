@@ -12,12 +12,14 @@ use std::time::{Duration, Instant};
 
 use xr_capture::views::FrameSource;
 use xr_gpu::Presenter;
+use xr_input::{Arbiter, Hand};
 use xr_layers::{Limits, Notice, NoticeKind, Priority, compose};
-use xr_scene::{Class, IDENTITY, Layer, Options, Plan, Pose, Projected, TreeView, plan};
+use xr_scene::{Class, IDENTITY, Layer, Options, Plan, Pose, Projected, TreeView, placement_metres, plan};
 use xr_session::frame_loop::{FrameLoop, Tick};
 use xr_session::runtime::{Runtime, RuntimeError};
 use xr_tree::{TreeClient, TreeError, Value};
 
+use crate::controllers::Controllers;
 use crate::dump::Dump;
 use crate::head::{self, CameraState, Driven, Input, Sample};
 use crate::pointer::Pointer;
@@ -28,7 +30,7 @@ const IDLE_INTERVAL: Duration = Duration::from_millis(10);
 
 /// The owner's refusal of a write built on a tree it has moved on from. It says the mirror lagged, not that the owner
 /// will not take the write, so the extension tries again on the next pass instead of backing off.
-const STALE_BASE: &str = "stale-base";
+pub(crate) const STALE_BASE: &str = "stale-base";
 
 /// Why the bridge stopped with an error.
 #[derive(Debug)]
@@ -94,8 +96,8 @@ pub struct FrameReport<'a> {
 /// With a `dump`, each picture copied into a swapchain is also written to its directory.
 ///
 /// The swapchains are destroyed and the captures closed before it returns. When the session ends but the owner is
-/// still there, the `xr` seat the pointer made is destroyed too, so the stock shell takes the room down: a headset that
-/// is gone leaves no room behind.
+/// still there, the controller nodes and the `xr` seat the pointer made are destroyed too, so the stock shell takes the
+/// room down: a headset that is gone leaves no room, and no hand, behind.
 ///
 /// # Errors
 ///
@@ -112,6 +114,8 @@ pub fn run<R: Runtime, P: Presenter, S: FrameSource>(
     let mut parts = Parts {
         surfaces: Surfaces::new(dump),
         pointer: Pointer::default(),
+        arbiter: Arbiter::default(),
+        controllers: Controllers::default(),
         head: head::Tracker::default(),
         budget: head::Budget::default(),
         refusals: Refusals::default(),
@@ -129,10 +133,13 @@ pub fn run<R: Runtime, P: Presenter, S: FrameSource>(
         Err(BridgeError::Tree(TreeError::Closed)) => Ok(Outcome::OwnerClosed),
         other => other,
     };
-    if !matches!(outcome, Ok(Outcome::OwnerClosed) | Err(BridgeError::Tree(_)))
-        && let Err(error) = parts.pointer.end(tree)
-    {
-        eprintln!("gnoblin-xr: the xr seat could not be released: {error}");
+    if !matches!(outcome, Ok(Outcome::OwnerClosed) | Err(BridgeError::Tree(_))) {
+        if let Err(error) = parts.controllers.end(tree) {
+            eprintln!("gnoblin-xr: the controllers could not be released: {error}");
+        }
+        if let Err(error) = parts.pointer.end(tree) {
+            eprintln!("gnoblin-xr: the xr seat could not be released: {error}");
+        }
     }
     outcome
 }
@@ -141,6 +148,10 @@ pub fn run<R: Runtime, P: Presenter, S: FrameSource>(
 struct Parts {
     surfaces: Surfaces,
     pointer: Pointer,
+    /// Turns the right hand into the pointer's input, withholding what the shell has claimed.
+    arbiter: Arbiter,
+    /// The `controller` node of each hand.
+    controllers: Controllers,
     /// Follows the head with the head camera.
     head: head::Tracker,
     /// Keeps the head camera's `layer_budget` current.
@@ -197,10 +208,14 @@ fn run_loop<R: Runtime, P: Presenter, S: FrameSource>(
                     orientation: IDENTITY,
                 });
                 let mut planned = plan(tree.model(), &head, opts);
-                let controller = frames.locate_controller(frame.display_time)?;
+                let hands = frames.locate_hands(frame.display_time)?;
+                let claims = parts.controllers.claims(tree, Hand::Right);
+                let controller = parts.arbiter.sample(&hands, claims);
                 parts
                     .pointer
                     .update(tree, &planned.layers, &controller, frame.display_time)?;
+                let metres = placement_metres(tree.model(), opts);
+                parts.controllers.update(tree, &hands, metres, frame.display_time)?;
                 let wanted = view_nodes(&planned.layers);
                 for (node, error) in captures.sync(&wanted) {
                     eprintln!("gnoblin-xr: capture of view {node:?} failed: {error}");
@@ -347,6 +362,9 @@ fn view_nodes(layers: &[Layer]) -> BTreeSet<u64> {
 }
 
 #[cfg(test)]
+mod controller_nodes;
+
+#[cfg(test)]
 mod failure_modes;
 
 #[cfg(test)]
@@ -370,7 +388,7 @@ mod tests {
     use xr_layers::{EyeVisibility, ImageRect, NoticeKind, SubmittedLayer, SwapchainId};
     use xr_scene::{Layer, Placement, Ray, Space};
     use xr_session::runtime::{FrameTiming, SessionEvent, SessionState};
-    use xr_session::testing::{Call, FakeRuntime, Step, image_handle};
+    use xr_session::testing::{Call, FakeRuntime, Step, hands_from_pointer, image_handle};
 
     use super::*;
 
@@ -1229,7 +1247,10 @@ mod tests {
             select,
             ..aiming(ahead(0.0))
         };
-        runtime.controller_script = [frame(0.0), frame(1.0), frame(1.0), frame(0.0)].into();
+        runtime.hands_script = [frame(0.0), frame(1.0), frame(1.0), frame(0.0)]
+            .iter()
+            .map(hands_from_pointer)
+            .collect();
         let mut frames = FrameLoop::new(runtime);
         let outcome = run(
             &mut tree,
@@ -1264,11 +1285,11 @@ mod tests {
         );
         let mut tree = TreeClient::from_stream(stream).expect("attach");
         let mut runtime = FakeRuntime::new(script(3));
-        runtime.controller = ControllerState {
+        runtime.hands = hands_from_pointer(&ControllerState {
             select: 1.0,
             scroll: (0.0, -1.0),
             ..aiming(ahead(0.0))
-        };
+        });
         let mut frames = FrameLoop::new(runtime);
         let mut reports = Reports::default();
         let outcome = run(

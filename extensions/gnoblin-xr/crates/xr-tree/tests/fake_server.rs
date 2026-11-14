@@ -222,3 +222,60 @@ fn the_client_attaches_as_an_observer_so_the_shell_keeps_the_tree() {
     );
     assert_eq!(args.version, 1);
 }
+
+fn texts(node: u64, key: &str, values: &[&str]) -> change::Properties {
+    change::Properties {
+        value_kind: "list_text".into(),
+        value_texts: values.iter().map(|text| (*text).to_owned()).collect(),
+        ..set(node, key)
+    }
+}
+
+#[test]
+fn a_controllers_claimed_list_is_in_the_model_from_the_snapshot_and_follows_the_shell() {
+    let hand = snapshot_node(
+        6,
+        0,
+        0,
+        "controller",
+        vec![text(6, "hand", "right"), texts(6, "claimed", &["grip"])],
+    );
+    let mut events = attached_and_snapshot(vec![hand]);
+    events.push(Envelope::event_message(
+        "tree",
+        "changes",
+        &ChangesPayload {
+            serial: 2,
+            changes: vec![texts(6, "claimed", &["grip", "thumbstick"])],
+        },
+    ));
+    let mut client = TreeClient::from_stream(serve(events)).expect("attach");
+    assert_eq!(
+        client.model().nodes[&6].claimed,
+        ["grip"],
+        "the snapshot carries the claim"
+    );
+    assert!(
+        matches!(client.model().nodes[&6].class, Class::Other),
+        "a controller draws nothing"
+    );
+    let mut changed = false;
+    for _ in 0..100 {
+        changed |= client.poll().expect("poll");
+        if changed {
+            break;
+        }
+    }
+    assert!(changed);
+    assert_eq!(client.model().nodes[&6].claimed, ["grip", "thumbstick"]);
+}
+
+#[test]
+fn a_claimed_list_of_the_wrong_kind_is_a_protocol_error() {
+    let hand = snapshot_node(6, 0, 0, "controller", vec![double(6, "claimed", 1.0)]);
+    let error = TreeClient::from_stream(serve(attached_and_snapshot(vec![hand]))).err();
+    assert!(
+        error.is_some(),
+        "a claimed list that is not a list of texts does not load"
+    );
+}

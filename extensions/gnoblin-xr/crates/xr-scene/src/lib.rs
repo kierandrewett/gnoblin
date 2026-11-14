@@ -10,11 +10,13 @@
 //! - [`pick`]: [`pick`] finds the layer and the pixel a ray lands on; [`project`] finds the pixel on a chosen layer's plane.
 //! - [`rig`]: the eyes of a stereo camera, as OpenXR poses and fields of view.
 //! - [`head`]: a measured head pose as the pose of the stereo camera that follows it.
+//! - [`controller`]: a measured controller pose as the pose of its `controller` node, in the units Views use.
 //! - [`math`]: [`Pose`] and the quaternion arithmetic both of them use.
 //!
 //! Everything here is deterministic: the same tree, head pose and options give
 //! the same [`Plan`] bit for bit. Nothing iterates a hash map.
 
+pub mod controller;
 pub mod head;
 pub mod math;
 pub mod pick;
@@ -24,5 +26,7 @@ pub mod tree;
 
 pub use math::{HeadPose, IDENTITY, Pose};
 pub use pick::{Hit, Ray, pick, project};
-pub use plan::{Eye, Fov, Layer, Options, Placement, Plan, Projected, SkipReason, Skipped, Space, plan};
+pub use plan::{
+    Eye, Fov, Layer, Options, Placement, Plan, Projected, SkipReason, Skipped, Space, placement_metres, plan,
+};
 pub use tree::{CameraProjection, Class, NodeId, Rig, TreeNode, TreeView};

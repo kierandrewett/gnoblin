@@ -12,7 +12,14 @@
 //! | select            | `BTN_LEFT` (`0x110`), pressed above [`PRESS_THRESHOLD`], released below [`RELEASE_THRESHOLD`] |
 //! | secondary         | `BTN_RIGHT` (`0x111`), with the same thresholds                                |
 //! | scroll stick      | axis amounts, [`SCROLL_RATE`] units a second at full deflection past [`SCROLL_DEADZONE`] |
+//!
+//! [`Hands`] is a frame of both controllers with every input the program publishes on a `controller` node, and the
+//! [`Arbiter`] turns the right hand into the [`ControllerState`] above while a shell binding's claim
+//! (`controller.claimed`, [`Claims`]) keeps an input from reaching the window under the ray.
 
+mod hands;
+
+pub use hands::{Arbiter, Claims, Hand, HandState, Hands};
 use xr_scene::{Pose, Ray};
 
 /// The Linux evdev code for the left button. The select input produces it.

@@ -8,7 +8,7 @@ use gnoblin_proto::tree::change;
 use gnoblin_proto::tree::snapshot_node;
 use gnoblin_proto::tree::tree::{AttachedPayload, ReplyPayload, SnapshotPayload, TransactArgs};
 use gnoblin_proto::{Envelope, read_frame, write_frame};
-use xr_tree::{PointerInput, TreeClient, TreeError};
+use xr_tree::{PointerInput, TreeClient, TreeError, Value};
 
 /// The owner epoch the fake attach reply carries. Seat ids start with it.
 const EPOCH: u64 = 1;
@@ -136,11 +136,11 @@ fn create_seat_sends_new_and_name_in_one_transaction() {
 }
 
 #[test]
-fn destroy_seat_sends_one_destroy_and_forgets_the_seat() {
+fn destroy_node_sends_one_destroy_and_forgets_the_node() {
     let (mut client, received) = connect(vec![seat_node(7, "xr")], Answer::Applied);
     assert_eq!(client.seat_named("xr"), Some(7));
 
-    client.destroy_seat(7).expect("destroy the seat");
+    client.destroy_node(7).expect("destroy the seat");
 
     let args = received.recv().expect("the transaction arrived");
     assert_eq!(args.ops.len(), 1);
@@ -156,7 +156,7 @@ fn destroy_seat_sends_one_destroy_and_forgets_the_seat() {
 fn a_refused_destroy_keeps_the_seat_in_the_model() {
     let (mut client, _received) = connect(vec![seat_node(7, "xr")], Answer::Refused("not-owner"));
 
-    let error = client.destroy_seat(7).expect_err("the owner refuses");
+    let error = client.destroy_node(7).expect_err("the owner refuses");
 
     assert!(
         matches!(&error, TreeError::Refused { code, .. } if code == "not-owner"),
@@ -221,4 +221,78 @@ fn pointer_input_is_an_owner_input_op() {
     assert_eq!(op.y, 3.0);
     assert_eq!(op.button, 272);
     assert_eq!(op.state, 1, "a press is state 1");
+}
+
+#[test]
+fn create_controller_sends_new_and_every_value_in_one_transaction() {
+    let (mut client, received) = connect(vec![], Answer::Applied);
+
+    let hand = client
+        .create_controller(&[
+            ("hand", Value::Text("right".to_owned())),
+            ("tracked", Value::Bool(true)),
+            ("x", Value::Double(250.0)),
+            ("rotation", Value::Doubles(vec![0.0, 0.5, 0.0])),
+        ])
+        .expect("create the controller");
+
+    assert_eq!(hand, (EPOCH << 32) | 1, "the id is the epoch above a counter");
+    let args = received.recv().expect("the transaction arrived");
+    assert_eq!(args.ops.len(), 5, "new and four sets travel in one transaction");
+    assert_eq!(
+        (args.ops[0].kind.as_str(), args.ops[0].class.as_str()),
+        ("new", "controller")
+    );
+    assert_eq!(args.ops[0].id, hand);
+    let sets: Vec<(&str, &str)> = args.ops[1..]
+        .iter()
+        .map(|op| (op.key.as_str(), op.value_kind.as_str()))
+        .collect();
+    assert_eq!(
+        sets,
+        [
+            ("hand", "text"),
+            ("tracked", "bool"),
+            ("x", "double"),
+            ("rotation", "list_double")
+        ]
+    );
+    assert!(args.ops[1..].iter().all(|op| op.kind == "set" && op.node == hand));
+    assert_eq!(args.ops[1].value_text, "right");
+    assert!(args.ops[2].value_bool);
+}
+
+#[test]
+fn set_values_carries_booleans_and_texts() {
+    let (mut client, received) = connect(vec![], Answer::Applied);
+    client
+        .set_values(
+            9,
+            &[("primary", Value::Bool(true)), ("hand", Value::Text("left".to_owned()))],
+        )
+        .expect("set");
+    let args = received.recv().expect("the transaction arrived");
+    assert_eq!(
+        (args.ops[0].value_kind.as_str(), args.ops[0].value_bool),
+        ("bool", true)
+    );
+    assert_eq!(
+        (args.ops[1].value_kind.as_str(), args.ops[1].value_text.as_str()),
+        ("text", "left")
+    );
+}
+
+#[test]
+fn set_nodes_writes_the_values_of_several_nodes_in_one_transaction() {
+    let (mut client, received) = connect(vec![], Answer::Applied);
+    client
+        .set_nodes(&[
+            (7, &[("trigger", Value::Double(0.5)), ("grip", Value::Double(1.0))]),
+            (8, &[("tracked", Value::Bool(false))]),
+        ])
+        .expect("set");
+    let args = received.recv().expect("one transaction arrived");
+    let writes: Vec<(u64, &str)> = args.ops.iter().map(|op| (op.node, op.key.as_str())).collect();
+    assert_eq!(writes, [(7, "trigger"), (7, "grip"), (8, "tracked")]);
+    assert!(received.try_recv().is_err(), "and no other");
 }

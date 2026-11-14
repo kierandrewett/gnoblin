@@ -68,6 +68,10 @@ pub enum Value {
     Doubles(Vec<f64>),
     /// A `uint` property.
     Uint(u64),
+    /// A `bool` property.
+    Bool(bool),
+    /// A `string` property.
+    Text(String),
 }
 
 /// The wire form of one `set` of `key` on `node`.
@@ -92,6 +96,16 @@ fn set_op(node: NodeId, key: &str, value: &Value) -> op::Properties {
         Value::Uint(number) => op::Properties {
             value_kind: "uint".to_owned(),
             value_uint: *number,
+            ..base
+        },
+        Value::Bool(flag) => op::Properties {
+            value_kind: "bool".to_owned(),
+            value_bool: *flag,
+            ..base
+        },
+        Value::Text(text) => op::Properties {
+            value_kind: "text".to_owned(),
+            value_text: text.clone(),
             ..base
         },
     }
@@ -392,41 +406,48 @@ impl TreeClient {
     ///
     /// The owner refuses the transaction, such as `not-owner` ([`TreeError::Refused`]).
     pub fn create_seat(&mut self, name: &str) -> Result<NodeId, TreeError> {
-        let seat = self.allocate_node_id();
-        self.transact(vec![
-            op::Properties {
-                kind: "new".to_owned(),
-                class: "seat".to_owned(),
-                id: seat,
-                ..Default::default()
-            },
-            op::Properties {
-                kind: "set".to_owned(),
-                node: seat,
-                key: "name".to_owned(),
-                value_kind: "text".to_owned(),
-                value_text: name.to_owned(),
-                ..Default::default()
-            },
-        ])?;
-        Ok(seat)
+        self.create("seat", &[("name", Value::Text(name.to_owned()))])
     }
 
-    /// Destroys the seat `seat` in one owner transaction, and drops it from the model, so a seat made again by the
-    /// same name is a new one. The owner lets a connection destroy the seats it made.
+    /// Creates a `controller` node with `values` in one owner transaction and returns its id, so a reader never sees a
+    /// controller without its hand. The owner lets an observer make controllers and write their values.
+    ///
+    /// # Errors
+    ///
+    /// The owner refuses the transaction, such as `not-owner` or `not-finite` ([`TreeError::Refused`]).
+    pub fn create_controller(&mut self, values: &[(&str, Value)]) -> Result<NodeId, TreeError> {
+        self.create("controller", values)
+    }
+
+    /// A node of `class` with `values`, in one transaction. It has no parent.
+    fn create(&mut self, class: &str, values: &[(&str, Value)]) -> Result<NodeId, TreeError> {
+        let node = self.allocate_node_id();
+        let mut ops = vec![op::Properties {
+            kind: "new".to_owned(),
+            class: class.to_owned(),
+            id: node,
+            ..Default::default()
+        }];
+        ops.extend(values.iter().map(|(key, value)| set_op(node, key, value)));
+        self.transact(ops)?;
+        Ok(node)
+    }
+
+    /// Destroys `node`, a seat or a controller this connection made, in one owner transaction, and drops it from the
+    /// model, so a seat made again by the same name is a new one.
     ///
     /// # Errors
     ///
     /// The owner refuses the transaction ([`TreeError::Refused`]), or the socket fails.
-    pub fn destroy_seat(&mut self, seat: NodeId) -> Result<(), TreeError> {
+    pub fn destroy_node(&mut self, node: NodeId) -> Result<(), TreeError> {
         self.transact(vec![op::Properties {
             kind: "destroy".to_owned(),
-            node: seat,
+            node,
             ..Default::default()
         }])?;
-        self.detach(seat);
-        self.model.nodes.remove(&seat);
-        self.parents.remove(&seat);
+        self.detach(node);
+        self.model.nodes.remove(&node);
+        self.parents.remove(&node);
         Ok(())
     }
 
@@ -448,6 +469,21 @@ impl TreeClient {
     /// finite or `rate-limited` for writes that come too fast, or the socket fails.
     pub fn set_values(&mut self, node: NodeId, values: &[(&str, Value)]) -> Result<Reply, TreeError> {
         self.transact(values.iter().map(|(key, value)| set_op(node, key, value)).collect())
+    }
+
+    /// Writes the values of several nodes in one owner transaction, so a reader sees all of them or none: the two hands
+    /// of a frame, for one.
+    ///
+    /// # Errors
+    ///
+    /// As [`TreeClient::set_values`].
+    pub fn set_nodes(&mut self, writes: &[(NodeId, &[(&str, Value)])]) -> Result<Reply, TreeError> {
+        self.transact(
+            writes
+                .iter()
+                .flat_map(|(node, values)| values.iter().map(|(key, value)| set_op(*node, key, value)))
+                .collect(),
+        )
     }
 
     /// Applies one owner transaction. It returns once the owner answers, and any change
@@ -824,6 +860,10 @@ fn set_prop(node: &mut TreeNode, prop: &change::Properties) -> Result<(), TreeEr
         "focus" => {
             expect_kind(prop, "node")?;
             node.focus = (prop.value_node != NIL).then_some(prop.value_node);
+        }
+        "claimed" => {
+            expect_kind(prop, "list_text")?;
+            node.claimed.clone_from(&prop.value_texts);
         }
         "scale" => {
             expect_kind(prop, "list_double")?;

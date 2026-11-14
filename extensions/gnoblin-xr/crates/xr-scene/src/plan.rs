@@ -163,7 +163,6 @@ pub fn plan(tree: &TreeView, _head: &HeadPose, opts: &Options) -> Plan {
     };
 
     let head = path_to(tree, &[room_id], &is_head).and_then(|path| path.last().copied());
-    let head_metres = head.and_then(|id| tree.nodes.get(&id)).and_then(|node| node.metres);
 
     // The room's ancestors contribute their transform, opacity and visibility.
     let mut frame = Frame::ROOT;
@@ -180,12 +179,32 @@ pub fn plan(tree: &TreeView, _head: &HeadPose, opts: &Options) -> Plan {
     let mut walker = Walker {
         tree,
         head,
-        metres: head_metres.or(room.metres).unwrap_or(opts.default_metres),
+        metres: metres_of(tree, room, head, opts),
         visited: BTreeSet::new(),
         plan: Plan::default(),
     };
     walker.visit(room_id, frame);
     walker.plan
+}
+
+/// The metres per node unit the planner places the room in: the head camera's `metres`, else the room's, else
+/// `opts.default_metres`. A pose written in the room's units (a View's, a controller's) is that many metres per unit.
+/// With no room it is the option.
+#[must_use]
+pub fn placement_metres(tree: &TreeView, opts: &Options) -> f64 {
+    let room = path_to(tree, &tree.roots, &|n: &TreeNode| n.name.as_deref() == Some(ROOM_NAME))
+        .and_then(|path| path.last().copied())
+        .and_then(|id| tree.nodes.get(&id));
+    let Some(room) = room else {
+        return opts.default_metres;
+    };
+    let head = path_to(tree, &[room.id], &is_head).and_then(|path| path.last().copied());
+    metres_of(tree, room, head, opts)
+}
+
+fn metres_of(tree: &TreeView, room: &TreeNode, head: Option<NodeId>, opts: &Options) -> f64 {
+    let head_metres = head.and_then(|id| tree.nodes.get(&id)).and_then(|node| node.metres);
+    head_metres.or(room.metres).unwrap_or(opts.default_metres)
 }
 
 fn is_head(node: &TreeNode) -> bool {

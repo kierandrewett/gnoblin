@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use openxr as xr;
 use xr_gpu::VulkanDevice;
-use xr_input::{ControllerState, pointing_ray};
+use xr_input::Hands;
 use xr_layers::{EyeVisibility, ImageRect, SubmittedLayer, SwapchainId};
 use xr_scene::{Fov, Pose, Space};
 
@@ -390,23 +390,16 @@ impl<G: Binding> Runtime for OpenxrRuntime<G> {
         self.head_pose(display_time)
     }
 
-    fn locate_controller(&mut self, display_time: i64) -> crate::runtime::Result<ControllerState> {
+    fn locate_hands(&mut self, display_time: i64) -> crate::runtime::Result<Hands> {
         let Some(input) = &self.input else {
-            return Ok(ControllerState::default());
+            return Ok(Hands::default());
         };
-        let sample = input.poll(&self.session, &self.local, xr::Time::from_nanos(display_time))?;
-        // With no tracked controller the ray is the gaze: it leaves the head, straight ahead.
-        let head = if sample.aim.is_none() {
-            self.head_pose(display_time)?
-        } else {
-            None
-        };
-        Ok(ControllerState {
-            ray: pointing_ray(sample.aim.as_ref(), head.as_ref()),
-            select: sample.select,
-            secondary: sample.secondary,
-            scroll: sample.scroll,
-        })
+        let mut hands = input.poll(&self.session, &self.local, xr::Time::from_nanos(display_time))?;
+        // With no tracked right controller the pointer's ray is the gaze: it leaves the head, straight ahead.
+        if hands.right.and_then(|hand| hand.aim).is_none() {
+            hands.gaze = self.head_pose(display_time)?;
+        }
+        Ok(hands)
     }
 
     fn capabilities(&self) -> Capabilities {
@@ -670,17 +663,17 @@ mod tests {
 
     /// Runs a Vulkan session against Monado's simulated driver and checks the controller input: the action set
     /// attaches (`connect_vulkan` fails otherwise), at least one interaction profile took the suggested bindings,
-    /// `xrSyncActions` succeeds on every frame, the right-hand aim pose is located, and `locate_controller` reports a ray
-    /// built from it. Monado's simulated driver makes controllers only when it is told which: `SIMULATED_LEFT=simple
-    /// SIMULATED_RIGHT=simple` give `khr/simple_controller` ones (without them it has a head and no hands, and the ray is
-    /// the gaze).
+    /// `xrSyncActions` succeeds on every frame, the aim pose of each hand is located, and `locate_hands` reports both
+    /// hands with an aim pose and a gaze for a right hand that has none. Monado's simulated driver makes controllers
+    /// only when it is told which: `SIMULATED_LEFT=simple SIMULATED_RIGHT=simple` give `khr/simple_controller` ones
+    /// (without them it has a head and no hands, and the ray is the gaze).
     ///
     /// Run with `GNOBLIN_XR_MONADO=1 cargo test -- --ignored`, with `XR_RUNTIME_JSON` pointing at Monado's manifest and a
     /// running `monado-service` started with `SIMULATED_ENABLE=1 SIMULATED_LEFT=simple SIMULATED_RIGHT=simple
     /// XRT_COMPOSITOR_NULL=1`.
     #[test]
     #[ignore = "needs Monado with the simulated driver and a Vulkan driver; set GNOBLIN_XR_MONADO=1 and run with --ignored"]
-    fn monado_simulated_controllers_give_an_aim_ray_and_sync_actions() {
+    fn monado_simulated_controllers_give_an_aim_pose_for_each_hand_and_sync_actions() {
         if std::env::var_os("GNOBLIN_XR_MONADO").as_deref() != Some("1".as_ref()) {
             return;
         }
@@ -701,8 +694,7 @@ mod tests {
         runtime.begin_session().expect("begin session");
 
         let mut state = SessionState::Ready;
-        let mut aimed = 0;
-        let mut gazed = 0;
+        let (mut left_aimed, mut right_aimed, mut gazed) = (0, 0, 0);
         let mut focused_frames = 0;
         for frame in 0..120 {
             while let Some(SessionEvent::StateChanged(next)) = runtime.poll_event().expect("poll") {
@@ -713,41 +705,44 @@ mod tests {
             runtime.begin_frame().expect("begin frame");
             let time = timing.predicted_display_time;
 
-            let sample = runtime
-                .input
-                .as_ref()
-                .expect("a Vulkan session reads input")
-                .poll(&runtime.session, &runtime.local, xr::Time::from_nanos(time))
+            let hands = runtime
+                .locate_hands(time)
                 .expect("xrSyncActions and the action reads succeed");
-            let controller = runtime.locate_controller(time).expect("locate_controller");
             if frame % 20 == 0 {
-                eprintln!("frame {frame} ({state:?}): sample {sample:?}, ray {:?}", controller.ray);
+                eprintln!("frame {frame} ({state:?}): {hands:?}");
             }
             if state == SessionState::Focused {
                 focused_frames += 1;
             }
-            if sample.aim.is_some() {
-                aimed += 1;
-            } else if controller.ray.is_some() {
-                gazed += 1;
+            if hands.left.and_then(|hand| hand.aim).is_some() {
+                left_aimed += 1;
             }
-            if let Some(ray) = controller.ray {
-                let length = ray.direction.iter().map(|c| c * c).sum::<f64>().sqrt();
+            if hands.right.and_then(|hand| hand.aim).is_some() {
+                right_aimed += 1;
+            } else if let Some(gaze) = hands.gaze {
+                gazed += 1;
+                let [x, y, z, w] = gaze.orientation;
                 assert!(
-                    (length - 1.0).abs() < 1e-3,
-                    "the ray direction is a unit vector: {ray:?}"
+                    ((x * x + y * y + z * z + w * w).sqrt() - 1.0).abs() < 1e-3,
+                    "the gaze is a unit orientation: {gaze:?}"
                 );
             } else {
-                panic!("frame {frame}: neither the aim pose nor the head is located: {sample:?}");
+                panic!("frame {frame}: neither the right aim pose nor the head is located: {hands:?}");
             }
             runtime.end_frame(time, &[]).expect("end frame");
         }
-        eprintln!("frames with an aim pose: {aimed}, with gaze only: {gazed}, focused: {focused_frames}");
-        assert!(
-            aimed > 0,
-            "the simulated controller's aim pose was never located ({gazed} gaze-only frames)"
+        eprintln!(
+            "frames with a left aim pose: {left_aimed}, a right one: {right_aimed}, gaze only: {gazed}, focused: {focused_frames}"
         );
-        // The simulated controllers have nothing to press, so select, secondary and scroll stay at rest.
+        assert!(
+            right_aimed > 0,
+            "the simulated right controller's aim pose was never located ({gazed} gaze-only frames)"
+        );
+        assert!(
+            left_aimed > 0,
+            "the simulated left controller's aim pose was never located"
+        );
+        // The simulated controllers have nothing to press, so their inputs stay at rest.
     }
 
     /// Runs a Vulkan session against Monado with a Vulkan driver (lavapipe on Agent37), creates a swapchain, uploads a

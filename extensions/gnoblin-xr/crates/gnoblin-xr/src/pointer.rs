@@ -134,7 +134,7 @@ impl Pointer {
         if let Some(seat) = self.seat.take()
             && std::mem::take(&mut self.made_seat)
         {
-            match tree.destroy_seat(seat) {
+            match tree.destroy_node(seat) {
                 Ok(()) | Err(TreeError::Refused { .. }) => {}
                 Err(error) => return Err(error),
             }

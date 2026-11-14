@@ -2,9 +2,9 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use xr_input::ControllerState;
+use xr_input::{ControllerState, HandState, Hands};
 use xr_layers::{SubmittedLayer, SwapchainId};
-use xr_scene::Pose;
+use xr_scene::{Pose, Ray};
 
 use crate::runtime::{Capabilities, FrameTiming, Result, Runtime, RuntimeError, SessionEvent};
 
@@ -24,7 +24,7 @@ pub enum Call {
     BeginFrame,
     EndFrame(i64),
     LocateHead(i64),
-    LocateController(i64),
+    LocateHands(i64),
     CreateSwapchain { width: u32, height: u32, format: i64 },
     AcquireImage(SwapchainId),
     ReleaseImage(SwapchainId),
@@ -65,10 +65,11 @@ pub struct FakeRuntime {
     /// One sample per `locate_head` call, consumed from the front before `head` applies: a head that moves, or is
     /// lost for a frame (`None`).
     pub head_script: VecDeque<Option<Pose>>,
-    /// What `locate_controller` reports once `controller_script` is used up.
-    pub controller: ControllerState,
-    /// One sample per `locate_controller` call, consumed from the front before `controller` applies.
-    pub controller_script: VecDeque<ControllerState>,
+    /// What `locate_hands` reports once `hands_script` is used up.
+    pub hands: Hands,
+    /// One sample per `locate_hands` call, consumed from the front before `hands` applies: a hand that appears, moves
+    /// and is lost.
+    pub hands_script: VecDeque<Hands>,
     pub capabilities: Capabilities,
     pub calls: Vec<Call>,
     /// The layers of each `end_frame`, with its display time.
@@ -171,9 +172,9 @@ impl Runtime for FakeRuntime {
         Ok(self.head_script.pop_front().unwrap_or(self.head))
     }
 
-    fn locate_controller(&mut self, display_time: i64) -> Result<ControllerState> {
-        self.record(Call::LocateController(display_time))?;
-        Ok(self.controller_script.pop_front().unwrap_or(self.controller))
+    fn locate_hands(&mut self, display_time: i64) -> Result<Hands> {
+        self.record(Call::LocateHands(display_time))?;
+        Ok(self.hands_script.pop_front().unwrap_or(self.hands))
     }
 
     fn capabilities(&self) -> Capabilities {
@@ -238,5 +239,90 @@ impl Runtime for FakeRuntime {
             .remove(&id.0)
             .map(|_| ())
             .ok_or_else(|| RuntimeError(format!("swapchain {} does not exist", id.0)))
+    }
+}
+
+/// The pose whose aim ray is `ray`: at its origin, turned so that `-Z` points along its direction. A direction that is
+/// not finite or has no length points straight ahead.
+fn pose_along(ray: &Ray) -> Pose {
+    let length = ray.direction.iter().map(|c| c * c).sum::<f64>().sqrt();
+    let [bx, by, bz] = if length.is_finite() && length > 0.0 {
+        ray.direction.map(|c| c / length)
+    } else {
+        [0.0, 0.0, -1.0]
+    };
+    // The rotation that takes `(0, 0, -1)` to the direction: the cross product, and one plus the dot product.
+    let orientation = if bz > 1.0 - 1.0e-12 {
+        // Straight back: a half turn about y.
+        [0.0, 1.0, 0.0, 0.0]
+    } else {
+        let q = [by, -bx, 0.0, 1.0 - bz];
+        let norm = q.iter().map(|c| c * c).sum::<f64>().sqrt();
+        q.map(|c| c / norm)
+    };
+    Pose {
+        position: ray.origin,
+        orientation,
+    }
+}
+
+/// The right hand a pointer test describes with a [`ControllerState`]: the ray is the aim pose, select the trigger,
+/// secondary the grip and the scroll the thumbstick. A sample with no ray and nothing pressed is no controller at all,
+/// as a headless runtime reports.
+#[must_use]
+pub fn hands_from_pointer(state: &ControllerState) -> Hands {
+    if *state == ControllerState::default() {
+        return Hands::default();
+    }
+    Hands {
+        right: Some(HandState {
+            aim: state.ray.as_ref().map(pose_along),
+            trigger: state.select,
+            grip: state.secondary,
+            thumbstick: state.scroll,
+            ..HandState::default()
+        }),
+        ..Hands::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_pose_for_a_ray_aims_down_that_ray() {
+        for direction in [
+            [0.0, 0.0, -1.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.3, -0.4, -0.5],
+            [0.0, 0.0, 1.0],
+        ] {
+            let ray = Ray {
+                origin: [0.1, 1.2, -0.3],
+                direction,
+            };
+            let aimed = Ray::from_pose(&pose_along(&ray));
+            let length = direction.iter().map(|c| c * c).sum::<f64>().sqrt();
+            assert_eq!(aimed.origin, ray.origin);
+            for axis in 0..3 {
+                assert!(
+                    (aimed.direction[axis] - direction[axis] / length).abs() < 1e-9,
+                    "{direction:?}: {:?}",
+                    aimed.direction
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_sample_with_nothing_in_it_is_no_controller() {
+        assert_eq!(hands_from_pointer(&ControllerState::default()), Hands::default());
+        let pressed = ControllerState {
+            select: 1.0,
+            ..ControllerState::default()
+        };
+        assert_eq!(hands_from_pointer(&pressed).right.map(|hand| hand.trigger), Some(1.0));
     }
 }

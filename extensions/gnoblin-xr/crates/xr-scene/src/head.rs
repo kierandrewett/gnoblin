@@ -35,33 +35,38 @@ pub struct CameraPose {
     pub rotation_degrees: [f64; 3],
 }
 
+/// A measured pose as a node would state it: position in node units of `metres` metres, and the rotation as Euler
+/// degrees about X, then Y, then Z, with no mirror. `None` when the pose or `metres` cannot be used: a value that is
+/// not finite, a `metres` that is not positive, a position past [`MAX_COORDINATE`] in node units, or an orientation
+/// whose length is not 1. [`camera_pose`] mirrors this for a camera, and `crate::controller::placed_pose` is it for a
+/// node that is placed like a View.
+pub(crate) fn node_units(pose: &Pose, metres: f64) -> Option<([f64; 3], [f64; 3])> {
+    if !(metres.is_finite() && metres > 0.0) {
+        return None;
+    }
+    if !pose.position.iter().chain(&pose.orientation).all(|c| c.is_finite()) {
+        return None;
+    }
+    let [x, y, z, w] = pose.orientation;
+    let norm = (x * x + y * y + z * z + w * w).sqrt();
+    if (norm - 1.0).abs() > NORM_TOLERANCE {
+        return None;
+    }
+    let position = pose.position.map(|c| c / metres);
+    if !position.iter().all(|c| c.is_finite() && c.abs() <= MAX_COORDINATE) {
+        return None;
+    }
+    Some((position, euler_degrees_of([x / norm, y / norm, z / norm, w / norm])))
+}
+
 /// The camera pose for the head pose `head`, for a camera whose unit is `metres` metres, or `None` when `head` or
 /// `metres` cannot be used: a value that is not finite, a `metres` that is not positive, a position past
 /// [`MAX_COORDINATE`] in the camera's units, or an orientation whose length is not 1.
 #[must_use]
 pub fn camera_pose(head: &Pose, metres: f64) -> Option<CameraPose> {
-    if !(metres.is_finite() && metres > 0.0) {
-        return None;
-    }
-    if !head.position.iter().chain(&head.orientation).all(|c| c.is_finite()) {
-        return None;
-    }
-    let [x, y, z, w] = head.orientation;
-    let norm = (x * x + y * y + z * z + w * w).sqrt();
-    if (norm - 1.0).abs() > NORM_TOLERANCE {
-        return None;
-    }
-    let position = [
-        head.position[0] / metres,
-        -head.position[1] / metres,
-        head.position[2] / metres,
-    ];
-    if !position.iter().all(|c| c.is_finite() && c.abs() <= MAX_COORDINATE) {
-        return None;
-    }
-    let [a, b, c] = euler_degrees_of([x / norm, y / norm, z / norm, w / norm]);
+    let ([x, y, z], [a, b, c]) = node_units(head, metres)?;
     Some(CameraPose {
-        position,
+        position: [x, -y, z],
         rotation_degrees: [-a, b, -c],
     })
 }

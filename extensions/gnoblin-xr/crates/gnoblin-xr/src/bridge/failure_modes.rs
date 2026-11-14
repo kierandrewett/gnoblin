@@ -17,11 +17,11 @@ use gnoblin_proto::{Envelope, read_frame, write_frame};
 use xr_capture::views::{Fault as CaptureFault, FrameSource};
 use xr_capture::wayland::Frame as Picture;
 use xr_gpu::FakePresenter;
-use xr_input::ControllerState;
+use xr_input::Hands;
 use xr_layers::SubmittedLayer;
 use xr_scene::{IDENTITY, Options, Pose, SkipReason};
 use xr_session::frame_loop::FrameLoop;
-use xr_session::testing::{Call, FakeRuntime};
+use xr_session::testing::{Call, FakeRuntime, hands_from_pointer};
 use xr_tree::TreeClient;
 
 use super::tests::{
@@ -243,15 +243,25 @@ fn submitted_views(frames: &FrameLoop<FakeRuntime>) -> Vec<Vec<u64>> {
         .collect()
 }
 
-/// The ops that made or destroyed a seat: `(kind, node)`.
+/// The ops that made or destroyed a seat: `(kind, node)`. The controller nodes the bridge makes for the hands are not
+/// seats, and neither is their destruction.
 fn seat_ops(ops: &Receiver<Vec<op::Properties>>) -> Vec<(String, u64)> {
-    ops.try_iter()
-        .flatten()
+    let all: Vec<op::Properties> = ops.try_iter().flatten().collect();
+    let controllers = controller_nodes(&all);
+    all.iter()
         .filter_map(|op| match op.kind.as_str() {
             "new" if op.class == "seat" => Some(("new".to_owned(), op.id)),
-            "destroy" => Some(("destroy".to_owned(), op.node)),
+            "destroy" if !controllers.contains(&op.node) => Some(("destroy".to_owned(), op.node)),
             _ => None,
         })
+        .collect()
+}
+
+/// The ids of the controller nodes the ops made.
+fn controller_nodes(ops: &[op::Properties]) -> BTreeSet<u64> {
+    ops.iter()
+        .filter(|op| op.kind == "new" && op.class == "controller")
+        .map(|op| op.id)
         .collect()
 }
 
@@ -332,7 +342,7 @@ fn two_views_at_the_same_pose_are_both_submitted_in_tree_order_and_the_last_take
     ]]);
     let mut captures = ChangingTree::quiet(pictures, owner);
     let mut runtime = FakeRuntime::with_graphics(script(2), 16);
-    runtime.controller = aiming(ahead(0.0));
+    runtime.hands = hands_from_pointer(&aiming(ahead(0.0)));
     let (outcome, frames, _) = run_with(stream, runtime, &mut captures);
 
     assert!(matches!(outcome, Ok(Outcome::SessionExited)), "{outcome:?}");
@@ -385,7 +395,7 @@ fn a_missing_head_pose_and_an_untracked_controller_do_not_change_the_layers_or_s
         let mut captures = ChangingTree::quiet(pictures, owner);
         let mut runtime = FakeRuntime::with_graphics(script(3), 16);
         runtime.head = head;
-        runtime.controller = ControllerState::default();
+        runtime.hands = Hands::default();
         let (outcome, frames, reports) = run_with(stream, runtime, &mut captures);
         assert!(matches!(outcome, Ok(Outcome::SessionExited)), "{outcome:?}");
         assert_eq!(reports.plans.len(), 3, "every frame ran");
@@ -451,7 +461,7 @@ fn a_runtime_that_fails_mid_session_ends_the_run_with_a_runtime_error_and_cleans
     let mut captures = ChangingTree::quiet(pictures, owner);
     let mut runtime = FakeRuntime::with_graphics(script(4), 16);
     runtime.fail_on_call = Some(fail_at);
-    runtime.controller = aiming(ahead(0.0));
+    runtime.hands = hands_from_pointer(&aiming(ahead(0.0)));
     let (outcome, frames, reports) = run_with(stream, runtime, &mut captures);
 
     assert!(matches!(outcome, Err(BridgeError::Runtime(_))), "{outcome:?}");
@@ -483,13 +493,21 @@ fn a_session_that_ends_destroys_the_seat_it_made_and_leaves_the_window_the_ray_w
     let pictures = ScriptedFrames::new(vec![vec![(2, Some(picture(8, 4, 1, 1)))]]);
     let mut captures = ChangingTree::quiet(pictures, owner);
     let mut runtime = FakeRuntime::with_graphics(script(2), 16);
-    runtime.controller = aiming(ahead(0.0));
+    runtime.hands = hands_from_pointer(&aiming(ahead(0.0)));
     let (outcome, _, _) = run_with(stream, runtime, &mut captures);
 
     assert!(matches!(outcome, Ok(Outcome::SessionExited)), "{outcome:?}");
     let all: Vec<op::Properties> = captures.owner.ops.try_iter().flatten().collect();
+    let controllers = controller_nodes(&all);
+    assert_eq!(controllers.len(), 1, "the right hand's node was made");
+    assert!(
+        all.iter()
+            .any(|op| op.kind == "destroy" && controllers.contains(&op.node)),
+        "and destroyed with the session"
+    );
     let order: Vec<&str> = all
         .iter()
+        .filter(|op| op.class != "controller" && !controllers.contains(&op.node))
         .map(|op| {
             if op.kind == "input" {
                 op.input_kind.as_str()
@@ -509,7 +527,7 @@ fn a_seat_that_was_already_there_is_not_destroyed_when_the_session_ends() {
     let pictures = ScriptedFrames::new(vec![vec![(2, Some(picture(8, 4, 1, 1)))]]);
     let mut captures = ChangingTree::quiet(pictures, owner);
     let mut runtime = FakeRuntime::with_graphics(script(2), 16);
-    runtime.controller = aiming(ahead(0.0));
+    runtime.hands = hands_from_pointer(&aiming(ahead(0.0)));
     let (outcome, _, _) = run_with(stream, runtime, &mut captures);
 
     assert!(matches!(outcome, Ok(Outcome::SessionExited)), "{outcome:?}");
@@ -526,7 +544,7 @@ fn an_owner_that_goes_during_the_session_is_the_end_of_the_run_not_a_failure() {
     let pictures = ScriptedFrames::new(vec![vec![(2, Some(picture(8, 4, 1, 1)))]]);
     let mut captures = ChangingTree::new(pictures, owner, 2, Then::HangUp);
     let mut runtime = FakeRuntime::with_graphics(script(50), 16);
-    runtime.controller = aiming(ahead(0.0));
+    runtime.hands = hands_from_pointer(&aiming(ahead(0.0)));
     let (outcome, frames, reports) = run_with(stream, runtime, &mut captures);
 
     assert!(matches!(outcome, Ok(Outcome::OwnerClosed)), "{outcome:?}");

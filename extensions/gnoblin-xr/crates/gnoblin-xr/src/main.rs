@@ -5,6 +5,7 @@
 //! submitted as a layer.
 
 mod bridge;
+mod controllers;
 mod dump;
 mod head;
 mod pointer;

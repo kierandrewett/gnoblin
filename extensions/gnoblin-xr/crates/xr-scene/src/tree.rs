@@ -91,6 +91,9 @@ pub struct TreeNode {
     pub layer_budget: Option<u64>,
     /// A seat's keyboard `focus`: the window node it names, or `None` for no focus.
     pub focus: Option<NodeId>,
+    /// A controller's `claimed` inputs by name, which a shell binding owns: the program withholds them from windows.
+    /// Empty until a write is seen.
+    pub claimed: Vec<String>,
     /// Metres per node unit, set on the room or on the head camera.
     pub metres: Option<f64>,
     /// Opacity in `[0, 1]`. Opacity multiplies down the tree.
@@ -117,6 +120,7 @@ impl TreeNode {
             metres: None,
             layer_budget: None,
             focus: None,
+            claimed: Vec::new(),
             opacity: 1.0,
             visible: true,
             input: true,

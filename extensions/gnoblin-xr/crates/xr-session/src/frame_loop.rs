@@ -19,7 +19,7 @@
 
 use std::time::Duration;
 
-use xr_input::ControllerState;
+use xr_input::Hands;
 use xr_layers::SubmittedLayer;
 use xr_scene::Pose;
 
@@ -58,14 +58,14 @@ pub struct FrameLoop<R: Runtime> {
 }
 
 impl<R: Runtime> FrameLoop<R> {
-    /// The controller at `display_time`: its pointing ray and its inputs. Called by the caller
-    /// alongside the frame, not inside [`FrameLoop::tick`], so frame pacing is unchanged.
+    /// Both controllers at `display_time`: their aim poses and inputs. Called by the caller alongside the frame, not
+    /// inside [`FrameLoop::tick`], so frame pacing is unchanged.
     ///
     /// # Errors
     ///
-    /// The runtime fails to locate the controller.
-    pub fn locate_controller(&mut self, display_time: i64) -> Result<ControllerState> {
-        self.runtime.locate_controller(display_time)
+    /// The runtime fails to locate the controllers.
+    pub fn locate_hands(&mut self, display_time: i64) -> Result<Hands> {
+        self.runtime.locate_hands(display_time)
     }
 
     pub fn new(runtime: R) -> Self {
@@ -176,6 +176,7 @@ impl<R: Runtime> FrameLoop<R> {
 
 #[cfg(test)]
 mod tests {
+    use xr_input::HandState;
     use xr_scene::IDENTITY;
 
     use super::*;
@@ -458,5 +459,49 @@ mod tests {
         let mut frames = FrameLoop::new(runtime);
         let result = frames.run(|_| unreachable!("no frame runs after the error"));
         assert_eq!(result, Err(RuntimeError("injected failure".to_owned())));
+    }
+
+    #[test]
+    fn locates_both_hands_at_the_display_time_beside_the_frame() {
+        let mut runtime = FakeRuntime::new([state(SessionState::Ready), timing(10, true)]);
+        runtime.hands = Hands {
+            right: Some(HandState {
+                trigger: 1.0,
+                ..HandState::default()
+            }),
+            ..Hands::default()
+        };
+        let mut frames = FrameLoop::new(runtime);
+        let Ok(Tick::Frame(frame)) = frames.start() else {
+            panic!("a frame runs");
+        };
+        assert_eq!(
+            frames.runtime.count(Call::LocateHands(10)),
+            0,
+            "starting a frame reads no input"
+        );
+        let hands = frames.locate_hands(frame.display_time).expect("the hands");
+        assert_eq!(hands.right.map(|hand| hand.trigger), Some(1.0));
+        assert_eq!(hands.left, None);
+        assert_eq!(frames.runtime.count(Call::LocateHands(10)), 1);
+    }
+
+    #[test]
+    fn a_hand_script_gives_one_sample_a_call_and_then_the_standing_hands_apply() {
+        let hand = |grip: f32| Hands {
+            left: Some(HandState {
+                grip,
+                ..HandState::default()
+            }),
+            ..Hands::default()
+        };
+        let mut runtime = FakeRuntime::new(Vec::new());
+        runtime.hands_script = [hand(0.25), Hands::default()].into();
+        runtime.hands = hand(1.0);
+        let mut frames = FrameLoop::new(runtime);
+        let grips: Vec<Option<f32>> = (0..4)
+            .map(|time| frames.locate_hands(time).expect("hands").left.map(|left| left.grip))
+            .collect();
+        assert_eq!(grips, [Some(0.25), None, Some(1.0), Some(1.0)]);
     }
 }

@@ -346,8 +346,34 @@ const panel = xr.room.pinToHead(client, { x: 0.1, y: -0.2, z: -1 });
 
 ### Moving and resizing a panel
 
-The program does not send controller input to the shell as events. It will write one `controller` node for each
-tracked hand (see "What is not built"), and the shell reads the nodes once a frame.
+The program writes one `controller` node for each hand (see "Controller nodes"), and the shell reads the nodes once a
+frame.
+
+### Controller nodes
+
+The program is an observer. It makes one `controller` node for each hand the runtime reports as active, with every value
+in one transaction, and destroys it when the runtime stops reporting the hand and when the session ends. It writes a
+node at most once a frame, and at most about 90 times a second. The shell reads these properties:
+
+| Property                                 | Meaning                                                                                           |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `x` `y` `z` `rotation`                   | The aim pose, in the room's node units (`metres` of the head camera), y up like Views.            |
+| `hand`                                   | `left` or `right`.                                                                                |
+| `tracked`                                | False while the aim pose cannot be located; the node keeps its last pose.                         |
+| `trigger` `grip`                         | 0 to 1.                                                                                           |
+| `thumbstick_x` `thumbstick_y`            | -1 to 1, y up.                                                                                    |
+| `thumbstick_click` `primary` `secondary` | Buttons: A or X, B or Y (menu on controllers with no B).                                          |
+| `claimed`                                | Written by the shell: the inputs `trigger`, `grip`, `thumbstick`, `primary`, `secondary` it owns. |
+
+A claimed input is withheld from the window under the ray:
+
+- A claimed grip is not `BTN_RIGHT`, a claimed trigger is not `BTN_LEFT` and a claimed thumbstick does not scroll.
+- A button the window already holds when the claim arrives is released.
+- A press that began under a claim never reaches the window.
+- The values are still written for the shell to read.
+
+The pointer is the right hand's. The left hand's node is published and nothing reaches a window from it. There are no
+controller signals.
 
 The bindings follow the ordinary lifecycle, and live in the room layout's `bindings`, a `BindingCollection`:
 
@@ -424,12 +450,11 @@ Logs, the tree dump and the pictures are left in `/tmp/xr-smoke`.
 
 ## What is not built
 
-- **The program does not publish controller nodes yet.** The bindings above read `controller` nodes
-  (`design/js-xr.md`, "New native work"): one for each hand, with the aim pose and the trigger and grip values. No schema
-  file declares the class, and the program and the compositor do not write it. Until they do, a headset session has no
-  controllers in `session.controllers` and no drag starts. The shell side is proven against nodes made by a test.
-- **The program still sends the grip as `BTN_RIGHT`.** A binding that owns the grip needs the program to stop sending
-  it to the window under the ray. That arbitration is not designed.
+- **The shell does not claim inputs yet.** The program obeys `controller.claimed` (see "Controller nodes"), but the
+  TypeScript bindings do not write it: a script cannot write a list of texts yet. Until they do, a `Grip+Drag` also sends
+  the grip as `BTN_RIGHT` to the window under the ray.
+- **Controllers are proven only against a fake runtime.** The two-hand OpenXR actions compile and the tests pass with
+  scripted hands; no headset, and no Monado run of the new actions, has seen them. No headset was used.
 - **A panel has one scale.** The program reads the first component of a View's `scale`, so a resize previews the growth
   evenly and the aspect changes when the client's new size lands.
 - **A stalled script.** The program writes the head pose and submits layers without waiting for the shell, and the
