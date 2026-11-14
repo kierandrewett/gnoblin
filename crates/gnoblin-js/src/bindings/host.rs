@@ -9,7 +9,7 @@ use gnoblin_proto::tree::effect;
 use gnoblin_tree_client::tree_mirror::{MirrorValue, NIL, NodeId, TreeMirror, lua_class};
 use rquickjs::{Ctx, Function, Object, Value};
 
-use super::props::{JsPropKind, default_value, defs_for, may_call};
+use super::props::{JsPropDef, JsPropKind, default_value, defs_for, may_call};
 use super::{HostState, JsHostValue, JsSpawnRequest, NodeHandles, SharedState, effect_from_js};
 
 /// Every node of the mirror, parents before their children. The root's tree comes first, in tree order; then
@@ -83,6 +83,8 @@ pub(crate) enum JsScriptValue {
     Number(f64),
     Text(String),
     Numbers(Vec<f64>),
+    /// An array of strings. An empty array is `Numbers`, and a `list<string>` write takes it as the empty list.
+    Texts(Vec<String>),
     /// An array of effect objects. An empty array is `Numbers`, and an `effects` write takes it as the empty list.
     Effects(Vec<effect::Properties>),
     Other,
@@ -91,8 +93,8 @@ pub(crate) enum JsScriptValue {
 /// How many components a list property (`rotation`, `scale`) has.
 const VECTOR_LEN: usize = 3;
 
-fn convert(kind: JsPropKind, value: &JsScriptValue, handles: &NodeHandles) -> Option<MirrorValue> {
-    match (kind, value) {
+fn convert(def: &JsPropDef, value: &JsScriptValue, handles: &NodeHandles) -> Option<MirrorValue> {
+    match (def.kind, value) {
         (JsPropKind::Double, JsScriptValue::Number(n)) if n.is_finite() => Some(MirrorValue::Double(*n)),
         (JsPropKind::Flag, JsScriptValue::Flag(flag)) => Some(MirrorValue::Bool(*flag)),
         (JsPropKind::Text, JsScriptValue::Text(text)) => Some(MirrorValue::Text(text.clone())),
@@ -102,6 +104,12 @@ fn convert(kind: JsPropKind, value: &JsScriptValue, handles: &NodeHandles) -> Op
         {
             Some(MirrorValue::List(list.clone()))
         }
+        (JsPropKind::Texts, JsScriptValue::Texts(list))
+            if def.choices.is_empty() || list.iter().all(|item| def.choices.contains(&item.as_str())) =>
+        {
+            Some(MirrorValue::Texts(list.clone()))
+        }
+        (JsPropKind::Texts, JsScriptValue::Numbers(list)) if list.is_empty() => Some(MirrorValue::Texts(Vec::new())),
         (JsPropKind::Effects, JsScriptValue::Effects(list)) => Some(MirrorValue::Effects(list.clone())),
         (JsPropKind::Effects, JsScriptValue::Numbers(list)) if list.is_empty() => {
             Some(MirrorValue::Effects(Vec::new()))
@@ -142,7 +150,7 @@ pub(crate) fn write(
     if !def.writable {
         return Some("read-only");
     }
-    let Some(value) = convert(def.kind, value, handles) else {
+    let Some(value) = convert(def, value, handles) else {
         return Some("invalid-value");
     };
     if let Some(curve) = animation {
@@ -285,6 +293,17 @@ fn script_value<'js>(value: &Value<'js>) -> JsScriptValue {
     } else if let Some(array) = value.as_array() {
         if let Ok(list) = array.iter::<f64>().collect::<Result<Vec<_>, _>>() {
             return JsScriptValue::Numbers(list);
+        }
+        // Read by value so that nothing is coerced: a number is not a name.
+        let texts: Option<Vec<String>> = array
+            .iter::<Value<'js>>()
+            .map(|item| {
+                item.ok()
+                    .and_then(|item| item.as_string().and_then(|text| text.to_string().ok()))
+            })
+            .collect();
+        if let Some(texts) = texts {
+            return JsScriptValue::Texts(texts);
         }
         let effects: Option<Vec<effect::Properties>> = array
             .iter::<Object<'js>>()
@@ -552,6 +571,85 @@ mod tests {
             Some("unknown-node")
         );
         assert!(state.tick.ops().is_empty());
+    }
+
+    /// A shell with one XR hand, as the program makes it, next to the window of `state`.
+    fn hand_state() -> HostState {
+        let nodes = [
+            node(1, 0, "node", Vec::new()),
+            node(
+                6,
+                0,
+                "controller",
+                vec![("hand".into(), MirrorValue::Text("right".into()))],
+            ),
+        ];
+        HostState::new(TreeMirror::from_snapshot(1, 1, 1, &nodes).expect("a mirror"))
+    }
+
+    fn names(names: &[&str]) -> JsScriptValue {
+        JsScriptValue::Texts(names.iter().map(|name| (*name).to_owned()).collect())
+    }
+
+    #[test]
+    fn a_list_of_names_is_written_to_a_controllers_claims_and_read_back_in_order() {
+        let mut state = hand_state();
+        assert_eq!(
+            read(&state, 6, "claimed", false),
+            Some(JsHostValue::Texts(Vec::new())),
+            "nothing is claimed by default"
+        );
+        assert_eq!(
+            write(&mut state, 6, "claimed", &names(&["trigger", "grip"]), None),
+            None
+        );
+        assert_eq!(
+            read(&state, 6, "claimed", false),
+            Some(JsHostValue::Texts(vec!["trigger".into(), "grip".into()]))
+        );
+        assert!(
+            matches!(
+                state.tick.ops(),
+                [TxOp::Set { node: 6, key, value: MirrorValue::Texts(list), .. }]
+                    if key == "claimed" && list == &["trigger", "grip"]
+            ),
+            "{:?}",
+            state.tick.ops()
+        );
+        // The empty array reaches the host as an empty `Numbers` and still releases every claim.
+        assert_eq!(
+            write(&mut state, 6, "claimed", &JsScriptValue::Numbers(Vec::new()), None),
+            None
+        );
+        assert_eq!(read(&state, 6, "claimed", false), Some(JsHostValue::Texts(Vec::new())));
+    }
+
+    #[test]
+    fn a_claim_that_is_not_a_list_of_the_five_lowercase_names_is_refused_and_queues_nothing() {
+        let mut state = hand_state();
+        for bad in [
+            JsScriptValue::Text("grip".into()),
+            JsScriptValue::Number(1.0),
+            JsScriptValue::Flag(true),
+            JsScriptValue::Numbers(vec![1.0]),
+            names(&["Grip"]),
+            names(&["GRIP"]),
+            names(&["grip", "bumper"]),
+            names(&[""]),
+            JsScriptValue::Other,
+        ] {
+            assert_eq!(
+                write(&mut state, 6, "claimed", &bad, None),
+                Some("invalid-value"),
+                "{bad:?}"
+            );
+        }
+        assert!(state.tick.ops().is_empty());
+        // A controller's other values are the program's, whatever a script writes.
+        assert_eq!(
+            write(&mut state, 6, "grip", &JsScriptValue::Number(1.0), None),
+            Some("read-only")
+        );
     }
 
     #[test]

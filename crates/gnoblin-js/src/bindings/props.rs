@@ -30,7 +30,13 @@ pub(crate) struct JsPropDef {
     pub writable: bool,
     /// Whether the tree accepts a write of it that carries `seconds` (`animated` in the schema).
     pub animated: bool,
+    /// For a list of texts: the only names an item may be. Empty means any text. The schema says a name outside the set
+    /// "claims nothing", so a script that writes one has made a mistake the shell tells it about.
+    pub choices: &'static [&'static str],
 }
+
+/// The inputs of a controller a shell binding may claim: the schema's five, lowercase.
+pub(crate) const CLAIMABLE_INPUTS: &[&str] = &["trigger", "grip", "thumbstick", "primary", "secondary"];
 
 const fn def(name: &'static str, kind: JsPropKind, writable: bool) -> JsPropDef {
     JsPropDef {
@@ -38,6 +44,7 @@ const fn def(name: &'static str, kind: JsPropKind, writable: bool) -> JsPropDef 
         kind,
         writable,
         animated: false,
+        choices: &[],
     }
 }
 
@@ -47,6 +54,18 @@ const fn animated(name: &'static str, kind: JsPropKind) -> JsPropDef {
         kind,
         writable: true,
         animated: true,
+        choices: &[],
+    }
+}
+
+/// A writable list of texts whose items come from `choices`.
+const fn texts_of(name: &'static str, choices: &'static [&'static str]) -> JsPropDef {
+    JsPropDef {
+        name,
+        kind: JsPropKind::Texts,
+        writable: true,
+        animated: false,
+        choices,
     }
 }
 
@@ -182,7 +201,7 @@ const CONTROLLER: &[JsPropDef] = &[
     def("thumbstick_click", JsPropKind::Flag, false),
     def("primary", JsPropKind::Flag, false),
     def("secondary", JsPropKind::Flag, false),
-    def("claimed", JsPropKind::Texts, true),
+    texts_of("claimed", CLAIMABLE_INPUTS),
 ];
 
 /// The methods a script may call on a window. `kill` is the not-responding alert's Force quit: the compositor
