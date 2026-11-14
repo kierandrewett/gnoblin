@@ -1434,7 +1434,12 @@ declare module "gnoblin" {
     export function mergeEffects(rules: readonly CompiledRule[]): RuleEffects;
     export function effectsFor(rules: readonly CompiledRule[], view: RuleView): RuleEffects;
     /** What an undone rule leaves a window with. */
-    export const RULE_DEFAULTS: { readonly secure: false; readonly fullscreen: false; readonly maximised: false; readonly opacity: 1 };
+    export const RULE_DEFAULTS: {
+        readonly secure: false;
+        readonly fullscreen: false;
+        readonly maximised: false;
+        readonly opacity: 1;
+    };
     /** What the rule engine asks of the shell. */
     export interface RuleHost<C extends object> {
         view(client: C): RuleView;
