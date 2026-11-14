@@ -1,6 +1,6 @@
 # Window policy in TypeScript
 
-The window policy the Lua shell had and the TypeScript shell now has too: moving and resizing with the keyboard, touchpad
+The window policy of the TypeScript shell: moving and resizing with the keyboard, touchpad
 gesture actions, reduced motion, binding-only devices, focus hand-off, workspace removal and workspace sets. Each section
 names the test that proves it (`crates/gnoblin-js/tests/{reposition,window_policy,input}.rs`).
 

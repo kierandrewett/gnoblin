@@ -17,19 +17,20 @@ Install [Waybar](https://github.com/Alexays/Waybar),
 [Fuzzel](https://codeberg.org/dnkl/fuzzel) and
 [Mako](https://github.com/emersion/mako) with your distribution's package manager.
 
-Add this to `~/.config/gnoblin/init.lua`:
+Add this to `~/.config/gnoblin/init.ts`:
 
-```lua
-gnoblin.configure {
-    autostart = {
-        bar = {command = {"waybar"}},
-        notifications = {command = {"mako"}},
+```ts
+import { defineConfig, spawn } from "gnoblin";
+
+export default defineConfig({
+    autostart: ["waybar", "mako"],
+    keys: {
+        "Super+d": spawn("fuzzel"),
     },
-    shortcuts = {
-        launcher = {binding = "<Super>d", command = {"fuzzel"}},
-    },
-}
+});
 ```
+
+Save the file. The shell reloads it, starts Waybar and Mako, and `Super+d` opens Fuzzel.
 
 Configure Waybar's clock, tray and system modules as usual. Its Sway and
 Hyprland modules need those compositors' own interfaces and do not work in Gnoblin.
@@ -96,12 +97,12 @@ not.
 
 If none appears while the session is unlocked, the recovery panel offers:
 
-- Open `~/.config/gnoblin/init.lua`.
+- Open `~/.config/gnoblin/init.ts`.
 - Launch a terminal, if one is installed.
 - Read this shell setup guide.
 
-If no configuration exists, the panel creates the default Lua configuration at
-that path. It does not replace an existing configuration.
+If no configuration exists, the panel writes the starter configuration to that path. It does not replace an existing
+configuration.
 
 Press Escape or choose Dismiss to hide the panel. It returns if shell
 readiness changes and the shell later disappears. The panel stays hidden while
@@ -118,4 +119,5 @@ journalctl --user -b -u bingux-searchd.service -u bingux-statusd.service
 ```
 
 See [troubleshooting](troubleshooting.md#no-bar-dock-or-launcher).
-To write your own shell, start with the [compositor bridge](bridge/index.md).
+To write your own shell in TypeScript, start with [Write your own shell](user-shell.md). To write one in another language,
+start with the [compositor bridge](bridge/index.md).

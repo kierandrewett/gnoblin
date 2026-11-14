@@ -48,7 +48,6 @@ The same wrapper works in Bingux. Its Make targets are `make lint` and
 | QML                             | Qt parser, qmlformat |
 | C/C++                           | clang-format         |
 | Rust                            | rustfmt              |
-| Lua                             | StyLua               |
 | Nix                             | nixfmt               |
 | Markdown, YAML, JSON, CSS, HTML | Prettier             |
 

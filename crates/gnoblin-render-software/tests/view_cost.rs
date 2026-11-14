@@ -6,7 +6,7 @@
 //! `the_cost_of_one_view_redraw_on_each_path` in `crates/gnoblin-backend/src/render/view_gpu_tests.rs`. This file is the
 //! CPU rasteriser's own profile: the time of one redraw for the View sizes and sources a shell is likely to make. It is
 //! a measurement, not a check, so it is ignored by default; its numbers are in `design/cutover-survey.md` (section
-//! 16.2) and `docs/shell-api/views.md`.
+//! 16.2).
 //!
 //! ```text
 //! cargo test --release -p gnoblin-render-software --test view_cost -- --ignored --nocapture

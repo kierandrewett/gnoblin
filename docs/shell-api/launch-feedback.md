@@ -1,79 +1,70 @@
 # Launch feedback
 
-> **Status:** not available yet: `:finish`, `gnoblin.launch.changed`, `gnoblin.launches`, `gnoblin.launches.begin`, `gnoblin.launches.list`. The sections that use them describe the target, not current behaviour.
+`gnoblin.launches` tracks the busy state between asking for an application and its window, so a panel or launcher can show
+a spinner while the program starts.
 
-Use `gnoblin.launches` to read launch feedback and track a launch request.
-`list()` returns the cached native snapshot as `Launch` objects, one for each
-token. The Lua API has no `snapshot()`; each `Launch` has its own `revision`.
+```ts
+import { defineConfig } from "gnoblin";
 
-The native controller seeds an empty snapshot during startup and refreshes it
-before dispatching launch-change events. `list()` is unavailable before native
-startup completes. `gnoblinctl lua` also exposes the read.
+defineConfig({
+    keys: {
+        "Super+e": ({ gnoblin }) => {
+            gnoblin.launches.begin("terminal-1", "foot", {
+                timeoutMs: 5000,
+                onStarted: () => gnoblin.spawn(["notify-send", "The terminal is open"]),
+                onTimedOut: () => gnoblin.spawn(["notify-send", "The terminal did not open"]),
+            });
+            gnoblin.spawn("foot");
+        },
+    },
+});
+```
 
-| Method                                                 | Arguments                               | Result                          |
-| ------------------------------------------------------ | --------------------------------------- | ------------------------------- |
-| `gnoblin.launches.list()`                              | None                                    | `Launch[]`                      |
-| `gnoblin.launches.begin(token, application, options?)` | Token, application; option `timeout_ms` | The `Launch`, pending at once   |
-| `launch:finish()`                                      | None                                    | An `Operation` of `{ok, token}` |
+Put the file in `~/.config/gnoblin/init.ts`. `Super+e` starts the `foot` terminal and tracks the launch: a notification
+says whether its window appeared within five seconds.
 
-`begin` returns the `Launch` before the compositor confirms it, with the values
-you asked for and `revision` 0. The confirmation and each later change update
-the same object. Beginning a token that is already in use ends the earlier
-`Launch`.
+## Begin a launch
 
-`gnoblin.launches.begin` takes these arguments:
+`gnoblin.launches.begin(token, application, options?)` returns a `Launch` that is `pending` at once, with `revision` 0.
+Anything outside these limits throws:
 
-| Argument             | Type and accepted value                  | Default | Meaning                                  |
-| -------------------- | ---------------------------------------- | ------- | ---------------------------------------- |
-| `token`              | Non-empty string, at most 128 characters | None    | Identifies this launch attempt.          |
-| `application`        | Non-empty string, at most 512 characters | None    | Application hint used for matching.      |
-| `options.timeout_ms` | Integer from 100 to 10000                | `3000`  | Deadline before state becomes timed out. |
+| Argument      | Accepted values                          | Default | Meaning                                                       |
+| ------------- | ---------------------------------------- | ------- | ------------------------------------------------------------- |
+| `token`       | non-empty string, at most 128 characters | none    | Names the launch. Beginning the same token again replaces it. |
+| `application` | non-empty string, at most 512 characters | none    | The application id the window is matched against.             |
+| `timeoutMs`   | integer from 100 to 10000                | `3000`  | How long the launch waits for a window.                       |
 
-Call `launch:finish()` when the launch is cancelled or the application has
-started. It returns an `Operation` that completes asynchronously, as described
-near the start of this page. A launch that is not pending is unchanged.
+`options` also takes the handlers listed below.
 
-Socket clients use the `launch.status`, `launch.begin` and `launch.end`
-methods; see the [compositor bridge](/bridge/).
+A launch leaves `pending` once, for one of three states:
 
-The native runtime retains at most 64 records. It evicts the oldest completed
-record when needed and rejects a new launch if all retained records are pending.
+| State       | When                                                                                         |
+| ----------- | -------------------------------------------------------------------------------------------- |
+| `started`   | A window of the application appears, takes focus or names its application id.                |
+| `timed_out` | The deadline passes first.                                                                   |
+| `ended`     | `launch.finish()` is called, the token is begun again (`replaced`), or the registry is full. |
 
-Each `Launch` is a live object. It is the same object for as long as the launch
-exists: every read of one token returns it, and each change from the compositor
-updates it. It has these fields, which `launch:watch(field, fn)` can follow:
+## Handlers
 
-- `token` and `application`.
-- `alive`, which is true while `state` is `pending`.
-- `started_at`, as Unix time in milliseconds.
-- `timeout_ms`, `state`, and `revision`.
+| Handler                     | Called when                                                                                                     |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `onChanged(launch, fields)` | A field of the launch changed. `fields` names them.                                                             |
+| `onStarted(launch)`         | The launch became `started`.                                                                                    |
+| `onTimedOut(launch)`        | The launch became `timed_out`.                                                                                  |
+| `onClosed(launch, reason)`  | The launch left `pending`. It runs last. `reason` is the new state, `replaced`, or why the registry refused it. |
 
-The state begins as `pending`. Mutter reports `started` when a matching mapped
-window appears or becomes focused. `launch:finish()` changes a pending record to
-`ended`; the deadline changes it to `timed_out`. A launch ends in one of these
-three states, and it never leaves them.
+A `Launch` has these fields: `token`, `application`, `timeoutMs`, `startedAt` (Unix time in milliseconds), `state`, `alive`
+(`true` while pending), `revision` (the number of changes) and `finish()`, which ends a pending launch. `finish` on a launch
+that is not pending changes nothing.
 
-`launch:on(signal, fn)` calls `fn(launch, ...)`:
+## The registry
 
-| Signal      | When                                                                |
-| ----------- | ------------------------------------------------------------------- |
-| `changed`   | A field changed. The second argument lists the changed field names. |
-| `started`   | A matching window appeared or took focus.                           |
-| `timed_out` | The deadline passed first.                                          |
-| `closed`    | The launch left `pending` for any reason.                           |
+`gnoblin.launches.list()` returns the registry, oldest first. It holds at most 64 launches. A new one drops the oldest
+finished one. With all 64 pending, the new launch comes back `ended`, with the reason in its `onClosed`.
 
-`closed` runs last. A launch that a second `begin` with the same token replaced
-passes the reason `replaced`. A launch that the compositor refused passes the
-error message, and its `state` becomes `ended`. Listening ends after `closed`.
+A window matches by application id, compared in lowercase with a trailing `.desktop` removed. A window starts only the
+oldest pending launch it matches, and a window that was already there when the launch began does not start it until it takes
+focus.
 
-Gnoblin does not link a `Launch` to the window or `Process` that answered it. The
-compositor matches a window by application ID and does not record which window
-did, so match the window yourself, for example by `app_id`.
-
-Matching uses GTK application ID, WM class, or WM class instance. Values are
-lowercased and a `.desktop` suffix is removed. The native controller cannot report failures from an external process
-launcher.
-
-Subscribe to `gnoblin.launch.changed` for every launch at once, or call
-`launch:on` for one. `launch:finish()` ends a request when it is cancelled or
-the application has started.
+This is the shell's own record. The compositor keeps no launch state, so another client does not see these launches, and a
+`Launch` is not linked to the window or process that answered it.

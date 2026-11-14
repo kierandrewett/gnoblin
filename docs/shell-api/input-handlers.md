@@ -1,97 +1,112 @@
-# Input Handlers
+# Input handlers
 
-> **Status:** not available yet: `gnoblin.input.devices`, `gnoblin.input.on`. The sections that use them describe the target, not current behaviour.
+A key press or a click is a function. A pointer drag and a touchpad gesture take place over time, so they are binding
+objects with hooks that run as the input starts, moves and ends. The stock shell moves and resizes windows, switches
+workspaces and acts on gestures with these.
 
-Register handlers for supported local input events from Lua configuration.
+```ts
+import { PointerDragBinding, binding, defineConfig } from "gnoblin";
+import type { Client, DragEvent } from "gnoblin";
 
-Input handlers are registered from the loaded Lua configuration and are replaced on successful config reload.
+interface Grab {
+    client: Client;
+    x: number;
+    y: number;
+}
 
-## Input handlers
+class Nudge extends PointerDragBinding<Grab> {
+    onStart(event: DragEvent): Grab | false {
+        const client = event.client;
+        return client ? { client, x: client.x, y: client.y } : false;
+    }
+    onUpdate(event: DragEvent, state: Grab): void {
+        state.client.x = state.x + (event.dx ?? 0);
+        state.client.y = state.y + (event.dy ?? 0);
+    }
+}
 
-Register a handler from a config file with `gnoblin.input.on(match, callback)`.
-For example, consume one mouse button from a particular device:
-
-```lua
-gnoblin.input.on({type = "button", device_id = "input:3", button = 8}, function(event)
-    return "consume"
-end)
+defineConfig({
+    keys: {
+        "Alt+MouseMiddle+Drag": binding(() => new Nudge({ id: "nudge", trigger: "Alt+MouseMiddle+Drag" })),
+    },
+});
 ```
 
-Use a device ID returned by `gnoblin.input.devices()`; IDs last for the current
-session. Omitting `device_id` matches every device of the selected event type.
-The registration returns a subscription, the same shape as `gnoblin.on` and the
-`on` of every object: `subscription:unsubscribe()` removes the handler. A handler
-cannot be added or removed from inside an input callback. Reloading the config
-replaces the registry.
+Put the file in `~/.config/gnoblin/init.ts`. Hold `Alt`, press the middle button on a window and drag: the window follows
+the pointer.
 
-The callback returns `"forward"` to continue normal routing or `"consume"` to
-withhold delivery. Nil means forward for raw handlers. The table forms
-`{action = "forward"}` and `{action = "consume"}` are also accepted. Remapping
-and synthetic replacement events are not supported.
+## Drag bindings
 
-Use `keybindings.keyboard` or `keybindings.pointer` for named accelerator
-callbacks. Those helpers use the same registry and consume an event when the
-callback returns nil. See [Keybindings](/config/configure/keybindings).
+Extend `PointerDragBinding` to handle a pointer drag. Its constructor takes `id`, `trigger`, and `threshold`, the pixels the
+pointer must move from the press before the drag starts. The default is 4. A press and release before that is a click.
 
-Match selectors are:
+| Hook                     | Runs when                                                                                          |
+| ------------------------ | -------------------------------------------------------------------------------------------------- |
+| `onStart(event)`         | The pointer went past the threshold. Return a state object to own the drag, or `false` to decline. |
+| `onUpdate(event, state)` | The pointer moved. It runs at most once a frame, with the position at that moment.                 |
+| `onEnd(event, state)`    | The button was released.                                                                           |
+| `onCancel(event, state)` | The compositor cut the drag short, for example because the session locked.                         |
 
-- `type`: `"key"`, `"button"`, `"motion"`, `"scroll"`, `"touch"`, `"tablet"`, or
-  `"gesture"`; required.
-- `device_id`: session device ID; omitted by default.
-- `keycode`: integer hardware keycode for `"key"` events; omitted by default.
-- `button`: integer button number, 1–32, for button or tablet events.
-- `accelerator`: a chord in the [chord syntax](/guides/shortcuts#chord-syntax);
-  for `"button"` events a pointer chord such as `<Super>Button1`. Omitted by
-  default. This selector applies only to key and button events. Another form
-  is an error that names the form to write.
-- `modifiers`: exact integer modifier mask; omitted by default. Prefer
-  `accelerator` for ordinary shortcuts.
-- `allow_when_shortcuts_inhibited`: false by default. Set true to handle
-  input even when the focused application inhibits compositor shortcuts.
-- `phase`: optional event phase. Keyboard and button events use press/release;
-  touch and gestures use begin/update/end/cancel. Tablet-pad buttons use
-  press/release; rings, strips, and dials use update.
+`onStart` returns a fresh state object for each drag, and each later hook receives it, so one binding can serve several
+seats at once. A binding that declines lets the next binding of the same trigger have the drag. `onStart`, `onEnd` and
+`onCancel` are never dropped. When scripts fall behind, `onUpdate` reads the position at that moment and skips the samples between.
 
-Callbacks receive `time` in milliseconds, integer `modifiers`, `device_id`,
-`type`, `phase`, and `pointer = {x, y}` in compositor logical coordinates.
-Keys include integer `keycode` and `symbol`; button events include `button`.
-Scroll events include `dx`, `dy`, and `direction`: `"up"`, `"down"`, `"left"`,
-`"right"`, or `"smooth"` for continuous scrolling.
+The event carries what the hooks need:
 
-Gesture events include `dx`, `dy`, and `fingers`; pinch events also include
-`scale` and `angle_delta`. Tablet-pad events include `number`, `mode`, and
-`value`; `kind` is `"button"`, `"ring"`, `"strip"`, or `"dial"`. Tablet tools arrive as pointer events, not tablet-pad events.
+| Field                        | Meaning                                                                          |
+| ---------------------------- | -------------------------------------------------------------------------------- |
+| `timestamp`, `deltaTime`     | The input time, and seconds since the previous event of this drag, at most 0.1.  |
+| `client`, `layout`           | The window under the pointer at the press, and the layout whose binding this is. |
+| `position`, `localPosition`  | The pointer in compositor coordinates, and in the window's own coordinates.      |
+| `x`, `y`                     | The pointer. The same as `position`.                                             |
+| `dx`, `dy`                   | Pixels from the press.                                                           |
+| `button`                     | The button, numbered as X11 does: 1 left, 2 middle, 3 right.                     |
+| `modifiers`                  | The modifiers held, as a set of names.                                           |
+| `workArea`, `dragConstraint` | The rectangle a dragged window stays in, and the seat's constraint.              |
+| `edgeTiling`                 | Whether a drop on an edge tiles the window.                                      |
+| `context`, `device`          | The seat, and the device when the claim was for one device.                      |
 
-Touch events include the integer `slot` identifying their current contact.
+The stock drags are classes you can reuse or extend:
 
-A button press over a window can include a typed `window` and a `grant`
-for window operations. The window is absent over the desktop or a
-layer surface. Check for both fields before starting a window operation.
+| Class                 | Trigger it takes by default | What it does                                                                                                                            |
+| --------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `ClientMoveBinding`   | `Super+MouseLeft+Drag`      | The window follows the pointer and stays in the work area. `snap` is how near an edge, in pixels, a drop tiles it; `false` never tiles. |
+| `ClientResizeBinding` | `Super+MouseRight+Drag`     | The corner nearest the press follows the pointer. `edges` is `quadrant`, `nearest` or one corner.                                       |
 
-Configuration changes and new input registrations are unavailable inside a raw
-input callback. Request supported runtime operations instead.
+`dragConstraint` is `work_area`, which keeps a window inside the work area, or `minimum_strip`, which lets a window leave
+until a strip of 75 pixels stays visible. Set it in `defineConfig`.
 
-A handler that throws or returns an invalid value decides nothing and stays active. The
-handlers after it still decide, and an event that no handler decides is forwarded.
+## Gesture bindings
 
-Gnoblin queues at most 256 events and waits at most 16 ms for the head decision.
-A timeout, disconnected runtime, or queue overflow bypasses handlers until a successful config reload and shows an error overlay.
-Late decisions cannot operate on retired input requests.
+A touchpad gesture binding extends `GestureBinding` and uses the same four hooks. Its trigger is a gesture such as `Swipe3`
+or `Pinch2In`. A gesture event adds these fields:
 
-Press decisions also own their matching release. A release-only key or button
-handler reserves the press and consumes both physical events; returning forward
-from its release callback cannot undo that reservation. Prefer a press handler
-when the callback must choose between consuming and forwarding a shortcut.
+| Field               | Meaning                                                                   |
+| ------------------- | ------------------------------------------------------------------------- |
+| `phase`             | `begin`, `update`, `end` or `cancel`.                                     |
+| `dx`, `dy`          | Movement since the begin, in touchpad units.                              |
+| `scale`, `rotation` | The spread of a pinch, where 1 is unchanged, and its rotation in radians. |
+| `progress`          | 0 to 1: how far the gesture has gone its own way.                         |
 
-For touch and gesture streams, the begin decision applies through end or cancel.
-Matched update callbacks can request operations, but cannot change delivery
-halfway through the stream. Reload and runtime failure retain consumed streams
-until their physical end so an application cannot receive an orphan release.
+`WorkspaceSlideBinding` is the stock three-finger slide between workspaces: the windows follow the fingers, and the slide
+commits when the fingers lift past `commit`, a fraction from 0 to 1 that defaults to 0.25. Its `travel` is the distance in
+touchpad units that equals a full slide, and `seconds` the length of the slide that finishes it.
 
-If the terminal event is lost, the next non-repeated press from that device and
-control starts a new stream and retires the stale state.
+To run a function when a gesture ends, name the gesture in `gestureActions` or bind a function to it. The named actions and
+`gnoblin.gestures` are in [Window policy](/js-window-policy#gesture-actions).
 
-### Start a program from Lua
+## Add a binding at run time
 
-Use [`gnoblin.process.spawn`](/shell-api/processes) to start a program from a
-handler, read its output, or wait for its exit.
+A drag or gesture binding goes to the seat with `gnoblin.input.primary.bind(trigger, binding)`. The seat moves the binding to
+the trigger you give. `binding.unbind()` removes it, and the compositor's claim goes when no binding needs it.
+
+```ts
+const nudge = gnoblin.input.primary.bind(
+    "Alt+MouseMiddle+Drag",
+    new Nudge({ id: "nudge", trigger: "Alt+MouseMiddle+Drag" }),
+);
+```
+
+A `BindingCollection`, such as `context.bindings`, `device.bindings` or `layout.bindings`, holds the bindings by `id`: `add`,
+`get`, `has`, `remove`, `clear` and `size`. Adding a binding with a taken id, or one that is already in another collection,
+throws.

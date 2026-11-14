@@ -1,111 +1,105 @@
-# Operations, Errors and Timers
+# Operations, errors and timers
 
-> **Status:** not available yet: `gnoblin.workspace.activated`, `gnoblin.workspaces.next`. The sections that use them describe the target, not current behaviour.
+A call that finishes later returns an `Operation`. A call that cannot be made at all throws. A function you hand to the
+shell, whether a listener, a handler or a timer, runs under a time budget and may fail without stopping the others.
 
-Gnoblin's Lua runtime API reports the outcome of an asynchronous operation through an `Operation` object.
+```ts
+import { defineConfig } from "gnoblin";
 
-## Operation results
-
-An asynchronous Lua operation has these fields:
-
-| Field    | What it holds                                                                           |
-| -------- | --------------------------------------------------------------------------------------- |
-| `id`     | An identifier for the operation                                                         |
-| `method` | The name of the operation                                                               |
-| `status` | `pending`, `succeeded` or `failed`                                                      |
-| `value`  | The result when the status is `succeeded`; `nil` otherwise                              |
-| `error`  | A table with a stable `code` and a `message` when `status` is `failed`; `nil` otherwise |
-
-Invalid arguments and calls outside an allowed runtime event fail before the operation is queued. A queued operation
-can fail later, when Mutter or the session service applies it.
-
-## Handler errors
-
-An error raised in a handler is local to that handler. This applies to event handlers (`gnoblin.on`), `on` and `watch`
-callbacks of objects, `Process` and `Request` signals, timers, `Operation` callbacks, tween callbacks and input
-handlers.
-
-- Gnoblin logs the error with the event or signal name and the Lua stack traceback.
-- The handler stays registered and runs again on the next event. Gnoblin never disables a handler.
-- Other handlers of the same event still run. Each handler gets its own instruction budget (one million
-  instructions), so a loop that never ends in one handler cannot stop the handlers after it.
-- An input handler that throws or returns an invalid value decides nothing: its queued operations are dropped and
-  the handlers after it still decide.
-- Gnoblin shows a notice for the first failure of a handler. A success resets the count. To keep the log short, a
-  handler that fails again and again is logged for its first three failures in a row and then once for every 1000.
-- When an event handler fails, Gnoblin rolls back all configuration changes made while it dispatched that event,
-  including changes from handlers that did not fail. Operations that other handlers queued still run.
-
-## Operation methods
-
-| Method             | What it does                                                                              |
-| ------------------ | ----------------------------------------------------------------------------------------- |
-| `on_complete(fn)`  | Calls `fn(value, error)` once when the operation finishes. Returns a subscription.        |
-| `map(fn)`          | Returns a new operation that succeeds with `fn(value)`, or fails with the same error.     |
-| `timeout(seconds)` | Returns a new operation that fails with `timed_out` if this one has not finished in time. |
-| `cancel()`         | Stops waiting. Returns `false` when the operation had already finished.                   |
-
-A callback added after the operation finished runs once, after the current handler returns. Call `unsubscribe()` on
-the subscription to stop a callback before it runs. An error raised in one callback is logged and does not stop the
-other callbacks. An error raised by the `map` function fails the new operation with the code `internal`.
-
-`cancel()` fails the operation with the code `cancelled` and runs its callbacks. It stops a timer. An action that was
-already sent to the compositor, such as a workspace switch or a command, still runs; its result is ignored. `timeout`
-does not cancel the operation it waits on.
-
-## Timers
-
-`gnoblin.timers.after(seconds)` returns an operation that succeeds with `nil` after the given time, from 0 to 86400
-seconds. Call it from an event handler or an operation callback; it raises an error while the config file loads. A
-runtime can hold at most 1024 pending timers. Pending timers end when the config reloads and do not delay the reload.
-
-`gnoblin.timers.now()` returns seconds on a monotonic clock. Only the difference between two readings is meaningful.
-
-This handler waits two seconds, then switches to the next workspace and gives up after one more second:
-
-```lua
-gnoblin.on("gnoblin.workspace.activated", function()
-    gnoblin.timers.after(2):on_complete(function()
-        gnoblin.workspaces.next():timeout(1):on_complete(function(workspace, err)
-            print(err and err.code or workspace.name)
-        end)
-    end)
-end)
+defineConfig({
+    keys: {
+        "Super+Shift+q": ({ gnoblin }) => {
+            gnoblin.session.logout().onComplete((value, error) => {
+                if (error) {
+                    gnoblin.spawn(["notify-send", `Logout refused: ${error.code}`]);
+                }
+            });
+        },
+    },
+});
 ```
+
+Put the file in `~/.config/gnoblin/init.ts`. `Super+Shift+q` logs out, and shows a notification when the compositor
+refuses.
+
+## Operations
+
+An `Operation` settles once, with a value or with a typed error. Its callbacks run as queued calls under the same time
+budget as every listener: one that throws is reported, and the next callback still runs.
+
+| Member             | Meaning                                                                                                  |
+| ------------------ | -------------------------------------------------------------------------------------------------------- |
+| `id`, `method`     | The operation's number and the name of the call that made it.                                            |
+| `status`           | `pending`, `succeeded` or `failed`.                                                                      |
+| `value`            | The result of a success. `undefined` otherwise.                                                          |
+| `error`            | `{ code, message }` of a failure. `undefined` otherwise.                                                 |
+| `onComplete(fn)`   | Calls `fn(value, error)` once, when the operation settles. Returns a subscription.                       |
+| `map(fn)`          | A new operation with `fn(value)` as its value. A throw in `fn` fails it `internal`.                      |
+| `timeout(seconds)` | A new operation that fails `timed_out` if this one has not settled in time. It does not cancel this one. |
+| `cancel()`         | Fails the operation with `cancelled`. Returns `false` when it had already settled.                       |
+
+`onComplete` returns a subscription with `unsubscribe()`, which stops the callback before it runs.
+
+```ts
+const done = gnoblin.process.spawn(["sleep", "30"]).wait().timeout(5);
+done.onComplete((exit, error) => {
+    if (error?.code === "timed_out") {
+        gnoblin.spawn(["notify-send", "sleep took too long"]);
+    }
+});
+```
+
+A bad argument is not an operation failure: the call throws a `TypeError` or a `RangeError` at once.
 
 ## Error codes
 
-| Error code         | Meaning                                                          |
-| ------------------ | ---------------------------------------------------------------- |
-| `invalid_argument` | An operation argument or event-produced config value is invalid. |
-| `not_found`        | The requested object or resource does not exist.                 |
-| `unsupported`      | The compositor or session cannot perform the operation.          |
-| `denied`           | Session policy or security state rejects the operation.          |
-| `busy`             | An exclusive input operation is already active.                  |
-| `cancelled`        | The user or the caller cancelled the operation.                  |
-| `timed_out`        | The operation reached its deadline.                              |
-| `unavailable`      | The compositor or session service is not ready.                  |
-| `internal`         | An unexpected implementation error occurred.                     |
+| Code               | Meaning                                                                    |
+| ------------------ | -------------------------------------------------------------------------- |
+| `invalid_argument` | An argument is invalid.                                                    |
+| `not_found`        | The object or resource does not exist, or has ended.                       |
+| `unsupported`      | The compositor or the machine cannot perform the operation.                |
+| `denied`           | Session policy, logind or polkit rejected the operation.                   |
+| `busy`             | Something exclusive is already running.                                    |
+| `cancelled`        | `cancel()` or the caller stopped the operation.                            |
+| `timed_out`        | The operation reached its deadline.                                        |
+| `unavailable`      | The compositor or a session service is not ready.                          |
+| `internal`         | An unexpected error occurred, such as a throw inside `map`.                |
+| `config_rejected`  | A reload was refused. Only `gnoblin.runtime.reloadConfig()` fails with it. |
 
-## Example
+## Timers
 
-Put this in a supervised runtime event callback. It prints the name of the activated workspace, or the error:
+`gnoblin.timers.after(ms, fn)` runs `fn` once, `ms` milliseconds from now, at the first frame after that time. `ms` is from
+0 to a day. It returns a `Timer`.
 
-```lua
-local operation = gnoblin.workspaces.next()
-operation:on_complete(function(workspace, err)
-    if err then
-        print(err.code, err.message)
-        return
-    end
-    print("Active workspace:", workspace.name)
-end)
+| Member                 | Meaning                                                              |
+| ---------------------- | -------------------------------------------------------------------- |
+| `timer.pending`        | `true` until the timer ran or was cancelled.                         |
+| `timer.at`             | When it runs, in milliseconds on the monotonic clock.                |
+| `timer.cancel()`       | Stops the timer. Returns `false` when it had already run.            |
+| `gnoblin.timers.size`  | How many timers are waiting.                                         |
+| `gnoblin.timers.now()` | The monotonic clock in milliseconds. Only differences mean anything. |
+
+- At most 1024 timers wait at once.
+- A timer that throws is reported, and the next one still runs.
+- A reload cancels the timers of the old configuration, and they do not delay it.
+
+`gnoblin.after(seconds, fn)` is the same call in seconds and returns the same `Timer`.
+
+```ts
+const timer = gnoblin.timers.after(2000, () => gnoblin.show("2"));
+timer.cancel();
 ```
+
+## Handler errors
+
+A listener, a key handler, an event handler or a timer that throws is reported once, with the file, line and column of the
+throw in your `.ts` source. The shell keeps the handler attached and goes on to the next one.
+
+A call that runs past its time budget is interrupted, and the shell stages your config again from the files. After several
+interruptions in a short time it stops doing that until a cool-down has passed or you reload on purpose. The compositor
+keeps running throughout.
 
 ## See also
 
-- [Runtime API overview](/shell-api/)
-- [Events](/events/)
-- [Compositor bridge errors](/bridge/connection)
-- A shell that uses the compositor bridge negotiates the methods and events that the connection's greeting advertises.
-  `gnoblin.version().api` gives the control API version.
+- [Events](/events/) for `gnoblin.on`.
+- [Compositor bridge](/bridge/connection) for the socket's own error codes.

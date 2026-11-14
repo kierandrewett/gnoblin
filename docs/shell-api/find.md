@@ -1,61 +1,90 @@
 # Find objects
 
-> **Status:** not available yet: `gnoblin.focus.history`. The sections that use it describe the target, not current behaviour.
+Two calls select windows, workspaces and outputs. `gnoblin.find` returns an array of the objects that match right now.
+`where` on a collection returns a live selection that follows the objects as they change.
 
-`gnoblin.find(kind, filter?)` returns the live objects of one kind that match a filter. One call works for every
-kind that has a list, so you do not need a separate filter for each one.
+```ts
+import { defineConfig } from "gnoblin";
 
-```lua
-local notes = gnoblin.find("Window", {app_id = "org.gnome.Notes", focused = true})
-local primary = gnoblin.find("Output", {primary = true})[1]
+defineConfig({
+    keys: {
+        "Super+f": ({ gnoblin }) => {
+            const [notes] = gnoblin.find("Window", { appId: "org.gnome.Notes" });
+            notes?.focus();
+        },
+    },
+});
 ```
 
-| Argument | Meaning                                                                                              |
-| -------- | ---------------------------------------------------------------------------------------------------- |
-| `kind`   | The name of an object kind, as a string. The kinds are listed below.                                 |
-| `filter` | Optional. A table of field values, or a predicate function. Without it, `find` returns every object. |
+`Super+f` focuses the Notes window when there is one.
 
-## Kinds
+## `gnoblin.find`
 
-| Kind        | List that `find` filters    |
-| ----------- | --------------------------- |
-| `Window`    | `gnoblin.windows.list()`    |
-| `Workspace` | `gnoblin.workspaces.list()` |
-| `Output`    | `gnoblin.outputs.list()`    |
+`gnoblin.find(kind, filter?)` returns the live objects of one kind in list order. The objects are the same ones the
+collections hold, so a `Client` from `find` is the `Client` from `gnoblin.clients`.
 
-The result is an array of the same live handles that the list and the events give, in the order of the list. Compare
-two handles with `==`.
+| Argument | Meaning                                                                                     |
+| -------- | ------------------------------------------------------------------------------------------- |
+| `kind`   | `"Window"`, `"Workspace"` or `"Output"`.                                                    |
+| `filter` | Optional. An object of field values, or a function. Without it `find` returns every object. |
 
-## Table filter
+An unknown kind throws a `TypeError` that names the kinds that work.
 
-A table filter keeps the objects whose fields equal every value in the table. Each key is the name of a field that
-the kind declares, and each value is a string, a number or a boolean. For example, `{app_id = "notes", focused = true}`
-keeps the focused windows with the application ID `notes`.
+### Filter by field values
 
-A table filter raises a Lua error, and the error names the fields that work, when:
+An object filter keeps the objects whose fields equal every value in it. Each value is a string, a number or a boolean.
+`appId` and `app_id` name the same field.
 
-- the kind does not declare a field of that name;
-- a field is not a scalar, such as `Window.effects`;
-- a value is not a string, a number or a boolean.
-
-The fields of each kind are in the [type reference](/shell-api/types) and in `gnoblin.d.lua`.
-
-## Predicate filter
-
-A predicate is a function that receives each object and returns `true` to keep it. Use one for anything other than
-equality, such as a title that contains a word:
-
-```lua
-local drafts = gnoblin.find("Window", function(window)
-    return window.title:find("draft", 1, true) ~= nil
-end)
+```ts
+const focusedNotes = gnoblin.find("Window", { appId: "org.gnome.Notes", focused: true });
+const primary = gnoblin.find("Output", { primary: true })[0];
 ```
 
-An error inside the predicate is an error of the `find` call.
+The fields you can filter on:
 
-## Unknown kinds
+| Kind        | Fields                                                                                                                                                                                    |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Window`    | `id`, `appId`, `title`, `alive`, `focused`, `fullscreen`, `secure`, `unresponsive`, `floating`, `maximised`, `minimised`, `tiled`, `visible`, `x`, `y`, `width`, `height`, `opacity`, `z` |
+| `Workspace` | `id`, `name`, `alive`, `index`, `active`                                                                                                                                                  |
+| `Output`    | The scalar properties of an output, such as `name`, `make`, `model`, `mode`, `scale`, `primary`, `enabled`, `width` and `height`.                                                         |
 
-`gnoblin.find` raises a Lua error for a kind that has no list. The error names the kinds that work.
+A field the kind does not have, or a value that is not a string, a number or a boolean, throws a `TypeError` that names
+the fields that work.
 
-`gnoblin.windows.list()` takes no arguments. `gnoblin.focus.history(filter?)` keeps its
-filter, because its result has an order and a limit. The socket and `gnoblinctl` methods keep their own filters.
+### Filter with a function
+
+A function receives each object and keeps it when the function returns a truthy value. Use it for anything but equality,
+such as a title that contains a word:
+
+```ts
+const drafts = gnoblin.find("Window", (window) => window.title.includes("draft"));
+```
+
+An error inside the function is an error of the `find` call.
+
+## `where` on a collection
+
+`gnoblin.clients.where(query)` returns a live collection of the members whose properties equal the query. It keeps
+following the objects: a window that later gets the matching title joins it, and one that stops matching leaves. You can
+listen to it and style it like any collection.
+
+```ts
+const terminals = gnoblin.clients.where({ appId: "foot" });
+terminals.style.opacity = 0.9;
+```
+
+- A query value is compared with `===`. An array matches when the property equals any of its entries.
+- The keys depend on the collection. Windows take `id`, `appId`, `title`, `focused`, `fullscreen`, `x`, `y`, `width` and
+  `height`. Workspaces take `id`, `name`, `index` and `active`. Outputs take `id`, `name`, `make`, `model`, `mode`,
+  `scale`, `primary`, `enabled`, `x`, `y`, `width` and `height`.
+- `where(query, { priority })` ranks the selection's `style` among the other selections that style a window: the higher
+  priority wins. See [window style](/js-style).
+
+## Choosing between them
+
+- Use `find` to act once on what exists now, as a key handler does.
+- Use `where` to keep a rule true as windows come and go, such as a style for every terminal.
+- Use the collection's own `find(predicate)` and `filter(predicate)` when you want a single object or an array in plain
+  JavaScript: [Windows](windows#read-windows).
+
+`gnoblin.focus.history(filter?)` returns the windows in the order they were last focused: [Focus and activation](focus-activation#focus-history).

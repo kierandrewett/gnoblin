@@ -124,6 +124,26 @@ const FOLDED = {
     "shell-api/grants": "shell-api",
     "shell-dbus-api": "dbus",
     "shell-api/workspaces-monitors": "shell-api/workspaces",
+    // Pages of the Lua-era API reference and the first JavaScript pages, folded into the TypeScript reference.
+    "shell-api/passphrase-prompts": "shell-api/requests",
+    "shell-api/input-devices": "shell-api/input",
+    "shell-api/appearance-animations": "shell-api/tweens",
+    "shell-api/effects": "js-style",
+    "shell-api/views": "shell-api",
+    "shell-api/overrides": "shell-api",
+    "shell-api/privacy": "shell-api",
+    "shell-api/input-grab": "shell-api",
+    "shell-api/text-insertion": "shell-api",
+    "shell-api/tablet-pad-help": "shell-api",
+    "events/mutter": "events",
+    "events/input-shortcuts": "events",
+    "events/launch-portal": "events/lifecycle",
+    "events/listen-all": "events",
+    "events/session": "events/lifecycle",
+    "js-host-api": "shell-api/session-runtime",
+    "js-idle-auth-launches": "shell-api/idle",
+    "js-outputs": "shell-api/outputs",
+    "lua-language-support": "migrating-from-lua",
 };
 for (const [from, to] of Object.entries(FOLDED)) {
     MOVED[from] = to;

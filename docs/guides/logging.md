@@ -2,7 +2,7 @@
 
 Gnoblin logs through the `gnoblin-log` facade. A process that logs through it writes structured lines, which keep their own format.
 
-Anything else a child prints, such as a panic, a Lua `print`, or output from a C library or Xwayland, is read by the guardian and logged as component `raw`. Each such line is tagged with the child's role and the stream it came from.
+Anything else a child prints, such as a panic, a script's output, or output from a C library or Xwayland, is read by the guardian and logged as component `raw`. Each such line is tagged with the child's role and the stream it came from.
 
 ## Which children are captured
 

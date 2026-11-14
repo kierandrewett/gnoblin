@@ -1,175 +1,79 @@
-# Gnoblin Lifecycle Events
+# Lifecycle events
 
-> **Rust status:** This page describes legacy event payloads. `gnoblin.window.closed` is the only listed name with a schema signal, and its payload differs; other event names are unbuilt in Rust. See the [events index](index).
+These signals report the session, the configuration, operations that finish later and the requests behind the
+compositor's dialogs. Subscribe with `gnoblin.on` as [Events](/events/) describes. Each event also carries `name` and
+`object`.
 
-Observe lifecycle changes for Gnoblin capabilities, configuration, runtime,
-appearance, and session state.
+## Session
 
-Gnoblin event payloads follow the current Gnoblin runtime API.
+| Event                                | Fields              | When                                                                |
+| ------------------------------------ | ------------------- | ------------------------------------------------------------------- |
+| `gnoblin.session.ready`              | none                | The session can accept requests. Raised once.                       |
+| `gnoblin.session.bell`               | `count`             | An application rang the bell. `count` is the bells since login.     |
+| `gnoblin.session.reload_requested`   | `generation`        | `gnoblinctl config reload` asked for a reload.                      |
+| `gnoblin.session.lock_state_changed` | `state`, `revision` | The lock state changed. `revision` is the value `status()` reports. |
 
-### Gnoblin
+`count` lets a handler notice a bell it missed. Whether a bell flashes the screen or beeps is the compositor's
+`visual_bell` and `audible_bell` setting, not the script's.
 
-The native `window.*` lifecycle events require the direct Mutter runtime.
+`gnoblin.session.reload_requested` is for information. The shell reloads on its own when it is asked, so a handler does not
+reload anything. A script that wants to start a reload calls `gnoblin.runtime.reloadConfig()`, which
+[Session and runtime](/shell-api/session-runtime#reload) describes.
 
-Every Lua event record includes `name`. The table below lists event-specific
-fields.
+`state` of `gnoblin.session.lock_state_changed` is one of these:
 
-Window event records also include `revision`, `sequence`, and monotonic `time`.
-Nested `window` and `last` records carry their own `revision`, matching the
-event revision.
+| State      | Meaning                                                                       |
+| ---------- | ----------------------------------------------------------------------------- |
+| `unlocked` | The session is usable.                                                        |
+| `covering` | A cover is going up or coming down.                                           |
+| `locked`   | The cover is up on every output. Only this state confirms that the lock took. |
+| `failsafe` | The cover is up and no lock screen can proceed.                               |
 
-Common event fields:
+```ts
+import { toast } from "gnoblin";
 
-- `name`: the event name, such as `gnoblin.window.focused`. Type: string.
-- `sequence`: an integer that increases across the event stream, so clients can
-  order events.
-- `time`: a monotonic timestamp, not wall-clock time.
-- `revision`: an integer for the state version the record was read from. Type:
-  integer.
-
-## Closed values and defaults
-
-Fields with a closed set of values are listed below. Each payload carries the
-current value. The default column applies only where the source defines one.
-
-| Event                                     | Field          | Accepted values                                       | Default |
-| ----------------------------------------- | -------------- | ----------------------------------------------------- | ------- |
-| `gnoblin.session.state-changed`           | `state`        | `starting`, `running`, `stopping`                     | None    |
-| `gnoblin.session.lock_state_changed`      | `state`        | `unlocked`, `covering`, `locked`, `failsafe`          | None    |
-| `gnoblin.runtime.status-changed`          | `state`        | `starting`, `running`, `restarting`, `unavailable`    | None    |
-| `gnoblin.appearance.color-scheme-changed` | `color_scheme` | `default`, `prefer-dark`, `prefer-light`              | None    |
-| `gnoblin.shortcut.activated`              | `trigger`      | `press`, `release`                                    | `press` |
-| `gnoblin.shortcut.session.ended`          | `reason`       | `released`, `cancelled`                               | None    |
-| `gnoblin.input.gesture`                   | `phase`        | `begin`, `update`, `end`                              | None    |
-| `gnoblin.window.activation-denied`        | `reason`       | `missing_context`, `invalid_context`, `stale_context` | None    |
-| `gnoblin.input.gesture`                   | `gesture`      | `swipe`, `pinch`, `hold`                              | None    |
-
-Only `locked` confirms that Mutter completed the lock transition.
-
-The `ok` field of `gnoblin.operation.completed` is a boolean. `error` holds the
-failure code, and is empty when `ok` is `true`.
-
-Other fields are snapshots or values supplied by their source. The
-[shared type reference](/shell-api/types) defines the Gnoblin records used in
-these payloads.
-
-## Changed-family fields
-
-These events carry structured records. The tables below describe the remaining
-families.
-
-| Event                          | Field        | Type                  | Accepted values or default                                                                   |
-| ------------------------------ | ------------ | --------------------- | -------------------------------------------------------------------------------------------- |
-| `gnoblin.privacy.changed`      | `state`      | `PrivacyState` record | Privacy state snapshot; see the [shared types](/shell-api/types).                            |
-| `gnoblin.privacy.changed`      | `revision`   | integer               | Privacy state revision.                                                                      |
-| `gnoblin.capability.changed`   | `capability` | `Capability` record   | Updated record; `id` names it, such as `auth-agent`.                                         |
-| `gnoblin.capability.changed`   | `revision`   | integer               | Native state revision.                                                                       |
-| `gnoblin.focus.policy-changed` | `policy`     | focus policy record   | Effective policy after a successful config commit; see the [shared types](/shell-api/types). |
-| `gnoblin.operation.completed`  | `ok`         | boolean               | `true` on success, `false` on failure.                                                       |
-| `gnoblin.operation.completed`  | `method`     | string                | Method name of the completed operation, such as `apply`.                                     |
-| `gnoblin.operation.completed`  | `error`      | string                | Failure code such as `refused`; empty on success.                                            |
-
-#### Session and configuration
-
-| Event name                           | Fields                                                            | Dispatched when                                                                                                                                   |
-| ------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gnoblin.session.lock_state_changed` | `state`, `revision`, `sequence`, `time`                           | Mutter reports a lock-state transition in a native session.                                                                                       |
-| `gnoblin.session.state-changed`      | `state`, `revision`, `sequence`, `time`                           | The session moves from `starting` to `running` or `stopping`, or from `running` to `stopping`. Only in a session started by Gnoblin's supervisor. |
-| `gnoblin.runtime.status-changed`     | `state`, `generation`, `sequence`, `time`                         | The worker state or accepted runtime generation changes; matches `gnoblin.runtime.status()`.                                                      |
-| `gnoblin.config.reloaded`            | `path`, `revision`, `warnings`, `not_applied`, `sequence`, `time` | The candidate config commits. See [reload warnings](/shell-api/session-runtime#reload-warnings) for diagnostic strings.                           |
-| `gnoblin.config.reload_failed`       | `path`, `error`, `sequence`, `time`                               | Candidate loading, validation, or apply fails while the active runtime stays available.                                                           |
-
-#### Workspaces and outputs
-
-| Event name                       | Fields                              | Dispatched when                                                   |
-| -------------------------------- | ----------------------------------- | ----------------------------------------------------------------- |
-| `gnoblin.workspace.created`      | `workspace`                         | A runtime workspace is created.                                   |
-| `gnoblin.workspace.renamed`      | `workspace`                         | A workspace display name changes.                                 |
-| `gnoblin.workspace.changed`      | `workspace`, `changed`              | Its position, window count, or persistence state changes.         |
-| `gnoblin.workspace.removed`      | `workspace_id`, `last`              | A temporary workspace is removed.                                 |
-| `gnoblin.workspace.activated`    | `workspace`, optional `previous_id` | The active workspace changes.                                     |
-| `gnoblin.workspace.window-moved` | `window_id`, `from_id`, `to_id`     | A window moves from one workspace to another.                     |
-| `gnoblin.output.added`           | `output_id`, `output`               | A display is connected.                                           |
-| `gnoblin.output.changed`         | `output_id`, `output`, `changed`    | A field of an output changes; `changed` names the changed fields. |
-| `gnoblin.output.removed`         | `output_id`, `last`                 | A display is disconnected.                                        |
-
-#### Windows and focus
-
-| Event name                         | Fields                                     | Dispatched when                                                      |
-| ---------------------------------- | ------------------------------------------ | -------------------------------------------------------------------- |
-| `gnoblin.window.created`           | `window`                                   | The native compositor runtime observes a new managed window.         |
-| `gnoblin.window.changed`           | `window_id`, `changed`, `window`           | A mapped window property changes in the native compositor runtime.   |
-| `gnoblin.window.focused`           | `window_id`, `window`                      | A window gains keyboard focus in the native compositor runtime.      |
-| `gnoblin.window.unfocused`         | `window_id`, `window`                      | A window loses keyboard focus in the native compositor runtime.      |
-| `gnoblin.window.attention-changed` | `window_id`, `window`, `demands_attention` | Mutter's attention state changes.                                    |
-| `gnoblin.window.activation-denied` | `window_id`, `reason`                      | Strict focus policy denies an application's activation request.      |
-| `gnoblin.window.closed`            | `window_id`, `last`                        | The native compositor runtime removes a managed window.              |
-| `gnoblin.focus.policy-changed`     | `policy`, `revision`, `sequence`, `time`   | The effective focus policy changes after a successful config commit. |
-
-#### Input, launch, privacy, and appearance
-
-| Event name                                | Fields                                                                         | Dispatched when                                                                                |
-| ----------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| `gnoblin.input.device-added`              | `device`                                                                       | An input device appears in the native runtime.                                                 |
-| `gnoblin.input.device-removed`            | `device_id`, `last`                                                            | An input device is removed from the native runtime.                                            |
-| `gnoblin.input.sources-changed`           | `sources`                                                                      | The configured, available XKB source list changes.                                             |
-| `gnoblin.input.source-changed`            | `available`, optional `source`                                                 | Mutter confirms a different Gnoblin-owned keymap group, or the current source becomes unknown. |
-| `gnoblin.input.orientation-lock-changed`  | `available`, `locked`, `orientation`, `source`, `revision`, `sequence`, `time` | Orientation-lock state or its source changes.                                                  |
-| `gnoblin.input.gesture`                   | `gesture`, `phase`, `fingers`, `sequence`, `time`, and gesture-specific fields | A touchpad gesture phase reaches the standalone native Lua runtime.                            |
-| `gnoblin.launch.changed`                  | `launch`                                                                       | A native launch-feedback record is created or changes state.                                   |
-| `gnoblin.privacy.changed`                 | `state`, `revision`, `sequence`, `time`                                        | A monitored privacy activity changes; `state` is a `PrivacyState` snapshot.                    |
-| `gnoblin.capability.changed`              | `capability`, `revision`, `sequence`, `time`                                   | A native capability changes; `capability` is the updated `Capability` record.                  |
-| `gnoblin.appearance.color-scheme-changed` | `color_scheme` (`default`, `prefer-dark`, `prefer-light`), `sequence`, `time`  | The desktop color-scheme preference changes.                                                   |
-
-#### Shortcuts
-
-| Event name                             | Fields                                                                                   | Dispatched when                                                                                 |
-| -------------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `gnoblin.shortcut.activated`           | `shortcut`, `trigger`, `grant` (Lua) or `focus_context` (socket)                         | A configured native command shortcut is activated by a trusted key press in the native runtime. |
-| `gnoblin.shortcut.binding-activated`   | `id`, `accelerator`, `trigger`, `first`, `modifiers`, `time`, `grant` or `focus_context` | A Lua-registered dynamic shortcut activates. Only the first activation can carry a grant.       |
-| `gnoblin.shortcut.binding-deactivated` | `id`, `accelerator`, `input_time`                                                        | A press-triggered dynamic shortcut is physically released.                                      |
-| `gnoblin.shortcut.session.activated`   | `id`, `session_id`, `first`, `trigger`, `modifiers`, `time`                              | A held dynamic shortcut starts or repeats its modal session.                                    |
-| `gnoblin.shortcut.session.key`         | `id`, `session_id`, key fields, optional `grant` or `focus_context`                      | A modal key event; real, non-repeat input may carry a grant.                                    |
-| `gnoblin.shortcut.session.ended`       | `id`, `session_id`, `reason`, `time`                                                     | A held shortcut session ends or is cancelled.                                                   |
-
-#### Shell requests: OSD, pointer, location, and authentication
-
-| Event name                                 | Fields                                                                                         | Dispatched when                                                        |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `gnoblin.osd.requested`                    | `monitor_id`, `output_names?`, `icon?`, `label?`, `sequence`, `time`                           | Mutter requests an OSD; a shell decides whether and how to display it. |
-| `gnoblin.location.authorization-requested` | `request_id`, `app_id`, `requested_accuracy`, `expires_at_us`, `sequence`, `time`              | GeoClue asks Gnoblin to authorize an application's location request.   |
-| `gnoblin.location.authorization-finished`  | `request_id`, `result`, `sequence`, `time`                                                     | A location request ends with `allowed`, `denied` or `timeout`.         |
-| `gnoblin.auth.requested`                   | `request_id`, `action_id`, `message`, `icon_name`, `details`, `identities`, `sequence`, `time` | A program asks the session's polkit agent for authentication.          |
-| `gnoblin.auth.prompt`                      | `request_id`, `prompt`, `echo`, `sequence`, `time`                                             | The authentication check needs input from the user.                    |
-| `gnoblin.auth.message`                     | `request_id`, `text`, `error`, `sequence`, `time`                                              | The authentication check has a line of text for the user.              |
-| `gnoblin.auth.finished`                    | `request_id`, `result`, `sequence`, `time`                                                     | An authentication request ends.                                        |
-
-In the Lua configuration, the `location` and `auth` events above, and
-`gnoblin.session.lock-requested`, also carry `request`: a
-[`Request`](/shell-api/requests) that you answer with methods instead of
-`request_id`.
-
-#### Animations and operations
-
-| Event name                    | Fields                                                      | Dispatched when                                                                              |
-| ----------------------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `gnoblin.animation.started`   | `animation`, `target`, `event`, `cancelled`                 | A configured window or layer animation, workspace transition, or preview starts.             |
-| `gnoblin.animation.finished`  | `animation`, `target`, `event`, `cancelled`                 | A configured window or layer animation, workspace transition, or preview completes or stops. |
-| `gnoblin.operation.completed` | `operation_id`, `method`, `ok`, `error`, `sequence`, `time` | An asynchronous operation completes; `error` is the failure code, empty on success.          |
-
-### Reloads and appearance
-
-`gnoblin.config.reloaded` reports each accepted reload, and
-`gnoblin.config.reload_failed` reports each refused one.
-
-`gnoblin.appearance.color-scheme-changed` fires after the desktop color-scheme
-preference changes. It does not report the initial value. The preference is
-`color-scheme` in `org.gnome.desktop.interface`. Read the current value with
-`gnoblin.appearance.color_scheme()`; it returns `nil` if the schema or key is
-unavailable.
-
-```lua
-gnoblin.on("gnoblin.appearance.color-scheme-changed", function(event)
-    print("Desktop color scheme: " .. event.color_scheme)
-end)
+gnoblin.on("gnoblin.session.lock_state_changed", (event) => {
+    if (event.state === "locked") {
+        toast("Locked");
+    }
+});
 ```
+
+## Configuration
+
+| Event                          | Fields                                                           | When                                                      |
+| ------------------------------ | ---------------------------------------------------------------- | --------------------------------------------------------- |
+| `gnoblin.config.reloaded`      | `path`, `revision`, `warnings`, `notApplied`, `sequence`, `time` | A reload was accepted. The new configuration is in force. |
+| `gnoblin.config.reload_failed` | `path`, `error`, `sequence`, `time`                              | A reload was refused. The old configuration stays.        |
+
+- `path` is the configuration file the reload read.
+- `revision` is the number the compositor gave the committed document.
+- `warnings` lists the problems of the sections the reload dropped, each a string. It is empty when every section
+  validated.
+- `notApplied` lists the settings accepted without effect, each a sentence naming the setting and the reason:
+  `restart required` for a setting a process reads only when it starts, and `no effect` for one nothing reads.
+- `error` is why a reload was refused: the first validation or evaluation failure.
+- `sequence` counts accepted reloads in `reloaded` and refused reloads in `reload_failed`. `time` is the shell's
+  monotonic clock reading. Neither is a wall clock.
+
+## Operations
+
+| Event                         | Fields                                                     | When                                                            |
+| ----------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------- |
+| `gnoblin.operation.completed` | `operationId`, `method`, `ok`, `error`, `sequence`, `time` | An operation finished: the compositor or the shell answered it. |
+
+`ok` is `true` for a success. `error` is the failure code, empty on success. A script usually waits for one operation
+through its own `Operation` instead: see [Operations, errors and timers](/shell-api/errors).
+
+## Requests behind dialogs
+
+| Event                      | Fields                                                       | When                                        |
+| -------------------------- | ------------------------------------------------------------ | ------------------------------------------- |
+| `gnoblin.request.offered`  | `request`, `deadline`, `slot`, `title`, `message`, `subject` | The compositor has a dialog to open.        |
+| `gnoblin.request.finished` | `request`, `completion`, `reason`                            | The request ended. Raised once per request. |
+
+`request` is the request's identity, the same in both events. `slot` names the kind of request. `subject` is text the
+asking program chose and is not an identity to trust. The event never carries an answer.
+
+To watch these requests with typed objects, and to refuse one, attach a listener instead:
+[Requests and dialogs](/shell-api/requests) and [Authentication prompts](/shell-api/authentication).

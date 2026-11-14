@@ -1,80 +1,76 @@
 # Idle watches
 
-> **Status:** not available yet: `gnoblin.idle.watch`, `gnoblin.session.activity`, `gnoblin.session.lock`. The sections that use them describe the target, not current behaviour.
-
-`gnoblin.idle.watch(seconds)` runs your code when the session has had no input for a set time. Use it to dim a
+`gnoblin.idle.watch(ms, handlers)` runs your code when the session has had no input for `ms` milliseconds. Use it to dim a
 panel, lock the screen or suspend the machine after a pause. It returns an `IdleWatch`.
 
-```lua
-local watch = gnoblin.idle.watch(300)
+```ts
+import { defineConfig, toast } from "gnoblin";
 
-watch:on("idle", function()
-    gnoblin.session.lock()
-end)
-
-watch:on("active", function()
-    print("the user is back")
-end)
+defineConfig({
+    setup: (gnoblin) => {
+        gnoblin.idle.watch(300_000, {
+            onIdle: () => gnoblin.session.lock(),
+            onResume: () => toast("Welcome back"),
+        });
+    },
+});
 ```
 
-`seconds` is a number above 0 and at most 86400. A fraction is allowed. You can make up to 256 watches for each
-runtime, and each watch has its own time. The call raises an error for any other value.
+Put the file in `~/.config/gnoblin/init.ts`. After five minutes without input the session locks, and the first input
+afterwards shows a message.
 
-Mutter's idle monitor counts the time. An idle inhibitor of the session, such as a video player, delays `"idle"` in the
-same way that it delays the screen blank.
+## Watch for idleness
 
-## The IdleWatch object
+`ms` is a number above 0 and at most 86400000, which is a day. A configuration has at most 256 live watches, and each has
+its own time. Any other value throws a `RangeError`.
 
-| Field     | Value                                                               |
-| --------- | ------------------------------------------------------------------- |
-| `id`      | Identifier of this watch, `"idle-"` and a number.                   |
-| `alive`   | `true` until the watch has ended.                                   |
-| `seconds` | The idle time you asked for.                                        |
-| `idle`    | `true` while the session has been idle for `seconds` with no input. |
+A watch is not idle when it starts. It becomes idle once the session has been idle for `ms` and nothing holds it awake.
 
-The fields are read-only and change as the session goes idle and becomes active.
+- `onIdle(watch)` runs for every idle period until you cancel the watch.
+- `onResume(watch)` runs on the first input after an idle period, or when a hold appears.
+- `onClosed(watch, reason)` runs once when the watch ends. `reason` is `"cancelled"`.
+- A watch made while the session is already idle runs `onIdle` at once.
 
-A watch is not idle when it starts. Input after an idle period makes `idle` false and runs `"active"`. The watch then
-starts to count again, so it runs `"idle"` for every idle period until you cancel it.
+All three handlers are optional.
 
-`watch:on(signal, fn)` takes one of these signals and returns a subscription with an `unsubscribe()` method:
+| Member                    | Value                                                                 |
+| ------------------------- | --------------------------------------------------------------------- |
+| `watch.id`                | `"idle-"` and a number.                                               |
+| `watch.ms`                | The idle time you asked for.                                          |
+| `watch.idle`              | `true` while the session is idle for `ms` and nothing holds it awake. |
+| `watch.alive`             | `true` until `cancel()`.                                              |
+| `watch.cancel()`          | Ends the watch. `onClosed(watch, "cancelled")` runs once.             |
+| `gnoblin.idle.idleMs`     | Milliseconds since the last input at the last reading, or `null`.     |
+| `gnoblin.idle.inhibitors` | How many holds keep the session awake, or `null`.                     |
+| `gnoblin.idle.watches`    | The live watches, oldest first.                                       |
 
-| Signal     | Runs when                                              |
-| ---------- | ------------------------------------------------------ |
-| `"idle"`   | The session has been idle for `seconds`.               |
-| `"active"` | The first input arrives after an idle period.          |
-| `"closed"` | The watch has ended. Listening ends after this signal. |
+The compositor publishes the time since the last input and the number of holds, and a watch is a threshold over that
+reading. A hold from a Wayland idle-inhibit surface, such as a video player's, therefore delays `onIdle` the way it delays a
+screen blank.
 
-`fn` receives the watch. A watch that the compositor refused passes the reason as a second argument to `"closed"`.
+A watch ends with its configuration: a reload ends the old watches silently, and `onClosed` runs for `cancel()` only. The
+connection to the compositor is opened when the first watch or hold is made and closed when the last one is gone, so a
+configuration with none costs the compositor nothing.
 
-`watch:watch(field, fn)` calls `fn(watch, value, old)` when a field changes, for example `idle`.
+## Hold the session awake
 
-## Stop a watch
+`gnoblin.idle.inhibit(holder)` records a hold under a name you choose and returns an `IdleInhibitor`. While one stands the
+session is not idle, and every watch resumes. `inhibitor.release()` gives it back.
 
-`watch:cancel()` returns an `Operation`. The watch ends, and its `"closed"` listeners run, when the compositor has
-removed it. The operation fails with `not_found` for a watch that has already ended.
-
-```lua
-local watch = gnoblin.idle.watch(60)
-watch:on("idle", function()
-    watch:cancel()
-end)
+```ts
+const hold = gnoblin.idle.inhibit("presentation");
+// Later:
+hold.release();
 ```
 
-A configuration reload ends every watch, and the new configuration makes its own. The same happens when the Lua
-worker restarts and when the compositor stops. The `"closed"` listeners of a watch run once, with the reason
-`"config_reloaded"` or `"runtime_stopped"`, as the old runtime goes. They can read, but they cannot start an operation.
+- Holding again under a name you already hold returns the same object.
+- If the compositor refuses the hold, because it keeps a limited number, `inhibitor.alive` is `false` and the shell logs why.
+- `inhibitor.holder` is the name, and `inhibitor.alive` is `true` until the hold is released or refused.
 
-## Idle watches in `gnoblinctl lua`
+The shell gives every hold back when its configuration ends, which a reload and a shutdown both do. The compositor also keeps
+each hold for the connection that made it:
 
-A `gnoblinctl lua` script ends before the session is idle, so `gnoblin.idle.watch` raises an error there. Make the
-watch in a configuration file.
-
-## Other ways to read idle state
-
-Socket clients read the idle sample with `gnoblinctl session activity` or the `session.activity` call, and receive
-`gnoblin.session.activity-changed`. That sample uses a fixed threshold of 120 seconds. See the
-[compositor bridge](/bridge/session-and-windows#session-activity). The
-[session idle interface](/dbus/session-idle) gives the same sample on the session bus.
-
-`gnoblin.session.activity()` is not in the Lua API. Use `gnoblin.idle.watch` with the time that you need.
+- A shell that is killed without ending its configuration leaves no hold behind. The holds end with its connection.
+- If the shell loses its connection while a script holds, those holds are already gone and `inhibitor.alive` turns `false`.
+- A name belongs to your shell alone. Another program that holds under the same name makes a separate hold.
+- The compositor keeps at most 256 holds across all programs, so keep your holders few and name them for what they are.

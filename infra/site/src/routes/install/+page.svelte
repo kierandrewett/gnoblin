@@ -81,7 +81,7 @@
 
 {#snippet configure()}
     <h3>Configure Gnoblin</h3>
-    <p>Create <code class="inline">~/.config/gnoblin/init.lua</code> and start from the starter config.</p>
+    <p>Run <code class="inline">gnoblinctl config init</code> to write <code class="inline">~/.config/gnoblin/init.ts</code>, and start from the starter config.</p>
     <MoreLink href={docsHref("recipes/complete-starter-config")}>Starter config</MoreLink>
 {/snippet}
 

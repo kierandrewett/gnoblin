@@ -48,7 +48,7 @@ Gnoblin is built on Mutter. It does not ship a desktop shell UI.
   checks the password with polkit's own helper, and no script can answer. A shell
   may draw the keyring prompt instead. See
   [authentication](docs/shell-api/authentication.md) and
-  [keyring passphrase prompts](docs/shell-api/passphrase-prompts.md).
+  [keyring passphrase prompts](docs/shell-api/requests.md).
 - **Portal routing.** Gnoblin routes portal interfaces to the backend you choose.
   It does not manage app permissions; the selected backend decides them. The
   Gnoblin backend shows its normal consent dialogs.

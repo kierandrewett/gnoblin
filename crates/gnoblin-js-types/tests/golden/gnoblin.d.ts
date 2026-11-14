@@ -799,6 +799,15 @@ declare module "gnoblin" {
     export class Client extends Node {
         readonly appId: string;
         readonly title: string;
+        /** Whether the window holds the keyboard focus. */
+        readonly focused: boolean;
+        /** The window's content rectangle in the compositor's logical pixels. Writing one moves or resizes the window. */
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        /** Gives the window the keyboard focus: a write of the seat's `focus`, which is how a shell hands it out. */
+        focus(): void;
         readonly committedSize: Size2D;
         /** The logical size the client is asked to take (its configure request). */
         size: Size2D;
@@ -952,6 +961,10 @@ declare module "gnoblin" {
     /** A scene container that owns a layout and holds clients. */
     export class Workspace extends Node {
         readonly clients: Collection<Client>;
+        /** What the workspace is called where a name is shown. */
+        name: string;
+        /** The position in `gnoblin.workspaces`, or -1 while it is not in it. */
+        readonly index: number;
         /** Inner and outer gap that every stock layout reads from `LayoutContext`. */
         gaps: Gaps;
         /**
@@ -1258,7 +1271,7 @@ declare module "gnoblin" {
      * A connected output, the compositor's `screen` node. It shows one workspace at a time (`workspace`, `show`), and
      * the work area the layouts tile in is its rectangle less the bars on it. A destroyed one keeps its last values and
      * reads `connected === false`. Its properties are the compositor's: none is written from a script. Docs:
-     * docs/js-outputs.md.
+     * docs/shell-api/outputs.md.
      */
     export class Output extends NativeObject {
         /** The name the compositor gives the output: what a workspace set's entry and `outputs.where({ name })` use. */

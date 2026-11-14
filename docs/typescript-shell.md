@@ -3,8 +3,7 @@
 Configure the shell with one TypeScript file, `init.ts`. You install nothing and run no build step: the shell reads the
 file as it is, and reloads it when you save.
 
-The session runs this shell. Nothing selects it: `gnoblin` starts it unless you ask for the Lua shell or you still have
-only an `init.lua` (see [Which shell runs](#which-shell-runs)).
+The session runs this shell. Nothing selects it: `gnoblin` starts it unless you still have only an `init.lua` (see [Which shell runs](#which-shell-runs)).
 
 ## Write your first config
 
@@ -248,7 +247,7 @@ request with the stock behaviour of another kind:
 With more than one output each shows its own workspace, bars sit on one output, a window moves between outputs with
 `client.moveToOutput(output)`, and the windows of an unplugged output move to another output or wait hidden for the next.
 A dialog stays centred in its parent and goes wherever the parent goes. The page is
-[Outputs and desks in TypeScript](/js-outputs).
+[Outputs](/shell-api/outputs).
 
 [Window policy in TypeScript](/js-window-policy).
 
@@ -276,7 +275,7 @@ The shell has more than windows:
 - `gnoblin.timers` runs a function later, and `gnoblin.on` listens for the compositor's signals.
 - `gnoblin.find`, `gnoblin.focus.history` and `gnoblin.version()` read what the shell holds.
 
-See [JavaScript session, process and timer API](/js-host-api).
+See [Session and runtime](/shell-api/session-runtime), [Processes](/shell-api/processes) and [Events](/events/).
 
 ## Console and inspector
 
@@ -290,7 +289,7 @@ See [JavaScript session, process and timer API](/js-host-api).
 `gnoblin.authentication.addListener(listener)` watches polkit authentication requests and may refuse one (the compositor
 draws the password dialog and checks the password itself), and
 `gnoblin.launches.begin(token, application)` tracks the busy state between a launch and its window. See
-[Idle, authentication and launch feedback](/js-idle-auth-launches).
+[Idle watches](/shell-api/idle), [Authentication prompts](/shell-api/authentication) and [Launch feedback](/shell-api/launch-feedback).
 
 ## XR
 

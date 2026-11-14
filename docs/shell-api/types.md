@@ -1,62 +1,49 @@
-# Runtime Types
+# Shared types
 
-> **Status:** not available yet: `gnoblin.input.on`. The sections that use them describe the target, not current behaviour.
+The records and small types that more than one part of the API uses. `gnoblin.d.ts` in your config directory declares every
+type in full: `gnoblinctl types init` writes it, and your editor reads it for completion. See
+[Editor support](/guides/editor_support).
 
-Use these shared record descriptions when reading snapshots and event payloads.
+## Geometry
 
-The Lua runtime exposes records after native startup completes; exact availability is stated on each domain page. Most records are [live objects](#live-objects) that stay current; the rest are immutable snapshots. Records can carry a `revision` so clients can identify the state version they read.
+Coordinates are logical pixels in the compositor's space. An output further right on the desktop starts at a larger `x`.
 
-## Shared records
+| Type     | Fields                      | Used by                                                                     |
+| -------- | --------------------------- | --------------------------------------------------------------------------- |
+| `Vec2`   | `x`, `y`                    | `Output.position`, the seat's `pointer`.                                    |
+| `Vec3`   | `x`, `y`, `z`               | A node's position.                                                          |
+| `Size2D` | `width`, `height`           | A window's `committedSize` and `size`.                                      |
+| `Rect`   | `x`, `y`, `width`, `height` | `Client.bounds`, `Output.bounds` and `area`, `Placement.bounds`.            |
+| `Gaps`   | `inner`, `outer`            | `Workspace.gaps`. Pixels between windows, and between windows and the edge. |
 
-Runtime APIs return records including `Window`, `Workspace`, `Output`, `InputDevice`, `InputSource`, `Launch`, `PrivacyState`, and `SessionStatus`. Each domain page lists the fields and methods for its records:
+## Values
 
-- [Windows](/shell-api/windows)
-- [Workspaces](/shell-api/workspaces)
-- [Input](/shell-api/input)
-- [Launch feedback](/shell-api/launch-feedback)
-- [Privacy](/shell-api/privacy)
-- [Session and runtime health](/shell-api/session-runtime)
+| Type           | Meaning                                                                                             |
+| -------------- | --------------------------------------------------------------------------------------------------- |
+| `Color`        | A string: `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`.                                                |
+| `Trigger`      | A binding's trigger, such as `Super+Return`. See [Keyboard shortcuts](keyboard-shortcuts#triggers). |
+| `Subscription` | What `gnoblin.on` and `Operation.onComplete` return. `unsubscribe()` stops the callback.            |
+| `Operation<T>` | The result of a call that finishes later. See [Operations, errors and timers](errors).              |
+| `Timer`        | A pending call of a function at a time. See [Operations, errors and timers](errors#timers).         |
 
 ## Live objects
 
-A live object is one handle for one thing. Every read of it returns the same object, which shows the current state
-the runtime has seen. All live objects share these members:
+A `Client`, a `Workspace` and an `Output` are live objects: every read of one thing returns the same object, so you can keep
+it. `alive` turns `false` once the thing is gone, and the object keeps its last values.
 
-| Member                 | Meaning                                                                                     |
-| ---------------------- | ------------------------------------------------------------------------------------------- |
-| `alive`                | `false` once the object has ended. The object keeps its last state.                         |
-| `revision`             | Counts changes of the object's state, where its fields change. Read it; do not watch it.    |
-| `object:on(signal,fn)` | Listen to a signal the kind declares. `"closed"` ends the object; `"changed"` lists fields. |
-| `object:watch(f, fn)`  | Call `fn(object, value, old)` when the observable field `f` changes.                        |
+`gnoblin.clients`, `gnoblin.workspaces` and `gnoblin.outputs` are collections of them. A collection is live and read-mostly.
+Besides `length`, `at`, `get`, `find`, `filter` and `map`, which [Windows](windows#read-windows) describes, it has:
 
-`on` and `watch` return a subscription, and so do `gnoblin.on`, `gnoblin.once`, `Request:on` and
-`gnoblin.input.on`. Call `subscription:unsubscribe()` to stop; calling it again does nothing.
+- `where(query)`, a live selection: [Find objects](find#where-on-a-collection).
+- `focused`, the member that holds the keyboard focus, or `null`. Only windows take the focus.
+- `addListener(listener)` and `removeListener(listener)`: [Events](/events/desktop-state).
 
-Select objects of one kind with [`gnoblin.find`](/shell-api/find), by field value or by a predicate function.
+`gnoblin.workspaces` is the one collection a script may change, with `add`, `remove` and `clear`.
 
-`watch` accepts only a field that the class marks observable, which is one that changes while the object is alive.
-`id`, `alive`, `revision` and the fields that never move are refused with an error that lists the fields that work.
+## Errors
 
-An object made by the runtime ends when the runtime does. A reload runs the `"closed"` listeners once, with the reason
-`"config_reloaded"`, as the old runtime goes. The reason is `"runtime_stopped"` when the worker stops. The listeners can
-read, but they cannot start an operation.
+A native failure is a `GnoblinError`. Its `code` is `destroyed`, `read-only`, `refused` or `spawn-failed`, and its `target`
+names the object and member, such as `Client#7.x`.
 
-- These objects end with the runtime: `Shortcut`, `IdleWatch`, `Launch`, `Override`, `Grab`, `Process`, `Tween` and
-  `AnimationPreview`.
-- A pending `Request` runs its `"closed"` listeners the same way.
-- Windows, workspaces, outputs and input sources belong to the compositor and carry on.
-
-Events carry `name`; Gnoblin events commonly also carry `sequence` and monotonic `time`. Their event-specific records are described in the [event reference](/events/).
-
-## Inspect a window record
-
-This supervised runtime callback reads the shared `Window` record described on
-the [Windows reference](/shell-api/windows). Save it in the shell config loaded
-by Gnoblin, then open or focus a window. The callback prints its application ID
-and title.
-
-```lua
-gnoblin.on("gnoblin.window.created", function(event)
-    print(event.window.app_id, event.window.title)
-end)
-```
+A value of the wrong type is a `TypeError`, and a value out of range a `RangeError`. An operation that fails carries `{ code, message }` instead: see
+[Operations, errors and timers](errors#error-codes).

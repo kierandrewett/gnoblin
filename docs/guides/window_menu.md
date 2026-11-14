@@ -2,30 +2,52 @@
 
 Looking for the menu the stock shell draws? See [the window menu and alerts](/guides/stock-window-menu).
 
-Gnoblin reports window-menu requests to the active shell. The shell draws the
-menu as its own Wayland surface and chooses which actions to show.
+The compositor reports a window's menu request to the shell that holds the tree. The shell draws the menu as its own
+interface and chooses which actions to show.
 
-Subscribe to `gnoblin.window.menu_requested` through the
-[compositor bridge](/bridge/#api-127-shell-presentation-requests).
-The event includes:
+## Hear a request in TypeScript
 
-- `window_id`: stable ID of the window that requested the menu;
-- `menu_type`: `wm` for a window-manager menu or `app` for an application menu;
-- `x` and `y`: requested menu position in global logical coordinates.
+A menu request is one kind of request a client makes of its window. A `ClientListener` hears it in `onRequest`, with the
+anchor the menu opens at in `request.x` and `request.y`, in global logical coordinates:
 
-For a window-manager menu, a Lua callback receives a `grant` in `event.grant`. Use it with
-`window:begin_move(event.grant)` or `window:begin_resize(edge, event.grant)` on `event.grant.window` if the shell
-offers those actions.
+```ts
+import { ClientListener, gnoblin } from "gnoblin";
+import type { Client, ClientRequest } from "gnoblin";
 
-A socket client receives a one-use `menu_context` token in the same event, and sends it with `window.begin_move` or
-`window.begin_resize`. API 1.30 added it.
+class OwnMenu extends ClientListener {
+    onRequest(client: Client, request: ClientRequest<Client>) {
+        if (request.kind === "menu") {
+            request.handle();
+            gnoblin.spawn(["notify-send", `Menu for ${client.title} at ${request.x}, ${request.y}`]);
+        }
+    }
+}
 
-The `grant` and the token are tied to the requesting window and expire after five seconds. A session lock revokes
-both, and a disconnect also revokes a socket token. Application menu requests are informational and do not include
-this capability. See the [menu action details](/bridge/#api-130-wm-menu-actions).
+gnoblin.clients.addListener(new OwnMenu());
+```
 
-Use the supplied `window_id` for other window operations; do not target the
-focused window after the menu opens. Read the live window record to
-check which actions are available, then send the corresponding typed
-operation through the bridge. Gnoblin rechecks the window and session state
-when it applies the operation.
+Put the code in `~/.config/gnoblin/init.ts`. Right-click a titlebar: the stock menu does not open, and a notification says where
+the menu would have been. `request.handle()` takes the request, so the stock menu does not run. To change what the stock
+menu offers or draw another one, assign `windowMenu.items` or `windowMenu.show` instead.
+
+A request comes from one of these:
+
+- A client calls `xdg_toplevel.show_window_menu` with a serial the compositor gave it on an input event.
+- The user presses the window-menu key.
+- A program calls `window.request_menu`.
+- The shell's own titlebar asks, for a right click.
+
+## Hear a request on the signal
+
+A program that does not run in the shell hears the request as the `gnoblin.window.menu_requested` signal. It carries:
+
+- `x`, `y`, `width` and `height`: the anchor rectangle.
+- `source`: what asked, `client`, `keyboard` or `extension`.
+- `seat`: the seat that asked.
+
+The compositor does not send the signal while a shell holds the tree, so two programs do not open two menus. See the
+[compositor bridge](/bridge/) for the socket.
+
+Use the window's own identity for other window operations; do not target the focused window after the menu opens, because
+focus may have moved. Read the live window to check which actions are available. The compositor rechecks the window and the
+session state when it applies an operation.

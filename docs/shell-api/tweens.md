@@ -1,121 +1,90 @@
 # Tweens and easing
 
-> **Status:** not available yet: `:play`, `:property`, `:set_opacity`, `gnoblin.ease`, `gnoblin.lerp`, `gnoblin.tween`. The sections that use them describe the target, not current behaviour.
+`client.animate(values, options)` moves a window's properties to new values over time. The compositor plays the animation in
+its render loop, so each frame follows the display and the script does not run per frame.
 
-A tween changes window properties over time. You build a timeline of steps in
-Lua, and the compositor plays it in its render loop, so each frame follows the
-display and does not wait for Lua.
+```ts
+import { defineConfig } from "gnoblin";
 
-```lua
-gnoblin.on("gnoblin.window.created", function(event)
-    local window = event.window
-    window:set_opacity(0)
-    gnoblin.tween()
-        :property(window, "opacity", 1, 0.25, "cubic", "out")
-        :parallel():property(window, "scale", 1, 0.25, "back", "out")
-        :play()
-end)
+defineConfig({
+    keys: {
+        "Super+o": ({ gnoblin }) => {
+            const client = gnoblin.clients.focused;
+            client?.animate({ opacity: client.opacity < 1 ? 1 : 0.5 }, { duration: 0.3 });
+        },
+    },
+});
 ```
 
-This fades and scales each new window in over a quarter of a second.
+Put the file in `~/.config/gnoblin/init.ts`. `Super+o` fades the focused window to half opacity over 0.3 seconds, and back
+on the next press.
 
-## Build a timeline
+## Animate a window
 
-`gnoblin.tween()` returns an empty `Tween`. Each method adds a step and returns
-the tween, so calls chain. Steps run one after another.
+`animate(values, options)` takes the values to move to and the options of the movement.
 
-| Method                                                 | Step                                                    |
-| ------------------------------------------------------ | ------------------------------------------------------- |
-| `property(window, property, to, seconds, ease?, dir?)` | Change one window property to `to` over `seconds`.      |
-| `interval(seconds)`                                    | Wait.                                                   |
-| `callback(fn)`                                         | Call `fn(tween)` when the timeline reaches this step.   |
-| `parallel()`                                           | Run the next step at the same time as the previous one. |
+| Option     | Values                                             | Default | Meaning                                                  |
+| ---------- | -------------------------------------------------- | ------- | -------------------------------------------------------- |
+| `duration` | seconds, 0 or more                                 | none    | How long the movement takes. 0 writes at once. Required. |
+| `easing`   | `linear`, `out`, `out-cubic`, `in-cubic`, `in-out` | `out`   | The curve between the start and the end.                 |
 
-A property step starts from the value the window has when the step begins.
-`seconds` is from 0 to 600. A callback does not hold the timeline back.
+The properties you can animate:
 
-What a tween can drive is a property that a live object declares animatable. Only a
-`Window` declares any today. The animatable window properties are:
+| Property                    | Value               | Meaning                                    |
+| --------------------------- | ------------------- | ------------------------------------------ |
+| `x`, `y`, `width`, `height` | number              | The window's content rectangle, in pixels. |
+| `opacity`                   | number, 0 to 1      | How opaque the window is.                  |
+| `z`                         | number              | The window's place in depth.               |
+| `rotation`                  | `[x, y, z]` numbers | Rotation about each axis, in radians.      |
+| `scale`                     | `[x, y, z]` numbers | Scale along each axis.                     |
 
-- `opacity`, from 0 to 1.
-- `scale`, from 0.01 to 10, about the window's centre.
-- `rotation`, in degrees from -3600 to 3600.
-- `offset`, a table `{x = number, y = number}` in logical pixels.
+Reading a property back right after the call gives the end value; the compositor draws the way there. A property that is
+not in the table throws a `TypeError`, as does a value of the wrong kind or a `duration` below 0.
 
-They are the same values as the [window draw methods](/shell-api/windows#change-how-a-window-is-drawn),
-and the window keeps the values a tween ends with. A target or a property that no
-kind declares raises an error that lists the kinds and their properties.
+The curves are:
 
-## Play and control a tween
+- `linear` moves at a constant speed.
+- `out` starts fast and slows down towards the end, quadratically. It is the default.
+- `out-cubic` is `out` with a stronger slowdown.
+- `in-cubic` starts slowly and speeds up.
+- `in-out` speeds up in the first half and slows down in the second.
 
-| Method          | Effect                                                  |
-| --------------- | ------------------------------------------------------- |
-| `play()`        | Start the tween, or resume it after `pause()`.          |
-| `pause()`       | Stop where it is.                                       |
-| `seek(seconds)` | Jump to a time from the start. Callbacks before it run. |
-| `kill()`        | Stop. Windows keep the values they have.                |
-
-`play()` returns an `Operation` that succeeds with `{tween_id, outcome}` when
-the tween ends. `tween.status` is `"idle"`, `"playing"`, `"paused"` or the
-outcome. The outcome is one of these values:
-
-- `"finished"`: the timeline reached its end, or every target window closed.
-- `"killed"`: `kill()` stopped it.
-- `"cancelled"`: a stopped Lua worker, a session lock or a config reload
-  stopped it.
-
-You cannot add steps after `play()`. A tween cannot start while the session is
-locked.
-
-## The Tween object
-
-A `Tween` is a live object, like a [window](/shell-api/windows#live-window-objects).
-It has an `id` from the moment `gnoblin.tween()` returns it, and these fields:
-
-| Field      | Value                                             |
-| ---------- | ------------------------------------------------- |
-| `id`       | Identifier of the tween in the session.           |
-| `alive`    | `false` once the tween has ended.                 |
-| `status`   | `"idle"`, `"playing"`, `"paused"` or the outcome. |
-| `revision` | Counts the changes of `status`; it starts at 1.   |
-
-`tween:on(signal, fn)` takes one of these signals and returns a subscription:
-
-- `"finished"` calls `fn(tween)` when the timeline reaches its end. A killed or cancelled tween
-  does not raise it.
-- `"closed"` calls `fn(tween, outcome)` when the tween has ended, however it ended. The outcome is
-  `"finished"`, `"killed"`, `"cancelled"` or `"config_reloaded"`. Listening ends after `"closed"`.
-- `"changed"` calls `fn(tween, changed)` with the list of changed fields.
-
-`tween:watch("status", fn)` calls `fn(tween, value, old)` when the status changes.
-
-```lua
-local fade = gnoblin.tween():property(window, "opacity", 0.3, 0.4)
-fade:on("finished", function() window:close() end)
-fade:play()
+```ts
+const client = gnoblin.clients.focused;
+client?.animate({ x: 0, y: 0, rotation: [0, 0, 0.1] }, { duration: 0.4, easing: "out-cubic" });
 ```
 
-A config reload waits for the other pending operations, but not for a playing tween. The tween keeps
-playing until the new configuration takes effect.
+The compositor draws a window's own open, close and minimise animations itself, and a value you set while one plays can be
+overwritten when it ends.
 
-Then the compositor stops it. The `Operation` of `play()` succeeds with the outcome `"cancelled"`, and the
-`"closed"` signal of the tween runs with the reason `"config_reloaded"`. A tween that has not played when a
-reload commits ends with `"config_reloaded"` too. A reload that fails leaves a playing tween as it is.
+To animate with a transition object that you can pause, reverse or cancel, see [Animation](/js-transitions).
 
-## Easing
+## Workspace slides
 
-`ease` names the curve. `dir` is `"in"` (slow start), `"out"` (slow end) or
-`"in_out"` (both); it defaults to `"in_out"`. The curves are `linear`,
-`sine`, `quad`, `cubic`, `quart`, `quint`, `expo`, `circ`, `back`, `elastic`
-and `bounce`. `linear` is the default.
+`gnoblin.show(workspace, { duration })` slides the windows of the two workspaces over `duration` seconds. The stock keys
+`Super+1` to `Super+9` slide over a quarter of a second. See [Workspaces](workspaces#show-a-workspace).
 
-The same math is available in Lua:
+## Reduced motion
 
-| Function                      | Result                              |
-| ----------------------------- | ----------------------------------- |
-| `gnoblin.ease(name, t, dir?)` | Eased progress for `t` from 0 to 1. |
-| `gnoblin.lerp(a, b, t)`       | `a + (b - a) * t`.                  |
+`gnoblin.motion(seconds)` returns `seconds`, or 0 while the seat's `reducedMotion` setting is on. The stock animations call
+it, so a workspace slide, `Client.animate` and the titlebar's close fade take no time for a user who asks for reduced
+motion. Pass your own durations through it:
 
-```lua
-print(gnoblin.ease("cubic", 0.5, "out")) -- 0.875
+```ts
+const duration = gnoblin.motion(0.3);
 ```
+
+`client.animate` and `gnoblin.show` apply it themselves, so call `motion` only for a duration you use elsewhere, such as
+`gnoblin.timers.after`.
+
+## Run something after an animation
+
+An animation does not call back when it ends. Start a timer for its length:
+
+```ts
+const client = gnoblin.clients.focused;
+client?.animate({ opacity: 0 }, { duration: 0.2 });
+gnoblin.after(0.2, () => client?.close());
+```
+
+`gnoblin.after(seconds, fn)` runs at the first frame after the time. See [Operations, errors and timers](errors#timers).

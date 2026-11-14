@@ -1,72 +1,64 @@
-# Window Snapping
+# Window snapping
 
-> **Status:** not available yet: `:commit`, `:offer_targets`, `gnoblin.window.drag.started`, `gnoblin.windows.snap_context`. The sections that use them describe the target, not current behaviour.
+Snapping tiles a window to an edge of the work area. Dropping a dragged window on an edge snaps it, and the stock move
+binding does that when `edgeTiling` is on. A script can snap a window by itself with the helpers `gnoblin` exports.
 
-Build and commit a window frame using a grant.
+```ts
+import { defineConfig, snapClient, unsnapClient } from "gnoblin";
 
-Window snapping is available from a trusted event callback in a Gnoblin session.
-
-## Pointer and keyboard snapping
-
-Lua pointer callbacks receive a read-only `event.drag` record on the started
-and updated events. It contains window and drag IDs, settings revision, pointer
-coordinates, modifiers, monitor and work-area rectangles, the window frame,
-and maximized state.
-
-Call `event.drag:offer_targets(targets)` during the callback. An offer can
-contain 1 to 128 targets. Each target has:
-
-- a unique `id`;
-- pointer `hit` and destination `frame` rectangles;
-- optional `maximize`, `required_modifiers`, and `forbidden_modifiers` fields.
-
-Rectangles use integer logical coordinates and `{x, y, width, height}` fields.
-Both must fit in the current work area. Modifier arrays accept only `control`,
-which cannot be both required and forbidden.
-
-On release, Mutter checks the last accepted offer against the actual pointer
-and modifiers. A match applies its frame; otherwise Mutter completes the
-normal move or tile-preview behavior. The shell owns snap guides and other
-presentation.
-
-Drag records expire on release, lock, config reload, window loss, or compositor
-teardown. An old runtime cannot replace an offer after reload.
-
-This callback offers a right-half target while a window is being dragged. Put it
-in a loaded Lua config file; the shell can draw a matching guide while the drag
-is active:
-
-```lua
-gnoblin.on("gnoblin.window.drag.started", function(event)
-    local area = event.drag.work_area
-    local half = math.floor(area.width / 2)
-
-    event.drag:offer_targets({
-        {
-            id = "right-half",
-            hit = {x = area.x + area.width - 32, y = area.y, width = 32, height = area.height},
-            frame = {x = area.x + half, y = area.y, width = area.width - half, height = area.height},
+defineConfig({
+    edgeTiling: true,
+    keys: {
+        "Super+Shift+Left": ({ gnoblin }) => {
+            const client = gnoblin.clients.focused;
+            const area = gnoblin.workspaces.area;
+            if (client && area) {
+                snapClient(client, "left", { edgeTiling: true, area });
+            }
         },
-    })
-end)
+        "Super+Shift+Down": ({ gnoblin }) => {
+            const client = gnoblin.clients.focused;
+            if (client) {
+                unsnapClient(client);
+            }
+        },
+    },
+});
 ```
 
-Socket clients can offer pointer snap targets through the compositor bridge.
-Lua callbacks use `event.drag:offer_targets()` as described above.
+Put the file in `~/.config/gnoblin/init.ts`. `Super+Shift+Left` tiles the focused window to the left half of the work area, and
+`Super+Shift+Down` puts it back where it floated.
 
-### Keyboard snapping
+## Zones
 
-For keyboard-selected layouts, call `gnoblin.windows.snap_context(grant)` in
-a trusted shortcut callback, with the grant of the event. It spends the `snap_context` scope
-and returns an `Operation<SnapContext>` for the focused window; callers cannot provide a
-window ID.
+A snap zone is the part of the work area a window tiles to:
 
-Commit once with `context:commit(monitor, x, y, width, height)`. The monitor is an `Output` or a monitor ID, and
-the four numbers are the frame rectangle. Gnoblin checks the window,
-monitor, lock state, runtime generation, and work-area bounds again. The
-operation resolves to `{window_id, monitor_id, committed = true}`. The context
-expires with its grant and is revoked by lock or config reload.
+| Zone    | The window fills                | Pointer is within 4 pixels of |
+| ------- | ------------------------------- | ----------------------------- |
+| `left`  | The left half of the work area. | The left edge.                |
+| `right` | The right half.                 | The right edge.               |
+| `top`   | The whole work area.            | The top edge.                 |
 
-The context is available only in a trusted shortcut callback. It expires
-after five seconds and is revoked by session lock or config reload. See the
-[compositor bridge](/bridge/) for the socket contract.
+A corner counts as the left or right edge before the top. The halves are whole pixels.
+
+Edge tiling is off unless `edgeTiling` is `true` in `defineConfig`, or the seat's setting says so.
+
+The stock move drag, `ClientMoveBinding`, snaps a window dropped within `snap` pixels of an edge. The default is 4, and
+`snap: false` never snaps.
+
+## Functions
+
+| Function                            | Does                                                                                                   |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `edgeZone(x, y, area, margin?)`     | The zone a point is within `margin` pixels of, or `null`. `margin` defaults to 4.                      |
+| `tileRect(zone, area)`              | The rectangle a window tiles to in a zone, or `null` for a name that is not a zone.                    |
+| `snapClient(client, zone, options)` | Tiles a window. Returns `false`, and moves nothing, when edge tiling is off or the zone does not tile. |
+| `unsnapClient(client)`              | Puts a snapped window back where it floated. Returns `false` when it is not snapped.                   |
+| `snappedZone(client)`               | The zone a window is snapped to, or `null`.                                                            |
+
+`options` of `snapClient` is `{ edgeTiling, area }`: whether edge tiling is on, and the work area the window tiles in, such as
+`gnoblin.workspaces.area` or `output.area`.
+
+A maximised window floats first, so unsnapping returns it to the rectangle it had before it was maximised. A window that is
+already snapped keeps the rectangle it first floated at. The snap record is kept beside the window, never on it, so a
+window the shell does not own is left unchanged.

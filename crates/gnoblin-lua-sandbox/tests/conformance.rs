@@ -2,9 +2,8 @@
 //!
 //! Each case is a small Lua snippet that returns `true` when the feature works. The
 //! probe runs every case under each [`Profile`] and compares the outcome with the
-//! expectation written beside it. The support matrix in the docs is therefore checked
-//! against what the VM really does. Run `cargo test -p gnoblin-lua-sandbox --test
-//! conformance -- --nocapture` to print the matrix.
+//! expectation written beside it, so the sandbox's support matrix is checked against what the
+//! VM really does.
 //!
 //! The language rows follow the Lua 5.5 reference manual, https://www.lua.org/manual/5.5/
 //! (section 3 for the language and section 6 for the libraries). A row answers only
@@ -283,69 +282,4 @@ fn every_case_matches_its_expected_outcome_in_each_profile() {
         }
     }
     assert!(mismatches.is_empty(), "conformance drifted:\n{}", mismatches.join("\n"));
-}
-
-/// Render the support page from the probe results. The page is generated, never hand
-/// edited: the probe is the source, so the docs cannot drift from the VM.
-fn render_page() -> String {
-    let mut page = String::from(
-        "# Lua language and library support\n\n\
-         This page is generated from `crates/gnoblin-lua-sandbox/tests/conformance.rs`. \
-         Regenerate it with `GNOBLIN_WRITE_LUA_DOCS=1 cargo test -p gnoblin-lua-sandbox \
-         --test conformance`.\n\n\
-         A yes means the probe snippet returns `true` in that profile.\n\n\
-         The sandbox removes `io`, `package`, `debug`, `require`, `dofile` and \
-         `loadfile` in both profiles, and removes `os.execute`, `os.remove`, \
-         `os.rename`, `os.getenv`, `os.tmpname` and `os.exit` in both profiles.\n\n\
-         This is the only deliberate exception to full Lua: those functions reach \
-         the host system, which is the sandbox boundary.\n\n\
-         Coroutines inside `arrange` are control flow, not async scheduling: the \
-         compositor does not resume them across frames, and the same budget bounds \
-         them.\n\n",
-    );
-    // Rows are padded to a common width so the committed page is already prettier-formatted,
-    // which keeps `prettier --check` clean on the docs.
-    let mut rows: Vec<[String; 3]> = vec![["Feature".into(), "Config".into(), "Layout".into()]];
-    for case in CASES {
-        let config = outcome(Profile::Config, case.snippet);
-        let layout = outcome(Profile::Layout, case.snippet);
-        rows.push([case.feature.into(), mark(config).into(), mark(layout).into()]);
-    }
-    let mut widths = [0usize; 3];
-    for row in &rows {
-        for (width, cell) in widths.iter_mut().zip(row) {
-            *width = (*width).max(cell.chars().count());
-        }
-    }
-    for (index, row) in rows.iter().enumerate() {
-        let cells: Vec<String> = row
-            .iter()
-            .zip(widths)
-            .map(|(cell, width)| format!("{cell:<width$}"))
-            .collect();
-        page.push_str(&format!("| {} |\n", cells.join(" | ")));
-        if index == 0 {
-            let rule: Vec<String> = widths.iter().map(|width| "-".repeat(*width)).collect();
-            page.push_str(&format!("| {} |\n", rule.join(" | ")));
-        }
-    }
-    page
-}
-
-/// The generated page must match the committed copy. Set `GNOBLIN_WRITE_LUA_DOCS=1` to
-/// rewrite the committed page instead.
-#[test]
-fn support_page_is_current_with_the_probe() {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../", "docs/lua-language-support.md");
-    let page = render_page();
-    if std::env::var_os("GNOBLIN_WRITE_LUA_DOCS").is_some() {
-        std::fs::write(path, &page).expect("the support page writes");
-    }
-    let committed = std::fs::read_to_string(path).unwrap_or_default();
-    assert_eq!(committed, page, "docs/lua-language-support.md is stale; regenerate it");
-}
-
-/// The matrix cell for a yes or no outcome.
-fn mark(works: bool) -> &'static str {
-    if works { "yes" } else { "no" }
 }

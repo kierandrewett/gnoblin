@@ -1,169 +1,123 @@
-# Input and interaction
+# Input and seats
 
-> **Status:** not available yet: `:revoke`, `:select`, `gnoblin.input.current_source`, `gnoblin.input.device`, `gnoblin.input.devices`, `gnoblin.input.grab`, `gnoblin.input.on`, `gnoblin.input.orientation`, `gnoblin.input.orientation_lock`, `gnoblin.input.pad`, `gnoblin.input.source`, `gnoblin.input.sources`, `gnoblin.settings.override`. The sections that use them describe the target, not current behaviour.
+`gnoblin.input` gives a script the compositor's seats and their input devices. A seat is a keyboard focus, a pointer and
+the devices that drive them. Use it to read the pointer, list devices, make a device keys-only, or bind a chord for one
+device.
 
-`gnoblin.input.devices()` returns read-only records from the native
-input-device snapshot. It takes no arguments and is available in runtime event
-callbacks after startup. The read raises a Lua error if its snapshot is
-unavailable.
+```ts
+import { defineConfig } from "gnoblin";
 
-Input-device records expose these fields:
-
-| Field                       | Type and values                                                 |
-| --------------------------- | --------------------------------------------------------------- |
-| `id`, `name`, `device_type` | Strings. The `input:N` ID remains stable for this session only. |
-| `seat`                      | Optional string; absent when Mutter provides no seat name.      |
-| `vendor_id`, `product_id`   | Optional integers.                                              |
-| `capabilities`              | Array of capability names.                                      |
-| `revision`                  | Integer state revision.                                         |
-
-Subscribe to these events to track device changes in the native runtime:
-
-- `gnoblin.input.device-added` contains `device`.
-- `gnoblin.input.device-removed` contains `device_id` and the last device
-  record in `last`.
-
-`gnoblin.input.devices()` refreshes before either callback runs. Device IDs
-last only for the current compositor session. Records do not expose device
-paths or `enabled`.
-
-The current Mutter backend does not expose a safe enabled-state getter, so
-records omit `enabled`.
-
-`gnoblin.input.sources()` returns configured XKB layouts and variants and
-configured IBus engine IDs. XKB entries are checked against the installed XKB
-registry. IBus records use the engine ID for both `name` and `short_name`.
-Gnoblin does not need an IBus library to list or select them. The IBus service
-must be running for selection; otherwise the operation fails with
-`unavailable`.
-
-The list comes only from `input_sources.sources` in Gnoblin's Lua config. If
-that setting is absent, the list is empty and Gnoblin leaves Mutter's current
-keymap in place. Gnoblin does not read the saved GNOME input-source list.
-
-Mutter loads at most four layouts into one keymap at a time. Gnoblin switches
-the active group of four when you select a listed source outside that group.
-
-`gnoblin.input.current_source()` returns the current configured XKB source or
-the current configured IBus engine, or nil when the active source is unknown
-or is not configured in Gnoblin.
-
-Each listed source is an `InputSource` object, one for each type and ID. Every
-read of one source returns the same object, and the compositor's events update
-it. `source:select()` requests that source and returns an operation handle.
-
-- For an XKB source, the operation completes after Mutter confirms the keymap
-  change. It changes the seat's keyboard layout.
-- For an IBus engine, Gnoblin calls `org.freedesktop.IBus.SetGlobalEngine` over
-  the session bus and completes when IBus accepts the request. It changes the
-  session's global input method.
-
-An `InputSource` has `alive`, which is false once the source has left the list.
-`source:watch("current", fn)` follows its selection. `source:on(signal, fn)`
-takes these signals:
-
-- `changed`, with the list of changed fields.
-- `selected`, when the source becomes the current one.
-- `closed`, when the source leaves the configured list.
-
-```lua
-for _, source in ipairs(gnoblin.input.sources()) do
-    source:on("selected", function() print("now typing", source.name) end)
-end
+defineConfig({
+    setup: (gnoblin) => {
+        const pad = gnoblin.input.devices.find((device) => device.name === "Elgato Stream Deck");
+        pad?.bind(
+            "F13",
+            () => {
+                gnoblin.spawn("foot");
+            },
+            { only: true },
+        );
+    },
+});
 ```
 
-Set `input_sources.per_window` to:
+Put the file in `~/.config/gnoblin/init.ts`, and use the name your device reports. Its key `F13` starts a terminal, and
+the device types nothing into a window.
 
-- `true` to remember and restore the last selected source for each focused window. A
-  window without a saved source inherits the source active at its first focus.
-- `false` or omit it (the default) to share the selected source across windows.
+## Seats
 
-Subscribe to `gnoblin.input.source-changed` for confirmed current-source
-changes and `gnoblin.input.sources-changed` when the configured source list
-changes. The current-source event has `available = false` and no `source` when
-Mutter's current keymap is external or unknown.
+`gnoblin.input` has these members:
 
-`gnoblin.input.orientation_lock()` returns an immutable `OrientationLock`
-record with boolean `available` and `locked`, string `orientation`, `source`,
-and integer `revision`. `source` is `system` when the system setting applies,
-`config` when `input.orientation_lock` supplies a boolean, and `runtime` while
-a runtime override is active.
+| Member     | Meaning                                                        |
+| ---------- | -------------------------------------------------------------- |
+| `contexts` | The seats, each an `InputContext`.                             |
+| `primary`  | The first seat. It throws when the compositor reports no seat. |
+| `devices`  | Every device of every seat.                                    |
 
-The `orientation` field is `normal`, `bottom-up`, `left-up`, `right-up`, or
-`undefined`. The last value means no orientation is available.
+An `InputContext` is one seat:
 
-Change the lock with an [override](/shell-api/overrides):
+| Member                     | Meaning                                                                       |
+| -------------------------- | ----------------------------------------------------------------------------- |
+| `name`                     | The seat's name.                                                              |
+| `devices`                  | The devices on this seat.                                                     |
+| `bindings`                 | The context's bindings, by id.                                                |
+| `focusedClient`            | The window that holds the keyboard focus, or `null`. Read on every access.    |
+| `pointer`                  | The pointer in compositor coordinates, `{ x, y }`.                            |
+| `settings`                 | The window-management settings the seat publishes. See below.                 |
+| `clearFocus()`             | Takes the keyboard focus from every window.                                   |
+| `hitTest(position)`        | The topmost window under a point and the point in its coordinates, or `null`. |
+| `bind(trigger, action)`    | Binds a chord for every device. See [Keyboard shortcuts](keyboard-shortcuts). |
+| `describeBindings()`       | Every binding on the seat with its owner, priority and rank.                  |
+| `makeBindingOnly(name)`    | Makes the devices called `name` binding-only.                                 |
+| `releaseBindingOnly(name)` | Gives that up. Returns `false` when there was none.                           |
+| `isBindingOnly(name)`      | Whether those devices are binding-only.                                       |
 
-- `gnoblin.settings.override("input.orientation_lock", true)` locks the current orientation.
-- `gnoblin.settings.override("input.orientation_lock", false)` unlocks orientation.
-- `override:revoke()` ends the override.
+`settings` holds the values the compositor publishes for the seat, with the config's `edgeTiling` and `dragConstraint` laid
+over them:
 
-The call returns an `Override` and does not write the config file. After the
-override ends, Gnoblin restores the configured boolean if one is set or follows
-the system setting otherwise. A newer override replaces an older one.
+| Field                       | Values                           | Meaning                                        |
+| --------------------------- | -------------------------------- | ---------------------------------------------- |
+| `edgeTiling`                | boolean                          | Dropping a dragged window on an edge tiles it. |
+| `focusMode`                 | `click`, `hover`, `hover-strict` | How pointer movement changes focus.            |
+| `focusNewWindows`           | `allow`, `prevent`               | Whether a launched window takes focus.         |
+| `raiseOnClick`, `autoRaise` | boolean                          | Whether a click or the focus raises a window.  |
+| `autoRaiseDelay`            | milliseconds                     | The delay before an automatic raise.           |
+| `focusChangeOnPointerRest`  | boolean                          | Focus follows the pointer once it stops.       |
+| `reducedMotion`             | boolean                          | The user asked for reduced motion.             |
 
-On config reload, Gnoblin applies a boolean `input.orientation_lock` value and
-ends every override. When the value is omitted or set to `"inherit"`, Gnoblin
-follows the system setting. Subscribe to `gnoblin.input.orientation-lock-changed` to
-receive the updated record, plus these event fields:
+See [Focus and activation](focus-activation) for what the focus settings do.
 
-- `name` identifies the event.
-- `sequence` orders events.
-- `time` is monotonic.
+## Devices
 
-The socket method names and arguments are documented in the [compositor bridge](/bridge/).
+An `InputDevice` is one keyboard, mouse, touchpad or other device. `gnoblin.input.devices` lists them in the order they
+arrived. A device that is unplugged and plugged in again has a new `id`.
 
-`device_type` is `"pointer"`, `"keyboard"`, `"extension"`, `"joystick"`,
-`"tablet"`, `"touchpad"`, `"touchscreen"`, `"pen"`, `"eraser"`,
-`"cursor"`, `"pad"`, or `"unknown"`. Capabilities are zero or more of
-`"pointer"`, `"keyboard"`, `"touchpad"`, `"touch"`, `"tablet_tool"`,
-`"tablet_pad"`, `"trackball"`, and `"trackpoint"`.
+| Member                            | Meaning                                                                                   |
+| --------------------------------- | ----------------------------------------------------------------------------------------- |
+| `id`                              | The compositor's number for the device, as a string.                                      |
+| `name`                            | The name the device reports, such as `Logitech K400`. Several devices may share one name. |
+| `capabilities`                    | What the device can do. See below.                                                        |
+| `context`                         | The seat the device is on.                                                                |
+| `bindings`                        | The bindings that match only this device, by id.                                          |
+| `bind(trigger, action, options?)` | Binds a chord for this device.                                                            |
+| `bindingOnly`                     | Whether the device is binding-only. Assign to change it.                                  |
 
-## Input handlers
+`capabilities` is a list of these values: `keyboard`, `pointer`, `touch`, `gesture`, `tablet-tool`, `tablet-pad`, `switch`.
 
-Handle local pointer, keyboard and gesture events with `gnoblin.input.on(match, callback)`. See
-[input handlers](/shell-api/input-handlers). To start a program from a handler, use
-[`gnoblin.process.spawn`](/shell-api/processes).
+Input that no listed device made, such as a virtual keyboard or a remote-input client, has no entry and no name, so no device binding
+matches it. The list changes when a device is plugged in or removed.
 
-## Insert text into the focused Wayland client
+Find the names of your devices by listing them from the console:
 
-See [text insertion](/shell-api/text-insertion).
+```sh
+gnoblinctl console --eval 'gnoblin.input.devices.map((d) => d.name)'
+```
 
-## Pointer and keyboard snapping
+### Bind a chord for one device
 
-See [window snapping](/shell-api/window-snapping).
+`device.bind(trigger, action, options?)` is `context.bind` for the events of this one device. Its bindings run before a
+layout's and the context's, so a device can give a key a meaning of its own. The action rules are those of
+[Keyboard shortcuts](keyboard-shortcuts#bind-from-a-script).
 
-## Tablet-pad help
+- The device is matched by name, so the binding survives the pad being unplugged and plugged in again, and two devices that
+  report the same name are both matched.
+- Every other device still reaches the bindings made for every device.
+- A device binding matches the modifiers that device holds, not the seat's: a Shift held on another keyboard does not turn the
+  pad's `F13` into `Shift+F13`. A lock key such as Caps Lock still counts, because a lock is the seat's state.
+- A gesture trigger takes the touchpad's name the same way.
 
-Subscribe to `gnoblin.input.pad-help-requested` to show help for a tablet pad
-whose configured button action is `"help"`. Lua listeners receive the event
-directly. See [Lua events](/events/) for callback behavior.
+### Binding-only devices
 
-The event contains:
+A binding-only device never types into a window: its keys reach no client and fire only the bindings made for it or for
+every device. Use it for a macro pad.
 
-- `device`: the current `gnoblin.input.devices()` record for the pad;
-- `monitor_id` and `output_names`: optional stable target-monitor identity;
-- `buttons`: zero-based button numbers with optional localized action labels
-  and optional `mode_group` values;
-- `mode_groups`: group numbers, each group's `mode_count`, and its
-  `switch_buttons`;
-- `features`: zero-based rings, strips, and dials with optional labels for
-  clockwise, counterclockwise, up, or down actions;
-- `edition_mode`: whether the request is for editing; button help
-  sends `false`.
-
-The event provides labels when available, but no image or popup. Draw and
-dismiss the overlay in your shell. Each help press sends a new event; without a
-listener, no overlay appears.
-
-| Lua method                         | Arguments | Successful result                                          |
-| ---------------------------------- | --------- | ---------------------------------------------------------- |
-| `gnoblin.input.devices()`          | None      | Physical input-device records                              |
-| `gnoblin.input.sources()`          | None      | Configured `InputSource` objects                           |
-| `gnoblin.input.current_source()`   | None      | Current `InputSource`, or `nil`                            |
-| `source:select()`                  | None      | Operation returning the selected source                    |
-| `gnoblin.input.orientation_lock()` | None      | Immutable `OrientationLock` record                         |
-| `gnoblin.input.grab(options?)`     | `timeout` | A live `Grab`, see [Keyboard grabs](/shell-api/input-grab) |
-
-The socket operation `input.select` takes a source's `type` and `id`. In Lua it
-is `source:select()`.
+- `device.bind(trigger, action, { only: true })` makes the device binding-only before it binds. `only: false` is refused.
+- `device.bindingOnly = true` does the same without a binding, and `device.bindingOnly = false` gives the claim up.
+- A chord no binding claims is dropped for a binding-only device.
+- Only the keys are withheld. The device's pointer buttons, touches and gestures behave as before.
+- A key the device held when you made it binding-only is released to the window it went to, so that window is not left with
+  the key down.
+- The claim is by device name and works before the device is plugged in: a pad plugged in later is binding-only from its
+  first key.
+- The claim goes with the shell. A shell that exits, crashes or restarts leaves the pad typing again until the next shell
+  claims it.

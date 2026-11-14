@@ -1,268 +1,131 @@
-# Shell files
+# Write your own shell
 
-[Configuration API](/config)
+The stock shell places, focuses and arranges windows, draws the titlebars and the window menu, and binds the keys. It is
+TypeScript, and it is the same library you import.
 
-The stock shell places, focuses and arranges windows. Your own Lua files change
-how it does that. They load when the session starts, after the stock shell and
-before the first frame, so a file can set what the shell reads and replace what
-it does.
+Your `init.ts` is laid over it: a key you leave out keeps the stock
+behaviour, and code you add runs beside it. This page shows how to grow an `init.ts` from a few settings into your own shell.
 
-## Where the files go
+New to the file? Start with the [TypeScript shell](typescript-shell.md), which writes a first `init.ts`.
 
-Put them in the directory that holds your `init.lua`, normally
-`~/.config/gnoblin`:
+## Run your own code
 
-- `shell.lua` loads first.
-- `shell/*.lua` load next, in file-name order. Prefix names with numbers
-  (`10-rules.lua`, `20-sets.lua`) to control the order.
+`defineConfig` takes declarative keys, and a `setup` function for everything they cannot say. `setup` runs when the config
+loads, with the `gnoblin` object as its argument.
 
-Neither is needed. A missing file or directory loads nothing. Restart the
-session to load changes; a configuration reload does not run these files again.
+```ts
+import { ClientListener, defineConfig } from "gnoblin";
+import type { Client } from "gnoblin";
 
-`init.lua` is the configuration file and still holds settings such as
-`gnoblin.configure`. The shell files hold behaviour.
+class FocusLog extends ClientListener {
+    onFocusChanged(client: Client, focused: boolean) {
+        if (focused) {
+            gnoblin.spawn(["logger", "-t", "focus", client.appId]);
+        }
+    }
+}
 
-## What a file can see
-
-A file runs in the shell's Lua state. It sees the shell's globals (`root`,
-`seat`, `desk()`, `spawn`, the node classes such as `Window` and `Desk`, and
-`report`), and a global it defines is the shell's global.
-
-A file cannot reach the host. This is the boundary of the configuration
-sandbox:
-
-- A file has no `io`, `debug`, `package`, `dofile` or `loadfile`.
-- `load` reads text and never bytecode.
-- `os` has only `time`, `date`, `clock` and `difftime`.
-
-Use `spawn` to start a program.
-
-`require("gnoblin.shell.rules")` returns the shipped module, the same one the
-stock shell uses. Any other name, such as `require("mine.rules")`, loads
-`mine/rules.lua` from the configuration directory. Names with `..` or a path
-separator are refused.
-
-The whole shell runs in one sandboxed state, so the stock shell's own code cannot
-reach the host either.
-
-## Time limits
-
-Every entry into Lua has two bounds, and the first one reached stops it:
-
-- **A count of Lua instructions.** This is the real limit. It is the same on a
-  busy machine and an idle one, so a slow machine never fails a script with it,
-  and it stops a loop that never ends in a fraction of a second.
-- **A wall clock.** This is the backstop for what a count cannot see.
-
-| Entry                                                                  | Instructions | Wall clock | When it goes past                                    |
-| ---------------------------------------------------------------------- | ------------ | ---------- | ---------------------------------------------------- |
-| Starting the shell: the stock shell, and each of your files on its own | 100 million  | 10 seconds | The file is stopped and reported; the next one loads |
-| One handler, binding or timer                                          | 10 million   | 100 ms     | It is stopped and reported; the frame goes on        |
-| One frame, all its handlers together                                   | 100 million  | 500 ms     | The shell VM ends                                    |
-
-The start has the wide budget because it runs once, before the first frame, and
-a loaded machine can be slow without the script being wrong:
-
-- The stock shell needs about 20 thousand instructions and 10 to 20
-  milliseconds on an idle machine, so a file has thousands of times that.
-- Each file gets the whole start budget to itself. A slow file does not take
-  time from the next.
-- A process that is descheduled loses wall-clock time and no instructions, so a
-  start fails on the clock only after ten seconds of it.
-- The frame and handler clocks stay tight, because a frame that late is one you
-  would see.
-
-What happens when an entry goes past its limit:
-
-- It is stopped and reported by name, for example
-  `Window on_ready handler: ... instruction budget ... is exhausted`, or, for a
-  file that never ends, `.../shell/20-loop.lua: ... instruction budget ...`. The
-  other handlers of the frame, and the other files, still run.
-- One that raises is reported the same way (`Workspace:arrange: ...`). Its node
-  keeps what it was last given.
-- The same report is logged once every five seconds, with a count of the copies
-  it held back.
-
-## Prompts
-
-The stock shell draws the consent dialog for portal requests and the keyring's
-passphrase prompt. It claims the `portal.ui` and `prompt.secret` slots on its
-first frame, after your files have loaded, so a file can change what it claims.
-Assign `seat.data.prompts` to turn them off:
-
-```lua
--- ~/.config/gnoblin/shell.lua
-seat.data.prompts = false              -- both dialogs are the compositor's built-in ones
-seat.data.prompts = { portal = false } -- the consent dialog is built in; the passphrase dialog is the shell's
-seat.data.prompts = { secret = false } -- the passphrase dialog is built in or yours
+defineConfig({
+    setup: (gnoblin) => gnoblin.clients.addListener(new FocusLog()),
+});
 ```
 
-The built-in dialogs serve every prompt the shell does not claim, and every
-prompt a shell dialog fails on. To draw your own, turn the stock one off and call
-`slots.claim(name, handler)` in a file; see
-[replace the built-in dialogs](/guides/replace-built-in-dialogs).
+Save it as `~/.config/gnoblin/init.ts`. Focus a window, then read the line with `journalctl --user -t focus -n 1`.
 
-## Window menu and not-responding alert
+A listener is a class whose methods the shell calls when something happens: [Events](/events/desktop-state) lists them. The
+objects you read and change are in the [runtime API](/shell-api/).
 
-The stock shell draws the window menu (a titlebar right click, a client's
-`show_window_menu`, the window-menu key) and, for a window that has stopped
-answering, an alert with Wait and Force quit.
+## Split it into modules
 
-- Replace `Window:menu_items` to change the entries.
-- Replace `Window:show_menu` to draw your own menu.
-- Assign `seat.data.alerts = false` to turn the alert off.
+A config grows past one file. Put code in other files under the config directory and import them.
 
-See [the window menu and alerts](/guides/stock-window-menu) for the keys and a
-complete example.
+```ts
+// ~/.config/gnoblin/focus-log.ts
+import { ClientListener } from "gnoblin";
+import type { Client } from "gnoblin";
 
-## Window rules
-
-Assign a list to `seat.data.window_rules`. A rule is a `match` table and the
-fields to set on every window that matches:
-
-```lua
--- ~/.config/gnoblin/shell.lua
-seat.data.window_rules = {
-    -- Maximise editors, and open terminals on workspace 3.
-    { match = { app_id = "^org%.example%.Editor$" }, maximised = true },
-    { match = { app_id = "^org%.example%.Term$" }, workspace = { id = "3" } },
-    -- Hide a banking window from screen capture, and dim a media player.
-    { match = { title = "^Bank" }, secure = true },
-    { match = { app_id = "mpv" }, opacity = 0.8 },
+export class FocusLog extends ClientListener {
+    onFocusChanged(client: Client, focused: boolean) {
+        if (focused) {
+            gnoblin.spawn(["logger", "-t", "focus", client.appId]);
+        }
+    }
 }
 ```
 
-Every key in `match` must match.
+```ts
+// ~/.config/gnoblin/init.ts
+import { defineConfig } from "gnoblin";
+import { FocusLog } from "./focus-log.ts";
 
-| `match` key    | Matches                                                                    |
-| -------------- | -------------------------------------------------------------------------- |
-| `app_id`       | Lua pattern on the application ID, or on the WM class when the ID is empty |
-| `title`        | Lua pattern on the current title                                           |
-| `focused`      | `true` or `false`                                                          |
-| `workspace_id` | The name of the window's workspace, such as `"2"`                          |
-
-Patterns are [Lua patterns](https://www.lua.org/manual/5.4/manual.html#6.4.1),
-case-sensitive, and match anywhere in the text. Use `^` and `$` to match the
-whole value. Write `%.` for a literal dot.
-
-| Field        | Effect                                                                    |
-| ------------ | ------------------------------------------------------------------------- |
-| `workspace`  | `{ id = "3" }`: move the window to the workspace of that name on its desk |
-| `maximised`  | `true` maximises the window, `false` unmaximises it                       |
-| `fullscreen` | `true` or `false`                                                         |
-| `secure`     | `true` masks the window in screen capture                                 |
-| `opacity`    | A number from 0 to 1                                                      |
-
-The stock desk builds the workspaces your configuration declares in `workspaces`, named by their `id`. With none
-declared it has nine, named `"1"` to `"9"`.
-
-Rules merge in list order. A later rule overrides only the fields it sets, so a
-rule for every window can be followed by a rule for one app that undoes one
-field. A field that no rule sets falls back to its default: a window
-whose title stops matching a `secure` rule is not secure.
-
-A rule runs when a window opens, and again when its title, app ID, focus or
-workspace changes the set of rules that match. A rule does not move a window
-that is already open.
-
-### Mistakes
-
-The shell compiles a list once, when it first reads it.
-
-- A list that does not compile is refused whole. Causes are a malformed
-  pattern, an unknown match key or field, an opacity outside 0 to 1, `corners`,
-  and a field of the wrong type. The shell logs one error and the rules in force
-  stay. A first list that fails leaves no rules.
-- To change the rules, assign a new table. The shell does not see edits to the
-  table in place.
-- A rule whose `workspace` names a workspace the desk does not have logs one
-  error for each match, and the window stays where it is.
-
-## Workspace sets
-
-A set shows named workspaces on named outputs together. Assign the list to
-`seat.data.workspace_sets` and activate a set by name:
-
-```lua
--- ~/.config/gnoblin/shell.lua
-seat.data.workspace_sets = {
-    { name = "work", entries = { { workspace = "1", output = "DP-1" }, { workspace = "2", output = "HDMI-A-1" } } },
-    { name = "home", entries = { { workspace = "3" } } },
-}
-
-seat:bind({
-    ["Super+F1"] = function() activate_set("work") end,
-    ["Super+F2"] = function() activate_set("home") end,
-})
+defineConfig({
+    setup: (gnoblin) => gnoblin.clients.addListener(new FocusLog()),
+});
 ```
 
-An entry names a workspace (the desk's workspace names; with no declared `workspaces` these are `"1"` to `"9"`) and the
-output it shows on, by connector name. An entry with no `output` shows on the
-primary output. If an output is not connected, its workspace shows on the
-primary output and one error is logged. Activating the set that is already live
-changes nothing.
+- An import is a relative path (`./x.ts`, `../x.ts`, or `./x` with no extension) or `"gnoblin"`. There are no packages to
+  install and no glob imports.
+- A file is `.ts`, `.mts`, `.js` or `.mjs`. The shell strips the types as it loads a TypeScript file, so there is no build
+  step. Write `./x.js` and it falls back to `./x.ts` when only that exists.
+- Imports stay inside the config directory. A path that climbs out of it, or a symlink that points out, is refused.
+- A module that must run, with nothing to export, is `import "./rules.ts";`.
+- `import { ... } from "gnoblin"` gives you the classes. The `gnoblin` object is also a global, so a module needs no import to
+  use it.
 
-A list is refused whole, with one logged error and the previous sets kept, when
-a set has an empty or repeated name, a set has no entries, an entry names a
-workspace no desk has, or two entries in one set name the same output.
-`activate_set` returns `false`, and logs the reason, for an unknown set.
+## Save and see it
 
-## When a file fails
+Saving `init.ts`, or any file it imports, reloads the shell after a short pause. The windows you have open stay where they
+are, and the new code is told about each of them. `gnoblinctl config reload` reloads on request and prints the revision it
+committed, or the error with its file, line and column.
 
-A file with a syntax error, one that raises, or one that runs past its start
-budget (a loop that never ends) logs one error that names the file. What it set
-before it stopped stays. The stock shell is already running and the files after
-it still load.
+A file that fails to load leaves the running config in place. A syntax error, an import that does not resolve, a throw and
+a script that runs away are each reported once as `file:line:column: message`, in your `.ts` coordinates.
 
-The shell runs in the runtime role, so read the error there:
+Check a file before you save it:
 
 ```sh
-gnoblinctl log --role runtime --level error
+gnoblinctl check --types ~/.config/gnoblin/init.ts
 ```
 
-## Moving from `window-rules` and `workspace-sets`
+## Try things live
 
-These are gone, and a document that sets `window-rules` or `workspace-sets` is refused with an error that names this
-page:
+`gnoblinctl console` is a prompt in the running shell. It sees the `gnoblin` object and the windows as they are now, so you
+can read `gnoblin.clients.focused?.title` or call a method before you write it into a file. See
+[Console and inspector](/js-console).
 
-- The `window-rules` and `workspace-sets` settings of `gnoblin.configure`.
-- `gnoblin.window_rule`, which raises an error that names `seat.data.window_rules`.
-- `gnoblin.workspaces.activate_set` and `gnoblinctl workspace activate-set`. Call `activate_set(name)` from a binding
-  in a shell file.
+## What your code can reach
 
-| Old                                                       | New                                                     |
-| --------------------------------------------------------- | ------------------------------------------------------- |
-| `gnoblin.window_rule { ... }` or `window-rules = { ... }` | An entry in `seat.data.window_rules`                    |
-| `match = { type = "window", ... }`                        | Drop `type`: every rule is for windows                  |
-| `match["app-id"]`, `match["workspace-id"]`                | `match.app_id`, `match.workspace_id`                    |
-| `match.title`, `match.focused`                            | The same keys                                           |
-| `match.workspace_number`, `match.client_type`             | No equivalent. Match `workspace_id` instead             |
-| `workspace = { id = "code" }`                             | The same, naming a declared workspace                   |
-| `workspace = { number = 2 }`                              | `workspace = { id = "2" }`                              |
-| `maximise = true`                                         | `maximised = true`                                      |
-| `fullscreen`, `secure`, `opacity`                         | The same fields                                         |
-| `corners = { radius = 8 }`                                | Removed. The stock shell draws blur and shadow only     |
-| `workspace-sets = { { name, workspaces = { ... } } }`     | An entry in `seat.data.workspace_sets`, with `entries`  |
-| `gnoblinctl workspace activate-set NAME`                  | `activate_set(NAME)` from a `seat:bind` in a shell file |
+Your code runs in the shell's own JavaScript engine, not in a browser or Node.
 
-For example, this configuration:
+- It has the language's objects: `Date`, `JSON`, `RegExp`, `Map`, `Set`, `Promise`, typed arrays and the rest of ECMAScript.
+- It has no files, no network, no `console`, no `setTimeout` and no packages. Start a program with `gnoblin.spawn`, wait with
+  `gnoblin.timers.after`, and show a message with `toast(text)`.
+- Output of a program you start goes where its `stdout` option says: see [Processes](/shell-api/processes).
 
-```lua
-gnoblin.window_rule {
-    match = { type = "window", ["app-id"] = [[^org%.example%.Editor$]] },
-    workspace = { number = 2 },
-    maximise = true,
-}
-```
+## Time and memory limits
 
-becomes this shell file:
+Every call into your code has a time budget, and the first limit reached stops it.
 
-```lua
--- ~/.config/gnoblin/shell.lua
-seat.data.window_rules = {
-    { match = { app_id = [[^org%.example%.Editor$]] }, workspace = { id = "2" }, maximised = true },
-}
-```
+| Entry                                   | Limit     | When it goes past                                    |
+| --------------------------------------- | --------- | ---------------------------------------------------- |
+| Loading the file and its imports        | 5 seconds | The load fails and the old config keeps running.     |
+| One listener, handler, binding or timer | 100 ms    | It is stopped and reported. The frame goes on.       |
+| One frame, all its handlers together    | 500 ms    | The call that passes it is interrupted and reported. |
+| Memory of the config's script engine    | 64 MiB    | The allocation fails and the call is reported.       |
 
-A `workspace-sets` entry such as `{ name = "work", workspaces = { { workspace = "1", output = "DP-1" } } }` becomes
-`{ name = "work", entries = { { workspace = "1", output = "DP-1" } } }`.
+A handler that throws is reported once by name and with its line, and the other handlers still run. After several stops in
+a short time the shell stops starting the config again until a cool-down has passed or you reload on purpose. The
+compositor keeps running whatever your code does.
+
+## Where to change what
+
+| To change                                          | Go to                                                                                                |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Where windows open, by app or title                | [Window rules](/config/window_rule), the `rules` key.                                                |
+| How windows are arranged                           | [Workspaces](/shell-api/workspaces#layouts), the `layout` of each workspace.                         |
+| Groups of workspaces shown together                | [Workspace sets](/shell-api/workspaces#workspace-sets).                                              |
+| Keys, pointer drags and gestures                   | [Keyboard shortcuts](/shell-api/keyboard-shortcuts) and [Input handlers](/shell-api/input-handlers). |
+| The window menu and the not-responding alert       | [Window menu and alerts](/guides/stock-window-menu).                                                 |
+| The consent, passphrase and authentication dialogs | [Requests and dialogs](/shell-api/requests).                                                         |
+| Titlebars, bars and your own interface             | [UI toolkit](/js-ui).                                                                                |
+| Borders, shadows and blur                          | [Window style](/js-style).                                                                           |

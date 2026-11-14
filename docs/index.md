@@ -1,6 +1,6 @@
 # Gnoblin
 
-Gnoblin is a standalone Wayland compositor session built on Mutter. Its Lua
+Gnoblin is a standalone Wayland compositor session built on Mutter. Its TypeScript
 configuration and runtime API control compositor state; independent shell
 projects such as Bingux provide the panels, launchers, and other desktop UI.
 Build your own shell or try Bingux, a separate project that uses Gnoblin.

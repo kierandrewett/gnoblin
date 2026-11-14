@@ -1,29 +1,52 @@
-# Lua event handlers
+# Event handlers
 
-Put live compositor behavior in Lua modules loaded by your Gnoblin
-configuration.
+Put live compositor behaviour in TypeScript modules that your `init.ts` imports. A handler reacts to something that
+happens, such as a window opening, and runs your code.
 
-Create `~/.config/gnoblin/scripts/window-log.lua`:
+Create `~/.config/gnoblin/scripts/window-log.ts`:
 
-```lua
-gnoblin.on("gnoblin.window.created", function(event)
-    local window = event.window
-    print(window.app_id, window.title)
-end)
+```ts
+import { CollectionListener, gnoblin } from "gnoblin";
+import type { Client } from "gnoblin";
+
+class WindowLog extends CollectionListener<Client> {
+    onAdded(client: Client) {
+        gnoblin.spawn(["logger", "-t", "windows", `${client.appId}: ${client.title}`]);
+    }
+}
+
+gnoblin.clients.addListener(new WindowLog());
 ```
 
-Load the module from `~/.config/gnoblin/init.lua`:
+Import the module from `~/.config/gnoblin/init.ts`:
 
-```lua
-gnoblin.load("scripts/**/*.lua")
+```ts
+import "./scripts/window-log.ts";
 ```
 
-Run `gnoblinctl config reload` to activate it. The runtime replaces the
-callbacks after a successful reload; a failed reload leaves the active config
-running. See the [event reference](/events/) for event names and payload fields, and the [Lua runtime API](/shell-api/) for operations that control windows, workspaces, input, and session state.
+Save `init.ts`. The shell reloads on save, or run `gnoblinctl config reload`. Open a window and read the line with
+`journalctl --user -t windows -n 1`.
 
-Lua configuration runs in a restricted runtime. It cannot access arbitrary
-files, start processes, load native modules, or reach internal compositor
-objects. Use configured shortcuts or autostart entries to launch programs.
-Panels, launchers, notifications, and other visible UI belong in separate
-Wayland clients; Lua supplies their compositor state and control API.
+A reload detaches the handlers of the old configuration and attaches the ones your files attach again. A failed reload
+leaves the running config in place and reports the error.
+
+## Choose a kind of handler
+
+- A listener, attached to `gnoblin.clients`, `gnoblin.workspaces` or `gnoblin.outputs`, receives the objects themselves.
+  Use it for windows, workspaces and outputs: [Window, workspace and output events](/events/desktop-state).
+- `gnoblin.on(name, handler)` hears the compositor's other signals, such as a reload or the bell:
+  [Events](/events/).
+- A key action in `keys` runs when a trigger is pressed: [Keyboard shortcuts](/shell-api/keyboard-shortcuts).
+- `gnoblin.timers.after(ms, fn)` runs a function later: [Operations, errors and timers](/shell-api/errors#timers).
+
+## What a handler can do
+
+A handler reads and changes windows, workspaces and outputs through the [runtime API](/shell-api/), and it can ask the
+session to lock or log out. It cannot read arbitrary files, open network connections or load native modules. To run a
+program, call `gnoblin.spawn`.
+
+Panels, launchers, notifications and other visible interface belong either in the shell's
+own [UI toolkit](/js-ui) or in separate Wayland clients that you start with `autostart`.
+
+Keep a handler short. Each call has a time budget, and a call that runs past it is stopped and reported: see
+[Write your own shell](/user-shell#time-and-memory-limits).

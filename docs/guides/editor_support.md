@@ -1,33 +1,23 @@
-# Editor Support
+# Editor support
 
-Get completion, argument hints and type checking for `gnoblin.*` in your editor.
+Get completion, argument hints and type checking for `gnoblin` in your editor.
 
-Gnoblin publishes a type definition file for [Lua Language Server](https://luals.github.io/),
-which VS Code, Neovim, Helix, Zed and most other editors can run. The file describes every
-function in the Lua API: its parameters and their types, the keys a table argument accepts, which
-are optional, and what the function returns.
+Gnoblin publishes a `gnoblin.d.ts` declaration file and a `tsconfig.json` that finds it. Any editor that runs the TypeScript
+language service, such as VS Code, Neovim, Helix or Zed, then completes every `defineConfig` key and every member of the
+`gnoblin` object, and underlines a wrong one.
 
 ## Set it up
 
-1. Download [gnoblin.d.lua](https://gnoblin.org/gnoblin.d.lua) to a folder, for example
-   `~/.config/gnoblin/types/`.
-2. Create `.luarc.json` in `~/.config/gnoblin/` and point Lua Language Server at that folder:
+1. Run `gnoblinctl types init`. It writes `gnoblin.d.ts` and `tsconfig.json` beside your `init.ts`. `gnoblinctl config init`
+   runs it for you.
+2. Open `init.ts`. Typing `gnoblin.workspaces.` now lists the members with their signatures, and hovering a call shows its
+   description.
+3. Check a file from the command line with `gnoblinctl check --types ~/.config/gnoblin/init.ts`. It runs a TypeScript
+   compiler when one is installed.
 
-```json
-{
-    "workspace.library": ["types"],
-    "runtime.version": "Lua 5.4",
-    "diagnostics.globals": ["gnoblin"]
-}
-```
-
-3. Open `init.lua`. Typing `gnoblin.workspaces.` now lists the functions with their
-   signatures, and hovering a call shows its description.
-
-The file matches the Gnoblin release it was published with. Download it again after you update.
+`gnoblinctl types init` never replaces a `tsconfig.json` you already have, and it refreshes `gnoblin.d.ts` every time. Run it
+again after you update Gnoblin, because the file matches the release that wrote it.
 
 ## The same hints in the console
 
-The graphical console reads the same definitions. Completion lists show
-each function's signature, and typing a call such as `gnoblin.workspaces.create(` shows its
-parameters, with the keys of a table argument listed and completed as you type them.
+`gnoblinctl console` evaluates expressions in the running shell: see [Console and inspector](/js-console).

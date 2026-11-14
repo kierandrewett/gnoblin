@@ -4,7 +4,7 @@ Use `org.gnoblin.SessionIdle` to read idle state and receive activity changes.
 
 The interface is exported on the session bus at `/org/gnoblin/SessionIdle` by the service name `org.freedesktop.ScreenSaver`. It reports the idle state that Gnoblin derives from Mutter's idle monitor.
 
-Programs outside the Lua runtime use this interface. A Lua configuration makes an [idle watch](/shell-api/idle) with the time it needs.
+Programs outside the shell use this interface. A TypeScript configuration makes an [idle watch](/shell-api/idle) with the time it needs.
 
 | Member            | Arguments                                                                            | Result                                                                               | Errors                                                               |
 | ----------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |

@@ -42,7 +42,7 @@ The ops are:
 
 A colour is `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`.
 
-The toolkit encodes the list into the node's `content` property, the same bytes the Lua shell writes, and writes it only
+The toolkit encodes the list into the node's `content` property, and writes it only
 when it changed. An op that cannot be encoded is reported as `draw op N: ...` and the node keeps its last content. The
 format is described in [Canvas painting](/shell-api/canvas).
 
@@ -106,7 +106,7 @@ window:
 - The close button closes the window. The other buttons set the window's `minimised` and `maximised`.
 - A press on the bar drags the window. A second press within half a second, a middle click and a right click do what
   the seat's `double_click`, `middle_click` and `right_click` say: `toggle-maximize`, `lower`, `menu`, `minimize` or
-  `none` (the two one-axis maximise actions do nothing, as in the Lua shell). `menu` opens the window menu at the pointer.
+  `none` (the two one-axis maximise actions do nothing). `menu` opens the window menu at the pointer.
 - The close button fades the window out over 0.18 s (it shrinks to 0.92 of its size) and then closes it. A window that is
   still there 1.5 s later, a client that asked "save changes?", is shown again. A window its client closes itself is gone
   from the compositor at once, so there is nothing to fade.
@@ -133,7 +133,7 @@ The style has these fields:
 The compositor always asks clients to draw their own decorations: decoration mode is client-side, and the tree has no
 server-side flag. A window that draws a header bar of its own therefore shows two when `decorations` is on.
 
-The stock library decorates every window, as the Lua shell did, and gives the bar room of its own instead of drawing
+The stock library decorates every window and gives the bar room of its own instead of drawing
 over the client:
 
 - The bar is a child of the window's node at `y = -height`: it lies above the node, never over it.
@@ -208,8 +208,7 @@ Switch: `defineConfig({ alerts: false })`. The module is `gnoblin/alerts`.
   screen. Return starts what you typed (`gnoblin.spawn`) and Escape closes it. `launcher: "wofi"` runs that program on
   the key instead.
 - **`toast(text)`** shows a message card in the top right corner for a few seconds.
-- **`overview.toggle()`** dims the windows of the workspaces that are not shown, or gives them all full strength, as the
-  Lua `toggle_overview` did.
+- **`overview.toggle()`** dims the windows of the workspaces that are not shown, or gives them all full strength, .
 
 The consent and passphrase dialogs are not here: the compositor draws them, and `gnoblin.dialogs` observes them.
 
@@ -217,5 +216,4 @@ The consent and passphrase dialogs are not here: the compositor draws them, and 
 
 - Dragging a titlebar with a real pointer. It moves the window by how far the pointer is from where it was pressed, and
   has been tested against a fake compositor only. A right click on the bar is proved on the real compositor.
-- The keyboard Move and Resize modes of the Lua window menu.
 - A fade on close for a window the client closes itself.

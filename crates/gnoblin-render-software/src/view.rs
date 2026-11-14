@@ -39,7 +39,7 @@
 //! View on the GPU (GLES, step 9C, `design/cutover-survey.md` section 16.2) draws the same subtree from a
 //! `ViewScene`, and this module is the reference it is compared against (`view_gpu_tests.rs` in `gnoblin-backend`).
 //! [`eye_pixel_matrix`] states the camera as one matrix both paths place a node with. `tests/view_cost.rs` is the CPU
-//! profile; the numbers for both paths are in the survey and in `docs/shell-api/views.md`.
+//! profile; the numbers for both paths are in the survey.
 
 use std::ops::Range;
 use std::sync::Arc;

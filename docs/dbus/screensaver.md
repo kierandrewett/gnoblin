@@ -44,7 +44,7 @@ Gnoblin also holds a logind sleep inhibitor. On `PrepareForSleep(true)` (suspend
 busctl --user call org.freedesktop.ScreenSaver /org/freedesktop/ScreenSaver org.freedesktop.ScreenSaver Lock
 ```
 
-A successful method reply means the compositor confirmed the session is locked. Check session lock state through the [Lua runtime API](/shell-api/session-runtime) to read the same state from the desktop side.
+A successful method reply means the compositor confirmed the session is locked. Check session lock state through the [runtime API](/shell-api/session-runtime) to read the same state from the desktop side.
 
 ## GNOME name
 

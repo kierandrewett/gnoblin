@@ -1,230 +1,109 @@
-# Session and runtime health
+# Session and runtime
 
-> **Status:** not available yet: `gnoblin.capabilities`, `gnoblin.focus.history`, `gnoblin.focus.policy`, `gnoblin.input.devices`, `gnoblin.runtime.status`, `gnoblin.session.activity`, `gnoblin.session.lock`. The sections that use them describe the target, not current behaviour.
+`gnoblin.session` reads the session's state and asks it to log out, suspend, power off or lock. `gnoblin.runtime` asks the
+shell to reload its configuration. `gnoblin.version()` names the build.
 
-`gnoblin.session.status()` returns a record with these fields:
+```ts
+import { defineConfig } from "gnoblin";
 
-- `state` is `"running"` while the compositor answers the request.
-- `lock_available` says whether Mutter can report its lock state.
-- `revision` identifies the current lock-state snapshot. It starts at `0` and
-  advances when the lock state changes. The matching event has the same
-  revision.
-- When `lock_available` is true, `lock_state` is `unlocked`, `covering`,
-  `locked`, or `failsafe`.
+defineConfig({
+    keys: {
+        "Super+l": ({ gnoblin }) => {
+            gnoblin.session.lock();
+        },
+        "Super+Shift+r": ({ gnoblin }) => {
+            gnoblin.runtime.reloadConfig();
+        },
+    },
+});
+```
 
-When lock state is unavailable, the record omits `lock_state`; unavailable does
-not mean unlocked.
+Put the file in `~/.config/gnoblin/init.ts`. `Super+l` locks the session. `Super+Shift+r` reloads the configuration, as
+`gnoblinctl config reload` does.
 
-The read cannot report why a stopped session exited. The socket is unavailable
-after the compositor stops. The record remains available while the Lua
-supervisor is recovering. It reports compositor state, not supervisor health. Subscribe to
-`gnoblin.session.lock_state_changed` for lock transitions.
+## Session
 
-`gnoblin.session.logout()` takes no arguments and returns an operation whose
-successful value is `{accepted = true}`. After the compositor confirms that
-operation, the supervisor exits successfully and stops the compositor. The
-session wrapper then stops Gnoblin's user services and returns to the login
-manager. A socket caller may receive EOF while the session is closing.
+`gnoblin.session` talks to the compositor over a connection the shell holds for it. With no connection the status is
+`unavailable` and every verb fails with the code `unavailable`.
 
-`gnoblinctl lua` exposes this operation and `gnoblin.session.lock()` too. The
-lock result reports that a subscribed shell client received the request; check
-`gnoblin.session.status()` to confirm the compositor entered a locked state.
+| Member        | Returns                  | Meaning                                                               |
+| ------------- | ------------------------ | --------------------------------------------------------------------- |
+| `status()`    | `SessionStatus`          | The session as the compositor last published it. Read on each call.   |
+| `logout()`    | `Operation<Accepted>`    | Ends the session once the compositor confirms.                        |
+| `poweroff()`  | `Operation<Accepted>`    | Powers the machine off once the init system accepts. Does not prompt. |
+| `reboot()`    | `Operation<Accepted>`    | Reboots, with the contract of `poweroff()`.                           |
+| `suspend()`   | `Operation<Accepted>`    | Suspends to RAM. The session locks first.                             |
+| `hibernate()` | `Operation<Accepted>`    | Hibernates. Fails with `unsupported` when the machine cannot.         |
+| `lock()`      | `Operation<LockRequest>` | Asks the compositor to lock. Read `status()` to see the locked state. |
 
-These methods take no arguments and return operations:
+Each verb returns an `Operation`: see [Operations, errors and timers](errors). `logout`, `poweroff`, `reboot`, `suspend` and
+`hibernate` succeed with `{ accepted: true }`. `lock` succeeds with `{ dispatched }`, which says the request went out and
+does not prove the session is locked.
 
-- `gnoblin.session.suspend()` asks logind to suspend.
-- `gnoblin.session.hibernate()` asks logind to hibernate.
-- `gnoblin.session.reboot()` asks logind to reboot.
-- `gnoblin.session.poweroff()` asks logind to power off.
+### Session status
 
-The compositor reads the matching logind capability, then asks logind for the
-action. The operation finishes with logind's answer, so it does not report
-success before logind replies. It succeeds with `{accepted = true}` when
-logind accepts the request. The Lua runtime keeps running after a suspend or
-hibernate. For a reboot or power off, logind ends the session after it
-accepts.
+`status()` returns these fields:
 
-Any sleep, including `systemctl suspend` and hibernate, locks the session first. On logind's `PrepareForSleep(true)` Gnoblin locks while it still holds its sleep inhibitor, then releases the inhibitor so the sleep goes ahead. A refused lock still releases the inhibitor, so a refusal never blocks the sleep.
+| Field           | Values                                       | Meaning                                                            |
+| --------------- | -------------------------------------------- | ------------------------------------------------------------------ |
+| `state`         | `running`, `unavailable`                     | `unavailable` means the shell has no connection to the compositor. |
+| `lockAvailable` | boolean                                      | Whether the compositor has published a lock state yet.             |
+| `revision`      | number                                       | How many lock changes the session published. Starts at 0.          |
+| `lockState`     | `unlocked`, `covering`, `locked`, `failsafe` | Present only while `lockAvailable` is `true`.                      |
 
-A refused or failed request ends the operation with an error:
+The lock states are explained in [Lifecycle events](/events/lifecycle#session). Only `locked` confirms the lock took.
+Unavailable does not mean unlocked.
 
-- `denied`: the capability answer is `no`, or polkit denies the action (`AccessDenied`).
-- `unsupported`: the capability answer is `na`, or logind has no such action.
+### When a power verb fails
+
+A refused power verb fails with one of these codes, and the message names the D-Bus error:
+
+- `denied`: logind or polkit refused.
+- `unsupported`: the machine cannot do it, or logind has no such action.
 - `busy`: logind is already running another power action.
 - `unavailable`: logind is not on the system bus.
-- `timed_out`: logind did not answer in time (5 seconds for the capability, 30 for the action).
-- `internal`: any other D-Bus error from logind.
+- `timed_out`: logind did not answer in time.
 
-The message names the D-Bus error, for example
-`logind could not suspend: org.freedesktop.DBus.Error.AccessDenied: ...`.
-Logind may answer `challenge` to the capability query. Gnoblin then asks for
-interactive authorization with the action.
-
-The focus reads are available as `gnoblin.focus.history(filter)` and
-`gnoblin.focus.policy()`. See [Focus and activation](/shell-api/focus-activation)
-for their fields and filter values.
-
-For configuration path and default reads or restoring the default tree, see
-[Configuration files](/config/configure/config-files). `gnoblinctl init` remains
-a command-line setup action.
-
-The [compositor bridge](/bridge/) documents the socket request format.
-
-## Runtime health and reload
-
-`gnoblin.runtime.reload_config()` takes no arguments. It asks for the reload
-`gnoblinctl config reload` asks for: the runtime evaluates the complete Lua
-configuration again and commits it to the compositor, which applies it while
-the session is running. If loading or applying the candidate fails, Gnoblin
-keeps the previous configuration active.
-
-Call `gnoblin.runtime.status()` to read worker health:
-
-```lua
-local status = gnoblin.runtime.status()
-print(status.state, status.generation)
+```ts
+gnoblin.session.suspend().onComplete((value, error) => {
+    if (error) {
+        gnoblin.spawn(["notify-send", `Suspend failed: ${error.code}`]);
+    }
+});
 ```
 
-It returns a read-only record with `state` and `generation`. The state values are:
+## Reload
 
-- `starting` before the worker connects;
-- `running` while it serves requests;
-- `restarting` while Mutter suspends it for replacement;
-- `unavailable` when the supervisor is disconnected, stopping, or reports that
-  it will not restart the worker.
+`gnoblin.runtime.reloadConfig()` asks for the reload `gnoblinctl config reload` asks for. It returns an
+`Operation<ReloadResult>`. A success carries these fields:
 
-The compositor answers the read while the Lua worker is restarting, so shell
-clients can use `gnoblinctl lua` to poll recovery. A call from the live Lua
-runtime reports `running` and that worker's active generation.
+| Field              | Meaning                                                                                                     |
+| ------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `ok`               | Always `true` in a success.                                                                                 |
+| `action`           | `"config reload"`.                                                                                          |
+| `settingsRevision` | The revision the compositor committed.                                                                      |
+| `warnings`         | The problems of the sections the reload dropped.                                                            |
+| `notApplied`       | Settings accepted without effect, each a sentence. See [Lifecycle events](/events/lifecycle#configuration). |
 
-`generation` identifies the runtime configuration accepted by Mutter. It
-stays unchanged across worker recovery and changes when a different
-configuration is accepted.
+`reloadConfig` throws while the configuration loads, because every reload would ask for another. When the document is
+refused the operation fails with the code `config_rejected` and the reason, and the running configuration stays to hear
+it. When the reload succeeds, the new configuration replaces the one that asked, so the asking configuration's callbacks do
+not run.
 
-Subscribe to `gnoblin.runtime.status-changed` to watch those values. The event
-also includes `sequence` and monotonic `time`. It is emitted when the worker
-starts serving, Mutter suspends it for replacement, the replacement finishes
-republishing state, or a new configuration generation is accepted. Failed or
-rolled-back reloads do not change the reported generation.
+## Version
 
-```lua
-gnoblin.on("gnoblin.runtime.status-changed", function(event)
-    print(event.state, event.generation)
-end)
-```
+`gnoblin.version()` returns a frozen record that names the build.
 
-Events are not replayed, so subscribe before reading `runtime.status()` and
-read it again after reconnecting.
+| Field                            | Meaning                                                    |
+| -------------------------------- | ---------------------------------------------------------- |
+| `gnoblin`, `gnome`, `mutter`     | The versions the build reports.                            |
+| `js`                             | The version of the script runtime.                         |
+| `api`                            | The API version of the shell interface.                    |
+| `gitRemote`, `gitSha`, `buildId` | Where the build came from. A remote loses its credentials. |
 
-A Lua worker cannot run callbacks while suspended. External clients can read
-`restarting` during that time.
+A field the build does not know is `"unknown"`. The values come from a `version.ini` file, and the first file the shell
+can read wins:
 
-When the supervisor reports that it will not restart the worker, Mutter reports
-`unavailable` and emits a final event while it remains alive. The event is not
-sent if the compositor exits first and closes the socket.
-
-The native open-animation matcher uses updated rules for windows mapped after
-reload. Reload does not replay open animations for windows already mapped.
-
-`gnoblin.runtime.reload_config()` returns an `Operation`:
-
-- It finishes once the compositor has accepted the reloaded configuration,
-  with `{ok = true, action = "config reload", settings_revision = n, warnings = {...}}`.
-  `settings_revision` is the revision the compositor now holds.
-- When the file is refused it fails with the code `config_rejected` and a
-  reason that names the file and line. The previous configuration stays in
-  force.
-- The reload starts on the runtime's next turn, not inside the call. Calls made
-  before it starts share one reload and one answer.
-- The call raises an error while the configuration is loading, because each
-  reload would load the file again and ask for another.
-
-A reload replaces every handler with the new file's, so the completion
-handler of the operation is the one handler of the old file that survives it.
-
-`gnoblin.config.reloaded` signals that the candidate became active. If the
-session stops first, the candidate is discarded and that event is not sent.
-
-After the commit, the runtime also emits `gnoblin.focus.policy-changed` when the
-effective focus policy changed. This event carries the committed policy snapshot
-and configuration revision. A failed reload emits `gnoblin.config.reload_failed`
-while the previous runtime remains active.
-
-### Reload warnings
-
-Check `warnings` in the result of `gnoblinctl config reload` or of the
-operation `gnoblin.runtime.reload_config()` returns. It is a list of
-diagnostic strings for the sections the commit dropped. The reload succeeds
-with `ok = true`; the dropped sections have no effect. A clean config returns
-an empty list.
-
-For example, a handler can print them after a reload it asked for:
-
-```lua
-gnoblin.runtime.reload_config():on_complete(function(result)
-    for _, warning in ipairs(result.warnings) do print(warning) end
-end)
-```
-
-The `gnoblin.config.reloaded` Lua event carries the same `warnings` list.
-
-### Settings a reload accepts but does not apply
-
-Most settings take effect when the reload commits. A few are read only when a
-process starts, and a few are read by nothing. A reload that accepts one of
-them still succeeds, and says so:
-
-- `gnoblinctl config reload` prints one `not applied:` line for each.
-- `--json` lists them under `restart_required` and `no_effect`.
-- A script reads them as `not_applied`, a list of sentences, in the result of
-  `gnoblin.runtime.reload_config()` and in the `gnoblin.config.reloaded` event.
-
-A `restart required` setting stays in the list on every reload until the
-process that reads it restarts. A `no effect` setting is listed when it
-changes. The contributor audit of every setting is in
-`design/config-reload.md`.
-
-Warnings use normalized names: a misspelled `not_a_section` appears as
-`not-a-section`. The list contains up to 64 diagnostics, followed by an
-omission message if more exist. Long names are shortened. Gnoblin also
-publishes a notice for the shell; large lists are summarized there.
-
-An existing previous-session crash notice takes priority over warning notices.
-Reloading leaves that crash notice unchanged; read warnings from the reload
-result or event while it is present.
-
-Correct the names and reload to clear the configuration notice. Validation
-errors still fail the reload and keep the previous config active.
-
-## Locking
-
-`gnoblin.session.lock()` asks a subscribed client to show its lock UI. A client
-is a shell process that subscribed to `gnoblin.session.lock-requested` on the
-socket, or a Lua configuration that listens for that event with `gnoblin.on`.
-
-The client owns the lock UI and must use Mutter's lock protocol; this Lua
-method does not lock the session by itself. It takes no arguments and returns
-an `Operation<LockRequest>`. `gnoblinctl session lock` makes the same request.
-
-On success, `dispatched` is `true`. `subscribers` counts the clients
-subscribed when Gnoblin targets the request. A slow connection may close before
-it handles the event, so these fields do not confirm that the client showed its
-UI or that the session locked. The operation fails when compositor locking is
-unavailable or no client is subscribed. No Lua unlock method is provided.
-
-A Lua listener receives a [`Request`](/shell-api/requests) of kind `"lock"`.
-See [Session lock](/session-lock) for a listener that starts a locker.
-
-The lock state is `unlocked`, `covering`, `locked`, or `failsafe`. Only
-`locked` confirms the compositor's lock transition. See the
-[compositor bridge](/bridge/#api-version-121-session-locking)
-for socket subscription and request details.
-
-To react to the session being idle, use an [idle watch](/shell-api/idle).
-Socket clients read the idle-monitor sample with the `session.activity` call
-and receive `gnoblin.session.activity-changed`; see the
-[compositor bridge](/bridge/session-and-windows#session-activity).
-
-Native sessions provide immediate reads through `gnoblin.windows`,
-`gnoblin.workspaces` and `gnoblin.outputs`. See
-[Lua events](/events/) for event names and callback behavior.
+1. The file `GNOBLIN_VERSION_METADATA_FILE` names, when it is set.
+2. `share/gnoblin/version.ini` under the installation prefix of the running executable.
+3. `gnoblin/version.ini` in each directory of `XDG_DATA_DIRS`.

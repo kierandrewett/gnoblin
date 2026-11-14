@@ -1,127 +1,90 @@
 # Focus and activation
 
-> **Status:** not available yet: `gnoblin.focus.history`, `gnoblin.focus.policy`, `gnoblin.shortcut.activated`. The sections that use them describe the target, not current behaviour.
+Focus policy decides which window gets the keyboard, and when it rises above the others. Set it in the `focus` key of
+`defineConfig`; read the order windows were focused with `gnoblin.focus.history()`.
 
-`gnoblin.focus.policy()` returns a read-only snapshot of the supported focus
-settings. Its `revision` identifies the committed settings snapshot.
+```ts
+import { defineConfig } from "gnoblin";
 
-The snapshot includes:
-
-- `focus_mode` and `focus_new_windows`.
-- `raise_on_click`, `auto_raise`, and `focus_change_on_pointer_rest`.
-- `auto_raise_delay` and `revision`.
-
-| Field                          | Values                           | Default   | Effect                                   |
-| ------------------------------ | -------------------------------- | --------- | ---------------------------------------- |
-| `focus_mode`                   | `click`, `hover`, `hover-strict` | `click`   | Sets how pointer movement changes focus. |
-| `focus_new_windows`            | `allow`, `prevent`               | `prevent` | Sets focus policy for new windows.       |
-| `raise_on_click`               | Boolean                          | `true`    | Raises a window when clicked.            |
-| `auto_raise`                   | Boolean                          | `false`   | Raises the focused window automatically. |
-| `auto_raise_delay`             | Integer from 0 to 10000 ms       | `500`     | Sets the automatic raise delay.          |
-| `focus_change_on_pointer_rest` | Boolean                          | `false`   | Changes focus after pointer rest.        |
-
-The Default column shows the compositor's value when a key is missing. The
-starter config sets `focus_new_windows` to `allow`.
-
-These are committed config values. See [focus and raising options](/config/configure/window_management#focus-and-raising)
-for when each setting takes effect.
-
-`gnoblin.focus.policy-changed` runs after a successful config commit only when
-one of these effective focus settings changes. Its `policy` field contains the
-committed snapshot, and the event's `revision` matches `policy.revision`.
-Rejected or failed config changes do not emit the event.
-
-Use `gnoblin.focus.history(filter?)` to read native window snapshots in recent
-focus order. Filters accept `workspace_id`, `monitor_id`, and `limit`. Workspace
-and monitor IDs match exactly. The limit is 1–256 and defaults to 50; filters
-may return fewer records.
-
-History includes minimized windows and removes windows after they close. At
-startup, only the focused window seeds the recent order. Other open windows
-stay in snapshot order until the runtime observes their focus.
-
-The policy read becomes available after the initial config load commits.
-Native compositor snapshots are seeded after the initial Lua config
-evaluation. They are unavailable while Gnoblin first loads the config file, so
-call these read methods from a runtime event callback after native startup.
-Calling one before the snapshot is ready raises a Lua error.
-
-Window snapshot properties are read-only. In the native runtime,
-`Window:focus(context)` requests focus using the context from
-`gnoblin.shortcut.activated`. The callback provides that value only for a
-trusted shortcut key press. It expires after five seconds.
-A successful focus operation completes with `{id = window.id}`.
-
-The same context can authorize `begin_move` or `begin_resize`. It works once
-across all three operations. A config reload invalidates contexts from the old
-Lua runtime; a session lock also revokes them.
-
-Mutter still applies its normal window activation policy.
-
-Contexts are not provided for clicks, external-client shortcuts, release
-bindings, synthetic input, input-method events, or repeated key presses. Direct
-`Window:focus`, `Window:begin_move`, and `Window:begin_resize` calls without a
-context remain denied.
-
-For the socket activation contract, see the [compositor bridge](/bridge/).
-
-## Focus a program the shell started
-
-A window whose `process` field is set belongs to a program the runtime started with
-[`gnoblin.process.spawn`](/shell-api/processes). The runtime can focus such a window with `window:present()` without a
-key press. This handler starts a terminal on a shortcut and focuses its window when it opens:
-
-```lua
-local present_when_open = {}
-
-gnoblin.on("gnoblin.window.created", function(event)
-    if present_when_open[event.window.process] then
-        event.window:present()
-    end
-end)
-
-gnoblin.on("gnoblin.shortcut.activated", function()
-    local terminal = gnoblin.process.spawn({"foot"})
-    present_when_open[terminal.id] = true
-    terminal:wait():on_complete(function()
-        present_when_open[terminal.id] = nil
-    end)
-end)
+defineConfig({
+    focus: { mode: "sloppy", autoRaise: true, autoRaiseDelay: 300 },
+});
 ```
 
-Gnoblin sets `process` when the window's client is the started process itself: the client's pid, read from its socket
-credentials, equals the pid of the started process.
+Put the file in `~/.config/gnoblin/init.ts`. A window gets the focus when the pointer enters it, and rises 300 ms later.
 
-The pid comes from the display server, so an application cannot claim another program's windows. A program that starts
-a new session with `setsid`, or a launcher that hands the window to an already running instance, is not covered, because
-its window's client is not the process that was started.
+## Focus settings
 
-`present()` waits until the window is shown and no key press or click has reached a window for 250 ms, so the window
-does not take keystrokes the user is typing elsewhere. It gives up after five seconds. The Operation succeeds once the
-window holds focus, and fails with:
+Every key is optional. A key you leave out is the compositor's own value for that setting.
 
-- `denied` when the window does not belong to a started process, the session is locked, or the compositor refused
-  focus;
-- `busy` when the window was not shown, or the user kept typing or clicking, for five seconds;
-- `not-found` when the window closed first.
+| Key                   | Values                            | Default   | Effect                                                   |
+| --------------------- | --------------------------------- | --------- | -------------------------------------------------------- |
+| `mode`                | `click`, `sloppy`, `follow-mouse` | `click`   | How pointer movement changes the focus.                  |
+| `newWindows`          | `allow`, `prevent`                | `prevent` | Whether a window that opens from a launcher takes focus. |
+| `raiseOnClick`        | boolean                           | `true`    | A click on a window raises it.                           |
+| `autoRaise`           | boolean                           | `false`   | The focused window rises by itself.                      |
+| `autoRaiseDelay`      | milliseconds, 0 or more           | `500`     | How long after focus an auto raise waits.                |
+| `changeOnPointerRest` | boolean                           | `false`   | Focus follows the pointer only once it stops moving.     |
 
-Mutter's focus-stealing rules still apply to every other window.
+The three modes:
+
+- `click` focuses a window when you click it.
+- `sloppy` focuses the window under the pointer as the pointer enters it, and keeps the focus when the pointer moves onto
+  the desktop.
+- `follow-mouse` is `sloppy`, and also clears the focus when the pointer leaves the focused window.
+
+`newWindows` applies to a window that opened on an activation token a launcher minted (`client.fromLauncher`). A program
+started with `gnoblin.spawn` is not marked, because the shell's spawner mints no token. With `prevent`, a new window opens
+without taking the focus; with `allow` it takes it.
+
+The settings are part of the config document, so a change takes effect on the next reload. [defineConfig reference](/typescript-config#focus)
+lists how they combine with the stock config. The seat's current values are `gnoblin.input.primary.settings`.
+
+There `focusMode` uses the compositor's own names: `click`, `hover` and `hover-strict`.
+They stand for `click`, `sloppy` and `follow-mouse`.
+
+## Give a window the focus
+
+`client.focus()` asks for the keyboard on a window. The compositor applies its own policy: it may leave the focus where it
+was. To raise the window as well, call `client.raise()`.
+
+```ts
+const client = gnoblin.clients.find((c) => c.appId === "foot");
+client?.focus();
+client?.raise();
+```
+
+A window that closes while focused hands the keyboard to its neighbour on the workspace: the next window, else the
+previous one. A dialog hands it to its parent.
+
+## Focus history
+
+`gnoblin.focus.history(filter?)` returns the live windows, last focused first. Windows never seen focused follow in list
+order, and minimised windows are included.
+
+```ts
+const [current, previous] = gnoblin.focus.history({ limit: 2 });
+previous?.focus();
+```
+
+| Filter key    | Values                | Default | Effect                              |
+| ------------- | --------------------- | ------- | ----------------------------------- |
+| `workspaceId` | a workspace id        | none    | Only the windows of that workspace. |
+| `monitorId`   | an output name        | none    | Only the windows of that output.    |
+| `limit`       | integer from 1 to 256 | `50`    | How many windows to return.         |
+
+An unknown filter key throws a `TypeError` that names the keys that work.
 
 ## Launching from a layer surface
 
-Shells can use the standard [XDG activation protocol](https://wayland.app/protocols/xdg-activation-v1)
-to launch an application from a panel or popup. Request the token from the
-connection that received the input, with that surface, seat and initiating
-press serial. Commit the request before dismissing or destroying the source
-surface, then pass the returned token to the application.
+A shell that runs as a separate Wayland client can start an application from a panel or popup with the standard
+[XDG activation protocol](https://wayland.app/protocols/xdg-activation-v1).
 
-With `focus_new_windows = "prevent"`, Gnoblin retains a verified launch gesture
-after the source closes. Releasing its key or mouse button does not revoke it.
-A later press, touch start, scroll or session lock does revoke it; unlocking
-does not restore it.
+Request the token from the connection that received the input, with that surface, seat and initiating press serial. Commit
+the request before you dismiss or destroy the source surface, then pass the returned token to the application.
 
-The token expires 15 seconds after the initiating event
-and can authorize focus only once. A returned token alone does not prove that
-the compositor accepted its input context.
+With `newWindows: "prevent"`, the compositor keeps a verified launch gesture after the source closes. Releasing its key or
+mouse button does not revoke it. A later press, touch start, scroll or session lock does, and unlocking does not restore it.
+The token expires 15 seconds after the initiating event and can authorize focus only once.
 
-`focus_new_windows = "allow"` keeps its permissive activation policy.
+`newWindows: "allow"` keeps its permissive activation policy.

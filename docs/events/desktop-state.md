@@ -1,123 +1,111 @@
-# Window, Workspace, and Monitor Events
+# Window, workspace and output events
 
-> **Rust status:** This page's snapshot records and lifecycle events are unbuilt. `gnoblin.window.closed` is the only event with a matching schema signal, and its payload is `name` and `object`, not this legacy window record; see the [events index](index).
+Windows, workspaces and outputs are objects in `gnoblin.clients`, `gnoblin.workspaces` and `gnoblin.outputs`. A listener
+attached to one of them is told what happens to it and receives the object itself. Use a listener for these;
+`gnoblin.on` also raises the matching signals, with object identities in place of objects.
 
-Track window, workspace, and monitor records as compositor state changes.
+## Listen to windows
 
-Lifecycle events describe active state in the current compositor session.
+Attach a `ClientListener` to `gnoblin.clients` to hear every window, or to one window's `addListener` to hear that one.
+Every method is optional.
 
-### Monitor and workspace records
+```ts
+import { ClientListener, gnoblin } from "gnoblin";
+import type { Client } from "gnoblin";
 
-Monitor records describe active logical monitors. The `id` is the canonical
-connector name. A monitor event's `changed` field lists updated properties:
+class Titles extends ClientListener {
+    onTitleChanged(client: Client, title: string) {
+        gnoblin.spawn(["logger", "-t", "titles", `${client.appId}: ${title}`]);
+    }
+    onClosed(client: Client) {
+        gnoblin.spawn(["logger", "-t", "titles", `${client.appId} closed`]);
+    }
+}
 
-- Position: `index`, `x`, `y`, `width`, `height`, `work_area`.
-- Display: `primary`, `scale`, `enabled`, `refresh_rate`, `transform`.
-- Identity: `id`, `name`, `make`, `model`, `serial`.
-
-Create, rename, and activation events include a `workspace` record. Workspace
-change events include a `changed` array listing `number`, `window_count`, or
-`persistent`. The `window_count` value matches immediate workspace reads.
-
-A removal carries `workspace_id` and `last`, the final record before removal.
-The moved event reports the stable window ID and source and destination
-workspace IDs. It has no workspace record.
-
-The attention event also carries `demands_attention` at the top level. It can
-follow a focus request that policy did not activate; it reports Mutter's
-attention state and does not identify why the window requested attention.
-
-Strict focus policy also emits `gnoblin.window.activation-denied` when Mutter
-rejects an application's activation request. The event's `reason` is one of:
-
-- `missing_context`: the request has no activation context.
-- `invalid_context`: its token is not valid.
-- `stale_context`: its startup context is too old.
-
-The event contains no activation token or input serial. Socket subscription is
-documented in the [compositor bridge](/bridge/).
-
-### Window records
-
-Window records contain the fields available from the compositor:
-
-- Identity: `id`, `title`, `app_id`, `gtk_app_id`, `wm_class`, `rule_app_id`, `client_type` (`"wayland"` or `"x11"`), and optional `role`.
-- Location: `workspace_id`, `workspace_number`, `monitor_id`, `monitor_index`, `parent`.
-- State: `maximized`, `fullscreen`, `minimized`, `focused`, `above`, `sticky`, `modal`, and `demands_attention`.
-- Capabilities: `closable`, `minimizable`, `maximizable`, `movable`, and `resizable`.
-- Type: `type`, an integer `MetaWindowType` value.
-- Geometry: `frame` and the optional `monitor` origin.
-- Interaction: `last_user_time`.
-- Origin: `pid`, the client's process ID from the display server, and `process`, the `Process.id` when
-  `gnoblin.process.spawn` started the program. See [processes](/shell-api/processes).
-- Record metadata: `revision`, the state revision for this record.
-
-A field is omitted when the compositor does not provide it. `monitor_id` is
-the active connector name for the current logical monitor. Cloned outputs use
-the lexicographically first active connector. `monitor_index` is the current
-Mutter order and can change when outputs change.
-
-The `type` value follows Mutter's `MetaWindowType` enum. It describes the
-client surface rather than shell presentation.
-
-`modal` is true for type value `4`; `changed` includes `modal` when it changes.
-
-| Value | Type           | Meaning                               |
-| ----- | -------------- | ------------------------------------- |
-| 0     | normal         | Standard application window.          |
-| 1     | desktop        | Desktop background surface.           |
-| 2     | dock           | Dock or panel surface.                |
-| 3     | dialog         | Dialog window.                        |
-| 4     | modal dialog   | Dialog that blocks its parent window. |
-| 5     | toolbar        | Toolbar surface.                      |
-| 6     | menu           | Menu surface.                         |
-| 7     | utility        | Utility window.                       |
-| 8     | splash screen  | Application startup surface.          |
-| 9     | dropdown menu  | Dropdown menu surface.                |
-| 10    | popup menu     | Popup menu surface.                   |
-| 11    | tooltip        | Tooltip surface.                      |
-| 12    | notification   | Notification surface.                 |
-| 13    | combo box      | Combo-box popup surface.              |
-| 14    | drag-and-drop  | Drag-and-drop surface.                |
-| 15    | override other | Other override-redirect surface.      |
-
-The `changed` array lists mapped properties that changed. Focus transitions and
-attention changes use separate events; `demands_attention` is omitted from the
-`changed` array.
-
-When focus moves between windows that remain managed, the native runtime
-dispatches `unfocused` before `focused` within that state revision.
-
-A closed event's `last` field contains the final available window record.
-
-`removed` reports the workspace's last record before removal. Its `number` is
-the position immediately before removal.
-
-When `workspace.create` uses `activate = true`, Gnoblin emits `created` first
-with `active = false`, then emits `activated` after switching workspaces.
-
-A Lua API call returns an `Operation` handle with its current status, result,
-failure reason, and a completion callback. See the [Lua runtime API](/shell-api/)
-for the handle fields and callback behavior.
-
-## Type definition
-
-Event names are open-ended: Gnoblin accepts a nonempty UTF-8 string of up to
-128 bytes with no NUL byte, but only names dispatched by Gnoblin or Mutter
-produce callbacks. The event fields depend on the event name; all
-callback values are Lua tables.
-
-```lua
-gnoblin.on(event_name, function(event)
-    -- event_name: string | "*"
-    -- event = {
-    --     name = string,
-    --     source = string?, signal = string?,
-    --     app_id = string?, wm_class = string?, title = string?,
-    --     type = string?, time = number?, x = number?, y = number?,
-    --     button = integer?, key_symbol = string?,
-    --     scroll_x = number?, scroll_y = number?, scroll_direction = string?,
-    --     ... -- additional fields depend on the event source
-    -- }
-end)
+gnoblin.clients.addListener(new Titles());
 ```
+
+Save it as `init.ts`. Open a terminal and read the lines with `journalctl --user -t titles -f`.
+
+| Method                                | Called when                                                                 |
+| ------------------------------------- | --------------------------------------------------------------------------- |
+| `onTitleChanged(client, title)`       | The window's title changed.                                                 |
+| `onAppIdChanged(client, appId)`       | The window's application id changed.                                        |
+| `onFocusChanged(client, focused)`     | The window gained or lost the keyboard focus.                               |
+| `onGeometryChanged(client, geometry)` | The window's rectangle changed. `geometry` is `{ x, y, width, height }`.    |
+| `onClosed(client)`                    | The window closed. The object keeps its last values and `alive` is `false`. |
+| `onPointerEnter(client, event)`       | The pointer crossed into the window.                                        |
+| `onPointerMotion(client, event)`      | The pointer moved over the window.                                          |
+| `onPointerLeave(client, event)`       | The pointer left the window.                                                |
+| `onPointerPress(client, event)`       | A button went down on the window.                                           |
+| `onPointerRelease(client, event)`     | A button came up on the window.                                             |
+| `onRequest(client, request)`          | The client asked for a change of its window. See below.                     |
+
+A pointer `event` has `x` and `y` in the window's own coordinates and `button`, which is 0 for every event but a press and
+a release.
+
+### Answer a request yourself
+
+A client asks the compositor to maximise, fullscreen, minimise, close, raise or move its window, and the compositor does
+nothing until the shell answers. The stock shell answers every kind. A listener's `onRequest` hears the request first,
+and `request.handle()` answers it: the stock answer does not run. The kinds and the `windowState` policy are in
+[Windows](/shell-api/windows#window-requests).
+
+## Listen to membership
+
+A `CollectionListener` on a collection hears members join and leave:
+
+- `onAdded(member)` runs when a window, workspace or output joins.
+- `onRemoved(member)` runs when one leaves.
+
+```ts
+import { CollectionListener, gnoblin, toast } from "gnoblin";
+import type { Client } from "gnoblin";
+
+class Count extends CollectionListener<Client> {
+    onAdded(client: Client) {
+        toast(`${client.appId} opened: ${gnoblin.clients.length} windows`);
+    }
+}
+
+gnoblin.clients.addListener(new Count());
+```
+
+## Listen to outputs
+
+An `OutputListener` attached to `gnoblin.outputs`, or to one output, has these methods:
+
+| Method                                | Called when                                       |
+| ------------------------------------- | ------------------------------------------------- |
+| `onConnected(output)`                 | An output was plugged in while the shell runs.    |
+| `onDisconnected(output)`              | An output is gone. Its last values stay readable. |
+| `onModeChanged(output, mode)`         | The mode changed. `mode` is `WxH@Hz`.             |
+| `onScaleChanged(output, scale)`       | The scale changed.                                |
+| `onGeometryChanged(output, geometry)` | The output's position or size changed.            |
+
+A listener on the collection does not hear `onConnected` for an output that was there when the shell started. See
+[Outputs](/shell-api/outputs#listen-for-plugging-and-unplugging).
+
+## Signals of `gnoblin.on`
+
+| Event                           | Fields                                        | When                                              |
+| ------------------------------- | --------------------------------------------- | ------------------------------------------------- |
+| `gnoblin.window.created`        | `window`                                      | A window came into existence.                     |
+| `gnoblin.window.changed`        | `windowId`, `changed`, `window`               | A property other than `focused` changed.          |
+| `gnoblin.window.closed`         | none                                          | The window is gone.                               |
+| `gnoblin.window.menu_requested` | `x`, `y`, `width`, `height`, `source`, `seat` | The user or a client asked for the window's menu. |
+| `gnoblin.workspace.created`     | `workspace`                                   | A workspace was created.                          |
+| `gnoblin.workspace.removed`     | `workspaceId`, `last`                         | A workspace was removed.                          |
+| `gnoblin.output.added`          | `outputId`, `output`                          | A display was connected.                          |
+| `gnoblin.output.changed`        | `outputId`, `output`, `changed`               | A property of the output changed.                 |
+| `gnoblin.output.removed`        | `outputId`, `last`                            | A display was disconnected.                       |
+| `gnoblin.output.closed`         | none                                          | The output object is gone.                        |
+
+- `changed` is the list of property names that changed.
+- `window`, `output`, `workspace` and `last` hold the object's numeric identity, not the object.
+- `x`, `y`, `width` and `height` of the menu request are an anchor in the compositor's coordinates. A point has no size.
+- `source` is `client` for a program's own request, `keyboard` for the window menu key and `extension` for a script that
+  asked. `seat` names the seat that made the request.
+- `closed` is raised by the object that is gone, so its `object` field says which one.
+
+`gnoblin.window.changed` does not report a focus change. A focus change reaches `ClientListener.onFocusChanged`.

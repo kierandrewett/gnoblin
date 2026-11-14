@@ -75,9 +75,9 @@
             <p>Keyboards, mice, touchpads, tablets and pens, plus the screens you connect.</p>
         </li>
         <li>
-            <p class="t">One Lua file sets it up</p>
+            <p class="t">One TypeScript file sets it up</p>
             <p>
-                Settings live in <code class="inline">~/.config/gnoblin/init.lua</code> and apply without logging out.
+                Settings live in <code class="inline">~/.config/gnoblin/init.ts</code> and apply without logging out.
             </p>
         </li>
     </ul>
