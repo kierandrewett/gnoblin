@@ -58,6 +58,8 @@ pub(crate) enum Invocation {
         force: bool,
         json: bool,
     },
+    /// A live prompt into the running JavaScript shell, or one expression of it.
+    Console { eval: Option<String>, json: bool },
     /// A hand-written verb: the session's state, the version, or a config check.
     Verb { verb: verbs::Verb, json: bool },
 }
@@ -170,6 +172,7 @@ pub(crate) fn command_tree() -> Command {
         .subcommand(log_command())
         .subcommand(check_command())
         .subcommand(types_command())
+        .subcommand(console_command())
 }
 
 /// A hand-written verb and a schema object with one name are one command: the verb's
@@ -350,6 +353,24 @@ fn check_command() -> Command {
         )
 }
 
+/// `console [--eval EXPR]`.
+fn console_command() -> Command {
+    Command::new("console")
+        .about("Open a live console into the running JavaScript shell.")
+        .long_about(
+            "Open a live console into the running JavaScript shell. Each line you type is evaluated in the shell's \
+             own runtime, between frames, with the same `gnoblin` global as init.ts, and its value is printed. \
+             `.exit` or Ctrl-D leaves. With --eval the expression is evaluated once and its value is printed as JSON. \
+             It needs a running JavaScript shell and does not use the compositor's socket.",
+        )
+        .arg(
+            Arg::new("eval")
+                .long("eval")
+                .value_name("EXPR")
+                .help("Evaluate EXPR once, print its value as JSON and exit: 0 on a value, 1 on an error."),
+        )
+}
+
 /// `types <COMMAND>`.
 fn types_command() -> Command {
     Command::new("types")
@@ -500,6 +521,10 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocati
         "completions" => completions_invocation(sub)?,
         "log" => log_invocation(sub, json)?,
         "check" => check_invocation(sub, json)?,
+        "console" => Invocation::Console {
+            eval: sub.get_one::<String>("eval").cloned(),
+            json,
+        },
         "types" => {
             let (name, init) = sub.subcommand().expect("a subcommand is required");
             debug_assert_eq!(name, "init");

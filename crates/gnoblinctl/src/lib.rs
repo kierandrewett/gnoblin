@@ -20,6 +20,7 @@
 //! gnoblinctl [--json] <object> call <ID> <METHOD> [NAME=VALUE ...]
 //! gnoblinctl ipc dump [FILE]
 //! gnoblinctl completions <bash|zsh|fish> [--output PATH]
+//! gnoblinctl console [--eval EXPR]
 //! gnoblinctl log [--dir DIR] [--level LEVEL] [--role ROLE] [--target TARGET] [--limit N]
 //!     [--since TIME] [--until TIME] [--follow [--interval DURATION]]
 //! ```
@@ -90,6 +91,7 @@ mod args;
 mod cli;
 mod commands;
 mod connection;
+mod console;
 mod dump;
 mod js;
 mod logs;
@@ -99,6 +101,7 @@ mod value;
 mod verbs;
 
 pub use connection::{ConnectFailure, Connection, SocketConnection};
+pub use console::{ConsoleOptions, console_socket, run_console};
 // Where the socket is and the transport over it are the client library's, because
 // every client of the IPC has to find the same file and speak the same handshake.
 pub use gnoblin_client::unix::{DEFAULT_SOCKET, RUNTIME_VARIABLE, SOCKET_VARIABLE, UnixTransport, socket_path};
@@ -148,6 +151,7 @@ pub fn run(
         }
         cli::Invocation::TypesInit { dir, json } => js::types_init(dir.as_deref(), json, out, err),
         cli::Invocation::ConfigInit { dir, force, json } => js::config_init(dir.as_deref(), force, json, out, err),
+        cli::Invocation::Console { eval, json } => console::run_process(eval.as_deref(), json, out, err),
         cli::Invocation::Verb {
             verb: verbs::Verb::ConfigValidate { path },
             json,

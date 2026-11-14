@@ -687,6 +687,7 @@ fn the_command_tree_matches_the_schema() {
                 && name != "log"
                 && name != "check"
                 && name != "types"
+                && name != "console"
                 && name != "help"
         })
         .collect();
