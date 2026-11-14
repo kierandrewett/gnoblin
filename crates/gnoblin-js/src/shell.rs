@@ -197,7 +197,7 @@ pub struct JsShell {
     /// answers in order, but a refusal carries the serial the tree had then and not the one the shell
     /// stamped, so a reply is matched to its transaction by position.
     sent: VecDeque<Sent>,
-    /// Serial of the one transaction in flight. Nothing else is sent until the mirror reaches it.
+    /// Serial of the one transaction in flight. Nothing else is sent until its reply has come and the mirror reaches it.
     in_flight: Option<u64>,
     /// Ops refused `stale-base` that are sent again, ahead of the next frame's writes.
     retry: Vec<TxOp>,
@@ -1133,6 +1133,14 @@ impl JsShell {
             let mut kept: Vec<TxOp> = Vec::new();
             for (index, op) in ops.into_iter().enumerate() {
                 if Some(index) == failed && !retry_failed {
+                    // A node that is gone has nothing to report; a write refused again and again is the script's
+                    // intent lost, and the script is told which.
+                    if reply.code == "stale-base" {
+                        diagnostics.push(format!(
+                            "transaction {} stale at op {index}: dropped after {STALE_RETRIES} resends",
+                            reply.serial
+                        ));
+                    }
                     continue;
                 }
                 match op {
@@ -1198,7 +1206,10 @@ impl JsShell {
         let tx = {
             let mut guard = self.state.borrow_mut();
             let state = &mut *guard;
-            if !self.in_flight.is_none_or(|serial| state.mirror.serial() >= serial) {
+            // The gate opens on the reply and on the mirror reaching the serial: a batch of the compositor's own may
+            // take the serial this transaction was stamped for, and a second transaction sent then is built on a base
+            // that lacks the first, which the compositor refuses stale against it.
+            if !self.sent.is_empty() || !self.in_flight.is_none_or(|serial| state.mirror.serial() >= serial) {
                 return Ok(());
             }
             let serial = state.mirror.serial();

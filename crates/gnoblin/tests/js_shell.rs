@@ -2950,6 +2950,19 @@ fn shows(ipc: &Path, text: &str) -> bool {
     })
 }
 
+/// Whether the shell has told the compositor it draws window decorations (the seat's `decorations_available`). A window
+/// that asks for server-side decorations before this lands is told to draw its own, and the bar comes when the answer
+/// changes, after the shell has placed the window without room for it: a test of the placement waits for this first.
+fn decorations_declared(ipc: &Path) -> bool {
+    snapshot(ipc).iter().any(|node| {
+        node.class == "seat"
+            && node
+                .props
+                .iter()
+                .any(|prop| prop.key == "decorations_available" && prop.value_bool)
+    })
+}
+
 fn write_ui_config(dir: &Path) {
     fs::write(
         dir.join("init.ts"),
@@ -2970,7 +2983,7 @@ fn a_decorated_windows_content_lies_below_its_bar_and_a_titlebar_right_click_ope
     let shell = Shell::start(&session, config.path(), |_| {});
     let ipc = session.ipc();
     wait_for("the shell is running", &session, &mut mapper, &shell, || {
-        shell.generation() >= 1
+        shell.generation() >= 1 && decorations_declared(&ipc)
     });
     // The window arrives while the shell runs, so the floating layout places it as a frame: the bar, then the content.
     mapper.map_window("org.example.framed", "Framed");
@@ -3060,7 +3073,7 @@ fn a_window_that_draws_its_own_title_bar_gets_no_second_one_and_a_server_side_wi
     let shell = Shell::start(&session, config.path(), |_| {});
     let ipc = session.ipc();
     wait_for("the shell is running", &session, &mut asks, &shell, || {
-        shell.generation() >= 1
+        shell.generation() >= 1 && decorations_declared(&ipc)
     });
 
     own.map_window("org.example.own", "Own");
@@ -3167,7 +3180,7 @@ fn a_window_that_stops_answering_gets_the_alert_and_wait_and_force_quit_close_it
     let shell = Shell::start(&session, config.path(), |_| {});
     let ipc = session.ipc();
     wait_for("the shell is running", &session, &mut mapper, &shell, || {
-        shell.generation() >= 1
+        shell.generation() >= 1 && decorations_declared(&ipc)
     });
     mapper.map_window("org.example.stuck", "Stuck");
     wait_for("the window is up", &session, &mut mapper, &shell, || {
@@ -4197,12 +4210,19 @@ fn screens_by_place(ipc: &Path) -> Vec<(u64, (f64, f64, f64, f64))> {
     found
 }
 
-/// Whether the shell hid the window of `app`: its node holds `visible` false (true is the default, and not carried).
+/// Whether the tree holds no node of the window of `app`.
+fn gone(ipc: &Path, app: &str) -> bool {
+    !snapshot(ipc)
+        .iter()
+        .any(|node| node.class == "window" && node.app_id == app)
+}
+
+/// Whether no node of `app` is shown: the node holds `visible` false (true is the default, and not carried) or is gone.
 fn hidden(ipc: &Path, app: &str) -> bool {
-    snapshot(ipc)
+    !snapshot(ipc)
         .iter()
         .filter(|node| node.class == "window" && node.app_id == app)
-        .any(|node| node.props.iter().any(|prop| prop.key == "visible" && !prop.value_bool))
+        .any(|node| node.props.iter().all(|prop| prop.key != "visible" || prop.value_bool))
 }
 
 #[test]
@@ -4211,7 +4231,7 @@ fn a_window_on_a_second_virtual_output_follows_to_the_first_when_it_is_unplugged
     // The headless backend takes outputs at runtime through the session's `OutputTap`. Two workspaces fill the output
     // that shows them; the rule sends `org.example.second`'s window to the second workspace, which the second output
     // shows. Unplugging the second output moves that window to the workspace the first shows; unplugging the first too
-    // parks both windows hidden; the next output adopts them.
+    // parks both windows hidden, and they leave the tree; the next output adopts them.
     let tap = OutputTap::new();
     let session = Session::start_with({
         let tap = tap.clone();
@@ -4264,24 +4284,27 @@ fn a_window_on_a_second_virtual_output_follows_to_the_first_when_it_is_unplugged
         || rect_of(&ipc, second) == Some(first_rect) && rect_of(&ipc, first) == Some(first_rect),
     );
 
-    // The last output is unplugged: both windows wait hidden.
+    // The last output is unplugged: both windows wait hidden. A hidden window fades out and then its node leaves the
+    // tree, and the window comes back as a new node with a new identity. The test waits for that, so the way back does
+    // not depend on whether the next output arrives before the fade ends (which the load on the machine decides).
     assert!(tap.disconnect(OutputId::new(first_output)));
     wait_for("no screen", &session, &mut mapper, &shell, || screens(&ipc) == 0);
-    wait_for("both windows are hidden", &session, &mut mapper, &shell, || {
-        hidden(&ipc, first) && hidden(&ipc, second)
+    wait_for("both windows have left the tree", &session, &mut mapper, &shell, || {
+        gone(&ipc, first) && gone(&ipc, second)
     });
 
-    // The next output adopts them.
+    // The next output adopts them. They are new windows to the shell, so each goes where the rules say: the first to the
+    // workspace the output shows, the second to the other workspace, which no output shows.
     assert!(tap.connect("HEADLESS-3", 640, 480));
     wait_for("a screen again", &session, &mut mapper, &shell, || screens(&ipc) == 1);
     let back = screens_by_place(&ipc)[0].1;
     assert_eq!((back.2, back.3), (640.0, 480.0));
     wait_for(
-        "the parked windows come back on the new output",
+        "the parked windows come back: the first on the new output, the second hidden on its workspace",
         &session,
         &mut mapper,
         &shell,
-        || rect_of(&ipc, first) == Some(back) && rect_of(&ipc, second) == Some(back) && !hidden(&ipc, first),
+        || rect_of(&ipc, first) == Some(back) && !hidden(&ipc, first) && !gone(&ipc, second) && hidden(&ipc, second),
     );
 }
 

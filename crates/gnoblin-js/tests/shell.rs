@@ -942,6 +942,34 @@ fn holds_writes_while_a_transaction_is_in_flight() {
 }
 
 #[test]
+fn a_batch_of_the_compositors_own_does_not_open_the_gate_before_the_reply() {
+    let comp = two_windows();
+    comp.borrow_mut().hold = true;
+    let mut rig = rig(&comp, "export {};\n");
+    rig.frame();
+    rig.eval("gnoblin.clients.get('3').x = 7; 0");
+    rig.frame();
+    assert_eq!(sent(&comp).len(), 1, "the first transaction is in flight");
+
+    // A batch of the compositor's takes the serial the first transaction was stamped for. The mirror reaches that
+    // serial, but the first transaction has not landed: a second one built now would lack its writes.
+    FakeLink(comp.clone()).external_set(4, "title", text("moved"));
+    rig.eval("gnoblin.clients.get('3').y = 8; 0");
+    rig.frame();
+    assert_eq!(sent(&comp).len(), 1, "the second write waits for the first's reply");
+
+    FakeLink(comp.clone()).release();
+    rig.frame();
+    rig.frame();
+    assert_eq!(
+        sent(&comp).len(),
+        2,
+        "the held write is sent once, on the base that has the first"
+    );
+    assert_eq!(rig.eval("gnoblin.clients.get('3').y"), "8");
+}
+
+#[test]
 fn a_stale_base_refusal_sends_every_write_again_on_the_new_base_and_the_scripts_write_stands() {
     let comp = two_windows();
     comp.borrow_mut().hold = true;
@@ -994,11 +1022,14 @@ fn a_write_refused_stale_base_every_time_is_dropped_after_its_retries_and_the_ot
     rig.eval("gnoblin.clients.get('3').x = 7; gnoblin.clients.get('4').y = 8; 0");
     rig.frame();
     // The compositor changes window 3 before every landing, so its write is refused each time.
+    let mut told = Vec::new();
     for round in 0..=gnoblin_js::STALE_RETRIES {
         FakeLink(comp.clone()).external_set(3, "title", text(&format!("t{round}")));
         FakeLink(comp.clone()).release();
-        rig.frame();
+        told.extend(rig.frame());
     }
+    assert_eq!(told.len(), 1, "the drop is reported once: {told:?}");
+    assert!(told[0].contains("dropped after"), "{told:?}");
     let last: Vec<(u64, String)> = sent(&comp)
         .last()
         .expect("a transaction")
