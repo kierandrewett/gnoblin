@@ -36,6 +36,20 @@ make test    # build the tests, then run the CTest suites
 Run `tests/test-window-manager.sh` only when the real-host and RPM gates are required. The testing guide records which
 checks need a real seat, hardware or a running private session.
 
+## TypeScript shell code
+
+Run `just js-check` to type-check shell sources and lint tracked JavaScript/TypeScript; it also checks TypeScript formatting.
+Use these commands when working on one file:
+
+```sh
+npx --yes prettier@3.9.6 --write path/to/file.ts
+pre-commit run eslint --files path/to/file.ts
+scripts/js-typecheck.sh
+```
+
+Start each module with a short file header, document public exports, and write comments to explain why a choice is needed rather
+than restating the code. A necessary `any` or type assertion needs a one-line comment naming the reason.
+
 A pull request that changes `release.yml`, the package recipes or the release scripts runs the whole
 release pipeline as a dry run. It builds and tests every package and publishes nothing. To run the
 same check on a branch without a pull request, use

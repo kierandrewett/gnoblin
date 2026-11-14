@@ -8,3 +8,4 @@ banks/
 *.patch
 *.lock
 crates/gnoblin-js/tests/spec/
+crates/gnoblin-js-types/tests/golden/

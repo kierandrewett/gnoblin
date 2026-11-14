@@ -59,6 +59,10 @@ jobs:
           tool: just,cargo-deny
       # A bare ubuntu-latest runner has none of the system libraries the crates link or probe (libudev, libinput, libseat,
       # libpipewire and others), so the build fails without this step. The list lives in the script and nowhere else.
+      - name: Install Node.js for JavaScript checks
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.17.0"
       - name: Install system libraries
         run: scripts/ci-install-system-libraries.sh
       # rust-toolchain.toml selects the compiler and installs rustfmt and

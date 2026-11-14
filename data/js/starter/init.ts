@@ -4,8 +4,9 @@
 // edit it. A line that starts with "// " and then code is an example: delete the "// " to switch it on.
 // To check your edits before you save them, run `gnoblinctl check --types init.ts`.
 // Every key below is listed, with its type and an example, in the defineConfig reference.
-// `spawn` is imported for the key examples below. Remove it if you do not use it.
-import { defineConfig, spawn } from "gnoblin";
+// Uncomment this import with a command key example to use `spawn`.
+// import { spawn } from "gnoblin";
+import { defineConfig } from "gnoblin";
 
 export default defineConfig({
     // Space between windows (inner) and between windows and the screen edge (outer), in pixels.

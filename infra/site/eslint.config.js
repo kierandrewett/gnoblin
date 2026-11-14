@@ -1,7 +1,10 @@
-import js from "@eslint/js";
-import svelte from "eslint-plugin-svelte";
-import globals from "globals";
-import ts from "typescript-eslint";
+import { createRequire } from "node:module";
+
+const require = createRequire(process.argv[1]);
+const js = require("@eslint/js");
+const svelte = require("eslint-plugin-svelte");
+const globals = require("globals");
+const ts = require("typescript-eslint");
 
 export default ts.config(
     { ignores: ["build/", ".svelte-kit/", "node_modules/", "static/"] },
@@ -9,7 +12,10 @@ export default ts.config(
     ...ts.configs.recommended,
     ...svelte.configs.recommended,
     {
-        languageOptions: { globals: { ...globals.browser, ...globals.node } },
+        languageOptions: {
+            globals: { ...globals.browser, ...globals.node },
+            parserOptions: { projectService: false, tsconfigRootDir: import.meta.dirname },
+        },
         rules: {
             // TypeScript checks these (yarn check).
             "no-undef": "off",

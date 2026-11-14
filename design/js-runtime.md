@@ -26,6 +26,15 @@ Inputs (all in `design/js-research/`):
 | J8  | Rust draws the security-critical built-in dialogs: portal consent, secret and passphrase entry, polkit, lock password entry. JS themes them (`dialogs.style`), can intercept them (`DialogListener`), and can replace them only through the owner connection. The compositor owns each request and its deadline. JS holds a lease. | A crashed or reloading runtime must never leave the keyring, polkit or the lock without a UI. See `popups-portals.md`.                |
 | J9  | The Lua shell stays as the reference until the JS shell passes the same golden geometry corpus. Then delete `gnoblin-lua`, `gnoblin-lua-sandbox`, `data/lua/**` and the Lua docs.                                                                                                                                                  | Spec section 22. No half-migrated state.                                                                                              |
 
+## Developer checks
+
+QuickJS runs TypeScript after stripping types; it does not embed `tsc`. `scripts/js-typecheck.sh` checks the stock library,
+host module and starter with strict TypeScript settings and no DOM library. `just js-check` adds ESLint and Prettier checks
+for tracked JavaScript and TypeScript, and `workspace-ci` runs it in CI.
+
+Shell modules use the repository's Prettier configuration. Keep a file header, document public exports, and comment why a
+non-obvious choice or necessary `any` or type assertion exists. See [contributor commands and comment guidance](../CONTRIBUTING.md#typescript-shell-code).
+
 ## Zero-config baseline
 
 Without any `init.ts`, the stock library runs: the four floating workspaces `1` to `4` of the Lua stock config

@@ -30,8 +30,18 @@ repos:
         name: eslint
         entry: eslint --no-warn-ignored
         language: node
-        files: '\.(js|mjs|cjs)$'
-        additional_dependencies: ["prettier@3.9.6", "eslint@10.10.0"]
+        files: '\.(js|mjs|cjs|ts)$'
+        additional_dependencies:
+          [
+            "prettier@3.9.6",
+            "eslint@10.10.0",
+            "typescript-eslint@8.72.2",
+            "typescript@7.0.2",
+            "@eslint/js@10.0.1",
+            "eslint-plugin-svelte@3.23.1",
+            "globals@17.13.0",
+            "svelte@5.57.3",
+          ]
         language_version: "22.16.0"
         require_serial: true
       - id: ruff-check
@@ -61,7 +71,7 @@ repos:
         name: prettier-check
         entry: prettier --check
         language: node
-        files: '\.(mjs|cjs|json|ya?ml|md|scss|css|html)$'
+        files: '\.(mjs|cjs|json|ya?ml|md|scss|css|html|ts)$'
         additional_dependencies: ["prettier@3.9.6", "eslint@10.10.0"]
         language_version: "22.16.0"
         require_serial: true
@@ -126,7 +136,7 @@ repos:
         name: prettier-format
         entry: prettier --write
         language: node
-        files: '\.(mjs|cjs|json|ya?ml|md|scss|css|html)$'
+        files: '\.(mjs|cjs|json|ya?ml|md|scss|css|html|ts)$'
         additional_dependencies: ["prettier@3.9.6", "eslint@10.10.0"]
         language_version: "22.16.0"
         stages: [manual]
