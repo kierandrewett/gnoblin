@@ -14,8 +14,10 @@ name = "effect"
 since = "0.2.0"
 record = true
 
-# The kind of effect: `blur` or `shadow`. Any other kind, `shader` included, is refused
-# `bad-value` and the whole list is refused with it: the compositor runs no user shaders.
+# The kind of effect: `blur`, `shadow` or `border`. Any other kind, `shader` included, is
+# refused `bad-value` and the whole list is refused with it: the compositor runs no user
+# shaders. A node holds at most 8 `border` and at most 8 `shadow` elements; a list over
+# either cap is refused `too-large`.
 [[object.property]]
 name = "kind"
 type = "string"
@@ -110,4 +112,35 @@ since = "0.2.0"
 [[object.property]]
 name = "colour"
 type = "string"
+since = "0.2.0"
+
+# Border only. The stroke width in logical pixels, 0 to 100. Default 0.0, which draws nothing.
+# Ignored by blur and shadow. A `border` also reads `colour`: `#rrggbb` or `#rrggbbaa`.
+[[object.property]]
+name = "width"
+type = "double"
+since = "0.2.0"
+
+# Border only. The distance in logical pixels from the silhouette's edge to the stroke's edge
+# nearest it, -100 to 100. Positive moves the stroke away from the silhouette (outwards, or
+# inwards when `inset`); negative moves it back across the edge. Default 0.0. Ignored by
+# blur and shadow. Borders in list order with different offsets make concentric rings.
+[[object.property]]
+name = "offset"
+type = "double"
+since = "0.2.0"
+
+# Border only. Whether the stroke lies inside the node's silhouette (`true`) or outside it
+# (`false`, the default). Ignored by blur and shadow.
+[[object.property]]
+name = "inset"
+type = "bool"
+since = "0.2.0"
+
+# Shadow only. Whether the shadow follows the node's whole frame (the node's rectangle
+# together with the decoration children that lie outside it, such as a window's titlebar)
+# rather than the node's own rectangle. Default false. Ignored by blur and border.
+[[object.property]]
+name = "frame"
+type = "bool"
 since = "0.2.0"

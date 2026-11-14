@@ -1458,7 +1458,28 @@ impl Scene {
     pub fn absolute_bounds(&self, id: NodeId) -> Option<Rect> {
         let node = self.nodes.get(&id)?;
         let world = self.world_matrix(id)?;
-        project_bounds(&world, node.visual_local()).map(|bounds| bounds.to_pixel())
+        project_bounds(&world, self.visual_area(id, node)).map(|bounds| bounds.to_pixel())
+    }
+
+    /// The local rectangle a node can draw into: its bounds and its effects' padding, and, for a window whose shadow
+    /// follows its frame or that carries a border, the decoration children that lie outside it (a titlebar above the
+    /// content), each with the same padding. The shadow and the border are drawn around that whole frame, so a
+    /// change to either has to repaint what they cover above the bar too.
+    fn visual_area(&self, id: NodeId, node: &Node) -> RectF {
+        let own = node.visual_local();
+        if !(node.effects.has_frame_shadow() || node.effects.has("border")) || self.class(id) != Some("window") {
+            return own;
+        }
+        let padding = node.effects.padding();
+        node.children
+            .iter()
+            .filter_map(|child| self.nodes.get(child))
+            .fold(own, |area, child| {
+                let offset = child.transform.base.offset;
+                let bounds = child.bounds.to_f64();
+                let local = RectF::new(bounds.x + offset.x, bounds.y + offset.y, bounds.width, bounds.height);
+                area.union(padding.expand(local))
+            })
     }
 
     /// A node's own rectangle on the output plane, before its effect padding, as its current
@@ -1633,7 +1654,7 @@ impl Scene {
         let world = self.world_matrix(id)?;
         let node = self.nodes.get(&id)?;
         Some(DamageSample {
-            rect: project_bounds(&world, node.visual_local()).map(|bounds| bounds.to_pixel()),
+            rect: project_bounds(&world, self.visual_area(id, node)).map(|bounds| bounds.to_pixel()),
             affine: world.m[3] == [0.0, 0.0, 0.0, 1.0],
         })
     }
@@ -1797,7 +1818,7 @@ fn child_index(index: Option<usize>, len: usize) -> Result<usize, SceneError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::effect::{BlurParams, Pass, Shadow};
+    use crate::effect::{BlurParams, Border, Pass, Shadow};
 
     fn rect(x: i32, y: i32, width: u32, height: u32) -> Rect {
         Rect::new(x, y, width, height)
@@ -2095,6 +2116,7 @@ mod tests {
                 spread: 0.0,
                 opacity: 0.5,
                 color: gnoblin_types::Color::BLACK,
+                frame: false,
             }))
             .expect("shadow");
         scene.set_effects(node, effects).expect("effects");
@@ -2102,6 +2124,96 @@ mod tests {
         let damage = scene.take_damage();
         let output = damage.for_output(OutputId::new(0)).expect("output damage");
         assert!(output.covers(rect(100, 100, 130, 130)));
+    }
+
+    /// A window at (100, 100) 200 by 200 with a 28 pixel titlebar child above its content.
+    fn decorated_window(scene: &mut Scene) -> NodeId {
+        let window = NodeId::new(1);
+        scene
+            .insert(window, NodeSpec::new(rect(0, 0, 200, 200)))
+            .expect("window");
+        scene
+            .set_transform(
+                window,
+                VisualTransform {
+                    base: gnoblin_types::Transform::translate(100.0, 100.0),
+                    ..VisualTransform::IDENTITY
+                },
+            )
+            .expect("placed");
+        scene.set_class(window, Some("window".to_owned())).expect("class");
+        let mut bar = NodeSpec::new(rect(0, -28, 200, 28));
+        bar.parent = Some(window);
+        scene.insert(NodeId::new(2), bar).expect("titlebar");
+        scene.take_damage();
+        window
+    }
+
+    fn shadow_of(frame: bool) -> Effects {
+        let mut effects = Effects::new();
+        effects
+            .push(Pass::Shadow(Shadow {
+                offset: Vec3::ZERO,
+                blur: 10.0,
+                spread: 0.0,
+                opacity: 1.0,
+                color: gnoblin_types::Color::BLACK,
+                frame,
+            }))
+            .expect("shadow");
+        effects
+    }
+
+    #[test]
+    fn a_frame_shadow_damages_the_room_the_titlebar_fills_and_a_content_shadow_does_not() {
+        let mut scene = scene_with_output();
+        let window = decorated_window(&mut scene);
+        scene.set_effects(window, shadow_of(false)).expect("effects");
+        assert_eq!(
+            scene.absolute_bounds(window),
+            Some(rect(90, 90, 220, 220)),
+            "a content shadow is the content's padding"
+        );
+        scene.take_damage();
+        scene.set_effects(window, shadow_of(true)).expect("effects");
+        assert_eq!(
+            scene.absolute_bounds(window),
+            Some(rect(90, 62, 220, 248)),
+            "a frame shadow reaches 10 pixels above the 28 pixel bar"
+        );
+        let damage = scene.take_damage();
+        let output = damage.for_output(OutputId::new(0)).expect("output damage");
+        assert!(output.covers(rect(90, 62, 220, 248)));
+    }
+
+    #[test]
+    fn a_border_damages_the_frame_it_runs_along() {
+        let mut scene = scene_with_output();
+        let window = decorated_window(&mut scene);
+        let mut effects = Effects::new();
+        effects
+            .push(Pass::Border(Border {
+                width: 2.0,
+                offset: 1.0,
+                inset: false,
+                color: gnoblin_types::Color::WHITE,
+            }))
+            .expect("border");
+        scene.set_effects(window, effects).expect("effects");
+        assert_eq!(
+            scene.absolute_bounds(window),
+            Some(rect(97, 69, 206, 234)),
+            "the stroke reaches 3 pixels past the content and past the titlebar"
+        );
+    }
+
+    #[test]
+    fn a_node_that_is_not_a_window_keeps_its_own_padding() {
+        let mut scene = scene_with_output();
+        let window = decorated_window(&mut scene);
+        scene.set_class(window, Some("canvas".to_owned())).expect("class");
+        scene.set_effects(window, shadow_of(true)).expect("effects");
+        assert_eq!(scene.absolute_bounds(window), Some(rect(90, 90, 220, 220)));
     }
 
     #[test]

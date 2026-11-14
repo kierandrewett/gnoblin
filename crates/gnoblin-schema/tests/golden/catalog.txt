@@ -331,6 +331,7 @@ object camera since 0.2.0 secret false
   property width type double since 0.2.0 secret false
   property height type double since 0.2.0 secret false
   property opacity type double since 0.2.0 secret false
+  property corner_radius type double since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
@@ -362,6 +363,7 @@ object canvas since 0.2.0 secret false
   property width type double since 0.2.0 secret false
   property height type double since 0.2.0 secret false
   property opacity type double since 0.2.0 secret false
+  property corner_radius type double since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
@@ -384,6 +386,7 @@ object controller since 0.2.0 secret false
   property width type double since 0.2.0 secret false
   property height type double since 0.2.0 secret false
   property opacity type double since 0.2.0 secret false
+  property corner_radius type double since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
@@ -417,6 +420,10 @@ object effect since 0.2.0 secret false
   property blur_radius type double since 0.2.0 secret false
   property spread type double since 0.2.0 secret false
   property colour type string since 0.2.0 secret false
+  property width type double since 0.2.0 secret false
+  property offset type double since 0.2.0 secret false
+  property inset type bool since 0.2.0 secret false
+  property frame type bool since 0.2.0 secret false
 object lock since 0.2.0 secret false
   property id type uint since 0.2.0 secret false
   property parent type object:node since 0.2.0 secret false
@@ -429,6 +436,7 @@ object lock since 0.2.0 secret false
   property width type double since 0.2.0 secret false
   property height type double since 0.2.0 secret false
   property opacity type double since 0.2.0 secret false
+  property corner_radius type double since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
@@ -571,6 +579,7 @@ object node since 0.2.0 secret false
   property width type double since 0.2.0 secret false
   property height type double since 0.2.0 secret false
   property opacity type double since 0.2.0 secret false
+  property corner_radius type double since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
@@ -591,6 +600,7 @@ object screen since 0.2.0 secret false
   property width type double since 0.2.0 secret false
   property height type double since 0.2.0 secret false
   property opacity type double since 0.2.0 secret false
+  property corner_radius type double since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
@@ -628,6 +638,7 @@ object seat since 0.2.0 secret false
   property width type double since 0.2.0 secret false
   property height type double since 0.2.0 secret false
   property opacity type double since 0.2.0 secret false
+  property corner_radius type double since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
@@ -707,6 +718,7 @@ object surface since 0.2.0 secret false
   property width type double since 0.2.0 secret false
   property height type double since 0.2.0 secret false
   property opacity type double since 0.2.0 secret false
+  property corner_radius type double since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
@@ -730,6 +742,7 @@ object tween since 0.2.0 secret false
   property width type double since 0.2.0 secret false
   property height type double since 0.2.0 secret false
   property opacity type double since 0.2.0 secret false
+  property corner_radius type double since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
@@ -753,6 +766,7 @@ object view since 0.2.0 secret false
   property width type double since 0.2.0 secret false
   property height type double since 0.2.0 secret false
   property opacity type double since 0.2.0 secret false
+  property corner_radius type double since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
@@ -777,6 +791,7 @@ object window since 0.2.0 secret false
   property width type double since 0.2.0 secret false
   property height type double since 0.2.0 secret false
   property opacity type double since 0.2.0 secret false
+  property corner_radius type double since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
@@ -813,6 +828,7 @@ object workspace since 0.2.0 secret false
   property width type double since 0.2.0 secret false
   property height type double since 0.2.0 secret false
   property opacity type double since 0.2.0 secret false
+  property corner_radius type double since 0.2.0 secret false
   property visible type bool since 0.2.0 secret false
   property clip type bool since 0.2.0 secret false
   property input type bool since 0.2.0 secret false
@@ -1687,41 +1703,43 @@ message Camera {
     // since 0.2.0
     double opacity = 11;
     // since 0.2.0
-    bool visible = 12;
+    double corner_radius = 12;
     // since 0.2.0
-    bool clip = 13;
+    bool visible = 13;
     // since 0.2.0
-    bool input = 14;
+    bool clip = 14;
     // since 0.2.0
-    bool secure = 15;
+    bool input = 15;
+    // since 0.2.0
+    bool secure = 16;
     // since 0.2.0; list
-    repeated string tags = 16;
+    repeated string tags = 17;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 17;
+    repeated Effect.Properties effects = 18;
     // since 0.2.0; list
-    repeated string skipped = 18;
+    repeated string skipped = 19;
     // since 0.2.0
-    string projection = 19;
+    string projection = 20;
     // since 0.2.0
-    double metres = 20;
+    double metres = 21;
     // since 0.2.0
-    double near = 21;
+    double near = 22;
     // since 0.2.0
-    double far = 22;
+    double far = 23;
     // since 0.2.0
-    double fov = 23;
+    double fov = 24;
     // since 0.2.0
-    double ipd = 24;
+    double ipd = 25;
     // since 0.2.0
-    double fov_left = 25;
+    double fov_left = 26;
     // since 0.2.0
-    double fov_right = 26;
+    double fov_right = 27;
     // since 0.2.0
-    double fov_up = 27;
+    double fov_up = 28;
     // since 0.2.0
-    double fov_down = 28;
+    double fov_down = 29;
     // since 0.2.0
-    uint64 layer_budget = 29;
+    uint64 layer_budget = 30;
   }
 
   // Signal `destroyed`, since 0.2.0.
@@ -1755,21 +1773,23 @@ message Canvas {
     // since 0.2.0
     double opacity = 11;
     // since 0.2.0
-    bool visible = 12;
+    double corner_radius = 12;
     // since 0.2.0
-    bool clip = 13;
+    bool visible = 13;
     // since 0.2.0
-    bool input = 14;
+    bool clip = 14;
     // since 0.2.0
-    bool secure = 15;
+    bool input = 15;
+    // since 0.2.0
+    bool secure = 16;
     // since 0.2.0; list
-    repeated string tags = 16;
+    repeated string tags = 17;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 17;
+    repeated Effect.Properties effects = 18;
     // since 0.2.0; list
-    repeated string skipped = 18;
+    repeated string skipped = 19;
     // since 0.2.0
-    bytes content = 19;
+    bytes content = 20;
   }
 
   // Method `measure`, since 0.2.0.
@@ -1806,39 +1826,41 @@ message Controller {
     // since 0.2.0
     double opacity = 11;
     // since 0.2.0
-    bool visible = 12;
+    double corner_radius = 12;
     // since 0.2.0
-    bool clip = 13;
+    bool visible = 13;
     // since 0.2.0
-    bool input = 14;
+    bool clip = 14;
     // since 0.2.0
-    bool secure = 15;
+    bool input = 15;
+    // since 0.2.0
+    bool secure = 16;
     // since 0.2.0; list
-    repeated string tags = 16;
+    repeated string tags = 17;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 17;
+    repeated Effect.Properties effects = 18;
     // since 0.2.0; list
-    repeated string skipped = 18;
+    repeated string skipped = 19;
     // since 0.2.0
-    string hand = 19;
+    string hand = 20;
     // since 0.2.0
-    bool tracked = 20;
+    bool tracked = 21;
     // since 0.2.0
-    double trigger = 21;
+    double trigger = 22;
     // since 0.2.0
-    double grip = 22;
+    double grip = 23;
     // since 0.2.0
-    double thumbstick_x = 23;
+    double thumbstick_x = 24;
     // since 0.2.0
-    double thumbstick_y = 24;
+    double thumbstick_y = 25;
     // since 0.2.0
-    bool thumbstick_click = 25;
+    bool thumbstick_click = 26;
     // since 0.2.0
-    bool primary = 26;
+    bool primary = 27;
     // since 0.2.0
-    bool secondary = 27;
+    bool secondary = 28;
     // since 0.2.0; list
-    repeated string claimed = 28;
+    repeated string claimed = 29;
   }
 
   // Signal `destroyed`, since 0.2.0.
@@ -1877,6 +1899,14 @@ message Effect {
     double spread = 13;
     // since 0.2.0
     string colour = 14;
+    // since 0.2.0
+    double width = 15;
+    // since 0.2.0
+    double offset = 16;
+    // since 0.2.0
+    bool inset = 17;
+    // since 0.2.0
+    bool frame = 18;
   }
 }
 
@@ -1907,23 +1937,25 @@ message Lock {
     // since 0.2.0
     double opacity = 11;
     // since 0.2.0
-    bool visible = 12;
+    double corner_radius = 12;
     // since 0.2.0
-    bool clip = 13;
+    bool visible = 13;
     // since 0.2.0
-    bool input = 14;
+    bool clip = 14;
     // since 0.2.0
-    bool secure = 15;
+    bool input = 15;
+    // since 0.2.0
+    bool secure = 16;
     // since 0.2.0; list
-    repeated string tags = 16;
+    repeated string tags = 17;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 17;
+    repeated Effect.Properties effects = 18;
     // since 0.2.0; list
-    repeated string skipped = 18;
+    repeated string skipped = 19;
     // since 0.2.0
-    string state = 19;
+    string state = 20;
     // since 0.2.0
-    bool engaged = 20;
+    bool engaged = 21;
   }
 
   // Method `lock`, since 0.2.0.
@@ -2239,19 +2271,21 @@ message Node {
     // since 0.2.0
     double opacity = 11;
     // since 0.2.0
-    bool visible = 12;
+    double corner_radius = 12;
     // since 0.2.0
-    bool clip = 13;
+    bool visible = 13;
     // since 0.2.0
-    bool input = 14;
+    bool clip = 14;
     // since 0.2.0
-    bool secure = 15;
+    bool input = 15;
+    // since 0.2.0
+    bool secure = 16;
     // since 0.2.0; list
-    repeated string tags = 16;
+    repeated string tags = 17;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 17;
+    repeated Effect.Properties effects = 18;
     // since 0.2.0; list
-    repeated string skipped = 18;
+    repeated string skipped = 19;
   }
 
   // Signal `destroyed`, since 0.2.0.
@@ -2285,47 +2319,49 @@ message Screen {
     // since 0.2.0
     double opacity = 11;
     // since 0.2.0
-    bool visible = 12;
+    double corner_radius = 12;
     // since 0.2.0
-    bool clip = 13;
+    bool visible = 13;
     // since 0.2.0
-    bool input = 14;
+    bool clip = 14;
     // since 0.2.0
-    bool secure = 15;
+    bool input = 15;
+    // since 0.2.0
+    bool secure = 16;
     // since 0.2.0; list
-    repeated string tags = 16;
+    repeated string tags = 17;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 17;
+    repeated Effect.Properties effects = 18;
     // since 0.2.0; list
-    repeated string skipped = 18;
+    repeated string skipped = 19;
     // since 0.2.0; object id of `node`
-    string source = 19;
+    string source = 20;
     // since 0.2.0
-    uint64 fps = 20;
+    uint64 fps = 21;
     // since 0.2.0; object id of `node`
-    string camera = 21;
+    string camera = 22;
     // since 0.2.0
-    string make = 22;
+    string make = 23;
     // since 0.2.0
-    string model = 23;
+    string model = 24;
     // since 0.2.0
-    double screen_x = 24;
+    double screen_x = 25;
     // since 0.2.0
-    double screen_y = 25;
+    double screen_y = 26;
     // since 0.2.0
-    double screen_width = 26;
+    double screen_width = 27;
     // since 0.2.0
-    double screen_height = 27;
+    double screen_height = 28;
     // since 0.2.0
-    double output_scale = 28;
+    double output_scale = 29;
     // since 0.2.0
-    string transform = 29;
+    string transform = 30;
     // since 0.2.0
-    bool primary = 30;
+    bool primary = 31;
     // since 0.2.0
-    bool enabled = 31;
+    bool enabled = 32;
     // since 0.2.0
-    string mode = 32;
+    string mode = 33;
   }
 
   // Method `capture`, since 0.2.0.
@@ -2368,59 +2404,61 @@ message Seat {
     // since 0.2.0
     double opacity = 11;
     // since 0.2.0
-    bool visible = 12;
+    double corner_radius = 12;
     // since 0.2.0
-    bool clip = 13;
+    bool visible = 13;
     // since 0.2.0
-    bool input = 14;
+    bool clip = 14;
     // since 0.2.0
-    bool secure = 15;
+    bool input = 15;
+    // since 0.2.0
+    bool secure = 16;
     // since 0.2.0; list
-    repeated string tags = 16;
+    repeated string tags = 17;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 17;
+    repeated Effect.Properties effects = 18;
     // since 0.2.0; list
-    repeated string skipped = 18;
+    repeated string skipped = 19;
     // since 0.2.0; object id of `node`
-    string focus = 19;
+    string focus = 20;
     // since 0.2.0; object id of `node`
-    string screen = 20;
+    string screen = 21;
     // since 0.2.0
-    double pointer_x = 21;
+    double pointer_x = 22;
     // since 0.2.0
-    double pointer_y = 22;
+    double pointer_y = 23;
     // since 0.2.0; list
-    repeated string device = 23;
+    repeated string device = 24;
     // since 0.2.0
-    bool edge_tiling = 24;
+    bool edge_tiling = 25;
     // since 0.2.0
-    string drag_constraint = 25;
+    string drag_constraint = 26;
     // since 0.2.0
-    string focus_mode = 26;
+    string focus_mode = 27;
     // since 0.2.0
-    string focus_new_windows = 27;
+    string focus_new_windows = 28;
     // since 0.2.0
-    bool raise_on_click = 28;
+    bool raise_on_click = 29;
     // since 0.2.0
-    bool auto_raise = 29;
+    bool auto_raise = 30;
     // since 0.2.0
-    int64 auto_raise_delay = 30;
+    int64 auto_raise_delay = 31;
     // since 0.2.0
-    bool focus_change_on_pointer_rest = 31;
+    bool focus_change_on_pointer_rest = 32;
     // since 0.2.0
-    string double_click = 32;
+    string double_click = 33;
     // since 0.2.0
-    string middle_click = 33;
+    string middle_click = 34;
     // since 0.2.0
-    string right_click = 34;
+    string right_click = 35;
     // since 0.2.0; list
-    repeated string workspaces = 35;
+    repeated string workspaces = 36;
     // since 0.2.0
-    bool reduced_motion = 36;
+    bool reduced_motion = 37;
     // since 0.2.0; list
-    repeated string effect_kinds = 37;
+    repeated string effect_kinds = 38;
     // since 0.2.0
-    bool decorations_available = 38;
+    bool decorations_available = 39;
   }
 
   // Method `warp`, since 0.2.0.
@@ -2547,25 +2585,27 @@ message Surface {
     // since 0.2.0
     double opacity = 11;
     // since 0.2.0
-    bool visible = 12;
+    double corner_radius = 12;
     // since 0.2.0
-    bool clip = 13;
+    bool visible = 13;
     // since 0.2.0
-    bool input = 14;
+    bool clip = 14;
     // since 0.2.0
-    bool secure = 15;
+    bool input = 15;
+    // since 0.2.0
+    bool secure = 16;
     // since 0.2.0; list
-    repeated string tags = 16;
+    repeated string tags = 17;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 17;
+    repeated Effect.Properties effects = 18;
     // since 0.2.0; list
-    repeated string skipped = 18;
+    repeated string skipped = 19;
     // since 0.2.0
-    string role = 19;
+    string role = 20;
     // since 0.2.0
-    bool mapped = 20;
+    bool mapped = 21;
     // since 0.2.0
-    string app_id = 21;
+    string app_id = 22;
   }
 
   // Signal `destroyed`, since 0.2.0.
@@ -2599,25 +2639,27 @@ message Tween {
     // since 0.2.0
     double opacity = 11;
     // since 0.2.0
-    bool visible = 12;
+    double corner_radius = 12;
     // since 0.2.0
-    bool clip = 13;
+    bool visible = 13;
     // since 0.2.0
-    bool input = 14;
+    bool clip = 14;
     // since 0.2.0
-    bool secure = 15;
+    bool input = 15;
+    // since 0.2.0
+    bool secure = 16;
     // since 0.2.0; list
-    repeated string tags = 16;
+    repeated string tags = 17;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 17;
+    repeated Effect.Properties effects = 18;
     // since 0.2.0; list
-    repeated string skipped = 18;
+    repeated string skipped = 19;
     // since 0.2.0
-    double progress = 19;
+    double progress = 20;
     // since 0.2.0
-    bool paused = 20;
+    bool paused = 21;
     // since 0.2.0
-    bool reverse = 21;
+    bool reverse = 22;
   }
 
   // Signal `destroyed`, since 0.2.0.
@@ -2651,25 +2693,27 @@ message View {
     // since 0.2.0
     double opacity = 11;
     // since 0.2.0
-    bool visible = 12;
+    double corner_radius = 12;
     // since 0.2.0
-    bool clip = 13;
+    bool visible = 13;
     // since 0.2.0
-    bool input = 14;
+    bool clip = 14;
     // since 0.2.0
-    bool secure = 15;
+    bool input = 15;
+    // since 0.2.0
+    bool secure = 16;
     // since 0.2.0; list
-    repeated string tags = 16;
+    repeated string tags = 17;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 17;
+    repeated Effect.Properties effects = 18;
     // since 0.2.0; list
-    repeated string skipped = 18;
+    repeated string skipped = 19;
     // since 0.2.0; object id of `node`
-    string source = 19;
+    string source = 20;
     // since 0.2.0
-    uint64 fps = 20;
+    uint64 fps = 21;
     // since 0.2.0; object id of `node`
-    string camera = 21;
+    string camera = 22;
   }
 
   // Method `capture`, since 0.2.0.
@@ -2706,45 +2750,47 @@ message Window {
     // since 0.2.0
     double opacity = 11;
     // since 0.2.0
-    bool visible = 12;
+    double corner_radius = 12;
     // since 0.2.0
-    bool clip = 13;
+    bool visible = 13;
     // since 0.2.0
-    bool input = 14;
+    bool clip = 14;
     // since 0.2.0
-    bool secure = 15;
+    bool input = 15;
+    // since 0.2.0
+    bool secure = 16;
     // since 0.2.0; list
-    repeated string tags = 16;
+    repeated string tags = 17;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 17;
+    repeated Effect.Properties effects = 18;
     // since 0.2.0; list
-    repeated string skipped = 18;
+    repeated string skipped = 19;
     // since 0.2.0
-    string title = 19;
+    string title = 20;
     // since 0.2.0
-    string app_id = 20;
+    string app_id = 21;
     // since 0.2.0
-    bool focused = 21;
+    bool focused = 22;
     // since 0.2.0
-    bool fullscreen = 22;
+    bool fullscreen = 23;
     // since 0.2.0
-    bool maximised = 23;
+    bool maximised = 24;
     // since 0.2.0
-    bool minimised = 24;
+    bool minimised = 25;
     // since 0.2.0; object id of `workspace`
-    string workspace = 25;
+    string workspace = 26;
     // since 0.2.0
-    bool tiled = 26;
+    bool tiled = 27;
     // since 0.2.0
-    bool unresponsive = 27;
+    bool unresponsive = 28;
     // since 0.2.0; object id of `window`
-    string parent_window = 28;
+    string parent_window = 29;
     // since 0.2.0
-    bool from_launcher = 29;
+    bool from_launcher = 30;
     // since 0.2.0
-    string decoration = 30;
+    string decoration = 31;
     // since 0.2.0
-    string decoration_wanted = 31;
+    string decoration_wanted = 32;
   }
 
   // Method `focus`, since 0.2.0.
@@ -2787,25 +2833,27 @@ message Workspace {
     // since 0.2.0
     double opacity = 11;
     // since 0.2.0
-    bool visible = 12;
+    double corner_radius = 12;
     // since 0.2.0
-    bool clip = 13;
+    bool visible = 13;
     // since 0.2.0
-    bool input = 14;
+    bool clip = 14;
     // since 0.2.0
-    bool secure = 15;
+    bool input = 15;
+    // since 0.2.0
+    bool secure = 16;
     // since 0.2.0; list
-    repeated string tags = 16;
+    repeated string tags = 17;
     // since 0.2.0; list of record `effect`: the properties of one value
-    repeated Effect.Properties effects = 17;
+    repeated Effect.Properties effects = 18;
     // since 0.2.0; list
-    repeated string skipped = 18;
+    repeated string skipped = 19;
     // since 0.2.0
-    uint64 index = 19;
+    uint64 index = 20;
     // since 0.2.0
-    bool active = 20;
+    bool active = 21;
     // since 0.2.0; object id of `screen`
-    string output = 21;
+    string output = 22;
   }
 
   // Method `activate`, since 0.2.0.

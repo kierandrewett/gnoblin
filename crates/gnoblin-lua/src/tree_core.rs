@@ -354,9 +354,16 @@ fn expect_uint(value: Value, name: &str) -> mlua::Result<u64> {
         .ok_or_else(|| lua_err(format!("effect {name} must be a non-negative integer")))
 }
 
+fn expect_bool(value: Value, name: &str) -> mlua::Result<bool> {
+    match value {
+        Value::Boolean(flag) => Ok(flag),
+        _ => Err(lua_err(format!("effect {name} must be a boolean"))),
+    }
+}
+
 /// One `effect` from a Lua table. Fields left out take the record's documented defaults; an
 /// unknown field (`enabled`, `source` and `entry` are gone) is refused, and so is a kind other
-/// than `blur` or `shadow`, `shader` included.
+/// than `blur`, `shadow` or `border`, `shader` included.
 fn effect_from_lua(table: &Table) -> mlua::Result<effect::Properties> {
     let mut props = effect::Properties {
         kind: String::new(),
@@ -373,6 +380,10 @@ fn effect_from_lua(table: &Table) -> mlua::Result<effect::Properties> {
         blur_radius: 12.0,
         spread: 0.0,
         colour: "#00000080".to_owned(),
+        width: 0.0,
+        offset: 0.0,
+        inset: false,
+        frame: false,
     };
     for pair in table.pairs::<Value, Value>() {
         let (key, value) = pair?;
@@ -395,23 +406,27 @@ fn effect_from_lua(table: &Table) -> mlua::Result<effect::Properties> {
             "blur_radius" => props.blur_radius = expect_double(value, &name)?,
             "spread" => props.spread = expect_double(value, &name)?,
             "colour" => props.colour = expect_text(value, &name)?,
+            "width" => props.width = expect_double(value, &name)?,
+            "offset" => props.offset = expect_double(value, &name)?,
+            "inset" => props.inset = expect_bool(value, &name)?,
+            "frame" => props.frame = expect_bool(value, &name)?,
             "source" | "entry" | "uniforms" => {
                 return Err(lua_err(format!(
-                    "an effect has no field {name}: user shaders were removed, an effect's kind is blur or shadow \
+                    "an effect has no field {name}: user shaders were removed, an effect's kind is blur, shadow or border \
                      (draw a Canvas for anything else)"
                 )));
             }
             other => return Err(lua_err(format!("an effect has no field {other}"))),
         }
     }
-    if props.kind != "blur" && props.kind != "shadow" {
+    if !matches!(props.kind.as_str(), "blur" | "shadow" | "border") {
         let removed = if props.kind == "shader" {
             "user shaders were removed: "
         } else {
             ""
         };
         return Err(lua_err(format!(
-            "{removed}an effect's kind is blur or shadow, not {:?} (draw a Canvas for anything else)",
+            "{removed}an effect's kind is blur, shadow or border, not {:?} (draw a Canvas for anything else)",
             props.kind
         )));
     }
@@ -435,6 +450,10 @@ fn effect_to_lua(lua: &Lua, props: &effect::Properties) -> mlua::Result<Table> {
     table.raw_set("blur_radius", props.blur_radius)?;
     table.raw_set("spread", props.spread)?;
     table.raw_set("colour", props.colour.as_str())?;
+    table.raw_set("width", props.width)?;
+    table.raw_set("offset", props.offset)?;
+    table.raw_set("inset", props.inset)?;
+    table.raw_set("frame", props.frame)?;
     Ok(table)
 }
 

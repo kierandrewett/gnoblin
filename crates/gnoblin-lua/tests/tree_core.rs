@@ -402,7 +402,7 @@ fn a_node_effects_list_takes_blur_and_shadow_only_and_skipped_is_read_only() {
     );
     let shader = refused(&lua, r#"core.set(2, "effects", { { kind = "shader" } })"#);
     assert!(
-        shader.contains("user shaders were removed") && shader.contains("blur or shadow"),
+        shader.contains("user shaders were removed") && shader.contains("blur, shadow or border"),
         "a shader kind names what replaced it: {shader}"
     );
     let source = refused(
@@ -410,7 +410,7 @@ fn a_node_effects_list_takes_blur_and_shadow_only_and_skipped_is_read_only() {
         r#"core.set(2, "effects", { { kind = "shader", source = "void main() {}" } })"#,
     );
     assert!(
-        source.contains("user shaders were removed") && source.contains("blur or shadow"),
+        source.contains("user shaders were removed") && source.contains("blur, shadow or border"),
         "a shader's source field names what replaced it: {source}"
     );
     assert!(

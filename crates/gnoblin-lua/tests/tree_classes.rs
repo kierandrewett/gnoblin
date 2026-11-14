@@ -143,6 +143,7 @@ fn documented_node() -> Vec<PropSpec> {
         spec("width", K::Double, false, Some(MirrorValue::Double(0.0))),
         spec("height", K::Double, false, Some(MirrorValue::Double(0.0))),
         spec("opacity", K::Double, false, Some(MirrorValue::Double(1.0))),
+        spec("corner_radius", K::Double, false, Some(MirrorValue::Double(0.0))),
         spec("visible", K::Bool, false, Some(MirrorValue::Bool(true))),
         spec("clip", K::Bool, false, Some(MirrorValue::Bool(false))),
         spec("input", K::Bool, false, Some(MirrorValue::Bool(true))),

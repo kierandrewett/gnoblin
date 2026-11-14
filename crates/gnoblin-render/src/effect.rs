@@ -1,10 +1,10 @@
-//! Effects: an ordered list of named passes, blur and shadow.
+//! Effects: an ordered list of named passes, blur, shadow and border.
 //!
 //! The plan gives the renderer effects as GLES passes (Renderer card). This
 //! module is the scene-side description of those passes: a pass names what it
 //! is, carries the values the effect needs, and is validated where it enters
 //! the scene, so the renderer never has to guess. There is no user shader pass:
-//! the compositor ships blur and shadow, and the tree refuses any other kind.
+//! the compositor ships blur, shadow and border, and the tree refuses any other kind.
 //!
 //! Order is the pass order: a list is applied in the order it was pushed, which
 //! is what makes "blur then recolour" a different description from "recolour
@@ -22,6 +22,14 @@ use gnoblin_types::{Color, RectF, Unsupported3d, Unsupported3dField, Vec3};
 /// cost. The cap is a renderer bound, not a preference: a node over it is
 /// refused and the caller can simplify the chain.
 pub const MAX_PASSES: usize = 32;
+
+/// The most borders, and the most shadows, one node may carry.
+///
+/// A border is a ring and a shadow a falloff, each drawn once per element and per damaged
+/// rectangle, so the count is a frame cost like [`MAX_PASSES`]. The two kinds are counted apart,
+/// so a style of eight shadows and eight borders still fits. The style model of the JS runtime
+/// caps its lists at the same number.
+pub const MAX_STACKED: usize = 8;
 
 /// The largest blur radius a pass accepts, in logical pixels.
 pub const MAX_BLUR_RADIUS: f32 = 100.0;
@@ -126,6 +134,33 @@ pub struct Shadow {
     pub opacity: f32,
     /// Shadow colour; its alpha multiplies `opacity`.
     pub color: Color,
+    /// Whether the shadow follows the node's whole frame rather than its own rectangle.
+    ///
+    /// A decorated window's frame is its content and the decoration children that sit
+    /// outside it, the titlebar above all: a shadow that follows only the content leaves the
+    /// bar unshadowed and its top edge floating. The frame is resolved where a layer is built
+    /// (it needs the node's children), so a renderer never reads this flag; it reads the
+    /// layer's silhouette.
+    pub frame: bool,
+}
+
+/// A stroke around the node's silhouette, drawn over its content.
+///
+/// The silhouette is the node's rounded rectangle, or its frame's when it has decoration
+/// children. Several borders stack in list order, each laid where its own `offset` puts it, so
+/// two borders with different offsets make concentric rings.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Border {
+    /// Stroke width in logical pixels, 0 to [`MAX_BLUR_RADIUS`]. A width of 0 draws nothing.
+    pub width: f32,
+    /// Distance in logical pixels from the silhouette's edge to the stroke's edge nearest it,
+    /// from -[`MAX_BLUR_RADIUS`] to [`MAX_BLUR_RADIUS`]. Positive moves the stroke away from the
+    /// silhouette (outwards, or inwards when `inset`); negative moves it back across the edge.
+    pub offset: f32,
+    /// Whether the stroke lies inside the silhouette (`true`) or outside it (`false`).
+    pub inset: bool,
+    /// Stroke colour, straight alpha.
+    pub color: Color,
 }
 
 /// One named pass in an effect chain.
@@ -135,11 +170,13 @@ pub enum Pass {
     Blur(BlurParams),
     /// A drop shadow.
     Shadow(Shadow),
+    /// A border.
+    Border(Border),
 }
 
 impl Pass {
     /// Every kind of pass, by [`Pass::name`]. A renderer that draws all of them reports exactly this list.
-    pub const NAMES: &'static [&'static str] = &["blur", "shadow"];
+    pub const NAMES: &'static [&'static str] = &["blur", "shadow", "border"];
 
     /// The pass's name, as inspection tools report it.
     #[must_use]
@@ -147,6 +184,7 @@ impl Pass {
         match self {
             Self::Blur(_) => "blur",
             Self::Shadow(_) => "shadow",
+            Self::Border(_) => "border",
         }
     }
 
@@ -198,12 +236,48 @@ impl Pass {
                 }
                 Ok(())
             }
+            Self::Border(border) => {
+                for (field, value) in [("border.width", border.width), ("border.offset", border.offset)] {
+                    if !value.is_finite() {
+                        return Err(EffectError::NonFinite { field });
+                    }
+                }
+                if !(0.0..=MAX_BLUR_RADIUS).contains(&border.width) {
+                    return Err(EffectError::OutOfRange {
+                        field: "border.width",
+                        min: 0.0,
+                        max: MAX_BLUR_RADIUS,
+                    });
+                }
+                if !(-MAX_BLUR_RADIUS..=MAX_BLUR_RADIUS).contains(&border.offset) {
+                    return Err(EffectError::OutOfRange {
+                        field: "border.offset",
+                        min: -MAX_BLUR_RADIUS,
+                        max: MAX_BLUR_RADIUS,
+                    });
+                }
+                let color = border.color;
+                if ![color.r, color.g, color.b, color.a]
+                    .iter()
+                    .all(|value| value.is_finite())
+                {
+                    return Err(EffectError::NonFinite { field: "border.color" });
+                }
+                if !color.is_in_unit_range() {
+                    return Err(EffectError::OutOfRange {
+                        field: "border.color",
+                        min: 0.0,
+                        max: 1.0,
+                    });
+                }
+                Ok(())
+            }
         }
     }
 
     /// How far outside the node's bounds the pass can draw.
     ///
-    /// Only a shadow draws outside its node today; a blur samples within the
+    /// A shadow and an outside border draw outside their node; a blur samples within the
     /// node's own rectangle. The value is conservative on purpose: damage that
     /// is slightly too large costs a few pixels, damage that is too small leaves
     /// a stale shadow on screen.
@@ -222,6 +296,23 @@ impl Pass {
                 }
             }
             Self::Blur(_) => EffectExtent::ZERO,
+            Self::Border(border) => {
+                // The outer edge of the stroke is `offset + width` past the silhouette when it lies
+                // outside, and `offset` before it, towards the inside, when it lies inside; a
+                // negative `offset` on an inset stroke puts it outside by that much.
+                let reach = if border.inset {
+                    -border.offset
+                } else {
+                    border.offset + border.width
+                };
+                let reach = f64::from(reach.max(0.0));
+                EffectExtent {
+                    left: reach,
+                    top: reach,
+                    right: reach,
+                    bottom: reach,
+                }
+            }
         }
     }
 }
@@ -308,6 +399,17 @@ impl Effects {
             });
         }
         pass.validate()?;
+        let kind = pass.name();
+        if matches!(pass, Pass::Border(_) | Pass::Shadow(_)) {
+            let held = self.passes.iter().filter(|held| held.name() == kind).count();
+            if held >= MAX_STACKED {
+                return Err(EffectError::TooManyOfKind {
+                    kind,
+                    max: MAX_STACKED,
+                    got: held + 1,
+                });
+            }
+        }
         self.passes.push(pass);
         Ok(())
     }
@@ -343,6 +445,34 @@ impl Effects {
     #[must_use]
     pub fn expand(&self, bounds: RectF) -> RectF {
         self.padding().expand(bounds)
+    }
+
+    /// Whether any pass of `kind` (by [`Pass::name`]) is in the chain.
+    #[must_use]
+    pub fn has(&self, kind: &str) -> bool {
+        self.passes.iter().any(|pass| pass.name() == kind)
+    }
+
+    /// Whether a shadow asks to follow the node's whole frame.
+    #[must_use]
+    pub fn has_frame_shadow(&self) -> bool {
+        self.passes
+            .iter()
+            .any(|pass| matches!(pass, Pass::Shadow(shadow) if shadow.frame))
+    }
+
+    /// The chain without its borders, and the borders alone, each in list order.
+    ///
+    /// A window's borders are drawn over its whole frame, above its decoration children, so they are drawn as a layer
+    /// of their own after the subtree; the rest of the chain is drawn with the window's content.
+    #[must_use]
+    pub fn split_borders(&self) -> (Self, Self) {
+        let (borders, rest): (Vec<Pass>, Vec<Pass>) = self
+            .passes
+            .iter()
+            .cloned()
+            .partition(|pass| matches!(pass, Pass::Border(_)));
+        (Self { passes: rest }, Self { passes: borders })
     }
 }
 
@@ -408,6 +538,15 @@ pub enum EffectError {
         /// The size including the refused pass.
         got: usize,
     },
+    /// The chain already has the maximum number of borders, or of shadows.
+    TooManyOfKind {
+        /// The kind that is over its cap, by [`Pass::name`].
+        kind: &'static str,
+        /// The cap.
+        max: usize,
+        /// The count including the refused pass.
+        got: usize,
+    },
     /// A component is NaN or infinite.
     NonFinite {
         /// The value's path.
@@ -430,6 +569,9 @@ impl std::fmt::Display for EffectError {
             Self::Unsupported3d(error) => write!(formatter, "{error}"),
             Self::TooManyPasses { max, got } => {
                 write!(formatter, "an effect chain allows {max} passes, got {got}")
+            }
+            Self::TooManyOfKind { kind, max, got } => {
+                write!(formatter, "a node allows {max} {kind} effects, got {got}")
             }
             Self::NonFinite { field } => write!(formatter, "`{field}` is not finite"),
             Self::OutOfRange { field, min, max } => {
@@ -455,6 +597,7 @@ mod tests {
                 spread: 0.0,
                 opacity: 0.5,
                 color: Color::BLACK,
+                frame: false,
             }))
             .expect("valid");
         let padding = effects.padding();
@@ -474,6 +617,7 @@ mod tests {
                 spread: 0.0,
                 opacity: 1.0,
                 color: Color::BLACK,
+                frame: false,
             }))
             .expect_err("must refuse");
         assert!(matches!(error, EffectError::Unsupported3d(_)));
@@ -564,9 +708,121 @@ mod tests {
             spread: 6.0,
             opacity: 1.0,
             color: Color::BLACK,
+            frame: false,
         };
         let shrunk = Shadow { spread: -3.0, ..grown };
         assert_eq!(Pass::Shadow(grown).padding().left, 10.0);
         assert_eq!(Pass::Shadow(shrunk).padding().left, 4.0);
+    }
+
+    fn border(width: f32, offset: f32, inset: bool) -> Border {
+        Border {
+            width,
+            offset,
+            inset,
+            color: Color::WHITE,
+        }
+    }
+
+    #[test]
+    fn an_outside_border_pads_by_its_offset_and_width_and_an_inside_one_does_not() {
+        assert_eq!(Pass::Border(border(2.0, 1.0, false)).padding().top, 3.0);
+        assert_eq!(Pass::Border(border(2.0, 0.0, true)).padding(), EffectExtent::ZERO);
+        assert_eq!(
+            Pass::Border(border(2.0, -1.0, true)).padding().left,
+            1.0,
+            "an inset border with a negative offset crosses the edge"
+        );
+        assert_eq!(
+            Pass::Border(border(2.0, -5.0, false)).padding(),
+            EffectExtent::ZERO,
+            "an outside border moved back inside draws nothing outside"
+        );
+    }
+
+    #[test]
+    fn a_border_refuses_a_negative_or_non_finite_width_and_a_bad_colour_by_name() {
+        for (stroke, field) in [
+            (border(-1.0, 0.0, false), "border.width"),
+            (border(f32::NAN, 0.0, false), "border.width"),
+            (border(1.0, f32::INFINITY, false), "border.offset"),
+            (border(1.0, 101.0, false), "border.offset"),
+            (border(101.0, 0.0, false), "border.width"),
+        ] {
+            let error = Pass::Border(stroke).validate().expect_err("must refuse");
+            assert!(
+                matches!(error, EffectError::NonFinite { field: f } | EffectError::OutOfRange { field: f, .. } if f == field),
+                "{field}: {error:?}"
+            );
+        }
+        let mut tinted = border(1.0, 0.0, false);
+        tinted.color = Color::new(2.0, 0.0, 0.0, 1.0);
+        assert!(matches!(
+            Pass::Border(tinted).validate(),
+            Err(EffectError::OutOfRange {
+                field: "border.color",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn a_node_holds_eight_borders_and_eight_shadows_and_refuses_a_ninth_of_either() {
+        let mut effects = Effects::new();
+        for _ in 0..MAX_STACKED {
+            effects
+                .push(Pass::Border(border(1.0, 0.0, true)))
+                .expect("within the cap");
+        }
+        let refused = effects
+            .push(Pass::Border(border(1.0, 0.0, true)))
+            .expect_err("over the cap");
+        assert_eq!(
+            refused,
+            EffectError::TooManyOfKind {
+                kind: "border",
+                max: MAX_STACKED,
+                got: MAX_STACKED + 1
+            }
+        );
+        assert_eq!(effects.len(), MAX_STACKED, "a refused pass leaves the chain unchanged");
+        let shadow = Pass::Shadow(Shadow {
+            offset: Vec3::ZERO,
+            blur: 1.0,
+            spread: 0.0,
+            opacity: 1.0,
+            color: Color::BLACK,
+            frame: true,
+        });
+        for _ in 0..MAX_STACKED {
+            effects.push(shadow.clone()).expect("the kinds are counted apart");
+        }
+        assert!(matches!(
+            effects.push(shadow),
+            Err(EffectError::TooManyOfKind { kind: "shadow", .. })
+        ));
+    }
+
+    #[test]
+    fn every_pass_name_is_listed_in_names() {
+        let names: Vec<&str> = [
+            Pass::Blur(BlurParams::default()),
+            Pass::Border(border(1.0, 0.0, false)),
+            Pass::Shadow(Shadow {
+                offset: Vec3::ZERO,
+                blur: 1.0,
+                spread: 0.0,
+                opacity: 1.0,
+                color: Color::BLACK,
+                frame: false,
+            }),
+        ]
+        .iter()
+        .map(Pass::name)
+        .collect();
+        for name in names {
+            assert!(Pass::NAMES.contains(&name), "{name}");
+        }
+        assert_eq!(Pass::NAMES.len(), 3);
     }
 }

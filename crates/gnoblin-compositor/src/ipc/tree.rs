@@ -1139,6 +1139,7 @@ mod tests {
             ("width", Some(DefaultValue::Double(0.0))),
             ("height", Some(DefaultValue::Double(0.0))),
             ("opacity", Some(DefaultValue::Double(1.0))),
+            ("corner_radius", Some(DefaultValue::Double(0.0))),
             ("visible", Some(DefaultValue::Bool(true))),
             ("clip", Some(DefaultValue::Bool(false))),
             ("input", Some(DefaultValue::Bool(true))),
@@ -1154,7 +1155,17 @@ mod tests {
         }
 
         let readonly = ["id", "parent", "skipped"];
-        let animated = ["x", "y", "z", "rotation", "scale", "width", "height", "opacity"];
+        let animated = [
+            "x",
+            "y",
+            "z",
+            "rotation",
+            "scale",
+            "width",
+            "height",
+            "opacity",
+            "corner_radius",
+        ];
         for property in &node.properties {
             assert_eq!(
                 property.readonly,

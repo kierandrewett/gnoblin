@@ -353,6 +353,7 @@ fn an_accepted_effects_list_is_the_nodes_effect_chain() {
         spread: 0.0,
         opacity: 1.0,
         color: Color::BLACK,
+        frame: false,
     });
     assert!(
         scene.effects(win).is_some_and(Effects::is_empty),

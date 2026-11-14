@@ -5,12 +5,12 @@
 //! echoes the passes the scene kept. The `window.add_effect` call and the window's `effect`
 //! objects this replaced are gone.
 //!
-//! Only `blur` and `shadow` exist. Any other kind, `shader` included, is an error with a reason,
+//! Only `blur`, `shadow` and `border` exist. Any other kind, `shader` included, is an error with a reason,
 //! and the caller refuses the whole list rather than draw part of it. A value outside the
 //! renderer's documented range is refused by [`Pass::validate`], and its text is the reason.
 
 use gnoblin_proto::tree::effect;
-use gnoblin_render::{BlurParams, Pass, Shadow};
+use gnoblin_render::{BlurParams, Border, Pass, Shadow};
 use gnoblin_types::{Color, Vec3};
 
 /// The blur radius, in logical pixels, every blur effect draws with.
@@ -29,7 +29,10 @@ pub(super) fn pass_from_wire(entry: &effect::Properties) -> Result<Pass, String>
     match entry.kind.as_str() {
         "blur" => blur_pass(entry),
         "shadow" => shadow_pass(entry),
-        "shader" => Err("user shaders were removed: use a `blur` or `shadow` effect, or draw a `Canvas`".to_owned()),
+        "border" => border_pass(entry),
+        "shader" => {
+            Err("user shaders were removed: use a `blur`, `shadow` or `border` effect, or draw a `Canvas`".to_owned())
+        }
         other => Err(format!("unknown effect kind `{other}`")),
     }
 }
@@ -57,6 +60,15 @@ pub(super) fn wire_from_pass(pass: &Pass) -> effect::Properties {
             blur_radius: f64::from(shadow.blur),
             spread: f64::from(shadow.spread),
             colour: hex_colour(shadow.color),
+            frame: shadow.frame,
+            ..effect::Properties::default()
+        },
+        Pass::Border(border) => effect::Properties {
+            kind: "border".to_owned(),
+            width: f64::from(border.width),
+            offset: f64::from(border.offset),
+            inset: border.inset,
+            colour: hex_colour(border.color),
             ..effect::Properties::default()
         },
     }
@@ -101,6 +113,19 @@ fn shadow_pass(entry: &effect::Properties) -> Result<Pass, String> {
         // The renderer multiplies the colour's alpha by this, so full opacity here leaves the
         // colour's own alpha in control.
         opacity: 1.0,
+        color: parse_colour(&entry.colour)?,
+        frame: entry.frame,
+    });
+    pass.validate().map_err(|error| error.to_string())?;
+    Ok(pass)
+}
+
+/// The border pass an entry asks for, validated against the renderer's ranges.
+fn border_pass(entry: &effect::Properties) -> Result<Pass, String> {
+    let pass = Pass::Border(Border {
+        width: entry.width as f32,
+        offset: entry.offset as f32,
+        inset: entry.inset,
         color: parse_colour(&entry.colour)?,
     });
     pass.validate().map_err(|error| error.to_string())?;
@@ -258,5 +283,50 @@ mod tests {
         assert_eq!((echoed.kind.as_str(), echoed.offset_y), ("shadow", 6.0));
         assert_eq!(echoed.colour, "#00000080");
         assert_eq!(pass_from_wire(&echoed), Ok(pass));
+    }
+
+    #[test]
+    fn a_border_carries_its_stroke_into_the_pass_and_echoes_back() {
+        let mut border = entry("border");
+        border.width = 2.0;
+        border.offset = -1.0;
+        border.inset = true;
+        border.colour = "#ff8800cc".to_owned();
+        let Ok(Pass::Border(stroke)) = pass_from_wire(&border) else {
+            panic!("a valid border maps to a border pass");
+        };
+        assert_eq!((stroke.width, stroke.offset, stroke.inset), (2.0, -1.0, true));
+        assert_eq!(stroke.color, Color::from_rgba8(255, 136, 0, 204));
+        let pass = pass_from_wire(&border).expect("a border");
+        let echoed = wire_from_pass(&pass);
+        assert_eq!(
+            (echoed.kind.as_str(), echoed.width, echoed.inset),
+            ("border", 2.0, true)
+        );
+        assert_eq!(echoed.colour, "#ff8800cc");
+        assert_eq!(
+            pass_from_wire(&echoed),
+            Ok(pass),
+            "the echo sets back to the same border"
+        );
+    }
+
+    #[test]
+    fn a_border_refuses_a_negative_width_and_a_missing_colour() {
+        let mut border = entry("border");
+        border.width = -1.0;
+        assert!(pass_from_wire(&border).is_err_and(|reason| reason.contains("border.width")));
+        let mut plain = entry("border");
+        plain.colour = String::new();
+        assert!(pass_from_wire(&plain).is_err_and(|reason| reason.contains("colour")));
+    }
+
+    #[test]
+    fn a_shadow_keeps_its_frame_flag_through_the_wire() {
+        let mut shadow = entry("shadow");
+        shadow.frame = true;
+        let pass = pass_from_wire(&shadow).expect("a shadow");
+        assert!(matches!(&pass, Pass::Shadow(held) if held.frame));
+        assert!(wire_from_pass(&pass).frame);
     }
 }

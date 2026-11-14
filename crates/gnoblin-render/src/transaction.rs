@@ -64,7 +64,7 @@ use gnoblin_animation::{PropertyValue, VisualProperty};
 use gnoblin_secret::SecretText;
 use gnoblin_types::{NodeId, Rect};
 
-use crate::effect::{EffectError, Effects, Pass};
+use crate::effect::{EffectError, Effects, MAX_STACKED, Pass};
 use crate::scene::{NodeSpec, Scene, SceneError};
 use crate::scene_ids::Actor;
 
@@ -1016,6 +1016,9 @@ fn check_value(work: &Scene, classes: &dyn ClassInfo, value: &TreeValue, kind: &
         }
         (TreeValue::Effects(passes), ValueType::Effects) => {
             size_within(passes.len(), MAX_EFFECTS)?;
+            for kind in ["border", "shadow"] {
+                size_within(passes.iter().filter(|pass| pass.name() == kind).count(), MAX_STACKED)?;
+            }
             passes.iter().try_for_each(check_effect_pass)
         }
         (TreeValue::Node(target), ValueType::Node(class)) => match target {
@@ -1093,12 +1096,27 @@ fn pass_has_non_finite(pass: &Pass) -> bool {
         ]
         .iter()
         .any(|value| !value.is_finite()),
+        Pass::Border(border) => [
+            border.width,
+            border.offset,
+            border.color.r,
+            border.color.g,
+            border.color.b,
+            border.color.a,
+        ]
+        .iter()
+        .any(|value| !value.is_finite()),
     }
 }
 
 /// Write one validated, non-animated value into the scene, then keep it as the node's value for
 /// `key` so the snapshot can carry it. A key the scene draws from is written to its typed field.
 fn write_value(work: &mut Scene, node: NodeId, key: &str, value: &TreeValue) -> Result<(), Code> {
+    if let ("corner_radius", TreeValue::Double(radius)) = (key, value)
+        && *radius < 0.0
+    {
+        return Err(Code::OutOfRange);
+    }
     if let TreeValue::ListDouble(axes) = value
         && matches!(key, "rotation" | "scale")
         && axes.len() != 3
@@ -1189,6 +1207,7 @@ fn whole_size(amount: f64) -> Result<u32, Code> {
 pub fn visual_property(key: &str) -> Option<VisualProperty> {
     Some(match key {
         "opacity" => VisualProperty::Opacity,
+        "corner_radius" => VisualProperty::CornerRadius,
         "x" => VisualProperty::OffsetX,
         "y" => VisualProperty::OffsetY,
         "z" => VisualProperty::OffsetZ,
@@ -1204,6 +1223,7 @@ pub fn visual_property(key: &str) -> Option<VisualProperty> {
 pub fn animated_properties(key: &str) -> &'static [VisualProperty] {
     match key {
         "opacity" => &[VisualProperty::Opacity],
+        "corner_radius" => &[VisualProperty::CornerRadius],
         "x" => &[VisualProperty::OffsetX],
         "y" => &[VisualProperty::OffsetY],
         "z" => &[VisualProperty::OffsetZ],

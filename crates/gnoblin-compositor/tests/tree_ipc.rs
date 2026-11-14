@@ -448,6 +448,12 @@ fn a_blur_on_the_software_renderer_is_reported_skipped_by_the_renderer() {
                 colour: "#00000080".to_owned(),
                 ..Default::default()
             },
+            effect::Properties {
+                kind: "border".to_owned(),
+                width: 2.0,
+                colour: "#ffffffff".to_owned(),
+                ..Default::default()
+            },
         ],
         ..Default::default()
     });
@@ -487,11 +493,8 @@ fn a_blur_on_the_software_renderer_is_reported_skipped_by_the_renderer() {
     assert_eq!(skipped.value_kind, "list_text");
     assert_eq!(
         skipped.value_texts,
-        vec![
-            "blur: unsupported-by-renderer".to_owned(),
-            "shadow: unsupported-by-renderer".to_owned()
-        ],
-        "the software renderer draws neither, and a node with effects says so"
+        vec!["blur: unsupported-by-renderer".to_owned()],
+        "the software renderer draws a shadow and a border but no blur, and a node with a blur says so"
     );
     session.stop().expect("the session stops cleanly");
 }

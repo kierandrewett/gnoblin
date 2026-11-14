@@ -96,6 +96,23 @@ since = "0.2.0"
 default = 1.0
 animated = true
 
+# The radius, in logical pixels, of the rounded corners the node and its subtree are clipped
+# to. A negative value is refused `out-of-range`. A radius larger than half the shorter side
+# of the shape it rounds is drawn as half that side. The shape is the node's own rectangle,
+# or, for a window, the window's frame: the node's rectangle together with the decoration
+# children that lie outside it (a titlebar above the content). The window's content, its
+# decoration children, its borders and, when the shadow asks for `frame`, its shadow all
+# follow that one rounded shape, so a rounded decorated window has four rounded corners and
+# not a rounded titlebar over a rounded content. A radius of 0 (the default) is a square
+# rectangle. One radius serves every corner; the JS style's per-corner radii are not drawn,
+# and its `unapplied` list says so. Animated, so a timed `set` tweens it.
+[[object.property]]
+name = "corner_radius"
+type = "double"
+since = "0.2.0"
+default = 0.0
+animated = true
+
 # A hidden node and its subtree are neither drawn nor hit.
 [[object.property]]
 name = "visible"
@@ -144,9 +161,9 @@ default = []
 
 # The effects in `effects` that are not drawn, one text each as `<kind>: <reasons>`, in list
 # order; empty when every effect is drawn. Two reasons exist. `unsupported-by-renderer`: the
-# active renderer draws no effect of that kind (GLES draws blur and shadow; the software and
-# Vulkan renderers draw none; `seat.effect_kinds` lists what is drawn). `unsupported-effect-on-3d`:
-# a blur or a shadow on a node whose placement carries depth (a rotation about x or y, a
+# active renderer draws no effect of that kind (GLES draws blur, shadow and border, the software renderer
+# shadow and border, and Vulkan none; `seat.effect_kinds` lists what is drawn). `unsupported-effect-on-3d`:
+# a blur, shadow or border on a node whose placement carries depth (a rotation about x or y, a
 # `z`, or a perspective `Camera` above it) is not drawn, because the renderer has no depth
 # pass for backdrop and shadow passes. An effect with both reasons names both on one text,
 # joined by `, `. The compositor writes it when the node's placement, its `effects` or the
