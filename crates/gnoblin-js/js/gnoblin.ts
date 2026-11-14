@@ -90,7 +90,15 @@ import {
     syncStyleLists,
 } from "gnoblin/style";
 import type { ClientStyleInit, ComputedStyle, Style, StyleLayer } from "gnoblin/style";
-import { Transform3D, Vector3 as Position, attachScene, sceneForget, sceneOf, sceneReleaseAll } from "gnoblin/scene";
+import {
+    Transform3D,
+    Vector3 as Position,
+    attachScene,
+    sceneForget,
+    sceneNodePointer,
+    sceneOf,
+    sceneReleaseAll,
+} from "gnoblin/scene";
 import type { SceneBackend } from "gnoblin/scene";
 import { Display, OutputProfile, attachDisplays } from "gnoblin/display";
 import { DisplayManager } from "gnoblin/display_manager";
@@ -4259,8 +4267,17 @@ const POINTER_METHODS: Readonly<Record<string, string>> = {
 /** Queues the clients' pointer listeners for the edges the compositor reported on windows this frame. */
 function pointer(events: WindowPointerEvent[]): number {
     for (const event of events) {
-        windowState.pointerEdge(event.kind);
         const client = clientsByNode.get(event.node);
+        if (client === undefined) {
+            // Not a window: a View or Node a script made, whose pointer edges the shell is sent (a View in `capture`).
+            const { x, y, button } = event;
+            const task = sceneNodePointer(event.node, event.kind, { x, y, button });
+            if (task !== undefined) {
+                queue.push({ site: `node ${event.node}.${event.kind}`, task });
+            }
+            continue;
+        }
+        windowState.pointerEdge(event.kind);
         const method = POINTER_METHODS[event.kind];
         if (client && method && stateOf(client).alive) {
             const { x, y, button } = event;

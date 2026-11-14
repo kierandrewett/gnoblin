@@ -123,6 +123,7 @@ tree. Animatable properties are marked **A**.
 | `visible`         | `bool`                | `true`    |          | a hidden node and its subtree are neither drawn nor hit              |
 | `clip`            | `bool`                | `false`   |          | children clipped to the rectangle                                    |
 | `input`           | `bool`                | `true`    |          | the node is skipped by the pick; its children are still tested       |
+| `input_mode`      | `string`              | `forward` |          | `forward` or `capture`: what a hit does (section 5.1)                |
 | `secure`          | `bool`                | `false`   |          | never captured by a `View`                                           |
 | `effects`         | `list<object:effect>` | `[]`      |          | paint order, first to last                                           |
 | `tags`            | `list<string>`        | `[]`      |          | the `.tag` selector key                                              |
@@ -180,11 +181,13 @@ There is no shaping, kerning or bidirectional text. The egui painter stays for t
 
 **View** (base `Node`). Draws another node's subtree as a texture. Replaces `capture.toml`.
 
-| Property | Type          | Default  | Flags | Notes                                                |
-| -------- | ------------- | -------- | ----- | ---------------------------------------------------- |
-| `source` | `object:Node` | nil      |       | the captured subtree                                 |
-| `input`  | `string`      | `"none"` |       | `none`, or `source` (the ray passes into the source) |
-| `fps`    | `uint`        | `0`      |       | `0` is on demand                                     |
+| Property | Type          | Default | Flags | Notes                |
+| -------- | ------------- | ------- | ----- | -------------------- |
+| `source` | `object:Node` | nil     |       | the captured subtree |
+| `fps`    | `uint`        | `0`     |       | `0` is on demand     |
+
+A View's input is the node's `input` and `input_mode` (section 5.1): a ray that hits a View in `forward` mode passes into
+its `source`.
 
 Method: `capture(path)` (implemented, lane 9B; default selected, owner may revisit). The design says `capture()` returns an
 operation id and `node-api-refactor.md` names the wire `ext-image-copy-capture` and PipeWire; those streams exist already
@@ -577,17 +580,45 @@ Animated values are not in batches (section 6.2): the mirror holds targets.
 The pick runs in the compositor, in this order (plan 5, input order, unverified line): lock, then grab, then claimed
 chords, then the pick. The pick uses `Scene::hit_test` (`scene.rs:928`), so no shell round-trip sits in it.
 
-| Target after the pick                  | What the compositor sends                                                    |
-| -------------------------------------- | ---------------------------------------------------------------------------- |
-| a client surface (`Window`, `Surface`) | protocol events to the client, as today                                      |
-| a `View` with `input = "source"`       | the ray passed into its source, then the same rule                           |
-| any other node with `input` set        | `tree.event` with `kind`, `node`, node-local coordinates, buttons, modifiers |
-| nothing                                | nothing                                                                      |
+| Target after the pick                              | What the compositor sends                                                        |
+| -------------------------------------------------- | -------------------------------------------------------------------------------- |
+| a client surface (`Window`, `Surface`)             | protocol events to the client, as today                                          |
+| a `View` with a `source`, `input_mode = "forward"` | the ray passed into the source's picture, then the same rule on what it lands on |
+| a `View` with `input_mode = "capture"`             | `tree.event` on the View, in its own plane; the client gets nothing              |
+| any other node with `input` set                    | `tree.event` with `kind`, `node`, node-local coordinates, buttons, modifiers     |
+| nothing                                            | nothing                                                                          |
 
 Implemented: pointer edges over a shell node (`enter`, `motion`, `leave`, `press`, `release`, `scroll`, with
 node-local `x`, `y`, `button`, and `dx`, `dy` for scroll). The pick is the topmost shell node under the pointer; it is
 taken only while the session is unlocked and the shell holds the tree, and a window topmost at the point takes the
-pointer. The pick does not check the node's `input` flag yet, so every shell node is an input target.
+pointer. A node whose `input` is unset is not an input target: the pick skips it and tests its children.
+
+**Input modes (tri-state input).** A node has three input states: `none` (`input = false`: skipped by the pick),
+`forward` and `capture` (`input = true`, with `input_mode` `forward`, the default, or `capture`). The decision was a
+second property rather than a three-valued `input`: `input` is a `bool` that every shell, the toolkit's canvases, the XR
+program and the schema tests already write, so turning it into a string would be a wire break for no gain, and the
+class default the spec asks for needs no schema support, because the two modes differ only on a View that has a source
+(on any other node `forward` and `capture` both mean the shell is sent the edges). The text of `input_mode` is checked: any
+value but `forward` and `capture` is refused `bad-value`.
+
+- `none`: the pick does not see the node; what lies under it takes the ray.
+- `forward` on a View with a `source`: the ray passes into the View's picture. The compositor maps the point of the View
+  (its plane, less the View's origin) to the pixel of the picture it draws, through the same camera, then to the node of
+  the source drawn there (`pick_view`, the inverse of the draw rules: invisible, clipped, zero-opacity and edge-on nodes
+  are not picked). A window lands on its client, in the window's surface coordinates, and the shell is sent nothing for the
+  View (it is sent the edges of the window's node, as for a window hit directly, which is how its focus policy hears a
+  press). Another node of the source is the shell's, in that node's plane. A point where the picture shows nothing that takes
+  input (a margin around a smaller source, a part the camera does not see) lands on nothing: the View swallows it. A View
+  inside the source passes the ray on again, to a depth of four. A stereo picture is two eyes side by side and takes no ray.
+- `capture`: the pick lands on the node. The compositor does not deliver to the source's client; the shell is sent the
+  node's `enter`, `motion`, `leave`, `press`, `release` and `scroll` as for any shell node, and a script reads them as
+  `onPointer*` handlers on the node.
+- A View with no `source` has nothing to forward to: in either mode it is the shell's.
+
+Keyboard focus follows the focus rules above and does not depend on the mode: a captured press moves no client's
+keyboard focus (the shell can write the seat's `focus`), and a forwarded press is an edge on the window's node, so the
+shell's focus policy runs as it does for a press on the window itself. `secure` is unchanged: it masks a node in a View's
+picture and in captures, and the pick does not reveal it.
 
 Keys: when the shell writes the main seat's `focus` to a shell node that takes input (`class` other than `window`,
 `input` set), that node holds the keyboard. The client gets `wl_keyboard` leave, and each key the router does not consume

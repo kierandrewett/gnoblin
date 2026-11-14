@@ -65,8 +65,19 @@ function host(): SceneBackend {
     return backend;
 }
 
-/** What a pointer ray does at a node. Native input has one flag: `forward` and `capture` both set it, `none` clears it. */
+/** What a pointer that hits a node does: goes on into its content (`forward`), stops at it for the shell (`capture`) or misses it (`none`). */
 export type InputMode = "forward" | "capture" | "none";
+
+/** A pointer edge on a node of the scene the shell is sent: the point is in the node's own plane, in its units. */
+export interface NodePointerEvent {
+    /** The node the pointer is on. */
+    readonly node: Node;
+    /** The point in the node's own plane. */
+    readonly x: number;
+    readonly y: number;
+    /** The button of a `press` or `release`, as the kernel numbers it (272 is the left one); 0 for the other edges. */
+    readonly button: number;
+}
 
 /** Initial node values; position units depend on the parent, and rotation is in radians. */
 export interface NodeOptions {
@@ -123,6 +134,34 @@ export function nodeIdOf(object: Node): NodeId {
 /** The scene object for node `id`, or undefined when this module did not make it. */
 export function sceneNode(id: NodeId): Node | undefined {
     return live.get(id);
+}
+
+/** The handler member of a node that hears each pointer edge. */
+type PointerHandler = "onPointerEnter" | "onPointerMotion" | "onPointerLeave" | "onPointerPress" | "onPointerRelease";
+const POINTER_HANDLERS: Readonly<Record<string, PointerHandler>> = {
+    enter: "onPointerEnter",
+    motion: "onPointerMotion",
+    leave: "onPointerLeave",
+    press: "onPointerPress",
+    release: "onPointerRelease",
+};
+
+/**
+ * The call that tells a node's handler of a pointer edge, or undefined when this module did not make the node or it
+ * has no handler for the edge. The shell queues it beside the listeners' calls so a throw is reported, not raised.
+ */
+export function sceneNodePointer(
+    id: NodeId,
+    kind: string,
+    point: { readonly x: number; readonly y: number; readonly button: number },
+): (() => void) | undefined {
+    const node = live.get(id);
+    const member = POINTER_HANDLERS[kind];
+    const handler = node !== undefined && member !== undefined ? node[member] : undefined;
+    if (node === undefined || typeof handler !== "function") {
+        return undefined;
+    }
+    return () => handler.call(node, { node, x: point.x, y: point.y, button: point.button });
 }
 
 /** Tells the module nodes were destroyed by someone else (the compositor, a destroyed ancestor). */
@@ -557,22 +596,41 @@ export class Node {
     }
 
     /**
-     * The compositor's input flag enables (`forward`) or disables (`none`) input on this node. `capture` is unavailable:
-     * it requires native routing to stop a ray at a View instead of forwarding to its content.
+     * What a pointer that reaches the node does. `forward` (the default): the pointer hits the node and, for a `View`
+     * of a client, goes on into the client, in the client's own surface coordinates; the shell is sent nothing for
+     * the View. `capture`: the pointer hits the node and stops there; the shell is sent the node's pointer events
+     * and the client none, so a script can make its own interaction over a client's picture. `none`: the pointer
+     * misses the node, and its children are still tested. The tree holds this as two properties: `input` (set for
+     * `forward` and `capture`) and `input_mode` (`forward` or `capture`). A write also takes `true` (`forward`) and
+     * `false` (`none`).
      */
     get input(): InputMode {
-        return this.read<boolean>("input") ? "forward" : "none";
+        if (!this.read<boolean>("input")) {
+            return "none";
+        }
+        return this.read<string>("input_mode") === "capture" ? "capture" : "forward";
     }
     set input(value: boolean | InputMode) {
         const mode = value === true ? "forward" : value === false ? "none" : value;
         if (mode !== "forward" && mode !== "capture" && mode !== "none") {
             throw new TypeError(`${label(this)}.input: must be "forward", "capture", "none" or a boolean`);
         }
-        if (mode === "capture") {
-            throw new SceneError("unsupported", `${label(this)}.input`, "input capture needs compositor routing: not built");
+        if (mode !== "none") {
+            this.write("input_mode", mode);
         }
-        this.write("input", mode === "forward");
+        this.write("input", mode !== "none");
     }
+
+    /** Called when the pointer enters the node. Only a node the shell is sent edges for hears it: see `input`. */
+    onPointerEnter?: (event: NodePointerEvent) => void;
+    /** Called when the pointer moves over the node. */
+    onPointerMotion?: (event: NodePointerEvent) => void;
+    /** Called when the pointer leaves the node. */
+    onPointerLeave?: (event: NodePointerEvent) => void;
+    /** Called when a button goes down on the node. */
+    onPointerPress?: (event: NodePointerEvent) => void;
+    /** Called when a button comes up on the node. */
+    onPointerRelease?: (event: NodePointerEvent) => void;
 
     /**
      * Metres in one unit of this node's space; 1 until set, as the specification's default is logical units. The

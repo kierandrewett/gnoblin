@@ -528,6 +528,8 @@ declare module "gnoblin/schema/tree" {
         clip: boolean;
         /** Default `true`. */
         input: boolean;
+        /** Schema name `input_mode`. Default `"forward"`. */
+        inputMode: string;
         /** Default `false`. */
         secure: boolean;
         /** Default `[]`. */
@@ -824,7 +826,11 @@ declare module "gnoblin" {
     }
     /** The rotation or scale a node reads: three numbers that also answer to `x`, `y` and `z`. */
     export type AxisTriple = [number, number, number] & { readonly x: number; readonly y: number; readonly z: number };
-    /** `forward` enables the native input flag; `none` clears it. `capture` requires unsupported native routing. */
+    /**
+     * What a pointer does at a node: `forward` hits it and goes on into its content (a client's window, which gets the
+     * pointer in its own surface coordinates), `capture` hits it and stops so the shell is sent its pointer events and
+     * the client none, `none` misses it.
+     */
     export type InputMode = "forward" | "capture" | "none";
 
     // -- Native objects (owner-spec section 4) --------------------------------
@@ -4437,6 +4443,15 @@ declare module "gnoblin/extensions/xr" {
         plane(): Plane;
     }
 
+    /** A pointer edge on a node of the scene the shell is sent: the point is in the node's own plane, in its units. */
+    export interface NodePointerEvent {
+        /** The node the pointer is on. */
+        readonly node: Node;
+        readonly x: number;
+        readonly y: number;
+        /** The button of a `press` or `release`, as the kernel numbers it (272 is the left one); 0 for the other edges. */
+        readonly button: number;
+    }
     /** Initial node position and pose relative to its parent; rotations are radians. */
     export interface NodeOptions {
         /** The node's stable id, as in `new Node({ id: "xr-room" })`. It is also its name. */
@@ -4475,9 +4490,23 @@ declare module "gnoblin/extensions/xr" {
         set scale(value: ScaleInit);
         visible: boolean;
         opacity: number;
-        /** The native input flag: `forward` enables it, `none` clears it; `capture` throws unsupported without native routing. */
+        /**
+         * What a pointer does at the node: `forward` (the default; a View of a client gives the client the pointer),
+         * `capture` (the node is hit and the pointer stops there: the shell is sent its edges and the client none) or
+         * `none` (the node is missed). A write also takes a boolean: `true` is `forward`, `false` is `none`.
+         */
         get input(): InputMode;
         set input(value: boolean | InputMode);
+        /** Called when the pointer enters the node. Only a node the shell is sent edges for hears it: see `input`. */
+        onPointerEnter?: (event: NodePointerEvent) => void;
+        /** Called when the pointer moves over the node. */
+        onPointerMotion?: (event: NodePointerEvent) => void;
+        /** Called when the pointer leaves the node. */
+        onPointerLeave?: (event: NodePointerEvent) => void;
+        /** Called when a button goes down on the node. */
+        onPointerPress?: (event: NodePointerEvent) => void;
+        /** Called when a button comes up on the node. */
+        onPointerRelease?: (event: NodePointerEvent) => void;
         /** Metres in one unit of the node's space. The script keeps it. Default 1. */
         metresPerUnit: number;
         /** The placement as a pose. A write takes a plain `{ position, rotation, scale }` and writes the parts it has. */

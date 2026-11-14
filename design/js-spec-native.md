@@ -233,7 +233,7 @@ class is S or M; where nothing exists below it the entry is L.
 | `Camera2D` | the class (`position`, `zoom`, `rotation`); needs a per-output content transform. `Camera3D` exists as the XR scene node, but not as a `Viewport` camera | 022, 059, 080, 085, 107, init.js | M |
 | `Camera3D` on a flat workspace | perspective and orthographic projection of a workspace's windows, hit-testing from the same transform state (spec 16, "render from the same transform state that input hit-testing uses"); animating `position` and `fov` through `requestTransition` | 059, 080, 081, 107, 110, 111, init.js | L (renderer and input) |
 | `ArcLayout` | the export. The fragment's `compute()` already runs as user code (058 runs), and `carousel-3d` exists as a stock layout name; what is missing is the stock class and honouring `transform` placements on a 2D workspace (needs the 3D camera) | 055, 059, 076, 080, 081, 111, init.js, 128 | S for the class, L with the camera |
-| Scene and `View` nodes | the `Scene` export and `gnoblin.scene`; `View.input` is `boolean`, the spec says `"forward" \| "capture" \| "none"` (026); a `View` of a workspace (027: "a workspace is not a tree node, so a View cannot show one yet"); `View.rotation` takes an `{x, y, z}` Euler (079); `Client.committedSize` (064) | 022, 026, 027, 064, 079 | S each; `View` of a workspace is M |
+| Scene and `View` nodes | the `Scene` export and `gnoblin.scene`; `View.input` takes `"forward" \| "capture" \| "none"` (026, lane InputMode: routed natively); a `View` of a workspace (027: "a workspace is not a tree node, so a View cannot show one yet"); `View.rotation` takes an `{x, y, z}` Euler (079); `Client.committedSize` (064) | 022, 026, 027, 064, 079 | S each; `View` of a workspace is M |
 | Writable transforms | `Node.transform` / `client.set({ transform })` (the shell answers "transform is not a writable property") | 082, 124 | M |
 | Property bindings without polling | `node.bind(name, fn)` and `node.properties.bind(name, fn)`: a tracked expression that re-runs when what it read changes | 083, 084, 085, 121 | M |
 | Style lists | `ObservableCollection.add` on `style.borders` and friends (the array-assign form and in-place edits of `shadows[0].blur` already run) | 016 | S |
@@ -402,9 +402,22 @@ apart. User page: docs/shell-api/scene.md. Tests: crates/gnoblin-js/tests/scene_
   the parts it has to the node's `x`, `y`, `z`, `rotation` and `scale`: one transaction per frame, and one transition inside
   `set`/`requestTransition`. `Client` gets the same `position`, `rotation`, `scale` and `transform`; a client's `position` is
   `x`, `y` and its depth `z`, so a transform with a position moves the window's rectangle, as writing `client.x` does.
-- **`View.input`.** The compositor's tree has one `input` flag: `"forward"` writes true and `"none"` writes false; reads report
-  only those modes. `"capture"` requires native routing that can stop input at a View, so the shell throws a typed `unsupported`
-  error rather than storing script-only state. Fence 026 uses `"forward"` and still runs because it maps to the native flag.
+- **`View.input` (026, lane InputMode).** `Node.input` is `"forward" | "capture" | "none"`; `true` and `false` still write
+  (`forward`, `none`). The tree holds it as `input` (the pick sees the node) and `input_mode` (`forward` or `capture`),
+  both written by the script, and the compositor routes by them (design/node-core.md, 5.1 "Input modes"): `forward`
+  gives a client under a View the pointer at the point of its surface the View's picture shows, `capture` lands on the
+  View so the shell, not the client, is sent its edges (`onPointerEnter`, `onPointerMotion`, `onPointerLeave`,
+  `onPointerPress`, `onPointerRelease` on the node), and `none` is a miss. `capture` therefore no longer stays in the
+  script and no longer throws. Fence 026 is `runs` in `expected.toml`, and `runs` means only that the snippet
+  evaluates; the behavioural proof of `forward` is `a_transformed_view_forwards_the_inverse_transform_of_the_ray_and_its_margins_reach_no_client`
+  in `crates/gnoblin-wayland/tests/view_input.rs`: a real client under a View that is scaled by a half, turned a quarter and placed at
+  an offset gets a press at four known points (both corners of its surface, the middle and a point off the diagonal) at the
+  inverse-transformed surface coordinates, and a point in the View's margin (the View is larger than its client) reaches
+  no client. The same file proves `capture` (the shell is sent the View's edges, the client nothing, and `forward` again
+  gives the client the press) and `none` (the press reaches the window under the View), and
+  `a_script_sets_a_client_view_to_capture_and_sees_its_press_then_sets_forward_and_the_client_gets_it` in
+  `crates/gnoblin/tests/js_shell.rs` does it from a script on the real compositor. Callers that read the old boolean
+  were migrated (`pickView`, `pinToHead` in xr.ts, by lane SpecXr).
 - **`View.size`, `contentFit`.** `size` is `{ width, height }` over the tree's `width` and `height`. `contentFit` is kept
   (default `stretch`, which is what the compositor draws for a client); only a workspace's picture is fitted by it.
 - **A `View` of a workspace (027).** Decision: implemented, not refused. A workspace is a script object and the compositor

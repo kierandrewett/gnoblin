@@ -5750,3 +5750,113 @@ fn a_reload_hands_every_seat_claim_over_so_each_shortcut_fires_once_and_a_remove
         claim_trouble(&compositor_log)
     );
 }
+
+// ---- a View of a client: `input` is forward, capture or none ----------------------------------------------------------
+
+/// A config that makes a View of the window of `org.example.shown` at (600, 300), as large as the window, whose `input`
+/// is `capture`. The script hears the View's pointer edges in `heard`, and gives the pointer back to the client by
+/// setting the View to `forward` once it has heard a release.
+const CAPTURE_VIEW_INIT: &str = r#"import { Layout, View, defineConfig, gnoblin } from "gnoblin";
+import type { Client, NodePointerEvent } from "gnoblin";
+
+defineConfig({
+    workspaces: [{ id: "desk", layout: new Layout() }],
+    decorations: false,
+    rules: [{ appId: "org.example.shown", position: { x: 100, y: 100 }, size: { width: 200, height: 150 } }],
+});
+
+const heard: string[] = [];
+let panel: View | null = null;
+(globalThis as any).probe = () => `${panel === null ? "none" : panel.input}|${heard.join(";")}`;
+
+gnoblin.clients.addListener({
+    onAdded(client: Client): void {
+        if (client.appId !== "org.example.shown") {
+            return;
+        }
+        const made = new View({ content: client, size: { width: 200, height: 150 }, input: "capture" });
+        made.x = 600;
+        made.y = 300;
+        made.onPointerEnter = () => heard.push("enter");
+        made.onPointerPress = (event: NodePointerEvent) => heard.push(`press@${event.x},${event.y}`);
+        made.onPointerRelease = () => {
+            heard.push("release");
+            made.input = "forward";
+        };
+        made.onPointerLeave = () => heard.push("leave");
+        gnoblin.scene.root.add(made);
+        panel = made;
+    },
+});
+"#;
+
+#[test]
+fn a_script_sets_a_client_view_to_capture_and_sees_its_press_then_sets_forward_and_the_client_gets_it() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    save(&config.path().join("init.ts"), CAPTURE_VIEW_INIT);
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    let pointer = mapper.pointer();
+    wait_for("the shell runs the config", &session, &mut mapper, &shell, || {
+        shell.generation() > 0 && shell.view().contains(", 1 workspaces")
+    });
+    let shown = "org.example.shown";
+    mapper.map_window(shown, "Shown");
+    wait_for(
+        "the window at its place and a View of it",
+        &session,
+        &mut mapper,
+        &shell,
+        || rect_of(&ipc, shown) == Some((100.0, 100.0, 200.0, 150.0)) && shell.probe().starts_with("capture|"),
+    );
+
+    // In `capture` the pointer over the View is the script's: it hears the edges, in the View's own plane, and the
+    // window's client hears nothing.
+    motion(&session, 650, 340);
+    wait_for(
+        "the script hears the pointer enter the View",
+        &session,
+        &mut mapper,
+        &shell,
+        || shell.probe().contains("enter"),
+    );
+    click(&session);
+    wait_for(
+        "the script hears the press and release",
+        &session,
+        &mut mapper,
+        &shell,
+        || shell.probe().contains("release"),
+    );
+    assert_eq!(
+        shell.probe(),
+        "forward|enter;press@50,40;release",
+        "the script was sent the View's edges"
+    );
+    assert_eq!(pointer.presses(), 0, "the client heard nothing of a captured press");
+    assert!(!pointer.over(), "the pointer never entered the client");
+
+    // The script set the View to `forward` on the release: the same click now goes through to the client, at the
+    // point of its surface the View shows there, and the script is sent no more of it.
+    motion(&session, 651, 341);
+    wait_for(
+        "the pointer enters the client through the View",
+        &session,
+        &mut mapper,
+        &shell,
+        || pointer.over(),
+    );
+    click(&session);
+    wait_for("the client hears the press", &session, &mut mapper, &shell, || {
+        pointer.presses() == 1
+    });
+    let probe = shell.probe();
+    assert!(
+        probe.starts_with("forward|enter;press@50,40;release;leave") && probe.matches("press").count() == 1,
+        "the script hears the pointer leave the View and no press of the forwarded click: {probe}"
+    );
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    shell.finish();
+}

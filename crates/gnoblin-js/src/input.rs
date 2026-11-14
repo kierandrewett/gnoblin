@@ -55,7 +55,8 @@ pub(crate) struct JsWindowPointer {
     button: f64,
 }
 
-/// The event kinds a window's `ClientListener` hears. A scroll is not one: nothing in the stock policy reads it.
+/// The event kinds a window's `ClientListener` and a scene node's pointer handlers hear. A scroll is not one: nothing
+/// in the stock policy reads it.
 const WINDOW_POINTER_KINDS: &[&str] = &["press", "release", "motion", "enter", "leave"];
 
 impl JsWindowPointer {
@@ -111,7 +112,9 @@ impl JsInput {
         self.clock.now().saturating_sub(self.origin).as_secs_f64() * 1000.0
     }
 
-    /// Keeps a pointer event addressed to a window of the tree; any other event is not input's.
+    /// Keeps a pointer event addressed to a window of the tree, or to a `View` or `Node` (a script's own scene node,
+    /// which hears it through its handlers: a View whose `input` is `capture` is sent its edges); any other event is
+    /// not input's.
     pub(crate) fn accept_window_event(
         &mut self,
         mirror: &TreeMirror,
@@ -120,7 +123,7 @@ impl JsInput {
     ) -> bool {
         let on_window = mirror
             .node(event.node)
-            .is_some_and(|record| class_name(&record.class) == "Window");
+            .is_some_and(|record| matches!(class_name(&record.class).as_str(), "Window" | "View" | "Node"));
         if !on_window || !WINDOW_POINTER_KINDS.contains(&event.kind.as_str()) {
             return false;
         }

@@ -144,6 +144,8 @@ const NODE: &[JsPropDef] = &[
     animated("opacity", JsPropKind::Double),
     def("visible", JsPropKind::Flag, true),
     def("input", JsPropKind::Flag, true),
+    // What a hit does when `input` is set: `forward` or `capture`. `input` unset is the third state, `none`.
+    def("input_mode", JsPropKind::Text, true),
     def("secure", JsPropKind::Flag, true),
 ];
 
@@ -161,6 +163,8 @@ const VIEW: &[JsPropDef] = &[
     animated("opacity", JsPropKind::Double),
     def("visible", JsPropKind::Flag, true),
     def("input", JsPropKind::Flag, true),
+    // What a hit does when `input` is set: `forward` or `capture`. `input` unset is the third state, `none`.
+    def("input_mode", JsPropKind::Text, true),
     def("secure", JsPropKind::Flag, true),
     def("source", JsPropKind::Node, true),
     def("camera", JsPropKind::Node, true),
@@ -179,6 +183,8 @@ const CAMERA: &[JsPropDef] = &[
     animated("opacity", JsPropKind::Double),
     def("visible", JsPropKind::Flag, true),
     def("input", JsPropKind::Flag, true),
+    // What a hit does when `input` is set: `forward` or `capture`. `input` unset is the third state, `none`.
+    def("input_mode", JsPropKind::Text, true),
     def("secure", JsPropKind::Flag, true),
     def("projection", JsPropKind::Text, true),
     def("metres", JsPropKind::Double, true),
@@ -255,6 +261,7 @@ pub(crate) fn default_value(def: &JsPropDef) -> MirrorValue {
         ("decoration_wanted", _) => MirrorValue::Text("unset".to_owned()),
         ("opacity", _) => MirrorValue::Double(1.0),
         ("input", _) => MirrorValue::Bool(true),
+        ("input_mode", _) => MirrorValue::Text("forward".to_owned()),
         ("metres", _) => MirrorValue::Double(0.001),
         ("near", _) => MirrorValue::Double(0.1),
         ("far", _) => MirrorValue::Double(1000.0),
@@ -411,6 +418,12 @@ mod tests {
             .find(|def| def.name == "input")
             .expect("input");
         assert_eq!(default_value(input), MirrorValue::Bool(true));
+        let mode = defs_for("view")
+            .into_iter()
+            .flatten()
+            .find(|def| def.name == "input_mode")
+            .expect("input_mode");
+        assert_eq!(default_value(mode), MirrorValue::Text("forward".to_owned()));
     }
 
     /// The class the XR program publishes is the schema's, not a shape this table made up: every property the schema's

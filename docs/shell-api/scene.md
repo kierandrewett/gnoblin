@@ -67,16 +67,41 @@ room.transform = { rotation: { x: 0, y: Math.PI / 4, z: 0 } };
 
 ### Input
 
-`input` maps to the compositor's single native input flag:
+`input` says what a pointer does when it reaches the node:
 
-| Value       | Meaning                                                                                                               |
-| ----------- | --------------------------------------------------------------------------------------------------------------------- |
-| `"forward"` | Sets the flag, enabling input.                                                                                        |
-| `"none"`    | Clears the flag, disabling input.                                                                                     |
-| `"capture"` | Throws `SceneError` with code `unsupported`: stopping a ray at a View needs native input routing, which is not built. |
+| Value       | Meaning                                                                                             |
+| ----------- | --------------------------------------------------------------------------------------------------- |
+| `"forward"` | The node is hit and, for a `View` of a client, the pointer goes on into the client. The default.    |
+| `"capture"` | The node is hit and the pointer stops there: the shell is sent its pointer events, the client none. |
+| `"none"`    | The node is missed. What is under it takes the pointer, and its children are still tested.          |
 
-- A write also takes `true` (`"forward"`) and `false` (`"none"`); reads return `"forward"` or `"none"`.
-- The native flag cannot distinguish forwarding through a View from capturing input at it. No script-side shadow state is kept.
+- A write also takes `true` (`"forward"`) and `false` (`"none"`), and a read gives the string.
+- The tree holds this as two properties: `input` (set for `"forward"` and `"capture"`) and `input_mode`
+  (`"forward"` or `"capture"`). The compositor routes by them, so the mode is the same for every shell and for the XR
+  program.
+- `"forward"` on a `View` of a client gives the client the pointer in its own surface coordinates, wherever the View is
+  placed, scaled or turned: the compositor maps the point of the View to the point of the client's picture under it. A
+  point where the picture shows nothing of the client (the margin of a View larger than its client) reaches nobody.
+  The script is sent nothing for the View.
+- `"capture"` lands on the View itself. The client is not given the pointer (and keeps its keyboard focus), and the View
+  hears `onPointerEnter`, `onPointerMotion`, `onPointerLeave`, `onPointerPress` and `onPointerRelease`, each with
+  `{ node, x, y, button }` in the View's own plane. A script can use this to draw its own interaction over a client's
+  picture.
+- A node that is not a View of a client has nothing to forward to, so `"forward"` and `"capture"` both send the script
+  its pointer events. A View with no `content` is the same.
+- The handlers are plain members, set as in `panel.onPointerPress = (event) => { ... }`. A throw in one is reported
+  like a throw in a listener.
+
+```ts
+const panel = new View({ content: client, size: { width: 400, height: 300 }, input: "capture" });
+panel.onPointerPress = (event) => {
+    if (event.x < 40 && event.y < 40) {
+        client.close();
+    } else {
+        panel.input = "forward"; // from the next move, the client gets the pointer
+    }
+};
+```
 
 ## Views
 
@@ -198,4 +223,3 @@ What it follows:
 
 - A perspective camera that projects a flat workspace's windows is not built, so `ArcLayout` is not seen as a ring.
 - `contentFit` does not fit a client's picture; see [Views](#views).
-- `"capture"` needs native input routing to stop a ray at a View; assigning it throws `SceneError` with code `unsupported`.
