@@ -3,7 +3,8 @@
 //
 // Everything that sets how it looks is a plain field of `TitlebarStyle`, so a config can hand its own style over
 // (`new Titlebar(client, { ...defaultTitlebarStyle, focusedFill: "#223" })`), and a later `defineConfig({ style })`
-// can build one from its keys. `Decorations` gives every client one titlebar and takes it away when the client goes.
+// can build one from its keys. `Decorations` gives one titlebar to each window the compositor told is server-decorated
+// (a window that draws its own title bar gets none) and takes it away when the window leaves or draws its own again.
 //
 // The bar sits above the window's content, never over it: its y is minus its height, so it lies in the room the layout
 // driver keeps free above the client (`Decorations.insetOf`). docs/js-ui.md, "Titlebar", says why.
@@ -341,22 +342,37 @@ export class Titlebar extends Box {
     }
 }
 
+/** A client the decorations can ask who draws its frame. A `Client` of the host module is one. */
+export interface DecoratedClient extends TitlebarClient {
+    /**
+     * Who draws the window's frame, as the compositor negotiated it (`Window.decoration`): `server` when the shell
+     * does, `client` when the client draws its own title bar, `none` for a window nobody frames.
+     */
+    readonly decoration: string;
+}
+
 /** Where a titlebar goes: the node of the window it decorates. */
-export type DecorationNode = (client: TitlebarClient) => number;
+export type DecorationNode = (client: DecoratedClient) => number;
 
 /**
- * Gives every client one titlebar. It is a collection listener: attach it to `gnoblin.clients` and it decorates each
- * client that is there and each that arrives, and removes the titlebar of one that leaves. When the compositor
+ * Gives every window the compositor told to be server-decorated one titlebar. It is a collection listener: attach it to
+ * `gnoblin.clients` and it decorates each such client that is there and each that arrives, takes the titlebar away from
+ * one whose decoration changes to something else, and removes the titlebar of one that leaves. When the compositor
  * destroys the window its titlebar's nodes go with it, and the toolkit forgets them.
  *
- * `insetOf(client)` is how much room the client's bar takes above its content. The layout driver leaves that much free
- * above every window it places, so the bar and the content never overlap.
+ * A client that draws its own title bar (a GTK or Qt window, foot) is `client` and gets none: a second bar over it
+ * would be the double title bar this rule exists to prevent. The compositor tells a client that asks for server-side
+ * that the server draws only while this shell has declared decorations (`Seat.decorations_available`), so a window
+ * that asked for a frame the shell does not draw is told to draw its own.
+ *
+ * `insetOf(client)` is how much room the client's bar takes above its content: 0 for a client with no bar. The layout
+ * driver leaves that much free above every window it places, so the bar and the content never overlap.
  */
 export class Decorations {
     readonly style: TitlebarStyle;
     readonly hooks: TitlebarHooks;
     readonly #nodeOf: DecorationNode;
-    readonly #bars = new Map<TitlebarClient, Titlebar>();
+    readonly #bars = new Map<DecoratedClient, Titlebar>();
 
     constructor(nodeOf: DecorationNode, style: TitlebarStyle = { ...defaultTitlebarStyle }, hooks: TitlebarHooks = {}) {
         this.#nodeOf = nodeOf;
@@ -365,26 +381,43 @@ export class Decorations {
     }
 
     /** The titlebar of `client`, if it has one. */
-    titlebarOf(client: TitlebarClient): Titlebar | undefined {
+    titlebarOf(client: DecoratedClient): Titlebar | undefined {
         return this.#bars.get(client);
     }
 
     /** The height of the bar above `client`'s content: 0 for a client with no bar, or one that is fullscreen. */
-    insetOf(client: TitlebarClient): number {
+    insetOf(client: DecoratedClient): number {
         return this.#bars.get(client)?.inset ?? 0;
     }
 
-    onAdded(client: TitlebarClient): void {
-        if (this.#bars.has(client)) {
-            return;
-        }
-        const bar = new Titlebar(client, this.style, this.hooks);
-        bar.mount(this.#nodeOf(client));
-        this.#bars.set(client, bar);
+    onAdded(client: DecoratedClient): void {
+        this.#follow(client);
     }
 
-    onRemoved(client: TitlebarClient): void {
+    /** The compositor changed who draws the client's frame: the bar comes or goes with it. */
+    onDecorationChanged(client: DecoratedClient): void {
+        this.#follow(client);
+    }
+
+    onRemoved(client: DecoratedClient): void {
         this.#bars.get(client)?.destroy();
         this.#bars.delete(client);
+    }
+
+    /** Gives the client a bar when it is server-decorated and has none, and takes it away when it is not. */
+    #follow(client: DecoratedClient): void {
+        const bar = this.#bars.get(client);
+        if (client.decoration !== "server") {
+            if (bar !== undefined) {
+                bar.destroy();
+                this.#bars.delete(client);
+            }
+            return;
+        }
+        if (bar === undefined) {
+            const made = new Titlebar(client, this.style, this.hooks);
+            made.mount(this.#nodeOf(client));
+            this.#bars.set(client, made);
+        }
     }
 }

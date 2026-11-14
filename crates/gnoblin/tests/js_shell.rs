@@ -1002,7 +1002,7 @@ fn a_shell_that_dies_leaves_the_compositor_answering_and_a_restarted_one_reattac
 #[test]
 fn a_script_draws_a_box_and_a_titlebar_and_the_compositor_holds_what_it_painted() {
     let session = Session::start();
-    let mut mapper = Mapper::connect(&session.wayland());
+    let mut mapper = Mapper::connect(&session.wayland()).requesting_server_side();
     mapper.map_window("org.example.decorated", "Decorated");
 
     let config = tempfile::tempdir().expect("a config directory");
@@ -2345,7 +2345,7 @@ fn write_ui_config(dir: &Path) {
 #[test]
 fn a_decorated_windows_content_lies_below_its_bar_and_a_titlebar_right_click_opens_the_window_menu() {
     let session = Session::start();
-    let mut mapper = Mapper::connect(&session.wayland());
+    let mut mapper = Mapper::connect(&session.wayland()).requesting_server_side();
     let config = tempfile::tempdir().expect("a config directory");
     write_ui_config(config.path());
     let shell = Shell::start(&session, config.path(), |_| {});
@@ -2412,6 +2412,109 @@ fn a_decorated_windows_content_lies_below_its_bar_and_a_titlebar_right_click_ope
     );
 }
 
+/// How many canvases hang under the window of `app_id`: its titlebar, when the shell gave it one.
+fn bars_under(ipc: &Path, app_id: &str) -> usize {
+    let Some(window) = scene(ipc).into_iter().find(|window| window.app_id == app_id) else {
+        return 0;
+    };
+    canvases(ipc)
+        .into_iter()
+        .filter(|canvas| canvas.parent == window.id)
+        .count()
+}
+
+/// The compositor tells a client that asks for server-side that the shell draws its title bar only while the shell has
+/// declared decorations, and a client that draws its own is left alone, so no window has two bars: the stock shell
+/// mounts a titlebar on the window that asked for one and none on the window that draws its own, and a reload that
+/// turns decorations off hands the first its own frame back and a reload that turns them on gives the bar again.
+#[test]
+fn a_window_that_draws_its_own_title_bar_gets_no_second_one_and_a_server_side_window_follows_the_shells_decorations() {
+    use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1::Mode;
+    let session = Session::start();
+    // A foot or GTK client: it asks for nothing here (no decoration object) and draws its own bar.
+    let mut own = Mapper::connect(&session.wayland());
+    // A client that wants the shell's bar.
+    let mut asks = Mapper::connect(&session.wayland()).requesting_server_side();
+    let config = tempfile::tempdir().expect("a config directory");
+    let init = config.path().join("init.ts");
+    write_ui_config(config.path());
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let ipc = session.ipc();
+    wait_for("the shell is running", &session, &mut asks, &shell, || {
+        shell.generation() >= 1
+    });
+
+    own.map_window("org.example.own", "Own");
+    asks.map_window("org.example.asks", "Asks");
+    wait_for(
+        "both windows placed, the asking one with its bar",
+        &session,
+        &mut asks,
+        &shell,
+        || {
+            own.roundtrip();
+            rect_of(&ipc, "org.example.own").is_some_and(|(_, _, width, _)| width > 0.0)
+                && rect_of(&ipc, "org.example.asks").is_some_and(|(_, _, width, _)| width > 0.0)
+                && bars_under(&ipc, "org.example.asks") == 1
+        },
+    );
+    assert_eq!(
+        bars_under(&ipc, "org.example.own"),
+        0,
+        "a window that draws its own title bar has no second one over it"
+    );
+    let (_, own_y, _, _) = rect_of(&ipc, "org.example.own").expect("the window");
+    assert_eq!(own_y, 0.0, "nothing is reserved above a window that frames itself");
+    let (_, asks_y, _, _) = rect_of(&ipc, "org.example.asks").expect("the window");
+    assert!(
+        asks_y >= 28.0,
+        "the asking window's content lies below its bar: {asks_y}"
+    );
+    assert_eq!(
+        asks.decoration_modes(0),
+        vec![Mode::ServerSide],
+        "the shell had declared decorations, so the first answer is server-side"
+    );
+    assert!(
+        own.decoration_modes(0).is_empty(),
+        "no decoration object, nothing was said"
+    );
+
+    // A reload with decorations off: the shell takes its declaration back and the asking window draws its own again.
+    let generation = shell.generation();
+    save(
+        &init,
+        "import { defineConfig } from \"gnoblin\";\ndefineConfig({ decorations: false });\n",
+    );
+    wait_for("the reload took the bar away", &session, &mut asks, &shell, || {
+        shell.generation() > generation && bars_under(&ipc, "org.example.asks") == 0
+    });
+    asks.roundtrip();
+    assert_eq!(
+        asks.decoration_modes(0).last(),
+        Some(&Mode::ClientSide),
+        "the window that asked for the shell's bar is told to draw its own: it is never left with none"
+    );
+
+    // And a reload with them on: the compositor sends server-side again and the bar returns.
+    let generation = shell.generation();
+    save(
+        &init,
+        "import { defineConfig } from \"gnoblin\";\ndefineConfig({ decorations: true });\n",
+    );
+    wait_for("the reload brought the bar back", &session, &mut asks, &shell, || {
+        shell.generation() > generation && bars_under(&ipc, "org.example.asks") == 1
+    });
+    asks.roundtrip();
+    assert_eq!(asks.decoration_modes(0).last(), Some(&Mode::ServerSide));
+    assert_eq!(bars_under(&ipc, "org.example.own"), 0);
+    let log = shell.finish();
+    assert!(
+        log.iter().all(|line| !line.contains("threw")),
+        "the shell logged a throw: {log:#?}"
+    );
+}
+
 /// The UI config of the alert test: decorations, and a `probe` that says of the one window `waiting/armed`. `waiting` is
 /// whether the alert still waits on a window its user chose Wait for, which it does until it has seen the window answer a
 /// ping. `armed` is whether the Force quit of the window's open alert is armed, and `undefined` while no alert is open.
@@ -2439,7 +2542,7 @@ fn a_window_that_stops_answering_gets_the_alert_and_wait_and_force_quit_close_it
     let session = Session::start_with(|config| {
         config.wayland.check_alive_timeout = Duration::from_millis(800);
     });
-    let mut mapper = Mapper::connect(&session.wayland());
+    let mut mapper = Mapper::connect(&session.wayland()).requesting_server_side();
     let config = tempfile::tempdir().expect("a config directory");
     write_alert_config(config.path());
     let shell = Shell::start(&session, config.path(), |_| {});
@@ -2785,7 +2888,7 @@ fn idle(mapper: &mut Mapper, span: Duration) {
 #[test]
 fn the_starter_is_the_stock_config_as_written_and_its_examples_work_switched_on() {
     let session = Session::start();
-    let mut mapper = Mapper::connect(&session.wayland());
+    let mut mapper = Mapper::connect(&session.wayland()).requesting_server_side();
     mapper.map_window("org.example.first", "First");
     let config = tempfile::tempdir().expect("a config directory");
     let init = config.path().join("init.ts");

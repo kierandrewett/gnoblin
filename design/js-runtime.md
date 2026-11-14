@@ -1666,7 +1666,7 @@ Each scenario boots its own session over a fresh directory, so one can be run al
 | `master-stack`, `dwindle`                     | three windows, then a reload to the owner's `defineConfig` (no `decorations` key)         |
 | `master-stack-decorated`, `dwindle-decorated` | the same with `decorations: true`                                                         |
 | `shadows-software`, `shadows-gles`            | `style.shadows` on each renderer (the renderer is read at start, so the session restarts) |
-| `csd-double`, `csd-tiled`                     | foot as it comes, drawing its own title bar, under the stock titlebar                     |
+| `csd-double`, `csd-own`, `csd-tiled`          | foot as it comes: the shell's one bar; with decorations off, foot's own one bar           |
 | `window-menu`                                 | the window menu, opened with `Alt+Space` sent by `wtype`                                  |
 | `lock`                                        | `gnoblinctl lock`, then a capture, which is refused                                       |
 
@@ -1705,6 +1705,19 @@ four that are clean product states and are in `docs/typescript-shell.md`, "What 
 | 5   | `shadows-gles.png`                | The shadow is the window node's, so it is cast by the content and not by the frame: it has nothing at the titlebar's side. The shadow effect has no rectangle of its own to grow.                                                                                                                                                                                                                                                                                                                                     | Open. Needs the effect to take an extent, in the compositor.                                                                                                                                                                                                                                                                                      |
 | 6   | `master-stack.log`                | A reload logged 19 `a seat claim's chord is already bound for that device` and one `a seat gesture claim was refused` at WARN. The new generation claimed each stock key while the old one still held it, so the compositor refused the duplicate, and the old generation's release then freed the chord: after the reload nobody held it and the key did nothing.                                                                                                                                                    | Fixed (lane JsReloadClaims). A staged generation's claims wait for the swap and go out behind the old generation's releases, in one transaction ("Hot reload", "Seat claims across a reload"). Tests: `crates/gnoblin-js/tests/input.rs`, real: `a_reload_hands_every_seat_claim_over_so_each_shortcut_fires_once_and_a_removed_one_is_released`. |
 | 7   | every `.log`                      | The guardian wrapped each INFO line a child prints on stderr as `WARN guardian/raw INFO ...`, so a healthy start was a page of warnings: `is_structured` looked for the bracketed form `INFO  [role] ...`, and the console prints `INFO   role/component  message`.                                                                                                                                                                                                                                                   | Fixed (lane JsReloadClaims) in `crates/gnoblin-session/src/raw.rs`: a line the child formatted itself is passed on with its own level. Tests in the same file.                                                                                                                                                                                    |
+
+**Defect 4 (double title bars) is fixed** (lane SsdNegotiation; `docs/js-ui.md`, "Who draws the frame"). The compositor now
+negotiates `xdg-decoration`: a client that asks for server-side is told so only while a shell that holds the tree has
+written the main seat's `decorations_available` (the stock shell does when `decorations` is on, after each generation
+starts, and takes it back when a generation retires; the compositor clears it when the shell's connection drops), and is
+told client-side otherwise. The window node publishes `decoration` and `decoration_wanted`; the stock `Decorations`
+mounts a `Titlebar`, and `frameInset` reserves room, only on a `server` window. The answer is sent again to existing
+windows when the declaration changes. Proven by scene and protocol tests: `crates/gnoblin-wayland/tests/decoration.rs`
+(a real `xdg-decoration` client: no shell, shell without declaration, declared, client-side ask, no preference, no
+manager, decorations off and on, shell connection drop), `crates/gnoblin/tests/js_shell.rs` (a client that draws its own bar
+gets none, a reload toggling decorations) and `crates/gnoblin-js/tests/stock_ui.rs`. Not re-taken on pixels: the
+`csd-double` and `csd-own` scenarios of `scripts/js-shell-screenshots.sh` were updated but not run for this change, and
+the 52 px height loss of the foot window (the surface geometry offset, see the table) was not re-measured.
 
 ## Questions for the owner (the agent has a default for each)
 

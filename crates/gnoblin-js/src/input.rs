@@ -314,6 +314,29 @@ fn clear_focus(state: &mut HostState, seat: NodeId) -> Option<&'static str> {
     write_focus(state, seat, NIL)
 }
 
+/// Queues a write of the seat's `decorations_available`: whether this shell draws window decorations. The compositor
+/// answers a client's server-side request with server-side only while it is true, and clears it when the shell's
+/// connection drops. Refused when `seat` is not a live seat node.
+fn declare_decorations(state: &mut HostState, seat: NodeId, available: bool) -> Option<&'static str> {
+    let HostState { mirror, tick, .. } = state;
+    let is_seat = tick
+        .node(mirror, seat)
+        .is_some_and(|record| lua_class(&record.class) == "Seat");
+    if !is_seat {
+        return Some("unknown-node");
+    }
+    tick.set(
+        mirror,
+        seat,
+        "decorations_available",
+        MirrorValue::Bool(available),
+        None,
+        None,
+    )
+    .err()
+    .map(|_| "unknown-node")
+}
+
 /// Queues the first seat's keyboard focus going to `window`. The compositor answers no `focus` call on a window; the
 /// focus is the seat's, and a shell gives it by writing the seat's `focus` (the Lua shell's `seat.focus = window`).
 /// Refused with `no-seat` when the tree has no seat.
@@ -651,6 +674,18 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
                 return Some("unknown-node");
             };
             clear_focus(&mut state, seat)
+        })?,
+    )?;
+
+    let shared = state.clone();
+    input.set(
+        "declareDecorations",
+        Function::new(ctx.clone(), move |seat: f64, available: bool| -> Option<&'static str> {
+            let mut state = shared.borrow_mut();
+            let Some(seat) = state.handles.resolve(seat) else {
+                return Some("unknown-node");
+            };
+            declare_decorations(&mut state, seat, available)
         })?,
     )?;
 

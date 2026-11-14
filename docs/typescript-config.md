@@ -17,17 +17,17 @@ A key you leave out keeps its default. Your config is laid over the stock config
 
 ## How your config combines with the stock one
 
-| Key                                      | What happens                                                                           |
-| ---------------------------------------- | -------------------------------------------------------------------------------------- |
-| `workspaces`                             | Yours replaces the stock list. Leave it out, or empty, to keep the stock `1` to `4`.   |
-| `rules`, `autostart`, `touchpadGestures` | Yours replaces the list as a whole.                                                    |
-| `keys`                                   | Merged by trigger. Your key replaces the stock key with the same trigger.              |
-| `launcher`, `setup`                      | Yours, when you give one.                                                              |
-| `gaps`, `style`, `outputs`, `on`         | Merged by key, your value winning. A nested object, such as a shadow, is one value.    |
-| `focus`                                  | Merged by key. A key you leave out is the compositor's own setting.                    |
-| `decorations`                            | Not layered. The stock config has titlebars, and a `defineConfig` without it has none. |
-| `menus`, `alerts`                        | Yours, when you give one. Both are on in the stock config.                             |
-| Compositor settings                      | Merged by key. See [compositor settings](#compositor-settings).                        |
+| Key                                      | What happens                                                                                                                    |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `workspaces`                             | Yours replaces the stock list. Leave it out, or empty, to keep the stock `1` to `4`.                                            |
+| `rules`, `autostart`, `touchpadGestures` | Yours replaces the list as a whole.                                                                                             |
+| `keys`                                   | Merged by trigger. Your key replaces the stock key with the same trigger.                                                       |
+| `launcher`, `setup`                      | Yours, when you give one.                                                                                                       |
+| `gaps`, `style`, `outputs`, `on`         | Merged by key, your value winning. A nested object, such as a shadow, is one value.                                             |
+| `focus`                                  | Merged by key. A key you leave out is the compositor's own setting.                                                             |
+| `decorations`                            | Not layered. The stock config has titlebars, for the windows that take the shell's frame. A `defineConfig` without it has none. |
+| `menus`, `alerts`                        | Yours, when you give one. Both are on in the stock config.                                                                      |
+| Compositor settings                      | Merged by key. See [compositor settings](#compositor-settings).                                                                 |
 
 Triggers are compared in their canonical spelling, so `"super+1"` replaces the stock `"Super+1"`. A stock key that
 shows a workspace by id is dropped when your config does not declare that workspace.
@@ -97,8 +97,17 @@ gaps: { inner: 8, outer: 12 },
 
 ### `decorations`
 
-A boolean. `true` gives every window a titlebar above its content, with a title and minimise, maximise and close buttons.
-`false` draws none. The stock config has `true`. A `defineConfig` that leaves the key out has no titlebars.
+A boolean. `true` gives the windows that take the shell's frame a titlebar above their content, with a title and
+minimise, maximise and close buttons. `false` draws none. The stock config has `true`. A `defineConfig` that leaves the
+key out has no titlebars.
+
+A window that draws its own title bar (a GTK or Qt client, foot) gets no titlebar, so it never shows two.
+
+- With `decorations` on, the shell tells the compositor that it draws decorations. A client that asks for server-side
+  decorations with `xdg-decoration` is then told the server draws them.
+- With `decorations` off, or with no shell, every client is told to draw its own.
+
+See [the titlebar](js-ui.md#titlebar).
 
 ### `menus` and `alerts`
 

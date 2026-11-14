@@ -114,3 +114,26 @@ since = "0.2.0"
 [[object.method]]
 name = "kill"
 since = "0.2.0"
+
+# Who draws the window's frame, as the compositor negotiated it: `client` (the client draws its own title bar and
+# borders, as a GTK or Qt window does with `xdg-decoration` client-side, or with no decoration protocol at all), `server`
+# (the shell draws the frame: the compositor told the client server-side, or the window is an X11 one with no frame of
+# its own) or `none` (an X11 window while no shell declares decorations). The compositor writes it and the shell reads
+# it, and the stock shell gives a `Titlebar` only to a `server` window. It is `client` until the compositor says
+# otherwise, and it follows the seat's `decorations_available`: a window that asked for server-side is told client-side
+# while no shell draws decorations.
+[[object.property]]
+name = "decoration"
+type = "string"
+since = "0.2.0"
+default = "client"
+readonly = true
+
+# What the window's client asked for with `xdg-decoration`: `client`, `server`, or `unset` (it never bound the protocol,
+# asked for no preference, or is an X11 window). Written by the compositor, read-only to the shell.
+[[object.property]]
+name = "decoration_wanted"
+type = "string"
+since = "0.2.0"
+default = "unset"
+readonly = true

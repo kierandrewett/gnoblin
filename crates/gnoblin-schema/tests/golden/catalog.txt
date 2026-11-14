@@ -647,6 +647,7 @@ object seat since 0.2.0 secret false
   property workspaces type list<string> since 0.2.0 secret false
   property reduced_motion type bool since 0.2.0 secret false
   property effect_kinds type list<string> since 0.2.0 secret false
+  property decorations_available type bool since 0.2.0 secret false
   method warp since 0.2.0 secret false function false
   method claim since 0.2.0 secret false function false
     param id type int since 0.2.0 secret false
@@ -764,6 +765,8 @@ object window since 0.2.0 secret false
   property unresponsive type bool since 0.2.0 secret false
   property parent_window type object:window since 0.2.0 secret false
   property from_launcher type bool since 0.2.0 secret false
+  property decoration type string since 0.2.0 secret false
+  property decoration_wanted type string since 0.2.0 secret false
   method focus since 0.2.0 secret false function false
   method close since 0.2.0 secret false function false
   method kill since 0.2.0 secret false function false
@@ -2370,6 +2373,8 @@ message Seat {
     bool reduced_motion = 36;
     // since 0.2.0; list
     repeated string effect_kinds = 37;
+    // since 0.2.0
+    bool decorations_available = 38;
   }
 
   // Method `warp`, since 0.2.0.
@@ -2638,6 +2643,10 @@ message Window {
     string parent_window = 28;
     // since 0.2.0
     bool from_launcher = 29;
+    // since 0.2.0
+    string decoration = 30;
+    // since 0.2.0
+    string decoration_wanted = 31;
   }
 
   // Method `focus`, since 0.2.0.

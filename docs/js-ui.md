@@ -95,8 +95,9 @@ A key goes to the canvas that holds the keyboard focus, then up through its pare
 
 ## Titlebar
 
-With `defineConfig({ decorations: true })` every window gets a `Titlebar`, a canvas under the window's node. The stock
-`defaultConfig` turns it on. A config without the key has no titlebars.
+With `defineConfig({ decorations: true })` a window that takes the shell's frame gets a `Titlebar`, a canvas under the
+window's node. The stock `defaultConfig` turns it on. A config without the key has no titlebars. A window that draws its
+own title bar gets none (see "Who draws the frame" below).
 
 The bar is a `Box` row: a drag area that holds the title, then the minimise, maximise and close buttons. It follows its
 window:
@@ -128,24 +129,50 @@ The style has these fields:
 - `titleSize`, `titleColor` and `titleFont`.
 - `buttons`, in order, and `buttonSize`, `buttonColor` and `icons`.
 
+### Who draws the frame
+
+A window has one title bar. Who draws it is negotiated with the client and published on the window as `decoration`:
+
+- `server`: the shell draws it. The client asked for server-side decorations with `xdg-decoration` and the shell had
+  declared that it draws them, or the window is an X11 one, which has no frame of its own.
+- `client`: the client draws its own title bar and borders, as GTK, Qt and foot do. The client asked for client-side
+  decorations, asked for no preference, or never bound the protocol.
+- `none`: an X11 window while no shell declares decorations.
+
+Scripts read it from the client:
+
+- `client.decoration` is the answer above.
+- `client.decorationWanted` is what the client asked for: `client`, `server`, or `unset`.
+- `ClientListener.onDecorationChanged` hears the answer change.
+
+`Decorations` mounts a `Titlebar` only on a `server` window, and takes it away from a window whose answer changes to
+anything else. A `client` window never shows a second bar over its own.
+
+The shell declares that it draws decorations by writing the seat's `decorations_available`:
+
+- It is true while `decorations` is on, and cleared when the shell retires.
+- The compositor also clears it when the shell's connection drops.
+- A client that asks for server-side is told so only while it is true and a shell holds the tree.
+- With no shell, or with `decorations` off, every client is told client-side, so a window is never left with no title bar
+  and nothing to move it by.
+- A change reaches the windows that already exist. A reload that turns decorations off gives each window that asked for
+  the shell's bar its own back, and a reload that turns them on gives the bar again.
+
 ### The room above the client
 
-The compositor always asks clients to draw their own decorations: decoration mode is client-side, and the tree has no
-server-side flag. A window that draws a header bar of its own therefore shows two when `decorations` is on.
-
-The stock library decorates every window and gives the bar room of its own instead of drawing
-over the client:
+The stock library gives a server-decorated window's bar room of its own instead of drawing over the client:
 
 - The bar is a child of the window's node at `y = -height`: it lies above the node, never over it.
 - `client.bounds` (and `x`, `y`, `width` and `height`) is the content's rectangle. The frame is the content with the bar
-  on top, and `client.frameInset` is the bar's height (0 without a bar, and while the window is fullscreen).
+  on top, and `client.frameInset` is the bar's height. It is 0 for a window with no bar: one that draws its own frame, or
+  that is fullscreen.
 - A layout places frames. The layout driver writes a placement `y` plus the inset and a height minus the inset, so a
   tiled window's bar is on its tile. Floating placement places the frame and puts the content below the bar. Dragging
   keeps the frame inside the work area, so a bar is never lost off the top, and an edge snap tiles the frame.
 - A window the compositor maximises or makes fullscreen is sized by the compositor. A maximise through the titlebar or
   the menu goes through the shell, which leaves the bar its room.
 
-To have no bar, leave `decorations` off.
+To have no bar on any window, leave `decorations` off.
 
 ## Entry, Clock and Bar
 

@@ -171,6 +171,13 @@ declare module "gnoblin" {
         kill(): void;
         /** Whether the client has left a liveness ping unanswered too long. */
         readonly unresponsive: boolean;
+        /**
+         * Who draws the window's frame, as the compositor negotiated it: `server` when the shell's titlebar does, `client` when
+         * the client draws its own title bar, `none` for a window nobody frames.
+         */
+        readonly decoration: string;
+        /** What the client asked of `xdg-decoration`: `client`, `server`, or `unset`. */
+        readonly decorationWanted: string;
         /** Whether the window is maximised. Writing asks the compositor to maximise or restore it. */
         maximised: boolean;
         minimised: boolean;
@@ -518,6 +525,8 @@ declare module "gnoblin" {
     export class ClientListener extends MemberListener<Client> {
         onTitleChanged?(client: Client, title: string): void;
         onAppIdChanged?(client: Client, appId: string): void;
+        /** The compositor changed who draws the window's frame: `client`, `server` or `none`. */
+        onDecorationChanged?(client: Client, decoration: string): void;
         /** The pointer crossed into the window. */
         onPointerEnter?(client: Client, event: ClientPointerEvent): void;
         onPointerMotion?(client: Client, event: ClientPointerEvent): void;
@@ -2307,9 +2316,10 @@ declare module "gnoblin" {
     export class Decorations {
         constructor(nodeOf: (client: Client) => number, style?: TitlebarStyle, hooks?: TitlebarHooks);
         titlebarOf(client: Client): Titlebar | undefined;
-        /** The height of the bar above `client`'s content; 0 without a bar or while fullscreen. */
+        /** The height of the bar above `client`'s content; 0 without a bar (a window that draws its own frame has none) or while fullscreen. */
         insetOf(client: Client): number;
         onAdded(client: Client): void;
+        onDecorationChanged(client: Client): void;
         onRemoved(client: Client): void;
     }
 

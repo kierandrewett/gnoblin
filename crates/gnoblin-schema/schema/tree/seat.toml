@@ -170,6 +170,18 @@ type = "list<string>"
 since = "0.2.0"
 readonly = true
 
+# Whether the shell that holds the tree draws window decorations (its stock `Titlebar`). The shell writes it: true
+# while it declares decorations, false when it stops. The compositor answers a client's `xdg-decoration` request for
+# server-side with server-side only while this is true and a shell holds the tree, so a window can never be left with
+# no title bar and nothing to move it by: with no shell, or one with decorations off, every client is told client-side.
+# The compositor clears it when the shell's connection drops, and sends the new answer to the windows it already has
+# when it changes.
+[[object.property]]
+name = "decorations_available"
+type = "bool"
+since = "0.2.0"
+default = false
+
 # Move the pointer.
 [[object.method]]
 name = "warp"

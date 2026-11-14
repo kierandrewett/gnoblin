@@ -83,6 +83,11 @@ export interface InputHost {
     settings(seat: number): SeatSettings | undefined;
     /** Queues the seat's keyboard focus going to no window; a refusal code, or undefined when queued. */
     clearFocus(seat: number): string | undefined;
+    /**
+     * Queues the seat's `decorations_available`: whether this shell draws window decorations. The compositor tells a
+     * client that asks for server-side that the server draws only while it is true. A refusal code, or undefined when queued.
+     */
+    declareDecorations(seat: number, available: boolean): string | undefined;
     /** A claim id, or a refusal code. */
     claim(seat: number, chord: string, grab: boolean, device: string): number | string;
     claimGesture(seat: number, kind: string, fingers: number, device: string): number | string;

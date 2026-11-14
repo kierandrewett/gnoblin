@@ -9,7 +9,7 @@
 # Usage: scripts/js-shell-screenshots.sh [OUT_DIR [SCENARIO...]]
 #
 # SCENARIO is one or more of: one-window cascade master-stack master-stack-decorated dwindle dwindle-decorated
-# shadows-software shadows-gles csd-double csd-tiled window-menu lock. The default is all of them.
+# shadows-software shadows-gles csd-double csd-own csd-tiled window-menu lock. The default is all of them.
 # GNOBLIN_BIN_DIR names where `gnoblin` and `gnoblinctl` are (default: $CARGO_TARGET_DIR/release, else
 # target/release).
 #
@@ -26,7 +26,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bin_dir="${GNOBLIN_BIN_DIR:-${CARGO_TARGET_DIR:-$repo_root/target}/release}"
 out_dir="${1:-$PWD/js-shell-shots}"
 shift || true
-wanted="${*:-one-window cascade master-stack master-stack-decorated dwindle dwindle-decorated shadows-software shadows-gles csd-double csd-tiled window-menu lock}"
+wanted="${*:-one-window cascade master-stack master-stack-decorated dwindle dwindle-decorated shadows-software shadows-gles csd-double csd-own csd-tiled window-menu lock}"
 
 for tool in grim foot dbus-daemon; do
     command -v "$tool" >/dev/null || {
@@ -149,8 +149,9 @@ ctl() {
 # window APP_ID TITLE BACKGROUND_HEX COMMAND [FOOT_OPTION...]: one foot window running COMMAND, in a tint of its own so the
 # windows can be told apart. foot takes a colour without the leading `#`. COMMAND is what the picture shows, so it is a
 # real program of the session (`gnoblinctl ...`) and not text typed for the picture. The compositor asks clients for
-# client-side decorations (the tree has no server-side flag), so foot draws a title bar of its own unless it is told not
-# to: every scenario but csd-double passes `csd.preferred=none`, so the picture shows the shell's titlebar and not two.
+# client-side decorations while no shell draws them, so foot draws a title bar of its own then unless it is told not to:
+# `plain_window` passes `csd.preferred=none`, so a picture of a config with decorations off shows no bar at all. A foot
+# as it comes (`window`) asks for server-side, and the shell's titlebar is its one bar whenever decorations are on.
 window() {
     local app_id="$1" title="$2" colour="$3" command="$4"
     shift 4
@@ -289,7 +290,9 @@ scenario_shadows_gles() {
     shadows shadows-gles gles
 }
 
-# csd-double: what a client that follows the compositor's client-side request shows under the stock titlebar.
+# csd-double: foot as it comes, under the stock shell with its titlebar. Foot asks for server-side decorations, the shell
+# has declared that it draws them, so foot draws none of its own and the picture shows exactly one title bar. Before
+# the compositor negotiated this it answered client-side to every client and the picture showed two.
 scenario_csd_double() {
     start_session
     window org.example.status "gnoblinctl status" "#1e3a5f" "gnoblinctl status"
@@ -298,8 +301,20 @@ scenario_csd_double() {
     stop_session
 }
 
-# csd-tiled: the same client in a tiled workspace with the shell's titlebars, so its own title bar sits in the room the
-# layout gave it.
+# csd-own: the same foot under a shell with decorations off. The compositor tells foot to draw its own title bar, so the
+# picture shows foot's one bar and none of the shell's: a window is never left with no bar.
+scenario_csd_own() {
+    start_session
+    set_config "import { defineConfig } from \"gnoblin\";
+
+export default defineConfig({ decorations: false });"
+    window org.example.status "gnoblinctl status" "#1e3a5f" "gnoblinctl status"
+    wait_windows 1
+    shoot csd-own
+    stop_session
+}
+
+# csd-tiled: the same client in a tiled workspace with the shell's titlebars: one bar on each tile.
 scenario_csd_tiled() {
     start_session
     set_config "import { DwindleLayout, defineConfig } from \"gnoblin\";
@@ -352,7 +367,7 @@ main() {
     local scenario
     for scenario in $wanted; do
         case "$scenario" in
-            one-window | cascade | master-stack | master-stack-decorated | dwindle | dwindle-decorated | shadows-software | shadows-gles | csd-double | csd-tiled | window-menu | lock)
+            one-window | cascade | master-stack | master-stack-decorated | dwindle | dwindle-decorated | shadows-software | shadows-gles | csd-double | csd-own | csd-tiled | window-menu | lock)
                 "scenario_${scenario//-/_}"
                 ;;
             *)

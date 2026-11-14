@@ -256,12 +256,19 @@ impl FakeCompositor {
         c.queue.push(TreeIncoming::Changes { serial, changes });
     }
 
-    /// A window that is in the tree already, as at boot.
+    /// A window that is in the tree already, as at boot. It is server-decorated: the shell's titlebar frames it.
     pub fn add_window(&self, id: u64, title: &str, app_id: &str) {
+        self.add_window_decorated(id, title, app_id, "server");
+    }
+
+    /// A window that is in the tree already, with the decoration the compositor negotiated (`client`, `server` or
+    /// `none`).
+    pub fn add_window_decorated(&self, id: u64, title: &str, app_id: &str, decoration: &str) {
         let mut c = self.0.borrow_mut();
         let props = BTreeMap::from([
             ("title".to_owned(), text(title)),
             ("app_id".to_owned(), text(app_id)),
+            ("decoration".to_owned(), text(decoration)),
             ("width".to_owned(), MirrorValue::Double(400.0)),
             ("height".to_owned(), MirrorValue::Double(300.0)),
         ]);
@@ -279,9 +286,15 @@ impl FakeCompositor {
         }
     }
 
-    /// A window the compositor maps: created, parented under the root, given its title and app id.
+    /// A window the compositor maps: created, parented under the root, given its title and app id. It is
+    /// server-decorated, as a client that asked for the shell's frame is.
     pub fn create_window(&self, id: u64, title: &str, app_id: &str) {
-        self.add_window(id, title, app_id);
+        self.create_window_decorated(id, title, app_id, "server");
+    }
+
+    /// A window the compositor maps with the decoration it negotiated: `client` for one that draws its own title bar.
+    pub fn create_window_decorated(&self, id: u64, title: &str, app_id: &str, decoration: &str) {
+        self.add_window_decorated(id, title, app_id, decoration);
         self.publish(vec![
             MirrorChange {
                 class: "window".to_owned(),
@@ -294,6 +307,7 @@ impl FakeCompositor {
             },
             set_change(id, "title", text(title)),
             set_change(id, "app_id", text(app_id)),
+            set_change(id, "decoration", text(decoration)),
             set_change(id, "width", MirrorValue::Double(400.0)),
             set_change(id, "height", MirrorValue::Double(300.0)),
         ]);

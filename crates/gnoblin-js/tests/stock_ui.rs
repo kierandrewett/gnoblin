@@ -976,6 +976,86 @@ fn a_decorated_window_is_placed_with_its_content_below_its_bar() {
 }
 
 #[test]
+fn a_window_that_draws_its_own_title_bar_gets_no_titlebar_and_no_room_for_one() {
+    let mut rig = world(0, "defineConfig({ decorations: true });");
+    rig.comp.create_window_decorated(3, "term", "foot", "client");
+    rig.settle();
+    assert_eq!(rig.eval("gnoblin.clients.at(0).decoration"), "client");
+    assert_eq!(
+        rig.eval("String(gnoblin.clients.at(0).frameInset)"),
+        "0",
+        "a second bar over the client's own is the double title bar"
+    );
+    assert!(rig.comp.children(3).is_empty(), "no bar is mounted on the window");
+    assert_eq!(
+        rig.comp.number(3, "y"),
+        0.0,
+        "the content starts at the frame's corner: nothing is reserved above it"
+    );
+    // A window the compositor told to be server-decorated beside it has its bar.
+    rig.comp.create_window(4, "other", "foot");
+    rig.settle();
+    assert_eq!(rig.eval("gnoblin.clients.at(1).decoration"), "server");
+    assert_eq!(rig.eval("String(gnoblin.clients.at(1).frameInset)"), "28");
+    assert_eq!(rig.comp.children(4).len(), 1, "the server-decorated window has its bar");
+    // A window nobody frames has none either.
+    rig.comp.create_window_decorated(5, "bare", "xterm", "none");
+    rig.settle();
+    assert_eq!(rig.eval("String(gnoblin.clients.at(2).frameInset)"), "0");
+    assert!(rig.comp.children(5).is_empty());
+}
+
+#[test]
+fn a_window_gains_its_bar_when_the_compositor_makes_it_server_decorated_and_loses_it_when_it_does_not() {
+    let mut rig = world(0, "defineConfig({ decorations: true });");
+    rig.comp.create_window_decorated(3, "term", "foot", "client");
+    rig.settle();
+    assert!(rig.comp.children(3).is_empty());
+
+    rig.comp.external_set(3, "decoration", text("server"));
+    rig.settle();
+    assert_eq!(rig.eval("String(gnoblin.clients.at(0).frameInset)"), "28");
+    assert_eq!(
+        rig.comp.children(3).len(),
+        1,
+        "the bar comes with the compositor's answer"
+    );
+
+    // The shell reloaded with decorations off, or the client asked for its own frame again.
+    rig.comp.external_set(3, "decoration", text("client"));
+    rig.settle();
+    assert_eq!(rig.eval("String(gnoblin.clients.at(0).frameInset)"), "0");
+    assert!(rig.comp.children(3).is_empty(), "the bar goes with it");
+}
+
+#[test]
+fn the_shell_declares_that_it_draws_decorations_on_the_seat_and_takes_it_back_when_it_retires() {
+    let mut rig = world(0, "defineConfig({ decorations: true });");
+    assert!(declared(&rig), "the seat's decorations_available is written at boot");
+    rig.shell.retire().expect("the shell retires");
+    assert!(
+        !declared(&rig),
+        "a generation that is going away takes its declaration back, so no client is told a frame it will not get"
+    );
+}
+
+#[test]
+fn a_shell_with_decorations_off_never_declares_them() {
+    let mut rig = world(0, "defineConfig({ decorations: false });");
+    assert!(!declared(&rig), "with decorations off a client is told client-side");
+    rig.shell.retire().expect("the shell retires");
+    assert!(!declared(&rig));
+}
+
+/// Whether the seat's `decorations_available` is true as the compositor holds it.
+fn declared(rig: &Rig) -> bool {
+    matches!(
+        rig.comp.value(21, "decorations_available"),
+        Some(MirrorValue::Bool(true))
+    )
+}
+
+#[test]
 fn the_titlebar_does_what_the_seat_says_a_double_a_middle_and_a_right_click_do() {
     let mut rig = world(1, "defineConfig({ decorations: true });");
     let bar = rig.comp.children(3)[0];

@@ -18,7 +18,7 @@
 //! | [`wl_shm`] | `wl_shm`, `wl_shm_pool` | shared-memory buffer pools |
 //! | [`wp_content_type_v1`] | `wp_content_type_v1` | records whether a surface shows video or a game |
 //! | [`wp_cursor_shape_v1`] | `wp_cursor_shape_manager_v1` | records the cursor a client names |
-//! | [`zxdg_decoration_v1`] | `zxdg_decoration_manager_v1` | answers the client's preference (client-side, this slice draws no frames) |
+//! | [`zxdg_decoration_v1`] | `zxdg_decoration_manager_v1` | answers the client's preference: server-side only while a shell that holds the tree declares decorations, client-side otherwise |
 //! | [`extension`] | none of its own | the seam a compat adapter's redirect registers through, and the operations it may ask the compositor for |
 //! | [`zwlr_foreign_toplevel_management_v1`] | `zwlr_foreign_toplevel_manager_v1` | the window list a taskbar reads, and the requests it may make on each window |
 //! | [`zwlr_gamma_control_v1`] | `zwlr_gamma_control_manager_v1` | per-output gamma ramps; a second client asking for an output another holds is refused |

@@ -544,6 +544,7 @@ impl State {
                 self.windows
                     .insert(window, crate::state::WindowEntry::x11(surface.clone()));
                 self.composer.insert_window(window, geometry);
+                self.apply_decoration(window);
             }
         }
         let mut asks = Vec::new();

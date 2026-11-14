@@ -303,6 +303,8 @@ interface WindowPointerEvent extends ClientPointerEvent {
 export class ClientListener {
     onTitleChanged?(client: Client, title: string): void;
     onAppIdChanged?(client: Client, appId: string): void;
+    /** The compositor changed who draws the window's frame: `client`, `server` or `none` (see `Client.decoration`). */
+    onDecorationChanged?(client: Client, decoration: string): void;
     /** The pointer crossed into the window. `event` is in the window's own coordinates. */
     onPointerEnter?(client: Client, event: ClientPointerEvent): void;
     onPointerMotion?(client: Client, event: ClientPointerEvent): void;
@@ -446,12 +448,15 @@ const CLIENT_KEYS = [
     "secure",
     "parent_window",
     "from_launcher",
+    "decoration",
+    "decoration_wanted",
 ];
 
 /** What listeners were last told about a client, to raise an event only for a real change. */
 interface Seen {
     title: string;
     appId: string;
+    decoration: string;
     focused: boolean;
     x: number;
     y: number;
@@ -509,6 +514,7 @@ function publishedValues(node: NodeId): Seen {
         width: host.published(node, "width") as number,
         height: host.published(node, "height") as number,
         parent: host.published(node, "parent_window") as number,
+        decoration: host.published(node, "decoration") as string,
     };
 }
 
@@ -679,6 +685,21 @@ export class Client {
     /** Whether the client has left a liveness ping unanswered too long. The compositor writes it, and clears it on an answer. */
     get unresponsive(): boolean {
         return read<boolean>(this, "unresponsive");
+    }
+
+    /**
+     * Who draws the window's frame, as the compositor negotiated it: `server` when the shell's titlebar does (the client
+     * asked for server-side and this shell declared decorations, or the window is an X11 one), `client` when the client
+     * draws its own title bar (a GTK, Qt or foot window), `none` for a window nobody frames. The compositor writes it.
+     * `frameInset` is reserved only for a `server` window.
+     */
+    get decoration(): string {
+        return read<string>(this, "decoration");
+    }
+
+    /** What the client asked of `xdg-decoration`: `client`, `server`, or `unset` (it asked nothing, or is an X11 window). */
+    get decorationWanted(): string {
+        return read<string>(this, "decoration_wanted");
     }
 
     /**
@@ -3190,6 +3211,15 @@ function changed(client: Client): void {
         seen.appId = now.appId;
         emitMember(client, held, "onAppIdChanged", [client, now.appId]);
     }
+    if (now.decoration !== seen.decoration) {
+        seen.decoration = now.decoration;
+        emitMember(client, held, "onDecorationChanged", [client, now.decoration]);
+        // The bar's room above the window came or went: the workspace's layout places it again.
+        const own = wsOf(client);
+        if (own) {
+            own.dirty = true;
+        }
+    }
     if (now.focused !== seen.focused) {
         seen.focused = now.focused;
         emitMember(client, held, "onFocusChanged", [client, now.focused]);
@@ -3286,6 +3316,11 @@ function ready(nodes: NodeId[]): number {
     ensureDefaultWorkspace();
     opened = true;
     adoptOrphans();
+    // The declaration is written here, after the generation that ended took its own back: a reload stages the new
+    // generation before it retires the old one, so a write made while staging would be undone by that retire.
+    if (decorations !== null) {
+        declareDecorations(true);
+    }
     for (const node of nodes) {
         const client = clientsByNode.get(node);
         if (client && !stateOf(client).readied) {
@@ -3660,6 +3695,21 @@ function decorate(): void {
             },
         );
         clientRoot.self.addListener(decorations);
+    }
+}
+
+/** Tells the compositor whether this shell draws window decorations, so a client that asks for server-side is told so. */
+function declareDecorations(available: boolean): void {
+    const seat = host.input.seats()[0];
+    if (seat === undefined) {
+        return;
+    }
+    const code = host.input.declareDecorations(seat, available);
+    if (code != null) {
+        reports.push({
+            site: "Decorations.declare",
+            error: new GnoblinError("refused", "Seat.decorations_available", `the host refused the write (${code})`),
+        });
     }
 }
 
@@ -4298,6 +4348,9 @@ host.entry = {
         lockRelease();
         uiReleaseAll();
         hostApi.retire();
+        if (decorations !== null) {
+            declareDecorations(false);
+        }
         return queue.length;
     },
 };

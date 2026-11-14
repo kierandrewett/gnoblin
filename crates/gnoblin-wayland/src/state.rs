@@ -62,7 +62,7 @@ use smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrabState;
 use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::xwm::X11Surface;
 
-use gnoblin_backend::render::compose::{Composer, Content, MainSeatPolicy, ScreenInfo};
+use gnoblin_backend::render::compose::{Composer, Content, DecorationWanted, MainSeatPolicy, ScreenInfo};
 use gnoblin_backend::{Host, InputEvent, TouchPhase};
 use gnoblin_config::{Protocols, TitlebarAction};
 use gnoblin_input::Activity;
@@ -188,6 +188,9 @@ pub(crate) struct WindowEntry {
     pub(crate) icon_buffer_count: usize,
     /// The toplevel tag the client set (`xdg-toplevel-tag-v1`), if any.
     pub(crate) tag: Option<String>,
+    /// What the client asked with `xdg-decoration`, or `None` while it has no decoration object (it never bound the
+    /// protocol, or the window is an X11 one).
+    pub(crate) decoration_asked: Option<DecorationWanted>,
 }
 
 impl WindowEntry {
@@ -204,6 +207,7 @@ impl WindowEntry {
             icon_name: None,
             icon_buffer_count: 0,
             tag: None,
+            decoration_asked: None,
         }
     }
 }
@@ -271,6 +275,9 @@ pub struct State {
     /// handler in [`crate::protocols::zxdg_decoration_v1`] answers its requests.
     #[allow(dead_code)]
     pub(crate) decoration_state: XdgDecorationState,
+    /// Whether the shell's decorations were available when the windows last heard what the compositor answers
+    /// `xdg-decoration`. A change re-sends the answer to every window.
+    pub(crate) decorations_seen: bool,
     /// Kept alive so the `ext_session_lock_manager_v1` global stays registered; the
     /// handler in [`crate::protocols::ext_session_lock_v1`] answers its requests.
     pub(crate) session_lock_state: SessionLockManagerState,
@@ -763,6 +770,7 @@ impl State {
             callbacks_due: false,
             output_manager_state,
             decoration_state,
+            decorations_seen: false,
             session_lock_state,
             xwayland_shell_state,
             keyboard_grab_state,
@@ -1886,6 +1894,7 @@ impl State {
                 title: String::new(),
                 icon_name: None,
                 icon_buffer_count: 0,
+                decoration_asked: None,
                 tag: None,
             },
         );
@@ -3598,6 +3607,7 @@ impl Host for State {
         self.run_window_calls(window_calls);
         let window_writes = self.tree.take_window_writes();
         self.answer_window_writes(window_writes);
+        self.follow_decorations_available();
         self.reconcile_seats();
         let claims = self.tree.take_claims();
         let authentications = self.tree.take_authentications();

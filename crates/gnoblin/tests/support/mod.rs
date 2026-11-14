@@ -24,6 +24,7 @@ use wayland_client::protocol::{
 };
 use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
 use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xdg_activation_v1};
+use wayland_protocols::xdg::decoration::zv1::client::{zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
 // ---- the scene, read as an observer ------------------------------------------------------------------------------
@@ -379,6 +380,8 @@ pub struct App {
     token: Option<String>,
     /// The size and the states of each toplevel's last configure, by the toplevel's protocol id.
     configures: BTreeMap<u32, (i32, i32, Vec<u32>)>,
+    /// The modes the compositor told each `zxdg_toplevel_decoration_v1`, in order, by the decoration object's id.
+    decorations: BTreeMap<u32, Vec<zxdg_toplevel_decoration_v1::Mode>>,
     /// What the pointer has been told, once the client listens to it.
     log: PointerLog,
     /// The seat's keyboard, once the client asked for the seat.
@@ -397,6 +400,9 @@ pub struct Mapper {
     shm: wl_shm::WlShm,
     wm_base: xdg_wm_base::XdgWmBase,
     globals: GlobalList,
+    /// Whether the windows ask for server-side decorations (`xdg-decoration`) before they first commit, as a GTK or
+    /// Qt client that wants the shell's title bar does. A client that does not is one that draws its own.
+    server_side: bool,
     seat: Option<wl_seat::WlSeat>,
     /// The protocol objects of every window mapped, kept so they stay mapped.
     windows: Vec<(
@@ -404,6 +410,8 @@ pub struct Mapper {
         xdg_surface::XdgSurface,
         xdg_toplevel::XdgToplevel,
     )>,
+    /// The decoration object of each window, in the order they were mapped; none for a window mapped without one.
+    decorations: Vec<Option<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1>>,
 }
 
 impl Mapper {
@@ -430,7 +438,28 @@ impl Mapper {
             globals,
             seat: None,
             windows: Vec::new(),
+            server_side: false,
+            decorations: Vec::new(),
         }
+    }
+
+    /// Makes every window this client maps from now on ask the compositor for server-side decorations before its
+    /// first commit, the way a toolkit that wants the shell's title bar does. Without it the client draws its own
+    /// title bar and the shell gives it none.
+    #[must_use]
+    pub fn requesting_server_side(mut self) -> Self {
+        self.server_side = true;
+        self
+    }
+
+    /// The modes the compositor told window number `window`'s decoration object, in order: empty for a window that was
+    /// mapped without one.
+    pub fn decoration_modes(&self, window: usize) -> Vec<zxdg_toplevel_decoration_v1::Mode> {
+        self.decorations[window]
+            .as_ref()
+            .and_then(|decoration| self.app.decorations.get(&decoration.id().protocol_id()))
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// Processes every event the session has sent, which answers its pings.
@@ -450,6 +479,15 @@ impl Mapper {
         let toplevel = xdg.get_toplevel(&self.qh, ());
         toplevel.set_app_id(app_id.to_owned());
         toplevel.set_title(title.to_owned());
+        let decoration = self.server_side.then(|| {
+            let manager: zxdg_decoration_manager_v1::ZxdgDecorationManagerV1 = self
+                .globals
+                .bind(&self.qh, 1..=1, ())
+                .expect("the session advertises zxdg_decoration_manager_v1");
+            let decoration = manager.get_toplevel_decoration(&toplevel, &self.qh, ());
+            decoration.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
+            decoration
+        });
         surface.commit();
         self.roundtrip();
         let stride = width * 4;
@@ -464,6 +502,7 @@ impl Mapper {
         surface.commit();
         self.roundtrip();
         self.windows.push((surface, xdg, toplevel));
+        self.decorations.push(decoration);
     }
 
     /// Asks the compositor to make window number `window` (in the order they were mapped) fullscreen.
@@ -580,6 +619,7 @@ ignore_events!(
     wl_shm_pool::WlShmPool,
     wl_buffer::WlBuffer,
     xdg_activation_v1::XdgActivationV1,
+    zxdg_decoration_manager_v1::ZxdgDecorationManagerV1,
 );
 
 impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
@@ -600,6 +640,27 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
                 .collect();
             app.configures
                 .insert(toplevel.id().protocol_id(), (width, height, states));
+        }
+    }
+}
+
+impl Dispatch<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1, ()> for App {
+    fn event(
+        app: &mut Self,
+        decoration: &zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
+        event: zxdg_toplevel_decoration_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zxdg_toplevel_decoration_v1::Event::Configure {
+            mode: WEnum::Value(mode),
+        } = event
+        {
+            app.decorations
+                .entry(decoration.id().protocol_id())
+                .or_default()
+                .push(mode);
         }
     }
 }

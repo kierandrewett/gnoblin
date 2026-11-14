@@ -44,6 +44,7 @@ pub fn world(n: u64, second: bool, layout: &str, config: &str) -> Rig {
                 vec![
                     ("title", text(&format!("win{i}"))),
                     ("app_id", text("foot")),
+                    ("decoration", text("server")),
                     ("x", MirrorValue::Double(10.0 * i as f64)),
                     ("y", MirrorValue::Double(20.0 * i as f64)),
                     ("width", MirrorValue::Double(300.0)),

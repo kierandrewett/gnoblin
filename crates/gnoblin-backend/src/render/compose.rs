@@ -189,6 +189,54 @@ pub enum ShellVisualError {
     OutOfRange,
 }
 
+/// What a window's client asked of `xdg-decoration`, as the window node's `decoration_wanted` publishes it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DecorationWanted {
+    /// The client never bound the protocol, asked for no preference, or is an X11 window.
+    #[default]
+    Unset,
+    /// The client asked to draw its own frame.
+    Client,
+    /// The client asked for the compositor to draw its frame.
+    Server,
+}
+
+impl DecorationWanted {
+    /// The text the window node's `decoration_wanted` holds.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Unset => "unset",
+            Self::Client => "client",
+            Self::Server => "server",
+        }
+    }
+}
+
+/// Who draws a window's frame, as the compositor negotiated it and the window node's `decoration` publishes it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WindowDecoration {
+    /// The client draws its own title bar and borders.
+    #[default]
+    Client,
+    /// The shell draws the frame.
+    Server,
+    /// Nobody does: an X11 window while no shell declares decorations.
+    None,
+}
+
+impl WindowDecoration {
+    /// The text the window node's `decoration` holds.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Client => "client",
+            Self::Server => "server",
+            Self::None => "none",
+        }
+    }
+}
+
 /// One visual bell flash in progress.
 ///
 /// It is a white rectangle drawn over everything on the output, fading out over
@@ -364,6 +412,11 @@ struct WindowNode {
     from_launcher: bool,
     /// Whether `from_launcher` was last published to the node as true. A node starts false.
     published_from_launcher: bool,
+    /// What the client asked of `xdg-decoration` and what the compositor answered. A node starts at the schema's
+    /// defaults (`unset`, `client`).
+    decoration: (DecorationWanted, WindowDecoration),
+    /// The pair last published to the node.
+    published_decoration: (DecorationWanted, WindowDecoration),
     /// The rectangle the window's node takes hits over beyond its own bounds, in surface-local pixels: the surface
     /// tree's, when a subsurface reaches past the root surface.
     hit_extent: Option<Rect>,
@@ -1398,6 +1451,8 @@ impl Composer {
                 published_parent: None,
                 from_launcher: false,
                 published_from_launcher: false,
+                decoration: (DecorationWanted::Unset, WindowDecoration::Client),
+                published_decoration: (DecorationWanted::Unset, WindowDecoration::Client),
                 applied_size: None,
                 published_geometry: None,
                 hit_extent: None,
@@ -1564,6 +1619,51 @@ impl Composer {
         }
         entry.from_launcher = true;
         self.publish_relations(window);
+    }
+
+    /// Records what a window's client asked of `xdg-decoration` and what the compositor answered, and publishes both
+    /// to the node's `decoration_wanted` and `decoration` when they changed. A window with no node yet is published
+    /// once it has one.
+    pub fn set_window_decoration(&mut self, window: WindowId, wanted: DecorationWanted, decoration: WindowDecoration) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        entry.decoration = (wanted, decoration);
+        self.publish_decoration(window);
+    }
+
+    /// What a window's client asked of `xdg-decoration` and what the compositor answered, as the composer holds it.
+    #[must_use]
+    pub fn window_decoration(&self, window: WindowId) -> Option<(DecorationWanted, WindowDecoration)> {
+        self.windows.get(&window).map(|entry| entry.decoration)
+    }
+
+    /// Publishes a window's `decoration_wanted` and `decoration` when they differ from what its node holds.
+    fn publish_decoration(&mut self, window: WindowId) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        let Some(node) = entry.node else {
+            return;
+        };
+        let (wanted, decoration) = entry.decoration;
+        let (published_wanted, published_decoration) = entry.published_decoration;
+        entry.published_decoration = entry.decoration;
+        let mut changes = Vec::new();
+        if wanted != published_wanted {
+            changes.push(("decoration_wanted", wanted.name()));
+        }
+        if decoration != published_decoration {
+            changes.push(("decoration", decoration.name()));
+        }
+        for (key, text) in changes {
+            let _ = self.scene.set_text(node, key, text.to_owned());
+            self.tree_changes.push(TreeChange::Set {
+                node,
+                key: key.to_owned(),
+                value: TreeValue::Text(text.to_owned()),
+            });
+        }
     }
 
     /// Publishes the node references and marks a window's record holds: `parent_window` as the parent's node (none
@@ -2745,6 +2845,44 @@ impl Composer {
         }
     }
 
+    /// Whether the shell that holds the tree has declared that it draws decorations: the main seat's
+    /// `decorations_available` is true and a shell holds the tree. With no shell, or one that has not declared it, a
+    /// client is never told the compositor draws its frame.
+    #[must_use]
+    pub fn decorations_available(&self) -> bool {
+        self.scene.shell_places() && self.decorations_declared()
+    }
+
+    /// Whether the main seat's `decorations_available` is true, whoever holds the tree.
+    #[must_use]
+    pub fn decorations_declared(&self) -> bool {
+        self.main_seat.is_some_and(|seat| {
+            matches!(
+                self.scene.value(seat, "decorations_available"),
+                Some(TreeValue::Bool(true))
+            )
+        })
+    }
+
+    /// Clears the main seat's `decorations_available`: the shell that wrote it no longer holds the tree, so nothing
+    /// draws decorations. Published like any other change, so the next shell starts from a seat nobody declared on.
+    pub fn release_decorations_declared(&mut self) {
+        let Some(seat) = self.main_seat else {
+            return;
+        };
+        if self
+            .scene
+            .set_value(seat, "decorations_available", TreeValue::Bool(false))
+            .is_ok()
+        {
+            self.tree_changes.push(TreeChange::Set {
+                node: seat,
+                key: "decorations_available".to_owned(),
+                value: TreeValue::Bool(false),
+            });
+        }
+    }
+
     /// Draws the lock screen the shell made over a lock cover: the canvases under the `lock` node, in paint order,
     /// while the shell holds the tree and has engaged the lock. They are drawn into a frame whose background is the
     /// cover, so a shell that draws nothing leaves the bare cover, and nothing but those canvases ever shows: no window
@@ -3762,6 +3900,7 @@ impl Composer {
                         }
                         self.sync_tree(window);
                         self.publish_relations(window);
+                        self.publish_decoration(window);
                         self.publish_dialogs_of(window);
                     }
                     Err(error) => {

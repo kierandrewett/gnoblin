@@ -25,12 +25,14 @@ struct WindowTable;
 
 impl ClassInfo for WindowTable {
     fn has_class(&self, class: &str) -> bool {
-        matches!(class, "node" | "window")
+        matches!(class, "node" | "window" | "seat")
     }
 
     fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
         let kind = match (class, key) {
-            ("window", "maximised" | "fullscreen" | "minimised") | ("node" | "window", "visible") => ValueType::Bool,
+            ("window", "maximised" | "fullscreen" | "minimised")
+            | ("node" | "window", "visible")
+            | ("seat", "decorations_available") => ValueType::Bool,
             ("node" | "window", "x" | "y" | "width" | "height") => ValueType::Double,
             _ => return None,
         };
@@ -125,6 +127,34 @@ impl Shell {
         wait(&format!("{count} window node(s)"), || {
             Some(self.window_nodes()).filter(|nodes| nodes.len() >= count)
         })
+    }
+
+    /// The main seat's node, once the compositor announced it.
+    pub fn seat_node(&self) -> Option<NodeId> {
+        self.batches
+            .lock()
+            .expect("the batch lock is not poisoned")
+            .iter()
+            .flat_map(|batch| &batch.changes)
+            .find_map(|change| match change {
+                TreeChange::Created { node, class, .. } if class == "seat" => Some(*node),
+                _ => None,
+            })
+    }
+
+    /// Declares, as the stock shell does, whether it draws window decorations: writes the seat's
+    /// `decorations_available`.
+    #[track_caller]
+    pub fn declare_decorations(&self, available: bool) {
+        let seat = wait("the main seat's node", || self.seat_node());
+        self.write(seat, &[("decorations_available", TreeValue::Bool(available))]);
+    }
+
+    /// Waits until the compositor last published `decorations_available` as `available` on the seat.
+    #[track_caller]
+    pub fn wait_decorations_declared(&self, available: bool) {
+        let seat = wait("the main seat's node", || self.seat_node());
+        self.wait_published(seat, "decorations_available", &TreeValue::Bool(available));
     }
 
     /// The value the compositor last published for `key` on `node`: its last `set`.

@@ -48,8 +48,8 @@
 //! effects passes belong to later slices, and so does the capture and selection surface
 //! the lock embargo guards. Nothing here is a stub that silently pretends to work: a
 //! popup is placed, hit by the pointer, grabbed, dismissed and drawn above its window,
-//! a decoration request is answered with
-//! client-side decorations, and a frame is presented as
+//! a decoration request is answered with server-side decorations only while a shell that holds the tree draws them
+//! and with client-side decorations otherwise, and a frame is presented as
 //! [`gnoblin_backend::Present::Nothing`] because a headless output scans out nothing —
 //! the pixels are still composed and readable.
 //!

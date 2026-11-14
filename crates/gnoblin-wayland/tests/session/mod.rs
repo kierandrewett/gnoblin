@@ -41,6 +41,7 @@ use wayland_protocols::ext::foreign_toplevel_list::v1::client::{
 };
 use wayland_protocols::wp::security_context::v1::client::{wp_security_context_manager_v1, wp_security_context_v1};
 use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xdg_activation_v1};
+use wayland_protocols::xdg::decoration::zv1::client::{zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1};
 use wayland_protocols::xdg::shell::client::{xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base};
 use wayland_protocols_wlr::data_control::v1::client::{
     zwlr_data_control_device_v1, zwlr_data_control_manager_v1, zwlr_data_control_offer_v1, zwlr_data_control_source_v1,
@@ -374,6 +375,8 @@ pub struct App {
     pub toplevels: BTreeMap<u32, Toplevel>,
     /// The ext foreign-toplevel identifiers, by object id.
     pub ext_toplevels: BTreeMap<u32, Toplevel>,
+    /// Every mode each `zxdg_toplevel_decoration_v1` was told, in order, by the decoration object's id.
+    pub decoration_modes: BTreeMap<u32, Vec<zxdg_toplevel_decoration_v1::Mode>>,
 }
 
 impl App {
@@ -505,6 +508,66 @@ impl Client {
             xdg_surface,
             toplevel,
         }
+    }
+
+    /// Creates a toplevel the way a toolkit that speaks `xdg-decoration` does: the decoration object exists, and the
+    /// preference `ask` is sent, before the first commit. `None` asks for nothing (the object only). Returns the
+    /// window and its decoration object.
+    pub fn create_decorated_window(
+        &mut self,
+        app_id: &str,
+        title: &str,
+        ask: Option<zxdg_toplevel_decoration_v1::Mode>,
+    ) -> (Window, zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1) {
+        let manager: zxdg_decoration_manager_v1::ZxdgDecorationManagerV1 = self
+            .globals
+            .bind(&self.qh, 1..=1, ())
+            .expect("every session advertises zxdg_decoration_manager_v1");
+        let surface = self.compositor.create_surface(&self.qh, ());
+        let xdg_surface = self.wm_base.get_xdg_surface(&surface, &self.qh, ());
+        let toplevel = xdg_surface.get_toplevel(&self.qh, ());
+        toplevel.set_app_id(app_id.to_owned());
+        toplevel.set_title(title.to_owned());
+        let decoration = manager.get_toplevel_decoration(&toplevel, &self.qh, ());
+        if let Some(mode) = ask {
+            decoration.set_mode(mode);
+        }
+        surface.commit();
+        self.roundtrip();
+        (
+            Window {
+                surface,
+                xdg_surface,
+                toplevel,
+            },
+            decoration,
+        )
+    }
+
+    /// The modes the compositor has told a decoration object, in order.
+    pub fn decoration_modes(
+        &self,
+        decoration: &zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
+    ) -> Vec<zxdg_toplevel_decoration_v1::Mode> {
+        self.state
+            .decoration_modes
+            .get(&decoration.id().protocol_id())
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// Waits until the compositor has told a decoration object `count` modes, and returns them.
+    #[track_caller]
+    pub fn wait_decoration_modes(
+        &mut self,
+        decoration: &zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
+        count: usize,
+    ) -> Vec<zxdg_toplevel_decoration_v1::Mode> {
+        let id = decoration.id().protocol_id();
+        self.wait_until(&format!("{count} decoration mode(s)"), |app| {
+            app.decoration_modes.get(&id).is_some_and(|modes| modes.len() >= count)
+        });
+        self.decoration_modes(decoration)
     }
 
     /// Attaches a shared-memory buffer and commits, which maps the surface.
@@ -786,6 +849,40 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
             }
             xdg_toplevel::Event::Close => state.closed = true,
             _ => {}
+        }
+    }
+}
+
+impl Dispatch<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1, ()> for App {
+    fn event(
+        _: &mut Self,
+        _: &zxdg_decoration_manager_v1::ZxdgDecorationManagerV1,
+        _: <zxdg_decoration_manager_v1::ZxdgDecorationManagerV1 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1, ()> for App {
+    fn event(
+        state: &mut Self,
+        decoration: &zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
+        event: <zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let zxdg_toplevel_decoration_v1::Event::Configure { mode } = event else {
+            return;
+        };
+        if let WEnum::Value(mode) = mode {
+            state
+                .decoration_modes
+                .entry(decoration.id().protocol_id())
+                .or_default()
+                .push(mode);
         }
     }
 }

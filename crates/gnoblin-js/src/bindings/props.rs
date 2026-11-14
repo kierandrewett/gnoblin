@@ -85,6 +85,10 @@ const WINDOW: &[JsPropDef] = &[
     // both from the client's protocol requests.
     def("parent_window", JsPropKind::Node, false),
     def("from_launcher", JsPropKind::Flag, false),
+    // Who draws the window's frame (`client`, `server` or `none`) and what its client asked of `xdg-decoration`
+    // (`client`, `server` or `unset`). The compositor writes both.
+    def("decoration", JsPropKind::Text, false),
+    def("decoration_wanted", JsPropKind::Text, false),
     // Written by the shell: the window sits in a tiled layout, so its client drops its border and rounding.
     def("tiled", JsPropKind::Flag, true),
     // A hidden node is neither drawn nor hit.
@@ -233,6 +237,8 @@ pub(crate) fn default_value(def: &JsPropDef) -> MirrorValue {
         ("visible", _) | ("enabled", _) => MirrorValue::Bool(true),
         ("output_scale", _) => MirrorValue::Double(1.0),
         ("transform", _) => MirrorValue::Text("normal".to_owned()),
+        ("decoration", _) => MirrorValue::Text("client".to_owned()),
+        ("decoration_wanted", _) => MirrorValue::Text("unset".to_owned()),
         ("opacity", _) => MirrorValue::Double(1.0),
         ("input", _) => MirrorValue::Bool(true),
         ("metres", _) => MirrorValue::Double(0.001),
