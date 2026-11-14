@@ -680,13 +680,13 @@ fn a_config_that_is_not_in_the_closed_set_is_refused_naming_the_key() {
     assert_eq!(
         got,
         lines(&[
-            "TypeError: config has no \"colour\"; expected one of gaps, style, outputs, workspaces, keys, rules, on, setup, decorations",
+            "TypeError: config has no \"colour\"; expected one of gaps, style, outputs, workspaces, keys, launcher, rules, on, setup, decorations",
             "Error: keys[\"Super+1\"] shows workspace \"nowhere\", which the config does not declare",
-            "TypeError: keys[\"Super+X\"] must be spawn(...), show(...), \"close\" or a function",
+            "TypeError: keys[\"Super+X\"] must be spawn(...), show(...), show.position(...), focusColumn(...), binding(...), \"close\" or a function",
             "TypeError: a key: an empty part after \"Super\"; write a literal plus as \"plus\" (token \"\" in \"Super+\")",
-            "TypeError: keys[\"Super+X\"] must be spawn(...), show(...), \"close\" or a function",
+            "TypeError: keys[\"Super+X\"] must be spawn(...), show(...), show.position(...), focusColumn(...), binding(...), \"close\" or a function",
             "Error: workspaces[1]: a workspace with id \"a\" is already declared",
-            "TypeError: workspaces[0].layout must be a Layout or one of floating, master-stack, grid, monocle, got spiral",
+            "TypeError: workspaces[0].layout must be a Layout or one of floating, master-stack, grid, monocle, dwindle, kiosk, strip, carousel-3d, got spiral",
             "TypeError: workspaces[0] has no \"tiled\"; expected one of id, layout",
             "TypeError: rules[0] needs a query: appId or title",
             "Error: rules[0] moves to workspace \"elsewhere\", which the config does not declare",
@@ -712,7 +712,7 @@ fn the_default_config_is_one_floating_desktop_with_the_stock_keys() {
             plan.workspaces.map((w) => w.id + ":" + w.layout.constructor.name).join(" "),
             plan.bindings.map((b) => b.trigger).join(" "),
             JSON.stringify(plan.bindings[0].action),
-            JSON.stringify(plan.bindings[1].action),
+            JSON.stringify(plan.bindings[12].action),
             Object.isFrozen(defaultConfig) && Object.isFrozen(defaultConfig.keys) && Object.isFrozen(defaultConfig.workspaces),
             (globalThis as any).__registered.length,
         ].join("\n"));
@@ -721,8 +721,8 @@ fn the_default_config_is_one_floating_desktop_with_the_stock_keys() {
         got,
         lines(&[
             "desktop:FloatingLayout",
-            "Super+1 XF86AudioRaiseVolume XF86AudioLowerVolume XF86AudioMute XF86AudioMicMute XF86AudioPlay XF86AudioNext XF86AudioPrev",
-            r#"{"kind":"show","workspace":"desktop"}"#,
+            "Super+1 Super+2 Super+3 Super+4 Super+5 Super+6 Super+7 Super+8 Super+9 Super+Left Super+Right Swipe3 XF86AudioRaiseVolume XF86AudioLowerVolume XF86AudioMute XF86AudioMicMute XF86AudioPlay XF86AudioNext XF86AudioPrev",
+            r#"{"kind":"show-position","position":1}"#,
             r#"{"kind":"spawn","argv":["wpctl","set-volume","@DEFAULT_AUDIO_SINK@","5%+"]}"#,
             "true",
             "0",
@@ -781,21 +781,25 @@ fn a_user_config_layers_over_the_default_keys_merge_by_trigger_and_workspaces_re
         ].join("\n"));
     "#);
     let media = "XF86AudioRaiseVolume XF86AudioLowerVolume XF86AudioMute XF86AudioMicMute XF86AudioPlay XF86AudioNext XF86AudioPrev";
+    // The Lua shell's keys: Super+1 to Super+9 show the workspace at that position, so they name something whichever
+    // workspaces the config declares and survive a config that drops `desktop`.
+    let others = "Super+2 Super+3 Super+4 Super+5 Super+6 Super+7 Super+8 Super+9 Super+Left Super+Right Swipe3";
+    let stock = format!("Super+1 {others}");
     assert_eq!(
         got,
         lines(&[
-            &format!("desktop | Super+1 {media}"),
-            &format!("desktop | {media} super+1 Super+Return"),
+            &format!("desktop | {stock} {media}"),
+            &format!("desktop | {others} {media} super+1 Super+Return"),
             r#"{"kind":"spawn","argv":["one"]}"#,
-            &format!("a b | {media}"),
-            "desktop | show",
+            &format!("a b | {stock} {media}"),
+            "desktop | show-position",
             "grid",
             r#"{"inner":2,"outer":4}"#,
             "clientAdded titleChanged",
             "true",
-            "TypeError: config has no \"kyes\"; expected one of gaps, style, outputs, workspaces, keys, rules, on, setup, decorations",
+            "TypeError: config has no \"kyes\"; expected one of gaps, style, outputs, workspaces, keys, launcher, rules, on, setup, decorations",
             "true",
-            media,
+            &format!("{stock} {media}"),
         ])
     );
 }

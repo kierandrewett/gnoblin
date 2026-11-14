@@ -17,8 +17,16 @@ export type LayoutNode = object;
 export interface Placement<N extends LayoutNode = LayoutNode> {
     node: N;
     bounds?: Rect;
+    /** `false` hides the node (a monocle's other windows). Default: shown. */
     visible?: boolean;
+    /** Marks the node as in a tiled layout, so its client drops the border and rounding it draws itself. */
     tiled?: boolean;
+    /** Depth: along the viewing axis, negative in front of the camera. Default 0. */
+    z?: number;
+    /** Rotation about each axis in radians. Default no rotation. */
+    rotation?: readonly [number, number, number];
+    /** Scale along each axis. Default 1. */
+    scale?: readonly [number, number, number];
 }
 
 export interface LayoutContext<N extends LayoutNode = LayoutNode> {

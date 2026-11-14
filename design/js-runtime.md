@@ -98,15 +98,84 @@ algorithm, not in the Lua corpus: master count, right and bottom orientations, f
 `inner` unless its own `gap` is set, so one `defineConfig({ gaps })` setting reaches every stock layout. `defineConfig`
 checks the shape (closed key sets, closed key-action union, references to undeclared workspaces) and registers the
 config through `globalThis.gnoblin.__register` when the host provides it; `desugarConfig` is the table of
-spec-review.md section 4 as a plain-data plan. `defaultConfig` is one floating `desktop` workspace, `Super+1` and the
-media keys of `data/default-config`.
+spec-review.md section 4 as a plain-data plan. `defaultConfig` is one floating `desktop` workspace, the keys of the Lua
+shell (`Super+1` to `Super+9`, `Super+Left` and `Super+Right`, the `Swipe3` slide; see "P4b status") and the media keys
+of `data/default-config`.
 
 `Binding` and `BindingCollection` are wired by the input module (see "P3c status"): the `triggers` option of
 `FloatingLayout` registers its `move` and `resize` bindings, which go live when an input context attaches the layout.
 The swap and split-resize drag behaviours (`MasterStackLayout`, `GridLayout`) are not written; `style` and `outputs`
-are stored and have no native effect; `rules`, `on` and `setup` are in the plan for the host to apply. Not ported:
-`Dwindle` (it needs per-workspace tree state), `Strip`, the launcher (`Super+space`), `Super+Left` and `Super+Right`
-(Strip only) and the `Swipe3` workspace slide, which depend on shell classes that have no JS counterpart yet.
+are stored and have no native effect; `rules`, `on` and `setup` are in the plan for the host to apply. The layouts and
+keys that were not ported here (`Dwindle`, `Strip`, `Super+space`, `Super+Left` and `Super+Right`, the `Swipe3` slide)
+are in "P4b status".
+
+### P4b status
+
+The remaining stock layouts, workspace sets, the slide gesture and the launcher key (lane JsStockLayouts). Tests:
+`crates/gnoblin-js/tests/stock_layouts2.rs` (pure, in a real generation with a fake host), `workspaces.rs` and `input.rs`
+(the layout driver and the gesture over a fake compositor) and `crates/gnoblin/tests/js_shell.rs` (a real session).
+
+- **Layouts** (`data/js/gnoblin/layouts/`). `DwindleLayout` (the split tree is state the layout keeps between
+  computes, so one instance serves one workspace; a new node splits the cell of the node that had focus when it
+  arrived, which is the focus the layout saw last, because the compositor has focused the arrival by the time the
+  layout runs; every walk is a loop, because a tree of 200 windows that each split the last is 200 deep and the
+  engine's call stack is short), `KioskLayout` (places as `MonocleLayout`, as the Lua class did), `StripLayout`
+  (`column`, `pin`, `scrollTo(offset)`, `focusLeft(workspace)`, `focusRight(workspace)`; the layout keeps its own
+  column order because a new node opens after the focused column; the focused column's neighbour takes focus when it
+  closes; rectangles are not floored and nodes are not marked tiled, as in Lua) and `Carousel3dLayout` with the pure
+  `ring(count, focus, area, options)`. The Lua tests and goldens are ported case for case
+  (`tiling_test.lua` Dwindle and Kiosk, `strip_test.lua`); the cases the Lua corpus lacks (a Dwindle gap, closing,
+  focus insertion, a strip's `column`, area offset and a fractional width) are marked "derived" in the test file.
+- **Carousel3d and depth.** The Lua class wrote only `x`, `y`, `width` and `height`. A `Placement` now also carries
+  `visible`, `tiled`, `z`, `rotation` and `scale`, and the Carousel writes the ring's depth as `z` and its angle as
+  `rotation` about the vertical axis (radians, `[0, angle, 0]`), which the node schema has. The projected rectangle is
+  still written, so a renderer that projects depth itself would draw perspective twice: the sign of the rotation and
+  that interplay were not seen on a renderer. The node schema has no `transform` object, so the flat properties are
+  written. The ring's depth fade is not applied (opacity belongs to the rules, as in Lua).
+- **The layout driver writes more.** `Client` gains `tiled`, `visible`, `opacity`, `z`, `rotation` and `scale`
+  (the host table in `bindings/props.rs`, which now has defaults per property and a list kind) and `animate(values,
+{ duration, easing })`, a write that carries `seconds` and 33 samples of `ease.out`, `out-cubic`, `in-cubic`,
+  `in-out` or `linear`, as the Lua `node:to` sends them (`host.animate`). After each compute the driver writes `tiled`
+  (a client the layout gave no placement is untiled), the depth properties (reset when a layout stops using them) and
+  the layout's `visible`; the shown workspace's windows are drawn and the others hidden (`syncVisibility`), which is
+  what the Lua shell got from hiding the workspace node. A change of the focused client now recomputes the active
+  workspace, so `MonocleLayout`, `KioskLayout`, `StripLayout` and `Carousel3dLayout` follow focus.
+- **`show` and slides.** `gnoblin.workspaces.show(ws, options)` and `gnoblin.show` take `{ duration, progress }`: with
+  a duration the new workspace's windows start a screen's width away and animate to where the layout put them (`x`,
+  out-cubic), the old workspace's windows leave the other way and stay drawn until the slide ends, then return to
+  their rest place hidden (`gnoblin.after(seconds, fn)` runs at the first layout pass after the time). `progress`
+  carries on a slide a gesture has already made. The stock keys slide for `SLIDE_SECONDS` (0.25, as `Desk:show`);
+  `show(ws)` with no options switches at once. A window is moved by its own `x`, so a floating window's rest place is
+  its `x` when the slide starts.
+- **The slide gesture.** `WorkspaceSlideBinding` (`gnoblin/gestures`, a `GestureBinding` on `Swipe3`) is
+  `Gestures.workspace_slide`: windows follow the fingers (`travel` 400 units for a screen), fingers moving right bring
+  in the previous workspace and left the next, lifting after `commit` (0.25) with the motion more horizontal than
+  vertical finishes with `0.25 * (1 - progress)` seconds left, anything else slides back over 0.2 s (`out-cubic`) and
+  hides the incoming workspace, a change of direction resets, a workspace switched under the fingers ends the slide.
+  `defaultConfig` binds it with `binding(() => new WorkspaceSlideBinding())`, a new key action (`kind: "binding"`)
+  that the host binds whole. The Lua shell claimed the undirected `Swipe3`, so one binding covers both directions.
+- **Workspace sets** (`gnoblin/sets`, `gnoblin.workspaces.sets`). `defineSets` and `activateSet` are the pure functions of
+  `sets.lua` with its results and errors (`sets_test.lua` ported); `WorkspaceSets` keeps the list in force:
+  `define(list)` throws `WorkspaceSetError` and leaves the sets in force when a list is refused, `activate(name)`
+  shows each entry's workspace, a missing output falls back to the primary with a report, a live set again changes
+  nothing. A workspace for an output that is not the primary one is reported and not shown: workspaces are per
+  shell, not per output, so per-display workspaces are not ported.
+- **Keys.** `defaultConfig` binds `Super+1` to `Super+9` (`show.position(n)`: the workspace at that position, whatever
+  its id, nothing when there is none, as `desk().space.children[i]`), `Super+Left` and `Super+Right`
+  (`focusColumn`: the shown workspace's `StripLayout` moves focus one column, other layouts do nothing) and `Swipe3`.
+  `launcher` is a new config key, a command line or an argv: `Super+space` runs it through `spawn` (a `keys` entry for
+  `Super+space` wins). There is no default command, because the repository names no stock launcher program.
+- **Proved against the real compositor** (`crates/gnoblin/tests/js_shell.rs`): two real Wayland windows on a
+  `DwindleLayout` workspace sit at the two halves of the screen, and on a `StripLayout` workspace in two columns, as
+  the compositor's tree holds them.
+- **Not ported.** The in-shell launcher (`launcher.lua` is an `Entry` widget that spawns the typed text; only the
+  configured-command key is done), reduced motion (`seat.reduced_motion` makes `motion()` zero in Lua; the slides here
+  always animate), the four-finger and other gesture actions of `gestures.lua` (`Gestures.on_swipe`, `on_pinch` and
+  the five actions: `workspace_next`, `workspace_previous`, `window_close`, `window_minimise`,
+  `window_toggle_maximise`), the `Desk` (bars, `Desk:remove_workspace`, `sync_fullscreen`), per-output workspaces and
+  sets for outputs other than the primary one, and the `Window:on_closed` focus hand-off for layouts other than
+  `StripLayout`. A slide moves windows by `x`, so a window that is moved while a slide runs is moved back to where
+  the slide recorded.
 
 ## Hot reload
 

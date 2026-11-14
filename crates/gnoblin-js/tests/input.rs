@@ -1825,6 +1825,10 @@ fn with_no_entry_the_stock_config_runs_one_floating_desktop_and_claims_the_stock
     let claimed = comp.claimed();
     for chord in [
         "<Super>1",
+        "<Super>9",
+        // The Lua shell's strip focus keys, and (below) its three-finger workspace slide.
+        "<Super>Left",
+        "<Super>Right",
         "XF86AudioMute",
         "XF86AudioPlay",
         // The floating layout's own move and resize bindings.
@@ -1836,6 +1840,18 @@ fn with_no_entry_the_stock_config_runs_one_floating_desktop_and_claims_the_stock
             "the stock config claims {chord}: {claimed:?}"
         );
     }
+    assert!(
+        claimed.iter().any(|held| held == "swipe"),
+        "the stock config claims the three-finger swipe: {claimed:?}"
+    );
+    assert_eq!(
+        comp.borrow()
+            .calls
+            .iter()
+            .filter(|call| call.0 == "claim_gesture")
+            .count(),
+        1
+    );
 }
 
 #[test]
@@ -1864,12 +1880,122 @@ fn a_defined_config_is_layered_over_the_stock_one_and_its_keys_are_claimed() {
         "a stock key the user did not mention survives: {claimed:?}"
     );
     assert!(
-        !claimed.iter().any(|held| held.contains("<Super>1")),
-        "the stock Super+1 showed the workspace the user dropped, so it is gone: {claimed:?}"
+        claimed.iter().any(|held| held.contains("<Super>1")),
+        "the stock Super+1 shows the workspace at position 1, whatever the user called it: {claimed:?}"
     );
     assert_eq!(
         claimed.iter().filter(|held| held.contains("XF86AudioMute")).count(),
         1,
         "a key the user redefined is claimed once: {claimed:?}"
     );
+}
+
+/// Three floating workspaces `a`, `b` and `c` on a 1000 by 800 screen; window 3 is on `a` and window 4 on `b`.
+fn slide_rig(comp: &Comp) -> Rig {
+    add_screen(comp, 1000.0, 800.0);
+    let mut rig = rig(
+        comp,
+        "import { defineConfig } from \"gnoblin\";\n\
+         export default defineConfig({ workspaces: [{ id: \"a\" }, { id: \"b\" }, { id: \"c\" }] });\n",
+    );
+    rig.eval("gnoblin.workspaces.get('b').clients.add(gnoblin.clients.at(1))");
+    for _ in 0..3 {
+        rig.frame();
+    }
+    rig
+}
+
+#[test]
+fn the_stock_swipe_pulls_the_next_workspace_in_under_the_fingers_and_a_long_swipe_slides_on() {
+    // The Lua shell's three-finger slide (shell_vm.rs "a three-finger swipe on the input path slides the stock shell to
+    // the next workspace"): the fingers move left and the next workspace's windows follow them in before they lift;
+    // lifting past a quarter of the travel finishes the slide: `b` is shown, its window slides in over the rest of
+    // 0.25 seconds, and the windows of `a` leave and are hidden when that ends.
+    let comp = world(false);
+    let mut rig = slide_rig(&comp);
+    assert_eq!(rig.eval("gnoblin.workspaces.where({ active: true }).at(0).id"), "a");
+    assert_eq!(rig.eval("gnoblin.clients.at(0).visible"), "true");
+    assert_eq!(
+        rig.eval("gnoblin.clients.at(1).visible"),
+        "false",
+        "a workspace that is not shown hides its windows"
+    );
+    let (rest_a, rest_b) = (comp.prop(3, "x"), comp.prop(4, "x"));
+
+    let id = comp.claim_id("swipe");
+    comp.gesture(id, "begin", 0.0, 0.0);
+    comp.gesture(id, "update", -300.0, 4.0);
+    rig.frame();
+    assert_eq!(
+        comp.prop(3, "x"),
+        rest_a - 750.0,
+        "the shown workspace follows the fingers: 0.75 of 1000 to the left"
+    );
+    assert_eq!(
+        comp.prop(4, "x"),
+        rest_b + 250.0,
+        "the next workspace comes in from the right"
+    );
+    assert_eq!(
+        rig.eval("gnoblin.clients.at(1).visible"),
+        "true",
+        "the workspace the fingers bring in is showing"
+    );
+    assert_eq!(rig.eval("gnoblin.workspaces.where({ active: true }).at(0).id"), "a");
+
+    comp.gesture(id, "end", -300.0, 4.0);
+    rig.frame();
+    assert_eq!(
+        rig.eval("gnoblin.workspaces.where({ active: true }).at(0).id"),
+        "b",
+        "lifting finished the slide"
+    );
+    rig.frame();
+    assert_eq!(
+        rig.eval("gnoblin.clients.at(0).visible"),
+        "true",
+        "the leaving windows stay drawn while they slide"
+    );
+    std::thread::sleep(Duration::from_millis(120));
+    rig.frame();
+    rig.frame();
+    assert_eq!(
+        rig.eval("gnoblin.clients.at(0).visible"),
+        "false",
+        "and are hidden when the slide ends"
+    );
+    assert_eq!(
+        comp.prop(3, "x"),
+        rest_a,
+        "back at rest, so the next `show` starts from where the layout put it"
+    );
+    assert_eq!(rig.eval("gnoblin.clients.at(1).visible"), "true");
+    assert_eq!(comp.prop(4, "x"), rest_b);
+}
+
+#[test]
+fn a_short_swipe_slides_back_and_leaves_the_shown_workspace_alone() {
+    // shell_vm.rs "a swipe that is short of the commit slides back": 50 of 400 units is under a quarter.
+    let comp = world(false);
+    let mut rig = slide_rig(&comp);
+    let (rest_a, rest_b) = (comp.prop(3, "x"), comp.prop(4, "x"));
+    let id = comp.claim_id("swipe");
+    comp.gesture(id, "begin", 0.0, 0.0);
+    comp.gesture(id, "update", -50.0, 0.0);
+    rig.frame();
+    assert_eq!(comp.prop(4, "x"), rest_b + 875.0);
+    comp.gesture(id, "end", -50.0, 0.0);
+    rig.frame();
+    std::thread::sleep(Duration::from_millis(280));
+    rig.frame();
+    rig.frame();
+    assert_eq!(rig.eval("gnoblin.workspaces.where({ active: true }).at(0).id"), "a");
+    assert_eq!(comp.prop(3, "x"), rest_a);
+    assert_eq!(comp.prop(4, "x"), rest_b);
+    assert_eq!(
+        rig.eval("gnoblin.clients.at(1).visible"),
+        "false",
+        "the workspace that was pulled in is hidden again"
+    );
+    assert_eq!(rig.eval("gnoblin.clients.at(0).visible"), "true");
 }

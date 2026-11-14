@@ -142,6 +142,8 @@ pub(crate) enum JsHostValue {
     Flag(bool),
     Number(f64),
     Text(String),
+    /// A list of numbers: a window's `rotation` and `scale`.
+    Numbers(Vec<f64>),
 }
 
 impl JsHostValue {
@@ -155,6 +157,7 @@ impl JsHostValue {
             MirrorValue::Node(id) => Some(Self::Number(handles.to_script(*id))),
             MirrorValue::Double(n) => Some(Self::Number(*n)),
             MirrorValue::Text(text) => Some(Self::Text(text.clone())),
+            MirrorValue::List(numbers) => Some(Self::Numbers(numbers.clone())),
             _ => None,
         }
     }
@@ -166,6 +169,7 @@ impl<'js> IntoJs<'js> for JsHostValue {
             Self::Flag(flag) => Ok(Value::new_bool(ctx.clone(), flag)),
             Self::Number(n) => Ok(Value::new_number(ctx.clone(), n)),
             Self::Text(text) => text.into_js(ctx),
+            Self::Numbers(numbers) => numbers.into_js(ctx),
         }
     }
 }

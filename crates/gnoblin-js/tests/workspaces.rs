@@ -553,8 +553,8 @@ fn a_dirty_workspace_computes_once_per_frame_and_its_writes_are_one_transaction(
     assert_eq!(txs.len(), 1, "one transaction");
     assert_eq!(
         txs[0].len(),
-        5,
-        "the values that differ: width and height of one, x, width, height of the other"
+        7,
+        "the values that differ: width and height of one, x, width, height of the other, and `tiled` on both"
     );
     assert_eq!(rect(&comp, 3), "0,0,500,800");
     assert_eq!(rect(&comp, 4), "500,0,500,800");
@@ -930,7 +930,7 @@ fn the_pure_helpers_diff_fields_pick_the_initial_workspace_and_check_placements(
             "2",
             "1",
             "null",
-            r#"[[{},{"x":1,"y":2,"width":3,"height":4}]]"#,
+            r#"[{"node":{},"bounds":{"x":1,"y":2,"width":3,"height":4},"visible":true,"tiled":false,"z":0,"rotation":[0,0,0],"scale":[1,1,1]},{"node":{},"bounds":null,"visible":true,"tiled":false,"z":0,"rotation":[0,0,0],"scale":[1,1,1]}]"#,
             "TypeError: w: compute must return an array of placements, got [object Object]",
             "TypeError: w: placement 0 is not for one of the workspace's clients",
             "TypeError: w: placement 0 bounds.x must be a finite number",
@@ -939,5 +939,338 @@ fn the_pure_helpers_diff_fields_pick_the_initial_workspace_and_check_placements(
             "TypeError: Workspace options has no \"color\"; expected one of id, name, layout, gaps",
         ]
         .join("\n")
+    );
+}
+
+/// The kind of a property the compositor holds as a flag.
+fn flag(comp: &Comp, node: u64, key: &str) -> Option<bool> {
+    match comp.borrow().nodes.get(&node).and_then(|n| n.props.get(key)) {
+        Some(MirrorValue::Bool(value)) => Some(*value),
+        _ => None,
+    }
+}
+
+/// The three numbers of a list property as the compositor holds them.
+fn list(comp: &Comp, node: u64, key: &str) -> Option<Vec<f64>> {
+    match comp.borrow().nodes.get(&node).and_then(|n| n.props.get(key)) {
+        Some(MirrorValue::List(value)) => Some(value.clone()),
+        _ => None,
+    }
+}
+
+/// A shell with `layout` on the one workspace `w` and the windows 10, 11 and 12 mapped.
+fn three_windows(layout: &str) -> (Comp, FakeLink, Rig) {
+    let comp = compositor(false);
+    let link = FakeLink(comp.clone());
+    let mut rig = rig(
+        &comp,
+        &init(&format!(
+            "gnoblin.workspaces.add(new Workspace({{ id: 'w', layout: '{layout}' }}));\n"
+        )),
+    );
+    rig.settle();
+    for (id, title) in [(10, "a"), (11, "b"), (12, "c")] {
+        link.create_window(id, title);
+    }
+    rig.settle();
+    (comp, link, rig)
+}
+
+#[test]
+fn a_dwindle_workspace_places_its_windows_in_the_split_tree_and_marks_them_tiled() {
+    // tiling_test.lua "Dwindle: 2 and 3 windows split the last cell by aspect" through the layout driver: the window
+    // that maps second splits the first's cell; the third splits the second's, top and bottom.
+    let comp = compositor(false);
+    let link = FakeLink(comp.clone());
+    let mut rig = rig(
+        &comp,
+        &init("gnoblin.workspaces.add(new Workspace({ id: 'd', layout: 'dwindle' }));\n"),
+    );
+    rig.settle();
+    link.create_window(10, "a");
+    rig.settle();
+    assert_eq!(rect(&comp, 10), "0,0,1000,800");
+    link.create_window(11, "b");
+    rig.settle();
+    assert_eq!(
+        (rect(&comp, 10), rect(&comp, 11)),
+        ("0,0,500,800".into(), "500,0,500,800".into())
+    );
+    link.create_window(12, "c");
+    rig.settle();
+    assert_eq!(rect(&comp, 12), "500,400,500,400");
+    assert_eq!(rect(&comp, 11), "500,0,500,400");
+    for id in [10, 11, 12] {
+        assert_eq!(flag(&comp, id, "tiled"), Some(true), "window {id} is tiled");
+    }
+    // The window that closes gives its cell to its sibling.
+    link.destroy(11);
+    rig.settle();
+    assert_eq!(rect(&comp, 12), "500,0,500,800");
+}
+
+#[test]
+fn a_kiosk_workspace_shows_the_focused_window_and_hides_the_rest_as_focus_moves() {
+    // tiling_test.lua "Kiosk" and "Monocle: refocusing shows another window and hides the rest": a change of focus is a
+    // reason to lay out again, and the placement's `visible` reaches the window.
+    let (comp, link, mut rig) = three_windows("kiosk");
+    for id in [10, 11, 12] {
+        assert_eq!(rect(&comp, id), "0,0,1000,800");
+    }
+    assert_eq!(
+        [10, 11, 12].map(|id| flag(&comp, id, "visible").unwrap_or(true)),
+        [true, false, false],
+        "with no focus the first window is shown"
+    );
+    link.external_set(11, "focused", MirrorValue::Bool(true));
+    rig.settle();
+    assert_eq!(
+        [10, 11, 12].map(|id| flag(&comp, id, "visible").unwrap_or(true)),
+        [false, true, false]
+    );
+    link.external_set(11, "focused", MirrorValue::Bool(false));
+    link.external_set(12, "focused", MirrorValue::Bool(true));
+    rig.settle();
+    assert_eq!(
+        [10, 11, 12].map(|id| flag(&comp, id, "visible").unwrap_or(true)),
+        [false, false, true]
+    );
+}
+
+#[test]
+fn a_strip_workspace_scrolls_to_keep_the_focused_column_in_view_as_focus_moves() {
+    // strip_test.lua "a strip lays out one column per window and scrolls to keep the focused one in view": columns are
+    // half the strip wide; the focused third column is brought in (x = 500) and the first when focus goes back.
+    let (comp, link, mut rig) = three_windows("strip");
+    assert_eq!(
+        [10, 11, 12].map(|id| rect(&comp, id)),
+        ["0,0,500,800", "500,0,500,800", "1000,0,500,800"],
+        "with no focus the view stays at the start"
+    );
+    link.external_set(12, "focused", MirrorValue::Bool(true));
+    rig.settle();
+    assert_eq!(
+        [10, 11, 12].map(|id| rect(&comp, id)),
+        ["-500,0,500,800", "0,0,500,800", "500,0,500,800"]
+    );
+    link.external_set(12, "focused", MirrorValue::Bool(false));
+    link.external_set(10, "focused", MirrorValue::Bool(true));
+    rig.settle();
+    assert_eq!(rect(&comp, 10), "0,0,500,800");
+    for id in [10, 11, 12] {
+        assert!(!flag(&comp, id, "tiled").unwrap_or(false), "a strip does not tile");
+    }
+}
+
+#[test]
+fn a_carousel_workspace_writes_the_depth_and_rotation_of_its_cards_and_a_layout_change_clears_them() {
+    let (comp, link, mut rig) = three_windows("carousel-3d");
+    link.external_set(10, "focused", MirrorValue::Bool(true));
+    rig.settle();
+    assert_eq!(
+        list(&comp, 10, "rotation"),
+        None,
+        "the front card has the default rotation"
+    );
+    let side = list(&comp, 11, "rotation").expect("the next card is turned");
+    assert_eq!((side[0], side[2]), (0.0, 0.0));
+    assert!(
+        (side[1] - std::f64::consts::TAU / 3.0).abs() < 1e-9,
+        "a third of the ring: {side:?}"
+    );
+    assert!(
+        prop(&comp, 11, "z") < prop(&comp, 10, "z"),
+        "the side card is further back than the front one"
+    );
+    assert_eq!(rig.eval("gnoblin.clients.get('11').rotation[1] > 0"), "true");
+    // Another layout puts every card back.
+    rig.eval("gnoblin.workspaces.get('w').layout = 'floating'");
+    rig.settle();
+    for id in [10, 11, 12] {
+        assert_eq!(prop(&comp, id, "z"), 0.0);
+    }
+    assert_eq!(rig.eval("gnoblin.clients.get('11').rotation.join()"), "0,0,0");
+    assert_eq!(rig.eval("gnoblin.clients.get('11').scale.join()"), "1,1,1");
+}
+
+#[test]
+fn showing_a_workspace_hides_the_windows_of_the_one_it_replaces() {
+    let comp = compositor(false);
+    let link = FakeLink(comp.clone());
+    let mut rig = rig(
+        &comp,
+        &init(
+            "gnoblin.workspaces.add(new Workspace({ id: 'a' }));\n\
+             gnoblin.workspaces.add(new Workspace({ id: 'b' }));\n",
+        ),
+    );
+    rig.settle();
+    link.create_window(10, "a");
+    link.create_window(11, "b");
+    rig.settle();
+    rig.eval("gnoblin.workspaces.get('b').clients.add(gnoblin.clients.get('11'))");
+    rig.settle();
+    let visible = |comp: &Comp| [10, 11].map(|id| flag(comp, id, "visible").unwrap_or(true));
+    assert_eq!(
+        visible(&comp),
+        [true, false],
+        "only the shown workspace's windows are drawn"
+    );
+    rig.eval("gnoblin.workspaces.show('b')");
+    rig.settle();
+    assert_eq!(visible(&comp), [false, true]);
+    rig.eval("gnoblin.workspaces.get('a').show()");
+    rig.settle();
+    assert_eq!(visible(&comp), [true, false]);
+}
+
+#[test]
+fn a_slide_animates_both_workspaces_with_the_lua_curve_and_hides_the_old_one_when_it_ends() {
+    // Desk:show: the new workspace comes in from a screen's width away and the old one leaves the other way, over
+    // 0.25 seconds on `ease.out_cubic` sampled 33 times; the old one is hidden when that is over.
+    let comp = compositor(false);
+    let link = FakeLink(comp.clone());
+    let mut rig = rig(
+        &comp,
+        &init(
+            "gnoblin.workspaces.add(new Workspace({ id: 'a' }));\n\
+             gnoblin.workspaces.add(new Workspace({ id: 'b' }));\n",
+        ),
+    );
+    rig.settle();
+    link.create_window(10, "a");
+    link.create_window(11, "b");
+    rig.settle();
+    rig.eval("gnoblin.workspaces.get('b').clients.add(gnoblin.clients.get('11'))");
+    rig.settle();
+    let (rest_a, rest_b) = (prop(&comp, 10, "x"), prop(&comp, 11, "x"));
+    let before = sent(&comp).len();
+    rig.eval("gnoblin.workspaces.show('b', { duration: 0.3 })");
+    rig.settle();
+    let animated: Vec<(u64, f64, f64, usize, f64, f64)> = sent(&comp)[before..]
+        .iter()
+        .flatten()
+        .filter_map(|op| match op {
+            TxOp::Set {
+                node,
+                key,
+                value: MirrorValue::Double(to),
+                seconds: Some(seconds),
+                samples: Some(samples),
+            } if key == "x" => Some((
+                *node,
+                *to,
+                *seconds,
+                samples.len(),
+                samples[0],
+                samples[samples.len() - 1],
+            )),
+            _ => None,
+        })
+        .collect();
+    // The new workspace's window goes to rest, the old one a screen's width left of it.
+    assert!(animated.contains(&(11, rest_b, 0.3, 33, 0.0, 1.0)), "{animated:?}");
+    assert!(
+        animated.contains(&(10, rest_a - 1000.0, 0.3, 33, 0.0, 1.0)),
+        "{animated:?}"
+    );
+    assert!(
+        flag(&comp, 10, "visible").unwrap_or(true),
+        "the leaving window is drawn while it slides"
+    );
+    std::thread::sleep(Duration::from_millis(450));
+    rig.settle();
+    assert_eq!(
+        flag(&comp, 10, "visible"),
+        Some(false),
+        "and hidden when the slide is over"
+    );
+    assert_eq!(prop(&comp, 10, "x"), rest_a, "back at its rest place");
+    assert!(flag(&comp, 11, "visible").unwrap_or(true));
+    // The curve is `1 - (1 - t)^3`: the middle sample is 0.875.
+    let middle = sent(&comp)[before..]
+        .iter()
+        .flatten()
+        .find_map(|op| match op {
+            TxOp::Set {
+                samples: Some(samples), ..
+            } => Some(samples[16]),
+            _ => None,
+        })
+        .expect("an animated write");
+    assert!((middle - 0.875).abs() < 1e-12, "{middle}");
+}
+
+#[test]
+fn animate_checks_its_arguments_and_writes_nothing_when_one_is_wrong() {
+    let comp = compositor(true);
+    let mut rig = rig(&comp, &init("export {};"));
+    rig.settle();
+    let thrown = |rig: &mut Rig, body: &str| {
+        rig.eval(&format!(
+            "try {{ {body}; 'no' }} catch (e) {{ e.name + ': ' + e.message }}"
+        ))
+    };
+    let before = sent(&comp).len();
+    let c = "gnoblin.clients.get('3')";
+    assert_eq!(
+        thrown(&mut rig, &format!("{c}.animate({{ x: 1 }}, {{ duration: -1 }})")),
+        "TypeError: Client#3.animate(): duration must be a finite number of seconds of at least 0"
+    );
+    assert_eq!(
+        thrown(
+            &mut rig,
+            &format!("{c}.animate({{ x: 1 }}, {{ duration: 1, easing: 'bouncy' }})")
+        ),
+        "TypeError: Client#3.animate(): easing must be one of linear, out, out-cubic, in-cubic, in-out"
+    );
+    assert_eq!(
+        thrown(
+            &mut rig,
+            &format!("{c}.animate({{ visible: false }}, {{ duration: 1 }})")
+        ),
+        "TypeError: Client#3.animate(): visible cannot be animated"
+    );
+    assert_eq!(
+        thrown(
+            &mut rig,
+            &format!("{c}.animate({{ x: 1, rotation: [1, 2] }}, {{ duration: 1 }})")
+        ),
+        "TypeError: Client#3.animate(): rotation must be three finite numbers"
+    );
+    assert_eq!(
+        thrown(&mut rig, &format!("{c}.animate({{ x: NaN }}, {{ duration: 1 }})")),
+        "TypeError: Client#3.animate(): x must be a finite number"
+    );
+    rig.settle();
+    assert_eq!(sent(&comp).len(), before, "a refused animation queued nothing");
+    // A zero duration is an instant write, and rotation and scale take three numbers.
+    rig.eval(&format!(
+        "{c}.animate({{ x: 42, rotation: [0, 1, 0], scale: [2, 2, 1] }}, {{ duration: 0 }})"
+    ));
+    rig.settle();
+    assert_eq!(prop(&comp, 3, "x"), 42.0);
+    assert_eq!(list(&comp, 3, "rotation"), Some(vec![0.0, 1.0, 0.0]));
+    assert_eq!(list(&comp, 3, "scale"), Some(vec![2.0, 2.0, 1.0]));
+    assert_eq!(
+        thrown(&mut rig, &format!("{c}.rotation = [1, 2]")),
+        "TypeError: Client#3.rotation: must be three finite numbers"
+    );
+}
+
+#[test]
+fn after_runs_its_function_once_at_the_first_frame_past_the_time() {
+    let comp = compositor(false);
+    let mut rig = rig(&comp, &init("g.ran = 0;\ngnoblin.after(0.2, () => { g.ran += 1; });\n"));
+    rig.settle();
+    assert_eq!(rig.eval("g.ran"), "0", "not before its time");
+    std::thread::sleep(Duration::from_millis(300));
+    rig.settle();
+    assert_eq!(rig.eval("g.ran"), "1");
+    rig.settle();
+    assert_eq!(rig.eval("g.ran"), "1", "once");
+    assert_eq!(
+        rig.eval("try { gnoblin.after(-1, () => {}); 'no' } catch (e) { e.message }"),
+        "gnoblin.after: seconds must be a finite number of at least 0"
     );
 }

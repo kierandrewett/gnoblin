@@ -23,6 +23,8 @@
 // config that says nothing about keys still has the stock ones. The rule is in the comment on `mergeConfig`.
 
 import { checkTrigger, parseTrigger } from "gnoblin/bindings";
+import type { Binding } from "gnoblin/bindings";
+import { WorkspaceSlideBinding } from "gnoblin/gestures";
 import type { Gaps, Layout } from "gnoblin/layout";
 import { checkGaps, rejectUnknown, resolveLayout } from "gnoblin/workspace";
 import type { StockLayoutName } from "gnoblin/workspace";
@@ -51,12 +53,37 @@ export interface ShowAction {
     readonly workspace: string;
 }
 
+/** Show the workspace at a 1-based position among the shell's workspaces, whatever its id; nothing if there is none. */
+export interface ShowPositionAction {
+    readonly kind: "show-position";
+    readonly position: number;
+}
+
+/** Move focus one column left or right when the shown workspace is a `StripLayout`; nothing on any other layout. */
+export interface FocusColumnAction {
+    readonly kind: "focus-column";
+    readonly direction: "left" | "right";
+}
+
+/** Bind what `create` makes (a gesture or drag binding) at the key's trigger. */
+export interface BindingAction {
+    readonly kind: "binding";
+    readonly create: () => Binding;
+}
+
 /** The closed set of key actions. A closed set can be inspected and diffed; a function cannot. */
-export type KeyAction = SpawnAction | ShowAction | "close" | KeyHandler;
+export type KeyAction =
+    SpawnAction | ShowAction | ShowPositionAction | FocusColumnAction | BindingAction | "close" | KeyHandler;
 
 /** A key action as the plan holds it: `"close"` and functions get a `kind` too. */
 export type ResolvedAction =
-    SpawnAction | ShowAction | { readonly kind: "close" } | { readonly kind: "call"; readonly handler: KeyHandler };
+    | SpawnAction
+    | ShowAction
+    | ShowPositionAction
+    | FocusColumnAction
+    | BindingAction
+    | { readonly kind: "close" }
+    | { readonly kind: "call"; readonly handler: KeyHandler };
 
 export interface ShadowConfig {
     x?: number;
@@ -109,6 +136,12 @@ export interface GnoblinConfig {
     outputs?: Readonly<Record<string, OutputConfig>>;
     workspaces?: readonly WorkspaceConfig[];
     keys?: Readonly<Record<string, KeyAction>>;
+    /**
+     * The command `Super+space` runs, as a command line or an argv. Nothing is bound when it is absent: the Lua
+     * shell's in-shell command entry is not ported, and no stock launcher program is assumed. A key of `keys` for
+     * `Super+space` takes precedence.
+     */
+    launcher?: string | readonly string[];
     rules?: readonly RuleConfig[];
     on?: ConfigListeners;
     /** Runs after the declarative part and may use any class of the object API. */
@@ -181,9 +214,56 @@ function numbered(template: string, workspaces: readonly (string | { readonly id
     return keys;
 }
 
-export const show = Object.assign(showWorkspace, { numbered });
+/** `show.position(3)` shows the third workspace, whatever it is called, when there is one. */
+function position(index: number): ShowPositionAction {
+    if (!Number.isInteger(index) || index < 1 || index > MAX_NUMBERED) {
+        throw new RangeError(`show.position needs a whole number from 1 to ${MAX_NUMBERED}, got ${String(index)}`);
+    }
+    return Object.freeze({ kind: "show-position", position: index });
+}
 
-const TOP_LEVEL_KEYS = ["gaps", "style", "outputs", "workspaces", "keys", "rules", "on", "setup", "decorations"];
+/** `show.positions("Super+{n}")` binds Super+1 to Super+9 to the workspaces at those positions. */
+function positions(template: string) {
+    if (typeof template !== "string" || !template.includes("{n}")) {
+        throw new TypeError(`show.positions needs a template with {n}, such as "Super+{n}"`);
+    }
+    const keys: Record<string, ShowPositionAction> = {};
+    for (let n = 1; n <= MAX_NUMBERED; n++) {
+        keys[template.replaceAll("{n}", String(n))] = position(n);
+    }
+    return keys;
+}
+
+export const show = Object.assign(showWorkspace, { numbered, position, positions });
+
+/** `focusColumn("left")`: the focus helper of a strip. */
+export function focusColumn(direction: "left" | "right"): FocusColumnAction {
+    if (direction !== "left" && direction !== "right") {
+        throw new TypeError(`focusColumn needs "left" or "right", got ${String(direction)}`);
+    }
+    return Object.freeze({ kind: "focus-column", direction });
+}
+
+/** `binding(() => new WorkspaceSlideBinding())`: a key whose action is a binding the host makes when it binds. */
+export function binding(create: () => Binding): BindingAction {
+    if (typeof create !== "function") {
+        throw new TypeError("binding needs a function that makes the Binding");
+    }
+    return Object.freeze({ kind: "binding", create });
+}
+
+const TOP_LEVEL_KEYS = [
+    "gaps",
+    "style",
+    "outputs",
+    "workspaces",
+    "keys",
+    "launcher",
+    "rules",
+    "on",
+    "setup",
+    "decorations",
+];
 const LISTENER_EVENTS = ["clientAdded", "clientRemoved", "titleChanged"];
 const RULE_KEYS = ["appId", "title", "workspace", "style"];
 
@@ -192,7 +272,12 @@ export const defaultConfig: Readonly<GnoblinConfig> = deepFreeze({
     decorations: true,
     workspaces: [{ id: "desktop", layout: "floating" }],
     keys: {
-        ...show.numbered("Super+{n}", ["desktop"]),
+        // The Lua shell's: Super+1 to Super+9 show the workspace at that position, Super+Left and Super+Right move
+        // focus between a strip's columns, and a three-finger swipe slides between workspaces.
+        ...show.positions("Super+{n}"),
+        "Super+Left": focusColumn("left"),
+        "Super+Right": focusColumn("right"),
+        Swipe3: binding(() => new WorkspaceSlideBinding()),
         XF86AudioRaiseVolume: spawn("wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"),
         XF86AudioLowerVolume: spawn("wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"),
         XF86AudioMute: spawn("wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"),
@@ -248,6 +333,7 @@ export function mergeConfig(base: GnoblinConfig, user: GnoblinConfig): GnoblinCo
     Object.assign(keys, user.keys);
     const rules = user.rules ?? base.rules;
     const setup = user.setup ?? base.setup;
+    const launcher = user.launcher ?? base.launcher;
     return {
         gaps: { ...base.gaps, ...user.gaps },
         style: { ...base.style, ...user.style },
@@ -258,6 +344,7 @@ export function mergeConfig(base: GnoblinConfig, user: GnoblinConfig): GnoblinCo
         ...(rules === undefined ? {} : { rules }),
         ...(setup === undefined ? {} : { setup }),
         ...(user.decorations === undefined ? {} : { decorations: user.decorations }),
+        ...(launcher === undefined ? {} : { launcher }),
     };
 }
 
@@ -276,7 +363,7 @@ export function desugarConfig(config: GnoblinConfig): ConfigPlan {
         style: config.style ?? {},
         outputs: config.outputs ?? {},
         workspaces,
-        bindings: planKeys(config.keys ?? {}, ids),
+        bindings: [...planKeys(config.keys ?? {}, ids), ...planLauncher(config.launcher, config.keys ?? {})],
         rules: planRules(config.rules ?? [], ids),
         listeners: planListeners(config.on ?? {}),
         setup: checkSetup(config.setup),
@@ -307,6 +394,29 @@ function planKeys(keys: Readonly<Record<string, KeyAction>>, workspaces: Readonl
     });
 }
 
+/** The key the launcher command is bound to. */
+const LAUNCHER_TRIGGER = "Super+space";
+
+/** `Super+space` running the launcher command, unless `keys` binds that trigger itself or there is no launcher. */
+function planLauncher(launcher: GnoblinConfig["launcher"], keys: Readonly<Record<string, KeyAction>>): PlannedKey[] {
+    if (launcher === undefined) {
+        return [];
+    }
+    if (typeof launcher !== "string" && !Array.isArray(launcher)) {
+        throw new TypeError("config.launcher must be a command line or an argv array");
+    }
+    const wanted = parseTrigger(LAUNCHER_TRIGGER, "the launcher key").text;
+    if (Object.keys(keys).some((trigger) => parseTrigger(trigger, "a key").text === wanted)) {
+        return [];
+    }
+    const command = typeof launcher === "string" ? launcher.trim().split(/\s+/) : launcher;
+    try {
+        return [{ trigger: LAUNCHER_TRIGGER, action: spawn(command) }];
+    } catch {
+        throw new TypeError("config.launcher must be a non-empty command line or an argv of strings");
+    }
+}
+
 function resolveAction(action: KeyAction, where: string, workspaces: ReadonlySet<string>): ResolvedAction {
     if (action === "close") {
         return { kind: "close" };
@@ -324,8 +434,19 @@ function resolveAction(action: KeyAction, where: string, workspaces: ReadonlySet
             }
             return action;
         }
+        if (action.kind === "show-position" && Number.isInteger(action.position)) {
+            return action;
+        }
+        if (action.kind === "focus-column" && (action.direction === "left" || action.direction === "right")) {
+            return action;
+        }
+        if (action.kind === "binding" && typeof action.create === "function") {
+            return action;
+        }
     }
-    throw new TypeError(`${where} must be spawn(...), show(...), "close" or a function`);
+    throw new TypeError(
+        `${where} must be spawn(...), show(...), show.position(...), focusColumn(...), binding(...), "close" or a function`,
+    );
 }
 
 function planRules(rules: readonly RuleConfig[], workspaces: ReadonlySet<string>): RuleConfig[] {

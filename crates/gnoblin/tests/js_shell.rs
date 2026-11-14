@@ -28,7 +28,7 @@ use gnoblin_log::event::capture::logged;
 use gnoblin_types::{DeviceId, OutputId, Point};
 
 mod support;
-use support::{Mapper, Watcher, ids, scene, spots};
+use support::{Mapper, Watcher, ids, scene, snapshot, spots};
 
 /// How long a test waits for a state before it fails. A passing run never waits this long: it is the margin a busy
 /// machine gets, so a failure is a state that never came and not a slow turn.
@@ -674,8 +674,8 @@ fn a_shell_with_no_init_file_runs_the_stock_config_and_a_defined_config_layers_o
     let window = ids(&scene(&ipc));
 
     // A user `defineConfig` replaces the workspaces whole and merges the keys by trigger: its `Super+Return` is
-    // added, its `XF86AudioMute` replaces the stock one, `Super+1` (which showed the dropped `desktop`) goes, and
-    // the other stock keys stay.
+    // added, its `XF86AudioMute` replaces the stock one, and the other stock keys stay, `Super+1` included: it shows
+    // the workspace at position 1, so it still names something.
     fs::write(config.path().join("init.ts"), LAYERED_CONFIG).expect("init.ts");
     wait_for("the layered config runs", &session, &mut mapper, &shell, || {
         section(&shell.view(), "workspaces [") == "a:MasterStackLayout,b:GridLayout"
@@ -694,8 +694,8 @@ fn a_shell_with_no_init_file_runs_the_stock_config_and_a_defined_config_layers_o
         "a stock key the user left alone: {keys:?}"
     );
     assert!(
-        !keys.contains(&"Super+1"),
-        "the stock key for the dropped workspace: {keys:?}"
+        keys.contains(&"Super+1") && keys.contains(&"Swipe3"),
+        "the stock keys that show by position and the slide gesture stay: {keys:?}"
     );
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
     assert_eq!(ids(&scene(&ipc)), window, "the window kept its id through the reload");
@@ -1197,4 +1197,82 @@ fn super_drags_move_and_resize_a_real_window_through_the_pointer_chord_stream() 
         log.iter().all(|message| !message.contains("claim")),
         "the shell logged nothing about a claim: {log:?}"
     );
+}
+
+/// The size of the compositor's first screen, as the shell tiles in it.
+fn screen_size(ipc: &Path) -> (f64, f64) {
+    let nodes = snapshot(ipc);
+    let screen = nodes
+        .iter()
+        .find(|node| node.class == "screen")
+        .expect("the session has a screen");
+    let value = |key: &str| {
+        screen
+            .props
+            .iter()
+            .find(|prop| prop.key == key)
+            .map_or(0.0, |prop| prop.value_double)
+    };
+    (value("width"), value("height"))
+}
+
+/// An `init.ts` with one workspace whose layout is `layout`, a TypeScript expression.
+fn write_layout_config(dir: &Path, layout: &str) {
+    fs::write(
+        dir.join("init.ts"),
+        format!(
+            "import {{ DwindleLayout, StripLayout, Workspace, gnoblin }} from \"gnoblin\";\n\
+             gnoblin.workspaces.add(new Workspace({{ id: \"desk\", layout: {layout} }}));\n"
+        ),
+    )
+    .expect("init.ts");
+}
+
+#[test]
+fn a_dwindle_workspace_places_two_real_windows_side_by_side_at_the_halves_of_the_screen() {
+    // Lua tiling_test.lua "Dwindle: 2 and 3 windows split the last cell by aspect", against the real compositor: two
+    // real Wayland windows are mapped while the shell runs, and what the compositor's tree holds for them is the first
+    // half and the second half of the screen, floored to whole pixels.
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    write_layout_config(config.path(), "new DwindleLayout()");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    let (width, height) = screen_size(&ipc);
+    assert!(
+        width >= height && width >= 2.0,
+        "a landscape screen splits side by side: {width}x{height}"
+    );
+    mapper.map_window("org.example.first", "First");
+    mapper.map_window("org.example.second", "Second");
+    let half = (width * 0.5).floor();
+    let first = Some((0.0, 0.0, half, height.floor()));
+    let second = Some((half, 0.0, (width - width * 0.5).floor(), height.floor()));
+    wait_for("two windows tiled side by side", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, "org.example.first") == first && rect_of(&ipc, "org.example.second") == second
+    });
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+}
+
+#[test]
+fn a_strip_workspace_places_two_real_windows_in_columns_and_scrolls_to_the_focused_one() {
+    // strip_test.lua "a strip lays out one column per window": a column is half the strip wide and the full height. With
+    // two windows the strip is exactly as wide as the screen, so nothing scrolls whichever has focus.
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    write_layout_config(config.path(), "new StripLayout()");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    let (width, height) = screen_size(&ipc);
+    mapper.map_window("org.example.first", "First");
+    mapper.map_window("org.example.second", "Second");
+    let column = width * 0.5;
+    let first = Some((0.0, 0.0, column, height));
+    let second = Some((column, 0.0, column, height));
+    wait_for("two windows in two columns", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, "org.example.first") == first && rect_of(&ipc, "org.example.second") == second
+    });
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 }

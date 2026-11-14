@@ -12,14 +12,22 @@ import { FloatingLayout } from "gnoblin/layouts/floating";
 import { GridLayout } from "gnoblin/layouts/grid";
 import { MasterStackLayout } from "gnoblin/layouts/master-stack";
 import { MonocleLayout } from "gnoblin/layouts/monocle";
+import { DwindleLayout } from "gnoblin/layouts/dwindle";
+import { KioskLayout } from "gnoblin/layouts/kiosk";
+import { Carousel3dLayout, StripLayout } from "gnoblin/layouts/strip";
 
-export type StockLayoutName = "floating" | "master-stack" | "grid" | "monocle";
+export type StockLayoutName =
+    "floating" | "master-stack" | "grid" | "monocle" | "dwindle" | "kiosk" | "strip" | "carousel-3d";
 
 const STOCK_LAYOUTS: Readonly<Record<StockLayoutName, () => Layout>> = {
     floating: () => new FloatingLayout(),
     "master-stack": () => new MasterStackLayout(),
     grid: () => new GridLayout(),
     monocle: () => new MonocleLayout(),
+    dwindle: () => new DwindleLayout(),
+    kiosk: () => new KioskLayout(),
+    strip: () => new StripLayout(),
+    "carousel-3d": () => new Carousel3dLayout(),
 };
 
 /** A stock layout by name, an instance of any Layout as it is, or a floating layout for `undefined`. */
@@ -149,42 +157,87 @@ export function rectsEqual(a: Rect | null, b: Rect | null): boolean {
     return a !== null && b !== null && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 }
 
+/** A placement after the checks, with every default filled in. */
+export interface CheckedPlacement<N extends object> {
+    node: N;
+    /** `null` leaves the node where it is. */
+    bounds: Rect | null;
+    visible: boolean;
+    tiled: boolean;
+    z: number;
+    rotation: readonly [number, number, number];
+    scale: readonly [number, number, number];
+}
+
+export const NO_ROTATION = [0, 0, 0] as const;
+export const UNIT_SCALE = [1, 1, 1] as const;
+
+function checkVector(value: unknown, fallback: readonly [number, number, number], what: string) {
+    if (value === undefined) {
+        return fallback;
+    }
+    if (
+        !Array.isArray(value) ||
+        value.length !== 3 ||
+        value.some((n) => typeof n !== "number" || !Number.isFinite(n))
+    ) {
+        throw new TypeError(`${what} must be three finite numbers`);
+    }
+    return [value[0], value[1], value[2]] as const;
+}
+
 /**
- * What a layout's `compute` returned, as `[node, bounds]` pairs for the nodes that get a rectangle. A result
- * that is not an array, a placement for a node that is not one of `children`, or a rectangle that is not four
- * finite numbers with a size of at least zero is refused before anything is written, so a layout that
- * fails halfway leaves the workspace as it was. A placement without bounds leaves its node where it is.
+ * What a layout's `compute` returned, with the defaults filled in, for every placement. A result that is not an
+ * array, a placement for a node that is not one of `children`, a rectangle that is not four finite numbers with a
+ * size of at least zero, or a flag, depth or vector of the wrong type is refused before anything is written, so a
+ * layout that fails halfway leaves the workspace as it was. A placement without bounds leaves its node where it is.
  */
 export function checkPlacements<N extends object>(
     placements: unknown,
     children: readonly N[],
     where: string,
-): [N, Rect][] {
+): CheckedPlacement<N>[] {
     if (!Array.isArray(placements)) {
         throw new TypeError(`${where}: compute must return an array of placements, got ${String(placements)}`);
     }
-    const checked: [N, Rect][] = [];
-    placements.forEach((placement: Placement<N> | null, i) => {
+    return placements.map((placement: Placement<N> | null, i) => {
         if (placement === null || typeof placement !== "object" || !children.includes(placement.node)) {
             throw new TypeError(`${where}: placement ${i} is not for one of the workspace's clients`);
         }
-        const bounds = placement.bounds;
-        if (bounds === undefined) {
-            return;
+        const at = `${where}: placement ${i}`;
+        let bounds: Rect | null = null;
+        if (placement.bounds !== undefined) {
+            for (const key of ["x", "y", "width", "height"] as const) {
+                const value = placement.bounds?.[key];
+                if (
+                    typeof value !== "number" ||
+                    !Number.isFinite(value) ||
+                    ((key === "width" || key === "height") && value < 0)
+                ) {
+                    throw new TypeError(
+                        `${at} bounds.${key} must be a finite number${key === "width" || key === "height" ? " of at least 0" : ""}`,
+                    );
+                }
+            }
+            const { x, y, width, height } = placement.bounds;
+            bounds = { x, y, width, height };
         }
-        for (const key of ["x", "y", "width", "height"] as const) {
-            const value = bounds?.[key];
-            if (
-                typeof value !== "number" ||
-                !Number.isFinite(value) ||
-                ((key === "width" || key === "height") && value < 0)
-            ) {
-                throw new TypeError(
-                    `${where}: placement ${i} bounds.${key} must be a finite number${key === "width" || key === "height" ? " of at least 0" : ""}`,
-                );
+        for (const flag of ["visible", "tiled"] as const) {
+            if (placement[flag] !== undefined && typeof placement[flag] !== "boolean") {
+                throw new TypeError(`${at} ${flag} must be true or false`);
             }
         }
-        checked.push([placement.node, { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }]);
+        if (placement.z !== undefined && (typeof placement.z !== "number" || !Number.isFinite(placement.z))) {
+            throw new TypeError(`${at} z must be a finite number`);
+        }
+        return {
+            node: placement.node,
+            bounds,
+            visible: placement.visible ?? true,
+            tiled: placement.tiled ?? false,
+            z: placement.z ?? 0,
+            rotation: checkVector(placement.rotation, NO_ROTATION, `${at} rotation`),
+            scale: checkVector(placement.scale, UNIT_SCALE, `${at} scale`),
+        };
     });
-    return checked;
 }

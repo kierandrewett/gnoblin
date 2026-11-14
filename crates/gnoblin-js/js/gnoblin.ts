@@ -11,7 +11,8 @@
 // listener that throws or never returns does not stop the others.
 
 import { desugarConfig, defaultConfig, mergeConfig } from "gnoblin/config";
-import type { GnoblinConfig, GnoblinHost, PlannedKey, ResolvedAction } from "gnoblin/config";
+import type { BindingAction, GnoblinConfig, GnoblinHost, PlannedKey, ResolvedAction } from "gnoblin/config";
+import { StripLayout } from "gnoblin/layouts/strip";
 import { Layout } from "gnoblin/layout";
 import type { Gaps, LayoutContext } from "gnoblin/layout";
 import {
@@ -24,15 +25,18 @@ import {
     rectsEqual,
     resolveLayout,
 } from "gnoblin/workspace";
-import type { StockLayoutName, WorkspaceOptions } from "gnoblin/workspace";
+import type { CheckedPlacement, StockLayoutName, WorkspaceOptions } from "gnoblin/workspace";
 import { InputManager } from "gnoblin/input";
 import type { InputHost, InputMessage } from "gnoblin/input";
 import { attachUi, runUiFrame, uiNodeGone, uiReleaseAll } from "gnoblin/ui";
 import type { UiBackend } from "gnoblin/ui";
 import { Decorations } from "gnoblin/titlebar";
+import { WorkspaceSets } from "gnoblin/sets";
 
 type NodeId = number;
 type Scalar = string | number | boolean;
+/** What a property holds: a scalar, or the three numbers of a rotation or scale. */
+type HostValue = Scalar | number[];
 
 /** A rectangle in the compositor's logical coordinates. */
 interface Rect {
@@ -74,10 +78,12 @@ interface Entry {
 
 interface Host {
     kind(node: NodeId): string | undefined;
-    get(node: NodeId, key: string): Scalar | undefined;
-    published(node: NodeId, key: string): Scalar | undefined;
+    get(node: NodeId, key: string): HostValue | undefined;
+    published(node: NodeId, key: string): HostValue | undefined;
     label(node: NodeId): string | undefined;
-    set(node: NodeId, key: string, value: Scalar): string | undefined;
+    set(node: NodeId, key: string, value: HostValue): string | undefined;
+    /** The same write, carried out over `seconds` along `samples` (progress from 0 to 1). */
+    animate(node: NodeId, key: string, value: HostValue, seconds: number, samples: number[]): string | undefined;
     call(node: NodeId, method: string): string | undefined;
     windows(): NodeId[];
     screens(): NodeId[];
@@ -207,7 +213,24 @@ function refuse(code: string, target: string, what: string): never {
     }
 }
 
-const CLIENT_KEYS = ["title", "app_id", "focused", "fullscreen", "maximised", "minimised", "x", "y", "width", "height"];
+const CLIENT_KEYS = [
+    "title",
+    "app_id",
+    "focused",
+    "fullscreen",
+    "maximised",
+    "minimised",
+    "x",
+    "y",
+    "width",
+    "height",
+    "tiled",
+    "visible",
+    "opacity",
+    "z",
+    "rotation",
+    "scale",
+];
 
 /** What listeners were last told about a client, to raise an event only for a real change. */
 interface Seen {
@@ -223,7 +246,7 @@ interface NodeState {
     node: NodeId;
     alive: boolean;
     /** The last values of a destroyed node, which stay readable. */
-    frozen: Record<string, Scalar | undefined> | null;
+    frozen: Record<string, HostValue | undefined> | null;
     listeners: object[];
     readied: boolean;
     seen: Seen | null;
@@ -246,7 +269,7 @@ function read<T extends Scalar>(object: object, key: string): T {
 
 function freeze(object: object, keys: string[]): void {
     const state = stateOf(object);
-    const frozen: Record<string, Scalar | undefined> = {};
+    const frozen: Record<string, HostValue | undefined> = {};
     for (const key of keys) {
         frozen[key] = host.get(state.node, key);
     }
@@ -296,6 +319,73 @@ function writeFlag(client: Client, key: string, value: unknown): void {
     if (code != null) {
         refuse(code, target, "client");
     }
+}
+
+type Vector3 = readonly [number, number, number];
+
+/** The queued write of a property of three numbers (`rotation`, `scale`), or the error that names the member. */
+function writeVector(client: Client, key: string, value: unknown): void {
+    const state = stateOf(client);
+    const target = `Client#${host.label(state.node)}.${key}`;
+    if (!state.alive) {
+        throw new GnoblinError("destroyed", target, "the client is gone");
+    }
+    if (
+        !Array.isArray(value) ||
+        value.length !== 3 ||
+        value.some((n) => typeof n !== "number" || !Number.isFinite(n))
+    ) {
+        throw new TypeError(`${target}: must be three finite numbers`);
+    }
+    const code = host.set(state.node, key, [value[0], value[1], value[2]]);
+    if (code != null) {
+        refuse(code, target, "client");
+    }
+}
+
+/** How an animation moves from its start to its end, as the Lua shell's `ease` table named them. */
+export type ClientEasing = "linear" | "out" | "out-cubic" | "in-cubic" | "in-out";
+
+const EASINGS: Readonly<Record<ClientEasing, (t: number) => number>> = {
+    linear: (t) => t,
+    out: (t) => 1 - (1 - t) ** 2,
+    "out-cubic": (t) => 1 - (1 - t) ** 3,
+    "in-cubic": (t) => t ** 3,
+    "in-out": (t) => (t < 0.5 ? 2 * t * t : 1 - (2 - 2 * t) ** 2 / 2),
+};
+
+/** The curve is sent as this many steps plus the start: 33 samples, as the Lua shell's `node:to` sends. */
+const CURVE_STEPS = 32;
+
+/** The properties of a client `animate` can move, and the kind of value each takes. */
+const ANIMATED_KEYS: Readonly<Record<string, "number" | "vector">> = {
+    x: "number",
+    y: "number",
+    width: "number",
+    height: "number",
+    opacity: "number",
+    z: "number",
+    rotation: "vector",
+    scale: "vector",
+};
+
+/** What `Client.animate` takes: the values to move to, each of the kind its property holds. */
+export interface ClientAnimation {
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    opacity?: number;
+    z?: number;
+    rotation?: Vector3;
+    scale?: Vector3;
+}
+
+export interface AnimateOptions {
+    /** Seconds. Zero is an instant write. */
+    duration: number;
+    /** Default `"out"`, as the Lua shell's. */
+    easing?: ClientEasing;
 }
 
 function callMethod(client: Client, method: string): void {
@@ -424,6 +514,60 @@ export class Client {
         writeFlag(this, "minimised", value);
     }
 
+    /** Whether the window sits in a tiled layout, so its client drops the border and rounding it draws itself. */
+    get tiled(): boolean {
+        return read<boolean>(this, "tiled");
+    }
+
+    set tiled(value: boolean) {
+        writeFlag(this, "tiled", value);
+    }
+
+    /** Whether the window is drawn and hit. A workspace that is not shown hides its windows. */
+    get visible(): boolean {
+        return read<boolean>(this, "visible");
+    }
+
+    set visible(value: boolean) {
+        writeFlag(this, "visible", value);
+    }
+
+    /** How opaque the window is drawn, from 0 to 1 (the compositor clamps it). */
+    get opacity(): number {
+        return read<number>(this, "opacity");
+    }
+
+    set opacity(value: number) {
+        writeNumber(this, "opacity", value);
+    }
+
+    /** The window's place in depth; negative is in front of the camera. */
+    get z(): number {
+        return read<number>(this, "z");
+    }
+
+    set z(value: number) {
+        writeNumber(this, "z", value);
+    }
+
+    /** Rotation about each axis in radians. Assigning takes three numbers. */
+    get rotation(): Vector3 {
+        return read<never>(this, "rotation") as Vector3;
+    }
+
+    set rotation(value: Vector3) {
+        writeVector(this, "rotation", value);
+    }
+
+    /** Scale along each axis. Assigning takes three numbers. */
+    get scale(): Vector3 {
+        return read<never>(this, "scale") as Vector3;
+    }
+
+    set scale(value: Vector3) {
+        writeVector(this, "scale", value);
+    }
+
     /** The workspace the client is on, or null. */
     get workspace(): Workspace | null {
         return membership.get(this) ?? null;
@@ -454,6 +598,55 @@ export class Client {
         callMethod(this, "focus");
     }
 
+    /**
+     * Moves properties to `values` over `options.duration` seconds along the easing curve. Reading a property back
+     * at once gives the end value; the compositor draws the way there. A duration of 0 writes at once.
+     */
+    animate(values: ClientAnimation, options: AnimateOptions): void {
+        const state = stateOf(this);
+        const target = `Client#${host.label(state.node)}.animate()`;
+        if (!state.alive) {
+            throw new GnoblinError("destroyed", target, "the client is gone");
+        }
+        const duration = options?.duration;
+        if (typeof duration !== "number" || !Number.isFinite(duration) || duration < 0) {
+            throw new TypeError(`${target}: duration must be a finite number of seconds of at least 0`);
+        }
+        const curve = EASINGS[options.easing ?? "out"];
+        if (curve === undefined) {
+            throw new TypeError(`${target}: easing must be one of ${Object.keys(EASINGS).join(", ")}`);
+        }
+        const entries = Object.entries(values).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+        for (const [key, value] of entries) {
+            const kind = ANIMATED_KEYS[key];
+            if (kind === undefined) {
+                throw new TypeError(`${target}: ${key} cannot be animated`);
+            }
+            if (kind === "number") {
+                if (typeof value !== "number" || !Number.isFinite(value)) {
+                    throw new TypeError(`${target}: ${key} must be a finite number`);
+                }
+            } else if (
+                !Array.isArray(value) ||
+                value.length !== 3 ||
+                value.some((n) => typeof n !== "number" || !Number.isFinite(n))
+            ) {
+                throw new TypeError(`${target}: ${key} must be three finite numbers`);
+            }
+        }
+        const samples = Array.from({ length: CURVE_STEPS + 1 }, (_, i) => curve(i / CURVE_STEPS));
+        for (const [key, value] of entries) {
+            const sent = Array.isArray(value) ? [value[0], value[1], value[2]] : (value as number);
+            const code =
+                duration === 0
+                    ? host.set(state.node, key, sent)
+                    : host.animate(state.node, key, sent, duration, samples);
+            if (code != null) {
+                refuse(code, target, "client");
+            }
+        }
+    }
+
     toString(): string {
         return `Client#${host.label(stateOf(this).node)}`;
     }
@@ -478,6 +671,8 @@ interface WorkspaceState {
     gapsSeen: [number, number];
     /** The area the layout last computed for. */
     area: Rect | null;
+    /** The focused client the layout last computed for: a change of focus is a reason to compute again. */
+    focusSeen: Client | null;
 }
 
 const wsStates = new WeakMap<object, WorkspaceState>();
@@ -517,6 +712,7 @@ export class Workspace {
             arrived: [],
             departed: [],
             dirty: true,
+            focusSeen: null,
             fields: null,
             gapsSeen: [checked.gaps.inner, checked.gaps.outer],
             area: null,
@@ -797,9 +993,32 @@ export class MutableCollection<T extends Member> extends Collection<T> {
 
 /** The workspaces of the script, which also say which of them the primary display shows. */
 class WorkspaceCollection extends MutableCollection<Workspace> {
-    /** Shows a workspace on the primary display, given as itself or by id. */
-    show(workspace: Workspace | string): void {
-        showWorkspace(workspace);
+    /** Named groups of workspaces to show together, each entry on an output. */
+    readonly sets = new WorkspaceSets({
+        declared: () => new Set((workspaceRoot.list as Workspace[]).map((workspace) => workspace.id)),
+        outputs: () => {
+            const screens = host.screens();
+            const names = screens.map((id) => String(host.get(id, "name") ?? ""));
+            const primary = screens.find((id) => host.get(id, "primary") === true) ?? screens[0];
+            return { names, primary: primary === undefined ? "" : String(host.get(primary, "name") ?? "") };
+        },
+        show: (id) => showWorkspace(id, { duration: SLIDE_SECONDS }),
+        report: (message) => {
+            reports.push({ site: "gnoblin.workspaces.sets", error: new Error(message) });
+        },
+    });
+
+    /** The area windows are laid out in, which is the primary screen; null while the tree has none. */
+    get area(): Rect | null {
+        return screenArea();
+    }
+
+    /**
+     * Shows a workspace on the primary display, given as itself or by id. With `options.duration` the windows slide
+     * from one workspace to the other; without it the switch is at once.
+     */
+    show(workspace: Workspace | string, options?: ShowOptions): void {
+        showWorkspace(workspace, options);
     }
 }
 
@@ -978,8 +1197,33 @@ function setActive(next: Workspace | null): void {
     }
 }
 
-/** `gnoblin.workspaces.show(workspace)`. */
-function showWorkspace(workspace: Workspace | string): void {
+/** Seconds a workspace slide takes, as the Lua shell's `Desk:show`. */
+export const SLIDE_SECONDS = 0.25;
+
+/** How `show` moves to a workspace. */
+export interface ShowOptions {
+    /** Seconds the slide between the two workspaces takes. Zero or absent switches at once. */
+    duration?: number;
+    /** How much of the slide a touchpad gesture has made already, 0 to 1: the slide carries on from there. */
+    progress?: number;
+}
+
+/** A slide the next layout pass starts: the windows of `from` leave and the windows of `to` come in. */
+interface Slide {
+    from: Workspace;
+    to: Workspace;
+    /** 1 when `to` comes after `from`, so the windows move left. */
+    direction: 1 | -1;
+    duration: number;
+    progress: number;
+}
+
+const slides: Slide[] = [];
+/** The workspaces that are not shown but keep their windows drawn until a slide away from them ends. */
+const holding = new Map<Workspace, number>();
+
+/** `gnoblin.workspaces.show(workspace, options)`. */
+function showWorkspace(workspace: Workspace | string, options: ShowOptions = {}): void {
     const target = typeof workspace === "string" ? workspaceRoot.list.find((w) => w.id === workspace) : workspace;
     if (target === undefined) {
         throw new GnoblinError("unknown-workspace", "gnoblin.workspaces.show", `there is no workspace "${workspace}"`);
@@ -987,7 +1231,50 @@ function showWorkspace(workspace: Workspace | string): void {
     if (!wsState(target).attached) {
         throw new GnoblinError("detached", `${target}.show`, "add the workspace to gnoblin.workspaces first");
     }
+    const duration = options.duration ?? 0;
+    const progress = options.progress ?? 0;
+    if (typeof duration !== "number" || !Number.isFinite(duration) || duration < 0) {
+        throw new TypeError(`${target}.show: duration must be a finite number of seconds of at least 0`);
+    }
+    if (typeof progress !== "number" || !(progress >= 0 && progress <= 1)) {
+        throw new TypeError(`${target}.show: progress must be a number from 0 to 1`);
+    }
+    const from = activeWorkspace;
     setActive(target as Workspace);
+    if (from !== null && from !== target && duration > 0) {
+        slides.push({
+            from,
+            to: target as Workspace,
+            direction: workspaceRoot.list.indexOf(target) > workspaceRoot.list.indexOf(from) ? 1 : -1,
+            duration,
+            progress,
+        });
+    }
+}
+
+/** Work that waits for a time: the end of a slide. Run at the start of each layout pass. */
+const timers: { at: number; run: () => void }[] = [];
+
+function after(seconds: number, run: () => void): void {
+    if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {
+        throw new TypeError("gnoblin.after: seconds must be a finite number of at least 0");
+    }
+    if (typeof run !== "function") {
+        throw new TypeError("gnoblin.after: needs a function to run");
+    }
+    timers.push({ at: host.input.now() + seconds * 1000, run });
+}
+
+function runTimers(): void {
+    if (timers.length === 0) {
+        return;
+    }
+    const now = host.input.now();
+    const due = timers.filter((timer) => timer.at <= now);
+    for (const timer of due) {
+        timers.splice(timers.indexOf(timer), 1);
+        guard("gnoblin.after", timer.run);
+    }
 }
 
 /** Gives each window that has no workspace the one the initial-workspace rule names. */
@@ -1087,6 +1374,120 @@ function writeBounds(client: Client, rect: Rect): void {
     }
 }
 
+function sameVector(a: Vector3, b: Vector3): boolean {
+    return a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+}
+
+/** Whether each client's layout wants it shown, from the last placement it had. Default shown. */
+const shownByLayout = new WeakMap<Client, boolean>();
+/**
+ * The `visible` this module last decided for each client. A client the module never hid is shown. It is what the
+ * module compares with, so a window the compositor hid itself (a minimised one) is not shown by a layout that has not
+ * changed its mind.
+ */
+const writtenVisible = new WeakMap<Client, boolean>();
+
+/** Decides `shown` for `client`, and writes it unless the client already has that value (a reloaded shell's windows). */
+function writeShown(client: Client, shown: boolean): void {
+    writtenVisible.set(client, shown);
+    if (client.visible !== shown) {
+        client.visible = shown;
+    }
+}
+
+/**
+ * Writes what a layout's placements say beyond the rectangle: whether the window is tiled, hidden, and where it is in
+ * depth. A client the layout gave no placement is as if placed with the defaults, so a window that leaves a tiled
+ * layout for a floating one stops being tiled. Only what differs from the client's value is written.
+ */
+function applyPlacements(children: readonly Client[], placements: readonly CheckedPlacement<Client>[]): void {
+    const placed = new Map(placements.map((placement) => [placement.node, placement]));
+    for (const client of children) {
+        const placement = placed.get(client);
+        if (placement?.bounds) {
+            writeBounds(client, placement.bounds);
+        }
+        const tiled = placement?.tiled ?? false;
+        if (client.tiled !== tiled) {
+            client.tiled = tiled;
+        }
+        shownByLayout.set(client, placement?.visible ?? true);
+        const z = placement?.z ?? 0;
+        if (client.z !== z) {
+            client.z = z;
+        }
+        const rotation = placement?.rotation ?? [0, 0, 0];
+        if (!sameVector(client.rotation, rotation)) {
+            client.rotation = rotation;
+        }
+        const scale = placement?.scale ?? [1, 1, 1];
+        if (!sameVector(client.scale, scale)) {
+            client.scale = scale;
+        }
+    }
+}
+
+/**
+ * Shows the windows of the shown workspace (and of a workspace a slide is leaving) that their layout shows, and hides
+ * the rest. A window is written only when what it should be differs from what this module last wrote.
+ */
+function syncVisibility(): void {
+    for (const workspace of workspaceRoot.list as Workspace[]) {
+        const shown = workspace === activeWorkspace || holding.has(workspace);
+        for (const client of wsState(workspace).clientsState.list as Client[]) {
+            const want = shown && (shownByLayout.get(client) ?? true);
+            if (client.alive && (writtenVisible.get(client) ?? true) !== want) {
+                writeShown(client, want);
+            }
+        }
+    }
+}
+
+/**
+ * Starts the slides `show` asked for, once the layout has put every window at rest: the windows of the workspace
+ * that comes in start a screen's width away on the side it comes from and move to where the layout put them, and
+ * the windows of the one that leaves move a screen's width the other way. The leaving windows stay drawn until
+ * the slide ends, then go back to where they rest, hidden.
+ */
+function startSlides(area: Rect | null): void {
+    for (const slide of slides.splice(0)) {
+        if (area === null) {
+            continue;
+        }
+        const { from, to, direction, duration, progress } = slide;
+        const travel = direction * area.width;
+        for (const client of wsState(to).clientsState.list as Client[]) {
+            const rest = client.x;
+            client.x = rest + travel * (1 - progress);
+            client.animate({ x: rest }, { duration, easing: "out-cubic" });
+        }
+        const resting = new Map<Client, number>();
+        for (const client of wsState(from).clientsState.list as Client[]) {
+            const rest = client.x;
+            resting.set(client, rest);
+            if (progress > 0) {
+                client.x = rest - travel * progress;
+            }
+            client.animate({ x: rest - travel }, { duration, easing: "out-cubic" });
+        }
+        holding.set(from, (holding.get(from) ?? 0) + 1);
+        after(duration, () => {
+            const left = (holding.get(from) ?? 1) - 1;
+            if (left > 0) {
+                holding.set(from, left);
+                return;
+            }
+            holding.delete(from);
+            for (const [client, rest] of resting) {
+                if (client.alive && membership.get(client) === from && activeWorkspace !== from) {
+                    writeShown(client, false);
+                    client.x = rest;
+                }
+            }
+        });
+    }
+}
+
 /**
  * The layout driver, run once at the end of each frame after every listener. For each workspace it first
  * notices what changed: a layout's own enumerable fields (a snapshot diff, because a field is a plain
@@ -1095,6 +1496,7 @@ function writeBounds(client: Client, rect: Rect): void {
  * are written. A workspace that is not shown stays dirty until it is.
  */
 function layout(): number {
+    runTimers();
     const area = screenArea();
     let laidOut = 0;
     for (const workspace of workspaceRoot.list as Workspace[]) {
@@ -1113,12 +1515,17 @@ function layout(): number {
                 return;
             }
             const children = [...state.clientsState.list] as Client[];
+            const focused = children.find((client) => client.focused) ?? null;
+            if (focused !== state.focusSeen) {
+                state.focusSeen = focused;
+                state.dirty = true;
+            }
             const context: LayoutContext<Client> = {
                 workspace,
                 children,
                 area: { ...area },
                 gap: { ...state.gaps },
-                focused: children.find((client) => client.focused) ?? null,
+                focused,
             };
             const target = state.layout;
             for (const client of state.departed.splice(0)) {
@@ -1138,9 +1545,7 @@ function layout(): number {
                 }
                 guard(`${workspace}.layout.compute`, () => {
                     const site = `${workspace}.layout.compute`;
-                    for (const [client, bounds] of checkPlacements(target.compute(context), children, site)) {
-                        writeBounds(client, bounds);
-                    }
+                    applyPlacements(children, checkPlacements(target.compute(context), children, site));
                 });
                 laidOut += 1;
             }
@@ -1148,6 +1553,8 @@ function layout(): number {
             state.fields = layoutFields(state.layout);
         });
     }
+    startSlides(area);
+    guard("gnoblin.workspaces.visibility", syncVisibility);
     return laidOut;
 }
 
@@ -1384,9 +1791,14 @@ class Gnoblin {
         }
     }
 
-    /** Shows a workspace, given as itself or by id, on the primary display. */
-    show(workspace: Workspace | string): void {
-        showWorkspace(workspace);
+    /** Shows a workspace, given as itself or by id, on the primary display. See `WorkspaceCollection.show`. */
+    show(workspace: Workspace | string, options?: ShowOptions): void {
+        showWorkspace(workspace, options);
+    }
+
+    /** Runs `run` once, `seconds` from now: at the first frame after that time. */
+    after(seconds: number, run: () => void): void {
+        after(seconds, run);
     }
 
     /**
@@ -1406,13 +1818,31 @@ class Gnoblin {
     }
 }
 
-/** What a key of the config does when it is pressed. */
-function keyHandler(action: ResolvedAction): () => void {
+/** What a key of the config does when it is pressed. A binding action is not a handler: `bindKeys` binds it whole. */
+function keyHandler(action: Exclude<ResolvedAction, BindingAction>): () => void {
     switch (action.kind) {
         case "spawn":
             return () => gnoblin.spawn([...action.argv]);
         case "show":
-            return () => gnoblin.show(action.workspace);
+            return () => gnoblin.show(action.workspace, { duration: SLIDE_SECONDS });
+        case "show-position":
+            return () => {
+                const target = workspaceRoot.list[action.position - 1];
+                if (target !== undefined) {
+                    showWorkspace(target, { duration: SLIDE_SECONDS });
+                }
+            };
+        case "focus-column":
+            return () => {
+                const shown = activeWorkspace;
+                if (shown !== null && shown.layout instanceof StripLayout) {
+                    if (action.direction === "left") {
+                        shown.layout.focusLeft(shown);
+                    } else {
+                        shown.layout.focusRight(shown);
+                    }
+                }
+            };
         case "close":
             return () => (input.primary.focusedClient as Client | null)?.close();
         case "call":
@@ -1435,7 +1865,7 @@ function bindKeys(keys: readonly PlannedKey[]): void {
         throw error;
     }
     for (const { trigger, action } of keys) {
-        seat.bind(trigger, keyHandler(action));
+        seat.bind(trigger, action.kind === "binding" ? action.create() : keyHandler(action));
     }
 }
 

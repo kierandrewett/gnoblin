@@ -11,6 +11,8 @@ use gnoblin_tree_client::tree_mirror::{MirrorValue, lua_class};
 pub(crate) enum JsPropKind {
     Flag,
     Double,
+    /// Three numbers: a window's `rotation` and `scale`.
+    Doubles,
     Text,
     Node,
 }
@@ -22,10 +24,26 @@ pub(crate) struct JsPropDef {
     pub kind: JsPropKind,
     /// Whether a script may write it. The compositor owns a client's title, focus and fullscreen state.
     pub writable: bool,
+    /// Whether the tree accepts a write of it that carries `seconds` (`animated` in the schema).
+    pub animated: bool,
 }
 
 const fn def(name: &'static str, kind: JsPropKind, writable: bool) -> JsPropDef {
-    JsPropDef { name, kind, writable }
+    JsPropDef {
+        name,
+        kind,
+        writable,
+        animated: false,
+    }
+}
+
+const fn animated(name: &'static str, kind: JsPropKind) -> JsPropDef {
+    JsPropDef {
+        name,
+        kind,
+        writable: true,
+        animated: true,
+    }
 }
 
 const WINDOW: &[JsPropDef] = &[
@@ -35,16 +53,27 @@ const WINDOW: &[JsPropDef] = &[
     def("fullscreen", JsPropKind::Flag, false),
     def("maximised", JsPropKind::Flag, true),
     def("minimised", JsPropKind::Flag, true),
-    def("x", JsPropKind::Double, true),
-    def("y", JsPropKind::Double, true),
-    def("width", JsPropKind::Double, true),
-    def("height", JsPropKind::Double, true),
+    animated("x", JsPropKind::Double),
+    animated("y", JsPropKind::Double),
+    animated("width", JsPropKind::Double),
+    animated("height", JsPropKind::Double),
     def("workspace", JsPropKind::Node, false),
+    // Written by the shell: the window sits in a tiled layout, so its client drops its border and rounding.
+    def("tiled", JsPropKind::Flag, true),
+    // A hidden node is neither drawn nor hit.
+    def("visible", JsPropKind::Flag, true),
+    animated("opacity", JsPropKind::Double),
+    // The placement in depth: `z` and the rotation and scale about each axis. A layout that wants a 3D look
+    // writes these; the others leave them at their defaults.
+    animated("z", JsPropKind::Double),
+    animated("rotation", JsPropKind::Doubles),
+    animated("scale", JsPropKind::Doubles),
 ];
 
-/// An output. Its size is the work area the layout driver tiles in, and `primary` picks the screen the
-/// primary display shows.
+/// An output. Its size is the work area the layout driver tiles in, `primary` picks the screen the primary display
+/// shows, and its `name` is what a workspace set's entry calls it.
 const SCREEN: &[JsPropDef] = &[
+    def("name", JsPropKind::Text, false),
     def("width", JsPropKind::Double, false),
     def("height", JsPropKind::Double, false),
     def("primary", JsPropKind::Flag, false),
@@ -69,12 +98,16 @@ pub(crate) fn may_call(class: &str, method: &str) -> bool {
 }
 
 /// The value of a property no write has changed from its schema default.
-pub(crate) fn default_value(kind: JsPropKind) -> MirrorValue {
-    match kind {
-        JsPropKind::Flag => MirrorValue::Bool(false),
-        JsPropKind::Double => MirrorValue::Double(0.0),
-        JsPropKind::Text => MirrorValue::Text(String::new()),
-        JsPropKind::Node => MirrorValue::Node(0),
+pub(crate) fn default_value(def: &JsPropDef) -> MirrorValue {
+    match (def.name, def.kind) {
+        ("visible", _) => MirrorValue::Bool(true),
+        ("opacity", _) => MirrorValue::Double(1.0),
+        ("scale", _) => MirrorValue::List(vec![1.0, 1.0, 1.0]),
+        (_, JsPropKind::Flag) => MirrorValue::Bool(false),
+        (_, JsPropKind::Double) => MirrorValue::Double(0.0),
+        (_, JsPropKind::Doubles) => MirrorValue::List(vec![0.0, 0.0, 0.0]),
+        (_, JsPropKind::Text) => MirrorValue::Text(String::new()),
+        (_, JsPropKind::Node) => MirrorValue::Node(0),
     }
 }
 
@@ -96,23 +129,51 @@ mod tests {
     }
 
     #[test]
-    fn only_the_geometry_and_the_maximised_and_minimised_state_of_a_window_are_writable() {
+    fn the_geometry_the_state_flags_and_the_depth_placement_of_a_window_are_writable() {
         let writable: Vec<&str> = defs_for("window")
             .into_iter()
             .flatten()
             .filter(|def| def.writable)
             .map(|def| def.name)
             .collect();
-        assert_eq!(writable, ["maximised", "minimised", "x", "y", "width", "height"]);
-        assert!(
-            defs_for("window")
-                .into_iter()
-                .flatten()
-                .filter(|def| def.writable)
-                .all(|def| match def.name {
-                    "maximised" | "minimised" => def.kind == JsPropKind::Flag,
-                    _ => def.kind == JsPropKind::Double,
-                })
+        assert_eq!(
+            writable,
+            [
+                "maximised",
+                "minimised",
+                "x",
+                "y",
+                "width",
+                "height",
+                "tiled",
+                "visible",
+                "opacity",
+                "z",
+                "rotation",
+                "scale"
+            ]
+        );
+        for def in defs_for("window").into_iter().flatten().filter(|def| def.writable) {
+            let want = match def.name {
+                "maximised" | "minimised" | "tiled" | "visible" => JsPropKind::Flag,
+                "rotation" | "scale" => JsPropKind::Doubles,
+                _ => JsPropKind::Double,
+            };
+            assert_eq!(def.kind, want, "{}", def.name);
+        }
+    }
+
+    #[test]
+    fn only_the_properties_the_schema_animates_take_a_curve() {
+        let animated: Vec<&str> = defs_for("window")
+            .into_iter()
+            .flatten()
+            .filter(|def| def.animated)
+            .map(|def| def.name)
+            .collect();
+        assert_eq!(
+            animated,
+            ["x", "y", "width", "height", "opacity", "z", "rotation", "scale"]
         );
     }
 

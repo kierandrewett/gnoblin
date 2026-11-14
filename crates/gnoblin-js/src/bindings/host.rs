@@ -71,7 +71,7 @@ fn read(state: &HostState, node: NodeId, key: &str, published: bool) -> Option<J
     let def = defs_for(&record.class)?.iter().find(|def| def.name == key)?;
     match value {
         Some(value) => JsHostValue::from_mirror(value, &state.handles),
-        None => JsHostValue::from_mirror(&default_value(def.kind), &state.handles),
+        None => JsHostValue::from_mirror(&default_value(def), &state.handles),
     }
 }
 
@@ -81,8 +81,12 @@ pub(crate) enum JsScriptValue {
     Flag(bool),
     Number(f64),
     Text(String),
+    Numbers(Vec<f64>),
     Other,
 }
+
+/// How many components a list property (`rotation`, `scale`) has.
+const VECTOR_LEN: usize = 3;
 
 fn convert(kind: JsPropKind, value: &JsScriptValue, handles: &NodeHandles) -> Option<MirrorValue> {
     match (kind, value) {
@@ -90,12 +94,35 @@ fn convert(kind: JsPropKind, value: &JsScriptValue, handles: &NodeHandles) -> Op
         (JsPropKind::Flag, JsScriptValue::Flag(flag)) => Some(MirrorValue::Bool(*flag)),
         (JsPropKind::Text, JsScriptValue::Text(text)) => Some(MirrorValue::Text(text.clone())),
         (JsPropKind::Node, JsScriptValue::Number(n)) => handles.resolve(*n).map(MirrorValue::Node),
+        (JsPropKind::Doubles, JsScriptValue::Numbers(list))
+            if list.len() == VECTOR_LEN && list.iter().all(|n| n.is_finite()) =>
+        {
+            Some(MirrorValue::List(list.clone()))
+        }
         _ => None,
     }
 }
 
-/// Queues a write of `node.key`. Returns the refusal code, or `None` when the write is queued.
-pub(crate) fn write(state: &mut HostState, node: NodeId, key: &str, value: &JsScriptValue) -> Option<&'static str> {
+/// The curve of an animated write: the seconds it takes, and samples of progress from 0 to 1 it follows.
+pub(crate) type JsCurve<'a> = (f64, &'a [f64]);
+
+/// A curve the tree accepts: a finite, non-negative duration and at least two samples in `[0, 1]`.
+fn curve_is_valid((seconds, samples): JsCurve<'_>) -> bool {
+    seconds.is_finite()
+        && seconds >= 0.0
+        && samples.len() >= 2
+        && samples.iter().all(|sample| (0.0..=1.0).contains(sample))
+}
+
+/// Queues a write of `node.key`, animated when `animation` is given. Returns the refusal code, or `None` when the
+/// write is queued.
+pub(crate) fn write(
+    state: &mut HostState,
+    node: NodeId,
+    key: &str,
+    value: &JsScriptValue,
+    animation: Option<JsCurve<'_>>,
+) -> Option<&'static str> {
     let HostState {
         mirror, tick, handles, ..
     } = state;
@@ -111,7 +138,19 @@ pub(crate) fn write(state: &mut HostState, node: NodeId, key: &str, value: &JsSc
     let Some(value) = convert(def.kind, value, handles) else {
         return Some("invalid-value");
     };
-    tick.set(mirror, node, key, value, None, None)
+    if let Some(curve) = animation {
+        if !curve_is_valid(curve) {
+            return Some("invalid-value");
+        }
+        if !def.animated {
+            return Some("not-animated");
+        }
+    }
+    let (seconds, samples) = match animation {
+        Some((seconds, samples)) => (Some(seconds), Some(samples.to_vec())),
+        None => (None, None),
+    };
+    tick.set(mirror, node, key, value, seconds, samples)
         .err()
         .map(|_| "unknown-node")
 }
@@ -158,6 +197,11 @@ fn script_value<'js>(value: &Value<'js>) -> JsScriptValue {
         JsScriptValue::Number(n)
     } else if let Some(text) = value.as_string().and_then(|text| text.to_string().ok()) {
         JsScriptValue::Text(text)
+    } else if let Some(list) = value
+        .as_array()
+        .and_then(|array| array.iter::<f64>().collect::<Result<Vec<_>, _>>().ok())
+    {
+        JsScriptValue::Numbers(list)
     } else {
         JsScriptValue::Other
     }
@@ -204,7 +248,29 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
                 let Some(node) = state.handles.resolve(node) else {
                     return Some("unknown-node");
                 };
-                write(&mut state, node, &key, &script_value(&value))
+                write(&mut state, node, &key, &script_value(&value), None)
+            },
+        )?,
+    )?;
+
+    // `animate(node, key, value, seconds, samples)`: the same write, carried out over `seconds` along `samples`.
+    let shared = state.clone();
+    host.set(
+        "animate",
+        Function::new(
+            ctx.clone(),
+            move |node: f64, key: String, value: Value<'js>, seconds: f64, samples: Vec<f64>| -> Option<&'static str> {
+                let mut state = shared.borrow_mut();
+                let Some(node) = state.handles.resolve(node) else {
+                    return Some("unknown-node");
+                };
+                write(
+                    &mut state,
+                    node,
+                    &key,
+                    &script_value(&value),
+                    Some((seconds, &samples[..])),
+                )
             },
         )?,
     )?;
@@ -264,7 +330,7 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
 
 #[cfg(test)]
 mod tests {
-    use gnoblin_tree_client::tree_mirror::{MirrorValue, SnapshotNode, TreeMirror};
+    use gnoblin_tree_client::tree_mirror::{MirrorValue, SnapshotNode, TreeMirror, TxOp};
 
     use super::{JsScriptValue, call, ids_of_class, parents_first, read, write};
     use crate::bindings::{HostState, JsHostValue, NodeHandles};
@@ -349,7 +415,7 @@ mod tests {
     #[test]
     fn a_write_is_read_back_unpublished_and_the_published_value_stays() {
         let mut state = state();
-        assert_eq!(write(&mut state, 3, "x", &JsScriptValue::Number(10.0)), None);
+        assert_eq!(write(&mut state, 3, "x", &JsScriptValue::Number(10.0), None), None);
         assert_eq!(read(&state, 3, "x", false), Some(JsHostValue::Number(10.0)));
         assert_eq!(read(&state, 3, "x", true), Some(JsHostValue::Number(5.0)));
         assert_eq!(state.tick.ops().len(), 1);
@@ -359,23 +425,23 @@ mod tests {
     fn a_write_that_is_not_allowed_is_refused_with_a_code_and_queues_nothing() {
         let mut state = state();
         assert_eq!(
-            write(&mut state, 3, "x", &JsScriptValue::Number(f64::NAN)),
+            write(&mut state, 3, "x", &JsScriptValue::Number(f64::NAN), None),
             Some("invalid-value")
         );
         assert_eq!(
-            write(&mut state, 3, "x", &JsScriptValue::Text("1".into())),
+            write(&mut state, 3, "x", &JsScriptValue::Text("1".into()), None),
             Some("invalid-value")
         );
         assert_eq!(
-            write(&mut state, 3, "title", &JsScriptValue::Text("t".into())),
+            write(&mut state, 3, "title", &JsScriptValue::Text("t".into()), None),
             Some("read-only")
         );
         assert_eq!(
-            write(&mut state, 3, "nope", &JsScriptValue::Number(1.0)),
+            write(&mut state, 3, "nope", &JsScriptValue::Number(1.0), None),
             Some("unknown-property")
         );
         assert_eq!(
-            write(&mut state, 99, "x", &JsScriptValue::Number(1.0)),
+            write(&mut state, 99, "x", &JsScriptValue::Number(1.0), None),
             Some("unknown-node")
         );
         assert!(state.tick.ops().is_empty());
@@ -401,9 +467,84 @@ mod tests {
         assert_eq!(read(&state, 5, "height", false), Some(JsHostValue::Number(0.0)));
         assert_eq!(read(&state, 5, "primary", false), Some(JsHostValue::Flag(true)));
         assert_eq!(
-            write(&mut state, 5, "width", &JsScriptValue::Number(1.0)),
+            write(&mut state, 5, "width", &JsScriptValue::Number(1.0), None),
             Some("read-only")
         );
+    }
+
+    #[test]
+    fn visible_opacity_and_the_transform_read_as_their_schema_defaults_when_never_written() {
+        let state = state();
+        assert_eq!(read(&state, 3, "visible", false), Some(JsHostValue::Flag(true)));
+        assert_eq!(read(&state, 3, "tiled", false), Some(JsHostValue::Flag(false)));
+        assert_eq!(read(&state, 3, "opacity", false), Some(JsHostValue::Number(1.0)));
+        assert_eq!(read(&state, 3, "z", false), Some(JsHostValue::Number(0.0)));
+        assert_eq!(
+            read(&state, 3, "rotation", false),
+            Some(JsHostValue::Numbers(vec![0.0, 0.0, 0.0]))
+        );
+        assert_eq!(
+            read(&state, 3, "scale", false),
+            Some(JsHostValue::Numbers(vec![1.0, 1.0, 1.0]))
+        );
+    }
+
+    #[test]
+    fn a_list_property_takes_exactly_three_finite_numbers() {
+        let mut state = state();
+        let list = |numbers: &[f64]| JsScriptValue::Numbers(numbers.to_vec());
+        assert_eq!(write(&mut state, 3, "rotation", &list(&[0.0, 1.5, 0.0]), None), None);
+        assert_eq!(
+            read(&state, 3, "rotation", false),
+            Some(JsHostValue::Numbers(vec![0.0, 1.5, 0.0]))
+        );
+        assert_eq!(
+            write(&mut state, 3, "rotation", &list(&[0.0, 1.5]), None),
+            Some("invalid-value")
+        );
+        assert_eq!(
+            write(&mut state, 3, "scale", &list(&[1.0, f64::INFINITY, 1.0]), None),
+            Some("invalid-value")
+        );
+        assert_eq!(
+            write(&mut state, 3, "scale", &JsScriptValue::Number(2.0), None),
+            Some("invalid-value")
+        );
+        assert_eq!(state.tick.ops().len(), 1);
+    }
+
+    #[test]
+    fn an_animated_write_queues_its_curve_and_a_bad_curve_queues_nothing() {
+        let mut state = state();
+        let curve = (0.25, &[0.0, 0.5, 1.0][..]);
+        assert_eq!(
+            write(&mut state, 3, "x", &JsScriptValue::Number(7.0), Some(curve)),
+            None
+        );
+        assert_eq!(
+            state.tick.ops().last(),
+            Some(&TxOp::Set {
+                node: 3,
+                key: "x".to_owned(),
+                value: MirrorValue::Double(7.0),
+                seconds: Some(0.25),
+                samples: Some(vec![0.0, 0.5, 1.0]),
+            })
+        );
+        let short = (0.25, &[1.0][..]);
+        let outside = (0.25, &[0.0, 2.0][..]);
+        let negative = (-1.0, &[0.0, 1.0][..]);
+        for bad in [short, outside, negative] {
+            assert_eq!(
+                write(&mut state, 3, "x", &JsScriptValue::Number(8.0), Some(bad)),
+                Some("invalid-value")
+            );
+        }
+        assert_eq!(
+            write(&mut state, 3, "visible", &JsScriptValue::Flag(false), Some(curve)),
+            Some("not-animated")
+        );
+        assert_eq!(state.tick.ops().len(), 1);
     }
 
     #[test]

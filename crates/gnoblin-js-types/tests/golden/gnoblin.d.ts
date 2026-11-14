@@ -732,7 +732,40 @@ declare module "gnoblin" {
         readonly fullscreen: boolean;
         style: ClientStyle;
         readonly computedStyle: Readonly<ClientStyle>;
+        /** Whether the window sits in a tiled layout, so its client drops the border and rounding it draws itself. */
+        tiled: boolean;
+        /** The window's place in depth; negative is in front of the camera. */
+        z: number;
+        /**
+         * Moves properties to `values` over `options.duration` seconds along the easing curve; reading one back at once
+         * gives the end value. A duration of 0 writes at once.
+         */
+        animate(values: ClientAnimation, options: AnimateOptions): void;
         close(): void;
+    }
+
+    /** Rotation about each axis in radians, or the scale along each axis: three numbers. */
+    export type Vector3 = readonly [number, number, number];
+
+    /** The curves `Client.animate` knows, named as the Lua shell's `ease` table named them. */
+    export type ClientEasing = "linear" | "out" | "out-cubic" | "in-cubic" | "in-out";
+
+    export interface ClientAnimation {
+        x?: number;
+        y?: number;
+        width?: number;
+        height?: number;
+        opacity?: number;
+        z?: number;
+        rotation?: Vector3;
+        scale?: Vector3;
+    }
+
+    export interface AnimateOptions {
+        /** Seconds. Zero is an instant write. */
+        duration: number;
+        /** Default `"out"`. */
+        easing?: ClientEasing;
     }
 
     /** A scene container that owns a layout and holds clients. */
@@ -857,7 +890,8 @@ declare module "gnoblin" {
         | `${ModifierName}+${ModifierName}+${ModifierName}+`;
     export type MouseButton = "MouseLeft" | "MouseMiddle" | "MouseRight";
     /** `Super+MouseLeft+Drag` drags; `Super+MouseLeft` and `Super+MouseLeft+Click` click. */
-    export type PointerTrigger = `${ModifierPrefix}${MouseButton}` | `${ModifierPrefix}${MouseButton}+${"Drag" | "Click"}`;
+    export type PointerTrigger =
+        `${ModifierPrefix}${MouseButton}` | `${ModifierPrefix}${MouseButton}+${"Drag" | "Click"}`;
     /** Parsed, but the compositor has no wheel claim yet, so binding one throws. */
     export type WheelTrigger = `${ModifierPrefix}Wheel${"" | "Up" | "Down" | "Left" | "Right"}`;
     /** A touchpad gesture with 2 to 5 fingers, optionally a direction: `Swipe3Left`, `Pinch4In`. */
@@ -1080,7 +1114,8 @@ declare module "gnoblin" {
 
     // -- Layouts (owner-spec section 12) --------------------------------------
 
-    export type LayoutName = "floating" | "master-stack" | "grid" | "monocle" | "dwindle";
+    export type LayoutName =
+        "floating" | "master-stack" | "grid" | "monocle" | "dwindle" | "kiosk" | "strip" | "carousel-3d";
 
     export interface LayoutContext {
         workspace: Workspace;
@@ -1098,6 +1133,12 @@ declare module "gnoblin" {
         transform?: Transform3D;
         visible?: boolean;
         tiled?: boolean;
+        /** Depth: negative is in front of the camera. Default 0. */
+        z?: number;
+        /** Rotation about each axis in radians. Default none. */
+        rotation?: Vector3;
+        /** Scale along each axis. Default 1. */
+        scale?: Vector3;
     }
 
     /**
@@ -1121,7 +1162,11 @@ declare module "gnoblin" {
     }
 
     export class FloatingLayout extends Layout {
-        constructor(options?: { placement?: "smart" | "center" | "cascade"; cascadeStep?: number; triggers?: LayoutTriggers });
+        constructor(options?: {
+            placement?: "smart" | "center" | "cascade";
+            cascadeStep?: number;
+            triggers?: LayoutTriggers;
+        });
     }
     export class MasterStackLayout extends Layout {
         constructor(options?: {
@@ -1137,7 +1182,53 @@ declare module "gnoblin" {
     }
     export class MonocleLayout extends Layout {}
     export class DwindleLayout extends Layout {
+        split: "aspect" | "horizontal" | "vertical";
+        ratio: number;
+        gap: number | undefined;
         constructor(options?: { split?: "aspect" | "horizontal" | "vertical"; ratio?: number; gap?: number });
+    }
+    /** Places exactly as `MonocleLayout` does. */
+    export class KioskLayout extends MonocleLayout {}
+
+    /** What the strip and carousel helpers need of a node and of a workspace. */
+    export interface FocusableNode {
+        readonly focused: boolean;
+        focus(): void;
+    }
+    export interface NodeSource {
+        readonly clients: Iterable<object>;
+    }
+    /** A column's width as a fraction of the strip's, held to 0.1 to 1; anything but a number is an error. */
+    export function clampColumn(value: unknown): number;
+    export class StripLayout extends Layout {
+        column: number;
+        /** The view offset `scrollTo` pinned, or null while the view follows the focused column. */
+        pin: number | null;
+        constructor(options?: { column?: number });
+        scrollTo(offset: number): void;
+        focusLeft(workspace: NodeSource): void;
+        focusRight(workspace: NodeSource): void;
+    }
+    export interface RingOptions {
+        fov?: number;
+        cardWidth?: number;
+        cardHeight?: number;
+    }
+    export interface RingSlot extends Rect {
+        opacity: number;
+        /** Degrees: 0 at the front, 180 at the back. */
+        rotation: number;
+        z: number;
+    }
+    /** The pure ring layout of `count` cards with the 1-based `focus` at the front. */
+    export function ring(count: number, focus: number, area: Rect, options?: RingOptions): RingSlot[];
+    export interface Carousel3dOptions extends RingOptions {}
+    export class Carousel3dLayout extends Layout {
+        fov: number;
+        cardWidth: number;
+        cardHeight: number;
+        constructor(options?: Carousel3dOptions);
+        rotate(workspace: NodeSource, steps: number): void;
     }
     export class ArcLayout extends Layout {
         constructor(options?: { radius?: number; spacing?: number });
@@ -1145,7 +1236,8 @@ declare module "gnoblin" {
 
     // -- Transitions (owner-spec section 14) ----------------------------------
 
-    export type Easing = "linear" | "ease-in" | "ease-out" | "ease-in-out" | { cubicBezier: [number, number, number, number] };
+    export type Easing =
+        "linear" | "ease-in" | "ease-out" | "ease-in-out" | { cubicBezier: [number, number, number, number] };
 
     /** Every time is in milliseconds. */
     export interface TransitionOptions {
@@ -1172,7 +1264,14 @@ declare module "gnoblin" {
     // -- The simple tier (spec-review section 4) ------------------------------
 
     /** What a key can do: a closed set, so bindings stay inspectable and diffable on reload. */
-    export type KeyAction = "close" | SpawnAction | ShowAction | ((context: { gnoblin: Gnoblin }) => void);
+    export type KeyAction =
+        | "close"
+        | SpawnAction
+        | ShowAction
+        | ShowPositionAction
+        | FocusColumnAction
+        | BindingAction
+        | ((context: { gnoblin: Gnoblin }) => void);
 
     export interface SpawnAction {
         readonly kind: "spawn";
@@ -1181,6 +1280,21 @@ declare module "gnoblin" {
     export interface ShowAction {
         readonly kind: "show";
         readonly workspace: string;
+    }
+    /** Show the workspace at a 1-based position, whatever its id; nothing if there is none. */
+    export interface ShowPositionAction {
+        readonly kind: "show-position";
+        readonly position: number;
+    }
+    /** Move focus one column left or right when the shown workspace is a `StripLayout`. */
+    export interface FocusColumnAction {
+        readonly kind: "focus-column";
+        readonly direction: "left" | "right";
+    }
+    /** Bind what `create` makes (a gesture or drag binding) at the key's trigger. */
+    export interface BindingAction {
+        readonly kind: "binding";
+        readonly create: () => Binding;
     }
 
     /** Start a process: `spawn("ghostty")`, `spawn("grim", "-g", "...")`. */
@@ -1191,7 +1305,13 @@ declare module "gnoblin" {
     export namespace show {
         /** `show.numbered("Super+{n}", ["desktop", "dev"])` binds Super+1 and Super+2. */
         function numbered(pattern: `${string}{n}${string}`, workspaces: readonly string[]): Record<string, ShowAction>;
+        /** `show.position(3)` shows the third workspace. */
+        function position(index: number): ShowPositionAction;
+        /** `show.positions("Super+{n}")` binds Super+1 to Super+9 to the workspaces at those positions. */
+        function positions(pattern: `${string}{n}${string}`): Record<string, ShowPositionAction>;
     }
+    export function focusColumn(direction: "left" | "right"): FocusColumnAction;
+    export function binding(create: () => Binding): BindingAction;
 
     export interface WindowRule {
         /** Data-only match, so the compositor can evaluate it. */
@@ -1224,6 +1344,11 @@ declare module "gnoblin" {
         /** Keyed by connector name, for example `"DP-1"`. */
         outputs?: Record<string, OutputSetting>;
         keys?: Record<string, KeyAction>;
+        /**
+         * The command `Super+space` runs, as a command line or an argv. Nothing is bound when it is absent. A key of
+         * `keys` for `Super+space` takes precedence.
+         */
+        launcher?: string | readonly string[];
         rules?: readonly WindowRule[];
         on?: ConfigEvents;
         /** The escape hatch: runs after the declarative part and may use any class. */
@@ -1238,7 +1363,7 @@ declare module "gnoblin" {
     export interface Gnoblin {
         /** Compositor-managed: read-only membership. */
         readonly clients: Collection<Client>;
-        readonly workspaces: MutableCollection<Workspace>;
+        readonly workspaces: WorkspaceCollection;
         readonly outputs: Collection<Output>;
         /** The compositor's seats as input contexts, with the bindings that run on their chords and drags. */
         readonly input: InputManager;
@@ -1249,7 +1374,124 @@ declare module "gnoblin" {
          */
         requestTransition(staging: () => void, options?: TransitionOptions): Transition;
         spawn(command: string, ...args: string[]): void;
-        show(workspace: Workspace | string): void;
+        show(workspace: Workspace | string, options?: ShowOptions): void;
+        /** Runs `run` once, `seconds` from now: at the first frame after that time. */
+        after(seconds: number, run: () => void): void;
+    }
+
+    export interface ShowOptions {
+        /** Seconds the slide between the two workspaces takes. Zero or absent switches at once. */
+        duration?: number;
+        /** How much of the slide a touchpad gesture has made already, 0 to 1. */
+        progress?: number;
+    }
+
+    /** The seconds a workspace slide takes in the Lua shell and in the stock keys. */
+    export const SLIDE_SECONDS: number;
+
+    export interface WorkspaceCollection extends MutableCollection<Workspace> {
+        /** Named groups of workspaces to show together. */
+        readonly sets: WorkspaceSets;
+        /** The area windows are laid out in, which is the primary screen; null while there is none. */
+        readonly area: Rect | null;
+        show(workspace: Workspace | string, options?: ShowOptions): void;
+    }
+
+    // -- Workspace sets and the slide gesture ---------------------------------
+
+    export interface SetEntry {
+        workspace: string;
+        output?: string;
+    }
+    export interface WorkspaceSet {
+        name: string;
+        entries: SetEntry[];
+    }
+    export type SetError =
+        | { kind: "empty_name" }
+        | { kind: "duplicate_name"; name: string }
+        | { kind: "empty_set"; name: string }
+        | { kind: "undeclared_workspace"; set: string; workspace: string }
+        | { kind: "duplicate_output"; set: string; output: string }
+        | { kind: "unknown_set"; name: string };
+    export type SetWarning = { kind: "output_fallback"; set: string; output: string };
+    export interface SetPlacement {
+        workspace: string;
+        output: string;
+    }
+    export interface SetPlan {
+        set: string;
+        placements: SetPlacement[];
+        warnings: SetWarning[];
+        changed: boolean;
+    }
+    export type SetResult<T> = { ok: true; value: T } | { ok: false; error: SetError };
+    export interface ActivateOptions {
+        declared: ReadonlySet<string>;
+        outputs: readonly string[];
+        primary: string;
+        active?: string | null;
+    }
+    /** Validates `incoming` against the declared workspace ids; on success the value is a copy of it. */
+    export function defineSets(
+        incoming: readonly WorkspaceSet[],
+        declared: ReadonlySet<string>,
+    ): SetResult<WorkspaceSet[]>;
+    export function activateSet(
+        list: readonly WorkspaceSet[],
+        name: string,
+        options: ActivateOptions,
+    ): SetResult<SetPlan>;
+    export function explainSetError(error: SetError): string;
+    export class WorkspaceSetError extends Error {
+        readonly error: SetError;
+    }
+    export interface SetsEnvironment {
+        declared(): ReadonlySet<string>;
+        outputs(): { names: readonly string[]; primary: string };
+        show(workspace: string): void;
+        report(message: string): void;
+    }
+    export class WorkspaceSets {
+        constructor(environment: SetsEnvironment);
+        readonly list: WorkspaceSet[];
+        readonly active: string | null;
+        define(list: readonly WorkspaceSet[]): void;
+        activate(name: string): SetPlan;
+    }
+
+    export interface SlideClient {
+        x: number;
+        visible: boolean;
+        readonly alive: boolean;
+        animate(values: { x: number }, options: { duration: number; easing: "out-cubic" }): void;
+    }
+    export interface SlideWorkspace {
+        readonly active: boolean;
+        readonly index: number;
+        readonly clients: Iterable<SlideClient>;
+    }
+    export interface SlideHost {
+        readonly workspaces: {
+            readonly area: { readonly width: number } | null;
+            at(index: number): SlideWorkspace | undefined;
+            show(workspace: SlideWorkspace, options: { duration: number; progress: number }): void;
+            [Symbol.iterator](): Iterator<SlideWorkspace>;
+        };
+        after(seconds: number, run: () => void): void;
+    }
+    export interface WorkspaceSlideOptions extends Partial<BindingOptions> {
+        travel?: number;
+        commit?: number;
+        seconds?: number;
+        host?: SlideHost;
+    }
+    /** The three-finger workspace slide of the Lua shell (`Gestures.workspace_slide`), as a binding. */
+    export class WorkspaceSlideBinding extends GestureBinding {
+        travel: number;
+        commit: number;
+        seconds: number;
+        constructor(options?: WorkspaceSlideOptions);
     }
 
     export const gnoblin: Gnoblin;
