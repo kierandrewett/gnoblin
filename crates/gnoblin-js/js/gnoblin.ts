@@ -46,8 +46,10 @@ import { InputManager } from "gnoblin/input";
 import type { InputHost, InputMessage } from "gnoblin/input";
 import { RULE_DEFAULTS, RuleEngine, compileRules } from "gnoblin/rules";
 import type { RuleHost, RuleView } from "gnoblin/rules";
-import { attachUi, runUiFrame, uiNodeGone, uiReleaseAll } from "gnoblin/ui";
+import { attachUi, uiNodeGone, uiReleaseAll } from "gnoblin/ui";
 import type { UiBackend } from "gnoblin/ui";
+import { attachLock, lockRelease, runLockFrame } from "gnoblin/lock";
+import type { LockBackend } from "gnoblin/lock";
 import { defaultTitlebarStyle, Decorations } from "gnoblin/titlebar";
 import { inspect } from "gnoblin/inspect";
 import { WorkspaceSetError, WorkspaceSets } from "gnoblin/sets";
@@ -204,6 +206,7 @@ interface Host {
         root(): NodeId;
         declared(): boolean;
     };
+    lock: LockBackend;
     entry?: Entry;
 }
 
@@ -3540,6 +3543,9 @@ function installStock(plan: ConfigPlan): void {
     clientRoot.self.addListener(focus);
 }
 
+// The stock lock screen is part of the runtime, not of a config: a locked session must always have one to type into.
+attachLock(host.lock);
+
 /** The stock titlebars, once a config asks for them. */
 let decorations: Decorations | null = null;
 
@@ -4078,15 +4084,17 @@ Object.defineProperty(globalThis, "gnoblin", { value: gnoblin, enumerable: false
 // `gnoblin` the name is a convenience and not part of the object model, so a script may replace it.
 Object.defineProperty(globalThis, "inspect", { value: inspect, enumerable: false, writable: true, configurable: true });
 host.entry = {
-    render: (value, maxBytes) => inspect.render(value, { maxBytes }),
-    ui: () => {
-        runUiFrame();
-        try {
-            xrRuntime.frame();
-        } catch (error) {
-            reports.push({ site: "XRRuntime.frame", error });
-        }
-    },
+    ui: () =>
+        runLockFrame(
+            (site, error) => reports.push({ site, error }),
+            () => {
+                try {
+                    xrRuntime.frame();
+                } catch (error) {
+                    reports.push({ site: "XRRuntime.frame", error });
+                }
+            },
+        ),
     plan,
     next,
     pending,
@@ -4142,6 +4150,7 @@ host.entry = {
         input.cancelAll();
         xrRuntime.release();
         sceneReleaseAll();
+        lockRelease();
         uiReleaseAll();
         hostApi.retire();
         return queue.length;

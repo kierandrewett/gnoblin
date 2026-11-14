@@ -739,10 +739,10 @@ impl JsShell {
                 }
                 TreeIncoming::Reply(reply) => self.handle_reply(&reply, &mut diagnostics),
                 // A claimed chord, gesture or pointer drag is parked for the input module, which the frame hands it
-                // to once the listeners are planned. A pointer event addressed to a canvas of the UI toolkit and the
-                // answer to one of its measurements are parked for the toolkit's frame, and a pointer edge on a window
-                // for its client's listeners. Every other event and answer has no JavaScript API: it is consumed so it
-                // does not pile up.
+                // to once the listeners are planned. A pointer or key event addressed to a canvas of the UI toolkit and
+                // the answer to one of its measurements are parked for the toolkit's frame, the answer to a password
+                // check for the lock screen's, and a pointer edge on a window for its client's listeners. Every other
+                // event and answer has no JavaScript API: it is consumed so it does not pile up.
                 TreeIncoming::Chord(chord) => self.state.borrow_mut().input.inbox.push(JsInputMessage::Chord(chord)),
                 TreeIncoming::Gesture(gesture) => self
                     .state
@@ -757,7 +757,10 @@ impl JsShell {
                     }
                 }
                 TreeIncoming::Answer { token, result, error } => {
-                    self.state.borrow_mut().ui.accept_answer(token, &result, &error);
+                    let state = &mut *self.state.borrow_mut();
+                    if !state.ui.accept_answer(token, &result, &error) {
+                        state.lock.accept_answer(token, &result, &error);
+                    }
                 }
                 TreeIncoming::PointerChord(drag) => {
                     self.state.borrow_mut().input.inbox.push(JsInputMessage::Pointer(drag));

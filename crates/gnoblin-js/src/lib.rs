@@ -43,6 +43,7 @@ mod host_process;
 mod host_session;
 mod input;
 mod loader;
+mod lock;
 mod reload;
 mod role;
 mod runner;

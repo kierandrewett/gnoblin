@@ -68,6 +68,8 @@ pub(crate) struct HostState {
     pub config: crate::config::ConfigState,
     /// The session connection and the processes the script started (`gnoblin.session`, `gnoblin.process`).
     pub api: crate::host_api::JsHostApi,
+    /// What the stock lock screen keeps between frames: the password checks it asked and their answers.
+    pub lock: crate::lock::JsLockState,
 }
 
 pub(crate) type SharedState = Rc<RefCell<HostState>>;
@@ -93,6 +95,7 @@ impl HostState {
             xr: crate::xr::JsXrState::default(),
             config: crate::config::ConfigState::new(),
             api: crate::host_api::JsHostApi::default(),
+            lock: crate::lock::JsLockState::default(),
         }
     }
 }

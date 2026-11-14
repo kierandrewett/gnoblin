@@ -79,3 +79,5 @@ export type {
     StyleProperty,
 } from "gnoblin/style";
 export { Camera3D, Node, View } from "gnoblin/scene";
+export { LockScreen, PasswordEntry, defaultLockStyle, formatClock, lockScreen } from "gnoblin/lock";
+export type { LockAnswer, LockBackend, LockStyle } from "gnoblin/lock";
