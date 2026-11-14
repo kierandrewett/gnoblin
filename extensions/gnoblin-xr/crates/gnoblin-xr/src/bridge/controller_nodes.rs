@@ -255,6 +255,38 @@ fn a_claimed_grip_is_withheld_from_the_window_while_the_node_still_says_it_is_sq
 }
 
 #[test]
+fn a_claim_the_shell_gives_back_lets_the_next_squeeze_through_to_the_window() {
+    let owner = run_hands(
+        vec![
+            pointing(0.0),
+            pointing(1.0),
+            pointing(1.0),
+            pointing(0.0),
+            pointing(0.0),
+            pointing(1.0),
+            pointing(1.0),
+            pointing(0.0),
+        ],
+        |frame, owner| {
+            let (right, _) = owner.controller("right").expect("the hand arrived in the first frame");
+            if frame == 0 {
+                // The shell's drag starts: it claims the grip, as `controller.claim` writes the list.
+                owner.claim(right, &["grip"]);
+            }
+            if frame == 3 {
+                // The drag ended: the shell writes the empty list, as the real compositor publishes it.
+                owner.claim(right, &[]);
+            }
+        },
+    );
+    assert_eq!(
+        presses_of_the_right_button(&owner),
+        [1, 0],
+        "the squeeze under the claim never reached the window, and the one after it did"
+    );
+}
+
+#[test]
 fn a_grip_the_window_already_has_is_released_when_the_claim_arrives() {
     let owner = run_hands(
         vec![pointing(1.0), pointing(1.0), pointing(1.0), pointing(0.0)],

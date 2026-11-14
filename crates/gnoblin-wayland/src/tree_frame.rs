@@ -21,7 +21,7 @@ use gnoblin_input::GestureDelivery;
 use gnoblin_paint::SharedPainter;
 use gnoblin_render::transaction::{
     ClassInfo, Code, Motion, PropertyInfo, SeatInput, TreeApplied, TreeCall, TreeChange, TreeOp, TreeRefusal,
-    TreeTransaction, validate_and_apply,
+    TreeTransaction, TreeValue, validate_and_apply,
 };
 use gnoblin_render::tree_revision::TreeRevisions;
 use gnoblin_render::{Actor, Scene};
@@ -483,6 +483,19 @@ fn reap_transactions(scene: &Scene, keep: &BTreeSet<NodeId>) -> Vec<TreeTransact
         }
         ops.push(TreeOp::Destroy { node: id });
         reaped.push(TreeTransaction::new(ops));
+    }
+    // The claims a shell wrote on an observer's controllers go with it: the node is the XR program's and stays, but
+    // nothing is left to give a claim back, so the program would withhold the input from its windows for ever.
+    for id in scene.node_ids() {
+        let claims = matches!(scene.value(id, "claimed"), Some(TreeValue::ListText(items)) if !items.is_empty());
+        if claims && scene.class(id) == Some("controller") {
+            reaped.push(TreeTransaction::new(vec![TreeOp::Set {
+                node: id,
+                key: "claimed".to_owned(),
+                value: TreeValue::ListText(Vec::new()),
+                timing: None,
+            }]));
+        }
     }
     reaped
 }

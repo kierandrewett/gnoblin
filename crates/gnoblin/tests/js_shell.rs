@@ -2773,12 +2773,37 @@ defineConfig({ workspaces: [{ id: "desk", layout: new Layout() }] });
 
 // ---- XR: the program's seat, and the room the stock shell builds for it ------------------------------------------
 
-/// What the XR program does first, as an observer of the owner socket: it makes a seat named `xr`. The compositor
-/// destroys the seat when this connection closes, as it does when the real program's session ends. Nothing here is
-/// the program: it draws no layer and runs no OpenXR; the seat is the one thing the shell sees of it (docs/xr.md).
+/// What the XR program does, as an observer of the owner socket: it makes a seat named `xr`, and a `controller` for a
+/// hand with the values the program writes. The compositor destroys the seat and the controllers when this connection
+/// closes, as it does when the real program's session ends. Nothing here is the program: it draws no layer and runs no
+/// OpenXR; the seat and the hands are what the shell sees of it (docs/xr.md).
 struct XrSeat {
     /// Held open: dropping it closes the connection and the seat goes.
-    _stream: UnixStream,
+    stream: UnixStream,
+    /// The next id this connection makes, after the seat's.
+    next: u64,
+    /// The serial the compositor last said, which a transaction is built against.
+    serial: u64,
+    /// The next request id.
+    request: u64,
+}
+
+/// A `set` of `key` on `node`, as the program writes it.
+fn xr_set(node: u64, key: &str, value_kind: &str) -> op::Properties {
+    op::Properties {
+        kind: "set".to_owned(),
+        node,
+        key: key.to_owned(),
+        value_kind: value_kind.to_owned(),
+        ..Default::default()
+    }
+}
+
+fn xr_set_double(node: u64, key: &str, value: f64) -> op::Properties {
+    op::Properties {
+        value_double: value,
+        ..xr_set(node, key, "double")
+    }
 }
 
 impl XrSeat {
@@ -2813,8 +2838,15 @@ impl XrSeat {
                 break;
             }
         }
-        let seat = u64::from(attached.epoch as u32) << 32 | 1;
-        let ops = vec![
+        let epoch = u64::from(attached.epoch as u32) << 32;
+        let mut program = Self {
+            stream,
+            next: epoch | 2,
+            serial: attached.serial,
+            request: 1,
+        };
+        let seat = epoch | 1;
+        let reply = program.transact(vec![
             op::Properties {
                 kind: "new".to_owned(),
                 class: "seat".to_owned(),
@@ -2822,38 +2854,85 @@ impl XrSeat {
                 ..Default::default()
             },
             op::Properties {
-                kind: "set".to_owned(),
-                node: seat,
-                key: "name".to_owned(),
-                value_kind: "text".to_owned(),
                 value_text: "xr".to_owned(),
-                ..Default::default()
+                ..xr_set(seat, "name", "text")
             },
-        ];
-        let transact = TransactArgs {
-            base_serial: 0,
-            serial: 1,
-            ops,
-        };
-        write_frame(
-            &mut stream,
-            &Envelope::request_message("tree", "transact", 2, &transact),
-        )
-        .expect("the seat");
-        loop {
-            let envelope = read_frame(&mut stream)
-                .expect("a frame")
-                .expect("the compositor answers the seat");
-            if matches!(envelope.kind, Some(Kind::Reply(_))) {
-                let reply: ReplyPayload = envelope.payload_as().expect("the reply decodes");
-                assert!(
-                    reply.applied,
-                    "the compositor lets an observer make its seat: {reply:?}"
-                );
-                break;
+        ]);
+        assert!(
+            reply.applied,
+            "the compositor lets an observer make its seat: {reply:?}"
+        );
+        program
+    }
+
+    /// Sends one transaction and returns the compositor's answer. The changes the compositor publishes to this
+    /// observer in the meantime are read and dropped. A write built on a tree the shell has since moved is asked again
+    /// on the serial the compositor named, as the real program does.
+    fn transact(&mut self, ops: Vec<op::Properties>) -> ReplyPayload {
+        for _ in 0..5 {
+            self.request += 1;
+            let transact = TransactArgs {
+                base_serial: self.serial,
+                serial: self.request,
+                ops: ops.clone(),
+            };
+            write_frame(
+                &mut self.stream,
+                &Envelope::request_message("tree", "transact", self.request, &transact),
+            )
+            .expect("the transaction");
+            let reply = loop {
+                let envelope = read_frame(&mut self.stream)
+                    .expect("a frame")
+                    .expect("the compositor answers the transaction");
+                if matches!(envelope.kind, Some(Kind::Reply(_))) {
+                    break envelope.payload_as::<ReplyPayload>().expect("the reply decodes");
+                }
+            };
+            self.serial = reply.serial;
+            if reply.applied || reply.code != "stale-base" {
+                return reply;
             }
         }
-        Self { _stream: stream }
+        panic!("the compositor kept calling the program's base stale");
+    }
+
+    /// Makes a tracked `controller` for `hand` at the origin, facing down negative z, as the program does for a hand
+    /// the runtime reports, and returns its id.
+    fn controller(&mut self, hand: &str) -> u64 {
+        let id = self.next;
+        self.next += 1;
+        let reply = self.transact(vec![
+            op::Properties {
+                kind: "new".to_owned(),
+                class: "controller".to_owned(),
+                id,
+                ..Default::default()
+            },
+            op::Properties {
+                value_text: hand.to_owned(),
+                ..xr_set(id, "hand", "text")
+            },
+            op::Properties {
+                value_bool: true,
+                ..xr_set(id, "tracked", "bool")
+            },
+            op::Properties {
+                value_list: vec![0.0, 0.0, 0.0],
+                ..xr_set(id, "rotation", "list_double")
+            },
+        ]);
+        assert!(
+            reply.applied,
+            "the compositor lets an observer make a controller: {reply:?}"
+        );
+        id
+    }
+
+    /// Writes a controller's grip as the program does when the runtime reports a squeeze.
+    fn squeeze(&mut self, controller: u64, grip: f64) {
+        let reply = self.transact(vec![xr_set_double(controller, "grip", grip)]);
+        assert!(reply.applied, "the program writes its controller's grip: {reply:?}");
     }
 }
 
@@ -2984,6 +3063,97 @@ fn the_xr_programs_seat_makes_the_stock_shell_build_a_room_with_a_view_per_windo
     );
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
     shell.finish();
+}
+
+/// What the compositor holds as the claimed inputs of `controller`: the list the shell wrote, empty when it holds none.
+fn claims_of(ipc: &Path, controller: u64) -> Vec<String> {
+    snapshot(ipc)
+        .into_iter()
+        .find(|node| node.id == controller)
+        .and_then(|node| {
+            node.props
+                .iter()
+                .find(|prop| prop.key == "claimed")
+                .map(|prop| prop.value_texts.clone())
+        })
+        .unwrap_or_default()
+}
+
+#[test]
+fn the_stock_grab_claims_the_grip_on_the_real_controller_and_the_claim_goes_with_the_drag_and_with_the_shell() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    fs::write(
+        config.path().join("init.ts"),
+        "import { defineConfig } from \"gnoblin\";\ndefineConfig({});\n",
+    )
+    .expect("init.ts");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    wait_for("the shell runs the config", &session, &mut mapper, &shell, || {
+        shell.generation() > 0 && shell.view().contains(", 4 workspaces")
+    });
+    let app = "org.example.one";
+    mapper.map_window(app, "One");
+    wait_for("the shell sees the window", &session, &mut mapper, &shell, || {
+        shell.view().contains(app)
+    });
+
+    // The program: a seat named `xr` and a hand, made and written as an observer, as the real one does. The stock shell
+    // builds the room, and the panel is straight ahead of a hand at the origin.
+    let mut program = XrSeat::attach(&ipc);
+    wait_for("the room has the window's View", &session, &mut mapper, &shell, || {
+        xr_nodes(&ipc, "view").len() == 1
+    });
+    let hand = program.controller("right");
+    assert!(claims_of(&ipc, hand).is_empty(), "nothing is claimed before a drag");
+
+    // A squeeze starts the stock grab, which takes the grip from the window under the ray.
+    program.squeeze(hand, 1.0);
+    wait_for("the grab claims the grip", &session, &mut mapper, &shell, || {
+        claims_of(&ipc, hand) == ["grip"]
+    });
+    // The compositor refuses the program the claims, which are the shell's to write.
+    let refused = program.transact(vec![op::Properties {
+        value_texts: Vec::new(),
+        ..xr_set(hand, "claimed", "list_text")
+    }]);
+    assert!(!refused.applied, "an observer may not write `claimed`: {refused:?}");
+    assert_eq!(refused.code, "not-holder");
+    assert_eq!(claims_of(&ipc, hand), ["grip"], "the refused write changed nothing");
+
+    // Letting go ends the drag and gives the grip back.
+    program.squeeze(hand, 0.0);
+    wait_for("the claim goes with the drag", &session, &mut mapper, &shell, || {
+        claims_of(&ipc, hand).is_empty()
+    });
+
+    // A new squeeze claims again, and then the shell dies with it held: the compositor gives the claim back, because
+    // the program would otherwise withhold the grip from its windows for ever.
+    program.squeeze(hand, 1.0);
+    wait_for("the second grab claims the grip", &session, &mut mapper, &shell, || {
+        claims_of(&ipc, hand) == ["grip"]
+    });
+    let diagnostics = shell.diagnostics();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    shell.finish();
+    assert!(shell.ended().is_none(), "the shell was stopped, not failed");
+    let deadline = Instant::now() + PATIENCE;
+    while !claims_of(&ipc, hand).is_empty() {
+        assert!(
+            Instant::now() < deadline,
+            "never reached: the compositor gives a dead shell's claim back; it holds {:?}",
+            claims_of(&ipc, hand)
+        );
+        mapper.roundtrip();
+        std::thread::sleep(POLL);
+    }
+    assert_eq!(
+        xr_nodes(&ipc, "controller").len(),
+        1,
+        "the hand is the program's and stays"
+    );
 }
 
 // ---- outputs -----------------------------------------------------------------------------------------------------
