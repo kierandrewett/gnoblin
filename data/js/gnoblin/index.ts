@@ -56,3 +56,4 @@ export type {
     ShadowValue,
     StyleProperty,
 } from "gnoblin/style";
+export { Camera3D, Node, View } from "gnoblin/scene";

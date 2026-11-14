@@ -77,7 +77,24 @@ export interface GestureTriggerParts extends TriggerBase {
     readonly direction: TriggerDirection | null;
 }
 
-export type ParsedTrigger = KeyTriggerParts | PointerTriggerParts | WheelTriggerParts | GestureTriggerParts;
+/** An XR controller button a trigger can name. Grip is the squeeze, Primary is A or X, Secondary is B or Y. */
+export type ControllerButton = "Trigger" | "Grip" | "Thumbstick" | "Primary" | "Secondary";
+
+/**
+ * A grab with an XR controller: `Grip+Drag`, `Right.Trigger+Grip+Drag`. Only the XR module's bindings read one
+ * (`gnoblin/xr`): no seat claims it, and a context ignores a binding that has one.
+ */
+export interface ControllerTriggerParts extends TriggerBase {
+    readonly kind: "controller";
+    /** The hand every button must be on, or null for either. */
+    readonly hand: "Left" | "Right" | null;
+    /** The buttons that must be down together, in the order `Trigger, Grip, Thumbstick, Primary, Secondary`. */
+    readonly buttons: readonly ControllerButton[];
+    readonly action: "drag";
+}
+
+export type ParsedTrigger =
+    KeyTriggerParts | PointerTriggerParts | WheelTriggerParts | GestureTriggerParts | ControllerTriggerParts;
 
 /** A trigger spelling the grammar refuses. `token` is the part that is wrong. */
 export class TriggerError extends TypeError {
@@ -351,6 +368,7 @@ export function claimOf(trigger: ParsedTrigger): TriggerClaim | null {
         case "gesture":
             return { kind: "gesture", gesture: trigger.gesture, fingers: trigger.fingers };
         case "wheel":
+        case "controller":
             return null;
     }
 }
@@ -459,11 +477,19 @@ export class Binding {
     #trigger: ParsedTrigger;
     #written: string;
 
+    /**
+     * How a binding reads its trigger. The default is the trigger grammar of keys, buttons and gestures; a binding
+     * for another input source (an XR controller) overrides it, and this one is what its trigger setter uses too.
+     */
+    static readTrigger(trigger: unknown, what: string): ParsedTrigger {
+        return parseTrigger(trigger, what);
+    }
+
     constructor(options: BindingOptions) {
         if (typeof options?.id !== "string" || options.id === "") {
             throw new TypeError("Binding id must be a non-empty string");
         }
-        const parsed = parseTrigger(options.trigger, `Binding "${options.id}" trigger`);
+        const parsed = (new.target as typeof Binding).readTrigger(options.trigger, `Binding "${options.id}" trigger`);
         if (options.priority !== undefined && !Number.isFinite(options.priority)) {
             throw new RangeError(`Binding "${options.id}" priority must be a finite number`);
         }
@@ -480,7 +506,7 @@ export class Binding {
     }
 
     set trigger(value: string) {
-        const parsed = parseTrigger(value, `Binding "${this.id}" trigger`);
+        const parsed = (this.constructor as typeof Binding).readTrigger(value, `Binding "${this.id}" trigger`);
         const owner = owners.get(this);
         const previous = this.#trigger;
         owner?.assertFree(this, parsed, this.priority);

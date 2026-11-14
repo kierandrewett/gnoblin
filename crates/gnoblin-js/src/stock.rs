@@ -16,7 +16,7 @@ pub const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/init.ts"
 
 /// `(import name, file under data/js/gnoblin, source)`. `gnoblin` is the user-facing module and only
 /// re-exports the others.
-const MODULES: [(&str, &str, &str); 29] = [
+const MODULES: [(&str, &str, &str); 32] = [
     ("gnoblin", "index.ts", include_str!("../../../data/js/gnoblin/index.ts")),
     (
         "gnoblin/bindings",
@@ -153,6 +153,17 @@ const MODULES: [(&str, &str, &str); 29] = [
         "gnoblin/inspect",
         "inspect.ts",
         include_str!("../../../data/js/gnoblin/inspect.ts"),
+    ),
+    (
+        "gnoblin/scene",
+        "scene.ts",
+        include_str!("../../../data/js/gnoblin/scene.ts"),
+    ),
+    ("gnoblin/xr", "xr.ts", include_str!("../../../data/js/gnoblin/xr.ts")),
+    (
+        "gnoblin/extensions/xr",
+        "extensions/xr.ts",
+        include_str!("../../../data/js/gnoblin/extensions/xr.ts"),
     ),
 ];
 

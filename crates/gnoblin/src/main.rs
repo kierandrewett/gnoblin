@@ -266,6 +266,7 @@ fn launch_js_shell(
         .ok_or_else(|| "neither XDG_CONFIG_HOME nor HOME is set, so there is no config directory".to_owned())?;
     let mut config = gnoblin_js::JsRoleConfig::new(dir, stock.map(std::path::Path::to_path_buf));
     config.watch = env(JS_WATCH_VARIABLE).as_deref() != Some("0");
+    config.shell.xr_declared = env(gnoblin_session::supervisor::XR_VARIABLE).as_deref() == Some("1");
     let role = gnoblin_js::JsRole::connect(env, config).map_err(|error| error.to_string())?;
     Ok(Box::new(JsShellFrame(role)))
 }

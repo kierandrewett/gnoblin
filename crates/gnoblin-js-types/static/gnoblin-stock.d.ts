@@ -477,6 +477,13 @@ declare module "gnoblin" {
               readonly gesture: "swipe" | "pinch";
               readonly fingers: number;
               readonly direction: "left" | "right" | "up" | "down" | "in" | "out" | null;
+          })
+        | (TriggerBase & {
+              /** An XR controller grab (`Grip+Drag`); only the bindings of `gnoblin/extensions/xr` read one. */
+              readonly kind: "controller";
+              readonly hand: "Left" | "Right" | null;
+              readonly buttons: readonly ("Trigger" | "Grip" | "Thumbstick" | "Primary" | "Secondary")[];
+              readonly action: "drag";
           });
     /** Throws a `TriggerError` naming the token that is wrong. */
     export function parseTrigger(trigger: string, what?: string): ParsedTrigger;
@@ -1309,6 +1316,11 @@ declare module "gnoblin" {
     // -- The global object ----------------------------------------------------
 
     export interface Gnoblin {
+        /**
+         * The optional extensions. `extensions.xr` is null until the XR program has a session and is an `XRExtension`
+         * while it does (docs/xr.md); a held `XRSession` reads `alive === false` once the session ends.
+         */
+        readonly extensions: Extensions;
         /** Compositor-managed: read-only membership. */
         readonly clients: Collection<Client>;
         readonly workspaces: WorkspaceCollection;
@@ -1929,6 +1941,430 @@ declare module "gnoblin" {
     };
 
     export const gnoblin: Gnoblin;
+
+    // -- Optional extensions and scene nodes (design/js-xr.md) -----------------
+
+    /** A scene node a script made: the XR room is one, a View and a Camera3D are others. See `gnoblin/extensions/xr`. */
+    export { Camera3D, View } from "gnoblin/extensions/xr";
+
+    /** Hears the XR extension's sessions begin and end. Override what you need. */
+    export interface XRSessionListener {
+        onSessionStarted?(session: import("gnoblin/extensions/xr").XRSession): void;
+        onSessionEnded?(session: import("gnoblin/extensions/xr").XRSession): void;
+    }
+
+    export interface XROptions {
+        /** Whether the stock shell builds a room when a session starts. Default true. */
+        room?: boolean;
+        /** The ring and the bindings of the stock room. */
+        layout?: import("gnoblin/extensions/xr").SpatialLayoutOptions;
+        /** Whether a client gets a panel. Secure clients never do. */
+        accept?: (client: Client) => boolean;
+    }
+
+    export interface Extensions {
+        /** The XR extension while the program has a session; null otherwise, so `xr?.session` is the guard. */
+        readonly xr: import("gnoblin/extensions/xr").XRExtension | null;
+        addListener(listener: XRSessionListener): void;
+        removeListener(listener: XRSessionListener): void;
+        /** What the stock shell does for an extension: `configure("xr", { room: false })` builds no room of its own. */
+        configure(name: "xr", options: XROptions): void;
+        /** Throws unless the extension can be used now. `gnoblin/extensions/xr` calls it as it loads. */
+        require(name: "xr"): void;
+    }
+}
+
+/**
+ * The XR extension (owner-spec.md section 13, through the out-of-process program of D34 and D35: design/js-xr.md).
+ * Importing this module when no XR extension is there fails at load with a message that says what to do.
+ */
+declare module "gnoblin/extensions/xr" {
+    import type { Binding, BindingCollection, Client, DragEvent } from "gnoblin";
+
+    /** A point or a direction. */
+    export class Vector3 {
+        x: number;
+        y: number;
+        z: number;
+        constructor(x?: number, y?: number, z?: number);
+        static zero(): Vector3;
+        static from(parts: readonly number[]): Vector3;
+        clone(): Vector3;
+        add(other: Vector3): Vector3;
+        subtract(other: Vector3): Vector3;
+        scale(factor: number): Vector3;
+        dot(other: Vector3): number;
+        cross(other: Vector3): Vector3;
+        length(): number;
+        normalize(): Vector3;
+        distanceTo(other: Vector3): number;
+        toArray(): [number, number, number];
+    }
+    /** A half line from `origin` along `direction`. */
+    export class Ray {
+        readonly origin: Vector3;
+        readonly direction: Vector3;
+        constructor(origin: Vector3, direction: Vector3);
+        at(distance: number): Vector3;
+    }
+    export class Plane {
+        readonly point: Vector3;
+        readonly normal: Vector3;
+        constructor(point: Vector3, normal: Vector3);
+        /** Where `ray` crosses the plane; null when parallel to it or when it is behind the ray. */
+        intersect(ray: Ray): Vector3 | null;
+    }
+    /** A pose: a position, a rotation (Euler radians about X, Y, then Z) and one uniform scale. */
+    export class Transform3D {
+        position: Vector3;
+        scale: number;
+        rotation: Vector3;
+        constructor(position?: Vector3, rotation?: readonly number[], scale?: number);
+        static identity(): Transform3D;
+        static translation(x: number, y: number, z: number): Transform3D;
+        clone(): Transform3D;
+        /** `other` placed inside `this`. */
+        multiply(other: Transform3D): Transform3D;
+        inverse(): Transform3D;
+        transformDirection(direction: Vector3): Vector3;
+        transformPoint(point: Vector3): Vector3;
+        plane(): Plane;
+    }
+
+    export interface NodeOptions {
+        name?: string;
+        x?: number;
+        y?: number;
+        z?: number;
+        rotation?: readonly [number, number, number];
+        scale?: readonly [number, number, number];
+        visible?: boolean;
+        opacity?: number;
+        input?: boolean;
+    }
+    /** A node of the scene a script made. Adding children and destroying it go through the tree. */
+    export class Node {
+        constructor(options?: NodeOptions);
+        readonly alive: boolean;
+        readonly id: string;
+        name: string;
+        x: number;
+        y: number;
+        z: number;
+        rotation: readonly [number, number, number];
+        /** The scale along each axis; a panel is scaled by the first component. */
+        scale: readonly [number, number, number];
+        visible: boolean;
+        opacity: number;
+        /** Whether a pointer ray can hit the node. */
+        input: boolean;
+        transform: Transform3D;
+        readonly worldTransform: Transform3D;
+        readonly parent: Node | null;
+        /** The children this module made, in tree order: a snapshot. */
+        readonly children: Node[];
+        add<T extends Node>(child: T, index?: number): T;
+        find(name: string): Node | undefined;
+        destroy(): void;
+    }
+    export interface Camera3DOptions extends NodeOptions {
+        projection?: "orthographic" | "perspective" | "stereo";
+        metres?: number;
+        near?: number;
+        far?: number;
+        fov?: number;
+        ipd?: number;
+    }
+    export class Camera3D extends Node {
+        constructor(options?: Camera3DOptions);
+        projection: "orthographic" | "perspective" | "stereo";
+        metres: number;
+        near: number;
+        far: number;
+        fov: number;
+        ipd: number;
+        readonly layerBudget: number;
+    }
+    export interface ViewOptions extends NodeOptions {
+        content?: Client | null;
+        camera?: Camera3D | null;
+        width?: number;
+        height?: number;
+    }
+    /** Draws a client as a picture. The client is not reparented or moved. A workspace cannot be shown yet. */
+    export class View extends Node {
+        constructor(options?: ViewOptions);
+        content: Client | null;
+        readonly orphaned: boolean;
+        camera: Camera3D | null;
+        width: number;
+        height: number;
+    }
+
+    export type ControllerButton = "Trigger" | "Grip" | "Thumbstick" | "Primary" | "Secondary";
+    export interface ControllerTriggerParts {
+        readonly kind: "controller";
+        readonly text: string;
+        readonly modifiers: readonly never[];
+        readonly hand: "Left" | "Right" | null;
+        readonly buttons: readonly ControllerButton[];
+        readonly action: "drag";
+    }
+    /** Parses `Grip+Drag`, `Right.Grip+Drag`, `Trigger+Grip+Drag`. Throws a TypeError naming the wrong token. */
+    export function parseControllerTrigger(trigger: unknown, what?: string): ControllerTriggerParts;
+
+    export interface XRClient {
+        readonly alive: boolean;
+        readonly secure: boolean;
+        readonly minimised: boolean;
+        width: number;
+        height: number;
+    }
+
+    /** One tracked hand: a `controller` node the XR program writes. */
+    export class XRController {
+        readonly id: string;
+        readonly alive: boolean;
+        readonly hand: string;
+        readonly tracked: boolean;
+        /** The aim ray's pose in the room's placement frame, in room units. */
+        readonly pose: Transform3D;
+        readonly ray: Ray;
+        readonly trigger: number;
+        readonly grip: number;
+        readonly thumbstick: { x: number; y: number };
+        /** The buttons down as of the last frame (a pull is down at 0.75, up at 0.25). */
+        readonly buttons: ReadonlySet<ControllerButton>;
+    }
+
+    export class XRList<T extends { readonly id: string }> implements Iterable<T> {
+        readonly size: number;
+        get(id: string): T | undefined;
+        at(index: number): T | undefined;
+        addListener(listener: { onAdded?(item: T): void; onRemoved?(item: T): void }): void;
+        removeListener(listener: object): void;
+        [Symbol.iterator](): Iterator<T>;
+    }
+
+    export interface XRCamera3DOptions extends Omit<Camera3DOptions, "near" | "far"> {
+        tracking?: XRTrackedPose;
+        referenceSpace?: "local";
+        /** In metres. */
+        near?: number;
+        far?: number;
+    }
+    /** The stereo camera that follows the headset: the camera named `head`, which the XR program writes. */
+    export class XRCamera3D extends Camera3D {
+        constructor(options?: XRCamera3DOptions);
+        readonly tracking: XRTrackedPose | null;
+        readonly referenceSpace: "local";
+    }
+
+    export type XRComposition = "auto" | "layers" | "projection";
+    export interface XRViewportOptions {
+        content: Node;
+        camera: Camera3D;
+        composition?: XRComposition;
+    }
+    /** The room and the camera the headset shows. Assigning it to `session.viewport` names them for the program. */
+    export class XRViewport {
+        constructor(options: XRViewportOptions);
+        readonly content: Node;
+        readonly camera: Camera3D;
+        composition: XRComposition;
+    }
+
+    /** The head: the pose the program writes onto the camera named `head`. */
+    export class XRTrackedPose {
+        readonly available: boolean;
+        /** In the room's placement frame, in room units; null with no head camera. */
+        readonly pose: Transform3D | null;
+    }
+
+    export interface XRDragEvent extends DragEvent {
+        /** Always null: the device is the controller, in `controller`. */
+        readonly device: null;
+        readonly controller: XRController;
+        /** The panel under the ray when the drag started. */
+        readonly view?: View;
+        readonly ray: Ray;
+        readonly hit?: Vector3;
+        readonly hand: string;
+        readonly room: XRRoom;
+        /** Metres per room unit. */
+        readonly unit: number;
+    }
+    export interface XRBindingOptions {
+        id: string;
+        trigger: string;
+        enabled?: boolean;
+        priority?: number;
+    }
+    /** The base of the bindings that follow a controller from the press of its buttons to their release. */
+    export class XRControllerDragBinding extends Binding {
+        constructor(options: XRBindingOptions);
+        readonly parsed: ControllerTriggerParts;
+        onStart(event: XRDragEvent): object | false;
+        onUpdate(event: XRDragEvent, state: object): void;
+        onEnd(event: XRDragEvent, state: object): void;
+        onCancel(event: XRDragEvent, state: object): void;
+    }
+    export interface ViewMoveOptions extends Partial<XRBindingOptions> {
+        /** `controller`: the panel follows the hand. `ray`: it follows where the ray points. */
+        tracking?: "controller" | "ray";
+        rotation?: "follow" | "keep";
+        distance?: "preserve";
+    }
+    /** The 6-DoF grab. It writes the View's placement only. */
+    export class ViewMoveBinding extends XRControllerDragBinding {
+        constructor(options?: ViewMoveOptions);
+        tracking: "controller" | "ray";
+        rotation: "follow" | "keep";
+    }
+    export interface ViewResizeOptions extends Partial<XRBindingOptions> {
+        pixelsPerMetre?: number;
+        minWidth?: number;
+        minHeight?: number;
+    }
+    /** Resizes a panel by its corner: the View's scale on every update, one new client size on release if needed. */
+    export class ViewResizeBinding extends XRControllerDragBinding {
+        constructor(options?: ViewResizeOptions);
+        pixelsPerMetre: number;
+        minWidth: number;
+        minHeight: number;
+    }
+
+    export interface XRRingParams {
+        radius: number;
+        eye: number;
+        mmPerPx: number;
+        focusScale: number;
+        focusPull: number;
+        gap: number;
+        halfArc: number;
+        maxPanels: number;
+        stackStep: number;
+    }
+    export const RING_DEFAULTS: Readonly<XRRingParams>;
+    export interface RingView<I> {
+        readonly id: I;
+        readonly width: number;
+        readonly height: number;
+    }
+    export interface RingPose {
+        x: number;
+        y: number;
+        z: number;
+        rotation: [number, number, number];
+        scale: number;
+        focused: boolean;
+        behind: number;
+    }
+    export interface RingResult {
+        poses: RingPose[];
+        order: number[];
+    }
+    /** Where each panel goes on the ring, in millimetres; a pure function of the panels' sizes and the focus. */
+    export function arrangeRing<I>(
+        views: readonly RingView<I>[],
+        focus: I | null,
+        params?: Readonly<XRRingParams>,
+    ): RingResult;
+
+    export interface SpatialLayoutOptions {
+        /** Metres from the viewer to a panel's centre. Default 1.6. */
+        radius?: number;
+        /** Metres from the floor to a panel's centre. Default 1.4. */
+        eye?: number;
+        /** Radians between neighbouring panels. Default 3 degrees. */
+        spacing?: number;
+        metresPerPixel?: number;
+        focusScale?: number;
+        focusPull?: number;
+        halfArc?: number;
+        maxPanels?: number;
+        stackStep?: number;
+        /** The triggers of the stock bindings by id; `null` leaves one out. */
+        triggers?: { move?: string | null; resize?: string | null };
+    }
+    /** The room's arrangement and its bindings: `layout.bindings.remove("move")` turns the grab off. */
+    export class SpatialLayout {
+        constructor(options?: SpatialLayoutOptions);
+        readonly bindings: BindingCollection;
+        readonly ring: XRRingParams;
+        arrange<I>(views: readonly RingView<I>[], focus: I | null): RingResult;
+    }
+
+    export interface XRRoomOptions extends NodeOptions {
+        layout?: SpatialLayout | null;
+        accept?: (client: XRClient) => boolean;
+    }
+    export interface HeadPanelOptions {
+        /** Metres right of, above and in front of the head. Default 0, 0, -1.2. */
+        x?: number;
+        y?: number;
+        z?: number;
+        /** Millimetres of panel for a pixel of window. */
+        scale?: number;
+    }
+    export interface XRHit {
+        readonly view: View;
+        readonly point: Vector3;
+        readonly local: { x: number; y: number };
+    }
+    /** The panel the ray strikes: the room's last View first, because the room lists them back to front. */
+    export function pickView(room: XRRoom, ray: Ray): XRHit | null;
+    /** The node the XR program reads, with the head camera and one panel for each client. */
+    export class XRRoom extends Node {
+        constructor(options?: XRRoomOptions);
+        /** The camera the program writes the head pose onto: the one named `head`. */
+        head: Camera3D;
+        layout: SpatialLayout | null;
+        accept: (client: XRClient) => boolean;
+        /** Metres per room unit. */
+        readonly unit: number;
+        readonly views: View[];
+        viewOf(client: XRClient): View | undefined;
+        /** A panel the user moved is pinned: the layout leaves its place alone until `unpin`. */
+        pin(view: View): void;
+        unpin(view: View): void;
+        isPinned(view: View): boolean;
+        /** Shows `client` in a panel fixed to the head. */
+        pinToHead(client: XRClient, options?: HeadPanelOptions): View;
+    }
+
+    export class XRListener {
+        onSessionStarted(session: XRSession): void;
+        onSessionEnded(session: XRSession): void;
+    }
+    export class XRSession {
+        readonly id: string;
+        /** False once the program ended the session. */
+        readonly alive: boolean;
+        readonly connected: boolean;
+        readonly tracking: "tracked" | "untracked";
+        readonly head: XRTrackedPose;
+        readonly controllers: XRList<XRController>;
+        /** The `xr` seat as an input context. */
+        readonly input: object | null;
+        readonly layerBudget: number;
+        viewport: XRViewport | null;
+        /** How long, in milliseconds, a chord must have been down before a drag starts. Default 50. */
+        chordSettleMs: number;
+    }
+    export class XRExtension {
+        readonly available: true;
+        readonly sessions: XRList<XRSession>;
+        readonly session: XRSession | null;
+        readonly Camera3D: typeof XRCamera3D;
+        readonly Viewport: typeof XRViewport;
+        readonly SpatialLayout: typeof SpatialLayout;
+        readonly ViewMoveBinding: typeof ViewMoveBinding;
+        readonly ViewResizeBinding: typeof ViewResizeBinding;
+        readonly Room: typeof XRRoom;
+        /** The stock room, or the one a script assigned to the viewport. */
+        room: XRRoom | null;
+    }
 }
 
 /** The runtime object, also reachable as `import { gnoblin } from "gnoblin"`. */

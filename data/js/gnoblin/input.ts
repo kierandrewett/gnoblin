@@ -765,7 +765,9 @@ export class InputContext {
             throw this.#world.error(
                 "unsupported",
                 `Binding "${binding.id}"`,
-                `the compositor has no claim for ${parsed.text}; wheel triggers cannot be bound yet`,
+                parsed.kind === "controller"
+                    ? `${parsed.text} is an XR controller trigger; bind it in the XR room's layout, not on a seat`
+                    : `the compositor has no claim for ${parsed.text}; wheel triggers cannot be bound yet`,
             );
         }
         const specKey = specKeyOf(spec);

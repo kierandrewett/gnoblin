@@ -86,6 +86,9 @@ pub struct JsShellConfig {
     /// A directory to read the stock `gnoblin` modules from instead of the copies compiled in (the layout of
     /// `data/js/gnoblin`). A module missing from it is the compiled-in one. `None` runs the compiled-in library.
     pub stock_dir: Option<PathBuf>,
+    /// Whether the session declared XR (`GNOBLIN_XR=1`). A config may then import `gnoblin/extensions/xr` before the
+    /// headset's session has started; without it that import works only once the program's `xr` seat is in the tree.
+    pub xr_declared: bool,
 }
 
 impl JsShellConfig {
@@ -96,6 +99,7 @@ impl JsShellConfig {
             entry_budget: Duration::from_millis(100),
             frame_budget: Duration::from_millis(500),
             stock_dir: None,
+            xr_declared: false,
         }
     }
 }
@@ -201,6 +205,7 @@ impl JsShell {
         let (mirror, incoming) = boot_mirror(link.as_mut())?;
         let boot_ready = bindings::parents_first(&mirror);
         let state: SharedState = Rc::new(RefCell::new(HostState::new(mirror)));
+        state.borrow_mut().xr = crate::xr::JsXrState::declared(config.xr_declared);
 
         let host_module = strip_types(Path::new("gnoblin/host.ts"), HOST_MODULE).map_err(JsError::from)?;
         let mut js = config.js.clone();
@@ -579,6 +584,7 @@ impl JsShell {
                         }
                     }
                     state.ui.forget(&destroyed);
+                    state.xr.forget(&destroyed);
                     state
                         .mirror
                         .apply_changes(serial, &changes)

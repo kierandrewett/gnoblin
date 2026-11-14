@@ -64,6 +64,10 @@ import {
     syncStyleLists,
 } from "gnoblin/style";
 import type { ClientStyleInit, ComputedStyle, Style, StyleLayer } from "gnoblin/style";
+import { attachScene, sceneForget, sceneReleaseAll } from "gnoblin/scene";
+import type { SceneBackend } from "gnoblin/scene";
+import { Extensions, XRRuntime } from "gnoblin/xr";
+import type { XRWorld } from "gnoblin/xr";
 
 type NodeId = number;
 type Scalar = string | number | boolean;
@@ -151,6 +155,17 @@ interface Host {
     spawn(command: string | string[]): string | undefined;
     input: InputHost;
     ui: Omit<UiBackend, "now">;
+    /** The scene nodes the XR module makes and finds (`gnoblin/scene`, `gnoblin/xr`). */
+    xr: {
+        create(cls: string): NodeId | string;
+        insert(node: NodeId, parent: NodeId, index: number): string | undefined;
+        destroy(node: NodeId): string | undefined;
+        nodes(cls: string): NodeId[];
+        children(node: NodeId): NodeId[];
+        parent(node: NodeId): NodeId | undefined;
+        root(): NodeId;
+        declared(): boolean;
+    };
     entry?: Entry;
 }
 
@@ -2210,6 +2225,7 @@ function plan(created: NodeId[], touched: NodeId[], destroyed: NodeId[]): number
         uiNodeGone(node);
         release(node);
     }
+    sceneForget(destroyed);
     for (const node of created) {
         adopt(node, true);
     }
@@ -2582,7 +2598,56 @@ function startAlerts(): void {
 /** The merged config of the last `__register`, which is what the inspector reports as the effective one. */
 let effectiveConfig: GnoblinConfig | null = null;
 
+/** The scene the XR module makes its nodes in: the host's, with clients as the content a View shows. */
+const sceneBackend: SceneBackend = {
+    create: (cls) => host.xr.create(cls),
+    insert: (node, parent, index) => host.xr.insert(node, parent, index),
+    destroy: (node) => host.xr.destroy(node),
+    children: (node) => host.xr.children(node),
+    parent: (node) => host.xr.parent(node),
+    root: () => host.xr.root(),
+    get: (node, key) => host.get(node, key),
+    set: (node, key, value) => host.set(node, key, value),
+    nodeOf: (content) => (content instanceof Client ? stateOf(content).node : undefined),
+    contentOf: (node) => clientsByNode.get(node),
+};
+attachScene(sceneBackend);
+
+/** The seat that is not the XR program's: the keyboard and pointer of the desktop. */
+function mainSeat(): number | undefined {
+    return host.input.seats().find((seat) => host.input.seatName(seat) !== "xr");
+}
+
+const xrWorld: XRWorld = {
+    scene: sceneBackend,
+    nodes: (cls) => host.xr.nodes(cls),
+    kind: (node) => host.kind(node),
+    seats: () => host.input.seats().map((node) => ({ node, name: host.input.seatName(node) })),
+    focusedClient() {
+        const seat = mainSeat();
+        return seat === undefined ? null : (clientsByNode.get(host.input.focus(seat)) ?? null);
+    },
+    clients: () => [...clientRoot.list] as Client[],
+    parentKind(client) {
+        const parent = host.xr.parent(stateOf(client).node);
+        return parent === undefined ? undefined : host.kind(parent);
+    },
+    inputContext(seat) {
+        const name = host.input.seatName(seat);
+        return input.contexts.find((context) => context.name === name) ?? null;
+    },
+    declared: () => host.xr.declared(),
+    now: () => host.input.now(),
+    report: (site, error) => {
+        reports.push({ site, error });
+    },
+};
+
+const xrRuntime = new XRRuntime(xrWorld);
+
 class Gnoblin {
+    /** The optional extensions: `gnoblin.extensions.xr` is null until the XR program has a session (docs/xr.md). */
+    readonly extensions = new Extensions(xrRuntime);
     readonly clients = clientRoot.self as Collection<Client>;
     readonly workspaces = workspaceRoot.self as WorkspaceCollection;
     /** The seats of the compositor as input contexts, with the bindings that run on their chords and drags. */
@@ -2758,7 +2823,14 @@ Object.defineProperty(globalThis, "gnoblin", { value: gnoblin, enumerable: false
 Object.defineProperty(globalThis, "inspect", { value: inspect, enumerable: false, writable: true, configurable: true });
 host.entry = {
     render: (value, maxBytes) => inspect.render(value, { maxBytes }),
-    ui: runUiFrame,
+    ui: () => {
+        runUiFrame();
+        try {
+            xrRuntime.frame();
+        } catch (error) {
+            reports.push({ site: "XRRuntime.frame", error });
+        }
+    },
     plan,
     next,
     pending,
@@ -2794,6 +2866,8 @@ host.entry = {
     },
     cancelAll: () => {
         input.cancelAll();
+        xrRuntime.release();
+        sceneReleaseAll();
         uiReleaseAll();
         return queue.length;
     },

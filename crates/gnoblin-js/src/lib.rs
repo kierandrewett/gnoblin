@@ -42,6 +42,7 @@ mod ts;
 mod ui;
 mod watch;
 mod workspaces;
+mod xr;
 
 pub use bindings::{JsSpawnError, JsSpawnRequest, JsSpawner};
 pub use config::{JsClientConfigLink, JsConfigCommit, JsConfigLink, JsLinkError};

@@ -29,6 +29,9 @@ use gnoblin_compositor::{Compositor, InputTap, SessionConfig, StopHandle};
 use gnoblin_js::{JsHealth, JsRole, JsRoleConfig};
 use gnoblin_log::event::capture::logged;
 use gnoblin_model::Fields;
+use gnoblin_proto::tree::op;
+use gnoblin_proto::tree::tree::{AttachArgs, AttachedPayload, ReplyPayload, SnapshotPayload, TransactArgs};
+use gnoblin_proto::{Envelope, Kind, read_frame, write_frame};
 use gnoblin_types::{DeviceId, OutputId, Point, Version};
 
 mod support;
@@ -2374,6 +2377,220 @@ defineConfig({ workspaces: [{ id: "desk", layout: new Layout() }] });
                 .iter()
                 .all(|app| style_of(&ipc, app) == Some((Vec::new(), 1.0)))
     });
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    shell.finish();
+}
+
+// ---- XR: the program's seat, and the room the stock shell builds for it ------------------------------------------
+
+/// What the XR program does first, as an observer of the owner socket: it makes a seat named `xr`. The compositor
+/// destroys the seat when this connection closes, as it does when the real program's session ends. Nothing here is
+/// the program: it draws no layer and runs no OpenXR; the seat is the one thing the shell sees of it (docs/xr.md).
+struct XrSeat {
+    /// Held open: dropping it closes the connection and the seat goes.
+    _stream: UnixStream,
+}
+
+impl XrSeat {
+    fn attach(ipc: &Path) -> Self {
+        let transport = UnixTransport::connect(ipc).expect("the session is listening");
+        let (major, minor, patch) = gnoblin_proto::IPC_VERSION;
+        let mut stream = Client::connect(transport, Version::new(major, minor, patch))
+            .expect("the handshake")
+            .into_inner()
+            .into_stream()
+            .expect("the handshaken socket");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(30)))
+            .expect("a read deadline");
+        let attach = AttachArgs {
+            version: 1,
+            mode: "observer".to_owned(),
+        };
+        write_frame(&mut stream, &Envelope::request_message("tree", "attach", 1, &attach)).expect("the attach");
+        let attached: AttachedPayload = read_frame(&mut stream)
+            .expect("the attach reply frame")
+            .expect("an attach reply")
+            .payload_as()
+            .expect("the attach payload decodes");
+        loop {
+            let chunk: SnapshotPayload = read_frame(&mut stream)
+                .expect("a snapshot frame")
+                .expect("a snapshot chunk")
+                .payload_as()
+                .expect("the chunk decodes");
+            if chunk.last {
+                break;
+            }
+        }
+        let seat = u64::from(attached.epoch as u32) << 32 | 1;
+        let ops = vec![
+            op::Properties {
+                kind: "new".to_owned(),
+                class: "seat".to_owned(),
+                id: seat,
+                ..Default::default()
+            },
+            op::Properties {
+                kind: "set".to_owned(),
+                node: seat,
+                key: "name".to_owned(),
+                value_kind: "text".to_owned(),
+                value_text: "xr".to_owned(),
+                ..Default::default()
+            },
+        ];
+        let transact = TransactArgs {
+            base_serial: 0,
+            serial: 1,
+            ops,
+        };
+        write_frame(
+            &mut stream,
+            &Envelope::request_message("tree", "transact", 2, &transact),
+        )
+        .expect("the seat");
+        loop {
+            let envelope = read_frame(&mut stream)
+                .expect("a frame")
+                .expect("the compositor answers the seat");
+            if matches!(envelope.kind, Some(Kind::Reply(_))) {
+                let reply: ReplyPayload = envelope.payload_as().expect("the reply decodes");
+                assert!(
+                    reply.applied,
+                    "the compositor lets an observer make its seat: {reply:?}"
+                );
+                break;
+            }
+        }
+        Self { _stream: stream }
+    }
+}
+
+/// The snapshot nodes of `class`, as the compositor holds them.
+fn xr_nodes(ipc: &Path, class: &str) -> Vec<gnoblin_proto::tree::snapshot_node::Properties> {
+    snapshot(ipc).into_iter().filter(|node| node.class == class).collect()
+}
+
+fn prop_text(node: &gnoblin_proto::tree::snapshot_node::Properties, key: &str) -> String {
+    node.props
+        .iter()
+        .find(|prop| prop.key == key)
+        .map(|prop| prop.value_text.clone())
+        .unwrap_or_default()
+}
+
+fn prop_number(node: &gnoblin_proto::tree::snapshot_node::Properties, key: &str) -> f64 {
+    node.props
+        .iter()
+        .find(|prop| prop.key == key)
+        .map_or(0.0, |prop| prop.value_double)
+}
+
+/// The room, if the tree has one: a node named `room`.
+fn room_of(ipc: &Path) -> Option<gnoblin_proto::tree::snapshot_node::Properties> {
+    xr_nodes(ipc, "node")
+        .into_iter()
+        .find(|node| prop_text(node, "name") == "room")
+}
+
+#[test]
+fn the_xr_programs_seat_makes_the_stock_shell_build_a_room_with_a_view_per_window_and_its_going_takes_it_down() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    fs::write(
+        config.path().join("init.ts"),
+        "import { defineConfig } from \"gnoblin\";\ndefineConfig({});\n",
+    )
+    .expect("init.ts");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    wait_for("the shell runs the config", &session, &mut mapper, &shell, || {
+        shell.generation() > 0 && shell.view().contains(", 1 workspaces")
+    });
+    let (one, two) = ("org.example.one", "org.example.two");
+    mapper.map_window(one, "One");
+    mapper.map_window(two, "Two");
+    wait_for("the shell sees both windows", &session, &mut mapper, &shell, || {
+        shell.view().contains(one) && shell.view().contains(two)
+    });
+    std::thread::sleep(Duration::from_millis(200));
+    mapper.roundtrip();
+    assert!(
+        room_of(&ipc).is_none(),
+        "no program, no room: nothing of XR is in the tree"
+    );
+    assert!(xr_nodes(&ipc, "view").is_empty() && xr_nodes(&ipc, "camera").is_empty());
+
+    let program = XrSeat::attach(&ipc);
+    wait_for(
+        "the room has a View for each window",
+        &session,
+        &mut mapper,
+        &shell,
+        || xr_nodes(&ipc, "view").len() == 2,
+    );
+    let windows = ids(&scene(&ipc));
+    let room = room_of(&ipc).expect("the room is in the compositor's tree");
+    let root = snapshot(&ipc)
+        .into_iter()
+        .find(|node| node.parent == 0 && node.class == "node")
+        .expect("the root")
+        .id;
+    assert_eq!(room.parent, root, "the room hangs from the root");
+    assert!(
+        (prop_number(&room, "y") - -1400.0).abs() < 1e-6,
+        "the room's floor is an eye height below the viewer"
+    );
+    let heads = xr_nodes(&ipc, "camera");
+    assert_eq!(heads.len(), 1, "one head camera: {heads:?}");
+    assert_eq!(prop_text(&heads[0], "name"), "head");
+    assert_eq!(prop_text(&heads[0], "projection"), "stereo");
+    assert_eq!(heads[0].parent, room.id, "under the room");
+    let mut shown = Vec::new();
+    for view in xr_nodes(&ipc, "view") {
+        assert_eq!(view.parent, room.id);
+        let source = view
+            .props
+            .iter()
+            .find(|prop| prop.key == "source")
+            .map_or(0, |prop| prop.value_node);
+        shown.push(source);
+        assert!(prop_number(&view, "width") > 0.0, "the View has its window's size");
+        assert!(
+            (prop_number(&view, "y") - 1400.0).abs() < 1e-6,
+            "the panels sit at eye height: {view:?}"
+        );
+    }
+    shown.sort_unstable();
+    let mut want = vec![windows[one], windows[two]];
+    want.sort_unstable();
+    assert_eq!(shown, want, "each View shows one of the windows");
+    for id in want {
+        let window = snapshot(&ipc)
+            .into_iter()
+            .find(|node| node.id == id)
+            .expect("the window");
+        assert_ne!(window.parent, room.id, "the window is not reparented under the room");
+    }
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+
+    drop(program);
+    wait_for(
+        "the room goes with the program's seat",
+        &session,
+        &mut mapper,
+        &shell,
+        || room_of(&ipc).is_none(),
+    );
+    assert!(xr_nodes(&ipc, "view").is_empty() && xr_nodes(&ipc, "camera").is_empty());
+    assert_eq!(
+        scene(&ipc).len(),
+        2,
+        "both windows are still in the tree: {:?}",
+        scene(&ipc)
+    );
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
     shell.finish();
 }

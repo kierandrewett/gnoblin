@@ -91,6 +91,87 @@ const SCREEN: &[JsPropDef] = &[
     def("primary", JsPropKind::Flag, false),
 ];
 
+/// A plain node: what the XR room is. A script sets its name, placement and visibility, and nothing else.
+const NODE: &[JsPropDef] = &[
+    def("name", JsPropKind::Text, true),
+    animated("x", JsPropKind::Double),
+    animated("y", JsPropKind::Double),
+    animated("z", JsPropKind::Double),
+    animated("rotation", JsPropKind::Doubles),
+    animated("scale", JsPropKind::Doubles),
+    animated("width", JsPropKind::Double),
+    animated("height", JsPropKind::Double),
+    animated("opacity", JsPropKind::Double),
+    def("visible", JsPropKind::Flag, true),
+    def("input", JsPropKind::Flag, true),
+    def("secure", JsPropKind::Flag, true),
+];
+
+/// A `view`: it draws another node (its `source`) through an optional `camera`. The XR program reads the Views under
+/// the node named `room`. `fps` is not here: nothing in the shell needs it, and it is a `uint`, which no kind holds.
+const VIEW: &[JsPropDef] = &[
+    def("name", JsPropKind::Text, true),
+    animated("x", JsPropKind::Double),
+    animated("y", JsPropKind::Double),
+    animated("z", JsPropKind::Double),
+    animated("rotation", JsPropKind::Doubles),
+    animated("scale", JsPropKind::Doubles),
+    animated("width", JsPropKind::Double),
+    animated("height", JsPropKind::Double),
+    animated("opacity", JsPropKind::Double),
+    def("visible", JsPropKind::Flag, true),
+    def("input", JsPropKind::Flag, true),
+    def("secure", JsPropKind::Flag, true),
+    def("source", JsPropKind::Node, true),
+    def("camera", JsPropKind::Node, true),
+];
+
+/// A `camera`. `layer_budget` is the XR program's to write: the shell reads it.
+const CAMERA: &[JsPropDef] = &[
+    def("name", JsPropKind::Text, true),
+    animated("x", JsPropKind::Double),
+    animated("y", JsPropKind::Double),
+    animated("z", JsPropKind::Double),
+    animated("rotation", JsPropKind::Doubles),
+    animated("scale", JsPropKind::Doubles),
+    animated("width", JsPropKind::Double),
+    animated("height", JsPropKind::Double),
+    animated("opacity", JsPropKind::Double),
+    def("visible", JsPropKind::Flag, true),
+    def("input", JsPropKind::Flag, true),
+    def("secure", JsPropKind::Flag, true),
+    def("projection", JsPropKind::Text, true),
+    def("metres", JsPropKind::Double, true),
+    def("near", JsPropKind::Double, true),
+    def("far", JsPropKind::Double, true),
+    animated("fov", JsPropKind::Double),
+    def("ipd", JsPropKind::Double, true),
+    def("fov_left", JsPropKind::Double, true),
+    def("fov_right", JsPropKind::Double, true),
+    def("fov_up", JsPropKind::Double, true),
+    def("fov_down", JsPropKind::Double, true),
+    def("layer_budget", JsPropKind::Double, false),
+];
+
+/// A `controller`: one tracked hand of the XR program (`design/js-xr.md`, "New native work"). The program writes
+/// every property, so a script reads them all and writes none.
+const CONTROLLER: &[JsPropDef] = &[
+    def("name", JsPropKind::Text, false),
+    def("hand", JsPropKind::Text, false),
+    def("tracked", JsPropKind::Flag, false),
+    def("x", JsPropKind::Double, false),
+    def("y", JsPropKind::Double, false),
+    def("z", JsPropKind::Double, false),
+    def("rotation", JsPropKind::Doubles, false),
+    def("trigger", JsPropKind::Double, false),
+    def("grip", JsPropKind::Double, false),
+    def("thumbstick_x", JsPropKind::Double, false),
+    def("thumbstick_y", JsPropKind::Double, false),
+    def("thumbstick_click", JsPropKind::Flag, false),
+    def("primary", JsPropKind::Flag, false),
+    def("secondary", JsPropKind::Flag, false),
+];
+
 /// The methods a script may call on a window. `kill` is the not-responding alert's Force quit: the compositor
 /// refuses its own process, init and a process that did not open the window.
 const WINDOW_METHODS: &[&str] = &["focus", "close", "kill"];
@@ -101,6 +182,10 @@ pub(crate) fn defs_for(class: &str) -> Option<&'static [JsPropDef]> {
     match lua_class(class).as_str() {
         "Window" => Some(WINDOW),
         "Screen" => Some(SCREEN),
+        "Node" => Some(NODE),
+        "View" => Some(VIEW),
+        "Camera" => Some(CAMERA),
+        "Controller" => Some(CONTROLLER),
         _ => None,
     }
 }
@@ -115,6 +200,13 @@ pub(crate) fn default_value(def: &JsPropDef) -> MirrorValue {
     match (def.name, def.kind) {
         ("visible", _) => MirrorValue::Bool(true),
         ("opacity", _) => MirrorValue::Double(1.0),
+        ("input", _) => MirrorValue::Bool(true),
+        ("metres", _) => MirrorValue::Double(0.001),
+        ("near", _) => MirrorValue::Double(0.1),
+        ("far", _) => MirrorValue::Double(1000.0),
+        ("fov", _) => MirrorValue::Double(60.0),
+        ("ipd", _) => MirrorValue::Double(0.063),
+        ("projection", _) => MirrorValue::Text("orthographic".to_owned()),
         ("scale", _) => MirrorValue::List(vec![1.0, 1.0, 1.0]),
         (_, JsPropKind::Flag) => MirrorValue::Bool(false),
         (_, JsPropKind::Double) => MirrorValue::Double(0.0),
@@ -128,7 +220,9 @@ pub(crate) fn default_value(def: &JsPropDef) -> MirrorValue {
 
 #[cfg(test)]
 mod tests {
-    use super::{JsPropKind, defs_for, may_call};
+    use gnoblin_tree_client::tree_mirror::MirrorValue;
+
+    use super::{JsPropKind, default_value, defs_for, may_call};
 
     #[test]
     fn a_class_is_found_by_either_spelling() {
@@ -203,5 +297,45 @@ mod tests {
         assert!(may_call("window", "kill"));
         assert!(!may_call("window", "destroy"));
         assert!(!may_call("screen", "close"));
+    }
+
+    #[test]
+    fn a_script_may_make_and_place_a_room_a_camera_and_a_view_and_may_only_read_a_controller() {
+        for class in ["node", "Node", "view", "camera"] {
+            assert!(defs_for(class).is_some(), "{class}");
+        }
+        let names =
+            |class: &str| -> Vec<&'static str> { defs_for(class).into_iter().flatten().map(|def| def.name).collect() };
+        assert!(names("view").contains(&"source") && names("view").contains(&"camera"));
+        assert!(!names("node").contains(&"source"), "a plain node shows nothing");
+        let writable = |class: &str, key: &str| {
+            defs_for(class)
+                .into_iter()
+                .flatten()
+                .find(|def| def.name == key)
+                .map(|def| def.writable)
+        };
+        assert_eq!(writable("camera", "projection"), Some(true));
+        assert_eq!(
+            writable("camera", "layer_budget"),
+            Some(false),
+            "the XR program writes the budget"
+        );
+        assert_eq!(writable("view", "source"), Some(true));
+        let all_read_only = defs_for("controller").into_iter().flatten().all(|def| !def.writable);
+        assert!(all_read_only, "the program writes every property of a controller");
+        // A property at its schema default is absent from the mirror, so the table supplies it.
+        let metres = defs_for("camera")
+            .into_iter()
+            .flatten()
+            .find(|def| def.name == "metres")
+            .expect("metres");
+        assert_eq!(default_value(metres), MirrorValue::Double(0.001));
+        let input = defs_for("view")
+            .into_iter()
+            .flatten()
+            .find(|def| def.name == "input")
+            .expect("input");
+        assert_eq!(default_value(input), MirrorValue::Bool(true));
     }
 }

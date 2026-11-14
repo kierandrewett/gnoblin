@@ -172,6 +172,16 @@ impl JsUiState {
         true
     }
 
+    /// The next id this shell may give a node it creates: the epoch and a count, so no two nodes of one shell share
+    /// one, and none is the id of a node the compositor made. The XR module draws from the same count.
+    pub(crate) fn mint(&mut self, epoch: u64) -> Option<NodeId> {
+        if epoch >= EPOCH_LIMIT || self.counter + 1 >= 1 << EPOCH_SHIFT {
+            return None;
+        }
+        self.counter += 1;
+        Some((epoch << EPOCH_SHIFT) | self.counter)
+    }
+
     /// Forgets nodes the compositor destroyed: a window's destruction takes its canvases with it.
     pub(crate) fn forget(&mut self, nodes: &[NodeId]) {
         for node in nodes {
@@ -183,12 +193,7 @@ impl JsUiState {
 /// Makes a canvas node in this tick and returns its id, or `None` when the shell has no id left.
 pub(crate) fn create(state: &mut HostState) -> Option<NodeId> {
     let HostState { mirror, tick, ui, .. } = state;
-    let epoch = mirror.epoch();
-    if epoch >= EPOCH_LIMIT || ui.counter + 1 >= 1 << EPOCH_SHIFT {
-        return None;
-    }
-    ui.counter += 1;
-    let id = (epoch << EPOCH_SHIFT) | ui.counter;
+    let id = ui.mint(mirror.epoch())?;
     tick.new_node(mirror, id, CANVAS).ok()?;
     ui.owned.insert(id);
     Some(id)

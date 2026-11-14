@@ -15,6 +15,8 @@ use gnoblin_tree_client::tree_mirror::{
 };
 use tempfile::TempDir;
 
+mod xr_support;
+
 pub const ROOT: u64 = 1;
 pub const LEFT: u64 = 272;
 
