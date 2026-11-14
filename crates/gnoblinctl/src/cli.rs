@@ -24,6 +24,7 @@ use gnoblin_model::Fields;
 use crate::args;
 use crate::js;
 use crate::logs::{self, Filter};
+use crate::migrate;
 use crate::tree::{self, CliObject};
 use crate::verbs;
 
@@ -58,6 +59,8 @@ pub(crate) enum Invocation {
         force: bool,
         json: bool,
     },
+    /// Convert an `init.lua` to an `init.ts`, for `config migrate`.
+    ConfigMigrate { request: migrate::MigrateRequest },
     /// A live prompt into the running JavaScript shell, or one expression of it.
     Console { eval: Option<String>, json: bool },
     /// A hand-written verb: the session's state, the version, or a config check.
@@ -501,6 +504,43 @@ fn verb_commands() -> Vec<Command> {
                             .action(ArgAction::SetTrue)
                             .help("Overwrite an existing init.ts."),
                     ),
+            )
+            .subcommand(
+                Command::new("migrate")
+                    .about("Convert an init.lua, and the files it loads, to an init.ts.")
+                    .long_about(
+                        "Convert an init.lua, and the files it loads, to an init.ts. The converter reads the Lua as \
+                         text and never runs it: settings, shortcuts, workspaces, autostart entries and window rules \
+                         convert exactly, and everything else is left out of the file as an UNMAPPED comment and \
+                         listed with its line. Exit 0 when everything converted, 1 when something was left out, 2 \
+                         when nothing was written.",
+                    )
+                    .arg(
+                        Arg::new("file")
+                            .value_name("FILE")
+                            .value_parser(value_parser!(PathBuf))
+                            .help("The Lua file to convert; defaults to the init.lua the Lua shell reads."),
+                    )
+                    .arg(
+                        Arg::new("out")
+                            .short('o')
+                            .long("out")
+                            .value_name("OUT")
+                            .value_parser(value_parser!(PathBuf))
+                            .help("Where to write the TypeScript; defaults to init.ts beside FILE."),
+                    )
+                    .arg(
+                        Arg::new("force")
+                            .long("force")
+                            .action(ArgAction::SetTrue)
+                            .help("Overwrite OUT when it exists."),
+                    )
+                    .arg(
+                        Arg::new("dry-run")
+                            .long("dry-run")
+                            .action(ArgAction::SetTrue)
+                            .help("Print the TypeScript on standard output and write nothing."),
+                    ),
             ),
     ]
 }
@@ -613,6 +653,17 @@ fn config_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usa
         "list" | "watch" => {
             let object = tree::CliObject::find("config").expect("the schema declares the `config` object");
             return object_invocation(object, matches, json);
+        }
+        "migrate" => {
+            return Ok(Invocation::ConfigMigrate {
+                request: migrate::MigrateRequest {
+                    file: sub.get_one::<PathBuf>("file").cloned(),
+                    out: sub.get_one::<PathBuf>("out").cloned(),
+                    force: sub.get_flag("force"),
+                    dry_run: sub.get_flag("dry-run"),
+                    json,
+                },
+            });
         }
         "init" => {
             return Ok(Invocation::ConfigInit {

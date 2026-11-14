@@ -21,7 +21,7 @@ export default defineConfig({
 - [Shortcuts](/guides/shortcuts) and [autostart](/guides/autostart): bind keys and start programs.
 - [Files and load order](/guides/files_and_load_order): split a config over several files.
 - [`gnoblinctl`](/gnoblinctl): check, reload and inspect the running configuration.
-- [Migrating from Lua](/migrating-from-lua): what each construct of the old Lua config became.
+- [Migrating from Lua](/migrating-from-lua): convert an `init.lua` with `gnoblinctl config migrate`, and see what each construct became.
 
 ## First config
 

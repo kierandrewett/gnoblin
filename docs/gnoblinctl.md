@@ -57,10 +57,13 @@ To diagnose it:
 3. If the compositor answers but a command exits 4, the compositor and the
    client speak different IPC versions. Upgrade the one that is older.
 
-`gnoblinctl config validate FILE`, `gnoblinctl config init`, `gnoblinctl check FILE` and
-`gnoblinctl types init` do not connect to a session. They work before Gnoblin
-is running. `gnoblinctl console` does not use the compositor's socket either: it
-connects to the JavaScript shell's console (see [Console](#console)).
+These commands do not connect to a session, and work before Gnoblin is running:
+
+- `gnoblinctl config validate FILE`, `gnoblinctl config init` and `gnoblinctl config migrate`.
+- `gnoblinctl check FILE` and `gnoblinctl types init`.
+
+`gnoblinctl console` does not use the compositor's socket either: it connects to the JavaScript shell's console (see
+[Console](#console)).
 
 ## Exit codes
 
@@ -189,6 +192,8 @@ gnoblinctl output call 6 apply
   needs no session.
 - `gnoblinctl config init [DIR] [--force]` writes a starter `init.ts` for the
   [TypeScript shell](typescript-shell.md). It needs no session.
+- `gnoblinctl config migrate [FILE] [-o OUT] [--force] [--dry-run]` converts an `init.lua` to an `init.ts`. It needs
+  no session. See [Convert an init.lua](#convert-an-initlua).
 
 ```sh
 gnoblinctl config validate FILE
@@ -252,6 +257,63 @@ that names the file. An `init.js` counts because the shell reads `init.ts` first
 `--force` to write the starter over `init.ts`. The first line of the output says `replaced` when it did.
 
 With `--json` it prints `init`, `replaced`, `types`, `tsconfig`, `tsconfig_created` and `next`.
+
+### Convert an init.lua
+
+`gnoblinctl config migrate [FILE] [-o OUT] [--force] [--dry-run]` converts a Lua config to TypeScript. `FILE` is the
+`init.lua` the Lua shell reads, and the command writes `init.ts` beside it, or to `OUT`. It reads the Lua as text and
+never runs it, so it needs no session.
+
+The `shell.lua` beside an `init.lua`, and every file a `gnoblin.load` names, are read too and become one `init.ts`, with
+a comment for each file. See [the converter](migrating-from-lua.md#the-converter) for what it converts and what it
+leaves out.
+
+It runs `gnoblinctl types init` on the directory it wrote to, loads the converted file once with the shell's own
+`defineConfig` before it writes, and prints what converted, what was left out and three steps.
+
+```sh
+gnoblinctl config migrate
+```
+
+```text
+ok  init.ts written: /home/me/.config/gnoblin/init.ts
+ok  gnoblin.d.ts refreshed: /home/me/.config/gnoblin/gnoblin.d.ts
+ok  tsconfig.json created: /home/me/.config/gnoblin/tsconfig.json
+
+Converted
+---------
+settings    19
+workspaces  4
+keys        7
+
+Left out (1)
+------------
+warn  init.lua:31  gnoblin.on("gnoblin.window.created", function(w) ...
+      an event handler runs code: write `on: { clientAdded(client) {} }` or a `ClientListener`
+      see docs/migrating-from-lua.md#what-the-converter-cannot-do
+
+Next:
+  1. Review /home/me/.config/gnoblin/init.ts: each UNMAPPED comment is something to port by hand.
+  2. Check it with `gnoblinctl check --types /home/me/.config/gnoblin/init.ts`.
+  3. Log out and back in. From the next session the TypeScript shell runs and /home/me/.config/gnoblin/init.ts takes precedence over /home/me/.config/gnoblin/init.lua.
+```
+
+The exit code says how it went:
+
+- 0: everything converted.
+- 1: the file was written and something was left out, or the converted file did not load.
+- 2: nothing was written. The command line was wrong, a file could not be read, the Lua does not parse, or a file is in
+  the way. The command stops instead of replacing an existing `OUT`, and instead of writing an `init.ts` beside an
+  `init.js`, unless you add `--force`.
+
+Three options change what it does:
+
+- `--dry-run` prints the TypeScript on standard output and the report on standard error, and writes nothing. It does
+  not stop at a file in the way.
+- `-o OUT` writes the TypeScript to `OUT`, and the editor files beside it.
+- With `--json` it prints `sources`, `converted`, `unmapped` (each with `file`, `line`, `summary`, `reason` and
+  `pointer`), `notes`, `load_problem`, `written`, `dry_run`, and, after a write, `init`, `types`, `tsconfig`,
+  `tsconfig_created` and `next`. With `--dry-run` it also prints `typescript`.
 
 ## Check and types
 

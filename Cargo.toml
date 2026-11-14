@@ -40,6 +40,7 @@ members = [
     "crates/gnoblin-compositor",
     "crates/gnoblin-config",
     "crates/gnoblin-config-codegen",
+    "crates/gnoblin-config-migrate",
     "crates/gnoblin-cursor",
     "crates/gnoblin-portal",
     "crates/gnoblin-portal-appchooser",

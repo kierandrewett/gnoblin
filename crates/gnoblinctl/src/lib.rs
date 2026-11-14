@@ -95,6 +95,7 @@ mod console;
 mod dump;
 mod js;
 mod logs;
+mod migrate;
 mod output;
 mod tree;
 mod value;
@@ -151,6 +152,7 @@ pub fn run(
         }
         cli::Invocation::TypesInit { dir, json } => js::types_init(dir.as_deref(), json, out, err),
         cli::Invocation::ConfigInit { dir, force, json } => js::config_init(dir.as_deref(), force, json, out, err),
+        cli::Invocation::ConfigMigrate { request } => migrate::run(&request, out, err),
         cli::Invocation::Console { eval, json } => console::run_process(eval.as_deref(), json, out, err),
         cli::Invocation::Verb {
             verb: verbs::Verb::ConfigValidate { path },

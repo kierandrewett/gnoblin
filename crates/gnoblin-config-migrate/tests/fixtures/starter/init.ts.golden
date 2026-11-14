@@ -1,0 +1,60 @@
+// init.lua converted to TypeScript by `gnoblinctl config migrate`.
+// Review it before you rely on it: the converter copies data and nothing else.
+// Sources, in load order: init.lua, config/10-windows.lua, config/20-input.lua, config/30-session.lua, config/40-shortcuts.lua.
+import { defineConfig, spawn } from "gnoblin";
+
+export default defineConfig({
+    // From config/10-windows.lua.
+    windowManagement: {
+        focusMode: "click",
+        focusNewWindows: "allow",
+        raiseOnClick: true,
+        autoRaise: false,
+        autoRaiseDelay: 500,
+        checkAliveTimeout: 5000,
+        focusChangeOnPointerRest: false,
+        edgeTiling: true,
+        attachModalDialogs: true,
+        constrainDragToWorkArea: true,
+        actionDoubleClickTitlebar: "toggle-maximize",
+        actionMiddleClickTitlebar: "none",
+        actionRightClickTitlebar: "menu",
+    },
+    workspaces: [
+        { id: "1", name: "Workspace 1" },
+        { id: "2", name: "Workspace 2" },
+        { id: "3", name: "Workspace 3" },
+        { id: "4", name: "Workspace 4" },
+    ],
+    // From config/20-input.lua.
+    cursor: {},
+    input: {
+        mouse: {},
+        touchpad: {},
+        trackball: {},
+        pointingStick: {},
+        keyboard: {},
+    },
+    // From config/30-session.lua.
+    compositor: {
+        locatePointer: false,
+        locatePointerKey: "Control_L",
+        visualBell: false,
+        audibleBell: true,
+        visualBellType: "fullscreen-flash",
+    },
+    protocols: {},
+    layerShell: {
+        preserveActiveWindow: true,
+    },
+    // From config/40-shortcuts.lua.
+    keys: {
+        XF86AudioRaiseVolume: spawn("wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"),
+        XF86AudioLowerVolume: spawn("wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"),
+        XF86AudioMute: spawn("wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"),
+        XF86AudioMicMute: spawn("wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"),
+        XF86AudioPlay: spawn("playerctl", "play-pause"),
+        XF86AudioNext: spawn("playerctl", "next"),
+        XF86AudioPrev: spawn("playerctl", "previous"),
+    },
+});

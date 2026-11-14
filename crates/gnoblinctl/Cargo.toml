@@ -37,6 +37,9 @@ gnoblin-lua = { path = "../gnoblin-lua" }
 # file that checks here is one the shell runtime loads; `types init` writes the editor files.
 gnoblin-js = { path = "../gnoblin-js" }
 gnoblin-js-types = { path = "../gnoblin-js-types" }
+# `config migrate` converts an `init.lua` to `init.ts`. The converter is a pure function of the Lua text and
+# links no Lua host, so it keeps working when the Lua crates are gone.
+gnoblin-config-migrate = { path = "../gnoblin-config-migrate" }
 serde_json.workspace = true
 
 [build-dependencies]

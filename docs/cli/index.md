@@ -19,10 +19,15 @@ gnoblinctl config get
 gnoblinctl config reload
 gnoblinctl config validate FILE
 gnoblinctl config init [DIR] [--force]
+gnoblinctl config migrate [FILE] [-o OUT] [--force] [--dry-run]
 ```
 
-`config validate` and `config init` need no running session. `config init` writes a starter `init.ts`. `config reload` also reloads the `init.ts` of the
-[TypeScript shell](../typescript-shell.md), and exits 1 with `file:line:column` when that file fails to load.
+`config validate`, `config init` and `config migrate` need no running session. `config init` writes a starter `init.ts`.
+`config migrate` converts an `init.lua` to an `init.ts`, and exits 0 when everything converted, 1 when something was left
+out and 2 when nothing was written. See [Convert an init.lua](../gnoblinctl.md#convert-an-initlua).
+
+`config reload` also reloads the `init.ts` of the [TypeScript shell](../typescript-shell.md), and exits 1 with
+`file:line:column` when that file fails to load.
 
 ## TypeScript configuration
 

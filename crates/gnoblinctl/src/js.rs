@@ -90,7 +90,7 @@ pub(crate) fn check(file: &Path, types: bool, json: bool, out: &mut dyn Write, e
 }
 
 /// The theme for a stream, from the environment.
-fn theme(is_terminal: bool) -> OutputTheme {
+pub(crate) fn theme(is_terminal: bool) -> OutputTheme {
     OutputTheme::resolve(ColorChoice::Auto, &OutputEnvironment::detect(is_terminal))
 }
 
@@ -143,6 +143,34 @@ fn load_graph(file: &Path) -> Result<usize, JsError> {
         location: None,
         stack: None,
     })
+}
+
+/// The wall-clock budget for loading a converted config with the stock library: the library is parsed first, so this
+/// is longer than [`CHECK_BUDGET`].
+const VALIDATE_BUDGET: Duration = Duration::from_secs(10);
+
+/// Loads `source` as an `init.ts` with the shell's own stock library and a host that registers nothing, so
+/// `defineConfig` runs every check it runs in a session: an unknown key, a bad trigger, a rule that names a workspace
+/// the config does not declare. `check` cannot do this, because it stubs the `gnoblin` module out. Returns the first
+/// problem as `file:line:column: message`.
+pub(crate) fn validate_define_config(source: &str) -> Result<(), String> {
+    let scratch = Scratch::new().map_err(|error| format!("cannot make a scratch directory: {error}"))?;
+    let entry = scratch.0.join(INIT_FILE);
+    std::fs::write(&entry, source).map_err(|error| format!("cannot write {}: {error}", entry.display()))?;
+    let run = || -> Result<(), JsError> {
+        let mut config = JsConfig::new(&scratch.0);
+        config.stage_budget = VALIDATE_BUDGET;
+        for (name, module) in gnoblin_js::stock_modules() {
+            config = config.embed(name, module);
+        }
+        let generation = JsGeneration::new(&config, 1)?;
+        generation.call_budgeted(VALIDATE_BUDGET, |ctx| {
+            ctx.eval::<Value<'_>, _>("globalThis.gnoblin = { __register() {} };")
+                .map(drop)
+        })?;
+        generation.eval_module(&entry)
+    };
+    run().map_err(|error| describe(&error))
 }
 
 /// The source of an inert host module exporting `names` and a default.
@@ -488,7 +516,7 @@ fn type_check(file: &Path, search: &TscSearch) -> TypeCheck {
 
 /// The directory `types init` writes into when none is named: `$XDG_CONFIG_HOME/gnoblin`, else
 /// `$HOME/.config/gnoblin`, the same directory the runtime reads `init.ts` from.
-fn default_config_dir(paths: &SearchPaths) -> Option<PathBuf> {
+pub(crate) fn default_config_dir(paths: &SearchPaths) -> Option<PathBuf> {
     match (&paths.config_home, &paths.home) {
         (Some(config_home), _) => Some(config_home.join("gnoblin")),
         (None, Some(home)) => Some(home.join(".config").join("gnoblin")),

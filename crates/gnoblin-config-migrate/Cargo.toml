@@ -1,0 +1,22 @@
+[package]
+name = "gnoblin-config-migrate"
+description = "Converts a Lua init.lua (and the files it loads) to a TypeScript init.ts: the data subset exactly, everything else reported with its line. Pure functions, no I/O, no Lua interpreter."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# A lossless Lua parser (MPL-2.0, pure Rust). It gives the syntax tree and each node's position; nothing is
+# evaluated. `lua54` accepts the whole Lua 5.4 grammar so a file with a `goto` or an attribute still parses and is
+# reported statement by statement instead of being refused whole. The `serde` feature is off: no tree is serialised.
+full_moon = { version = "3.0.0", default-features = false, features = ["lua54"] }
+thiserror.workspace = true
+
+[dev-dependencies]
+# The document's own section list: a test fails when the schema gains a section this converter does not know.
+gnoblin-config = { path = "../gnoblin-config" }
+
+[lints]
+workspace = true

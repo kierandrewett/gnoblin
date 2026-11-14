@@ -99,9 +99,9 @@ for this release. ... move your config to init.ts (see docs/migrating-from-lua.m
 ```
 
 [Migrating from Lua](migrating-from-lua.md) maps each Lua construct to its TypeScript equivalent. Run
-`gnoblinctl config init` to write a starter `init.ts`: from then on the TypeScript shell runs, and the `init.lua` beside
-it is ignored. Setting `GNOBLIN_SHELL_VM=js` with only an `init.lua` starts the TypeScript shell on the stock config and
-says that the Lua file is not read.
+`gnoblinctl config migrate` to convert your `init.lua` to an `init.ts`, or `gnoblinctl config init` to write a starter:
+from then on the TypeScript shell runs, and the `init.lua` beside it is ignored. Setting `GNOBLIN_SHELL_VM=js` with only
+an `init.lua` starts the TypeScript shell on the stock config and says that the Lua file is not read.
 
 ## Check a file
 
