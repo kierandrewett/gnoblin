@@ -37,7 +37,7 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use crate::shell_role::{ShellSlot, connect_session_shell, installed_stock_dir};
+use crate::shell_role::{JsShellLauncher, ShellSlot, connect_session_shell, installed_stock_dir};
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{
     Client, ClientError, Environment, Inherited, Reporter, Transport, inherited_stream, privilege, report,
@@ -146,6 +146,17 @@ impl RoleRunner {
     ///
     /// [`RoleError`] for each documented failure mode.
     pub fn run(self, stop: impl Fn() -> bool) -> Result<(), RoleError> {
+        self.run_with_js(stop, None)
+    }
+
+    /// Run the role like [`run`](Self::run), in a build that can also run the JavaScript shell: with
+    /// `GNOBLIN_SHELL_VM=js` (or `js:<dir>`) `js` starts it in place of the Lua shell VM, and the Lua host still
+    /// loads and commits the configuration. Any other value is what [`run`](Self::run) does.
+    ///
+    /// # Errors
+    ///
+    /// [`RoleError`] for each documented failure mode.
+    pub fn run_with_js(self, stop: impl Fn() -> bool, js: Option<JsShellLauncher<'_>>) -> Result<(), RoleError> {
         if (self.env)(TEST_CRASH_VARIABLE).is_some() {
             return Err(RoleError::Serving(format!(
                 "{TEST_CRASH_VARIABLE} is set, so the runtime exits at once"
@@ -183,7 +194,7 @@ impl RoleRunner {
 
         let installed = installed_stock_dir(&self.env);
         let user_dir = loaded.path.path().parent().map(Path::to_path_buf);
-        let mut shell = ShellSlot::from_env(&self.env, &installed, |dir| {
+        let mut shell = ShellSlot::from_env_or_js(&self.env, &installed, js, |dir| {
             connect_session_shell(&self.env, dir, user_dir.as_deref())
         });
         serve(&mut host, &stop, &self.paths, &mut reporter, &mut shell)

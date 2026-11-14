@@ -153,15 +153,18 @@ const COMPAT_HOSTS: &[&str] = &[COMPAT_HOST];
 /// policy crate directly would be a second composition root: two places deciding which
 /// backend runs, which IPC server serves and how a snapshot becomes an object.
 ///
-/// The three others are role entry points, named because the binary is what runs a role:
+/// The others are role entry points, named because the binary is what runs a role:
 /// `gnoblin-session` for the guardian, and `gnoblin-lua` and `gnoblin-services` for the two
 /// roles the guardian starts. Each is the top of its own process, so an edge to it decides
 /// nothing the composition root decides — the compositor, the engine and the policy crates
-/// stay out of reach either way.
+/// stay out of reach either way. `gnoblin-js` is the JavaScript shell the runtime role runs in
+/// place of the Lua shell VM: the Lua crate cannot name it (the two are siblings), so the binary,
+/// which already names both ends, is the one place that links it.
 const BINARY_ROOTS: &[&str] = &[
     "gnoblin-compositor",
     "gnoblin-session",
     "gnoblin-lua",
+    "gnoblin-js",
     "gnoblin-services",
 ];
 

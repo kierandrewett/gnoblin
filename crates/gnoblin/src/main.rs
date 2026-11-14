@@ -215,16 +215,41 @@ fn guardian() -> Result<(), Exit> {
 
 /// Runs the runtime: the Lua host, until the session ends.
 ///
+/// With `GNOBLIN_SHELL_VM=js` (or `js:<dir>`) the shell that runs beside the Lua host is the JavaScript one, which
+/// this binary is the place to link: `gnoblin-lua` and `gnoblin-js` are siblings and neither names the other.
+///
 /// No signal handler: the guardian's `SIGTERM` ends this process, and a process that has
 /// gone is exactly what the compositor needs to see to release its connection.
 fn runtime() -> Result<(), Exit> {
-    match gnoblin_lua::RoleRunner::from_environment().run(never_stopped) {
+    match gnoblin_lua::RoleRunner::from_environment().run_with_js(never_stopped, Some(&launch_js_shell)) {
         Ok(()) => Ok(()),
         Err(error) => {
             log::error!("{error}");
             Err(Exit(1))
         }
     }
+}
+
+/// The JavaScript shell, as the runtime role's loop drives it: one frame per turn.
+struct JsShellFrame(gnoblin_js::JsRole);
+
+impl gnoblin_lua::shell_role::ShellFrame for JsShellFrame {
+    fn tick(&mut self, _now: f64) -> Result<(), String> {
+        self.0.tick().map_err(|error| error.to_string())
+    }
+}
+
+/// Starts the JavaScript shell over the session's owner socket, loading `init.ts` from the user's config
+/// directory and the stock library from `stock` when `js:<dir>` named one.
+fn launch_js_shell(
+    env: &dyn Fn(&str) -> Option<String>,
+    stock: Option<&std::path::Path>,
+) -> Result<Box<dyn gnoblin_lua::shell_role::ShellFrame>, String> {
+    let dir = gnoblin_js::config_dir(env)
+        .ok_or_else(|| "neither XDG_CONFIG_HOME nor HOME is set, so there is no config directory".to_owned())?;
+    let config = gnoblin_js::JsRoleConfig::new(dir, stock.map(std::path::Path::to_path_buf));
+    let role = gnoblin_js::JsRole::connect(env, config).map_err(|error| error.to_string())?;
+    Ok(Box::new(JsShellFrame(role)))
 }
 
 /// Runs the services role: the D-Bus agents, until the session ends.

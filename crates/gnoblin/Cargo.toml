@@ -26,6 +26,10 @@ gnoblin-log = { path = "../gnoblin-log", features = ["init"] }
 # The runtime role: the Lua host as its own process (D1). A role entry point, not an
 # engine: the binary hands it the inherited connection and stays out of the way.
 gnoblin-lua = { path = "../gnoblin-lua" }
+# The JavaScript shell the runtime role runs in place of the Lua shell VM when `GNOBLIN_SHELL_VM=js`. Like the
+# Lua host it is a role entry point and an IPC client: it links no engine, and the binary is where the two
+# shells meet.
+gnoblin-js = { path = "../gnoblin-js" }
 # The services role: the D-Bus agents as their own process.
 gnoblin-services = { path = "../gnoblin-services" }
 # The compat wiring: which adapters exist and how each process serves them. The binary
@@ -47,3 +51,12 @@ gnoblinctl = { path = "../gnoblinctl" }
 gnoblin-compositor = { path = "../gnoblin-compositor" }
 # A test kills a child the way a crash does, which is one signal to one process group.
 rustix = { workspace = true, features = ["process"] }
+# `tests/js_shell.rs` runs the JavaScript shell against a real compositor session: the compositor's crate may
+# not name the shell (and the shell's crate may not name the compositor), so the test lives where both are
+# allowed. It maps real windows with a Wayland client, reads the scene back as a tree observer, and reads what
+# the shell logged.
+wayland-client = "0.31.14"
+wayland-protocols = { version = "0.32.13", features = ["client"] }
+gnoblin-client = { path = "../gnoblin-client" }
+gnoblin-proto = { path = "../gnoblin-proto" }
+gnoblin-log = { path = "../gnoblin-log", features = ["capture"] }
