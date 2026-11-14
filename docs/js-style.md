@@ -162,6 +162,12 @@ The tree has three effect kinds (blur, shadow and border), a node `corner_radius
 | `border`         | yes  | yes (hard edge)                  | no, reported `skipped` |
 | `blur`           | yes  | no, reported `skipped`           | no, reported `skipped` |
 
+Two decorated windows on the GLES renderer with `cornerRadius: 12`, a 2 pixel inset border and a shadow. The corners are
+cut from the frame, the titlebar included, the border runs over the titlebar's top edge and round the arc, and the shadow
+surrounds the whole frame:
+
+![Two decorated terminals with rounded corners, a violet border over the titlebar and a shadow on the window beneath](images/js-shell/rounded.png)
+
 A node placed in 3D (a rotation about x or y, a `z`, or a perspective camera above it) draws no shadow, border or blur,
 and its `skipped` list says `unsupported-effect-on-3d`; its corner radius is still drawn.
 

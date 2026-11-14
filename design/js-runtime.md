@@ -1381,8 +1381,10 @@ the frame pass), `effects` and `skipped` in `crates/gnoblin-js/src/bindings/prop
   A capture draws what the output draws; a secure layer keeps its silhouette in the mask and loses its effects, and no
   backdrop effect samples a secure layer. **Proven:** GLES probes on llvmpipe (`crates/gnoblin-render-gles/src/shape_tests.rs`),
   software probes (`shape.rs`), the composer's frame and pixels (`decorated_window_tests.rs`), scene damage, the wire
-  and the JS mapping. **Not proven:** a live screenshot of a rounded, bordered, shadowed decorated window, and a
-  real-compositor `js_shell.rs` test of the new fields.
+  and the JS mapping. **Also proven:** a real-compositor test (`a_corner_radius_a_border_and_a_shadow_reach_...` in
+  `crates/gnoblin/tests/js_shell.rs`) and a live picture on llvmpipe GLES (`rounded` scenario of
+  `scripts/js-shell-screenshots.sh`, `docs/images/js-shell/rounded.png`): the corners are cut from the frame, the border
+  runs over the titlebar and round the arc, and the shadow surrounds the whole frame, titlebar included.
 
 ## Transitions status
 
@@ -1808,6 +1810,7 @@ Each scenario boots its own session over a fresh directory, so one can be run al
 | `reload-tiled`, `transition-mid`              | a reload of three tiled windows (before and after compared); a frame mid-transition       |
 | `window-menu`                                 | the window menu, opened with `Alt+Space` sent by `wtype`                                  |
 | `lock`                                        | `gnoblinctl lock`, then a capture, which is refused                                       |
+| `rounded`                                     | decorated windows with `cornerRadius`, a border and a shadow on GLES                      |
 
 The pictures (`/home/kieran/dev/lanes/JsLiveVerify-shots/` on the workstation of the lane) are not in the repository except
 four that are clean product states and are in `docs/typescript-shell.md`, "What it looks like": `docs/images/js-shell/`.

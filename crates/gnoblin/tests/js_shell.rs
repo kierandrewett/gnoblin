@@ -3761,6 +3761,103 @@ defineConfig({ workspaces: [{ id: "desk", layout: new Layout() }] });
     shell.finish();
 }
 
+/// One effect as the native style tests compare it: `(kind, frame, width, colour)`.
+type FrameEffectRow = (String, bool, f64, String);
+
+/// What the compositor holds on the window node of `app` for the native style: its `corner_radius` (0 when the node
+/// holds none) and its effects as `(kind, frame, width, colour)`.
+fn frame_style_of(ipc: &Path, app: &str) -> Option<(f64, Vec<FrameEffectRow>)> {
+    let node = snapshot(ipc)
+        .into_iter()
+        .find(|node| node.class == "window" && node.app_id == app)?;
+    let radius = node
+        .props
+        .iter()
+        .find(|prop| prop.key == "corner_radius")
+        .map_or(0.0, |prop| prop.value_double);
+    let effects = node
+        .props
+        .iter()
+        .find(|prop| prop.key == "effects")
+        .map(|prop| {
+            prop.value_effects
+                .iter()
+                .map(|e| (e.kind.clone(), e.frame, e.width, e.colour.clone()))
+                .collect()
+        })
+        .unwrap_or_default();
+    Some((radius, effects))
+}
+
+/// A style of `cornerRadius`, a border and a shadow ends as the node's `corner_radius`, a frame shadow and a border,
+/// on a mapped window and on the same window once the shell decorates it; and a reload without the lines clears them.
+#[test]
+fn a_corner_radius_a_border_and_a_shadow_reach_a_mapped_and_a_decorated_windows_node_and_a_reload_clears_them() {
+    let session = Session::start();
+    let mut mapper = Mapper::connect(&session.wayland()).requesting_server_side();
+    let config = tempfile::tempdir().expect("a config directory");
+    let style = r##"style: {
+        cornerRadius: 12,
+        borders: [{ width: 2, color: "#7c3aed", inset: true }],
+        shadows: [{ y: 8, blur: 24, color: "#00000066" }],
+    },"##;
+    let init = |decorations: bool, style: &str| {
+        format!(
+            "import {{ Layout, defineConfig }} from \"gnoblin\";\n\ndefineConfig({{\n    workspaces: [{{ id: \"desk\", layout: new Layout() }}],\n    decorations: {decorations},\n    {style}\n}});\n"
+        )
+    };
+    fs::write(config.path().join("init.ts"), init(false, style)).expect("init.ts");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let ipc = session.ipc();
+    wait_for("the shell runs the config", &session, &mut mapper, &shell, || {
+        shell.generation() > 0 && shell.view().contains(", 1 workspaces")
+    });
+    let app = "org.example.rounded";
+    mapper.map_window(app, "Rounded");
+    let want = (
+        12.0,
+        vec![
+            ("shadow".to_owned(), true, 0.0, "#00000066".to_owned()),
+            ("border".to_owned(), false, 2.0, "#7c3aedff".to_owned()),
+        ],
+    );
+    wait_for(
+        "the style reaches a mapped window",
+        &session,
+        &mut mapper,
+        &shell,
+        || frame_style_of(&ipc, app).as_ref() == Some(&want) && bars_under(&ipc, app) == 0,
+    );
+
+    // The shell decorates the window: the style stays on its node, now with a titlebar under it.
+    let generation = shell.generation();
+    save(&config.path().join("init.ts"), &init(true, style));
+    wait_for(
+        "the window is decorated and still styled",
+        &session,
+        &mut mapper,
+        &shell,
+        || {
+            shell.generation() > generation
+                && bars_under(&ipc, app) == 1
+                && frame_style_of(&ipc, app).as_ref() == Some(&want)
+        },
+    );
+
+    // A reload without the lines takes the radius and the effects off the node.
+    let generation = shell.generation();
+    save(&config.path().join("init.ts"), &init(true, ""));
+    wait_for("the reload clears the style", &session, &mut mapper, &shell, || {
+        shell.generation() > generation && frame_style_of(&ipc, app) == Some((0.0, Vec::new()))
+    });
+    let diagnostics = shell.diagnostics();
+    assert!(
+        diagnostics.iter().all(|text| !text.contains("not applied")),
+        "the radius, the border and the shadow are all drawn, so none is reported: {diagnostics:?}"
+    );
+    shell.finish();
+}
+
 // ---- XR: the program's seat, and the room the stock shell builds for it ------------------------------------------
 
 /// What the XR program does, as an observer of the owner socket: it makes a seat named `xr`, and a `controller` for a

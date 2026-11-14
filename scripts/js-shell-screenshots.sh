@@ -9,7 +9,7 @@
 # Usage: scripts/js-shell-screenshots.sh [OUT_DIR [SCENARIO...]]
 #
 # SCENARIO is one or more of: one-window cascade master-stack master-stack-decorated dwindle dwindle-decorated
-# shadows-software shadows-gles csd-double csd-own csd-tiled reload-tiled transition-mid window-menu lock. The default is all of them.
+# shadows-software shadows-gles csd-double csd-own csd-tiled reload-tiled transition-mid window-menu lock rounded. The default is all of them.
 # GNOBLIN_BIN_DIR names where `gnoblin` and `gnoblinctl` are (default: $CARGO_TARGET_DIR/release, else
 # target/release).
 #
@@ -26,7 +26,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bin_dir="${GNOBLIN_BIN_DIR:-${CARGO_TARGET_DIR:-$repo_root/target}/release}"
 out_dir="${1:-$PWD/js-shell-shots}"
 shift || true
-wanted="${*:-one-window cascade master-stack master-stack-decorated dwindle dwindle-decorated shadows-software shadows-gles csd-double csd-own csd-tiled reload-tiled transition-mid window-menu lock}"
+wanted="${*:-one-window cascade master-stack master-stack-decorated dwindle dwindle-decorated shadows-software shadows-gles csd-double csd-own csd-tiled reload-tiled transition-mid window-menu lock rounded}"
 
 for tool in grim foot dbus-daemon; do
     command -v "$tool" >/dev/null || {
@@ -401,11 +401,36 @@ scenario_transition_mid() {
     stop_session
 }
 
+# rounded: decorated windows with a 12 pixel corner radius, a 2 pixel border and a shadow, on the GLES renderer. The
+# second window overlaps the first, so the first's shadow falls on a colour and not on the black the stock shell leaves
+# behind the windows, and the corners of both show what is behind them.
+scenario_rounded() {
+    start_session "import { defaultConfig, defineConfig } from \"gnoblin\";
+
+export default defineConfig({
+    ...defaultConfig,
+    decorations: true,
+    compositor: { renderer: \"gles\" },
+    style: {
+        cornerRadius: 12,
+        borders: [{ width: 2, color: \"#7c3aed\", inset: true }],
+        shadows: [{ x: 0, y: 12, blur: 32, color: \"#000000cc\" }],
+    },
+});"
+    restart_session
+    plain_window org.example.status "gnoblinctl status" "#1e3a5f" "gnoblinctl status"
+    wait_windows 1
+    plain_window org.example.windows "gnoblinctl window list" "#5f1e3a" "gnoblinctl window list"
+    wait_windows 2
+    shoot rounded
+    stop_session
+}
+
 main() {
     local scenario
     for scenario in $wanted; do
         case "$scenario" in
-            one-window | cascade | master-stack | master-stack-decorated | dwindle | dwindle-decorated | shadows-software | shadows-gles | csd-double | csd-own | csd-tiled | reload-tiled | transition-mid | window-menu | lock)
+            one-window | cascade | master-stack | master-stack-decorated | dwindle | dwindle-decorated | shadows-software | shadows-gles | csd-double | csd-own | csd-tiled | reload-tiled | transition-mid | window-menu | lock | rounded)
                 "scenario_${scenario//-/_}"
                 ;;
             *)
