@@ -49,8 +49,9 @@ tempfile = "3.23.0"
 # and read the version the compositor advertises from the crate that serves it.
 gnoblinctl = { path = "../gnoblinctl" }
 gnoblin-compositor = { path = "../gnoblin-compositor" }
-# A test kills a child the way a crash does, which is one signal to one process group.
-rustix = { workspace = true, features = ["process"] }
+# A test kills a child the way a crash does, which is one signal to one process group; the authentication test plays
+# the guardian, whose control socket is a SEQPACKET pair (`net`).
+rustix = { workspace = true, features = ["process", "net"] }
 # `tests/js_shell.rs` runs the JavaScript shell against a real compositor session: the compositor's crate may
 # not name the shell (and the shell's crate may not name the compositor), so the test lives where both are
 # allowed. It maps real windows with a Wayland client, reads the scene back as a tree observer, and reads what

@@ -254,8 +254,8 @@ fn a_request_reaches_the_provider_with_what_a_prompt_needs() {
     assert_eq!(rig.eval("gnoblin.authentication.requests.length"), "1");
     assert_eq!(
         rig.slots.calls(),
-        ["claim_slot auth.polkit"],
-        "hearing a request answers nothing"
+        ["claim_slot auth.polkit", "claim_request 7"],
+        "the shell claims a request as it is offered, and hearing it answers nothing"
     );
 }
 
@@ -290,10 +290,10 @@ fn decline_refuses_with_a_reason_that_defaults_to_denied() {
         &rig.slots.calls()[1..],
         [
             "claim_request 1",
-            "decline 1 denied",
             "claim_request 2",
-            "decline 2 locked",
             "claim_request 3",
+            "decline 1 denied",
+            "decline 2 locked",
             "decline 3 unavailable"
         ]
     );
@@ -324,7 +324,7 @@ fn a_provider_may_settle_a_request_in_a_later_frame() {
     }
     assert_eq!(
         rig.slots.calls(),
-        ["claim_slot auth.polkit"],
+        ["claim_slot auth.polkit", "claim_request 7"],
         "the user is still reading the prompt"
     );
     rig.eval("g.last.allow('unix-user:kieran')");
@@ -357,7 +357,7 @@ fn an_identity_is_a_non_empty_string_of_at_most_256_bytes_and_a_reason_is_one_of
     assert_eq!(attempt(&mut rig, "g.last.decline('maybe')"), "TypeError");
     assert_eq!(rig.eval("g.last.open"), "true", "a refused call settles nothing");
     rig.frame();
-    assert_eq!(rig.slots.calls(), ["claim_slot auth.polkit"]);
+    assert_eq!(rig.slots.calls(), ["claim_slot auth.polkit", "claim_request 7"]);
 }
 
 #[test]
@@ -376,7 +376,7 @@ fn a_request_that_ended_cannot_be_answered_and_the_provider_is_told() {
     rig.frame();
     assert_eq!(
         rig.slots.calls(),
-        ["claim_slot auth.polkit"],
+        ["claim_slot auth.polkit", "claim_request 7"],
         "a late answer sends nothing"
     );
 }
@@ -410,7 +410,7 @@ fn a_provider_that_throws_is_reported_once_and_the_request_stays_open_for_its_de
     );
     assert_eq!(
         rig.slots.calls(),
-        ["claim_slot auth.polkit"],
+        ["claim_slot auth.polkit", "claim_request 1", "claim_request 2"],
         "a script that failed answered nothing"
     );
 }

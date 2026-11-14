@@ -31,7 +31,7 @@ use gnoblin_client::{Client, ClientError, PortalOutcome, PortalTicket};
 use gnoblin_compositor::{Compositor, InputTap, OutputTap, SessionConfig, StopHandle};
 use gnoblin_js::{JsHealth, JsRole, JsRoleConfig};
 use gnoblin_log::event::capture::logged;
-use gnoblin_model::Fields;
+use gnoblin_model::{Fields, Filter, RequestCompletion, TypeKey, Value};
 use gnoblin_proto::tree::op;
 use gnoblin_proto::tree::tree::{AttachArgs, AttachedPayload, ReplyPayload, SnapshotPayload, TransactArgs};
 use gnoblin_proto::{Envelope, Kind, read_frame, write_frame};
@@ -3252,5 +3252,342 @@ fn a_script_reads_the_sessions_status_runs_a_timer_and_a_process_and_is_told_of_
         "a refused reload leaves the generation that asked"
     );
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    shell.finish();
+}
+
+// ---- idle watches, the authentication slot and launch feedback ----------------------------------------------------
+
+/// What the compositor's `idle` object publishes: how long the session has been idle in milliseconds, and how many
+/// holds keep it awake.
+fn idle_object(ipc: &Path) -> (u64, u64) {
+    let mut client = owner_client(ipc);
+    let snapshot = client.subscribe(Filter::All).expect("the snapshot");
+    let view = snapshot
+        .objects()
+        .iter()
+        .find(|view| view.ty() == &TypeKey::gnoblin("idle"))
+        .expect("the compositor publishes an idle object");
+    let uint = |name: &str| match view.property(name) {
+        Some(Value::Uint(value)) => *value,
+        other => panic!("the idle object's {name} is {other:?}"),
+    };
+    (uint("idle_ms"), uint("inhibitors"))
+}
+
+/// An `init.ts` with an idle watch of 400 ms that records what it heard, and whatever else `extra` adds.
+fn write_idle_config(dir: &Path, extra: &str) {
+    save(
+        &dir.join("init.ts"),
+        &format!(
+            r#"import {{ gnoblin }} from "gnoblin";
+
+const seen: string[] = [];
+{extra}
+gnoblin.idle.watch(400, {{
+    onIdle: () => seen.push("idle"),
+    onResume: () => seen.push("resume"),
+}});
+(globalThis as {{ probe?: () => string }}).probe = () => seen.join(",");
+"#
+        ),
+    );
+}
+
+/// A script's idle watch runs `onIdle` when the compositor's own idle clock passes its time and `onResume` on the first
+/// input after, and counts again: the whole path from the `idle` object over the shell's owner connection.
+#[test]
+fn an_idle_watch_hears_the_compositors_idle_clock_pass_its_time_and_the_input_that_ends_it() {
+    let session = Session::start();
+    let mut mapper = Mapper::connect(&session.wayland());
+    let config = tempfile::tempdir().expect("a config directory");
+    write_idle_config(config.path(), "");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    wait_for(
+        "the watch heard the session go idle",
+        &session,
+        &mut mapper,
+        &shell,
+        || shell.probe() == "idle",
+    );
+    let mut step = 0;
+    wait_for("the watch heard input", &session, &mut mapper, &shell, || {
+        // Input keeps the session active until the shell has seen it, and stops once it has.
+        step += 1;
+        if shell.probe() == "idle" {
+            motion(&session, 40 + (step % 2) * 8, 40);
+        }
+        shell.probe().starts_with("idle,resume")
+    });
+    wait_for(
+        "the watch counted again and went idle again",
+        &session,
+        &mut mapper,
+        &shell,
+        || shell.probe() == "idle,resume,idle",
+    );
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    shell.finish();
+}
+
+/// A hold is the compositor's: the `idle` object counts it in `inhibitors` and the watch is not idle while one stands,
+/// however long the session has been. A reload retires the generation that held it, and that gives the hold back.
+#[test]
+fn an_idle_hold_delays_the_watch_and_a_reload_that_retires_its_generation_gives_it_back() {
+    let session = Session::start();
+    let ipc = session.ipc();
+    let mut mapper = Mapper::connect(&session.wayland());
+    let config = tempfile::tempdir().expect("a config directory");
+    write_idle_config(config.path(), r#"gnoblin.idle.inhibit("js-shell-test");"#);
+    let shell = Shell::start(&session, config.path(), |_| {});
+    wait_for("the compositor counts the hold", &session, &mut mapper, &shell, || {
+        idle_object(&ipc).1 == 1
+    });
+    // The session has been idle for far longer than the watch's 400 ms, and the watch has heard nothing: nothing else
+    // can be waited for, because a hold that works is an event that does not happen.
+    wait_for(
+        "the session is idle well past the watch's time",
+        &session,
+        &mut mapper,
+        &shell,
+        || idle_object(&ipc).0 >= 1_500,
+    );
+    assert_eq!(shell.probe(), "", "a held session is not idle");
+
+    let before = shell.generation();
+    write_idle_config(config.path(), "");
+    wait_for(
+        "the reload gave the hold back and the new generation's watch went idle",
+        &session,
+        &mut mapper,
+        &shell,
+        || shell.generation() > before && idle_object(&ipc).1 == 0 && shell.probe() == "idle",
+    );
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    shell.finish();
+}
+
+/// The shell's launch registry over real windows: a window of the application starts the launch, the deadline times
+/// another out, and the application ID is matched the way the page says.
+#[test]
+fn a_launch_is_started_by_its_applications_window_and_timed_out_by_its_deadline() {
+    let session = Session::start();
+    let mut mapper = Mapper::connect(&session.wayland());
+    let config = tempfile::tempdir().expect("a config directory");
+    save(
+        &config.path().join("init.ts"),
+        r#"import { gnoblin } from "gnoblin";
+
+const launches = [
+    gnoblin.launches.begin("opens", "org.example.Opens.desktop", { timeoutMs: 10000 }),
+    gnoblin.launches.begin("never", "org.example.Never", { timeoutMs: 300 }),
+];
+(globalThis as { probe?: () => string }).probe = () => launches.map((launch) => launch.state).join(",");
+"#,
+    );
+    let shell = Shell::start(&session, config.path(), |_| {});
+    wait_for("the second launch timed out", &session, &mut mapper, &shell, || {
+        shell.probe() == "pending,timed_out"
+    });
+    mapper.map_window("org.example.opens", "Opened");
+    wait_for("the window started its launch", &session, &mut mapper, &shell, || {
+        shell.probe() == "started,timed_out"
+    });
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    shell.finish();
+}
+
+/// A session whose guardian handed it one privileged connection, for the `services` role: the end that role holds, which
+/// is the one that may offer a request.
+struct Services {
+    // Dropped before the session: the compositor's control thread reads the guardian's end until it closes.
+    _guardian: std::os::fd::OwnedFd,
+    role: Option<UnixStream>,
+    session: Session,
+}
+
+impl Services {
+    fn start() -> Self {
+        let (guardian, compositor_control) = rustix::net::socketpair(
+            rustix::net::AddressFamily::UNIX,
+            rustix::net::SocketType::SEQPACKET,
+            rustix::net::SocketFlags::CLOEXEC,
+            None,
+        )
+        .expect("a control socket pair");
+        let (compositor_end, role_end) = UnixStream::pair().expect("a socket pair");
+        gnoblin_proto::privilege::send_handover(&guardian, "services", &compositor_end).expect("the handover");
+        let mut privileged = gnoblin_compositor::Privileged::declared();
+        privileged.retain(|entry| entry.role == "services");
+        let session = Session::start_with(move |config| {
+            config.privileged = privileged;
+            config.guardian = Some(UnixStream::from(compositor_control));
+        });
+        Self {
+            _guardian: guardian,
+            role: Some(role_end),
+            session,
+        }
+    }
+
+    /// The services role's own connection: the one an agent offers requests on.
+    fn role_client(&mut self) -> Client<UnixTransport> {
+        let stream = self.role.take().expect("the role's end is taken once");
+        let transport = UnixTransport::from_stream(stream).expect("a transport");
+        let (major, minor, patch) = gnoblin_proto::IPC_VERSION;
+        let mut client = Client::connect(transport, Version::new(major, minor, patch)).expect("the handshake");
+        client
+            .set_read_timeout(Some(Duration::from_millis(100)))
+            .expect("a read deadline");
+        client
+    }
+
+    /// Who provides the `auth.polkit` slot, as the session object publishes it.
+    fn provider(&self) -> String {
+        let mut client = owner_client(&self.session.ipc());
+        let snapshot = client.subscribe(Filter::All).expect("the snapshot");
+        snapshot
+            .objects()
+            .iter()
+            .find(|view| view.ty().to_string() == "gnoblin.session")
+            .and_then(|view| match view.property("slot_auth_polkit") {
+                Some(Value::Text(provider)) => Some(provider.clone()),
+                _ => None,
+            })
+            .expect("the session object names the slot's provider")
+    }
+}
+
+const AUTHENTICATION: &str = r#"import { AuthenticationProvider, gnoblin } from "gnoblin";
+
+const seen: string[] = [];
+class Prompt extends AuthenticationProvider {
+    onRequest(request) {
+        seen.push(`${request.subject}:${request.title}`);
+        if (request.subject === "org.example.allow") {
+            request.allow("unix-user:test");
+        } else if (request.subject === "org.example.deny") {
+            request.decline("denied");
+        }
+        // Any other request is left open, as a prompt the user has not answered yet.
+    }
+}
+gnoblin.authentication.setProvider(new Prompt());
+(globalThis as { probe?: () => string }).probe = () => seen.join(",");
+"#;
+
+/// The next event the services connection is sent that `pick` takes, within the patience of a test.
+#[track_caller]
+fn services_event<T>(
+    services: &mut Client<UnixTransport>,
+    what: &str,
+    mut pick: impl FnMut(gnoblin_client::Event) -> Option<T>,
+) -> T {
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        match services.next_event() {
+            Ok(event) => {
+                if let Some(found) = pick(event) {
+                    return found;
+                }
+            }
+            Err(ClientError::Idle) => {}
+            Err(error) => panic!("the services connection failed while waiting for {what}: {error}"),
+        }
+        assert!(Instant::now() < deadline, "never reached: {what}");
+    }
+}
+
+/// The shell holds the `auth.polkit` slot while a provider is set, so the services role's offer reaches the script, and
+/// what the script settles goes back: an identity is an answer only the offering host reads, a decline is a refusal.
+/// A reload that drops the provider gives the slot back to the services role.
+#[test]
+fn an_authentication_provider_answers_polkit_requests_and_gives_the_slot_back_on_reload() {
+    let mut services = Services::start();
+    let mut offerer = services.role_client();
+    let mut mapper = Mapper::connect(&services.session.wayland());
+    let config = tempfile::tempdir().expect("a config directory");
+    save(&config.path().join("init.ts"), AUTHENTICATION);
+    let shell = Shell::start(&services.session, config.path(), |_| {});
+    wait_for(
+        "the shell holds the slot",
+        &services.session,
+        &mut mapper,
+        &shell,
+        || services.provider() == "shell",
+    );
+
+    let allowed = offerer
+        .offer(
+            "auth.polkit",
+            "Authentication required",
+            "Authenticate to mount",
+            b"org.example.allow",
+            Duration::from_secs(60),
+        )
+        .expect("the slot has a provider");
+    let answer = services_event(&mut offerer, "the provider's answer", |event| match event {
+        gnoblin_client::Event::RequestAnswered { request, answer } if request == allowed => Some(answer),
+        _ => None,
+    });
+    assert_eq!(
+        answer.as_slice(),
+        b"unix-user:test",
+        "the answer is the identity and only it"
+    );
+
+    let denied = offerer
+        .offer(
+            "auth.polkit",
+            "Authentication required",
+            "Authenticate to mount",
+            b"org.example.deny",
+            Duration::from_secs(60),
+        )
+        .expect("the slot has a provider");
+    let completion = services_event(&mut offerer, "the refusal", |event| match event {
+        gnoblin_client::Event::RequestFinished { request, completion } if request == denied => Some(completion),
+        _ => None,
+    });
+    assert!(matches!(completion, RequestCompletion::Refused(_)), "{completion:?}");
+
+    // A request the script leaves open ends when the shell does: the compositor knows the shell holds it.
+    let open = offerer
+        .offer(
+            "auth.polkit",
+            "Authentication required",
+            "Authenticate to mount",
+            b"org.example.later",
+            Duration::from_secs(60),
+        )
+        .expect("the slot has a provider");
+    wait_for(
+        "the script saw all three requests",
+        &services.session,
+        &mut mapper,
+        &shell,
+        || shell.probe().matches("Authentication required").count() == 3,
+    );
+
+    let before = shell.generation();
+    save(&config.path().join("init.ts"), "// no provider\n");
+    wait_for(
+        "the reload released the slot",
+        &services.session,
+        &mut mapper,
+        &shell,
+        || shell.generation() > before && services.provider() == "services",
+    );
+    let completion = services_event(
+        &mut offerer,
+        "the open request ended with the generation",
+        |event| match event {
+            gnoblin_client::Event::RequestFinished { request, completion } if request == open => Some(completion),
+            _ => None,
+        },
+    );
+    assert!(
+        matches!(completion, RequestCompletion::Refused(_) | RequestCompletion::Ended),
+        "a request a retired generation held is ended, not left to its deadline: {completion:?}"
+    );
     shell.finish();
 }

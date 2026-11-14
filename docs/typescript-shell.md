@@ -198,6 +198,13 @@ See [JavaScript session, process and timer API](/js-host-api).
 `inspect.bindings()` and `inspect.config()` return what the shell holds as plain data. See
 [Console and inspector](/js-console).
 
+## Idle, authentication and launches
+
+`gnoblin.idle.watch(ms, { onIdle, onResume })` runs code when the session has had no input for a while,
+`gnoblin.authentication.setProvider(provider)` makes the shell the session's polkit authentication agent, and
+`gnoblin.launches.begin(token, application)` tracks the busy state between a launch and its window. See
+[Idle, authentication and launch feedback](/js-host-api).
+
 ## XR
 
 `gnoblin.extensions.xr` is `null` until the XR program has a session, so a config guards it and works without a headset.

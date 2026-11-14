@@ -121,7 +121,21 @@ impl JsAuth {
                 let mut seen = Vec::with_capacity(events.len());
                 for event in events {
                     match &event {
-                        SlotEvent::Offered { slot, request, .. } if slot == SLOT => self.held.push(*request),
+                        // The shell claims the request as it is offered, so the compositor knows who holds it: a
+                        // shell that goes away before it answers ends the request at once and not at its deadline.
+                        SlotEvent::Offered { slot, request, .. } if slot == SLOT => {
+                            match link.claim_request(*request) {
+                                Ok(()) => self.held.push(*request),
+                                Err(error) => {
+                                    log::debug!(
+                                        area = "auth",
+                                        request = *request,
+                                        "the request was not claimed: {error}"
+                                    );
+                                    continue;
+                                }
+                            }
+                        }
                         // A request of a slot this shell never claimed is not its to answer.
                         SlotEvent::Offered { .. } => continue,
                         SlotEvent::Finished { request, .. } => self.held.retain(|held| held != request),
@@ -144,7 +158,7 @@ impl JsAuth {
         }
     }
 
-    /// Gives the compositor the script's answer: the request is claimed and answered or declined. A request that has
+    /// Gives the compositor the script's answer: the request it holds is answered or declined. A request that has
     /// already ended is not an error: the requester may have withdrawn it while the user was reading the prompt.
     pub(crate) fn reply(&mut self, reply: &JsAuthReply, diagnostics: &mut Vec<String>) {
         let request = reply.request();
@@ -163,18 +177,15 @@ impl JsAuth {
                          request is declined",
                         identity.len()
                     ));
-                    link.claim_request(request)
-                        .and_then(|()| link.decline(request, Some(DeclineReason::Denied)))
+                    link.decline(request, Some(DeclineReason::Denied))
                 } else {
                     log::info!(area = "auth", request, "the authentication provider allowed a request");
-                    link.claim_request(request)
-                        .and_then(|()| link.answer(request, identity.as_bytes()))
+                    link.answer(request, identity.as_bytes())
                 }
             }
             JsAuthReply::Decline { reason, .. } => {
                 log::info!(area = "auth", request, "the authentication provider declined a request");
-                link.claim_request(request)
-                    .and_then(|()| link.decline(request, Some(*reason)))
+                link.decline(request, Some(*reason))
             }
         };
         if let Err(error) = sent {
@@ -189,10 +200,7 @@ impl JsAuth {
             return;
         };
         for request in held {
-            if let Err(error) = link
-                .claim_request(request)
-                .and_then(|()| link.decline(request, Some(DeclineReason::Unavailable)))
-            {
+            if let Err(error) = link.decline(request, Some(DeclineReason::Unavailable)) {
                 log::debug!(area = "auth", request, "the decline was not delivered: {error}");
             }
         }
