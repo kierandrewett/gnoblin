@@ -566,7 +566,8 @@ compositor stands in only for the unit tests of `swap_generation` (`crates/gnobl
   arrival after the listeners have run, so a config that wants its own listener to place windows declares a workspace
   with the base `Layout`, as the tests do.
 - **Not done.** Input events and chords (the binding lane). The document, slots, `on` and `setup` are in "P6 config
-  document and slots status"; `style`, `outputs` and `rules` are still not applied. Removing `init.ts` under a running
+  document and slots status"; `style` is in "P8a style status"; `outputs` is still not applied. `rules` are in
+  "Focus, rules and snapping status". Removing `init.ts` under a running
   shell keeps its generation until the session restarts.
 
 ## P6 config document and slots status
@@ -600,7 +601,7 @@ over fakes, `crates/gnoblin/tests/js_shell.rs` against the real compositor.
 | `xwayland`                                                            | document `xwayland`                                                                                                                                                        | applied: live (restarts the X11 server when no X11 client is connected)                                      |
 | `keyring`, `location`, `compat`, `capture`, `logging`                 | document sections read when a process starts                                                                                                                               | committed; takes effect at the next start of that process (the compositor says so in a `not applied` notice) |
 | `layerShell`, `auth`                                                  | document sections nothing reads yet                                                                                                                                        | committed; not applied (notice)                                                                              |
-| `style`                                                               | stored as written                                                                                                                                                          | **not applied: needs native style objects (P8)**                                                             |
+| `style`                                                               | `gnoblin.clients.style`, the global scope of the style cascade; `rules[].style` is the client's own style                                                                  | applied: opacity, outer shadows, backdrop blur; the rest is noticed, not drawn (P8a)                         |
 | `outputs`                                                             | stored as written. The document has only the global `monitors.global-scale`, and a screen's tree properties are read-only                                                  | **not applied: needs native style objects (P8)**                                                             |
 | `rules`                                                               | stored as written; lane JsStockFocus owns `rules.ts`                                                                                                                       | not applied by this lane                                                                                     |
 | `launcher`                                                            | a `Super+space` key running the command, unless `keys` binds that trigger                                                                                                  | applied (a key, see `keys`)                                                                                  |
@@ -911,11 +912,83 @@ the titlebar's gestures, fade and reserved room. User page: `docs/js-ui.md`.
   that answers no ping gets the alert, Escape (Wait) closes it, and Force quit (armed) closes it: the compositor refuses
   `kill` for its own process, which is this test's, so the kill itself is proven against the fake link only.
 
+## P8a style status
+
+Lane JsStyle. The style model of owner-spec section 6 (`design/js-research/owner-spec.md`) over the existing node
+`effects` and `opacity`, with no renderer feature added. Code: `data/js/gnoblin/style.ts` (the classes, the cascade, the
+mapping to effects; no host import), the style section of `crates/gnoblin-js/js/gnoblin.ts` (scopes, `Client.style`,
+the frame pass), `effects` and `skipped` in `crates/gnoblin-js/src/bindings/props.rs`. Tests:
+`crates/gnoblin-js/tests/style.rs` over fakes, `a_global_style_becomes_the_effect_list_...` in
+`crates/gnoblin/tests/js_shell.rs` against the real compositor. User page: `docs/js-style.md`.
+
+- **Classes.** `Style`, `ClientStyle`, `Border`, `Shadow`, `BlurFilter`, `SaturateFilter`, `BrightnessFilter` and
+  `ContrastFilter` (the spec's cookbook uses `{ contrast }`) are ordinary ES classes exported from `gnoblin`. A literal
+  in a list is normalised to its class; `{ blur: 18 }` in a filter list is a `BlurFilter` of radius 18.
+- **Scopes and the cascade.** `Collection.style` is the scope's defaults: `gnoblin.clients.style` (global), a workspace's
+  `clients.style`, a `where()` selection's `.style` (`where(query, { priority })`), and `client.style` (the client's
+  own overrides). A scope holds only what was set on it, so `client.style.cornerRadius` is `undefined` when the client
+  does not override it. Precedence, lowest first: built-in defaults, global, workspace, selections by priority and then
+  by the order their style was first used (later wins), client. A selection of `workspace.clients` is ranked as a
+  selection, which answers spec-review 1.12. `computedStyle` is resolved on every read from the live scopes: a frozen
+  object with the value of each property and `origin` naming the scope it came from. `Node.style` (spec-review ST2 `(+)`)
+  is not implemented.
+- **Unset, `null`, `[]`.** Each property of a scope is a value or unset; `undefined` is unset, so assigning `undefined`
+  and `unset(name)` are the same, and `reset()` unsets all. `null` is a value (`background = null` hides what the scopes
+  above set), and `[]` is an explicit empty list.
+- **Copy on write (decision for spec-review 1.13, owner question 2).** Reading a list a scope does not override returns a
+  copy of the inherited list whose elements know they are copies. The first write to one of them makes the copy the
+  scope's own list, then applies the write, so nothing leaks to the scope the list came from or to other clients. The
+  client detaches from later edits of the inherited list. A copy handed out earlier and written later commits as it was
+  read. The cost is that `client.style.shadows[0]` is readable without an override (the review's other option made it
+  throw).
+- **Observable changes, no Proxy.** A field of an element and a scalar of a style is an accessor: it checks the value,
+  throws with the property path (`Client#42.style.borders[2].width: must be finite and >= 0`) and leaves the previous
+  value, bumps one module counter (the style epoch) and, on a copy, commits it. An array a script changed in place
+  (`push`, `splice`, `list[0] = {...}`) cannot be intercepted: the frame pass (`syncStyleLists`) compares each array
+  with its entries at the last check, validates new entries, makes literals elements, and puts the old entries back and
+  reports an error for a bad change. Assigning a list copies it: `style.shadows = array` does not adopt `array`.
+- **Limits.** `MAX_STYLE_LIST` is 8 per list and 8 effects per node (the backdrop blur and the outer shadows). Numbers
+  take the renderer's ranges: blur and shadow blur 0 to 100, spread -100 to 100, grades 0 to 2, opacity 0 to 1.
+- **Application.** `applyStyles` runs at the end of `layout()` each frame: it checks in-place changes, then for each
+  client compares the style epoch and the names of the scopes it sits under (a `where()` it joined or left, a
+  workspace move) with the last application, and only a client that moved is resolved and written. Writes happen only
+  when the value changed: `effects` as JSON against the last write, `opacity` against the last resolved value. The
+  first application of a client compares with what the node holds (a window an earlier generation styled), writing an
+  empty list when the style has no effects and the node has some, and the opacity when it differs: that is how a style
+  line removed on reload takes its effect away. `client.opacity` stays the raw node property (animations and the
+  overview write it); a style opacity is written only when it changes, so a later animation of the node is not undone
+  by an unrelated style change.
+- **What a style becomes.** `opacity` is the node's `opacity`. Outer `shadows` are `shadow` effects (`x`, `y` to
+  `offset_x`, `offset_y`; `blur` to `blur_radius`; `spread`; the colour as `#rrggbbaa`), listed last to first so the
+  first shadow is on top (paint order is first to last). `backdropFilter` is one `blur` effect (documented defaults,
+  `downscale` 2, `passes` 3) when a `BlurFilter` has a radius above 0, listed before the shadows; the chain's
+  saturate, brightness and contrast multiply into its `saturation`, `brightness` and `contrast`.
+- **Not applied, and said so.** The tree has no corner radius, border, background or content filter, and an inset
+  shadow has no effect kind; the blur radius is fixed at 12 by the compositor (`BLUR_RADIUS`), so a radius only
+  switches the blur on; a grade above 2 is drawn as 2; a saturate, brightness or contrast without a blur has nothing to
+  draw. Each stays in `computedStyle`, becomes a line of `client.styleWarnings`, and is reported once per generation as
+  a diagnostic `not applied: style.<property>: <reason>` (`takeNotices`, read by `collect_reports`). The compositor's
+  own list of effects it skipped (`skipped` in `node.toml`; the task called it `effects_unsupported`) is appended to
+  `client.styleWarnings`. GLES draws blur and shadow; the software and Vulkan renderers draw none.
+- **Config.** `defineConfig({ style })` is validated by `desugarConfig` (errors name `config.style`) and set on
+  `gnoblin.clients.style` before `setup` runs, so `setup` can change it. `rules[].style` (`opacity`, `cornerRadius`,
+  `shadows`) is set on the matched client's own style through `RuleHost.setStyle` and `setOpacity`, which replaces
+  `RuleEngine.styleOf`: a rule beats every scope, and a rule that stops matching unsets what it set. A rule's `opacity`
+  of 1 (what an undone rule restores) unsets the style's opacity instead of pinning it.
+- **Proven on the real compositor.** A config with `style: { opacity, shadows }` and a window rule's `opacity` ends as the
+  `effects` list and `opacity` of three mapped windows' nodes in the scene (one with a `where()` selection's own
+  shadow), and a reload without the lines takes both off. **Proven against the fake link only:** the cascade
+  (ST1 to ST5, ST7), copy on write, the mapping, the notices, the 8-effect cap and the rule routing. **Not proven:**
+  that a renderer draws the effects (GLES only, not exercised here), `ST6` (secure masking).
+- **Not done.** `Node.style` and `workspace.style`; animating a style value with `requestTransition`; any renderer
+  feature (corner radius, borders, content filters, inset shadows, a blur radius, a background), which the owner must
+  schedule as renderer work; a titlebar restore animation still ends at opacity 1, not the style's opacity.
+
 ## Questions for the owner (the agent has a default for each)
 
 1. Initial workspace rule for a new toplevel. Default: the workspace shown by the display under the
    pointer.
-2. Inherited style lists: copy on write when an element is mutated. Default: yes.
+2. Inherited style lists: copy on write when an element is mutated. Default: yes. Done: "P8a style status".
 3. `where()` queries are data only, so Rust can evaluate them. Default: yes.
 4. Trigger grammar. Default: the existing Lua shortcut grammar, typed as template literal types.
 5. Port `prompts.lua`? Default: no. Rust draws consent. See `popups-portals.md` section 8 for the
