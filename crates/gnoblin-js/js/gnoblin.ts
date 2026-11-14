@@ -79,6 +79,7 @@ import { gestureDirection, onPinch, onSwipe } from "gnoblin/gesture_actions";
 import type { GestureActions, GestureTools } from "gnoblin/gesture_actions";
 import { repositioning } from "gnoblin/reposition";
 import type { RepositionClient } from "gnoblin/reposition";
+import { installDefaults } from "gnoblin/starter";
 import {
     ClientStyle,
     bindStyle,
@@ -213,7 +214,7 @@ interface Entry {
     render(value: unknown, maxBytes?: number): string;
     /** Gives a config that declared no workspace the stock one. */
     finishLoad(): void;
-    /** Registers the stock config alone, for a shell that has no user entry to run. */
+    /** Runs the stock default (`installDefaults` of `gnoblin/starter`) for a shell that has no user entry to run. */
     loadDefault(): void;
     snapshot(): WorkspaceSnapshot;
     reconcile(previous: WorkspaceSnapshot): void;
@@ -4636,12 +4637,21 @@ function currentFocusSettings(): FocusSettings {
     return focusSettings(focusOverrides, "config.focus", base);
 }
 
-/** The stock window rules and focus policy, once a config is registered. */
+/**
+ * The stock window rules and focus policy. The focus policy is attached for every config, so a plain `init.ts` has
+ * click focus and the built-in snapping; the rules engine is attached only by the deprecated `defineConfig`.
+ */
 let stock: { rules: RuleEngine<Client>; focus: FocusPolicy<Client> } | null = null;
 
-/** Replaces the config's stock rules and focus policy while preserving their listener order. */
+/** What `installStock` reads of a config plan: the stock rules, focus settings and snap knobs. */
+type StockPlan = Pick<ConfigPlan, "rules" | "focus" | "edgeTiling" | "dragConstraint">;
 
-function installStock(plan: ConfigPlan): void {
+/** The plan of a shell whose config has none: no rules, the built-in focus policy and edge snapping. */
+const BUILT_IN_STOCK: StockPlan = { rules: [], focus: {}, edgeTiling: null, dragConstraint: null };
+
+/** Replaces the stock rules and focus policy while preserving their listener order. */
+
+function installStock(plan: StockPlan): void {
     if (stock !== null) {
         clientRoot.self.removeListener(stock.rules);
         clientRoot.self.removeListener(stock.focus);
@@ -4679,13 +4689,15 @@ function installStock(plan: ConfigPlan): void {
 // The stock lock screen is part of the runtime, not of a config: a locked session must always have one to type into.
 attachLock(host.lock);
 
-/** Optional decoration manager, initialized when the stock titlebars are enabled. */
+/** Optional decoration manager, created by `startDecorations`. */
 
 let decorations: Decorations | null = null;
 
-/** Creates stock decorations once and routes titlebar actions through host state. */
-
-function decorate(): void {
+/**
+ * Puts the stock titlebar on every window, once: the buttons, the drag and the double click. Library code for an
+ * `init.ts` that wants titlebars; a config that does not call it has none. Calling it again changes nothing.
+ */
+export function startDecorations(): void {
     if (decorations === null) {
         decorations = new Decorations(
             (client) => stateOf(client as Client).node,
@@ -4866,8 +4878,8 @@ function checkDocument(patch: ConfigPlan["document"], autostart: ConfigPlan["aut
     }
 }
 
-/** The window menu, once a config asks for it: it answers the compositor's menu requests. */
-function startMenus(): void {
+/** Starts the window menu once: it answers the compositor's menu requests. A config that does not call it has none. */
+export function startWindowMenu(): void {
     if (windowMenu.started) {
         return;
     }
@@ -4897,8 +4909,8 @@ function startMenus(): void {
     });
 }
 
-/** The not-responding alert, once a config asks for it. */
-function startAlerts(): void {
+/** Starts the not-responding alert once: the dialog for a window that stops answering. */
+export function startNotRespondingAlert(): void {
     if (!notRespondingAlerts.started) {
         notRespondingAlerts.start({
             clients: () => clientRoot.list as Client[],
@@ -5234,7 +5246,8 @@ class Gnoblin {
     }
 
     /**
-     * The hook `defineConfig` calls with the config it was given. The config is laid over the stock one
+     * Deprecated compatibility path, kept until the tests and docs that use `defineConfig` are rewritten: nothing in the
+     * boot path calls it. The hook `defineConfig` calls with the config it was given. The config is laid over the stock one
      * (`mergeConfig`), then the document settings are checked (a refused value throws, which fails the stage and
      * keeps the running generation), the declared workspaces become real `Workspace` objects in
      * `gnoblin.workspaces`, the keys are bound on the first seat, the `on` handlers are attached and `setup` runs.
@@ -5254,13 +5267,13 @@ class Gnoblin {
             (workspaceRoot.self as WorkspaceCollection).sets.define([...plan.workspaceSets]);
         }
         if (plan.decorations) {
-            decorate();
+            startDecorations();
         }
         if (plan.menus) {
-            startMenus();
+            startWindowMenu();
         }
         if (plan.alerts) {
-            startAlerts();
+            startNotRespondingAlert();
         }
         bindKeys([...plan.bindings, ...planStockLauncher(merged)]);
         installStock(plan);
@@ -5336,6 +5349,7 @@ function bindKeys(keys: readonly PlannedKey[]): void {
 
 export const gnoblin = new Gnoblin();
 trackLaunches();
+installStock(BUILT_IN_STOCK);
 
 // ---- Console and shell entry ----
 // Registers inspectable objects, adopts the initial tree, and exposes frame callbacks to the shell.
@@ -5471,7 +5485,7 @@ host.entry = {
     idleFailed: (holder) => idleMonitor.failed(holder),
     layout,
     finishLoad: ensureDefaultWorkspace,
-    loadDefault: () => gnoblin.__register(defaultConfig),
+    loadDefault: () => installDefaults(gnoblin),
     snapshot: snapshotWorkspaces,
     reconcile: reconcileWorkspaces,
     pointer,

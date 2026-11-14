@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use gnoblin_client::Client;
 use gnoblin_client::unix::UnixTransport;
-use gnoblin_js::{JsConfig, JsGeneration, STARTER_CONFIG, stock_modules};
+use gnoblin_js::{JsConfig, JsGeneration, stock_modules};
 use gnoblinctl::{ConnectFailure, Connection};
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -271,13 +271,19 @@ fn the_starter_converts_to_a_config_that_loads_and_makes_the_lua_starters_docume
 }
 
 #[test]
-fn the_converted_starter_runs_the_same_bindings_and_workspaces_as_the_typescript_starter() {
+fn the_converted_starter_runs_the_same_bindings_and_workspaces_as_the_stock_default() {
     let (dir, init) = copied_starter();
     assert_eq!(migrate(&init, &[]).0, 0);
-    let starter = TempDir::new().expect("a temp dir");
-    write(starter.path(), "init.ts", STARTER_CONFIG);
-    // The TypeScript starter is the stock config as written, so what the session runs for it is the stock config.
-    assert_eq!(effective(dir.path()), effective(starter.path()));
+    let stock = TempDir::new().expect("a temp dir");
+    // The TypeScript starter is imperative code now and no longer a plan, so the stock default is what an empty
+    // `defineConfig` lays over it: the same bindings and workspaces the default builds
+    // (`crates/gnoblin-js/tests/starter_parity.rs` holds the starter to them).
+    write(
+        stock.path(),
+        "init.ts",
+        "import { defineConfig } from \"gnoblin\";\nexport default defineConfig({});\n",
+    );
+    assert_eq!(effective(dir.path()), effective(stock.path()));
 }
 
 #[test]

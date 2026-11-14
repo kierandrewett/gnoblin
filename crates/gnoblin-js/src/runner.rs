@@ -8,8 +8,10 @@
 //!    `gnoblin.runtime.reloadConfig()`) asks for a reload;
 //! 2. locates the user's config ([`gnoblin_config::locate`]: `init.ts`, `init.js`, then `init.lua`), warns about
 //!    the files that lost to it, and boots a [`JsRole`] that evaluates it. The role owns the whole document
-//!    ([`JsRoleConfig::owns_document`]): the settings `defineConfig` sets, plus its `autostart` commands as the
-//!    document's `autostart` section, are validated and committed to the compositor as one revision;
+//!    ([`JsRoleConfig::owns_document`]): the settings the config's objects write (the device settings, and for the
+//!    deprecated `defineConfig` its document keys and `autostart` commands as the document's `autostart` section) are
+//!    validated and committed to the compositor as one revision. With no `init.ts` the stock default runs and the
+//!    document is empty;
 //! 3. tells the guardian each revision the compositor accepted: one `autostart` line for every enabled entry, then
 //!    `config-accepted`, and after the first commit `ready` with `GNOBLIN_CONFIG_REVISION`;
 //! 4. serves: one shell frame per turn, a reload when the compositor asks for one or the watcher saw a save, until

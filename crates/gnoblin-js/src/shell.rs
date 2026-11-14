@@ -569,6 +569,35 @@ impl JsShell {
         self.state.borrow_mut().config.set_owns_document(true);
     }
 
+    /// The document the running generation declares, as a tree: what the spec objects wrote to the document (the
+    /// device settings) with the generation's `autostart` commands laid in as the `autostart` section. Nothing is
+    /// committed and nothing is started; a throwaway shell over an inert tree reads a config's document this way
+    /// ([`evaluate_document`](crate::evaluate_document)).
+    ///
+    /// # Errors
+    ///
+    /// The entry's `document` or `autostart` could not be read, or either is not what the shell parses.
+    pub fn declared_document(&mut self) -> Result<gnoblin_config::Value, JsShellError> {
+        let invalid = |reason: String| {
+            JsShellError::Js(JsError {
+                kind: JsErrorKind::Exception,
+                message: format!("the config's document could not be read: {reason}"),
+                location: None,
+                stack: None,
+            })
+        };
+        let text: String = self.call_entry(self.entry_budget, |entry| {
+            entry.get::<_, Function<'_>>("document")?.call(())
+        })?;
+        let mut document = parse_patch(&text).map_err(invalid)?;
+        let commands: String = self.call_entry(self.entry_budget, |entry| {
+            entry.get::<_, Function<'_>>("autostart")?.call(())
+        })?;
+        let commands = autostart::parse(&commands).map_err(|error| invalid(error.to_string()))?;
+        autostart::lay_over(&mut document, &commands);
+        Ok(document)
+    }
+
     /// The dialog observation of one frame: what the compositor offered goes to the listeners, which run under the
     /// usual budgets, and the verdicts they gave go back. A request the listeners did not refuse is answered
     /// `pass`, so it never waits on a script. The slot is claimed or released to match the generation's listeners.
@@ -705,8 +734,9 @@ impl JsShell {
     }
 
     /// Runs the stock default config as the generation's whole config, for a shell with no user entry (or whose
-    /// entry could not load): four floating workspaces and the stock keys, declared exactly as a user's
-    /// `defineConfig({})` would declare them. Returns the failures of calls that ran while it loaded.
+    /// entry could not load): `installDefaults` of `gnoblin/starter`, which declares four floating workspaces, the
+    /// titlebar, menu and alert helpers and the stock keys with the same calls a user's `init.ts` makes. Returns the
+    /// failures of calls that ran while it loaded.
     ///
     /// # Errors
     ///

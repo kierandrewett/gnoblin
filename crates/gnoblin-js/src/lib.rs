@@ -21,11 +21,11 @@
 //! - [`JsRole`] is the runtime role's shell: it connects a [`JsShell`] to the owner socket, loads the user's
 //!   `init.ts`, and owns the watcher, reloader and supervisor that swap a new generation in or keep the old one.
 //!   It holds the shell's two other owner connections: one for slots (the dialog observation of `gnoblin.dialogs`)
-//!   and one for the configuration document (what `defineConfig` sets in it).
+//!   and one for the configuration document (what the device objects write to it).
 //! - [`JsRoleRunner`] is the whole runtime role: it locates the config, boots a [`JsRole`] that owns the
 //!   configuration document, reports to the guardian, and serves `config.reload`.
-//! - [`evaluate_document`] reads a config's document in a throwaway generation with no session, for the services role's
-//!   first-boot `keyring.enabled` decision.
+//! - [`evaluate_document`] reads a config's document in a throwaway shell over an inert tree, with no session, for the
+//!   services role's first-boot `keyring.enabled` decision.
 
 mod autostart;
 mod bindings;

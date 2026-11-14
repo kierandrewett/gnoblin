@@ -3671,8 +3671,8 @@ fn the_starter_is_the_stock_config_as_written_and_its_examples_work_switched_on(
     let zero_generation = shell.generation();
     let window = ids(&scene(&ipc));
 
-    // The starter as written is a real config (a `defineConfig`, so a reload), and it binds and declares what the
-    // stock one did.
+    // The starter as written is the stock default written out as an `init.ts`, so it declares and binds what the
+    // default did.
     save(&init, gnoblin_js::STARTER_CONFIG);
     wait_for("the starter is loaded", &session, &mut mapper, &shell, || {
         shell.generation() > zero_generation
@@ -3690,15 +3690,8 @@ fn the_starter_is_the_stock_config_as_written_and_its_examples_work_switched_on(
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
     assert_eq!(ids(&scene(&ipc)), window, "the window kept its id through the reload");
 
-    // Switched on: the examples are the second workspace, three keys, a rule, an autostart command and `setup`. The
-    // command appends a line to a file, and `notify-send` becomes `true` so the `setup` example starts nothing odd.
-    let marker = config.path().join("autostarted");
-    let on = switched_on(gnoblin_js::STARTER_CONFIG)
-        .replace(
-            "\"waybar\",",
-            &format!("[\"/bin/sh\", \"-c\", \"echo started >> {}\"],", marker.display()),
-        )
-        .replace("\"notify-send\"", "\"true\"");
+    // Switched on: the examples are the second workspace, two keys and a style. Nothing else changes.
+    let on = switched_on(gnoblin_js::STARTER_CONFIG);
     assert_ne!(on, gnoblin_js::STARTER_CONFIG, "the examples were switched on");
     save(&init, &on);
     wait_for("the examples are on", &session, &mut mapper, &shell, || {
@@ -3706,7 +3699,7 @@ fn the_starter_is_the_stock_config_as_written_and_its_examples_work_switched_on(
     });
     let view = shell.view();
     let keys = bound_keys(&view);
-    for key in ["Super+Return", "Super+b", "Super+q"] {
+    for key in ["Super+Return", "Super+q"] {
         assert!(keys.contains(&key), "the example key {key}: {keys:?}");
     }
     for key in &zero_keys {
@@ -3717,21 +3710,13 @@ fn the_starter_is_the_stock_config_as_written_and_its_examples_work_switched_on(
     }
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 
-    // The autostart command ran once; a reload does not run it again.
-    wait_for("the autostart command ran", &session, &mut mapper, &shell, || {
-        fs::read_to_string(&marker).is_ok_and(|text| text.lines().count() == 1)
-    });
+    // A reload of the same file is accepted and leaves the world as it was.
     let generation = shell.generation();
     save(&init, &format!("{on}// touched\n"));
     wait_for("the reload", &session, &mut mapper, &shell, || {
         shell.generation() > generation
     });
-    idle(&mut mapper, Duration::from_millis(500));
-    assert_eq!(
-        fs::read_to_string(&marker).expect("the marker").lines().count(),
-        1,
-        "a reload does not start an autostart command again"
-    );
+    assert_eq!(bound_keys(&shell.view()), keys, "the same keys after the reload");
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 }
 

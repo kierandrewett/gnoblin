@@ -1,60 +1,100 @@
 //! A user's config, read for its document and nothing else.
 //!
-//! [`evaluate_document`] answers "what would this config commit?" without a session: a throwaway generation (no
-//! tree, no host objects, a short budget) evaluates the entry, and what `defineConfig` was given is merged over the
-//! stock config and desugared exactly as the shell does it (`mergeConfig` and `desugarConfig` of the stock library).
-//! The services role uses it for the first-boot `keyring.enabled` decision, which has to be made before the runtime
-//! role has committed anything.
+//! [`evaluate_document`] answers "what would this config commit?" without a session. It boots a throwaway
+//! [`JsShell`] over an inert tree (the root node and one seat, which every compositor has: no windows, no outputs, no
+//! devices), runs the entry in it with a short budget and reads the document the entry's objects wrote
+//! ([`JsShell::declared_document`]). The services role uses it for the first-boot `keyring.enabled` decision,
+//! which has to be made before the runtime role has committed anything.
 //!
-//! **What it cannot read.** The generation has no compositor: a config that needs a host object while its module
-//! loads (a top-level `gnoblin.clients.length`, an import of a stock module that touches the tree) fails here and
-//! only here. The caller treats that as "not known yet" and waits for the document the runtime commits, which is
-//! authoritative. A config that only calls `defineConfig` with data and functions, which is what the starter and
-//! the documented examples do, is read in full.
+//! **What it reads.** The shell is the real one, so a spec-style `init.ts` (workspaces, bindings, listeners)
+//! loads as written and writes the same document it would in a session. Nothing starts: no program is spawned, no
+//! claim is made, no transaction is answered. `keyring` and `autostart` have no source in an `init.ts` any more, so a
+//! config's document holds only what the device objects wrote, and the keyring keeps its default.
+//!
+//! **What it cannot read.** The tree is empty, so a config that decides a setting from live state (`gnoblin.outputs`,
+//! `gnoblin.clients`) sees none. The caller treats this document as a first-boot hint and waits for the document the
+//! runtime commits, which is authoritative. A config that throws or needs more than [`DOCUMENT_BUDGET`] is an error.
 
 use std::path::Path;
 use std::time::Duration;
 
-use gnoblin_config::Value;
+use gnoblin_tree_client::tree_mirror::{
+    Attached, LinkError, MirrorValue, SnapshotNode, TreeIncoming, TreeLink, TreeTx,
+};
 
-use crate::autostart;
 use crate::error::{JsError, JsErrorKind};
-use crate::generation::{JsConfig, JsGeneration};
-use crate::stock::stock_modules;
+use crate::shell::{JsShell, JsShellConfig, JsShellError};
 
 /// The wall-clock budget for evaluating the entry. A config's top level only declares things, and the services
 /// role must not wait on it, so a loop that never ends is cut off quickly.
 pub const DOCUMENT_BUDGET: Duration = Duration::from_secs(1);
 
-/// The heap limit of the throwaway generation, in bytes.
-const DOCUMENT_MEMORY: usize = 32 << 20;
+/// The id of the inert tree's root node.
+const ROOT: u64 = 1;
 
-/// The module that stands in for the host: its `__register` is where `defineConfig` hands over the config, and it
-/// keeps the document the shell would have committed and the autostart commands.
-const PROBE: &str = r##"
-import { defaultConfig, desugarConfig, mergeConfig } from "gnoblin";
-globalThis.__documentPlan = "";
-globalThis.gnoblin = {
-    __register(config) {
-        const plan = desugarConfig(mergeConfig(defaultConfig, config));
-        globalThis.__documentPlan = JSON.stringify({ document: plan.document, autostart: plan.autostart });
-    },
-};
-"##;
+/// The id of the inert tree's one seat, so `gnoblin.input.primary` is there for a config that binds keys.
+const SEAT: u64 = 2;
 
-/// The name the probe module is embedded under.
-const PROBE_NAME: &str = "gnoblin-document-probe";
+/// A compositor with nothing in it: the root node and a seat, which answers every attach and accepts every transaction.
+#[derive(Default)]
+struct InertTree {
+    queue: Vec<TreeIncoming>,
+}
 
-/// The document the config at `entry` commits, as JSON bytes: its `defineConfig` document settings, and its
-/// `autostart` commands as the document's `autostart` section. `{}` when the config never calls `defineConfig`.
+impl TreeLink for InertTree {
+    fn attach(&mut self, _version: u64) -> Result<(), LinkError> {
+        self.queue.push(TreeIncoming::Attached(Attached {
+            epoch: 1,
+            root: ROOT,
+            serial: 0,
+        }));
+        self.queue.push(TreeIncoming::Snapshot {
+            serial: 0,
+            chunk: 0,
+            last: true,
+            nodes: vec![
+                SnapshotNode {
+                    id: ROOT,
+                    parent: 0,
+                    index: 0,
+                    class: "node".to_owned(),
+                    title: String::new(),
+                    app_id: String::new(),
+                    props: Vec::new(),
+                },
+                SnapshotNode {
+                    id: SEAT,
+                    parent: ROOT,
+                    index: 0,
+                    class: "seat".to_owned(),
+                    title: String::new(),
+                    app_id: String::new(),
+                    props: vec![("name".to_owned(), MirrorValue::Text("seat0".to_owned()))],
+                },
+            ],
+        });
+        Ok(())
+    }
+
+    fn transact(&mut self, _tx: &TreeTx) -> Result<(), LinkError> {
+        Ok(())
+    }
+
+    fn poll(&mut self) -> Result<Vec<TreeIncoming>, LinkError> {
+        Ok(std::mem::take(&mut self.queue))
+    }
+}
+
+/// The document the config at `entry` commits, as JSON bytes: what its objects wrote to the document, and its
+/// autostart commands (only the deprecated `defineConfig` has any) as the document's `autostart` section. `{}` for a
+/// config that writes nothing there.
 ///
 /// The relative imports of `entry` resolve under its own directory, as they do in the shell.
 ///
 /// # Errors
 ///
-/// The entry cannot be read, does not load (a syntax error, an import that does not resolve, a throw, a host
-/// object it needs at load time), runs past [`DOCUMENT_BUDGET`], or its `autostart` is not a list of commands. The
-/// error says where, in the author's `.ts` coordinates.
+/// The entry cannot be read, does not load (a syntax error, an import that does not resolve, a throw), or runs past
+/// [`DOCUMENT_BUDGET`]. The error says where, in the author's `.ts` coordinates.
 pub fn evaluate_document(entry: &Path) -> Result<Vec<u8>, JsError> {
     let unreadable = |reason: String| JsError {
         kind: JsErrorKind::Load,
@@ -66,42 +106,24 @@ pub fn evaluate_document(entry: &Path) -> Result<Vec<u8>, JsError> {
     let root = entry
         .parent()
         .ok_or_else(|| unreadable("it has no directory".to_owned()))?;
-    let mut config = JsConfig::new(root).embed(PROBE_NAME, PROBE);
-    config.stage_budget = DOCUMENT_BUDGET;
-    config.memory_limit = DOCUMENT_MEMORY;
-    for (name, source) in stock_modules() {
-        config = config.embed(name, source);
-    }
-    let generation = JsGeneration::new(&config, 1)?;
-    generation.eval_specifier(PROBE_NAME.to_owned())?;
-    generation.eval_module(&entry)?;
-    let plan: String = generation.call_budgeted(DOCUMENT_BUDGET, |ctx| ctx.globals().get("__documentPlan"))?;
-    document_of(&plan)
-}
-
-/// The document bytes for the plan text the probe left, or `{}` when it left none.
-fn document_of(plan: &str) -> Result<Vec<u8>, JsError> {
-    let invalid = |reason: String| JsError {
-        kind: JsErrorKind::Exception,
-        message: format!("the config's document could not be read: {reason}"),
-        location: None,
-        stack: None,
+    let mut config = JsShellConfig::new(root);
+    config.js.stage_budget = DOCUMENT_BUDGET;
+    config.entry_budget = DOCUMENT_BUDGET;
+    config.frame_budget = DOCUMENT_BUDGET;
+    let failed = |error: JsShellError| match error {
+        JsShellError::Js(error) => error,
+        other => JsError {
+            kind: JsErrorKind::Load,
+            message: other.to_string(),
+            location: None,
+            stack: None,
+        },
     };
-    if plan.is_empty() {
-        return Ok(b"{}".to_vec());
-    }
-    let json: serde_json::Value = serde_json::from_str(plan).map_err(|error| invalid(error.to_string()))?;
-    let mut document = json
-        .get("document")
-        .and_then(Value::from_json)
-        .ok_or_else(|| invalid("the plan has no document".to_owned()))?;
-    let commands = json
-        .get("autostart")
-        .map(|commands| autostart::parse(&commands.to_string()))
-        .transpose()
-        .map_err(|error| invalid(error.to_string()))?
-        .unwrap_or_default();
-    autostart::lay_over(&mut document, &commands);
+    let mut shell = JsShell::new(Box::<InertTree>::default(), config).map_err(failed)?;
+    // The shell owns the document, so its autostart commands go into the document instead of being started here.
+    shell.own_document();
+    shell.load_entry(&entry).map_err(failed)?;
+    let document = shell.declared_document().map_err(failed)?;
     Ok(document.to_json().to_string().into_bytes())
 }
 
@@ -189,10 +211,31 @@ mod tests {
     }
 
     #[test]
-    fn a_config_that_needs_the_host_while_it_loads_is_an_error_not_a_guess() {
-        let error = document("export const n = (globalThis as any).gnoblin.clients.length;\n")
-            .expect_err("the throwaway generation has no clients");
-        assert!(!error.to_string().is_empty());
+    fn a_config_that_reads_live_state_sees_an_empty_world() {
+        let document = document(
+            "const n = (globalThis as any).gnoblin.clients.length + gnoblin.outputs.length;\n\
+             if (n !== 0) throw new Error(`the world is not empty: ${n}`);\n",
+        )
+        .expect("the inert tree has no clients and no outputs");
+        assert_eq!(document, serde_json::json!({}));
+    }
+
+    #[test]
+    fn a_spec_style_config_that_declares_workspaces_and_binds_keys_loads_and_has_an_empty_document() {
+        let document = document(
+            r#"import { FloatingLayout, Workspace } from "gnoblin";
+            gnoblin.workspaces.add(new Workspace({ id: "web", layout: new FloatingLayout() }));
+            gnoblin.input.primary.bind("Super+w", () => {});
+            gnoblin.clients.style.cornerRadius = 8;"#,
+        )
+        .expect("a spec-style config loads in the inert shell");
+        assert_eq!(document, serde_json::json!({}));
+    }
+
+    #[test]
+    fn the_starter_loads_and_has_an_empty_document() {
+        let document = document(crate::stock::STARTER_CONFIG).expect("the starter loads in the inert shell");
+        assert_eq!(document, serde_json::json!({}), "the keyring keeps its default");
     }
 
     #[test]

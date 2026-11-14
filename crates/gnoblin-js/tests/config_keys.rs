@@ -7,7 +7,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use gnoblin_config::TOP_LEVEL_KEYS;
-use gnoblin_js::{JsConfig, JsGeneration, STARTER_CONFIG, stock_modules};
+use gnoblin_js::{JsConfig, JsGeneration, stock_modules};
 
 /// The fake host and the helper every case shares. Plain JavaScript: embedded modules are not stripped.
 const HARNESS: &str = r##"
@@ -295,130 +295,6 @@ fn a_wrong_value_names_the_path_and_the_expected_type() {
         ]
         .join("\n")
     );
-}
-
-// --- the starter `gnoblinctl config init` writes ---------------------------------------------------------------
-
-/// Evaluates `probe` (TypeScript) in a module that imports the default export of `entry` as `starter`, with the stock
-/// library imported, and returns what it passed to `emit`.
-fn run_entry(entry: &str, probe: &str) -> String {
-    let dir = tempfile::tempdir().expect("a temp dir");
-    let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(root.join("init.ts"), entry).expect("init.ts is written");
-    fs::write(
-        root.join("probe.ts"),
-        format!("{IMPORTS}\nimport starter from \"./init.ts\";\n{probe}\n"),
-    )
-    .expect("probe.ts is written");
-    let mut config = JsConfig::new(&root).embed("harness", HARNESS);
-    for (name, source) in stock_modules() {
-        config = config.embed(name, source);
-    }
-    let generation = JsGeneration::new(&config, 1).expect("a generation");
-    generation
-        .eval_module(Path::new("probe.ts"))
-        .expect("the starter evaluates, so every key in it is one defineConfig accepts");
-    generation
-        .call_budgeted(Duration::from_secs(5), |ctx| ctx.globals().get::<_, String>("out"))
-        .expect("the probe called emit")
-}
-
-/// What a config does once the host has laid it over the stock one and planned it.
-const DESCRIBE: &str = r#"
-const describe = (config: any) => {
-    const plan = desugarConfig(mergeConfig(defaultConfig, config));
-    return JSON.stringify({
-        workspaces: plan.workspaces.map((w) => `${w.id}:${w.layout.constructor.name}`),
-        keys: plan.bindings.map((b) => b.trigger),
-        decorations: plan.decorations,
-        gaps: plan.gaps,
-        autostart: plan.autostart,
-        rules: plan.rules.length,
-        setup: plan.setup !== undefined,
-        document: plan.document,
-    });
-};
-"#;
-
-/// The starter with every example switched on. A comment of the form `// code` whose code ends the way a line of the
-/// config does is uncommented; prose ends in a word or a full stop and stays.
-fn switched_on(starter: &str) -> String {
-    let mut text = starter
-        .lines()
-        .map(|line| {
-            let body = line.trim_start();
-            match body.strip_prefix("// ") {
-                Some(code) if code.ends_with([',', '{', '}', ';', '[', ']', ')']) => {
-                    format!("{}{code}", &line[..line.len() - body.len()])
-                }
-                _ => line.to_owned(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    text.push('\n');
-    text
-}
-
-#[test]
-fn the_starter_as_written_plans_exactly_what_the_stock_config_plans() {
-    let got = run_entry(
-        STARTER_CONFIG,
-        &format!("{DESCRIBE}\nemit([describe(starter), describe(defaultConfig)].join(\"\\n\"));"),
-    );
-    let (starter, stock) = got.split_once('\n').expect("two lines");
-    assert_eq!(starter, stock, "the starter reproduces zero-config");
-    let plan: serde_json::Value = serde_json::from_str(stock).expect("the plan is JSON");
-    assert_eq!(
-        plan["workspaces"],
-        serde_json::json!([
-            "1:FloatingLayout",
-            "2:FloatingLayout",
-            "3:FloatingLayout",
-            "4:FloatingLayout"
-        ]),
-        "the retired stock config's four workspaces"
-    );
-    assert_eq!(plan["decorations"], true);
-    assert_eq!(plan["autostart"], serde_json::json!([]));
-}
-
-#[test]
-fn the_starters_examples_plan_what_they_say_when_switched_on() {
-    let on = switched_on(STARTER_CONFIG);
-    assert_ne!(on, STARTER_CONFIG);
-    let got = run_entry(&on, &format!("{DESCRIBE}\nemit(describe(starter));"));
-    let plan: serde_json::Value = serde_json::from_str(&got).expect("the plan is JSON");
-    assert_eq!(
-        plan["workspaces"],
-        serde_json::json!([
-            "1:FloatingLayout",
-            "2:FloatingLayout",
-            "3:FloatingLayout",
-            "4:FloatingLayout",
-            "work:MasterStackLayout"
-        ])
-    );
-    let keys: Vec<&str> = plan["keys"]
-        .as_array()
-        .expect("keys")
-        .iter()
-        .filter_map(serde_json::Value::as_str)
-        .collect();
-    for key in ["Super+Return", "Super+b", "Super+q", "Super+1", "XF86AudioMute"] {
-        assert!(keys.contains(&key), "{key} in {keys:?}");
-    }
-    assert_eq!(plan["autostart"], serde_json::json!([["waybar"]]));
-    assert_eq!(plan["rules"], 1);
-    assert_eq!(plan["setup"], true);
-}
-
-#[test]
-fn the_starter_is_about_forty_lines_and_ascii() {
-    let lines = STARTER_CONFIG.lines().count();
-    assert!((30..=60).contains(&lines), "{lines} lines");
-    assert!(STARTER_CONFIG.is_ascii());
-    assert!(STARTER_CONFIG.lines().all(|line| line.len() <= 120));
 }
 
 #[test]

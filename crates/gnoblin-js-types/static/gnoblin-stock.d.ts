@@ -405,6 +405,8 @@ declare module "gnoblin" {
     /** What `new Workspace` takes. `id` must be unique among the workspaces. */
     export interface WorkspaceOptions {
         id: string;
+        /** Shown to people; defaults to the id. */
+        name?: string;
         layout?: Layout | LayoutName;
         gaps?: Partial<Gaps>;
     }
@@ -3366,6 +3368,12 @@ declare module "gnoblin" {
         check(): void;
     }
     export const notRespondingAlerts: NotRespondingAlerts;
+    /** Puts the stock titlebar on every window, once. A config that does not call it has no titlebars. */
+    export function startDecorations(): void;
+    /** Starts the window menu, which answers the compositor's menu requests, once. */
+    export function startWindowMenu(): void;
+    /** Starts the not-responding alert, the dialog for a window that stops answering, once. */
+    export function startNotRespondingAlert(): void;
 
     export interface LauncherOptions extends EntryOptions {
         spawn?: (command: string) => void;
