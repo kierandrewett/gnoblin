@@ -73,6 +73,51 @@ pub enum LayoutError {
     Disconnected(String),
 }
 
+impl std::fmt::Display for LayoutError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoEnabledOutputs => write!(formatter, "no output would stay enabled"),
+            Self::DuplicateOutput(output) => write!(formatter, "{output} is configured twice"),
+            Self::NoPreferredMode(output) => write!(formatter, "{output} offers no mode"),
+            Self::ModeNotSupported { output, mode } => write!(
+                formatter,
+                "{output} does not accept {}x{}@{}",
+                mode.width,
+                mode.height,
+                mode.refresh_mhz / 1000
+            ),
+            Self::ScaleNotSupported { output, scale } => {
+                write!(formatter, "{output} does not accept scale {}", scale.as_f64())
+            }
+            Self::MissingPlacement(output) => write!(formatter, "{output} has no position"),
+            Self::DanglingAnchor { output, anchor } => write!(
+                formatter,
+                "{output} is placed against {anchor}, which is not an enabled output"
+            ),
+            Self::PlacementCycle(output) => write!(formatter, "the placement of {output} depends on itself"),
+            Self::MirrorOfMirror { output, source } => {
+                write!(formatter, "{output} mirrors {source}, which is itself a mirror")
+            }
+            Self::MirrorSourceUnavailable { output, source } => write!(
+                formatter,
+                "{output} mirrors {source}, which is not connected and enabled"
+            ),
+            Self::MirrorOverridesSource(output) => write!(
+                formatter,
+                "{output} is a mirror and cannot set its own mode, scale, transform or VRR"
+            ),
+            Self::PrimaryNotEnabled(output) => write!(formatter, "{output} cannot be the primary: it is not enabled"),
+            Self::Overlap { first, second } => write!(formatter, "{first} and {second} would overlap"),
+            Self::Disconnected(output) => write!(
+                formatter,
+                "{output} would not touch the other outputs, so the pointer could not reach it"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for LayoutError {}
+
 /// One enabled, non-mirrored output while the layout is being resolved.
 struct Source<'a> {
     entry: &'a OutputConfig,

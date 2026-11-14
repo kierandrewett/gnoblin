@@ -51,6 +51,22 @@ pub struct Edid {
 }
 
 impl Edid {
+    /// A stable text for the monitor, `MAN:product:serial`, for keying a saved profile: the same panel gives the same
+    /// text on every port and after every reboot. `None` when the block names neither a maker nor a product, because
+    /// a profile keyed by nothing would match every monitor.
+    #[must_use]
+    pub fn identity(&self) -> Option<String> {
+        if self.manufacturer.is_none() && self.product_code == 0 {
+            return None;
+        }
+        Some(format!(
+            "{}:{:04x}:{}",
+            self.manufacturer.as_deref().unwrap_or("???"),
+            self.product_code,
+            self.serial.map_or_else(String::new, |serial| serial.to_string())
+        ))
+    }
+
     /// Reads the base block.
     ///
     /// Every field is optional because monitors leave parts of the block empty,

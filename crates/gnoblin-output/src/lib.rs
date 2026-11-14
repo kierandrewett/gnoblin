@@ -39,6 +39,9 @@
 //!   declared configuration and the transaction, so a connect or disconnect during a
 //!   pending test cannot leave the desktop on a layout that names a gone output.
 //!
+//! [`ProfileStore`] is the persistent half: a profile per monitor, keyed by connector and EDID identity, laid over the
+//! default row to make the configuration [`compute`] resolves. A profile whose monitor is gone is parked, not an error.
+//!
 //! [`Edid::parse`] reads the identity, physical size and preferred mode out of an
 //! EDID base block for the vendor names the output record carries. It rejects
 //! everything it cannot check instead of panicking on it, because the bytes come
@@ -109,6 +112,7 @@ mod mode;
 mod model;
 mod output;
 mod physical;
+mod profile;
 mod transaction;
 
 /// EDID parsing: what a monitor reports about itself, and why a bad block is refused.
@@ -127,5 +131,7 @@ pub use model::{Broken, Event, ModelOptions, OutputModel};
 pub use output::{OutputDescriptor, VrrSupport};
 /// Physical size of a panel in millimetres, as reported (zero when unknown).
 pub use physical::PhysicalSize;
+/// Persistent per-monitor profiles keyed by connector and EDID identity, and the change requests that edit them.
+pub use profile::{OutputProfile, OutputSighting, ProfileChange, ProfileError, ProfileStore};
 /// Transactions for proposed layouts: lifecycle phases, tokens and the caller's verdict.
 pub use transaction::{Phase, Transaction, TransactionToken, Verdict};

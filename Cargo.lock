@@ -1591,6 +1591,7 @@ name = "gnoblin-output"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-types",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
