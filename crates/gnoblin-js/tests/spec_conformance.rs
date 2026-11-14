@@ -437,9 +437,49 @@ fn run_js(source: &str, entry: bool) -> Result<(), String> {
     boot(&files, None, session_first && !entry).map(drop)
 }
 
+/// An error without what moves when the library is edited: a library module's own `gnoblin/name:LINE:COL: ` position
+/// and a generated object id (`View#4294967297`). A row that kept them would go stale on every edit of the stock
+/// modules, not on a change of what the shell supports.
+fn steady(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(at) = rest.find("gnoblin/") {
+        out.push_str(&rest[..at]);
+        let tail = &rest[at..];
+        let position = tail.split_once(": ").and_then(|(head, after)| {
+            let mut parts = head.rsplitn(3, ':');
+            let (col, line) = (parts.next()?, parts.next()?);
+            let is_number = |part: &str| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit());
+            (is_number(col) && is_number(line)).then_some(after)
+        });
+        match position {
+            Some(after) => rest = after,
+            None => {
+                out.push_str("gnoblin/");
+                rest = &tail["gnoblin/".len()..];
+            }
+        }
+    }
+    out.push_str(rest);
+    let mut folded = String::new();
+    let mut chars = out.chars().peekable();
+    while let Some(ch) = chars.next() {
+        folded.push(ch);
+        if ch == '#' {
+            let mut digits = String::new();
+            while let Some(digit) = chars.next_if(char::is_ascii_digit) {
+                digits.push(digit);
+            }
+            folded.push_str(if digits.len() > 6 { "N" } else { &digits });
+        }
+    }
+    folded
+}
+
 /// An error as a row keeps it: the root and the prelude's own location are noise, and a QuickJS "not a function" names
 /// nothing, so the line of the snippet it points at follows.
 fn tidy(error: &str, source: &str) -> String {
+    let error = &steady(error);
     // A class the library lacks is declared as a stub that throws: the name is the finding, not where it threw.
     if let Some(at) = error.find("gnoblin exports no class ") {
         let name = error[at..].split_whitespace().nth(4).unwrap_or_default();
