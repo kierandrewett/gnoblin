@@ -333,6 +333,58 @@ Built (data/js/gnoblin/{devices,input,input_list,native_object}.ts; tests in cra
 collection`) and keeps doing so. Either `add` replaces by id, or the fragments are missing a `remove`. The owner has not
 answered; the three fences stay `fails`, pending the owner decision (replace by id or refuse).
 
+### 2.7 The XR extension surface (lane SpecXr)
+
+Spec section 13 and fences 060 to 071 and 114 to 118, over the out-of-process XR program (design/js-xr.md; decision J7 stays,
+there is no `.so`). The harness table moves by eight rows: fences 065 to 071 and 117 run, and 118 fails only on the
+compositor (below). Built, with the readings the specification leaves open:
+
+- **`xr.ControllerDragBinding`** is `XRControllerDragBinding`, the base the shell's own bindings already used; the extension now
+  carries it, with `ViewRotateBinding` and `ViewScaleBinding` beside `ViewMoveBinding` and `ViewResizeBinding` (060). A script's
+  class extends it with `super({ id, trigger })` as in fences 067 and 069 to 071.
+- **`rotate` trigger** (065). `SpatialLayout` takes `triggers.rotate`, default `Trigger+Thumbstick+Drag`, and installs a
+  `ViewRotateBinding` unless it is `null`. The layout installs no `scale` binding: the specification's `triggers` lists only
+  `move`, `resize` and `rotate`, and 070 shows the scale as a user class, so `ViewScaleBinding` (`Grip+Thumbstick+Drag`) is added
+  by a script.
+- **`ViewScaleBinding`** adds the metres the hand moved along the direction it pointed in when the drag began to the View's
+  scale, kept between `minScale` and `maxScale` (0.2 and 3). The specification's text adds an unsigned distance, which can only
+  grow the panel; a signed travel lets a pull shrink it, and the limits are the specification's.
+- **`ViewMoveBinding({ tracking: "ray" })`** (068) already existed; fences 066, 068 and 117 failed only on "a binding with that id
+  is already in this collection". The specification is ambiguous (the table above calls it an owner decision). The reading that
+  makes the owner's examples run: `SpatialLayout.bindings` replaces a binding added under a taken id (`SpatialBindings`), and a
+  chord is not exclusive there (066 gives `move` the chord `resize` holds), so two bindings on one chord are offered the drag
+  newest first and an older one gets it when the newer declines in `onStart`. The other layouts' collections still refuse a
+  duplicate id.
+- **Pinning moved into the runtime.** A user binding such as 067 writes the View's transform and says "keep the new spatial
+  pose" in `onEnd`; the ring re-placed an unpinned View a frame later. The runtime now pins the View under the ray for each drag
+  and unpins it on a cancel unless it was pinned before, so no binding needs to know about the ring.
+- **`ViewResizeBinding.edges`** (069, 117): `"quadrant"` (default, the corner nearest the ray) or one fixed corner.
+- **`ThrowViewBinding`** (071) is not built: the specification makes it a user class with an author-written
+  `runThrowSimulation`, "not a hidden magical API".
+- **`xr.Camera3D extends Camera3D`** holds (core `Camera3D` is `scene.ts`'s class). **`xr.Viewport extends Viewport`** waits for
+  the core `Viewport` of lane SpecOutputs; see the end of this section for what landed.
+- **Fences 067, 070 and 071 define their classes and run.** Driving the bodies of 070 and 071 needs `view.rotation.clone()`,
+  `view.position` and `view.scale` as the specification has them (lane SpecScene); 067's `tracking: "controller"` branch drives
+  today (`the_owners_move_binding_of_snippet_067_...`).
+
+**`VirtualOutput` and `gnoblin.outputs.add`** (118). `new VirtualOutput({ name, width, height, scale?, attachment? })` is a checked
+description (`attachment` is `"viewer"` or none). The compositor cannot create an output when a script asks, so
+`gnoblin.outputs.add(hud)` throws `GnoblinError` with code `unsupported` and the message "virtual outputs are not supported by
+this backend", and the collection does not change; the fence fails on that and nothing else. What exists: the headless backend's
+`connect_virtual_output` (`crates/gnoblin-backend/src/headless.rs`, reached only through the test-only `OutputTap`), and the
+XR program's View layers. What is missing, in order, all compositor work (design/xr-extension.md, G6):
+
+1. A tree request that creates an output for a holder of a grant: a `screen` node (or a `virtual_output` class) with `name`,
+   `width`, `height`, `scale`, `attach` (`viewer`) and `on_remove`, owned by the creating connection and destroyed with it.
+2. A backend-independent virtual output: an offscreen render target added to a running session (DRM, winit or headless), laid out
+   outside the physical layout so the pointer does not reach it, with its own workspace desk.
+3. Output protocols for it (`wl_output`, `xdg-output`, layer-shell) so a layer-shell client such as Bingux can choose it by name.
+4. A way for the XR program to read its picture (output capture or a `View` of it) and to place a viewer-attached plane.
+5. The removal policy (`move` or `close`) when the connection or the session ends.
+
+Then `addVirtualOutput` in `crates/gnoblin-js/js/gnoblin.ts` calls the new host request and returns the `Output`; the class and
+the collection hook stay.
+
 ## Part 3. Replacement design
 
 ### 3.0 Rules

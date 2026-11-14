@@ -1801,3 +1801,391 @@ fn a_settle_time_past_the_cap_claims_at_the_cap_so_the_claim_still_fits_the_prog
         "claimed at 60 ms, not at the 10 s that was asked for"
     );
 }
+
+// ---- The specification's XR surface (design/js-spec-native.md, "XR extension") --------------------------------------
+
+/// A code fence of the owner's specification, verbatim.
+fn fence(name: &str) -> String {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/spec/snippets")
+        .join(name);
+    fs::read_to_string(path).expect("the fence is checked in")
+}
+
+/// The ids and triggers of the room layout's bindings, in order.
+const BINDINGS: &str = "[...gnoblin.extensions.xr.room.layout.bindings].map((b) => b.id + '=' + b.trigger).join(',')";
+
+const ROOM_VIEW_PINNED: &str = "gnoblin.extensions.xr.room.isPinned(gnoblin.extensions.xr.room.views[0])";
+
+/// Presses or releases the trigger and the thumbstick of the right hand together, and runs a frame.
+fn trigger_and_stick(rig: &mut Rig, down: bool) {
+    rig.comp.external_sets(
+        RIGHT_HAND,
+        vec![
+            ("trigger", double(if down { 1.0 } else { 0.0 })),
+            ("thumbstick_click", MirrorValue::Bool(down)),
+        ],
+    );
+    let diagnostics = rig.frame();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+/// Presses or releases the grip and the thumbstick of the right hand together, and runs a frame.
+fn grip_and_stick(rig: &mut Rig, down: bool) {
+    rig.comp.external_sets(
+        RIGHT_HAND,
+        vec![
+            ("grip", double(if down { 1.0 } else { 0.0 })),
+            ("thumbstick_click", MirrorValue::Bool(down)),
+        ],
+    );
+    let diagnostics = rig.frame();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+fn turn_hand(rig: &mut Rig, yaw: f64) {
+    rig.comp
+        .external_sets(RIGHT_HAND, vec![("rotation", MirrorValue::List(vec![0.0, yaw, 0.0]))]);
+    let diagnostics = rig.frame();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn the_extension_offers_the_drag_base_and_the_four_bindings_of_the_specs_hierarchy() {
+    let mut rig = world(&[(800.0, 600.0)], "");
+    xr_arrives(&mut rig);
+    for expression in [
+        "gnoblin.extensions.xr.ControllerDragBinding === XRControllerDragBinding",
+        "gnoblin.extensions.xr.ViewRotateBinding === ViewRotateBinding",
+        "gnoblin.extensions.xr.ViewScaleBinding === ViewScaleBinding",
+        "new ViewRotateBinding() instanceof XRControllerDragBinding",
+        "new ViewScaleBinding() instanceof XRControllerDragBinding",
+        "new ViewRotateBinding() instanceof g.Binding",
+        "new ViewRotateBinding().id === 'rotate' && new ViewRotateBinding().trigger === 'Trigger+Thumbstick+Drag'",
+        "new ViewScaleBinding().id === 'scale' && new ViewScaleBinding().trigger === 'Grip+Thumbstick+Drag'",
+        "new ViewResizeBinding().edges === 'quadrant' && new ViewResizeBinding({ edges: 'top-left' }).edges === 'top-left'",
+        "gnoblin.extensions.xr.room.layout.bindings.get('rotate') instanceof ViewRotateBinding",
+    ] {
+        assert!(flag(&mut rig, expression), "{expression}");
+    }
+    assert!(
+        thrown(&mut rig, "new ViewResizeBinding({ edges: 'left' })").starts_with("TypeError|ViewResizeBinding: edges"),
+    );
+    assert!(thrown(&mut rig, "new ViewScaleBinding({ minScale: 2, maxScale: 1 })").starts_with("RangeError|"));
+    assert!(thrown(&mut rig, "new ViewScaleBinding({ maxScale: 0 })").starts_with("RangeError|"));
+}
+
+#[test]
+fn the_spatial_layout_triggers_name_rotate_and_snippet_065_runs() {
+    let mut rig = world(&[(800.0, 600.0)], "");
+    xr_arrives(&mut rig);
+    assert_eq!(
+        rig.eval(BINDINGS),
+        "move=Grip+Drag,resize=Grip+Trigger+Drag,rotate=Trigger+Thumbstick+Drag"
+    );
+    // Snippet 065 verbatim, over the room the shell built.
+    let body = fence("065-xr-scene-and-view-creation.js.txt");
+    rig.eval(&format!(
+        "(() => {{ const xr = gnoblin.extensions.xr; const room = xr.room; {body} return 1; }})()"
+    ));
+    assert_eq!(
+        rig.eval(BINDINGS),
+        "move=Grip+Drag,resize=Grip+Trigger+Drag,rotate=Trigger+Thumbstick+Drag"
+    );
+    rig.eval(
+        "gnoblin.extensions.xr.room.layout = new SpatialLayout({ triggers: { rotate: 'Left.Trigger+Thumbstick+Drag', move: null } }); 1",
+    );
+    assert_eq!(
+        rig.eval(BINDINGS),
+        "resize=Grip+Trigger+Drag,rotate=Left.Trigger+Thumbstick+Drag"
+    );
+    rig.eval("gnoblin.extensions.xr.room.layout = new SpatialLayout({ triggers: { rotate: null } }); 1");
+    assert_eq!(rig.eval(BINDINGS), "move=Grip+Drag,resize=Grip+Trigger+Drag");
+    let got = thrown(&mut rig, "new SpatialLayout({ triggers: { scale: 'Grip+Drag' } })");
+    assert_eq!(
+        got,
+        "TypeError|SpatialLayout: unknown trigger \"scale\"; expected one of move, resize, rotate"
+    );
+    let got = thrown(
+        &mut rig,
+        "new SpatialLayout({ triggers: { rotate: 'Trigger+Thumbstick' } })",
+    );
+    assert!(got.starts_with("TypeError|SpatialLayout trigger \"rotate\""), "{got}");
+}
+
+#[test]
+fn a_binding_added_under_a_taken_id_replaces_it_and_snippets_066_068_and_117_run() {
+    let mut rig = world(&[(800.0, 600.0)], "");
+    xr_arrives(&mut rig);
+    // 066: move gets another trigger, rotate goes, and a ray move takes the id `move`, on the chord resize holds.
+    let body = fence("066-controller-inputs-and-trigger-grammar.js.txt");
+    rig.eval(&format!(
+        "(() => {{ const xr = gnoblin.extensions.xr; const spatial = xr.room.layout; {body} return 1; }})()"
+    ));
+    assert_eq!(rig.eval(BINDINGS), "resize=Grip+Trigger+Drag,move=Trigger+Grip+Drag");
+    assert_eq!(
+        rig.eval("gnoblin.extensions.xr.room.layout.bindings.get('move').tracking"),
+        "ray"
+    );
+    // 068: a ray move under the default id.
+    let body = fence("068-ray-dragging-a-distant-panel.js.txt");
+    rig.eval(&format!(
+        "(() => {{ const xr = gnoblin.extensions.xr; const spatial = xr.room.layout; {body} return 1; }})()"
+    ));
+    assert_eq!(rig.eval(BINDINGS), "resize=Grip+Trigger+Drag,move=Grip+Drag");
+    // 117 declares `xr` itself and assumes `spatial`.
+    let body = fence("117-x-xr-preview-resize-defer-real-client-configure-until-.js.txt");
+    rig.eval(&format!(
+        "(() => {{ const spatial = gnoblin.extensions.xr.room.layout; {body} return 1; }})()"
+    ));
+    assert_eq!(rig.eval(BINDINGS), "move=Grip+Drag,resize=Grip+Trigger+Drag");
+    assert_eq!(rig.eval("gnoblin.extensions.xr.room.layout.bindings.size"), "2");
+}
+
+#[test]
+fn two_bindings_on_one_chord_are_offered_the_newest_first_and_a_decline_falls_through() {
+    let mut rig = drag_world(
+        "gnoblin.extensions.configure('xr', { layout: { triggers: { move: null, resize: null, rotate: null } } });",
+    );
+    rig.eval(
+        "globalThis.log = [];
+         globalThis.make = (name, take) => class extends XRControllerDragBinding {
+             constructor() { super({ id: name, trigger: 'Grip+Drag' }); }
+             onStart() { log.push(name); return take ? { n: 1 } : false; }
+         };
+         globalThis.bindings = gnoblin.extensions.xr.room.layout.bindings;
+         bindings.add(new (make('old', true))());
+         bindings.add(new (make('new', false))());
+         1",
+    );
+    grip(&mut rig, 1.0);
+    assert_eq!(
+        rig.eval("log.join(',')"),
+        "new,old",
+        "the newest declines, so the older one takes it"
+    );
+    grip(&mut rig, 0.0);
+    rig.eval("log.length = 0; bindings.add(new (make('new', true))()); 1");
+    assert_eq!(rig.eval("bindings.size"), "2", "the same id replaced the binding");
+    grip(&mut rig, 1.0);
+    assert_eq!(
+        rig.eval("log.join(',')"),
+        "new",
+        "the newest takes it and the older is not asked"
+    );
+}
+
+#[test]
+fn a_rotate_drag_turns_the_panel_about_its_own_centre_by_what_the_hand_turns_and_leaves_it_there() {
+    let mut rig = drag_world("");
+    let view = view_of(&rig, WIN).expect("view");
+    rig.comp.clear_sent();
+    trigger_and_stick(&mut rig, true);
+    assert_eq!(
+        claimed(&rig, RIGHT_HAND),
+        ["trigger", "thumbstick"],
+        "a rotate holds both buttons"
+    );
+    turn_hand(&mut rig, 0.5);
+    rig.settle();
+    near(yaw(&rig, view), 0.5, "the panel turns with the hand");
+    assert_eq!(
+        pose(&rig, view),
+        [0.0, 1400.0, -1600.0],
+        "about its own centre: it does not swing"
+    );
+    near(scale(&rig, view), 0.75, "and keeps its size");
+    assert!(rig.comp.sets_of(WIN).is_empty(), "the client is untouched");
+    turn_hand(&mut rig, -0.25);
+    near(
+        yaw(&rig, view),
+        -0.25,
+        "the turn is the hand's turn since the drag began, not a running sum",
+    );
+    trigger_and_stick(&mut rig, false);
+    rig.settle();
+    near(yaw(&rig, view), -0.25, "the panel stays as it was turned");
+    assert!(flag(&mut rig, ROOM_VIEW_PINNED), "and the ring leaves it alone");
+    assert!(claimed(&rig, RIGHT_HAND).is_empty());
+
+    // Another drag starts from the panel's own turn: the hand's turn adds to it.
+    turn_hand(&mut rig, 0.0);
+    trigger_and_stick(&mut rig, true);
+    turn_hand(&mut rig, 0.5);
+    near(yaw(&rig, view), 0.25, "-0.25 and a half radian");
+    // An untracked hand cancels it and puts the panel back, unpinned only if it was not pinned before.
+    rig.comp
+        .external_sets(RIGHT_HAND, vec![("tracked", MirrorValue::Bool(false))]);
+    rig.frame();
+    rig.settle();
+    near(yaw(&rig, view), -0.25, "the cancel puts back the turn the drag found");
+    assert!(
+        flag(&mut rig, ROOM_VIEW_PINNED),
+        "it was pinned by the first drag and still is"
+    );
+}
+
+#[test]
+fn a_scale_drag_adds_the_metres_the_hand_pushed_along_its_aim_and_stays_within_the_limits() {
+    let mut rig = drag_world("");
+    rig.eval("gnoblin.extensions.xr.room.layout.bindings.add(new ViewScaleBinding()); 1");
+    let view = view_of(&rig, WIN).expect("view");
+    rig.comp.clear_sent();
+    grip_and_stick(&mut rig, true);
+    assert_eq!(claimed(&rig, RIGHT_HAND), ["grip", "thumbstick"]);
+    move_hand(&mut rig, 0.0, 0.0, -100.0);
+    near(scale(&rig, view), 0.85, "100 mm along the aim is 0.1 added to 0.75");
+    assert_eq!(pose(&rig, view), [0.0, 1400.0, -1600.0], "the panel does not move");
+    move_hand(&mut rig, 500.0, 0.0, -100.0);
+    near(scale(&rig, view), 0.85, "sideways travel adds nothing");
+    move_hand(&mut rig, 0.0, 0.0, 1000.0);
+    near(scale(&rig, view), 0.2, "pulling back past the limit stops at minScale");
+    move_hand(&mut rig, 0.0, 0.0, -9000.0);
+    near(scale(&rig, view), 3.0, "pushing out past the limit stops at maxScale");
+    grip_and_stick(&mut rig, false);
+    rig.settle();
+    near(scale(&rig, view), 3.0, "the panel keeps the scale");
+    assert!(flag(&mut rig, ROOM_VIEW_PINNED));
+    assert!(rig.comp.sets_of(WIN).is_empty(), "the client is untouched");
+}
+
+#[test]
+fn the_owners_move_binding_of_snippet_067_extends_the_extensions_drag_base_and_the_panel_stays_put() {
+    let mut rig = drag_world("gnoblin.extensions.configure('xr', { layout: { triggers: { move: null } } });");
+    let class = fence("067-xr-viewmovebinding-pure-js-6-dof-grab.js.txt");
+    rig.eval(&format!(
+        "globalThis.Owner = (() => {{ const xr = gnoblin.extensions.xr; {class} return ViewMoveBinding; }})();
+         gnoblin.extensions.xr.room.layout.bindings.add(new Owner());
+         1"
+    ));
+    assert!(flag(
+        &mut rig,
+        "new Owner() instanceof gnoblin.extensions.xr.ControllerDragBinding"
+    ));
+    let view = view_of(&rig, WIN).expect("view");
+    rig.comp.clear_sent();
+    grip(&mut rig, 1.0);
+    assert_eq!(
+        claimed(&rig, RIGHT_HAND),
+        ["grip"],
+        "the owner's binding claims its trigger's buttons too"
+    );
+    move_hand(&mut rig, 200.0, 50.0, 0.0);
+    rig.settle();
+    let [x, y, z] = pose(&rig, view);
+    near(x, 200.0, "x follows the hand");
+    near(y, 1450.0, "y follows the hand");
+    near(z, -1600.0, "z");
+    // The class never pins the panel; the runtime does, so the ring does not put it back a frame later.
+    rig.settle();
+    near(pose(&rig, view)[0], 200.0, "the ring left it alone");
+    grip(&mut rig, 0.0);
+    set_focus(&mut rig, WIN);
+    near(
+        pose(&rig, view)[0],
+        200.0,
+        "onEnd keeps the pose, even when the focus moves",
+    );
+    assert!(flag(&mut rig, ROOM_VIEW_PINNED));
+    assert!(rig.comp.sets_of(WIN).is_empty());
+
+    // A cancel goes through the owner's onCancel and gives the panel back to the ring if it was not pinned.
+    rig.eval("gnoblin.extensions.xr.room.unpin(gnoblin.extensions.xr.room.views[0]); 1");
+    rig.settle();
+    grip(&mut rig, 1.0);
+    move_hand(&mut rig, 300.0, 0.0, 0.0);
+    rig.comp
+        .external_sets(RIGHT_HAND, vec![("tracked", MirrorValue::Bool(false))]);
+    rig.frame();
+    rig.settle();
+    assert!(!flag(&mut rig, ROOM_VIEW_PINNED), "cancelled: back with the ring");
+    near(pose(&rig, view)[0], 0.0, "and the ring placed it");
+}
+
+#[test]
+fn the_owners_other_drag_bindings_of_snippets_069_to_071_define_over_the_extensions_base() {
+    let mut rig = world(&[(800.0, 600.0)], "");
+    xr_arrives(&mut rig);
+    for (file, class) in [
+        (
+            "069-xr-viewresizebinding-live-view-preview-client-resize-o.js.txt",
+            "ViewResizeBinding",
+        ),
+        (
+            "070-xr-view-rotation-and-scaling-small-fully-js.js.txt",
+            "ViewRotateBinding",
+        ),
+        ("071-user-defined-throw-inertia-interaction.js.txt", "ThrowViewBinding"),
+    ] {
+        let body = fence(file);
+        let got = rig.eval(&format!(
+            "(() => {{ const xr = gnoblin.extensions.xr; {body} const one = new {class}(); \
+             return (one instanceof xr.ControllerDragBinding) + ',' + one.parsed.kind; }})()"
+        ));
+        assert_eq!(got, "true,controller", "{class}");
+    }
+}
+
+#[test]
+fn a_virtual_output_is_checked_when_it_is_made_and_the_compositor_refuses_to_create_it_with_a_typed_error() {
+    let mut rig = world(&[(800.0, 600.0)], "");
+    xr_arrives(&mut rig);
+    // Snippet 118 verbatim.
+    let body = fence("118-y-head-locked-bingux-panel-without-coupling-bingux-to-.js.txt");
+    let got = thrown(&mut rig, &format!("const {{ VirtualOutput }} = g; {body}"));
+    assert_eq!(
+        got,
+        "GnoblinError|Collection.add: virtual outputs are not supported by this backend"
+    );
+    assert_eq!(
+        rig.eval(
+            "(() => { try { gnoblin.outputs.add(new g.VirtualOutput({ name: 'XR-HUD', width: 1600, height: 900 })); } \
+             catch (e) { return e.code; } })()"
+        ),
+        "unsupported"
+    );
+    assert_eq!(rig.eval("[...gnoblin.outputs].length"), "1", "nothing was added");
+    let hud = "new g.VirtualOutput({ name: 'XR-HUD', width: 1600, height: 900, scale: 2, attachment: 'viewer' })";
+    assert_eq!(
+        rig.eval(&format!(
+            "(() => {{ const h = {hud}; return [h.name, h.width, h.height, h.scale, h.attachment].join(','); }})()"
+        )),
+        "XR-HUD,1600,900,2,viewer"
+    );
+    assert_eq!(
+        rig.eval("new g.VirtualOutput({ name: 'A', width: 2, height: 3 }).attachment === null"),
+        "true"
+    );
+    for (options, want) in [
+        ("{ width: 1, height: 1 }", "TypeError|VirtualOutput: name"),
+        ("{ name: '', width: 1, height: 1 }", "TypeError|VirtualOutput: name"),
+        ("{ name: 'A', width: 0, height: 1 }", "RangeError|VirtualOutput: width"),
+        (
+            "{ name: 'A', width: 1.5, height: 1 }",
+            "RangeError|VirtualOutput: width",
+        ),
+        (
+            "{ name: 'A', width: 1, height: -2 }",
+            "RangeError|VirtualOutput: height",
+        ),
+        (
+            "{ name: 'A', width: 1, height: 1, scale: 0 }",
+            "RangeError|VirtualOutput: scale",
+        ),
+        (
+            "{ name: 'A', width: 1, height: 1, attachment: 'world' }",
+            "TypeError|VirtualOutput: attachment",
+        ),
+    ] {
+        let got = thrown(&mut rig, &format!("new g.VirtualOutput({options})"));
+        assert!(got.starts_with(want), "{options}: {got}");
+    }
+    // Only a virtual output can be added, and the compositor's own outputs cannot be removed or cleared.
+    let got = thrown(&mut rig, "gnoblin.outputs.add({ name: 'A' })");
+    assert!(
+        got.starts_with("TypeError|gnoblin.outputs.add: expected a VirtualOutput"),
+        "{got}"
+    );
+    assert_eq!(rig.eval("gnoblin.outputs.remove([...gnoblin.outputs][0])"), "false");
+    assert!(thrown(&mut rig, "gnoblin.outputs.clear()").starts_with("GnoblinError|Collection.clear"));
+}

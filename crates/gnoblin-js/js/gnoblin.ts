@@ -101,6 +101,7 @@ import { HostApi } from "gnoblin/session";
 import type { SignalEvent, Version } from "gnoblin/session";
 import type { Subscription, Timer } from "gnoblin/operation";
 import type { Process, SpawnOptions } from "gnoblin/process";
+import { VirtualOutput } from "gnoblin/virtual_output";
 
 // ---- Host contract and shared types ----
 // Owns the bridge and data shapes shared by the object model and frame loop.
@@ -1972,14 +1973,37 @@ const profileRoot = collectionState(
     }),
 );
 
+/**
+ * `gnoblin.outputs.add`: a script describes a `VirtualOutput` and the compositor would create it. The compositor makes
+ * outputs only for the displays and test sessions it owns and has no request that creates one (the work is listed in
+ * design/js-spec-native.md, "XR extension"), so the only honest answer today is a typed refusal.
+ */
+function addVirtualOutput(member: unknown): void {
+    if (!(member instanceof VirtualOutput)) {
+        throw new TypeError("gnoblin.outputs.add: expected a VirtualOutput; the compositor makes every other output");
+    }
+    throw new GnoblinError("unsupported", "Collection.add", "virtual outputs are not supported by this backend");
+}
+
 /** `gnoblin.outputs`: the connected outputs, and the profiles that say how each is configured. */
-class OutputCollection extends Collection<Output> {
+class OutputCollection extends MutableCollection<Output> {
     /** The persistent hardware settings: an `OutputProfile` applies when its monitor is connected, also after a hotplug. */
     readonly profiles = profileRoot.self as MutableCollection<OutputProfile>;
 }
 
-/** Connected outputs in compositor creation order. */
-const outputRoot = collectionState(new OutputCollection(CREATE, rootState("Output")));
+/** Connected outputs in compositor creation order. A script may add a `VirtualOutput`; it may remove nothing. */
+const outputRoot = collectionState(
+    new OutputCollection(CREATE, {
+        ...rootState("Output"),
+        mutation: {
+            add: addVirtualOutput,
+            remove: () => false,
+            clear: () => {
+                throw new GnoblinError("read-only", "Collection.clear", "outputs belong to the compositor");
+            },
+        },
+    }),
+);
 /** Script workspaces and their named sets; membership is script-owned. */
 
 const workspaceRoot = collectionState(

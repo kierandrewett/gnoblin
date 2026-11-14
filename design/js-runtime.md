@@ -1642,9 +1642,20 @@ Design: `design/js-xr.md` (which spec class is a tree node, a JS class or new na
   inside the hold (`the_chord_settle_time_is_a_number_...`, `a_drag_claims_its_grip_after_the_settle_time_...` in
   `tests/xr.rs`). The real-compositor claims test is unchanged: an observer plays the program there, so it cannot show
   the program's hold, which is fake-runtime only. No headset was used.
-- **Not built.** The TypeScript rules have no `xr = false` key (`accept` replaces it); `ViewRotateBinding`,
-  `ViewScaleBinding` and `ThrowViewBinding`; a View of a workspace. XR5 (a stalled script does not block pose writes or
-  layers) is unverified.
+- **The spec's XR surface (lane SpecXr; design/js-spec-native.md, 2.7).** `data/js/gnoblin/xr_bindings.ts` holds the
+  trigger grammar, `XRControllerDragBinding` (exposed as `xr.ControllerDragBinding`) and the four stock bindings:
+  `ViewMoveBinding`, `ViewResizeBinding` (now with `edges`), the new `ViewRotateBinding` (the layout's `rotate`
+  trigger, `Trigger+Thumbstick+Drag`) and `ViewScaleBinding` (added by a script). `SpatialLayout.bindings` is a
+  `SpatialBindings`: an `add` under a taken id replaces that binding and two bindings may share a chord (newest first,
+  a decline falls through), which is how the owner's snippets 066, 068 and 117 run. The runtime now pins the View under
+  the ray for every drag and unpins it on a cancel unless it was pinned before, so a script's own binding (snippet 067)
+  does not have to know about the ring. `VirtualOutput` (`data/js/gnoblin/virtual_output.ts`) is a checked description;
+  `gnoblin.outputs.add` throws a `GnoblinError` with code `unsupported` because the compositor has no request that
+  creates an output. Proven on the fake link in `tests/xr.rs`, the owner's snippets 065 to 071, 117 and 118 run
+  verbatim. No headset was used.
+- **Not built.** The TypeScript rules have no `xr = false` key (`accept` replaces it); `ThrowViewBinding` (the spec
+  makes it a user class with a physics stepper of the author's); a View of a workspace; a compositor-made virtual
+  output. XR5 (a stalled script does not block pose writes or layers) is unverified.
 
 ## Host API A status
 

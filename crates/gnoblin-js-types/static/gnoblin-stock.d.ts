@@ -857,6 +857,11 @@ declare module "gnoblin" {
     }
     /** `gnoblin.outputs`: the connected outputs and the profiles that configure them. */
     export interface OutputCollection extends Collection<Output> {
+        /**
+         * Asks the compositor to create a `VirtualOutput`. While it cannot, this throws a `GnoblinError` with code
+         * `unsupported`; the collection does not change.
+         */
+        add(output: VirtualOutput): void;
         /** The persistent hardware settings. An `OutputProfile` applies when its monitor is connected, also after a hotplug. */
         readonly profiles: MutableCollection<OutputProfile>;
     }
@@ -867,6 +872,34 @@ declare module "gnoblin" {
          * `next` leave, and `next` takes `old`'s place. Nothing changes when the check fails.
          */
         replace(old: Display, next: Display): void;
+    }
+
+    /** Where a virtual output sits: `viewer` keeps it in front of the headset. */
+    export type VirtualOutputAttachment = "viewer";
+    /** What a virtual output is: a name, a size in pixels and where it is attached. */
+    export interface VirtualOutputOptions {
+        /** The connector name the output gets, such as `XR-HUD`. */
+        name: string;
+        /** The size in pixels: whole numbers above zero. */
+        width: number;
+        height: number;
+        /** The scale of the output's pixels. Default 1. */
+        scale?: number;
+        attachment?: VirtualOutputAttachment;
+    }
+    /**
+     * An output with no display behind it, for a head-locked panel (spec section 13). `gnoblin.outputs.add(output)`
+     * asks the compositor to create it, which it cannot yet: the add throws a `GnoblinError` with code `unsupported`
+     * and the message "virtual outputs are not supported by this backend" (design/js-spec-native.md, "XR extension").
+     */
+    export class VirtualOutput {
+        /** Throws a `TypeError` for a bad name or attachment, a `RangeError` for a size or scale not above zero. */
+        constructor(options: VirtualOutputOptions);
+        readonly name: string;
+        readonly width: number;
+        readonly height: number;
+        readonly scale: number;
+        readonly attachment: VirtualOutputAttachment | null;
     }
 
     // -- Triggers and bindings (owner-spec sections 10 and 11) ----------------
@@ -3465,7 +3498,7 @@ declare module "gnoblin" {
  * The optional XR extension. Importing this module when XR is unavailable throws a message explaining how to enable it.
  */
 declare module "gnoblin/extensions/xr" {
-    import type { Binding, BindingCollection, Client, DragEvent } from "gnoblin";
+    import type { Binding, BindingCollection, Client, DragEvent, Viewport } from "gnoblin";
 
     /** A point or a direction. */
     export class Vector3 {
@@ -3677,11 +3710,15 @@ declare module "gnoblin/extensions/xr" {
         camera: Camera3D;
         composition?: XRComposition;
     }
-    /** The room and the camera the headset shows. Assigning it to `session.viewport` names them for the program. */
-    export class XRViewport {
+    /**
+     * The room and the camera the headset shows. Assigning it to `session.viewport` names them for the program. It is a
+     * `Viewport` whose `content` is the room node, fixed at construction, instead of a workspace.
+     */
+    // @ts-ignore: `content` is the room, a Node, where the core viewport's is a Workspace
+    export class XRViewport extends Viewport {
         constructor(options: XRViewportOptions);
+        // @ts-ignore: see the class
         readonly content: Node;
-        readonly camera: Camera3D;
         composition: XRComposition;
     }
 
@@ -3737,11 +3774,15 @@ declare module "gnoblin/extensions/xr" {
         tracking: "controller" | "ray";
         rotation: "follow" | "keep";
     }
+    /** The corner a resize pulls: `quadrant` is the one nearest the ray where the drag started. */
+    export type ResizeEdges = "quadrant" | "top-left" | "top-right" | "bottom-left" | "bottom-right";
     /** Initial scale and minimum panel dimensions for a corner resize. */
     export interface ViewResizeOptions extends Partial<XRBindingOptions> {
         pixelsPerMetre?: number;
         minWidth?: number;
         minHeight?: number;
+        /** Default `quadrant`. */
+        edges?: ResizeEdges;
     }
     /** Resizes a panel by its corner: the View's scale on every update, one new client size on release if needed. */
     export class ViewResizeBinding extends XRControllerDragBinding {
@@ -3749,6 +3790,28 @@ declare module "gnoblin/extensions/xr" {
         pixelsPerMetre: number;
         minWidth: number;
         minHeight: number;
+        edges: ResizeEdges;
+    }
+    /** Turns a panel about its own centre by what the hand turns, with the trigger and thumbstick. */
+    export class ViewRotateBinding extends XRControllerDragBinding {
+        /** The id is `rotate` and the trigger `Trigger+Thumbstick+Drag` unless given. */
+        constructor(options?: Partial<XRBindingOptions>);
+    }
+    /** Initial limits of a panel scale. */
+    export interface ViewScaleOptions extends Partial<XRBindingOptions> {
+        /** The smallest scale a drag may leave the panel at. Default 0.2. */
+        minScale?: number;
+        /** The largest. Default 3. */
+        maxScale?: number;
+    }
+    /**
+     * Scales a panel by the hand: its scale at the start plus the metres the hand moved along the way it pointed when
+     * the drag began, kept between `minScale` and `maxScale`. The id is `scale` and the trigger `Grip+Thumbstick+Drag`.
+     */
+    export class ViewScaleBinding extends XRControllerDragBinding {
+        constructor(options?: ViewScaleOptions);
+        minScale: number;
+        maxScale: number;
     }
 
     /** Ring dimensions and spacing, in millimetres and radians. */
@@ -3807,12 +3870,19 @@ declare module "gnoblin/extensions/xr" {
         halfArc?: number;
         maxPanels?: number;
         stackStep?: number;
-        /** The triggers of the stock bindings by id; `null` leaves one out. */
-        triggers?: { move?: string | null; resize?: string | null };
+        /**
+         * The triggers of the stock bindings by id; `null` leaves one out. Defaults: `Grip+Drag`, `Grip+Trigger+Drag`
+         * and `Trigger+Thumbstick+Drag`.
+         */
+        triggers?: { move?: string | null; resize?: string | null; rotate?: string | null };
     }
-    /** Computes the room's ring placement and supplies default move and resize bindings. */
+    /** Computes the room's ring placement and supplies default move, resize and rotate bindings. */
     export class SpatialLayout {
         constructor(options?: SpatialLayoutOptions);
+        /**
+         * The layout's bindings by id. An `add` under an id that is taken replaces that binding, and two bindings may
+         * share a chord: the one added last is offered a drag first, the other when that one declines.
+         */
         readonly bindings: BindingCollection;
         readonly ring: XRRingParams;
         arrange<I>(views: readonly RingView<I>[], focus: I | null): RingResult;
@@ -3894,6 +3964,10 @@ declare module "gnoblin/extensions/xr" {
         readonly SpatialLayout: typeof SpatialLayout;
         readonly ViewMoveBinding: typeof ViewMoveBinding;
         readonly ViewResizeBinding: typeof ViewResizeBinding;
+        readonly ViewRotateBinding: typeof ViewRotateBinding;
+        readonly ViewScaleBinding: typeof ViewScaleBinding;
+        /** The base of the bindings that follow a controller; a script's own drag binding extends it. */
+        readonly ControllerDragBinding: typeof XRControllerDragBinding;
         readonly Room: typeof XRRoom;
         /** The stock room, or the one a script assigned to the viewport. */
         room: XRRoom | null;

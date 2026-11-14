@@ -19,6 +19,8 @@ export {
     View,
     ViewMoveBinding,
     ViewResizeBinding,
+    ViewRotateBinding,
+    ViewScaleBinding,
     XRCamera3D,
     XRController,
     XRControllerDragBinding,
@@ -35,12 +37,14 @@ export {
 } from "gnoblin/xr";
 export type {
     HeadPanelOptions,
+    ResizeEdges,
     RingPose,
     RingResult,
     RingView,
     SpatialLayoutOptions,
     ViewMoveOptions,
     ViewResizeOptions,
+    ViewScaleOptions,
     XRBindingOptions,
     XRCamera3DOptions,
     XRClient,

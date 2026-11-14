@@ -1,14 +1,41 @@
-// XR shell integration: this module owns room placement, controller bindings and session wrappers, not the XR runtime.
+// XR shell integration: this module owns room placement, controllers, the session wrappers and the drag loop, not the
+// XR runtime. The bindings a drag runs are in `xr_bindings.ts`, which this module re-exports.
 // The separate XR program owns tracking and layers; this module reads and writes scene nodes through `XRWorld`.
 // Units are millimetres internally and metres at the script-facing layout boundary.
 // Read `scene.ts` first for node and transform semantics, then this module for room behavior.
 
-import { Binding, BindingCollection } from "gnoblin/bindings";
-import type { ControllerButton, ControllerTriggerParts, DragEvent } from "gnoblin/bindings";
+import type { ControllerButton, ControllerTriggerParts } from "gnoblin/bindings";
+import { Viewport } from "gnoblin/display";
 import { Camera3D, Node, Plane, Ray, SceneError, Transform3D, Vector3, View, mountOnRoot } from "gnoblin/scene";
 import type { Camera3DOptions, NodeOptions, SceneBackend } from "gnoblin/scene";
+import {
+    SpatialBindings,
+    ViewMoveBinding,
+    ViewResizeBinding,
+    ViewRotateBinding,
+    ViewScaleBinding,
+    XRControllerDragBinding,
+    parseControllerTrigger,
+} from "gnoblin/xr_bindings";
+import type { XRDragEvent } from "gnoblin/xr_bindings";
 
 export { Camera3D, Node, Plane, Ray, Transform3D, Vector3, View };
+export {
+    ViewMoveBinding,
+    ViewResizeBinding,
+    ViewRotateBinding,
+    ViewScaleBinding,
+    XRControllerDragBinding,
+    parseControllerTrigger,
+};
+export type {
+    ResizeEdges,
+    ViewMoveOptions,
+    ViewResizeOptions,
+    ViewScaleOptions,
+    XRBindingOptions,
+    XRDragEvent,
+} from "gnoblin/xr_bindings";
 
 type NodeNumber = number;
 
@@ -227,69 +254,9 @@ export const CLAIMABLE_INPUTS: readonly string[] = ["trigger", "grip", "thumbsti
  */
 const MAX_CHORD_SETTLE_MS = 60;
 
-const BUTTON_ORDER: readonly ControllerButton[] = ["Trigger", "Grip", "Thumbstick", "Primary", "Secondary"];
-const BUTTON_NAMES: Readonly<Record<string, ControllerButton>> = {
-    trigger: "Trigger",
-    grip: "Grip",
-    thumbstick: "Thumbstick",
-    primary: "Primary",
-    secondary: "Secondary",
-};
-
 /** A trigger pulled to this much is down, and it stays down until it falls to `RELEASE`. */
 const PRESS = 0.75;
 const RELEASE = 0.25;
-
-/**
- * Parses an XR trigger: `Grip+Drag`, `Right.Grip+Drag`, `Trigger+Grip+Drag`. The buttons are Trigger, Grip,
- * Thumbstick, Primary and Secondary, optionally prefixed `Left.` or `Right.` (one hand for the whole trigger), and
- * the trigger ends in `Drag`. It throws a `TypeError` that names the wrong token.
- */
-export function parseControllerTrigger(trigger: unknown, what = "trigger"): ControllerTriggerParts {
-    if (typeof trigger !== "string" || trigger === "") {
-        throw new TypeError(`${what} must be an XR trigger such as "Grip+Drag", got ${String(trigger)}`);
-    }
-    const parts = trigger.split("+");
-    const last = parts[parts.length - 1];
-    if (last.toLowerCase() !== "drag") {
-        throw new TypeError(`${what}: an XR trigger ends in Drag (token "${last}" in "${trigger}")`);
-    }
-    const buttons = new Set<ControllerButton>();
-    let hand: "Left" | "Right" | null = null;
-    for (const token of parts.slice(0, -1)) {
-        const dot = token.indexOf(".");
-        const prefix = dot < 0 ? "" : token.slice(0, dot).toLowerCase();
-        const name = (dot < 0 ? token : token.slice(dot + 1)).toLowerCase();
-        if (dot >= 0) {
-            if (prefix !== "left" && prefix !== "right") {
-                throw new TypeError(`${what}: "${token}" names no hand; write Left. or Right. (in "${trigger}")`);
-            }
-            const named = prefix === "left" ? "Left" : "Right";
-            if (hand !== null && hand !== named) {
-                throw new TypeError(
-                    `${what}: "${token}" is on the other hand; one trigger has one hand (in "${trigger}")`,
-                );
-            }
-            hand = named;
-        }
-        const button = Object.hasOwn(BUTTON_NAMES, name) ? BUTTON_NAMES[name] : undefined;
-        if (button === undefined) {
-            throw new TypeError(
-                `${what}: "${token}" is not an XR button; use Trigger, Grip, Thumbstick, Primary or Secondary (in "${trigger}")`,
-            );
-        }
-        if (buttons.has(button)) {
-            throw new TypeError(`${what}: "${token}" repeats ${button} (in "${trigger}")`);
-        }
-        buttons.add(button);
-    }
-    if (buttons.size === 0) {
-        throw new TypeError(`${what}: an XR trigger names at least one button before Drag (in "${trigger}")`);
-    }
-    const ordered = BUTTON_ORDER.filter((button) => buttons.has(button));
-    const text = `${hand === null ? "" : `${hand}.`}${ordered.join("+")}+Drag`;
-    return { kind: "controller", text, modifiers: [], hand, buttons: ordered, action: "drag" };
-}
 
 /** One tracked hand: a `controller` node the XR program writes. Read it; it cannot be written. */
 export class XRController {
@@ -592,11 +559,13 @@ export interface XRViewportOptions {
  * `composition: "projection"` draws every panel through the head camera as a projection layer; `"layers"` and `"auto"`
  * leave the panels flat quads.
  */
-export class XRViewport {
-    readonly content: Node;
-    readonly camera: Camera3D;
+export class XRViewport extends Viewport {
+    readonly #room: Node;
     composition: XRComposition;
 
+    /**
+     * @throws TypeError when `content` is not a node, `camera` is not a `Camera3D` or `composition` is not one of the three
+     */
     constructor(options: XRViewportOptions) {
         if (!(options?.content instanceof Node)) {
             throw new TypeError("XRViewport: content must be the room node");
@@ -610,9 +579,19 @@ export class XRViewport {
                 `XRViewport: composition "${String(composition)}" must be "auto", "layers" or "projection"`,
             );
         }
-        this.content = options.content;
-        this.camera = options.camera;
+        // The core viewport shows a workspace; the headset shows a room, so `content` is overridden below.
+        super({ camera: options.camera });
+        this.#room = options.content;
         this.composition = composition;
+    }
+
+    /** The room the headset shows: a node, not a workspace. It is fixed when the viewport is made. */
+    override get content(): Node {
+        return this.#room;
+    }
+
+    override set content(_value: object) {
+        throw new TypeError("XRViewport.content: the room is fixed when the viewport is made");
     }
 
     /** @internal Names the nodes for the program and puts the camera under the room. */
@@ -675,74 +654,7 @@ export class XRTrackedPose {
     }
 }
 
-// ---- Dragging a panel ---------------------------------------------------------------------------------------------
-
-/**
- * What a hook of an XR binding is given: a `DragEvent` whose `position` fields are absent, because a controller has a
- * ray and no pointer position. `device` is null; the hand is `controller`.
- */
-export interface XRDragEvent extends DragEvent {
-    /** The session's input context, which is the `xr` seat. */
-    readonly context: object | null;
-    readonly controller: XRController;
-    /** The panel under the ray when the drag started. It does not change for the drag. */
-    readonly view?: View;
-    readonly ray: Ray;
-    /** Where the ray struck the panel's plane when the drag started, in the room's frame. */
-    readonly hit?: Vector3;
-    readonly hand: string;
-    readonly room: XRRoom;
-    /** Metres per room unit. */
-    readonly unit: number;
-}
-
-/** Identity, trigger and enablement for a controller drag binding. */
-export interface XRBindingOptions {
-    id: string;
-    trigger: string;
-    enabled?: boolean;
-    priority?: number;
-}
-
-/**
- * The base of the bindings that follow a controller from the press of its buttons to their release. The hooks are
- * the `Binding` ones: `onStart` returns a state object or false, `onUpdate` runs once a frame with the latest pose,
- * and `onEnd` or `onCancel` ends the drag. A drag starts when exactly the trigger's buttons have been down together
- * for the session's settle time, so a two-button chord is not taken for its first button.
- */
-export class XRControllerDragBinding extends Binding {
-    static override readTrigger(trigger: unknown, what: string): ControllerTriggerParts {
-        return parseControllerTrigger(trigger, what);
-    }
-
-    constructor(options: XRBindingOptions) {
-        super(options);
-    }
-
-    /** The grammar's reading of `trigger`. */
-    override get parsed(): ControllerTriggerParts {
-        return super.parsed as ControllerTriggerParts;
-    }
-
-    override onStart(_event: XRDragEvent): object | false {
-        return false;
-    }
-
-    override onUpdate(_event: XRDragEvent, _state: object): void {}
-
-    override onEnd(_event: XRDragEvent, _state: object): void {}
-
-    override onCancel(_event: XRDragEvent, _state: object): void {}
-
-    /**
-     * The inputs of the controller this binding takes from the window under the ray for as long as its drag runs: by
-     * default the buttons of its trigger, so a `Grip+Drag` does not also right-click the panel it moves. The runtime
-     * claims them as the drag starts and releases them when it ends or is cancelled, however it ends.
-     */
-    claims(): readonly string[] {
-        return this.parsed.buttons.map((button) => button.toLowerCase());
-    }
-}
+// ---- Picking a panel ----------------------------------------------------------------------------------------------
 
 /** Where a ray struck a panel. */
 export interface XRHit {
@@ -773,251 +685,6 @@ export function pickView(room: XRRoom, ray: Ray): XRHit | null {
     return null;
 }
 
-/** The placement of the room's parent chain above `node`, so a world pose can be turned into the node's own. */
-function aboveTransform(node: Node): Transform3D {
-    const above = node.parent;
-    return above === null ? Transform3D.identity() : above.worldTransform;
-}
-
-/** Initial tracking mode and rotation behavior for a panel move. */
-export interface ViewMoveOptions extends Partial<XRBindingOptions> {
-    /** `controller`: the panel follows the hand (6-DoF). `ray`: the panel follows where the ray points. */
-    tracking?: "controller" | "ray";
-    /** `follow`: the panel turns with the hand. `keep`: it keeps its own rotation. */
-    rotation?: "follow" | "keep";
-    /** Only `preserve`: a panel moved by ray keeps its distance from the controller. */
-    distance?: "preserve";
-}
-
-interface MoveState {
-    view: View;
-    /** Whether the panel was pinned before the drag, so a cancel can put that back too. */
-    wasPinned: boolean;
-    startLocal: Transform3D;
-    startWorld: Transform3D;
-    startController: Transform3D;
-    /** Ray tracking: how far along the ray the grabbed point was, and where the panel's centre is from it. */
-    distance: number;
-    offset: Vector3;
-}
-
-/**
- * The 6-DoF grab (spec snippet 067): the panel keeps its place in the hand it was grabbed in. It writes the View's
- * placement and nothing else, so the client's own rectangle on the desktop does not change.
- */
-export class ViewMoveBinding extends XRControllerDragBinding {
-    tracking: "controller" | "ray";
-    rotation: "follow" | "keep";
-
-    constructor(options: ViewMoveOptions = {}) {
-        super({ id: options.id ?? "move", trigger: options.trigger ?? "Grip+Drag", ...pick(options) });
-        this.tracking = options.tracking ?? "controller";
-        this.rotation = options.rotation ?? "follow";
-        if (this.tracking !== "controller" && this.tracking !== "ray") {
-            throw new TypeError(`ViewMoveBinding: tracking "${String(this.tracking)}" must be "controller" or "ray"`);
-        }
-        if (this.rotation !== "follow" && this.rotation !== "keep") {
-            throw new TypeError(`ViewMoveBinding: rotation "${String(this.rotation)}" must be "follow" or "keep"`);
-        }
-        if (options.distance !== undefined && options.distance !== "preserve") {
-            throw new TypeError(`ViewMoveBinding: distance "${String(options.distance)}" must be "preserve"`);
-        }
-    }
-
-    override onStart(event: XRDragEvent): MoveState | false {
-        const view = event.view;
-        if (view === undefined || event.hit === undefined || !event.controller.tracked) {
-            return false;
-        }
-        const startWorld = view.worldTransform;
-        return {
-            view,
-            wasPinned: event.room.isPinned(view),
-            startLocal: view.transform,
-            startWorld,
-            startController: event.controller.pose,
-            // Measured to the point the ray struck, so the panel does not jump to the ray's end.
-            distance: event.hit.distanceTo(event.ray.origin),
-            offset: startWorld.position.subtract(event.hit),
-        };
-    }
-
-    override onUpdate(event: XRDragEvent, state: object): void {
-        const s = state as MoveState;
-        let target: Transform3D;
-        if (this.tracking === "controller") {
-            const delta = event.controller.pose.multiply(s.startController.inverse());
-            target = delta.multiply(s.startWorld);
-            if (this.rotation === "keep") {
-                target.rotation = s.startWorld.rotation;
-            }
-        } else {
-            target = s.startWorld.clone();
-            const direction = event.ray.direction.normalize();
-            target.position = event.ray.origin.add(direction.scale(s.distance)).add(s.offset);
-        }
-        // The view lives in the room's space, so the world pose goes back through its parents.
-        s.view.transform = aboveTransform(s.view).inverse().multiply(target);
-        event.room.pin(s.view);
-    }
-
-    override onCancel(event: XRDragEvent, state: object): void {
-        const s = state as MoveState;
-        s.view.transform = s.startLocal;
-        if (!s.wasPinned) event.room.unpin(s.view);
-    }
-}
-
-function pick(options: Partial<XRBindingOptions>): Partial<XRBindingOptions> {
-    const out: Partial<XRBindingOptions> = {};
-    if (options.enabled !== undefined) out.enabled = options.enabled;
-    if (options.priority !== undefined) out.priority = options.priority;
-    return out;
-}
-
-/** Initial scale and minimum dimensions for a panel corner resize. */
-export interface ViewResizeOptions extends Partial<XRBindingOptions> {
-    /** How many pixels of the client one metre of the panel is, for the size asked of it on release. */
-    pixelsPerMetre?: number;
-    /** The smallest the panel may be made, in metres. */
-    minWidth?: number;
-    minHeight?: number;
-}
-
-interface ResizeState {
-    view: View;
-    wasPinned: boolean;
-    startLocal: Transform3D;
-    startWorld: Transform3D;
-    plane: Plane;
-    /** The corner under the ray when the drag started: -1 or 1 on each axis. */
-    corner: { x: number; y: number };
-    /** The opposite corner, in the panel's own pixels at the start. It stays where it is. */
-    anchor: { x: number; y: number };
-    /** Where the ray struck, in the panel's pixels at the start: the drag grows the panel by how far from the anchor it is. */
-    first: { x: number; y: number };
-    /** The panel's pixel size at the start. */
-    width: number;
-    height: number;
-    /** The size the hand asks for, in metres. */
-    wanted: { width: number; height: number };
-}
-
-/**
- * The resize of a panel by its corner (spec snippet 069). During the drag it writes the View's own size, the uniform
- * `scale` the program reads, and the position that keeps the opposite corner still, on every update. It writes
- * nothing to the client, so the client gets no configure while the hand moves. On release, if the size asked for
- * changes the aspect by more than 2% or the client's picture would be under 85% of the pixels the new size shows,
- * it asks the client for one new size, in one transaction.
- */
-export class ViewResizeBinding extends XRControllerDragBinding {
-    pixelsPerMetre: number;
-    minWidth: number;
-    minHeight: number;
-
-    constructor(options: ViewResizeOptions = {}) {
-        super({ id: options.id ?? "resize", trigger: options.trigger ?? "Grip+Trigger+Drag", ...pick(options) });
-        this.pixelsPerMetre = options.pixelsPerMetre ?? 1200;
-        this.minWidth = options.minWidth ?? 0.25;
-        this.minHeight = options.minHeight ?? 0.15;
-        for (const [name, value] of [
-            ["pixelsPerMetre", this.pixelsPerMetre],
-            ["minWidth", this.minWidth],
-            ["minHeight", this.minHeight],
-        ] as const) {
-            if (!Number.isFinite(value) || value <= 0) {
-                throw new RangeError(`ViewResizeBinding: ${name} must be a number above 0`);
-            }
-        }
-    }
-
-    override onStart(event: XRDragEvent): ResizeState | false {
-        const view = event.view;
-        if (view === undefined || event.hit === undefined) {
-            return false;
-        }
-        const startWorld = view.worldTransform;
-        const local = startWorld.inverse().transformPoint(event.hit);
-        const corner = { x: local.x >= 0 ? 1 : -1, y: local.y >= 0 ? 1 : -1 };
-        const width = view.width;
-        const height = view.height;
-        return {
-            view,
-            wasPinned: event.room.isPinned(view),
-            startLocal: view.transform,
-            startWorld,
-            plane: startWorld.plane(),
-            corner,
-            anchor: { x: (-corner.x * width) / 2, y: (-corner.y * height) / 2 },
-            first: { x: local.x, y: local.y },
-            width,
-            height,
-            wanted: { width: width * startWorld.scale * event.unit, height: height * startWorld.scale * event.unit },
-        };
-    }
-
-    override onUpdate(event: XRDragEvent, state: object): void {
-        const s = state as ResizeState;
-        const point = s.plane.intersect(event.ray);
-        if (point === null) {
-            return;
-        }
-        // The panel grows by how far the ray is from the anchor compared with where it started, so the first update
-        // does not jump. A metre is `1 / (scale * unit)` of the start's pixels.
-        const perMetre = 1 / (s.startWorld.scale * event.unit);
-        const at = s.startWorld.inverse().transformPoint(point);
-        const kx = (at.x - s.anchor.x) / (s.first.x - s.anchor.x);
-        const ky = (at.y - s.anchor.y) / (s.first.y - s.anchor.y);
-        const width = Math.max(s.width * kx, this.minWidth * perMetre);
-        const height = Math.max(s.height * ky, this.minHeight * perMetre);
-        s.wanted = { width: width / perMetre, height: height / perMetre };
-        // A panel has one scale, so the preview grows evenly to the larger of the two asked-for sizes.
-        const k = Math.max(width / s.width, height / s.height);
-        const anchorWorld = s.startWorld.transformPoint(new Vector3(s.anchor.x, s.anchor.y, 0));
-        const centre = anchorWorld.add(s.startWorld.position.subtract(anchorWorld).scale(k));
-        const target = s.startWorld.clone();
-        target.position = centre;
-        target.scale = s.startWorld.scale * k;
-        s.view.transform = aboveTransform(s.view).inverse().multiply(target);
-        event.room.pin(s.view);
-    }
-
-    override onEnd(event: XRDragEvent, state: object): void {
-        const s = state as ResizeState;
-        const client = s.view.content as XRClient | null;
-        if (client === null || !client.alive) {
-            return;
-        }
-        const desired = {
-            width: Math.round(s.wanted.width * this.pixelsPerMetre),
-            height: Math.round(s.wanted.height * this.pixelsPerMetre),
-        };
-        if (desired.width < 1 || desired.height < 1) {
-            return;
-        }
-        const aspectChanged = Math.abs(desired.width / desired.height / (client.width / client.height) - 1) > 0.02;
-        const tooCoarse = client.width < desired.width * 0.85 || client.height < desired.height * 0.85;
-        if (!aspectChanged && !tooCoarse) {
-            return;
-        }
-        // One request: both sides go in the frame's one transaction, so the client gets one configure.
-        client.width = desired.width;
-        client.height = desired.height;
-        // The picture will have `desired` pixels, and the panel keeps the metres the hand drew.
-        const world = s.view.worldTransform;
-        const scale = 1 / (this.pixelsPerMetre * event.unit);
-        const target = world.clone();
-        target.scale = scale;
-        s.view.transform = aboveTransform(s.view).inverse().multiply(target);
-    }
-
-    override onCancel(event: XRDragEvent, state: object): void {
-        const s = state as ResizeState;
-        s.view.transform = s.startLocal;
-        if (!s.wasPinned) event.room.unpin(s.view);
-    }
-}
-
 // ---- The room -----------------------------------------------------------------------------------------------------
 
 export interface SpatialLayoutOptions {
@@ -1040,18 +707,18 @@ export interface SpatialLayoutOptions {
     /** Each tier of stacked panels is this many metres further back. Default 0.25. */
     stackStep?: number;
     /** The triggers of the stock bindings by id; `null` leaves a binding out. */
-    triggers?: { move?: string | null; resize?: string | null };
+    triggers?: { move?: string | null; resize?: string | null; rotate?: string | null };
 }
 
-const LAYOUT_TRIGGERS = { move: "Grip+Drag", resize: "Grip+Trigger+Drag" } as const;
+const LAYOUT_TRIGGERS = { move: "Grip+Drag", resize: "Grip+Trigger+Drag", rotate: "Trigger+Thumbstick+Drag" } as const;
 
 /**
- * The room's arrangement: panels on a ring round the viewer, and the bindings that move and resize them. The ring is
- * `arrangeRing`; `bindings` is the layout's collection, so `layout.bindings.remove("move")` turns a binding off and
- * `layout.bindings.add(new ViewMoveBinding({ tracking: "ray" }))` replaces it.
+ * The room's arrangement: panels on a ring round the viewer, and the bindings that move, resize and rotate them. The
+ * ring is `arrangeRing`; `bindings` is the layout's collection, so `layout.bindings.remove("move")` turns a binding
+ * off and `layout.bindings.add(new ViewMoveBinding({ tracking: "ray" }))` replaces it (`SpatialBindings`).
  */
 export class SpatialLayout {
-    readonly bindings = new BindingCollection();
+    readonly bindings = new SpatialBindings();
     readonly ring: XRRingParams;
 
     constructor(options: SpatialLayoutOptions = {}) {
@@ -1088,6 +755,7 @@ export class SpatialLayout {
         }
         if (triggers.move !== null) this.bindings.add(new ViewMoveBinding({ trigger: triggers.move }));
         if (triggers.resize !== null) this.bindings.add(new ViewResizeBinding({ trigger: triggers.resize }));
+        if (triggers.rotate !== null) this.bindings.add(new ViewRotateBinding({ trigger: triggers.rotate }));
     }
 
     arrange<I>(views: readonly RingView<I>[], focus: I | null): RingResult {
@@ -1410,6 +1078,9 @@ export class XRExtension {
     readonly SpatialLayout = SpatialLayout;
     readonly ViewMoveBinding = ViewMoveBinding;
     readonly ViewResizeBinding = ViewResizeBinding;
+    readonly ViewRotateBinding = ViewRotateBinding;
+    readonly ViewScaleBinding = ViewScaleBinding;
+    readonly ControllerDragBinding = XRControllerDragBinding;
     readonly Room = XRRoom;
     /** The room the stock shell built, or the one a script assigned as the viewport's content. */
     room: XRRoom | null = null;
@@ -1443,6 +1114,8 @@ interface Run {
     readonly view: View;
     readonly hit: Vector3;
     last: number;
+    /** Whether the panel was pinned before the drag, so a cancel can give it back to the ring. */
+    readonly wasPinned: boolean;
 }
 
 /**
@@ -1641,6 +1314,8 @@ export class XRRuntime {
         this.#hook(`${run.binding.id}.${hook}`, () =>
             run.binding[hook](this.#event(session, room, run, now, run.last), run.state),
         );
+        // A finished drag leaves the panel where it was put (pinned); a cancelled one gives it back to the ring.
+        if (hook === "onCancel" && !run.wasPinned) room.unpin(run.view);
     }
 
     /** Drops what a drag claimed. A controller that is gone holds no claim, so only a refused write is reported. */
@@ -1659,6 +1334,7 @@ export class XRRuntime {
                     run.binding.onCancel(this.#event(session, room, run, this.#world.now(), run.last), run.state),
                 );
             }
+            if (room !== null && !run.wasPinned) room.unpin(run.view);
         }
     }
 
@@ -1711,6 +1387,8 @@ export class XRRuntime {
             }
             const candidates = bindings
                 .filter((binding) => binding.enabled && matches(binding.parsed, controller))
+                // Newest first among equals, so a binding a script added is offered the chord before the stock one.
+                .reverse()
                 .sort((a, b) => b.priority - a.priority);
             if (candidates.length === 0) {
                 continue;
@@ -1734,8 +1412,19 @@ export class XRRuntime {
                     continue;
                 }
                 if (state !== false && typeof state === "object" && state !== null && hit !== null) {
-                    const run: Run = { controller, binding, state, view: hit.view, hit: hit.point, last: now };
+                    const wasPinned = room.isPinned(hit.view);
+                    const run: Run = {
+                        controller,
+                        binding,
+                        state,
+                        view: hit.view,
+                        hit: hit.point,
+                        last: now,
+                        wasPinned,
+                    };
                     this.#runs.set(controller, run);
+                    // Whatever the binding does to the panel, the ring must not put it back a frame later.
+                    room.pin(hit.view);
                     // The drag owns its buttons from here: the program stops passing them to the window under the ray.
                     // A claim that cannot be made ends the drag at once, so a binding never runs half-claimed.
                     if (this.#hook(`${binding.id}.claim`, () => controller.claim(binding, binding.claims()))) {

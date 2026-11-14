@@ -344,10 +344,97 @@ panel on the ring as well:
 const panel = xr.room.pinToHead(client, { x: 0.1, y: -0.2, z: -1 });
 ```
 
-### Moving and resizing a panel
+### Moving, resizing, turning and scaling a panel
 
 The program writes one `controller` node for each hand (see "Controller nodes"), and the shell reads the nodes once a
-frame.
+frame. The room's `SpatialLayout` holds the bindings that act on the panel under the ray, as `FloatingLayout` holds its
+own, and `layout.bindings` is their collection:
+
+| Id       | Class               | Default trigger           | What a drag does                                                               |
+| -------- | ------------------- | ------------------------- | ------------------------------------------------------------------------------ |
+| `move`   | `ViewMoveBinding`   | `Grip+Drag`               | The panel follows the hand (`tracking: "controller"`) or the ray (`"ray"`).    |
+| `resize` | `ViewResizeBinding` | `Grip+Trigger+Drag`       | Previews the new size on the panel; asks the client for one size on release.   |
+| `rotate` | `ViewRotateBinding` | `Trigger+Thumbstick+Drag` | Turns the panel about its own centre by what the hand turns.                   |
+| `scale`  | `ViewScaleBinding`  | `Grip+Thumbstick+Drag`    | Adds the metres the hand pushes along its aim to the scale. Not in the layout. |
+
+- `SpatialLayout`'s `triggers` takes `move`, `resize` and `rotate`. A trigger of `null` leaves the binding out.
+- A `ViewScaleBinding` is added by the script, with `minScale` and `maxScale` (0.2 and 3) as limits.
+- `ViewResizeBinding` takes `edges`: `"quadrant"` (the corner nearest the ray) or one corner, such as `"top-left"`.
+
+```ts
+const xr = gnoblin.extensions.xr;
+if (xr?.room) {
+    const spatial = new xr.SpatialLayout({ triggers: { move: "Right.Grip+Drag", rotate: null } });
+    spatial.bindings.add(new xr.ViewScaleBinding({ minScale: 0.5, maxScale: 2 }));
+    // An id that is taken is replaced, so this swaps the move for a ray drag.
+    spatial.bindings.add(new xr.ViewMoveBinding({ id: "move", tracking: "ray", rotation: "keep" }));
+    xr.room.layout = spatial;
+}
+```
+
+Two rules to know:
+
+- `bindings.add` replaces a binding that has the same id, so a script overrides a stock binding by adding its own. The
+  new binding goes to the end of the collection.
+- Two bindings may share a chord. The one added last is offered the drag first, and the other is offered it if that
+  one declines in `onStart`.
+
+A cancelled drag, which an untracked hand or a throw causes, puts the panel back where it was.
+
+### Your own drag binding
+
+`xr.ControllerDragBinding` is the base of the four classes above. A script extends it and gets the same hooks, which
+run once a frame while the trigger's buttons are down together:
+
+```ts
+class Nudge extends xr.ControllerDragBinding {
+    constructor() {
+        super({ id: "nudge", trigger: "Primary+Drag" });
+    }
+    onStart(event) {
+        return event.view ? { view: event.view, start: event.view.transform, hand: event.controller.pose } : false;
+    }
+    onUpdate(event, state) {
+        // The panel follows the hand's sideways travel since the drag began.
+        const travel = event.controller.pose.position.subtract(state.hand.position);
+        const target = state.start.clone();
+        target.position = state.start.position.add(new Vector3(travel.x, 0, 0));
+        state.view.transform = target;
+    }
+    onCancel(_event, state) {
+        state.view.transform = state.start;
+    }
+}
+xr.room.layout.bindings.add(new Nudge());
+```
+
+`onStart` returns a state object to take the drag or `false` to decline it. The event has:
+
+- `controller`, its `ray`, and the `view` under the ray;
+- `hit`, where the ray struck the view;
+- `deltaTime` in seconds, and `unit`, the metres for each room unit.
+
+A binding that needs more than its trigger's buttons overrides `claims()`. A throw-and-glide binding is not built in:
+write it as a class like this one, with a physics stepper of your own.
+
+### A head-locked panel as a virtual output
+
+A layer-shell client can use the headset as a screen when a virtual output is attached to the viewer:
+
+```ts
+const hud = new VirtualOutput({ name: "XR-HUD", width: 1600, height: 900, attachment: "viewer" });
+try {
+    gnoblin.outputs.add(hud);
+} catch (error) {
+    // Today: GnoblinError, code "unsupported".
+}
+```
+
+The class checks its options: whole pixel sizes above zero, and `attachment` `"viewer"` or none.
+
+`gnoblin.outputs.add` throws a `GnoblinError` with
+code `unsupported` and the message "virtual outputs are not supported by this backend", and the collection does not
+change. Until it can, `room.pinToHead(client)` puts a window in a panel fixed to the head.
 
 ### Controller nodes
 
@@ -496,6 +583,7 @@ Logs, the tree dump and the pictures are left in `/tmp/xr-smoke`.
       then sees the press first.
 - **A panel has one scale.** The program reads the first component of a View's `scale`, so a resize previews the growth
   evenly and the aspect changes when the client's new size lands.
+- **ThrowViewBinding.** There is no built-in throw-and-glide binding; write one as a class of your own.
 - **A stalled script.** The program writes the head pose and submits layers without waiting for the shell, and the
   shell reads the tree once a frame. No test stalls a shell while the program runs: that is unverified.
 

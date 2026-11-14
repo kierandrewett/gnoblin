@@ -93,3 +93,5 @@ export type { LockAnswer, LockBackend, LockStyle } from "gnoblin/lock";
 export { InputDevice, Keyboard, Mouse, Tablet, Touchpad, Touchscreen } from "gnoblin/devices";
 export type { DeviceBindOptions } from "gnoblin/devices";
 export { NativeObject } from "gnoblin/native_object";
+export { VirtualOutput } from "gnoblin/virtual_output";
+export type { VirtualOutputAttachment, VirtualOutputOptions } from "gnoblin/virtual_output";
