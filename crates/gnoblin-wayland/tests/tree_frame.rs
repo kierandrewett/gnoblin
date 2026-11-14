@@ -732,6 +732,7 @@ fn pointer_edges_reach_the_shell_in_the_order_they_arrive_in_one_batch() {
             TreeFrameInput::Requested => "requested",
             TreeFrameInput::Chord(_) => "chord",
             TreeFrameInput::Gesture(_) => "gesture",
+            TreeFrameInput::PointerChord(_) => "pointer_chord",
         })
         .collect();
     assert_eq!(names, ["enter", "motion", "press", "release", "scroll", "leave"]);

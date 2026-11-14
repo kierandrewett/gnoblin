@@ -14,7 +14,7 @@ use std::time::Instant;
 
 use gnoblin_input::GestureDelivery;
 use gnoblin_paint::SharedPainter;
-use gnoblin_proto::tree::seat::{ChordPayload, GesturePayload};
+use gnoblin_proto::tree::seat::{ChordPayload, GesturePayload, PointerChordPayload};
 use gnoblin_proto::tree::tree::{
     AnswerPayload, AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload, TransactArgs,
 };
@@ -25,8 +25,8 @@ use gnoblin_render::transaction::{
 use gnoblin_secret::SecretText;
 use gnoblin_types::{ClientId, NodeId};
 use gnoblin_wayland::{
-    ChordEvent, ChordState, FrameTreeEvent, TreeAnswer, TreeBatch, TreeFrameInput, TreeHooks, TreeInput, TreeQueue,
-    keysym_name, keysym_text,
+    ChordEvent, ChordState, FrameTreeEvent, PointerChordEvent, TreeAnswer, TreeBatch, TreeFrameInput, TreeHooks,
+    TreeInput, TreeQueue, keysym_name, keysym_text,
 };
 
 use super::server::IpcEvent;
@@ -50,6 +50,7 @@ pub mod member {
     pub const EVENT: &str = "event";
     pub const CHORD: &str = "chord";
     pub const GESTURE: &str = "gesture";
+    pub const POINTER_CHORD: &str = "pointer_chord";
     pub const ANSWER: &str = "answer";
 }
 
@@ -383,6 +384,11 @@ pub fn event_payload(event: &FrameTreeEvent) -> EventPayload {
             kind: "gesture".to_owned(),
             ..base
         },
+        // A claimed pointer chord is sent as the `pointer_chord` signal, see `pointer_chord_payload`.
+        TreeFrameInput::PointerChord(_) => EventPayload {
+            kind: "pointer_chord".to_owned(),
+            ..base
+        },
         TreeFrameInput::Input(input) => {
             let kind = input.name().to_owned();
             match input {
@@ -426,6 +432,22 @@ pub fn chord_payload(chord: &ChordEvent) -> ChordPayload {
             ChordState::Release => "release",
         }
         .to_owned(),
+    }
+}
+
+/// The `pointer_chord` signal for a claimed pointer chord's drag that advanced.
+#[must_use]
+pub fn pointer_chord_payload(event: &PointerChordEvent) -> PointerChordPayload {
+    PointerChordPayload {
+        phase: event.phase.as_str().to_owned(),
+        claim: event.claim,
+        x: event.x,
+        y: event.y,
+        dx: event.dx,
+        dy: event.dy,
+        button: i64::from(event.button),
+        modifiers: event.modifiers.clone(),
+        time: i64::from(event.time),
     }
 }
 

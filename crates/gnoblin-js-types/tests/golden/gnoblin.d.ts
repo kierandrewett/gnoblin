@@ -582,6 +582,8 @@ declare module "gnoblin/schema/tree" {
         onChord(handler: (target: this, id: number, chord: string, state: string) => void): Unsubscribe;
         /** Signal `gesture`. */
         onGesture(handler: (target: this, id: number, kind: string, fingers: number, phase: string, dx: number, dy: number, scale: number, rotation: number) => void): Unsubscribe;
+        /** Signal `pointer_chord`. */
+        onPointerChord(handler: (target: this, phase: string, claim: number, x: number, y: number, dx: number, dy: number, button: number, modifiers: string, time: number) => void): Unsubscribe;
     }
 
     /** Schema object `tree.surface` (since 0.2.0). */

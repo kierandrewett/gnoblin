@@ -75,6 +75,7 @@ use gnoblin_types::{DeviceId, KeyCode, KeyState, Keysym, Modifiers, NodeId, Wind
 use crate::State;
 use crate::devices::{DeviceKeys, LOCKS};
 use crate::observation::{MenuAnchor, MenuSource};
+use crate::pointer_chord::PointerCapture;
 use crate::protocols::ext_session_lock_v1::internal_locker;
 use crate::tree_frame::{ChordEvent, ChordState, TreeInput};
 
@@ -194,6 +195,11 @@ pub(crate) struct KeyboardTables {
     pub(crate) key_sources: BTreeMap<DeviceId, KeyboardSource>,
     /// The key codes a client was told are down, so the seat's last release of one is told to it too.
     pub(crate) forwarded_keys: BTreeSet<u32>,
+    /// The drags the shell's pointer-chord claims hold, by the pointer and the button number that began each.
+    pub(crate) captures: BTreeMap<(DeviceId, u8), PointerCapture>,
+    /// The buttons a client was told are down although a claim matched their press (the session was locked), by
+    /// pointer and button number, so their release goes to the client as the press did.
+    pub(crate) forwarded_buttons: BTreeSet<(DeviceId, u8)>,
 }
 
 impl Default for KeyboardTables {
@@ -230,6 +236,8 @@ impl Default for KeyboardTables {
             keymap_generation: 0,
             key_sources: BTreeMap::new(),
             forwarded_keys: BTreeSet::new(),
+            captures: BTreeMap::new(),
+            forwarded_buttons: BTreeSet::new(),
         }
     }
 }
@@ -252,7 +260,7 @@ pub(crate) struct DeviceClaim {
 
 /// The router binding name for a claim. The name grammar allows only ASCII alphanumerics, `-` and
 /// `_`, and a node's digits never contain `-`, so the name is unambiguous.
-fn claim_name(node: NodeId, id: i64) -> String {
+pub(crate) fn claim_name(node: NodeId, id: i64) -> String {
     format!("claim-{}-{}", node.get(), id)
 }
 
@@ -283,7 +291,7 @@ impl Keysyms for SeatKeysyms {
 }
 
 /// The modifier bits the router matches against, from Smithay's own view of the state.
-fn modifiers_of(state: &ModifiersState) -> Modifiers {
+pub(crate) fn modifiers_of(state: &ModifiersState) -> Modifiers {
     let mut modifiers = Modifiers::NONE;
     for (flag, on) in [
         (Modifiers::SHIFT, state.shift),
@@ -648,6 +656,7 @@ impl State {
             self.keyboard_tables.router.bindings_mut().remove_name(&bound);
             self.keyboard_tables.claims.remove(&name);
             self.keyboard_tables.device_claims.remove(&name);
+            self.keyboard_tables.captures.retain(|_, capture| !capture.is_of(&name));
             if call.method == "unclaim" {
                 continue;
             }
@@ -660,7 +669,12 @@ impl State {
                     continue;
                 }
             };
-            let chord = match Chord::parse(subject, ChordKind::Key, &SeatKeysyms) {
+            // A chord that ends in a pointer button claims that button's drag, and any other is a key chord. The
+            // pointer reading is tried first: no key chord ends in a `Button` name, so it takes nothing a key chord
+            // means.
+            let chord = match Chord::parse(subject, ChordKind::Pointer, &SeatKeysyms)
+                .or_else(|_| Chord::parse(subject, ChordKind::Key, &SeatKeysyms))
+            {
                 Ok(chord) => chord,
                 Err(_) => {
                     // The chord is not logged: call text is a generic secret-capable argument.
@@ -723,6 +737,10 @@ impl State {
         self.keyboard_tables
             .pressed_claims
             .retain(|_, claim| !released(claim.node));
+        // A drag whose claim went ends without a word to the owner, who is gone or has let go of it.
+        self.keyboard_tables
+            .captures
+            .retain(|_, capture| !released(capture.node()));
         self.keyboard_tables
             .device_claims
             .retain(|_, claim| !released(claim.node));
@@ -770,7 +788,7 @@ impl State {
     }
 
     /// The seat claim behind a router target, when the target is a claim.
-    fn claim_of(&self, target: Target) -> Option<Claim> {
+    pub(crate) fn claim_of(&self, target: Target) -> Option<Claim> {
         let Target::Binding(bound) = target else {
             return None;
         };
@@ -1166,7 +1184,7 @@ impl State {
     }
 
     /// Whether the focused client holds a shortcut inhibitor.
-    fn focused_shortcuts_inhibited(&mut self) -> bool {
+    pub(crate) fn focused_shortcuts_inhibited(&mut self) -> bool {
         let seat = self.seat.clone();
         self.shortcuts_inhibited(&seat)
     }

@@ -451,7 +451,9 @@ impl JsShell {
                     .input
                     .inbox
                     .push(JsInputMessage::Gesture(gesture)),
-                TreeIncoming::Event(_) | TreeIncoming::Answer { .. } => {}
+                // A claimed pointer chord's drag has no JavaScript API yet (the input module consumes it in a later
+                // package): it is dropped here so it does not pile up.
+                TreeIncoming::Event(_) | TreeIncoming::Answer { .. } | TreeIncoming::PointerChord(_) => {}
                 TreeIncoming::Attached(_) | TreeIncoming::Snapshot { .. } => {
                     return Err(JsShellError::Link("attach or snapshot after boot".to_owned()));
                 }

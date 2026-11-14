@@ -499,6 +499,9 @@ impl ShellVm {
                     args: Vec::new(),
                     fields: None,
                 }),
+                // The Lua shell claims no pointer chord (its drags are the compositor's own), so a drag that
+                // reaches it has nobody to tell.
+                TreeIncoming::PointerChord(_) => {}
                 TreeIncoming::Attached(_) | TreeIncoming::Snapshot { .. } => {
                     return Err(ShellVmError::Link("attach or snapshot after boot".to_owned()));
                 }

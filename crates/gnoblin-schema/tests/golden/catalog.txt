@@ -646,6 +646,16 @@ object seat since 0.2.0 secret false
     field dy type double since 0.2.0 secret false
     field scale type double since 0.2.0 secret false
     field rotation type double since 0.2.0 secret false
+  signal pointer_chord since 0.2.0 secret false
+    field phase type string since 0.2.0 secret false
+    field claim type int since 0.2.0 secret false
+    field x type double since 0.2.0 secret false
+    field y type double since 0.2.0 secret false
+    field dx type double since 0.2.0 secret false
+    field dy type double since 0.2.0 secret false
+    field button type int since 0.2.0 secret false
+    field modifiers type string since 0.2.0 secret false
+    field time type int since 0.2.0 secret false
 object surface since 0.2.0 secret false
   property id type uint since 0.2.0 secret false
   property parent type object:node since 0.2.0 secret false
@@ -2333,6 +2343,28 @@ message Seat {
     double scale = 7;
     // since 0.2.0
     double rotation = 8;
+  }
+
+  // Signal `pointer_chord`, since 0.2.0.
+  message PointerChordPayload {
+    // since 0.2.0
+    string phase = 1;
+    // since 0.2.0
+    int64 claim = 2;
+    // since 0.2.0
+    double x = 3;
+    // since 0.2.0
+    double y = 4;
+    // since 0.2.0
+    double dx = 5;
+    // since 0.2.0
+    double dy = 6;
+    // since 0.2.0
+    int64 button = 7;
+    // since 0.2.0
+    string modifiers = 8;
+    // since 0.2.0
+    int64 time = 9;
   }
 }
 

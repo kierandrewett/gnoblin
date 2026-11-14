@@ -9,7 +9,7 @@ use std::io::{self, Read};
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
-use gnoblin_proto::tree::seat::{ChordPayload, GesturePayload};
+use gnoblin_proto::tree::seat::{ChordPayload, GesturePayload, PointerChordPayload};
 use gnoblin_proto::tree::tree::{
     AnswerPayload, AttachArgs, AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload,
     TransactArgs,
@@ -19,7 +19,7 @@ use gnoblin_proto::{Envelope, Kind, LENGTH_PREFIX_LEN, MAX_FRAME_LEN, read_frame
 
 use crate::tree_mirror::{
     Attached, EventFields, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeChord, TreeEvent,
-    TreeGesture, TreeIncoming, TreeLink, TreeTx, TxOp, TxReply,
+    TreeGesture, TreeIncoming, TreeLink, TreePointerChord, TreeTx, TxOp, TxReply,
 };
 
 const NAMESPACE: &str = "tree";
@@ -361,6 +361,22 @@ fn to_incoming(envelope: &Envelope) -> Result<TreeIncoming, LinkError> {
                 dy: payload.dy,
                 scale: payload.scale,
                 rotation: payload.rotation,
+            }))
+        }
+        (Some(Kind::Event(_)), "pointer_chord") => {
+            let payload = envelope
+                .payload_as::<PointerChordPayload>()
+                .ok_or_else(|| undecodable(member))?;
+            Ok(TreeIncoming::PointerChord(TreePointerChord {
+                claim: payload.claim,
+                phase: payload.phase,
+                x: payload.x,
+                y: payload.y,
+                dx: payload.dx,
+                dy: payload.dy,
+                button: payload.button,
+                modifiers: payload.modifiers,
+                time: payload.time,
             }))
         }
         (Some(Kind::Event(_)), "changes") => {

@@ -1705,7 +1705,7 @@ impl State {
     ///
     /// The serial is remembered because a client names it in a grab or an activation
     /// request, which is the same rule a button follows.
-    fn move_pointer(&mut self, position: SmithayPoint<f64, Logical>, time: InputTime) {
+    pub(crate) fn move_pointer(&mut self, position: SmithayPoint<f64, Logical>, time: InputTime) {
         self.pointer_position = position;
         // The magnifier centres on the pointer, so a moved pointer changes every magnified
         // output. Each output is repainted rather than waiting for other damage to reach it.
@@ -1713,6 +1713,12 @@ impl State {
             self.damage_outputs();
         }
         self.composer.set_main_seat_pointer(position.x, position.y);
+        // A shell's pointer-chord drag holds the pointer: the shell is told of the motion with the frame, and no
+        // client hears it. The pointer is given the surface under it when the drag ends.
+        if self.pointer_captured() {
+            self.note_capture_motion(time);
+            return;
+        }
         self.shell_pointer(self.pointer_target(position));
         let focus = self.surface_under(position);
         self.pointer_origin = focus.as_ref().map(|(_, origin)| *origin);
@@ -3475,6 +3481,9 @@ impl Host for State {
         // The surface trees of the windows that changed reach the composer before it reports its own changes and
         // takes its damage, so a popup that committed since the last frame is drawn in this one.
         self.flush_surface_trees();
+        // A shell's pointer-chord drags are told of the pointer's latest place once per frame, ahead of the
+        // frame's tree work so the batch that frame publishes carries it.
+        self.flush_pointer_captures();
         // The pointer may have moved since the last frame; its old and new places are
         // damaged before the damage is taken.
         let redraw = std::mem::take(&mut self.cursor_shape_changed);
@@ -3670,7 +3679,16 @@ impl Host for State {
                 );
                 pointer.frame(self);
             }
-            InputEvent::PointerButton { button, pressed, .. } => {
+            InputEvent::PointerButton {
+                device,
+                button,
+                pressed,
+            } => {
+                // A button a claimed pointer chord matches is the shell's: neither a client nor a shell node
+                // hears it, and the shell hears the drag it starts instead.
+                if self.route_pointer_button(device, button, pressed, time) {
+                    return;
+                }
                 // A press or release over a shell node, or over a window while a shell holds the tree, is an
                 // edge the shell reads: its focus and raise policy follows the window's. Without a shell the
                 // fallback focuses the window a press lands on.

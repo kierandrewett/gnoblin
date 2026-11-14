@@ -276,6 +276,8 @@ struct App {
     pointer_x: f64,
     pointer_y: f64,
     pointer_buttons: u32,
+    /// Each button edge the client was delivered: the `evdev` code, and whether it was a press.
+    pointer_button_edges: Vec<(u32, bool)>,
     /// The pointer frames received: one ends each batch of pointer events.
     pointer_frames: u32,
     /// The `wl_pointer.axis` events received, as an axis and its pixels.
@@ -599,7 +601,14 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
                 state.pointer_x = surface_x;
                 state.pointer_y = surface_y;
             }
-            wl_pointer::Event::Button { .. } => state.pointer_buttons += 1,
+            wl_pointer::Event::Button {
+                button, state: edge, ..
+            } => {
+                state.pointer_buttons += 1;
+                state
+                    .pointer_button_edges
+                    .push((button, edge == WEnum::Value(wl_pointer::ButtonState::Pressed)));
+            }
             wl_pointer::Event::Frame => state.pointer_frames += 1,
             wl_pointer::Event::Axis {
                 axis: WEnum::Value(axis),
@@ -3561,5 +3570,581 @@ fn the_deleted_window_frame_global_is_not_advertised() {
             !names.iter().any(|name| name.contains("window_frame")),
             "gnoblin_window_frame_v1 was deleted and must not be advertised: {names:?}"
         );
+    });
+}
+
+// ---- Pointer chord claims -------------------------------------------------------------------------------------
+
+/// `BTN_LEFT`, `BTN_RIGHT`, `BTN_MIDDLE` and `BTN_SIDE` from `linux/input-event-codes.h`.
+const BTN_LEFT: u32 = 0x110;
+const BTN_RIGHT: u32 = 0x111;
+const BTN_MIDDLE: u32 = 0x112;
+const BTN_SIDE: u32 = 0x113;
+
+/// `KEY_LEFTSHIFT`.
+const KEY_LEFTSHIFT: u32 = 42;
+
+/// A pointer button edge from the session's virtual pointer.
+fn button_edge(session: &Handle, button: u32, pressed: bool) {
+    button_from(session, DeviceId::VIRTUAL, button, pressed);
+}
+
+/// One button edge from one pointer.
+fn button_from(session: &Handle, device: DeviceId, button: u32, pressed: bool) {
+    session.control.inject_input(InputEvent::PointerButton {
+        device,
+        button,
+        pressed,
+    });
+}
+
+/// The pointer chord events the shell's mirror received, in order, with the seat they were for.
+fn pointer_chord_events(
+    batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>,
+) -> Vec<(NodeId, gnoblin_wayland::PointerChordEvent)> {
+    batches
+        .lock()
+        .expect("the batch lock")
+        .iter()
+        .flat_map(|batch| batch.events.iter())
+        .filter_map(|event| match &event.event {
+            gnoblin_wayland::TreeFrameInput::PointerChord(chord) => Some((event.node, chord.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Waits until `ready` holds for the pointer chord events the shell has heard, and answers them.
+fn wait_for_pointer_chords(
+    batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>,
+    what: &str,
+    ready: impl Fn(&[(NodeId, gnoblin_wayland::PointerChordEvent)]) -> bool,
+) -> Vec<(NodeId, gnoblin_wayland::PointerChordEvent)> {
+    let deadline = Instant::now() + TIMEOUT;
+    loop {
+        let heard = pointer_chord_events(batches);
+        if ready(&heard) {
+            return heard;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the shell never heard {what}; it heard {heard:?}"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// The phase, claim, button and modifiers of each event: what a drag without motion is made of.
+fn drag_shape(events: &[(NodeId, gnoblin_wayland::PointerChordEvent)]) -> Vec<(&'static str, i64, u8, String)> {
+    events
+        .iter()
+        .map(|(_, event)| (event.phase.as_str(), event.claim, event.button, event.modifiers.clone()))
+        .collect()
+}
+
+fn shape(phase: &'static str, claim: i64, button: u8, modifiers: &str) -> (&'static str, i64, u8, String) {
+    (phase, claim, button, modifiers.to_owned())
+}
+
+/// A session with a mapped, focused window and the pointer resting inside it: where a pointer chord is pressed.
+struct PointerRig {
+    client: Client,
+    _window: Window,
+    /// A point inside the window.
+    at: Point,
+    seat: NodeId,
+}
+
+impl PointerRig {
+    fn start(session: &Handle, batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>) -> Self {
+        let mut client = Client::app(session.socket());
+        let window = client.map_window("org.gnoblin.Claims");
+        let geometry = session.focused_window();
+        client.wait_for(|state| state.keyboard_enters == 1);
+        let at = Point::new(geometry.x + 100, geometry.y + 75);
+        session.move_pointer(at);
+        client.wait_for(|state| state.pointer_enters == 1);
+        Self {
+            client,
+            _window: window,
+            at,
+            seat: compositor_seat(batches),
+        }
+    }
+
+    /// A point `dx` and `dy` away from the one the drag started at.
+    fn away(&self, dx: i32, dy: i32) -> Point {
+        Point::new(self.at.x + dx, self.at.y + dy)
+    }
+}
+
+/// The shell claims `chord` as `id` on the compositor's seat. `grab` is the second argument a claim carries.
+fn claim_chord(
+    queue: &gnoblin_wayland::TreeQueue,
+    batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>,
+    seat: NodeId,
+    id: i64,
+    chord: &str,
+) {
+    call_on_shell(queue, batches, seat, "claim", vec![id, 1], chord);
+}
+
+#[test]
+fn a_claimed_pointer_chord_is_withheld_from_the_client_and_streamed_to_the_shell() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = PointerRig::start(session, &batches);
+        claim_chord(&queue, &batches, rig.seat, 1, "<Super>Button1");
+
+        // A click that holds no Super is nobody's claim: it reaches the client and the shell hears nothing.
+        session.click(rig.at);
+        let state = rig.client.wait_for(|state| state.pointer_button_edges.len() >= 2);
+        assert_eq!(state.pointer_button_edges, vec![(BTN_LEFT, true), (BTN_LEFT, false)]);
+        let motions = state.pointer_motions;
+
+        // Super+Button1 and a drag across five places, then the release.
+        session.key(KEY_LEFTMETA, true);
+        button_edge(session, BTN_LEFT, true);
+        for step in 1..=5 {
+            session.move_pointer(rig.away(step * 6, step * 4));
+        }
+        let end = rig.away(30, 20);
+        wait_for_pointer_chords(&batches, "an update at the last place", |events| {
+            events.iter().any(|(_, event)| {
+                event.phase == gnoblin_wayland::PointerChordPhase::Update
+                    && (event.x, event.y) == (f64::from(end.x), f64::from(end.y))
+            })
+        });
+        button_edge(session, BTN_LEFT, false);
+        session.key(KEY_LEFTMETA, false);
+        let heard = wait_for_pointer_chords(&batches, "the end of the drag", |events| {
+            events
+                .last()
+                .is_some_and(|(_, event)| event.phase == gnoblin_wayland::PointerChordPhase::End)
+        });
+
+        // A click the claim does not take follows, so the client's state shows every edge before it was routed.
+        session.click(rig.at);
+        let state = rig.client.wait_for(|state| state.pointer_button_edges.len() >= 4);
+        assert_eq!(
+            state.pointer_button_edges,
+            vec![(BTN_LEFT, true), (BTN_LEFT, false), (BTN_LEFT, true), (BTN_LEFT, false)],
+            "the chord's press and release never reach the client"
+        );
+        assert!(
+            state.pointer_motions <= motions + 2,
+            "the client hears the end's refresh and the marker click's move, not the drag's five: {} then {}",
+            motions,
+            state.pointer_motions
+        );
+
+        // The shell heard `start`, updates and `end`, all for claim 1 on its seat.
+        assert!(heard.iter().all(|(node, event)| *node == rig.seat && event.claim == 1));
+        let (_, start) = &heard[0];
+        assert_eq!(start.phase, gnoblin_wayland::PointerChordPhase::Start);
+        assert_eq!(
+            (start.x, start.y, start.dx, start.dy),
+            (f64::from(rig.at.x), f64::from(rig.at.y), 0.0, 0.0)
+        );
+        assert_eq!((start.button, start.modifiers.as_str()), (1, "<Super>"));
+        let (_, last) = heard.last().expect("an end");
+        assert_eq!(last.phase, gnoblin_wayland::PointerChordPhase::End);
+        assert_eq!(
+            (last.x, last.y, last.dx, last.dy),
+            (f64::from(end.x), f64::from(end.y), 30.0, 20.0),
+            "the end says where the drag ended and how far it came"
+        );
+        let middle = &heard[1..heard.len() - 1];
+        assert!(!middle.is_empty(), "the motion was reported");
+        assert!(middle.len() <= 5, "five moves are at most five updates: {middle:?}");
+        for (_, update) in middle {
+            assert_eq!(update.phase, gnoblin_wayland::PointerChordPhase::Update);
+            assert_eq!(
+                (update.dx, update.dy),
+                (update.x - f64::from(rig.at.x), update.y - f64::from(rig.at.y)),
+                "an update is measured from the press"
+            );
+        }
+        let xs: Vec<f64> = middle.iter().map(|(_, update)| update.x).collect();
+        assert!(xs.windows(2).all(|pair| pair[0] < pair[1]), "updates advance: {xs:?}");
+    });
+}
+
+#[test]
+fn each_claimed_button_is_withheld_and_reported_under_its_own_claim() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = PointerRig::start(session, &batches);
+        claim_chord(&queue, &batches, rig.seat, 1, "<Super>Button1");
+        claim_chord(&queue, &batches, rig.seat, 2, "<Super>Button3");
+        claim_chord(&queue, &batches, rig.seat, 3, "Button8");
+
+        // Super+left, Super+right, and then the bare back button with no Super held.
+        session.key(KEY_LEFTMETA, true);
+        for button in [BTN_LEFT, BTN_RIGHT] {
+            button_edge(session, button, true);
+            button_edge(session, button, false);
+        }
+        session.key(KEY_LEFTMETA, false);
+        button_edge(session, BTN_SIDE, true);
+        button_edge(session, BTN_SIDE, false);
+        let heard = wait_for_pointer_chords(&batches, "three drags", |events| events.len() >= 6);
+
+        assert_eq!(
+            drag_shape(&heard),
+            vec![
+                shape("start", 1, 1, "<Super>"),
+                shape("end", 1, 1, "<Super>"),
+                shape("start", 2, 3, "<Super>"),
+                shape("end", 2, 3, "<Super>"),
+                shape("start", 3, 8, ""),
+                shape("end", 3, 8, ""),
+            ],
+            "each button is its own claim, with the chord's button number and modifiers"
+        );
+
+        // Button2 with Super is nobody's claim, and neither is Button1 once Super is up: the marker clicks reach
+        // the client, and the withheld buttons never did.
+        session.key(KEY_LEFTMETA, true);
+        button_edge(session, BTN_MIDDLE, true);
+        button_edge(session, BTN_MIDDLE, false);
+        session.key(KEY_LEFTMETA, false);
+        session.click(rig.at);
+        let state = rig.client.wait_for(|state| state.pointer_button_edges.len() >= 4);
+        assert_eq!(
+            state.pointer_button_edges,
+            vec![
+                (BTN_MIDDLE, true),
+                (BTN_MIDDLE, false),
+                (BTN_LEFT, true),
+                (BTN_LEFT, false)
+            ]
+        );
+        thread::sleep(Duration::from_millis(100));
+        assert_eq!(
+            pointer_chord_events(&batches).len(),
+            6,
+            "an unclaimed chord tells the shell nothing"
+        );
+    });
+}
+
+#[test]
+fn a_press_that_holds_other_modifiers_is_not_the_claims() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = PointerRig::start(session, &batches);
+        claim_chord(&queue, &batches, rig.seat, 1, "<Super>Button1");
+
+        // The chord's modifiers match exactly, as a keyboard chord's do: Shift as well is another chord.
+        session.key(KEY_LEFTSHIFT, true);
+        session.key(KEY_LEFTMETA, true);
+        button_edge(session, BTN_LEFT, true);
+        button_edge(session, BTN_LEFT, false);
+        session.key(KEY_LEFTMETA, false);
+        session.key(KEY_LEFTSHIFT, false);
+        let state = rig.client.wait_for(|state| state.pointer_button_edges.len() >= 2);
+        assert_eq!(state.pointer_button_edges, vec![(BTN_LEFT, true), (BTN_LEFT, false)]);
+        thread::sleep(Duration::from_millis(100));
+        assert!(
+            pointer_chord_events(&batches).is_empty(),
+            "Shift+Super+Button1 is not the claim"
+        );
+    });
+}
+
+#[test]
+fn a_competing_claim_of_the_chord_is_refused_and_the_first_holder_keeps_it() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let rig = PointerRig::start(session, &batches);
+        claim_chord(&queue, &batches, rig.seat, 1, "<Super>Button1");
+        // The second claim of the same chord for every device is refused as a keyboard claim is.
+        claim_chord(&queue, &batches, rig.seat, 2, "<Super>Button1");
+
+        session.key(KEY_LEFTMETA, true);
+        button_edge(session, BTN_LEFT, true);
+        button_edge(session, BTN_LEFT, false);
+        let heard = wait_for_pointer_chords(&batches, "one drag", |events| events.len() >= 2);
+        assert_eq!(
+            drag_shape(&heard),
+            vec![shape("start", 1, 1, "<Super>"), shape("end", 1, 1, "<Super>")],
+            "the first claim is the holder"
+        );
+
+        // Giving up the refused id takes nothing from the holder.
+        call_on_shell(&queue, &batches, rig.seat, "unclaim", vec![2], "");
+        button_edge(session, BTN_LEFT, true);
+        button_edge(session, BTN_LEFT, false);
+        let heard = wait_for_pointer_chords(&batches, "a second drag", |events| events.len() >= 4);
+        assert_eq!(heard[2].1.claim, 1, "the holder still holds the chord");
+        session.key(KEY_LEFTMETA, false);
+    });
+}
+
+#[test]
+fn a_chord_claimed_for_one_pointer_is_never_taken_from_the_other() {
+    use gnoblin_backend::{DeviceInfo, DeviceKind};
+
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = PointerRig::start(session, &batches);
+        let desk = DeviceId::new(1);
+        let travel = DeviceId::new(2);
+        for (id, name) in [(desk, "Desk Mouse"), (travel, "Travel Mouse")] {
+            session.control.inject_input(InputEvent::DeviceAdded {
+                device: DeviceInfo::new(id, name, DeviceKind::Mouse),
+            });
+        }
+        claim_chord(&queue, &batches, rig.seat, 1, "Travel Mouse\n<Super>Button1");
+
+        session.key(KEY_LEFTMETA, true);
+        button_from(session, desk, BTN_LEFT, true);
+        button_from(session, desk, BTN_LEFT, false);
+        button_from(session, travel, BTN_LEFT, true);
+        button_from(session, travel, BTN_LEFT, false);
+        session.key(KEY_LEFTMETA, false);
+        let heard = wait_for_pointer_chords(&batches, "the travel mouse's drag", |events| events.len() >= 2);
+        let state = rig.client.wait_for(|state| state.pointer_button_edges.len() >= 2);
+        assert_eq!(
+            state.pointer_button_edges,
+            vec![(BTN_LEFT, true), (BTN_LEFT, false)],
+            "the desk mouse's click is the client's and the travel mouse's is the shell's"
+        );
+        assert_eq!(
+            drag_shape(&heard),
+            vec![shape("start", 1, 1, "<Super>"), shape("end", 1, 1, "<Super>")]
+        );
+    });
+}
+
+#[test]
+fn the_modifier_released_first_does_not_end_the_capture() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = PointerRig::start(session, &batches);
+        claim_chord(&queue, &batches, rig.seat, 1, "<Super>Button1");
+
+        session.key(KEY_LEFTMETA, true);
+        button_edge(session, BTN_LEFT, true);
+        wait_for_pointer_chords(&batches, "the start", |events| !events.is_empty());
+        // Super is let go while the button is still held, and the drag goes on.
+        session.key(KEY_LEFTMETA, false);
+        let end = rig.away(40, 0);
+        session.move_pointer(end);
+        wait_for_pointer_chords(&batches, "an update after Super was let go", |events| {
+            events.iter().any(|(_, event)| {
+                event.phase == gnoblin_wayland::PointerChordPhase::Update && event.x == f64::from(end.x)
+            })
+        });
+        button_edge(session, BTN_LEFT, false);
+        let heard = wait_for_pointer_chords(&batches, "the end", |events| {
+            events
+                .last()
+                .is_some_and(|(_, event)| event.phase == gnoblin_wayland::PointerChordPhase::End)
+        });
+        assert_eq!(
+            heard.iter().filter(|(_, event)| event.phase.as_str() == "end").count(),
+            1,
+            "one end, whatever order the keys came up in"
+        );
+
+        session.click(rig.at);
+        let state = rig.client.wait_for(|state| state.pointer_button_edges.len() >= 2);
+        assert_eq!(
+            state.pointer_button_edges,
+            vec![(BTN_LEFT, true), (BTN_LEFT, false)],
+            "only the marker click reached the client"
+        );
+    });
+}
+
+/// Starts a drag with Super+Button1 and waits for the shell to hear its first update, so the capture is known to
+/// be live and the motion before it is known to be reported. Returns where the pointer is.
+fn begin_drag(session: &Handle, rig: &PointerRig, batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>) -> Point {
+    session.key(KEY_LEFTMETA, true);
+    button_edge(session, BTN_LEFT, true);
+    let moved = rig.away(25, 15);
+    session.move_pointer(moved);
+    wait_for_pointer_chords(batches, "an update", |events| {
+        events.iter().any(|(_, event)| {
+            event.phase == gnoblin_wayland::PointerChordPhase::Update
+                && (event.x, event.y) == (f64::from(moved.x), f64::from(moved.y))
+        })
+    });
+    moved
+}
+
+/// Finishes what a detached or unclaimed drag left behind and says what the client saw.
+///
+/// The button is released and Super let go, the pointer moves on, and a click the claim never held follows. The
+/// client must see that click and nothing of the drag: not its press, not its release.
+fn assert_the_client_never_sees_the_dragged_button(
+    session: &Handle,
+    rig: &mut PointerRig,
+    batches: &Mutex<Vec<gnoblin_wayland::TreeBatch>>,
+    heard: usize,
+) {
+    session.move_pointer(rig.away(60, 40));
+    button_edge(session, BTN_LEFT, false);
+    session.key(KEY_LEFTMETA, false);
+    session.click(rig.at);
+    let state = rig.client.wait_for(|state| state.pointer_button_edges.len() >= 2);
+    assert_eq!(
+        state.pointer_button_edges,
+        vec![(BTN_LEFT, true), (BTN_LEFT, false)],
+        "the client sees the click that followed and no release of a press it never saw"
+    );
+    thread::sleep(Duration::from_millis(150));
+    assert_eq!(
+        pointer_chord_events(batches).len(),
+        heard,
+        "nobody is told of the rest of the drag, `end` least of all"
+    );
+}
+
+#[test]
+fn a_shell_that_detaches_mid_drag_leaves_no_capture_and_no_stuck_button() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = PointerRig::start(session, &batches);
+        claim_chord(&queue, &batches, rig.seat, 1, "<Super>Button1");
+        begin_drag(session, &rig, &batches);
+        let heard = pointer_chord_events(&batches).len();
+
+        // The shell goes while the button is down. Its claims were on the compositor's seat, which stays, so the
+        // detach releases them. A call after it makes the frame that applies the reap finish before the checks.
+        queue.reap_shell_nodes(std::collections::BTreeSet::new);
+        call_on_shell(&queue, &batches, rig.seat, "unclaim", vec![99], "");
+
+        assert_the_client_never_sees_the_dragged_button(session, &mut rig, &batches, heard);
+    });
+}
+
+#[test]
+fn an_unclaim_mid_drag_ends_the_capture_without_telling_its_owner() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let mut rig = PointerRig::start(session, &batches);
+        claim_chord(&queue, &batches, rig.seat, 1, "<Super>Button1");
+        begin_drag(session, &rig, &batches);
+        let heard = pointer_chord_events(&batches).len();
+
+        call_on_shell(&queue, &batches, rig.seat, "unclaim", vec![1], "");
+
+        assert_the_client_never_sees_the_dragged_button(session, &mut rig, &batches, heard);
+    });
+}
+
+#[test]
+fn a_lock_cancels_a_capture_in_progress() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let rig = PointerRig::start(session, &batches);
+        claim_chord(&queue, &batches, rig.seat, 1, "<Super>Button1");
+        begin_drag(session, &rig, &batches);
+
+        let mut locker = Client::connect(session.socket());
+        let manager: ext_session_lock_manager_v1::ExtSessionLockManagerV1 = locker
+            .globals
+            .bind(&locker.qh, 1..=1, ())
+            .expect("the session advertises ext_session_lock_manager_v1");
+        let _lock = manager.lock(&locker.qh, ());
+        locker.wait_for(|state| state.lock_locked == 1);
+        session.wait_for(|observation| observation.lock_state() == LockState::Locked);
+
+        let heard = wait_for_pointer_chords(&batches, "the cancel", |events| {
+            events
+                .iter()
+                .any(|(_, event)| event.phase == gnoblin_wayland::PointerChordPhase::Cancel)
+        });
+        button_edge(session, BTN_LEFT, false);
+        session.key(KEY_LEFTMETA, false);
+        thread::sleep(Duration::from_millis(200));
+        let after = pointer_chord_events(&batches);
+        assert_eq!(
+            after.len(),
+            heard.len(),
+            "nothing follows the cancel, the release included"
+        );
+        let phases: Vec<&str> = after.iter().map(|(_, event)| event.phase.as_str()).collect();
+        assert_eq!(
+            phases.iter().filter(|phase| **phase == "cancel").count(),
+            1,
+            "one cancel: {phases:?}"
+        );
+        assert!(!phases.contains(&"end"), "a cancelled drag has no end: {phases:?}");
+        assert_eq!(phases.last(), Some(&"cancel"));
+    });
+}
+
+#[test]
+fn a_locked_session_never_starts_a_capture_and_the_client_gets_the_press() {
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let rig = PointerRig::start(session, &batches);
+        claim_chord(&queue, &batches, rig.seat, 1, "<Super>Button1");
+        let mut locker = Client::connect(session.socket());
+        let manager: ext_session_lock_manager_v1::ExtSessionLockManagerV1 = locker
+            .globals
+            .bind(&locker.qh, 1..=1, ())
+            .expect("the session advertises ext_session_lock_manager_v1");
+        let _lock = manager.lock(&locker.qh, ());
+        locker.wait_for(|state| state.lock_locked == 1);
+        session.wait_for(|observation| observation.lock_state() == LockState::Locked);
+
+        session.key(KEY_LEFTMETA, true);
+        button_edge(session, BTN_LEFT, true);
+        session.move_pointer(rig.away(20, 20));
+        button_edge(session, BTN_LEFT, false);
+        session.key(KEY_LEFTMETA, false);
+        thread::sleep(Duration::from_millis(200));
+        assert!(
+            pointer_chord_events(&batches).is_empty(),
+            "a locked session does not start a pointer chord for the shell"
+        );
+    });
+}
+
+#[test]
+fn a_pointer_that_leaves_mid_drag_cancels_the_capture() {
+    use gnoblin_backend::{DeviceInfo, DeviceKind};
+
+    let (queue, batches, config) = claim_session();
+    let session = Session::with_config(config);
+    session.run(move |session| {
+        let rig = PointerRig::start(session, &batches);
+        let mouse = DeviceId::new(4);
+        session.control.inject_input(InputEvent::DeviceAdded {
+            device: DeviceInfo::new(mouse, "Desk Mouse", DeviceKind::Mouse),
+        });
+        claim_chord(&queue, &batches, rig.seat, 1, "<Super>Button1");
+
+        session.key(KEY_LEFTMETA, true);
+        button_from(session, mouse, BTN_LEFT, true);
+        wait_for_pointer_chords(&batches, "the start", |events| !events.is_empty());
+        session.control.inject_input(InputEvent::DeviceRemoved { id: mouse });
+        let heard = wait_for_pointer_chords(&batches, "the cancel", |events| {
+            events
+                .iter()
+                .any(|(_, event)| event.phase == gnoblin_wayland::PointerChordPhase::Cancel)
+        });
+        let phases: Vec<&str> = heard.iter().map(|(_, event)| event.phase.as_str()).collect();
+        assert_eq!(
+            phases,
+            ["start", "cancel"],
+            "the release will never come, so the drag is over"
+        );
+        session.key(KEY_LEFTMETA, false);
     });
 }

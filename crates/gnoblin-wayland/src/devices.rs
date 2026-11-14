@@ -281,6 +281,8 @@ impl State {
                 );
             }
         }
+        // A pointer that left while its button was held never sends the release, so its drag is over.
+        self.cancel_captures_of(id);
         self.publish_devices();
     }
 

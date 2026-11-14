@@ -281,6 +281,8 @@ pub enum TreeFrameInput {
     Chord(ChordEvent),
     /// A claimed touchpad gesture advanced. The claim is the shell's, named by its `id`.
     Gesture(GestureDelivery),
+    /// A claimed pointer chord's drag advanced. The claim is the shell's, named by its `claim`.
+    PointerChord(PointerChordEvent),
 }
 
 #[cfg(test)]
@@ -394,6 +396,53 @@ pub struct ChordEvent {
     pub chord: String,
     /// What changed.
     pub state: ChordState,
+}
+
+/// How far a claimed pointer chord's drag has come.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PointerChordPhase {
+    /// The chord's button was pressed with its modifiers held.
+    Start,
+    /// The pointer moved with the button down. At most one per frame.
+    Update,
+    /// The button was released.
+    End,
+    /// The compositor ended the drag itself: the session locked, or the pointer left.
+    Cancel,
+}
+
+impl PointerChordPhase {
+    /// The name the shell reads in the `phase` field.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::Update => "update",
+            Self::End => "end",
+            Self::Cancel => "cancel",
+        }
+    }
+}
+
+/// A claimed pointer chord's drag advanced, for the shell that claimed it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PointerChordEvent {
+    /// What happened.
+    pub phase: PointerChordPhase,
+    /// The claim's id, as the shell allocated it.
+    pub claim: i64,
+    /// The pointer's place in global logical coordinates.
+    pub x: f64,
+    pub y: f64,
+    /// The pointer's movement since the press.
+    pub dx: f64,
+    pub dy: f64,
+    /// The chord's button number: 1 left, 2 middle, 3 right, 8 back, 9 forward.
+    pub button: u8,
+    /// The chord's modifiers as the chord spells them, empty for a chord of a bare button.
+    pub modifiers: String,
+    /// The input event's time in milliseconds.
+    pub time: u32,
 }
 
 /// One event for a node. `frame` is the frame that delivered it; `seq` numbers the events of
@@ -703,6 +752,11 @@ impl TreeFrame {
     /// next batch.
     pub fn chord(&mut self, node: NodeId, event: ChordEvent) {
         self.push_event(node, TreeFrameInput::Chord(event));
+    }
+
+    /// Records a claimed pointer chord's drag advancing on the seat `node`, delivered to the shell in the next batch.
+    pub fn pointer_chord(&mut self, node: NodeId, event: PointerChordEvent) {
+        self.push_event(node, TreeFrameInput::PointerChord(event));
     }
 
     /// Records a claimed gesture advancing on the seat `node`, delivered to the shell in the next batch.

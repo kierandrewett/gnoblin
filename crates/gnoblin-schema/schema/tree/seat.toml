@@ -185,6 +185,13 @@ since = "0.2.0"
 # device is matched against that device's own modifiers, not the seat's, and takes the chord before a claim
 # for every device does. On the call the text is the chord, or, when `device` is not empty, `device`, a line
 # feed and the chord.
+#
+# A chord that ends in a pointer button (`Button1` to `Button9`, X11's numbers: 1 left, 2 middle, 3 right, 8 back,
+# 9 forward) claims that button: with exactly the chord's modifiers held, its press is withheld from clients and the
+# shell's nodes and the owner hears the whole drag as `pointer_chord` signals (`start`, `update`, `end`) instead of
+# `chord`. `grab` has no effect on such a claim: its release always comes back as `end`. Every button but `Button8` and
+# `Button9` needs a modifier, so a claim cannot take the ordinary click. A press with another modifier set, or while
+# the session is locked, is not the claim's and reaches the client as usual.
 [[object.method]]
 name = "claim"
 since = "0.2.0"
@@ -342,4 +349,66 @@ since = "0.2.0"
 [[object.signal.field]]
 name = "rotation"
 type = "double"
+since = "0.2.0"
+
+# A claimed pointer chord (`claim` with a chord that ends in a button, `<Super>Button1`) advanced: `phase` is `start`
+# when the chord's button was pressed with its modifiers held, `update` while the pointer moves with the button down,
+# `end` when the button is released, and `cancel` when the compositor ended the capture itself (the session locked).
+# `claim` is the id the shell allocated for the claim. `x` and `y` are the pointer's place in global logical
+# coordinates; `dx` and `dy` are its movement since `start`, so a `start` reports both as 0. `button` is the chord's
+# button number (1 left, 2 middle, 3 right, 8 back, 9 forward) and `modifiers` the chord's modifiers as the chord
+# spells them (`<Super>`, `<Control><Alt>`, empty for a bare `Button8`). `time` is the input event's time in
+# milliseconds (wraps at 2^32). While the capture lasts no client or shell node hears the button or the pointer's
+# motion: the press is withheld and the pointer's place is published through `pointer_x` and `pointer_y`. `update`
+# arrives at most once per frame and carries the latest place, so a frame that moved the pointer many times sends one.
+# `start`, `end` and `cancel` are never merged or dropped, and a capture ends with exactly one of `end` and `cancel`.
+# A capture whose claim was removed (`unclaim`, or the shell going) or whose owner detached ends silently: no signal
+# is sent for it, and the button's release is withheld from clients as the press was.
+[[object.signal]]
+name = "pointer_chord"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "phase"
+type = "string"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "claim"
+type = "int"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "x"
+type = "double"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "y"
+type = "double"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "dx"
+type = "double"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "dy"
+type = "double"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "button"
+type = "int"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "modifiers"
+type = "string"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "time"
+type = "int"
 since = "0.2.0"

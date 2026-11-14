@@ -250,6 +250,23 @@ pub struct TreeGesture {
     pub rotation: f64,
 }
 
+/// A claimed pointer chord's drag the compositor saw advance: `claim` is the id the shell allocated. `phase` is
+/// `start`, `update`, `end` or `cancel`; `x` and `y` are the pointer's global place and `dx` and `dy` its movement
+/// since `start`; `button` is the chord's button number and `modifiers` the chord's modifiers as it spells them;
+/// `time` is the input event's time in milliseconds.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TreePointerChord {
+    pub claim: i64,
+    pub phase: String,
+    pub x: f64,
+    pub y: f64,
+    pub dx: f64,
+    pub dy: f64,
+    pub button: i64,
+    pub modifiers: String,
+    pub time: i64,
+}
+
 /// The reply to attach: the epoch this shell holds, the root and the snapshot serial.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Attached {
@@ -281,6 +298,7 @@ pub enum TreeIncoming {
     Event(TreeEvent),
     Chord(TreeChord),
     Gesture(TreeGesture),
+    PointerChord(TreePointerChord),
 }
 
 /// A failure of the link itself: the socket closed or a frame did not decode.

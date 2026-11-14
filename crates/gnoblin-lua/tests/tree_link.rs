@@ -6,7 +6,7 @@ use std::io::Write;
 use std::os::unix::net::UnixStream;
 
 use gnoblin_lua::shell_vm::LuaEvent;
-use gnoblin_proto::tree::seat::{ChordPayload, GesturePayload};
+use gnoblin_proto::tree::seat::{ChordPayload, GesturePayload, PointerChordPayload};
 use gnoblin_proto::tree::tree::{
     AttachArgs, AttachedPayload, ChangesPayload, EventPayload, ReplyPayload, SnapshotPayload, TransactArgs,
 };
@@ -15,7 +15,7 @@ use gnoblin_proto::{Envelope, read_frame, write_frame};
 use gnoblin_tree_client::tree_link::SocketTreeLink;
 use gnoblin_tree_client::tree_mirror::{
     Attached, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeChord, TreeGesture, TreeIncoming,
-    TreeLink, TreeTx, TxOp, TxReply,
+    TreeLink, TreePointerChord, TreeTx, TxOp, TxReply,
 };
 
 fn pair() -> (SocketTreeLink, UnixStream) {
@@ -158,6 +158,43 @@ fn a_gesture_event_arrives_as_a_gesture_with_its_movement() {
             dy: -2.5,
             scale: 1.25,
             rotation: 0.5,
+        })]
+    );
+}
+
+#[test]
+fn a_pointer_chord_event_arrives_with_its_phase_place_and_movement() {
+    let (mut link, mut server) = pair();
+    send(
+        &mut server,
+        &Envelope::event_message(
+            "tree",
+            "pointer_chord",
+            &PointerChordPayload {
+                phase: "update".to_owned(),
+                claim: 4,
+                x: 120.5,
+                y: 80.0,
+                dx: 20.5,
+                dy: -10.0,
+                button: 1,
+                modifiers: "<Super>".to_owned(),
+                time: 5000,
+            },
+        ),
+    );
+    assert_eq!(
+        drain(&mut link),
+        vec![TreeIncoming::PointerChord(TreePointerChord {
+            claim: 4,
+            phase: "update".to_owned(),
+            x: 120.5,
+            y: 80.0,
+            dx: 20.5,
+            dy: -10.0,
+            button: 1,
+            modifiers: "<Super>".to_owned(),
+            time: 5000,
         })]
     );
 }
