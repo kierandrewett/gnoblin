@@ -23,12 +23,13 @@ gnoblin-compositor = { path = "../gnoblin-compositor" }
 gnoblin-session = { path = "../gnoblin-session" }
 # The logging composition: the console and the log file sinks, for every role.
 gnoblin-log = { path = "../gnoblin-log", features = ["init"] }
-# The runtime role: the Lua host as its own process (D1). A role entry point, not an
-# engine: the binary hands it the inherited connection and stays out of the way.
+# The Lua runtime role, selected by `GNOBLIN_SHELL_VM=lua` (or by an `init.lua` with no `init.ts`) for one more release:
+# the Lua host as its own process (D1). A role entry point, not an engine: the binary hands it the inherited
+# connection and stays out of the way.
 gnoblin-lua = { path = "../gnoblin-lua" }
-# The JavaScript shell the runtime role runs in place of the Lua shell VM when `GNOBLIN_SHELL_VM=js`. Like the
-# Lua host it is a role entry point and an IPC client: it links no engine, and the binary is where the two
-# shells meet.
+# The JavaScript runtime role, the default: it locates and evaluates `init.ts`, commits the document, runs the shell and
+# serves `config.reload` itself. Like the Lua host it is a role entry point and an IPC client: it links no engine, and
+# the binary is where the two roles meet.
 gnoblin-js = { path = "../gnoblin-js" }
 # The services role: the D-Bus agents as their own process.
 gnoblin-services = { path = "../gnoblin-services" }
@@ -60,6 +61,9 @@ wayland-client = "0.31.14"
 wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
 gnoblin-client = { path = "../gnoblin-client" }
 gnoblin-proto = { path = "../gnoblin-proto" }
+# `tests/js_runtime_role.rs` runs the JavaScript runtime role over a configuration directory of its own, which is a
+# `SearchPaths`.
+gnoblin-config = { path = "../gnoblin-config" }
 gnoblin-log = { path = "../gnoblin-log", features = ["capture"] }
 # `tests/js_shell.rs` decodes the paint lists the compositor holds and draws one, to read a pixel the shell's script
 # painted.

@@ -22,6 +22,11 @@
 //!   `init.ts`, and owns the watcher, reloader and supervisor that swap a new generation in or keep the old one.
 //!   It holds the shell's two other owner connections: one for slots (the dialog observation of `gnoblin.dialogs`)
 //!   and one for the configuration document (what `defineConfig` sets in it).
+//! - [`JsRoleRunner`] is the whole runtime role when the JavaScript shell is selected: it locates the config, boots a
+//!   [`JsRole`] that owns the configuration document, reports to the guardian, and serves `config.reload`. It starts no Lua
+//!   host. [`choose_runtime`] decides, from `GNOBLIN_SHELL_VM` and the config on disk, whether that or the Lua role runs.
+//! - [`evaluate_document`] reads a config's document in a throwaway generation with no session, for the services role's
+//!   first-boot `keyring.enabled` decision.
 
 mod autostart;
 mod bindings;
@@ -41,6 +46,7 @@ mod input;
 mod loader;
 mod reload;
 mod role;
+mod runner;
 mod shell;
 mod stock;
 mod supervisor;
@@ -51,7 +57,7 @@ mod workspaces;
 mod xr;
 
 pub use bindings::{JsSpawnError, JsSpawnRequest, JsSpawner};
-pub use config::{JsClientConfigLink, JsConfigCommit, JsConfigLink, JsLinkError};
+pub use config::{JsClientConfigLink, JsCommitLog, JsCommitRecord, JsConfigCommit, JsConfigLink, JsLinkError};
 pub use console::{
     CONSOLE_FILE, CONSOLE_SOCKET, CONSOLE_VARIABLE, DEFAULT_MAX_BYTES, JsConsole, JsConsoleError, JsConsoleSite,
     MAX_REQUEST, console_enabled, console_socket_path, evaluate_in, peer_allowed,
@@ -69,6 +75,10 @@ pub use loader::{JsLoadState, JsLoader, JsResolver};
 pub use reload::{JsDiagnostic, JsReloader, ReloadReport};
 pub use role::{JsRole, JsRoleConfig, JsRoleLinks, RELOAD_DEBOUNCE, config_dir, entry_in};
 pub use rquickjs;
+pub use runner::{
+    FRAME_WAIT, JsRoleError, JsRoleRunner, JsRuntimeChoice, MIGRATION_DOC, SHELL_VM_VARIABLE, TEST_CRASH_VARIABLE,
+    WATCH_VARIABLE, choose_runtime, choose_runtime_from_environment,
+};
 pub use shell::{JsFrame, JsShell, JsShellConfig, JsShellError, JsStaging, STALE_RETRIES};
 pub use stock::{STARTER_CONFIG, stock_modules, stock_modules_in};
 pub use supervisor::{JsClock, JsFault, JsFaultAction, JsHealth, JsStrikePolicy, JsSupervisor, JsSystemClock};

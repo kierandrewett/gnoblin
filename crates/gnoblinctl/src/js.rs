@@ -653,12 +653,20 @@ pub(crate) fn config_init(dir: Option<&Path>, force: bool, json: bool, out: &mut
             );
         }
     };
-    let next = [
+    let mut next = vec![
         format!("Open {} in your editor.", init.display()),
         format!("Check it with `gnoblinctl check --types {}`.", init.display()),
         "Save it: a running shell reloads the file on save, and `gnoblinctl config reload` does it on request."
             .to_owned(),
     ];
+    // The new `init.ts` takes precedence over an `init.lua` beside it, so the next session stops reading the Lua file.
+    let lua = dir.join("init.lua");
+    if lua.is_file() {
+        next.push(format!(
+            "{} is still there, and the TypeScript shell does not read it. Move what you need into init.ts (docs/migrating-from-lua.md).",
+            lua.display()
+        ));
+    }
     let result = if json {
         writeln!(
             out,

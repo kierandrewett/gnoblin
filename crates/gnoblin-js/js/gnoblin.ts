@@ -170,7 +170,7 @@ interface Entry {
 
 interface Host {
     /** Checks a document patch (JSON) against the document in force: the validator's problems, or undefined. */
-    config: { check(patch: string): string | undefined };
+    config: { check(patch: string, autostart?: string): string | undefined };
     kind(node: NodeId): string | undefined;
     get(node: NodeId, key: string): HostValue | undefined;
     published(node: NodeId, key: string): HostValue | undefined;
@@ -3694,12 +3694,16 @@ function attachOn(on: ConfigListeners): void {
     }
 }
 
-/** Refuses a config whose document settings the validator would refuse, with the key path in the message. */
-function checkDocument(patch: ConfigPlan["document"]): void {
-    if (Object.keys(patch).length === 0) {
+/**
+ * Refuses a config whose document settings the validator would refuse, with the key path in the message. The
+ * `autostart` commands go along: a host that owns the document commits them as its `autostart` section, so one that
+ * would start a second keyring is refused here, while the running generation is still the old one.
+ */
+function checkDocument(patch: ConfigPlan["document"], autostart: ConfigPlan["autostart"]): void {
+    if (Object.keys(patch).length === 0 && autostart.length === 0) {
         return;
     }
-    const problems = host.config.check(JSON.stringify(patch));
+    const problems = host.config.check(JSON.stringify(patch), JSON.stringify(autostart));
     if (problems != null) {
         throw new GnoblinError("invalid-config", "defineConfig", problems);
     }
@@ -3928,7 +3932,7 @@ class Gnoblin {
     __register(config: GnoblinConfig): void {
         const merged = mergeConfig(defaultConfig, config);
         const plan = desugarConfig(merged);
-        checkDocument(plan.document);
+        checkDocument(plan.document, plan.autostart);
         effectiveConfig = merged;
         for (const planned of plan.workspaces) {
             addWorkspace(

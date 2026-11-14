@@ -101,9 +101,7 @@ fn document_of(plan: &str) -> Result<Vec<u8>, JsError> {
         .transpose()
         .map_err(|error| invalid(error.to_string()))?
         .unwrap_or_default();
-    if let (Some(section), Value::Map(entries)) = (autostart::section(&commands), &mut document) {
-        entries.insert("autostart".to_owned(), section);
-    }
+    autostart::lay_over(&mut document, &commands);
     Ok(document.to_json().to_string().into_bytes())
 }
 

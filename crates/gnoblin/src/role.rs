@@ -18,7 +18,7 @@ pub enum Role {
     /// Wayland, rendering, input, outputs, the policy core, the object store and the
     /// IPC socket.
     Compositor,
-    /// The Lua configuration and the event handlers.
+    /// The configuration and the shell: the JavaScript role, or the Lua host for one more release.
     Runtime,
     /// The D-Bus agents: polkit, GeoClue, prompts, privacy, screen saver, idle.
     Services,

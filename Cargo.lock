@@ -1023,6 +1023,7 @@ dependencies = [
  "gnoblin-client",
  "gnoblin-compat-host",
  "gnoblin-compositor",
+ "gnoblin-config",
  "gnoblin-js",
  "gnoblin-log",
  "gnoblin-lua",

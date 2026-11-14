@@ -176,6 +176,8 @@ check "Monado service is listening" test -S "$RUN/monado_comp_ipc"
 export GNOBLIN_XR=1
 export GNOBLIN_XR_PROGRAM="$TARGET_DIR/gnoblin-xr"
 export GNOBLIN_XR_DUMP_DIR="$LOG_DIR/dump"
+# A Lua shell directory selects the Lua runtime role with that stock library: the JavaScript shell is the default now, and
+# this smoke test drives the Lua shell's XR half.
 export GNOBLIN_SHELL_VM="$REPO/data/lua/gnoblin"
 export GNOBLIN_LOG="xr=debug,info"
 export GNOBLIN_IPC_SOCKET="$RUN/gnoblin/ipc.sock"

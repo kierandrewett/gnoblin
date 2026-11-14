@@ -1,11 +1,12 @@
 //! `gnoblinctl config reload` reaching the JavaScript shell of a real session, as processes.
 //!
 //! The session is the shipped binary: a guardian that starts the compositor, the services role and the runtime
-//! role, with `GNOBLIN_SHELL_VM=js` so the runtime role runs the JavaScript shell beside the Lua host. The
-//! watcher is switched off (`GNOBLIN_JS_WATCH=0`), so a change to `init.ts` takes effect only when the request
-//! comes through the compositor: `gnoblinctl config reload` is the real command line client, the compositor
-//! raises `session.reload_requested`, the runtime role reloads the shell and answers. Windows are mapped by a
-//! real Wayland client and the result is read back from the compositor's tree as an observer.
+//! role. `GNOBLIN_SHELL_VM` is unset in most tests, which is the default: the runtime role is the JavaScript one
+//! (`gnoblin_js::JsRoleRunner`) and no Lua host starts. Unless a test is about the watcher, it is switched off
+//! (`GNOBLIN_JS_WATCH=0`), so a change to `init.ts` takes effect only when the request comes through the
+//! compositor: `gnoblinctl config reload` is the real command line client, the compositor raises
+//! `session.reload_requested`, the runtime role reloads the shell and answers. Windows are mapped by a real
+//! Wayland client and the result is read back from the compositor's tree as an observer.
 
 use std::ffi::OsString;
 use std::io::{BufRead as _, BufReader};
@@ -69,34 +70,49 @@ struct Session {
 }
 
 impl Session {
-    /// Starts a session whose runtime role runs the JavaScript shell over `$XDG_CONFIG_HOME/gnoblin`, with the
-    /// config watcher off. `init` is the `init.ts` the shell finds there at boot.
+    /// Starts a session over `$XDG_CONFIG_HOME/gnoblin` whose runtime role is the default one, with the config
+    /// watcher off. `init` is the `init.ts` the shell finds there at boot.
     fn start(init: &str) -> Self {
+        Self::start_with(&[("init.ts", init)], &[("GNOBLIN_JS_WATCH", "0")])
+    }
+
+    /// Starts a session whose config directory holds `files`, with `env` added to the guardian's environment. The
+    /// runtime role is whichever `GNOBLIN_SHELL_VM` in `env` selects, and the default when it names none.
+    fn start_with(files: &[(&str, &str)], env: &[(&str, &str)]) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700)).expect("the directory mode");
         let config_home = tempfile::tempdir().expect("a config home");
         std::fs::create_dir(config_home.path().join("gnoblin")).expect("the config directory");
-        write_init(&config_home.path().join("gnoblin"), init);
+        for (name, source) in files {
+            std::fs::write(config_home.path().join("gnoblin").join(name), source).expect("a config file");
+        }
         let log = directory.path().join("session.log");
         let file = std::fs::File::create(&log).expect("the log file");
         let bus = Bus::start();
-        let guardian = Command::new(BIN)
+        let mut command = Command::new(BIN);
+        command
             .env("XDG_RUNTIME_DIR", directory.path())
             .env("XDG_CONFIG_HOME", config_home.path())
             .env("DBUS_SESSION_BUS_ADDRESS", &bus.address)
             .env("XDG_STATE_HOME", directory.path().join("state"))
+            // The keyring's store lives under the data home, so the test must not write the machine's.
+            .env("XDG_DATA_HOME", directory.path().join("data"))
             .env("GNOBLIN_IPC_SOCKET", directory.path().join("ipc.sock"))
             .env("GNOBLIN_TEST_FAST", "1")
-            .env("GNOBLIN_SHELL_VM", "js")
-            .env("GNOBLIN_JS_WATCH", "0")
+            // The session must not inherit the machine's own choice of shell.
+            .env_remove("GNOBLIN_SHELL_VM")
+            .env_remove("GNOBLIN_JS_WATCH")
+            .env_remove("GNOBLIN_CONFIG")
             // The compositor must run headless however the machine that runs the test is set up.
             .env_remove("WAYLAND_DISPLAY")
             .env_remove("DISPLAY")
             .stdin(Stdio::null())
             .stdout(Stdio::from(file.try_clone().expect("a duplicated log")))
-            .stderr(Stdio::from(file))
-            .spawn()
-            .expect("the guardian starts");
+            .stderr(Stdio::from(file));
+        for (name, value) in env {
+            command.env(name, value);
+        }
+        let guardian = command.spawn().expect("the guardian starts");
         Self {
             directory,
             config_home,
@@ -108,23 +124,6 @@ impl Session {
 
     fn log(&self) -> String {
         std::fs::read_to_string(&self.log).unwrap_or_default()
-    }
-
-    /// Waits until the log contains `text`, and returns the whole log.
-    #[track_caller]
-    fn wait_for_log(&self, text: &str) -> String {
-        let deadline = Instant::now() + PATIENCE;
-        loop {
-            let log = self.log();
-            if log.contains(text) {
-                return log;
-            }
-            assert!(
-                Instant::now() < deadline,
-                "the session never logged `{text}`; it said:\n{log}"
-            );
-            std::thread::sleep(Duration::from_millis(20));
-        }
     }
 
     fn ipc(&self) -> PathBuf {
@@ -337,4 +336,231 @@ fn killing_the_runtime_process_hands_the_windows_to_the_fallback_policy_until_th
         2,
         "the compositor answers a fresh connection"
     );
+}
+
+// ---- the JavaScript role owns the configuration -------------------------------------------------------------------
+
+/// The `document` of the configuration the compositor holds, and its revision, read through `gnoblinctl`.
+fn committed(session: &Session) -> (u64, serde_json::Value) {
+    let (code, out, err) = session.ctl(&["--json", "config", "get"]);
+    assert_eq!((code, err.as_str()), (0, ""), "stdout: {out}");
+    let answer: serde_json::Value = serde_json::from_str(&out).expect("`config get --json` prints JSON");
+    (
+        answer["revision"].as_u64().expect("a revision"),
+        answer["document"].clone(),
+    )
+}
+
+/// Waits until the guardian has logged `revision` as accepted, and returns the document the compositor holds.
+#[track_caller]
+fn wait_for_revision(session: &Session, revision: u64) -> serde_json::Value {
+    session.wait_for_log(&format!("configuration revision {revision} accepted"));
+    committed(session).1
+}
+
+const CURSOR_32: &str =
+    "import { defineConfig } from \"gnoblin\";\nexport default defineConfig({ cursor: { size: 32 } });\n";
+
+#[test]
+fn the_default_session_runs_the_javascript_role_with_no_lua_host_and_commits_init_ts() {
+    // `GNOBLIN_SHELL_VM` is unset: the JavaScript role is the default, and it is the one that read `init.ts`,
+    // validated the document and committed it. Nothing in the session starts the Lua host.
+    let session = Session::start_with(&[("init.ts", CURSOR_32)], &[("GNOBLIN_JS_WATCH", "0")]);
+    let document = wait_for_revision(&session, 1);
+    assert_eq!(document["cursor"]["size"], serde_json::json!(32), "{document}");
+    let log = session.log();
+    assert!(log.contains("runtime role: JavaScript"), "{log}");
+    assert!(!log.contains("runtime role: Lua"), "the Lua host started:\n{log}");
+    assert!(!log.contains("deprecated Lua shell"), "{log}");
+}
+
+#[test]
+fn a_session_with_no_config_commits_the_stock_config_and_reports_ready() {
+    // First login: no `init.ts` yet. The role runs the stock config and commits its (empty) document, so the guardian
+    // has a revision and the session comes up.
+    let session = Session::start_with(&[], &[("GNOBLIN_JS_WATCH", "0")]);
+    let document = wait_for_revision(&session, 1);
+    assert_eq!(document, serde_json::json!({}), "the stock config sets no document key");
+    session.wait_for_log("[guardian] session ready");
+}
+
+#[test]
+fn config_reload_commits_the_new_document_and_a_refused_file_leaves_the_accepted_one() {
+    let session = Session::start(CURSOR_32);
+    let document = wait_for_revision(&session, 1);
+    assert_eq!(document["cursor"]["size"], serde_json::json!(32));
+
+    write_init(
+        &session.config_dir(),
+        "import { defineConfig } from \"gnoblin\";\nexport default defineConfig({ cursor: { size: 48 } });\n",
+    );
+    let (code, out, err) = session.ctl(&["config", "reload"]);
+    assert_eq!((code, err.as_str()), (0, ""), "stdout: {out}");
+    assert!(out.starts_with("reloaded: revision 2"), "{out}");
+    assert_eq!(committed(&session).1["cursor"]["size"], serde_json::json!(48));
+
+    // A value the validator refuses fails the reload with the key path, and revision 2 stays in force.
+    write_init(
+        &session.config_dir(),
+        "import { defineConfig } from \"gnoblin\";\nexport default defineConfig({ cursor: { size: \"huge\" } });\n",
+    );
+    let (code, _, err) = session.ctl(&["config", "reload"]);
+    assert_eq!(code, 1, "{err}");
+    assert!(err.contains("cursor"), "the refusal names the key: {err}");
+    let (revision, document) = committed(&session);
+    assert_eq!(revision, 2, "nothing new was committed");
+    assert_eq!(document["cursor"]["size"], serde_json::json!(48));
+
+    // The role kept serving: the fixed file commits as revision 3 from the same process.
+    write_init(&session.config_dir(), CURSOR_32);
+    let (code, out, err) = session.ctl(&["config", "reload"]);
+    assert_eq!((code, err.as_str()), (0, ""), "stdout: {out}");
+    assert!(out.starts_with("reloaded: revision 3"), "{out}");
+    assert_eq!(committed(&session).1["cursor"]["size"], serde_json::json!(32));
+}
+
+#[test]
+fn saving_init_ts_reloads_it_with_the_watcher_on_and_commits_a_new_revision() {
+    // The watcher is on (the default): nothing asks for the reload, a save is the request.
+    let session = Session::start_with(&[("init.ts", CURSOR_32)], &[]);
+    wait_for_revision(&session, 1);
+    write_init(
+        &session.config_dir(),
+        "import { defineConfig } from \"gnoblin\";\nexport default defineConfig({ cursor: { size: 40 } });\n",
+    );
+    let document = wait_for_revision(&session, 2);
+    assert_eq!(document["cursor"]["size"], serde_json::json!(40), "{document}");
+}
+
+#[test]
+fn a_restarted_runtime_commits_what_the_file_says_and_not_what_its_predecessor_left() {
+    // The compositor keeps the last accepted document across a runtime restart. A role that laid its settings over
+    // it would carry a key the user has since deleted from `init.ts` into the new session.
+    let session = Session::start(CURSOR_32);
+    let document = wait_for_revision(&session, 1);
+    assert_eq!(document["cursor"]["size"], serde_json::json!(32));
+    write_init(
+        &session.config_dir(),
+        "import { defineConfig } from \"gnoblin\";\nexport default defineConfig({ keyring: { enabled: true } });\n",
+    );
+    let pid = runtime_pid(&session.log());
+    rustix::process::kill_process(Pid::from_raw(pid).expect("a pid"), Signal::KILL).expect("the runtime is killed");
+    let document = wait_for_revision(&session, 2);
+    assert!(
+        document.get("cursor").is_none(),
+        "the deleted key came back: {document}"
+    );
+    assert_eq!(document["keyring"]["enabled"], serde_json::json!(true));
+}
+
+#[test]
+fn autostart_commands_are_handed_to_the_guardian_which_starts_them() {
+    let marker = tempfile::tempdir().expect("a marker directory");
+    let file = marker.path().join("started");
+    let init = format!(
+        "import {{ defineConfig }} from \"gnoblin\";\nexport default defineConfig({{ autostart: [[\"sh\", \"-c\", \"echo started > {}\"]] }});\n",
+        file.display()
+    );
+    let session = Session::start(&init);
+    let document = wait_for_revision(&session, 1);
+    assert_eq!(
+        document["autostart"]["sh"]["command"][0],
+        serde_json::json!("sh"),
+        "the commands are the document's autostart section: {document}"
+    );
+    let deadline = Instant::now() + PATIENCE;
+    while !file.exists() {
+        assert!(
+            Instant::now() < deadline,
+            "the guardian never started the command; it said:\n{}",
+            session.log()
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let log = session.log();
+    assert!(log.contains("autostart sh"), "the guardian reports the entry:\n{log}");
+}
+
+#[test]
+fn an_init_lua_with_no_init_ts_keeps_the_lua_role_and_says_so_once() {
+    // An update must not start this user on the stock config with a word about it: the Lua role runs for this
+    // release, and one warning names the migration page.
+    let session = Session::start_with(
+        &[("init.lua", "gnoblin.configure({ cursor = { size = 36 } })\n")],
+        &[("GNOBLIN_JS_WATCH", "0")],
+    );
+    let document = wait_for_revision(&session, 1);
+    assert_eq!(
+        document["cursor"]["size"],
+        serde_json::json!(36),
+        "the Lua config was read: {document}"
+    );
+    let log = session.log();
+    assert!(log.contains("runtime role: Lua"), "{log}");
+    assert!(!log.contains("runtime role: JavaScript"), "{log}");
+    assert_eq!(log.matches("deprecated Lua shell").count(), 1, "one warning:\n{log}");
+    assert!(
+        log.contains("docs/migrating-from-lua.md"),
+        "the warning names the page:\n{log}"
+    );
+}
+
+#[test]
+fn an_init_ts_beside_an_init_lua_is_the_javascript_role_and_the_lua_file_is_named_as_ignored() {
+    let session = Session::start_with(
+        &[
+            ("init.ts", CURSOR_32),
+            ("init.lua", "gnoblin.configure({ cursor = { size = 36 } })\n"),
+        ],
+        &[("GNOBLIN_JS_WATCH", "0")],
+    );
+    let document = wait_for_revision(&session, 1);
+    assert_eq!(
+        document["cursor"]["size"],
+        serde_json::json!(32),
+        "init.ts won: {document}"
+    );
+    let log = session.log();
+    assert!(log.contains("runtime role: JavaScript"), "{log}");
+    assert!(
+        log.contains("init.lua is not read"),
+        "the ignored file is named:\n{log}"
+    );
+    assert!(!log.contains("deprecated Lua shell"), "{log}");
+}
+
+#[test]
+fn gnoblin_shell_vm_lua_selects_the_lua_role_even_when_an_init_ts_exists() {
+    let session = Session::start_with(
+        &[
+            ("init.ts", CURSOR_32),
+            ("init.lua", "gnoblin.configure({ cursor = { size = 36 } })\n"),
+        ],
+        &[("GNOBLIN_SHELL_VM", "lua"), ("GNOBLIN_JS_WATCH", "0")],
+    );
+    let document = wait_for_revision(&session, 1);
+    assert_eq!(
+        document["cursor"]["size"],
+        serde_json::json!(36),
+        "the Lua host read init.lua: {document}"
+    );
+    let log = session.log();
+    assert!(log.contains("runtime role: Lua"), "{log}");
+    assert!(
+        !log.contains("deprecated Lua shell"),
+        "the user chose it, so there is nothing to warn about:\n{log}"
+    );
+}
+
+#[test]
+fn an_explicit_js_with_only_an_init_lua_runs_the_stock_config_and_says_the_file_is_not_read() {
+    let session = Session::start_with(
+        &[("init.lua", "gnoblin.configure({ cursor = { size = 36 } })\n")],
+        &[("GNOBLIN_SHELL_VM", "js"), ("GNOBLIN_JS_WATCH", "0")],
+    );
+    let document = wait_for_revision(&session, 1);
+    assert_eq!(document, serde_json::json!({}), "the Lua file is not read: {document}");
+    let log = session.log();
+    assert!(log.contains("runtime role: JavaScript"), "{log}");
+    assert!(log.contains("is not read by the JavaScript shell"), "{log}");
 }

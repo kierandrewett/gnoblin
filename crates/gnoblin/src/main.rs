@@ -10,7 +10,7 @@
 //! | --------------------- | ----------------------------------------------------------------- |
 //! | none (the guardian)   | supervises the session: starts, restarts and stops every child      |
 //! | `--role compositor`   | runs the compositor in the foreground, until it is stopped         |
-//! | `--role runtime`      | runs the Lua host: loads the configuration and serves its handlers |
+//! | `--role runtime`      | runs the JavaScript role (or the Lua host): loads the configuration and serves it |
 //! | `--role services`     | runs the D-Bus agents: polkit, the keyring and slots               |
 //!
 //! The guardian is the default because that is the process a session manager starts: it is
@@ -213,62 +213,48 @@ fn guardian() -> Result<(), Exit> {
     }
 }
 
-/// Runs the runtime: the Lua host, until the session ends.
+/// Runs the runtime: the JavaScript role by default, the Lua host for a session that asks for it, until the session
+/// ends.
 ///
-/// With `GNOBLIN_SHELL_VM=js` (or `js:<dir>`) the shell that runs beside the Lua host is the JavaScript one, which
-/// this binary is the place to link: `gnoblin-lua` and `gnoblin-js` are siblings and neither names the other.
+/// `GNOBLIN_SHELL_VM` unset or `js` is the JavaScript role, which locates and evaluates `init.ts` itself and starts no
+/// Lua. `lua` (or `0`, or a Lua shell directory) is the Lua host. A user whose only config is an `init.lua` and who
+/// did not choose gets the Lua host too, with one warning, so an update does not replace their configuration with the
+/// stock one without a word. `gnoblin-lua` and `gnoblin-js` are siblings and neither names the other, so this
+/// binary is where the choice is made.
 ///
 /// No signal handler: the guardian's `SIGTERM` ends this process, and a process that has
 /// gone is exactly what the compositor needs to see to release its connection.
 fn runtime() -> Result<(), Exit> {
-    match gnoblin_lua::RoleRunner::from_environment().run_with_js(never_stopped, Some(&launch_js_shell)) {
+    let outcome = match gnoblin_js::choose_runtime_from_environment() {
+        gnoblin_js::JsRuntimeChoice::Js { .. } => {
+            log::info!("runtime role: JavaScript");
+            gnoblin_js::JsRoleRunner::from_environment()
+                .run(never_stopped)
+                .map_err(|error| error.to_string())
+        }
+        choice => {
+            if let gnoblin_js::JsRuntimeChoice::LuaForExistingConfig { init_lua } = &choice {
+                log::warn!(
+                    "{} is a Lua config and there is no init.ts or init.js beside it, so this session runs the \
+                     deprecated Lua shell for this release. The JavaScript shell does not read Lua; move your \
+                     config to init.ts (see {}) or set GNOBLIN_SHELL_VM=js to start with the stock config",
+                    init_lua.display(),
+                    gnoblin_js::MIGRATION_DOC
+                );
+            }
+            log::info!("runtime role: Lua");
+            gnoblin_lua::RoleRunner::from_environment()
+                .run(never_stopped)
+                .map_err(|error| error.to_string())
+        }
+    };
+    match outcome {
         Ok(()) => Ok(()),
         Err(error) => {
             log::error!("{error}");
             Err(Exit(1))
         }
     }
-}
-
-/// The JavaScript shell, as the runtime role's loop drives it: one frame per turn.
-struct JsShellFrame(gnoblin_js::JsRole);
-
-impl gnoblin_lua::shell_role::ShellFrame for JsShellFrame {
-    fn tick(&mut self, _now: f64) -> Result<(), String> {
-        self.0.tick().map_err(|error| error.to_string())
-    }
-
-    fn reload(&mut self) -> Result<(), String> {
-        let report = self.0.reload_now();
-        if report.ok {
-            return Ok(());
-        }
-        let errors: Vec<String> = report.errors.iter().map(ToString::to_string).collect();
-        Err(errors.join("; "))
-    }
-
-    fn config_committed(&mut self) {
-        self.0.config_committed();
-    }
-}
-
-/// The variable that turns the config watcher off when it is `0`, so a script is reloaded only by
-/// `gnoblinctl config reload`.
-const JS_WATCH_VARIABLE: &str = "GNOBLIN_JS_WATCH";
-
-/// Starts the JavaScript shell over the session's owner socket, loading `init.ts` from the user's config
-/// directory and the stock library from `stock` when `js:<dir>` named one.
-fn launch_js_shell(
-    env: &dyn Fn(&str) -> Option<String>,
-    stock: Option<&std::path::Path>,
-) -> Result<Box<dyn gnoblin_lua::shell_role::ShellFrame>, String> {
-    let dir = gnoblin_js::config_dir(env)
-        .ok_or_else(|| "neither XDG_CONFIG_HOME nor HOME is set, so there is no config directory".to_owned())?;
-    let mut config = gnoblin_js::JsRoleConfig::new(dir, stock.map(std::path::Path::to_path_buf));
-    config.watch = env(JS_WATCH_VARIABLE).as_deref() != Some("0");
-    config.shell.xr_declared = env(gnoblin_session::supervisor::XR_VARIABLE).as_deref() == Some("1");
-    let role = gnoblin_js::JsRole::connect(env, config).map_err(|error| error.to_string())?;
-    Ok(Box::new(JsShellFrame(role)))
 }
 
 /// Runs the services role: the D-Bus agents, until the session ends.

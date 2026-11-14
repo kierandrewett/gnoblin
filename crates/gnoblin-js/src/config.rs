@@ -20,7 +20,9 @@
 //! the running generation stays, and the error is in the reload report. The commit itself happens once the
 //! generation is swapped in.
 
+use std::cell::RefCell;
 use std::path::Path;
+use std::rc::Rc;
 use std::time::Duration;
 
 use gnoblin_client::Client;
@@ -51,6 +53,49 @@ pub struct JsConfigCommit {
     pub revision: u64,
     /// The settings the compositor accepted without applying, one sentence each.
     pub notices: Vec<String>,
+}
+
+/// One commit the shell made, as the compositor accepted it. The runtime role reads these to tell the guardian
+/// which revision is in force and which autostart entries it enables.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct JsCommitRecord {
+    /// The revision now in force.
+    pub revision: u64,
+    /// The settings the compositor accepted without applying, one sentence each.
+    pub notices: Vec<String>,
+    /// The document that was committed, as JSON.
+    pub document: Vec<u8>,
+}
+
+/// The commits a shell has made and its owner has not yet read, oldest first.
+pub type JsCommitLog = Rc<RefCell<Vec<JsCommitRecord>>>;
+
+/// A [`JsConfigLink`] that records every commit its inner link accepted in a [`JsCommitLog`].
+pub(crate) struct JsRecordingLink {
+    inner: Box<dyn JsConfigLink>,
+    log: JsCommitLog,
+}
+
+impl JsRecordingLink {
+    pub(crate) fn new(inner: Box<dyn JsConfigLink>, log: JsCommitLog) -> Self {
+        Self { inner, log }
+    }
+}
+
+impl JsConfigLink for JsRecordingLink {
+    fn current(&mut self) -> Result<Option<Vec<u8>>, JsLinkError> {
+        self.inner.current()
+    }
+
+    fn commit(&mut self, document: &[u8]) -> Result<JsConfigCommit, JsLinkError> {
+        let committed = self.inner.commit(document)?;
+        self.log.borrow_mut().push(JsCommitRecord {
+            revision: committed.revision,
+            notices: committed.notices.clone(),
+            document: document.to_vec(),
+        });
+        Ok(committed)
+    }
 }
 
 /// The shell's connection for the configuration document: the owner socket's `config.current` and
@@ -114,6 +159,11 @@ pub(crate) struct ConfigState {
     link: Option<Box<dyn JsConfigLink>>,
     /// The key paths the last committed patch set, so the next commit can take them back.
     owned: Vec<KeyPath>,
+    /// Whether the shell owns the whole document: the JavaScript runtime role, where no Lua host commits a file of
+    /// its own. Every commit is then the patch alone, laid over an empty document, and is always sent: a reload
+    /// that changed nothing is still the answer the compositor is waiting for, and a role that restarts must not
+    /// inherit keys the previous run committed.
+    owns_document: bool,
 }
 
 /// A document with no keys.
@@ -126,7 +176,18 @@ impl ConfigState {
         Self {
             link: None,
             owned: Vec::new(),
+            owns_document: false,
         }
+    }
+
+    /// Makes the shell the owner of the whole document. See [`ConfigState::owns_document`].
+    pub(crate) fn set_owns_document(&mut self, owns: bool) {
+        self.owns_document = owns;
+    }
+
+    /// Whether the shell owns the whole document.
+    pub(crate) fn owns_document(&self) -> bool {
+        self.owns_document
     }
 
     pub(crate) fn set_link(&mut self, link: Box<dyn JsConfigLink>) {
@@ -143,10 +204,22 @@ impl ConfigState {
 
     /// The document in force and the document `patch` would make of it, the second one validated.
     fn validated(&mut self, patch: &Value, retract: bool) -> Result<(Value, Value), String> {
-        let current = self.read_current()?;
+        // The document the shell owns is built from nothing, so what the compositor holds is not read.
+        let current = if self.owns_document {
+            empty()
+        } else {
+            self.read_current()?
+        };
         let candidate = self.candidate(current.clone(), patch, retract);
         match Config::from_value(candidate) {
-            Ok(config) => Ok((current, config.document().clone())),
+            Ok(config) => {
+                // The guardian starts the document's autostart entries, so one that would start a second
+                // keyring is refused here, before the commit, as the Lua host refuses it.
+                if self.owns_document {
+                    gnoblin_config::enabled_autostart(&config)?;
+                }
+                Ok((current, config.document().clone()))
+            }
             Err(report) => Err(report
                 .problems()
                 .iter()
@@ -170,7 +243,7 @@ impl ConfigState {
             return Ok(JsApplied::Unchanged);
         }
         let (current, document) = self.validated(patch, retract)?;
-        if current == document {
+        if current == document && !self.owns_document {
             self.owned = owned;
             return Ok(JsApplied::Unchanged);
         }
@@ -200,7 +273,9 @@ impl ConfigState {
     }
 
     fn candidate(&self, mut document: Value, patch: &Value, retract: bool) -> Value {
-        if retract {
+        if self.owns_document {
+            document = empty();
+        } else if retract {
             for path in &self.owned {
                 remove(&mut document, path);
             }
@@ -220,18 +295,27 @@ pub(crate) fn parse_patch(text: &str) -> Result<Value, String> {
     }
 }
 
-/// Installs `__gnoblinHost.config`: `check(patch)` answers the validator's problems for a patch laid over the
-/// document in force, or nothing when the document would be accepted.
+/// Installs `__gnoblinHost.config`: `check(patch, autostart)` answers the validator's problems for a patch laid over
+/// the document in force, or nothing when the document would be accepted. `autostart` is the config's commands as
+/// JSON; a shell that owns the document commits them as its `autostart` section, so they are checked with it.
 pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedState) -> rquickjs::Result<()> {
     let config = Object::new(ctx.clone())?;
     let shared = state.clone();
     config.set(
         "check",
-        Function::new(ctx.clone(), move |patch: String| -> Option<String> {
-            match parse_patch(&patch) {
-                Ok(patch) => shared.borrow_mut().config.check(&patch, true).err(),
-                Err(problem) => Some(problem),
+        Function::new(ctx.clone(), move |patch: String, autostart: String| -> Option<String> {
+            let mut patch = match parse_patch(&patch) {
+                Ok(patch) => patch,
+                Err(problem) => return Some(problem),
+            };
+            let mut state = shared.borrow_mut();
+            if state.config.owns_document() {
+                match crate::autostart::parse(&autostart) {
+                    Ok(commands) => crate::autostart::lay_over(&mut patch, &commands),
+                    Err(problem) => return Some(problem.to_string()),
+                }
             }
+            state.config.check(&patch, true).err()
         })?,
     )?;
     host.set("config", config)
@@ -360,5 +444,132 @@ mod tests {
             &["dialogs".to_owned(), "style".to_owned(), "radius".to_owned()],
         );
         assert_eq!(document, json(r#"{"dialogs":{"style":{"scale":2}}}"#));
+    }
+
+    use std::collections::VecDeque;
+
+    /// A document link that holds `current` and answers each commit with the next revision, remembering what it
+    /// was sent.
+    struct FakeLink {
+        current: Option<Vec<u8>>,
+        sent: Rc<RefCell<Vec<Vec<u8>>>>,
+        revisions: VecDeque<u64>,
+    }
+
+    impl FakeLink {
+        fn new(current: Option<&str>) -> (Self, Rc<RefCell<Vec<Vec<u8>>>>) {
+            let sent = Rc::new(RefCell::new(Vec::new()));
+            let link = Self {
+                current: current.map(|text| text.as_bytes().to_vec()),
+                sent: Rc::clone(&sent),
+                revisions: (1..).take(8).collect(),
+            };
+            (link, sent)
+        }
+    }
+
+    impl JsConfigLink for FakeLink {
+        fn current(&mut self) -> Result<Option<Vec<u8>>, JsLinkError> {
+            Ok(self.current.clone())
+        }
+
+        fn commit(&mut self, document: &[u8]) -> Result<JsConfigCommit, JsLinkError> {
+            self.sent.borrow_mut().push(document.to_vec());
+            self.current = Some(document.to_vec());
+            Ok(JsConfigCommit {
+                revision: self.revisions.pop_front().unwrap_or(99),
+                notices: Vec::new(),
+            })
+        }
+    }
+
+    fn state_over(link: FakeLink, owns: bool) -> ConfigState {
+        let mut state = ConfigState::new();
+        state.set_link(Box::new(link));
+        state.set_owns_document(owns);
+        state
+    }
+
+    fn sent_json(sent: &Rc<RefCell<Vec<Vec<u8>>>>, index: usize) -> serde_json::Value {
+        serde_json::from_slice(&sent.borrow()[index]).expect("a committed document is JSON")
+    }
+
+    #[test]
+    fn an_owned_document_is_the_patch_alone_even_when_the_compositor_holds_other_keys() {
+        // A runtime that restarts finds the document its predecessor committed in force. Keys the new config no
+        // longer sets must not survive it.
+        let (link, sent) = FakeLink::new(Some(r#"{"cursor":{"size":24},"keyring":{"enabled":false}}"#));
+        let mut state = state_over(link, true);
+        let applied = state
+            .apply(&json(r#"{"cursor":{"size":32}}"#), true)
+            .expect("the patch is accepted");
+        assert!(matches!(applied, JsApplied::Committed(_)));
+        assert_eq!(sent_json(&sent, 0), serde_json::json!({"cursor": {"size": 32}}));
+    }
+
+    #[test]
+    fn an_owned_document_is_committed_even_when_nothing_changed() {
+        // The compositor holds a `config.reload` open until some commit answers it.
+        let (link, sent) = FakeLink::new(None);
+        let mut state = state_over(link, true);
+        for _ in 0..2 {
+            let applied = state.apply(&json(r#"{"cursor":{"size":32}}"#), true).expect("accepted");
+            assert!(matches!(applied, JsApplied::Committed(_)), "{applied:?}");
+        }
+        assert_eq!(sent.borrow().len(), 2);
+    }
+
+    #[test]
+    fn an_owned_empty_config_commits_the_empty_document() {
+        let (link, sent) = FakeLink::new(None);
+        let mut state = state_over(link, true);
+        let applied = state.apply(&empty(), true).expect("an empty document is valid");
+        assert!(matches!(applied, JsApplied::Committed(_)));
+        assert_eq!(sent_json(&sent, 0), serde_json::json!({}));
+    }
+
+    #[test]
+    fn a_shared_document_keeps_what_the_compositor_holds_and_skips_an_unchanged_commit() {
+        let (link, sent) = FakeLink::new(Some(r#"{"cursor":{"size":24}}"#));
+        let mut state = state_over(link, false);
+        state
+            .apply(&json(r#"{"keyring":{"enabled":false}}"#), true)
+            .expect("accepted");
+        assert_eq!(
+            sent_json(&sent, 0),
+            serde_json::json!({"cursor": {"size": 24}, "keyring": {"enabled": false}})
+        );
+        let again = state
+            .apply(&json(r#"{"keyring":{"enabled":false}}"#), true)
+            .expect("accepted");
+        assert_eq!(again, JsApplied::Unchanged);
+        assert_eq!(sent.borrow().len(), 1);
+    }
+
+    #[test]
+    fn an_owned_document_refuses_an_autostart_entry_that_starts_a_second_keyring() {
+        let (link, sent) = FakeLink::new(None);
+        let mut state = state_over(link, true);
+        let reason = state
+            .apply(
+                &json(r#"{"autostart":{"daemon":{"command":["gnome-keyring-daemon","--start"]}}}"#),
+                true,
+            )
+            .expect_err("a second keyring is refused");
+        assert!(reason.contains("keyring.enabled"), "{reason}");
+        assert!(sent.borrow().is_empty(), "nothing was committed");
+    }
+
+    #[test]
+    fn the_recording_link_keeps_each_commit_with_its_document_and_revision() {
+        let (link, _sent) = FakeLink::new(None);
+        let log: JsCommitLog = Rc::default();
+        let mut recording = JsRecordingLink::new(Box::new(link), Rc::clone(&log));
+        let committed = recording.commit(br#"{"cursor":{"size":32}}"#).expect("committed");
+        assert_eq!(committed.revision, 1);
+        let records = log.borrow();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].revision, 1);
+        assert_eq!(records[0].document, br#"{"cursor":{"size":32}}"#.to_vec());
     }
 }

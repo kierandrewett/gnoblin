@@ -101,6 +101,13 @@ pub(crate) fn section(commands: &[Vec<String>]) -> Option<Value> {
     Some(Value::Map(entries))
 }
 
+/// Lays `commands` over `patch` as its `autostart` section; a patch that is not a table, or no commands, change nothing.
+pub(crate) fn lay_over(patch: &mut Value, commands: &[Vec<String>]) {
+    if let (Some(section), Value::Map(entries)) = (section(commands), patch) {
+        entries.insert("autostart".to_owned(), section);
+    }
+}
+
 /// The commands this shell has started.
 #[derive(Default)]
 pub(crate) struct JsAutostart {

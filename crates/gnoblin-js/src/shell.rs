@@ -352,8 +352,14 @@ impl JsShell {
 
     /// Applies what the running generation's config set outside the tree: its document settings, which replace
     /// what the last generation set (`retract`), and then its autostart commands.
+    ///
+    /// A shell that owns the document hands its autostart commands to the guardian through it instead
+    /// ([`own_document`](Self::own_document)), so it starts none itself.
     fn apply_settings(&mut self, diagnostics: &mut Vec<String>) -> Result<(), JsShellError> {
         self.apply_document(diagnostics, true)?;
+        if self.state.borrow().config.owns_document() {
+            return Ok(());
+        }
         self.start_autostart(diagnostics)
     }
 
@@ -455,13 +461,16 @@ impl JsShell {
         let text: String = self.call_entry(self.entry_budget, |entry| {
             entry.get::<_, Function<'_>>("document")?.call(())
         })?;
-        let patch = match parse_patch(&text) {
+        let mut patch = match parse_patch(&text) {
             Ok(patch) => patch,
             Err(reason) => {
                 diagnostics.push(format!("the configuration settings were not committed: {reason}"));
                 return Ok(());
             }
         };
+        if self.state.borrow().config.owns_document() {
+            self.add_autostart_section(&mut patch, diagnostics)?;
+        }
         let outcome = self.state.borrow_mut().config.apply(&patch, retract);
         match outcome {
             Ok(JsApplied::Unchanged) => {}
@@ -483,6 +492,33 @@ impl JsShell {
             )),
         }
         Ok(())
+    }
+
+    /// Adds the running generation's `autostart` commands to `patch` as the document's `autostart` section, which
+    /// is where the guardian reads what to start. A list that is not a list of commands is a diagnostic and no
+    /// section: the rest of the document is still committed.
+    fn add_autostart_section(
+        &mut self,
+        patch: &mut gnoblin_config::Value,
+        diagnostics: &mut Vec<String>,
+    ) -> Result<(), JsShellError> {
+        let text: String = self.call_entry(self.entry_budget, |entry| {
+            entry.get::<_, Function<'_>>("autostart")?.call(())
+        })?;
+        match autostart::parse(&text) {
+            Ok(commands) => autostart::lay_over(patch, &commands),
+            Err(error) => diagnostics.push(error.to_string()),
+        }
+        Ok(())
+    }
+
+    /// Makes this shell the owner of the configuration document, as in the JavaScript runtime role: each of its
+    /// commits is the generation's settings alone (nothing a Lua host wrote, and nothing a previous run left in
+    /// the compositor), it commits on every load so a reload always has an answer, and the generation's
+    /// `autostart` commands go into the document for the guardian to start and supervise instead of being
+    /// started here.
+    pub fn own_document(&mut self) {
+        self.state.borrow_mut().config.set_owns_document(true);
     }
 
     /// The dialog observation of one frame: what the compositor offered goes to the listeners, which run under the

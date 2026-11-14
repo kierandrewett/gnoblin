@@ -109,6 +109,9 @@ impl Session {
             // ambient one is another session's (or, on a build machine, there is none at all).
             .env("DBUS_SESSION_BUS_ADDRESS", bus.address())
             .env("XDG_STATE_HOME", directory.path().join("state"))
+            // The runtime role reads, and creates when it is missing, the config directory under this home, so the
+            // session must not use the machine's own.
+            .env("XDG_CONFIG_HOME", directory.path().join("config"))
             .env("GNOBLIN_IPC_SOCKET", directory.path().join("ipc.sock"))
             .env("GNOBLIN_TEST_FAST", "1")
             .stdin(Stdio::null())

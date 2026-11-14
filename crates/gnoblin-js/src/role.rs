@@ -37,7 +37,7 @@ use gnoblin_tree_client::tree_link::SocketTreeLink;
 use gnoblin_tree_client::tree_mirror::TreeLink;
 
 use crate::bindings::{JsSpawnError, JsSpawnRequest};
-use crate::config::{JsClientConfigLink, JsConfigLink};
+use crate::config::{JsClientConfigLink, JsCommitLog, JsConfigLink, JsRecordingLink};
 use crate::console::{JsConsole, JsConsoleSite, console_enabled, console_socket_path};
 use crate::generation::JsGeneration;
 use crate::host_idle::{JsClientIdleLink, JsIdleConnector, JsIdleLink};
@@ -92,6 +92,12 @@ pub struct JsRoleConfig {
     pub watch: bool,
     /// Where the console listens. See [`JsConsoleSite`].
     pub console: JsConsoleSite,
+    /// Whether the shell owns the whole configuration document, as in the JavaScript runtime role
+    /// ([`JsShell::own_document`]). Off, the shell lays its settings over a document another host committed.
+    pub owns_document: bool,
+    /// Where the shell records each document commit it makes, for the runtime role that reports them to the
+    /// guardian. `None` records nothing.
+    pub commits: Option<JsCommitLog>,
 }
 
 impl JsRoleConfig {
@@ -108,6 +114,8 @@ impl JsRoleConfig {
             debounce: RELOAD_DEBOUNCE,
             watch: true,
             console: JsConsoleSite::default(),
+            owns_document: false,
+            commits: None,
         }
     }
 }
@@ -249,8 +257,14 @@ impl JsRole {
         if let Some(slots) = links.slots {
             shell.set_slot_link(slots);
         }
+        if config.owns_document {
+            shell.own_document();
+        }
         if let Some(document) = links.config {
-            shell.set_config_link(document);
+            match &config.commits {
+                Some(log) => shell.set_config_link(Box::new(JsRecordingLink::new(document, Rc::clone(log)))),
+                None => shell.set_config_link(document),
+            }
         }
         if let Some(session) = links.session {
             shell.set_session_link(session);

@@ -1,10 +1,10 @@
 //! The shell VM as the runtime role runs it.
 //!
-//! On by default when the stock Lua library is installed at `<prefix>/share/gnoblin/lua/gnoblin`
-//! (`GNOBLIN_PREFIX`, default `/usr`). `GNOBLIN_SHELL_VM=0` turns it off; `js` or `js:<dir>` runs the
-//! JavaScript shell in its place (see [`ShellFrame`]); any other non-empty value names the directory the VM
-//! loads instead. With no installed library and the variable
-//! unset, nothing here runs and the role's loop is the one it always was. When the VM runs, the
+//! The Lua role runs it when the stock Lua library is installed at `<prefix>/share/gnoblin/lua/gnoblin`
+//! (`GNOBLIN_PREFIX`, default `/usr`); `GNOBLIN_SHELL_VM=lua` or unset means that library, `GNOBLIN_SHELL_VM=0`
+//! turns the VM off, and any other non-empty value names the directory the VM loads instead. (Which role runs at
+//! all, Lua or JavaScript, is `gnoblin_js::choose_runtime`'s decision; this module is only the Lua role's.) With no
+//! installed library and the variable unset, nothing here runs and the role's loop is the one it always was. When the VM runs, the
 //! role connects a [`ShellVm`] to the owner socket through a [`SocketTreeLink`] and runs one frame
 //! per turn of its loop. A frame applies the compositor's change batches and sends the VM's writes
 //! as one transaction. A failure to start, or a link failure, logs one warning and the role keeps
@@ -30,21 +30,8 @@ pub const SHELL_VM_VARIABLE: &str = "GNOBLIN_SHELL_VM";
 /// The value of [`SHELL_VM_VARIABLE`] that turns the shell VM off.
 pub const SHELL_VM_OFF: &str = "0";
 
-/// The value of [`SHELL_VM_VARIABLE`] that selects the JavaScript shell, `js`, or `js:<dir>` to read the stock
-/// library from a directory instead of the copy compiled in. The Lua VM does not run then.
-pub const SHELL_VM_JS: &str = "js";
-
-/// Whether `GNOBLIN_SHELL_VM` selects the JavaScript shell, and the stock directory it names.
-///
-/// `None` is the Lua VM (or nothing); `Some(None)` is `js`; `Some(Some(dir))` is `js:<dir>`.
-pub fn js_shell_request(env: &dyn Fn(&str) -> Option<String>) -> Option<Option<PathBuf>> {
-    let value = env(SHELL_VM_VARIABLE)?;
-    if value == SHELL_VM_JS {
-        return Some(None);
-    }
-    let dir = value.strip_prefix("js:")?;
-    Some((!dir.is_empty()).then(|| PathBuf::from(dir)))
-}
+/// The value of [`SHELL_VM_VARIABLE`] that names the installed stock Lua library, as leaving it unset does.
+pub const SHELL_VM_LUA: &str = "lua";
 
 /// Where the installed stock Lua library lives: `<prefix>/share/gnoblin/lua/gnoblin`, for
 /// `GNOBLIN_PREFIX` as `env` gives it, defaulting to `/usr`.
@@ -55,16 +42,12 @@ pub fn installed_stock_dir(env: &dyn Fn(&str) -> Option<String>) -> PathBuf {
 
 /// The directory the shell VM loads, or `None` when it should not run.
 ///
-/// `GNOBLIN_SHELL_VM=0` is off, and so is `js` or `js:<dir>` (the JavaScript shell runs instead, see
-/// [`js_shell_request`]). Any other non-empty value is the directory. Unset or empty means the installed stock
-/// library at `installed`, and only when that library is there (it has `node.lua`); otherwise the VM stays off.
+/// `GNOBLIN_SHELL_VM=0` is off. `lua`, unset and empty mean the installed stock library at `installed`, and only when
+/// that library is there (it has `node.lua`); otherwise the VM stays off. Any other non-empty value is the directory.
 pub fn shell_vm_dir(env: &dyn Fn(&str) -> Option<String>, installed: &Path) -> Option<PathBuf> {
-    if js_shell_request(env).is_some() {
-        return None;
-    }
     match env(SHELL_VM_VARIABLE) {
         Some(value) if value == SHELL_VM_OFF => None,
-        Some(value) if !value.is_empty() => Some(PathBuf::from(value)),
+        Some(value) if !value.is_empty() && value != SHELL_VM_LUA => Some(PathBuf::from(value)),
         _ => installed.join("node.lua").is_file().then(|| installed.to_path_buf()),
     }
 }
@@ -129,39 +112,9 @@ impl ShellRole {
     }
 }
 
-/// A shell that is not the Lua VM and that the runtime role drives the same way: one frame per turn of its loop.
-///
-/// The JavaScript shell lives in `gnoblin-js`, which this crate does not depend on; the process that links both
-/// (the `gnoblin` binary) wraps it in this trait and hands it to [`RoleRunner::run_with_js`](crate::RoleRunner).
-pub trait ShellFrame {
-    /// Run one frame at `now` (seconds on the frame clock). An error ends the shell.
-    fn tick(&mut self, now: f64) -> Result<(), String>;
-
-    /// Reloads the shell's own configuration from disk because `gnoblinctl config reload` asked. `Err` carries the
-    /// report for the caller (`file:line:column: message`); the shell keeps what it was running. A shell with no
-    /// configuration of its own has nothing to reload.
-    fn reload(&mut self) -> Result<(), String> {
-        Ok(())
-    }
-
-    /// The Lua host committed the configuration document again (its own reload), and the document it committed
-    /// has none of the settings this shell's config sets. The shell lays them over the document in force again.
-    fn config_committed(&mut self) {}
-}
-
-/// Starts the JavaScript shell for the role: the environment, and the stock directory `js:<dir>` named.
-pub type JsShellLauncher<'a> =
-    &'a dyn Fn(&dyn Fn(&str) -> Option<String>, Option<&Path>) -> Result<Box<dyn ShellFrame>, String>;
-
-/// The shell that runs in a slot.
-enum SlotShell {
-    Lua(Box<ShellRole>),
-    Js(Box<dyn ShellFrame>),
-}
-
 /// The shell VM's slot in the runtime role: empty when the VM is off or ended.
 pub struct ShellSlot {
-    role: Option<SlotShell>,
+    role: Option<Box<ShellRole>>,
 }
 
 impl ShellSlot {
@@ -191,38 +144,7 @@ impl ShellSlot {
 
     pub fn running(role: ShellRole) -> Self {
         Self {
-            role: Some(SlotShell::Lua(Box::new(role))),
-        }
-    }
-
-    /// The slot for `env` when the build may also run the JavaScript shell: `GNOBLIN_SHELL_VM=js` (or
-    /// `js:<dir>`) starts it through `js`, and nothing else changes. A build with no launcher, or one that fails to
-    /// start, logs one warning and leaves the slot empty, so the role still serves. Any other value is
-    /// [`from_env`](Self::from_env)'s.
-    pub fn from_env_or_js(
-        env: &dyn Fn(&str) -> Option<String>,
-        installed: &Path,
-        js: Option<JsShellLauncher<'_>>,
-        connect: impl FnOnce(&Path) -> Result<ShellRole, ShellVmError>,
-    ) -> Self {
-        let Some(stock) = js_shell_request(env) else {
-            return Self::from_env(env, installed, connect);
-        };
-        let Some(launch) = js else {
-            crate::log::warn!(
-                area = "shell-vm",
-                "{SHELL_VM_VARIABLE} selects the JavaScript shell and this runtime has none"
-            );
-            return Self { role: None };
-        };
-        match launch(env, stock.as_deref()) {
-            Ok(frame) => Self {
-                role: Some(SlotShell::Js(frame)),
-            },
-            Err(error) => {
-                crate::log::warn!(area = "shell-vm", "the JavaScript shell did not start: {error}");
-                Self { role: None }
-            }
+            role: Some(Box::new(role)),
         }
     }
 
@@ -236,35 +158,11 @@ impl ShellSlot {
         let Some(role) = self.role.as_mut() else {
             return Ok(());
         };
-        let result = match role {
-            SlotShell::Lua(role) => role.tick(now),
-            SlotShell::Js(frame) => frame.tick(now).map_err(ShellVmError::Core),
-        };
+        let result = role.tick(now);
         if result.is_err() {
             self.role = None;
         }
         result
-    }
-
-    /// Asks a JavaScript shell to reload its configuration. The Lua shell VM loads its files once per session
-    /// (docs/user-shell.md), and an empty slot has no shell, so for both this is `Ok`.
-    ///
-    /// # Errors
-    ///
-    /// The reload failed; the text is the report to give the caller of `config reload`.
-    pub fn reload(&mut self) -> Result<(), String> {
-        match self.role.as_mut() {
-            Some(SlotShell::Js(frame)) => frame.reload(),
-            _ => Ok(()),
-        }
-    }
-
-    /// Tells a JavaScript shell that the document was committed again, by the Lua host's own reload, so it puts
-    /// the settings its config sets back. The Lua shell VM and an empty slot have nothing to put back.
-    pub fn config_committed(&mut self) {
-        if let Some(SlotShell::Js(frame)) = self.role.as_mut() {
-            frame.config_committed();
-        }
     }
 }
 

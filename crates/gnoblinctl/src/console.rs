@@ -38,7 +38,8 @@ const HELP: &[(&str, &str)] = &[
     (".help", "show this list"),
 ];
 
-const NO_SHELL_HINT: &str = "start the session with the JavaScript shell (`GNOBLIN_SHELL_VM=js`), and check that \
+const NO_SHELL_HINT: &str = "the session must run the JavaScript shell, which is the default: unset \
+     `GNOBLIN_SHELL_VM` (or set it to `js`), keep an `init.ts` rather than only an `init.lua`, and check that \
      `GNOBLIN_JS_CONSOLE` is not `0`";
 
 /// What `gnoblinctl console` was asked.

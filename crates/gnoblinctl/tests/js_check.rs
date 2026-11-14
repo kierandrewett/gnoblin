@@ -399,6 +399,19 @@ fn config_init_does_not_overwrite_a_config_unless_forced() {
 }
 
 #[test]
+fn config_init_beside_an_init_lua_says_the_lua_file_is_no_longer_read() {
+    let dir = Dir::new();
+    dir.write("gnoblin/init.lua", "gnoblin.configure({})\n");
+    let target = dir.path().join("gnoblin");
+    let (code, out, err) = config_init(&target, &[]);
+    assert_eq!(code, 0, "{err}");
+    assert!(out.contains("init.lua is still there"), "{out}");
+    assert!(out.contains("migrating-from-lua.md"), "{out}");
+    assert!(target.join("init.ts").exists(), "the starter is written");
+    assert!(target.join("init.lua").exists(), "the Lua file is left alone");
+}
+
+#[test]
 fn config_init_leaves_an_init_js_alone_because_the_starter_would_shadow_it() {
     let dir = Dir::new();
     dir.write("gnoblin/init.js", "export default {};\n");
