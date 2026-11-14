@@ -333,6 +333,15 @@ pub fn ids(windows: &[Window]) -> BTreeMap<String, u64> {
 /// The `xdg_toplevel` state a configure carries when the window is fullscreen.
 pub const STATE_FULLSCREEN: u32 = 2;
 
+/// The `xdg_toplevel` state a configure carries when the window is maximised.
+pub const STATE_MAXIMIZED: u32 = 1;
+
+/// The `xdg_toplevel` states a configure carries for a window tiled on each edge.
+pub const STATE_TILED_LEFT: u32 = 5;
+pub const STATE_TILED_RIGHT: u32 = 6;
+pub const STATE_TILED_TOP: u32 = 7;
+pub const STATE_TILED_BOTTOM: u32 = 8;
+
 /// What the pointer of a Wayland client has been told, shared so that a test can read it inside a wait that holds the
 /// client. The compositor gives a client the pointer events of the windows it owns, and withholds the press of a
 /// button that a claimed chord takes for the shell, so a press that this client heard is one nobody claimed.
@@ -380,6 +389,10 @@ pub struct App {
     token: Option<String>,
     /// The size and the states of each toplevel's last configure, by the toplevel's protocol id.
     configures: BTreeMap<u32, (i32, i32, Vec<u32>)>,
+    /// Every configure each toplevel received, in order, by the toplevel's protocol id.
+    configure_log: BTreeMap<u32, Vec<(i32, i32, Vec<u32>)>>,
+    /// The bounds of the last `configure_bounds` each toplevel received, by the toplevel's protocol id.
+    bounds: BTreeMap<u32, (i32, i32)>,
     /// The modes the compositor told each `zxdg_toplevel_decoration_v1`, in order, by the decoration object's id.
     decorations: BTreeMap<u32, Vec<zxdg_toplevel_decoration_v1::Mode>>,
     /// What the pointer has been told, once the client listens to it.
@@ -502,13 +515,7 @@ impl Mapper {
         });
         surface.commit();
         self.roundtrip();
-        let stride = width * 4;
-        let length = stride * height;
-        let file = tempfile::tempfile().expect("a shared memory file");
-        file.set_len(u64::try_from(length).expect("a length"))
-            .expect("a buffer that big");
-        let pool = self.shm.create_pool(file.as_fd(), length, &self.qh, ());
-        let buffer = pool.create_buffer(0, width, height, stride, wl_shm::Format::Argb8888, &self.qh, ());
+        let buffer = self.buffer(width, height);
         surface.attach(Some(&buffer), 0, 0);
         surface.damage(0, 0, width, height);
         if let Some((x, y, geometry_width, geometry_height)) = self.geometry {
@@ -538,6 +545,20 @@ impl Mapper {
         self.roundtrip();
     }
 
+    /// Asks the compositor to maximise window number `window`, as a toolkit's maximise button does.
+    pub fn maximize(&mut self, window: usize) {
+        self.windows[window].2.set_maximized();
+        self.windows[window].0.commit();
+        self.roundtrip();
+    }
+
+    /// Asks the compositor to take window number `window` out of maximise.
+    pub fn unmaximize(&mut self, window: usize) {
+        self.windows[window].2.unset_maximized();
+        self.windows[window].0.commit();
+        self.roundtrip();
+    }
+
     /// The states of window number `window`'s last configure (`STATE_FULLSCREEN` is one), or none before the first.
     pub fn states(&self, window: usize) -> Vec<u32> {
         let id = self.windows[window].2.id().protocol_id();
@@ -551,6 +572,65 @@ impl Mapper {
     pub fn configured(&self, window: usize) -> Option<(i32, i32)> {
         let id = self.windows[window].2.id().protocol_id();
         self.app.configures.get(&id).map(|(width, height, _)| (*width, *height))
+    }
+
+    /// The bounds of window number `window`'s last `configure_bounds`, or none when it has had none.
+    pub fn bounds(&self, window: usize) -> Option<(i32, i32)> {
+        let id = self.windows[window].2.id().protocol_id();
+        self.app.bounds.get(&id).copied()
+    }
+
+    /// Every configure window number `window` has received, oldest first, as `(width, height, states)`.
+    pub fn configure_log(&self, window: usize) -> &[(i32, i32, Vec<u32>)] {
+        let id = self.windows[window].2.id().protocol_id();
+        self.app.configure_log.get(&id).map_or(&[], Vec::as_slice)
+    }
+
+    /// Maps a toplevel the way a toolkit does: its size limits first, then a buffer of `own` with the window geometry set
+    /// to it. Returns the window's number.
+    pub fn map_toolkit_window(&mut self, app_id: &str, title: &str, own: (i32, i32)) -> usize {
+        let surface = self.compositor.create_surface(&self.qh, ());
+        let xdg = self.wm_base.get_xdg_surface(&surface, &self.qh, ());
+        let toplevel = xdg.get_toplevel(&self.qh, ());
+        toplevel.set_app_id(app_id.to_owned());
+        toplevel.set_title(title.to_owned());
+        toplevel.set_min_size(139, 126);
+        toplevel.set_max_size(0, 0);
+        surface.commit();
+        self.roundtrip();
+        self.windows.push((surface, xdg, toplevel));
+        self.decorations.push(None);
+        let window = self.windows.len() - 1;
+        self.draw_configured(window, own);
+        window
+    }
+
+    /// Draws window number `window` the way a toolkit answers a configure: a buffer at the size it was told, with the
+    /// window geometry set to that size. `own` is the size it draws at when the compositor named none.
+    pub fn draw_configured(&mut self, window: usize, own: (i32, i32)) {
+        self.roundtrip();
+        let (width, height) = self
+            .configured(window)
+            .filter(|&(width, height)| width > 0 && height > 0)
+            .unwrap_or(own);
+        let buffer = self.buffer(width, height);
+        let (surface, xdg, _) = &self.windows[window];
+        xdg.set_window_geometry(0, 0, width, height);
+        surface.attach(Some(&buffer), 0, 0);
+        surface.damage(0, 0, width, height);
+        surface.commit();
+        self.roundtrip();
+    }
+
+    /// A shared-memory buffer of `width` by `height`.
+    fn buffer(&self, width: i32, height: i32) -> wl_buffer::WlBuffer {
+        let stride = width * 4;
+        let length = stride * height;
+        let file = tempfile::tempfile().expect("a shared memory file");
+        file.set_len(u64::try_from(length).expect("a length"))
+            .expect("a buffer that big");
+        let pool = self.shm.create_pool(file.as_fd(), length, &self.qh, ());
+        pool.create_buffer(0, width, height, stride, wl_shm::Format::Argb8888, &self.qh, ())
     }
 
     /// Binds the seat's pointer, so the client is told the serial of a button press and the events that [`pointer`]
@@ -646,15 +726,25 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let xdg_toplevel::Event::Configure { width, height, states } = event {
-            let states = states
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .map(|state| u32::from_ne_bytes(*state))
-                .collect();
-            app.configures
-                .insert(toplevel.id().protocol_id(), (width, height, states));
+        match event {
+            xdg_toplevel::Event::Configure { width, height, states } => {
+                let states: Vec<u32> = states
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|state| u32::from_ne_bytes(*state))
+                    .collect();
+                let id = toplevel.id().protocol_id();
+                app.configure_log
+                    .entry(id)
+                    .or_default()
+                    .push((width, height, states.clone()));
+                app.configures.insert(id, (width, height, states));
+            }
+            xdg_toplevel::Event::ConfigureBounds { width, height } => {
+                app.bounds.insert(toplevel.id().protocol_id(), (width, height));
+            }
+            _ => {}
         }
     }
 }

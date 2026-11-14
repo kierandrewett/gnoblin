@@ -1410,7 +1410,6 @@ dependencies = [
  "gnoblin-input-eis",
  "gnoblin-lock-auth",
  "gnoblin-log",
- "gnoblin-lua",
  "gnoblin-model",
  "gnoblin-paint",
  "gnoblin-polkit-auth",

@@ -1710,6 +1710,195 @@ fn a_master_stack_workspace_with_a_ratio_and_a_gap_fills_the_screen_to_both_edge
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 }
 
+/// A tiled window is told what the shell wrote, on the wire: its configure size is its tile, it is told all four edges
+/// are tiled, and it is sent the work area as its bounds (ported from the Lua rig's
+/// `a_tiling_workspace_configures_three_real_clients_to_their_tiles_with_tiled_edges_and_the_work_area`). The bounds
+/// are the compositor's work area, which the bars of the stock shell may shrink, so they are asserted to lie inside the
+/// screen and not to equal it.
+#[test]
+fn a_master_stack_workspace_configures_three_real_clients_to_their_tiles_with_tiled_edges_and_the_work_area() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    write_layout_config(config.path(), "new MasterStackLayout()");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    let (width, height) = screen_size(&ipc);
+    let apps = ["org.example.master", "org.example.upper", "org.example.lower"];
+    for app in apps {
+        mapper.map_window(app, app);
+    }
+    // The master is the tile that fills the height; the other two share it.
+    let tiles = |ipc: &Path| -> Option<Vec<(i32, i32)>> {
+        let rects: Vec<(f64, f64, f64, f64)> = apps.iter().map(|app| rect_of(ipc, app)).collect::<Option<_>>()?;
+        let full = rects.iter().filter(|rect| rect.3 >= height).count();
+        (full == 1).then(|| rects.iter().map(|rect| (rect.2 as i32, rect.3 as i32)).collect())
+    };
+    wait_for("three windows tiled", &session, &mut mapper, &shell, || {
+        tiles(&ipc).is_some()
+    });
+    let sizes = tiles(&ipc).expect("the tiles");
+    wait_client("each client was configured to its tile", &mut mapper, |client| {
+        (0..apps.len()).all(|window| client.configured(window) == Some(sizes[window]))
+    });
+    for window in 0..apps.len() {
+        let states = mapper.states(window);
+        for edge in [
+            support::STATE_TILED_LEFT,
+            support::STATE_TILED_RIGHT,
+            support::STATE_TILED_TOP,
+            support::STATE_TILED_BOTTOM,
+        ] {
+            assert!(
+                states.contains(&edge),
+                "tiled window {window} is told edge {edge}: {states:?}"
+            );
+        }
+        let bounds = mapper.bounds(window).expect("a tiled window is sent bounds");
+        assert!(
+            bounds.0 > 0 && bounds.1 > 0 && f64::from(bounds.0) <= width && f64::from(bounds.1) <= height,
+            "window {window}'s bounds {bounds:?} are the work area, inside the {width}x{height} screen"
+        );
+    }
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+}
+
+/// Answers every configure of window `window` the way a toolkit does, by drawing at the size it was told, until `done`
+/// holds of what the client was told. `answered` is how many configures have been answered.
+#[track_caller]
+fn run_toolkit(
+    what: &str,
+    mapper: &mut Mapper,
+    window: usize,
+    answered: &mut usize,
+    own: (i32, i32),
+    mut done: impl FnMut(&Mapper) -> bool,
+) {
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        mapper.roundtrip();
+        let known = mapper.configure_log(window).len();
+        if known > *answered {
+            *answered = known;
+            mapper.draw_configured(window, own);
+        }
+        if done(mapper) {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "{what}: the client was configured {:#?}",
+            mapper.configure_log(window)
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// Fails unless the client was configured to `size`, maximised or not as `maximised` says, by the configures in `log`,
+/// and was never configured to anything else after that: a later configure with another size or state is the window
+/// snapping back.
+#[track_caller]
+fn assert_configured_for_good(log: &[(i32, i32, Vec<u32>)], maximised: bool, size: (i32, i32)) {
+    let is_maximised = |states: &[u32]| states.contains(&support::STATE_MAXIMIZED);
+    let arrived = log
+        .iter()
+        .position(|(width, height, states)| (*width, *height) == size && is_maximised(states) == maximised)
+        .unwrap_or_else(|| panic!("the client was never configured to {size:?} (maximised {maximised}): {log:#?}"));
+    for (width, height, states) in &log[arrived..] {
+        assert_eq!(
+            ((*width, *height), is_maximised(states)),
+            (size, maximised),
+            "the window was configured again after it reached {size:?} (maximised {maximised}): {:#?}",
+            &log[arrived..]
+        );
+    }
+}
+
+/// A toolkit window that draws at every size it is told, as GTK does, asks to be maximised and then to leave it. The
+/// shell's answer reaches the client as a configure, and the compositor must not configure it back to the size it had
+/// (ported from the Lua rig's `a_window_the_stock_shell_maximises_is_not_configured_back_to_its_old_size`).
+#[test]
+fn a_window_a_client_maximises_is_not_configured_back_to_its_old_size() {
+    const OWN: (i32, i32) = (800, 600);
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    let app = "org.example.toolkit";
+    let window = mapper.map_toolkit_window(app, "Toolkit", OWN);
+    wait_for("the shell places the window", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, app).is_some()
+    });
+    let natural = rect_of(&ipc, app).expect("the window's place");
+    let natural_size = (natural.2 as i32, natural.3 as i32);
+    let mut answered = mapper.configure_log(window).len();
+
+    let asked = mapper.configure_log(window).len();
+    mapper.maximize(window);
+    wait_for(
+        "the compositor holds the window maximised",
+        &session,
+        &mut mapper,
+        &shell,
+        || flag_of(&ipc, app, "maximised"),
+    );
+    let area = rect_of(&ipc, app).expect("the maximised rectangle");
+    let area_size = (area.2 as i32, area.3 as i32);
+    run_toolkit(
+        "the window was never maximised to the area",
+        &mut mapper,
+        window,
+        &mut answered,
+        OWN,
+        |client| {
+            client
+                .configure_log(window)
+                .last()
+                .is_some_and(|(width, height, states)| {
+                    (*width, *height) == area_size && states.contains(&support::STATE_MAXIMIZED)
+                })
+        },
+    );
+    let settle = Instant::now() + Duration::from_millis(500);
+    run_toolkit(
+        "the settle never ended",
+        &mut mapper,
+        window,
+        &mut answered,
+        OWN,
+        |_| Instant::now() >= settle,
+    );
+    assert_configured_for_good(&mapper.configure_log(window)[asked..], true, area_size);
+
+    let asked = mapper.configure_log(window).len();
+    mapper.unmaximize(window);
+    run_toolkit(
+        "the window never left maximise",
+        &mut mapper,
+        window,
+        &mut answered,
+        OWN,
+        |client| {
+            client
+                .configure_log(window)
+                .last()
+                .is_some_and(|(_, _, states)| !states.contains(&support::STATE_MAXIMIZED))
+        },
+    );
+    let settle = Instant::now() + Duration::from_millis(500);
+    run_toolkit(
+        "the settle never ended",
+        &mut mapper,
+        window,
+        &mut answered,
+        OWN,
+        |_| Instant::now() >= settle,
+    );
+    assert_configured_for_good(&mapper.configure_log(window)[asked..], false, natural_size);
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+}
+
 /// Live verification: three windows of 70 % by 60 % of the screen map one after another and leave no free spot. The
 /// cascade ran into the screen's corner and was pushed back inside it, so the second and the third landed on the same
 /// spot and the third hid the second completely. Windows that find no free spot never share an origin.

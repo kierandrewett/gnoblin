@@ -1,5 +1,5 @@
-//! The JavaScript runtime role against a real compositor: the twin of the Lua role's `runtime_reload.rs` and
-//! `starter_config.rs` (`crates/gnoblin-compositor/tests`), and of what `gnoblin --role runtime` is to the guardian.
+//! The JavaScript runtime role against a real compositor: what `gnoblin --role runtime` does between the guardian and
+//! the compositor.
 //!
 //! The role is the shipped one, [`JsRoleRunner`]: it adopts the privileged end of a socket pair the compositor serves,
 //! locates and evaluates `init.ts`, commits the document, reports to the guardian on a pipe and then serves. Nothing
@@ -7,7 +7,7 @@
 //! `wayland-client` connection, and what the compositor holds is read back through a second connection.
 //!
 //! The test lives in the binary's crate because that crate may name both the compositor and the role; the compositor
-//! may not name the shell (`xtask deps`), so the Lua twins cannot be the same files.
+//! may not name the shell (`xtask deps`), so the compositor's own tests cannot hold them.
 //!
 //! Every wait is on the state it needs, with a deadline: none of these tests sleeps for a time it guesses.
 
@@ -353,7 +353,7 @@ fn a_config_the_validator_refuses_runs_the_stock_config_and_the_role_still_commi
     assert!(document.get("autostart").is_none(), "{document}");
 }
 
-// ---- the twins of runtime_reload.rs ------------------------------------------------------------------------------
+// ---- a script reloads the configuration --------------------------------------------------------------------------
 
 #[test]
 fn a_script_that_reloads_the_configuration_commits_what_the_file_says_now() {
@@ -509,7 +509,7 @@ fn the_role_ends_cleanly_when_the_compositor_goes_away() {
         .expect("a lost compositor is the end of the session and not a failure");
 }
 
-// ---- the twin of starter_config.rs ------------------------------------------------------------------------------
+// ---- the starter config ------------------------------------------------------------------------------------------
 
 #[test]
 fn the_starter_config_loads_as_a_user_gets_it_and_commits_with_no_refusal() {

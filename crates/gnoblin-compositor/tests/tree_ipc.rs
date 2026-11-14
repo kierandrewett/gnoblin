@@ -640,6 +640,109 @@ fn a_canvas_measure_is_answered_with_the_size_of_the_text() {
     session.stop().expect("the session stops cleanly");
 }
 
+/// Asks view `view` for a still at `path` and returns the error and the result the compositor answered with, which is
+/// the error of a refused transaction when the call itself was refused. The View draws on a frame of its own, so an ask
+/// that finds no picture (`unavailable`) is made again.
+fn capture(
+    wire: &mut Wire,
+    request: &mut u64,
+    base_serial: u64,
+    view: u64,
+    path: &std::path::Path,
+) -> (String, String) {
+    wire.set_read_timeout(Duration::from_millis(200));
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        *request += 1;
+        let token = *request;
+        transact(
+            wire,
+            token,
+            base_serial,
+            base_serial + 1,
+            vec![op::Properties {
+                kind: "call".to_owned(),
+                node: view,
+                method: "capture".to_owned(),
+                text: path.display().to_string(),
+                token,
+                ..Default::default()
+            }],
+        );
+        let mut outcome = None;
+        let asked = Instant::now() + Duration::from_secs(5);
+        while outcome.is_none() && Instant::now() < asked {
+            let Some(envelope) = wire.receive_within() else {
+                continue;
+            };
+            match (envelope.kind.as_ref(), envelope.member.as_str()) {
+                (Some(Kind::Event(_)), "answer") => {
+                    if let Some(answer) = envelope
+                        .payload_as::<AnswerPayload>()
+                        .filter(|answer| answer.token == token)
+                    {
+                        let result = String::from_utf8(answer.result).expect("the result is text");
+                        outcome = Some((answer.error, result));
+                    }
+                }
+                (Some(Kind::Reply(_)), "transact") => {
+                    let reply = envelope.payload_as::<ReplyPayload>().expect("a reply");
+                    if !reply.applied {
+                        outcome = Some((reply.code, String::new()));
+                    }
+                }
+                _ => {}
+            }
+        }
+        match outcome {
+            Some((error, _)) if error == "unavailable" => std::thread::sleep(Duration::from_millis(50)),
+            Some(outcome) => return outcome,
+            None => {}
+        }
+        assert!(Instant::now() < deadline, "the capture was never answered");
+    }
+}
+
+/// A View asked for a still writes a PNG of what it shows and answers the path, and answers a path outside the
+/// session's runtime directory with `bad-value` and writes nothing. Ported from the Lua rig's
+/// `a_view_capture_the_shell_asks_for_writes_a_png_and_answers_its_path`, which was the only test of the call.
+#[test]
+fn a_views_capture_writes_a_png_and_answers_its_path_and_refuses_a_path_outside_the_runtime_directory() {
+    let session = Session::start();
+    let mut wire = Wire::connect(session.socket());
+    let (attached, _) = attach_and_snapshot(&mut wire, 1);
+
+    let mut ops = create_canvas(1000, attached.root);
+    ops.push(set_double(1000, "width", 8.0));
+    ops.push(set_double(1000, "height", 8.0));
+    ops.push(set_content(1000, paint_list()));
+    ops.extend(create_view(1001, attached.root));
+    ops.push(set_double(1001, "width", 40.0));
+    ops.push(set_double(1001, "height", 30.0));
+    ops.push(set_node_ref(1001, "source", 1000));
+    transact(&mut wire, 2, 0, 1, ops);
+    let _: ChangesPayload = event(&mut wire, "changes");
+    let applied: ReplyPayload = reply(&mut wire, "transact");
+    assert!(applied.applied, "the canvas and the view are made: {applied:?}");
+
+    let directory = std::fs::canonicalize(session.directory()).expect("the runtime directory");
+    let inside = directory.join("shot.png");
+    let outside_directory = tempfile::tempdir().expect("another directory");
+    let outside = outside_directory.path().join("shot.png");
+    let mut request = 2;
+
+    let (error, result) = capture(&mut wire, &mut request, applied.serial, 1001, &inside);
+    assert_eq!(error, "", "the capture inside the runtime directory is answered");
+    assert_eq!(result, inside.display().to_string(), "the answer is the path written");
+    let png = std::fs::read(&inside).expect("the PNG was written");
+    assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n", "the file is a PNG");
+
+    let (error, _) = capture(&mut wire, &mut request, applied.serial, 1001, &outside);
+    assert_eq!(error, "bad-value", "a path outside the runtime directory is refused");
+    assert!(!outside.exists(), "nothing was written outside the runtime directory");
+    session.stop().expect("the session stops cleanly");
+}
+
 #[test]
 fn a_set_of_a_kind_the_wire_does_not_carry_is_refused_bad_value() {
     let session = Session::start();

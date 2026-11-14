@@ -19,8 +19,6 @@ gnoblin-polkit-auth = { path = "../gnoblin-polkit-auth" }
 # The Wayland engine this process runs: the protocol handlers, the seat, the window
 # manager glue and the frame hook.
 gnoblin-wayland = { path = "../gnoblin-wayland" }
-# The Lua host that runs the layout modules.
-gnoblin-lua = { path = "../gnoblin-lua" }
 # The backend trait and the backends this build selects between: headless, nested in
 # a parent compositor, and the DRM refusal until the DRM backend lands.
 gnoblin-backend = { path = "../gnoblin-backend" }
