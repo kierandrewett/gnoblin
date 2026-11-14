@@ -572,7 +572,11 @@ pub fn rig_setup(imports: &str, init_body: &str, setup: impl FnOnce(&FakeComposi
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("init.ts"), format!("{imports}{init_body}\n")).expect("init.ts is written");
-    let mut shell = JsShell::new(Box::new(comp.clone()), JsShellConfig::new(&root)).expect("the shell boots");
+    // A loaded machine can starve the shell's thread past the default 100 ms: these tests are not about budgets.
+    let mut config = JsShellConfig::new(&root);
+    config.entry_budget = std::time::Duration::from_secs(10);
+    config.frame_budget = std::time::Duration::from_secs(30);
+    let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
     let load_diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
     Rig {
         shell,

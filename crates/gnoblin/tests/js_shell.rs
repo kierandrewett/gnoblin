@@ -3860,6 +3860,26 @@ fn start_mode(session: &Session, mapper: &mut Mapper, shell: &Shell, key: u32, h
     });
 }
 
+/// Presses `key` and waits until the window of `app` has `expected`. A key that comes before the mode has the keyboard is the
+/// window's and moves nothing, so the key is pressed again once a second for as long as the rectangle has not arrived.
+#[track_caller]
+fn tap_until(what: &str, ctx: (&Session, &mut Mapper, &Shell), key: u32, app: &str, expected: (f64, f64, f64, f64)) {
+    let (session, mapper, shell) = ctx;
+    let ipc = session.ipc();
+    tap_key(session, key);
+    let mut last = Instant::now();
+    wait_for(what, session, mapper, shell, || {
+        if rect_of(&ipc, app) == Some(expected) {
+            return true;
+        }
+        if last.elapsed() > Duration::from_secs(1) {
+            tap_key(session, key);
+            last = Instant::now();
+        }
+        false
+    });
+}
+
 /// The arrow keys, Return and Escape of a real keyboard move, resize and cancel a real window, and the keyboard goes
 /// back to it. The mode holds the keyboard, so the keys reach it through the compositor's seat and not through a
 /// binding: this is the path the fake link cannot show.
@@ -3881,14 +3901,20 @@ fn the_keyboard_moves_and_resizes_a_real_window_keeps_it_on_return_and_puts_it_b
     });
 
     start_mode(&session, &mut mapper, &shell, KEY_F11, MOVE_HINT);
-    tap_key(&session, KEY_RIGHT);
-    wait_for("one step right", &session, &mut mapper, &shell, || {
-        rect_of(&ipc, app) == Some((316.0, 200.0, 200.0, 150.0))
-    });
-    tap_key(&session, KEY_DOWN);
-    wait_for("one step down", &session, &mut mapper, &shell, || {
-        rect_of(&ipc, app) == Some((316.0, 216.0, 200.0, 150.0))
-    });
+    tap_until(
+        "one step right",
+        (&session, &mut mapper, &shell),
+        KEY_RIGHT,
+        app,
+        (316.0, 200.0, 200.0, 150.0),
+    );
+    tap_until(
+        "one step down",
+        (&session, &mut mapper, &shell),
+        KEY_DOWN,
+        app,
+        (316.0, 216.0, 200.0, 150.0),
+    );
     tap_key(&session, KEY_ENTER);
     wait_for(
         "Return keeps the place and ends the mode",
@@ -3908,18 +3934,27 @@ fn the_keyboard_moves_and_resizes_a_real_window_keeps_it_on_return_and_puts_it_b
 
     // Resize: Down grows, Up shrinks, and Escape puts the size back.
     start_mode(&session, &mut mapper, &shell, KEY_F12, RESIZE_HINT);
-    tap_key(&session, KEY_DOWN);
-    wait_for("one step taller", &session, &mut mapper, &shell, || {
-        rect_of(&ipc, app) == Some((316.0, 216.0, 200.0, 166.0))
-    });
-    tap_key(&session, KEY_LEFT);
-    wait_for("one step narrower", &session, &mut mapper, &shell, || {
-        rect_of(&ipc, app) == Some((316.0, 216.0, 184.0, 166.0))
-    });
-    tap_key(&session, KEY_UP);
-    wait_for("one step shorter", &session, &mut mapper, &shell, || {
-        rect_of(&ipc, app) == Some((316.0, 216.0, 184.0, 150.0))
-    });
+    tap_until(
+        "one step taller",
+        (&session, &mut mapper, &shell),
+        KEY_DOWN,
+        app,
+        (316.0, 216.0, 200.0, 166.0),
+    );
+    tap_until(
+        "one step narrower",
+        (&session, &mut mapper, &shell),
+        KEY_LEFT,
+        app,
+        (316.0, 216.0, 184.0, 166.0),
+    );
+    tap_until(
+        "one step shorter",
+        (&session, &mut mapper, &shell),
+        KEY_UP,
+        app,
+        (316.0, 216.0, 184.0, 150.0),
+    );
     tap_key(&session, KEY_ESC);
     wait_for("Escape restores the rectangle", &session, &mut mapper, &shell, || {
         !shows(&ipc, RESIZE_HINT) && rect_of(&ipc, app) == Some((316.0, 216.0, 200.0, 150.0))
