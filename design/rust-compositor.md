@@ -820,6 +820,17 @@ Open:
   which needs 1.97.0). `just msrv` and the CI `msrv` job check it.
 - The native dependency probe on every target image.
 - The `lua-api/*` phases landed or their design frozen.
+- A real-hardware check of the DRM mode and scale change (`Backend::configure_output`
+  in `gnoblin-backend-drm`). It is proven against a fake kernel only: the order
+  (allocate, `TEST_ONLY` commit, real commit, replace buffers, gamma again), the
+  refusals and the rollback are tested, and nothing has been committed to a real
+  CRTC. The check, on a real GPU and a monitor that lists two modes: switch to
+  another listed mode and back with `wlr-randr --output NAME --mode WxH@Hz` (the
+  screen blanks briefly, then shows the desktop at the new size with the pointer
+  and bar in place); change only the scale (no blank); ask for an unlisted mode
+  (refused, display unchanged); with night light on, confirm the tint survives the
+  mode change. Record the GPU driver: a driver that refuses a commit its own test
+  passed is a finding.
 
 Gate, partly met: the parity runner runs the core-protocol scenarios against
 `mutter51` and stores a report (CI job `parity-reference`, and a report from an

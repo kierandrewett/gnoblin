@@ -9,17 +9,18 @@ Lane OutputMirror. Spec: `design/js-research/owner-spec.md` sections 9 and 21; a
   orientation, absolute and relative placement, mirrors (one logical monitor with several members), overlap and gap
   checks, a transaction with rollback. The compositor used it only as `LayoutConfig::row_over`: every output in a row,
   nothing configurable.
-- **`wlr-output-management`.** `BackendOutputConfig` (`crates/gnoblin-wayland/src/output_config.rs`) changes scale
-  through `Backend::configure_output` with rollback and refuses a move, a transform, an off output and a mode the
-  backend does not list. It still does: it is the protocol's host, not the shell's path.
+- **`wlr-output-management`.** `BackendOutputConfig` (`crates/gnoblin-wayland/src/output_config.rs`) changed scale
+  through `Backend::configure_output` with rollback and refused a move, a transform, an off output and a mode the
+  backend does not list: it was the protocol's host, not the shell's path. It now runs the same engine (see "DRM
+  modeset").
 - **`Screen.apply`.** In `screen.toml` with no parameters and no code behind it. The compositor ran no call on a screen
   node, which is what JsOutputs found.
-- **`gnoblinctl output ...`.** It speaks to the model graph of `gnoblin-compositor`, which serves no `apply` on an
-  output: `gnoblinctl output call <id> apply` is refused with "does not serve that method".
+- **`gnoblinctl output ...`.** It speaks to the model graph of `gnoblin-compositor`, which served no `apply` on an
+  output: `gnoblinctl output call <id> apply` was refused with "does not serve that method". It is served now.
 - **`defineConfig({ outputs })`.** Checked and stored, applied by nothing.
-- **Backends.** Only the headless backend can change a live mode (`Headless::resize`). The DRM backend refuses
-  `configure_output`: a mode or scale change on hardware is not implemented, and says so. Position, mirror and off need
-  no modeset and work on any backend.
+- **Backends.** Only the headless backend could change a live mode (`Headless::resize`). The DRM backend refused
+  `configure_output`; it implements it now (see "DRM modeset"). Position, mirror and off need no modeset and work on
+  any backend.
 
 ## Decision: one native call, `screen.apply`
 
@@ -82,5 +83,42 @@ a display-mode camera would be a second owner.
 
 Real compositor, software renderer, virtual outputs (`output_modes.rs`): apply, rollback on an
 injected modeset refusal, mirror pixels and letterbox, one monitor for a mirrored pair, off, span, profile restore.
-Fake compositor (`crates/gnoblin-js/tests/outputs.rs`): the JS surface and its error paths. Not proven: a DRM modeset
-on hardware (unimplemented), the GLES renderer's mirror, a rotation.
+Fake compositor (`crates/gnoblin-js/tests/outputs.rs`): the JS surface and its error paths. Not proven: the GLES
+renderer's mirror, a rotation, and a DRM modeset on a real GPU (see "DRM modeset" below).
+
+## DRM modeset
+
+Status: built and proven against a fake kernel; **not proven on hardware**. Lane DrmModeset.
+
+`Backend::configure_output` on `gnoblin-backend-drm` is a mode and scale change of a live output, in the order
+`crates/gnoblin-backend-drm/src/modeset.rs` fixes (kernel behind the `ModesetKernel` trait, so a fake checks it):
+
+1. `plan::modeset` decides from the connector and the output's state, reading no device: no pixels, a connector without
+   a monitor or CRTC, a dark output, or a mode the connector does not list are refused first. Same mode and scale is
+   `Unchanged`; the same mode at another scale is `Scale`; anything else is `Mode`.
+2. `Scale` commits nothing (no mode blob changes): the output is marked dirty and composes at the new scale.
+3. `Mode` allocates buffers for the new size beside the old ones (slot 0 cleared to black), runs an atomic commit with
+   `TEST_ONLY` over them, then the real blocking commit. Only after the commit are the old buffers dropped and the
+   swapchain reset onto the committed slot; a flip in flight is abandoned and its one completion report is ignored
+   (`Presenter::after_modeset`). The gamma table the output had is written again.
+4. A refusal at the test, or at the commit (after which the previous mode is staged again), leaves the buffers, the
+   swapchain and any flip in flight as they were. The error is `BackendError::ModesetRefused`; the other refusals use the
+   headless vocabulary (`DegenerateMode`, `Unsupported` for an unlisted mode, `Unpresentable` for a dark or undriven
+   output).
+5. `OutputControls::configure` advertises it. The compositor refuses a mode or scale change on a backend without it
+   (the nested backend) with a message, and tests every changed output (`Backend::test_output`) before the first is
+   driven.
+
+There is no hardware cursor plane in this backend, so there is nothing to reposition: the cursor is drawn in the frame.
+
+`wlr-output-management` and `gnoblinctl output call <id> apply` now go through the same engine
+(`State::apply_output_changes`): a configuration is a set of profile changes, laid over the profiles, resolved as a
+layout, tested and driven with rollback. The heads list every mode `Backend::output_modes` gives. A configuration built
+on an old serial, or queued behind one that changed the layout, is `cancelled`. Position, off and mirror, which that
+protocol used to refuse, are now the engine's. `output.apply` ignores `primary` (the layout derives it).
+
+Proven: `crates/gnoblin-backend-drm/src/{plan,modeset,present}.rs` (the order, each refusal, the rollback, a flip in
+flight, gamma, scale only); `crates/gnoblin-wayland/tests/output_manager.rs` (a real `wlr-output-management` client on
+the headless backend: a new mode succeeds, a refused one is `failed`, a stale layout is `cancelled`);
+`crates/gnoblin-compositor/tests/output_apply.rs` (`gnoblinctl output call apply`). Not proven: anything on a real GPU.
+The hardware check is in the Phase 0 "Open" list of `design/rust-compositor.md`.

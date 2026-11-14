@@ -123,9 +123,38 @@ export default defineConfig({
 });
 ```
 
-The display backend decides what it can drive. Position, mirror and off need no modeset and work everywhere; changing a
-mode or scale works on the virtual and nested backends, and a hardware (DRM) output refuses it with the backend's reason
-until that backend can modeset.
+### What each backend applies
+
+The display backend decides what it can drive. Position, mirror and off need no modeset and work on every backend.
+Changing a mode or scale works on the virtual (headless) backend and on a hardware (DRM) output. The nested backend, a
+window on another desktop, refuses both by name.
+
+On a hardware output:
+
+- **Mode.** The mode must be one the monitor lists, with the refresh rate the kernel computes for it (`2560x1440@59.95`
+  and `2560x1440@60` are different modes). The screen goes black for the length of the modeset.
+- **Refused.** A mode the monitor does not list, a mode the kernel refuses, and an output that is off are all refused.
+  The output keeps its mode, its picture and its colour settings.
+- **Several outputs.** A configuration of several outputs is tested on all of them before the first is driven.
+- **Scale.** Changing only the scale commits nothing: the output composes at the new scale from its next frame and does
+  not blank.
+- **Kept across a mode change.** The night-light gamma table is written again after the modeset, and variable refresh
+  and the other output controls are left as they were.
+- **Not applied.** A transform other than `normal` is refused on every backend: no renderer draws a rotation.
+
+The DRM path is proven against a fake kernel only. Check a mode change on your own display before relying on it, and
+report a driver that refuses it.
+
+The `wlr-output-management` protocol (`wlr-randr`, `kanshi`) and `gnoblinctl output call <id> apply` go through the same
+engine as `apply`: the same checks, the same test before the first output is driven and the same rollback.
+
+`output.apply` takes the whole configuration of one output:
+
+- **Keys.** `x`, `y`, `scale`, `transform`, `primary`, `enabled` and `mode`.
+- **Mode and primary.** An empty `mode` keeps the mode the output has. `primary` is accepted and not applied, because
+  the layout derives the primary output.
+- **Refusal.** The call completes with `mode-refused`, `scale-refused`, `position-refused`, `enabled-refused`,
+  `transform-refused` or `refused`.
 
 ## Listen for plugging and unplugging
 
