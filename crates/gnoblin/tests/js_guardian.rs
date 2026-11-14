@@ -126,6 +126,23 @@ impl Session {
         std::fs::read_to_string(&self.log).unwrap_or_default()
     }
 
+    /// Waits until the log contains `text`, and returns the whole log.
+    #[track_caller]
+    fn wait_for_log(&self, text: &str) -> String {
+        let deadline = Instant::now() + PATIENCE;
+        loop {
+            let log = self.log();
+            if log.contains(text) {
+                return log;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the session never logged `{text}`; it said:\n{log}"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
     fn ipc(&self) -> PathBuf {
         self.directory.path().join("ipc.sock")
     }
