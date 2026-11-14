@@ -1,14 +1,21 @@
-// The `gnoblin/host` module, which the user-facing `gnoblin` module re-exports: the object model a config sees,
-// over the host functions the Rust shell installs as `globalThis.__gnoblinHost` (crates/gnoblin-js/src/bindings).
+// The `gnoblin/host` module, re-exported by the user-facing `gnoblin` module. The Rust shell installs
+// `globalThis.__gnoblinHost`; this module turns that bridge into stable JS objects and the config API.
 //
-// Identity: one JS object per tree node for the life of the generation, so `a === b` holds for the
-// same client wherever it was reached from. Reads go to the host, which answers from the tree mirror
-// and the writes this frame has queued. Writes are queued and travel as one transaction at the end of
-// the frame. A destroyed node keeps its last values readable and rejects every write.
+// The module owns all per-generation object identity and mutable state. The host bridge owns the tree mirror,
+// applies writes as one transaction per frame, and reports published values back to this module.
 //
-// Events: the host tells `plan` what changed in the frame. `plan` updates the objects and queues one
-// invocation per interested listener; the host then runs them one by one under a time budget each, so a
-// listener that throws or never returns does not stop the others.
+// Frame flow: `plan` processes destroyed, created and touched nodes, updating objects and queuing listener calls.
+// The shell drains those calls under per-listener budgets, then `layout` computes placements and styles.
+// `ready` completes initial adoption; `cancelAll` releases generation-owned resources on retirement.
+//
+// Sections below follow that flow and the object model:
+// host bridge and errors; listeners and shared object state; Client, Workspace, Output and collections;
+// workspaces, desks, geometry, layout and styles; snapshots and reconciliation; host events and input;
+// stock policy, decorations and services; config registration; `gnoblin` facade and inspector setup.
+// Public classes and helpers are exported for the stock `gnoblin` index and user configuration imports.
+//
+// Reads use the host mirror plus staged writes. Destroyed nodes retain their last values for reads and reject writes.
+// Listener errors are collected rather than propagated, so one failing listener does not stop the frame.
 
 import { desugarConfig, defaultConfig, mergeConfig, outputRequest, planStockLauncher } from "gnoblin/config";
 import type {
@@ -88,7 +95,14 @@ import type { SignalEvent, Version } from "gnoblin/session";
 import type { Subscription, Timer } from "gnoblin/operation";
 import type { Process, SpawnOptions } from "gnoblin/process";
 
+// ---- Host contract and shared types ----
+// Owns the bridge and data shapes shared by the object model and frame loop.
+
+/** The host tree node handle, represented as a JavaScript number by the shell bridge. */
+
 type NodeId = number;
+/** A property scalar accepted by the host bridge. */
+
 type Scalar = string | number | boolean;
 /** What a property holds: a scalar, the three numbers of a rotation or scale, or a list of names (a claim list). */
 type HostValue = Scalar | number[] | string[];
@@ -104,6 +118,8 @@ interface Rect {
 /** The data-only selection `where` takes: each key is a property, each value what it must equal. */
 export type Query = Record<string, Scalar | Scalar[]>;
 
+/** A listener or internal task failure retained until the shell takes frame errors. */
+
 interface ErrorReport {
     site: string;
     error: unknown;
@@ -115,6 +131,8 @@ interface Verdict {
     deny: boolean;
     reason: string;
 }
+
+/** The callbacks and state access the shell uses to drive one generation. */
 
 interface Entry {
     plan(created: NodeId[], touched: NodeId[], destroyed: NodeId[]): number;
@@ -167,6 +185,8 @@ interface Entry {
     /** The host API's frame: what the host collected since the last one, as JSON; returns how many calls wait. */
     apiFrame(batch: string): number;
 }
+
+/** Native operations and services the Rust shell exposes to this generation. */
 
 interface Host {
     /** Checks a document patch (JSON) against the document in force: the validator's problems, or undefined. */
@@ -236,25 +256,43 @@ interface Host {
     entry?: Entry;
 }
 
+// ---- Host bridge staging ----
+// Owns the host reference and routes writes through the transition staging layer.
+
+/** The shell-installed bridge; missing host functions make this module unusable. */
+
 const host = (globalThis as { __gnoblinHost?: Host }).__gnoblinHost;
 if (!host) {
     throw new Error("the gnoblin module needs the shell host and cannot run without it");
 }
 
-// ---- staged writes -----------------------------------------------------------------------------------------------
+// ---- Staged writes ----
 //
 // `gnoblin.requestTransition` runs its callback with the host's writes staged (`data/js/gnoblin/transition.ts`). The
 // host functions are replaced here, once, by the staging layer, so every module that reads or writes a node goes through
 // it and none has to know. Outside a callback each call goes straight to the native function.
 
+/** Replaces host writes with the transition staging layer for this generation. */
+
 const staging = new Staging(
     { get: host.get, set: host.set, animate: host.animate, check: host.check },
     (code, target, message) => new GnoblinError(code, target, message),
 );
+/** Original host operations retained behind staging guards. */
+
 const nativeCall = host.call;
+/** Native call function preserved before the transition guard replaces it. */
+
 const nativeRaise = host.raise;
+/** Native raise function preserved before the transition guard replaces it. */
+
 const nativeLower = host.lower;
+/** Native lower function preserved before the transition guard replaces it. */
+
 const nativeApi = { spawn: host.api.spawn, kill: host.api.kill, begin: host.api.begin };
+/** Process operations preserved before the transition guard replaces them. */
+
+/** Names a host node for errors raised when a staged operation is forbidden. */
 
 function nodeName(node: NodeId): string {
     return `${host.kind(node) === "screen" ? "Output" : "Client"}#${host.label(node)}`;
@@ -288,6 +326,9 @@ host.api.begin = (verb) => {
     return nativeApi.begin(verb);
 };
 
+// ---- Errors and listeners ----
+// Owns public errors, listener interfaces, and the queued callback machinery.
+
 /** Only this module can make a Client, a Workspace or a Collection: the compositor owns their lifetime. */
 const CREATE = Symbol("gnoblin.create");
 
@@ -295,6 +336,7 @@ const CREATE = Symbol("gnoblin.create");
  * What a failed operation on a native object throws. `code` says why (`destroyed`, `read-only`,
  * `refused`, `spawn-failed`) and `target` names the object and member, as in `Client#7.x`.
  */
+
 export class GnoblinError extends Error {
     readonly code: string;
     readonly target: string;
@@ -370,6 +412,8 @@ export class OutputListener {
     onGeometryChanged?(output: Output, geometry: Rect): void;
 }
 
+/** A listener source and its attached handlers. */
+
 interface Source {
     listeners: object[];
 }
@@ -380,6 +424,8 @@ interface Task {
     task(): void;
 }
 
+/** One deferred listener invocation, including its source and call arguments. */
+
 interface Invocation {
     source: Source;
     listener: object;
@@ -387,12 +433,20 @@ interface Invocation {
     args: unknown[];
 }
 
+/** Listener calls and internal tasks waiting for the shell pump. */
+
 const queue: (Invocation | Task)[] = [];
+/** Failures collected for the shell to take after processing callbacks. */
+
 let reports: ErrorReport[] = [];
+
+/** Reads the current handler property from a listener. */
 
 function handlerOf(listener: object, method: string): unknown {
     return Reflect.get(listener, method);
 }
+
+/** Names a listener constructor for error reports, falling back to `listener`. */
 
 function describeListener(listener: object): string {
     const name = Reflect.get(listener, "constructor")?.name;
@@ -423,6 +477,8 @@ function run(call: Invocation | Task): void {
     }
 }
 
+/** Queues each listener currently implementing `method` on a source. */
+
 function queueFor(source: Source, method: string, args: unknown[]): void {
     for (const listener of source.listeners) {
         if (typeof handlerOf(listener, method) === "function") {
@@ -430,6 +486,8 @@ function queueFor(source: Source, method: string, args: unknown[]): void {
         }
     }
 }
+
+/** Checks listener input before it is attached. Throws for non-object values. */
 
 function assertListener(listener: unknown, target: string): asserts listener is object {
     if (typeof listener !== "object" || listener === null) {
@@ -450,6 +508,8 @@ function refuse(code: string, target: string, what: string): never {
             throw new GnoblinError("refused", target, `the host refused the write (${code})`);
     }
 }
+
+/** The host properties frozen when a client leaves, so the object keeps its final readable state. */
 
 const CLIENT_KEYS = [
     "title",
@@ -489,6 +549,8 @@ interface Seen {
     parent: number;
 }
 
+/** State shared by native-backed object instances: identity, liveness, events, and last published values. */
+
 interface NodeState {
     node: NodeId;
     alive: boolean;
@@ -501,7 +563,11 @@ interface NodeState {
     floating: boolean;
 }
 
+/** Per-object state store; a WeakMap preserves object lifetime without retaining abandoned wrappers. */
+
 const states = new WeakMap<object, NodeState>();
+
+/** Returns native state for a managed object. Throws when the value is not a shell-created object. */
 
 function stateOf(object: object): NodeState {
     const state = states.get(object);
@@ -511,10 +577,14 @@ function stateOf(object: object): NodeState {
     return state;
 }
 
+/** Reads a scalar property from the frozen snapshot or the current host mirror. */
+
 function read<T extends Scalar>(object: object, key: string): T {
     const state = stateOf(object);
     return (state.frozen ? state.frozen[key] : host.get(state.node, key)) as T;
 }
+
+/** Freezes the requested properties and marks an object dead before removal events are delivered. */
 
 function freeze(object: object, keys: string[]): void {
     const state = stateOf(object);
@@ -542,6 +612,8 @@ function publishedValues(node: NodeId): Seen {
 }
 
 /** The queued write of one number property, or the error that names the member. */
+/** Writes a finite number property. Throws for dead clients, invalid values, or host refusal. */
+
 function writeNumber(client: Client, key: string, value: unknown): void {
     const state = stateOf(client);
     const target = `Client#${host.label(state.node)}.${key}`;
@@ -558,6 +630,8 @@ function writeNumber(client: Client, key: string, value: unknown): void {
 }
 
 /** The queued write of one flag property, or the error that names the member. */
+/** Writes a boolean property. Throws for dead clients, invalid values, or host refusal. */
+
 function writeFlag(client: Client, key: string, value: unknown): void {
     const state = stateOf(client);
     const target = `Client#${host.label(state.node)}.${key}`;
@@ -573,9 +647,13 @@ function writeFlag(client: Client, key: string, value: unknown): void {
     }
 }
 
+/** A three-number vector used for rotation and scale. */
+
 type Vector3 = readonly [number, number, number];
 
 /** The queued write of a property of three numbers (`rotation`, `scale`), or the error that names the member. */
+/** Writes a three-number vector property. Throws for dead clients, invalid values, or host refusal. */
+
 function writeVector(client: Client, key: string, value: unknown): void {
     const state = stateOf(client);
     const target = `Client#${host.label(state.node)}.${key}`;
@@ -621,12 +699,16 @@ export interface ClientAnimation {
     scale?: Vector3;
 }
 
+/** Duration and easing options for a client animation; duration is measured in seconds. */
+
 export interface AnimateOptions {
     /** Seconds. Zero is an instant write. */
     duration: number;
     /** Default `"out"`, as the retired shell's. */
     easing?: ClientEasing;
 }
+
+/** Calls a native client method. Throws for a dead client or host refusal. */
 
 function callMethod(client: Client, method: string): void {
     const state = stateOf(client);
@@ -640,6 +722,8 @@ function callMethod(client: Client, method: string): void {
     }
 }
 
+/** The stable wrapper for each live host window node. */
+
 const clientsByNode = new Map<NodeId, Client>();
 /** The workspace each client is on. A workspace is the script's, so the compositor does not know. */
 const membership = new WeakMap<Client, Workspace>();
@@ -649,6 +733,9 @@ const preexisting = new WeakSet<Client>();
 const offered = new WeakSet<Client>();
 /** The dialogs already centred in their parent. */
 const centred = new WeakSet<Client>();
+
+// ---- Client object ----
+// Owns the public window API; membership and host-backed values are shared with frame processing.
 
 /** A toplevel window the compositor manages. */
 export class Client {
@@ -1098,6 +1185,11 @@ export class Client {
     }
 }
 
+// ---- Workspace and output objects ----
+// Owns script-created workspaces and compositor-created output wrappers.
+
+/** Layout and membership state held privately for each script workspace. */
+
 interface WorkspaceState {
     id: string;
     name: string;
@@ -1123,7 +1215,11 @@ interface WorkspaceState {
     coverSeen: string;
 }
 
+/** Per-workspace state; a WeakMap avoids retaining removed workspaces. */
+
 const wsStates = new WeakMap<object, WorkspaceState>();
+
+/** Returns workspace state. Throws when the value is not a Workspace. */
 
 function wsState(workspace: unknown): WorkspaceState {
     const state = typeof workspace === "object" && workspace !== null ? wsStates.get(workspace) : undefined;
@@ -1266,6 +1362,11 @@ export class Workspace {
     }
 }
 
+// ---- Output properties and collections ----
+// Owns output snapshots and live object collections, including query views and listeners.
+
+/** The native output properties retained after an output disconnects. */
+
 const OUTPUT_KEYS = [
     "name",
     "connector",
@@ -1296,7 +1397,11 @@ interface OutputSeen {
     height: number;
 }
 
+/** Per-output event baseline, retained while the wrapper exists. */
+
 const outputSeen = new WeakMap<object, OutputSeen>();
+
+/** Reads the compositor-published output properties used for connection and change events. */
 
 function publishedOutput(node: NodeId): OutputSeen {
     return {
@@ -1479,7 +1584,11 @@ export class Output {
     }
 }
 
+/** Any object kind supported by a host collection. */
+
 type Member = Client | Workspace | Output;
+
+/** Operations that mutate a script-owned collection. */
 
 interface Mutation {
     add(member: Member): void;
@@ -1489,6 +1598,8 @@ interface Mutation {
     /** Told after two members traded places in the order. */
     swapped?(a: Member, b: Member): void;
 }
+
+/** Private view state for root collections and their filtered selections. */
 
 interface CollectionState extends Source {
     self: Collection<Member>;
@@ -1505,9 +1616,13 @@ interface CollectionState extends Source {
     priority?: number;
 }
 
+/** Collection backing state; the weak keys follow the lifetime of collection objects. */
+
 const collections = new WeakMap<object, CollectionState>();
 /** The views with listeners: the only ones whose membership the plan keeps up to date. */
 const tracked: CollectionState[] = [];
+
+/** Returns the private state of a collection. Throws for non-collection values. */
 
 function collectionState(collection: object): CollectionState {
     const state = collections.get(collection);
@@ -1517,11 +1632,15 @@ function collectionState(collection: object): CollectionState {
     return state;
 }
 
+/** Fields supported by `where` for each kind of collection. */
+
 const QUERY_KEYS: Record<string, readonly string[]> = {
     Client: ["id", "appId", "title", "focused", "fullscreen", "x", "y", "width", "height"],
     Workspace: ["id", "name", "index", "active"],
     Output: ["id", "name", "make", "model", "mode", "scale", "primary", "enabled", "x", "y", "width", "height"],
 };
+
+/** Tests a member against the data-only property query. */
 
 function matches(query: Query, member: Member): boolean {
     for (const [key, want] of Object.entries(query)) {
@@ -1541,6 +1660,8 @@ function contains(state: CollectionState, member: Member): boolean {
     return contains(state.parent, member) && matches(state.query as Query, member);
 }
 
+/** Returns the current members in collection order. */
+
 function itemsOf(state: CollectionState): Member[] {
     if (state.parent === null) {
         return state.list.slice();
@@ -1548,6 +1669,8 @@ function itemsOf(state: CollectionState): Member[] {
     const query = state.query as Query;
     return itemsOf(state.parent).filter((member) => matches(query, member));
 }
+
+/** Finds the root collection that owns a selection's members. */
 
 function rootOf(state: CollectionState): CollectionState {
     return state.parent === null ? state : rootOf(state.parent);
@@ -1798,6 +1921,8 @@ class WorkspaceCollection extends MutableCollection<Workspace> {
     }
 }
 
+/** Creates a root collection state for objects of `kind`. */
+
 function rootState(kind: string): Omit<CollectionState, "self"> {
     return {
         parent: null,
@@ -1809,8 +1934,17 @@ function rootState(kind: string): Omit<CollectionState, "self"> {
     };
 }
 
+// ---- Root collections ----
+// Owns the compositor's live objects and the script's workspace list.
+
+/** All native clients in compositor order. */
+
 const clientRoot = collectionState(new Collection<Client>(CREATE, rootState("Client")));
+/** Connected outputs in compositor creation order. */
+
 const outputRoot = collectionState(new Collection<Output>(CREATE, rootState("Output")));
+/** Script workspaces and their named sets; membership is script-owned. */
+
 const workspaceRoot = collectionState(
     new WorkspaceCollection(CREATE, {
         ...rootState("Workspace"),
@@ -1833,7 +1967,11 @@ const workspaceRoot = collectionState(
     }),
 );
 
+// ---- Collection events and workspace membership ----
+// Owns collection notifications, client transfers, and the output-to-workspace desk model.
+
 /** The collections that hold `member` now: its root and every tracked view with it as a member. */
+
 function holders(top: CollectionState, member: Member): CollectionState[] {
     return [top, ...tracked.filter((view) => view.members?.has(member) && rootOf(view) === top)];
 }
@@ -1856,12 +1994,16 @@ function recompute(top: CollectionState, member: Member): void {
     }
 }
 
+/** Queues a member event for its own listeners and every collection that currently holds it. */
+
 function emitMember(client: Client | Output, held: CollectionState[], method: string, args: unknown[]): void {
     queueFor(stateOf(client), method, args);
     for (const state of held) {
         queueFor(state, method, args);
     }
 }
+
+/** Returns private workspace state for a client, or null when it has no workspace. */
 
 function wsOf(client: Client): WorkspaceState | null {
     const workspace = membership.get(client);
@@ -1881,14 +2023,21 @@ function clientHolders(client: Client): CollectionState[] {
  * next output, whose desk it becomes. A tree with no output at all has one desk with none that is not parked, so a
  * script still has a workspace on show. Workspaces are the script's, not an output's: one workspace is on one desk.
  */
+
 interface Desk {
     output: Output | null;
     shown: Workspace | null;
     parked: boolean;
 }
 
+/** All live desks, with reverse lookup by output for active workspaces. */
+
 const desks: Desk[] = [];
+/** Reverse index from an output to the desk it displays. */
+
 const deskByOutput = new WeakMap<Output, Desk>();
+/** Maps compositor screen-node handles to their stable output wrappers. */
+
 const outputsByNode = new Map<NodeId, Output>();
 
 /** The outputs that are connected, in the order the compositor made them. */
@@ -1919,6 +2068,8 @@ function currentDesk(): Desk | null {
     const under = node === undefined ? undefined : outputsByNode.get(node);
     return (under === undefined ? undefined : deskByOutput.get(under)) ?? primaryDesk();
 }
+
+/** Finds the desk that currently shows a workspace, if any. */
 
 function deskShowing(workspace: Workspace): Desk | null {
     return desks.find((desk) => desk.shown === workspace) ?? null;
@@ -1960,6 +2111,8 @@ function fillDesks(): void {
  * there at boot join one only when it is done, or a reload could not put them back where they were.
  */
 let opened = false;
+
+/** Runs a host callback while collecting its error under `site` instead of aborting the frame. */
 
 function guard(site: string, body: () => void): void {
     try {
@@ -2235,6 +2388,8 @@ function detachClient(workspace: Workspace, client: Client): void {
     }
 }
 
+/** Removes every client from a workspace without closing the windows. */
+
 function clearClients(workspace: Workspace): void {
     for (const client of [...wsState(workspace).clientsState.list] as Client[]) {
         detachClient(workspace, client);
@@ -2280,6 +2435,8 @@ interface Slide {
     duration: number;
     progress: number;
 }
+
+/** Slides waiting to start after the next successful layout pass. */
 
 const slides: Slide[] = [];
 /** The workspaces that are not shown but keep their windows drawn until a slide away from them ends. */
@@ -2377,6 +2534,8 @@ function adoptOrphans(): void {
         moveClient(client, target, !preexisting.has(client));
     }
 }
+
+/** Attaches a workspace to the public root and adopts any clients that are waiting for one. */
 
 function addWorkspace(workspace: Workspace): void {
     const state = wsState(workspace);
@@ -2534,6 +2693,11 @@ function framed(client: Client, frame: Rect): Rect {
     return { x: frame.x, y: frame.y + inset, width: frame.width, height: Math.max(0, frame.height - inset) };
 }
 
+// ---- Layout visibility and workspace slides ----
+// Owns layout placements, visibility writes, and the transition of windows between shown workspaces.
+
+/** Compares all three components of two rotation or scale vectors. */
+
 function sameVector(a: Vector3, b: Vector3): boolean {
     return a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
 }
@@ -2545,6 +2709,7 @@ const shownByLayout = new WeakMap<Client, boolean>();
  * module compares with, so a window the compositor hid itself (a minimised one) is not shown by a layout that has not
  * changed its mind.
  */
+
 const writtenVisible = new WeakMap<Client, boolean>();
 
 /** Decides `shown` for `client`, and writes it unless the client already has that value (a reloaded shell's windows). */
@@ -2650,7 +2815,8 @@ function startSlides(): void {
     }
 }
 
-// ---- styles ------------------------------------------------------------------------------------------------------
+// ---- Client styles ----
+// Owns style scopes, inheritance resolution, and writes of resolved style values to the host.
 
 /** The style a collection of clients carries, and where it ranks among the selections. */
 interface ScopeStyle {
@@ -2659,9 +2825,13 @@ interface ScopeStyle {
     order: number;
 }
 
+/** Styles attached to scopes, keyed by the collection state they affect. */
+
 const scopeStyles = new WeakMap<CollectionState, ScopeStyle>();
 /** The `where()` selections that have a style, in the order they got it. */
 const styledSelections: CollectionState[] = [];
+/** Stable tie-break order for style selections created at equal priority. */
+
 let styleOrder = 0;
 
 /** What a client's style last resolved from and wrote to its node. */
@@ -2682,10 +2852,16 @@ interface ClientStyleState {
     cornerRadius: number | null;
 }
 
+/** Per-client style resolution and last-applied host values. */
+
 const clientStyles = new WeakMap<Client, ClientStyleState>();
 /** The texts `takeNotices` has not handed out yet, and every text already said this generation. */
 const notices: string[] = [];
+/** Notice texts already emitted, to avoid repeating the same style warning. */
+
 const noticed = new Set<string>();
+
+/** Deduplicates a notice so one unsupported style is reported only once per generation. */
 
 function say(text: string): void {
     if (!noticed.has(text)) {
@@ -2693,6 +2869,8 @@ function say(text: string): void {
         notices.push(text);
     }
 }
+
+/** Lazily allocates the per-client style bookkeeping used by the frame pass. */
 
 function styleState(client: Client): ClientStyleState {
     let state = clientStyles.get(client);
@@ -2712,6 +2890,8 @@ function styleState(client: Client): ClientStyleState {
     }
     return state;
 }
+
+/** Finds which workspace client collection owns a style scope. */
 
 function workspaceOfScope(state: CollectionState): Workspace | undefined {
     return (workspaceRoot.list as Workspace[]).find((workspace) => wsState(workspace).clientsState === state);
@@ -2795,6 +2975,8 @@ function scopeLayers(client: Client): StyleLayer[] {
     return layers;
 }
 
+/** Creates and binds the client-owned style override layer. */
+
 function clientStyle(client: Client): ClientStyle {
     const state = styleState(client);
     if (state.style === null) {
@@ -2821,12 +3003,16 @@ function layersOf(client: Client): StyleLayer[] {
     return own === null || own === undefined ? layers : [...layers, { origin: "client", style: own }];
 }
 
+/** Resolves the effective style, retaining the last result after the client is gone. */
+
 function computedStyleOf(client: Client): ComputedStyle {
     if (!stateOf(client).alive) {
         return clientStyles.get(client)?.computed ?? resolveStyle([]);
     }
     return resolveStyle(layersOf(client));
 }
+
+/** Reports style properties the renderer skipped for a client. */
 
 function styleWarningsOf(client: Client): readonly string[] {
     const notes = (clientStyles.get(client)?.notes ?? []).map((note) => `not applied: style.${note}`);
@@ -2855,6 +3041,8 @@ function* everyStyle(): Generator<Style> {
  * The most effects the compositor's tree keeps on one node (`MAX_EFFECTS` in crates/gnoblin-render/src/transaction.rs).
  * A style lists at most `MAX_STYLE_LIST` shadows and as many borders, and one backdrop blur makes the seventeenth.
  */
+/** Maximum number of effects the compositor retains on one node, from transaction.rs MAX_EFFECTS. */
+
 const MAX_NODE_EFFECTS = 16;
 
 /**
@@ -2938,6 +3126,9 @@ function applyStyles(): void {
     }
 }
 
+// ---- Layout driver ----
+// Owns per-frame layout invalidation, layout hooks, placement checks, and style application.
+
 /**
  * The layout driver, run once at the end of each frame after every listener. For each workspace it first
  * notices what changed: a layout's own enumerable fields (a snapshot diff, because a field is a plain
@@ -2945,6 +3136,7 @@ function applyStyles(): void {
  * windows that came and went, and the shown workspace, when it is dirty, computes once and its placements
  * are written. A workspace that is not shown stays dirty until it is.
  */
+
 function layout(): number {
     laying = true;
     try {
@@ -2955,7 +3147,11 @@ function layout(): number {
 }
 
 /** Whether the layout pass is running, which a transition cannot start inside: its writes are the pass's own. */
+/** Blocks transitions while layout-owned writes and callbacks are being applied. */
+
 let laying = false;
+
+/** Runs one guarded layout pass over workspaces and returns the number recomputed. */
 
 function layoutWorkspaces(): number {
     fillDesks();
@@ -3065,6 +3261,11 @@ function layoutWorkspaces(): number {
     return laidOut;
 }
 
+// ---- Generation snapshots ----
+// Owns workspace placement and window-state persistence across generation reloads.
+
+/** Serializable state needed to reconcile workspaces and retained window geometry after reload. */
+
 interface WorkspaceSnapshot {
     /** The workspace the primary output showed. */
     active: string | null;
@@ -3091,8 +3292,12 @@ interface KeptWindow {
     bar: number | null;
 }
 
+/** Encodes a rectangle as x, y, width, height for a generation snapshot. */
+
 const asArray = (rect: Rect | null | undefined): number[] | null =>
     rect ? [rect.x, rect.y, rect.width, rect.height] : null;
+/** Restores a four-number rectangle from a generation snapshot. */
+
 const asRect = (numbers: number[] | null | undefined): Rect | null =>
     numbers && numbers.length === 4 ? { x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3] } : null;
 
@@ -3200,6 +3405,9 @@ function reconcileWorkspaces(previous: WorkspaceSnapshot): void {
         setShown(desk, workspace);
     }
 }
+
+// ---- Native object lifecycle ----
+// Owns node adoption, connection changes, and cleanup of disconnected objects.
 
 /**
  * Wraps a node the first time it is seen. A node that appears while the shell runs is announced: its
@@ -3338,6 +3546,9 @@ function takeDesk(output: Output): void {
     deskByOutput.delete(output);
 }
 
+// ---- Output configuration and events ----
+// Owns asynchronous output applications and output-property event delivery.
+
 /** The compositor's answer to an `Output.apply`, filled in a frame after the call. */
 export interface OutputApplication {
     /** Whether the compositor has answered. */
@@ -3346,12 +3557,16 @@ export interface OutputApplication {
     readonly error: string | null;
 }
 
+/** An output request awaiting its compositor reply and optional config notice path. */
+
 interface PendingApplication {
     output: Output;
     result: { done: boolean; error: string | null };
     /** The config path (`outputs.DP-1`) to name in a notice when the compositor refuses; null for a script's own call. */
     path: string | null;
 }
+
+/** Pending applications indexed by the compositor's request token. */
 
 const applications = new Map<number, PendingApplication>();
 
@@ -3466,6 +3681,9 @@ function leave(top: CollectionState, member: Member, map: Map<NodeId, Member>, k
     return held;
 }
 
+// ---- Frame events and listener queue ----
+// Owns updates from the host, deferred callbacks, and generation readiness.
+
 /** The window that had the first seat's keyboard focus when the last frame ended: what a closing window is checked against. */
 let lastFocus: Client | null = null;
 
@@ -3485,6 +3703,8 @@ function handOffFocus(workspace: Workspace, index: number, parent: Client | null
     const next = [parent ?? undefined, list[index], list[index - 1]].find(usable);
     next?.focus();
 }
+
+/** Releases a destroyed host node and notifies the listeners that held its wrapper. */
 
 function release(node: NodeId): void {
     const gone = outputsByNode.get(node);
@@ -3571,6 +3791,8 @@ function changed(client: Client): void {
     }
 }
 
+/** Processes one batch of host tree changes and returns the queued callback count. */
+
 function plan(created: NodeId[], touched: NodeId[], destroyed: NodeId[]): number {
     launches.frame();
     settleApplications();
@@ -3604,6 +3826,8 @@ function plan(created: NodeId[], touched: NodeId[], destroyed: NodeId[]): number
 }
 
 /** The listener method that hears each pointer edge on a window. */
+/** Method names used to route compositor pointer edges to client listeners. */
+
 const POINTER_METHODS: Readonly<Record<string, string>> = {
     enter: "onPointerEnter",
     motion: "onPointerMotion",
@@ -3626,9 +3850,13 @@ function pointer(events: WindowPointerEvent[]): number {
     return queue.length;
 }
 
+/** Number of deferred callbacks still waiting for the shell pump. */
+
 function pending(): number {
     return queue.length;
 }
+
+/** Runs one deferred callback and returns the remaining queue length. */
 
 function next(): number {
     const call = queue.shift();
@@ -3658,19 +3886,26 @@ function ready(nodes: NodeId[]): number {
     return queue.length;
 }
 
+/** Transfers collected callback failures to the shell and starts an empty error batch. */
+
 function takeErrors(): ErrorReport[] {
     const taken = reports;
     reports = [];
     return taken;
 }
 
-/** What the config says about the seat's settings: a null leaves what the compositor published. */
+// ---- Input and focus integration ----
+// Owns the shell's input adapters, focus lookup, stock requests, and keyboard actions.
+
+/** Config values that override the compositor's edge tiling and drag constraints. */
+
 const seatOverrides: { edgeTiling: boolean | null; dragConstraint: string | null } = {
     edgeTiling: null,
     dragConstraint: null,
 };
 
-/** The host's input functions, with the config's `edgeTiling` and `dragConstraint` over the seat's own. */
+/** Host input operations with config overrides layered over the published seat settings. */
+
 const seatHost: InputHost = {
     ...host.input,
     dragConstraint: (seat) => seatOverrides.dragConstraint ?? host.input.dragConstraint(seat),
@@ -3681,6 +3916,8 @@ const seatHost: InputHost = {
             : published;
     },
 };
+
+/** Seat input manager wired to host focus, window stack, layouts, and the deferred callback queue. */
 
 const input = new InputManager(seatHost, {
     clientOf: (node) => clientsByNode.get(node),
@@ -3699,6 +3936,9 @@ const input = new InputManager(seatHost, {
 attachUi({ ...host.ui, now: () => host.input.now() }, (site, error) => {
     reports.push({ site, error });
 });
+
+// ---- Window policy and input actions ----
+// Connects compositor focus and window requests to stock rules, gestures, and keyboard operations.
 
 /** Whether a fullscreen window is showing on the workspace `output` shows: what makes its bars give way. */
 function fullscreenShowing(output: { alive: boolean } | null): boolean {
@@ -3734,6 +3974,8 @@ function dispatchRequest(client: Client, request: ClientRequest<Client>): void {
     }
 }
 
+/** Reads the first seat's focused window, or null when it has no managed client. */
+
 /** The window the first seat's keyboard focus is on, if it is one of the compositor's. */
 function focusedClient(): Client | null {
     const seat = host.input.seats()[0];
@@ -3753,6 +3995,8 @@ function stepWorkspace(step: number): void {
 }
 
 /** The five actions a touchpad gesture runs: the retired shell's `Gestures.actions`. */
+/** Built-in actions used by the gesture helpers. */
+
 const gestureActions: GestureActions = {
     workspaceNext: () => stepWorkspace(1),
     workspacePrevious: () => stepWorkspace(-1),
@@ -3777,6 +4021,8 @@ const gestureActions: GestureActions = {
 };
 
 /** `gnoblin.gestures`: the five actions and the helpers that bind them to a swipe or a pinch. */
+/** Public gesture bindings with the stock action set. */
+
 const gestureTools: GestureTools = {
     actions: gestureActions,
     direction: gestureDirection,
@@ -3785,6 +4031,8 @@ const gestureTools: GestureTools = {
 };
 
 /** The stock answers to a client's requests of its window, started with the module so no script has to ask. */
+/** Installs the default client request handling before config-specific listeners are attached. */
+
 windowState.start<Client>({
     clientOf: (node) => clientsByNode.get(node),
     siblings: (client) => {
@@ -3928,8 +4176,11 @@ const ruleHost: RuleHost<Client> = {
     },
 };
 
-/** The config's `focus` keys, over the seat's settings, over the documented defaults. */
+/** Config overrides applied before seat focus defaults are resolved. */
+
 let focusOverrides: FocusConfig = {};
+
+/** Resolves effective focus policy from config overrides and the first seat's settings. */
 
 function currentFocusSettings(): FocusSettings {
     const seat = host.input.seats()[0];
@@ -3940,6 +4191,8 @@ function currentFocusSettings(): FocusSettings {
 
 /** The stock window rules and focus policy, once a config is registered. */
 let stock: { rules: RuleEngine<Client>; focus: FocusPolicy<Client> } | null = null;
+
+/** Replaces the config's stock rules and focus policy while preserving their listener order. */
 
 function installStock(plan: ConfigPlan): void {
     if (stock !== null) {
@@ -3973,11 +4226,17 @@ function installStock(plan: ConfigPlan): void {
     clientRoot.self.addListener(focus);
 }
 
+// ---- Decorations and session services ----
+// Owns optional shell integrations and the always-on session services.
+
 // The stock lock screen is part of the runtime, not of a config: a locked session must always have one to type into.
 attachLock(host.lock);
 
-/** The stock titlebars, once a config asks for them. */
+/** Optional decoration manager, initialized when the stock titlebars are enabled. */
+
 let decorations: Decorations | null = null;
+
+/** Creates stock decorations once and routes titlebar actions through host state. */
 
 function decorate(): void {
     if (decorations === null) {
@@ -4040,8 +4299,11 @@ function declareDecorations(available: boolean): void {
     }
 }
 
-/** The verdicts the dialog listeners gave since the shell last took them. */
+/** Dialog decisions accumulated for the shell to consume. */
+
 let verdicts: Verdict[] = [];
+
+/** Dialog request manager backed by the shell callback queue. */
 
 const dialogs = new DialogManager({
     schedule: (site, task) => {
@@ -4052,17 +4314,20 @@ const dialogs = new DialogManager({
     },
 });
 
-/** Idle watches and holds (`gnoblin.idle`): handlers run as queued calls like every listener. */
+/** Idle watches and holds scheduled alongside regular listeners. */
+
 const idleMonitor = new IdleMonitor({
     schedule: (site, task) => {
         queue.push({ site, task });
     },
 });
 
-/** Observation of the session's polkit authentications (`gnoblin.authentication`), over the dialog observation. */
+/** Authentication manager connected to compositor-owned dialog observations. */
+
 const authentication = new AuthenticationManager(dialogs);
 
-/** Launch feedback (`gnoblin.launches`): a launch is started by the window that answers it. */
+/** Launch feedback manager resolved by windows associated with each launch. */
+
 const launches = new LaunchFeedback({
     now: () => host.input.now(),
     schedule: (site, task) => {
@@ -4093,6 +4358,9 @@ function trackLaunches(): void {
     };
     clientRoot.self.addListener(changes);
 }
+
+// ---- Config callbacks and integrations ----
+// Owns the registrations and bridges used by config, menus, alerts, XR, and session APIs.
 
 /** The config document patch this generation declared, as JSON text. The shell commits it once the generation runs. */
 let documentPatch = "{}";
@@ -4198,6 +4466,9 @@ function startAlerts(): void {
 let effectiveConfig: GnoblinConfig | null = null;
 
 /** The scene the XR module makes its nodes in: the host's, with clients as the content a View shows. */
+// ---- XR and session API bridges ----
+// Adapts compositor-owned services to the stock XR, scene, and session modules.
+
 const sceneBackend: SceneBackend = {
     create: (cls) => host.xr.create(cls),
     insert: (node, parent, index) => host.xr.insert(node, parent, index),
@@ -4216,6 +4487,8 @@ attachScene(sceneBackend);
 function mainSeat(): number | undefined {
     return host.input.seats().find((seat) => host.input.seatName(seat) !== "xr");
 }
+
+/** XR view into host nodes, seats, clients, and input contexts. */
 
 const xrWorld: XRWorld = {
     scene: sceneBackend,
@@ -4242,10 +4515,15 @@ const xrWorld: XRWorld = {
     },
 };
 
+/** Runtime for the optional XR extension, attached to the scene and host adapters. */
+
 const xrRuntime = new XRRuntime(xrWorld);
 
-/** Counts the operations of this module, so a log line can name one. */
+/** Monotonically increasing ids for operations exposed through the session API. */
+
 let operationIds = 0;
+
+/** Session-facing process, runtime, timer, bus, and focus APIs. */
 
 const hostApi = new HostApi(
     {
@@ -4278,6 +4556,9 @@ const hostApi = new HostApi(
         focusedWindow: () => (clientRoot.self as Collection<Client>).focused,
     },
 );
+
+// ---- Transition rollback and animation ----
+// Owns snapshots and staged frame passes used to commit or restore transition callbacks.
 
 /**
  * What a transition callback can change that is not a tree write, put back when the transition fails: each workspace's
@@ -4327,6 +4608,8 @@ function settleStaged(): void {
     }
 }
 
+/** Transition engine that stages writes, validates placements, and drives animation tracks. */
+
 const transitions = new TransitionEngine({
     staging,
     motion,
@@ -4358,6 +4641,11 @@ const transitions = new TransitionEngine({
     error: (code, target, message) => new GnoblinError(code, target, message),
 });
 hostApi.onTrackEnded = (event) => transitions.trackEnded(event);
+
+// ---- Public facade and console inspection ----
+// Exposes the host object model, registers its console representations, and connects the shell frame callbacks.
+
+/** The public `gnoblin` object exposed to configuration code and the console. */
 
 class Gnoblin {
     /** The optional extensions: `gnoblin.extensions.xr` is null until the XR program has a session (docs/xr.md). */
@@ -4553,11 +4841,18 @@ function bindKeys(keys: readonly PlannedKey[]): void {
     }
 }
 
+/** The object model installed as `globalThis.gnoblin` for this generation. */
+
 export const gnoblin = new Gnoblin();
 trackLaunches();
 
+// ---- Console and shell entry ----
+// Registers inspectable objects, adopts the initial tree, and exposes frame callbacks to the shell.
+
 // What the console shows of the host's own objects. A client is the short block of what a person asks about a window;
 // nested inside another value (a collection's member) it is only its id, app and title.
+/** Concise client fields shown by the console inspector. */
+
 inspect.register(Client, (client) => ({
     name: "Client",
     id: client.id,
