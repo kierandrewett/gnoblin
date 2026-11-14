@@ -34,6 +34,8 @@ mod host;
 mod host_api;
 mod host_process;
 mod host_session;
+mod host_auth;
+mod host_idle;
 mod input;
 mod loader;
 mod reload;
@@ -60,6 +62,7 @@ pub use host_process::{JsExit, JsProcessCode, JsProcessError, JsProcesses, JsSpa
 pub use host_session::{
     JsClientSessionLink, JsOperationError, JsSessionEvent, JsSessionLink, JsSessionStatus, JsSessionVerb,
 };
+pub use host_idle::{JsClientIdleLink, JsIdleConnector, JsIdleLink, JsIdleReading};
 pub use loader::{JsLoadState, JsLoader, JsResolver};
 pub use reload::{JsDiagnostic, JsReloader, ReloadReport};
 pub use role::{JsRole, JsRoleConfig, JsRoleLinks, RELOAD_DEBOUNCE, config_dir, entry_in};

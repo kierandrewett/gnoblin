@@ -33,6 +33,9 @@ gnoblin-tree-client.workspace = true
 gnoblin-secret.workspace = true
 # The owner socket's client: the role connects and handshakes as every client does.
 gnoblin-client = { path = "../gnoblin-client" }
+# The idle connection reads the `idle` object of the graph and calls its methods; the fake slot link of
+# `tests/config_slots.rs` implements `SlotLink`, whose `decline` takes the model's reason.
+gnoblin-model = { path = "../gnoblin-model" }
 # The IPC version this build advertises in that handshake.
 gnoblin-proto = { path = "../gnoblin-proto" }
 # The configuration document's validator: the shell checks the document it commits as the Lua host does.

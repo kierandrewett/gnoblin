@@ -43,6 +43,8 @@ use crate::dialogs::{JsDialogs, events_to_js, verdicts_from_js};
 use crate::error::{JsError, JsErrorKind};
 use crate::generation::{JsConfig, JsGeneration};
 use crate::host_session::JsSessionLink;
+use crate::host_auth::{JsAuth, replies_from_js};
+use crate::host_idle::{JsIdle, JsIdleConnector, commands_from_js, reading_to_js};
 use crate::input::{JsInputMessage, messages_to_js};
 use crate::stock::stock_modules_in;
 use crate::ts::strip_types;
@@ -194,6 +196,10 @@ pub struct JsShell {
     strikes: u32,
     /// The shell's connection for slots, and the observation of the compositor's own dialogs on it.
     dialogs: JsDialogs,
+    /// The shell's connection for the authentication slot (`gnoblin.authentication`).
+    auth: JsAuth,
+    /// The shell's connection for the compositor's idle state (`gnoblin.idle`), opened while a script wants it.
+    idle: JsIdle,
     /// The commands `defineConfig({ autostart })` started, so a reload starts only the new ones.
     autostart: JsAutostart,
 }
@@ -247,6 +253,8 @@ impl JsShell {
             reported: HashMap::new(),
             strikes: 0,
             dialogs: JsDialogs::new(),
+            auth: JsAuth::new(),
+            idle: JsIdle::new(),
             autostart: JsAutostart::default(),
         })
     }
@@ -407,6 +415,19 @@ impl JsShell {
         self.run_pending(pending, started, diagnostics)
     }
 
+    /// Gives the shell its connection for the authentication slot: a provider that `gnoblin.authentication` has set
+    /// is offered the polkit requests on it. Without a link no provider ever hears a request, which is reported once.
+    pub fn set_auth_link(&mut self, link: Box<dyn SlotLink>) {
+        self.auth.set_link(link);
+    }
+
+    /// Gives the shell the way to open its connection for the compositor's idle state. It is called when a script
+    /// first makes an idle watch or hold, and the connection is closed again when the script has neither. Without
+    /// one, watches never fire and holds are not recorded, which is reported once.
+    pub fn set_idle_connector(&mut self, connector: JsIdleConnector) {
+        self.idle.set_connector(connector);
+    }
+
     /// Gives the shell its connection for the configuration document. A generation's document settings are
     /// validated against, and committed to, the document that connection reads. Without one a config that sets
     /// document keys is validated against an empty document and nothing is committed, which is reported.
@@ -488,6 +509,94 @@ impl JsShell {
             entry.get::<_, Function<'_>>("dialogsWanted")?.call(())
         })?;
         self.dialogs.sync(wanted, diagnostics);
+        Ok(())
+    }
+
+    /// The host API that talks to the compositor beyond the tree: idle state and the authentication slot. One call asks
+    /// the script what it wants, so a shell that uses neither pays for that call and nothing else.
+    fn run_compositor_links(&mut self, diagnostics: &mut Vec<String>) -> Result<(), JsShellError> {
+        let wants: u32 = self.call_entry(self.entry_budget, |entry| {
+            entry.get::<_, Function<'_>>("wants")?.call(())
+        })?;
+        let (idle, auth) = (wants & 1 != 0, wants & 2 != 0);
+        if idle || self.idle.is_open() {
+            self.run_idle(idle, diagnostics)?;
+        }
+        if auth || self.auth.is_active() {
+            self.run_authentication(auth, diagnostics)?;
+        }
+        Ok(())
+    }
+
+    /// The idle state of one frame: the connection is opened or closed to match what the script wants, the newest
+    /// reading goes to its watches (their handlers run under the usual budgets), and the holds it asked for are sent.
+    fn run_idle(&mut self, wanted: bool, diagnostics: &mut Vec<String>) -> Result<(), JsShellError> {
+        if wanted {
+            self.idle.sync(true, diagnostics);
+        }
+        let poll = self.idle.poll(diagnostics);
+        let started = Instant::now();
+        if poll.lost {
+            let pending: usize = self.call_entry(self.entry_budget, |entry| {
+                entry.get::<_, Function<'_>>("idleLost")?.call(())
+            })?;
+            self.run_pending(pending, started, diagnostics)?;
+        }
+        if let Some(reading) = poll.reading {
+            let pending: usize = self.call_entry(self.frame_budget, move |entry| {
+                let item = reading_to_js(entry.ctx(), reading)?;
+                entry.get::<_, Function<'_>>("idleReading")?.call((item,))
+            })?;
+            self.run_pending(pending, started, diagnostics)?;
+        }
+        let commands = self.call_entry(self.entry_budget, |entry| {
+            let list: Array<'_> = entry.get::<_, Function<'_>>("takeIdleCommands")?.call(())?;
+            commands_from_js(&list)
+        })?;
+        if !commands.is_empty() {
+            for holder in self.idle.run(&commands, diagnostics) {
+                self.call_entry(self.entry_budget, move |entry| {
+                    entry.get::<_, Function<'_>>("idleFailed")?.call::<_, ()>((holder,))
+                })?;
+            }
+        }
+        // The last hold given back leaves the connection with nothing to do.
+        let wanted: u32 = self.call_entry(self.entry_budget, |entry| {
+            entry.get::<_, Function<'_>>("wants")?.call(())
+        })?;
+        self.idle.sync(wanted & 1 != 0, diagnostics);
+        Ok(())
+    }
+
+    /// The authentication slot of one frame: what the compositor offered goes to the provider, which runs under the
+    /// usual budgets, and what it settled goes back. The slot is claimed or released to match the provider.
+    fn run_authentication(&mut self, wanted: bool, diagnostics: &mut Vec<String>) -> Result<(), JsShellError> {
+        if wanted {
+            self.auth.sync(true, diagnostics);
+        }
+        let events = self.auth.poll(diagnostics);
+        if !events.is_empty() {
+            let started = Instant::now();
+            let pending: usize = self.call_entry(self.frame_budget, move |entry| {
+                let list = events_to_js(entry.ctx(), &events)?;
+                entry.get::<_, Function<'_>>("authenticationEvents")?.call((list,))
+            })?;
+            self.run_pending(pending, started, diagnostics)?;
+        }
+        let replies = self.call_entry(self.entry_budget, |entry| {
+            let list: Array<'_> = entry.get::<_, Function<'_>>("takeAuthenticationReplies")?.call(())?;
+            replies_from_js(&list)
+        })?;
+        for reply in replies {
+            match reply {
+                Ok(reply) => self.auth.reply(&reply, diagnostics),
+                Err(reason) => diagnostics.push(format!("an authentication answer was not sent: {reason}")),
+            }
+        }
+        let wanted: u32 = self.call_entry(self.entry_budget, |entry| {
+            entry.get::<_, Function<'_>>("wants")?.call(())
+        })?;
+        self.auth.sync(wanted & 2 != 0, diagnostics);
         Ok(())
     }
 
@@ -679,6 +788,7 @@ impl JsShell {
         self.run_layouts(&mut diagnostics)?;
         self.run_ui(&mut diagnostics)?;
         self.run_dialogs(&mut diagnostics)?;
+        self.run_compositor_links(&mut diagnostics)?;
         self.collect_reports(&mut diagnostics)?;
 
         self.send_transaction()?;
@@ -702,6 +812,11 @@ impl JsShell {
         self.state.borrow_mut().input.forget_window_events();
         self.run_pending(pending, started, &mut diagnostics)?;
         self.dialogs.retire();
+        self.auth.retire();
+        let holders: Vec<String> = self.call_entry(self.entry_budget, |entry| {
+            entry.get::<_, Function<'_>>("idleHolders")?.call(())
+        })?;
+        self.idle.retire(&holders);
         self.collect_reports(&mut diagnostics)?;
         self.send_transaction()?;
         Ok(JsFrame { diagnostics })

@@ -22,6 +22,11 @@ import type {
 } from "gnoblin/config";
 import { DialogManager } from "gnoblin/dialogs";
 import type { DialogEvent } from "gnoblin/dialogs";
+import { AuthenticationManager } from "gnoblin/authentication";
+import type { AuthenticationEvent, AuthenticationReply } from "gnoblin/authentication";
+import { IdleMonitor } from "gnoblin/idle";
+import type { IdleCommand, IdleReading } from "gnoblin/idle";
+import { LaunchFeedback } from "gnoblin/launches";
 import { StripLayout } from "gnoblin/layouts/strip";
 import { Layout } from "gnoblin/layout";
 import type { Gaps, LayoutContext } from "gnoblin/layout";
@@ -127,6 +132,22 @@ interface Entry {
     takeVerdicts(): Verdict[];
     /** Whether a dialog listener is attached, so the shell holds the observation slot. */
     dialogsWanted(): boolean;
+    /** What the script needs of the compositor beyond the tree: bit 1 is idle state, bit 2 the authentication slot. */
+    wants(): number;
+    /** The compositor's newest idle reading; returns how many calls wait. */
+    idleReading(reading: IdleReading): number;
+    /** The idle connection ended: every watch is active again; returns how many calls wait. */
+    idleLost(): number;
+    /** The idle holds the script asked for or gave back, each once. */
+    takeIdleCommands(): IdleCommand[];
+    /** The names of the idle holds that are alive, for the shell to give back when the generation ends. */
+    idleHolders(): string[];
+    /** The compositor refused the idle hold `holder`. */
+    idleFailed(holder: string): void;
+    /** What the compositor sent for the authentication slot; returns how many calls wait. */
+    authenticationEvents(events: AuthenticationEvent[]): number;
+    /** The answers the authentication provider settled, each once. */
+    takeAuthenticationReplies(): AuthenticationReply[];
     /** Lays out the workspaces that changed, once each; returns how many it laid out. */
     layout(): number;
     /** Runs the UI toolkit's frame: measurements and pointer events in, every canvas arranged and painted. */
@@ -2938,6 +2959,7 @@ function changed(client: Client): void {
 }
 
 function plan(created: NodeId[], touched: NodeId[], destroyed: NodeId[]): number {
+    launches.frame();
     // The destroyed list is deepest first. Departures go before arrivals so a collection never holds a
     // dead member while it is told of a new one.
     for (const node of destroyed) {
@@ -3321,6 +3343,52 @@ const dialogs = new DialogManager({
     },
 });
 
+/** Idle watches and holds (`gnoblin.idle`): handlers run as queued calls like every listener. */
+const idleMonitor = new IdleMonitor({
+    schedule: (site, task) => {
+        queue.push({ site, task });
+    },
+});
+
+/** The session's authentication agent (`gnoblin.authentication`). */
+const authentication = new AuthenticationManager({
+    schedule: (site, task) => {
+        queue.push({ site, task });
+    },
+});
+
+/** Launch feedback (`gnoblin.launches`): a launch is started by the window that answers it. */
+const launches = new LaunchFeedback({
+    now: () => host.input.now(),
+    schedule: (site, task) => {
+        queue.push({ site, task });
+    },
+});
+
+/**
+ * Tells `launches` of the windows that appear, take focus or name their application. The listeners are attached
+ * before any launch can begin, so the windows that exist now answer none.
+ */
+function trackLaunches(): void {
+    const arrivals = new CollectionListener();
+    arrivals.onAdded = (member) => {
+        if (member instanceof Client) {
+            launches.answered(member.appId);
+        }
+    };
+    clientRoot.self.addListener(arrivals);
+    const changes = new ClientListener();
+    changes.onFocusChanged = (client, focused) => {
+        if (focused) {
+            launches.answered(client.appId);
+        }
+    };
+    changes.onAppIdChanged = (client, appId) => {
+        launches.answered(appId);
+    };
+    clientRoot.self.addListener(changes);
+}
+
 /** The config document patch this generation declared, as JSON text. The shell commits it once the generation runs. */
 let documentPatch = "{}";
 
@@ -3513,6 +3581,12 @@ class Gnoblin {
     readonly input = input;
     /** Policy over the compositor's own consent and passphrase dialogs: listeners that may refuse a request. */
     readonly dialogs = dialogs;
+    /** Watches for the session going idle, and holds that keep it awake. */
+    readonly idle = idleMonitor;
+    /** The session's authentication agent: a provider that answers the polkit requests. */
+    readonly authentication = authentication;
+    /** Launch feedback: the busy state between asking for an application and its window. */
+    readonly launches = launches;
 
     /** The programs this shell started: `spawn`, `list`, `byId` and the listeners told when one ends. */
     readonly process = hostApi.process;
@@ -3667,6 +3741,7 @@ function bindKeys(keys: readonly PlannedKey[]): void {
 }
 
 export const gnoblin = new Gnoblin();
+trackLaunches();
 
 // What the console shows of the host's own objects. A client is the short block of what a person asks about a window;
 // nested inside another value (a collection's member) it is only its id, app and title.
@@ -3762,6 +3837,23 @@ host.entry = {
         return taken;
     },
     dialogsWanted: () => dialogs.wanted,
+    wants: () => (idleMonitor.wanted ? 1 : 0) | (authentication.wanted ? 2 : 0),
+    idleReading: (reading) => {
+        idleMonitor.deliver(reading);
+        return queue.length;
+    },
+    idleLost: () => {
+        idleMonitor.lost();
+        return queue.length;
+    },
+    takeIdleCommands: () => idleMonitor.takeCommands(),
+    idleHolders: () => idleMonitor.holders(),
+    idleFailed: (holder) => idleMonitor.failed(holder),
+    authenticationEvents: (events) => {
+        authentication.deliver(events);
+        return queue.length;
+    },
+    takeAuthenticationReplies: () => authentication.takeReplies(),
     layout,
     finishLoad: ensureDefaultWorkspace,
     loadDefault: () => gnoblin.__register(defaultConfig),

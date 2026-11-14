@@ -94,6 +94,21 @@ const MODULES: [(&str, &str, &str); 36] = [
         include_str!("../../../data/js/gnoblin/dialogs.ts"),
     ),
     (
+        "gnoblin/authentication",
+        "authentication.ts",
+        include_str!("../../../data/js/gnoblin/authentication.ts"),
+    ),
+    (
+        "gnoblin/idle",
+        "idle.ts",
+        include_str!("../../../data/js/gnoblin/idle.ts"),
+    ),
+    (
+        "gnoblin/launches",
+        "launches.ts",
+        include_str!("../../../data/js/gnoblin/launches.ts"),
+    ),
+    (
         "gnoblin/titlebar",
         "titlebar.ts",
         include_str!("../../../data/js/gnoblin/titlebar.ts"),
