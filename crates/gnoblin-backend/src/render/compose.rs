@@ -345,14 +345,10 @@ enum CloseEnd {
 /// A timed `set` of the shell that has tracks running: one for a number, three for a `rotation` or a `scale`.
 #[derive(Clone, Debug)]
 struct ShellPlay {
-    node: NodeId,
-    key: String,
-    /// The `tween` node the write joined.
-    group: Option<NodeId>,
+    /// The end it reports when its last track is over; `completed` is cleared by any track that did not reach its target.
+    end: ShellTrackEnd,
     /// How many of its tracks have not ended.
     live: usize,
-    /// Whether every track that ended so far completed.
-    completed: bool,
 }
 
 /// A window that is closing: the picture it kept and the crop it was drawn with.
@@ -2501,11 +2497,13 @@ impl Composer {
         self.shell_plays.insert(
             play,
             ShellPlay {
-                node: animation.node,
-                key: animation.key.clone(),
-                group,
+                end: ShellTrackEnd {
+                    node: animation.node,
+                    key: animation.key.clone(),
+                    group,
+                    completed: true,
+                },
                 live: started.len(),
-                completed: true,
             },
         );
         true
@@ -2538,7 +2536,7 @@ impl Composer {
         let Some(entry) = self.shell_plays.get_mut(&play) else {
             return;
         };
-        if let Some(group) = entry.group
+        if let Some(group) = entry.end.group
             && let Some(tracks) = self.groups.get_mut(&group)
         {
             tracks.remove(&end.track);
@@ -2547,16 +2545,11 @@ impl Composer {
             }
         }
         entry.live = entry.live.saturating_sub(1);
-        entry.completed &= end.reason == TrackEndReason::Completed;
+        entry.end.completed &= end.reason == TrackEndReason::Completed;
         if entry.live == 0
             && let Some(done) = self.shell_plays.remove(&play)
         {
-            self.shell_ends.push(ShellTrackEnd {
-                node: done.node,
-                key: done.key,
-                group: done.group,
-                completed: done.completed,
-            });
+            self.shell_ends.push(done.end);
         }
     }
 
