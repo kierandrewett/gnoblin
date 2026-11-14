@@ -12,7 +12,6 @@ pub(crate) enum JsPropKind {
     Flag,
     Double,
     Text,
-    Uint,
     Node,
 }
 
@@ -41,9 +40,12 @@ const WINDOW: &[JsPropDef] = &[
     def("workspace", JsPropKind::Node, false),
 ];
 
-const WORKSPACE: &[JsPropDef] = &[
-    def("index", JsPropKind::Uint, false),
-    def("active", JsPropKind::Flag, false),
+/// An output. Its size is the work area the layout driver tiles in, and `primary` picks the screen the
+/// primary display shows.
+const SCREEN: &[JsPropDef] = &[
+    def("width", JsPropKind::Double, false),
+    def("height", JsPropKind::Double, false),
+    def("primary", JsPropKind::Flag, false),
 ];
 
 /// The methods a script may call on a window.
@@ -54,7 +56,7 @@ const WINDOW_METHODS: &[&str] = &["focus", "close"];
 pub(crate) fn defs_for(class: &str) -> Option<&'static [JsPropDef]> {
     match lua_class(class).as_str() {
         "Window" => Some(WINDOW),
-        "Workspace" => Some(WORKSPACE),
+        "Screen" => Some(SCREEN),
         _ => None,
     }
 }
@@ -70,7 +72,6 @@ pub(crate) fn default_value(kind: JsPropKind) -> MirrorValue {
         JsPropKind::Flag => MirrorValue::Bool(false),
         JsPropKind::Double => MirrorValue::Double(0.0),
         JsPropKind::Text => MirrorValue::Text(String::new()),
-        JsPropKind::Uint => MirrorValue::Uint(0),
         JsPropKind::Node => MirrorValue::Node(0),
     }
 }
@@ -83,7 +84,12 @@ mod tests {
     fn a_class_is_found_by_either_spelling() {
         assert!(defs_for("window").is_some());
         assert!(defs_for("Window").is_some());
-        assert!(defs_for("workspace").is_some());
+        assert!(defs_for("screen").is_some());
+        assert!(defs_for("Screen").is_some());
+        assert!(
+            defs_for("workspace").is_none(),
+            "workspaces are the script's, not the tree's"
+        );
         assert!(defs_for("seat").is_none());
     }
 
@@ -110,6 +116,6 @@ mod tests {
         assert!(may_call("window", "close"));
         assert!(may_call("Window", "focus"));
         assert!(!may_call("window", "kill"));
-        assert!(!may_call("workspace", "close"));
+        assert!(!may_call("screen", "close"));
     }
 }

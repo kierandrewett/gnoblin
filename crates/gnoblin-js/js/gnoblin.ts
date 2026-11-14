@@ -10,6 +10,22 @@
 // invocation per interested listener; the host then runs them one by one under a time budget each, so a
 // listener that throws or never returns does not stop the others.
 
+import { desugarConfig, defaultConfig } from "gnoblin/config";
+import type { GnoblinConfig } from "gnoblin/config";
+import { Layout } from "gnoblin/layout";
+import type { Gaps, LayoutContext } from "gnoblin/layout";
+import {
+    checkGaps,
+    checkPlacements,
+    checkWorkspaceOptions,
+    fieldsChanged,
+    initialWorkspace,
+    layoutFields,
+    rectsEqual,
+    resolveLayout,
+} from "gnoblin/workspace";
+import type { StockLayoutName, WorkspaceOptions } from "gnoblin/workspace";
+
 type NodeId = number;
 type Scalar = string | number | boolean;
 
@@ -35,6 +51,12 @@ interface Entry {
     pending(): number;
     ready(nodes: NodeId[]): number;
     takeErrors(): ErrorReport[];
+    /** Lays out the workspaces that changed, once each; returns how many it laid out. */
+    layout(): number;
+    /** Gives a config that declared no workspace the stock one. */
+    finishLoad(): void;
+    snapshot(): WorkspaceSnapshot;
+    reconcile(previous: WorkspaceSnapshot): void;
 }
 
 interface Host {
@@ -44,7 +66,7 @@ interface Host {
     set(node: NodeId, key: string, value: Scalar): string | undefined;
     call(node: NodeId, method: string): string | undefined;
     windows(): NodeId[];
-    workspaces(): NodeId[];
+    screens(): NodeId[];
     spawn(command: string | string[]): string | undefined;
     entry?: Entry;
 }
@@ -155,8 +177,7 @@ function refuse(code: string, target: string, what: string): never {
     }
 }
 
-const CLIENT_KEYS = ["title", "app_id", "focused", "fullscreen", "x", "y", "width", "height", "workspace"];
-const WORKSPACE_KEYS = ["index", "active"];
+const CLIENT_KEYS = ["title", "app_id", "focused", "fullscreen", "x", "y", "width", "height"];
 
 /** What listeners were last told about a client, to raise an event only for a real change. */
 interface Seen {
@@ -244,7 +265,10 @@ function callMethod(client: Client, method: string): void {
 }
 
 const clientsByNode = new Map<NodeId, Client>();
-const workspacesByNode = new Map<NodeId, Workspace>();
+/** The workspace each client is on. A workspace is the script's, so the compositor does not know. */
+const membership = new WeakMap<Client, Workspace>();
+/** The clients that were there when the shell booted: a layout does not place them again. */
+const preexisting = new WeakSet<Client>();
 
 /** A toplevel window the compositor manages. */
 export class Client {
@@ -338,7 +362,7 @@ export class Client {
 
     /** The workspace the client is on, or null. */
     get workspace(): Workspace | null {
-        return workspacesByNode.get(read<number>(this, "workspace")) ?? null;
+        return membership.get(this) ?? null;
     }
 
     addListener(listener: ClientListener): void {
@@ -371,37 +395,143 @@ export class Client {
     }
 }
 
-/** A workspace the compositor reports. Read-only for now. */
+interface WorkspaceState {
+    id: string;
+    name: string;
+    layout: Layout;
+    gaps: Gaps;
+    /** Whether the workspace is in `gnoblin.workspaces`. */
+    attached: boolean;
+    clients: MutableCollection<Client>;
+    clientsState: CollectionState;
+    /** The clients that joined and left since the layout last heard of it, for `onClientAdded` and `onClientRemoved`. */
+    arrived: Client[];
+    departed: Client[];
+    /** Whether the layout has to compute again the next time the workspace is shown. */
+    dirty: boolean;
+    /** The layout's own fields when the workspace was last looked at, to notice a change. */
+    fields: Map<PropertyKey, unknown> | null;
+    gapsSeen: [number, number];
+    /** The area the layout last computed for. */
+    area: Rect | null;
+}
+
+const wsStates = new WeakMap<object, WorkspaceState>();
+
+function wsState(workspace: unknown): WorkspaceState {
+    const state = typeof workspace === "object" && workspace !== null ? wsStates.get(workspace) : undefined;
+    if (!state) {
+        throw new TypeError("not a Workspace");
+    }
+    return state;
+}
+
+/**
+ * A place windows are laid out in. The script makes it and adds it to `gnoblin.workspaces`; `clients` holds
+ * its windows, the same `Client` objects as `gnoblin.clients`. Removing a workspace, or a window from one,
+ * never closes the window.
+ */
 export class Workspace {
-    constructor(token: symbol, node: NodeId) {
-        if (token !== CREATE) {
-            throw new TypeError("a Workspace is made by the compositor, not by a script");
-        }
-        states.set(this, { node, alive: true, frozen: null, listeners: [], readied: false, seen: null });
+    constructor(options: WorkspaceOptions) {
+        const checked = checkWorkspaceOptions(options);
+        const clients = new MutableCollection<Client>(CREATE, {
+            ...rootState("Client"),
+            mutation: {
+                add: (client) => transferClient(this, client as Client),
+                remove: (client) => detachClient(this, client as Client),
+                clear: () => clearClients(this),
+            },
+        });
+        wsStates.set(this, {
+            id: checked.id,
+            name: checked.name,
+            layout: checked.layout,
+            gaps: checked.gaps,
+            attached: false,
+            clients,
+            clientsState: collectionState(clients),
+            arrived: [],
+            departed: [],
+            dirty: true,
+            fields: null,
+            gapsSeen: [checked.gaps.inner, checked.gaps.outer],
+            area: null,
+        });
     }
 
     get id(): string {
-        return String(stateOf(this).node);
+        return wsState(this).id;
     }
 
+    get name(): string {
+        return wsState(this).name;
+    }
+
+    set name(value: string) {
+        if (typeof value !== "string") {
+            throw new TypeError(`${this}.name must be a string`);
+        }
+        wsState(this).name = value;
+    }
+
+    /** A workspace is the script's own and stays usable after it leaves `gnoblin.workspaces`. */
     get alive(): boolean {
-        return stateOf(this).alive;
+        return true;
     }
 
+    /** The position in `gnoblin.workspaces`, or -1 while it is not in it. */
     get index(): number {
-        return read<number>(this, "index");
+        return workspaceRoot.list.indexOf(this);
     }
 
+    /** Whether the primary display shows this workspace. */
     get active(): boolean {
-        return read<boolean>(this, "active");
+        return activeWorkspace === this;
+    }
+
+    get layout(): Layout {
+        return wsState(this).layout;
+    }
+
+    /** A layout instance, or the name of a stock layout. The windows stay where they are until it computes. */
+    set layout(value: Layout | StockLayoutName) {
+        const state = wsState(this);
+        state.layout = resolveLayout(value, `${this}`);
+        state.fields = null;
+        state.dirty = true;
+    }
+
+    get gaps(): Gaps {
+        return wsState(this).gaps;
+    }
+
+    set gaps(value: { inner?: number; outer?: number }) {
+        const state = wsState(this);
+        state.gaps = checkGaps(value, `${this}.gaps`);
+        state.dirty = true;
+    }
+
+    get clients(): Collection<Client> {
+        return wsState(this).clients;
+    }
+
+    /** Shows this workspace on the primary display. */
+    show(): void {
+        showWorkspace(this);
     }
 
     toString(): string {
-        return `Workspace#${stateOf(this).node}`;
+        return `Workspace#${wsState(this).id}`;
     }
 }
 
 type Member = Client | Workspace;
+
+interface Mutation {
+    add(member: Member): void;
+    remove(member: Member): void;
+    clear(): void;
+}
 
 interface CollectionState extends Source {
     self: Collection<Member>;
@@ -412,6 +542,8 @@ interface CollectionState extends Source {
     /** The members a view last told its listeners of, kept only while it has listeners. */
     members: Set<Member> | null;
     keys: readonly string[];
+    /** Set on a collection scripts may change: what `add`, `remove` and `clear` do. */
+    mutation?: Mutation;
 }
 
 const collections = new WeakMap<object, CollectionState>();
@@ -428,7 +560,7 @@ function collectionState(collection: object): CollectionState {
 
 const QUERY_KEYS: Record<string, readonly string[]> = {
     Client: ["id", "appId", "title", "focused", "fullscreen", "x", "y", "width", "height"],
-    Workspace: ["id", "index", "active"],
+    Workspace: ["id", "name", "index", "active"],
 };
 
 function matches(query: Query, member: Member): boolean {
@@ -568,20 +700,71 @@ export class Collection<T extends Member> implements Iterable<T> {
     }
 }
 
-function root<T extends Member>(kind: string): CollectionState {
-    const collection = new Collection<T>(CREATE, {
+/**
+ * A collection a script may change. `gnoblin.workspaces` and a workspace's `clients` are these;
+ * `gnoblin.clients` is not, because the compositor owns which windows exist.
+ */
+export class MutableCollection<T extends Member> extends Collection<T> {
+    private mutation(what: string): Mutation {
+        const { mutation } = collectionState(this);
+        if (!mutation) {
+            throw new GnoblinError("read-only", `Collection.${what}`, "this collection's membership cannot be changed");
+        }
+        return mutation;
+    }
+
+    /** Adds a member. On a workspace's `clients` this moves the client there from its workspace. */
+    add(member: T): void {
+        this.mutation("add").add(member);
+    }
+
+    /** Removes a member, given as itself or by id. A member that is not in the collection is ignored. */
+    remove(member: T | string): void {
+        const target = typeof member === "string" ? this.get(member) : member;
+        if (target !== undefined && collectionState(this).list.includes(target)) {
+            this.mutation("remove").remove(target);
+        }
+    }
+
+    clear(): void {
+        this.mutation("clear").clear();
+    }
+}
+
+/** The workspaces of the script, which also say which of them the primary display shows. */
+class WorkspaceCollection extends MutableCollection<Workspace> {
+    /** Shows a workspace on the primary display, given as itself or by id. */
+    show(workspace: Workspace | string): void {
+        showWorkspace(workspace);
+    }
+}
+
+function rootState(kind: string): Omit<CollectionState, "self"> {
+    return {
         parent: null,
         query: null,
         list: [],
         members: null,
         keys: QUERY_KEYS[kind],
         listeners: [],
-    });
-    return collectionState(collection);
+    };
 }
 
-const clientRoot = root<Client>("Client");
-const workspaceRoot = root<Workspace>("Workspace");
+const clientRoot = collectionState(new Collection<Client>(CREATE, rootState("Client")));
+const workspaceRoot = collectionState(
+    new WorkspaceCollection(CREATE, {
+        ...rootState("Workspace"),
+        mutation: {
+            add: (workspace) => addWorkspace(workspace as Workspace),
+            remove: (workspace) => removeWorkspace(workspace as Workspace),
+            clear: () => {
+                for (const workspace of [...workspaceRoot.list]) {
+                    removeWorkspace(workspace as Workspace);
+                }
+            },
+        },
+    }),
+);
 
 /** The collections that hold `member` now: its root and every tracked view with it as a member. */
 function holders(top: CollectionState, member: Member): CollectionState[] {
@@ -613,6 +796,335 @@ function emitMember(client: Client, held: CollectionState[], method: string, arg
     }
 }
 
+function wsOf(client: Client): WorkspaceState | null {
+    const workspace = membership.get(client);
+    return workspace ? wsState(workspace) : null;
+}
+
+/** Every collection that holds `client` now: `gnoblin.clients`, its workspace's `clients`, and their live selections. */
+function clientHolders(client: Client): CollectionState[] {
+    const own = wsOf(client);
+    const all = holders(clientRoot, client);
+    return own ? [...all, ...holders(own.clientsState, client)] : all;
+}
+
+/** The workspace the primary display shows, or null when there is none. */
+let activeWorkspace: Workspace | null = null;
+/**
+ * False until the first frame: the entry module is still adding workspaces, and the windows that were
+ * there at boot join one only when it is done, or a reload could not put them back where they were.
+ */
+let opened = false;
+
+function guard(site: string, body: () => void): void {
+    try {
+        body();
+    } catch (error) {
+        reports.push({ site, error });
+    }
+}
+
+/** Puts `client` in `workspace`, which it is not in. */
+function link(workspace: Workspace, client: Client, arrived: boolean): void {
+    const state = wsState(workspace);
+    membership.set(client, workspace);
+    state.clientsState.list.push(client);
+    state.dirty = true;
+    if (arrived) {
+        state.arrived.push(client);
+    }
+    queueFor(state.clientsState, "onAdded", [client, state.clientsState.self]);
+    recompute(state.clientsState, client);
+}
+
+/** Takes `client`, which is alive, out of `workspace`. */
+function unlink(workspace: Workspace, client: Client): void {
+    const state = wsState(workspace);
+    membership.delete(client);
+    state.clientsState.list.splice(state.clientsState.list.indexOf(client), 1);
+    state.dirty = true;
+    forgetArrival(state, client);
+    queueFor(state.clientsState, "onRemoved", [client, state.clientsState.self]);
+    recompute(state.clientsState, client);
+}
+
+/** A client that leaves before its layout heard of it never was there for the layout. */
+function forgetArrival(state: WorkspaceState, client: Client): void {
+    const at = state.arrived.indexOf(client);
+    if (at >= 0) {
+        state.arrived.splice(at, 1);
+    } else {
+        state.departed.push(client);
+    }
+}
+
+/** Moves `client` to `target` (or out of every workspace when it is null). `arrived` says a layout may place it. */
+function moveClient(client: Client, target: Workspace | null, arrived: boolean): void {
+    const from = membership.get(client) ?? null;
+    if (from === target) {
+        return;
+    }
+    if (from) {
+        unlink(from, client);
+    }
+    if (target) {
+        link(target, client, arrived);
+    }
+}
+
+/** `workspace.clients.add(client)`: the client leaves its workspace and joins this one. */
+function transferClient(workspace: Workspace, client: Client): void {
+    const target = `${workspace}.clients.add`;
+    if (!wsState(workspace).attached) {
+        throw new GnoblinError("detached", target, "add the workspace to gnoblin.workspaces first");
+    }
+    if (!(client instanceof Client) || !clientsByNode.has(stateOf(client).node)) {
+        throw new GnoblinError("destroyed", target, "the client is gone or is not a client of the compositor");
+    }
+    moveClient(client, workspace, true);
+}
+
+/** `workspace.clients.remove(client)`: the client has no workspace until it is given one. */
+function detachClient(workspace: Workspace, client: Client): void {
+    if (membership.get(client) === workspace) {
+        moveClient(client, null, false);
+    }
+}
+
+function clearClients(workspace: Workspace): void {
+    for (const client of [...wsState(workspace).clientsState.list] as Client[]) {
+        detachClient(workspace, client);
+    }
+}
+
+/** Makes `next` the workspace the primary display shows. */
+function setActive(next: Workspace | null): void {
+    const before = activeWorkspace;
+    if (before === next) {
+        return;
+    }
+    activeWorkspace = next;
+    if (next) {
+        wsState(next).dirty = true;
+    }
+    for (const changed of [before, next]) {
+        if (changed && wsState(changed).attached) {
+            recompute(workspaceRoot, changed);
+        }
+    }
+}
+
+/** `gnoblin.workspaces.show(workspace)`. */
+function showWorkspace(workspace: Workspace | string): void {
+    const target = typeof workspace === "string" ? workspaceRoot.list.find((w) => w.id === workspace) : workspace;
+    if (target === undefined) {
+        throw new GnoblinError("unknown-workspace", "gnoblin.workspaces.show", `there is no workspace "${workspace}"`);
+    }
+    if (!wsState(target).attached) {
+        throw new GnoblinError("detached", `${target}.show`, "add the workspace to gnoblin.workspaces first");
+    }
+    setActive(target as Workspace);
+}
+
+/** Gives each window that has no workspace the one the initial-workspace rule names. */
+function adoptOrphans(): void {
+    if (!opened) {
+        return;
+    }
+    for (const client of [...clientRoot.list] as Client[]) {
+        if (membership.has(client)) {
+            continue;
+        }
+        const target = initialWorkspace(workspaceRoot.list as Workspace[]);
+        if (target === null) {
+            return;
+        }
+        moveClient(client, target, !preexisting.has(client));
+    }
+}
+
+function addWorkspace(workspace: Workspace): void {
+    const state = wsState(workspace);
+    if (state.attached) {
+        return;
+    }
+    if (workspaceRoot.list.some((other) => other.id === state.id)) {
+        throw new GnoblinError(
+            "duplicate",
+            "gnoblin.workspaces.add",
+            `there is already a workspace with id "${state.id}"`,
+        );
+    }
+    state.attached = true;
+    state.dirty = true;
+    workspaceRoot.list.push(workspace);
+    queueFor(workspaceRoot, "onAdded", [workspace, workspaceRoot.self]);
+    recompute(workspaceRoot, workspace);
+    if (activeWorkspace === null) {
+        setActive(workspace);
+    }
+    adoptOrphans();
+}
+
+/** Takes the workspace out of `gnoblin.workspaces`. Its windows move to the first workspace left; none is closed. */
+function removeWorkspace(workspace: Workspace): void {
+    const state = wsState(workspace);
+    if (!state.attached) {
+        return;
+    }
+    const held = holders(workspaceRoot, workspace);
+    state.attached = false;
+    workspaceRoot.list.splice(workspaceRoot.list.indexOf(workspace), 1);
+    for (const view of held) {
+        view.members?.delete(workspace);
+        queueFor(view, "onRemoved", [workspace, view.self]);
+    }
+    const target = (workspaceRoot.list[0] as Workspace | undefined) ?? null;
+    if (activeWorkspace === workspace) {
+        activeWorkspace = null;
+        setActive(target);
+    }
+    for (const client of [...state.clientsState.list] as Client[]) {
+        moveClient(client, target, true);
+    }
+}
+
+/** A config that declared no workspace gets the stock one, so there is always somewhere for a window to go. */
+function ensureDefaultWorkspace(): void {
+    if (workspaceRoot.list.length > 0) {
+        return;
+    }
+    for (const planned of desugarConfig(defaultConfig).workspaces) {
+        addWorkspace(new Workspace({ id: planned.id, layout: planned.layout, gaps: planned.gaps }));
+    }
+}
+
+/** The area windows are laid out in: the size of the primary screen. Null when the tree has no screen yet. */
+function screenArea(): Rect | null {
+    const screens = host.screens();
+    const node = screens.find((id) => host.get(id, "primary") === true) ?? screens[0];
+    if (node === undefined) {
+        return null;
+    }
+    const width = host.get(node, "width");
+    const height = host.get(node, "height");
+    if (typeof width !== "number" || typeof height !== "number" || !(width > 0) || !(height > 0)) {
+        return null;
+    }
+    return { x: 0, y: 0, width, height };
+}
+
+/** Writes the parts of `rect` the client does not have already. */
+function writeBounds(client: Client, rect: Rect): void {
+    for (const key of ["x", "y", "width", "height"] as const) {
+        if (client[key] !== rect[key]) {
+            writeNumber(client, key, rect[key]);
+        }
+    }
+}
+
+/**
+ * The layout driver, run once at the end of each frame after every listener. For each workspace it first
+ * notices what changed: a layout's own enumerable fields (a snapshot diff, because a field is a plain
+ * property the host never sees written), the workspace's gaps, and the area. Then the layout hears of the
+ * windows that came and went, and the shown workspace, when it is dirty, computes once and its placements
+ * are written. A workspace that is not shown stays dirty until it is.
+ */
+function layout(): number {
+    const area = screenArea();
+    let laidOut = 0;
+    for (const workspace of workspaceRoot.list as Workspace[]) {
+        const state = wsState(workspace);
+        guard(`${workspace}.layout`, () => {
+            const fields = layoutFields(state.layout);
+            if (fieldsChanged(state.fields, fields)) {
+                state.dirty = true;
+            }
+            if (state.gaps.inner !== state.gapsSeen[0] || state.gaps.outer !== state.gapsSeen[1]) {
+                state.gapsSeen = [state.gaps.inner, state.gaps.outer];
+                state.dirty = true;
+            }
+            state.fields = fields;
+            if (area === null) {
+                return;
+            }
+            const children = [...state.clientsState.list] as Client[];
+            const context: LayoutContext<Client> = {
+                workspace,
+                children,
+                area: { ...area },
+                gap: { ...state.gaps },
+                focused: children.find((client) => client.focused) ?? null,
+            };
+            const target = state.layout;
+            for (const client of state.departed.splice(0)) {
+                guard(`${workspace}.layout.onClientRemoved`, () => target.onClientRemoved?.(client, context));
+            }
+            for (const client of state.arrived.splice(0)) {
+                if (client.alive && membership.get(client) === workspace) {
+                    guard(`${workspace}.layout.onClientAdded`, () => target.onClientAdded?.(client, context));
+                }
+            }
+            if (activeWorkspace === workspace && (state.dirty || !rectsEqual(state.area, area))) {
+                const before = state.area;
+                state.dirty = false;
+                state.area = { ...area };
+                if (before !== null && !rectsEqual(before, area)) {
+                    guard(`${workspace}.layout.onAreaChanged`, () => target.onAreaChanged?.(before, { ...area }));
+                }
+                guard(`${workspace}.layout.compute`, () => {
+                    const site = `${workspace}.layout.compute`;
+                    for (const [client, bounds] of checkPlacements(target.compute(context), children, site)) {
+                        writeBounds(client, bounds);
+                    }
+                });
+                laidOut += 1;
+            }
+            // What the hooks and compute did to the layout's own fields is not a change for the next frame.
+            state.fields = layoutFields(state.layout);
+        });
+    }
+    return laidOut;
+}
+
+interface WorkspaceSnapshot {
+    active: string | null;
+    workspaces: { id: string; clients: number[] }[];
+}
+
+/** Which window is on which workspace, for the next generation to reconcile against. */
+function snapshotWorkspaces(): WorkspaceSnapshot {
+    return {
+        active: activeWorkspace?.id ?? null,
+        workspaces: (workspaceRoot.list as Workspace[]).map((workspace) => ({
+            id: workspace.id,
+            clients: (wsState(workspace).clientsState.list as Client[]).map((client) => stateOf(client).node),
+        })),
+    };
+}
+
+/**
+ * Puts the windows back on the workspaces of the same id. A window whose workspace this generation does not
+ * declare moves to the first workspace; one that stays is not offered to the layout as an arrival, so a
+ * floating window keeps the place the user gave it.
+ */
+function reconcileWorkspaces(previous: WorkspaceSnapshot): void {
+    for (const entry of previous.workspaces) {
+        const kept = (workspaceRoot.list as Workspace[]).find((workspace) => workspace.id === entry.id) ?? null;
+        const target = kept ?? (workspaceRoot.list[0] as Workspace | undefined) ?? null;
+        for (const node of entry.clients) {
+            const client = clientsByNode.get(node);
+            if (client) {
+                moveClient(client, target, kept === null);
+            }
+        }
+    }
+    const shown = (workspaceRoot.list as Workspace[]).find((workspace) => workspace.id === previous.active);
+    if (shown) {
+        setActive(shown);
+    }
+}
+
 /**
  * Wraps a node the first time it is seen. A node that appears while the shell runs is announced: its
  * collections are told it was added and its listeners that it is ready. A node that was there at boot is
@@ -629,14 +1141,13 @@ function adopt(node: NodeId, announce: boolean): void {
             recompute(clientRoot, client);
             stateOf(client).readied = true;
             emitMember(client, holders(clientRoot, client), "onReady", [client]);
-        }
-    } else if (kind === "workspace" && !workspacesByNode.has(node)) {
-        const workspace = new Workspace(CREATE, node);
-        workspacesByNode.set(node, workspace);
-        workspaceRoot.list.push(workspace);
-        if (announce) {
-            queueFor(workspaceRoot, "onAdded", [workspace, workspaceRoot.self]);
-            recompute(workspaceRoot, workspace);
+            // A window that appears joins the workspace the primary display shows.
+            const target = opened ? initialWorkspace(workspaceRoot.list as Workspace[]) : null;
+            if (target !== null) {
+                moveClient(client, target, true);
+            }
+        } else {
+            preexisting.add(client);
         }
     }
 }
@@ -656,19 +1167,25 @@ function leave(top: CollectionState, member: Member, map: Map<NodeId, Member>, k
 
 function release(node: NodeId): void {
     const client = clientsByNode.get(node);
-    if (client) {
-        const held = leave(clientRoot, client, clientsByNode, CLIENT_KEYS);
-        emitMember(client, held, "onClosed", [client]);
-        for (const state of held) {
-            queueFor(state, "onRemoved", [client, state.self]);
-        }
+    if (!client) {
         return;
     }
-    const workspace = workspacesByNode.get(node);
-    if (workspace) {
-        for (const state of leave(workspaceRoot, workspace, workspacesByNode, WORKSPACE_KEYS)) {
-            queueFor(state, "onRemoved", [workspace, state.self]);
+    const own = wsOf(client);
+    const ownHeld = own ? holders(own.clientsState, client) : [];
+    const held = leave(clientRoot, client, clientsByNode, CLIENT_KEYS);
+    if (own) {
+        membership.delete(client);
+        own.clientsState.list.splice(own.clientsState.list.indexOf(client), 1);
+        own.dirty = true;
+        forgetArrival(own, client);
+        for (const state of ownHeld) {
+            state.members?.delete(client);
         }
+    }
+    const all = [...held, ...ownHeld];
+    emitMember(client, all, "onClosed", [client]);
+    for (const state of all) {
+        queueFor(state, "onRemoved", [client, state.self]);
     }
 }
 
@@ -677,7 +1194,7 @@ function changed(client: Client): void {
     const state = stateOf(client);
     const seen = state.seen as Seen;
     const now = publishedValues(state.node);
-    const held = holders(clientRoot, client);
+    const held = clientHolders(client);
     if (now.title !== seen.title) {
         seen.title = now.title;
         emitMember(client, held, "onTitleChanged", [client, now.title]);
@@ -707,11 +1224,10 @@ function plan(created: NodeId[], touched: NodeId[], destroyed: NodeId[]): number
         if (client) {
             changed(client);
             recompute(clientRoot, client);
-            continue;
-        }
-        const workspace = workspacesByNode.get(node);
-        if (workspace) {
-            recompute(workspaceRoot, workspace);
+            const own = wsOf(client);
+            if (own) {
+                recompute(own.clientsState, client);
+            }
         }
     }
     return queue.length;
@@ -731,11 +1247,14 @@ function next(): number {
 
 /** Queues `onReady` for the clients that were there at boot, parents first, once the config has loaded. */
 function ready(nodes: NodeId[]): number {
+    ensureDefaultWorkspace();
+    opened = true;
+    adoptOrphans();
     for (const node of nodes) {
         const client = clientsByNode.get(node);
         if (client && !stateOf(client).readied) {
             stateOf(client).readied = true;
-            emitMember(client, holders(clientRoot, client), "onReady", [client]);
+            emitMember(client, clientHolders(client), "onReady", [client]);
         }
     }
     return queue.length;
@@ -749,7 +1268,7 @@ function takeErrors(): ErrorReport[] {
 
 class Gnoblin {
     readonly clients = clientRoot.self as Collection<Client>;
-    readonly workspaces = workspaceRoot.self as Collection<Workspace>;
+    readonly workspaces = workspaceRoot.self as WorkspaceCollection;
 
     /**
      * Starts a program. A string is one command line for the host to run; an array is the program and its
@@ -768,13 +1287,38 @@ class Gnoblin {
             throw new GnoblinError("spawn-failed", "gnoblin.spawn", message);
         }
     }
+
+    /** Shows a workspace, given as itself or by id, on the primary display. */
+    show(workspace: Workspace | string): void {
+        showWorkspace(workspace);
+    }
+
+    /**
+     * The hook `defineConfig` calls with the config it was given: the declared workspaces become real
+     * `Workspace` objects in `gnoblin.workspaces`.
+     */
+    __register(config: GnoblinConfig): void {
+        for (const planned of desugarConfig(config).workspaces) {
+            addWorkspace(new Workspace({ id: planned.id, layout: planned.layout, gaps: planned.gaps }));
+        }
+    }
 }
 
 export const gnoblin = new Gnoblin();
 
-for (const node of [...host.windows(), ...host.workspaces()]) {
+for (const node of host.windows()) {
     adopt(node, false);
 }
 
 Object.defineProperty(globalThis, "gnoblin", { value: gnoblin, enumerable: false });
-host.entry = { plan, next, pending, ready, takeErrors };
+host.entry = {
+    plan,
+    next,
+    pending,
+    ready,
+    takeErrors,
+    layout,
+    finishLoad: ensureDefaultWorkspace,
+    snapshot: snapshotWorkspaces,
+    reconcile: reconcileWorkspaces,
+};

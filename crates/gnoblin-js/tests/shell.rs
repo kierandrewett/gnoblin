@@ -412,13 +412,14 @@ fn boot_reads_two_windows_through_gnoblin_clients() {
 }
 
 #[test]
-fn a_workspace_is_a_read_only_collection_member() {
+fn workspaces_are_the_scripts_and_clients_are_the_compositors() {
     let comp = two_windows();
     let mut rig = rig(&comp, "export {};\n");
+    // The tree's own workspace node (2) is not a member: a workspace is a script object, and a config that
+    // declares none gets the stock `desktop` as soon as its entry has loaded.
     assert_eq!(rig.eval("gnoblin.workspaces.length"), "1");
-    assert_eq!(rig.eval("gnoblin.workspaces.at(0).index"), "0");
-    assert_eq!(rig.eval("gnoblin.workspaces.at(0).active"), "true");
-    assert_eq!(rig.eval("typeof gnoblin.workspaces.add"), "undefined");
+    assert_eq!(rig.eval("gnoblin.workspaces.at(0).id"), "desktop");
+    assert_eq!(rig.eval("typeof gnoblin.workspaces.add"), "function");
     assert_eq!(rig.eval("typeof gnoblin.clients.add"), "undefined");
 }
 

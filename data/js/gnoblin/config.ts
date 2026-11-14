@@ -19,12 +19,9 @@
 // nowhere to put a window is unusable, so no workspace means the baseline's single floating `desktop`.
 
 import { checkTrigger } from "gnoblin/bindings";
-import { Layout } from "gnoblin/layout";
-import type { Gaps } from "gnoblin/layout";
-import { FloatingLayout } from "gnoblin/layouts/floating";
-import { GridLayout } from "gnoblin/layouts/grid";
-import { MasterStackLayout } from "gnoblin/layouts/master-stack";
-import { MonocleLayout } from "gnoblin/layouts/monocle";
+import type { Gaps, Layout } from "gnoblin/layout";
+import { checkGaps, rejectUnknown, resolveLayout } from "gnoblin/workspace";
+import type { StockLayoutName } from "gnoblin/workspace";
 
 /** What the host puts at `globalThis.gnoblin`. The library names no member of it beyond `__register`. */
 export interface GnoblinHost {
@@ -78,7 +75,7 @@ export interface OutputConfig {
     scale?: number;
 }
 
-export type StockLayoutName = "floating" | "master-stack" | "grid" | "monocle";
+export type { StockLayoutName };
 
 export interface WorkspaceConfig {
     id: string;
@@ -183,13 +180,6 @@ const TOP_LEVEL_KEYS = ["gaps", "style", "outputs", "workspaces", "keys", "rules
 const LISTENER_EVENTS = ["clientAdded", "clientRemoved", "titleChanged"];
 const RULE_KEYS = ["appId", "title", "workspace", "style"];
 
-const STOCK_LAYOUTS: Readonly<Record<StockLayoutName, () => Layout>> = {
-    floating: () => new FloatingLayout(),
-    "master-stack": () => new MasterStackLayout(),
-    grid: () => new GridLayout(),
-    monocle: () => new MonocleLayout(),
-};
-
 /** The config the shell runs when the user has none: one floating `desktop` workspace and the stock keys. */
 export const defaultConfig: Readonly<GnoblinConfig> = deepFreeze({
     workspaces: [{ id: "desktop", layout: "floating" }],
@@ -237,29 +227,6 @@ export function desugarConfig(config: GnoblinConfig): ConfigPlan {
     };
 }
 
-function rejectUnknown(object: object, known: readonly string[], what: string): void {
-    for (const key of Object.keys(object)) {
-        if (!known.includes(key)) {
-            throw new TypeError(`${what} has no "${key}"; expected one of ${known.join(", ")}`);
-        }
-    }
-}
-
-function checkGaps(gaps: GnoblinConfig["gaps"]): Gaps {
-    if (gaps === undefined) {
-        return { inner: 0, outer: 0 };
-    }
-    rejectUnknown(gaps, ["inner", "outer"], "gaps");
-    const read = (name: "inner" | "outer"): number => {
-        const value = gaps[name] ?? 0;
-        if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-            throw new RangeError(`gaps.${name} must be a finite number of at least 0, got ${String(value)}`);
-        }
-        return value;
-    };
-    return { inner: read("inner"), outer: read("outer") };
-}
-
 function planWorkspaces(declared: GnoblinConfig["workspaces"], gaps: Gaps): PlannedWorkspace[] {
     const list = declared === undefined || declared.length === 0 ? (defaultConfig.workspaces ?? []) : declared;
     const seen = new Set<string>();
@@ -275,21 +242,6 @@ function planWorkspaces(declared: GnoblinConfig["workspaces"], gaps: Gaps): Plan
         seen.add(workspace.id);
         return { id: workspace.id, layout: resolveLayout(workspace.layout, where), gaps };
     });
-}
-
-function resolveLayout(layout: WorkspaceConfig["layout"], where: string): Layout {
-    if (layout === undefined) {
-        return STOCK_LAYOUTS.floating();
-    }
-    if (layout instanceof Layout) {
-        return layout;
-    }
-    if (typeof layout === "string" && Object.hasOwn(STOCK_LAYOUTS, layout)) {
-        return STOCK_LAYOUTS[layout]();
-    }
-    throw new TypeError(
-        `${where}.layout must be a Layout or one of ${Object.keys(STOCK_LAYOUTS).join(", ")}, got ${String(layout)}`,
-    );
 }
 
 function planKeys(keys: Readonly<Record<string, KeyAction>>, workspaces: ReadonlySet<string>): PlannedKey[] {

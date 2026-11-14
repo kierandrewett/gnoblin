@@ -14,7 +14,8 @@
 //! - [`stock_modules`] is the TypeScript stock library (`data/js/gnoblin/`) as embedded `gnoblin` modules.
 //! - [`JsShell`] runs the shell over the compositor's tree: `gnoblin.clients` and the rest of the object
 //!   model in `js/gnoblin.ts` (the `gnoblin/host` module), over the host functions in `bindings`, with the
-//!   frame loop of `ShellVm`.
+//!   frame loop of `ShellVm`. A workspace is a script object: [`JsWorkspaceSnapshot`] carries which window was on
+//!   which one from a shell to the next that reloads.
 
 mod bindings;
 mod error;
@@ -27,6 +28,7 @@ mod stock;
 mod supervisor;
 mod ts;
 mod watch;
+mod workspaces;
 
 pub use bindings::{JsSpawnError, JsSpawnRequest, JsSpawner};
 pub use error::{JsError, JsErrorKind, JsLoadError, JsLocation, JsTsError};
@@ -40,3 +42,4 @@ pub use stock::stock_modules;
 pub use supervisor::{JsClock, JsFault, JsFaultAction, JsHealth, JsStrikePolicy, JsSupervisor, JsSystemClock};
 pub use ts::{JsStripped, strip_types};
 pub use watch::{ConfigWatcher, JsWatchError, ReloadRequest};
+pub use workspaces::{JsWorkspaceEntry, JsWorkspaceSnapshot};

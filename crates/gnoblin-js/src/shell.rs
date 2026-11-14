@@ -39,6 +39,7 @@ use crate::error::{JsError, JsErrorKind};
 use crate::generation::{JsConfig, JsGeneration};
 use crate::stock::stock_modules;
 use crate::ts::strip_types;
+use crate::workspaces::{JsWorkspaceSnapshot, coalesce_sets};
 
 gnoblin_log::logger!(log = "js");
 
@@ -216,9 +217,34 @@ impl JsShell {
             self.count_strike(&error);
             return Err(error.into());
         }
+        // A config that declared no workspace gets the stock one now, so `gnoblin.workspaces` is never empty
+        // for what runs after the entry. The windows that were there at boot join one on the first frame.
+        self.call_entry(self.entry_budget, |entry| {
+            entry.get::<_, Function<'_>>("finishLoad")?.call::<_, ()>(())
+        })?;
         let mut diagnostics = Vec::new();
         self.collect_reports(&mut diagnostics)?;
         Ok(diagnostics)
+    }
+
+    /// Which window is on which workspace and which workspace is shown, to hand to the shell of the next
+    /// generation. Workspaces are script objects, so the compositor cannot say.
+    pub fn workspace_snapshot(&mut self) -> Result<JsWorkspaceSnapshot, JsShellError> {
+        self.call_entry(self.entry_budget, |entry| {
+            let snapshot: Object<'_> = entry.get::<_, Function<'_>>("snapshot")?.call(())?;
+            JsWorkspaceSnapshot::from_js(&snapshot)
+        })
+    }
+
+    /// Puts the windows back where `previous` had them, by workspace id, after the entry has loaded: a window
+    /// stays on the workspace of that id when this generation declares one (and is not placed again), and
+    /// moves to the first workspace when it does not. The shown workspace is kept when it still exists.
+    /// Windows `previous` did not know join a workspace by the initial-workspace rule on the first frame.
+    pub fn reconcile(&mut self, previous: &JsWorkspaceSnapshot) -> Result<(), JsShellError> {
+        self.call_entry(self.entry_budget, |entry| {
+            let previous = previous.to_js(entry.ctx())?;
+            entry.get::<_, Function<'_>>("reconcile")?.call::<_, ()>((previous,))
+        })
     }
 
     /// Evaluates `source` as a script in the generation and returns its value as text, or `None` for
@@ -310,6 +336,7 @@ impl JsShell {
         let outcome = self.dispatch(&created, &touched, &destroyed, started, &mut diagnostics);
         self.state.borrow_mut().graveyard.clear();
         outcome?;
+        self.run_layouts(&mut diagnostics)?;
         self.collect_reports(&mut diagnostics)?;
 
         self.send_transaction()?;
@@ -363,6 +390,24 @@ impl JsShell {
             }
         }
         Ok(())
+    }
+
+    /// Lays out the workspaces that changed this frame (membership, shown workspace, area or a layout's own
+    /// fields), once each, after every listener has run so the layouts see the frame's final state. A layout
+    /// that throws is a diagnostic from the module; one that runs out its budget stops the pass, counts a
+    /// strike, and leaves the workspaces after it for the next frame.
+    fn run_layouts(&mut self, diagnostics: &mut Vec<String>) -> Result<(), JsShellError> {
+        match self.call_entry(self.frame_budget, |entry| {
+            entry.get::<_, Function<'_>>("layout")?.call::<_, usize>(())
+        }) {
+            Ok(_laid_out) => Ok(()),
+            Err(JsShellError::Js(error)) if matches!(error.kind, JsErrorKind::Budget | JsErrorKind::Memory) => {
+                self.count_strike(&error);
+                diagnostics.push(format!("the layout pass was stopped: {error}"));
+                Ok(())
+            }
+            Err(other) => Err(other),
+        }
     }
 
     /// Runs `f` on the module's entry object, under `budget`.
@@ -529,6 +574,8 @@ impl JsShell {
                 ops.append(&mut tx.ops);
                 tx.ops = ops;
             }
+            // One write per property, the last: a handler's write and the layout's are one intent.
+            tx.ops = coalesce_sets(std::mem::take(&mut tx.ops));
             tx
         };
         if !tx.ops.is_empty() {

@@ -91,7 +91,6 @@ fn convert(kind: JsPropKind, value: &JsScriptValue) -> Option<MirrorValue> {
         (JsPropKind::Double, JsScriptValue::Number(n)) if n.is_finite() => Some(MirrorValue::Double(*n)),
         (JsPropKind::Flag, JsScriptValue::Flag(flag)) => Some(MirrorValue::Bool(*flag)),
         (JsPropKind::Text, JsScriptValue::Text(text)) => Some(MirrorValue::Text(text.clone())),
-        (JsPropKind::Uint, JsScriptValue::Number(n)) => node_id(*n).map(MirrorValue::Uint),
         (JsPropKind::Node, JsScriptValue::Number(n)) => node_id(*n).map(MirrorValue::Node),
         _ => None,
     }
@@ -227,9 +226,9 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
 
     let shared = state.clone();
     host.set(
-        "workspaces",
+        "screens",
         Function::new(ctx.clone(), move || -> Vec<f64> {
-            ids_of_class(&shared.borrow(), "Workspace")
+            ids_of_class(&shared.borrow(), "Screen")
         })?,
     )?;
 
@@ -251,7 +250,7 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
 mod tests {
     use gnoblin_tree_client::tree_mirror::{MirrorValue, SnapshotNode, TreeMirror};
 
-    use super::{JsScriptValue, call, node_id, parents_first, read, write};
+    use super::{JsScriptValue, call, ids_of_class, node_id, parents_first, read, write};
     use crate::bindings::{HostState, JsHostValue};
 
     fn node(id: u64, parent: u64, class: &str, props: Vec<(String, MirrorValue)>) -> SnapshotNode {
@@ -333,6 +332,31 @@ mod tests {
             Some("unknown-node")
         );
         assert!(state.tick.ops().is_empty());
+    }
+
+    #[test]
+    fn a_screen_exposes_its_size_and_primary_flag_read_only() {
+        let nodes = [
+            node(1, 0, "node", Vec::new()),
+            node(
+                5,
+                1,
+                "screen",
+                vec![
+                    ("width".into(), MirrorValue::Double(1920.0)),
+                    ("primary".into(), MirrorValue::Bool(true)),
+                ],
+            ),
+        ];
+        let mut state = HostState::new(TreeMirror::from_snapshot(1, 1, 1, &nodes).expect("a mirror"));
+        assert_eq!(ids_of_class(&state, "Screen"), [5.0]);
+        assert_eq!(read(&state, 5, "width", false), Some(JsHostValue::Number(1920.0)));
+        assert_eq!(read(&state, 5, "height", false), Some(JsHostValue::Number(0.0)));
+        assert_eq!(read(&state, 5, "primary", false), Some(JsHostValue::Flag(true)));
+        assert_eq!(
+            write(&mut state, 5, "width", &JsScriptValue::Number(1.0)),
+            Some("read-only")
+        );
     }
 
     #[test]
