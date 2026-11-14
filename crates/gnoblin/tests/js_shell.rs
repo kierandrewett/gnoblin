@@ -35,7 +35,7 @@ use gnoblin_proto::{Envelope, Kind, read_frame, write_frame};
 use gnoblin_types::{DeviceId, OutputId, Point, Version};
 
 mod support;
-use support::{Mapper, Watcher, ids, scene, snapshot, spots};
+use support::{Mapper, Watcher, flag_of, ids, scene, snapshot, spots};
 
 /// How long a test waits for a state before it fails. A passing run never waits this long: it is the margin a busy
 /// machine gets, so a failure is a state that never came and not a slow turn.
@@ -1466,6 +1466,195 @@ fn a_click_focuses_and_raises_a_real_window_so_the_compositor_picks_it_over_the_
     );
     assert_eq!(rect_of(&ipc, over).map(|rect| rect.0), Some(400.0));
     assert_eq!(focused_app(&shell).as_deref(), Some(under));
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    shell.finish();
+}
+
+// ---- a client's requests of its window: fullscreen, minimise, activate -------------------------------------------
+
+/// A config directory whose floating workspace places nothing itself; rules put `first` at (100, 100), `second` at
+/// (400, 300) and `third` at (250, 200), all 200 by 150, so `first` and `third` overlap. A press that lands on a window
+/// moves it one pixel to the right, which is how a test reads which window the compositor picked.
+fn write_requests_config(dir: &Path) {
+    fs::write(
+        dir.join("init.ts"),
+        r#"import { Layout, defineConfig, gnoblin } from "gnoblin";
+
+defineConfig({
+    workspaces: [{ id: "desk", layout: new Layout() }],
+    decorations: false,
+    rules: [
+        { appId: "org.example.first", position: { x: 100, y: 100 }, size: { width: 200, height: 150 } },
+        { appId: "org.example.second", position: { x: 400, y: 300 }, size: { width: 200, height: 150 } },
+        { appId: "org.example.third", position: { x: 250, y: 200 }, size: { width: 200, height: 150 } },
+    ],
+});
+
+gnoblin.clients.addListener({
+    onPointerPress(client: { x: number }): void {
+        client.x = client.x + 1;
+    },
+});
+"#,
+    )
+    .expect("init.ts");
+}
+
+/// A session with the requests config running and a client connected, before any window is mapped.
+fn requests_session() -> (Session, tempfile::TempDir, Shell, Mapper) {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    write_requests_config(config.path());
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    wait_for("the shell runs the config", &session, &mut mapper, &shell, || {
+        shell.generation() > 0 && shell.view().contains(", 1 workspaces")
+    });
+    (session, config, shell, mapper)
+}
+
+/// Round trips with the compositor until `check` holds of what the client has been told.
+fn wait_client(what: &str, mapper: &mut Mapper, mut check: impl FnMut(&Mapper) -> bool) {
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        mapper.roundtrip();
+        if check(mapper) {
+            return;
+        }
+        assert!(Instant::now() < deadline, "the client was never told: {what}");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn a_client_fullscreen_request_is_granted_over_the_whole_output_and_unsetting_it_returns_the_window() {
+    let (session, _config, shell, mut mapper) = requests_session();
+    let ipc = session.ipc();
+    let first = "org.example.first";
+    mapper.map_window(first, "First");
+    wait_for("the window at its place", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, first) == Some((100.0, 100.0, 200.0, 150.0))
+    });
+    let (width, height) = screen_size(&ipc);
+
+    // `xdg_toplevel.set_fullscreen`: the compositor asks the shell, and the shell's answer is the whole output, not
+    // the area the bars leave.
+    mapper.fullscreen(0);
+    wait_for("the compositor holds the output", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, first) == Some((0.0, 0.0, width, height)) && flag_of(&ipc, first, "fullscreen")
+    });
+    wait_client("the fullscreen configure", &mut mapper, |client| {
+        client.states(0).contains(&support::STATE_FULLSCREEN)
+            && client.configured(0) == Some((width as i32, height as i32))
+    });
+
+    // `unset_fullscreen`: the window returns to the rectangle it had, and the client is told.
+    mapper.unfullscreen(0);
+    wait_for("the window is back", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, first) == Some((100.0, 100.0, 200.0, 150.0)) && !flag_of(&ipc, first, "fullscreen")
+    });
+    wait_client("the configure that leaves fullscreen", &mut mapper, |client| {
+        !client.states(0).contains(&support::STATE_FULLSCREEN)
+    });
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    shell.finish();
+}
+
+#[test]
+fn a_client_minimise_request_is_granted_and_focus_goes_to_the_next_window() {
+    let (session, _config, shell, mut mapper) = requests_session();
+    let ipc = session.ipc();
+    let (first, second) = ("org.example.first", "org.example.second");
+    mapper.map_window(first, "First");
+    mapper.map_window(second, "Second");
+    wait_for("both windows at their places", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, first) == Some((100.0, 100.0, 200.0, 150.0))
+            && rect_of(&ipc, second) == Some((400.0, 300.0, 200.0, 150.0))
+    });
+    wait_for("the new window takes the focus", &session, &mut mapper, &shell, || {
+        focused_app(&shell).as_deref() == Some(second)
+    });
+
+    // `xdg_toplevel.set_minimized` on the window that has the focus.
+    mapper.minimize(1);
+    wait_for("the window is minimised", &session, &mut mapper, &shell, || {
+        flag_of(&ipc, second, "minimised")
+    });
+    wait_for(
+        "the focus goes to the window that stays",
+        &session,
+        &mut mapper,
+        &shell,
+        || focused_app(&shell).as_deref() == Some(first),
+    );
+    assert!(!flag_of(&ipc, first, "minimised"));
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    shell.finish();
+}
+
+#[test]
+fn a_client_activate_request_raises_and_focuses_its_window() {
+    let (session, _config, shell, mut mapper) = requests_session();
+    let ipc = session.ipc();
+    mapper.listen_pointer();
+    let (first, third) = ("org.example.first", "org.example.third");
+    mapper.map_window(first, "First");
+    wait_for("the first window at its place", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, first) == Some((100.0, 100.0, 200.0, 150.0))
+    });
+
+    // A click on the first window earns it the serial an activation token needs. The claims and the pointer need a
+    // moment to settle, so the click is repeated until the window has heard it.
+    let deadline = Instant::now() + PATIENCE;
+    while mapper.press_serial().is_none() || rect_of(&ipc, first).map(|rect| rect.0) != Some(101.0) {
+        click(&session, (120, 110));
+        let attempt = Instant::now() + Duration::from_millis(1000);
+        while Instant::now() < attempt
+            && (mapper.press_serial().is_none() || rect_of(&ipc, first).map(|rect| rect.0) != Some(101.0))
+        {
+            mapper.roundtrip();
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the click never reached the window: {:?}",
+            scene(&ipc)
+        );
+    }
+    let serial = mapper.press_serial().expect("the click was sent to the client");
+
+    // A third window appears over it and takes the focus.
+    mapper.map_window(third, "Third");
+    wait_for(
+        "the third window takes the focus",
+        &session,
+        &mut mapper,
+        &shell,
+        || rect_of(&ipc, third) == Some((250.0, 200.0, 200.0, 150.0)) && focused_app(&shell).as_deref() == Some(third),
+    );
+
+    // The first window redeems its token: the compositor asks the shell, which focuses and raises it.
+    mapper.activate(0, serial);
+    wait_for(
+        "the activated window has the focus",
+        &session,
+        &mut mapper,
+        &shell,
+        || focused_app(&shell).as_deref() == Some(first),
+    );
+    // Where both show, the compositor gives a press to the window it draws on top: it is `first` only if the raise
+    // reached the compositor's stacking.
+    click(&session, (280, 230));
+    wait_for("a press lands on one of the two", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, first).map(|rect| rect.0) == Some(102.0) || rect_of(&ipc, third).map(|rect| rect.0) == Some(251.0)
+    });
+    assert_eq!(
+        rect_of(&ipc, first).map(|rect| rect.0),
+        Some(102.0),
+        "the activated window is the one the compositor picked: {:?}",
+        scene(&ipc)
+    );
+    assert_eq!(rect_of(&ipc, third).map(|rect| rect.0), Some(250.0));
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
     shell.finish();
 }

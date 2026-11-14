@@ -56,7 +56,7 @@ rustix = { workspace = true, features = ["process"] }
 # allowed. It maps real windows with a Wayland client, reads the scene back as a tree observer, and reads what
 # the shell logged.
 wayland-client = "0.31.14"
-wayland-protocols = { version = "0.32.13", features = ["client"] }
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
 gnoblin-client = { path = "../gnoblin-client" }
 gnoblin-proto = { path = "../gnoblin-proto" }
 gnoblin-log = { path = "../gnoblin-log", features = ["capture"] }

@@ -17,9 +17,12 @@ use gnoblin_client::unix::UnixTransport;
 use gnoblin_proto::tree::snapshot_node;
 use gnoblin_proto::tree::tree::{AttachArgs, AttachedPayload, ChangesPayload, SnapshotPayload};
 use gnoblin_proto::{Envelope, Kind, Version, read_frame, write_frame};
-use wayland_client::globals::{GlobalListContents, registry_queue_init};
-use wayland_client::protocol::{wl_buffer, wl_compositor, wl_registry, wl_shm, wl_shm_pool, wl_surface};
-use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle};
+use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
+use wayland_client::protocol::{
+    wl_buffer, wl_compositor, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+};
+use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
+use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xdg_activation_v1};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
 // ---- the scene, read as an observer ------------------------------------------------------------------------------
@@ -252,6 +255,15 @@ pub fn scene(ipc: &Path) -> Vec<Window> {
         .collect()
 }
 
+/// Whether the compositor's tree holds `key` true on the window of `app_id`. A value at its default is not carried in a
+/// snapshot, so it reads as false.
+pub fn flag_of(ipc: &Path, app_id: &str, key: &str) -> bool {
+    snapshot(ipc)
+        .iter()
+        .filter(|node| node.class == "window" && node.app_id == app_id)
+        .any(|node| node.props.iter().any(|prop| prop.key == key && prop.value_bool))
+}
+
 /// The spots of the windows by app id.
 pub fn spots(windows: &[Window]) -> BTreeMap<String, (f64, f64)> {
     windows
@@ -270,8 +282,21 @@ pub fn ids(windows: &[Window]) -> BTreeMap<String, u64> {
 
 // ---- real Wayland windows ----------------------------------------------------------------------------------------
 
+/// The `xdg_toplevel` state a configure carries when the window is fullscreen.
+pub const STATE_FULLSCREEN: u32 = 2;
+
+/// What the client has heard from the compositor.
 #[derive(Default)]
-pub struct App;
+pub struct App {
+    /// The serial of the last pointer button press the client was sent, which is what earns an activation token.
+    serial: u32,
+    /// The seat's pointer, once the client asked for it.
+    pointer: Option<wl_pointer::WlPointer>,
+    /// The token an activation token object delivered.
+    token: Option<String>,
+    /// The size and the states of each toplevel's last configure, by the toplevel's protocol id.
+    configures: BTreeMap<u32, (i32, i32, Vec<u32>)>,
+}
 
 /// A Wayland client that maps toplevels with a buffer, as an application does.
 pub struct Mapper {
@@ -282,6 +307,8 @@ pub struct Mapper {
     compositor: wl_compositor::WlCompositor,
     shm: wl_shm::WlShm,
     wm_base: xdg_wm_base::XdgWmBase,
+    globals: GlobalList,
+    seat: Option<wl_seat::WlSeat>,
     /// The protocol objects of every window mapped, kept so they stay mapped.
     windows: Vec<(
         wl_surface::WlSurface,
@@ -306,11 +333,13 @@ impl Mapper {
         Self {
             _connection: connection,
             queue,
-            app: App,
+            app: App::default(),
             qh,
             compositor,
             shm,
             wm_base,
+            globals,
+            seat: None,
             windows: Vec::new(),
         }
     }
@@ -343,6 +372,84 @@ impl Mapper {
         self.roundtrip();
         self.windows.push((surface, xdg, toplevel));
     }
+
+    /// Asks the compositor to make window number `window` (in the order they were mapped) fullscreen.
+    pub fn fullscreen(&mut self, window: usize) {
+        self.windows[window].2.set_fullscreen(None);
+        self.roundtrip();
+    }
+
+    /// Asks the compositor to take window number `window` out of fullscreen.
+    pub fn unfullscreen(&mut self, window: usize) {
+        self.windows[window].2.unset_fullscreen();
+        self.roundtrip();
+    }
+
+    /// Asks the compositor to minimise window number `window`.
+    pub fn minimize(&mut self, window: usize) {
+        self.windows[window].2.set_minimized();
+        self.roundtrip();
+    }
+
+    /// The states of window number `window`'s last configure (`STATE_FULLSCREEN` is one), or none before the first.
+    pub fn states(&self, window: usize) -> Vec<u32> {
+        let id = self.windows[window].2.id().protocol_id();
+        self.app
+            .configures
+            .get(&id)
+            .map_or_else(Vec::new, |(_, _, states)| states.clone())
+    }
+
+    /// The size of window number `window`'s last configure.
+    pub fn configured(&self, window: usize) -> Option<(i32, i32)> {
+        let id = self.windows[window].2.id().protocol_id();
+        self.app.configures.get(&id).map(|(width, height, _)| (*width, *height))
+    }
+
+    /// Binds the seat's pointer, so the client is told the serial of a button press. A press the compositor sends
+    /// this client afterwards is what `press_serial` reports.
+    pub fn listen_pointer(&mut self) {
+        let seat: wl_seat::WlSeat = self
+            .globals
+            .bind(&self.qh, 1..=5, ())
+            .expect("the session advertises wl_seat");
+        self.seat = Some(seat);
+        self.roundtrip();
+        self.roundtrip();
+    }
+
+    /// The serial of the last button press the compositor sent this client, if it has sent one.
+    pub fn press_serial(&self) -> Option<u32> {
+        (self.app.serial != 0).then_some(self.app.serial)
+    }
+
+    /// Asks for an activation token with `serial` (a button press the client was sent) and redeems it for window
+    /// number `window`: the request a client makes to be brought forward. The compositor decides whether to allow it.
+    pub fn activate(&mut self, window: usize, serial: u32) {
+        let seat = self.seat.clone().expect("listen_pointer ran first");
+        let activation: xdg_activation_v1::XdgActivationV1 = self
+            .globals
+            .bind(&self.qh, 1..=1, ())
+            .expect("the session advertises xdg_activation_v1");
+        self.app.token = None;
+        let token = activation.get_activation_token(&self.qh, ());
+        token.set_serial(serial, &seat);
+        token.commit();
+        for _ in 0..40 {
+            self.roundtrip();
+            if self.app.token.is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let token = self
+            .app
+            .token
+            .clone()
+            .expect("the compositor minted a token for the click");
+        activation.activate(token, &self.windows[window].0);
+        self.roundtrip();
+    }
 }
 
 macro_rules! ignore_events {
@@ -359,8 +466,83 @@ ignore_events!(
     wl_shm::WlShm,
     wl_shm_pool::WlShmPool,
     wl_buffer::WlBuffer,
-    xdg_toplevel::XdgToplevel,
+    xdg_activation_v1::XdgActivationV1,
 );
+
+impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
+    fn event(
+        app: &mut Self,
+        toplevel: &xdg_toplevel::XdgToplevel,
+        event: xdg_toplevel::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let xdg_toplevel::Event::Configure { width, height, states } = event {
+            let states = states
+                .chunks_exact(4)
+                .map(|state| u32::from_ne_bytes([state[0], state[1], state[2], state[3]]))
+                .collect();
+            app.configures
+                .insert(toplevel.id().protocol_id(), (width, height, states));
+        }
+    }
+}
+
+impl Dispatch<wl_seat::WlSeat, ()> for App {
+    fn event(
+        app: &mut Self,
+        seat: &wl_seat::WlSeat,
+        event: wl_seat::Event,
+        _: &(),
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
+        if let wl_seat::Event::Capabilities {
+            capabilities: WEnum::Value(capabilities),
+        } = event
+            && capabilities.contains(wl_seat::Capability::Pointer)
+            && app.pointer.is_none()
+        {
+            app.pointer = Some(seat.get_pointer(qh, ()));
+        }
+    }
+}
+
+impl Dispatch<wl_pointer::WlPointer, ()> for App {
+    fn event(
+        app: &mut Self,
+        _: &wl_pointer::WlPointer,
+        event: wl_pointer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_pointer::Event::Button {
+            serial,
+            state: WEnum::Value(wl_pointer::ButtonState::Pressed),
+            ..
+        } = event
+        {
+            app.serial = serial;
+        }
+    }
+}
+
+impl Dispatch<xdg_activation_token_v1::XdgActivationTokenV1, ()> for App {
+    fn event(
+        app: &mut Self,
+        _: &xdg_activation_token_v1::XdgActivationTokenV1,
+        event: xdg_activation_token_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let xdg_activation_token_v1::Event::Done { token } = event {
+            app.token = Some(token);
+        }
+    }
+}
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
     fn event(
