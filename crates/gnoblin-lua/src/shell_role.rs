@@ -143,14 +143,14 @@ pub type JsShellLauncher<'a> =
     &'a dyn Fn(&dyn Fn(&str) -> Option<String>, Option<&Path>) -> Result<Box<dyn ShellFrame>, String>;
 
 /// The shell that runs in a slot.
-enum Running {
+enum SlotShell {
     Lua(Box<ShellRole>),
     Js(Box<dyn ShellFrame>),
 }
 
 /// The shell VM's slot in the runtime role: empty when the VM is off or ended.
 pub struct ShellSlot {
-    role: Option<Running>,
+    role: Option<SlotShell>,
 }
 
 impl ShellSlot {
@@ -180,7 +180,7 @@ impl ShellSlot {
 
     pub fn running(role: ShellRole) -> Self {
         Self {
-            role: Some(Running::Lua(Box::new(role))),
+            role: Some(SlotShell::Lua(Box::new(role))),
         }
     }
 
@@ -206,7 +206,7 @@ impl ShellSlot {
         };
         match launch(env, stock.as_deref()) {
             Ok(frame) => Self {
-                role: Some(Running::Js(frame)),
+                role: Some(SlotShell::Js(frame)),
             },
             Err(error) => {
                 crate::log::warn!(area = "shell-vm", "the JavaScript shell did not start: {error}");
@@ -226,8 +226,8 @@ impl ShellSlot {
             return Ok(());
         };
         let result = match role {
-            Running::Lua(role) => role.tick(now),
-            Running::Js(frame) => frame.tick(now).map_err(ShellVmError::Core),
+            SlotShell::Lua(role) => role.tick(now),
+            SlotShell::Js(frame) => frame.tick(now).map_err(ShellVmError::Core),
         };
         if result.is_err() {
             self.role = None;
