@@ -88,14 +88,14 @@ pub fn run_console(
         Ok(path) => path,
         Err(reason) => return fail(err, &theme, "cannot find the console socket", Some(reason)),
     };
-    let mut session = match Session::connect(&path) {
+    let mut session = match ConsoleLink::connect(&path) {
         Ok(session) => session,
         Err(error) => {
             let why = format!("cannot connect to {}: {error}", path.display());
             return fail(err, &theme, "no JavaScript shell is running", Some(why));
         }
     };
-    let screen = Screen {
+    let screen = ConsoleScreen {
         theme: &theme,
         json: options.json,
     };
@@ -120,19 +120,19 @@ fn fail(err: &mut dyn Write, theme: &OutputTheme, summary: &str, why: Option<Str
 }
 
 /// The error theme and the output mode a reply is printed with.
-struct Screen<'a> {
+struct ConsoleScreen<'a> {
     theme: &'a OutputTheme,
     json: bool,
 }
 
 /// One connection to the console socket.
-struct Session {
+struct ConsoleLink {
     writer: UnixStream,
     reader: BufReader<UnixStream>,
     next_id: u64,
 }
 
-impl Session {
+impl ConsoleLink {
     fn connect(path: &Path) -> io::Result<Self> {
         let writer = UnixStream::connect(path)?;
         writer.set_read_timeout(Some(REPLY_WAIT))?;
@@ -219,7 +219,13 @@ fn warn_truncated(reply: &Json, theme: &OutputTheme, err: &mut dyn Write) {
 }
 
 /// `--eval`: one expression, its value as JSON.
-fn one_shot(session: &mut Session, expr: &str, screen: &Screen<'_>, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+fn one_shot(
+    session: &mut ConsoleLink,
+    expr: &str,
+    screen: &ConsoleScreen<'_>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> u8 {
     let reply = match session.ask(expr) {
         Ok(reply) => reply,
         Err(reason) => return fail(err, screen.theme, "the console conversation broke", Some(reason)),
@@ -254,9 +260,9 @@ fn is_incomplete(reply: &Json) -> bool {
 
 /// The prompt: lines in, results out, until `.exit` or end of input.
 fn prompt(
-    session: &mut Session,
+    session: &mut ConsoleLink,
     options: &ConsoleOptions<'_>,
-    screen: &Screen<'_>,
+    screen: &ConsoleScreen<'_>,
     input: &mut dyn BufRead,
     out: &mut dyn Write,
     err: &mut dyn Write,

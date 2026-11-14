@@ -145,7 +145,7 @@ fn stream_allowed(stream: &UnixStream) -> bool {
 }
 
 /// One client of the console.
-struct Connection {
+struct JsConsoleConnection {
     stream: UnixStream,
     /// Bytes read and not yet a whole line.
     input: Vec<u8>,
@@ -155,7 +155,7 @@ struct Connection {
     closing: bool,
 }
 
-impl Connection {
+impl JsConsoleConnection {
     /// Reads what the peer has sent, up to the request limit.
     fn fill(&mut self) {
         let mut chunk = [0u8; 8192];
@@ -221,7 +221,7 @@ impl Connection {
 pub struct JsConsole {
     listener: UnixListener,
     path: PathBuf,
-    connections: Vec<Connection>,
+    connections: Vec<JsConsoleConnection>,
     max_bytes: usize,
 }
 
@@ -328,7 +328,7 @@ impl JsConsole {
                     if stream.set_nonblocking(true).is_err() {
                         continue;
                     }
-                    self.connections.push(Connection {
+                    self.connections.push(JsConsoleConnection {
                         stream,
                         input: Vec::new(),
                         output: Vec::new(),
