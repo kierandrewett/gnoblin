@@ -477,17 +477,16 @@ children, area, gap, focused })` once and writes the placements that differ from
 turn of its loop. It is tested against a real compositor session in `crates/gnoblin/tests/js_shell.rs`; a fake
 compositor stands in only for the unit tests of `swap_generation` (`crates/gnoblin-js/tests/shell.rs`).
 
-- **Selection.** `GNOBLIN_SHELL_VM=js` runs the JavaScript shell and `GNOBLIN_SHELL_VM=js:<dir>` reads the stock
-  `gnoblin` modules from `<dir>` (the layout of `data/js/gnoblin`; a file that is not there is the compiled-in one).
-  Unset, `0` or a directory are what they were: the Lua shell VM. The Lua host still loads `init.lua` and commits the
-  configuration, so only the shell changes. The user's entry is `init.ts` in `$XDG_CONFIG_HOME/gnoblin` (else
-  `$HOME/.config/gnoblin`), falling back to `init.js`. With neither file the shell runs the stock default config
+- **Selection.** Superseded by "JS-owned runtime role": `GNOBLIN_SHELL_VM` unset or `js` runs the JavaScript role,
+  `js:<dir>` reads the stock `gnoblin` modules from `<dir>` (the layout of `data/js/gnoblin`; a file that is not there
+  is the compiled-in one), and `lua` runs the Lua role. The user's entry is the first of `init.ts`, `init.js` in
+  `$XDG_CONFIG_HOME/gnoblin` (else `$HOME/.config/gnoblin`). With neither file the shell runs the stock default config
   (below) and loads `init.ts` when it appears.
-- **Wiring without a cycle.** `gnoblin-js` and `gnoblin-lua` are siblings and neither names the other. `gnoblin-lua`
-  holds a `ShellFrame` trait (`tick(now)`, `reload()`), `ShellSlot::from_env_or_js` and `RoleRunner::run_with_js`; the `gnoblin`
-  binary, which already names both ends, wraps a `JsRole` in a `ShellFrame` and passes the launcher. A build that
-  passes none refuses `js` with one warning and serves without a shell. `xtask deps` lists `gnoblin-js` among the
-  binary's role entry crates for this.
+- **Wiring without a cycle.** `gnoblin-js` and `gnoblin-lua` are siblings and neither names the other. The `gnoblin`
+  binary, which already names both ends, asks `gnoblin_js::choose_runtime_from_environment` which role to run and
+  calls `JsRoleRunner::run` or `RoleRunner::run`. `xtask deps` lists `gnoblin-js` among the binary's role entry crates
+  for this. (Until the JS-owned role the Lua host ran the JavaScript shell through a `ShellFrame` trait; that trait,
+  `ShellSlot::from_env_or_js` and `RoleRunner::run_with_js` are gone.)
 - **The loop.** `JsRole::connect` reads the socket by the `GNOBLIN_IPC_SOCKET` rule, handshakes as a client at this
   build's version, and hands the handshaken socket to a `SocketTreeLink`. Each `tick` acts on a reload request, runs
   `JsShell::frame`, and then acts on strikes. A link failure ends the shell: `tick` returns it, the slot empties and the
@@ -527,17 +526,13 @@ compositor stands in only for the unit tests of `swap_generation` (`crates/gnobl
   given; `decorations` is not layered (a config that does not ask for titlebars has none, as `desugarConfig` says). An `init.ts` that never calls `defineConfig` is a program: it runs as written and gets no stock keys, only
   the stock workspace when it declared none (`finishLoad`). `on` and `setup` are applied and the config document
   sections reach the compositor (see "P6 config document and slots status"); `style`, `outputs` and `rules` are not.
-- **Reload request path (`gnoblinctl config reload`).** The JS shell lives in the runtime role's process, beside the
-  Lua host that already answers `config.reload`: the compositor raises `session.reload_requested`, and the role's
-  loop reloads the document. No new verb or schema member was added; `ShellFrame::reload` (default `Ok`) and
-  `ShellSlot::reload` let `RoleRunner` ask the shell first, and the `gnoblin` binary's `JsShellFrame` calls
-  `JsRole::reload_now`. A shell that fails refuses the whole request (`config-rejected`, exit 1) with the report
-  `file:line:column: message` before the document is touched, and keeps its generation; a document refused after the
-  shell reloaded leaves the new shell generation running, because the swap cannot be taken back. With no entry file
-  `reload_now` is a successful no-op. `GNOBLIN_JS_WATCH=0` (`JsRoleConfig::watch`) turns the watcher off.
+- **Reload request path (`gnoblinctl config reload`).** Superseded by "JS-owned runtime role": the JavaScript role
+  itself watches `session.reload_requested`, reloads the config, and answers the request with a `config.commit` or a
+  `config.reject`. `GNOBLIN_JS_WATCH=0` (`JsRoleConfig::watch`) turns the watcher off. With no entry file `reload_now` is
+  a successful no-op, which the role answers as a refusal because nothing was committed.
 - **Proven against the real compositor** (`crates/gnoblin/tests/js_shell.rs`, in-process shell over a real
-  headless compositor; `crates/gnoblin/tests/js_guardian.rs`, the shipped binary under its guardian with
-  `GNOBLIN_SHELL_VM=js`; slice criteria 1, 3, 4, 5 and 6): `init.ts` with annotations and an enum importing
+  headless compositor; `crates/gnoblin/tests/js_guardian.rs`, the shipped binary under its guardian; slice criteria 1,
+  3, 4, 5 and 6): `init.ts` with annotations and an enum importing
   `./slots.ts` places two mapped windows; a rewrite reloads with the same window ids and new places; a syntax error
   leaves the old behaviour in force (a window mapped afterwards is placed by it) and is logged once as
   `init.ts:3:<col>`; fixing the file recovers; a `while (true)` in `onAdded` is interrupted and the generation
@@ -572,6 +567,82 @@ compositor stands in only for the unit tests of `swap_generation` (`crates/gnobl
   document and slots status"; `style` is in "P8a style status"; `outputs` is still not applied. `rules` are in
   "Focus, rules and snapping status". Removing `init.ts` under a running
   shell keeps its generation until the session restarts.
+
+## JS-owned runtime role
+
+Lane JsOwnConfig, cutover steps 5 and 6 of `design/js-parity.md`. Before it the JavaScript shell ran inside the Lua host:
+the Lua host located `init.lua`, validated and committed the whole document, answered `config.reload`, sent the
+guardian's `autostart` list and read the keyring first-boot input, and the JavaScript shell laid its settings over what
+the Lua host committed. Now the JavaScript role does all of it and starts no Lua. Code: `crates/gnoblin-js/src/runner.rs`
+(`JsRoleRunner`, `choose_runtime`), `crates/gnoblin-js/src/document.rs` (`evaluate_document`),
+`crates/gnoblin-config/src/locate.rs`, `crates/gnoblin/src/main.rs`.
+
+- **Selection (`GNOBLIN_SHELL_VM`).** `choose_runtime` is a pure function of the environment and the search path. Unset or
+  empty: the JavaScript role, unless the located config is an `init.lua` (that is, there is no `init.ts` and no
+  `init.js`), in which case the Lua role runs for this release and the binary logs one warning that names
+  `docs/migrating-from-lua.md`. `js` and `js:<dir>`: the JavaScript role, always (with only an `init.lua` it runs the stock
+  config and logs that the Lua file is not read). `lua`, `0` and any other value (a Lua shell directory): the Lua role, as
+  before, with no warning because the user asked. The decision not to switch a Lua user silently is the owner's: no
+  silent loss of their config. The variable is documented in `docs/typescript-shell.md`, and the Lua role is removed
+  with step 8.
+- **Locating the config.** `gnoblin_config::locate` takes the directory `GNOBLIN_CONFIG`, `$XDG_CONFIG_HOME/gnoblin` or
+  `$HOME/.config/gnoblin` names and returns the first of `init.ts`, `init.js`, `init.lua` that is a file, with the others
+  that exist in `ConfigPath::ignored()` (the JavaScript role warns that they are not read). With none it names
+  `init.ts`. `GNOBLIN_CONFIG` names one file and its extension is its language. Every compositor-side reader of the
+  last-good store uses the same function, so the store key and the file agree. `locate_lua` is the Lua host's: `init.lua`
+  alone. There is no search of system directories: there is none today.
+- **What the role does** (`JsRoleRunner::run`). It adopts the privileged connection the guardian passes, subscribes to the
+  object graph (the `session` object's `reload_requested` is the signal it watches), builds a `JsRoleConfig` with
+  `owns_document` set and a `JsCommitLog`, and boots `JsRole::connect`. The shell commits during that boot; the role then
+  reports to the guardian, in the Lua role's order: one `autostart` line per enabled entry of the document, then
+  `config-accepted REVISION`, then `ready` with `GNOBLIN_CONFIG_REVISION`. It then serves one frame per turn
+  (`FRAME_WAIT`, 16 ms, is how long a turn waits on the compositor), reloads on `reload_requested`, and reports every
+  commit the watcher's reload made.
+- **The shell owns the document** (`JsShell::own_document`, `ConfigState::owns_document`). Each commit is the generation's
+  document patch laid over an empty document: nothing the compositor held before is read, so a key deleted from `init.ts`
+  is gone after a reload and after a runtime restart. Every load commits, even when the result equals the document in
+  force, because the compositor holds a `config.reload` caller until a commit or a reject answers it. `autostart`
+  commands become the document's `autostart` section, named by the program's file name (`foot`, then `foot-2`) so the
+  same list gives the same names, and the shell starts none itself: the guardian starts them and matches a running one by
+  name and command (so a reload, or a restart of the runtime role, starts no second copy), stops one a reload no longer
+  lists, and does not restart one that exits (`ChildSpec::autostart`). The keyring conflict rule (`enabled_autostart`, moved to `gnoblin-config`) runs at `defineConfig`
+  time (`host.config.check` takes the autostart list too), so a refused autostart fails the stage and the old generation
+  keeps running, which is stronger than the Lua host's refusal after the evaluation.
+- **Reload.** A request evaluates the entry in a staged generation and swaps it in when it evaluated cleanly (the machinery
+  of "Hot reload"). If the stage failed, or it evaluated and nothing was committed (the compositor refused the commit, or
+  the file is gone), the role calls `config.reject` with the reason, which `gnoblinctl config reload` prints with the
+  file, line and column, and exit 1. The accepted document and the running generation stay. A document refused by the
+  compositor after the stage leaves the new generation running, as it did before. A shell link failure ends the role
+  non-zero and the guardian starts it again.
+- **Keyring first boot** (`crates/gnoblin-services/src/keyring.rs`, `decide`). Order: a configuration the compositor
+  already accepted; the user's `init.ts` or `init.js` evaluated by `gnoblin_js::evaluate_document`; an accepted
+  configuration waited for (20 s); the last accepted file; the schema default. `evaluate_document` evaluates the entry in
+  a throwaway generation with no tree and no host objects (the probe module `gnoblin-document-probe` stands in for the
+  host's `__register`), a 1 s budget and 32 MiB, merges what `defineConfig` was given over the stock config and
+  desugars it as the shell does, and returns the document. A config that needs the compositor while it loads cannot
+  be read that way; the error is kept as the reason and the wait goes on. `gnoblin-services` therefore depends on
+  `gnoblin-js` (`xtask deps` accepts the edge: both are role entry crates and neither names an engine).
+- **`gnoblinctl config validate FILE`** routes `.ts`, `.mts`, `.js` and `.mjs` to the same in-process check as
+  `gnoblinctl check`.
+- **Proven against the real compositor.** `crates/gnoblin/tests/js_runtime_role.rs` runs the shipped `JsRoleRunner`
+  in a thread over a headless compositor: commit, then `config-accepted`, then `ready`; autostart lines before the
+  revision; a config the validator refuses runs the stock config and still commits; the twins of the Lua role's
+  `runtime_reload.rs` (a script's `reloadConfig()` commits what the file says now, a broken file keeps the accepted
+  document and the role, an autostart the check refuses keeps the old handlers); `config.reload` answers with the
+  revision and a removed file is refused with why; the role ends cleanly when the compositor goes; and the shipped
+  starter loads (the twin of `starter_config.rs`). `crates/gnoblin/tests/js_guardian.rs` runs the binary under its
+  guardian with `GNOBLIN_SHELL_VM` unset and no Lua anywhere: `init.ts` committed as revision 1, `config reload`, the
+  watcher, a killed runtime committing what the file says and not what it left behind, `autostart` started by the
+  guardian, the Lua fallback with one warning, an `init.ts` beside
+  an `init.lua`, and `GNOBLIN_SHELL_VM=lua` and `js` with only an `init.lua`. `crates/gnoblin/tests/guardian.rs` is
+  unchanged and now runs the JavaScript role (no `GNOBLIN_SHELL_VM`): the killed runtime restarts and commits revision 2.
+- **Faked.** Nothing in those tests. The unit tests of `ConfigState` use a fake document link (no compositor), and
+  `choose_runtime` is tested as a pure function.
+- **Not done.** The shared-document mode of `ConfigState` (the shell lays its settings over a document another host
+  committed, `owns_document = false`, `JsRole::config_committed`) has no product caller any more; the shell tests still
+  run in it (about fifty tests in `crates/gnoblin-js/tests` and `js_shell.rs`), so it goes when they move to the owned
+  mode. `scripts/xr-smoke.sh` still selects the Lua stock directory (a Lua shell directory still selects the Lua role).
+  The first-boot Secret portal still reads the last accepted file (`design/e2e-keyring.md`).
 
 ## P6 config document and slots status
 

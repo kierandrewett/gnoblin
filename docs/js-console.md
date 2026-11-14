@@ -17,8 +17,8 @@ gnoblin> gnoblin.workspaces.map((ws) => [ws.id, ws.clients.length])
 [ [ "1", 2 ], [ "2", 0 ], [ "3", 0 ], [ "4", 0 ] ]
 ```
 
-It needs a session that runs the JavaScript shell (`GNOBLIN_SHELL_VM=js`). Without one, `gnoblinctl console` exits 1
-and says so.
+It needs a session that runs the JavaScript shell, which is the default (see
+[Which shell runs](typescript-shell.md#which-shell-runs)). Without one, `gnoblinctl console` exits 1 and says so.
 
 ## The prompt
 

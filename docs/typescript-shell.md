@@ -3,11 +3,8 @@
 Configure the shell with one TypeScript file, `init.ts`. You install nothing and run no build step: the shell reads the
 file as it is, and reloads it when you save.
 
-Select the TypeScript shell with an environment variable. Unset, the session runs the Lua shell.
-
-```sh
-GNOBLIN_SHELL_VM=js gnoblin
-```
+The session runs this shell. Nothing selects it: `gnoblin` starts it unless you ask for the Lua shell or you still have
+only an `init.lua` (see [Which shell runs](#which-shell-runs)).
 
 ## Write your first config
 
@@ -30,7 +27,7 @@ Next:
 ```
 
 `config init` never replaces a config. If `init.ts` or `init.js` is already there it stops and says so. Add `--force`
-to write the starter over it.
+to write the starter over it. An `init.lua` does not stop it: the new `init.ts` takes precedence over it.
 
 Open the file. As written it is the config the shell runs when there is no `init.ts` at all, so nothing changes until you
 edit it. The lines that start with `// ` are examples. Remove the `// ` to switch one on:
@@ -51,13 +48,69 @@ keys: {
 Save the file. The shell reloads it after a short pause, and the windows you have open stay where they are. Press
 `Super+2` and you are on the new workspace.
 
+## Where the config lives
+
+The shell reads one file from one directory: `$XDG_CONFIG_HOME/gnoblin` when that is an absolute path, else
+`~/.config/gnoblin`. In that directory it takes the first of these that exists:
+
+1. `init.ts`
+2. `init.js`
+3. `init.lua`, which the TypeScript shell does not read (see [Which shell runs](#which-shell-runs))
+
+When two exist, the first wins and the log says which others it ignored, for example
+`init.lua is not read: init.ts takes precedence in the same directory`. `GNOBLIN_CONFIG` names one file instead, and its
+extension (`.ts`, `.mts`, `.js`, `.mjs` or `.lua`) says which shell reads it.
+
+The shell loads the file, validates the whole document `defineConfig` makes and commits it to the compositor as one
+revision. Every start and every reload commits the document the file describes and nothing else. A setting you delete
+from `init.ts` is gone after the next reload or restart.
+
+Your `autostart` commands are part of that document:
+
+- The session starts each in a process group of its own.
+- A command that is still running is left alone when you reload or the shell restarts.
+- A command a reload drops from the list is stopped.
+- A command that exits is not started again.
+
+A save reloads the file. So does `gnoblinctl config reload`, which prints the revision it committed or the error it
+refused, with the file, line and column. `GNOBLIN_JS_WATCH=0` turns the reload on save off, and then only the command
+reloads.
+
+## Which shell runs
+
+`GNOBLIN_SHELL_VM` chooses the shell. Leave it unset for the TypeScript shell.
+
+| `GNOBLIN_SHELL_VM`                        | The session runs                                                                                  |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| unset or empty                            | The TypeScript shell, unless you have an `init.lua` and no `init.ts` or `init.js` (next section). |
+| `js`                                      | The TypeScript shell, always.                                                                     |
+| `js:/path/to/gnoblin`                     | The TypeScript shell, reading its stock library from that directory instead of the built-in one.  |
+| `lua`                                     | The Lua shell. It is deprecated and stays for one more release.                                   |
+| `0`, or the path of a Lua shell directory | The Lua shell, with no shell VM or with that directory's.                                         |
+
+### If you still have an `init.lua`
+
+An update does not start you on the stock config and lose yours. When `GNOBLIN_SHELL_VM` is unset and the config
+directory has an `init.lua` but no `init.ts` or `init.js`, the session runs the Lua shell for this release and logs one
+warning:
+
+```text
+init.lua is a Lua config and there is no init.ts or init.js beside it, so this session runs the deprecated Lua shell
+for this release. ... move your config to init.ts (see docs/migrating-from-lua.md)
+```
+
+[Migrating from Lua](migrating-from-lua.md) maps each Lua construct to its TypeScript equivalent. Run
+`gnoblinctl config init` to write a starter `init.ts`: from then on the TypeScript shell runs, and the `init.lua` beside
+it is ignored. Setting `GNOBLIN_SHELL_VM=js` with only an `init.lua` starts the TypeScript shell on the stock config and
+says that the Lua file is not read.
+
 ## Check a file
 
 ```sh
 gnoblinctl check --types ~/.config/gnoblin/init.ts
 ```
 
-`check` loads the file the way the shell does. It reports a syntax error, an import that does not resolve or a throw at
+`check` loads the file the way the shell does. `gnoblinctl config validate FILE` runs the same check for a `.ts` or `.js` file. It reports a syntax error, an import that does not resolve or a throw at
 the line you wrote.
 
 With `--types` it also runs a TypeScript compiler when one is installed. That catches a key that does not exist or a value

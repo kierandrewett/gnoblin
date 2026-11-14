@@ -59,16 +59,27 @@ writes no file.
 - **Accepted configuration arrives.** The flag of the accepted document decides at
   once, and the log names the revision. With `enabled = false` Gnoblin never serves.
   With `enabled = true` it serves.
+- **Your `init.ts` or `init.js` is there and nothing is accepted yet.** The services role
+  evaluates the file itself, in a throwaway runtime with no compositor. The flag of the
+  document it describes decides at once. This is what makes `keyring.enabled = false`
+  hold on a first boot with no saved file. A config that needs the compositor while it
+  loads cannot be read this way, and the role waits for the accepted configuration.
 - **Nothing is accepted within 20 seconds.** The wait is the constant
   `CONFIGURATION_WAIT` in `crates/gnoblin-services/src/keyring.rs`. The services role
   then uses the flag of the last accepted configuration file, if one exists. If none
-  exists, or it cannot be read, the schema default decides, which is on. The log names
-  the source (`accepted revision`, `last accepted file` or `schema default`) and the
-  reason.
+  exists, or it cannot be read, the schema default decides, which is on.
+
+The log names the source and the reason. The source is one of these:
+
+- `accepted revision`
+- `the user's config file`
+- `last accepted file`
+- `schema default`
 
 So a change to `keyring.enabled` takes effect at the next session start, once the
 compositor accepts the configuration. On a first boot with no saved file, the flag
-from `init.lua` decides when it is accepted, and the wait is not reached.
+from your `init.ts` decides at once, and from an `init.lua` (the Lua shell) when the runtime
+commits it. The wait is not reached.
 
 The Secret portal reads the last accepted file when it starts, not the accepted
 document. On a first boot with no saved file it assumes the default, which is on,

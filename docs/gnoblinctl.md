@@ -372,8 +372,9 @@ With `--json` it prints `types`, `tsconfig` and `tsconfig_created`.
 `gnoblinctl console` opens a live prompt into the running JavaScript shell. Each
 line is evaluated in the shell's own runtime, between frames, with the same
 `gnoblin` global as `init.ts`, and its value is printed. `.exit` or Ctrl-D
-leaves. It needs a session that runs the JavaScript shell
-(`GNOBLIN_SHELL_VM=js`); the guide is [Console and inspector](js-console.md).
+leaves. It needs the JavaScript shell, the default (see
+[Which shell runs](typescript-shell.md#which-shell-runs)); the guide is
+[Console and inspector](js-console.md).
 
 ```sh
 gnoblinctl console
@@ -393,8 +394,9 @@ socket it tried and a hint:
 ```text
 error: no JavaScript shell is running
 why:   cannot connect to /run/user/1000/gnoblin/js.sock: No such file or directory
-hint:  start the session with the JavaScript shell (`GNOBLIN_SHELL_VM=js`), and
-       check that `GNOBLIN_JS_CONSOLE` is not `0`
+hint:  the session must run the JavaScript shell, which is the default: unset
+       `GNOBLIN_SHELL_VM` (or set it to `js`), keep an `init.ts` rather than
+       only an `init.lua`, and check that `GNOBLIN_JS_CONSOLE` is not `0`
 ```
 
 The prompt prints each result's text on standard output and each error as an

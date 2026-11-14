@@ -224,7 +224,7 @@ An action is one of these:
 
 ### Moving from `shortcuts` and `keybindings`
 
-`keys` is the one way to bind a key. The `shortcuts` and `keybindings` sections of `init.lua` are not `defineConfig`
+`keys` is the one way to bind a key. The `shortcuts` and `keybindings` sections of the Lua config are not `defineConfig`
 keys, and a config that uses either name is refused with a message that points here.
 
 A legacy shortcut entry becomes one `keys` entry:
@@ -249,7 +249,7 @@ keys: { "Super+Return": spawn("foot") },
 ```
 
 The name that keyed the entry (`terminal`) is not needed. A trigger may be bound once, so a duplicate fails at load.
-A shortcut that must act on key release stays in `init.lua`.
+A shortcut that must act on key release is not ported: the Lua shell, which stays for one more release, still has it.
 
 ### `launcher`
 
@@ -265,21 +265,21 @@ launcher: "wofi --show drun",
 
 ### `autostart`
 
-A list of commands, each a command line or an argv. The shell starts each command once per session, when the config that
-lists it is first applied.
+A list of commands, each a command line or an argv. The session starts each command in a process group of its own, when
+the config that lists it is first applied.
 
 ```ts
 autostart: ["waybar", ["foot", "--server"], "nm-applet --indicator"],
 ```
 
 - A command line is split on spaces and started with no shell. Use an argv, or `["sh", "-c", "..."]`, when you need quoting.
-- A reload starts only the commands it adds. A command that is already started is not started again.
+- A reload starts only the commands it adds. A command that is already running is not started again, and it keeps
+  running when the shell restarts.
 - A command is the same command when its program and arguments are the same.
-- Removing an entry stops nothing, and listing it again does not start it a second time.
-- A program that cannot be started is reported and tried again at the next reload.
-
-The shell remembers what it started until it stops. If the shell restarts, it starts every command in the list
-again, and a program from before that is still running runs twice.
+- Removing an entry stops its process group at the next reload. Listing it again starts it again.
+- A program that exits is not started again until you reload with it newly added.
+- Each command is an entry of the config document's `autostart` section, named after its program (`foot`, then `foot-2`
+  for a second `foot` command).
 
 The same command listed twice fails the load.
 
@@ -356,8 +356,8 @@ export default defineConfig({
 Each setting takes effect the way its page says: immediately, when its process next starts, or not at all. A setting
 that is accepted and not in effect is logged as `not applied: ...`.
 
-Your settings are laid over the document the compositor holds, and the whole result is committed. A reload that drops a
-key puts that setting back to its default. Settings that `init.lua` set are left alone.
+Your settings are the whole document: the shell commits what `init.ts` describes and nothing else. A reload that drops a
+key puts that setting back to its default, and a setting an earlier session committed does not come back.
 
 A value the compositor refuses fails the reload and names the setting, for example `dialogs.style.radius`. The running
 config and the document stay as they were.
@@ -497,7 +497,7 @@ config has no "autostrt" (did you mean "autostart"?); expected one of gaps, styl
 ```
 
 A key is suggested when it is within two edits of what you wrote. Case, `-` and `_` do not count as edits, so
-`window-management` is read as `windowManagement`. A section from `init.lua` that has no key names what to write instead.
+`window-management` is read as `windowManagement`. A section from the Lua config that has no key names what to write instead.
 
 A value of the wrong type names the path and what it should be:
 
