@@ -157,15 +157,15 @@ compositor in `crates/gnoblin-js/tests/shell.rs`; it has not been run against th
 - **Protocol rules.** Copied from `ShellVm`, not shared: one transaction in flight, replies matched by position,
   `stale-base` and `unknown-node` refusals sent again ahead of the next frame's writes, `STALE_RETRIES` (3) in a
   row. The tests are the Lua ones ported (hold, stale resend, retry cap, unknown node, refusal report).
-- **Objects.** One `Client` per window node and one `Workspace` per workspace node for the life of the generation,
+- **Objects.** One `Client` per window node for the life of the generation (workspaces are the script's, see P3b),
   so the same node is the same JS object. A client has `id` (the node id as a string), `appId`, `title`, `focused`,
   `fullscreen`, `x`, `y`, `width`, `height`, `bounds`, `workspace`, `alive`, `close()`, `focus()`. Only the four
   geometry numbers are writable; the compositor owns the rest. A write is queued and read back at once, and travels
   at frame end. A destroyed node keeps its last values, is `alive === false`, and every write or call throws a
   `GnoblinError` (`code` `destroyed`, `target` `Client#3.x`). A value that is not a finite number throws a
-  `TypeError` naming the member. `Client` and `Workspace` cannot be constructed by a script.
+  `TypeError` naming the member. A `Client` cannot be constructed by a script.
 - **Collections.** `gnoblin.clients` and `gnoblin.workspaces` are live `Collection`s: `length`, `at`, `get`, `find`,
-  `filter` and `map` (snapshots), iteration, `where`, `addListener`, `removeListener`. They have no `add`.
+  `filter` and `map` (snapshots), iteration, `where`, `addListener`, `removeListener`. `gnoblin.clients` has no `add`.
   `where(query)` is a live selection over a data-only query: each key is a property (`id`, `appId`, `title`,
   `focused`, `fullscreen`, `x`, `y`, `width`, `height` for clients), each value what it must equal or an array of
   values of which one must. Its membership follows property changes. It is not tracked until it has a listener.
@@ -192,9 +192,54 @@ collection)` at once for each member already in the collection, in collection or
   processes: `JsShell::set_spawner` takes the host's callback (`JsSpawnRequest::Command` or `Argv`), and a refusal
   or a missing spawner throws `GnoblinError` `spawn-failed`. A top-level `spawn` in `init.ts` runs on every load.
 - **Not done.** Input events, chords, gestures and call answers from the compositor are consumed and dropped: the
-  binding lane owns them. `Workspace` has no `clients`, layout or `add`. No coalescing of repeated writes to one
-  property in a frame. `JsShell` owns its generation: wiring it into `JsHost` staging, so a reload swaps shells,
+  binding lane owns them. `JsShell` owns its generation: wiring it into `JsHost` staging, so a reload swaps shells,
   is P5's. The compositor-side `where` evaluation is not built.
+
+## P3b status
+
+Workspaces and the layout driver (`crates/gnoblin-js/js/gnoblin.ts`, `data/js/gnoblin/workspace.ts`,
+`crates/gnoblin-js/src/workspaces.rs`, tests in `crates/gnoblin-js/tests/workspaces.rs`).
+
+- **A workspace is the script's.** `new Workspace({ id, name?, layout?, gaps? })` (`layout` is a `Layout` or a stock
+  name; default floating) and `gnoblin.workspaces.add(ws)`. The compositor's own `workspace` tree node is no longer
+  a member of anything, and the tree has no property that says which workspace a window is on, so membership lives in
+  the JS shell. `gnoblin.workspaces` is a `MutableCollection<Workspace>` (`add`, `remove(ws | id)`, `clear`,
+  `show(ws | id)`, plus the read API); a second workspace with an id already there throws `GnoblinError`
+  `duplicate`. A workspace has `id`, `name`, `index`, `active`, `layout`, `gaps`, `clients`, `show()`; assigning
+  `layout` or `gaps` marks it dirty.
+- **`ws.clients`** is a live `MutableCollection<Client>` of the same `Client` objects as `gnoblin.clients`. `add(client)`
+  transfers primary membership (`client.workspace` updates, the old workspace loses it, `onAdded`/`onRemoved` go to
+  collection listeners). `remove` leaves the client with `workspace === null`. Removing a workspace moves its clients
+  to the first workspace left. Nothing closes a client: `alive` stays true.
+- **Initial workspace rule (question 1, simplified).** One function, `initialWorkspace` in `workspace.ts`: the first
+  workspace flagged active, else the first. A new toplevel joins it. Active is a single flag for now (the first
+  workspace added, or the last `show`n), standing in for "the workspace the primary display shows". Windows that were
+  there at boot join it on the first frame, not while the entry loads, so a reload can put them back first.
+  `defineConfig({ workspaces })` calls `gnoblin.__register`, which makes real `Workspace` objects; a config that
+  declares none gets `desktop` (floating) when its entry has loaded.
+- **Layout driver.** At the end of every frame, after all listeners, `entry.layout()` runs. For each workspace it
+  diffs the layout's own enumerable fields against the last snapshot (J6: `Object.is` per key, so an edit in place is
+  not seen and a `#private` field is not a field), the gaps, and the area (the primary screen's `width` and `height`
+  from the tree's `screen` node; no screen, no layout). The layout's `onClientRemoved` and `onClientAdded` hear of the
+  clients that left and arrived, and a dirty workspace that is the active one calls `layout.compute({ workspace,
+children, area, gap, focused })` once and writes the placements that differ from the client's values (x, y, width,
+  height; `visible` and `tiled` have no tree property yet). Placements are validated before any is written. A workspace
+  that is not active stays dirty until it is shown. Windows of other workspaces are not hidden: the tree has no
+  visibility property to write.
+- **Floating.** `FloatingLayout.compute` places nothing; its `onClientAdded` places a window once on arrival (a
+  window moved to the workspace by `clients.add`, by removal of another workspace, or created while the shell runs).
+  A user-moved window is left alone because no later frame calls the layout for it.
+- **Coalescing.** `send_transaction` keeps the last instant `Set` of each (node, property) in a transaction, so a
+  handler's repeated writes and the layout's are one op (`workspaces.rs: coalesce_sets`). Animated writes are not
+  merged.
+- **Reload.** `JsShell::workspace_snapshot()` returns `JsWorkspaceSnapshot` (workspace ids in order, each with its
+  client node ids, and the active id). After the new generation's entry has loaded, `JsShell::reconcile(&previous)`
+  puts each client back on the workspace of the same id without offering it to the layout, so a floating window keeps
+  its place and no second `desktop` appears; a client whose workspace is gone moves to the first workspace and is
+  placed as an arrival. The active workspace is kept when it still exists. The tests run two shells in turn over one
+  fake link. Wiring this into `JsReloader` is P5's.
+- **Not done.** Per-display workspaces (`display.viewport.content`), `where` queries on a `Workspace` beyond its
+  scalar properties, a `visible` write, and hooks on `Layout` for the binding lane.
 
 ## Questions for the owner (the agent has a default for each)
 
