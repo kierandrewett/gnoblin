@@ -225,7 +225,7 @@ fn the_stock_library_follows_the_generated_modules_and_is_marked_proposed() {
     assert!(text.contains("PROPOSED API"));
     for line in [
         "    export function defineConfig(config: Config): Config;",
-        "    export function spawn(command: string, ...args: string[]): SpawnAction;",
+        "    export function spawn(command: string | readonly string[], ...args: string[]): SpawnAction;",
         "    export function show(workspace: Workspace | string): ShowAction;",
         "    export interface Collection<T> extends Iterable<T> {",
         "    export class Client extends Node {",

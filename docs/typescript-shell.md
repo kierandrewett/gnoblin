@@ -93,7 +93,9 @@ A session with no `init.ts` is not a bare shell. It runs the stock config:
 - a three-finger swipe slides between workspaces, and the windows follow the fingers;
 - the volume, microphone and media keys run `wpctl` and `playerctl`;
 - `Super` with a left drag moves a window, and `Super` with a right drag resizes it;
-- a titlebar on every window.
+- a titlebar on every window, with a window menu on a right click;
+- an alert with Wait and Force quit for a window that stops answering;
+- `Super+space` opens a launcher entry that starts what you type.
 
 Creating `init.ts` later loads it at once. An `init.ts` that fails to load when the shell starts is reported in the log,
 and the stock config runs until the file is fixed.

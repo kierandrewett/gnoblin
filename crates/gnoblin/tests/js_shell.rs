@@ -1856,6 +1856,8 @@ fn a_window_that_stops_answering_gets_the_alert_and_wait_and_force_quit_close_it
         log.iter().all(|line| !line.contains("threw")),
         "the shell logged a throw: {log:#?}"
     );
+}
+
 // ---- the starter `gnoblinctl config init` writes -------------------------------------------------------------------
 
 /// The starter with every example switched on. A comment of the form `// code` whose code ends the way a line of the

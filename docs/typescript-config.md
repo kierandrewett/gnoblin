@@ -26,6 +26,7 @@ A key you leave out keeps its default. Your config is laid over the stock config
 | `gaps`, `style`, `outputs`, `on`         | Merged by key, your value winning. A nested object, such as a shadow, is one value.    |
 | `focus`                                  | Merged by key. A key you leave out is the compositor's own setting.                    |
 | `decorations`                            | Not layered. The stock config has titlebars, and a `defineConfig` without it has none. |
+| `menus`, `alerts`                        | Yours, when you give one. Both are on in the stock config.                             |
 | Compositor settings                      | Merged by key. See [compositor settings](#compositor-settings).                        |
 
 Triggers are compared in their canonical spelling, so `"super+1"` replaces the stock `"Super+1"`. A stock key that
@@ -91,8 +92,23 @@ gaps: { inner: 8, outer: 12 },
 
 ### `decorations`
 
-A boolean. `true` draws a titlebar on every window, with a title and minimise, maximise and close buttons. `false` draws
-none. The stock config has `true`. A `defineConfig` that leaves the key out has no titlebars.
+A boolean. `true` gives every window a titlebar above its content, with a title and minimise, maximise and close buttons.
+`false` draws none. The stock config has `true`. A `defineConfig` that leaves the key out has no titlebars.
+
+### `menus` and `alerts`
+
+Two booleans for the shell's own windows. Both are `true` in the stock config, and a `defineConfig` that leaves one out
+keeps it on.
+
+- `menus` answers a window's menu requests with the stock window menu: a right click on a titlebar, the window menu key,
+  and a client's own request. With `menus: false` those requests get no menu.
+- `alerts` opens the not-responding alert, with Wait and Force quit, for a window that stops answering. With
+  `alerts: false` the window is marked and nothing more.
+
+```ts
+menus: false,
+alerts: true,
+```
 
 ### `rules`
 
@@ -231,8 +247,9 @@ A shortcut that must act on key release stays in `init.lua`.
 
 ### `launcher`
 
-A command line or an argv. When it is set, `Super+space` runs it. A `keys` entry for `Super+space` wins. A command line is
-split on spaces and started with no shell.
+A command line or an argv. When it is set, `Super+space` runs it. With no `launcher`, `Super+space` opens the stock launcher:
+an entry on the screen that starts what you type. A `keys` entry for `Super+space` wins. A command line is split on spaces
+and started with no shell.
 
 ```ts
 launcher: "wofi --show drun",

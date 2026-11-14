@@ -424,7 +424,7 @@ fn a_wrong_key_or_a_wrong_value_is_a_type_error_when_a_compiler_is_installed() {
         "value/init.ts",
         "import { defineConfig } from \"gnoblin\";\nexport default defineConfig({ autostart: [5] });\n",
     );
-    for (file, named) in [(&wrong_key, "autostrt"), (&wrong_value, "autostart")] {
+    for (file, named) in [(&wrong_key, "autostrt"), (&wrong_value, "CommandLine")] {
         let (code, out, err) = check(file, &["--types"]);
         let text = format!("{out}{err}");
         if text.contains("type check skipped") {
@@ -436,6 +436,6 @@ fn a_wrong_key_or_a_wrong_value_is_a_type_error_when_a_compiler_is_installed() {
             return;
         }
         assert_eq!(code, 1, "{named}: stdout {out}\nstderr {err}");
-        assert!(text.contains(named), "the compiler names the key: {text}");
+        assert!(text.contains(named), "the compiler names what is wrong: {text}");
     }
 }
