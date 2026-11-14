@@ -1,32 +1,25 @@
-# gnoblin.configure.input_sources
+# Input sources
 
-Set the active input sources with `gnoblin.configure {input_sources = {...}}`.
-On reload, this replaces the active source list in memory. Without this table,
-Gnoblin exposes no switchable input sources and leaves Mutter's current keymap
-in place. It does not load the saved GNOME input-source list.
+The `inputSources` key sets the active input sources. On a reload it replaces the active source list in memory.
+Without it, Gnoblin exposes no switchable input sources and leaves the current keymap in place. It does not load the
+saved GNOME input-source list.
 
-- `sources` is required. It is an array of records with a `type` and a
-  nonempty `id`.
-- `sources[].type` accepts `"xkb"` for a keyboard layout or `"ibus"` for an
-  input method.
-- `sources[].id` is an installed XKB layout ID or IBus engine ID, depending on
-  `type`.
-- In the direct Gnoblin session, XKB-only sources do not need `ibus-daemon`.
-  Gnoblin does not start the daemon. Start it in your session and install the
-  selected engine before using an IBus source. Gnoblin reconnects when the
-  IBus service becomes available or restarts.
-- `per_window` is optional and defaults to `false`. Set it to `true` to
-  remember a different source for each window. With the default `false`, all
-  windows share the same active source; switching layouts in one window changes
-  the source used in the others too.
+- `sources` is required. It is a list of objects with a `type` and a nonempty `id`.
+- `sources[].type` accepts `"xkb"` for a keyboard layout or `"ibus"` for an input method.
+- `sources[].id` is an installed XKB layout ID or IBus engine ID, depending on `type`.
+- In the direct Gnoblin session, XKB-only sources do not need `ibus-daemon`. Gnoblin does not start the daemon. Start
+  it in your session and install the selected engine before using an IBus source. Gnoblin reconnects when the IBus
+  service becomes available or restarts.
+- `perWindow` is optional and defaults to `false`. Set it to `true` to remember a different source for each window.
+  With the default `false`, all windows share the same active source; switching layouts in one window changes the
+  source used in the others too.
 
 After login, and after a reload that removes the current source, the first `xkb` source in the list becomes current.
 
 ## Choose an ID
 
-Use the exact source ID, not its display name. For example, `"us+intl"` selects
-the US International variant. Available layouts and variants depend on the
-XKB data installed on your system.
+Use the exact source ID, not its display name. For example, `"us+intl"` selects the US International variant.
+Available layouts and variants depend on the XKB data installed on your system.
 
 | Source           | Example ID  | Meaning                                              |
 | ---------------- | ----------- | ---------------------------------------------------- |
@@ -35,14 +28,13 @@ XKB data installed on your system.
 | US International | `"us+intl"` | The US layout with the `intl` variant.               |
 | Anthy            | `"anthy"`   | An IBus Japanese input engine; it must be installed. |
 
-Find layouts and variants in **Settings → Keyboard → Input Sources**. Gnoblin
-reads the installed XKB rules through libxkbregistry. The
-[XKB introduction](https://xkbcommon.org/doc/current/xkb-intro.html) explains
-how layouts and variants combine. For an overview of available layouts, see the
+Find layouts and variants in **Settings → Keyboard → Input Sources**. Gnoblin reads the installed XKB rules through
+libxkbregistry. The [XKB introduction](https://xkbcommon.org/doc/current/xkb-intro.html) explains how layouts and
+variants combine. For an overview of available layouts, see the
 [XKB layout gallery](https://xkeyboard-config.freedesktop.org/layouts/).
 
-When it needs a spare layout in an XKB group, Gnoblin chooses the base layout
-for the locale's country where one is available, then falls back to `us`.
+When it needs a spare layout in an XKB group, Gnoblin chooses the base layout for the locale's country where one is
+available, then falls back to `us`.
 
 To find installed IBus engine IDs, run:
 
@@ -50,152 +42,118 @@ To find installed IBus engine IDs, run:
 ibus list-engine --name-only
 ```
 
-See the [`ibus` command reference](https://manpages.debian.org/testing/ibus-data/ibus.1.en.html)
-for the engine-list command.
+See the [`ibus` command reference](https://manpages.debian.org/testing/ibus-data/ibus.1.en.html) for the engine-list
+command.
 
 ## Configure the sources
 
 This example lets you switch between the base US and UK layouts:
 
-```lua
-gnoblin.configure {
-    input_sources = {
-        sources = {
-            {type = "xkb", id = "us"},
-            {type = "xkb", id = "gb"},
-        },
-        per_window = false,
+```ts
+import { defineConfig } from "gnoblin";
+
+export default defineConfig({
+    inputSources: {
+        sources: [
+            { type: "xkb", id: "us" },
+            { type: "xkb", id: "gb" },
+        ],
+        perWindow: false,
     },
-}
+});
 ```
 
 ## Switch sources with the keyboard
 
-Gnoblin leaves **Super+Space** and **Shift+Super+Space** available to the
-desktop shell. Bingux uses them to open its input-source selector and choose
-the next or previous configured source. This avoids two clients claiming the
-same global shortcut.
+Gnoblin leaves **Super+Space** and **Shift+Super+Space** available to the desktop shell. Bingux uses them to open its
+input-source selector and choose the next or previous configured source. This avoids two clients claiming the same
+global shortcut.
 
-Without Bingux, select a source with `gnoblinctl input select xkb us` or bind a
-callback in your own config with `keybindings.keyboard`. The callback finds the
-source in `gnoblin.input.sources()` and calls its `select()` method. See the
-[keyboard shortcut guide](/guides/shortcuts) for callback syntax.
+The TypeScript shell has no key or command that switches the source, so without Bingux the first `xkb` source of
+the list stays current. Use the list to choose the layout you start with.
 
 ## Share or keep sources per window
 
-With `per_window = false` (or with `per_window` omitted), the selected layout is
-shared. If you switch from US to UK while typing in one window, a different
-window also uses UK when it gets focus.
+With `perWindow: false` (or with `perWindow` omitted), the selected layout is shared. If you switch from US to UK
+while typing in one window, a different window also uses UK when it gets focus.
 
-Set `per_window = true` when you want each window to keep its own last selected
-source:
+Set `perWindow: true` when you want each window to keep its own last selected source:
 
-```lua
-gnoblin.configure {
-    input_sources = {
-        sources = {
-            {type = "xkb", id = "us"},
-            {type = "xkb", id = "gb"},
-        },
-        per_window = true,
+```ts
+import { defineConfig } from "gnoblin";
+
+export default defineConfig({
+    inputSources: {
+        sources: [
+            { type: "xkb", id: "us" },
+            { type: "xkb", id: "gb" },
+        ],
+        perWindow: true,
     },
-}
+});
 ```
 
-Open a terminal and a document window. Select US and UK, respectively. With
-sloppy focus, moving the pointer between windows restores each window's last
-selected layout. The same happens with click-to-focus when you click between
-them.
+Open a terminal and a document window. Select US and UK, respectively. With sloppy focus, moving the pointer between
+windows restores each window's last selected layout. The same happens with click-to-focus when you click between them.
 
-A window without a saved selection starts with the layout that was active when
-it was first focused.
+A window without a saved selection starts with the layout that was active when it was first focused.
 
-Gnoblin remembers the active source per window. It does not assign layouts by
-app ID or give each window a different source list.
+Gnoblin remembers the active source per window. It does not assign layouts by app ID or give each window a different
+source list.
 
-Use [Lua events](/events/) when a rule should follow the pointer
-window or depend on its app ID. For example, the pointer-window event can
-change touchpad scroll speed for Chromium and restore the usual speed elsewhere.
-That is a separate rule from `per_window`, which remembers the layout selected
-in each focused window.
+Use the layout-plus-variant ID for a variant. An IBus ID must name an engine installed on your system:
 
-Use the layout-plus-variant ID for a variant. An IBus ID must name an engine
-installed on your system:
+```ts
+import { defineConfig } from "gnoblin";
 
-```lua
-gnoblin.configure {
-    input_sources = {
-        sources = {
-            {type = "xkb", id = "us+intl"},
-            {type = "ibus", id = "anthy"},
-        },
-        per_window = false,
+export default defineConfig({
+    inputSources: {
+        sources: [
+            { type: "xkb", id: "us+intl" },
+            { type: "ibus", id: "anthy" },
+        ],
+        perWindow: false,
     },
-}
+});
 ```
 
-This setting selects layouts or input methods; it does not set XKB options.
-Configure those separately with
-[`input.keyboard.xkb_options`](/config/configure/input/keyboard).
+This setting selects layouts or input methods; it does not set XKB options. Configure those separately with
+[`input.keyboard.xkbOptions`](/config/configure/input/keyboard).
 
 ## Type with an input method {#type-with-an-input-method}
 
-Gnoblin includes an IBus input method. Apps that use Wayland `text-input-v3`,
-such as GTK4 and Qt on Wayland, get preedit and committed text from the IBus
-engine you select, with no toolkit module or `GTK_IM_MODULE` setting. Gnoblin
-does not start the IBus daemon. Without a running daemon, or without an active
-engine, every key goes to the app unchanged.
+Gnoblin includes an IBus input method. Apps that use Wayland `text-input-v3`, such as GTK4 and Qt on Wayland, get
+preedit and committed text from the IBus engine you select, with no toolkit module or `GTK_IM_MODULE` setting.
+Gnoblin does not start the IBus daemon. Without a running daemon, or without an active engine, every key goes to the
+app unchanged.
 
-1. Install `ibus` and an engine. On Fedora, for the Russian transliteration
-   engine used here:
+1. Install `ibus` and an engine. On Fedora, for the Russian transliteration engine used here:
 
     ```sh
     sudo dnf install ibus ibus-m17n
     ```
 
-2. Start the daemon in your session. This autostart entry starts it at login and
-   stops it when you remove the entry or log out. Leave out the `-d` flag, which
-   makes the daemon detach from the process group that Gnoblin stops:
+2. Start the daemon in your session, and configure the source with the engine ID from
+   `ibus list-engine --name-only`. The `autostart` entry starts the daemon at login and stops it when you remove the
+   entry or log out. Leave out the `-d` flag, which makes the daemon detach from the process group that Gnoblin
+   stops:
 
-    ```lua
-    gnoblin.configure {
-        autostart = {
-            ibus = {command = {"ibus-daemon", "-r", "-x"}},
+    ```ts
+    import { defineConfig } from "gnoblin";
+
+    export default defineConfig({
+        autostart: [["ibus-daemon", "-r", "-x"]],
+        inputSources: {
+            sources: [
+                { type: "xkb", id: "us" },
+                { type: "ibus", id: "m17n:ru:translit" },
+            ],
         },
-    }
+    });
     ```
 
-3. Configure the source with the engine ID from `ibus list-engine --name-only`:
+3. Select the IBus source and type `privet` into a GTK4 text field. The text becomes `привет`.
 
-    ```lua
-    gnoblin.configure {
-        input_sources = {
-            sources = {
-                {type = "xkb", id = "us"},
-                {type = "ibus", id = "m17n:ru:translit"},
-            },
-        },
-    }
-    ```
-
-4. Select the IBus source and type `privet` into a GTK4 text field. The text
-   becomes `привет`.
-
-Builds made without the IBus development files (`ibus-devel` on Fedora) leave
-this input method out. In that case a GTK app can use the toolkit's own IBus
-module instead. Install `ibus-gtk3` and `ibus-gtk4`, and start the app with
-`GTK_IM_MODULE=ibus`. Qt and X11 apps use their own IBus settings, which are not
-described here.
-
-## Type definition
-
-The IDs are installation-dependent strings. `?` marks an optional field.
-
-```lua
-gnoblin.configure {
-    input_sources = {
-        sources = {{type = "xkb" | "ibus", id = string}, ...},
-        per_window = boolean?,
-    },
-}
-```
+Builds made without the IBus development files (`ibus-devel` on Fedora) leave this input method out. In that case a
+GTK app can use the toolkit's own IBus module instead. Install `ibus-gtk3` and `ibus-gtk4`, and start the app with
+`GTK_IM_MODULE=ibus`. Qt and X11 apps use their own IBus settings, which are not described here.

@@ -1,70 +1,47 @@
-# gnoblin.configure.appearance
+# Appearance settings
 
-Configure this part of `gnoblin.configure` with the `appearance` key.
+The `appearance` key of `defineConfig` sets the colour scheme, the accent colour and the accessibility preferences
+that the shell tells other toolkits about:
 
-Set the colour scheme, accent colour and accessibility preferences that other
-toolkits are told about:
+```ts
+import { defineConfig } from "gnoblin";
 
-```lua
-gnoblin.configure {
-    appearance = {
-        ["color-scheme"] = "prefer-dark",
-        accent = "blue",
-        ["reduced-motion"] = true,
-        ["high-contrast"] = true,
+export default defineConfig({
+    appearance: {
+        colorScheme: "prefer-dark",
+        accent: "blue",
+        reducedMotion: true,
+        highContrast: true,
     },
-}
+});
 ```
 
-| Setting          | Accepted value                           | Default   |
-| ---------------- | ---------------------------------------- | --------- |
-| `color-scheme`   | `default`, `prefer-dark`, `prefer-light` | `default` |
-| `accent`         | A named accent, `#rgb` or `#rrggbb`      | Unset     |
-| `reduced-motion` | A boolean                                | `false`   |
-| `high-contrast`  | A boolean                                | `false`   |
+| Setting         | Accepted value                           | Default   |
+| --------------- | ---------------------------------------- | --------- |
+| `colorScheme`   | `default`, `prefer-dark`, `prefer-light` | `default` |
+| `accent`        | A named accent, `#rgb` or `#rrggbb`      | Unset     |
+| `reducedMotion` | A boolean                                | `false`   |
+| `highContrast`  | A boolean                                | `false`   |
 
-`color-scheme` of `default` states no preference, so each application keeps its
-own choice. `prefer-dark` and `prefer-light` ask applications for that scheme.
+`colorScheme` of `default` states no preference, so each application keeps its own choice. `prefer-dark` and
+`prefer-light` ask applications for that scheme.
 
 `accent` is one of the nine named accents:
 
 - `blue`, `teal`, `green`, `yellow`, `orange`
 - `red`, `pink`, `purple`, `slate`
 
-A hex colour is accepted without an alpha channel.
-GTK takes only the named accents, so a hex colour is published as the nearest
-named accent. When `accent` is unset, toolkits keep their own accent.
+A hex colour is accepted without an alpha channel. GTK takes only the named accents, so a hex colour is published as
+the nearest named accent. When `accent` is unset, toolkits keep their own accent.
 
-`reduced-motion = true` asks applications to stop animating. The compositor also
-suppresses its own animations, so window changes land at once. `false` states
-no preference.
+`reducedMotion: true` asks applications to stop animating. The shell also stops its own animations while it is on:
+`gnoblin.motion(seconds)` returns `0`, so a workspace switch or a window move lands at once. Changing the setting
+affects the next animation only. One that is already running finishes. `false` states no preference.
 
-A shell reads the setting from the main seat node as `seat.reduced_motion`.
+`highContrast: true` asks applications for a high-contrast appearance. `false` states no preference.
 
-- The stock shell passes every animation duration through `motion(seconds)`, which returns `0` while the setting is on.
-- A duration of `0` makes `node:to` an instant write.
-- The compositor is the safety net: while reduced motion is on it lands any timed `set` at once, so a custom shell that animates anyway still gets instant changes.
-- Changing the setting affects the next write only. A tween already running finishes.
+Both preferences reach applications through the Settings portal and the dconf layer that GTK reads. Qt and KDE
+applications do not read them unless they have their own bridge.
 
-`high-contrast = true` asks applications for a high-contrast appearance.
-`false` states no preference.
-
-Both preferences reach applications through the Settings portal and the dconf
-layer that GTK reads. The keys each consumer sees are listed in the
-[portals reference](/config/configure/portals#settings-interface). Qt and
-KDE applications do not read them unless they have their own bridge.
-
-## Type definition
-
-This is schema pseudocode in Lua table form. `?` marks an optional field.
-
-```lua
-gnoblin.configure {
-    appearance = {
-        ["color-scheme"] = "default" | "prefer-dark" | "prefer-light"?,
-        accent = string?, -- a named accent, #rgb or #rrggbb
-        ["reduced-motion"] = boolean?,
-        ["high-contrast"] = boolean?,
-    },
-}
-```
+To follow the light or dark preference in a window rule, see [light and dark appearance](/guides/theming).
+The other `defineConfig` keys are in the [defineConfig reference](/typescript-config).

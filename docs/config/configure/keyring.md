@@ -1,18 +1,18 @@
-# gnoblin.configure.keyring
+# Keyring settings
 
-Choose whether Gnoblin runs its built-in keyring:
+The `keyring` key chooses whether Gnoblin runs its built-in keyring:
 
-```lua
-gnoblin.configure {
-    keyring = {
-        enabled = true,
-    },
-}
+```ts
+import { defineConfig } from "gnoblin";
+
+export default defineConfig({
+    keyring: { enabled: true },
+});
 ```
 
 Programs such as libsecret, browsers and `secret-tool` look up passwords on
-`org.freedesktop.secrets`. With `enabled = true`, Gnoblin serves that name from
-its own store. With `enabled = false`, Gnoblin serves nothing and another program
+`org.freedesktop.secrets`. With `enabled: true`, Gnoblin serves that name from
+its own store. With `enabled: false`, Gnoblin serves nothing and another program
 (gnome-keyring, KeePassXC, KWallet) or no keyring at all provides it.
 
 | Field     | Type and accepted values | Default | Effect                                                                                      |
@@ -24,14 +24,14 @@ table, an `enabled` value that is not a boolean, and any other key.
 
 ## What changes when it is off
 
-With `enabled = false`, the services role does not request
+With `enabled: false`, the services role does not request
 `org.freedesktop.secrets`, creates no store file or directory, and runs no
 keyring code. The portal does not export the Secret object, so Gnoblin answers
 no Secret request. The system's keyring answers them.
 
 ## What changes when it is on
 
-With `enabled = true`, Gnoblin requests `org.freedesktop.secrets` with
+With `enabled: true`, Gnoblin requests `org.freedesktop.secrets` with
 `DO_NOT_QUEUE`. If another program already owns the name, Gnoblin does not take
 it and logs why. The two can run side by side: the one that lost the name does
 not serve.
@@ -39,9 +39,9 @@ not serve.
 The store lives in `$XDG_DATA_HOME/gnoblin/keyring.db`, or under
 `$HOME/.local/share/gnoblin/` when `XDG_DATA_HOME` is unset. It stays locked
 until the login password reaches it. When the login session has no password, the
-keyring asks for it through a `prompt.secret` request. A shell that claims that
-slot answers it; with no shell claiming it, the compositor draws its own
-passphrase dialog. See [passphrase prompts](/shell-api/passphrase-prompts).
+keyring asks for it through a passphrase request. A script may refuse the request (see
+[dialogs](/config/configure/dialogs#refusing-a-request-from-a-script)); with no script answering it, the compositor
+draws its own passphrase dialog.
 
 While the store is locked, an app that saves a new password makes the keyring ask for
 the password first. The app's save finishes after you answer. If the request is
@@ -57,15 +57,14 @@ nothing: it does not request `org.freedesktop.secrets`, creates no store, and
 writes no file.
 
 - **Accepted configuration arrives.** The flag of the accepted document decides at
-  once, and the log names the revision. With `enabled = false` Gnoblin never serves.
-  With `enabled = true` it serves.
+  once, and the log names the revision. With `enabled: false` Gnoblin never serves.
+  With `enabled: true` it serves.
 - **Your `init.ts` or `init.js` is there and nothing is accepted yet.** The services role
   evaluates the file itself, in a throwaway runtime with no compositor. The flag of the
   document it describes decides at once. This is what makes `keyring.enabled = false`
   hold on a first boot with no saved file. A config that needs the compositor while it
   loads cannot be read this way, and the role waits for the accepted configuration.
-- **Nothing is accepted within 20 seconds.** The wait is the constant
-  `CONFIGURATION_WAIT` in `crates/gnoblin-services/src/keyring.rs`. The services role
+- **Nothing is accepted within 20 seconds.** The services role
   then uses the flag of the last accepted configuration file, if one exists. If none
   exists, or it cannot be read, the schema default decides, which is on.
 
@@ -78,17 +77,15 @@ The log names the source and the reason. The source is one of these:
 
 So a change to `keyring.enabled` takes effect at the next session start, once the
 compositor accepts the configuration. On a first boot with no saved file, the flag
-from your `init.ts` decides at once, and from an `init.lua` (the Lua shell) when the runtime
-commits it. The wait is not reached.
+from your `init.ts` decides at once. The wait is not reached.
 
 The Secret portal reads the last accepted file when it starts, not the accepted
 document. On a first boot with no saved file it assumes the default, which is on,
-so it does not follow an unsaved `enabled = false`. This is a known residual of the
-first-boot fix, recorded in `design/e2e-keyring.md`.
+so it does not follow an unsaved `enabled: false`. This is a known gap of the first-boot decision.
 
 ## Apps reach gnome-keyring instead
 
-With `enabled = true`, Gnoblin does not stop other programs from taking
+With `enabled: true`, Gnoblin does not stop other programs from taking
 `org.freedesktop.secrets`. Apps then reach that program, and their secrets do not
 go to Gnoblin's store. This page lists each route, what Gnoblin does about it, and
 whether that was tested. "Unverified" means the behaviour is read from the package
@@ -96,7 +93,7 @@ files or the code, but was not run on a live session.
 
 | Route                                                                                                            | What Gnoblin does                                                                                          | Status                                                                            |
 | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| An autostart entry that runs `gnome-keyring-daemon` (argv word matches)                                          | Refuses the config at load and check time, and names the entry                                             | Unit tests in `gnoblin-lua`                                                       |
+| An autostart entry that runs `gnome-keyring-daemon` (argv word matches)                                          | Refuses the config at load and check time, and names the entry                                             | Unit tests in `gnoblin-js`                                                        |
 | `pam_gnome_keyring` in the login PAM stack                                                                       | Nothing. PAM runs before the session                                                                       | Outside Gnoblin's control. No file in `/etc/pam.d` names it on the tested machine |
 | D-Bus activation: `/usr/share/dbus-1/services/org.freedesktop.secrets.service` (shipped by gnome-keyring)        | Nothing. Gnoblin does not ship a file that overrides it                                                    | Unverified. Starts when a client calls the name before anything owns it           |
 | systemd user units `gnome-keyring-daemon.socket` and `.service` (`WantedBy=sockets.target` and `default.target`) | Nothing. Gnoblin does not mask them                                                                        | Unverified in a Gnoblin session. Disabled on the tested machine                   |

@@ -1,66 +1,34 @@
-# gnoblin.configure.protocols
+# Protocol settings
 
-Enable or disable a Wayland protocol that Gnoblin exposes to clients. Changes
-apply after `gnoblinctl config reload`. Disabling a protocol stops new clients
-from discovering it; clients already bound to it keep their existing object
-until they disconnect.
+The `protocols` key enables or disables a Wayland protocol that Gnoblin exposes to clients. Disabling a protocol stops
+new clients from discovering it; clients already bound to it keep their existing object until they disconnect. The
+change applies when the compositor next starts.
 
-| Setting          | Values  | Default                       | Effect                                                                  |
-| ---------------- | ------- | ----------------------------- | ----------------------------------------------------------------------- |
-| `protocols.NAME` | Boolean | `true` in the Gnoblin session | Exposes the named protocol (`true`) or hides it from clients (`false`). |
+| Setting            | Values  | Default                       | Effect                                                                  |
+| ------------------ | ------- | ----------------------------- | ----------------------------------------------------------------------- |
+| `protocols.<NAME>` | Boolean | `true` in the Gnoblin session | Exposes the named protocol (`true`) or hides it from clients (`false`). |
 
-Use one of the protocol names below as the `NAME` key:
+Write the protocol name in camelCase, as the `NAME` key. `wlr-screencopy` is `wlrScreencopy`. The names are:
 
-- **Shell surfaces:** `wlr_layer_shell`.
-- **Window management:** `ext_foreign_toplevel_list`,
-  `wlr_foreign_toplevel_management`, `xdg_decoration`,
-  `kde_server_decoration`.
-- **Capture and effects:** `wlr_screencopy`, `ext_background_effect_v1`,
-  `blur_fade`.
-- **Session controls:** `ext_data_control`, `ext_idle_notify`,
-  `wlr_gamma_control`, `wlr_output_power_management`, `ext_session_lock`.
+- **Shell surfaces:** `wlrLayerShell`.
+- **Window management:** `extForeignToplevelList`, `wlrForeignToplevelManagement`, `xdgDecoration`,
+  `kdeServerDecoration`.
+- **Capture and effects:** `wlrScreencopy`, `extImageCopyCapture`, `extBackgroundEffectV1`.
+- **Session controls:** `extDataControl`, `extIdleNotify`, `wlrGammaControl`, `wlrOutputPowerManagement`,
+  `wlrOutputManagement`, `extSessionLock`.
 
 For example, disable screen capture protocol advertisement:
 
-```lua
-gnoblin.configure {protocols = {wlr_screencopy = false}}
+```ts
+import { defineConfig } from "gnoblin";
+
+export default defineConfig({
+    protocols: { wlrScreencopy: false },
+});
 ```
 
-See the [protocol catalog](/wayland-protocols).
+See the [protocol catalog](/wayland-protocols), and the [defineConfig reference](/typescript-config#protocols) for
+what each protocol lets a client do.
 
-A name that is not in the list above does nothing. The reload still succeeds,
-and `gnoblinctl config reload` includes an `unknown protocol` diagnostic in its
-`warnings` list. Gnoblin also logs it and publishes a configuration notice for
-the shell. Correct the name and reload again to clear the warning.
-
-The Rust compositor does not accept `blur_fade`: setting it is an unknown
-protocol and produces the same warning. To fade a blurred panel, put the panel
-in a subsurface with its own opacity; the blur fades with it.
-
-See [reload feedback](/shell-api/session-runtime#reload-warnings) for the
-result and event fields. Protocol values must still be booleans; an invalid
-value fails validation and leaves the previous configuration active.
-
-## Type definition
-
-Protocol fields are optional; list only the protocols you want to override.
-
-```lua
-gnoblin.configure {
-    protocols = {
-        wlr_layer_shell = boolean?,
-        ext_foreign_toplevel_list = boolean?,
-        wlr_foreign_toplevel_management = boolean?,
-        xdg_decoration = boolean?,
-        kde_server_decoration = boolean?,
-        wlr_screencopy = boolean?,
-        ext_background_effect_v1 = boolean?,
-        blur_fade = boolean?,
-        ext_data_control = boolean?,
-        ext_idle_notify = boolean?,
-        wlr_gamma_control = boolean?,
-        wlr_output_power_management = boolean?,
-        ext_session_lock = boolean?,
-    },
-}
-```
+A protocol you leave out stays on. A value that is not a boolean is refused: the reload fails and the previous
+configuration stays in force.

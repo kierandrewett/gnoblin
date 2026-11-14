@@ -1,29 +1,37 @@
-# Config API
+# Configuration
 
-Use [`gnoblin.configure`](/config/configure) for settings, named shortcuts and autostart commands. The reference pages list the supported fields and defaults.
+Gnoblin is configured with one TypeScript file, `~/.config/gnoblin/init.ts`, that makes one `defineConfig` call. The
+reference pages list the supported keys, their accepted values and defaults.
 
-## Functions
+```ts
+import { defineConfig, spawn } from "gnoblin";
 
-- [`gnoblin.configure`](/config/configure) — set compositor, input and window-management options.
-- [Shell files](/user-shell) — window rules and workspace sets, as Lua tables the stock shell reads.
-- [`gnoblin.animation`](/config/animation) — register a named animation.
-- [`gnoblin.config`](/config/config) — find the config file, read the bundled default and restore it.
-- [`gnoblin.load`](/config/load) — load another Lua config file.
-- [`gnoblin.snapshot`](/config/snapshot) — inspect a copy of the config while it loads.
-- [`gnoblin.array`](/config/array) — mark a Lua table as a list.
-- [`gnoblin.on`](/events/) — handle compositor and input events.
-- [Lua runtime API](/shell-api/) — inspect and control the running session.
+export default defineConfig({
+    gaps: { inner: 8, outer: 8 },
+    keys: { "Super+Return": spawn("foot") },
+});
+```
 
-The named views [`gnoblin.configure.shortcuts`](/config/configure/shortcuts) and [`gnoblin.configure.autostart`](/config/configure/autostart) read or update entries by name. See the [shortcuts](/guides/shortcuts) and [autostart](/guides/autostart) guides. Lua's `require` loader is covered under [`gnoblin.load`](/config/load).
+## Where to go
+
+- [TypeScript shell](/typescript-shell): write your first config, where it lives and how it reloads.
+- [`defineConfig` reference](/typescript-config): every key, its values and its defaults.
+- [Settings reference](/config/configure): one page for each section of the compositor's settings.
+- [Window rules](/config/window_rule): place and style windows by app or title.
+- [Shortcuts](/guides/shortcuts) and [autostart](/guides/autostart): bind keys and start programs.
+- [Files and load order](/guides/files_and_load_order): split a config over several files.
+- [`gnoblinctl`](/gnoblinctl): check, reload and inspect the running configuration.
+- [Migrating from Lua](/migrating-from-lua): what each Lua construct became.
 
 ## First config
 
-On first login, `gnoblin` copies the packaged reference config to
-`~/.config/gnoblin/init.lua` when that file does not exist. It does not replace
-an existing config. Edit that file to configure Gnoblin.
+Write a commented starter `init.ts` and the editor files that give you completion, then reload the session:
 
 ```sh
+gnoblinctl config init
 gnoblinctl config reload
 ```
 
-See [configuration recipes](/recipes/) for complete examples and the [guides](/guides/window_rules) for task-based instructions.
+`config init` never replaces a config. A running shell also reloads the file when you save it. See
+[configuration recipes](/recipes/) for complete examples and the [guides](/guides/window_rules) for task-based
+instructions.

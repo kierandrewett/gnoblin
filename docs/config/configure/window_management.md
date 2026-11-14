@@ -1,219 +1,139 @@
-# gnoblin.configure.window_management
+# Window management settings
 
-Configure this part of `gnoblin.configure` with the `window_management` key.
+The `windowManagement` key sets the compositor's focus, raise, tiling and titlebar-click policy. A reload applies
+them, except `attachModalDialogs` and `disableWorkarounds`, which nothing reads.
 
-Put these fields inside `gnoblin.configure {window_management = {...}}`.
-The fields on this page are read when the session starts. Restart the session
-after changing them. Window rules are set on reload; see the window rule guide.
+The `focus`, `edgeTiling` and `dragConstraint` keys of `defineConfig` are the same policy written for the shell: see
+[the shell's own keys](#the-shells-own-keys).
+
+```ts
+import { defineConfig } from "gnoblin";
+
+export default defineConfig({
+    windowManagement: { focusMode: "hover" },
+    workspaces: [{ id: "main" }, { id: "chat" }],
+});
+```
 
 ## Settings at a glance
 
 ### Focus and raising
 
-| Key                            | Values                                 | Default     | Effect                                                    |
-| ------------------------------ | -------------------------------------- | ----------- | --------------------------------------------------------- |
-| `focus_mode`                   | `"click"`, `"hover"`, `"hover-strict"` | `"click"`   | Selects when pointer movement changes focus.              |
-| `focus_new_windows`            | `"allow"`, `"prevent"`                 | `"prevent"` | Selects Mutter's new-window focus policy.                 |
-| `raise_on_click`               | Boolean                                | `true`      | Raise a window when clicked.                              |
-| `auto_raise`                   | Boolean                                | `false`     | Raise the focused window automatically.                   |
-| `auto_raise_delay`             | 0–10000 ms                             | `500`       | Delay before automatically raising the focused window.    |
-| `focus_change_on_pointer_rest` | Boolean                                | `false`     | Change focus after the pointer rests over another window. |
+| Key                        | Values                                 | Default     | Effect                                                    |
+| -------------------------- | -------------------------------------- | ----------- | --------------------------------------------------------- |
+| `focusMode`                | `"click"`, `"hover"`, `"hover-strict"` | `"click"`   | Selects when pointer movement changes focus.              |
+| `focusNewWindows`          | `"allow"`, `"prevent"`                 | `"prevent"` | Selects the new-window focus policy.                      |
+| `raiseOnClick`             | Boolean                                | `true`      | Raise a window when clicked.                              |
+| `autoRaise`                | Boolean                                | `false`     | Raise the focused window automatically.                   |
+| `autoRaiseDelay`           | 0–10000 ms                             | `500`       | Delay before automatically raising the focused window.    |
+| `focusChangeOnPointerRest` | Boolean                                | `false`     | Change focus after the pointer rests over another window. |
 
 ### Placement and responsiveness
 
-| Key                           | Values          | Default | Effect                                                                   |
-| ----------------------------- | --------------- | ------- | ------------------------------------------------------------------------ |
-| `check_alive_timeout`         | 0–4294967295 ms | `5000`  | Client ping timeout before it is marked frozen; `0` disables the check.  |
-| `edge_tiling`                 | Boolean         | `false` | Enable Mutter's edge tiling.                                             |
-| `attach_modal_dialogs`        | Boolean         | `false` | Place modal dialogs with their parent window.                            |
-| `disable_workarounds`         | Boolean         | `false` | Disable Mutter's compatibility workarounds for broken X11 applications.  |
-| `constrain_drag_to_work_area` | Boolean         | `true`  | Keep dragged windows inside the work area. See the note below the table. |
+| Key                       | Values          | Default | Effect                                                                           |
+| ------------------------- | --------------- | ------- | -------------------------------------------------------------------------------- |
+| `checkAliveTimeout`       | 0–4294967295 ms | `5000`  | Client ping timeout before it is marked frozen; `0` disables the check.          |
+| `edgeTiling`              | Boolean         | `false` | Tile a window dropped on a screen edge.                                          |
+| `attachModalDialogs`      | Boolean         | `false` | Place modal dialogs with their parent window. Nothing reads it.                  |
+| `disableWorkarounds`      | Boolean         | `false` | Disable compatibility workarounds for broken X11 applications. Nothing reads it. |
+| `constrainDragToWorkArea` | Boolean         | `true`  | Keep dragged windows inside the work area.                                       |
 
-Leave `disable_workarounds` set to `false` unless you are debugging an X11
-application. Enabling it can make some applications behave incorrectly.
-
-`constrain_drag_to_work_area` controls how far a dragged window can leave the
-work area, which is the monitor minus the space that panels reserve.
+`constrainDragToWorkArea` controls how far a dragged window can leave the work area, which is the monitor minus the
+space that panels reserve.
 
 - With `true`, the whole window stays inside the work area.
-- With `false`, Mutter's own rule applies: a window can move until only a strip
-  of it stays on screen, at most 75 pixels tall.
+- With `false`, a window can move until only a strip of it stays on screen, at most 75 pixels tall.
 
-The setting is read when the session starts. A reload does not change it.
+The table shows the compositor default when a key is missing. The stock config sets these values instead, so they are
+what you get unless your own config changes them:
 
-The table shows the compositor default when a key is missing. The starter
-config that Gnoblin loads first sets these values instead, so they are what you
-get unless your own config changes them:
-
-| Key                            | Starter config value | Why                                                                         |
-| ------------------------------ | -------------------- | --------------------------------------------------------------------------- |
-| `attach_modal_dialogs`         | `true`               | A modal dialog opens centered over its parent and moves with it.            |
-| `edge_tiling`                  | `true`               | Dragging a window to a screen edge tiles it.                                |
-| `focus_new_windows`            | `"allow"`            | A window started from a launcher takes focus. `"prevent"` leaves it behind. |
-| `action_middle_click_titlebar` | `"none"`             | A stray middle click does not lower a window.                               |
+| Key                         | Stock value | Why                                                                         |
+| --------------------------- | ----------- | --------------------------------------------------------------------------- |
+| `attachModalDialogs`        | `true`      | A modal dialog opens centred over its parent and moves with it.             |
+| `edgeTiling`                | `true`      | Dragging a window to a screen edge tiles it.                                |
+| `focusNewWindows`           | `"allow"`   | A window started from a launcher takes focus. `"prevent"` leaves it behind. |
+| `actionMiddleClickTitlebar` | `"none"`    | A stray middle click does not lower a window.                               |
 
 Set any of them in your own config to change it.
 
 ### Titlebar buttons and actions
 
-| Key                            | Values                | Default             | Effect                              |
-| ------------------------------ | --------------------- | ------------------- | ----------------------------------- |
-| `action_double_click_titlebar` | Titlebar action below | `"toggle-maximize"` | Action for a titlebar double-click. |
-| `action_middle_click_titlebar` | Titlebar action below | `"lower"`           | Action for a titlebar middle-click. |
-| `action_right_click_titlebar`  | Titlebar action below | `"menu"`            | Action for a titlebar right-click.  |
+| Key                         | Values                | Default             | Effect                              |
+| --------------------------- | --------------------- | ------------------- | ----------------------------------- |
+| `actionDoubleClickTitlebar` | Titlebar action below | `"toggle-maximize"` | Action for a titlebar double-click. |
+| `actionMiddleClickTitlebar` | Titlebar action below | `"lower"`           | Action for a titlebar middle-click. |
+| `actionRightClickTitlebar`  | Titlebar action below | `"menu"`            | Action for a titlebar right-click.  |
 
-## Focus behavior
+## Focus behaviour
 
-`focus_mode` controls how pointer movement changes focus:
+`focusMode` controls how pointer movement changes focus:
 
-- `"click"` focuses a window when you click it. Moving the pointer does not
-  change focus.
-- `"hover"` focuses a window when the pointer enters it. If the pointer
-  leaves all windows, focus returns to the last window you used that can take focus.
-- `"hover-strict"` also focuses on pointer entry, but clears focus when the pointer
-  leaves all windows.
+- `"click"` focuses a window when you click it. Moving the pointer does not change focus.
+- `"hover"` focuses a window when the pointer enters it. If the pointer leaves all windows, focus returns to the last
+  window you used that can take focus.
+- `"hover-strict"` also focuses on pointer entry, but clears focus when the pointer leaves all windows.
 
-Set `focus_change_on_pointer_rest = true` to change focus only after the
-pointer rests briefly.
+Set `focusChangeOnPointerRest: true` to change focus only after the pointer rests briefly.
 
-## Pointer bindings
+`focusNewWindows` controls when app activation requests can focus a window:
 
-Configure modified dragging and window menus with
-[`keybindings.pointer`](/config/configure/keybindings#pointer-bindings).
-The default Lua callbacks bind Super + left-drag to move and Super + right-drag
-to resize from the nearest corner. These gestures work on application windows
-with client or server decorations.
+- `"prevent"` turns focus-stealing prevention on. It is the compositor's value when the key is missing.
+    - Activation requests need recent launch or user activity.
+    - A newly opened window must also be a transient descendant of the focused window, such as a dialog opened by that
+      app.
+    - Requests without valid recent activity leave the window unfocused, including a window you start from a launcher
+      and a password dialog.
+    - When no window has focus, nothing can be stolen, so a new window takes focus.
+- `"allow"` is the stock value. It allows applications to activate their windows after you have interacted with
+  another window since they opened them.
 
-`focus_new_windows` controls when app activation requests can focus a window.
-Mutter's standard policy has two choices.
+## Move and resize with the pointer
 
-- `"prevent"` enables Mutter's focus-stealing prevention. It is the compositor's value when the
-  key is missing. Activation requests need recent launch or user activity, and a newly opened
-  window must also be a transient descendant of the focused window, such as a dialog opened by
-  that app.
+The floating layout binds `Super` and a left drag to move a window and `Super` and a right drag to resize it from the
+nearest corner. These gestures work on application windows with client or server decorations. To bind another drag,
+see [triggers](/typescript-config#keys).
 
-    Requests without valid recent activity leave the window unfocused, including a window you start
-    from a launcher and a password dialog. When no window has focus, nothing can be stolen, so a new
-    window takes focus.
+## Workspaces
 
-- `"allow"` is the starter config value. It allows applications to activate
-  their windows after you have interacted with another window since they opened
-  them.
-
-In a Gnoblin session, `"prevent"` makes Mutter use its focus-stealing checks.
-See [Gnoblin's Mutter patch](https://github.com/kierandrewett/gnoblin/blob/main/patches/mutter/09-focus-activation/0001-honour-app-activation.patch)
-for this session-specific behavior.
-See the [focus prevention guide](/shell-api/focus-activation) for a ready-to-use config
-example.
-
-Declare named workspaces in the top-level `workspaces` field of
-`gnoblin.configure`; workspace declarations do not belong in
-`window_management`. Declared workspaces remain available even when empty.
-
-Each entry has a required `id` and `name`. Names must be nonempty and at most
-80 characters. IDs must be unique and match
-`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`.
-
-Declare at least one workspace. List order sets their initial positions.
-IDs stay attached as positions change. The stock desk builds one workspace for each declared entry and names it by
-its `id`. If `workspaces` is omitted, the desk builds nine workspaces, named `1` to `9`. The shell reads the list when
-the session starts.
-
-See the
-[workspace rules guide](/guides/window_rules#workspaces) for matching and
-placement examples, and the
-[writing workspace recipe](/recipes/writing-workspace) for runtime automation.
-See the [Lua runtime API](/shell-api/) for all callable runtime methods.
-
-For example, use pointer-follow focus and declare two persistent workspaces:
-
-```lua
-gnoblin.configure {
-    window_management = {
-        focus_mode = "hover",
-    },
-    workspaces = {
-        {id = "main", name = "Main"},
-        {id = "chat", name = "Chat"},
-    },
-}
-```
-
-Workspace sets are not a configuration setting. They are a Lua table in your shell files: see
-[Shell files](/user-shell#workspace-sets).
+Declare workspaces in the top-level `workspaces` key of `defineConfig`, not here. See
+[`workspaces`](/typescript-config#workspaces). Window rules that place a window on a workspace are in the
+[window rules guide](/guides/window_rules#workspaces).
 
 ## Titlebar actions
 
 The three titlebar click fields accept these values:
 
-| Value                          | Action                                  |
-| ------------------------------ | --------------------------------------- |
-| `toggle-maximize`              | Toggle maximize.                        |
-| `toggle-maximize-horizontally` | Toggle horizontal maximize.             |
-| `toggle-maximize-vertically`   | Toggle vertical maximize.               |
-| `minimize`                     | Minimize the window.                    |
-| `lower`                        | Lower the window in the stacking order. |
-| `menu`                         | Open the window menu.                   |
-| `none`                         | Do nothing.                             |
+| Value                          | Action                                      |
+| ------------------------------ | ------------------------------------------- |
+| `toggle-maximize`              | Toggle maximise.                            |
+| `toggle-maximize-horizontally` | Accepted and does nothing.                  |
+| `toggle-maximize-vertically`   | Accepted and does nothing.                  |
+| `minimize`                     | Minimise the window.                        |
+| `lower`                        | Lower the window in the stacking order.     |
+| `menu`                         | Open the window menu (needs `menus: true`). |
+| `none`                         | Do nothing.                                 |
 
-These settings control what a click on a titlebar does. Applications that draw
-their own client-side titlebars handle those clicks themselves.
+These settings control what a click on the stock titlebar does. Applications that draw their own client-side
+titlebars handle those clicks themselves, and GTK applications usually do, so this section does not change them.
 
-GTK applications usually draw their own titlebars and read the desktop's window
-manager settings directly. This Lua section does not change those apps' CSD
-behavior.
+## The shell's own keys
 
-## Reading the policy from Lua
+The shell reads this policy from the main seat, so a reload changes its next focus, raise or titlebar decision. The
+`defineConfig` keys below set the same policy for the shell alone. A key you leave out is the seat's.
 
-The stock shell reads these keys from the main seat node, not from its own copy of the configuration. A reload updates the seat, so the shell's next focus, raise or titlebar decision uses the new value. Its auto-raise timer uses `auto_raise_delay` in milliseconds.
+- `focus: { mode, newWindows, raiseOnClick, autoRaise, autoRaiseDelay, changeOnPointerRest }`. The modes are
+  `click`, `sloppy` (this page's `hover`) and `follow-mouse` (`hover-strict`).
+- `edgeTiling` and `dragConstraint`.
 
-The JavaScript shell can override some of these for itself in `defineConfig`. A key it leaves out is the seat's.
+```ts
+import { defineConfig } from "gnoblin";
 
-- **Focus:** `focus: { mode, newWindows, raiseOnClick, autoRaise, autoRaiseDelay, changeOnPointerRest }`. The modes are `click`, `sloppy` (this page's `hover`) and `follow-mouse` (`hover-strict`).
-- **Edges and drags:** `edgeTiling` and `dragConstraint`.
-
-The main seat node publishes these readonly props, so the shell reads the policy it runs under. A reload publishes only the values it changed:
-
-- **Edges and drags:** `edge_tiling`, `drag_constraint` (`work_area` or `minimum_strip`).
-- **Focus:** `focus_mode`, `focus_new_windows`, `raise_on_click`, `auto_raise`, `auto_raise_delay`, `focus_change_on_pointer_rest`.
-- **Titlebar gestures:** `double_click`, `middle_click`, `right_click`. The stock shell performs `toggle-maximize`, `lower` and `none`. `menu`, `minimize` and the one-axis maximise values are accepted and do nothing yet, because the Lua API has no menu or minimise surface. A value the schema does not name raises.
-
-Some settings are not in this policy, so the shell does not read them from the seat:
-
-- **Window rules:** the stock Lua shell reads them from its own list in `rules.lua`; the JavaScript shell reads them from `defineConfig({ rules })` ([rules in `init.ts`](/config/window_rule#javascript-rules)).
-- **`attach-modal-dialogs`:** not published.
-- **Workspaces:** `Workspace` nodes in the tree, not seat props; see [Workspaces](/shell-api/workspaces). The seat publishes no workspace list.
-
-## Type definition
-
-This is schema pseudocode in Lua table form. `?` marks an optional field;
-`|` separates accepted alternatives.
-
-```lua
-gnoblin.configure {
-    window_management = {
-        focus_mode = "click" | "hover" | "hover-strict"?,
-        focus_new_windows = "allow" | "prevent"?,
-        raise_on_click = boolean?,
-        auto_raise = boolean?,
-        focus_change_on_pointer_rest = boolean?,
-        auto_raise_delay = integer?, -- 0–10000 ms
-        check_alive_timeout = integer?, -- 0–4294967295 ms; 0 disables the liveness check
-        action_double_click_titlebar = TitlebarAction?,
-        action_middle_click_titlebar = TitlebarAction?,
-        action_right_click_titlebar = TitlebarAction?,
-        edge_tiling = boolean?,
-        attach_modal_dialogs = boolean?,
-        disable_workarounds = boolean?,
-        constrain_drag_to_work_area = boolean?,
-    },
-    workspaces = {
-        {id = string, name = string},
-        ...
-    }?,
-}
-
--- TitlebarAction = "toggle-maximize" | "toggle-maximize-horizontally"
---                | "toggle-maximize-vertically" | "minimize" | "lower"
---                | "menu" | "none"
+export default defineConfig({
+    focus: { mode: "sloppy", autoRaise: true, autoRaiseDelay: 300 },
+    edgeTiling: true,
+    dragConstraint: "minimum_strip",
+});
 ```
+
+Window rules and workspaces are not part of this document: see [window rules](/config/window_rule) and the
+[defineConfig reference](/typescript-config).

@@ -1,98 +1,55 @@
-# gnoblin.configure
+# Configuration reference
 
-Set Gnoblin's compositor, input, session, and window-management options with
-`gnoblin.configure`:
+Gnoblin's settings are the keys of one `defineConfig` call in `~/.config/gnoblin/init.ts`:
 
-```lua
-gnoblin.configure {
-    window_management = {focus_mode = "click"},
-}
+```ts
+import { defineConfig } from "gnoblin";
+
+export default defineConfig({
+    windowManagement: { focusMode: "click" },
+});
 ```
 
-Defaults apply before your config loads. Included files merge maps, replace
-lists, and later values win. Shell clients keep their own presentation
-settings; Gnoblin config controls compositor and session behavior.
+Defaults apply before your config loads, and your config is laid over them. A key you leave out keeps its default.
+Write each setting name in camelCase: `focusMode` for `focus-mode`. The kebab-case spelling is accepted as well. An
+unknown key fails the load with a suggestion, so a typo never goes unnoticed. Sizes use logical pixels.
 
-Sizes use logical pixels.
+The [defineConfig reference](/typescript-config) lists every key, how it combines with the stock config, and what
+each value does. The pages below say more about the settings that are sections of the compositor's configuration.
 
 ## Settings
 
-For the active file path, bundled defaults, and restoring the default config
-tree, see [Configuration files](/config/configure/config-files).
+Each page names the `defineConfig` key it describes.
 
-Each entry below is a real top-level key accepted by `gnoblin.configure`.
-An unknown top-level key does nothing. The reload still succeeds, but
-`gnoblinctl config reload` includes the diagnostic in its `warnings` list.
-Gnoblin also logs it and publishes a configuration notice for the shell.
-A clean reload returns an empty list and clears the configuration notice.
+- [`windowManagement`](/config/configure/window_management): focus, raise, tiling and titlebar clicks.
+- [`compositor`](/config/configure/compositor): bells, renderer, blur and the pointer locator.
+- [`input`](/config/configure/input): [keyboard](/config/configure/input/keyboard),
+  [mouse](/config/configure/input/mouse), [touchpad](/config/configure/input/touchpad),
+  [trackball and pointing stick](/config/configure/input/trackball-pointing-stick), tablets and styluses.
+- [`inputSources`](/config/configure/input_sources): keyboard layouts and input methods.
+- [`monitors`](/config/configure/monitors): scale and privacy screen.
+- [`touchpadGestures`](/config/configure/touchpad_gestures): swipes and pinches that start a command.
+- [`location`](/config/configure/location): the GeoClue agent policy.
+- [`keyring`](/config/configure/keyring): the built-in secret store.
+- [`auth`](/config/configure/auth): the polkit authentication agent.
+- [`layerShell`](/config/configure/layer_shell): focus when a layer-shell surface opens.
+- [`protocols`](/config/configure/protocols): the Wayland protocols clients may use.
+- [`appearance`](/config/configure/appearance): colour scheme, accent and accessibility preferences.
+- [`dialogs`](/config/configure/dialogs): the look of the compositor's consent and passphrase dialogs.
+- [`accessibility`](/config/configure/accessibility): the magnifier and colour filters.
+- [`cursor`](/config/configure/cursor): theme, size and image providers.
+- [`xwayland`](/config/configure/xwayland): the X11 server.
+- [`autostart`](/config/configure/autostart): commands the session starts.
 
-An existing previous-session crash notice takes priority and survives reloads;
-warnings remain available in the reload result.
+Two sections of the old configuration have no key. Shortcuts and keybindings are replaced by
+[`keys`](/guides/shortcuts). `animations` and `portals` are read by nothing, so there is nothing to set: see
+[portals](/config/configure/portals) for how to route a portal interface.
 
-For example, `touchpad` belongs under `input.touchpad`, not at the top level.
-Use the [touchpad reference](/config/configure/input/touchpad) for its fields.
-Diagnostics use normalized names, so `not_a_section` appears as
-`not-a-section`. See [reload feedback](/shell-api/session-runtime#reload-warnings)
-for the result and event fields.
+## Where a setting takes effect
 
-- [`gnoblin.configure.keybindings`](/config/configure/keybindings)
-- [`gnoblin.configure.window_management`](/config/configure/window_management)
-- [`gnoblin.configure.compositor`](/config/configure/compositor)
-- [`gnoblin.configure.input`](/config/configure/input)
-- [`gnoblin.configure.input_sources`](/config/configure/input_sources)
-- [`gnoblin.configure.monitors`](/config/configure/monitors)
-- [`gnoblin.configure.touchpad_gestures`](/config/configure/touchpad_gestures)
-- [`gnoblin.configure.location`](/config/configure/location)
-- [`gnoblin.configure.keyring`](/config/configure/keyring)
-- [`gnoblin.configure.auth`](/config/configure/auth)
-- [`gnoblin.configure.portals`](/config/configure/portals)
-- [`gnoblin.configure.layer_shell`](/config/configure/layer_shell)
-- [`gnoblin.configure.protocols`](/config/configure/protocols)
-- [`gnoblin.configure.appearance`](/config/configure/appearance)
-- [`gnoblin.configure.dialogs`](/config/configure/dialogs)
-- [`gnoblin.configure.accessibility`](/config/configure/accessibility)
-- [`gnoblin.configure.cursor`](/config/configure/cursor)
-- [`gnoblin.configure.xwayland`](/config/configure/xwayland)
-- [`gnoblin.configure.shortcuts`](/config/configure/shortcuts)
-- [`gnoblin.configure.autostart`](/config/configure/autostart)
+Each page says whether a setting applies on a reload, at the next start of its process, or not at all. A setting that
+is accepted and not in effect is logged as `not applied: ...`. A reload commits the whole document your file
+describes, so a setting you delete from `init.ts` goes back to its default.
 
-Use [`gnoblin.snapshot()`](/config/snapshot) to inspect the config assembled
-so far.
-
-Use [Lua events](/events/) to set values from the window under the
-pointer when the config loads.
-
-To follow GNOME's light or dark preference in window rules, see
-[light and dark appearance](/guides/theming).
-
-See [recipes](/recipes/) for complete examples and
-[file loading](/guides/files_and_load_order) for include order and reload
-behavior.
-
-## Type definition
-
-Schema pseudocode: `?` marks an optional section. See each page for its
-nested fields and accepted values.
-
-```lua
-gnoblin.configure {
-    keybindings = {...}?,
-    window_management = {...}?,
-    compositor = {...}?,
-    input = {...}?,
-    input_sources = {...}?,
-    monitors = {...}?,
-    touchpad_gestures = {...}?,
-    location = {...}?,
-    auth = {...}?,
-    portals = {...}?,
-    layer_shell = {...}?,
-    protocols = {...}?,
-    appearance = {...}?,
-    accessibility = {...}?,
-    cursor = {...}?,
-    xwayland = {...}?,
-    shortcuts = {...}?,
-    autostart = {...}?,
-}
-```
+See [recipes](/recipes/) for complete examples, [files and load order](/guides/files_and_load_order) for splitting a
+config over files, and [configuration files](/config/configure/config-files) for where the file lives.

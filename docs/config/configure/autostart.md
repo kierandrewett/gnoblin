@@ -1,80 +1,37 @@
-# gnoblin.configure.autostart
+# Autostart settings
 
-`autostart` maps each entry name to a command Gnoblin starts in the user
-session after Mutter publishes its Wayland display. Put these settings in
-`~/.config/gnoblin/init.lua`.
+`autostart` is a list of commands the shell starts in the user session. Each entry is a command line or an argv:
 
-| Field     | Accepted values                   | Default and effect                                   |
-| --------- | --------------------------------- | ---------------------------------------------------- |
-| Name      | 1–80 letters, numbers, `_` or `-` | Identifies the entry when another config merges it.  |
-| `command` | Nonempty array of strings         | Required. Runs directly, without shell expansion.    |
-| `when`    | `"on_login"`                      | `"on_login"`, the only supported trigger.            |
-| `enable`  | Boolean                           | `true`; set to `false` to disable an imported entry. |
+```ts
+import { defineConfig } from "gnoblin";
 
-Use the same name to override an imported command. Omitted fields keep their
-earlier values. Removing or disabling an entry stops its Gnoblin-owned process
-group on config reload, including descendants that remain in that group.
-
-```lua
-gnoblin.configure {
-    autostart = {
-        panel = {command = {"waybar", "--config", "/home/you/.config/waybar/config"}},
-    },
-}
+export default defineConfig({
+    autostart: ["waybar", ["waybar", "--config", "/home/you/.config/waybar/config"], "nm-applet --indicator"],
+});
 ```
 
-If an earlier config file defines `waybar`, you can change it directly by
-name. `enable` defaults to `true`:
+| Entry form     | Meaning                                                                                            |
+| -------------- | -------------------------------------------------------------------------------------------------- |
+| A string       | A command line, split on spaces and started with no shell.                                         |
+| A list         | The program and its arguments, one item each. Use it when an argument contains a space or a quote. |
+| `["sh", "-c"]` | A shell you start yourself, when you need pipes, redirection or expansion.                         |
 
-```lua
-gnoblin.configure.autostart.waybar.enable = false
-```
+The list replaces the stock list as a whole, and the stock config has no autostart entries. The same command listed
+twice fails the load. Each command is an entry of the config document's `autostart` section, named after its program
+(`foot`, then `foot-2` for a second `foot` command).
 
 ![Firefox below Waybar in a Gnoblin session](../../images/gnoblin-waybar-firefox.png)
 
 _Waybar starts as an independent session client; Firefox is a regular application window._
 
-Loop over autostart entries loaded earlier in the config:
+## How a reload treats the list
 
-```lua
-for name, entry in pairs(gnoblin.configure.autostart) do
-    if entry.enable then
-        print(name, table.concat(entry.command, " "))
-    end
-end
-```
+- A reload starts only the commands it adds. A command that is already running is not started again, and it keeps
+  running when the shell restarts.
+- A command is the same command when its program and arguments are the same.
+- Removing an entry stops its process group at the next reload, including descendants that remain in that group.
+  Listing it again starts it again.
+- A program that exits is not started again until you reload with it newly added.
+- A command that cannot be started logs a warning and does not stop the others.
 
-Use one array item per command argument. Commands run directly, so pipes,
-redirection and other shell syntax require explicitly launching a shell. See
-[command syntax](/guides/shortcuts#commands-and-shell-syntax) and the
-[autostart guide](/guides/autostart) for launch timing and overrides.
-
-An invalid command logs a warning and does not prevent other entries from
-starting. Gnoblin does not restart a command after it exits.
-
-An invalid entry makes `gnoblinctl config reload` fail and names the entry, for
-example `autostart "bar" has an unsupported field "cmd"; use name, command or
-when`. The previous configuration stays active and the session keeps running.
-An entry is invalid when:
-
-- it has no name, a name longer than 80 characters, or a name used twice
-- it has a field other than `name`, `command` or `when`
-- `when` is set to anything other than `"on_login"`
-- `command` is not a list, is empty, or has an item that is not a string
-
-## Type definition
-
-This is schema pseudocode in Lua table form. `?` marks an optional field;
-`["entry-name"]` stands for any valid entry name.
-
-```lua
-gnoblin.configure {
-    autostart = {
-        ["entry-name"] = {
-            command = {string, ...},
-            when = "on_login"?,
-            enable = boolean?,
-        },
-    },
-}
-```
+See the [autostart guide](/guides/autostart) for launch timing and examples.

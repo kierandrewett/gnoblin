@@ -1,27 +1,8 @@
-# gnoblin.configure.dialogs
+# Dialog settings
 
-Configure this part of `gnoblin.configure` with the `dialogs` key.
-
-Restyle the compositor's own dialogs: the consent dialog an app's screenshot, screen
-cast or input request raises, and the passphrase prompt that unlocks the keyring.
-
-```lua
-gnoblin.configure {
-    dialogs = {
-        style = {
-            radius = 14,
-            accent = "#89b4fa",
-            font = { family = "monospace", size = 16 },
-            ["button-layout"] = "stretch",
-            scale = 1.25,
-        },
-    },
-}
-```
-
-In the [TypeScript shell](/typescript-config#dialogs) the same settings are the `dialogs` key of `defineConfig`. Keys are
-camelCase there (`buttonLayout`) and the document's kebab-case (`button-layout`) here; the values are the same, and
-the compositor refuses and clamps them the same way.
+The `dialogs` key restyles the compositor's own dialogs: the consent dialog an app's screenshot, screen cast or input
+request raises, and the passphrase prompt that unlocks the keyring. The values the key takes are in the
+[defineConfig reference](/typescript-config#dialogs); this page says what the compositor does with them.
 
 ```ts
 import { defineConfig } from "gnoblin";
@@ -41,16 +22,16 @@ export default defineConfig({
 
 A value the compositor refuses (`radius: 5000`) fails the reload with the key path
 (`defineConfig: dialogs.style.radius: ...`) and leaves the running config in place. Removing the `dialogs` key and
-reloading puts every setting back to `Stock`.
+reloading puts every setting back to the stock look.
 
-| Setting         | Accepted value                       | Default |
-| --------------- | ------------------------------------ | ------- |
-| `radius`        | An integer; the dialog uses 0 to 24  | Stock   |
-| `accent`        | A named accent, `#rgb` or `#rrggbb`  | Stock   |
-| `font.family`   | A name of up to 64 characters        | Stock   |
-| `font.size`     | An integer; the dialog uses 12 to 32 | Stock   |
-| `button-layout` | `start`, `end`, `stretch`, `stacked` | `start` |
-| `scale`         | A number; the dialog uses 1 to 3     | `1`     |
+| Setting        | Accepted value                       | Default |
+| -------------- | ------------------------------------ | ------- |
+| `radius`       | An integer; the dialog uses 0 to 24  | Stock   |
+| `accent`       | A named accent, `#rgb` or `#rrggbb`  | Stock   |
+| `font.family`  | A name of up to 64 characters        | Stock   |
+| `font.size`    | An integer; the dialog uses 12 to 32 | Stock   |
+| `buttonLayout` | `start`, `end`, `stretch`, `stacked` | `start` |
+| `scale`        | A number; the dialog uses 1 to 3     | `1`     |
 
 ## What a style cannot do
 
@@ -73,7 +54,7 @@ The compositor clamps whatever a file or a script asks for:
 
 `font.family` accepts `monospace` (or `mono`) for the monospace face. Any other name is
 drawn in the default face: the dialogs use the fonts they embed and do not look up system
-fonts yet.
+fonts.
 
 A dialog that is open keeps the look it opened with; the next one uses the new style.
 
@@ -94,7 +75,7 @@ class NoScreenshots extends DialogListener {
 }
 
 export default defineConfig({
-    setup() {
+    setup(gnoblin) {
         gnoblin.dialogs.addListener(new NoScreenshots());
     },
 });

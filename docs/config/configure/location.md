@@ -1,39 +1,38 @@
-# gnoblin.configure.location
+# Location settings
 
-Set the global location policy used by Gnoblin's GeoClue agent:
+The `location` key sets the global location policy used by Gnoblin's GeoClue agent:
 
-```lua
-gnoblin.configure {
-    location = {
-        enabled = true,
-        max_accuracy = "city",
+```ts
+import { defineConfig } from "gnoblin";
+
+export default defineConfig({
+    location: {
+        enabled: true,
+        maxAccuracy: "city",
     },
-}
+});
 ```
 
-This policy controls whether Gnoblin can approve location requests and the
-maximum precision it can return. It does not approve individual applications.
-A shell or Lua handler must still answer each
-[`gnoblin.location.authorization-requested`](/shell-api/privacy)
-event.
+This policy controls whether Gnoblin can approve location requests and the maximum precision it can return. It does
+not approve individual applications. GeoClue asks about an app only when it can identify it, as
+[below](#when-geoclue-asks-the-agent).
 
-| Field          | Type and accepted values                                                       | Default                                             | Effect                                  |
-| -------------- | ------------------------------------------------------------------------------ | --------------------------------------------------- | --------------------------------------- |
-| `enabled`      | Boolean or `"inherit"`                                                         | Current system setting; schema default is `false`   | Enables requests or denies them all.    |
-| `max_accuracy` | `"country"`, `"city"`, `"neighborhood"`, `"street"`, `"exact"`, or `"inherit"` | Current system setting; schema default is `"exact"` | Caps precision for an approved request. |
+| Field         | Type and accepted values                                                       | Default                                             | Effect                                  |
+| ------------- | ------------------------------------------------------------------------------ | --------------------------------------------------- | --------------------------------------- |
+| `enabled`     | Boolean or `"inherit"`                                                         | Current system setting; schema default is `false`   | Enables requests or denies them all.    |
+| `maxAccuracy` | `"country"`, `"city"`, `"neighborhood"`, `"street"`, `"exact"`, or `"inherit"` | Current system setting; schema default is `"exact"` | Caps precision for an approved request. |
 
 The fallback keys and defaults come from the
 [`org.gnome.system.location` schema](https://github.com/GNOME/gsettings-desktop-schemas/blob/main/schemas/org.gnome.system.location.gschema.xml.in).
 System or administrator values take precedence over schema defaults.
 
-Each field overrides its corresponding `org.gnome.system.location` setting
-independently. If a field is omitted or set to `"inherit"`, Gnoblin uses that
-setting. This lets you, for example, enable location in Lua while keeping the
+Each field overrides its corresponding `org.gnome.system.location` setting independently. If a field is omitted or set
+to `"inherit"`, Gnoblin uses that setting. This lets you, for example, enable location in your config while keeping the
 system's configured accuracy cap.
 
-Changes apply when Gnoblin reloads the configuration. Setting `enabled =
-false` denies location requests and sets the maximum accuracy to zero. An
-approved request is also limited by the application's requested accuracy.
+The GeoClue agent reads the section when it starts, so a change takes effect at the next session start. Setting
+`enabled: false` denies location requests and sets the maximum accuracy to zero. An approved request is also limited
+by the application's requested accuracy.
 
 Choose the least precise level an application needs:
 
@@ -42,15 +41,14 @@ Choose the least precise level an application needs:
 - `"neighborhood"`: neighborhood-level location.
 - `"street"`: street-level location.
 - `"exact"`: exact location, typically requiring a GPS receiver.
-- `"inherit"`: clear an earlier Lua override and follow the system setting.
+- `"inherit"`: follow the system setting.
 
-## When GeoClue asks your handler
+## When GeoClue asks the agent
 
-GeoClue asks the agent about an app only when it can identify the app as a
-sandboxed Flatpak app. It reads that identity from the app's systemd scope
-(`app-flatpak-ID-N.scope`). Every other app counts as a system component:
-GeoClue does not ask, and the app receives location up to `max_accuracy`.
-`enabled` and `max_accuracy` apply to every app, with or without a request.
+GeoClue asks the agent about an app only when it can identify the app as a sandboxed Flatpak app. It reads that
+identity from the app's systemd scope (`app-flatpak-ID-N.scope`). Every other app counts as a system component:
+GeoClue does not ask, and the app receives location up to `maxAccuracy`. `enabled` and `maxAccuracy` apply to every
+app, with or without a request.
 
 ## Stop the GeoClue demo agent
 

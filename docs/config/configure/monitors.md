@@ -1,37 +1,25 @@
 # Monitor settings
 
-Use `gnoblin.configure.monitors` for preferences that apply to connected
-monitors.
+The `monitors` key sets preferences that apply to every connected monitor.
 
-## Privacy screen
+```ts
+import { defineConfig } from "gnoblin";
 
-Set `privacy_screen` to request the privacy screen state on monitors that
-support it:
-
-```lua
-gnoblin.configure {
-    monitors = {
-        privacy_screen = true,
-    },
-}
+export default defineConfig({
+    monitors: { globalScale: 2 },
+});
 ```
 
-`privacy_screen` accepts `true`, `false`, or `"inherit"`. It defaults to
-`"inherit"` when omitted. `true` requests that privacy screens turn on;
-`false` requests that they turn off. `"inherit"` follows the system privacy
-screen preference.
+| Setting         | Values                                      | Default     | Effect                                                     |
+| --------------- | ------------------------------------------- | ----------- | ---------------------------------------------------------- |
+| `globalScale`   | An integer from 0 through 4, or `"inherit"` | `"inherit"` | Scales every output by this step. `0` follows the system.  |
+| `privacyScreen` | `true`, `false`, or `"inherit"`             | `"inherit"` | Requests the privacy screen state. Not applied: see below. |
 
-`privacy_screen` is parsed, but no output backend applies it, so it has no
-effect on hardware.
+`globalScale` applies on a reload.
 
-Gnoblin applies an explicit choice for the current session and does not save it
-to the system preference. The request applies globally. Monitors without a
-privacy screen are unaffected. Remove the setting or use `"inherit"` to follow
-the system preference again.
+`privacyScreen` is accepted and checked, but no output backend applies it, so it has no effect on hardware. `true`
+requests that privacy screens turn on, `false` that they turn off, and `"inherit"` follows the system privacy screen
+preference.
 
-Runtime Lua can temporarily override this setting with
-`gnoblin.settings.override("monitors.privacy_screen", value)`. Revoking that
-override restores this configured value. If the config omits
-`privacy_screen`, revoking it follows the system preference. See the
-[output API](/shell-api/outputs#not-in-the-schema-yet) for the state and change
-events, and [overrides](/shell-api/overrides) for how they end.
+A monitor's own mode and scale, by connector name, are the `outputs` key of `defineConfig`. That key is accepted and
+checked, and it does not change a screen: see [`style` and `outputs`](/typescript-config#style-and-outputs).
