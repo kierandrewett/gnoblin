@@ -539,6 +539,7 @@ fn a_tree_surface_takes_the_windows_opacity_and_tint_but_not_its_look() {
             spread: 0.0,
             opacity: 1.0,
             color: Color::BLACK,
+            frame: false,
         }))
         .expect("a shadow");
     composer.with_scene(|scene| scene.set_effects(node, shadow).expect("the effects"));

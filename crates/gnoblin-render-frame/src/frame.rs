@@ -102,11 +102,13 @@ impl Layer {
         match self {
             Self::Surface(surface) => Solid {
                 corner_radius: surface.corner_radius,
+                silhouette: surface.silhouette,
                 model: surface.model,
                 ..Solid::new(surface.dst, grey)
             },
             Self::Solid(solid) => Solid {
                 corner_radius: solid.corner_radius,
+                silhouette: solid.silhouette,
                 model: solid.model,
                 ..Solid::new(solid.dst, grey)
             },
@@ -191,6 +193,14 @@ pub struct Surface {
     /// is a *clip*: the renderer draws the corner as background, the same way a rounded
     /// window reveals what is behind it.
     pub corner_radius: f32,
+    /// The rounded rectangle the corner radius rounds, the shadow follows when it asks for
+    /// the frame, and the content is clipped to, in the output's logical space. `None` is
+    /// the layer's own `dst`.
+    ///
+    /// A decorated window is several layers (its content, its titlebar) that must look like
+    /// one rounded shape. Each carries the same silhouette, the union of the lot, so the
+    /// corner is cut from the frame's corner and not from each layer's own.
+    pub silhouette: Option<Rect>,
     /// The effect chain drawn with the layer, in application order.
     ///
     /// The passes are the scene's own [`Effects`], so the values a shader reads here are
@@ -219,6 +229,9 @@ pub struct Solid {
     pub tint: Color,
     /// Corner radius in logical pixels, 0 for square corners.
     pub corner_radius: f32,
+    /// The rounded rectangle the corner radius rounds, as on [`Surface::silhouette`]. `None`
+    /// is `dst`.
+    pub silhouette: Option<Rect>,
     /// The effect chain drawn with the rectangle, in application order.
     pub effects: Effects,
     /// How the rectangle sits in three dimensions, `None` when it is drawn flat.
@@ -239,6 +252,7 @@ impl Solid {
             colour,
             tint: Color::WHITE,
             corner_radius: 0.0,
+            silhouette: None,
             effects: Effects::new(),
             model: None,
             secure: false,
@@ -556,7 +570,10 @@ impl OutputFrame {
                 if !(0.0..=1.0).contains(&surface.opacity) || !surface.tint.is_finite() {
                     return;
                 }
-                if !surface.corner_radius.is_finite() || surface.corner_radius < 0.0 {
+                if !surface.corner_radius.is_finite()
+                    || surface.corner_radius < 0.0
+                    || surface.silhouette.is_some_and(|shape| shape.is_empty())
+                {
                     return;
                 }
             }
@@ -574,7 +591,10 @@ impl OutputFrame {
                 if solid.colour.a <= 0.0 && solid.effects.is_empty() {
                     return;
                 }
-                if !solid.corner_radius.is_finite() || solid.corner_radius < 0.0 {
+                if !solid.corner_radius.is_finite()
+                    || solid.corner_radius < 0.0
+                    || solid.silhouette.is_some_and(|shape| shape.is_empty())
+                {
                     return;
                 }
             }
@@ -716,6 +736,38 @@ mod tests {
         solid.corner_radius = 3.0;
         frame.push_layer(Layer::Solid(solid));
         assert_eq!(frame.layers().len(), 1, "a radius a corner can hold is drawn");
+    }
+
+    #[test]
+    fn an_empty_silhouette_is_dropped_with_the_layer() {
+        let mut frame = OutputFrame::new();
+        let mut solid = Solid::new(Rect::new(0, 0, 8, 8), Color::WHITE);
+        solid.silhouette = Some(Rect::new(0, 0, 0, 8));
+        frame.push_layer(Layer::Solid(solid));
+        assert!(frame.layers().is_empty(), "a shape with no area rounds nothing");
+        let mut solid = Solid::new(Rect::new(0, 0, 8, 8), Color::WHITE);
+        solid.silhouette = Some(Rect::new(0, -4, 8, 12));
+        frame.push_layer(Layer::Solid(solid));
+        assert_eq!(frame.layers().len(), 1);
+    }
+
+    #[test]
+    fn a_mask_keeps_the_silhouette_the_secure_layer_was_rounded_to() {
+        let bounds = Rect::new(0, 0, 64, 64);
+        let mut frame = OutputFrame::new();
+        let mut secret = Solid::new(Rect::new(8, 16, 16, 16), Color::BLACK);
+        secret.secure = true;
+        secret.corner_radius = 4.0;
+        secret.silhouette = Some(Rect::new(8, 8, 16, 24));
+        frame.push_layer(Layer::Solid(secret));
+        let masked = frame.redacted(SecureTreatment::Mask, bounds);
+        match &masked.layers()[0] {
+            Layer::Solid(mask) => {
+                assert_eq!(mask.corner_radius, 4.0);
+                assert_eq!(mask.silhouette, Some(Rect::new(8, 8, 16, 24)));
+            }
+            other => panic!("expected a solid mask, got {other:?}"),
+        }
     }
 
     #[test]

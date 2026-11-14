@@ -27,6 +27,13 @@ pub const SHADOW: &str = concat!(
     include_str!("wgsl/effect.wgsl"),
 );
 
+/// A border: a ring along the edge of a layer's rounded silhouette, drawn over the layer.
+pub const BORDER: &str = concat!(
+    include_str!("wgsl/preamble.wgsl"),
+    include_str!("wgsl/border.wgsl"),
+    include_str!("wgsl/effect.wgsl"),
+);
+
 /// One axis of the Gaussian blur of the backdrop behind a layer.
 pub const BLUR: &str = concat!(
     include_str!("wgsl/preamble.wgsl"),
@@ -44,7 +51,7 @@ mod tests {
 
     #[test]
     fn every_pass_declares_the_entry_point() {
-        for pass in [SOLID, SURFACE, SHADOW, BLUR] {
+        for pass in [SOLID, SURFACE, SHADOW, BORDER, BLUR] {
             assert!(pass.contains("fn shade("), "a pass defines its body");
             assert!(pass.contains("fn gnoblin_entry("), "and the shared entry point");
         }

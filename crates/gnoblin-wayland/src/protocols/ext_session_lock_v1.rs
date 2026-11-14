@@ -488,6 +488,7 @@ impl State {
                 opacity: 1.0,
                 tint: Color::WHITE,
                 corner_radius: 0.0,
+                silhouette: None,
                 effects: Effects::default(),
                 model: None,
                 // A capture must not read the lock screen's content either.

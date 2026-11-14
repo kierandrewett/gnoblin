@@ -22,7 +22,10 @@ struct Gnoblin {
     // The layer's multiplicative colour.
     tint: vec4<f32>,
     // Values whose meaning belongs to the pass: a shadow's inset and blur, a blur's
-    // tap step.
+    // tap step, a border's growth and its band. A solid or a surface that is rounded to a
+    // silhouette larger than its own quad (a window's content under its titlebar's room)
+    // holds that silhouette here: its origin relative to the quad's, then its size, so
+    // `params.z > 0` says there is one.
     params: vec4<f32>,
     // Corner radius in physical pixels.
     corner: f32,
@@ -46,9 +49,14 @@ fn gnoblin_uv(local: vec2<f32>) -> vec2<f32> {
 // It is a signed distance to the rounded box, converted to coverage over one pixel so
 // the corner is antialiased. A radius of zero gives a hard edge at the rectangle's own
 // boundary, and the radius is clamped so a radius larger than half the shorter side
-// cannot invert the box.
+// cannot invert the box. The box is the quad's own rectangle, or the silhouette in
+// `params` when the layer is one part of a larger rounded frame.
 fn gnoblin_corner(local: vec2<f32>) -> f32 {
-    return gnoblin_rounded_box(local * gnoblin.rect.zw, gnoblin.rect.zw, gnoblin.corner);
+    let point = local * gnoblin.rect.zw;
+    if gnoblin.params.z > 0.0 {
+        return gnoblin_rounded_box(point - gnoblin.params.xy, gnoblin.params.zw, gnoblin.corner);
+    }
+    return gnoblin_rounded_box(point, gnoblin.rect.zw, gnoblin.corner);
 }
 
 // The coverage of a rounded box centred on `size / 2` at `point`, in pixels.

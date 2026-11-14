@@ -90,6 +90,7 @@ fn surface(buffer: &ShmClient, index: usize, src: RectF, dst: Rect, opacity: f32
         opacity,
         tint,
         corner_radius: 0.0,
+        silhouette: None,
         effects: Effects::new(),
         model: None,
         secure: false,

@@ -1918,16 +1918,19 @@ impl Composer {
     }
 
     /// The transform a window's node should reach. While the shell holds the tree, the node's
-    /// x and y are the shell's, so the target keeps them where they are.
+    /// x and y and its corner radius are the shell's, so the target keeps them where they are:
+    /// a style writes the radius to the node, and a retarget that put the window's own (zero) back
+    /// would square the corners again at the next sync.
     fn placed_target(&self, entry: &WindowNode) -> VisualTransform {
         let mut transform = Self::target(entry);
         if self.scene.shell_places() {
-            let (x, y) = entry
-                .node
-                .and_then(|node| self.scene.transform(node))
-                .map_or((0.0, 0.0), |current| (current.base.offset.x, current.base.offset.y));
+            let current = entry.node.and_then(|node| self.scene.transform(node));
+            let (x, y) = current.map_or((0.0, 0.0), |current| (current.base.offset.x, current.base.offset.y));
             transform.base.offset.x = x;
             transform.base.offset.y = y;
+            if let Some(current) = current {
+                transform.corner_radius = current.corner_radius;
+            }
         }
         transform
     }
@@ -3654,20 +3657,41 @@ impl Composer {
         }
         let mut spatial = false;
         // A canvas draws in the scene's paint order against the windows: above its parent and what is under that,
-        // below what the tree puts after it. Windows keep the stacking order; canvases wait their turn.
-        let ranks = if self.canvases.is_empty() {
+        // below what the tree puts after it. Windows keep the stacking order; canvases wait their turn. So does a
+        // window's border ring, which is drawn over the whole frame: after the window's own surfaces and after every
+        // canvas of its subtree (its titlebar), and before the next window.
+        let ringed: Vec<(WindowId, NodeId)> = if self.effect_kinds.contains(&"border") {
+            self.order
+                .iter()
+                .filter_map(|window| {
+                    let node = self.windows.get(window)?.node?;
+                    self.scene.effects(node)?.has("border").then_some((*window, node))
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let ranks = if self.canvases.is_empty() && ringed.is_empty() {
             BTreeMap::new()
         } else {
             self.paint_ranks()
         };
-        let mut canvases: Vec<(u32, NodeId)> = self
+        // Keyed by twice the paint rank, so a ring (the odd key after the last rank of its subtree) sorts after the
+        // canvases under it and before the next node.
+        let mut queue: Vec<(u64, QueuedLayer)> = self
             .canvases
             .iter()
             .filter(|(node, picture)| picture.image.is_some() && self.scene.drawn(**node))
-            .filter_map(|(node, _)| Some((*ranks.get(node)?, *node)))
+            .filter_map(|(node, _)| Some((u64::from(*ranks.get(node)?) * 2, QueuedLayer::Canvas(*node))))
             .collect();
-        canvases.sort_unstable();
-        let mut waiting = canvases.into_iter().peekable();
+        for (window, node) in ringed {
+            if let Some(rank) = ranks.get(&node) {
+                let last = u64::from(*rank) + self.descendants(node);
+                queue.push((last * 2 + 1, QueuedLayer::Ring(window)));
+            }
+        }
+        queue.sort_unstable_by_key(|(key, _)| *key);
+        let mut waiting = queue.into_iter().peekable();
         for window in &self.order {
             let Some(entry) = self.windows.get(window) else {
                 continue;
@@ -3676,14 +3700,14 @@ impl Composer {
                 continue;
             };
             if let Some(rank) = ranks.get(&window_node) {
-                while let Some((_, canvas)) = waiting.next_if(|(canvas_rank, _)| canvas_rank < rank) {
-                    self.push_canvas(canvas, rect, frame, &mut spatial);
+                while let Some((_, item)) = waiting.next_if(|(key, _)| *key < u64::from(*rank) * 2) {
+                    self.push_waiting(item, rect, frame, &mut spatial);
                 }
             }
             self.push_window(*window, entry, window_node, rect, frame, &mut spatial);
         }
-        for (_, canvas) in waiting {
-            self.push_canvas(canvas, rect, frame, &mut spatial);
+        for (_, item) in waiting {
+            self.push_waiting(item, rect, frame, &mut spatial);
         }
         // A View draws its source's picture at its own rectangle, above the windows it is
         // painted over and below the visual bell.
@@ -3730,6 +3754,7 @@ impl Composer {
                 opacity: 1.0,
                 tint: Color::new(1.0, 1.0, 1.0, 1.0),
                 corner_radius: 0.0,
+                silhouette: None,
                 effects: self.scene.effects(view).cloned().unwrap_or_default(),
                 model: None,
                 // A capture of the output replaces the picture of a View that holds a secure node, so the output
@@ -3803,6 +3828,18 @@ impl Composer {
             return;
         }
         let size = image.size();
+        // A decoration child of a rounded window (its titlebar) takes the window's radius and is clipped to the
+        // window's frame, so the bar and the content have one set of corners and not two.
+        let inherited = (transform.corner_radius <= 0.0 && model.is_none())
+            .then(|| self.scene.parent(canvas))
+            .flatten()
+            .filter(|parent| self.window_of_node(*parent).is_some())
+            .and_then(|parent| self.window_shape(parent, output))
+            .filter(|shape| shape.radius > 0.0);
+        let (corner_radius, silhouette) = match inherited {
+            Some(shape) => (shape.radius, Some(shape.rect)),
+            None => (transform.corner_radius, None),
+        };
         frame.push_layer(Layer::Surface(Surface {
             source: SurfaceSource::Snapshot(Arc::clone(image)),
             src: RectF {
@@ -3815,11 +3852,89 @@ impl Composer {
             transform: Transform::Normal,
             opacity,
             tint: Color::new(1.0, 1.0, 1.0, 1.0),
-            corner_radius: transform.corner_radius,
+            corner_radius,
+            silhouette,
             effects: self.scene.effects(canvas).cloned().unwrap_or_else(Effects::new),
             model,
             secure: self.secure_scope.contains(&canvas),
         }));
+    }
+
+    /// Draws what waited for its place in the paint order: a canvas, or a window's border ring.
+    fn push_waiting(&self, item: QueuedLayer, output: Rect, frame: &mut OutputFrame, spatial: &mut bool) {
+        match item {
+            QueuedLayer::Canvas(canvas) => self.push_canvas(canvas, output, frame, spatial),
+            QueuedLayer::Ring(window) => self.push_ring(window, output, frame),
+        }
+    }
+
+    /// The number of nodes under `node`, which is how many paint ranks its subtree takes after its own.
+    fn descendants(&self, node: NodeId) -> u64 {
+        let mut count = 0;
+        let mut pending: Vec<NodeId> = self.scene.children(node).unwrap_or(&[]).to_vec();
+        while let Some(next) = pending.pop() {
+            count += 1;
+            pending.extend(self.scene.children(next).unwrap_or(&[]));
+        }
+        count
+    }
+
+    /// The frame of a window node on `output`, in the output's own logical space: the rectangle its content covers,
+    /// together with the decoration children that lie outside it (a titlebar above the content), and the corner
+    /// radius the node carries. Everything a window draws, its content, its decoration, its borders and, when it
+    /// asks for the frame, its shadow, is rounded and outlined by this one shape.
+    fn window_shape(&self, node: NodeId, output: Rect) -> Option<WindowShape> {
+        let mut area = self.scene.content_bounds(node)?;
+        for child in self.scene.children(node).unwrap_or(&[]) {
+            let drawn = self.canvases.get(child).is_some_and(|picture| picture.image.is_some());
+            if drawn
+                && self.scene.drawn(*child)
+                && let Some(bounds) = self.scene.content_bounds(*child)
+            {
+                area = area.union(bounds);
+            }
+        }
+        let placed = area.to_pixel();
+        Some(WindowShape {
+            rect: Rect::new(
+                placed.x.saturating_sub(output.x),
+                placed.y.saturating_sub(output.y),
+                placed.width,
+                placed.height,
+            ),
+            radius: self.scene.transform(node)?.corner_radius,
+        })
+    }
+
+    /// Adds the border ring of a window: a layer with no pixels of its own that carries the window's borders and is
+    /// drawn over its frame, above its titlebar. A window placed in 3D or rotated about the depth axis has no ring:
+    /// the renderers have no depth pass for a stroke, and its node's `skipped` list says so.
+    fn push_ring(&self, window: WindowId, output: Rect, frame: &mut OutputFrame) {
+        let Some(node) = self.windows.get(&window).and_then(|entry| entry.node) else {
+            return;
+        };
+        let (Some(effects), Some(opacity), Some(transform)) = (
+            self.scene.effects(node),
+            self.scene.composed_opacity(node),
+            self.scene.transform(node),
+        ) else {
+            return;
+        };
+        if !self.scene.drawn(node) || self.spatial_world(node).is_some() || transform.base.rotation_degrees.z != 0.0 {
+            return;
+        }
+        let (_, borders) = effects.split_borders();
+        let Some(shape) = self.window_shape(node, output) else {
+            return;
+        };
+        if borders.is_empty() {
+            return;
+        }
+        let mut ring = Solid::new(shape.rect, Color::TRANSPARENT);
+        ring.tint = Color::new(1.0, 1.0, 1.0, opacity.clamp(0.0, 1.0));
+        ring.corner_radius = shape.radius;
+        ring.effects = borders;
+        frame.push_layer(Layer::Solid(ring));
     }
 
     /// How a node is placed on `output`: `None` for a flat rectangle drawn in paint order, which
@@ -4218,14 +4333,24 @@ impl Composer {
         };
         if let Some((source, content)) = own {
             let (x, y) = entry.surface_offset;
+            // The window's borders are drawn over its whole frame by a layer of their own (`push_ring`), so the
+            // content's layer carries the rest of the chain. The content, and with it the corner radius, is
+            // rounded to the frame, not to its own rectangle, when the window has a titlebar above it.
+            let (effects, _) = self.scene.effects(node).map(Effects::split_borders).unwrap_or_default();
+            let radius = pose.transform.corner_radius;
+            let silhouette = (radius > 0.0 || effects.has_frame_shadow())
+                .then(|| self.window_shape(node, output))
+                .flatten()
+                .map(|shape| shape.rect);
             let drawn = Drawn {
                 source,
                 content,
                 local: Some(Rect::new(-x, -y, content.size.width, content.size.height)),
                 // The window's placed pose, mid-tween, not its target.
                 opacity: pose.transform.opacity,
-                corner_radius: pose.transform.corner_radius,
-                effects: self.scene.effects(node).cloned().unwrap_or_default(),
+                corner_radius: radius,
+                silhouette,
+                effects,
             };
             self.push_surface(&paint, node, drawn, frame, spatial);
         }
@@ -4256,6 +4381,7 @@ impl Composer {
                 local: None,
                 opacity: self.opacity_within(paint.node, *child),
                 corner_radius: 0.0,
+                silhouette: None,
                 effects: Effects::new(),
             };
             self.push_surface(paint, *child, drawn, frame, spatial);
@@ -4330,6 +4456,7 @@ impl Composer {
             opacity: drawn.opacity,
             tint: paint.tint,
             corner_radius: drawn.corner_radius,
+            silhouette: drawn.silhouette.filter(|_| model.is_none()),
             effects: drawn.effects,
             model,
             secure: self.secure_scope.contains(&node),
@@ -4427,6 +4554,7 @@ impl ViewEmit<'_> {
             opacity: opacity.min(1.0) as f32,
             tint: Color::WHITE,
             corner_radius: 0.0,
+            silhouette: None,
             effects: Effects::new(),
             model: Some(model),
             secure: false,
@@ -4598,7 +4726,26 @@ struct Drawn {
     local: Option<Rect>,
     opacity: f32,
     corner_radius: f32,
+    /// The window's frame the corner radius rounds, when the layer is one part of a decorated window.
+    silhouette: Option<Rect>,
     effects: Effects,
+}
+
+/// What waits for its place in the paint order while windows are drawn.
+enum QueuedLayer {
+    /// A canvas node's picture.
+    Canvas(NodeId),
+    /// A window's border ring, which is drawn over its whole frame, after its titlebar.
+    Ring(WindowId),
+}
+
+/// A window's frame on one output: the rounded shape its content, its decoration children, its borders and, when it
+/// asks for the frame, its shadow share.
+struct WindowShape {
+    /// The frame's rectangle, in the output's logical space.
+    rect: Rect,
+    /// The corner radius of the frame, in logical pixels; 0 for square corners.
+    radius: f32,
 }
 
 /// Whether a scale can be drawn at all. The renderer draws a window at its scaled bounds, so
@@ -8234,6 +8381,7 @@ mod tests {
                 spread: 0.0,
                 opacity: 1.0,
                 color: Color::BLACK,
+                frame: false,
             }))
             .expect("a shadow");
         composer.with_scene(|scene| {
@@ -8302,6 +8450,7 @@ mod tests {
                 spread: 0.0,
                 opacity: 1.0,
                 color: Color::BLACK,
+                frame: false,
             }))
             .expect("a shadow");
         chain
@@ -8392,7 +8541,7 @@ mod tests {
         composer.take_tree_changes();
 
         composer.set_effect_kinds(Pass::NAMES);
-        let want = TreeValue::ListText(vec!["blur".to_owned(), "shadow".to_owned()]);
+        let want = TreeValue::ListText(vec!["blur".to_owned(), "shadow".to_owned(), "border".to_owned()]);
         assert!(composer.take_tree_changes().iter().any(|change| matches!(
             change,
             TreeChange::Set { node, key, value } if *node == seat && key == "effect_kinds" && *value == want
@@ -8404,6 +8553,10 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "decorated_window_tests.rs"]
+mod decorated_window_tests;
 
 #[cfg(test)]
 #[path = "surface_tree_tests.rs"]

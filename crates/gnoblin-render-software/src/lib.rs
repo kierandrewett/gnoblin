@@ -32,11 +32,15 @@
 //!   never touched and a move cannot leave stale pixels behind.
 //! - **Corner radius is drawn here, by clipping.** A pixel is kept when its centre lies
 //!   inside the rounded rectangle, so the corners show what is behind them. Pixman has
-//!   no anti-aliased mask, so the edge is hard. A shadow, a backdrop blur and a user
-//!   shader are the GLES renderer's work (D12: GLES now, Pixman for software); this
-//!   path leaves them undrawn instead of faking them, which keeps the two renderers
-//!   comparable on the properties both implement (placement, opacity, tint, corners,
-//!   damage).
+//!   no anti-aliased mask, so the edge is hard. A layer that is one part of a larger
+//!   frame (a window's content under its titlebar) rounds to the frame's rectangle, its
+//!   `silhouette`, and not to its own.
+//! - **Borders and shadows are drawn here, as spans.** A border is the band between two
+//!   rounded shapes and a shadow is a stack of nested shapes whose alphas step down to
+//!   the shader's falloff (`shape.rs`); both have hard edges, and the shadow's falloff is
+//!   stepped. A backdrop blur and a user shader are the GLES renderer's work (D12: GLES
+//!   now, Pixman for software); this path leaves a blur undrawn instead of faking it, and
+//!   the node's `skipped` list says so.
 //!
 //! # Failure modes
 //!
@@ -64,6 +68,7 @@ use smithay::backend::renderer::{
 use smithay::reexports::pixman::Image as PixmanImage;
 use smithay::utils::{Buffer as BufferCoords, Physical, Rectangle, Size as PhysicalSize, Transform};
 
+use gnoblin_render::Pass;
 use gnoblin_types::{Color, Scale, Size};
 
 use gnoblin_render_frame::error::RenderError;
@@ -72,6 +77,7 @@ use gnoblin_render_frame::geometry::physical_rect;
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::image::READBACK_FORMAT;
 
+mod shape;
 mod stereo;
 mod view;
 pub use stereo::{Frustum, StereoRig, ViewRig, eye_sizes, render_rig};
@@ -420,31 +426,84 @@ impl Software {
                     continue;
                 }
             };
-            layer_damage(damage, dst, clipped);
-            if clipped.is_empty() {
-                continue;
-            }
             let radius = corner_radius(layer, scale);
-            if radius > 0.0 {
-                clip_to_shape(clipped, &corner_spans(dst.size, radius));
-                if clipped.is_empty() {
-                    continue;
+            let (silhouette, effects, tint, opacity, flat) = match layer {
+                Layer::Surface(surface) => (
+                    surface.silhouette,
+                    &surface.effects,
+                    surface.tint,
+                    surface.opacity,
+                    surface.model.is_none(),
+                ),
+                Layer::Solid(solid) => (solid.silhouette, &solid.effects, solid.tint, 1.0, solid.model.is_none()),
+                Layer::Overlay(_) => continue,
+            };
+            // The rectangle the corner radius rounds, a shadow that asks for the frame follows and a border runs
+            // along: the layer's silhouette when it is one part of a larger frame, else its own rectangle.
+            let outline = silhouette.map_or(dst, |area| physical_rect(area, scale));
+            // A layer placed in depth is drawn flat here, without the effects: they are not drawn on a node in 3D.
+            if flat {
+                for pass in effects.passes() {
+                    if let Pass::Shadow(held) = pass
+                        && held.opacity > 0.0
+                        && held.color.a > 0.0
+                    {
+                        let follows = if held.frame { outline } else { dst };
+                        shape::shadow(&mut pixman_frame, held, follows, radius, scale, damage, clipped)?;
+                    }
                 }
             }
-            match layer {
-                Layer::Solid(solid) => pixman_frame
-                    .draw_solid(dst, clipped, colour(tinted(solid.colour, solid.tint)))
-                    .map_err(failed)?,
-                Layer::Surface(surface) => {
-                    let Some(Some(texture)) = textures.get(index) else {
-                        continue;
-                    };
-                    let alpha = surface.opacity.clamp(0.0, 1.0) * surface.tint.a.clamp(0.0, 1.0);
-                    pixman_frame
-                        .render_texture_from_to(texture, source(surface), dst, clipped, &[], surface.transform, alpha)
-                        .map_err(failed)?;
+            layer_damage(damage, dst, clipped);
+            if !clipped.is_empty() && radius > 0.0 {
+                // The shape's spans are in its own coordinates; the damage is relative to the layer.
+                let origin = outline.loc - dst.loc;
+                let rounded: Vec<_> = corner_spans(outline.size, radius)
+                    .into_iter()
+                    .map(|span| Rectangle::new(span.loc + origin, span.size))
+                    .collect();
+                clip_to_shape(clipped, &rounded);
+            }
+            if !clipped.is_empty() {
+                match layer {
+                    Layer::Solid(solid) => {
+                        let fill = tinted(solid.colour, solid.tint);
+                        // A layer that is only its effects (a border's ring) has nothing of its own to fill.
+                        if fill.a > 0.0 {
+                            pixman_frame.draw_solid(dst, clipped, colour(fill)).map_err(failed)?;
+                        }
+                    }
+                    Layer::Surface(surface) => {
+                        if let Some(Some(texture)) = textures.get(index) {
+                            let alpha = surface.opacity.clamp(0.0, 1.0) * surface.tint.a.clamp(0.0, 1.0);
+                            pixman_frame
+                                .render_texture_from_to(
+                                    texture,
+                                    source(surface),
+                                    dst,
+                                    clipped,
+                                    &[],
+                                    surface.transform,
+                                    alpha,
+                                )
+                                .map_err(failed)?;
+                        }
+                    }
+                    Layer::Overlay(_) => {}
                 }
-                Layer::Overlay(_) => continue,
+            }
+            if flat {
+                for pass in effects.passes() {
+                    if let Pass::Border(held) = pass
+                        && held.width > 0.0
+                        && held.color.a > 0.0
+                    {
+                        let (near, far) = shape::border_band(held, scale);
+                        let spans = shape::band(outline, radius, near, far);
+                        let mut stroke = tinted(held.color, tint);
+                        stroke.a *= opacity.clamp(0.0, 1.0);
+                        shape::fill(&mut pixman_frame, &spans, damage, colour(stroke), clipped)?;
+                    }
+                }
             }
         }
         // Pixman signals nothing: its sync point is already signalled, and the
@@ -1007,6 +1066,7 @@ mod tests {
             opacity: 1.0,
             tint: Color::WHITE,
             corner_radius: 0.0,
+            silhouette: None,
             effects: Effects::new(),
             model: None,
             secure: false,
@@ -1057,6 +1117,7 @@ mod tests {
             opacity: 1.0,
             tint: Color::WHITE,
             corner_radius: 0.0,
+            silhouette: None,
             effects: Effects::new(),
             model: None,
             secure: false,
@@ -1086,6 +1147,7 @@ mod tests {
             opacity: 1.0,
             tint: Color::WHITE,
             corner_radius: 0.0,
+            silhouette: None,
             effects: Effects::new(),
             model: None,
             secure: false,

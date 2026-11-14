@@ -79,6 +79,7 @@ fn window(effects: Effects, tint: Color, opacity: f32) -> Layer {
         opacity,
         tint,
         corner_radius: 0.0,
+        silhouette: None,
         effects,
         model: None,
         secure: false,
@@ -98,6 +99,7 @@ fn shadow() -> Pass {
         spread: 1.0,
         opacity: 1.0,
         color: Color::from_rgba8(0, 0, 0, 160),
+        frame: false,
     })
 }
 

@@ -140,6 +140,9 @@ pub(super) fn plan(frame: &OutputFrame, scale: Scale, physical: Size, sizes: &Te
                     }
                     let mut uniforms = Uniforms::solid(quad, solid.colour, solid.tint, 1.0);
                     uniforms.corner = solid.corner_radius * radius_scale;
+                    if let Some(shape) = solid.silhouette.filter(|_| solid.corner_radius > 0.0) {
+                        uniforms.round_to(to_rect(physical_rect(shape, scale)));
+                    }
                     draws.push(&mut built, PassKind::Solid, None, damage, quad, &uniforms);
                 }
                 Layer::Surface(surface) => {
@@ -154,13 +157,16 @@ pub(super) fn plan(frame: &OutputFrame, scale: Scale, physical: Size, sizes: &Te
                     if quad.is_empty() || !quad.intersects(damage) {
                         continue;
                     }
-                    let uniforms = Uniforms::surface(
+                    let mut uniforms = Uniforms::surface(
                         quad,
                         texture_mapping(surface, *size),
                         surface.tint,
                         surface.opacity,
                         surface.corner_radius * radius_scale,
                     );
+                    if let Some(shape) = surface.silhouette.filter(|_| surface.corner_radius > 0.0) {
+                        uniforms.round_to(to_rect(physical_rect(shape, scale)));
+                    }
                     draws.push(
                         &mut built,
                         PassKind::Surface,

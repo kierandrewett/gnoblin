@@ -66,6 +66,49 @@ impl Uniforms {
         }
     }
 
+    /// Rounds a solid or surface pass to `silhouette` instead of its own quad.
+    ///
+    /// The pass keeps drawing inside its quad; only the shape its corner radius cuts from
+    /// changes. The silhouette is held in `params` as its origin relative to the quad's and
+    /// its size, which the preamble's `gnoblin_corner` reads. An empty silhouette is ignored,
+    /// because a zero width is how the shader tells there is none.
+    pub fn round_to(&mut self, silhouette: Rect) {
+        if silhouette.is_empty() {
+            return;
+        }
+        self.params = [
+            silhouette.x as f32 - self.rect[0],
+            silhouette.y as f32 - self.rect[1],
+            silhouette.width as f32,
+            silhouette.height as f32,
+        ];
+    }
+
+    /// The values of a border pass.
+    ///
+    /// `quad` is the silhouette grown by `grow` physical pixels on every side, and the ring is
+    /// the band between `near` and `far` physical pixels of signed distance from the
+    /// silhouette's edge (negative inside it). `corner` is the silhouette's radius.
+    pub fn border(
+        quad: Rect,
+        grow: f32,
+        band: (f32, f32),
+        colour: Color,
+        tint: Color,
+        opacity: f32,
+        corner: f32,
+    ) -> Self {
+        Self {
+            rect: [quad.x as f32, quad.y as f32, quad.width as f32, quad.height as f32],
+            src: [0.0, 0.0, 1.0, 1.0],
+            colour: components(colour),
+            tint: components(tint),
+            params: [grow, grow, band.0, band.1],
+            corner,
+            opacity: opacity.clamp(0.0, 1.0),
+        }
+    }
+
     /// Writes the block for one draw into `out`, replacing what it held.
     pub fn pack(&self, out: &mut Vec<u8>) {
         out.clear();
@@ -98,5 +141,44 @@ fn write_floats(out: &mut [u8], offset: usize, values: &[f32]) {
         if let Some(bytes) = out.get_mut(start..start + 4) {
             bytes.copy_from_slice(&value.to_ne_bytes());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_silhouette_is_held_relative_to_the_quad() {
+        let mut uniforms = Uniforms::solid(Rect::new(10, 40, 100, 80), Color::WHITE, Color::WHITE, 1.0);
+        uniforms.round_to(Rect::new(10, 12, 100, 108));
+        assert_eq!(uniforms.params, [0.0, -28.0, 100.0, 108.0]);
+        let mut bytes = Vec::new();
+        uniforms.pack(&mut bytes);
+        assert_eq!(bytes.len(), BLOCK_BYTES);
+        // `params` is the fifth vec4 of the block.
+        assert_eq!(f32::from_ne_bytes(bytes[72..76].try_into().expect("four bytes")), 100.0);
+    }
+
+    #[test]
+    fn an_empty_silhouette_leaves_the_quad_as_the_shape() {
+        let mut uniforms = Uniforms::surface(Rect::new(0, 0, 8, 8), [0.0, 0.0, 1.0, 1.0], Color::WHITE, 1.0, 3.0);
+        uniforms.round_to(Rect::new(0, 0, 0, 8));
+        assert_eq!(uniforms.params, [0.0; 4]);
+    }
+
+    #[test]
+    fn a_border_holds_its_growth_and_its_band() {
+        let uniforms = Uniforms::border(
+            Rect::new(0, 0, 20, 20),
+            4.0,
+            (-3.0, -1.0),
+            Color::WHITE,
+            Color::WHITE,
+            0.5,
+            6.0,
+        );
+        assert_eq!(uniforms.params, [4.0, 4.0, -3.0, -1.0]);
+        assert_eq!((uniforms.corner, uniforms.opacity), (6.0, 0.5));
     }
 }

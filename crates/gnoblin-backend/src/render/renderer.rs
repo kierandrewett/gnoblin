@@ -71,13 +71,16 @@ impl RendererKind {
 
     /// The effect kinds the renderer draws, by [`gnoblin_render::Pass::name`].
     ///
-    /// Only GLES draws a blur or a shadow. The software renderer leaves them undrawn
-    /// (`gnoblin-render-software`'s module comment) and the Vulkan renderer does not draw effects yet.
+    /// GLES draws a blur, a shadow and a border. The software renderer draws a shadow and a border as spans of pixels
+    /// with hard edges (`gnoblin-render-software`'s `shape` module) and leaves a blur undrawn. The Vulkan renderer
+    /// does not draw effects yet: it rounds a layer's corners, the radius is not an effect, and it reports every
+    /// effect kind as skipped.
     #[must_use]
     pub const fn effect_kinds(self) -> &'static [&'static str] {
         match self {
             Self::Gles => gnoblin_render::Pass::NAMES,
-            Self::Software | Self::Vulkan => &[],
+            Self::Software => &["shadow", "border"],
+            Self::Vulkan => &[],
         }
     }
 

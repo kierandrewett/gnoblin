@@ -165,6 +165,7 @@ struct Passes {
     solid: Program,
     surface: Program,
     shadow: Program,
+    border: Program,
     blur: Program,
     /// The whole-output view pass, run only when the frame has a view or a matrix.
     view: Program,
@@ -658,6 +659,9 @@ struct LayerParts<'a> {
     /// The physical rectangle the layer covers.
     quad: Rect,
     radius: f32,
+    /// The physical rectangle the corner radius rounds, the shadow follows when it asks for the frame and a
+    /// border runs along, when the layer is one part of a larger frame. `None` is `quad`.
+    silhouette: Option<Rect>,
     effects: &'a gnoblin_render::Effects,
     colour: Option<Color>,
     tint: Color,
@@ -703,10 +707,11 @@ impl Painter<'_> {
     /// layer's opacity, so the blur fades with the layer as a browser's `backdrop-filter` does
     /// under `opacity`.
     fn layer(&mut self, layer: &Layer, texture: Option<Texture>, placement: QuadPlacement) -> Result<(), RenderError> {
-        let (dst, corner_radius, effects, colour, tint, opacity, src) = match layer {
+        let (dst, corner_radius, silhouette, effects, colour, tint, opacity, src) = match layer {
             Layer::Solid(solid) => (
                 solid.dst,
                 solid.corner_radius,
+                solid.silhouette,
                 &solid.effects,
                 Some(solid.colour),
                 solid.tint,
@@ -716,6 +721,7 @@ impl Painter<'_> {
             Layer::Surface(surface) => (
                 surface.dst,
                 surface.corner_radius,
+                surface.silhouette,
                 &surface.effects,
                 None,
                 surface.tint,
@@ -735,11 +741,21 @@ impl Painter<'_> {
         if quad.is_empty() {
             return Ok(());
         }
+        let silhouette = silhouette.map(|shape| {
+            let shape = physical_rect(shape, self.scale);
+            Rect::new(
+                shape.loc.x,
+                shape.loc.y,
+                shape.size.w.max(0) as u32,
+                shape.size.h.max(0) as u32,
+            )
+        });
         let radius = (corner_radius * self.scale.as_f64() as f32).clamp(0.0, MAX_RADIUS);
         self.draw_parts(
             &LayerParts {
                 quad,
                 radius,
+                silhouette,
                 effects,
                 colour,
                 tint,
@@ -761,41 +777,54 @@ impl Painter<'_> {
         let LayerParts {
             quad,
             radius,
+            silhouette,
             effects,
             colour,
             tint,
             opacity,
             src,
         } = *parts;
+        // The shape the corner radius rounds, the shadow follows when it asks for the frame and a border runs
+        // along: the layer's silhouette when it is one part of a larger frame, else its own quad. A layer drawn
+        // through a model matrix is not on the flat plane the silhouette is stated in, so it keeps its own quad.
+        let flat = placement.clip.is_none();
+        let shape = silhouette.filter(|_| flat).unwrap_or(quad);
+        let rounded_to = silhouette.filter(|_| flat && radius > 0.0);
         let mut grouped = false;
         for pass in effects.passes() {
             match pass {
-                Pass::Shadow(_) | Pass::Blur(_) if placement.clip.is_some() => {
-                    log::warn!("unsupported-effect-on-3d: a shadow or blur on a transformed layer is not drawn");
+                Pass::Shadow(_) | Pass::Blur(_) | Pass::Border(_) if !flat => {
+                    log::warn!(
+                        "unsupported-effect-on-3d: a shadow, blur or border on a transformed layer is not drawn"
+                    );
                 }
                 Pass::Shadow(shadow) if shadow.opacity > 0.0 && shadow.color.a > 0.0 => {
-                    self.shadow(quad, radius, shadow)?;
+                    self.shadow(if shadow.frame { shape } else { quad }, radius, shadow)?;
                 }
                 Pass::Blur(blur) if blur.radius > 0.0 => {
                     let blurred = self.blur(quad, *blur, grouped)?;
                     grouped |= blurred;
                 }
-                Pass::Shadow(_) | Pass::Blur(_) => {}
+                // A border is a stroke over the layer's own pixels, so it waits until they are down.
+                Pass::Shadow(_) | Pass::Blur(_) | Pass::Border(_) => {}
             }
         }
         // A grouped layer is drawn at full opacity into its group, which then fades as one.
-        let (opacity, fade) = if grouped { (1.0, Some(opacity)) } else { (opacity, None) };
+        let (group_opacity, fade) = if grouped { (1.0, Some(opacity)) } else { (opacity, None) };
         if grouped {
             self.enter_group()?;
         }
-        let uniforms = match (colour, texture) {
+        let mut uniforms = match (colour, texture) {
             (Some(colour), _) => {
-                let mut uniforms = Uniforms::solid(quad, colour, tint, opacity);
+                let mut uniforms = Uniforms::solid(quad, colour, tint, group_opacity);
                 uniforms.corner = radius;
                 uniforms
             }
-            (None, _) => Uniforms::surface(quad, src, tint, opacity, radius),
+            (None, _) => Uniforms::surface(quad, src, tint, group_opacity, radius),
         };
+        if let Some(frame) = rounded_to {
+            uniforms.round_to(frame);
+        }
         let drawn = {
             let Self {
                 device, passes, bytes, ..
@@ -809,9 +838,17 @@ impl Painter<'_> {
             device.draw(program, bytes, quad, texture, placement)
         };
         match (drawn, fade) {
-            (Ok(()), Some(factor)) => self.fade_group(quad, factor),
-            (drawn, _) => drawn,
+            (Ok(()), Some(factor)) => self.fade_group(quad, factor, radius, rounded_to)?,
+            (drawn, _) => drawn?,
         }
+        if flat {
+            for pass in effects.passes() {
+                if let Pass::Border(border) = pass {
+                    self.border(shape, radius, border, tint, opacity)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Keeps the pixels of `rect` before the cursor is drawn over them, read back from the
@@ -878,6 +915,52 @@ impl Painter<'_> {
         uniforms.params = [blur, blur, blur, 0.0];
         passes.shadow.pack(&uniforms, bytes);
         device.draw(&passes.shadow, bytes, quad, None, QuadPlacement::FLAT)
+    }
+
+    /// Draws a border: a ring along the edge of `shape`, the layer's rounded silhouette.
+    ///
+    /// The quad is `shape` grown by how far the ring reaches outside it, and one pixel more for the antialiased
+    /// fringe. The shader takes the ring as a band of signed distance from the shape's edge, so an outside
+    /// border is the band `offset..offset + width` and an inside one `-(offset + width)..-offset`. A border
+    /// of no width, or of no alpha, draws nothing. `opacity` is the layer's own, so a faded window fades its
+    /// border with it.
+    fn border(
+        &mut self,
+        shape: Rect,
+        radius: f32,
+        border: &gnoblin_render::Border,
+        tint: Color,
+        opacity: f32,
+    ) -> Result<(), RenderError> {
+        let Self {
+            device,
+            passes,
+            bytes,
+            scale,
+            ..
+        } = self;
+        let factor = scale.as_f64() as f32;
+        let width = border.width * factor;
+        if width <= 0.0 || border.color.a <= 0.0 {
+            return Ok(());
+        }
+        let offset = border.offset * factor;
+        let (near, far) = if border.inset {
+            (-(offset + width), -offset)
+        } else {
+            (offset, offset + width)
+        };
+        let reach = if border.inset { -offset } else { offset + width };
+        let grow = reach.max(0.0).ceil() as i32 + 1;
+        let quad = Rect::new(
+            shape.x - grow,
+            shape.y - grow,
+            shape.width + 2 * grow as u32,
+            shape.height + 2 * grow as u32,
+        );
+        let uniforms = Uniforms::border(quad, grow as f32, (near, far), border.color, tint, opacity, radius);
+        passes.border.pack(&uniforms, bytes);
+        device.draw(&passes.border, bytes, quad, None, QuadPlacement::FLAT)
     }
 
     /// Blurs the pixels behind a layer into the layer's group, and reports whether it did.
@@ -996,7 +1079,13 @@ impl Painter<'_> {
 
     /// Composes the finished group over the frame at the layer's opacity, `group * opacity +
     /// frame * (1 - opacity)`, so the blur and the layer's pixels fade together.
-    fn fade_group(&mut self, dst: Rect, opacity: f32) -> Result<(), RenderError> {
+    fn fade_group(
+        &mut self,
+        dst: Rect,
+        opacity: f32,
+        radius: f32,
+        silhouette: Option<Rect>,
+    ) -> Result<(), RenderError> {
         let Some(rect) = dst.intersection(Rect::new(0, 0, self.physical.width, self.physical.height)) else {
             return Ok(());
         };
@@ -1016,7 +1105,12 @@ impl Painter<'_> {
         device.begin(target)?;
         device.scissor(Some(*clip));
         device.blend_group(opacity)?;
-        let uniforms = Uniforms::surface(rect, flipped_mapping(rect, *physical), Color::WHITE, 1.0, 0.0);
+        // The group holds a blurred backdrop that fills its whole quad, so the corner is cut here, from the
+        // layer's own radius and silhouette, rather than leaving the blur square behind a rounded window.
+        let mut uniforms = Uniforms::surface(rect, flipped_mapping(rect, *physical), Color::WHITE, 1.0, radius);
+        if let Some(frame) = silhouette {
+            uniforms.round_to(frame);
+        }
         passes.surface.pack(&uniforms, bytes);
         let drawn = device.draw(&passes.surface, bytes, rect, Some(group.texture()), QuadPlacement::FLAT);
         device.blend_premultiplied()?;
@@ -1086,6 +1180,7 @@ impl Passes {
             solid: program::link(device, shaders::VERTEX, shaders::SOLID)?,
             surface: program::link(device, shaders::VERTEX, shaders::SURFACE)?,
             shadow: program::link(device, shaders::VERTEX, shaders::SHADOW)?,
+            border: program::link(device, shaders::VERTEX, shaders::BORDER)?,
             blur: program::link(device, shaders::VERTEX, shaders::BLUR)?,
             view: program::link(device, shaders::VERTEX, shaders::VIEW)?,
         })
@@ -1168,12 +1263,21 @@ fn spatial_order(layers: &[Layer], physical: Size, scale: Scale) -> Vec<(usize, 
 /// It is the cheap test that lets a frame skip a layer nowhere near the damaged rectangle,
 /// including the padding a shadow draws into.
 fn intersects(layer: &Layer, damage: Rect, scale: Scale) -> bool {
-    let (dst, effects) = match layer {
-        Layer::Solid(solid) => (solid.dst, &solid.effects),
-        Layer::Surface(surface) => (surface.dst, &surface.effects),
+    let (dst, silhouette, effects) = match layer {
+        Layer::Solid(solid) => (solid.dst, solid.silhouette, &solid.effects),
+        Layer::Surface(surface) => (surface.dst, surface.silhouette, &surface.effects),
         // The overlay has its own pass, so no layer loop reaches it.
         Layer::Overlay(_) => return false,
     };
+    // A shadow that follows the frame and a border that runs along it reach out from the silhouette, which can
+    // lie beyond the layer's own rectangle (a titlebar's room above the content).
+    let dst = silhouette.map_or(dst, |shape| {
+        let left = dst.x.min(shape.x);
+        let top = dst.y.min(shape.y);
+        let right = (dst.x + dst.width as i32).max(shape.x + shape.width as i32);
+        let bottom = (dst.y + dst.height as i32).max(shape.y + shape.height as i32);
+        Rect::new(left, top, (right - left) as u32, (bottom - top) as u32)
+    });
     let padded = effects.expand(RectF::new(
         f64::from(dst.x),
         f64::from(dst.y),
@@ -1256,5 +1360,7 @@ mod view;
 
 #[cfg(test)]
 mod golden;
+#[cfg(test)]
+mod shape_tests;
 #[cfg(test)]
 mod tests;

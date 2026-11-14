@@ -46,7 +46,7 @@ fn frame_with(background: Color, size: Size, rect: Rect, colour: Color) -> Outpu
 }
 
 /// The colour of a pixel, which is what a probe is.
-fn probe(image: &Image, x: i32, y: i32) -> [u8; 4] {
+pub(super) fn probe(image: &Image, x: i32, y: i32) -> [u8; 4] {
     image.colour_at(x, y).unwrap_or_else(|| {
         panic!(
             "a pixel at {x},{y} of a {}x{} image",
@@ -57,7 +57,7 @@ fn probe(image: &Image, x: i32, y: i32) -> [u8; 4] {
 }
 
 /// The perceived brightness of a pixel, for a "darker than" probe.
-fn luma(pixel: [u8; 4]) -> u32 {
+pub(super) fn luma(pixel: [u8; 4]) -> u32 {
     u32::from(pixel[0]) * 3 + u32::from(pixel[1]) * 6 + u32::from(pixel[2])
 }
 
@@ -262,6 +262,7 @@ fn a_shadow_darkens_next_to_the_edge_and_fades() {
             spread: 0.0,
             opacity: 0.5,
             color: Color::BLACK,
+            frame: false,
         }))
         .expect("a shadow");
     solid.effects = effects;
@@ -319,6 +320,7 @@ fn a_shadow_does_not_leave_the_damage() {
             spread: 0.0,
             opacity: 1.0,
             color: Color::BLACK,
+            frame: false,
         }))
         .expect("a shadow");
     solid.effects = effects;
@@ -626,14 +628,14 @@ fn the_same_frame_draws_the_same_pixels() {
 
 /// A rectangle drawn in three dimensions: `matrix` maps its own plane, origin at its top-left
 /// corner, to the output before the perspective divide.
-fn spatial_solid(rect: Rect, colour: Color, matrix: Mat4, opaque: bool) -> Solid {
+pub(super) fn spatial_solid(rect: Rect, colour: Color, matrix: Mat4, opaque: bool) -> Solid {
     let mut solid = Solid::new(rect, colour);
     solid.model = Some(Model { matrix, opaque });
     solid
 }
 
 /// A frame of `layers` painted over `background`, damaging the whole output.
-fn layered_frame(background: Color, size: Size, layers: Vec<Solid>) -> OutputFrame {
+pub(super) fn layered_frame(background: Color, size: Size, layers: Vec<Solid>) -> OutputFrame {
     let mut frame = OutputFrame::new();
     frame.set_background(background);
     frame.push_damage(Rect::new(0, 0, size.width, size.height));
@@ -826,6 +828,7 @@ fn an_effect_on_a_projected_layer_draws_nothing_extra() {
             spread: 0.0,
             opacity: 0.5,
             color: Color::BLACK,
+            frame: false,
         }))
         .expect("a shadow");
     effects.push(Pass::Blur(blur(6.0))).expect("a blur");
@@ -893,6 +896,7 @@ fn glass_over_edge(quad: Rect, opacity: f32, alpha: u8) -> Option<Image> {
     let glass = LayerParts {
         quad,
         radius: 0.0,
+        silhouette: None,
         effects: &effects,
         colour: Some(Color::from_rgba8(200, 100, 50, alpha)),
         tint: Color::WHITE,
@@ -1195,6 +1199,7 @@ fn a_dmabuf_the_driver_refuses_is_skipped() {
         opacity: 1.0,
         tint: Color::WHITE,
         corner_radius: 0.0,
+        silhouette: None,
         effects: Effects::default(),
         model: None,
         secure: false,
