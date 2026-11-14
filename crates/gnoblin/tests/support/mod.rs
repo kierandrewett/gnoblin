@@ -480,8 +480,10 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
     ) {
         if let xdg_toplevel::Event::Configure { width, height, states } = event {
             let states = states
-                .chunks_exact(4)
-                .map(|state| u32::from_ne_bytes([state[0], state[1], state[2], state[3]]))
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|state| u32::from_ne_bytes(*state))
                 .collect();
             app.configures
                 .insert(toplevel.id().protocol_id(), (width, height, states));

@@ -2698,8 +2698,9 @@ fn the_xr_programs_seat_makes_the_stock_shell_build_a_room_with_a_view_per_windo
     let shell = Shell::start(&session, config.path(), |_| {});
     let mut mapper = Mapper::connect(&session.wayland());
     let ipc = session.ipc();
+    // `defineConfig({})` declares no workspace, so the stock four are the ones the shell has.
     wait_for("the shell runs the config", &session, &mut mapper, &shell, || {
-        shell.generation() > 0 && shell.view().contains(", 1 workspaces")
+        shell.generation() > 0 && shell.view().contains(", 4 workspaces")
     });
     let (one, two) = ("org.example.one", "org.example.two");
     mapper.map_window(one, "One");

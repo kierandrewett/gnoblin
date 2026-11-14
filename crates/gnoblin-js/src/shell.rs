@@ -505,7 +505,7 @@ impl JsShell {
     }
 
     /// Runs the stock default config as the generation's whole config, for a shell with no user entry (or whose
-    /// entry could not load): one floating `desktop` workspace and the stock keys, declared exactly as a user's
+    /// entry could not load): four floating workspaces and the stock keys, declared exactly as a user's
     /// `defineConfig({})` would declare them. Returns the failures of calls that ran while it loaded.
     ///
     /// # Errors

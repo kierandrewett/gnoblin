@@ -205,7 +205,7 @@ impl JsRole {
     }
 
     /// Boots the shell over `link` and loads the user's entry. With no entry file, or an entry that fails to
-    /// load, the stock default config runs instead (one floating `desktop`, the stock keys): a shell is never
+    /// load, the stock default config runs instead (four floating workspaces, the stock keys): a shell is never
     /// left bare. The diagnostic says why a failing entry was not used.
     pub fn over_link(link: Box<dyn TreeLink>, links: JsRoleLinks, config: JsRoleConfig) -> Result<Self, JsShellError> {
         let mut shell = JsShell::new(link, config.shell.clone())?;

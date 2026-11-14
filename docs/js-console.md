@@ -14,7 +14,7 @@ gnoblin> gnoblin.clients.length
 gnoblin> gnoblin.clients.focused?.title
 "Terminal"
 gnoblin> gnoblin.workspaces.map((ws) => [ws.id, ws.clients.length])
-[ [ "desktop", 2 ] ]
+[ [ "1", 2 ], [ "2", 0 ], [ "3", 0 ], [ "4", 0 ] ]
 ```
 
 It needs a session that runs the JavaScript shell (`GNOBLIN_SHELL_VM=js`). Without one, `gnoblinctl console` exits 1

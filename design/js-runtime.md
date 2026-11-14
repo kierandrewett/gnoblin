@@ -101,7 +101,7 @@ algorithm, not in the Lua corpus: master count, right and bottom orientations, f
 `inner` unless its own `gap` is set, so one `defineConfig({ gaps })` setting reaches every stock layout. `defineConfig`
 checks the shape (closed key sets, closed key-action union, references to undeclared workspaces) and registers the
 config through `globalThis.gnoblin.__register` when the host provides it; `desugarConfig` is the table of
-spec-review.md section 4 as a plain-data plan. `defaultConfig` is one floating `desktop` workspace, the keys of the Lua
+spec-review.md section 4 as a plain-data plan. `defaultConfig` is four floating workspaces (`1` to `4`), the keys of the Lua
 shell (`Super+1` to `Super+9`, `Super+Left` and `Super+Right`, the `Swipe3` slide; see "P4b status") and the media keys
 of `data/default-config`.
 
