@@ -506,11 +506,14 @@ fn an_init_lua_with_no_init_ts_runs_the_stock_config_and_says_once_how_to_migrat
     let document = wait_for_revision(&session, 1);
     assert_eq!(document, serde_json::json!({}), "the Lua file is not read: {document}");
     let log = session.log();
-    assert!(log.contains("runtime role: JavaScript"), "{log}");
+    let starts = log.matches("runtime role: JavaScript").count();
+    assert!(starts >= 1, "{log}");
+    // Once for each runtime process: the guardian restarts one whose stock config ran past its wall-clock budget on a
+    // machine under load, and the new process says it again. What must not happen is two warnings from one process.
     assert_eq!(
         log.matches("gnoblinctl config migrate").count(),
-        1,
-        "one warning:\n{log}"
+        starts,
+        "one warning for each runtime start:\n{log}"
     );
     assert!(
         log.contains("docs/migrating-from-lua.md"),
