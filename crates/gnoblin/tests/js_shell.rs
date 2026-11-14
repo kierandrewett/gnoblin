@@ -1509,9 +1509,11 @@ fn super_drags_swap_two_real_tiles_and_move_the_master_stack_divider_through_the
         &shell,
         || rect_of(&ipc, a) == left && rect_of(&ipc, b) == right,
     );
-    let middle = (height / 2.0) as i32;
-    let over_a = ((master_w / 2.0) as i32, middle);
-    let over_b = ((stack_x + stack_w / 2.0) as i32, middle);
+    // The test's windows are 200 by 150 buffers at their tile's corner: the compositor hears the pointer over a window
+    // only inside its buffer, so the presses are 100 pixels in and 75 down, though the tiles are far bigger.
+    let row = 75;
+    let over_a = (100, row);
+    let over_b = ((stack_x + 100.0) as i32, row);
 
     // Super+Button1 from a to b: nothing is drawn differently while the pointer is down, and the two trade places when it
     // is let go. The compositor holds the swap as the rectangles the shell wrote for the new order.
@@ -1543,8 +1545,8 @@ fn super_drags_swap_two_real_tiles_and_move_the_master_stack_divider_through_the
         &shell,
         a,
         BTN_RIGHT,
-        (over_b.0 + 20, middle),
-        (over_b.0 + 120, middle),
+        over_b,
+        (over_b.0 + 100, row),
         || tiling_probe(&shell, "resize").0 > resizes,
     );
     wait_for("the master follows the pointer", &session, &mut mapper, &shell, || {
