@@ -3518,8 +3518,9 @@ fn the_console_reads_and_writes_the_live_shell_and_survives_errors_and_runaways(
         (&mute["owner"], &mute["rank"]),
         (&serde_json::json!("context"), &serde_json::json!(1))
     );
-    let config_keys = console.value("Object.keys(inspect.config().keys).length", &mut mapper);
-    assert!(config_keys.as_u64().is_some_and(|count| count > 5), "{config_keys}");
+    // The stock default is code, not a registered config, so there is no effective config to report.
+    let config = console.value("inspect.config()", &mut mapper);
+    assert!(config.is_null(), "{config}");
 
     // A syntax error is an error with a location, and the shell is as it was.
     let generation = shell.generation();

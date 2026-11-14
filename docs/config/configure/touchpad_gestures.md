@@ -50,7 +50,6 @@ export default defineConfig({
             fingers: 4,
             direction: "out",
             command: ["kgx"],
-            threshold: 0.18,
         },
     ],
 });
