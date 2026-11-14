@@ -185,17 +185,20 @@ Every page that mentions the identifiers (297 mentions, 86 pages; the full per-p
 ### 2.1 What the harness is
 
 `crates/gnoblin-js/tests/spec_conformance.rs` loads the owner's reference `init.js` and each of the 128 fences of the specification
-archive into a freshly booted `JsShell` over the fake compositor of `tests/common`, behind a prelude that declares the variables a
-fragment assumes (the specification's section 19: `workspace`, `client`, `display`, `camera`, plus the workspaces, profiles,
-layouts, cameras and panels the earlier fences made). The inputs are stored verbatim as `tests/spec/**/*.txt` (so no formatter
-or linter rewrites them; `.prettierignore` also names the directory). The test writes the table to
-design/js-spec-conformance.md and asserts only that it saw 128 fences and that the table in the repository is current
-(`UPDATE_SPEC=1` regenerates). It runs about a minute in a debug build.
+archive into a freshly booted `JsShell` over the fake compositor of `tests/common`, behind documented fixtures for fragments.
+The inputs are stored verbatim as `tests/spec/**/*.txt`. `tests/spec/expected.toml` records the accepted `runs`, `fails` or
+`skipped` status for every file and its SHA-256; any input-byte edit fails until the owner-approved digest is recorded.
 
-What `runs` means: the file evaluated without throwing. A listener or a method body that no one calls is not exercised, so `runs`
-is a lower bar than "works" (for example, 036, 038 and 106 only register key handlers; 021 and 032 are guarded by an
-`input.activeDisplay` that is `null` because displays do not exist yet). What `fails` means: the first error, which is always a
-missing class, property or method, with the offending line shown after `@` where the engine's message names nothing.
+The ordinary test compares every actual status with that baseline, so both regressions and newly fixed examples require a
+deliberate baseline update in the same commit. `UPDATE_SPEC=1 cargo test -p gnoblin-js --test spec_conformance` regenerates the
+human report and may upgrade only `fails` to `runs`; it refuses newly failing examples or a `runs` -> `fails` downgrade. A
+downgrade requires a reasoned hand edit to `expected.toml`. The ignored `the_owners_reference_init_js_runs_unchanged` test
+executes the owner's input without fixtures and checks its workspaces, displays, output profiles and key bindings. Remove its
+ignore after it passes as part of the spec-native cutover.
+
+`just spec-gate` is the CI-visible command; it includes ignored acceptance gates via
+`cargo test -p gnoblin-js --test spec_conformance -- --include-ignored`. The ordinary suite covers expected statuses and fixture
+honesty without that future cutover test. Current ordinary results: 129 files, 68 run, 51 fail and 10 skipped.
 
 ### 2.2 Result
 

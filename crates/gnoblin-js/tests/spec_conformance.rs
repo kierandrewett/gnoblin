@@ -1,21 +1,17 @@
 //! How much of the owner's specification the JS shell runs today (design/js-research/owner-spec.md).
 //!
-//! The owner's reference `init.js` and the 128 code fences of the specification live verbatim in `tests/spec/` (as
-//! `*.txt`, so no formatter or linter rewrites the owner's input). Each one is loaded into a freshly booted `JsShell`
-//! over the fake compositor of `tests/common`, behind a prelude that declares the variables a snippet assumes (the
-//! specification's section 19: `workspace`, `client`, `display`, `camera` and the rest exist in the user's scope). The
-//! outcome is one of `runs`, `fails: <first error>` or `skipped: <reason>`, written to `design/js-spec-conformance.md`.
-//!
-//! The test never fails on a `fails` entry: that is the gap between the shell and the specification, recorded, not
-//! asserted. It asserts that the harness works (the number of snippets) and that the table in the repository is current.
-//! `UPDATE_SPEC=1 cargo test -p gnoblin-js --test spec_conformance` rewrites the table.
+//! The owner's reference `init.js` and 128 fences live verbatim in `tests/spec/` as `.txt` files.
+//! `expected.toml` records each file's accepted status and SHA-256, making behavior changes and input edits explicit.
+//! Snippet fixtures are inventoried above `PRELUDE`; the reference `init.js` runs without that prelude.
+//! `UPDATE_SPEC=1` updates the report and permits only intentional progress (`fails` -> `runs`).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use gnoblin_js::JsShell;
 use gnoblin_tree_client::tree_mirror::MirrorValue;
+use sha2::{Digest, Sha256};
 
 mod common;
 use common::{FakeCompositor, ROOT, timed_config};
@@ -26,10 +22,23 @@ const SNIPPET_COUNT: usize = 128;
 /// The longest error text a table row keeps.
 const ERROR_WIDTH: usize = 200;
 
-/// What a snippet may assume: the specification's section 19 says the workspace, display, client and camera variables
-/// exist in the user's scope, and the fragments name more (profiles, layouts, panels). Everything the library exports is
-/// global too, as for a script that imported all of it. Each fixture is built on first use, and a fixture whose class
-/// the shell lacks throws the name of that class, which is the failure the table should show.
+/// Per-fence prelude fixture inventory (fence numbers; `128` is the final full-init fence):
+/// `workspace`: 004, 019, 036, 044, 049, 051-052, 054, 059, 078, 080-081, 085-086, 100-102, 104, 111, 128.
+/// `desktop`: 018, 023-024, 027, 034-036, 092, 105, 108-109, 128. `development`: 003, 009, 011, 018-019,
+/// 031-033, 036, 078, 085, 095, 105, 107, 112, 128. `web`: 018, 031, 036, 038, 106, 123, 128.
+/// `gaming`: 017, 036, 095. `dev`: 020-021. `work`: 017, 048. `media`: 017.
+/// `client`: 001, 004-007, 009, 012, 014, 019-020, 038, 044, 048-051, 054, 064, 069, 072, 074, 079, 082-084,
+/// 094, 097-098, 102, 121, 124, 128. `firefox`: 006, 009, 013, 099, 125, 128. `firefoxClient`: 026.
+/// `terminal`: 125. `display`: 021, 032, 036, 044, 053, 059, 078, 080-081, 106, 110-111, 123, 128.
+/// `camera2D`: 059, 080, 085, 128. `camera3D`: 059, 077, 080-081, 083-084, 128.
+/// `camera`: 002, 022-025, 031, 033-035, 059-061, 077, 080-081, 085, 107-111, 114, 121, 128.
+/// `arcLayout`: 076, 128. `spatialRoom`: 026, 061. `room`: 004, 064-065, 114, 128.
+/// `background`: 015, 085, 126. `panel`: 022, 026, 064, 079. `initialTransform`: 124.
+/// `runThrowSimulation`: 071. `ultrawide`: 028, 031, 034-035. `side`: 028, 031, 034-035, 128.
+/// `mainProfile`, `secondProfile`: 108-109. `leftDisplay`, `rightDisplay`: 031, 033, 107.
+/// `xr`: 001-002, 061-062, 064-071, 088-091, 093, 114-118, 128.
+/// `spatial`: 059, 065-068, 079-081, 115-117.
+/// The style fixture is injected by `__STYLE__` for fences 010-017. Base module exports are global, not fixtures.
 const PRELUDE: &str = r##"import * as G from "gnoblin";
 
 const { gnoblin: _runtime, ...exported } = G;
@@ -184,14 +193,84 @@ enum Outcome {
     Skipped(String),
 }
 
+impl Outcome {
+    fn status(&self) -> &'static str {
+        match self {
+            Self::Runs => "runs",
+            Self::Fails(_) => "fails",
+            Self::Skipped(_) => "skipped",
+        }
+    }
+
+    fn first_error(&self) -> &str {
+        match self {
+            Self::Fails(error) => error,
+            _ => "",
+        }
+    }
+}
+
 struct Row {
     file: String,
     outcome: Outcome,
     note: String,
 }
 
+fn status_mismatch(file: &str, expected: &str, actual: &Outcome) -> String {
+    format!(
+        "{file}: expected {expected}, actual {} (first error: {})",
+        actual.status(),
+        if actual.first_error().is_empty() {
+            "(none)"
+        } else {
+            actual.first_error()
+        }
+    )
+}
+
+/// During explicit regeneration, only a failure becoming a pass is automatic progress.
+fn upgraded_status(expected: &str, actual: &str) -> Result<&'static str, String> {
+    match (expected, actual) {
+        ("runs", "runs") => Ok("runs"),
+        ("fails", "fails") => Ok("fails"),
+        ("skipped", "skipped") => Ok("skipped"),
+        ("fails", "runs") => Ok("runs"),
+        _ => Err(format!(
+            "UPDATE_SPEC refuses status change {expected} -> {actual}; new failures and runs -> fails downgrades require a hand edit of tests/spec/expected.toml with a reason comment"
+        )),
+    }
+}
+
+fn expected_manifest() -> toml::Value {
+    toml::from_str(&fs::read_to_string(expected_path()).expect("tests/spec/expected.toml reads"))
+        .expect("tests/spec/expected.toml parses")
+}
+
+fn verify_input_hashes(files: &[(String, PathBuf)], manifest: &toml::Value) {
+    let expected = manifest["sha256"].as_table().expect("expected.toml has [sha256]");
+    let actual_names: BTreeSet<_> = files.iter().map(|(name, _)| name.as_str()).collect();
+    let expected_names: BTreeSet<_> = expected.keys().map(String::as_str).collect();
+    assert_eq!(
+        expected_names, actual_names,
+        "expected.toml [sha256] must cover exactly all input files"
+    );
+    for (name, path) in files {
+        let bytes = fs::read(path).expect("spec input reads");
+        let digest = format!("{:x}", Sha256::digest(bytes));
+        let recorded = expected[name].as_str().expect("each recorded SHA-256 is a string");
+        assert_eq!(
+            digest, recorded,
+            "owner input {name} changed; preserve its bytes and update only with owner authorization"
+        );
+    }
+}
+
 fn spec_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("spec")
+}
+
+fn expected_path() -> PathBuf {
+    spec_dir().join("expected.toml")
 }
 
 fn table_path() -> PathBuf {
@@ -601,11 +680,11 @@ fn collect() -> Vec<Row> {
         .map(|path| (path.file_name().expect("a name").to_string_lossy().into_owned(), path))
         .collect();
     names.sort();
-    let init = fs::read_to_string(dir.join("init.js.txt")).expect("the reference config reads");
-    let mut rows = Vec::new();
-    // The reference file first, then the fences in the specification's order.
     let mut files = vec![("init.js.txt".to_owned(), dir.join("init.js.txt"))];
     files.extend(names);
+    verify_input_hashes(&files, &expected_manifest());
+    let init = fs::read_to_string(dir.join("init.js.txt")).expect("the reference config reads");
+    let mut rows = Vec::new();
     for (name, path) in files {
         let file = name
             .strip_suffix(".txt")
@@ -674,9 +753,9 @@ fn document(rows: &[Row]) -> String {
     let skipped = count(|outcome| matches!(outcome, Outcome::Skipped(_)));
     let mut out = String::new();
     out.push_str("# Spec conformance of the JS shell\n\n");
-    out.push_str("Generated by spec_conformance.rs. Regenerate with `UPDATE_SPEC=1 cargo test -p gnoblin-js --test spec_conformance`; do not edit by hand.\n\n");
+    out.push_str("Generated by spec_conformance.rs. `expected.toml` is the acceptance baseline; `UPDATE_SPEC=1` regenerates this report and permits only `fails` -> `runs` status upgrades. A downgrade needs a reasoned hand edit to `expected.toml`.\n\n");
     out.push_str("Each row is one file of the owner's specification archive (design/js-research/owner-spec.md), loaded verbatim into a freshly booted shell over the fake compositor of `tests/common`: a screen, a seat with a mouse, a keyboard and a touchpad, and three windows (Firefox focused, a terminal and Nautilus).\n\n");
-    out.push_str("A fence is a fragment, so it runs behind a prelude that declares what it assumes (the specification's section 19: `workspace`, `client`, `display`, `camera`, the workspaces, profiles, layouts and cameras the earlier fences made). Everything the library exports is in scope, as for a script that imported it all. A fixture whose class the shell lacks throws that class's name, which is what a row then shows. A fence about the XR extension loads after the shell has seen the XR program's session; one that makes workspaces of its own loads before it, so its XR guard is false.\n\n");
+    out.push_str("A fence is a fragment, so it runs behind the documented prelude fixtures. The reference `init.js` runs without that prelude. A missing class in a lazy fixture remains a failure naming the missing class. A fence about the XR extension loads after the shell has seen the XR program's session; one that makes workspaces of its own loads before it, so its XR guard is false.\n\n");
     out.push_str("`runs` means the file evaluated without throwing. `fails` names the first error: a missing class, property or method; where the engine does not name it (`not a function`), the line of the fence follows after `@`. `skipped` is a fragment that is not code. A `.ts` fence is a declaration: it runs when every class it declares exists, and its members are not checked. The note column gives the first error past a missing import (the import is declared as a class that throws, so the rest of the file shows), and says when a guard keeps a body from running.\n\n");
     out.push_str(&format!(
         "{} files: {runs} run, {fails} fail, {skipped} skipped.\n\n",
@@ -712,6 +791,63 @@ fn normalise(text: &str) -> String {
         .to_owned()
 }
 
+fn check_expected_statuses(rows: &[Row], update: bool) {
+    let mut manifest_text = fs::read_to_string(expected_path()).expect("expected.toml reads");
+    let mut manifest = expected_manifest();
+    let statuses = manifest["statuses"].as_table().expect("expected.toml has [statuses]");
+    let expected_names: BTreeSet<_> = statuses.keys().map(String::as_str).collect();
+    let actual_names: BTreeSet<_> = rows.iter().map(|row| row.file.as_str()).collect();
+    if let Some(row) = rows.iter().find(|row| !expected_names.contains(row.file.as_str())) {
+        panic!(
+            "{}: expected no recorded status, actual {} (first error: {}); add a deliberate baseline status",
+            row.file,
+            row.outcome.status(),
+            if row.outcome.first_error().is_empty() {
+                "(none)"
+            } else {
+                row.outcome.first_error()
+            }
+        );
+    }
+    assert_eq!(
+        expected_names, actual_names,
+        "expected.toml [statuses] must cover exactly all report files"
+    );
+
+    for row in rows {
+        let expected = statuses[&row.file].as_str().expect("each expected status is a string");
+        let actual = row.outcome.status();
+        if update {
+            let accepted = upgraded_status(expected, actual).unwrap_or_else(|message| {
+                panic!("{}; {}", status_mismatch(&row.file, expected, &row.outcome), message)
+            });
+            if accepted != expected {
+                let old = format!("\"{}\" = \"{}\"", row.file, expected);
+                let new = format!("\"{}\" = \"{}\"", row.file, accepted);
+                let mut replaced = false;
+                manifest_text = manifest_text
+                    .lines()
+                    .map(|line| {
+                        if !replaced && line.trim_start().starts_with(&old) {
+                            replaced = true;
+                            line.replacen(&old, &new, 1)
+                        } else {
+                            line.to_owned()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                assert!(replaced, "expected.toml status line for {} was not found", row.file);
+            }
+        } else if expected != actual {
+            panic!("{}", status_mismatch(&row.file, expected, &row.outcome));
+        }
+    }
+    if update {
+        fs::write(expected_path(), manifest_text).expect("upgraded expected statuses are written");
+    }
+}
+
 #[test]
 fn the_shell_against_the_owners_own_examples() {
     let rows = collect();
@@ -721,17 +857,17 @@ fn the_shell_against_the_owners_own_examples() {
         snippets, SNIPPET_COUNT,
         "the archive holds {SNIPPET_COUNT} fences; tests/spec/snippets holds {snippets}"
     );
-    // The harness itself: the fences that are code must have been judged, not skipped wholesale.
     let judged = rows
         .iter()
         .filter(|row| !matches!(row.outcome, Outcome::Skipped(_)))
         .count();
     assert!(judged > 100, "only {judged} fences were judged; the harness is broken");
+    let update = std::env::var_os("UPDATE_SPEC").is_some();
+    check_expected_statuses(&rows, update);
     let expected = document(&rows);
     let path = table_path();
-    if std::env::var_os("UPDATE_SPEC").is_some() {
+    if update {
         fs::write(&path, &expected).expect("the table is written");
-        // The instance a test runs on is not the checkout: the table is printed for `--nocapture` to bring back.
         println!("---BEGIN-SPEC-TABLE---\n{expected}---END-SPEC-TABLE---");
         return;
     }
@@ -741,4 +877,69 @@ fn the_shell_against_the_owners_own_examples() {
         normalise(&expected),
         "design/js-spec-conformance.md is stale: run `UPDATE_SPEC=1 cargo test -p gnoblin-js --test spec_conformance`"
     );
+}
+
+#[test]
+fn update_statuses_only_accept_fails_to_runs() {
+    assert_eq!(upgraded_status("fails", "runs"), Ok("runs"));
+    assert!(upgraded_status("runs", "fails").unwrap_err().contains("hand edit"));
+    assert!(
+        upgraded_status("skipped", "fails")
+            .unwrap_err()
+            .contains("new failures")
+    );
+    assert_eq!(upgraded_status("fails", "fails"), Ok("fails"));
+    assert_eq!(upgraded_status("skipped", "skipped"), Ok("skipped"));
+}
+
+#[test]
+fn missing_classes_in_fixtures_remain_visible() {
+    for (fixture, class) in [("arcLayout", "ArcLayout"), ("ultrawide", "OutputProfile")] {
+        let error = run_js(&format!("globalThis.fixtureProbe = {fixture};"), false)
+            .expect_err("the unavailable fixture's class must fail the snippet");
+        assert!(
+            error.contains(&format!("fixture {fixture}: gnoblin exports no class {class}")),
+            "{fixture} fixture failure must name the missing class: {error}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "acceptance gate for the spec-native cutover: remove this ignore when the reference init.js runs; tracked in design/js-spec-native.md part 2"]
+fn the_owners_reference_init_js_runs_unchanged() {
+    let input = fs::read(spec_dir().join("init.js.txt")).expect("owner init.js reads as bytes");
+    let manifest = expected_manifest();
+    let expected_hash = manifest["sha256"]["init.js.txt"]
+        .as_str()
+        .expect("init.js checksum is recorded");
+    assert_eq!(
+        format!("{:x}", Sha256::digest(&input)),
+        expected_hash,
+        "owner init.js must remain byte-for-byte unchanged"
+    );
+    let source = String::from_utf8(input).expect("owner init.js is UTF-8");
+    let probe = "JSON.stringify({workspaces:[...gnoblin.workspaces].map(x=>x.id),displays:[...gnoblin.displays].map(x=>x.id),profiles:[...gnoblin.outputs.profiles].map(x=>x.match.connector),bindings:[...gnoblin.input.primary.bindings].map(x=>x.trigger)})";
+    let state = boot(&[("init.js", source)], Some(probe), false)
+        .expect("the owner's reference init.js evaluates without the snippet prelude")
+        .expect("the acceptance probe returns state");
+    for expected in [
+        "desktop",
+        "development",
+        "web",
+        "main-display",
+        "side-display",
+        "DP-1",
+        "HDMI-A-1",
+        "Super+Return",
+        "Super+Q",
+        "Super+1",
+        "Super+2",
+        "Super+3",
+        "Super+Tab",
+    ] {
+        assert!(
+            state.contains(expected),
+            "reference init.js did not create {expected}: {state}"
+        );
+    }
 }

@@ -59,3 +59,4 @@ toml.workspace = true
 gnoblin-paint.workspace = true
 # The console tests read what a script logged through `console`, with the level each line was logged at.
 gnoblin-log = { path = "../gnoblin-log", features = ["capture"] }
+sha2.workspace = true
