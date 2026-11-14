@@ -283,10 +283,10 @@ fn run_without_session(args: &[&str]) -> (u8, String, String) {
 fn config_validate_runs_on_a_valid_and_an_invalid_file() {
     let dir = std::env::temp_dir().join(format!("gnoblinctl-docs-validate-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("a scratch directory");
-    let valid = dir.join("valid.lua");
-    let invalid = dir.join("invalid.lua");
-    std::fs::write(&valid, "-- an empty configuration\n").expect("the valid file is written");
-    std::fs::write(&invalid, "this is not lua\n").expect("the invalid file is written");
+    let valid = dir.join("valid.json");
+    let invalid = dir.join("invalid.json");
+    std::fs::write(&valid, "{}\n").expect("the valid file is written");
+    std::fs::write(&invalid, "this is not json\n").expect("the invalid file is written");
     let valid_path = valid.to_string_lossy().into_owned();
     let invalid_path = invalid.to_string_lossy().into_owned();
 
@@ -305,8 +305,8 @@ fn config_validate_runs_on_a_valid_and_an_invalid_file() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Pages whose TypeScript samples are checked: whole directories of `docs/` and single pages. A page that still
-/// documents the legacy Lua role is not listed.
+/// Pages whose TypeScript samples are checked: whole directories of `docs/` and single pages. A page that does not
+/// document the TypeScript shell is not listed.
 const TS_DOC_DIRS: &[&str] = &["docs/config", "docs/recipes"];
 const TS_DOC_FILES: &[&str] = &[
     "docs/config.md",

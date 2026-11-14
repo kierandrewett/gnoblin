@@ -6,7 +6,8 @@
 //!
 //! 1. `GNOBLIN_CONFIG`, when it is set and not empty. A test and a nested session
 //!    use it to point at a file without touching the user's config. Its extension
-//!    names the language: `.ts` or `.mts`, `.js` or `.mjs`, `.lua`.
+//!    names the language: `.ts` or `.mts`, `.js` or `.mjs`. A `.lua` file is refused
+//!    with the command that converts it.
 //! 2. `$XDG_CONFIG_HOME/gnoblin`, when `XDG_CONFIG_HOME` is set to an
 //!    absolute path. The XDG base directory specification says a relative value
 //!    is invalid, so it is ignored rather than resolved against the working
@@ -14,16 +15,16 @@
 //!    else.
 //! 3. `$HOME/.config/gnoblin`.
 //!
-//! Inside that directory the file is `init.ts`, else `init.js`, else `init.lua`: the
-//! first one that is there wins and the others are listed by [`ConfigPath::ignored`],
-//! so the caller can warn that they are not read. A directory with none of them
-//! names `init.ts`, the file a new user is told to create (`gnoblinctl config init`).
-//! [`locate_lua`] looks for `init.lua` alone, for the Lua shell, which cannot read
-//! the others.
+//! Inside that directory the file is `init.ts`, else `init.js`: the first one that is
+//! there wins and the others are listed by [`ConfigPath::ignored`], so the caller can
+//! warn that they are not read. A directory with neither names `init.ts`, the file a
+//! new user is told to create (`gnoblinctl config init`). An `init.lua` is never read;
+//! [`ConfigPath::lua`] says when it is the only configuration there, so the caller can tell
+//! the user to convert it.
 //!
 //! The environment is passed in rather than read from the process: `set_var` is
-//! unsafe in edition 2024 and this workspace forbids unsafe, so a test supplies
-//! a [`SearchPaths`] instead of mutating the test runner's environment.
+//! unsafe in edition 2024 and this workspace forbids unsafe, so a test supplies a
+//! [`SearchPaths`] instead of mutating the test runner's environment.
 //!
 //! This is also the only module that looks at the filesystem before a document
 //! exists: the answer includes whether the file is there, which is what tells
@@ -80,15 +81,13 @@ impl Origin {
     }
 }
 
-/// The language a configuration file is written in, which decides the shell that reads it.
+/// The language a configuration file is written in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Language {
-    /// `init.ts`: TypeScript, run by the JavaScript shell.
+    /// `init.ts`: TypeScript.
     TypeScript,
-    /// `init.js`: JavaScript, run by the JavaScript shell.
+    /// `init.js`: JavaScript.
     JavaScript,
-    /// `init.lua`: Lua, run by the Lua shell.
-    Lua,
 }
 
 impl Language {
@@ -97,13 +96,7 @@ impl Language {
         match self {
             Language::TypeScript => "typescript",
             Language::JavaScript => "javascript",
-            Language::Lua => "lua",
         }
-    }
-
-    /// Whether the JavaScript shell reads files of this language.
-    pub fn is_script(self) -> bool {
-        matches!(self, Language::TypeScript | Language::JavaScript)
     }
 
     /// The language a file extension names, or `None` for an extension no shell reads.
@@ -111,7 +104,6 @@ impl Language {
         match extension {
             "ts" | "mts" => Some(Language::TypeScript),
             "js" | "mjs" => Some(Language::JavaScript),
-            "lua" => Some(Language::Lua),
             _ => None,
         }
     }
@@ -132,6 +124,7 @@ pub struct ConfigPath {
     exists: bool,
     language: Language,
     ignored: Vec<PathBuf>,
+    lua: Option<PathBuf>,
 }
 
 impl ConfigPath {
@@ -160,10 +153,16 @@ impl ConfigPath {
     }
 
     /// The configuration files of the same directory that are there and lost to [`path`](Self::path) on the
-    /// order `init.ts`, `init.js`, `init.lua`. Nothing reads them, so a caller warns that they are ignored.
+    /// order `init.ts`, `init.js`, and then a Lua `init.lua`, which nothing reads. A caller warns that they are ignored.
     /// Empty for `GNOBLIN_CONFIG`, which names one file.
     pub fn ignored(&self) -> &[PathBuf] {
         &self.ignored
+    }
+
+    /// The `init.lua` of the directory when it is the only configuration there: there is no `init.ts` or `init.js`
+    /// beside it, so the session runs the stock configuration and the caller tells the user to convert the Lua file.
+    pub fn lua(&self) -> Option<&Path> {
+        self.lua.as_deref()
     }
 
     /// The path as text, for a log line or a diagnostic.
@@ -178,12 +177,12 @@ pub enum LocateError {
     /// Neither `XDG_CONFIG_HOME` nor `HOME` is usable, so there is no default
     /// location to fall back to.
     NoHome,
-    /// The selected file is not one Gnoblin reads. Configuration is TypeScript,
-    /// JavaScript or Lua, and guessing at TOML or CONF would half-support a format the
+    /// The selected file is not one Gnoblin reads. Configuration is TypeScript or
+    /// JavaScript, and guessing at TOML or CONF would half-support a format the
     /// compositor does not read.
     UnsupportedExtension { path: PathBuf },
-    /// The selected file is not Lua, and the caller can only read Lua.
-    NotLua { path: PathBuf },
+    /// The selected file is Lua, which nothing reads any more. It is converted with `gnoblinctl config migrate`.
+    LuaFile { path: PathBuf },
 }
 
 impl std::fmt::Display for LocateError {
@@ -194,26 +193,24 @@ impl std::fmt::Display for LocateError {
             }
             LocateError::UnsupportedExtension { path } => write!(
                 formatter,
-                "{}: Gnoblin configuration is a .ts, .js or .lua file; convert this file and give it one of those extensions",
+                "{}: Gnoblin configuration is a .ts or .js file; convert this file and give it one of those extensions",
                 path.display()
             ),
-            LocateError::NotLua { path } => write!(
+            LocateError::LuaFile { path } => write!(
                 formatter,
-                "{}: the Lua shell reads only .lua configuration; use the JavaScript shell for this file",
+                "{}: Gnoblin no longer runs Lua; convert it with `gnoblinctl config migrate` (see docs/migrating-from-lua.md)",
                 path.display()
             ),
         }
     }
 }
 
-impl std::error::Error for LocateError {}
-
 /// The file names inside the config directory, in the order the first one that is there wins.
-const CONFIG_FILE_NAMES: [(&str, Language); 3] = [
-    ("init.ts", Language::TypeScript),
-    ("init.js", Language::JavaScript),
-    ("init.lua", Language::Lua),
-];
+const CONFIG_FILE_NAMES: [(&str, Language); 2] = [("init.ts", Language::TypeScript), ("init.js", Language::JavaScript)];
+
+/// The file name a Lua configuration had. Nothing reads it; the lookup only reports that it is there, so the caller can
+/// tell the user how to convert it.
+const LUA_FILE_NAME: &str = "init.lua";
 
 /// The directory Gnoblin owns under the config home.
 const CONFIG_DIRECTORY_NAME: &str = "gnoblin";
@@ -249,6 +246,9 @@ fn base(paths: &SearchPaths) -> Result<(PathBuf, Origin), LocateError> {
 pub fn locate(paths: &SearchPaths) -> Result<ConfigPath, LocateError> {
     let (path, origin) = base(paths)?;
     if origin == Origin::Override {
+        if path.extension().is_some_and(|extension| extension == "lua") {
+            return Err(LocateError::LuaFile { path });
+        }
         let language =
             Language::of_path(&path).ok_or_else(|| LocateError::UnsupportedExtension { path: path.clone() })?;
         let exists = path.is_file();
@@ -258,8 +258,10 @@ pub fn locate(paths: &SearchPaths) -> Result<ConfigPath, LocateError> {
             exists,
             language,
             ignored: Vec::new(),
+            lua: None,
         });
     }
+    let lua = Some(path.join(LUA_FILE_NAME)).filter(|file| file.is_file());
     let mut present = CONFIG_FILE_NAMES
         .iter()
         .map(|(name, language)| (path.join(name), *language))
@@ -270,7 +272,8 @@ pub fn locate(paths: &SearchPaths) -> Result<ConfigPath, LocateError> {
             origin,
             exists: true,
             language,
-            ignored: present.map(|(file, _)| file).collect(),
+            ignored: present.map(|(file, _)| file).chain(lua).collect(),
+            lua: None,
         }),
         None => Ok(ConfigPath {
             path: path.join(CONFIG_FILE_NAMES[0].0),
@@ -278,38 +281,9 @@ pub fn locate(paths: &SearchPaths) -> Result<ConfigPath, LocateError> {
             exists: false,
             language: CONFIG_FILE_NAMES[0].1,
             ignored: Vec::new(),
+            lua,
         }),
     }
-}
-
-/// Select the configuration file for the Lua shell: `init.lua` in the directory [`locate`] would use, or the
-/// `GNOBLIN_CONFIG` file when it is Lua. A `init.ts` beside it is not this shell's and is not reported.
-///
-/// # Errors
-///
-/// [`LocateError`] when there is no home, or `GNOBLIN_CONFIG` names a file that is not Lua.
-pub fn locate_lua(paths: &SearchPaths) -> Result<ConfigPath, LocateError> {
-    let (path, origin) = base(paths)?;
-    let path = match origin {
-        Origin::Override => {
-            if Language::of_path(&path) != Some(Language::Lua) {
-                return Err(match Language::of_path(&path) {
-                    Some(_) => LocateError::NotLua { path },
-                    None => LocateError::UnsupportedExtension { path },
-                });
-            }
-            path
-        }
-        _ => path.join("init.lua"),
-    };
-    let exists = path.is_file();
-    Ok(ConfigPath {
-        path,
-        origin,
-        exists,
-        language: Language::Lua,
-        ignored: Vec::new(),
-    })
 }
 
 #[cfg(test)]
@@ -349,7 +323,6 @@ mod tests {
             ("a.mts", Language::TypeScript),
             ("a.js", Language::JavaScript),
             ("a.mjs", Language::JavaScript),
-            ("a.lua", Language::Lua),
         ] {
             let paths = SearchPaths {
                 override_path: Some(PathBuf::from("/nowhere").join(name)),

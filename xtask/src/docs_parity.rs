@@ -87,7 +87,7 @@ const BUILTIN_RECEIVERS: &[&str] = &[
     "console", "Math", "JSON", "Object", "Array", "Promise", "Date", "Number", "String", "Symbol", "Reflect", "this",
 ];
 /// A token that ends like this is a file name (`gnoblin.d.ts`), not a name of the API.
-const FILE_SUFFIXES: &[&str] = &[".ts", ".js", ".md", ".toml", ".json", ".lua"];
+const FILE_SUFFIXES: &[&str] = &[".ts", ".js", ".md", ".toml", ".json"];
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

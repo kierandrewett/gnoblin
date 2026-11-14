@@ -478,8 +478,8 @@ fn verb_commands() -> Vec<Command> {
                     .about("Check a configuration file without connecting to a session.")
                     .long_about(
                         "Check a configuration file without connecting to a session. A .ts, .mts, .js or .mjs file is \
-                         checked in process exactly as `gnoblinctl check` checks it; a .lua file or a JSON document \
-                         is checked against the configuration schema.",
+                         checked in process exactly as `gnoblinctl check` checks it; a JSON document is checked \
+                         against the configuration schema; a .lua file is refused with the command that converts it.",
                     )
                     .arg(
                         Arg::new("file")
@@ -519,7 +519,7 @@ fn verb_commands() -> Vec<Command> {
                         Arg::new("file")
                             .value_name("FILE")
                             .value_parser(value_parser!(PathBuf))
-                            .help("The Lua file to convert; defaults to the init.lua the Lua shell reads."),
+                            .help("The Lua file to convert; defaults to the init.lua in the config directory."),
                     )
                     .arg(
                         Arg::new("out")

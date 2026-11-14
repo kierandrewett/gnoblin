@@ -63,10 +63,6 @@ path = "crates/gnoblin-schema/Cargo.toml"
 reason = "crate-relative: a comment naming this crate's own src/parse.rs"
 
 [[allow]]
-path = "crates/gnoblin-lua/host_members.toml"
-reason = "crate-relative: a comment naming this crate's own src/bindings.rs"
-
-[[allow]]
 path = "crates/gnoblinctl/build.rs"
 reason = "crate-relative: the build script names src/generate.rs in this crate, run from the crate directory"
 

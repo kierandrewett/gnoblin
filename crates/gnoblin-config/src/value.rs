@@ -1,7 +1,7 @@
 //! The neutral value tree a configuration document is built from.
 //!
-//! The Lua host evaluates `init.lua` and hands over a tree of tables, lists and
-//! scalars; this crate never sees Lua. That boundary is why the tree is a plain
+//! The shell evaluates the user's config and hands over a tree of tables, lists and
+//! scalars; this crate never sees a script. That boundary is why the tree is a plain
 //! enum instead of a Serde model: a Serde model would force the host to produce
 //! this crate's field names, and a tree keeps the document layer free to report
 //! problems about settings it does not model yet.
@@ -19,29 +19,29 @@ use crate::problem::{Fault, Problem};
 
 /// The deepest nesting the parser will follow.
 ///
-/// The C configuration core rejects Lua tables deeper than 64 levels, because a
+/// The C configuration core rejects tables deeper than 64 levels, because a
 /// recursive walk of an adversarially nested table would exhaust the stack. The
 /// same limit applies here for the same reason: the tree can arrive from a
 /// script, and a stack overflow kills the session where a diagnostic does not.
 pub const MAX_DEPTH: usize = 64;
 
-/// A configuration value: what a Lua table, list or scalar becomes.
+/// A configuration value: what a script object, list or scalar becomes.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
-    /// Lua `nil`, which a table never stores but a list entry could hold.
+    /// `null`, which a map never stores but a list entry could hold.
     Null,
-    /// Lua `true` or `false`.
+    /// `true` or `false`.
     Bool(bool),
-    /// A Lua integer, stored exactly.
+    /// An integer, stored exactly.
     Integer(i64),
-    /// A Lua number with a fractional part.
+    /// A number with a fractional part.
     Float(f64),
-    /// Lua `string`.
+    /// A string.
     String(String),
-    /// A Lua array, in order. Order is significant: workspaces and gestures are
+    /// An array, in order. Order is significant: workspaces and gestures are
     /// lists because position is part of their meaning.
     List(Vec<Value>),
-    /// A Lua table, by key.
+    /// An object, by key.
     Map(BTreeMap<String, Value>),
 }
 

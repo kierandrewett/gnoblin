@@ -133,20 +133,6 @@ fn the_starter_is_this_typescript() {
     assert_eq!(output.typescript, include_str!("fixtures/starter/init.ts.golden"));
 }
 
-#[test]
-fn the_starter_copy_matches_the_shipped_one_while_that_exists() {
-    // `data/default-config` goes with the Lua shell; until then the fixture must not drift from it.
-    let shipped = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/default-config");
-    if !shipped.is_dir() {
-        return;
-    }
-    let read = |name: &str| std::fs::read_to_string(shipped.join(name)).expect("a shipped starter file");
-    assert_eq!(read("init.lua"), STARTER_INIT);
-    for (name, text) in STARTER_FILES {
-        assert_eq!(&read(name), text, "{name}");
-    }
-}
-
 // --- Every construct that converts -------------------------------------------------------------------------------
 
 const EVERYTHING: &str = r#"

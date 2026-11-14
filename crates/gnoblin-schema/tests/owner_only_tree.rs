@@ -27,14 +27,6 @@ const OWNER_PATHS: &[(&str, &str)] = &[
         "crates/gnoblin-proto/build.rs",
         "the owner socket's tree wire types are generated from the whole catalog",
     ),
-    (
-        "crates/gnoblin-lua/build.rs",
-        "the shell's tree class table is generated from the whole catalog",
-    ),
-    (
-        "crates/gnoblin-lua/tests/tree_classes.rs",
-        "the test pins the shell's tree class table against the whole catalog",
-    ),
 ];
 
 /// Whether a source line calls the full-catalog loader, as `Catalog::load_dir(` or

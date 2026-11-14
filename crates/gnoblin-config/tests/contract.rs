@@ -73,7 +73,7 @@ const RETIRED_KEYS: &[(&str, &str)] = &[
     ),
     (
         "window-rules",
-        "window rules are a Lua table in the user's shell files (`seat.data.window_rules`), not a configuration key",
+        "window rules are the `rules` setting of `defineConfig` in init.ts, not a configuration key",
     ),
     (
         "frame-renderers",

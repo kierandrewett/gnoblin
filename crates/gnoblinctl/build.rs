@@ -38,7 +38,7 @@ fn run() -> Result<(), String> {
 
     watch(&schema_dir)?;
 
-    // The owner-only `tree` namespace is left out of the public client, as the Lua surface leaves
+    // The owner-only `tree` namespace is left out of the public client, as the public surface leaves
     // it out. Its classes repeat old object names (`window`, `workspace`), and the generator would
     // rename the existing `window` command to `gnoblin-window`, breaking `gnoblinctl window`.
     let catalog = gnoblin_schema::Catalog::load_dir_except(&schema_dir, &["tree"])

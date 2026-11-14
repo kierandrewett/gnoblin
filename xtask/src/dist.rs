@@ -3,8 +3,8 @@
 //!
 //! `install` copies the binaries the build wrote to `target/<profile>/` and the data files under
 //! `data/` and the portal crate's `data/` into `<destdir><prefix>`, in the layout the binaries read:
-//! `bin/gnoblin`, `libexec/xdg-desktop-portal-gnoblin`, `libexec/gnoblin-xr` when it was built,
-//! `share/gnoblin/lua` and so on. Files that name an absolute path (the Wayland session entry and the
+//! `bin/gnoblin`, `libexec/xdg-desktop-portal-gnoblin`, `libexec/gnoblin-xr` when it was built, and so on. Files
+//! that name an absolute path (the Wayland session entry and the
 //! portal's D-Bus service) carry an `@PREFIX@` placeholder, replaced with the prefix as the file is
 //! written.
 //!
@@ -70,8 +70,6 @@ enum InstallItem {
         mode: FileMode,
         template: bool,
     },
-    /// Every file under a repository directory, kept in the same relative layout under `to`.
-    Tree { from: &'static str, to: &'static str },
     /// A program the build may not have written: installed from `target/<profile>/<name>` when it is
     /// there and skipped when it is not. An optional extension has its own workspace, so building the
     /// session alone must still install.
@@ -149,20 +147,6 @@ const ITEMS: &[InstallItem] = &[
         to: "share/xdg-desktop-portal/gnoblin-portals.conf",
         mode: FileMode::Data,
         template: false,
-    },
-    InstallItem::File {
-        from: InstallSource::Repo("data/init.lua.example"),
-        to: "share/gnoblin/init.lua.example",
-        mode: FileMode::Data,
-        template: false,
-    },
-    InstallItem::Tree {
-        from: "data/default-config",
-        to: "share/gnoblin/default-config",
-    },
-    InstallItem::Tree {
-        from: "data/lua",
-        to: "share/gnoblin/lua",
     },
 ];
 
@@ -389,33 +373,8 @@ fn origin_path(repo: &Path, built: &Path, origin: InstallSource) -> PathBuf {
     }
 }
 
-/// Lists every file under `dir`, sorted, with its path relative to the directory `prefix` names.
-fn walk(dir: &Path, prefix: &str, out: &mut Vec<(String, PathBuf)>) -> Result<(), DistError> {
-    let mut entries = Vec::new();
-    for entry in fs::read_dir(dir).map_err(io_at(dir))? {
-        entries.push(entry.map_err(io_at(dir))?);
-    }
-    entries.sort_by_key(fs::DirEntry::file_name);
-    for entry in entries {
-        let path = entry.path();
-        let name = entry
-            .file_name()
-            .into_string()
-            .map_err(|_| DistError::Unsupported(path.clone(), "is not named in UTF-8"))?;
-        let meta = fs::metadata(&path).map_err(io_at(&path))?;
-        if meta.is_dir() {
-            walk(&path, &format!("{prefix}{name}/"), out)?;
-        } else if meta.is_file() {
-            out.push((format!("{prefix}{name}"), path));
-        } else {
-            return Err(DistError::Unsupported(path, "is not a regular file or directory"));
-        }
-    }
-    Ok(())
-}
-
-/// Expands the install table into one entry per file. Nothing is read here except directory
-/// listings; the sources of built files are read when they are installed.
+/// Expands the install table into one entry per file. Nothing is read here; the sources of built files are read when
+/// they are installed.
 fn plan(repo: &Path, built: &Path) -> Result<Vec<Planned>, DistError> {
     let mut planned = Vec::new();
     for item in ITEMS {
@@ -438,18 +397,6 @@ fn plan(repo: &Path, built: &Path) -> Result<Vec<Planned>, DistError> {
                         to: to.to_owned(),
                         source,
                         mode: FileMode::Program,
-                        template: false,
-                    });
-                }
-            }
-            InstallItem::Tree { from, to } => {
-                let mut files = Vec::new();
-                walk(&repo.join(from), "", &mut files)?;
-                for (rel, source) in files {
-                    planned.push(Planned {
-                        to: format!("{to}/{rel}"),
-                        source,
-                        mode: FileMode::Data,
                         template: false,
                     });
                 }
@@ -716,7 +663,7 @@ mod tests {
     fn manifest_round_trips() {
         let mut entries = Manifest::new();
         entries.insert("bin/gnoblin".to_owned(), sha256_hex(b"one"));
-        entries.insert("share/gnoblin/lua/x.lua".to_owned(), sha256_hex(b"two"));
+        entries.insert("share/gnoblin/x.txt".to_owned(), sha256_hex(b"two"));
         let text = format_manifest(&entries);
         assert_eq!(parse_manifest(Path::new("m"), &text).unwrap(), entries);
     }
@@ -766,8 +713,6 @@ mod tests {
             "libexec/xdg-desktop-portal-gnoblin",
             "lib/security/pam_gnoblin_keyring.so",
             "lib/pam.d/gnoblin-lock",
-            "share/gnoblin/default-config/init.lua",
-            "share/gnoblin/lua/gnoblin/shell/init.lua",
             "share/xdg-desktop-portal/gnoblin-portals.conf",
         ] {
             assert!(seen.contains(expected), "missing {expected}");

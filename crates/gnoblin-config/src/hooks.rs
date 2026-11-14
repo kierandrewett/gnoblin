@@ -228,8 +228,8 @@ fn claims_same_movement(first: &Gesture, second: &Gesture) -> bool {
 
 /// `gesture`: the rules that depend on which kind of gesture this is.
 ///
-/// The built-in action names are gone: the shell binds a gesture with `Seat:bind`, which reports the
-/// movement to a Lua function. The removed key is refused here with that migration, before the generated
+/// The built-in action names are gone: the shell binds a gesture in `keys`, which reports the
+/// movement to a function. The removed key is refused here with that migration, before the generated
 /// unknown-key pass, so the explanation is the only problem the entry reports.
 pub(crate) fn gesture(section: &mut Gesture, map: &BTreeMap<String, Value>, path: &Path, out: &mut Parser) -> bool {
     let mut valid = true;
@@ -237,9 +237,9 @@ pub(crate) fn gesture(section: &mut Gesture, map: &BTreeMap<String, Value>, path
         out.problem(
             &path.key("action"),
             Fault::Removed {
-                detail: "the built-in gesture actions are Lua now: bind the gesture in the shell, as \
-                         seat:bind({ Swipe3 = fn }), or use command to start a program (see \
-                         touchpad_gestures in the documentation)"
+                detail: "the built-in gesture actions are gone: bind the gesture in the shell, as a `Swipe3` \
+                         binding in `keys`, or use command to start a program (see touchpad_gestures in the \
+                         documentation)"
                     .to_owned(),
             },
         );
@@ -321,7 +321,7 @@ pub(crate) fn gesture(section: &mut Gesture, map: &BTreeMap<String, Value>, path
         out.problem(
             &path.key("command"),
             Fault::Missing {
-                expected: "a command argv; to act in the shell instead, bind the gesture there with Seat:bind",
+                expected: "a command argv; to act in the shell instead, bind the gesture there with a `Swipe3` binding in `keys`",
             },
         );
         valid = false;

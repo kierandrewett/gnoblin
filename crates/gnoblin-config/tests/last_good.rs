@@ -21,7 +21,7 @@ fn config(document: gnoblin_config::Value) -> Config {
 }
 
 fn source(root: &RuntimeDir) -> PathBuf {
-    root.join("config").join("gnoblin").join("init.lua")
+    root.join("config").join("gnoblin").join("init.ts")
 }
 
 /// Write a raw envelope, with the modes the store expects.
@@ -99,7 +99,7 @@ fn a_stored_document_holds_no_deprecated_spelling() {
 fn a_truncated_document_is_refused() {
     let root = RuntimeDir::new("last-good-torn").expect("temp dir");
     let store = Store::new(root.path());
-    write_raw(&store, b"{\"format\":1,\"source\":\"/tmp/init.lua\",\"docu");
+    write_raw(&store, b"{\"format\":1,\"source\":\"/tmp/init.ts\",\"docu");
     match store.load(&source(&root)) {
         Err(StoreError::Malformed { .. }) => {}
         other => panic!("a torn write must be refused, got {other:?}"),
@@ -149,12 +149,12 @@ fn a_document_stored_for_another_path_is_refused() {
     let store = Store::new(root.path());
     store
         .save(
-            &root.join("one").join("init.lua"),
+            &root.join("one").join("init.ts"),
             &config(table([("keyring", table([("enabled", flag(true))]))])),
         )
         .expect("save");
-    match store.load(&root.join("two").join("init.lua")) {
-        Err(StoreError::OtherSource { stored }) => assert_eq!(stored, root.join("one").join("init.lua")),
+    match store.load(&root.join("two").join("init.ts")) {
+        Err(StoreError::OtherSource { stored }) => assert_eq!(stored, root.join("one").join("init.ts")),
         other => panic!("another path's document must be refused, got {other:?}"),
     }
 }

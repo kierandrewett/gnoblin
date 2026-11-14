@@ -359,14 +359,14 @@ mod tests {
                     "gnoblin-model",
                     &[("tracing", DepKind::Normal), ("serde", DepKind::Normal)],
                 ),
-                package("gnoblin-lua", &[("env_logger", DepKind::Dev)]),
+                package("gnoblin-js", &[("env_logger", DepKind::Dev)]),
                 package("gnoblin-render", &[("log", DepKind::Build)]),
             ],
         };
         let violations = check_dependencies(&graph);
         assert_eq!(violations.len(), 3, "{violations:?}");
         assert!(violations[0].starts_with("gnoblin-model declares a normal dependency on `tracing`"));
-        assert!(violations[1].contains("gnoblin-lua declares a development dependency on `env_logger`"));
+        assert!(violations[1].contains("gnoblin-js declares a development dependency on `env_logger`"));
         assert!(violations[2].contains("gnoblin-render declares a build dependency on `log`"));
     }
 

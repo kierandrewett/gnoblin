@@ -1,8 +1,8 @@
 //! The `autostart` section as the runtime role reads it: which entries start, and the rule that keeps a second
 //! keyring daemon out of a session that serves Gnoblin's own.
 //!
-//! Both runtime roles (the Lua host and the JavaScript one) send the guardian the entries of the document they
-//! committed, so the rule lives here, beside the document, rather than in either role.
+//! The runtime role sends the guardian the entries of the document it committed, so the rule lives here, beside
+//! the document, rather than in the role.
 
 use crate::Config;
 

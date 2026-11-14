@@ -3,7 +3,7 @@
 //!
 //! Two root trees hold things the product reads. `src/` is the C tree: the C components still
 //! compile from it, and the build scripts read its sources to generate files. `patches/` is the patch
-//! series the build applies to the pinned upstream sources. The Lua runtime and its shipped assets
+//! series the build applies to the pinned upstream sources. The runtime and its shipped assets
 //! moved out of `src/data` to `data/` at the repository root, so a reference to `src/data` names a
 //! path that no longer exists. Such a reference is a hard failure, and no allow-list entry can cover it.
 //!
@@ -380,7 +380,7 @@ mod tests {
 
     #[test]
     fn a_literal_naming_the_retired_tree_is_a_retired_hit() {
-        let source = format!("fn f() {{ let p = \"crates/x/{}/lua/init.lua\"; }}", retired_tree());
+        let source = format!("fn f() {{ let p = \"crates/x/{}/js/init.ts\"; }}", retired_tree());
         let findings = scan_source(&source).unwrap();
         assert_eq!(findings.len(), 1, "{findings:?}");
         assert_eq!(findings[0].line, 1);
@@ -418,7 +418,7 @@ mod tests {
 
     #[test]
     fn the_new_location_and_similar_names_are_not_hits() {
-        let source = "const A: &str = \"data/gnoblin/lua/init.lua\";\n\
+        let source = "const A: &str = \"data/gnoblin/js/init.ts\";\n\
                       const B: &str = \"srcs/database.rs\";";
         assert_eq!(scan_source(source).unwrap(), Vec::new());
     }
@@ -427,7 +427,7 @@ mod tests {
     fn comments_and_doc_attributes_are_not_hits() {
         let tree = retired_tree();
         let source = format!(
-            "// see {tree} for the old layout\n/// The Lua runtime lived at {tree}.\n#[doc = \"{tree}\"]\nfn f() {{}}"
+            "// see {tree} for the old layout\n/// The runtime lived at {tree}.\n#[doc = \"{tree}\"]\nfn f() {{}}"
         );
         assert_eq!(scan_source(&source).unwrap(), Vec::new());
     }
@@ -451,7 +451,7 @@ mod tests {
     #[test]
     fn text_references_through_a_root_variable_or_dot_slash_are_hits() {
         for line in [
-            "ROOT / \"src/config/lua\"",
+            "ROOT / \"src/config\"",
             "versions = ${GNOBLIN_ROOT}/src/gnome-versions.json",
             "./src/tools/gnoblin-env.sh",
             "apply patches/mutter/series",

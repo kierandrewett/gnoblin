@@ -35,9 +35,10 @@ const NATIVE: &[(&str, &[&str])] = &[
 /// `-sys` crates that need no system package on Linux: pure bindings, or a vendored C build that needs only the
 /// compiler, or a library opened at run time.
 const NO_NATIVE: &[&str] = &[
+    "inotify-sys",
     "js-sys",
+    "kqueue-sys",
     "linux-raw-sys",
-    "mlua-sys",
     "openxr-sys",
     "rquickjs-sys",
     "web-sys",

@@ -43,7 +43,7 @@ use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{
     Client, ClientError, Environment, Event, Inherited, Reporter, inherited_stream, privilege, report,
 };
-use gnoblin_config::{Config, ConfigPath, Language, SearchPaths, enabled_autostart, locate};
+use gnoblin_config::{Config, ConfigPath, SearchPaths, enabled_autostart, locate};
 use gnoblin_model::{Filter, ObjectId, ObjectView, Observation};
 use gnoblin_proto::Version;
 use thiserror::Error;
@@ -89,11 +89,11 @@ const MIGRATION_DOC: &str = "docs/migrating-from-lua.md";
 /// fails over a file the user has not touched yet would lock them out of the machine that holds it; the warning says
 /// what happened and the one command that fixes it.
 fn lua_config_notice(located: &ConfigPath) -> Option<String> {
-    (located.exists() && located.language() == Language::Lua).then(|| {
+    located.lua().map(|lua| {
         format!(
             "{} is a Lua config and Gnoblin no longer runs Lua, so the stock config runs instead; run `gnoblinctl \
              config migrate` to convert it to init.ts (see {MIGRATION_DOC})",
-            located.path().display()
+            lua.display()
         )
     })
 }
@@ -267,7 +267,8 @@ impl JsRoleRunner {
         let mut config = JsRoleConfig::new(dir, stock);
         if let Some(notice) = lua_config_notice(&located) {
             log::warn!(area = "config", "{notice}");
-        } else if located.exists() {
+        }
+        if located.exists() {
             config.entry = located.path().to_path_buf();
         }
         config.watch = env(WATCH_VARIABLE).as_deref() != Some("0");

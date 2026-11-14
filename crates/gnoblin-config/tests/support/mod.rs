@@ -1,6 +1,6 @@
 //! Shorthands for building a configuration tree in a test.
 //!
-//! A document is written the way the Lua host produces it: nested tables, lists
+//! A document is written the way the shell produces it: nested tables, lists
 //! and scalars. The helpers exist so a test reads as the config file a user would
 //! write, and so a change to [`gnoblin_config::Value`] is a change in one place.
 

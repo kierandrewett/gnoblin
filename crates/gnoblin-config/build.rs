@@ -3,7 +3,7 @@
 //! The document is generated rather than hand-kept so a setting's type, range,
 //! default, accepted-values text, `since` release and deprecated spellings are
 //! declared once, in one file, and every surface that has to agree about them
-//! (the structs, the validators, the reference tables, the Lua stubs, the
+//! (the structs, the validators, the reference tables and the
 //! settings catalogue) is produced from that file. Nothing generated is
 //! committed: `OUT_DIR` holds the Rust that `lib.rs` compiles with `include!`,
 //! and `cargo xtask gen-config` writes the human-readable outputs into a

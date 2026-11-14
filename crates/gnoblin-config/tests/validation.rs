@@ -159,7 +159,7 @@ fn the_extensions_section_is_refused_with_the_migration_rather_than_a_typo_hint(
     match &problems[0].1 {
         Fault::Removed { detail } => {
             assert!(detail.contains("extension tier was removed"), "{detail}");
-            assert!(detail.contains("require"), "the replacement is named: {detail}");
+            assert!(detail.contains("import"), "the replacement is named: {detail}");
             assert!(detail.contains("owner socket"), "the replacement is named: {detail}");
         }
         other => panic!("expected an explanation, got {other:?}"),
@@ -178,10 +178,7 @@ fn an_extension_directory_list_is_refused_with_the_migration_in_either_spelling(
         match &problems[0].1 {
             Fault::Removed { detail } => {
                 assert!(detail.contains("extension tier was removed"), "`{key}`: {detail}");
-                assert!(
-                    detail.contains("require"),
-                    "`{key}`: the replacement is named: {detail}"
-                );
+                assert!(detail.contains("import"), "`{key}`: the replacement is named: {detail}");
             }
             other => panic!("`{key}`: expected an explanation, got {other:?}"),
         }
@@ -334,7 +331,7 @@ fn a_gesture_that_still_names_an_action_is_refused_with_where_it_went() {
         let Fault::Removed { detail } = &problems[0].1 else {
             panic!("expected a removed key, got {:?}", problems[0].1);
         };
-        assert!(detail.contains("Seat") || detail.contains("seat:bind"), "{detail}");
+        assert!(detail.contains("binding in `keys`"), "{detail}");
     }
 }
 

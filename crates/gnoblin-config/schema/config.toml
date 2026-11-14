@@ -1,6 +1,6 @@
 # The configuration schema: one declaration per setting, from which the typed
-# document, its validators, the accepted-values hints, the reference tables and
-# the Lua stubs are generated (`cargo xtask gen-config`).
+# document, its validators, the accepted-values hints and the reference tables
+# are generated (`cargo xtask gen-config`).
 #
 # Why TOML in the crate rather than code: the same reason the object schema is
 # TOML (crates/gnoblin-schema/src/parse.rs). A setting's existence, type, range,
@@ -2085,7 +2085,7 @@ doc = "The gesture bindings."
 
 # --- Carried sections -------------------------------------------------------
 # Recognised so a typo is still a typo, but not interpreted here: the values are
-# callbacks and rule declarations, which the Lua host and window management own.
+# callbacks and rule declarations, which the shell and window management own.
 
 [[section]]
 key = "animations"
@@ -2156,7 +2156,7 @@ doc = "Each entry, in name order."
 
 [[section]]
 key = "keybindings"
-doc = "Lua callbacks and Mutter action overrides by binding name."
+doc = "Callbacks and Mutter action overrides by binding name."
 carried = true
 
 [[section]]

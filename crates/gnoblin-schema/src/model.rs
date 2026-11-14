@@ -366,8 +366,6 @@ pub struct ErrorDecl {
 /// references are catalog checks, not per-file ones.
 #[derive(Clone, Debug)]
 pub struct Catalog {
-    /// The schemas as declared, before inheritance is resolved into them.
-    declared: Vec<Schema>,
     schemas: Vec<Schema>,
 }
 
@@ -435,9 +433,6 @@ impl Catalog {
             }
         }
 
-        // Resolution runs on a copy: `declared` keeps the schemas as written, so that
-        // `with_derived` can add members and rebuild from them without inheriting twice.
-        let declared = schemas.clone();
         if let Err(inheritance) = crate::inherit::resolve(&mut schemas) {
             problems.extend(inheritance);
         }
@@ -448,7 +443,7 @@ impl Catalog {
                 problems,
             });
         }
-        Ok(Catalog { schemas, declared })
+        Ok(Catalog { schemas })
     }
 
     /// Read every `.toml` file in `dir`, in file-name order.
@@ -531,13 +526,6 @@ impl Catalog {
     /// The files in the catalog, in load order.
     pub fn schemas(&self) -> &[Schema] {
         &self.schemas
-    }
-
-    /// The files as declared, before inheritance: what a rebuild starts from, and
-    /// what an extension catalog must be built from so inherited members are not
-    /// declared twice.
-    pub fn declared_schemas(&self) -> &[Schema] {
-        &self.declared
     }
 
     /// Every namespace, sorted.

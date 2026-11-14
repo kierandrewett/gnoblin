@@ -1,7 +1,6 @@
 //! `gnoblin.d.ts` and `tsconfig.json` for the JavaScript and TypeScript shell.
 //!
-//! The declarations come from the same schema catalog as `gnoblin.d.lua`
-//! (`crates/gnoblin-lua/build.rs`), so an editor and the runtime cannot disagree about a
+//! The declarations come from the same schema catalog as the runtime, so an editor and the runtime cannot disagree about a
 //! member: [`render_dts`] writes one interface per schema object, with the schema's value
 //! kinds as TypeScript types, followed by the proposed stock library
 //! (`static/gnoblin-stock.d.ts`), which is hand-written.

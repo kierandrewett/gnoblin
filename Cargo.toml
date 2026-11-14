@@ -58,9 +58,6 @@ members = [
     "crates/gnoblin-lock",
     "crates/gnoblin-lock-auth",
     "crates/gnoblin-log",
-    "crates/gnoblin-lua",
-    "crates/gnoblin-lua-sandbox",
-    "crates/gnoblin-lua-pattern",
     "crates/gnoblin-js",
     "crates/gnoblin-model",
     "crates/gnoblin-output",
@@ -232,13 +229,6 @@ wayland-client = "0.31.15"
 wayland-scanner = "0.31.11"
 wayland-backend = "0.3.17"
 
-# The Lua VM the script runtime embeds (design/rust-compositor.md, D10). Lua 5.5
-# is vendored and compiled by the build so the runtime links one Lua version on
-# every distribution target instead of whatever the distribution ships. Only
-# `gnoblin-lua` may name it: the dependency rules forbid it in a foundation crate,
-# because the configuration and model layers must work with no Lua at all.
-mlua = { version = "0.12.2", features = ["lua55", "vendored"] }
-
 # The JavaScript engine the JS shell runtime embeds (design/js-runtime.md, J1-J9),
 # QuickJS-ng through its Rust bindings. Only `gnoblin-js` names it. `std` gives the
 # libc allocator, which the memory limit needs; `loader` gives the module resolver
@@ -302,8 +292,6 @@ gnoblin-secret = { path = "crates/gnoblin-secret" }
 gnoblin-tree-client = { path = "crates/gnoblin-tree-client" }
 # The Canvas paint list: its encoding, the deterministic CPU rasteriser with text and icons, and text measurement.
 gnoblin-paint = { path = "crates/gnoblin-paint" }
-# The Lua 5.4 pattern matcher and the load-time pattern checker (window rules and the sandbox).
-gnoblin-lua-pattern = { path = "crates/gnoblin-lua-pattern" }
 # The JavaScript shell runtime: TypeScript stripping, the module loader, and one QuickJS generation with its budgets.
 gnoblin-js = { path = "crates/gnoblin-js" }
 gnoblin-schema = { path = "crates/gnoblin-schema" }

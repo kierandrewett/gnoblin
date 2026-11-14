@@ -39,7 +39,6 @@ const FOUNDATION: &[&str] = &[
     "gnoblin-config",
     "gnoblin-cursor",
     "gnoblin-lock",
-    "gnoblin-lua-pattern",
     "gnoblin-model",
     "gnoblin-output",
     "gnoblin-paint",
@@ -121,7 +120,6 @@ const HUB_FRAME: &str = "gnoblin-render-frame";
 /// cycle.
 const CLIENT_SIDE: &[&str] = &[
     "gnoblin-js",
-    "gnoblin-lua",
     "gnoblin-services",
     "gnoblin-tree-client",
     "xdg-desktop-portal-gnoblin",
@@ -154,16 +152,13 @@ const COMPAT_HOSTS: &[&str] = &[COMPAT_HOST];
 /// backend runs, which IPC server serves and how a snapshot becomes an object.
 ///
 /// The others are role entry points, named because the binary is what runs a role:
-/// `gnoblin-session` for the guardian, and `gnoblin-lua` and `gnoblin-services` for the two
+/// `gnoblin-session` for the guardian, and `gnoblin-js` and `gnoblin-services` for the two
 /// roles the guardian starts. Each is the top of its own process, so an edge to it decides
 /// nothing the composition root decides — the compositor, the engine and the policy crates
-/// stay out of reach either way. `gnoblin-js` is the JavaScript shell the runtime role runs in
-/// place of the Lua shell VM: the Lua crate cannot name it (the two are siblings), so the binary,
-/// which already names both ends, is the one place that links it.
+/// stay out of reach either way.
 const BINARY_ROOTS: &[&str] = &[
     "gnoblin-compositor",
     "gnoblin-session",
-    "gnoblin-lua",
     "gnoblin-js",
     "gnoblin-services",
 ];
@@ -187,8 +182,8 @@ const COMPAT_WAYLAND: &[&str] = &[
 const COMPAT_XWAYLAND: &str = "gnoblin-compat-x11-xsettings";
 
 /// External libraries a foundation crate may not depend on: Smithay, any
-/// `wayland-*` crate, a GPU renderer, D-Bus or the Lua VM.
-const FOUNDATION_BANNED_EXTERNALS: &[&str] = &["ash", "glium", "glutin", "mlua", "vulkano", "wgpu", "zbus"];
+/// `wayland-*` crate, a GPU renderer or D-Bus.
+const FOUNDATION_BANNED_EXTERNALS: &[&str] = &["ash", "glium", "glutin", "vulkano", "wgpu", "zbus"];
 
 /// One rule: an id that CI prints and a predicate over a single edge.
 struct Rule {
@@ -389,13 +384,13 @@ fn compat_naming(package: &Package) -> Option<String> {
     ))
 }
 
-/// Smithay, any `wayland-*` crate, a renderer, D-Bus or Lua.
+/// Smithay, any `wayland-*` crate, a renderer or D-Bus.
 fn is_banned_external(name: &str) -> bool {
     name.starts_with("smithay") || name.starts_with("wayland-") || FOUNDATION_BANNED_EXTERNALS.contains(&name)
 }
 
 /// A foundation crate stays free of mechanism: no engine crate, no compositor,
-/// and none of Smithay, `wayland-*`, a renderer, `zbus` or `mlua`.
+/// and none of Smithay, `wayland-*`, a renderer or `zbus`.
 fn foundation_purity(package: &Package, dep: &Dep) -> Option<String> {
     if !is_foundation(&package.name) {
         return None;
@@ -754,7 +749,7 @@ fn pipewire_export_isolation(package: &Package, dep: &Dep) -> Option<String> {
 ///
 /// A role entry crate is a *client*, and this rule does not reach through it: `gnoblin-services`
 /// depends on `gnoblin-client`, the object model and the primitives because that is what a
-/// services role is, and `gnoblin-lua` on the client and the configuration layer for the same
+/// services role is, and `gnoblin-js` on the client and the configuration layer for the same
 /// reason. Constraining those edges here would be a second copy of `client-side-isolation`,
 /// written from the other end, and it would forbid the one thing the role crates exist to do.
 ///
@@ -1121,7 +1116,7 @@ mod tests {
             violations(&[("gnoblin-portal-filechooser", &["gnoblin-portal-ui"])]),
             Vec::<String>::new()
         );
-        let found = violations(&[("gnoblin-lua", &["gnoblin-portal-ui"])]);
+        let found = violations(&[("gnoblin-js", &["gnoblin-portal-ui"])]);
         assert_eq!(found.len(), 1, "{found:?}");
         assert!(found[0].contains("[portal-layering]"), "{found:?}");
     }
@@ -1204,14 +1199,14 @@ mod tests {
 
     #[test]
     fn the_session_binary_may_name_every_role_entry_crate() {
-        // The binary is what runs a role, so it names the four crates that own one.
+        // The binary is what runs a role, so it names the crates that own one.
         assert_eq!(
             violations(&[(
                 "gnoblin",
                 &[
                     "gnoblin-compositor",
                     "gnoblin-session",
-                    "gnoblin-lua",
+                    "gnoblin-js",
                     "gnoblin-services",
                 ],
             )]),
@@ -1234,7 +1229,7 @@ mod tests {
         );
         assert_eq!(
             violations(&[(
-                "gnoblin-lua",
+                "gnoblin-js",
                 &["gnoblin-client", "gnoblin-config", "gnoblin-model", "gnoblin-proto"],
             )]),
             Vec::<String>::new()

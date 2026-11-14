@@ -221,42 +221,6 @@ See the [TypeSafe API reference](https://api.typesafe.ai/docs) and
 for provider details. Agents only run Jev automatically when `.env` opts
 in with `GNOBLIN_DOCS_JEV_PROVIDER`.
 
-## Legacy Lua API registration and annotations
-
-The TypeScript shell is the default; this section covers the deprecated Lua shell, which stays for one more release
-(see [Migrating from Lua](docs/migrating-from-lua.md)). Its API types for the TypeScript shell are the
-`gnoblin-js-types` crate and `data/js/gnoblin/*.ts`, not these annotations.
-
-Every function the Lua runtime installs is one row of `lua_api[]` in
-`src/config/lua/gnoblin-lua.c`. A row names the Lua path (`windows.list`, or `Window:close` for a
-method on a record), the operation it sends to the compositor, and the C function that runs it in
-the runtime when it does not send an operation. `install_api`, the record methods and
-`gnoblin_config_call_api` read the table, so a new runtime function needs one row there. Wire
-operations still need their compositor handler, and socket reads still have their own lists.
-
-The signatures the console and editors show for `gnoblin.*` functions come from LuaCATS
-annotations in `src/config/lua/api/*.h`. Each block is a C comment that opens with `/*** lua`
-and closes with `*/`, holding plain LuaCATS: a `---@class` with its `---@field` lines for each
-table argument, and for each function its summary, `---@param` and `---@return` lines and a
-`function gnoblin.example(name) end` stub. Describe what the code accepts and enforces, not what
-the docs say; read the handler, not just the Lua binding.
-
-After adding or changing a Lua function or the keys it accepts, update its annotation and run:
-
-```sh
-python3 scripts/gen-lua-api.py
-```
-
-This rewrites `src/config/lua/gnoblin-lua-signatures.inc`, which the console compiles in, and
-`docs/public/gnoblin.d.lua`, the file published for Lua Language Server. A pre-commit hook runs
-the script with `--check` and fails when either file is stale. Use `--validate` to check the
-annotations without writing anything. A C function without an annotation shows as plain `fn` in the
-console, so annotate every public function.
-
-`python3 scripts/audit-lua-annotations.py`, also a pre-commit hook, compares `lua_api[]` with the
-annotations. It fails when an installed function has no annotation, or when an annotated
-`gnoblin.*` function or record method is not installed.
-
 ## Issues and commit hooks
 
 Gnoblin uses Beads for its work queue and GitHub Issues as the shared record.

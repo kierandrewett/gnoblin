@@ -9,16 +9,14 @@
 //!
 //! `config validate` is the one verb that never opens a connection: it checks a file on
 //! disk. An `init.ts` or `init.js` goes to the in-process check `gnoblinctl check` runs (`js.rs`, routed
-//! in `lib.rs`); an `init.lua` is evaluated by the runtime's own host against stock schemas, so a
-//! file that validates here is one the compositor accepts; a JSON document goes through the
-//! configuration layer's parser. None needs a session.
+//! in `lib.rs`); a JSON document goes through the configuration layer's parser. None needs a session.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use gnoblin_client::wire::NoticeKind;
 use gnoblin_client::{Client, ClientError, Event, SessionLock, Transport};
-use gnoblin_config::{SearchPaths, document::Config};
+use gnoblin_config::document::Config;
 use gnoblin_model::{Filter, ObjectView, Snapshot, TypeKey, Value};
 use serde_json::{Value as Json, json};
 
@@ -287,13 +285,19 @@ fn parse_committed(bytes: &[u8]) -> Result<Json, Failure> {
 }
 
 /// `config validate FILE`: check a configuration document the way the runtime would.
-/// Deprecated spellings are reported as warnings; they do not fail it.
+/// Deprecated spellings are reported as warnings; they do not fail it. A Lua file is refused with the command that
+/// converts it.
 pub(crate) fn validate(path: &Path, json: bool, out: &mut dyn Write) -> Result<u8, Failure> {
-    let warnings = if path.extension().is_some_and(|extension| extension == "lua") {
-        validate_lua(path)?
-    } else {
-        validate_json(path)?
-    };
+    if path.extension().is_some_and(|extension| extension == "lua") {
+        return Err(Failure::Refusal {
+            code: "lua-not-supported".to_owned(),
+            message: format!(
+                "{}: Gnoblin no longer runs Lua; convert it with `gnoblinctl config migrate` (see docs/migrating-from-lua.md)",
+                path.display()
+            ),
+        });
+    }
+    let warnings = validate_json(path)?;
     let result = if json {
         writeln!(out, "{}", json!({"valid": true, "warnings": warnings}))
     } else {
@@ -305,37 +309,6 @@ pub(crate) fn validate(path: &Path, json: bool, out: &mut dyn Write) -> Result<u
     };
     result.map_err(Failure::Io)?;
     Ok(0)
-}
-
-/// Evaluate an `init.lua` with the host the runtime uses, so a refused file is refused for the
-/// same reasons the compositor would give. Validation runs against an empty object graph; see
-/// `gnoblin_lua::check` for what that does not check.
-fn validate_lua(path: &Path) -> Result<Vec<String>, Failure> {
-    // `run_config` treats an absent file as "no configuration" (the runtime then starts with
-    // defaults). That is right for the compositor, but the user named this file, so its
-    // absence is a refusal here.
-    if let Err(error) = std::fs::metadata(path) {
-        return Err(Failure::Refusal {
-            code: "io".to_owned(),
-            message: format!("cannot read {}: {error}", path.display()),
-        });
-    }
-    let paths = SearchPaths {
-        home: None,
-        config_home: None,
-        override_path: Some(path.to_path_buf()),
-    };
-    let check = gnoblin_lua::check::check(&paths).map_err(|message| Failure::Refusal {
-        code: "validation-unavailable".to_owned(),
-        message,
-    })?;
-    if !check.problems.is_empty() {
-        return Err(Failure::Refusal {
-            code: "invalid-config".to_owned(),
-            message: check.problems.join("\n"),
-        });
-    }
-    Ok(check.warnings)
 }
 
 /// Parse a JSON configuration document with the configuration layer's own parser.
@@ -408,39 +381,26 @@ mod tests {
         assert_eq!(code, "invalid-config");
     }
 
-    /// A good init.lua, in the form the repo's default configuration uses, validates.
+    /// A Lua file is refused with the command that converts it.
     #[test]
-    fn a_good_init_lua_validates_as_the_runtime_loads_it() {
-        let (result, out) = validate_bytes(
-            "lua-good",
-            "lua",
-            br#"gnoblin.configure { ["window-management"] = { ["focus-mode"] = "click" } }"#,
-        );
-        assert_eq!(result.expect("a good init.lua validates"), 0);
-        assert_eq!(out, "valid\n");
-    }
-
-    /// An init.lua the Lua host cannot evaluate is refused with the runtime's own problem.
-    #[test]
-    fn a_bad_init_lua_is_refused_with_the_runtime_error() {
-        let (result, _) = validate_bytes("lua-bad", "lua", b"gnoblin.configure {");
+    fn a_lua_file_is_refused_with_the_migration_command() {
+        let (result, out) = validate_bytes("lua", "lua", br#"gnoblin.configure { cursor = { size = 36 } }"#);
         let Err(Failure::Refusal { code, message }) = result else {
-            panic!("an init.lua that does not evaluate is refused");
+            panic!("a Lua file is refused");
         };
-        assert_eq!(code, "invalid-config");
-        assert!(!message.is_empty(), "the refusal names the problem");
+        assert_eq!(code, "lua-not-supported");
+        assert!(message.contains("gnoblinctl config migrate"), "{message}");
+        assert!(out.is_empty(), "nothing is printed as valid");
     }
 
     /// `validate` names the file the user gave; a missing one is refused, not reported valid.
-    /// (The runtime starts with defaults when `GNOBLIN_CONFIG` names no file; validating a
-    /// path the user typed must not do the same.)
     #[test]
-    fn a_missing_lua_file_is_refused_not_reported_valid() {
-        let path = std::env::temp_dir().join(format!("gnoblinctl-validate-{}-absent.lua", std::process::id()));
+    fn a_missing_file_is_refused_not_reported_valid() {
+        let path = std::env::temp_dir().join(format!("gnoblinctl-validate-{}-absent.json", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let mut out = Vec::new();
         let Err(Failure::Refusal { code, message }) = validate(&path, false, &mut out) else {
-            panic!("a missing init.lua is refused");
+            panic!("a missing file is refused");
         };
         assert_eq!(code, "io");
         assert!(message.contains("cannot read"), "{message}");

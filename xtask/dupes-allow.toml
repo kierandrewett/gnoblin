@@ -363,18 +363,6 @@ kind = "same-name"
 reason = "the locker's state is where the session lock controller is (unlocked, locking, locked, cover failed); the wayland state is the compositor object every protocol handler receives"
 
 [[allow]]
-left = "gnoblin-authority::Limits"
-right = "gnoblin-lua-sandbox::Limits"
-kind = "same-name"
-reason = "authority's limits are how many live tokens and waiting consent prompts the machine keeps; the Lua host's are the instruction, memory and time budget one entry into a script runs under"
-
-[[allow]]
-left = "gnoblin-authority::Pending"
-right = "gnoblin-lua::Pending"
-kind = "same-name"
-reason = "authority's pending is a consent prompt waiting for the portal provider; the Lua host's is one operation it called and is still waiting on"
-
-[[allow]]
 left = "gnoblin-schema::Signal"
 right = "gnoblin-session::Signal"
 kind = "same-name"
@@ -447,12 +435,6 @@ kind = "same-name"
 reason = "an a11y output is the layout bounds the magnifier clamps into; a backend output is an opened DRM connector"
 
 [[allow]]
-left = "gnoblin-a11y::Pending"
-right = "gnoblin-lua::Pending"
-kind = "same-name"
-reason = "a held key press awaiting its slow-keys deadline versus a script's unanswered operation"
-
-[[allow]]
 left = "gnoblin-client::Server"
 right = "gnoblin-wayland::Server"
 kind = "same-name"
@@ -463,36 +445,6 @@ left = "gnoblin-config::Config"
 right = "gnoblin-wayland::Config"
 kind = "same-name"
 reason = "the parsed configuration document versus the settings the Wayland server itself runs with"
-
-[[allow]]
-left = "gnoblin-config::Resolution"
-right = "gnoblin-lua::Resolution"
-kind = "same-name"
-reason = "which candidate configuration file won versus a resolved Lua module path"
-
-[[allow]]
-left = "gnoblin-config::Status"
-right = "gnoblin-lua::Status"
-kind = "same-name"
-reason = "the last-good snapshot's state versus a script's load status"
-
-[[allow]]
-left = "gnoblin-lua::Operation"
-right = "gnoblin-model::Operation"
-kind = "same-name"
-reason = "the handle a script holds for a call it made versus the graph's pending operation record"
-
-[[allow]]
-left = "gnoblin-lua::Subscription"
-right = "gnoblin-model::Subscription"
-kind = "same-name"
-reason = "a script's event subscription versus a subscription to the graph's observation stream"
-
-[[allow]]
-left = "gnoblin-lua::Ty"
-right = "gnoblin-model::Value"
-kind = "same-shape"
-reason = "a Lua type tag for a dynamically typed script value versus the graph's typed property value; the overlapping shape is the small variant set, not one type"
 
 [[allow]]
 left = "gnoblin-authority::Launch"
@@ -517,12 +469,6 @@ left = "gnoblin-config::Status"
 right = "gnoblin-xwayland::Status"
 kind = "same-name"
 reason = "the last-good store's resolution state versus where an Xwayland instance is in its start and restart cycle"
-
-[[allow]]
-left = "gnoblin-lua::Status"
-right = "gnoblin-xwayland::Status"
-kind = "same-name"
-reason = "a script's load status versus where an Xwayland instance is in its start and restart cycle"
 
 [[allow]]
 left = "gnoblin-a11y::Pending"
@@ -553,24 +499,6 @@ left = "gnoblin-compat-core::Refusal"
 right = "gnoblin-service-core::Refusal"
 kind = "same-name"
 reason = "why a slot request could not be offered or answered versus the compat frame's rule refusal; the compat one names a rule and this one names a slot or a request"
-
-[[allow]]
-left = "gnoblin-lua::Pending"
-right = "gnoblin-service-core::Pending"
-kind = "same-name"
-reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
-
-# The pairs below were found once every crate had a schema to serve. Each is a
-# homonym: the name is the obvious word for two different things, and the two
-# types are in different processes or different layers, so neither can stand in
-# for the other.
-
-# Capture's own vocabulary. Each of these names is the natural word in its own
-# domain and says something different from the crate it collides with: a capture
-# session table is not a nested backend's record table, a capture frame claim is not
-# an IPC frame, a capture refusal is not a compat caller's refusal, a capture stop is
-# not the session guardian's stop, and what a capture exports is not where an input
-# edge goes.
 
 [[allow]]
 left = "gnoblin-backend::Table"
@@ -687,18 +615,6 @@ left = "gnoblin-compat-dbus-gnome-shell-screenshot::ScreenshotAdmission"
 right = "gnoblin-compat-dbus-mutter-idlemonitor::IdleMonitorAdmission"
 kind = "same-shape"
 reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
-
-[[allow]]
-left = "gnoblin-lua::Host"
-right = "gnoblin-service-core::Host"
-kind = "same-name"
-reason = "the services role's inherited IPC host versus the script runtime's object host"
-
-[[allow]]
-left = "gnoblin-lua::RoleError"
-right = "gnoblin-services::RoleError"
-kind = "same-name"
-reason = "why the services role could not run versus why a script's role could not be built"
 
 [[allow]]
 left = "gnoblin::Role"
@@ -843,24 +759,6 @@ left = "gnoblin-lock::State"
 right = "xdg-desktop-portal-gnoblin::State"
 kind = "same-name"
 reason = "lock's State is where the session lock controller is; the portal's State is how far one portal session has got"
-
-[[allow]]
-left = "gnoblin-lua-sandbox::Guard"
-right = "xdg-desktop-portal-gnoblin::Guard"
-kind = "same-name"
-reason = "lua's Guard is the budgets one entry into Lua consumes, shared between host and hook; the portal's Guard is the session table and the grants behind it"
-
-[[allow]]
-left = "gnoblin-lua::Pending"
-right = "xdg-desktop-portal-gnoblin::Pending"
-kind = "same-name"
-reason = "lua's Pending is what the host knows about one operation it called; the portal's Pending is what Guard::ask could do"
-
-[[allow]]
-left = "gnoblin-lua::Shared"
-right = "xdg-desktop-portal-gnoblin::Shared"
-kind = "same-name"
-reason = "lua's Shared is the host state shared with the Lua closures its bindings install; the portal's Shared is everything its served objects share"
 
 [[allow]]
 left = "gnoblin-service-core::Pending"
@@ -1435,12 +1333,6 @@ reason = "a queued GPU-buffer capture copy waiting for the loop, and an unrelate
 
 [[allow]]
 left = "gnoblin-authority::Pending"
-right = "gnoblin-wayland::Pending"
-kind = "same-name"
-reason = "a queued GPU-buffer capture copy waiting for the loop, and an unrelated crate's own pending state; the name is shared, the meaning is not"
-
-[[allow]]
-left = "gnoblin-lua::Pending"
 right = "gnoblin-wayland::Pending"
 kind = "same-name"
 reason = "a queued GPU-buffer capture copy waiting for the loop, and an unrelated crate's own pending state; the name is shared, the meaning is not"

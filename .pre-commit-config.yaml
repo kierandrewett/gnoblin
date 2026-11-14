@@ -12,18 +12,6 @@ repos:
         types: [markdown]
         files: '^docs/.*\.md$'
         require_serial: true
-      - id: lua-api-types
-        name: Lua API types are current
-        entry: python3 scripts/gen-lua-api.py --check
-        language: system
-        files: '^(src/.*\.[ch]|scripts/gen-lua-api\.py)$'
-        pass_filenames: false
-      - id: lua-api-annotations
-        name: Lua API names all have annotations
-        entry: python3 scripts/audit-lua-annotations.py
-        language: system
-        files: '^(src/.*\.[ch]|scripts/audit-lua-annotations\.py)$'
-        pass_filenames: false
       - id: ruff
         name: ruff
         entry: ruff check
@@ -43,7 +31,7 @@ repos:
         entry: eslint --no-warn-ignored
         language: node
         files: '\.(js|mjs|cjs)$'
-        additional_dependencies: ["prettier@3.9.6", "@johnnymorganz/stylua-bin@2.5.2", "eslint@10.10.0"]
+        additional_dependencies: ["prettier@3.9.6", "eslint@10.10.0"]
         language_version: "22.16.0"
         require_serial: true
       - id: ruff-check
@@ -74,7 +62,7 @@ repos:
         entry: prettier --check
         language: node
         files: '\.(mjs|cjs|json|ya?ml|md|scss|css|html)$'
-        additional_dependencies: ["prettier@3.9.6", "@johnnymorganz/stylua-bin@2.5.2", "eslint@10.10.0"]
+        additional_dependencies: ["prettier@3.9.6", "eslint@10.10.0"]
         language_version: "22.16.0"
         require_serial: true
       - id: javascript-check
@@ -82,7 +70,7 @@ repos:
         entry: python3 scripts/format-qt.py --javascript
         language: node
         files: '\.js$'
-        additional_dependencies: ["prettier@3.9.6", "@johnnymorganz/stylua-bin@2.5.2", "eslint@10.10.0"]
+        additional_dependencies: ["prettier@3.9.6", "eslint@10.10.0"]
         language_version: "22.16.0"
         require_serial: true
       - id: qml-check
@@ -90,14 +78,6 @@ repos:
         entry: python3 scripts/format-qt.py
         language: system
         files: '\.qml$'
-        require_serial: true
-      - id: stylua-check
-        name: stylua-check
-        entry: stylua --check
-        language: node
-        types: [lua]
-        additional_dependencies: ["prettier@3.9.6", "@johnnymorganz/stylua-bin@2.5.2", "eslint@10.10.0"]
-        language_version: "22.16.0"
         require_serial: true
       - id: rustfmt-check
         name: rustfmt-check
@@ -147,7 +127,7 @@ repos:
         entry: prettier --write
         language: node
         files: '\.(mjs|cjs|json|ya?ml|md|scss|css|html)$'
-        additional_dependencies: ["prettier@3.9.6", "@johnnymorganz/stylua-bin@2.5.2", "eslint@10.10.0"]
+        additional_dependencies: ["prettier@3.9.6", "eslint@10.10.0"]
         language_version: "22.16.0"
         stages: [manual]
         require_serial: true
@@ -156,7 +136,7 @@ repos:
         entry: python3 scripts/format-qt.py --javascript --write
         language: node
         files: '\.js$'
-        additional_dependencies: ["prettier@3.9.6", "@johnnymorganz/stylua-bin@2.5.2", "eslint@10.10.0"]
+        additional_dependencies: ["prettier@3.9.6", "eslint@10.10.0"]
         language_version: "22.16.0"
         stages: [manual]
         require_serial: true
@@ -165,15 +145,6 @@ repos:
         entry: python3 scripts/format-qt.py --write
         language: system
         files: '\.qml$'
-        stages: [manual]
-        require_serial: true
-      - id: stylua-format
-        name: stylua-format
-        entry: stylua
-        language: node
-        types: [lua]
-        additional_dependencies: ["prettier@3.9.6", "@johnnymorganz/stylua-bin@2.5.2", "eslint@10.10.0"]
-        language_version: "22.16.0"
         stages: [manual]
         require_serial: true
       - id: rustfmt-format

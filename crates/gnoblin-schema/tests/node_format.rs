@@ -1,8 +1,7 @@
 //! The node-core additions to the schema format: `base` on an object, and `default`,
 //! `readonly` and `animated` on a property (design/node-core.md, section 2.2).
 
-use gnoblin_schema::derived::DerivedEvent;
-use gnoblin_schema::{Catalog, DefaultValue, ObjectType, SchemaError, Version, parse_schema};
+use gnoblin_schema::{Catalog, DefaultValue, ObjectType, SchemaError, parse_schema};
 
 fn catalog(files: &[(&str, &str)]) -> Result<Catalog, SchemaError> {
     let schemas = files
@@ -458,40 +457,4 @@ fn a_derived_method_may_not_reuse_an_inherited_property_name() {
     let text = format!("{TREE}\n[[object.method]]\nname = \"title\"\nsince = \"0.2.0\"\n");
     let error = catalog(&[("tree.toml", &text)]).expect_err("a method shadowing an inherited property is refused");
     assert!(problems(&error).contains("`title`"));
-}
-
-#[test]
-fn a_derived_event_on_a_class_with_a_base_builds_its_members_once() {
-    let text = format!(
-        "{}\n[[object.property]]\nname = \"focused\"\ntype = \"bool\"\nsince = \"0.2.0\"\n",
-        TREE.replace("namespace = \"tree\"", "namespace = \"gnoblin\""),
-    );
-    let base = catalog(&[("gnoblin.toml", &text)]).expect("catalog");
-    let event = DerivedEvent {
-        object: "window".to_owned(),
-        signal: "focused".to_owned(),
-        property: "focused".to_owned(),
-        when: true,
-        since: Version::parse("0.2.0").expect("a version"),
-        fields: Vec::new(),
-    };
-    let derived = base.with_derived(&[event]).expect("the derived event builds");
-    let window = object(&derived, "window");
-    assert_eq!(
-        window
-            .properties
-            .iter()
-            .filter(|property| property.name == "title")
-            .count(),
-        1
-    );
-    assert!(window.signals.iter().any(|signal| signal.name == "focused"));
-    assert!(window.signals.iter().any(|signal| signal.name == "changed"));
-}
-
-#[test]
-fn rebuilding_a_catalog_with_no_derived_events_changes_nothing() {
-    let base = catalog(&[("tree.toml", TREE)]).expect("catalog");
-    let rebuilt = base.with_derived(&[]).expect("the rebuild builds");
-    assert_eq!(format!("{:?}", base.schemas()), format!("{:?}", rebuilt.schemas()));
 }

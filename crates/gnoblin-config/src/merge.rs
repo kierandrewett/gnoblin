@@ -1,7 +1,7 @@
 //! Layered documents: how several files become one.
 //!
 //! Gnoblin loads the built-in defaults, then system drop-ins, then the user's own
-//! `init.lua` and everything it includes, and whatever loads later replaces what
+//! `init.ts` and everything it imports, and whatever loads later replaces what
 //! loaded earlier. The rule is the one the reference documents: tables merge by
 //! key, lists and scalars are replaced whole. A list is replaced because its
 //! order and length are part of its meaning: appending a gesture from a drop-in
@@ -11,7 +11,7 @@
 //! Precedence is decided by position in the slice, never by the content: the
 //! caller passes layers in load order and the last one wins. There is exactly one
 //! place in the compositor that builds that order ([`crate::locate`] names the
-//! files; the Lua host loads them), so two files can never disagree about which
+//! files; the shell loads them), so two files can never disagree about which
 //! one is later.
 
 use crate::value::Value;

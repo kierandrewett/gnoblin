@@ -1,7 +1,7 @@
 //! The Gnoblin configuration document: what a setting means, and what to do when
 //! one is wrong.
 //!
-//! The Lua host evaluates `init.lua` and hands over a neutral tree ([`Value`]);
+//! The shell evaluates the user's config and hands over a neutral tree ([`Value`]);
 //! this crate validates that tree into a typed [`Config`], merges layered
 //! documents, keeps what it can when a section is broken, and stores the accepted
 //! document so a broken edit cannot cost the session its settings.
@@ -9,7 +9,7 @@
 //! # One declaration per setting
 //!
 //! The typed document, its enums, the alias table, the per-field validators, the
-//! settings catalogue, the reference tables and the Lua stubs all come from
+//! settings catalogue and the reference tables all come from
 //! `schema/config.toml` at build time: [`generated`] is its `OUT_DIR` output,
 //! compiled here with `include!`, and `cargo xtask gen-config` writes the
 //! human-readable outputs into a gitignored directory. Nothing generated is
@@ -81,7 +81,7 @@ pub mod model;
 pub mod path;
 /// Validation problems and the report that carries all of them.
 pub mod problem;
-/// The neutral value tree that the Lua host hands over.
+/// The neutral value tree that the shell hands over.
 pub mod value;
 
 /// The document, generated from `schema/config.toml` by `build.rs`.
@@ -114,7 +114,7 @@ pub use keyring::{
 /// The last-good store, its on-disk format version and its load result.
 pub use last_good::{FORMAT, Resolution, Status, Store, StoreError, StoredDocument};
 /// Config path lookup: the located path, its origin and the search order.
-pub use locate::{ConfigPath, Language, LocateError, Origin, SearchPaths, locate, locate_lua};
+pub use locate::{ConfigPath, Language, LocateError, Origin, SearchPaths, locate};
 /// Reads the `logging` section from the environment before the subscriber exists.
 pub use logging::logging_from_environment;
 /// Merges layered documents into one, last layer wins.

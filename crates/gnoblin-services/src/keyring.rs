@@ -15,7 +15,7 @@
 //!    committed, so a first boot with `keyring.enabled = false` does not wait out the window below.
 //!    A config that cannot be evaluated without a session is not guessed at; the order goes on.
 //! 3. An accepted configuration, waited for at most [`CONFIGURATION_WAIT`]. This is the only source
-//!    for an `init.lua`, which the Lua host evaluates.
+//!    when the config cannot be evaluated here.
 //! 4. The last accepted file, then the schema default.
 //!
 //! [`decide`] is that rule. The agent runs it on its own thread, so starting the role never blocks
@@ -158,8 +158,7 @@ pub fn decide(
 
 /// The document the user's own config commits, evaluated here without a session, for [`decide`].
 ///
-/// `None` when the config is not one the JavaScript shell reads (no file yet, or an `init.lua`), so the
-/// accepted configuration is waited for instead.
+/// `None` when there is no config file yet, so the accepted configuration is waited for instead.
 ///
 /// # Errors
 ///
@@ -169,7 +168,7 @@ pub fn config_document(paths: &gnoblin_config::SearchPaths) -> Result<Option<Vec
     let Ok(located) = gnoblin_config::locate(paths) else {
         return Ok(None);
     };
-    if !located.exists() || !located.language().is_script() {
+    if !located.exists() {
         return Ok(None);
     }
     gnoblin_js::evaluate_document(located.path())
@@ -708,6 +707,7 @@ defineConfig({ autostart: ["waybar"] });"#,
 
     #[test]
     fn a_lua_config_or_no_config_is_left_to_the_accepted_document() {
+        // Nothing reads Lua, so the runtime runs the stock config and its accepted document is the only source.
         let (_root, paths) = config_with(&[("init.lua", "gnoblin.configure { keyring = { enabled = false } }")]);
         assert_eq!(config_document(&paths), Ok(None));
         let (_empty, paths) = config_with(&[]);

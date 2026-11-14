@@ -7,7 +7,7 @@
 use std::fs;
 use std::path::Path;
 
-use gnoblin_config::{Language, LocateError, Origin, SearchPaths, locate, locate_lua};
+use gnoblin_config::{Language, LocateError, Origin, SearchPaths, locate};
 use gnoblin_testkit::RuntimeDir;
 
 fn home_under(root: &RuntimeDir) -> SearchPaths {
@@ -20,7 +20,7 @@ fn home_under(root: &RuntimeDir) -> SearchPaths {
 #[test]
 fn the_override_wins_over_everything_else() {
     let root = RuntimeDir::new("locate-override").expect("temp dir");
-    let chosen = root.join("mine.lua");
+    let chosen = root.join("mine.ts");
     let paths = SearchPaths {
         home: Some(root.join("home")),
         config_home: Some(root.join("config")),
@@ -147,12 +147,17 @@ fn init_js_is_found_when_there_is_no_init_ts() {
 }
 
 #[test]
-fn init_lua_is_found_when_it_is_the_only_one() {
+fn init_lua_alone_is_not_the_config_and_is_reported_for_conversion() {
     let root = RuntimeDir::new("locate-lua").expect("temp dir");
     let found = locate(&home_with(&root, &["init.lua"])).expect("a path");
-    assert_eq!(found.path(), config_dir(&root).join("init.lua"));
-    assert!(found.exists());
-    assert_eq!(found.language(), Language::Lua);
+    assert_eq!(
+        found.path(),
+        config_dir(&root).join("init.ts"),
+        "the file a new user creates is the config"
+    );
+    assert!(!found.exists(), "nothing reads init.lua");
+    assert_eq!(found.language(), Language::TypeScript);
+    assert_eq!(found.lua(), Some(config_dir(&root).join("init.lua").as_path()));
     assert!(found.ignored().is_empty());
 }
 
@@ -205,40 +210,27 @@ fn the_xdg_config_home_directory_is_searched_for_every_name() {
 }
 
 #[test]
-fn the_lua_lookup_reads_init_lua_even_when_init_ts_is_there() {
-    let root = RuntimeDir::new("locate-lua-only").expect("temp dir");
-    let paths = home_with(&root, &["init.ts", "init.lua"]);
-    let found = locate_lua(&paths).expect("a path");
-    assert_eq!(found.path(), config_dir(&root).join("init.lua"));
-    assert!(found.exists());
-    assert_eq!(found.language(), Language::Lua);
-    assert!(
-        found.ignored().is_empty(),
-        "the Lua shell does not report files it cannot read"
-    );
-}
-
-#[test]
-fn the_lua_lookup_names_init_lua_when_it_is_missing() {
-    let root = RuntimeDir::new("locate-lua-missing").expect("temp dir");
-    let found = locate_lua(&home_under(&root)).expect("a path");
-    assert_eq!(found.path(), config_dir(&root).join("init.lua"));
-    assert!(!found.exists());
-}
-
-#[test]
-fn the_lua_lookup_refuses_a_typescript_override() {
-    let root = RuntimeDir::new("locate-lua-ts").expect("temp dir");
+fn a_lua_override_is_refused_with_the_command_that_converts_it() {
+    let root = RuntimeDir::new("locate-lua-override").expect("temp dir");
     let paths = SearchPaths {
-        override_path: Some(root.join("mine.ts")),
+        override_path: Some(root.join("mine.lua")),
         ..home_under(&root)
     };
+    let error = locate(&paths).expect_err("a Lua file is not a configuration");
     assert_eq!(
-        locate_lua(&paths),
-        Err(LocateError::NotLua {
-            path: root.join("mine.ts")
-        })
+        error,
+        LocateError::LuaFile {
+            path: root.join("mine.lua")
+        }
     );
+    assert!(error.to_string().contains("gnoblinctl config migrate"), "{error}");
+}
+
+#[test]
+fn an_init_ts_beside_an_init_lua_is_not_a_lua_only_config() {
+    let root = RuntimeDir::new("locate-lua-beside").expect("temp dir");
+    let found = locate(&home_with(&root, &["init.ts", "init.lua"])).expect("a path");
+    assert_eq!(found.lua(), None, "the stock config does not run: init.ts does");
 }
 
 #[test]

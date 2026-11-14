@@ -278,8 +278,8 @@ pub(crate) fn integer<T: TryFrom<i64>>(
 
 /// The number at `key`, in `range`, as an `f64`.
 ///
-/// An integer is accepted wherever a number is: JSON and Lua both make the
-/// distinction easy to blur, and `speed = 0` means the same as `speed = 0.0`.
+/// An integer is accepted wherever a number is: JSON and a script both make the
+/// distinction easy to blur, and `speed: 0` means the same as `speed: 0.0`.
 pub(crate) fn number(
     map: &mut BTreeMap<String, Value>,
     key: &str,

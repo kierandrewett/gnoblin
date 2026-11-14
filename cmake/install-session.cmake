@@ -172,11 +172,9 @@ gnoblin_remove(
   ${LIBDIR}/mutter-51/plugins/libgnoblin.so)
 
 gnoblin_install_file("${ROOT}/src/tools/gnoblin-seed-config" "${INSTALL_PREFIX}/libexec/gnoblin-seed-config" MODE_755)
-gnoblin_install_file("${ROOT}/data/init.lua.example" "${INSTALL_PREFIX}/share/gnoblin/init.lua.example" MODE_644)
-file(COPY "${ROOT}/data/default-config/" DESTINATION "${INSTALL_PREFIX}/share/gnoblin/default-config"
+gnoblin_install_file("${ROOT}/src/config/init.lua.example" "${INSTALL_PREFIX}/share/gnoblin/init.lua.example" MODE_644)
+file(COPY "${ROOT}/src/config/default-config/" DESTINATION "${INSTALL_PREFIX}/share/gnoblin/default-config"
   USE_SOURCE_PERMISSIONS)
-# Shipped Lua modules load as require("gnoblin.<name>") from this root.
-include("${CMAKE_CURRENT_LIST_DIR}/install-lua-data.cmake")
 gnoblin_install_file("${ROOT}/data/gnoblin-portals.conf"
   "${INSTALL_PREFIX}/share/xdg-desktop-portal/gnoblin-portals.conf" MODE_644)
 

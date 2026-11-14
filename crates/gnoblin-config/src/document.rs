@@ -1,7 +1,7 @@
 //! The configuration document: the typed sections built from a value tree.
 //!
-//! The Lua host evaluates `init.lua`, layers the files it loaded, and hands the
-//! result here as a [`Value`]. This crate never evaluates Lua and never reads the
+//! The shell evaluates the user's config, layers the files it loaded, and hands the
+//! result here as a [`Value`]. This crate never evaluates a script and never reads the
 //! config file: it owns what a setting *means*, so a misspelled key, an
 //! out-of-range number or a deprecated spelling is caught once, with a path and
 //! an accepted-values hint, before any subsystem acts on it.
@@ -19,7 +19,7 @@
 //! check the C core performs on load.
 //!
 //! Three sections are *carried*: `keybindings`, `portals` and `animations`. Their values
-//! are callbacks and declarations the Lua host and the window-management crate own; this
+//! are callbacks and declarations the shell and the window-management crate own; this
 //! layer keeps them in the document, rewrites nothing inside them, and validates nothing
 //! inside them. Carrying them is not the same as accepting them: a consumer that cannot
 //! use a rule still refuses it, and that refusal happens where the meaning is known.
@@ -153,7 +153,7 @@ impl Config {
                         key,
                         &root,
                         &mut out,
-                        "window rules and workspace sets are Lua tables in the shell files: set seat.data.window_rules and seat.data.workspace_sets in ~/.config/gnoblin/shell.lua (see docs/user-shell.md)",
+                        "window rules and workspace sets are not configuration keys: set `rules` and `workspaceSets` in `defineConfig` in init.ts (see docs/typescript-config.md)",
                     );
                 }
                 for key in ["extensions", "extension-dirs", "extension_dirs"] {
@@ -162,7 +162,7 @@ impl Config {
                         key,
                         &root,
                         &mut out,
-                        "the extension tier was removed: delete the setting, load extra Lua with require in the shell files (see docs/user-shell.md), and run a program that needs more as a client of the owner socket (see docs/xr.md)",
+                        "the extension tier was removed: delete the setting, import extra modules from init.ts (see docs/typescript-shell.md), and run a program that needs more as a client of the owner socket (see docs/xr.md)",
                     );
                 }
                 removed(

@@ -1,4 +1,4 @@
-# The `operation` object: the host's own completions, raised inside the Lua host.
+# The `operation` object: the host's own completions, raised inside the shell.
 #
 # An operation is a call a script made that the compositor answers later. Every one has a
 # completion, and a script can watch them all here, not only the handle it holds. The

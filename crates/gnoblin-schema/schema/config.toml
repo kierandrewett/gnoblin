@@ -1,6 +1,6 @@
 # The `config` object: the configuration's own lifecycle signals.
 #
-# The object has no properties or methods. Its signals are raised inside the Lua
+# The object has no properties or methods. Its signals are raised inside the runtime
 # host, not sent by the compositor: `reloaded` when a reload is accepted, and
 # `reload_failed` when one is refused, in which case the last accepted configuration
 # is restored and every handler it registered is told why. They are declared here so
