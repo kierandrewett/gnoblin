@@ -28,6 +28,7 @@ mod bindings;
 mod config;
 mod console;
 mod dialogs;
+mod document;
 mod error;
 mod generation;
 mod host;
@@ -55,6 +56,7 @@ pub use console::{
     CONSOLE_FILE, CONSOLE_SOCKET, CONSOLE_VARIABLE, DEFAULT_MAX_BYTES, JsConsole, JsConsoleError, JsConsoleSite,
     MAX_REQUEST, console_enabled, console_socket_path, evaluate_in, peer_allowed,
 };
+pub use document::{DOCUMENT_BUDGET, evaluate_document};
 pub use error::{JsError, JsErrorKind, JsLoadError, JsLocation, JsTsError};
 pub use generation::{JsConfig, JsGeneration};
 pub use host::{JsHost, JsPrepare};

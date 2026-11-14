@@ -198,6 +198,61 @@ fn json_output_carries_the_position_of_a_problem() {
     assert_eq!(document["problems"][0]["column"], 16);
 }
 
+fn validate(file: &Path, extra: &[&str]) -> (u8, String, String) {
+    let mut args = vec![
+        OsString::from("config"),
+        OsString::from("validate"),
+        file.as_os_str().to_owned(),
+    ];
+    args.extend(extra.iter().map(OsString::from));
+    run(&args)
+}
+
+#[test]
+fn config_validate_checks_a_typescript_config_as_check_does() {
+    let dir = Dir::new();
+    dir.write("x.ts", "export const limit: number = 3;\n");
+    let init = dir.write(
+        "init.ts",
+        "import { limit } from './x.ts';\nexport const n: number = limit;\n",
+    );
+    let (code, out, err) = validate(&init, &[]);
+    assert_eq!(code, 0, "stdout: {out}\nstderr: {err}");
+    assert_eq!(out, check(&init, &[]).1, "validate is the same in-process check");
+    assert!(err.is_empty(), "{err}");
+}
+
+#[test]
+fn config_validate_refuses_a_broken_typescript_config_with_its_position() {
+    let dir = Dir::new();
+    let init = dir.write("init.ts", "const ok = 1;\nconst broken = ;\n");
+    let (code, out, err) = validate(&init, &[]);
+    assert_eq!(code, 1, "stdout: {out}\nstderr: {err}");
+    assert!(err.contains("init.ts:2:16"), "{err}");
+    assert_eq!(err, check(&init, &[]).2, "the same report as `check`");
+}
+
+#[test]
+fn config_validate_accepts_a_javascript_config_and_reports_a_throw_in_json() {
+    let dir = Dir::new();
+    let good = dir.write("init.js", "export const n = 1;\n");
+    let (code, out, err) = validate(&good, &[]);
+    assert_eq!(code, 0, "stdout: {out}\nstderr: {err}");
+    let bad = dir.write("bad.js", "throw new Error('boom');\n");
+    let (code, out, err) = validate(&bad, &["--json"]);
+    assert_eq!(code, 1, "stdout: {out}\nstderr: {err}");
+    let document: serde_json::Value = serde_json::from_str(&out).expect("--json prints JSON");
+    assert_eq!(document["problems"][0]["kind"], "exception");
+}
+
+#[test]
+fn config_validate_of_a_missing_typescript_file_is_a_problem() {
+    let dir = Dir::new();
+    let (code, _, err) = validate(&dir.path().join("init.ts"), &[]);
+    assert_eq!(code, 1, "{err}");
+    assert!(err.contains("cannot read"), "{err}");
+}
+
 #[test]
 fn a_file_that_is_not_a_module_keeps_the_configuration_check() {
     let dir = Dir::new();

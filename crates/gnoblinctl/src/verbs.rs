@@ -8,9 +8,10 @@
 //! with the member that answers it.
 //!
 //! `config validate` is the one verb that never opens a connection: it checks a file on
-//! disk. An `init.lua` is evaluated by the runtime's own host against stock schemas, so a
+//! disk. An `init.ts` or `init.js` goes to the in-process check `gnoblinctl check` runs (`js.rs`, routed
+//! in `lib.rs`); an `init.lua` is evaluated by the runtime's own host against stock schemas, so a
 //! file that validates here is one the compositor accepts; a JSON document goes through the
-//! configuration layer's parser. Neither needs a session.
+//! configuration layer's parser. None needs a session.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};

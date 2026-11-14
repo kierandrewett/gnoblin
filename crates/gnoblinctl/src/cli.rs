@@ -473,12 +473,17 @@ fn verb_commands() -> Vec<Command> {
             .subcommand(
                 Command::new("validate")
                     .about("Check a configuration file without connecting to a session.")
+                    .long_about(
+                        "Check a configuration file without connecting to a session. A .ts, .mts, .js or .mjs file is \
+                         checked in process exactly as `gnoblinctl check` checks it; a .lua file or a JSON document \
+                         is checked against the configuration schema.",
+                    )
                     .arg(
                         Arg::new("file")
                             .value_name("FILE")
                             .required(true)
                             .value_parser(value_parser!(PathBuf))
-                            .help("The configuration document to check."),
+                            .help("The configuration file or document to check."),
                     ),
             )
             .subcommand(

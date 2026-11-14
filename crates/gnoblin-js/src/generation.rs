@@ -242,6 +242,12 @@ impl JsGeneration {
         let Some(specifier) = path.to_str().map(str::to_owned) else {
             return Err(JsLoadError::NotUtf8 { path }.into());
         };
+        self.eval_specifier(specifier)
+    }
+
+    /// Imports and evaluates the module `specifier` names, an absolute path or the name of an embedded module,
+    /// under the same budget and with the same settling rule as [`eval_module`](Self::eval_module).
+    pub fn eval_specifier(&self, specifier: String) -> Result<(), JsError> {
         self.call_budgeted(self.config.stage_budget, |ctx| {
             let promise = Module::import(ctx, specifier)?;
             loop {

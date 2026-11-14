@@ -155,10 +155,18 @@ pub fn run(
         cli::Invocation::Verb {
             verb: verbs::Verb::ConfigValidate { path },
             json,
-        } => match verbs::validate(&path, json, out) {
-            Ok(code) => code,
-            Err(failure) => failure.report(err, json),
-        },
+        } => {
+            if js::is_module(&path) {
+                // A TypeScript or JavaScript config is checked in process, as `check` does: the module graph loads
+                // with the runtime's own loader, so the file is refused for the reasons the shell would give.
+                js::check(&path, false, json, out, err)
+            } else {
+                match verbs::validate(&path, json, out) {
+                    Ok(code) => code,
+                    Err(failure) => failure.report(err, json),
+                }
+            }
+        }
         cli::Invocation::Verb { verb, json } => match connection.connect() {
             Ok(mut client) => verbs::execute(&mut client, &verb, json, out, err),
             Err(failure) => {

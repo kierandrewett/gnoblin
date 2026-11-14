@@ -19,6 +19,8 @@ use std::collections::HashSet;
 
 use thiserror::Error;
 
+use gnoblin_config::Value;
+
 use crate::bindings::JsSpawnRequest;
 
 /// A config's autostart list that is not a list of argv lists.
@@ -37,6 +39,66 @@ pub(crate) fn parse(text: &str) -> Result<Vec<Vec<String>>, JsAutostartError> {
         return Err(JsAutostartError("a command has no program".to_owned()));
     }
     Ok(commands)
+}
+
+/// The longest name the document's `autostart` section accepts.
+const NAME_LIMIT: usize = 64;
+
+/// The name the document gives the entry that starts `argv`: the program's file name with every character the
+/// schema does not accept turned into `-`, and `-2`, `-3` and so on when an earlier entry took it. The name is
+/// what the guardian tracks a started program by, so it depends only on the order of the list: the same list
+/// names the same entries on every reload, and an entry that did not change is not restarted.
+fn entry_name(argv: &[String], taken: &std::collections::HashSet<String>) -> String {
+    let program = argv
+        .first()
+        .map_or("", |program| program.rsplit('/').next().unwrap_or(program));
+    let mut base: String = program
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    if base.is_empty() {
+        base.push_str("autostart");
+    }
+    let mut candidate = base.chars().take(NAME_LIMIT).collect::<String>();
+    let mut count = 1usize;
+    while taken.contains(&candidate) {
+        count += 1;
+        let suffix = format!("-{count}");
+        let keep = NAME_LIMIT - suffix.len();
+        candidate = format!("{}{suffix}", base.chars().take(keep).collect::<String>());
+    }
+    candidate
+}
+
+/// The document's `autostart` section for `commands`: one entry per command, named by [`entry_name`]. `None`
+/// when the list is empty, so a config with no autostart commits a document with no section.
+///
+/// The JavaScript role starts these through the guardian (the document is where the guardian reads them from),
+/// which supervises each program and stops one a reload no longer lists.
+pub(crate) fn section(commands: &[Vec<String>]) -> Option<Value> {
+    if commands.is_empty() {
+        return None;
+    }
+    let mut taken = std::collections::HashSet::new();
+    let mut entries = std::collections::BTreeMap::new();
+    for argv in commands {
+        let name = entry_name(argv, &taken);
+        taken.insert(name.clone());
+        entries.insert(
+            name,
+            Value::table([(
+                "command",
+                Value::List(argv.iter().map(|part| Value::String(part.clone())).collect()),
+            )]),
+        );
+    }
+    Some(Value::Map(entries))
 }
 
 /// The commands this shell has started.
@@ -128,5 +190,69 @@ mod tests {
         assert!(parse(r#"["a"]"#).is_err());
         assert!(parse(r#"[[]]"#).is_err());
         assert!(parse("not json").is_err());
+    }
+
+    #[test]
+    fn the_section_names_each_command_by_its_program() {
+        let section = section(&[argv(&["waybar"]), argv(&["/usr/bin/foot", "--server"])]).expect("a section");
+        assert_eq!(
+            section.to_json(),
+            serde_json::json!({
+                "waybar": { "command": ["waybar"] },
+                "foot": { "command": ["/usr/bin/foot", "--server"] },
+            })
+        );
+    }
+
+    #[test]
+    fn two_commands_of_one_program_get_numbered_names_in_list_order() {
+        let section =
+            section(&[argv(&["foot", "-a"]), argv(&["foot", "-b"]), argv(&["foot", "-c"])]).expect("a section");
+        let json = section.to_json();
+        assert_eq!(json["foot"]["command"], serde_json::json!(["foot", "-a"]));
+        assert_eq!(json["foot-2"]["command"], serde_json::json!(["foot", "-b"]));
+        assert_eq!(json["foot-3"]["command"], serde_json::json!(["foot", "-c"]));
+    }
+
+    #[test]
+    fn a_program_name_the_schema_would_refuse_is_made_acceptable() {
+        let section = section(&[argv(&["my app.sh"])]).expect("a section");
+        assert!(section.to_json().get("my-app-sh").is_some(), "{:?}", section.to_json());
+        let long = "x".repeat(100);
+        let section = section_of_long(&long);
+        assert!(
+            section
+                .to_json()
+                .as_object()
+                .expect("a table")
+                .keys()
+                .all(|name| name.len() <= 64)
+        );
+    }
+
+    fn section_of_long(program: &str) -> Value {
+        section(&[argv(&[program]), argv(&[program, "-b"])]).expect("a section")
+    }
+
+    #[test]
+    fn no_commands_make_no_section() {
+        assert!(section(&[]).is_none());
+    }
+
+    #[test]
+    fn every_section_it_makes_passes_the_schema() {
+        let section = section(&[
+            argv(&["a"]),
+            argv(&["a", "b"]),
+            argv(&["/x/y z"]),
+            argv(&[&"q".repeat(80)]),
+        ])
+        .expect("a section");
+        let document = Value::table([("autostart", section)]);
+        let config = gnoblin_config::Config::from_value(document).expect("the schema accepts the names");
+        assert_eq!(
+            gnoblin_config::enabled_autostart(&config).expect("all enabled").len(),
+            4
+        );
     }
 }

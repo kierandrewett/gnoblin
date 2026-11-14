@@ -19,6 +19,9 @@ gnoblin-model = { path = "../gnoblin-model" }
 gnoblin-types = { path = "../gnoblin-types" }
 # The configuration file the role reads its settings through: the store and the locator.
 gnoblin-config = { path = "../gnoblin-config" }
+# The user's `init.ts` is evaluated in a throwaway generation for the first-boot `keyring.enabled` decision, which
+# has to be made before the runtime role has committed anything.
+gnoblin-js = { path = "../gnoblin-js" }
 # The version the handshake advertises is the schema's, and the wire crate is where both
 # sides of a handshake read it from.
 gnoblin-proto = { path = "../gnoblin-proto" }
@@ -51,6 +54,8 @@ futures-lite.workspace = true
 gnoblin-log = { path = "../gnoblin-log" }
 
 [dev-dependencies]
+# The first-boot keyring tests write a config directory of their own.
+tempfile = "3.23.0"
 # The tests build the graph from the checked-in schema, so the slot property names
 # this crate publishes are checked against the contract rather than a fixture.
 gnoblin-schema = { path = "../gnoblin-schema" }

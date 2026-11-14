@@ -1868,6 +1868,7 @@ dependencies = [
  "futures-lite",
  "gnoblin-client",
  "gnoblin-config",
+ "gnoblin-js",
  "gnoblin-keyring-handoff",
  "gnoblin-log",
  "gnoblin-model",
@@ -1883,6 +1884,7 @@ dependencies = [
  "gnoblin-service-testkit",
  "gnoblin-types",
  "rustix 1.1.6",
+ "tempfile",
  "zbus",
 ]
 
