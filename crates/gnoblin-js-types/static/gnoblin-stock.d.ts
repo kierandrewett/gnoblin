@@ -1449,12 +1449,19 @@ declare module "gnoblin" {
     /** Attached to a collection of clients: focus on a new window, hover and click focus, raise and auto raise. */
     export class FocusPolicy<C extends object> {
         constructor(host: FocusHost<C>);
+        /** A client appeared: applies the new-window policy and launcher focus. */
         onAdded(client: C): void;
+        /** The pointer entered the client: hover focus and rest timers start. */
         onPointerEnter(client: C): void;
+        /** The pointer moved over the client. */
         onPointerMotion(client: C): void;
+        /** The pointer left the client: clears focus when configured. */
         onPointerLeave(client: C): void;
+        /** A button went down on the client: click focus. */
         onPointerPress(client: C): void;
+        /** A button came up: ends a held press. */
         onPointerRelease(): void;
+        /** The client closed: forgets its timers. */
         onClosed(client: C): void;
         /** Runs the timers that are due. */
         frame(): void;
@@ -1464,14 +1471,19 @@ declare module "gnoblin" {
     export type SnapZone = "left" | "right" | "top";
     /** How near an edge the pointer must be to name it: 4 pixels. */
     export const SNAP_MARGIN: number;
+    /** Whether the `edgeTiling` config value turns edge tiling on. Only a literal `true` does. */
     export function edgeTilingEnabled(value: unknown): boolean;
+    /** Pointer position to zone: which edge or corner the pointer is in, or null. Pure. */
     export function edgeZone(x: number, y: number, area: Rect, margin?: number): SnapZone | null;
+    /** The rectangle a zone covers inside the work area, or null for an unknown zone. Pure. */
     export function tileRect(zone: string, area: Rect): Rect | null;
+    /** The client fields snapping reads and writes. `floatingBounds` is where it goes back to. */
     export interface SnapClient {
         bounds: Rect;
         maximised?: boolean;
         floatingBounds?: Rect | null;
     }
+    /** The work area and whether edge tiling is on, for one snap. */
     export interface SnapOptions {
         edgeTiling: boolean;
         area: Rect;
@@ -1480,6 +1492,7 @@ declare module "gnoblin" {
     export function snapClient(client: SnapClient, zone: string, options: SnapOptions): boolean;
     /** Puts a snapped client back where it floated. False when it is not snapped. */
     export function unsnapClient(client: SnapClient): boolean;
+    /** The zone a snapped client is tiled to, or null when it is not snapped. */
     export function snappedZone(client: object): SnapZone | null;
     /** What a snap keeps: the zone and the rectangle unsnapping goes back to. */
     export interface SnapRecord {
@@ -1556,10 +1569,12 @@ declare module "gnoblin" {
         decline(reason?: string): void;
     }
 
+    /** A consent request: a portal asks the user to allow something. Only `decline` is offered. */
     export interface ConsentRequest extends DialogRequest {
         readonly kind: "consent";
     }
 
+    /** A passphrase request: an app asks for a secret to unlock a keyring. Only `decline` is offered. */
     export interface SecretRequest extends DialogRequest {
         readonly kind: "secret";
     }
@@ -1570,6 +1585,7 @@ declare module "gnoblin" {
         onSecretRequest?(request: SecretRequest): void;
     }
 
+    /** Adds and removes the listeners of the compositor's dialogs. */
     export interface DialogManager {
         readonly listeners: readonly DialogListener[];
         addListener(listener: DialogListener): void;
@@ -1651,6 +1667,7 @@ declare module "gnoblin" {
         onAuthenticationRequest?(request: AuthenticationRequest): void;
     }
 
+    /** Adds and removes the listeners of polkit authentications. */
     export interface AuthenticationManager {
         readonly listeners: readonly AuthenticationListener[];
         addListener(listener: AuthenticationListener): void;
@@ -1673,6 +1690,7 @@ declare module "gnoblin" {
         onClosed?(launch: Launch, reason: string): void;
     }
 
+    /** A launch the registry tracks: its token, application, deadline and where it stands. */
     export class Launch {
         readonly token: string;
         readonly application: string;
@@ -1688,6 +1706,7 @@ declare module "gnoblin" {
         finish(): void;
     }
 
+    /** The launch feedback the shell offers. `list` and `begin` are the whole surface. */
     export interface LaunchFeedback {
         /** The launches the registry keeps (at most 64), oldest first, pending and finished. */
         list(): Launch[];
@@ -1752,6 +1771,7 @@ declare module "gnoblin" {
         tolerance?: number;
     }
 
+    /** Stock hooks for the window events of the config, called with the client they are about. */
     export interface ConfigEvents {
         clientAdded?(client: Client): void;
         clientRemoved?(client: Client): void;
@@ -1885,6 +1905,7 @@ declare module "gnoblin" {
          * its arguments. The same as `gnoblin.process.spawn`.
          */
         spawn(command: string | readonly string[], options?: SpawnOptions): Process;
+        /** Shows `workspace` on an output: the one given, else the one under the pointer, else the primary one. */
         show(workspace: Workspace | string, options?: ShowOptions): void;
         /** Runs `run` once, `seconds` from now: at the first frame after that time. */
         after(seconds: number, run: () => void): Timer;
@@ -1986,6 +2007,7 @@ declare module "gnoblin" {
 
     export type LockState = "unlocked" | "covering" | "locked" | "failsafe";
 
+    /** The session's connection and lock state, read from the last report. */
     export interface SessionStatus {
         /** `running` while the shell has a connection to the compositor, `unavailable` when it has none. */
         readonly state: "running" | "unavailable";
@@ -1996,14 +2018,17 @@ declare module "gnoblin" {
         readonly lockState?: LockState;
     }
 
+    /** The result of an operation that only needs to be accepted. */
     export interface Accepted {
         readonly accepted: true;
     }
 
+    /** The result of a lock request: whether the compositor was asked to lock. */
     export interface LockRequest {
         readonly dispatched: boolean;
     }
 
+    /** Session verbs: each returns an operation that settles when the compositor answers. */
     export interface Session {
         status(): SessionStatus;
         logout(): Operation<Accepted>;
@@ -2014,6 +2039,7 @@ declare module "gnoblin" {
         lock(): Operation<LockRequest>;
     }
 
+    /** The result of a config reload. `warnings` and `notApplied` name what the reload did not take. */
     export interface ReloadResult {
         readonly ok: true;
         readonly action: "config reload";
@@ -2022,11 +2048,13 @@ declare module "gnoblin" {
         readonly notApplied: readonly string[];
     }
 
+    /** What a script asks of the process that runs it. */
     export interface Runtime {
         /** Asks for the reload `gnoblinctl config reload` asks for. Throws while the configuration loads. */
         reloadConfig(): Operation<ReloadResult>;
     }
 
+    /** The build identity: component versions, the API level and the git and build ids. */
     export interface Version {
         readonly gnoblin: string;
         readonly gnome: string;
@@ -2038,6 +2066,7 @@ declare module "gnoblin" {
         readonly buildId: string;
     }
 
+    /** Filters the focus history by workspace or monitor, and caps how many windows come back. */
     export interface FocusHistoryFilter {
         workspaceId?: string;
         monitorId?: string;
@@ -2045,6 +2074,7 @@ declare module "gnoblin" {
         limit?: number;
     }
 
+    /** The windows in the order they were last focused. */
     export interface FocusHistory {
         /** The live windows, most recently focused first, then the rest in list order. */
         history(filter?: FocusHistoryFilter): Client[];
@@ -2064,6 +2094,7 @@ declare module "gnoblin" {
         timeout?: number;
     }
 
+    /** How a process ended. A stream is null when it was not captured. */
     export interface ProcessExit {
         readonly exitCode: number | null;
         readonly signal: string | null;
@@ -2074,6 +2105,7 @@ declare module "gnoblin" {
         readonly stderrTruncated: boolean;
     }
 
+    /** A program the shell started. `wait` and `kill` return operations. */
     export class Process {
         readonly id: number;
         readonly pid: number;
@@ -2088,11 +2120,13 @@ declare module "gnoblin" {
         kill(signal?: ProcessSignal): Operation<null>;
     }
 
+    /** Observes the programs the shell started. Every method is optional. */
     export class ProcessListener {
         /** A process ended. `code` is its exit status, or null when a signal ended it. */
         onExit?(process: Process, code: number | null): void;
     }
 
+    /** Starts and lists the programs the shell started. */
     export interface ProcessTable {
         spawn(command: string | readonly string[], options?: SpawnOptions): Process;
         list(): Process[];
@@ -2135,14 +2169,17 @@ declare module "gnoblin" {
 
     // -- Workspace sets and the slide gesture ---------------------------------
 
+    /** One workspace of a set and the output it shows on, if the set names one. */
     export interface SetEntry {
         workspace: string;
         output?: string;
     }
+    /** A named group of workspaces to show together. */
     export interface WorkspaceSet {
         name: string;
         entries: SetEntry[];
     }
+    /** Why a set list or a set name is refused. `kind` says which check failed. */
     export type SetError =
         | { kind: "empty_name" }
         | { kind: "duplicate_name"; name: string }
@@ -2150,18 +2187,23 @@ declare module "gnoblin" {
         | { kind: "undeclared_workspace"; set: string; workspace: string }
         | { kind: "duplicate_output"; set: string; output: string }
         | { kind: "unknown_set"; name: string };
+    /** A non-fatal note: the set's output is not connected, so the primary output is used. */
     export type SetWarning = { kind: "output_fallback"; set: string; output: string };
+    /** Where one workspace of a set goes on the output. */
     export interface SetPlacement {
         workspace: string;
         output: string;
     }
+    /** What activating a set does: where each workspace goes, any warnings, and whether anything changed. */
     export interface SetPlan {
         set: string;
         placements: SetPlacement[];
         warnings: SetWarning[];
         changed: boolean;
     }
+    /** The result of a set check: the value, or the error that refused it. */
     export type SetResult<T> = { ok: true; value: T } | { ok: false; error: SetError };
+    /** What the set checks and placement need from the live desktop. */
     export interface ActivateOptions {
         declared: ReadonlySet<string>;
         outputs: readonly string[];
@@ -2173,15 +2215,19 @@ declare module "gnoblin" {
         incoming: readonly WorkspaceSet[],
         declared: ReadonlySet<string>,
     ): SetResult<WorkspaceSet[]>;
+    /** Pure: plans how a named set lays out on the outputs. Returns the plan or the error. */
     export function activateSet(
         list: readonly WorkspaceSet[],
         name: string,
         options: ActivateOptions,
     ): SetResult<SetPlan>;
+    /** A sentence for a set error, naming the set or workspace it is about. */
     export function explainSetError(error: SetError): string;
+    /** Thrown by `WorkspaceSets.activate` when the set cannot be used. `error` says why. */
     export class WorkspaceSetError extends Error {
         readonly error: SetError;
     }
+    /** The live desktop the set code reads and drives. Kept apart so the set logic stays pure. */
     export interface SetsEnvironment {
         declared(): ReadonlySet<string>;
         outputs(): { names: readonly string[]; primary: string };
@@ -2189,6 +2235,7 @@ declare module "gnoblin" {
         show(workspace: string, output?: string): void;
         report(message: string): void;
     }
+    /** The defined sets and the active one. `define` checks a list; `activate` shows a set. */
     export class WorkspaceSets {
         constructor(environment: SetsEnvironment);
         readonly list: WorkspaceSet[];
@@ -2197,17 +2244,20 @@ declare module "gnoblin" {
         activate(name: string): SetPlan;
     }
 
+    /** A window the slide moves: its x position in pixels and whether it is visible. */
     export interface SlideClient {
         x: number;
         visible: boolean;
         readonly alive: boolean;
         animate(values: { x: number }, options: { duration: number; easing: "out-cubic" }): void;
     }
+    /** A workspace the slide moves between: whether it is active, its index and its windows. */
     export interface SlideWorkspace {
         readonly active: boolean;
         readonly index: number;
         readonly clients: Iterable<SlideClient>;
     }
+    /** The live desktop the slide reads and drives. */
     export interface SlideHost {
         readonly workspaces: {
             readonly area: { readonly width: number } | null;
@@ -2219,6 +2269,7 @@ declare module "gnoblin" {
         /** The seconds an animation takes: 0 while the seat asks for reduced motion. */
         motion?(seconds: number): number;
     }
+    /** Options for the three-finger slide: `travel` and `commit` are in touchpad units, `seconds` is the slide length. */
     export interface WorkspaceSlideOptions extends Partial<BindingOptions> {
         travel?: number;
         commit?: number;
@@ -2235,7 +2286,9 @@ declare module "gnoblin" {
 
     // -- The UI toolkit and the stock shell UI (docs/js-ui.md) -----------------
 
+    /** A colour string as the paint list takes it, for example `#rrggbb`. */
     export type Color = string;
+    /** One drawing operation of a canvas. `rect`, `line`, `text` and `icon` paint; the rest set the clip or opacity. */
     export type PaintOp =
         | {
               op: "rect";
@@ -2256,6 +2309,7 @@ declare module "gnoblin" {
         | { op: "pushOpacity"; alpha: number }
         | { op: "popOpacity" };
 
+    /** A pointer event on a canvas. Setting `stopped` or calling `stop` keeps it from reaching its parent. */
     export class UiPointerEvent {
         readonly kind: string;
         x: number;
@@ -2277,6 +2331,7 @@ declare module "gnoblin" {
         stop(): void;
     }
 
+    /** Options for a canvas: its position and size in pixels, and whether it is shown, see-through or secure. */
     export interface CanvasOptions {
         x?: number;
         y?: number;
@@ -2321,7 +2376,9 @@ declare module "gnoblin" {
         onLeave?(event: UiPointerEvent): void;
         onKey?(event: UiKeyEvent): void;
     }
+    /** How a box lays out its children: in a row, in a column, or not at all. */
     export type Direction = "row" | "column" | "none";
+    /** Options for a box: its layout direction, spacing in pixels, and its children. */
     export interface BoxOptions extends CanvasOptions {
         direction?: Direction;
         gap?: number;
@@ -2331,6 +2388,7 @@ declare module "gnoblin" {
         radius?: number;
         children?: readonly Canvas[];
     }
+    /** A canvas that lays out its children in a row or a column. */
     export class Box extends Canvas {
         constructor(options?: BoxOptions);
         direction: Direction;
@@ -2340,11 +2398,13 @@ declare module "gnoblin" {
         fill: Color;
         radius: number;
     }
+    /** The measured size of a text run in pixels. `ascent` is the distance from the top to the baseline. */
     export interface TextMetrics {
         width: number;
         height: number;
         ascent: number;
     }
+    /** Options for a text node: the text, its size in pixels and its colour. */
     export interface TextOptions extends BoxOptions {
         text?: string;
         size?: number;
@@ -2352,6 +2412,7 @@ declare module "gnoblin" {
         font?: string;
         ellipsize?: boolean;
     }
+    /** A box that shows a line of text. */
     export class Text extends Box {
         constructor(options?: TextOptions);
         text: string;
@@ -2361,21 +2422,27 @@ declare module "gnoblin" {
         ellipsize: boolean;
         metrics(): TextMetrics;
     }
+    /** Options for an icon node: the icon name and its size in pixels. */
     export interface IconOptions extends BoxOptions {
         icon?: string;
         size?: number;
         color?: Color;
     }
+    /** A box that shows a named icon. */
     export class Icon extends Box {
         constructor(options?: IconOptions);
         icon: string;
         size: number;
         color: Color;
     }
+    /** A box with grid layout; the layout is the same as a box for now. */
     export class Grid extends Box {}
+    /** Encodes a paint list into the numeric form the compositor reads. */
     export function encodePaintList(ops: readonly PaintOp[]): number[];
+    /** The number of canvases the UI toolkit holds alive. */
     export function uiCanvasCount(): number;
 
+    /** The look of a titlebar: sizes in pixels, fills, and the buttons it shows. */
     export interface TitlebarStyle {
         height: number;
         padding: number;
@@ -2395,7 +2462,9 @@ declare module "gnoblin" {
     export const SWIPE_THRESHOLD: number;
     /** How far from 1 a pinch's scale must be for `onPinch` to act on it. */
     export const PINCH_THRESHOLD: number;
+    /** A swipe direction as `onSwipe` reports it. */
     export type SwipeDirection = "left" | "right" | "up" | "down";
+    /** A pinch direction as `onPinch` reports it: fingers together or apart. */
     export type PinchDirection = "in" | "out";
     /** The five actions the configuration names. `window.minimize` is accepted for `window.minimise`. */
     export type GestureActionName =
