@@ -1,0 +1,7 @@
+client.opacity = 0.85;                            // immediate
+client.style.cornerRadius = 16;                   // immediate
+
+gnoblin.requestTransition(() => {
+  client.opacity = 0.85;
+  client.style.cornerRadius = 16;
+}, { duration: 250, easing: "ease-out" });

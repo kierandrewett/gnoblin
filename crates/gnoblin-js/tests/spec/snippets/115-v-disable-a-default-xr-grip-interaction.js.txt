@@ -1,0 +1,2 @@
+const xr = gnoblin.extensions.xr;
+const spatial = new xr.SpatialLayout({ triggers: { move: null } });

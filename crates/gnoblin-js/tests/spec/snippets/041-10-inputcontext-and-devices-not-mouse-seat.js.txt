@@ -1,0 +1,4 @@
+const secondSeat = new InputContext({ name: "secondary" });
+gnoblin.input.contexts.add(secondSeat);
+const keyboard = gnoblin.input.devices.find(d => d.name === "USB Keyboard");
+if (keyboard) keyboard.context = secondSeat;

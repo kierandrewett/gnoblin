@@ -1,0 +1,4 @@
+gnoblin.input.primary.bind("Super+3", () => {
+  const display = gnoblin.input.primary.activeDisplay;
+  if (display) display.viewport.content = gnoblin.workspaces.get("web");
+});

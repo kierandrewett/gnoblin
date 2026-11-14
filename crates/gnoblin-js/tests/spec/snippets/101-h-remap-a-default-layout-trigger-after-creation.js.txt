@@ -1,0 +1,1 @@
+workspace.layout.bindings.get("move").trigger = "Alt+MouseLeft+Drag";

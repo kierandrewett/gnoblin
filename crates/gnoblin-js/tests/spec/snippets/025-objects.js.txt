@@ -1,0 +1,5 @@
+const camera = new Camera3D({
+  projection: "orthographic",
+  size: 1800,
+  position: { x: 0, y: 0, z: 1500 },
+});

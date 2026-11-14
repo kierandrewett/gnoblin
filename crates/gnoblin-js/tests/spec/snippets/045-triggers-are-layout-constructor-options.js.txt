@@ -1,0 +1,15 @@
+const floating = new FloatingLayout({
+  placement: "smart",
+  triggers: {
+    move: "Super+MouseLeft+Drag",
+    resize: "Super+MouseRight+Drag",
+  },
+});
+
+const tiling = new MasterStackLayout({
+  ratio: 0.65,
+  triggers: {
+    swap: "Super+MouseLeft+Drag",
+    resize: "Super+MouseRight+Drag",
+  },
+});

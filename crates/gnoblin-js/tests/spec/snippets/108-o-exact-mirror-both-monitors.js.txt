@@ -1,0 +1,5 @@
+const mirrored = new Display({
+  outputs: [mainProfile, secondProfile],
+  mode: "mirror",
+  viewport: new Viewport({ content: desktop, camera: new Camera2D() }),
+});

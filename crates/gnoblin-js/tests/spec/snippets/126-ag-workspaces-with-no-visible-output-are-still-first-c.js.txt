@@ -1,0 +1,3 @@
+const background = new Workspace({ id: "background", layout: new MonocleLayout() });
+gnoblin.workspaces.add(background);
+// background.clients still exists; nothing is rendered until a Viewport references it.

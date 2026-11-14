@@ -1,0 +1,20 @@
+import { OutputProfile } from "gnoblin";
+
+const ultrawide = new OutputProfile({
+  match: { connector: "DP-1" },
+  mode: { width: 3440, height: 1440, refreshRate: 144 },
+  scale: 1.25,
+  transform: "normal",
+  vrr: true,
+  position: { x: 0, y: 0 },
+});
+
+const side = new OutputProfile({
+  match: { connector: "HDMI-A-1" },
+  mode: "preferred",
+  scale: 1,
+  position: { rightOf: ultrawide, align: "top" },
+});
+
+gnoblin.outputs.profiles.add(ultrawide);
+gnoblin.outputs.profiles.add(side);

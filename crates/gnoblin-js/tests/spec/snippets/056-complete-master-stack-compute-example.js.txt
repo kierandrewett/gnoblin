@@ -1,0 +1,36 @@
+import { Layout, ClientSwapBinding, SplitResizeBinding } from "gnoblin";
+
+class MasterStackLayout extends Layout {
+  constructor({ ratio = 0.65, gap = 12, triggers = {} } = {}) {
+    super();
+    this.ratio = ratio;
+    this.gap = gap;
+    const actual = {
+      swap: "Super+MouseLeft+Drag",
+      resize: "Super+MouseRight+Drag",
+      ...triggers,
+    };
+    if (actual.swap !== null)
+      this.bindings.add(new ClientSwapBinding({ id: "swap", trigger: actual.swap }));
+    if (actual.resize !== null)
+      this.bindings.add(new SplitResizeBinding({ id: "resize", trigger: actual.resize }));
+  }
+
+  compute({ clients, area }) {
+    if (!clients.length) return [];
+    if (clients.length === 1) return [{ node: clients[0], bounds: area, tiled: true }];
+    const masterW = (area.width - this.gap) * this.ratio;
+    const sideW = area.width - this.gap - masterW;
+    const stack = clients.slice(1);
+    const h = (area.height - (stack.length - 1) * this.gap) / stack.length;
+    return [
+      { node: clients[0], tiled: true,
+        bounds: { x: area.x, y: area.y, width: masterW, height: area.height } },
+      ...stack.map((node, i) => ({
+        node, tiled: true,
+        bounds: { x: area.x + masterW + this.gap,
+          y: area.y + i * (h + this.gap), width: sideW, height: h },
+      })),
+    ];
+  }
+}

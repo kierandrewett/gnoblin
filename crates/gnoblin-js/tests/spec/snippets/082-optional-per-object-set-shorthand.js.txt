@@ -1,0 +1,4 @@
+client.set({
+  opacity: 0.92,
+  transform: { rotation: { x: 0, y: 0.12, z: 0 } },
+}, { duration: 250, easing: "ease-out" });

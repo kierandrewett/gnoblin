@@ -1,0 +1,3 @@
+work.clients.style.shadows = [];
+gaming.clients.style.borders = [{ width: 2, color: "#f97316" }];
+media.clients.style.filter = [{ saturate: 0.8 }, { contrast: 1.15 }];

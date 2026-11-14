@@ -1,0 +1,2 @@
+const grid = new GridLayout();
+grid.bindings.remove("reorder");

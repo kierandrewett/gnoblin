@@ -1,0 +1,3 @@
+gnoblin.requestTransition(() => {
+  development.layout.ratio = 0.72;
+}, { duration: 300 });

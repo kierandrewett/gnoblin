@@ -1,0 +1,16 @@
+class ArcLayout extends Layout {
+  constructor({ radius = 1200, spacing = 0.35 } = {}) {
+    super(); this.radius = radius; this.spacing = spacing;
+  }
+  compute({ children, focused }) {
+    const selected = Math.max(0, children.findIndex(n => n === focused || n.content === focused));
+    return children.map((node, i) => {
+      const angle = (i - selected) * this.spacing;
+      return { node, transform: {
+        position: { x: Math.sin(angle) * this.radius,
+          y: 0, z: -Math.cos(angle) * this.radius },
+        rotation: { x: 0, y: -angle, z: 0 }, scale: 1,
+      }};
+    });
+  }
+}

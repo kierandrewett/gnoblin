@@ -1,0 +1,9 @@
+const flat = new MasterStackLayout({ ratio: 0.65 });
+const spatial = new ArcLayout({ radius: 1200 });
+const camera2D = new Camera2D();
+const camera3D = new Camera3D({ projection: "perspective", fov: 60 });
+
+gnoblin.requestTransition(() => {
+  workspace.layout = spatial;
+  display.viewport.camera = camera3D;
+}, { duration: 750, easing: "ease-in-out" });

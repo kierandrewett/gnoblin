@@ -1,0 +1,8 @@
+const perspective = new Viewport({
+  content: desktop,
+  camera: new Camera3D({
+    projection: "perspective",
+    fov: 60,
+    position: { x: 0, y: 0, z: 1400 },
+  }),
+});

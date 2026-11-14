@@ -1,0 +1,39 @@
+import { Layout, ClientMoveBinding, ClientResizeBinding } from "gnoblin";
+
+export class FloatingLayout extends Layout {
+  constructor({ placement = "smart", triggers = {} } = {}) {
+    super();
+    this.placement = placement;
+
+    const defaults = {
+      move: "Super+MouseLeft+Drag",
+      resize: "Super+MouseRight+Drag",
+    };
+    const actual = { ...defaults, ...triggers };
+
+    if (actual.move !== null) {
+      this.bindings.add(new ClientMoveBinding({
+        id: "move", trigger: actual.move, snap: 16,
+      }));
+    }
+    if (actual.resize !== null) {
+      this.bindings.add(new ClientResizeBinding({
+        id: "resize", trigger: actual.resize, edges: "quadrant",
+      }));
+    }
+  }
+
+  onClientAdded(client, { area, clients }) {
+    // Only place newly introduced clients. Preserve manual dragging.
+    if (client.floatingBounds) return;
+    client.bounds = this.findFreeSpace(client, area, clients);
+  }
+
+  findFreeSpace(client, area, clients) {
+    // Pure smart-placement algorithm supplied in the stock JS library.
+    // Search for a non-overlapping rectangle and clamp to work area.
+    return { x: area.x + 40, y: area.y + 40,
+      width: Math.min(client.size.width, area.width),
+      height: Math.min(client.size.height, area.height) };
+  }
+}

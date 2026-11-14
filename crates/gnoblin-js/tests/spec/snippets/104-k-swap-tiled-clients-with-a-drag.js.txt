@@ -1,0 +1,6 @@
+const tiled = new MasterStackLayout({
+  triggers: { swap: "Super+MouseLeft+Drag" },
+});
+workspace.layout = tiled;
+// Super+left-drag one Client over another: ClientSwapBinding previews and
+// changes the layout's order on release.

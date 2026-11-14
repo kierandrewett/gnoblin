@@ -1,0 +1,22 @@
+class Layout extends NativeObject {
+  readonly workspace: Workspace;
+  readonly bindings: Collection<Binding>;
+  onClientAdded?(client: Client, context: LayoutContext): void;
+  onClientRemoved?(client: Client, context: LayoutContext): void;
+  onAreaChanged?(oldArea: Rect, newArea: Rect): void;
+  compute?(context: LayoutContext): Placement[];
+}
+interface LayoutContext {
+  workspace: Workspace;
+  clients: readonly Client[];
+  children: readonly Node[];
+  area: Rect;
+  focused: Client | null;
+}
+interface Placement {
+  node: Node;
+  bounds?: Rect;
+  transform?: Transform3D;
+  visible?: boolean;
+  tiled?: boolean;
+}

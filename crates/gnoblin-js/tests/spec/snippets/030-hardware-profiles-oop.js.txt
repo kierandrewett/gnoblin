@@ -1,0 +1,5 @@
+const laptopPanel = new OutputProfile({
+  match: { make: "BOE", model: "Display", serial: "device-specific-serial" },
+  mode: "preferred",
+  scale: 1.5,
+});

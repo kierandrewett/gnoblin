@@ -1,0 +1,7 @@
+const input = gnoblin.input.primary;
+input.bind("Super+Return", () => gnoblin.spawn("ghostty"));
+input.bind("Super+Q", () => input.focusedClient?.close());
+input.bind("Swipe3Left", () => {
+  input.activeDisplay.viewport.content = gnoblin.workspaces.get("web");
+});
+input.bind("MouseMiddle", event => console.log(event.position, event.client));

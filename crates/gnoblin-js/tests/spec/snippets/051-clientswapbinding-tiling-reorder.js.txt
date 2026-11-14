@@ -1,0 +1,25 @@
+import { PointerDragBinding } from "gnoblin";
+
+export class ClientSwapBinding extends PointerDragBinding {
+  constructor({ id = "swap", trigger = "Super+MouseLeft+Drag" } = {}) {
+    super({ id, trigger });
+  }
+  onStart(event) {
+    if (!event.client || !event.layout) return false;
+    return { dragged: event.client, layout: event.layout, over: null };
+  }
+  onUpdate(event, state) {
+    const hit = event.context.hitTest(event.position);
+    state.over = hit?.client?.workspace === state.dragged.workspace
+      ? hit.client : null;
+    state.layout.previewSwap = state.over
+      ? { from: state.dragged, to: state.over } : null;
+  }
+  onEnd(_event, state) {
+    state.layout.previewSwap = null;
+    if (state.over && state.over !== state.dragged) {
+      state.layout.order.swap(state.dragged, state.over);
+    }
+  }
+  onCancel(_event, state) { state.layout.previewSwap = null; }
+}

@@ -1,0 +1,47 @@
+import { PointerDragBinding } from "gnoblin";
+
+export class ClientMoveBinding extends PointerDragBinding {
+  constructor({ id = "move", trigger = "Super+MouseLeft+Drag", snap = 16 } = {}) {
+    super({ id, trigger });
+    this.snap = snap;
+  }
+
+  onStart(event) {
+    if (!event.client || event.client.fullscreen) return false;
+    return {
+      client: event.client,
+      startPointer: { ...event.position },
+      startBounds: { ...event.client.bounds },
+    };
+  }
+
+  onUpdate(event, state) {
+    const dx = event.position.x - state.startPointer.x;
+    const dy = event.position.y - state.startPointer.y;
+    const requested = {
+      ...state.startBounds,
+      x: state.startBounds.x + dx,
+      y: state.startBounds.y + dy,
+    };
+    // A reusable JS helper; not a magical native grab operation.
+    state.client.bounds = this.snapBounds(requested, event.layout, this.snap);
+  }
+
+  onEnd(_event, state) {
+    state.client.floatingBounds = { ...state.client.bounds };
+  }
+
+  onCancel(_event, state) {
+    state.client.bounds = state.startBounds;
+  }
+
+  snapBounds(rect, layout, distance) {
+    const area = layout.workspace.bounds;
+    const snap = (value, edge) => Math.abs(value - edge) <= distance ? edge : value;
+    return {
+      ...rect,
+      x: snap(rect.x, area.x),
+      y: snap(rect.y, area.y),
+    };
+  }
+}

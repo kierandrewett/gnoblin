@@ -1,0 +1,27 @@
+class InputManager {
+  readonly contexts: Collection<InputContext>;
+  readonly devices: Collection<InputDevice>;
+  readonly primary: InputContext;
+}
+class InputContext extends NativeObject {
+  readonly devices: Collection<InputDevice>;
+  readonly keyboard: KeyboardState | null;
+  readonly pointer: PointerState | null;
+  readonly touch: TouchState | null;
+  focusedClient: Client | null;
+  activeDisplay: Display | null;
+  readonly bindings: Collection<Binding>;
+  bind(trigger: string, action: Function | Binding): Binding;
+}
+class InputDevice extends NativeObject {
+  name: string;
+  enabled: boolean;
+  context: InputContext;
+  readonly bindings: Collection<Binding>;
+  bind(trigger: string, action: Function | Binding): Binding;
+}
+class Keyboard extends InputDevice {}
+class Mouse extends InputDevice {}
+class Touchpad extends InputDevice {}
+class Touchscreen extends InputDevice {}
+class Tablet extends InputDevice {}

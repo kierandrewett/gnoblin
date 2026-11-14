@@ -1,0 +1,11 @@
+interface Collection<T> extends Iterable<T> {
+  readonly length: number;
+  at(index: number): T | undefined;
+  get(id: string): T | undefined;
+  find(predicate: (item: T) => boolean): T | undefined;
+  filter(predicate: (item: T) => boolean): T[];   // snapshot
+  map<U>(mapper: (item: T) => U): U[];            // snapshot
+  where(query: Query<T>): Collection<T>;          // LIVE selection
+  addListener(listener: CollectionListener<T> | MemberListener<T>): void;
+  removeListener(listener: object): void;
+}

@@ -1,0 +1,7 @@
+const floating = new FloatingLayout();
+floating.bindings.remove("resize");
+floating.bindings.add(new ClientResizeBinding({
+  id: "resize",
+  trigger: "Super+MouseMiddle+Drag",
+  edges: "nearest",
+}));

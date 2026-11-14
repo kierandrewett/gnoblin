@@ -1,0 +1,7 @@
+gnoblin.requestTransition(() => {
+  workspace.layout = new ArcLayout({ radius: 1300, spacing: 0.3 });
+  display.viewport.camera = new Camera3D({
+    projection: "perspective", fov: 65,
+    position: { x: 0, y: 0, z: 1500 },
+  });
+}, { duration: 750, easing: "ease-in-out" });

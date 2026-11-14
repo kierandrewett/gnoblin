@@ -1,0 +1,8 @@
+new FloatingLayout({ placement: "smart", triggers: { move: "Super+MouseLeft+Drag" } });
+new FloatingLayout({ placement: "center" });
+new FloatingLayout({ placement: "cascade", cascadeStep: 32 });
+new MasterStackLayout({ masterCount: 1, ratio: 0.65, gap: 12, orientation: "left" });
+new GridLayout({ columns: "auto", gap: 8 });
+new MonocleLayout();
+new DwindleLayout({ split: "aspect", ratio: 0.5, gap: 8 });
+new ArcLayout({ radius: 1200, spacing: 0.35 });

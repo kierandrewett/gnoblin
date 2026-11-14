@@ -1,0 +1,5 @@
+// Animate workspace selection and visual effects together.
+gnoblin.requestTransition(() => {
+  display.viewport.content = development;
+  gnoblin.clients.style.backdropFilter = [{ blur: 12 }];
+}, { duration: 350 });

@@ -1,0 +1,6 @@
+const span = new Display({
+  outputs: [ultrawide, side],
+  mode: "span",
+  viewport: new Viewport({ content: desktop, camera: new Camera2D() }),
+});
+gnoblin.displays.add(span);

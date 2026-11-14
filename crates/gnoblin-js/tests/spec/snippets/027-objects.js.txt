@@ -1,0 +1,3 @@
+const overview = new Node({ id: "overview" });
+overview.add(new View({ content: desktop, size: { width: 700, height: 400 } }));
+overview.add(new View({ content: desktop, size: { width: 350, height: 200 } }));

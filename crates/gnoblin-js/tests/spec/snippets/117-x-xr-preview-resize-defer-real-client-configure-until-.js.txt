@@ -1,0 +1,7 @@
+const xr = gnoblin.extensions.xr;
+spatial.bindings.add(new xr.ViewResizeBinding({
+  id: "resize", trigger: "Grip+Trigger+Drag",
+  pixelsPerMetre: 1200, edges: "quadrant",
+}));
+// During drag: View.size changes.
+// On release: Client.size request if aspect ratio/density requires it.

@@ -1,0 +1,83 @@
+class ViewResizeBinding extends xr.ControllerDragBinding {
+  constructor({ id = "resize", trigger = "Grip+Trigger+Drag",
+                edges = "quadrant", pixelsPerMetre = 1200,
+                minWidth = 0.25, minHeight = 0.15 } = {}) {
+    super({ id, trigger });
+    Object.assign(this, { edges, pixelsPerMetre, minWidth, minHeight });
+  }
+
+  onStart(event) {
+    if (!event.view || !event.ray) return false;
+    const view = event.view;
+    const transform = view.worldTransform.clone();
+    const hit = transform.plane().intersect(event.ray);
+    if (!hit) return false;
+    const local = transform.inverse().transformPoint(hit);
+    const size = { ...view.size };
+    const corner = this.edges === "quadrant"
+      ? `${local.y < size.height / 2 ? "top" : "bottom"}-${local.x < size.width / 2 ? "left" : "right"}`
+      : this.edges;
+
+    return { view, originalSize: size,
+      originalTransform: view.transform.clone(),
+      worldPlane: transform.plane(),
+      originalInverse: transform.inverse(),
+      firstPoint: local, corner };
+  }
+
+  onUpdate(event, state) {
+    const hit = state.worldPlane.intersect(event.ray);
+    if (!hit) return;
+    const p = state.originalInverse.transformPoint(hit);
+    const dx = p.x - state.firstPoint.x;
+    const dy = p.y - state.firstPoint.y;
+
+    const rect = { x: 0, y: 0,
+      width: state.originalSize.width, height: state.originalSize.height };
+    if (state.corner.includes("left")) { rect.x += dx; rect.width -= dx; }
+    if (state.corner.includes("right")) rect.width += dx;
+    if (state.corner.includes("top")) { rect.y += dy; rect.height -= dy; }
+    if (state.corner.includes("bottom")) rect.height += dy;
+
+    if (rect.width < this.minWidth) {
+      if (state.corner.includes("left")) rect.x -= this.minWidth - rect.width;
+      rect.width = this.minWidth;
+    }
+    if (rect.height < this.minHeight) {
+      if (state.corner.includes("top")) rect.y -= this.minHeight - rect.height;
+      rect.height = this.minHeight;
+    }
+
+    // Keep the opposite corner anchored. Translate in the view's
+    // original local plane; the host handles world/parent transforms.
+    state.view.size = { width: rect.width, height: rect.height };
+    state.view.transform = state.originalTransform
+      .multiply(Transform3D.translation(rect.x, rect.y, 0));
+  }
+
+  onEnd(_event, state) {
+    const view = state.view;
+    const client = view.content;
+    if (!(client instanceof Client)) return;
+
+    const committed = client.committedSize;
+    const desired = {
+      width: Math.round(view.size.width * this.pixelsPerMetre),
+      height: Math.round(view.size.height * this.pixelsPerMetre),
+    };
+    const oldRatio = committed.width / committed.height;
+    const newRatio = desired.width / desired.height;
+    const aspectChanged = Math.abs(newRatio / oldRatio - 1) > 0.02;
+    const tooLowResolution = committed.width < desired.width * 0.85 ||
+      committed.height < desired.height * 0.85;
+
+    if (aspectChanged || tooLowResolution) {
+      client.size = desired; // ONE new desired Wayland toplevel size on release
+    }
+  }
+
+  onCancel(_event, state) {
+    state.view.size = state.originalSize;
+    state.view.transform = state.originalTransform;
+  }
+}

@@ -1,0 +1,23 @@
+// Global defaults: all current and future clients, unless overridden.
+gnoblin.clients.style.cornerRadius = 12;
+
+gnoblin.clients.style.borders = [
+  { width: 1, color: "#ffffff40" },
+  { width: 2, color: "#7c3aed", offset: 3 },
+];
+
+gnoblin.clients.style.shadows = [
+  { x: 0, y: 8, blur: 24, color: "#00000066" },
+  { x: 0, y: 0, blur: 12, spread: 2, color: "#8b5cf655" },
+  { inset: true, x: 0, y: 0, blur: 4, color: "#ffffff22" },
+];
+
+gnoblin.clients.style.backdropFilter = [
+  { blur: 18 },
+  { saturate: 1.25 },
+];
+
+gnoblin.clients.style.filter = [
+  { brightness: 1.05 },
+  { contrast: 1.1 },
+];

@@ -1,0 +1,6 @@
+// Animate multiple styles across all clients inheriting collection defaults.
+gnoblin.requestTransition(() => {
+  gnoblin.clients.style.cornerRadius = 24;
+  gnoblin.clients.style.shadows[0].blur = 48;
+  gnoblin.clients.style.borders[1].width = 4;
+}, { duration: 400 });

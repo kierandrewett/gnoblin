@@ -1,0 +1,6 @@
+// Animate a spatial View, not the underlying client.
+gnoblin.requestTransition(() => {
+  panel.position = { x: 0.5, y: 0.2, z: -1.4 };
+  panel.rotation = { x: 0, y: 0.3, z: 0 };
+  panel.size = { width: 1.2, height: 0.75 };
+}, { duration: 550, easing: "ease-out" });

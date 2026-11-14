@@ -1,0 +1,17 @@
+const flat = new MasterStackLayout({ ratio: 0.65 });
+const spatial = new ArcLayout({ radius: 1200, spacing: 0.35 });
+const camera2D = new Camera2D();
+const camera3D = new Camera3D({
+  projection: "perspective", fov: 65,
+  position: { x: 0, y: 0, z: 1600 },
+});
+
+let in3D = false;
+gnoblin.input.primary.bind("Super+Tab", () => {
+  in3D = !in3D;
+  gnoblin.requestTransition(() => {
+    workspace.layout = in3D ? spatial : flat;
+    display.viewport.camera = in3D ? camera3D : camera2D;
+    gnoblin.clients.style.cornerRadius = in3D ? 24 : 10;
+  }, { duration: 800, easing: "ease-in-out" });
+});

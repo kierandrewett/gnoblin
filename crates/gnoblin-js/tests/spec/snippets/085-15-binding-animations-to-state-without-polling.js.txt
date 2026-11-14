@@ -1,0 +1,5 @@
+// Bind a vignette strength to the camera's zoom.
+background.properties.bind("vignette", () => Math.min(1, camera2D.zoom / 3));
+
+// Bind background blur to how many clients are in the workspace.
+development.properties.bind("blurRadius", () => development.clients.length > 4 ? 12 : 0);

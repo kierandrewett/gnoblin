@@ -1,0 +1,15 @@
+interface DragEvent {
+  context: InputContext;
+  device: InputDevice;
+  client?: Client;                 // if a managed toplevel is hit
+  view?: View;                     // if a scene view is hit
+  layout?: Layout;
+  position?: Vec2;                 // stable display/workspace logical coordinates
+  localPosition?: Vec2;            // target-local coordinates
+  ray?: Ray3;
+  controller?: XRController;       // optional XR module type
+  timestamp: number;
+  deltaTime: number;
+  modifiers: ReadonlySet<string>;
+  hit?: HitResult;
+}

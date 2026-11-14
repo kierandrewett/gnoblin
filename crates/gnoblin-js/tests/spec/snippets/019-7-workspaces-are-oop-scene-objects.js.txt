@@ -1,0 +1,3 @@
+const client = gnoblin.input.primary.focusedClient;
+if (client) development.clients.add(client); // transfer primary membership
+console.log(client?.workspace === development);

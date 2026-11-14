@@ -1,0 +1,32 @@
+class ViewRotateBinding extends xr.ControllerDragBinding {
+  constructor({ trigger = "Trigger+Thumbstick+Drag" } = {}) {
+    super({ id: "rotate", trigger });
+  }
+  onStart(event) {
+    if (!event.view) return false;
+    return { view: event.view, original: event.view.rotation.clone(),
+      controller: event.controller.pose.rotation.clone() };
+  }
+  onUpdate(event, s) {
+    const delta = event.controller.pose.rotation.multiply(s.controller.inverse());
+    s.view.rotation = delta.multiply(s.original);
+  }
+  onEnd() {}
+  onCancel(_event, s) { s.view.rotation = s.original; }
+}
+
+class ViewScaleBinding extends xr.ControllerDragBinding {
+  constructor({ trigger = "Grip+Thumbstick+Drag" } = {}) {
+    super({ id: "scale", trigger });
+  }
+  onStart(e) {
+    if (!e.view) return false;
+    return { view: e.view, scale: e.view.scale, start: e.controller.pose.position };
+  }
+  onUpdate(e, s) {
+    const delta = e.controller.pose.position.distanceTo(s.start);
+    s.view.scale = Math.max(0.2, Math.min(3, s.scale + delta));
+  }
+  onEnd() {}
+  onCancel(_e, s) { s.view.scale = s.scale; }
+}

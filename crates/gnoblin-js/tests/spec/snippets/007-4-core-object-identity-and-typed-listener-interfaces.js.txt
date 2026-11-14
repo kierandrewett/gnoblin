@@ -1,0 +1,7 @@
+class AutoPlace extends CollectionListener {
+  onAdded(client) {
+    if (client.appId === "org.gnome.Nautilus") client.style.cornerRadius = 6;
+  }
+}
+
+gnoblin.clients.addListener(new AutoPlace());

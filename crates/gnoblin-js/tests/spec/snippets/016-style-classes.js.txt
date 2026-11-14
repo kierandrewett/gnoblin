@@ -1,0 +1,6 @@
+import { ClientStyle, Border, Shadow, BlurFilter } from "gnoblin";
+const style = new ClientStyle({ cornerRadius: 12 });
+style.borders.add(new Border({ width: 2, color: "#7c3aed" }));
+style.shadows.add(new Shadow({ x: 0, y: 8, blur: 24, color: "#0006" }));
+style.backdropFilter.add(new BlurFilter({ radius: 18 }));
+gnoblin.clients.style = style;

@@ -1,0 +1,15 @@
+import { Mouse, Keyboard, Touchpad } from "gnoblin";
+for (const device of gnoblin.input.devices) {
+  if (device instanceof Mouse) {
+    device.sensitivity = 0.5;
+    device.acceleration = "flat";
+  }
+  if (device instanceof Keyboard) {
+    device.repeatRate = 40;
+    device.repeatDelay = 250;
+  }
+  if (device instanceof Touchpad) {
+    device.naturalScroll = true;
+    device.tapToClick = true;
+  }
+}

@@ -1,0 +1,5 @@
+for (const client of gnoblin.clients) console.log(client.title);
+const terminals = gnoblin.clients.filter(c => c.appId.includes("ghostty"));
+const browsers = gnoblin.clients.where({ appId: "firefox" });
+const code = gnoblin.workspaces.get("development");
+console.log(code.clients.length);

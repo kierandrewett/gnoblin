@@ -1,0 +1,13 @@
+class Binding extends NativeObject {
+  id: string;
+  trigger: string;
+  enabled: boolean;
+  priority: number;
+}
+abstract class DragBinding extends Binding {
+  onStart(event: DragStartEvent): object | false;
+  onUpdate(event: DragUpdateEvent, state: object): void;
+  onEnd(event: DragEndEvent, state: object): void;
+  onCancel(event: DragCancelEvent, state: object): void;
+}
+class PointerDragBinding extends DragBinding {}

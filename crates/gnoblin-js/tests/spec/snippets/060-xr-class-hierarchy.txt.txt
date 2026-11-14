@@ -1,0 +1,14 @@
+Core Camera3D ────────────> XR.Camera3D / XRCamera3D
+Core Viewport ────────────> XR.Viewport / XRViewport
+Core InputContext ───────> session.input (ordinary InputContext, XR device sources)
+Core ControllerDragBinding?  (NO — this base is provided by XR extension)
+XR.ControllerDragBinding
+  ├── XR.ViewMoveBinding
+  ├── XR.ViewResizeBinding
+  ├── XR.ViewRotateBinding
+  └── XR.ViewScaleBinding
+XR.Session
+  ├── camera/head tracking sources
+  ├── controller collection and input context
+  ├── XRViewport / composition policy
+  └── runtime lifecycle and layer budget

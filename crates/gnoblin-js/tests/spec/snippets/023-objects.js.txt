@@ -1,0 +1,4 @@
+const viewport = new Viewport({
+  content: desktop,
+  camera: new Camera2D({ zoom: 1 }),
+});

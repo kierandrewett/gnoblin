@@ -1,0 +1,3 @@
+const other = new InputContext({ name: "secondary" });
+gnoblin.input.contexts.add(other);
+other.bind("Super+Return", () => gnoblin.spawn("foot"));

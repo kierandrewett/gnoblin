@@ -1,0 +1,10 @@
+class LockedVerticalMoveBinding extends ClientMoveBinding {
+  onUpdate(event, state) {
+    const y = state.startBounds.y + event.position.y - state.startPointer.y;
+    state.client.bounds = { ...state.startBounds, y };
+  }
+}
+workspace.layout.bindings.remove("move");
+workspace.layout.bindings.add(new LockedVerticalMoveBinding({
+  id: "move", trigger: "Super+MouseLeft+Drag",
+}));

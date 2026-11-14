@@ -1,0 +1,1 @@
+client.set({ opacity: 1, visible: true, transform: initialTransform });

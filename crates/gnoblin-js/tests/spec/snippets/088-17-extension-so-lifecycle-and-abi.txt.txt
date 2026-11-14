@@ -1,0 +1,4 @@
+/usr/lib/gnoblin/extensions/xr/
+├── manifest.json
+├── libgnoblin_xr.so
+└── js/index.mjs     # host-generated/bundled JS class bindings, optional

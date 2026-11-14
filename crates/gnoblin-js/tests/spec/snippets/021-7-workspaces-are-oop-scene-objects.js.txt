@@ -1,0 +1,2 @@
+const display = gnoblin.input.primary.activeDisplay;
+if (display) display.viewport.content = gnoblin.workspaces.get("dev");

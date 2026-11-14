@@ -1,0 +1,10 @@
+// Each display chooses independently from the same global workspace registry.
+const workspaces = [desktop, development, web, gaming];
+for (const workspace of workspaces) gnoblin.workspaces.add(workspace);
+
+gnoblin.input.primary.bind("Super+1", () => {
+  gnoblin.input.primary.activeDisplay.viewport.content = desktop;
+});
+gnoblin.input.primary.bind("Super+2", () => {
+  gnoblin.input.primary.activeDisplay.viewport.content = development;
+});

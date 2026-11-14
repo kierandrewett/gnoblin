@@ -1,0 +1,4 @@
+const dp1 = gnoblin.outputs.get("DP-1");
+if (dp1) {
+  console.log(dp1.connector, dp1.mode, dp1.scale, dp1.position, dp1.connected);
+}

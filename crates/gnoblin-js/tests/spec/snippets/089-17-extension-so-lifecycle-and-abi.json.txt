@@ -1,0 +1,9 @@
+{
+  "id": "xr",
+  "version": "1.0.0",
+  "abi": 1,
+  "library": "libgnoblin_xr.so",
+  "module": "gnoblin/extensions/xr",
+  "capabilities": ["view-consumer", "input-source", "tracked-pose", "xr-session"],
+  "load": "optional"
+}

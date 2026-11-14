@@ -1,0 +1,2 @@
+const mouse = gnoblin.input.devices.find(d => d.name === "Logitech MX Master");
+mouse?.bind("Super+MouseMiddle", event => console.log("Only this mouse", event));

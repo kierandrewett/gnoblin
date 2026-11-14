@@ -1,0 +1,29 @@
+class Scene extends NativeObject {
+  readonly root: Node;
+  metresPerUnit: number;
+}
+class View extends Node {
+  content: Node;             // references source without reparenting
+  size: Size2D;              // local physical/logical panel size (scene units)
+  contentFit: "contain" | "cover" | "stretch";
+  input: "forward" | "capture" | "none";
+}
+class Camera2D extends Node {
+  position: Vec2;
+  zoom: number;
+  rotation: number;
+}
+class Camera3D extends Node {
+  position: Vec3;
+  rotation: Quaternion | Euler3;
+  projection: "perspective" | "orthographic";
+  fov: number;               // when perspective
+  size: number;              // when orthographic
+  near: number;
+  far: number;
+}
+class Viewport extends NativeObject {
+  content: Node;
+  camera: Camera2D | Camera3D;
+  clearColor: Color;
+}

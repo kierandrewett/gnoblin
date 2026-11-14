@@ -1,0 +1,8 @@
+spatial.bindings.get("move").trigger = "Right.Grip+Drag";
+spatial.bindings.remove("rotate");
+spatial.bindings.add(new xr.ViewMoveBinding({
+  id: "move",
+  trigger: "Trigger+Grip+Drag",
+  tracking: "ray",
+  rotation: "keep",
+}));

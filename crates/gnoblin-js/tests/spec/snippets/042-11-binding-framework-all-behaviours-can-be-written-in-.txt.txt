@@ -1,0 +1,16 @@
+Binding
+├── KeyBinding
+├── PointerBinding
+│   └── PointerDragBinding
+│       ├── ClientMoveBinding
+│       ├── ClientResizeBinding
+│       ├── ClientSwapBinding
+│       └── SplitResizeBinding
+├── GestureBinding
+│   └── WorkspaceSwitchBinding
+└── (optional XR extension)
+    ControllerDragBinding
+    ├── ViewMoveBinding
+    ├── ViewResizeBinding
+    ├── ViewRotateBinding
+    └── ViewScaleBinding

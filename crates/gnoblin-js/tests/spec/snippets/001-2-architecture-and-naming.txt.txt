@@ -1,0 +1,19 @@
+User JS ES modules (one privileged, restartable runtime)
+  ├─ gnoblin global: clients, workspaces, displays, outputs, input, scene ...
+  ├─ stock JS library: layouts, bindings, style classes, listeners
+  ├─ user classes, event handlers, configuration and hot reload
+  └─ optional extension bindings (gnoblin/extensions/xr, etc.)
+                      │
+                      │ typed object API / revisions / transactions / input updates
+                      ▼
+Rust compositor: object store + immutable snapshots + validation
+  ├─ scene and transform graph; GPU rendering and damage
+  ├─ Wayland protocol, client configure and focus safety
+  ├─ output/modeset transaction engine
+  ├─ transition/tween player and native property adapters
+  └─ input/gesture capture and ray hit-testing
+                      ▲
+                      │ versioned extension IPC
+Optional extension host ─ dlopen(ext.so) ─ OpenXR runtime
+  ├─ session, tracking, controllers, swapchains
+  └─ layer submission of Gnoblin-produced views

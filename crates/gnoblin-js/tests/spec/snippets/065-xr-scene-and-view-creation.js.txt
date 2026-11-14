@@ -1,0 +1,10 @@
+const spatial = new xr.SpatialLayout({
+  radius: 1.6,   // metres
+  spacing: 0.35, // radians
+  triggers: {
+    move: "Grip+Drag",
+    resize: "Grip+Trigger+Drag",
+    rotate: "Trigger+Thumbstick+Drag",
+  },
+});
+room.layout = spatial;

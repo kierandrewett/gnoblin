@@ -1,0 +1,3 @@
+const browsers = gnoblin.clients.where({ appId: "firefox" });
+browsers.style.cornerRadius = 16;
+browsers.style.backdropFilter = [];

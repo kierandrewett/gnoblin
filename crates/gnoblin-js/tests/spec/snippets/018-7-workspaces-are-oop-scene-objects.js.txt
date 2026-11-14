@@ -1,0 +1,20 @@
+import { Workspace, FloatingLayout, MasterStackLayout, GridLayout } from "gnoblin";
+
+const desktop = new Workspace({
+  id: "desktop",
+  name: "Desktop",
+  layout: new FloatingLayout({ placement: "smart" }),
+});
+const development = new Workspace({
+  id: "development",
+  name: "Development",
+  layout: new MasterStackLayout({ ratio: 0.65, gap: 12 }),
+});
+const web = new Workspace({
+  id: "web",
+  layout: new GridLayout({ columns: "auto", gap: 8 }),
+});
+
+gnoblin.workspaces.add(desktop);
+gnoblin.workspaces.add(development);
+gnoblin.workspaces.add(web);

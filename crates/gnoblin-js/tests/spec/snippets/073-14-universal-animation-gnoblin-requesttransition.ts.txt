@@ -1,0 +1,17 @@
+interface TransitionOptions {
+  duration?: number;        // milliseconds (the JS API uses ms consistently)
+  delay?: number;           // milliseconds
+  easing?: string | Easing;
+  autoplay?: boolean;       // true by default
+}
+class Transition extends NativeObject {
+  progress: number;         // 0..1, writable when manually controlled
+  readonly running: boolean;
+  readonly duration: number;
+  readonly finished: Promise<void>;
+  play(): void;
+  pause(): void;
+  reverse(): void;
+  finish(): void;
+  cancel(): void;
+}

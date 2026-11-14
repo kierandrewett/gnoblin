@@ -1,0 +1,17 @@
+class SpiralLayout extends Layout {
+  constructor({ radius = 900, spacing = 0.35 } = {}) {
+    super();
+    this.radius = radius;
+    this.spacing = spacing;
+  }
+  compute({ children }) {
+    return children.map((node, i) => ({ node, transform: {
+      position: { x: Math.sin(i * this.spacing) * this.radius,
+        y: 0, z: -Math.cos(i * this.spacing) * this.radius },
+    }}));
+  }
+}
+
+const spiral = new SpiralLayout();
+workspace.layout = spiral;
+gnoblin.requestTransition(() => { spiral.radius = 1300; }, { duration: 500 });

@@ -1,0 +1,34 @@
+class ViewMoveBinding extends xr.ControllerDragBinding {
+  constructor({ id = "move", trigger = "Grip+Drag",
+                tracking = "controller", rotation = "follow" } = {}) {
+    super({ id, trigger });
+    this.tracking = tracking;
+    this.rotation = rotation;
+  }
+
+  onStart(event) {
+    if (!event.view || !event.controller?.tracked) return false;
+    return {
+      view: event.view,
+      startView: event.view.transform.clone(),
+      startController: event.controller.pose.clone(),
+    };
+  }
+
+  onUpdate(event, state) {
+    const current = event.controller.pose;
+    if (this.tracking === "controller") {
+      const delta = current.multiply(state.startController.inverse());
+      const target = delta.multiply(state.startView);
+      if (this.rotation !== "follow") target.rotation = state.startView.rotation;
+      state.view.transform = target;
+    } else {
+      const ray = event.ray;
+      const distance = state.startView.position.distanceTo(state.startController.position);
+      state.view.position = ray.at(distance); // keep initial distance
+    }
+  }
+
+  onEnd() {} // keep the new spatial pose
+  onCancel(_event, state) { state.view.transform = state.startView; }
+}

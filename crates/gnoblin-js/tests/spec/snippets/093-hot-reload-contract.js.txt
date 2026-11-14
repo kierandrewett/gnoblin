@@ -1,0 +1,8 @@
+// Inspector expressions
+gnoblin.clients.length
+gnoblin.clients.focused?.title
+gnoblin.workspaces.map(ws => [ws.id, ws.clients.length])
+gnoblin.displays.map(d => [d.id, d.viewport.content.id])
+gnoblin.input.primary.bindings
+gnoblin.extensions.xr?.session?.layerBudget
+gnoblin.clients.focused?.computedStyle.shadows

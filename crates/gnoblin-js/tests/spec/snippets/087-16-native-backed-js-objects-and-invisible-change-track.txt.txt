@@ -1,0 +1,8 @@
+JS assignment on native/observable object
+ → resolve ObjectId / key and typed value
+ → collect in runtime transaction (or staging requestTransition)
+ → validate against immutable object schema and scene ownership
+ → apply atomically at compositor frame boundary
+ → update property revision / invalidate layout and style dependencies
+ → evaluate native tracks and send necessary Wayland configure requests
+ → render from the same transform state that input hit-testing uses

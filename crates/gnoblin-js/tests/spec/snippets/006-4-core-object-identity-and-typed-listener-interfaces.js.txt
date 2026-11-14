@@ -1,0 +1,4 @@
+const firefox = gnoblin.clients.find(c => c.appId === "firefox");
+firefox?.addListener(new class extends ClientListener {
+  onTitleChanged(client, title) { console.log(title); }
+}());

@@ -1,0 +1,17 @@
+import { CollectionListener, Workspace, MasterStackLayout } from "gnoblin";
+
+class DevelopmentWorkspace extends Workspace {
+  constructor() {
+    super({
+      id: "dev",
+      layout: new MasterStackLayout({ ratio: 0.7, gap: 10 }),
+    });
+    this.clients.addListener(new class extends CollectionListener {
+      onAdded(client) {
+        if (client.appId.includes("ghostty")) client.style.cornerRadius = 0;
+      }
+    }());
+  }
+}
+
+gnoblin.workspaces.add(new DevelopmentWorkspace());

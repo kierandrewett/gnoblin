@@ -1,0 +1,7 @@
+const panel = new View({
+  content: firefoxClient,
+  size: { width: 0.9, height: 0.55 },
+  contentFit: "contain",
+  input: "forward",
+});
+spatialRoom.add(panel);

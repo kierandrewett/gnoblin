@@ -1,0 +1,2 @@
+const xr = gnoblin.extensions.xr;  // null / undefined if not loaded
+for (const ext of gnoblin.extensions) console.log(ext.id, ext.status);

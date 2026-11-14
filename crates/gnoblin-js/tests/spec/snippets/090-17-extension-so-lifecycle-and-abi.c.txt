@@ -1,0 +1,11 @@
+GNOBLIN_EXPORT int gnoblin_extension_init(
+    const GnoblinHostAPI *host,
+    GnoblinExtensionRegistration *registration
+) {
+    if (host->abi_version != GNOBLIN_EXTENSION_ABI_1) return GNOBLIN_ABI_MISMATCH;
+    registration->id = "xr";
+    registration->create_service = xr_create_service;
+    registration->destroy_service = xr_destroy_service;
+    registration->register_types = xr_register_types;
+    return GNOBLIN_OK;
+}

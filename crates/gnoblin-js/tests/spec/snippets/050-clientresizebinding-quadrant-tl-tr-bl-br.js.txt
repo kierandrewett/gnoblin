@@ -1,0 +1,49 @@
+import { PointerDragBinding } from "gnoblin";
+
+export class ClientResizeBinding extends PointerDragBinding {
+  constructor({ id = "resize", trigger = "Super+MouseRight+Drag",
+                edges = "quadrant" } = {}) {
+    super({ id, trigger });
+    this.edges = edges;
+  }
+
+  onStart(event) {
+    if (!event.client || event.client.fullscreen) return false;
+    const r = { ...event.client.bounds };
+    const where = event.localPosition;
+    const corner = this.edges === "quadrant"
+      ? `${where.y < r.height / 2 ? "top" : "bottom"}-${where.x < r.width / 2 ? "left" : "right"}`
+      : this.edges;
+    return {
+      client: event.client,
+      start: r,
+      pointer: { ...event.position },
+      corner,
+    };
+  }
+
+  onUpdate(event, state) {
+    const dx = event.position.x - state.pointer.x;
+    const dy = event.position.y - state.pointer.y;
+    const r = { ...state.start };
+    if (state.corner.includes("left")) { r.x += dx; r.width -= dx; }
+    if (state.corner.includes("right")) { r.width += dx; }
+    if (state.corner.includes("top")) { r.y += dy; r.height -= dy; }
+    if (state.corner.includes("bottom")) { r.height += dy; }
+
+    const min = state.client.minSize ?? { width: 100, height: 80 };
+    // Preserve the opposite anchor while clamping sizes.
+    if (r.width < min.width) {
+      if (state.corner.includes("left")) r.x -= min.width - r.width;
+      r.width = min.width;
+    }
+    if (r.height < min.height) {
+      if (state.corner.includes("top")) r.y -= min.height - r.height;
+      r.height = min.height;
+    }
+    state.client.bounds = r;
+  }
+
+  onEnd(_event, state) { state.client.floatingBounds = { ...state.client.bounds }; }
+  onCancel(_event, state) { state.client.bounds = state.start; }
+}

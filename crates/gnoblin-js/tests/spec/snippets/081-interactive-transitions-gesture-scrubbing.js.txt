@@ -1,0 +1,8 @@
+const transition = gnoblin.requestTransition(() => {
+  workspace.layout = spatial;
+  display.viewport.camera = camera3D;
+}, { duration: 800, easing: "ease-in-out", autoplay: false });
+
+transition.progress = 0.4;  // preview an intermediate rendered state
+transition.play();          // animate toward the destination
+await transition.finished;

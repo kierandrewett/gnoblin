@@ -1,0 +1,5 @@
+gnoblin.clients.style.cornerRadius = 12;
+development.clients.style.cornerRadius = 0;
+gaming.clients.style.shadows = [
+  { x: 0, y: 0, blur: 30, color: "#22c55e66" },
+];

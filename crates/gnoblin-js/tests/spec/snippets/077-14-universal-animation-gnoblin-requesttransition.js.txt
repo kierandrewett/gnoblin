@@ -1,0 +1,5 @@
+// Animate viewport camera pose, without changing layout.
+gnoblin.requestTransition(() => {
+  camera3D.position = { x: 0, y: 100, z: 1600 };
+  camera3D.fov = 80;
+}, { duration: 500, easing: "ease-out" });

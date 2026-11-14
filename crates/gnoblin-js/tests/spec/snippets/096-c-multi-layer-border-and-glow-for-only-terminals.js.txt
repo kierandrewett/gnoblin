@@ -1,0 +1,8 @@
+const terminals = gnoblin.clients.where({ appId: "com.mitchellh.ghostty" });
+terminals.style.borders = [
+  { width: 1, color: "#ffffff50" },
+  { width: 2, color: "#0ea5e9", offset: 2 },
+];
+terminals.style.shadows = [
+  { x: 0, y: 0, blur: 30, spread: 4, color: "#38bdf855" },
+];

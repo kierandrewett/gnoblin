@@ -1,0 +1,5 @@
+const wide = new Display({
+  outputs: [mainProfile, secondProfile],
+  mode: "span",
+  viewport: new Viewport({ content: desktop, camera: new Camera2D() }),
+});

@@ -1,0 +1,4 @@
+client.properties.bind("opacity", () => {
+  const distance = client.position.distanceTo(camera3D.position);
+  return Math.max(0.25, 1 - distance / 2500);
+});

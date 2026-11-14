@@ -1,0 +1,21 @@
+class Style extends NativeObject {
+  opacity: number;
+  filter: ObservableCollection<Filter>;
+  backdropFilter: ObservableCollection<BackdropFilter>;
+}
+class ClientStyle extends Style {
+  cornerRadius: number | CornerRadii;
+  borders: ObservableCollection<Border>;
+  shadows: ObservableCollection<Shadow>;
+  background: Color | null;
+}
+class Border extends NativeObject {
+  width: number; color: Color; offset: number; inset: boolean;
+}
+class Shadow extends NativeObject {
+  x: number; y: number; blur: number; spread: number;
+  color: Color; inset: boolean;
+}
+class BlurFilter extends NativeObject { radius: number; }
+class SaturateFilter extends NativeObject { amount: number; }
+class BrightnessFilter extends NativeObject { amount: number; }

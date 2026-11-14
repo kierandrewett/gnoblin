@@ -1,0 +1,22 @@
+gnoblin
+├── clients: Collection<Client>                (all managed toplevels)
+├── workspaces: Collection<Workspace>
+│   └── Workspace : Node
+│       ├── clients: Collection<Client>        (membership, not copies)
+│       ├── layout: Layout
+│       └── children: Collection<Node>
+├── scene: Scene
+│   └── root: Node → Workspace, Client, View, Camera, other Nodes
+├── outputs: Collection<Output>                 (physical/virtual connectors)
+│   └── profiles: Collection<OutputProfile>    (persistent hardware policy)
+├── displays: Collection<Display>               (one/many outputs + one viewport)
+│   └── viewport: Viewport
+│       ├── content: Node                      (often Workspace)
+│       └── camera: Camera2D | Camera3D
+├── input: InputManager
+│   ├── contexts: Collection<InputContext>    (wl_seat equivalents)
+│   ├── devices: Collection<InputDevice>
+│   └── primary: InputContext
+├── extensions: ExtensionRegistry
+│   └── xr?: XRExtension                    (registered only if available)
+└── requestTransition(...): Transition

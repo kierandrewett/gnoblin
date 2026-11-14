@@ -1,0 +1,9 @@
+const xr = gnoblin.extensions.xr;
+if (xr?.session) {
+  const hud = new VirtualOutput({
+    name: "XR-HUD", width: 1600, height: 900,
+    attachment: "viewer",
+  });
+  gnoblin.outputs.add(hud);
+  // Bingux chooses XR-HUD as an ordinary layer-shell target.
+}

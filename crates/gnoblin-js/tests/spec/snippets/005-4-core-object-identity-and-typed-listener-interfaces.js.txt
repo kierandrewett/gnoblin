@@ -1,0 +1,17 @@
+import { ClientListener, CollectionListener, OutputListener } from "gnoblin";
+
+class AuditClient extends ClientListener {
+  onTitleChanged(client, title) { console.log(client.id, title); }
+  onFocusChanged(client, focused) { console.log(client.title, focused); }
+  onGeometryChanged(client, geometry) { console.log(geometry); }
+  onClosed(client) { console.log("Closed", client.id); }
+}
+
+gnoblin.clients.addListener(new AuditClient()); // existing and future clients
+
+class TrackCollection extends CollectionListener {
+  onAdded(client) { console.log("Added", client.appId); }
+  onRemoved(client) { console.log("Removed", client.appId); }
+}
+
+gnoblin.clients.addListener(new TrackCollection());

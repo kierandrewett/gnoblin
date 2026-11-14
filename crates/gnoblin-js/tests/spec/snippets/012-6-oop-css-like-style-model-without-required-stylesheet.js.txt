@@ -1,0 +1,4 @@
+const client = gnoblin.clients.focused;
+client.style.cornerRadius = 20;
+client.style.borders[0].color = "#ff8800";
+client.style.shadows[1].blur = 40;

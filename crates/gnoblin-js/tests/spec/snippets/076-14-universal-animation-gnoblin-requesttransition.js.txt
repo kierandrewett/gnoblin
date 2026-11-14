@@ -1,0 +1,5 @@
+// Animate a custom JS layout field (intercepted by host runtime).
+gnoblin.requestTransition(() => {
+  arcLayout.radius = 1600;
+  arcLayout.spacing = 0.55;
+}, { duration: 700, easing: "ease-in-out" });

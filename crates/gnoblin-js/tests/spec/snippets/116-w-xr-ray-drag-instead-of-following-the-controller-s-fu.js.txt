@@ -1,0 +1,5 @@
+const xr = gnoblin.extensions.xr;
+spatial.bindings.remove("move");
+spatial.bindings.add(new xr.ViewMoveBinding({
+  id: "move", trigger: "Grip+Drag", tracking: "ray", rotation: "keep",
+}));

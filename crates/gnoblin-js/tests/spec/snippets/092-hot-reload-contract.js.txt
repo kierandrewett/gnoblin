@@ -1,0 +1,3 @@
+// Edit this while Gnoblin runs, then use the reload command.
+const desktop = new Workspace({ id: "desktop", layout: new FloatingLayout() });
+gnoblin.workspaces.add(desktop);

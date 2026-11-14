@@ -1,0 +1,21 @@
+export class SplitResizeBinding extends PointerDragBinding {
+  constructor({ id = "resize", trigger = "Super+MouseRight+Drag" } = {}) {
+    super({ id, trigger });
+  }
+  onStart(event) {
+    if (!event.layout || typeof event.layout.ratio !== "number") return false;
+    return {
+      layout: event.layout,
+      startX: event.position.x,
+      startRatio: event.layout.ratio,
+      width: event.layout.workspace.bounds.width,
+    };
+  }
+  onUpdate(event, state) {
+    const dx = event.position.x - state.startX;
+    state.layout.ratio = Math.min(0.9, Math.max(0.1,
+      state.startRatio + dx / state.width));
+  }
+  onCancel(_event, state) { state.layout.ratio = state.startRatio; }
+  onEnd() {}
+}

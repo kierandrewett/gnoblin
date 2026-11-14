@@ -1,0 +1,7 @@
+const binding = new xr.ViewMoveBinding({
+  trigger: "Grip+Drag",
+  tracking: "ray",
+  distance: "preserve",
+  rotation: "keep",
+});
+spatial.bindings.add(binding);

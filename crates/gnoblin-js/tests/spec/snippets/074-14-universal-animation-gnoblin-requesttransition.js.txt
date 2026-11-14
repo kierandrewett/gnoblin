@@ -1,0 +1,9 @@
+// Focus dimming, triggered by typed listener.
+class FadeOnFocus extends ClientListener {
+  onFocusChanged(client, focused) {
+    gnoblin.requestTransition(() => {
+      client.style.opacity = focused ? 1 : 0.85;
+    }, { duration: 160, easing: "ease-out" });
+  }
+}
+gnoblin.clients.addListener(new FadeOnFocus());

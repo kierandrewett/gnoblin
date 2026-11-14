@@ -1,0 +1,8 @@
+// ~/.config/gnoblin/init.js
+import { Client, Workspace, FloatingLayout, ClientListener } from "gnoblin";
+import { DevelopmentWorkspace } from "./workspaces/DevelopmentWorkspace.js";
+
+const development = new DevelopmentWorkspace();
+gnoblin.workspaces.add(development);
+gnoblin.clients.style.cornerRadius = 12;
+gnoblin.input.primary.bind("Super+Return", () => gnoblin.spawn("ghostty"));

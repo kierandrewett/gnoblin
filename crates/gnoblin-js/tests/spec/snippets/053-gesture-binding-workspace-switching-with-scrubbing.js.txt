@@ -1,0 +1,20 @@
+import { GestureBinding } from "gnoblin";
+
+class WorkspaceSwitchBinding extends GestureBinding {
+  constructor({ trigger = "Swipe3Left" } = {}) { super({ trigger }); }
+  onStart(event) {
+    const display = event.context.activeDisplay;
+    if (!display) return false;
+    const next = gnoblin.workspaces.at(2);
+    const transition = gnoblin.requestTransition(() => {
+      display.viewport.content = next;
+    }, { duration: 300, autoplay: false });
+    return { transition };
+  }
+  onUpdate(event, state) { state.transition.progress = event.progress; }
+  onEnd(event, state) {
+    if (event.progress >= 0.5) state.transition.play();
+    else state.transition.reverse();
+  }
+  onCancel(_event, state) { state.transition.cancel(); }
+}

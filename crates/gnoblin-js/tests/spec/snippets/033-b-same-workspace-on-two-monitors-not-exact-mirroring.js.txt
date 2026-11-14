@@ -1,0 +1,6 @@
+leftDisplay.viewport.content = development;
+rightDisplay.viewport.content = development;
+rightDisplay.viewport.camera = new Camera3D({
+  projection: "perspective", fov: 50,
+  position: { x: 0, y: 0, z: 1600 },
+});

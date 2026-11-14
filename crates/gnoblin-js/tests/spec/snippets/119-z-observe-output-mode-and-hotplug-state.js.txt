@@ -1,0 +1,5 @@
+class LogOutputs extends OutputListener {
+  onModeChanged(output, mode) { console.log(output.connector, mode); }
+  onDisconnected(output) { console.log("Unplugged", output.connector); }
+}
+gnoblin.outputs.addListener(new LogOutputs());

@@ -1,0 +1,20 @@
+class ThrowViewBinding extends xr.ControllerDragBinding {
+  constructor() { super({ id: "throw", trigger: "Grip+Drag" }); }
+  onStart(e) {
+    if (!e.view) return false;
+    return { view: e.view, last: e.controller.pose.position,
+      velocity: Vector3.zero(), original: e.view.transform.clone() };
+  }
+  onUpdate(e, s) {
+    const next = e.controller.pose.position;
+    const delta = next.subtract(s.last);
+    s.view.position = s.view.position.add(delta);
+    s.velocity = delta.scale(1 / Math.max(1e-3, e.deltaTime));
+    s.last = next;
+  }
+  onEnd(_e, s) {
+    // User-defined original physics stepper, optionally native-accelerated.
+    runThrowSimulation(s.view, s.velocity);
+  }
+  onCancel(_e, s) { s.view.transform = s.original; }
+}

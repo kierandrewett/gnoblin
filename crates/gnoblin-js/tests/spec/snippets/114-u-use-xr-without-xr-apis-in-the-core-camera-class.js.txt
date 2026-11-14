@@ -1,0 +1,7 @@
+const xr = gnoblin.extensions.xr;
+if (xr?.session) {
+  const head = new xr.Camera3D({ tracking: xr.session.head });
+  xr.session.viewport = new xr.Viewport({
+    content: room, camera: head, composition: "auto",
+  });
+}

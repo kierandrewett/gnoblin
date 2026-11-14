@@ -1,0 +1,4 @@
+gnoblin.requestTransition(() => {
+  gnoblin.clients.style.borders[0].width = 3;
+  gnoblin.clients.style.shadows[0].blur = 36;
+}, { duration: 250, easing: "ease-out" });

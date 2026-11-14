@@ -1,0 +1,3 @@
+const development = gnoblin.workspaces.get("development");
+development.clients.style.cornerRadius = 4;
+development.clients.style.backdropFilter = [];

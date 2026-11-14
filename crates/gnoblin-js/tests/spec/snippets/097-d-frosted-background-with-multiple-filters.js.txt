@@ -1,0 +1,6 @@
+client.style.backdropFilter = [
+  { blur: 24 },
+  { saturate: 1.35 },
+  { brightness: 1.05 },
+];
+client.style.filter = [{ contrast: 1.1 }];

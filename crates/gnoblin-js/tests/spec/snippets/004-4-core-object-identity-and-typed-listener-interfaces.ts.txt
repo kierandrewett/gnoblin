@@ -1,0 +1,37 @@
+abstract class NativeObject {
+  readonly id: string;
+  readonly alive: boolean;
+  set(properties: object, options?: TransitionOptions): Transition | void;
+  addListener(listener: object): void;
+  removeListener(listener: object): void;
+}
+
+class Node extends NativeObject {
+  readonly parent: Node | null;
+  readonly children: Collection<Node>;
+  transform: Transform3D;
+  opacity: number;
+  visible: boolean;
+  style: Style;
+  layout?: Layout | null;        // for layout-bearing scene containers (Workspace, XR room)
+  position: Vec3;               // convenience accessor for transform.position
+  rotation: Quaternion | Euler3; // convenience accessor for transform.rotation
+  scale: number | Vec3;         // convenience accessor for transform.scale
+  add(node: Node): void;
+  remove(node: Node): void;
+  destroy(): void;
+}
+
+class Client extends Node { // Managed Wayland *toplevel*, not wl_client connection
+  readonly appId: string;
+  readonly title: string;
+  readonly committedSize: Size2D;
+  size: Size2D;                // desired client logical size / configure request
+  bounds: Rect;                // layout geometry
+  readonly workspace: Workspace | null;
+  floatingBounds?: Rect;        // user-managed floating placement when applicable
+  readonly fullscreen: boolean;
+  style: ClientStyle;
+  readonly computedStyle: Readonly<ClientStyle>;
+  close(): void;
+}

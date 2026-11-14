@@ -1,0 +1,12 @@
+class HelixLayout extends Layout {
+  constructor({ radius = 800, step = 130, angle = 0.55 } = {}) {
+    super(); Object.assign(this, { radius, step, angle });
+  }
+  compute({ children }) {
+    return children.map((node, i) => ({ node, transform: {
+      position: { x: Math.sin(i * this.angle) * this.radius,
+        y: i * this.step, z: -Math.cos(i * this.angle) * this.radius },
+      rotation: { x: 0, y: -i * this.angle, z: 0 },
+    }}));
+  }
+}

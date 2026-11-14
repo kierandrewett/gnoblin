@@ -1,0 +1,26 @@
+class XRExtension {
+  readonly available: boolean;
+  readonly session: XRSession | null;
+  readonly sessions: Collection<XRSession>;
+  Camera3D: typeof XRCamera3D;
+  Viewport: typeof XRViewport;
+  SpatialLayout: typeof XRSpatialLayout;
+  ViewMoveBinding: typeof XRViewMoveBinding;
+  ViewResizeBinding: typeof XRViewResizeBinding;
+}
+class XRSession extends NativeObject {
+  readonly connected: boolean;
+  readonly tracking: TrackingState;
+  readonly head: TrackedPose;
+  readonly controllers: Collection<XRController>;
+  readonly input: InputContext;           // logical Wayland seat, not a mouse
+  readonly layerBudget: number;
+  viewport: XRViewport;
+}
+class XRCamera3D extends Camera3D {
+  tracking: TrackedPose;
+  referenceSpace: "local" | "stage" | "view";
+}
+class XRViewport extends Viewport {
+  composition: "auto" | "layers" | "projection";
+}

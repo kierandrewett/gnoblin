@@ -1,0 +1,11 @@
+class FocusStyleListener extends ClientListener {
+  onFocusChanged(client, focused) {
+    gnoblin.requestTransition(() => {
+      client.style.opacity = focused ? 1 : 0.82;
+      client.style.borders = focused
+        ? [{ width: 2, color: "#8b5cf6" }]
+        : [{ width: 1, color: "#ffffff30" }];
+    }, { duration: 180 });
+  }
+}
+gnoblin.clients.addListener(new FocusStyleListener());

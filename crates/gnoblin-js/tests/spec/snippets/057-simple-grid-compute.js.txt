@@ -1,0 +1,17 @@
+class GridLayout extends Layout {
+  constructor({ columns = "auto", gap = 8 } = {}) {
+    super(); this.columns = columns; this.gap = gap;
+  }
+  compute({ clients, area }) {
+    if (!clients.length) return [];
+    const cols = this.columns === "auto" ? Math.ceil(Math.sqrt(clients.length)) : this.columns;
+    const rows = Math.ceil(clients.length / cols);
+    const w = (area.width - (cols - 1) * this.gap) / cols;
+    const h = (area.height - (rows - 1) * this.gap) / rows;
+    return clients.map((node, i) => ({
+      node, tiled: true,
+      bounds: { x: area.x + (i % cols) * (w + this.gap),
+        y: area.y + Math.floor(i / cols) * (h + this.gap), width: w, height: h },
+    }));
+  }
+}

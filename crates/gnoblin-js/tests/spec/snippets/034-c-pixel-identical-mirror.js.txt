@@ -1,0 +1,6 @@
+const mirror = new Display({
+  outputs: [ultrawide, side],
+  mode: "mirror",
+  viewport: new Viewport({ content: desktop, camera: new Camera2D() }),
+});
+gnoblin.displays.add(mirror);

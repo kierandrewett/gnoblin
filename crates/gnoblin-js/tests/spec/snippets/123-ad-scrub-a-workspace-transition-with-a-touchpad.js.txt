@@ -1,0 +1,4 @@
+const t = gnoblin.requestTransition(() => {
+  display.viewport.content = web;
+}, { duration: 400, autoplay: false });
+// A GestureBinding can set t.progress from 0..1; release calls play/reverse.

@@ -1,0 +1,13 @@
+import { Display, Viewport, Camera2D } from "gnoblin";
+
+const leftDisplay = new Display({
+  outputs: [ultrawide],
+  viewport: new Viewport({ content: development, camera: new Camera2D() }),
+});
+const rightDisplay = new Display({
+  outputs: [side],
+  viewport: new Viewport({ content: web, camera: new Camera2D() }),
+});
+
+gnoblin.displays.add(leftDisplay);
+gnoblin.displays.add(rightDisplay);
