@@ -21,6 +21,7 @@
 //!   It holds the shell's two other owner connections: one for slots (the dialog observation of `gnoblin.dialogs`)
 //!   and one for the configuration document (what `defineConfig` sets in it).
 
+mod autostart;
 mod bindings;
 mod config;
 mod dialogs;
@@ -49,7 +50,7 @@ pub use reload::{JsDiagnostic, JsReloader, ReloadReport};
 pub use role::{JsRole, JsRoleConfig, JsRoleLinks, RELOAD_DEBOUNCE, config_dir, entry_in};
 pub use rquickjs;
 pub use shell::{JsFrame, JsShell, JsShellConfig, JsShellError, JsStaging, STALE_RETRIES};
-pub use stock::{stock_modules, stock_modules_in};
+pub use stock::{STARTER_CONFIG, stock_modules, stock_modules_in};
 pub use supervisor::{JsClock, JsFault, JsFaultAction, JsHealth, JsStrikePolicy, JsSupervisor, JsSystemClock};
 pub use ts::{JsStripped, strip_types};
 pub use watch::{ConfigWatcher, JsWatchError, ReloadRequest};

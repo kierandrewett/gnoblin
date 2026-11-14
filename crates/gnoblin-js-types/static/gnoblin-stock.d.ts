@@ -716,8 +716,8 @@ declare module "gnoblin" {
         readonly create: () => Binding;
     }
 
-    /** Start a process: `spawn("ghostty")`, `spawn("grim", "-g", "...")`. */
-    export function spawn(command: string, ...args: string[]): SpawnAction;
+    /** Start a process: `spawn("ghostty")`, `spawn("grim", "-g", "...")` or `spawn(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])`. */
+    export function spawn(command: string | readonly string[], ...args: string[]): SpawnAction;
 
     /** Show a workspace on the display under the pointer. */
     export function show(workspace: Workspace | string): ShowAction;
@@ -1004,6 +1004,58 @@ declare module "gnoblin" {
         removeListener(listener: DialogListener): void;
     }
 
+    /** A command to run: a command line (split on spaces, started with no shell) or the program and its arguments. */
+    export type CommandLine = string | readonly string[];
+
+    /** A workspace of a config: its id and its layout, a stock layout by name or any layout object. */
+    export interface WorkspaceConfig {
+        id: string;
+        layout?: WorkspaceOptions["layout"];
+    }
+
+    /** The Wayland protocols the compositor advertises; `false` stops advertising one. A protocol left out stays on. */
+    export interface ProtocolsConfig {
+        wlrLayerShell?: boolean;
+        extForeignToplevelList?: boolean;
+        wlrForeignToplevelManagement?: boolean;
+        xdgDecoration?: boolean;
+        kdeServerDecoration?: boolean;
+        wlrScreencopy?: boolean;
+        extImageCopyCapture?: boolean;
+        extBackgroundEffectV1?: boolean;
+        extDataControl?: boolean;
+        extIdleNotify?: boolean;
+        wlrGammaControl?: boolean;
+        wlrOutputPowerManagement?: boolean;
+        wlrOutputManagement?: boolean;
+        extSessionLock?: boolean;
+    }
+
+    /** One point of a swipe path: from -1 to 1, x to the right and y downward, relative to where the swipe starts. */
+    export interface GesturePointConfig {
+        x: number;
+        y: number;
+    }
+
+    /** A touchpad gesture that starts a command when it completes. */
+    export interface GestureConfig {
+        /** Unique, 1 to 64 letters, digits, `_` or `-`; diagnostics use it. */
+        name: string;
+        gesture: "swipe" | "pinch";
+        /** From 2 to 5. */
+        fingers: number;
+        /** A pinch only: `in` (fingers together) or `out` (fingers apart). */
+        direction?: "in" | "out";
+        /** A swipe only: 2 to 16 points, starting at `{ x: 0, y: 0 }`. */
+        path?: readonly GesturePointConfig[];
+        /** The program and its arguments, run with no shell. */
+        command: readonly string[];
+        /** The least movement before the gesture can match: 16 to 240 for a swipe, 0.05 to 0.5 for a pinch. */
+        threshold?: number;
+        /** How closely a swipe must follow its path, from 0.05 to 0.5. */
+        tolerance?: number;
+    }
+
     export interface ConfigEvents {
         clientAdded?(client: Client): void;
         clientRemoved?(client: Client): void;
@@ -1015,7 +1067,7 @@ declare module "gnoblin" {
     export interface Config {
         gaps?: Partial<Gaps>;
         style?: ClientStyle;
-        workspaces?: readonly WorkspaceOptions[];
+        workspaces?: readonly WorkspaceConfig[];
         /** Keyed by connector name, for example `"DP-1"`. */
         outputs?: Record<string, OutputSetting>;
         keys?: Record<string, KeyAction>;
@@ -1030,6 +1082,11 @@ declare module "gnoblin" {
         menus?: boolean;
         /** Whether the stock not-responding alert opens for a window that stops answering. On by default. */
         alerts?: boolean;
+        /**
+         * Commands to start once per session, each a command line or an argv. A reload starts only the entries it adds,
+         * never the ones already started this session; removing an entry stops nothing.
+         */
+        autostart?: readonly CommandLine[];
         rules?: readonly RuleConfig[];
         /** Focus settings; a key left out is the seat's. */
         focus?: FocusConfig;
@@ -1059,6 +1116,10 @@ declare module "gnoblin" {
         monitors?: DocumentSection;
         xwayland?: DocumentSection;
         logging?: DocumentSection;
+        /** Which Wayland protocols the compositor advertises, by name. Committed to the config document. */
+        protocols?: ProtocolsConfig;
+        /** Touchpad swipes and pinches that start a command. Committed to the config document as a list. */
+        touchpadGestures?: readonly GestureConfig[];
     }
 
     /** An identity function with a typed parameter, plus the registration the runtime reads. */
@@ -1084,7 +1145,8 @@ declare module "gnoblin" {
          * `spawn`, I/O and `await` are not allowed inside it.
          */
         requestTransition(staging: () => void, options?: TransitionOptions): Transition;
-        spawn(command: string, ...args: string[]): void;
+        /** Starts a program: a command line for the shell, or an array of the program and its arguments. */
+        spawn(command: string | readonly string[]): void;
         show(workspace: Workspace | string, options?: ShowOptions): void;
         /** Runs `run` once, `seconds` from now: at the first frame after that time. */
         after(seconds: number, run: () => void): void;

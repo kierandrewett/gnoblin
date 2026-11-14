@@ -13,7 +13,8 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use gnoblin_js::{
-    JsConfigCommit, JsConfigLink, JsLinkError, JsRole, JsRoleConfig, JsRoleLinks, JsShell, JsShellConfig,
+    JsConfigCommit, JsConfigLink, JsLinkError, JsRole, JsRoleConfig, JsRoleLinks, JsShell, JsShellConfig, JsSpawnError,
+    JsSpawnRequest,
 };
 use gnoblin_tree_client::slot_link::{SlotEvent, SlotLink};
 use gnoblin_tree_client::tree_mirror::{
@@ -1035,4 +1036,291 @@ fn without_a_slot_connection_a_listener_is_reported_once() {
     assert_eq!(first.len(), 1, "{first:?}");
     assert!(first[0].contains("no slot connection"), "{first:?}");
     assert!(second.is_empty());
+}
+
+// --- the list and map keys -------------------------------------------------------------------------------------
+
+/// The errors of a reload, one text each.
+fn errors_of(report: &gnoblin_js::ReloadReport) -> Vec<String> {
+    report.errors.iter().map(ToString::to_string).collect()
+}
+
+#[test]
+fn protocols_are_added_changed_and_put_back_to_their_default_by_a_reload() {
+    let mut rig = role_rig(
+        &init("defineConfig({ protocols: { wlrLayerShell: false } });"),
+        Some(r#"{"cursor":{"size":32}}"#),
+    );
+    assert_eq!(
+        rig.doc.current(),
+        json(r#"{"cursor":{"size":32},"protocols":{"wlr-layer-shell":false}}"#),
+        "added: the kebab-case table of the document, on top of what was there"
+    );
+
+    let report = rig.rewrite(&init(
+        "defineConfig({ protocols: { extIdleNotify: false, extBackgroundEffectV1: true } });",
+    ));
+    assert!(report.ok, "{:?}", report.errors);
+    assert_eq!(
+        rig.doc.current(),
+        json(r#"{"cursor":{"size":32},"protocols":{"ext-idle-notify":false,"ext-background-effect-v1":true}}"#),
+        "changed: the protocol the new config leaves out is back to on"
+    );
+
+    let report = rig.rewrite(&init("defineConfig({});"));
+    assert!(report.ok, "{:?}", report.errors);
+    assert_eq!(
+        rig.doc.current(),
+        json(r#"{"cursor":{"size":32}}"#),
+        "removed: the section goes and every protocol is advertised again"
+    );
+}
+
+#[test]
+fn a_protocol_value_or_name_the_validator_refuses_fails_the_reload_with_the_key_path() {
+    let mut rig = role_rig(&init("defineConfig({ protocols: { wlrLayerShell: false } });"), None);
+    let generation = rig.role.generation_id();
+    let commits = rig.doc.commits();
+
+    let report = rig.rewrite(&init("defineConfig({ protocols: { wlrLayerShell: 'off' } });"));
+    assert!(!report.ok);
+    assert!(
+        errors_of(&report)
+            .iter()
+            .any(|error| error.contains("protocols.wlr-layer-shell")),
+        "{:?}",
+        errors_of(&report)
+    );
+
+    let report = rig.rewrite(&init("defineConfig({ protocols: { wlrLayerShel: false } });"));
+    assert!(!report.ok);
+    assert!(
+        errors_of(&report).iter().any(|error| error.contains("wlr-layer-shel")),
+        "{:?}",
+        errors_of(&report)
+    );
+    assert_eq!(rig.role.generation_id(), generation, "the running generation stays");
+    assert_eq!(rig.doc.commits(), commits, "nothing was committed for a refused reload");
+    assert_eq!(rig.doc.current(), json(r#"{"protocols":{"wlr-layer-shell":false}}"#));
+}
+
+const GESTURE: &str = "{ name: 'launcher', gesture: 'pinch', fingers: 4, direction: 'out', command: ['fuzzel'] }";
+
+#[test]
+fn touchpad_gestures_are_added_changed_and_put_back_to_their_default_by_a_reload() {
+    let mut rig = role_rig(
+        &init(&format!("defineConfig({{ touchpadGestures: [{GESTURE}] }});")),
+        Some(r#"{"cursor":{"size":32}}"#),
+    );
+    assert_eq!(
+        rig.doc.current(),
+        json(
+            r#"{"cursor":{"size":32},"touchpad-gestures":[
+                {"name":"launcher","gesture":"pinch","fingers":4,"direction":"out","command":["fuzzel"]}]}"#
+        ),
+        "added: the list is one value of the document"
+    );
+
+    let changed = GESTURE.replace("fingers: 4", "fingers: 3");
+    let report = rig.rewrite(&init(&format!("defineConfig({{ touchpadGestures: [{changed}] }});")));
+    assert!(report.ok, "{:?}", report.errors);
+    assert_eq!(
+        rig.doc.current()["touchpad-gestures"][0]["fingers"],
+        json("3"),
+        "changed: a new list replaces the old one whole"
+    );
+
+    let report = rig.rewrite(&init("defineConfig({});"));
+    assert!(report.ok, "{:?}", report.errors);
+    assert_eq!(
+        rig.doc.current(),
+        json(r#"{"cursor":{"size":32}}"#),
+        "removed: no gesture is left"
+    );
+}
+
+#[test]
+fn a_gesture_the_validator_refuses_fails_the_reload_with_the_key_path() {
+    let mut rig = role_rig(
+        &init(&format!("defineConfig({{ touchpadGestures: [{GESTURE}] }});")),
+        None,
+    );
+    let commits = rig.doc.commits();
+    let report = rig.rewrite(&init(&format!(
+        "defineConfig({{ touchpadGestures: [{}] }});",
+        GESTURE.replace("fingers: 4", "fingers: 9")
+    )));
+    assert!(!report.ok);
+    let errors = errors_of(&report);
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.contains("touchpad-gestures") && error.contains("fingers")),
+        "{errors:?}"
+    );
+    assert_eq!(rig.doc.commits(), commits);
+}
+
+/// The commands a shell started, as `program arg ...`, and the programs it is to refuse.
+#[derive(Clone, Default)]
+struct Launches {
+    started: Rc<RefCell<Vec<String>>>,
+    refuse: Rc<RefCell<Vec<String>>>,
+}
+
+impl Launches {
+    fn attach(&self, role: &mut JsRole) {
+        let (started, refuse) = (Rc::clone(&self.started), Rc::clone(&self.refuse));
+        role.shell_mut().set_spawner(Box::new(move |request| {
+            let JsSpawnRequest::Argv(argv) = request else {
+                return Err(JsSpawnError("autostart starts argv lists".to_owned()));
+            };
+            if refuse.borrow().contains(&argv[0]) {
+                return Err(JsSpawnError(format!("cannot start {}: not found", argv[0])));
+            }
+            started.borrow_mut().push(argv.join(" "));
+            Ok(())
+        }));
+    }
+
+    fn started(&self) -> Vec<String> {
+        self.started.borrow().clone()
+    }
+}
+
+#[test]
+fn autostart_commands_start_once_and_a_reload_starts_only_the_ones_it_adds() {
+    let mut rig = role_rig(&init("defineConfig({});"), None);
+    let launches = Launches::default();
+    launches.attach(&mut rig.role);
+
+    let report = rig.rewrite(&init("defineConfig({ autostart: ['waybar', ['foot', '--server']] });"));
+    assert!(report.ok, "{:?}", report.errors);
+    assert_eq!(
+        launches.started(),
+        ["waybar", "foot --server"],
+        "added: each starts, in order"
+    );
+
+    let report = rig.rewrite(&init(
+        "defineConfig({ autostart: ['waybar', ['foot', '--server']] });\n// edited",
+    ));
+    assert!(report.ok, "{:?}", report.errors);
+    assert_eq!(launches.started().len(), 2, "a reload does not start a command again");
+
+    let report = rig.rewrite(&init(
+        "defineConfig({ autostart: ['waybar', ['foot', '--server'], 'nm-applet'] });",
+    ));
+    assert!(report.ok, "{:?}", report.errors);
+    assert_eq!(
+        launches.started(),
+        ["waybar", "foot --server", "nm-applet"],
+        "changed: only the entry the reload adds starts"
+    );
+
+    let report = rig.rewrite(&init("defineConfig({});"));
+    assert!(report.ok, "{:?}", report.errors);
+    assert_eq!(
+        launches.started().len(),
+        3,
+        "removed: nothing starts and nothing is stopped"
+    );
+
+    let report = rig.rewrite(&init("defineConfig({ autostart: ['waybar'] });"));
+    assert!(report.ok, "{:?}", report.errors);
+    assert_eq!(
+        launches.started().len(),
+        3,
+        "a command that was started this session is not started again when it is listed again"
+    );
+}
+
+#[test]
+fn a_command_is_known_by_its_arguments_not_only_its_program() {
+    let mut rig = role_rig(&init("defineConfig({ autostart: [] });"), None);
+    let launches = Launches::default();
+    launches.attach(&mut rig.role);
+    rig.rewrite(&init("defineConfig({ autostart: [['foot', '--server']] });"));
+    rig.rewrite(&init("defineConfig({ autostart: [['foot', '--server'], 'foot'] });"));
+    assert_eq!(launches.started(), ["foot --server", "foot"]);
+}
+
+#[test]
+fn a_config_that_fails_to_load_starts_nothing() {
+    let mut rig = role_rig(&init("defineConfig({});"), None);
+    let launches = Launches::default();
+    launches.attach(&mut rig.role);
+    let report = rig.rewrite(&init(
+        "defineConfig({ autostart: ['waybar'] });\nthrow new Error('after the config');",
+    ));
+    assert!(!report.ok);
+    assert!(
+        launches.started().is_empty(),
+        "the generation never ran, so its commands did not start"
+    );
+
+    let report = rig.rewrite(&init("defineConfig({ autostart: [5] });"));
+    assert!(!report.ok);
+    assert!(
+        errors_of(&report)
+            .iter()
+            .any(|error| error.contains("config.autostart[0] must be a command line or an argv array of strings")),
+        "{:?}",
+        errors_of(&report)
+    );
+    assert!(launches.started().is_empty());
+}
+
+#[test]
+fn a_command_that_cannot_be_started_is_reported_and_tried_again_at_the_next_reload() {
+    let mut rig = role_rig(&init("defineConfig({});"), None);
+    let launches = Launches::default();
+    launches.attach(&mut rig.role);
+    launches.refuse.borrow_mut().push("nope".to_owned());
+
+    let report = rig.rewrite(&init("defineConfig({ autostart: ['nope --flag', 'waybar'] });"));
+    assert!(
+        report.ok,
+        "a missing program does not fail the config: {:?}",
+        report.errors
+    );
+    assert_eq!(launches.started(), ["waybar"], "the others still start");
+    assert!(
+        rig.role
+            .diagnostics()
+            .iter()
+            .any(|text| text.contains("autostart nope --flag") && text.contains("not found")),
+        "{:?}",
+        rig.role.diagnostics()
+    );
+
+    launches.refuse.borrow_mut().clear();
+    let report = rig.rewrite(&init(
+        "defineConfig({ autostart: ['nope --flag', 'waybar'] });\n// installed it",
+    ));
+    assert!(report.ok, "{:?}", report.errors);
+    assert_eq!(
+        launches.started(),
+        ["waybar", "nope --flag"],
+        "the one that failed starts now; waybar does not repeat"
+    );
+}
+
+#[test]
+fn a_session_that_starts_with_an_entry_starts_its_autostart_commands_at_load() {
+    // The first load is not a reload: the role loads the entry and the commands start with it. Nothing can be
+    // swapped in before the spawner exists, so the first command goes to the role's own spawner (a real process);
+    // the test names a program that does not exist and reads the refusal, which is the proof it was tried.
+    let rig = role_rig(
+        &init("defineConfig({ autostart: ['/nonexistent/gnoblin-test-autostart'] });"),
+        None,
+    );
+    assert!(
+        rig.role
+            .diagnostics()
+            .iter()
+            .any(|text| text.contains("autostart /nonexistent/gnoblin-test-autostart")),
+        "{:?}",
+        rig.role.diagnostics()
+    );
 }

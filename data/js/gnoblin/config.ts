@@ -21,6 +21,9 @@
 //   on                  listeners[] of { event, handler }                          typed listener sugar
 //   setup(gnoblin)      setup, run by the host after the declarative part          the full object API
 //   dialogs, appearance, cursor, input, ...  document, a patch of the config document   gnoblin.config commit
+//   autostart           autostart, argv lists                                      started once per session by the shell
+//   protocols           document `protocols` (a table of the protocol names)       gnoblin.config commit
+//   touchpadGestures    document `touchpad-gestures` (a list, one value)           gnoblin.config commit
 //
 // The document sections (`DOCUMENT_SECTIONS`) are the settings of the config document the compositor holds, in
 // camelCase (`windowManagement`, `buttonLayout`); the plan carries them as the document writes them
@@ -138,6 +141,52 @@ export interface ConfigListeners {
     focusChanged?(client: Client, focused: boolean): void;
 }
 
+/** A command to run: a command line (split on spaces, started with no shell) or the program and its arguments. */
+export type CommandLine = string | readonly string[];
+
+/** The Wayland protocols the compositor advertises; `false` stops advertising one. A protocol left out stays on. */
+export interface ProtocolsConfig {
+    wlrLayerShell?: boolean;
+    extForeignToplevelList?: boolean;
+    wlrForeignToplevelManagement?: boolean;
+    xdgDecoration?: boolean;
+    kdeServerDecoration?: boolean;
+    wlrScreencopy?: boolean;
+    extImageCopyCapture?: boolean;
+    extBackgroundEffectV1?: boolean;
+    extDataControl?: boolean;
+    extIdleNotify?: boolean;
+    wlrGammaControl?: boolean;
+    wlrOutputPowerManagement?: boolean;
+    wlrOutputManagement?: boolean;
+    extSessionLock?: boolean;
+}
+
+/** One point of a swipe path: from -1 to 1, x to the right and y downward, relative to where the swipe starts. */
+export interface GesturePointConfig {
+    x: number;
+    y: number;
+}
+
+/** A touchpad gesture that starts a command when it completes. */
+export interface GestureConfig {
+    /** Unique, 1 to 64 letters, digits, `_` or `-`; diagnostics use it. */
+    name: string;
+    gesture: "swipe" | "pinch";
+    /** From 2 to 5. */
+    fingers: number;
+    /** A pinch only: `in` (fingers together) or `out` (fingers apart). */
+    direction?: "in" | "out";
+    /** A swipe only: 2 to 16 points, starting at `{ x: 0, y: 0 }`. */
+    path?: readonly GesturePointConfig[];
+    /** The program and its arguments, run with no shell. */
+    command: readonly string[];
+    /** The least movement before the gesture can match: 16 to 240 for a swipe, 0.05 to 0.5 for a pinch. */
+    threshold?: number;
+    /** How closely a swipe must follow its path, from 0.05 to 0.5. */
+    tolerance?: number;
+}
+
 /** A value of the config document: what a setting holds. */
 export type DocumentValue =
     string | number | boolean | readonly DocumentValue[] | { readonly [key: string]: DocumentValue };
@@ -186,6 +235,11 @@ export interface GnoblinConfig {
      * (an `Entry` that starts what you type). A key of `keys` for `Super+space` takes precedence.
      */
     launcher?: string | readonly string[];
+    /**
+     * Commands to start once per session, each a command line or an argv. A reload starts only the entries it adds,
+     * never the ones already started this session; removing an entry stops nothing.
+     */
+    autostart?: readonly CommandLine[];
     /** Window rules: the first matching rule wins, `all: true` lets the next one apply too. See `gnoblin/rules`. */
     rules?: readonly RuleConfig[];
     /** Focus settings. A key left out is the seat's (the compositor's `window_management` config). */
@@ -216,6 +270,10 @@ export interface GnoblinConfig {
     monitors?: DocumentSection;
     xwayland?: DocumentSection;
     logging?: DocumentSection;
+    /** Which Wayland protocols the compositor advertises, by name. Committed to the config document. */
+    protocols?: ProtocolsConfig;
+    /** Touchpad swipes and pinches that start a command. Committed to the config document, a list. */
+    touchpadGestures?: readonly GestureConfig[];
 }
 
 export interface PlannedWorkspace {
@@ -235,7 +293,7 @@ export interface PlannedListener {
 }
 
 /** The document patch a config makes: each section it sets, with the keys as the document spells them. */
-export type DocumentPatch = { readonly [section: string]: DocumentSection };
+export type DocumentPatch = { readonly [section: string]: DocumentValue };
 
 export interface ConfigPlan {
     readonly gaps: Gaps;
@@ -255,6 +313,8 @@ export interface ConfigPlan {
     readonly listeners: readonly PlannedListener[];
     readonly setup: ((gnoblin: GnoblinHost) => void) | undefined;
     readonly document: DocumentPatch;
+    /** The commands `autostart` names, each as an argv, in the order written. */
+    readonly autostart: readonly (readonly string[])[];
 }
 
 /** `spawn("ghostty")` or `spawn("wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle")`; an argv array works too. */
@@ -358,15 +418,36 @@ export const DOCUMENT_SECTIONS = [
     ["monitors", "monitors"],
     ["xwayland", "xwayland"],
     ["logging", "logging"],
+    ["protocols", "protocols"],
 ] as const;
 
-const TOP_LEVEL_KEYS = [
+/**
+ * The list sections of the config document a `defineConfig` key may set: a whole list is one value, so a reload
+ * that drops the key puts the default back. The keys inside an item are fixed names, so camelCase maps back to the
+ * document's spelling; a name the user chooses, as in `autostart` or `shortcuts`, could not be.
+ */
+export const DOCUMENT_LISTS = [["touchpadGestures", "touchpad-gestures"]] as const;
+
+/**
+ * The names of the Lua-era sections that are not keys of their own, and what to write instead. They are named in
+ * the message when a config uses one.
+ */
+const RETIRED_KEYS: Readonly<Record<string, string>> = {
+    shortcuts: `bind a key with keys, for example keys: { "Super+Return": spawn("foot") }`,
+    keybindings: `bind a key with keys, for example keys: { "Super+q": "close" }`,
+    touchpad_gestures: "write touchpadGestures",
+    "touchpad-gestures": "write touchpadGestures",
+};
+
+/** Every key a `defineConfig` takes. */
+export const CONFIG_KEYS: readonly string[] = [
     "gaps",
     "style",
     "outputs",
     "workspaces",
     "keys",
     "launcher",
+    "autostart",
     "rules",
     "on",
     "setup",
@@ -377,7 +458,42 @@ const TOP_LEVEL_KEYS = [
     "edgeTiling",
     "dragConstraint",
     ...DOCUMENT_SECTIONS.map(([name]) => name),
+    ...DOCUMENT_LISTS.map(([name]) => name),
 ];
+
+/** What a key of the config must be, for the keys that hold a table or a list: the words the message uses. */
+const SHAPES: Readonly<Record<string, { readonly list: boolean; readonly words: string }>> = {
+    gaps: { list: false, words: "a table such as { inner: 8, outer: 8 }" },
+    style: { list: false, words: "a table of style settings" },
+    outputs: { list: false, words: "a table of output settings by connector name" },
+    workspaces: { list: true, words: 'a list of workspaces such as [{ id: "web" }]' },
+    keys: { list: false, words: "a table of triggers and actions" },
+    autostart: { list: true, words: "a list of commands" },
+    rules: { list: true, words: "a list of window rules" },
+    on: { list: false, words: "a table of listeners" },
+    focus: { list: false, words: "a table of focus settings" },
+    touchpadGestures: { list: true, words: "a list of gestures" },
+};
+
+function kindOf(value: unknown): string {
+    return value === null ? "null" : Array.isArray(value) ? "a list" : typeof value;
+}
+
+/**
+ * Checks the names of the keys and that each table or list key holds one, naming the path and what it should be.
+ * Values are checked by the key's own plan after this.
+ */
+function checkShape(config: GnoblinConfig): void {
+    rejectUnknown(config, CONFIG_KEYS, "config", RETIRED_KEYS);
+    const keys = config as { readonly [key: string]: unknown };
+    for (const [key, shape] of Object.entries(SHAPES)) {
+        const value = keys[key];
+        if (value !== undefined && (shape.list ? !Array.isArray(value) : !isTable(value))) {
+            throw new TypeError(`config.${key} must be ${shape.words}, got ${kindOf(value)}`);
+        }
+    }
+}
+
 const LISTENER_EVENTS = ["clientAdded", "clientRemoved", "titleChanged", "focusChanged"];
 
 /** The config the shell runs when the user has none: one floating `desktop` workspace and the stock keys. */
@@ -434,7 +550,7 @@ export function mergeConfig(base: GnoblinConfig, user: GnoblinConfig): GnoblinCo
     if (user === null || typeof user !== "object") {
         throw new TypeError("a config must be an object");
     }
-    rejectUnknown(user, TOP_LEVEL_KEYS, "config");
+    checkShape(user);
     const workspaces =
         user.workspaces === undefined || user.workspaces.length === 0 ? base.workspaces : user.workspaces;
     const declared = new Set((workspaces ?? []).map((workspace) => workspace?.id));
@@ -461,6 +577,15 @@ export function mergeConfig(base: GnoblinConfig, user: GnoblinConfig): GnoblinCo
     }
     const menus = user.menus ?? base.menus;
     const alerts = user.alerts ?? base.alerts;
+    // A list the user gives replaces the base's whole, as `workspaces` and `rules` do.
+    const lists: { [name: string]: readonly object[] } = {};
+    for (const [name] of DOCUMENT_LISTS) {
+        const list = user[name] ?? base[name];
+        if (list !== undefined) {
+            lists[name] = list;
+        }
+    }
+    const autostart = user.autostart ?? base.autostart;
     const launcher = user.launcher ?? base.launcher;
     // The focus keys merge by key, so a config that sets one keeps the base's others; the other two are single values.
     const focus = base.focus === undefined && user.focus === undefined ? undefined : { ...base.focus, ...user.focus };
@@ -483,8 +608,10 @@ export function mergeConfig(base: GnoblinConfig, user: GnoblinConfig): GnoblinCo
             ...(focus === undefined ? {} : { focus }),
             ...(edgeTiling === undefined ? {} : { edgeTiling }),
             ...(dragConstraint === undefined ? {} : { dragConstraint }),
+            ...(autostart === undefined ? {} : { autostart }),
         },
         sections,
+        lists,
     );
 }
 
@@ -508,7 +635,7 @@ export function desugarConfig(config: GnoblinConfig): ConfigPlan {
     if (config === null || typeof config !== "object") {
         throw new TypeError("a config must be an object");
     }
-    rejectUnknown(config, TOP_LEVEL_KEYS, "config");
+    checkShape(config);
     const gaps = checkGaps(config.gaps);
     const workspaces = planWorkspaces(config.workspaces, gaps);
     const ids = new Set(workspaces.map((workspace) => workspace.id));
@@ -528,7 +655,35 @@ export function desugarConfig(config: GnoblinConfig): ConfigPlan {
         listeners: planListeners(config.on ?? {}),
         setup: checkSetup(config.setup),
         document: planDocument(config),
+        autostart: planAutostart(config.autostart),
     };
+}
+
+/** The argv of a command given as a command line or as an argv, for `where`'s message. */
+function commandArgv(command: unknown, where: string): string[] {
+    const argv = typeof command === "string" ? command.trim().split(/\s+/) : command;
+    if (!Array.isArray(argv)) {
+        throw new TypeError(`${where} must be a command line or an argv array of strings, got ${kindOf(command)}`);
+    }
+    if (argv.length === 0 || argv.some((part) => typeof part !== "string") || argv[0] === "") {
+        throw new TypeError(`${where} must be a non-empty command line or an argv of strings`);
+    }
+    return [...argv];
+}
+
+/** The autostart commands as argv lists. Two entries that start the same command are one mistake, not two starts. */
+function planAutostart(autostart: GnoblinConfig["autostart"]): string[][] {
+    const first = new Map<string, number>();
+    return (autostart ?? []).map((command, i) => {
+        const argv = commandArgv(command, `config.autostart[${i}]`);
+        const identity = JSON.stringify(argv);
+        const earlier = first.get(identity);
+        if (earlier !== undefined) {
+            throw new Error(`config.autostart[${i}] starts the same command as config.autostart[${earlier}]`);
+        }
+        first.set(identity, i);
+        return argv;
+    });
 }
 
 function planWorkspaces(declared: GnoblinConfig["workspaces"], gaps: Gaps): PlannedWorkspace[] {
@@ -659,6 +814,9 @@ function checkEdgeTiling(edgeTiling: GnoblinConfig["edgeTiling"]): boolean | nul
 }
 
 function checkDragConstraint(constraint: GnoblinConfig["dragConstraint"]): DragConstraint | null {
+    if (constraint !== undefined && constraint !== "work_area" && constraint !== "minimum_strip") {
+        throw new TypeError(`config.dragConstraint must be work_area or minimum_strip, got ${String(constraint)}`);
+    }
     return constraint === undefined ? null : dragConstraintMode(constraint);
 }
 
@@ -709,19 +867,30 @@ function documentTable(table: object, where: string): { [setting: string]: Docum
     return settings;
 }
 
+/** The list sections of the patch: each is a whole list, checked to be one. */
+function planDocumentLists(config: GnoblinConfig, patch: { [section: string]: DocumentValue }): void {
+    for (const [name, section] of DOCUMENT_LISTS) {
+        const items = config[name];
+        if (items !== undefined) {
+            patch[section] = documentValue(items, `config.${name}`);
+        }
+    }
+}
+
 /** The document patch `config` makes: only the sections it sets. */
 function planDocument(config: GnoblinConfig): DocumentPatch {
-    const patch: { [section: string]: DocumentSection } = {};
+    const patch: { [section: string]: DocumentValue } = {};
     for (const [name, section] of DOCUMENT_SECTIONS) {
         const settings = config[name];
         if (settings === undefined) {
             continue;
         }
         if (!isTable(settings)) {
-            throw new TypeError(`config.${name} must be a table of settings`);
+            throw new TypeError(`config.${name} must be a table of settings, got ${kindOf(settings)}`);
         }
         patch[section] = documentTable(settings, `config.${name}`);
     }
+    planDocumentLists(config, patch);
     return patch;
 }
 

@@ -46,10 +46,61 @@ export function resolveLayout(layout: StockLayoutName | Layout | undefined, wher
     );
 }
 
-export function rejectUnknown(object: object, known: readonly string[], what: string): void {
+/** The most edits between a typo and a key for the key to be suggested. */
+const MAX_SUGGESTION_DISTANCE = 2;
+
+/** The Levenshtein distance of two strings: the fewest single-character edits that turn one into the other. */
+export function editDistance(from: string, to: string): number {
+    let previous = Array.from({ length: to.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= from.length; i++) {
+        const row = [i];
+        for (let j = 1; j <= to.length; j++) {
+            const same = from[i - 1] === to[j - 1] ? 0 : 1;
+            row.push(Math.min(previous[j] + 1, row[j - 1] + 1, previous[j - 1] + same));
+        }
+        previous = row;
+    }
+    return previous[to.length];
+}
+
+/**
+ * The valid key nearest to `key` within two edits (the first one on a tie), or `undefined` when none is that close.
+ * Case, dashes and underscores do not count as edits, so `window-management` is `windowManagement`.
+ */
+export function nearestKey(key: string, known: readonly string[]): string | undefined {
+    const strip = (text: string) => text.toLowerCase().replaceAll(/[-_]/g, "");
+    let best: string | undefined;
+    let bestDistance = MAX_SUGGESTION_DISTANCE + 1;
+    for (const candidate of known) {
+        const distance = editDistance(strip(key), strip(candidate));
+        if (distance < bestDistance) {
+            best = candidate;
+            bestDistance = distance;
+        }
+    }
+    return best;
+}
+
+/**
+ * Throws a TypeError for the first key of `object` that is not in `known`. The message names the place (`what`),
+ * the key, the nearest valid key when one is within two edits, and every valid key. `hints` give a sentence for a
+ * name that is not a typo but a different thing, such as the Lua-era `shortcuts`; it wins over a nearest key.
+ */
+export function rejectUnknown(
+    object: object,
+    known: readonly string[],
+    what: string,
+    hints: Readonly<Record<string, string>> = {},
+): void {
     for (const key of Object.keys(object)) {
         if (!known.includes(key)) {
-            throw new TypeError(`${what} has no "${key}"; expected one of ${known.join(", ")}`);
+            const nearest = nearestKey(key, known);
+            const advice = Object.hasOwn(hints, key)
+                ? ` (${hints[key]})`
+                : nearest === undefined
+                  ? ""
+                  : ` (did you mean "${nearest}"?)`;
+            throw new TypeError(`${what} has no "${key}"${advice}; expected one of ${known.join(", ")}`);
         }
     }
 }

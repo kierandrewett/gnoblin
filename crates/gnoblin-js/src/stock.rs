@@ -10,6 +10,10 @@ use std::path::Path;
 
 use crate::ts::strip_types;
 
+/// The `init.ts` `gnoblinctl config init` writes (`data/js/starter/init.ts`). As written it is the stock default
+/// config; the examples in it are comments to switch on.
+pub const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/init.ts");
+
 /// `(import name, file under data/js/gnoblin, source)`. `gnoblin` is the user-facing module and only
 /// re-exports the others.
 const MODULES: [(&str, &str, &str); 27] = [

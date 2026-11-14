@@ -94,6 +94,8 @@ interface Entry {
     takeErrors(): ErrorReport[];
     /** The config document patch of the running generation, as JSON text: `{}` when it sets none. */
     document(): string;
+    /** The commands the running generation's config starts with the session, as JSON text of argv lists. */
+    autostart(): string;
     /** What the compositor sent for the dialog observation slot; returns how many calls wait. */
     dialogs(events: DialogEvent[]): number;
     /** The verdicts the frame's listeners gave, each once. */
@@ -2136,6 +2138,9 @@ const dialogs = new DialogManager({
 /** The config document patch this generation declared, as JSON text. The shell commits it once the generation runs. */
 let documentPatch = "{}";
 
+/** The commands this generation's config starts with the session, as JSON text of argv lists. */
+let autostartList = "[]";
+
 /**
  * The `on` handlers of a config as listeners of `gnoblin.clients`: a membership listener for `clientAdded` and
  * `clientRemoved`, a client listener for `titleChanged` and `focusChanged`. A listener a config does not give is
@@ -2278,6 +2283,7 @@ class Gnoblin {
         installStock(plan);
         attachOn(merged.on ?? {});
         documentPatch = JSON.stringify(plan.document);
+        autostartList = JSON.stringify(plan.autostart);
         plan.setup?.(gnoblin as unknown as GnoblinHost);
     }
 }
@@ -2348,6 +2354,7 @@ host.entry = {
     ready,
     takeErrors,
     document: () => documentPatch,
+    autostart: () => autostartList,
     dialogs: (events) => {
         dialogs.deliver(events);
         return queue.length;

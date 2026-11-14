@@ -109,7 +109,7 @@ fn a_bad_focus_option_throws_naming_the_key_instead_of_falling_back() {
             "TypeError: focus.newWindows must be allow or prevent, got always",
             "TypeError: focus.autoRaiseDelay must be a non-negative number of milliseconds, got -1",
             "TypeError: focus.autoRaiseDelay must be a non-negative number of milliseconds, got soon",
-            "TypeError: focus has no \"mod\"; expected one of mode, newWindows, raiseOnClick, autoRaise, autoRaiseDelay, changeOnPointerRest",
+            "TypeError: focus has no \"mod\" (did you mean \"mode\"?); expected one of mode, newWindows, raiseOnClick, autoRaise, autoRaiseDelay, changeOnPointerRest",
             "TypeError: focus.raiseOnClick must be a boolean, got yes",
             "TypeError: focus must be an object",
             "TypeError: config.focus.mode must be click, sloppy or follow-mouse, got bogus",
@@ -354,7 +354,7 @@ fn a_malformed_rule_throws_at_compile_time_naming_its_index_and_field() {
         lines(&[
             "TypeError: rules[0].appId: must be a glob string or a RegExp, got 5",
             "TypeError: rules[0].title: must be a glob string or a RegExp, got [object Object]",
-            "TypeError: rules[0] has no \"fullscren\"; expected one of appId, title, role, focused, onWorkspace, workspace, floating, size, position, style, fullscreen, maximised, secure, skipFocus, all, reapply",
+            "TypeError: rules[0] has no \"fullscren\" (did you mean \"fullscreen\"?); expected one of appId, title, role, focused, onWorkspace, workspace, floating, size, position, style, fullscreen, maximised, secure, skipFocus, all, reapply",
             "TypeError: rules[1].style.opacity: must be a number from 0 to 1, got 1.5",
             "TypeError: rules[0].style.opacity: must be a number from 0 to 1, got \"half\"",
             "TypeError: rules[0].style has no \"shine\"; expected one of cornerRadius, opacity, shadows",
@@ -476,7 +476,7 @@ fn desugaring_a_config_checks_the_rules_the_focus_keys_and_the_seat_overrides() 
             "TypeError: config.focus.mode must be click, sloppy or follow-mouse, got bogus",
             "TypeError: config.focus.raiseOnClick must be a boolean, got 1",
             "TypeError: config.edgeTiling: must be true or false",
-            "TypeError: drag_constraint must be work_area or minimum_strip, got loose",
+            "TypeError: config.dragConstraint must be work_area or minimum_strip, got loose",
             "TypeError: rules[0].style.opacity: must be a number from 0 to 1, got 2",
         ])
     );

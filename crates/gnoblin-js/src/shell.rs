@@ -35,6 +35,7 @@ use rquickjs::convert::Coerced;
 use rquickjs::{Array, FromJs, Function, Module, Object, Value};
 use thiserror::Error;
 
+use crate::autostart::{self, JsAutostart};
 use crate::bindings::{self, HostState, JsSpawner, SharedState};
 use crate::config::{JsApplied, JsConfigLink, parse_patch};
 use crate::dialogs::{JsDialogs, events_to_js, verdicts_from_js};
@@ -187,6 +188,8 @@ pub struct JsShell {
     strikes: u32,
     /// The shell's connection for slots, and the observation of the compositor's own dialogs on it.
     dialogs: JsDialogs,
+    /// The commands `defineConfig({ autostart })` started, so a reload starts only the new ones.
+    autostart: JsAutostart,
 }
 
 impl JsShell {
@@ -237,6 +240,7 @@ impl JsShell {
             reported: HashMap::new(),
             strikes: 0,
             dialogs: JsDialogs::new(),
+            autostart: JsAutostart::default(),
         })
     }
 
@@ -326,9 +330,37 @@ impl JsShell {
             }
             Err(other) => return Err(other),
         }
-        self.apply_document(&mut diagnostics, true)?;
+        self.apply_settings(&mut diagnostics)?;
         self.collect_reports(&mut diagnostics)?;
         Ok(diagnostics)
+    }
+
+    /// Applies what the running generation's config set outside the tree: its document settings, which replace
+    /// what the last generation set (`retract`), and then its autostart commands.
+    fn apply_settings(&mut self, diagnostics: &mut Vec<String>) -> Result<(), JsShellError> {
+        self.apply_document(diagnostics, true)?;
+        self.start_autostart(diagnostics)
+    }
+
+    /// Starts the commands the running generation's `autostart` lists that this shell has not started yet. A
+    /// command that cannot be started is a diagnostic, and is tried again at the next reload.
+    fn start_autostart(&mut self, diagnostics: &mut Vec<String>) -> Result<(), JsShellError> {
+        let text: String = self.call_entry(self.entry_budget, |entry| {
+            entry.get::<_, Function<'_>>("autostart")?.call(())
+        })?;
+        let commands = match autostart::parse(&text) {
+            Ok(commands) => commands,
+            Err(error) => {
+                diagnostics.push(error.to_string());
+                return Ok(());
+            }
+        };
+        let state = &self.state;
+        diagnostics.extend(
+            self.autostart
+                .start(commands, |request| bindings::spawn(&mut state.borrow_mut(), request)),
+        );
+        Ok(())
     }
 
     /// Finishes a loaded entry: a config that declared no workspace gets the stock one now, so
@@ -456,7 +488,7 @@ impl JsShell {
         // The windows that were there at boot join a workspace on the first frame.
         self.finish_load()?;
         let mut diagnostics = Vec::new();
-        self.apply_document(&mut diagnostics, true)?;
+        self.apply_settings(&mut diagnostics)?;
         self.collect_reports(&mut diagnostics)?;
         Ok(diagnostics)
     }
@@ -474,7 +506,7 @@ impl JsShell {
         })?;
         self.finish_load()?;
         let mut diagnostics = Vec::new();
-        self.apply_document(&mut diagnostics, true)?;
+        self.apply_settings(&mut diagnostics)?;
         self.collect_reports(&mut diagnostics)?;
         Ok(diagnostics)
     }
