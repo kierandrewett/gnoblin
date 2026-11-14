@@ -31,9 +31,8 @@
 //!
 //! 1. **A second agent registers in one session.** [`Polkit::register`] refuses it
 //!    before the bus round trip: `an_agent_registers_once`.
-//! 2. **A `BeginAuthentication` for a slot with no provider hangs.** The refusal
-//!    happens before anything is offered and the D-Bus error names the slot:
-//!    `no_provider_fails_closed_and_names_the_slot`.
+//! 2. **A `BeginAuthentication` for a slot nobody can take hangs.** The compositor
+//!    refuses the offer and the D-Bus error names the slot.
 //! 3. **A cancelled authentication still returns success.** Cancelling ends the
 //!    request and the waiting call returns `Cancelled`:
 //!    `a_cancel_ends_the_waiting_call`.
@@ -55,12 +54,10 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use futures_channel::oneshot;
 use gnoblin_model::{RequestId, RequestOutcome, Tick, Value};
-use gnoblin_types::OwnerId;
 use zbus::proxy;
 use zbus::{Connection, ObjectPath, OwnedVariant, Variant, fdo};
 
 use gnoblin_service_core::agent::{Agent, Decision, Finished, Identity, Offerer, Pending, PolkitRequest, Refusal};
-use gnoblin_service_core::slot::{CapabilitySlot, Provider, Slots};
 
 gnoblin_log::logger!(log = "polkit");
 
@@ -147,11 +144,6 @@ impl Polkit {
         self.shared.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    /// The slots and their providers.
-    pub fn slots(&self) -> Slots {
-        self.lock().agent.slots().clone()
-    }
-
     /// Whether an authentication agent is registered.
     pub fn is_registered(&self) -> bool {
         self.lock().agent.is_registered()
@@ -160,29 +152,6 @@ impl Polkit {
     /// Every request waiting for an answer.
     pub fn pending(&self) -> Vec<Pending> {
         self.lock().agent.pending().cloned().collect()
-    }
-
-    /// Claim a slot, cancelling what the previous provider was holding.
-    pub fn claim(
-        &self,
-        slot: CapabilitySlot,
-        provider: Provider,
-        owner: Option<OwnerId>,
-    ) -> Result<Vec<Finished>, Refusal> {
-        let finished = {
-            let mut shared = self.lock();
-            shared.agent.claim(slot, provider, owner)?
-        };
-        Ok(self.settle(finished))
-    }
-
-    /// Release a shell's claim on a slot, cancelling what it was holding.
-    pub fn release(&self, slot: CapabilitySlot, owner: OwnerId) -> Result<Vec<Finished>, Refusal> {
-        let finished = {
-            let mut shared = self.lock();
-            shared.agent.release(slot, owner)?
-        };
-        Ok(self.settle(finished))
     }
 
     /// Report how a request the provider held ended.
@@ -213,12 +182,6 @@ impl Polkit {
             let _ = sender.send(decision.clone());
         }
         Ok(decision)
-    }
-
-    /// Cancel every request of a slot whose provider just changed.
-    pub fn slot_changed(&self, slot: CapabilitySlot) -> Vec<Finished> {
-        let finished = self.lock().agent.cancel_slot(slot);
-        self.settle(finished)
     }
 
     /// Fail every request past the supplied tick.

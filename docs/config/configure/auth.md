@@ -11,10 +11,10 @@ gnoblin.configure {
 ```
 
 Programs such as `pkexec` ask polkit for administrator rights. Polkit then asks
-the session's authentication agent for a password. When `auth.polkit_agent` is
-`true`, Gnoblin takes that role and publishes each request as an event. Your
-config or shell shows the prompt and returns the answer. See
-[Answer authentication prompts](/shell-api/authentication).
+the session's authentication agent for a password. The compositor draws the
+password dialog itself and checks the password with polkit's own helper. No
+config or shell answers the request. See
+[Authentication prompts](/shell-api/authentication).
 
 | Field          | Type and accepted values | Default | Effect                                                                           |
 | -------------- | ------------------------ | ------- | -------------------------------------------------------------------------------- |
@@ -25,14 +25,9 @@ table, a `polkit_agent` value that is not a boolean, and any other key.
 
 ## What changes when it is on
 
-Gnoblin registers as the polkit agent for the login session and sends
-`gnoblin.auth.requested`, `gnoblin.auth.prompt`, `gnoblin.auth.message`, and
-`gnoblin.auth.finished` events.
-
-Write a handler before you turn this on. A request that no handler claims or
-cancels with `event.request:claim()` or `event.request:cancel()` is cancelled
-after 15 seconds, and the program that asked reports "Not authorized". See
-[Authentication prompts](/shell-api/authentication).
+Gnoblin registers as the polkit agent for the login session. Each request opens
+the compositor's password dialog. A TypeScript shell may watch requests and
+refuse one. See [Authentication prompts](/shell-api/authentication).
 
 Polkit allows one agent per session. Stop any other agent, such as
 `polkit-gnome`, `polkit-mate`, or a shell's own agent, or do not start it,
@@ -47,6 +42,5 @@ at login.
 ## Reload behavior
 
 Changes apply when Gnoblin reloads the configuration. Setting
-`polkit_agent = true` registers the agent. Setting `polkit_agent = false`
-cancels every request that is waiting, publishes `gnoblin.auth.finished` for
-each, and unregisters so another agent can take the session.
+`polkit_agent = false` cancels every request that is waiting and unregisters so
+another agent can take the session.

@@ -254,7 +254,11 @@ pub(crate) mod fake {
     impl Fake {
         /// A helper whose script is `body`, with `@DIR@` replaced by the directory it lives in.
         pub(crate) fn new(name: &str, body: &str) -> Self {
-            let directory = std::env::temp_dir().join(format!("gnoblin-polkit-dialog-{name}-{}", std::process::id()));
+            // Tests run in parallel in one process, so the directory is unique to this helper.
+            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let number = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let directory =
+                std::env::temp_dir().join(format!("gnoblin-polkit-dialog-{name}-{}-{number}", std::process::id()));
             let _ = std::fs::remove_dir_all(&directory);
             std::fs::create_dir_all(&directory).expect("a scratch directory");
             let script = directory.join("polkit-agent-helper-1");

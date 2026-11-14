@@ -25,11 +25,15 @@ mod support;
 use std::os::unix::fs::PermissionsExt as _;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::wire::portal_key;
 use gnoblin_client::{Client, Event};
+use gnoblin_log::__tracing::span::{Attributes, Id, Record};
+use gnoblin_log::__tracing::{Event as LogEvent, Metadata, Subscriber};
+use gnoblin_log::event::Logged;
 use gnoblin_model::{Provider, RequestCompletion};
 use gnoblin_polkit_auth::{AuthRequest, Identity, current_uid, name_of};
 use gnoblin_types::RequestId;
@@ -61,6 +65,42 @@ printf 'PAM_ERROR_MSG Authentication failure\n'
 printf 'FAILURE\n'
 exit 1"#;
 
+/// Every event any thread of this test process logs, so a test can look for a password in the compositor's own logs.
+#[derive(Clone, Default)]
+struct Recorder(std::sync::Arc<Mutex<Vec<Logged>>>);
+
+impl Subscriber for Recorder {
+    fn enabled(&self, _: &Metadata<'_>) -> bool {
+        true
+    }
+
+    fn new_span(&self, _: &Attributes<'_>) -> Id {
+        Id::from_u64(1)
+    }
+
+    fn record(&self, _: &Id, _: &Record<'_>) {}
+
+    fn record_follows_from(&self, _: &Id, _: &Id) {}
+
+    fn event(&self, event: &LogEvent<'_>) {
+        self.0.lock().expect("the log lock").push(Logged::from_event(event));
+    }
+
+    fn enter(&self, _: &Id) {}
+
+    fn exit(&self, _: &Id) {}
+}
+
+/// The recorder every compositor thread of this process logs to, installed once.
+fn recorder() -> &'static Recorder {
+    static RECORDER: OnceLock<Recorder> = OnceLock::new();
+    RECORDER.get_or_init(|| {
+        let recorder = Recorder::default();
+        let _ = gnoblin_log::__tracing::subscriber::set_global_default(recorder.clone());
+        recorder
+    })
+}
+
 /// A session with the fake helper installed, and the directory the helper records in.
 struct Rig {
     session: Session,
@@ -83,6 +123,7 @@ impl Rig {
     /// A session whose polkit helper is `script` (with `@DIR@` and `@USER@` filled in), or the path
     /// `/nonexistent/polkit-agent-helper-1` when it is `None`. The services role has claimed `auth.polkit`.
     fn start(script: Option<&str>) -> Rig {
+        recorder();
         let scratch = tempfile::tempdir().expect("a scratch directory");
         let directory = scratch.path().to_path_buf();
         let uid = current_uid().expect("this process has a uid");
@@ -232,6 +273,17 @@ impl Rig {
     }
 }
 
+/// The next offer the observer is sent, whatever else the connection hears first.
+fn next_offer(shell: &mut Client<UnixTransport>) -> Event {
+    for _ in 0..50 {
+        let event = shell.next_event().expect("the observer is shown the request");
+        if matches!(event, Event::RequestOffered { .. }) {
+            return event;
+        }
+    }
+    panic!("the observer was never shown the request");
+}
+
 /// Waits until process `pid` is gone, which a killed and reaped helper is.
 fn wait_gone(pid: u32) {
     let deadline = Instant::now() + TIMEOUT;
@@ -353,9 +405,9 @@ fn an_observer_that_passes_leaves_the_dialog_and_one_that_denies_refuses_it() {
         title,
         subject,
         ..
-    } = shell.next_event().expect("the observer is shown the request")
+    } = next_offer(&mut shell)
     else {
-        panic!("the first event is the observation");
+        unreachable!("next_offer returns offers");
     };
     assert_eq!(
         (request, slot.as_str(), title.as_str()),
@@ -371,8 +423,8 @@ fn an_observer_that_passes_leaves_the_dialog_and_one_that_denies_refuses_it() {
 
     // The next one is passed, and is then the dialog's: only the helper's success answers it.
     let passed = rig.offer(Duration::from_secs(60));
-    let Event::RequestOffered { request, .. } = shell.next_event().expect("the observer is shown it") else {
-        panic!("the first event is the observation");
+    let Event::RequestOffered { request, .. } = next_offer(&mut shell) else {
+        unreachable!("next_offer returns offers");
     };
     assert_eq!(request, passed);
     shell.claim(request).expect("the observer claims it");
@@ -386,4 +438,20 @@ fn an_observer_that_passes_leaves_the_dialog_and_one_that_denies_refuses_it() {
     );
     rig.type_and_confirm("hunter2");
     assert_eq!(rig.answer(passed), format!("unix-user:{}", rig.user).into_bytes());
+}
+
+#[test]
+fn the_password_is_in_no_log_line_of_the_compositor() {
+    let mut rig = Rig::start(Some(HELPER));
+    let request = rig.offer(Duration::from_secs(60));
+    rig.wait_asked(1);
+    rig.type_and_confirm("hunter2");
+    assert_eq!(rig.answer(request), format!("unix-user:{}", rig.user).into_bytes());
+
+    let logged = recorder().0.lock().expect("the log lock").clone();
+    assert!(!logged.is_empty(), "the compositor logged while it served the request");
+    for line in &logged {
+        let shown = format!("{} {} {}", line.component, line.message, line.fields_line());
+        assert!(!shown.contains("hunter2"), "{shown}");
+    }
 }

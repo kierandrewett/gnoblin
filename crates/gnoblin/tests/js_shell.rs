@@ -3663,7 +3663,7 @@ fn polkit_payload(action: &str) -> Vec<u8> {
         "message": "Authenticate to mount",
         "icon_name": "",
         "details": {},
-        "identities": [{ "kind": "unix-user", "uid": uid }],
+        "identities": [{ "type": "unix-user", "uid": uid }],
         "requester": "pkexec",
     }))
     .expect("the payload is JSON")

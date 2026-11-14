@@ -1407,7 +1407,7 @@ request when the caller goes away.
 
 | Slot             | Contract                                   | Default provider                                                                                                      | Taken over by        |
 | ---------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `auth.polkit`    | polkit agent, answered as a `Request`      | services role                                                                                                         | shell                |
+| `auth.polkit`    | polkit agent, answered as a `Request`      | services role offers; the compositor's own dialog verifies with polkit's helper                                       | none (observe only)  |
 | `prompt.secret`  | passphrase or confirm `Request`            | none; prompts fail closed                                                                                             | shell                |
 | `location.agent` | `org.freedesktop.GeoClue2.Agent`           | services role                                                                                                         | shell                |
 | `lock.locker`    | `ext-session-lock-v1` client, lock request | none; lock fails closed                                                                                               | shell or locker      |

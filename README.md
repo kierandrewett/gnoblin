@@ -43,10 +43,11 @@ Gnoblin is built on Mutter. It does not ship a desktop shell UI.
   Wayland get composed text from engines such as Russian transliteration or
   Japanese. It needs a running `ibus-daemon` and an installed engine. See
   [type with an input method](docs/config/configure/input_sources.md#type-with-an-input-method).
-- **Keyring prompts for your shell.** Gnoblin can act as the polkit agent and can
-  ask your shell to draw the keyring's unlock dialog. Each request reaches Lua
-  as an event, so your shell draws the dialog and sends the answer back. Both are
-  opt-in. See [authentication](docs/shell-api/authentication.md) and
+- **Keyring and polkit prompts.** Gnoblin acts as the polkit agent and draws its
+  own password dialogs for polkit and the keyring's unlock prompt. For polkit it
+  checks the password with polkit's own helper, and no script can answer. A shell
+  may draw the keyring prompt instead. See
+  [authentication](docs/shell-api/authentication.md) and
   [keyring passphrase prompts](docs/shell-api/passphrase-prompts.md).
 - **Portal routing.** Gnoblin routes portal interfaces to the backend you choose.
   It does not manage app permissions; the selected backend decides them. The
@@ -92,7 +93,7 @@ GTK-based portal backend.
 
 After building, run `make install`. It asks for sudo, copies the build to
 `/usr/local/lib/gnoblin` and adds the lean login to the session picker. The
-install is permanent, so you can then delete the source directory. The
+install is permanent, so you can delete the source directory. The
 [source instructions](docs/install-source.md) cover prerequisites and login
 setup. `make preview` tries the build in a window first, and
 `./build.sh --dry-run` shows what a build would change before you run it.

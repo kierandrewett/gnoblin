@@ -9,10 +9,8 @@ use std::collections::BTreeMap;
 
 use gnoblin_model::{RequestId, RequestOutcome, Tick};
 use gnoblin_service_core::{
-    Agent, CapabilitySlot, ClaimError, Decision, Identity, Offerer, PolkitRequest, Proposition, Provider, Refusal,
-    Slots,
+    Agent, CapabilitySlot, Decision, Identity, Offerer, PolkitRequest, Proposition, Provider, Refusal, Slots,
 };
-use gnoblin_types::OwnerId;
 
 /// A host that records what it was asked to offer and hands back successive requests.
 ///
@@ -28,10 +26,6 @@ struct Host {
 impl Host {
     fn offers(&self) -> Vec<(Proposition, Tick)> {
         self.offers.borrow().clone()
-    }
-
-    fn len(&self) -> usize {
-        self.offers.borrow().len()
     }
 }
 
@@ -69,108 +63,6 @@ fn offered(agent: &mut Agent<Host>, cookie: &str) -> RequestId {
         .begin(request(cookie), Tick::new(15))
         .expect("the slot has its default provider")
         .request
-}
-
-#[test]
-fn no_provider_fails_closed_and_names_the_slot() {
-    // The failure mode: a request is offered to a slot nobody provides, so nobody claims
-    // it, and polkitd only reports "Not authorized" after its own timeout. The refusal
-    // must name the slot, and nothing may be offered.
-    let mut agent = agent();
-    agent
-        .claim(CapabilitySlot::AuthPolkit, Provider::None, None)
-        .expect("no shell holds the slot");
-
-    let refusal = agent.begin(request("c1"), Tick::new(15)).expect_err("no provider");
-    assert!(
-        matches!(
-            refusal,
-            Refusal::NoProvider {
-                slot: CapabilitySlot::AuthPolkit,
-                ..
-            }
-        ),
-        "{refusal:?}"
-    );
-    assert!(
-        refusal.to_string().contains("auth.polkit"),
-        "the error names the slot: {refusal}"
-    );
-    assert_eq!(agent.offerer().len(), 0, "nothing is offered when nobody can answer");
-    assert_eq!(agent.pending().count(), 0);
-}
-
-#[test]
-fn a_second_claimant_is_refused() {
-    // The failure mode: two shells claim one slot, so it is impossible to say which
-    // connection is drawing the prompt. The first claim wins and the second is told who
-    // holds the slot.
-    let mut agent = agent();
-    agent
-        .claim(CapabilitySlot::AuthPolkit, Provider::Shell, Some(OwnerId::new(1)))
-        .expect("the first claim wins");
-    let refusal = agent
-        .claim(CapabilitySlot::AuthPolkit, Provider::Shell, Some(OwnerId::new(2)))
-        .expect_err("the second claim is refused");
-    assert_eq!(
-        refusal,
-        Refusal::Claim(ClaimError::Held {
-            slot: CapabilitySlot::AuthPolkit,
-            by: Provider::Shell
-        })
-    );
-    assert_eq!(
-        agent.slots().claimant(CapabilitySlot::AuthPolkit),
-        Some(OwnerId::new(1))
-    );
-}
-
-#[test]
-fn a_shell_takes_a_slot_over_from_the_services_role() {
-    // The plan's "Taken over by" column: a shell claims a slot the services role provides
-    // by default, and the services role cannot take it back while the shell holds it.
-    let mut agent = agent();
-    assert_eq!(agent.slots().provider(CapabilitySlot::AuthPolkit), Provider::Services);
-    agent
-        .claim(CapabilitySlot::AuthPolkit, Provider::Shell, Some(OwnerId::new(7)))
-        .expect("a shell takes the slot over");
-    assert_eq!(agent.slots().provider(CapabilitySlot::AuthPolkit), Provider::Shell);
-    let refusal = agent
-        .claim(CapabilitySlot::AuthPolkit, Provider::Services, None)
-        .expect_err("the services role does not take a claimed slot back");
-    assert_eq!(
-        refusal,
-        Refusal::Claim(ClaimError::TakenOver {
-            slot: CapabilitySlot::AuthPolkit
-        })
-    );
-}
-
-#[test]
-fn a_departed_provider_cancels_its_pending_requests() {
-    // The failure mode: the shell that claimed the slot goes away while a request is
-    // pending, so the D-Bus call would wait until its deadline. The request ends as
-    // cancelled instead, which is what releases the caller.
-    let mut agent = agent();
-    let owner = OwnerId::new(4);
-    agent
-        .claim(CapabilitySlot::AuthPolkit, Provider::Shell, Some(owner))
-        .expect("the shell claims the slot");
-    let request = offered(&mut agent, "c1");
-
-    let finished = agent
-        .release(CapabilitySlot::AuthPolkit, owner)
-        .expect("the holder releases");
-    assert_eq!(finished.len(), 1);
-    assert_eq!(finished[0].request, request);
-    assert_eq!(finished[0].decision, Decision::Cancelled);
-    assert_eq!(agent.decision(request), Some(&Decision::Cancelled));
-    assert_eq!(agent.pending().count(), 0, "nothing is left waiting");
-    assert_eq!(
-        agent.slots().provider(CapabilitySlot::AuthPolkit),
-        Provider::Services,
-        "the slot falls back to its default provider"
-    );
 }
 
 #[test]
@@ -275,20 +167,6 @@ fn an_unreadable_answer_is_a_refusal() {
             identity: "unix-user:1000".to_owned()
         }
     );
-}
-
-#[test]
-fn a_provider_change_cancels_what_the_old_provider_held() {
-    // A service landing on a request whose provider changed mid-prompt is the same
-    // failure as a departed provider: the dialog the user is looking at is not the one
-    // that would answer.
-    let mut agent = agent();
-    let request = offered(&mut agent, "c1");
-    let finished = agent
-        .claim(CapabilitySlot::AuthPolkit, Provider::Shell, Some(OwnerId::new(9)))
-        .expect("a shell takes the slot over");
-    assert_eq!(finished.len(), 1);
-    assert_eq!(finished[0].request, request);
 }
 
 #[test]

@@ -20,10 +20,9 @@ use std::time::Duration;
 use futures_lite::future;
 use gnoblin_model::{RequestId, RequestOutcome, Tick};
 use gnoblin_polkit_auth::{AuthRequest, HelperEvent, HelperSession, Identity, SecretText, current_uid, name_of};
-use gnoblin_service_core::{CapabilitySlot, Offerer, Proposition, Provider, Refusal};
+use gnoblin_service_core::{CapabilitySlot, Offerer, Proposition, Refusal};
 use gnoblin_service_polkit::{AGENT_PATH, AUTHORITY_PATH, AUTHORITY_SERVICE, Polkit};
 use gnoblin_service_testkit::Bus;
-use gnoblin_types::OwnerId;
 use zbus::connection::Builder;
 use zbus::{Connection, ObjectPath, OwnedVariant, fdo};
 
@@ -276,34 +275,6 @@ fn the_agent_registers_with_polkitd_and_answers_an_authentication() {
 }
 
 #[test]
-fn a_begin_authentication_without_a_provider_names_the_slot() {
-    // The failure mode: the slot has no provider, so nothing shows a dialog and polkitd
-    // waits for its own timeout. The D-Bus error must name the slot and nothing may be
-    // offered.
-    let bus = Bus::start();
-    let address = bus.address().to_owned();
-    zbus::block_on(async move {
-        let fixture = fixture(&address).await;
-        fixture
-            .polkit
-            .claim(CapabilitySlot::AuthPolkit, Provider::None, None)
-            .expect("no shell holds the slot");
-
-        let error = begin(&fixture.caller, "cookie-1")
-            .await
-            .expect_err("nobody provides the slot");
-        assert!(
-            error.to_string().contains("auth.polkit"),
-            "the error names the slot: {error}"
-        );
-        assert!(
-            fixture.offers.lock().is_ok_and(|offers| offers.is_empty()),
-            "nothing is offered when nobody can answer"
-        );
-    });
-}
-
-#[test]
 fn a_cancel_ends_the_waiting_authentication() {
     // The failure mode: polkitd cancels an authentication (the calling application exited)
     // and the handler waits for an answer that will never come.
@@ -343,37 +314,6 @@ fn an_agent_registers_once() {
             .await
             .expect_err("the session already has an agent");
         assert_eq!(refusal, Refusal::AlreadyRegistered);
-    });
-}
-
-#[test]
-fn a_departed_provider_ends_the_waiting_authentication() {
-    // The failure mode: the shell that claimed the slot goes away mid-authentication, and
-    // the polkitd call waits for a dialog nobody is drawing.
-    let bus = Bus::start();
-    let address = bus.address().to_owned();
-    zbus::block_on(async move {
-        let fixture = fixture(&address).await;
-        let owner = OwnerId::new(1);
-        fixture
-            .polkit
-            .claim(CapabilitySlot::AuthPolkit, Provider::Shell, Some(owner))
-            .expect("a shell claims the slot");
-
-        let provider = async {
-            until(|| fixture.offers.lock().is_ok_and(|offers| offers.len() == 1)).await;
-            let finished = fixture
-                .polkit
-                .release(CapabilitySlot::AuthPolkit, owner)
-                .expect("the holder releases");
-            assert_eq!(finished.len(), 1, "the pending request ended");
-        };
-        let (reply, ()) = future::zip(begin(&fixture.caller, "cookie-1"), provider).await;
-        let error = reply.expect_err("the provider went away");
-        assert!(
-            error.to_string().contains("cancelled"),
-            "the error says the request was cancelled: {error}"
-        );
     });
 }
 

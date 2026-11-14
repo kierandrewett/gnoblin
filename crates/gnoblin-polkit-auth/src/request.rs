@@ -23,7 +23,7 @@ pub const MAX_PAYLOAD: usize = 64 * 1024;
 /// Who polkitd lets authenticate. polkitd expands a group into its users before it asks the agent, so a
 /// `unix-user` is the only kind a person can be asked for.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
+#[serde(tag = "type", rename_all = "kebab-case")]
 pub enum Identity {
     /// A user, by uid.
     UnixUser {

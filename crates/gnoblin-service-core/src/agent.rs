@@ -7,22 +7,20 @@
 //! sees a password, and nothing that draws a prompt answers for the helper: polkitd
 //! only accepts an authentication from the helper, which runs as root
 //! (design/js-research/polkit.md). The slot registry mirrors the compositor's, which
-//! refuses a shell's claim of `auth.polkit`, so in a session the provider is the
-//! services role or nobody.
+//! refuses a shell's claim of `auth.polkit`, and refuses the offer itself when the
+//! services role has not claimed the slot.
 //!
 //! Three rules shape the state machine, and each is a failure mode from the plan:
 //!
-//! - **Fail closed with no provider.** [`Agent::begin`] consults the slot registry
-//!   before it offers anything, and a slot with no provider is refused with an error
-//!   that names the slot. The alternative is an offer nobody claims, which polkitd
-//!   reports only after its own timeout as "Not authorized".
+//! - **Fail closed with no provider.** The compositor refuses an offer nobody can
+//!   take, and [`Offerer::offer`] returns that refusal before anything is waiting, so
+//!   the D-Bus error names the slot. The alternative is an offer nobody claims, which
+//!   polkitd reports only after its own timeout as "Not authorized".
 //! - **Finish once.** A request is in exactly one of pending or finished, and a
 //!   finished request keeps a bounded tombstone, so an answer that arrives after a
 //!   cancel is refused rather than reopening the request.
-//! - **A provider that goes away ends its requests.** A claim that changes the
-//!   provider of a slot, and a request past its deadline, both finish as
-//!   [`Decision::Cancelled`], because the connection that was drawing the prompt is no
-//!   longer the one that would answer it.
+//! - **A request that outlives its asker ends.** [`Agent::unregister`], a cancel and a
+//!   request past its deadline all finish as [`Decision::Cancelled`].
 //!
 //! The broker in `gnoblin-model` is deliberately not reused here. It answers "who
 //! owns this request" for the compositor, which sees claims and answers as wire
@@ -35,18 +33,15 @@
 //!
 //! 1. **An answer arrives after the request was cancelled.** The tombstone turns it
 //!    into [`Refusal::Finished`]: `an_answer_after_a_cancel_is_refused`.
-//! 2. **A request is offered to a slot nobody provides.** No offer is made and the
-//!    refusal names the slot: `no_provider_fails_closed_and_names_the_slot`.
-//! 3. **The provider goes away while a request is pending.** The request finishes as
-//!    cancelled, so the waiting D-Bus call returns instead of hanging:
-//!    `a_departed_provider_cancels_its_pending_requests`.
-//! 4. **A request outlives its deadline.** [`Agent::expire`] finishes it as
+//! 2. **A request is offered to a slot nobody provides.** The compositor refuses the
+//!    offer, so the agent keeps nothing pending: `gnoblin-compositor/tests/privilege.rs`.
+//! 3. **A request outlives its deadline.** [`Agent::expire`] finishes it as
 //!    cancelled: `a_request_past_its_deadline_is_cancelled`.
-//! 5. **polkitd cancels by cookie.** The pending request ends and the waiting call
+//! 4. **polkitd cancels by cookie.** The pending request ends and the waiting call
 //!    returns cancelled: `a_cancel_by_cookie_ends_the_request`.
-//! 6. **Two agents register in one session.** The second registration is refused
+//! 5. **Two agents register in one session.** The second registration is refused
 //!    instead of the two fighting over the session: `an_agent_registers_once`.
-//! 7. **An answer is not the encoding the slot promised.** Non-UTF-8 bytes and an
+//! 6. **An answer is not the encoding the slot promised.** Non-UTF-8 bytes and an
 //!    empty answer both fail closed as a refusal of the user's consent, never as a
 //!    successful authentication: `an_unreadable_answer_is_a_refusal`.
 
@@ -54,9 +49,8 @@ use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 
 use gnoblin_model::{RequestId, RequestOutcome, Tick, Value};
-use gnoblin_types::OwnerId;
 
-use crate::slot::{CapabilitySlot, ClaimError, Provider, Slots};
+use crate::slot::CapabilitySlot;
 
 /// How many finished requests the agent remembers.
 ///
@@ -271,8 +265,6 @@ pub enum Refusal {
         /// What the compositor said, which is the detail a log keeps.
         reason: String,
     },
-    /// A claim or a release was refused by the registry.
-    Claim(ClaimError),
     /// The request is not one this agent offered, and it is not in the tombstone
     /// buffer either.
     UnknownRequest {
@@ -306,9 +298,6 @@ impl Refusal {
     pub fn slot(&self) -> Option<CapabilitySlot> {
         match self {
             Refusal::NoProvider { slot, .. } => Some(*slot),
-            Refusal::Claim(ClaimError::Held { slot, .. })
-            | Refusal::Claim(ClaimError::NotHolder { slot })
-            | Refusal::Claim(ClaimError::TakenOver { slot }) => Some(*slot),
             _ => None,
         }
     }
@@ -321,7 +310,6 @@ impl fmt::Display for Refusal {
                 formatter,
                 "no provider claims the `{slot}` slot, so the request was not offered: {reason}"
             ),
-            Refusal::Claim(error) => write!(formatter, "{error}"),
             Refusal::UnknownRequest { request } => {
                 write!(formatter, "request {} was never offered by this agent", request.get())
             }
@@ -337,12 +325,6 @@ impl fmt::Display for Refusal {
 
 impl std::error::Error for Refusal {}
 
-impl From<ClaimError> for Refusal {
-    fn from(error: ClaimError) -> Refusal {
-        Refusal::Claim(error)
-    }
-}
-
 /// The live half of one request, kept out of [`Pending`] so a transition can read it and
 /// then replace it without holding a borrow.
 #[derive(Clone, Copy, Debug)]
@@ -350,11 +332,10 @@ struct Deadline {
     deadline: Tick,
 }
 
-/// The polkit agent's state: the slots, the requests waiting for an answer and the
+/// The polkit agent's state: the requests waiting for an answer and the
 /// tombstones of the ones that ended.
 #[derive(Debug)]
 pub struct Agent<O: Offerer> {
-    slots: Slots,
     offerer: O,
     pending: BTreeMap<RequestId, (Pending, Deadline)>,
     finished: BTreeMap<RequestId, Decision>,
@@ -363,21 +344,15 @@ pub struct Agent<O: Offerer> {
 }
 
 impl<O: Offerer> Agent<O> {
-    /// An agent with the plan's default providers and nothing registered.
+    /// An agent with nothing registered.
     pub fn new(offerer: O) -> Agent<O> {
         Agent {
-            slots: Slots::new(),
             offerer,
             pending: BTreeMap::new(),
             finished: BTreeMap::new(),
             forgotten: VecDeque::new(),
             registered: false,
         }
-    }
-
-    /// The registry, for a publication or a report.
-    pub fn slots(&self) -> &Slots {
-        &self.slots
     }
 
     /// The connection-side offerer, for a caller that also drives that side.
@@ -410,40 +385,12 @@ impl<O: Offerer> Agent<O> {
     /// Record that the agent unregistered, cancelling everything it was waiting on.
     pub fn unregister(&mut self) -> Vec<Finished> {
         self.registered = false;
-        self.cancel_slot(CapabilitySlot::AuthPolkit)
-    }
-
-    /// Claim a slot for a provider, cancelling the requests the previous provider was
-    /// holding.
-    ///
-    /// A claim is how a shell takes `auth.polkit` over, and a provider change is why the
-    /// pending requests end: the connection that was drawing the prompt is not the one
-    /// that will answer it.
-    pub fn claim(
-        &mut self,
-        slot: CapabilitySlot,
-        provider: Provider,
-        owner: Option<OwnerId>,
-    ) -> Result<Vec<Finished>, Refusal> {
-        let changed = self.slots.claim(slot, provider, owner)?;
-        Ok(if changed { self.cancel_slot(slot) } else { Vec::new() })
-    }
-
-    /// Release a shell's claim, cancelling what it was holding.
-    pub fn release(&mut self, slot: CapabilitySlot, owner: OwnerId) -> Result<Vec<Finished>, Refusal> {
-        let changed = self.slots.release(slot, owner)?;
-        Ok(if changed { self.cancel_slot(slot) } else { Vec::new() })
+        self.cancel_all()
     }
 
     /// Offer one polkit request to the slot's provider.
     pub fn begin(&mut self, request: PolkitRequest, deadline: Tick) -> Result<Offered, Refusal> {
         let slot = CapabilitySlot::AuthPolkit;
-        if !self.slots.provider(slot).is_present() {
-            return Err(Refusal::NoProvider {
-                slot,
-                reason: "this agent refuses before offering when the slot has no provider".to_owned(),
-            });
-        }
         let proposition = Proposition::new(request.clone());
         let offered = self.offerer.offer(&proposition, deadline)?;
         let pending = Pending {
@@ -498,14 +445,9 @@ impl<O: Offerer> Agent<O> {
         })
     }
 
-    /// Cancel every pending request of one slot, returning what ended.
-    pub fn cancel_slot(&mut self, slot: CapabilitySlot) -> Vec<Finished> {
-        let requests: Vec<RequestId> = self
-            .pending
-            .values()
-            .filter(|(pending, _)| pending.slot == slot)
-            .map(|(pending, _)| pending.request)
-            .collect();
+    /// Cancel every pending request, returning what ended.
+    fn cancel_all(&mut self) -> Vec<Finished> {
+        let requests: Vec<RequestId> = self.pending.keys().copied().collect();
         self.finish_all(requests)
     }
 

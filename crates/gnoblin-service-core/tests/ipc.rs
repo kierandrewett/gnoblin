@@ -1,21 +1,16 @@
-//! The slot registry on the wire: the properties it publishes, and a shell answering a
-//! request the services role offered.
+//! The slot registry on the wire: the properties it publishes.
 //!
 //! Everything here goes through the real client and the in-process link, which encodes
 //! and decodes the same envelopes a socket will: the slot state is published into a
-//! `session` object and read back through a subscription, and a polkit request is
-//! announced to a shell that claims and answers it.
+//! `session` object and read back through a subscription.
 
 use std::path::Path;
 
 use gnoblin_client::{Event, Server};
-use gnoblin_model::{Fields, Filter, Graph, Observation, RequestCompletion, RequestOutcome, Tick, TypeKey, Value};
+use gnoblin_model::{Fields, Filter, Graph, Observation, TypeKey, Value};
 use gnoblin_proto::Version;
 use gnoblin_schema::{Catalog, Type};
-use gnoblin_service_core::{
-    Agent, CapabilitySlot, Decision, Offerer, PolkitRequest, Proposition, Provider, Refusal, Slots,
-};
-use gnoblin_types::OwnerId;
+use gnoblin_service_core::{CapabilitySlot, Slots};
 
 const VERSION: Version = Version::new(0, 2, 0);
 
@@ -45,37 +40,6 @@ fn declared_slot_properties() -> Vec<(String, Type)> {
         .filter(|property| property.name.starts_with("slot_"))
         .map(|property| (property.name.clone(), property.ty.clone()))
         .collect()
-}
-
-fn request(cookie: &str) -> PolkitRequest {
-    PolkitRequest {
-        cookie: cookie.to_owned(),
-        action_id: "org.freedesktop.policykit.exec".to_owned(),
-        message: "Authentication is required".to_owned(),
-        icon_name: "dialog-password".to_owned(),
-        details: Default::default(),
-        identities: Vec::new(),
-    }
-}
-
-/// A host that offers through the in-process compositor, as the privileged connection
-/// will offer through the real one.
-struct LoopbackHost {
-    server: Server,
-}
-
-impl Offerer for LoopbackHost {
-    fn offer(&mut self, proposition: &Proposition, deadline: Tick) -> Result<gnoblin_model::RequestId, Refusal> {
-        // The proposition is what the loopback announces with the offer, exactly as the real
-        // compositor announces what the privileged connection sent it.
-        Ok(self.server.offer(
-            proposition.slot.name(),
-            &proposition.request.action_id,
-            &proposition.request.message,
-            &proposition.subject,
-            deadline,
-        ))
-    }
 }
 
 #[test]
@@ -148,100 +112,6 @@ fn a_client_learns_who_provides_each_slot() {
         }
         other => panic!("expected a property diff, got {other:?}"),
     }
-}
-
-#[test]
-fn a_shell_claims_and_answers_an_offered_request() {
-    // The failure mode this covers is the whole point of the seam: a request the services
-    // role offers is announced to a shell, the shell's answer is the request's outcome,
-    // and the agent reads that outcome as the user's decision.
-    let mut host = LoopbackHost {
-        server: Server::new(graph(), VERSION),
-    };
-    let mut shell = host.server.connect(VERSION).expect("versions match");
-    let mut agent = Agent::new(host);
-    agent
-        .claim(CapabilitySlot::AuthPolkit, Provider::Shell, Some(OwnerId::new(1)))
-        .expect("the shell claims the slot");
-
-    let offered = agent
-        .begin(request("cookie-1"), Tick::new(15))
-        .expect("the slot has a provider");
-
-    let event = shell.next_event().expect("the offer reaches the shell");
-    let Event::RequestOffered {
-        request,
-        deadline,
-        slot,
-        ..
-    } = event
-    else {
-        panic!("expected an offer, got {event:?}");
-    };
-    assert_eq!(request, offered.request);
-    assert_eq!(deadline, Tick::new(15));
-    assert_eq!(slot, "auth.polkit");
-    shell.claim(request).expect("the first claim wins");
-    shell.answer(request, b"unix-user:1000").expect("the holder answers");
-
-    assert_eq!(
-        agent.offerer().server.finished(request),
-        Some(RequestCompletion::Answered),
-        "the request finished as an answer"
-    );
-    let outcome = RequestOutcome::answered(b"unix-user:1000".to_vec());
-    let decision = agent.answer(request, &outcome).expect("the request is still pending");
-    assert_eq!(
-        decision,
-        Decision::Allowed {
-            identity: "unix-user:1000".to_owned()
-        }
-    );
-}
-
-#[test]
-fn two_shells_cannot_claim_one_request() {
-    // The failure mode: two connections claim one offer, which would let the loser answer
-    // on the winner's behalf. The second claim is refused by the broker, and the agent
-    // then refuses the loser's answer too because only the holder answers.
-    let mut host = LoopbackHost {
-        server: Server::new(graph(), VERSION),
-    };
-    let mut first = host.server.connect(VERSION).expect("versions match");
-    let mut second = host.server.connect(VERSION).expect("versions match");
-    let mut agent = Agent::new(host);
-    let offered = agent
-        .begin(request("cookie-1"), Tick::new(15))
-        .expect("the slot has its default provider");
-
-    assert_eq!(
-        first.next_event().expect("an offer"),
-        Event::RequestOffered {
-            request: offered.request,
-            deadline: Tick::new(15),
-            slot: "auth.polkit".to_owned(),
-            title: "org.freedesktop.policykit.exec".to_owned(),
-            message: "Authentication is required".to_owned(),
-            subject: Vec::new(),
-        }
-    );
-    assert_eq!(
-        second.next_event().expect("an offer"),
-        Event::RequestOffered {
-            request: offered.request,
-            deadline: Tick::new(15),
-            slot: "auth.polkit".to_owned(),
-            title: "org.freedesktop.policykit.exec".to_owned(),
-            message: "Authentication is required".to_owned(),
-            subject: Vec::new(),
-        }
-    );
-    first.claim(offered.request).expect("the first claim wins");
-    let refusal = second.claim(offered.request).expect_err("the second claim is refused");
-    assert!(
-        refusal.to_string().contains("request"),
-        "the refusal names the request: {refusal}"
-    );
 }
 
 #[test]

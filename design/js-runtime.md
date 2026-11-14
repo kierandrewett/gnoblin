@@ -1042,19 +1042,14 @@ onClosed })` returns an `IdleWatch`; `inhibit(holder)` returns an `IdleInhibitor
   alone), opened when the running generation first has a watch or a hold and closed when it has neither, because every
   change of `idle_ms` goes to every subscriber. The connection is a `JsIdleConnector` in `JsRoleLinks`, so a test
   passes a fake. `JsShell::retire` gives every hold back (`uninhibit`) before it drops the connection.
-- **`gnoblin.authentication`** (`authentication.ts`, `host_auth.rs`). `setProvider(provider)` makes the shell hold the
-  `auth.polkit` slot on a second slot connection (`JsRoleLinks::auth`); the provider is offered each request with its
-  `title`, `message`, `subject` and `deadline`, and settles it with `allow(identity)` (the slot reads a non-empty
-  identity as consent, `gnoblin-service-core/src/agent.rs`) or `decline(reason)`. The shell claims a request as it is
-  offered, so the compositor knows the holder: a shell that is killed ends the request at once. `retire` declines each
-  open request as `unavailable` and releases the slot.
+- **`gnoblin.authentication`** (`authentication.ts`). Replaced by the observation-only API of the "Polkit status" section: there is no provider, no `allow` and no second slot connection.
 - **`gnoblin.launches`** (`launches.ts`). The shell's own registry: `begin`, `list`, `finish`, four handlers, the page's
   limits (token 128, application 512, 100 to 10000 ms, 64 records). Windows answer a launch through two listeners on
   `gnoblin.clients` attached when the module loads (an arrival, a focus, an application ID that arrives late); the
   deadline is checked once a frame from `plan`. The compositor has no launch state (`allow.toml` says "documented, not
   implemented"), so this record is not shared with any other client.
-- One entry call a frame, `wants()`, says whether a script needs the idle connection (bit 1) or the authentication slot
-  (bit 2); a shell that uses neither pays for that call. `JsShell::run_host_api` is the rest.
+- One entry call a frame, `wants()`, says whether a script needs the idle connection (bit 1); a shell that does not
+  pays for that call. `JsShell::run_host_api` is the rest.
 
 **Proven.** Against fakes: `crates/gnoblin-js/tests/host_idle.rs` (15 cases), `host_auth.rs` (16) and `host_launches.rs`
 (13), covering the page's rules, the validation tables and the failures first (no connection, a lost one, a refused
@@ -1062,9 +1057,7 @@ hold or claim, a throwing handler, a request open at `retire`). Against the real
 last four tests): a watch hears the compositor's own idle clock pass its time, the input that ends it, and the next idle
 period; a hold is counted in the compositor's `inhibitors`, keeps the watch from firing with the session idle for far
 longer than the watch's time, and a reload that retires the generation gives it back; a launch is started by a real
-mapped window and another is timed out by its deadline; a provider answers a request that a privileged services
-connection offers (an identity is read by the offering host only, a decline finishes it refused), and a reload that drops
-the provider hands the slot back to the services role and ends the request the old generation held.
+mapped window and another is timed out by its deadline.
 
 **Gaps.**
 
@@ -1082,6 +1075,22 @@ the provider hands the slot back to the services role and ends the request the o
 - Idle: no `watch:watch(field)`, and the `closed` reasons `config_reloaded` and `runtime_stopped` do not exist (a
   generation's watches end with it, without a signal); times are milliseconds. Launch feedback: a launch is not linked to
   the window or process that answered it, as on the Lua page.
+
+## Polkit status
+
+Design: `design/js-research/polkit.md`. A script never decides whether a password was right (J8).
+
+- **The compositor verifies.** `gnoblin-service-polkit` offers each `BeginAuthentication` on `auth.polkit` with a payload
+  (`gnoblin-polkit-auth::AuthRequest`). The compositor holds the request itself, draws `PolkitUi` as a secure modal
+  (`ipc/secret.rs`, `ipc/polkit.rs`) and runs polkit's `polkit-agent-helper-1` (`HelperSession`) with the cookie on its
+  standard input. Only the helper's `SUCCESS` answers the request; the helper has already told polkitd.
+- **No script in the path.** A shell cannot claim `auth.polkit` or offer to it (`ipc/requests.rs`). `gnoblin.authentication
+.addListener(new AuthenticationListener())` observes through `dialogs.observe` (`authentication.ts` over
+  `dialogs.ts`): `actionId`, `message`, `subject`, `identities`, `deadline`, never the cookie, and `request.decline(reason)`
+  is the only verdict. `setProvider`, `allow` and `host_auth.rs` are gone, with no alias.
+- **Proven**, with a fake helper script and a fake polkitd on a private bus: `gnoblin-polkit-auth` tests, the dialog and
+  service unit tests, `gnoblin-compositor/tests/polkit.rs`, `gnoblin-service-polkit/tests/dbus.rs`, and the
+  `js_shell.rs` authentication cases. **Not proven:** a real `polkit-agent-helper-1`, a real polkitd, fprintd.
 
 ## P7 UI toolkit status
 
