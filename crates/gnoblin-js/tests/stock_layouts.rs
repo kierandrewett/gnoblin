@@ -680,7 +680,7 @@ fn a_config_that_is_not_in_the_closed_set_is_refused_naming_the_key() {
     assert_eq!(
         got,
         lines(&[
-            "TypeError: config has no \"colour\"; expected one of gaps, style, outputs, workspaces, keys, launcher, autostart, rules, on, setup, decorations, menus, alerts, focus, edgeTiling, dragConstraint, gestureActions, compositor, windowManagement, cursor, appearance, dialogs, input, inputSources, accessibility, layerShell, keyring, auth, location, compat, capture, monitors, xwayland, logging, protocols, touchpadGestures",
+            "TypeError: config has no \"colour\"; expected one of gaps, style, outputs, workspaces, keys, launcher, autostart, rules, on, setup, decorations, menus, alerts, focus, edgeTiling, dragConstraint, gestureActions, workspaceSets, compositor, windowManagement, cursor, appearance, dialogs, input, inputSources, accessibility, layerShell, keyring, auth, location, compat, capture, monitors, xwayland, logging, protocols, touchpadGestures",
             "Error: keys[\"Super+1\"] shows workspace \"nowhere\", which the config does not declare",
             "TypeError: keys[\"Super+X\"] must be spawn(...), show(...), show.position(...), focusColumn(...), binding(...), \"close\" or a function",
             "TypeError: a key: an empty part after \"Super\"; write a literal plus as \"plus\" (token \"\" in \"Super+\")",
@@ -797,7 +797,7 @@ fn a_user_config_layers_over_the_default_keys_merge_by_trigger_and_workspaces_re
             r#"{"inner":2,"outer":4}"#,
             "clientAdded titleChanged",
             "true",
-            "TypeError: config has no \"kyes\" (did you mean \"keys\"?); expected one of gaps, style, outputs, workspaces, keys, launcher, autostart, rules, on, setup, decorations, menus, alerts, focus, edgeTiling, dragConstraint, gestureActions, compositor, windowManagement, cursor, appearance, dialogs, input, inputSources, accessibility, layerShell, keyring, auth, location, compat, capture, monitors, xwayland, logging, protocols, touchpadGestures",
+            "TypeError: config has no \"kyes\" (did you mean \"keys\"?); expected one of gaps, style, outputs, workspaces, keys, launcher, autostart, rules, on, setup, decorations, menus, alerts, focus, edgeTiling, dragConstraint, gestureActions, workspaceSets, compositor, windowManagement, cursor, appearance, dialogs, input, inputSources, accessibility, layerShell, keyring, auth, location, compat, capture, monitors, xwayland, logging, protocols, touchpadGestures",
             "true",
             &format!("{stock} {media}"),
         ])

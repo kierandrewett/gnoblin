@@ -188,7 +188,7 @@ fn a_wrong_key_names_itself_the_nearest_valid_key_and_lists_the_valid_ones() {
             bad({ colour: 1 }),
         ].join("\n"));
     "#);
-    let listing = "expected one of gaps, style, outputs, workspaces, keys, launcher, autostart, rules, on, setup, decorations, menus, alerts, focus, edgeTiling, dragConstraint, gestureActions, compositor, windowManagement, cursor, appearance, dialogs, input, inputSources, accessibility, layerShell, keyring, auth, location, compat, capture, monitors, xwayland, logging, protocols, touchpadGestures";
+    let listing = "expected one of gaps, style, outputs, workspaces, keys, launcher, autostart, rules, on, setup, decorations, menus, alerts, focus, edgeTiling, dragConstraint, gestureActions, workspaceSets, compositor, windowManagement, cursor, appearance, dialogs, input, inputSources, accessibility, layerShell, keyring, auth, location, compat, capture, monitors, xwayland, logging, protocols, touchpadGestures";
     assert_eq!(
         got,
         [

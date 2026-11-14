@@ -51,7 +51,7 @@ import { attachUi, runUiFrame, uiNodeGone, uiReleaseAll } from "gnoblin/ui";
 import type { UiBackend } from "gnoblin/ui";
 import { defaultTitlebarStyle, Decorations } from "gnoblin/titlebar";
 import { inspect } from "gnoblin/inspect";
-import { WorkspaceSets } from "gnoblin/sets";
+import { WorkspaceSetError, WorkspaceSets } from "gnoblin/sets";
 import { restoreSnap, snapClient, snapRecord, snappedZone, unsnapClient } from "gnoblin/snap";
 import type { SnapClient, SnapZone } from "gnoblin/snap";
 import { windowMenu } from "gnoblin/menus";
@@ -1605,6 +1605,28 @@ class WorkspaceCollection extends MutableCollection<Workspace> {
     /** The area windows are laid out in on the primary output; null while the tree has none. */
     get area(): Rect | null {
         return screenArea();
+    }
+
+    /**
+     * Makes the set `name` of `defineConfig({ workspaceSets })` (or of `sets.define`) live: each entry shows its
+     * workspace on its output, and one whose output is not connected shows on the primary output, with a report.
+     * Activating the live set again changes nothing. Refused (false, with a report) for an unknown set or a workspace
+     * that has since gone, as the Lua `activate_set` did; `sets.activate` throws instead.
+     */
+    activateSet(name: string): boolean {
+        try {
+            this.sets.activate(name);
+            return true;
+        } catch (error) {
+            if (!(error instanceof WorkspaceSetError)) {
+                throw error;
+            }
+            reports.push({
+                site: "gnoblin.workspaces.activateSet",
+                error: new Error(`workspace set refused: ${error.message}`),
+            });
+            return false;
+        }
     }
 
     /**
@@ -3912,6 +3934,9 @@ class Gnoblin {
             addWorkspace(
                 new Workspace({ id: planned.id, name: planned.name, layout: planned.layout, gaps: planned.gaps }),
             );
+        }
+        if (plan.workspaceSets.length > 0) {
+            (workspaceRoot.self as WorkspaceCollection).sets.define([...plan.workspaceSets]);
         }
         if (plan.decorations) {
             decorate();

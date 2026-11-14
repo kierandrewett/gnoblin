@@ -168,6 +168,8 @@ With more than one output each shows its own workspace, bars sit on one output, 
 A dialog stays centred in its parent and goes wherever the parent goes. The page is
 [Outputs and desks in TypeScript](/js-outputs).
 
+[Window policy in TypeScript](/js-window-policy).
+
 ## Reloading
 
 Saving `init.ts`, or any module it imports, reloads the shell after a short pause. `gnoblinctl config reload` reloads it on

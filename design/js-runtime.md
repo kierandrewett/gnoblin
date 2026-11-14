@@ -889,6 +889,22 @@ w = d.width, h = d.height }` in the workspace's own space), and `Desk:sync_fulls
   another output (the shell has one primary screen), and the kept rectangles across a reload: they live in the
   generation, so a window that is fullscreen or maximised when the config reloads leaves it where it is.
 
+## Window policy status
+
+Lane JsWindowPolicy (`docs/js-window-policy.md`). Done, each with the tests named in `design/js-parity.md`: keyboard Move and Resize
+(`data/js/gnoblin/reposition.ts`, one grab node that holds the keyboard; real-compositor test with injected keys), gesture
+actions (`gesture_actions.ts`, `gestureActions`, `gnoblin.gestures`), reduced motion (`gnoblin.motion`, read from the seat's
+`reduced_motion`), binding-only devices (`claim_device`) and the `false` action, the focus hand-off for every layout,
+`Workspace.walk`, workspace removal to the neighbour before it with the last refused, titlebar presses reaching the focus
+policy, a refit of the windows when a bar changes the work area, kept rectangles across a reload (carried in the workspace
+snapshot, `JsKeptWindow`), and `workspaceSets` with `activateSet`.
+
+- **Decisions.** A gesture bound at the stock slide's trigger replaces it; `gestureActions` and `keys` for one gesture is an
+  error. The hand-off is skipped for a layout that defines `onClientRemoved` (a strip's columns are not in window order).
+  `workspaces.remove` returns a boolean and refuses the last workspace; `clear()` still empties.
+- **Not done.** Nothing of the five lane targets; the real-compositor proof covers only the keyboard move and resize, the rest
+  runs over the fake link.
+
 ## Outputs status
 
 Lane JsOutputs. User page: `docs/js-outputs.md`. Tests: `crates/gnoblin-js/tests/outputs.rs` (28 cases over the fake

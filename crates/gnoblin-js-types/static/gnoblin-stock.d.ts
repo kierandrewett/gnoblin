@@ -1540,6 +1540,12 @@ declare module "gnoblin" {
          */
         gestureActions?: Record<string, GestureActionConfig>;
         /**
+         * Named groups of workspaces to show together, each entry on an output. `gnoblin.workspaces.activateSet(name)` makes
+         * one live. A list that does not check (an empty or repeated name, a set with no entries, a workspace that is not
+         * declared, two entries for one output) refuses the config.
+         */
+        workspaceSets?: readonly WorkspaceSetConfig[];
+        /**
          * The command `Super+space` runs, as a command line or an argv. Absent, `Super+space` opens the stock launcher entry.
          * A key of `keys` for `Super+space` takes precedence.
          */
@@ -1865,9 +1871,21 @@ declare module "gnoblin" {
     /** The seconds a workspace slide takes in the Lua shell and in the stock keys. */
     export const SLIDE_SECONDS: number;
 
+    /** One set of `defineConfig({ workspaceSets })`: its name and the workspaces it shows. */
+    export interface WorkspaceSetConfig {
+        name: string;
+        entries: readonly { readonly workspace: string | number; readonly output?: string }[];
+    }
+
     export interface WorkspaceCollection extends MutableCollection<Workspace> {
         /** Named groups of workspaces to show together. */
         readonly sets: WorkspaceSets;
+        /**
+         * Makes the set `name` live: each entry shows its workspace on its output, and one whose output is not connected
+         * shows on the primary output, with a report. The live set again changes nothing. False, with a report, for an
+         * unknown set or a workspace that has gone; `sets.activate` throws instead.
+         */
+        activateSet(name: string): boolean;
         /** The area windows are laid out in on the primary output; null while there is none. */
         readonly area: Rect | null;
         show(workspace: Workspace | string, options?: ShowOptions): void;

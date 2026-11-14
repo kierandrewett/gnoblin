@@ -878,3 +878,177 @@ fn a_reload_keeps_the_rectangles_a_maximised_fullscreen_or_snapped_window_return
         "and the snapped one to the rectangle it was snapped from"
     );
 }
+
+// ---- workspace sets ---------------------------------------------------------------------------------------------------
+
+/// Which workspace each output shows, as `name=id` words.
+fn shown(rig: &mut Rig) -> String {
+    rig.eval("gnoblin.outputs.map((o) => `${o.name}=${o.workspace?.id}`).join(' ')")
+}
+
+const SETS: &str = "workspaceSets: [ \
+        { name: 'work', entries: [{ workspace: '2', output: 'output-0' }, { workspace: '3', output: 'output-1' }] }, \
+        { name: 'solo', entries: [{ workspace: 3 }] }, \
+        { name: 'away', entries: [{ workspace: '2', output: 'GONE-1' }] }, \
+    ],";
+
+#[test]
+fn a_set_from_the_config_shows_each_named_workspace_on_its_own_output() {
+    // Lua: "the user's sets show each named workspace on its own output" (a set of the config's `workspace_sets`).
+    let mut rig = world(0, true, "new Layout()", SETS);
+    assert_eq!(
+        shown(&mut rig),
+        "output-0=1 output-1=2",
+        "each output starts on a workspace no output shows"
+    );
+    assert_eq!(
+        rig.eval("gnoblin.workspaces.sets.list.map((s) => s.name).join(',')"),
+        "work,solo,away",
+        "the config's sets are in force"
+    );
+    assert_eq!(rig.eval("String(gnoblin.workspaces.activateSet('work'))"), "true");
+    settle(&mut rig);
+    assert_eq!(shown(&mut rig), "output-0=2 output-1=3");
+    assert_eq!(rig.eval("String(gnoblin.workspaces.sets.active)"), "work");
+}
+
+#[test]
+fn activating_the_live_set_again_changes_nothing() {
+    // Lua: "activating the live set again in the stock shell changes nothing".
+    let mut rig = world(0, true, "new Layout()", SETS);
+    exec(&mut rig, "gnoblin.workspaces.activateSet('work')");
+    settle(&mut rig);
+    exec(&mut rig, "gnoblin.outputs.at(0).show('1')");
+    settle(&mut rig);
+    let before = shown(&mut rig);
+    assert_eq!(
+        rig.eval("String(gnoblin.workspaces.activateSet('work'))"),
+        "true",
+        "the live set is still accepted"
+    );
+    settle(&mut rig);
+    assert_eq!(shown(&mut rig), before, "and shows nothing again");
+}
+
+#[test]
+fn an_unknown_set_is_refused_reported_and_changes_nothing() {
+    // Lua: "activating an unknown set is refused, reported and changes nothing in the stock shell".
+    let mut rig = world(0, true, "new Layout()", SETS);
+    let before = shown(&mut rig);
+    assert_eq!(rig.eval("String(gnoblin.workspaces.activateSet('nope'))"), "false");
+    let diagnostics = rig.settle();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|line| line.contains("workspace set refused: no set is named \"nope\"")),
+        "reported: {diagnostics:?}"
+    );
+    assert_eq!(shown(&mut rig), before, "nothing was shown");
+    assert_eq!(rig.eval("String(gnoblin.workspaces.sets.active)"), "null");
+}
+
+#[test]
+fn an_output_that_is_not_connected_shows_its_workspace_on_the_primary_output_with_a_report() {
+    // Lua: "an output that is gone shows its workspace on the primary output, with a report".
+    let mut rig = world(0, true, "new Layout()", SETS);
+    assert_eq!(rig.eval("String(gnoblin.workspaces.activateSet('away'))"), "true");
+    let diagnostics = rig.settle();
+    assert!(
+        diagnostics.iter().any(|line| line.contains(
+            "workspace set \"away\": output \"GONE-1\" is not connected; its workspace shows on the primary output"
+        )),
+        "reported: {diagnostics:?}"
+    );
+    assert!(
+        shown(&mut rig).starts_with("output-0=2"),
+        "the primary output shows it: {}",
+        shown(&mut rig)
+    );
+}
+
+#[test]
+fn a_set_entry_without_an_output_shows_on_the_primary_output_and_a_number_names_a_workspace() {
+    // Lua: `set_entries` reads each workspace "as text, whatever the user wrote".
+    let mut rig = world(0, true, "new Layout()", SETS);
+    exec(&mut rig, "gnoblin.workspaces.activateSet('solo')");
+    settle(&mut rig);
+    assert_eq!(
+        shown(&mut rig),
+        "output-0=3 output-1=2",
+        "workspace 3 on the primary output, written as a number"
+    );
+}
+
+#[test]
+fn a_config_whose_sets_do_not_check_is_refused_with_the_key_path_and_the_cause() {
+    // Lua: "a list naming a workspace no desk has is refused whole at start and nothing activates"; here the config fails.
+    let thrown = |sets: &str| {
+        let init = format!(
+            "try {{ defineConfig({{ workspaces: [{{ id: '1' }}, {{ id: '2' }}], workspaceSets: {sets} }}); (globalThis as any).out = 'accepted'; }} \
+             catch (e: any) {{ (globalThis as any).out = e.message; }}\n"
+        );
+        let mut rig = rig_with(IMPORTS, &init);
+        rig.eval("String(globalThis.out)")
+    };
+    assert_eq!(
+        thrown("[{ name: 'bad', entries: [{ workspace: '99' }] }]"),
+        "config.workspaceSets: set \"bad\" names workspace \"99\", which no workspace has"
+    );
+    assert_eq!(
+        thrown("[{ name: 'empty', entries: [] }]"),
+        "config.workspaceSets: set \"empty\" has no entries"
+    );
+    assert_eq!(
+        thrown("[{ name: 'a', entries: [{ workspace: '1' }] }, { name: 'a', entries: [{ workspace: '2' }] }]"),
+        "config.workspaceSets: two sets are named \"a\""
+    );
+    assert_eq!(
+        thrown("[{ name: '', entries: [{ workspace: '1' }] }]"),
+        "config.workspaceSets: a set has an empty name"
+    );
+    assert_eq!(
+        thrown(
+            "[{ name: 'clash', entries: [{ workspace: '1', output: 'DP-1' }, { workspace: '2', output: 'DP-1' }] }]"
+        ),
+        "config.workspaceSets: set \"clash\" has two entries for output \"DP-1\""
+    );
+    assert_eq!(
+        thrown("[{ name: 'x', entries: [{ workspace: '1', outpt: 'DP-1' }] }]"),
+        "config.workspaceSets[0].entries[0] has no \"outpt\" (did you mean \"output\"?); expected one of workspace, output"
+    );
+    assert_eq!(
+        thrown("{ work: [] }"),
+        "config.workspaceSets must be a list of workspace sets, got object"
+    );
+    assert_eq!(
+        thrown("[{ name: 'ok', entries: [{ workspace: '2', output: 'DP-1' }] }]"),
+        "accepted"
+    );
+}
+
+#[test]
+fn a_set_that_names_a_removed_workspace_refuses_to_activate_and_the_sets_stay() {
+    // Lua: "a set whose workspace is removed refuses to activate".
+    let mut rig = world(0, false, "new Layout()", SETS);
+    exec(&mut rig, "gnoblin.workspaces.remove('3')");
+    settle(&mut rig);
+    assert_eq!(rig.eval("String(gnoblin.workspaces.activateSet('work'))"), "false");
+    let diagnostics = rig.settle();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|line| line
+                .contains("workspace set refused: set \"work\" names workspace \"3\", which no workspace has")),
+        "reported: {diagnostics:?}"
+    );
+    assert_eq!(
+        rig.eval("gnoblin.workspaces.sets.list.length"),
+        "3",
+        "the sets in force stay"
+    );
+    assert_eq!(
+        rig.eval("try { gnoblin.workspaces.sets.activate('work'); 'ok' } catch (e) { `${e.name}` }"),
+        "WorkspaceSetError",
+        "`sets.activate` throws where `activateSet` reports"
+    );
+}

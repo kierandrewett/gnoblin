@@ -43,6 +43,8 @@ import type { Binding, DragConstraint } from "gnoblin/bindings";
 import { focusSettings } from "gnoblin/focus";
 import type { FocusConfig } from "gnoblin/focus";
 import { gestureActionBinding } from "gnoblin/gesture_actions";
+import { defineSets, explainSetError } from "gnoblin/sets";
+import type { WorkspaceSet } from "gnoblin/sets";
 import type { GestureActionConfig } from "gnoblin/gesture_actions";
 import { WorkspaceSlideBinding } from "gnoblin/gestures";
 import { openLauncher } from "gnoblin/launcher";
@@ -150,6 +152,12 @@ export interface OutputConfig {
 }
 
 export type { StockLayoutName };
+
+/** One set of `workspaceSets`: its name and the workspaces it shows. */
+export interface WorkspaceSetConfig {
+    name: string;
+    entries: readonly { readonly workspace: string | number; readonly output?: string }[];
+}
 
 export interface WorkspaceConfig {
     id: string;
@@ -264,6 +272,14 @@ export interface GnoblinConfig {
      */
     gestureActions?: Readonly<Record<string, GestureActionConfig>>;
     /**
+     * Named groups of workspaces to show together, each entry on an output: `{ name: "work", entries: [{ workspace: "2",
+     * output: "DP-1" }, { workspace: "3", output: "HDMI-1" }] }`. `gnoblin.workspaces.activateSet("work")` makes one live.
+     * An entry names a workspace by id and, left without an output, shows on the primary one. A list that does not check
+     * (an empty or repeated name, a set with no entries, a workspace that is not declared, two entries for one output)
+     * refuses the config. A list replaces the stock one whole, as `workspaces` and `rules` do.
+     */
+    workspaceSets?: readonly WorkspaceSetConfig[];
+    /**
      * The command `Super+space` runs, as a command line or an argv. Absent, `Super+space` opens the stock launcher
      * (an `Entry` that starts what you type). A key of `keys` for `Super+space` takes precedence.
      */
@@ -337,6 +353,8 @@ export interface ConfigPlan {
     readonly alerts: boolean;
     readonly outputs: Readonly<Record<string, OutputConfig>>;
     readonly workspaces: readonly PlannedWorkspace[];
+    /** The sets of `workspaceSets`, checked against the workspaces, with each workspace as text. */
+    readonly workspaceSets: readonly WorkspaceSet[];
     readonly bindings: readonly PlannedKey[];
     readonly rules: readonly RuleConfig[];
     /** The `focus` keys the config set, checked, and no others. */
@@ -492,6 +510,7 @@ export const CONFIG_KEYS: readonly string[] = [
     "edgeTiling",
     "dragConstraint",
     "gestureActions",
+    "workspaceSets",
     ...DOCUMENT_SECTIONS.map(([name]) => name),
     ...DOCUMENT_LISTS.map(([name]) => name),
 ];
@@ -504,6 +523,7 @@ const SHAPES: Readonly<Record<string, { readonly list: boolean; readonly words: 
     workspaces: { list: true, words: 'a list of workspaces such as [{ id: "web" }]' },
     keys: { list: false, words: "a table of triggers and actions" },
     gestureActions: { list: false, words: "a table of gestures and the actions their directions run" },
+    workspaceSets: { list: true, words: "a list of workspace sets" },
     autostart: { list: true, words: "a list of commands" },
     rules: { list: true, words: "a list of window rules" },
     on: { list: false, words: "a table of listeners" },
@@ -637,6 +657,7 @@ export function mergeConfig(base: GnoblinConfig, user: GnoblinConfig): GnoblinCo
         }
     }
     const autostart = user.autostart ?? base.autostart;
+    const workspaceSets = user.workspaceSets ?? base.workspaceSets;
     const launcher = user.launcher ?? base.launcher;
     // The focus keys merge by key, so a config that sets one keeps the base's others; the other two are single values.
     const focus = base.focus === undefined && user.focus === undefined ? undefined : { ...base.focus, ...user.focus };
@@ -651,6 +672,7 @@ export function mergeConfig(base: GnoblinConfig, user: GnoblinConfig): GnoblinCo
             on: { ...base.on, ...user.on },
             ...(workspaces === undefined ? {} : { workspaces }),
             ...(gestureActions === undefined ? {} : { gestureActions }),
+            ...(workspaceSets === undefined ? {} : { workspaceSets }),
             ...(rules === undefined ? {} : { rules }),
             ...(setup === undefined ? {} : { setup }),
             ...(user.decorations === undefined ? {} : { decorations: user.decorations }),
@@ -716,6 +738,7 @@ export function desugarConfig(config: GnoblinConfig): ConfigPlan {
         style: checkStyle(config.style),
         outputs: config.outputs ?? {},
         workspaces,
+        workspaceSets: planWorkspaceSets(config.workspaceSets, ids),
         bindings: [
             ...planKeys(config.keys ?? {}, ids),
             ...planGestureActions(config.gestureActions, config.keys ?? {}),
@@ -730,6 +753,43 @@ export function desugarConfig(config: GnoblinConfig): ConfigPlan {
         document: planDocument(config),
         autostart: planAutostart(config.autostart),
     };
+}
+
+/**
+ * The sets of `workspaceSets` as the pure module reads them (a workspace named as text, whatever was written), refused
+ * whole with the key path when they do not check against the declared workspaces: the config that names a workspace that
+ * is not there is a mistake to fix, not a set to leave out.
+ */
+function planWorkspaceSets(sets: GnoblinConfig["workspaceSets"], declared: ReadonlySet<string>): WorkspaceSet[] {
+    const list = (sets ?? []).map((set, i) => {
+        const where = `config.workspaceSets[${i}]`;
+        if (set === null || typeof set !== "object" || typeof set.name !== "string") {
+            throw new TypeError(`${where} must be { name, entries }, with a name`);
+        }
+        rejectUnknown(set, ["name", "entries"], where);
+        if (!Array.isArray(set.entries)) {
+            throw new TypeError(`${where}.entries must be a list of { workspace, output? }`);
+        }
+        const entries = set.entries.map((entry, j) => {
+            if (entry === null || typeof entry !== "object") {
+                throw new TypeError(`${where}.entries[${j}] must be { workspace, output? }`);
+            }
+            rejectUnknown(entry, ["workspace", "output"], `${where}.entries[${j}]`);
+            if (entry.output !== undefined && typeof entry.output !== "string") {
+                throw new TypeError(`${where}.entries[${j}].output must be a string, got ${kindOf(entry.output)}`);
+            }
+            return {
+                workspace: String(entry.workspace),
+                ...(entry.output === undefined ? {} : { output: entry.output }),
+            };
+        });
+        return { name: set.name, entries };
+    });
+    const checked = defineSets(list, declared);
+    if (!checked.ok) {
+        throw new Error(`config.workspaceSets: ${explainSetError(checked.error)}`);
+    }
+    return checked.value;
 }
 
 /** The argv of a command given as a command line or as an argv, for `where`'s message. */
