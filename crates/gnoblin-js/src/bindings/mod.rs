@@ -55,6 +55,8 @@ pub(crate) struct HostState {
     pub tokens: u64,
     /// The seat claims this shell holds and the chords and gestures waiting for the frame's dispatch.
     pub input: crate::input::JsInput,
+    /// How node ids cross into script numbers (see [`NodeHandles`]).
+    pub handles: NodeHandles,
 }
 
 pub(crate) type SharedState = Rc<RefCell<HostState>>;
@@ -68,7 +70,66 @@ impl HostState {
             spawner: None,
             tokens: 0,
             input: crate::input::JsInput::new(),
+            handles: NodeHandles::default(),
         }
+    }
+}
+
+/// The node ids at or above this cross into script numbers as table handles. A script number holds an integer
+/// exactly up to 2^53, and the compositor's own nodes carry ids with bit 63 set, so an id cannot be the number
+/// the script sees. The top 2^24 integers below 2^53 are the handle band; every id below it is its own number,
+/// so the ids a shell makes and the tests' small ids read as themselves.
+const HANDLE_BASE: u64 = (1 << 53) - (1 << 24);
+
+/// Turns node ids into the numbers a script holds, and back.
+///
+/// An id below [`HANDLE_BASE`] is its own number. Any other id gets the next handle in the band, the first time it
+/// crosses, and keeps it for the life of the shell, so a reloaded generation sees the same number for the same
+/// window. The table is interior-mutable because a read of a property that names a node interns it.
+#[derive(Default)]
+pub(crate) struct NodeHandles {
+    table: RefCell<HandleTable>,
+}
+
+#[derive(Default)]
+struct HandleTable {
+    ids: Vec<NodeId>,
+    index: HashMap<NodeId, u64>,
+}
+
+impl NodeHandles {
+    /// The script number for `id`.
+    pub(crate) fn to_script(&self, id: NodeId) -> f64 {
+        if id < HANDLE_BASE {
+            return id as f64;
+        }
+        let mut table = self.table.borrow_mut();
+        if let Some(handle) = table.index.get(&id) {
+            return (HANDLE_BASE + handle) as f64;
+        }
+        let handle = table.ids.len() as u64;
+        table.ids.push(id);
+        table.index.insert(id, handle);
+        (HANDLE_BASE + handle) as f64
+    }
+
+    /// The node a script number names, or `None` when it is not a whole non-negative number or names a handle
+    /// that was never given out.
+    pub(crate) fn resolve(&self, raw: f64) -> Option<NodeId> {
+        if !(raw.is_finite() && raw >= 0.0 && raw.fract() == 0.0) || raw >= (1_u64 << 53) as f64 {
+            return None;
+        }
+        let number = raw as u64;
+        match number.checked_sub(HANDLE_BASE) {
+            None => Some(number),
+            Some(handle) => self.table.borrow().ids.get(usize::try_from(handle).ok()?).copied(),
+        }
+    }
+
+    /// The decimal text of the node `raw` names: what the compositor's own tools print, so a script's `client.id`
+    /// matches `gnoblinctl`.
+    pub(crate) fn label(&self, raw: f64) -> Option<String> {
+        self.resolve(raw).map(|id| id.to_string())
     }
 }
 
@@ -81,12 +142,14 @@ pub(crate) enum JsHostValue {
 }
 
 impl JsHostValue {
-    /// The script's view of a mirror value, or `None` for a kind no exposed property holds.
-    pub(crate) fn from_mirror(value: &MirrorValue) -> Option<Self> {
+    /// The script's view of a mirror value, or `None` for a kind no exposed property holds. A node reference
+    /// is the number `handles` gives the node.
+    pub(crate) fn from_mirror(value: &MirrorValue, handles: &NodeHandles) -> Option<Self> {
         match value {
             MirrorValue::Bool(flag) => Some(Self::Flag(*flag)),
             MirrorValue::Int(n) => Some(Self::Number(*n as f64)),
-            MirrorValue::Uint(n) | MirrorValue::Node(n) => Some(Self::Number(*n as f64)),
+            MirrorValue::Uint(n) => Some(Self::Number(*n as f64)),
+            MirrorValue::Node(id) => Some(Self::Number(handles.to_script(*id))),
             MirrorValue::Double(n) => Some(Self::Number(*n)),
             MirrorValue::Text(text) => Some(Self::Text(text.clone())),
             _ => None,

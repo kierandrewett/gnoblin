@@ -5,24 +5,31 @@
 //! short code for a refusal (`unknown-node`, `unknown-property`, `read-only`, `invalid-value`,
 //! `unknown-method`), which `js/gnoblin.ts` turns into an error naming the member.
 
-use gnoblin_tree_client::tree_mirror::{MirrorValue, NodeId, TreeMirror, lua_class};
+use gnoblin_tree_client::tree_mirror::{MirrorValue, NIL, NodeId, TreeMirror, lua_class};
 use rquickjs::{Ctx, Function, Object, Value};
 
 use super::props::{JsPropKind, default_value, defs_for, may_call};
-use super::{HostState, JsHostValue, JsSpawnRequest, SharedState};
+use super::{HostState, JsHostValue, JsSpawnRequest, NodeHandles, SharedState};
 
 /// The largest id a script number holds exactly.
 const MAX_EXACT_ID: f64 = 9_007_199_254_740_991.0;
 
-/// The node a script number names, or `None` when it cannot be an id.
+/// The whole number a script number holds exactly, or `None` when it cannot be one (a property that holds a
+/// number). A node a script names goes through [`HostState::handles`], whose numbers are not the ids.
 fn node_id(raw: f64) -> Option<NodeId> {
     (raw.is_finite() && (0.0..=MAX_EXACT_ID).contains(&raw) && raw.fract() == 0.0).then_some(raw as NodeId)
 }
 
-/// Every node of the mirror, parents before their children, in tree order.
+/// Every node of the mirror, parents before their children. The root's tree comes first, in tree order; then
+/// each tree that has no parent (the compositor makes a window unparented, and a shell parents it), by id.
 pub(crate) fn parents_first(mirror: &TreeMirror) -> Vec<NodeId> {
+    let mut roots: Vec<NodeId> = mirror
+        .ids()
+        .filter(|id| mirror.node(*id).is_some_and(|record| record.parent == NIL))
+        .collect();
+    roots.sort_by_key(|id| (*id != mirror.root(), *id));
     let mut order = Vec::new();
-    let mut stack = vec![mirror.root()];
+    let mut stack: Vec<NodeId> = roots.into_iter().rev().collect();
     while let Some(id) = stack.pop() {
         let Some(record) = mirror.node(id) else { continue };
         order.push(id);
@@ -40,7 +47,7 @@ fn ids_of_class(state: &HostState, class: &str) -> Vec<f64> {
                 .node(*id)
                 .is_some_and(|record| lua_class(&record.class) == class)
         })
-        .map(|id| id as f64)
+        .map(|id| state.handles.to_script(id))
         .collect()
 }
 
@@ -72,8 +79,8 @@ fn read(state: &HostState, node: NodeId, key: &str, published: bool) -> Option<J
     };
     let def = defs_for(&record.class)?.iter().find(|def| def.name == key)?;
     match value {
-        Some(value) => JsHostValue::from_mirror(value),
-        None => JsHostValue::from_mirror(&default_value(def.kind)),
+        Some(value) => JsHostValue::from_mirror(value, &state.handles),
+        None => JsHostValue::from_mirror(&default_value(def.kind), &state.handles),
     }
 }
 
@@ -86,19 +93,21 @@ pub(crate) enum JsScriptValue {
     Other,
 }
 
-fn convert(kind: JsPropKind, value: &JsScriptValue) -> Option<MirrorValue> {
+fn convert(kind: JsPropKind, value: &JsScriptValue, handles: &NodeHandles) -> Option<MirrorValue> {
     match (kind, value) {
         (JsPropKind::Double, JsScriptValue::Number(n)) if n.is_finite() => Some(MirrorValue::Double(*n)),
         (JsPropKind::Flag, JsScriptValue::Flag(flag)) => Some(MirrorValue::Bool(*flag)),
         (JsPropKind::Text, JsScriptValue::Text(text)) => Some(MirrorValue::Text(text.clone())),
-        (JsPropKind::Node, JsScriptValue::Number(n)) => node_id(*n).map(MirrorValue::Node),
+        (JsPropKind::Node, JsScriptValue::Number(n)) => handles.resolve(*n).map(MirrorValue::Node),
         _ => None,
     }
 }
 
 /// Queues a write of `node.key`. Returns the refusal code, or `None` when the write is queued.
 pub(crate) fn write(state: &mut HostState, node: NodeId, key: &str, value: &JsScriptValue) -> Option<&'static str> {
-    let HostState { mirror, tick, .. } = state;
+    let HostState {
+        mirror, tick, handles, ..
+    } = state;
     let Some(record) = tick.node(mirror, node) else {
         return Some("unknown-node");
     };
@@ -108,7 +117,7 @@ pub(crate) fn write(state: &mut HostState, node: NodeId, key: &str, value: &JsSc
     if !def.writable {
         return Some("read-only");
     }
-    let Some(value) = convert(def.kind, value) else {
+    let Some(value) = convert(def.kind, value, handles) else {
         return Some("invalid-value");
     };
     tick.set(mirror, node, key, value, None, None)
@@ -171,7 +180,8 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
     host.set(
         "kind",
         Function::new(ctx.clone(), move |node: f64| -> Option<String> {
-            kind_of(&shared.borrow(), node_id(node)?)
+            let state = shared.borrow();
+            kind_of(&state, state.handles.resolve(node)?)
         })?,
     )?;
 
@@ -179,7 +189,8 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
     host.set(
         "get",
         Function::new(ctx.clone(), move |node: f64, key: String| -> Option<JsHostValue> {
-            read(&shared.borrow(), node_id(node)?, &key, false)
+            let state = shared.borrow();
+            read(&state, state.handles.resolve(node)?, &key, false)
         })?,
     )?;
 
@@ -187,7 +198,8 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
     host.set(
         "published",
         Function::new(ctx.clone(), move |node: f64, key: String| -> Option<JsHostValue> {
-            read(&shared.borrow(), node_id(node)?, &key, true)
+            let state = shared.borrow();
+            read(&state, state.handles.resolve(node)?, &key, true)
         })?,
     )?;
 
@@ -197,10 +209,11 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
         Function::new(
             ctx.clone(),
             move |node: f64, key: String, value: Value<'js>| -> Option<&'static str> {
-                let Some(node) = node_id(node) else {
+                let mut state = shared.borrow_mut();
+                let Some(node) = state.handles.resolve(node) else {
                     return Some("unknown-node");
                 };
-                write(&mut shared.borrow_mut(), node, &key, &script_value(&value))
+                write(&mut state, node, &key, &script_value(&value))
             },
         )?,
     )?;
@@ -209,10 +222,19 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
     host.set(
         "call",
         Function::new(ctx.clone(), move |node: f64, method: String| -> Option<&'static str> {
-            let Some(node) = node_id(node) else {
+            let mut state = shared.borrow_mut();
+            let Some(node) = state.handles.resolve(node) else {
                 return Some("unknown-node");
             };
-            call(&mut shared.borrow_mut(), node, &method)
+            call(&mut state, node, &method)
+        })?,
+    )?;
+
+    let shared = state.clone();
+    host.set(
+        "label",
+        Function::new(ctx.clone(), move |node: f64| -> Option<String> {
+            shared.borrow().handles.label(node)
         })?,
     )?;
 
@@ -253,7 +275,7 @@ mod tests {
     use gnoblin_tree_client::tree_mirror::{MirrorValue, SnapshotNode, TreeMirror};
 
     use super::{JsScriptValue, call, ids_of_class, node_id, parents_first, read, write};
-    use crate::bindings::{HostState, JsHostValue};
+    use crate::bindings::{HostState, JsHostValue, NodeHandles};
 
     fn node(id: u64, parent: u64, class: &str, props: Vec<(String, MirrorValue)>) -> SnapshotNode {
         SnapshotNode {
@@ -278,6 +300,33 @@ mod tests {
     }
 
     #[test]
+    fn ids_a_script_number_cannot_hold_cross_as_stable_handles_and_come_back() {
+        let handles = NodeHandles::default();
+        let native = 0x8000_0000_0000_0004_u64;
+        let other = 0x8000_0000_0000_0005_u64;
+        let a = handles.to_script(native);
+        assert!(a < 9_007_199_254_740_992.0, "a handle is an exact script number");
+        assert_eq!(
+            handles.to_script(native),
+            a,
+            "the same node is the same number every time"
+        );
+        assert_ne!(handles.to_script(other), a);
+        assert_eq!(handles.resolve(a), Some(native));
+        assert_eq!(handles.label(a).as_deref(), Some("9223372036854775812"));
+        assert_eq!(handles.to_script(7), 7.0, "a small id is its own number");
+        assert_eq!(handles.resolve(7.0), Some(7));
+        assert_eq!(
+            handles.resolve(a + 1000.0),
+            None,
+            "a handle never given out names nothing"
+        );
+        for bad in [-1.0, 1.5, f64::NAN, f64::INFINITY, 1e300] {
+            assert_eq!(handles.resolve(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
     fn ids_are_whole_non_negative_numbers() {
         assert_eq!(node_id(7.0), Some(7));
         assert_eq!(node_id(-1.0), None);
@@ -289,6 +338,19 @@ mod tests {
     #[test]
     fn parents_come_before_children_whatever_the_snapshot_order() {
         assert_eq!(parents_first(&state().mirror), [1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn a_node_with_no_parent_is_listed_after_the_roots_tree() {
+        // The compositor makes a window unparented; the shell parents it later.
+        let nodes = [
+            node(1, 0, "node", Vec::new()),
+            node(2, 1, "seat", Vec::new()),
+            node(9, 0, "window", Vec::new()),
+            node(5, 0, "window", Vec::new()),
+        ];
+        let mirror = TreeMirror::from_snapshot(1, 1, 1, &nodes).expect("a mirror");
+        assert_eq!(parents_first(&mirror), [1, 2, 5, 9]);
     }
 
     #[test]

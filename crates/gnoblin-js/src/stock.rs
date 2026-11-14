@@ -67,10 +67,19 @@ const MODULES: [(&str, &str, &str); 10] = [
 /// panic in a compositor-side process is worse than an error where it is used, so such a module becomes
 /// one that throws the reason when imported.
 pub fn stock_modules() -> HashMap<String, String> {
+    stock_modules_in(None)
+}
+
+/// Like [`stock_modules`], reading each module from `dir` (laid out as `data/js/gnoblin`) when the file is there.
+/// A file that is missing, or that cannot be read, is the compiled-in module: a half-installed directory must
+/// not leave the shell without a stock library. A file that does not strip becomes a module that throws.
+pub fn stock_modules_in(dir: Option<&Path>) -> HashMap<String, String> {
     MODULES
         .iter()
-        .map(|(name, file, source)| {
-            let path = Path::new("data/js/gnoblin").join(file);
+        .map(|(name, file, compiled)| {
+            let path = dir.map_or_else(|| Path::new("data/js/gnoblin").join(file), |dir| dir.join(file));
+            let from_dir = dir.and_then(|_| std::fs::read_to_string(&path).ok());
+            let source = from_dir.as_deref().unwrap_or(compiled);
             let javascript = match strip_types(&path, source) {
                 Ok(stripped) => stripped.code,
                 Err(error) => {

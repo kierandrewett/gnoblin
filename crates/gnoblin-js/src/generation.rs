@@ -198,6 +198,23 @@ impl JsGeneration {
         self.id
     }
 
+    /// A second handle on the same runtime and context. The engine frees them when the last handle is dropped.
+    ///
+    /// A reload stages a generation inside the [`JsHost`](crate::JsHost), and the shell that runs it keeps its own
+    /// handle, so handing the staged generation to the shell does not take it from the host's bookkeeping (its
+    /// id and module graph, which the watcher reads).
+    #[must_use]
+    pub fn share(&self) -> Self {
+        Self {
+            context: self.context.clone(),
+            runtime: self.runtime.clone(),
+            budget: Arc::clone(&self.budget),
+            load: Rc::clone(&self.load),
+            config: self.config.clone(),
+            id: self.id,
+        }
+    }
+
     /// Bytes the engine currently has allocated for this generation.
     pub fn memory_used(&self) -> i64 {
         self.runtime.memory_usage().malloc_size

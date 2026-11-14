@@ -11,12 +11,25 @@ use std::path::Path;
 use crate::error::JsError;
 use crate::generation::{JsConfig, JsGeneration};
 
+/// What runs on a fresh generation before the entry module does: a host installs its native objects here.
+pub type JsPrepare = Box<dyn FnMut(&JsGeneration) -> Result<(), JsError>>;
+
 /// Owns the current generation and builds its replacements.
-#[derive(Debug)]
 pub struct JsHost {
     config: JsConfig,
     current: Option<JsGeneration>,
     next_id: u64,
+    prepare: Option<JsPrepare>,
+}
+
+impl std::fmt::Debug for JsHost {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JsHost")
+            .field("config", &self.config)
+            .field("current", &self.current)
+            .field("next_id", &self.next_id)
+            .finish_non_exhaustive()
+    }
 }
 
 impl JsHost {
@@ -26,7 +39,14 @@ impl JsHost {
             config,
             current: None,
             next_id: 1,
+            prepare: None,
         }
+    }
+
+    /// Runs `prepare` on every generation this host stages, after it is built and before its entry module is
+    /// evaluated. A failure fails the stage like a throw in the entry does.
+    pub fn set_prepare(&mut self, prepare: JsPrepare) {
+        self.prepare = Some(prepare);
     }
 
     /// The generation that is running, if one was committed.
@@ -42,6 +62,9 @@ impl JsHost {
         let id = self.next_id;
         self.next_id += 1;
         let generation = JsGeneration::new(&self.config, id)?;
+        if let Some(prepare) = self.prepare.as_mut() {
+            prepare(&generation)?;
+        }
         generation.eval_module(entry)?;
         Ok(generation)
     }

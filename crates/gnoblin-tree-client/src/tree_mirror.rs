@@ -430,6 +430,12 @@ impl TreeMirror {
         self.nodes.len()
     }
 
+    /// Every node the mirror holds, in id order. A node need not hang under the root: the compositor makes a
+    /// window without a parent, and a shell parents it.
+    pub fn ids(&self) -> impl Iterator<Item = NodeId> + '_ {
+        self.nodes.keys().copied()
+    }
+
     pub fn is_empty(&self) -> bool {
         self.nodes.is_empty()
     }
@@ -673,7 +679,7 @@ pub struct Destroyed {
 /// The writes of a transaction that is sent but not yet answered stay readable to the ticks after it: what the
 /// shell wrote is what it reads until the compositor's batch brings the same into the mirror, so a binding that
 /// runs in between finds the nodes it made and the values it set (`SentWrites`, `seeded`, `settle`).
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct TxBuilder {
     overlay: BTreeMap<NodeId, Option<NodeRecord>>,
     ops: Vec<TxOp>,

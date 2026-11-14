@@ -88,7 +88,7 @@ fn seats(state: &HostState) -> Vec<f64> {
                 .node(*id)
                 .is_some_and(|record| lua_class(&record.class) == "Seat")
         })
-        .map(|id| id as f64)
+        .map(|id| state.handles.to_script(id))
         .collect()
 }
 
@@ -118,7 +118,7 @@ fn pointer(state: &HostState, seat: NodeId) -> Vec<f64> {
 /// The node with keyboard focus, or 0.
 fn focus(state: &HostState, seat: NodeId) -> f64 {
     match seat_prop(state, seat, "focus") {
-        Some(MirrorValue::Node(node)) => *node as f64,
+        Some(MirrorValue::Node(node)) => state.handles.to_script(*node),
         _ => 0.0,
     }
 }
@@ -263,13 +263,6 @@ pub(crate) fn messages_to_js<'js>(ctx: &Ctx<'js>, messages: &[JsInputMessage]) -
     Ok(list)
 }
 
-/// The largest id a script number holds exactly.
-const MAX_EXACT_ID: f64 = 9_007_199_254_740_991.0;
-
-fn node_id(raw: f64) -> Option<NodeId> {
-    (raw.is_finite() && (0.0..=MAX_EXACT_ID).contains(&raw) && raw.fract() == 0.0).then_some(raw as NodeId)
-}
-
 /// Installs `__gnoblinHost.input`, the seat functions `gnoblin/input` runs on.
 pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedState) -> rquickjs::Result<()> {
     let input = Object::new(ctx.clone())?;
@@ -284,7 +277,11 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
     input.set(
         "seatName",
         Function::new(ctx.clone(), move |seat: f64| -> String {
-            node_id(seat).map_or_else(String::new, |seat| seat_name(&shared.borrow(), seat))
+            let state = shared.borrow();
+            state
+                .handles
+                .resolve(seat)
+                .map_or_else(String::new, |seat| seat_name(&state, seat))
         })?,
     )?;
 
@@ -292,7 +289,11 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
     input.set(
         "pointer",
         Function::new(ctx.clone(), move |seat: f64| -> Vec<f64> {
-            node_id(seat).map_or_else(|| vec![0.0, 0.0], |seat| pointer(&shared.borrow(), seat))
+            let state = shared.borrow();
+            state
+                .handles
+                .resolve(seat)
+                .map_or_else(|| vec![0.0, 0.0], |seat| pointer(&state, seat))
         })?,
     )?;
 
@@ -300,7 +301,8 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
     input.set(
         "focus",
         Function::new(ctx.clone(), move |seat: f64| -> f64 {
-            node_id(seat).map_or(0.0, |seat| focus(&shared.borrow(), seat))
+            let state = shared.borrow();
+            state.handles.resolve(seat).map_or(0.0, |seat| focus(&state, seat))
         })?,
     )?;
 
@@ -308,7 +310,11 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
     input.set(
         "devices",
         Function::new(ctx.clone(), move |seat: f64| -> Vec<String> {
-            node_id(seat).map_or_else(Vec::new, |seat| devices(&shared.borrow(), seat))
+            let state = shared.borrow();
+            state
+                .handles
+                .resolve(seat)
+                .map_or_else(Vec::new, |seat| devices(&state, seat))
         })?,
     )?;
 
@@ -318,9 +324,11 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
         Function::new(
             ctx.clone(),
             move |seat: f64, chord: String, grab: bool, device: String| -> JsClaimOutcome {
-                node_id(seat).map_or(JsClaimOutcome::Refused("unknown-node"), |seat| {
-                    claim(&mut shared.borrow_mut(), seat, &chord, grab, &device)
-                })
+                let mut state = shared.borrow_mut();
+                match state.handles.resolve(seat) {
+                    Some(seat) => claim(&mut state, seat, &chord, grab, &device),
+                    None => JsClaimOutcome::Refused("unknown-node"),
+                }
             },
         )?,
     )?;
@@ -331,9 +339,11 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
         Function::new(
             ctx.clone(),
             move |seat: f64, kind: String, fingers: f64, device: String| -> JsClaimOutcome {
-                node_id(seat).map_or(JsClaimOutcome::Refused("unknown-node"), |seat| {
-                    claim_gesture(&mut shared.borrow_mut(), seat, &kind, fingers as i64, &device)
-                })
+                let mut state = shared.borrow_mut();
+                match state.handles.resolve(seat) {
+                    Some(seat) => claim_gesture(&mut state, seat, &kind, fingers as i64, &device),
+                    None => JsClaimOutcome::Refused("unknown-node"),
+                }
             },
         )?,
     )?;

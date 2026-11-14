@@ -13,7 +13,7 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 
-use gnoblin_js::{JsShell, JsShellConfig, JsShellError, JsSpawnError, JsSpawnRequest};
+use gnoblin_js::{JsRole, JsRoleConfig, JsShell, JsShellConfig, JsShellError, JsSpawnError, JsSpawnRequest};
 use gnoblin_tree_client::tree_mirror::{
     Attached, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeIncoming, TreeLink, TreeTx,
     TxOp, TxReply,
@@ -1084,4 +1084,96 @@ fn an_entry_that_throws_is_an_error_with_its_ts_location_and_a_budget_trip_count
     assert_eq!(shell.strikes(), 0);
     assert!(shell.load_entry(Path::new("loop.ts")).is_err());
     assert_eq!(shell.strikes(), 1);
+}
+
+/// Every `x` write the shell has sent, as (node, value), oldest first.
+fn x_writes(comp: &Comp) -> Vec<(u64, f64)> {
+    sent(comp)
+        .into_iter()
+        .flatten()
+        .filter_map(|op| match op {
+            TxOp::Set {
+                node,
+                key,
+                value: MirrorValue::Double(x),
+                ..
+            } if key == "x" => Some((node, x)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// An entry that puts every client at `x`, on add.
+fn places_at(x: u32) -> String {
+    format!(
+        "import {{ gnoblin }} from \"gnoblin\";\n\
+         gnoblin.clients.addListener({{ onAdded(client: {{ x: number }}): void {{ client.x = {x}; }} }});\n"
+    )
+}
+
+#[test]
+fn a_role_swaps_in_a_reloaded_generation_over_the_same_windows_and_a_failed_reload_changes_nothing() {
+    let comp = two_windows();
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
+    fs::write(root.join("init.ts"), places_at(100)).expect("init.ts");
+    let mut role = JsRole::over_link(Box::new(FakeLink(comp.clone())), JsRoleConfig::new(&root, None)).expect("a role");
+    let booted = role.generation_id();
+    assert_eq!(booted, 1, "the entry loaded as the first staged generation");
+    role.tick().expect("a frame");
+    assert_eq!(
+        x_writes(&comp),
+        vec![(3, 100.0), (4, 100.0)],
+        "the listener placed both windows"
+    );
+
+    // A reload: a newer generation, the same window nodes, and its listener is told of the windows already there.
+    fs::write(root.join("init.ts"), places_at(200)).expect("init.ts");
+    let report = role.reload_now();
+    assert!(report.ok, "{:?}", report.errors);
+    assert_eq!(role.generation_id(), booted + 1);
+    role.tick().expect("a frame");
+    // The save also reached the watcher, which may reload once more before the tick ends: the same file, so the
+    // same writes again. What matters is that the new generation placed the same two nodes.
+    let after: Vec<(u64, f64)> = x_writes(&comp)[2..].to_vec();
+    assert!(
+        after.iter().all(|(_, x)| *x == 200.0) && after.contains(&(3, 200.0)) && after.contains(&(4, 200.0)),
+        "the new generation placed the same two windows: {after:?}"
+    );
+    let running = role.generation_id();
+    assert!(running > booted);
+
+    // A syntax error keeps the running generation and reports the position in the author's file.
+    fs::write(
+        root.join("init.ts"),
+        "import { gnoblin } from \"gnoblin\";\n\nlet = = 5;\n",
+    )
+    .expect("init.ts");
+    let report = role.reload_now();
+    assert!(!report.ok);
+    assert!(
+        report.errors[0].to_string().contains("init.ts:3:"),
+        "{}",
+        report.errors[0]
+    );
+    assert_eq!(role.generation_id(), running, "the generation that ran still runs");
+    assert!(role.diagnostics().iter().any(|text| text.contains("init.ts:3:")));
+
+    // A file that writes and then throws leaves no write behind: the failed stage's top-level write is dropped.
+    fs::write(
+        root.join("init.ts"),
+        "import { gnoblin } from \"gnoblin\";\ngnoblin.clients.at(0).x = 999;\nthrow new Error(\"late\");\n",
+    )
+    .expect("init.ts");
+    let sent_before = x_writes(&comp).len();
+    let report = role.reload_now();
+    assert!(!report.ok);
+    assert_eq!(role.generation_id(), running);
+    role.tick().expect("a frame");
+    assert_eq!(
+        x_writes(&comp).len(),
+        sent_before,
+        "the failed stage's write is not sent: {:?}",
+        x_writes(&comp)
+    );
 }

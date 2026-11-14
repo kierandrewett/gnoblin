@@ -31,6 +31,10 @@ thiserror.workspace = true
 gnoblin-tree-client.workspace = true
 # The text of a seat claim travels as a `SecretText`, which is what the call op carries.
 gnoblin-secret.workspace = true
+# The owner socket's client: the role connects and handshakes as every client does.
+gnoblin-client = { path = "../gnoblin-client" }
+# The IPC version this build advertises in that handshake.
+gnoblin-proto = { path = "../gnoblin-proto" }
 # The log facade every crate logs through.
 gnoblin-log = { path = "../gnoblin-log" }
 

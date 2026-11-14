@@ -38,7 +38,7 @@ use crate::bindings::{self, HostState, JsSpawner, SharedState};
 use crate::error::{JsError, JsErrorKind};
 use crate::generation::{JsConfig, JsGeneration};
 use crate::input::{JsInputMessage, messages_to_js};
-use crate::stock::stock_modules;
+use crate::stock::stock_modules_in;
 use crate::ts::strip_types;
 use crate::workspaces::{JsWorkspaceSnapshot, coalesce_sets};
 
@@ -79,6 +79,9 @@ pub struct JsShellConfig {
     pub entry_budget: Duration,
     /// What one frame's dispatch may use, all listener calls together. Default 500 ms.
     pub frame_budget: Duration,
+    /// A directory to read the stock `gnoblin` modules from instead of the copies compiled in (the layout of
+    /// `data/js/gnoblin`). A module missing from it is the compiled-in one. `None` runs the compiled-in library.
+    pub stock_dir: Option<PathBuf>,
 }
 
 impl JsShellConfig {
@@ -88,6 +91,7 @@ impl JsShellConfig {
             js: JsConfig::new(root),
             entry_budget: Duration::from_millis(100),
             frame_budget: Duration::from_millis(500),
+            stock_dir: None,
         }
     }
 }
@@ -124,11 +128,40 @@ pub struct JsFrame {
 /// kept.
 type Sent = (u64, Vec<Option<TxOp>>);
 
+/// What a reload needs from a running shell to stage its next generation: the config the shell's own
+/// generation was built from, and the hook that gives a staged generation the shell's host objects.
+///
+/// A generation staged through it reads and writes the same tree mirror as the running one, so the windows
+/// keep their ids. Cheap to clone; it holds the shell's shared state and no script value.
+#[derive(Clone)]
+pub struct JsStaging {
+    js: JsConfig,
+    state: SharedState,
+}
+
+impl JsStaging {
+    /// The config to stage generations from: the shell's, with the stock library and `gnoblin/host` embedded.
+    pub fn config(&self) -> &JsConfig {
+        &self.js
+    }
+
+    /// Installs the host objects in `generation` and loads `gnoblin/host`, so `gnoblin.clients` is there when
+    /// the entry module runs. Run it on a fresh generation, before the entry.
+    pub fn prepare(&self, generation: &JsGeneration) -> Result<(), JsError> {
+        install_host(generation, &self.state, self.js.stage_budget)
+    }
+}
+
 /// The shell's JavaScript runtime over the real tree.
 pub struct JsShell {
     link: Box<dyn TreeLink>,
     generation: JsGeneration,
+    /// The config generations are built from, with the stock library and the host module embedded.
+    js: JsConfig,
     state: SharedState,
+    /// The writes the shell held when a stage began, kept until that stage is swapped in or abandoned so a stage
+    /// that fails after writing leaves nothing behind.
+    stage_mark: Option<TxBuilder>,
     entry_budget: Duration,
     frame_budget: Duration,
     /// Messages that arrived with the boot snapshot, handled by the first frame.
@@ -168,7 +201,7 @@ impl JsShell {
         // reaches `defineConfig` and `ClientListener` alike. The stock sources stay as they are: their own
         // tests embed them without a host. A module the caller embedded under a name stays: the caller
         // knows what it wants.
-        let mut stock = stock_modules();
+        let mut stock = stock_modules_in(config.stock_dir.as_deref());
         stock
             .entry("gnoblin".to_owned())
             .or_default()
@@ -177,16 +210,17 @@ impl JsShell {
             embedded.entry(name).or_insert(source);
         }
         embedded.insert(HOST_MODULE_NAME.to_owned(), host_module.code);
-        let generation = JsGeneration::new(&js, 1)?;
-        generation.call_budgeted(js.stage_budget, |ctx| {
-            bindings::install(ctx, &state)?;
-            Module::import(ctx, HOST_MODULE_NAME)?.finish::<Value<'_>>().map(drop)
-        })?;
+        // Generation 0 is the bare one (the host objects and no user code); the reloader numbers the ones it
+        // stages from 1.
+        let generation = JsGeneration::new(&js, 0)?;
+        install_host(&generation, &state, js.stage_budget)?;
 
         Ok(Self {
             link,
             generation,
+            js,
             state,
+            stage_mark: None,
             entry_budget: config.entry_budget,
             frame_budget: config.frame_budget,
             incoming,
@@ -198,6 +232,107 @@ impl JsShell {
             reported: HashMap::new(),
             strikes: 0,
         })
+    }
+
+    /// What a reload stages its generations from. See [`JsStaging`].
+    pub fn staging(&self) -> JsStaging {
+        JsStaging {
+            js: self.js.clone(),
+            state: Rc::clone(&self.state),
+        }
+    }
+
+    /// Marks the start of a stage. A generation staged through [`JsStaging`] evaluates the user's entry against
+    /// the live tree, so a top-level write such as `client.x = 5` lands in the shell's pending writes before it
+    /// is known that the stage succeeds. The mark is what [`abandon_stage`](Self::abandon_stage) returns them to.
+    pub fn begin_stage(&mut self) {
+        let tick = self.state.borrow().tick.clone();
+        self.stage_mark = Some(tick);
+    }
+
+    /// Ends a stage that failed: the pending writes go back to what they were at [`begin_stage`](Self::begin_stage).
+    /// The running generation was never touched.
+    pub fn abandon_stage(&mut self) {
+        if let Some(tick) = self.stage_mark.take() {
+            self.state.borrow_mut().tick = tick;
+        }
+    }
+
+    /// Replaces the running generation with a staged one, after [`begin_stage`](Self::begin_stage).
+    ///
+    /// The tree is the compositor's and the mirror is shared, so every window keeps its id and its place: nothing
+    /// is re-created or moved. The order is the one the input and workspace lanes wrote their hooks for: the old
+    /// generation's workspace snapshot is read, then it is [`retire`](Self::retire)d (its drags are cancelled and
+    /// its seat claims released, in the transaction that also carries the new generation's own claims, so no
+    /// chord is ever unclaimed between them), then the new generation takes over. It has run its entry (a
+    /// listener it added was told of the windows already there), so it is finished like a loaded entry
+    /// (`finishLoad`: a config that declared no workspace gets the stock one) and the windows go back to the
+    /// workspaces of the same id ([`reconcile`](Self::reconcile)), without being offered to the layout as
+    /// arrivals. It is announced `ready` for every window the tree holds on the next frame, as at boot. The old
+    /// generation is dropped with its listeners, queued calls and error reports, and strikes start again at zero.
+    ///
+    /// A script failure while the old generation ends or the new one finishes is a diagnostic in the result, not
+    /// an error: the swap has happened.
+    ///
+    /// # Errors
+    ///
+    /// The link failed or the mirror refused a batch; the shell has ended.
+    pub fn swap_generation(&mut self, generation: JsGeneration) -> Result<Vec<String>, JsShellError> {
+        let mut diagnostics = Vec::new();
+        let previous = match self.workspace_snapshot() {
+            Ok(snapshot) => Some(snapshot),
+            Err(JsShellError::Js(error)) => {
+                self.count_strike(&error);
+                diagnostics.push(format!(
+                    "the old generation's workspaces could not be read, so windows rejoin a workspace by the stock \
+                     rule: {error}"
+                ));
+                None
+            }
+            Err(other) => return Err(other),
+        };
+        match self.retire() {
+            Ok(frame) => diagnostics.extend(frame.diagnostics),
+            Err(JsShellError::Js(error)) => {
+                self.count_strike(&error);
+                diagnostics.push(format!("the old generation did not end cleanly: {error}"));
+            }
+            Err(other) => return Err(other),
+        }
+
+        self.stage_mark = None;
+        self.generation = generation;
+        self.strikes = 0;
+        self.reported.clear();
+        self.boot_ready = Some(bindings::parents_first(&self.state.borrow().mirror));
+
+        let finished = self.finish_load().and_then(|()| match &previous {
+            Some(previous) => self.reconcile(previous),
+            None => Ok(()),
+        });
+        match finished {
+            Ok(()) => {}
+            Err(JsShellError::Js(error)) => {
+                self.count_strike(&error);
+                diagnostics.push(format!("the new generation could not take over the workspaces: {error}"));
+            }
+            Err(other) => return Err(other),
+        }
+        self.collect_reports(&mut diagnostics)?;
+        Ok(diagnostics)
+    }
+
+    /// Finishes a loaded entry: a config that declared no workspace gets the stock one now, so
+    /// `gnoblin.workspaces` is never empty for what runs after the entry.
+    fn finish_load(&mut self) -> Result<(), JsShellError> {
+        self.call_entry(self.entry_budget, |entry| {
+            entry.get::<_, Function<'_>>("finishLoad")?.call::<_, ()>(())
+        })
+    }
+
+    /// The id of the generation that runs.
+    pub fn generation_id(&self) -> u64 {
+        self.generation.id()
     }
 
     /// Routes `gnoblin.spawn` to `spawner`. Without one, `spawn` throws a `GnoblinError`.
@@ -218,11 +353,8 @@ impl JsShell {
             self.count_strike(&error);
             return Err(error.into());
         }
-        // A config that declared no workspace gets the stock one now, so `gnoblin.workspaces` is never empty
-        // for what runs after the entry. The windows that were there at boot join one on the first frame.
-        self.call_entry(self.entry_budget, |entry| {
-            entry.get::<_, Function<'_>>("finishLoad")?.call::<_, ()>(())
-        })?;
+        // The windows that were there at boot join a workspace on the first frame.
+        self.finish_load()?;
         let mut diagnostics = Vec::new();
         self.collect_reports(&mut diagnostics)?;
         Ok(diagnostics)
@@ -380,12 +512,16 @@ impl JsShell {
         diagnostics: &mut Vec<String>,
     ) -> Result<(), JsShellError> {
         if let Some(nodes) = self.boot_ready.take() {
-            let nodes = ids(&nodes);
+            let nodes = self.script_ids(&nodes);
             let _queued: usize = self.call_entry(self.frame_budget, move |entry| {
                 entry.get::<_, Function<'_>>("ready")?.call((nodes,))
             })?;
         }
-        let (created, touched, destroyed) = (ids(created), ids(touched), ids(destroyed));
+        let (created, touched, destroyed) = (
+            self.script_ids(created),
+            self.script_ids(touched),
+            self.script_ids(destroyed),
+        );
         let _queued: usize = self.call_entry(self.frame_budget, move |entry| {
             entry
                 .get::<_, Function<'_>>("plan")?
@@ -453,6 +589,12 @@ impl JsShell {
             }
             Err(other) => Err(other),
         }
+    }
+
+    /// The numbers a script holds for a list of node ids (see `NodeHandles`).
+    fn script_ids(&self, nodes: &[NodeId]) -> Vec<f64> {
+        let state = self.state.borrow();
+        nodes.iter().map(|id| state.handles.to_script(*id)).collect()
     }
 
     /// Runs `f` on the module's entry object, under `budget`.
@@ -633,9 +775,12 @@ impl JsShell {
     }
 }
 
-/// Script numbers for a list of node ids.
-fn ids(nodes: &[NodeId]) -> Vec<f64> {
-    nodes.iter().map(|id| *id as f64).collect()
+/// Installs the host functions in `generation` and loads `gnoblin/host`, under `budget`.
+fn install_host(generation: &JsGeneration, state: &SharedState, budget: Duration) -> Result<(), JsError> {
+    generation.call_budgeted(budget, |ctx| {
+        bindings::install(ctx, state)?;
+        Module::import(ctx, HOST_MODULE_NAME)?.finish::<Value<'_>>().map(drop)
+    })
 }
 
 fn location_text(at: &crate::error::JsLocation) -> String {

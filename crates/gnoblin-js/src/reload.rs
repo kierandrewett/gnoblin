@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use crate::error::{JsError, JsErrorKind};
 use crate::generation::{JsConfig, JsGeneration};
-use crate::host::JsHost;
+use crate::host::{JsHost, JsPrepare};
 use crate::supervisor::{JsClock, JsFault, JsFaultAction, JsHealth, JsSupervisor, JsSystemClock};
 use crate::watch::{ConfigWatcher, ReloadRequest};
 
@@ -131,6 +131,12 @@ where
             supervisor,
             failed_files: Vec::new(),
         }
+    }
+
+    /// Runs `prepare` on every generation this reloader stages, before the entry module is evaluated (see
+    /// [`JsHost::set_prepare`]).
+    pub fn set_prepare(&mut self, prepare: JsPrepare) {
+        self.host.set_prepare(prepare);
     }
 
     /// The generation that is running, if any.

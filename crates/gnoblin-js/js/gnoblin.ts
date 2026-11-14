@@ -69,6 +69,7 @@ interface Host {
     kind(node: NodeId): string | undefined;
     get(node: NodeId, key: string): Scalar | undefined;
     published(node: NodeId, key: string): Scalar | undefined;
+    label(node: NodeId): string | undefined;
     set(node: NodeId, key: string, value: Scalar): string | undefined;
     call(node: NodeId, method: string): string | undefined;
     windows(): NodeId[];
@@ -260,7 +261,7 @@ function publishedValues(node: NodeId): Seen {
 /** The queued write of one number property, or the error that names the member. */
 function writeNumber(client: Client, key: string, value: unknown): void {
     const state = stateOf(client);
-    const target = `Client#${state.node}.${key}`;
+    const target = `Client#${host.label(state.node)}.${key}`;
     if (!state.alive) {
         throw new GnoblinError("destroyed", target, "the client is gone");
     }
@@ -275,7 +276,7 @@ function writeNumber(client: Client, key: string, value: unknown): void {
 
 function callMethod(client: Client, method: string): void {
     const state = stateOf(client);
-    const target = `Client#${state.node}.${method}()`;
+    const target = `Client#${host.label(state.node)}.${method}()`;
     if (!state.alive) {
         throw new GnoblinError("destroyed", target, "the client is gone");
     }
@@ -308,7 +309,7 @@ export class Client {
     }
 
     get id(): string {
-        return String(stateOf(this).node);
+        return host.label(stateOf(this).node) ?? "?";
     }
 
     get alive(): boolean {
@@ -369,7 +370,7 @@ export class Client {
     }
 
     set bounds(rect: Rect) {
-        const target = `Client#${stateOf(this).node}.bounds`;
+        const target = `Client#${host.label(stateOf(this).node)}.bounds`;
         for (const key of ["x", "y", "width", "height"] as const) {
             if (typeof rect?.[key] !== "number" || !Number.isFinite(rect[key])) {
                 throw new TypeError(`${target}.${key}: must be a finite number`);
@@ -387,7 +388,7 @@ export class Client {
     }
 
     addListener(listener: ClientListener): void {
-        assertListener(listener, `Client#${stateOf(this).node}.addListener`);
+        assertListener(listener, `Client#${host.label(stateOf(this).node)}.addListener`);
         const { listeners } = stateOf(this);
         if (!listeners.includes(listener)) {
             listeners.push(listener);
@@ -412,7 +413,7 @@ export class Client {
     }
 
     toString(): string {
-        return `Client#${stateOf(this).node}`;
+        return `Client#${host.label(stateOf(this).node)}`;
     }
 }
 
