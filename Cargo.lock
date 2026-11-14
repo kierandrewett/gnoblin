@@ -1462,6 +1462,7 @@ dependencies = [
  "oxc_span",
  "oxc_transformer",
  "rquickjs",
+ "rustix 1.1.6",
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
@@ -1997,6 +1998,7 @@ dependencies = [
  "gnoblin-testkit",
  "prost",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
