@@ -94,15 +94,18 @@ export function rejectUnknown(
 ): void {
     for (const key of Object.keys(object)) {
         if (!known.includes(key)) {
-            const nearest = nearestKey(key, known);
-            const advice = Object.hasOwn(hints, key)
-                ? ` (${hints[key]})`
-                : nearest === undefined
-                  ? ""
-                  : ` (did you mean "${nearest}"?)`;
+            const advice = adviceFor(key, known, hints);
             throw new TypeError(`${what} has no "${key}"${advice}; expected one of ${known.join(", ")}`);
         }
     }
+}
+
+function adviceFor(key: string, known: readonly string[], hints: Readonly<Record<string, string>>): string {
+    if (Object.hasOwn(hints, key)) {
+        return ` (${hints[key]})`;
+    }
+    const nearest = nearestKey(key, known);
+    return nearest === undefined ? "" : ` (did you mean "${nearest}"?)`;
 }
 
 /** The workspace's gaps as two finite numbers of at least zero; a side left out is zero. */
@@ -237,6 +240,19 @@ function checkVector(value: unknown, fallback: readonly [number, number, number]
     return [value[0], value[1], value[2]] as const;
 }
 
+/** Checks the four fields of a rectangle and copies them: finite numbers, with sizes of at least zero. */
+function checkBounds(bounds: Rect, at: string): Rect {
+    for (const key of ["x", "y", "width", "height"] as const) {
+        const value = bounds?.[key];
+        const isSize = key === "width" || key === "height";
+        if (typeof value !== "number" || !Number.isFinite(value) || (isSize && value < 0)) {
+            throw new TypeError(`${at} bounds.${key} must be a finite number${isSize ? " of at least 0" : ""}`);
+        }
+    }
+    const { x, y, width, height } = bounds;
+    return { x, y, width, height };
+}
+
 /**
  * What a layout's `compute` returned, with the defaults filled in, for every placement. A result that is not an
  * array, a placement for a node that is not one of `children`, a rectangle that is not four finite numbers with a
@@ -256,23 +272,7 @@ export function checkPlacements<N extends object>(
             throw new TypeError(`${where}: placement ${i} is not for one of the workspace's clients`);
         }
         const at = `${where}: placement ${i}`;
-        let bounds: Rect | null = null;
-        if (placement.bounds !== undefined) {
-            for (const key of ["x", "y", "width", "height"] as const) {
-                const value = placement.bounds?.[key];
-                if (
-                    typeof value !== "number" ||
-                    !Number.isFinite(value) ||
-                    ((key === "width" || key === "height") && value < 0)
-                ) {
-                    throw new TypeError(
-                        `${at} bounds.${key} must be a finite number${key === "width" || key === "height" ? " of at least 0" : ""}`,
-                    );
-                }
-            }
-            const { x, y, width, height } = placement.bounds;
-            bounds = { x, y, width, height };
-        }
+        const bounds = placement.bounds === undefined ? null : checkBounds(placement.bounds, at);
         for (const flag of ["visible", "tiled"] as const) {
             if (placement[flag] !== undefined && typeof placement[flag] !== "boolean") {
                 throw new TypeError(`${at} ${flag} must be true or false`);
