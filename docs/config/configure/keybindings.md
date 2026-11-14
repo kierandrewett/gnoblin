@@ -138,12 +138,14 @@ In the intended form, the callback selects the nearest corner in Lua, and the na
 compositor starts the resize and enforces the window's size limits. Nothing in this
 build runs it.
 
-`Button1` is left, `Button2` middle and `Button3` right. Prefix the button with
-one or more modifier tokens. Ordinary clicks continue to reach apps.
+`Button1` is left, `Button2` middle and `Button3` right; `Button8` is back and
+`Button9` forward. Prefix the button with one or more modifier tokens. Ordinary
+clicks continue to reach apps.
 
 Write the binding in the [chord syntax](/guides/shortcuts#chord-syntax), such
-as `<Super>Button1`. A pointer chord needs at least one modifier. Conflicting
-button and modifier combinations are rejected.
+as `<Super>Button1`. A pointer chord needs at least one modifier, except
+`Button8` and `Button9`. Conflicting button and modifier combinations are
+rejected.
 
 Names identify callbacks, not built-in actions. Without a binding, the
 compositor supplies no gesture. Save and run `gnoblinctl config reload` to

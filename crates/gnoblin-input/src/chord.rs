@@ -27,7 +27,7 @@
 //! | a keysym name without the `XF86` prefix | `AudioMute` | same identity as `XF86AudioMute` |
 //! | the key above Tab | `Above_Tab` | layout independent |
 //! | a hardware key code | `0x3f` | exactly two hex digits, `0x01` to `0xff` |
-//! | a pointer button | `Button1`, `Button2`, `Button3` | [`ChordKind::Pointer`] only, needs a modifier |
+//! | a pointer button | `Button1` to `Button9` | [`ChordKind::Pointer`] only; needs a modifier unless it is `Button8` or `Button9` |
 //!
 //! The bare word `Super`, with no angle brackets, is a chord only for
 //! [`ChordKind::Key`]: Super pressed and released with no other key between. A
@@ -79,6 +79,9 @@ pub const CHORD_EXAMPLE: &str = "<Super><Alt>F9";
 
 /// The example every error message ends with, for pointer chords.
 pub const POINTER_CHORD_EXAMPLE: &str = "<Super>Button1";
+
+/// The first pointer button a chord may name without a modifier: `Button8`, the back button.
+const FIRST_BARE_BUTTON: u8 = 8;
 
 /// How a chord is read.
 ///
@@ -218,7 +221,7 @@ pub enum Key {
     KeyCode(KeyCode),
     /// The key above Tab, whatever the layout calls it.
     AboveTab,
-    /// A pointer button, 1 to 3.
+    /// A pointer button, 1 to 9.
     Button(u8),
     /// The bare word `Super`: Super pressed and released alone.
     BareSuper,
@@ -323,7 +326,9 @@ impl Chord {
             let Some(button) = button_named(rest) else {
                 return Err(fail(Reason::NotAButton));
             };
-            if modifiers.is_empty() {
+            // A bare Button1 to Button7 would swallow every click, drag and wheel notch the seat sees, so those
+            // need a modifier. The two side buttons are a chord of their own.
+            if modifiers.is_empty() && button < FIRST_BARE_BUTTON {
                 return Err(fail(Reason::PointerNeedsModifier));
             }
             return Ok(Self {
@@ -565,8 +570,10 @@ impl Reason {
             Self::DuplicateModifier { name } => format!("<{name}> appears twice"),
             Self::MissingKey => "it has no key after the modifiers".to_owned(),
             Self::MoreThanOneKey => "it has more than one key, or a modifier after the key".to_owned(),
-            Self::NotAButton => "a pointer chord ends with Button1, Button2 or Button3".to_owned(),
-            Self::PointerNeedsModifier => "a pointer chord needs at least one modifier before its button".to_owned(),
+            Self::NotAButton => "a pointer chord ends with a button, Button1 to Button9".to_owned(),
+            Self::PointerNeedsModifier => {
+                "a pointer chord needs at least one modifier before its button, except Button8 and Button9".to_owned()
+            }
             Self::UnknownKey { name } => {
                 format!("\"{name}\" is not a key name; use an XKB keysym name such as Return, F9, q or XF86AudioMute")
             }
@@ -616,14 +623,15 @@ fn modifier_word(lowered: &str) -> Option<Modifiers> {
     })
 }
 
-/// The button a written name means, for pointer chords.
+/// The button a written name means, for pointer chords: `Button1` to `Button9`, the numbers X11 and GTK give them
+/// (1 left, 2 middle, 3 right, 8 back, 9 forward).
 fn button_named(text: &str) -> Option<u8> {
     let digits = text.strip_prefix("Button")?;
     if digits.len() != 1 {
         return None;
     }
     match digits.as_bytes()[0] {
-        b'1'..=b'3' => Some(digits.as_bytes()[0] - b'0'),
+        b'1'..=b'9' => Some(digits.as_bytes()[0] - b'0'),
         _ => None,
     }
 }
@@ -882,5 +890,42 @@ mod tests {
                 .expect("b")
                 .matches_button(1, Modifiers::SUPER)
         );
+    }
+
+    #[test]
+    fn a_pointer_chord_names_one_of_nine_buttons() {
+        for number in 1..=9u8 {
+            let written = format!("<Super>Button{number}");
+            let chord = pointer(&written).expect(&written);
+            assert_eq!(chord.to_string(), written, "the written form is canonical");
+            assert!(chord.matches_button(number, Modifiers::SUPER), "{written}");
+        }
+        for written in ["<Super>Button0", "<Super>Button10", "<Super>Button", "<Super>button1"] {
+            assert_eq!(
+                pointer(written).expect_err(written).reason(),
+                &Reason::NotAButton,
+                "{written}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_the_side_buttons_are_a_chord_without_a_modifier() {
+        // Buttons 1 to 7 are the ones a click, a drag or the wheel use, so a bare claim would take every click.
+        for number in 1..=7u8 {
+            let written = format!("Button{number}");
+            assert_eq!(
+                pointer(&written).expect_err(&written).reason(),
+                &Reason::PointerNeedsModifier,
+                "{written}"
+            );
+        }
+        for number in [8u8, 9] {
+            let written = format!("Button{number}");
+            let chord = pointer(&written).expect(&written);
+            assert_eq!(chord.to_string(), written);
+            assert!(chord.matches_button(number, Modifiers::NONE));
+            assert!(!chord.matches_button(number, Modifiers::SUPER));
+        }
     }
 }

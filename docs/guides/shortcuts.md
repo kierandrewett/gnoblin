@@ -123,8 +123,9 @@ A chord is zero or more modifiers in angle brackets, then one key:
 - `Super` alone, with no angle brackets, is a chord only where the page for
   that mechanism says so. It means Super pressed and released with no other
   key between.
-- A pointer chord ends with `Button1`, `Button2` or `Button3`, for example
-  `<Super>Button1`. It needs at least one modifier.
+- A pointer chord ends with a button, `Button1` to `Button9`, for example
+  `<Super>Button1`. It needs at least one modifier, except `Button8` and
+  `Button9`, the back and forward buttons.
 - A chord has no spaces.
 
 Gnoblin reads a chord with one parser, and refuses everything else. A word
