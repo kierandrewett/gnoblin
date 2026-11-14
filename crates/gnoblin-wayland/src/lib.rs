@@ -210,6 +210,7 @@ mod interactive;
 mod keyboard;
 mod liveness;
 mod lock_auth;
+mod lock_card;
 mod modal;
 mod observation;
 mod output_config;
@@ -236,6 +237,8 @@ pub use clock::{Clock, ManualClock, SystemClock};
 /// Frame counters, and the timeout a screenshot waits for before it gives up.
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
 pub use gnoblin_lock::State as LockState;
+/// The built-in lock card's seam with the session: when it is wanted, and what it takes and is answered.
+pub use lock_card::{LOCK_UI_GRACE_MS, LockCardAnswer, LockCardInput};
 /// A modal dialog's state, and the events that change it.
 pub use modal::{Modal, ModalEvent};
 pub use observation::lock_state_name;

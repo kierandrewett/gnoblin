@@ -550,6 +550,8 @@ pub struct State {
     pub(crate) modal: Option<Modal>,
     /// The modal events queued since the last take, in the order they arrived.
     pub(crate) modal_events: Vec<ModalEvent>,
+    /// The built-in lock card, the keys it took and the answers it is owed (see [`crate::lock_card`]).
+    pub(crate) lock_card: crate::lock_card::LockCardTables,
     /// The output whose frame the host described last, and its damage, so the frame
     /// hook can record what was drawn.
     last_frame: Option<(OutputId, Vec<Rect>)>,
@@ -856,6 +858,7 @@ impl State {
             tree: TreeFrame::with_hooks(tree),
             modal: None,
             modal_events: Vec::new(),
+            lock_card: crate::lock_card::LockCardTables::default(),
             last_frame: None,
             lock: Lock::new(),
             lock_embargo: Embargo::RELEASED,
@@ -2575,6 +2578,22 @@ impl State {
     /// Queues the modal events an input edge becomes while a modal is set. Returns
     /// `false` for an edge that is not a modal event, which then routes as usual.
     pub(crate) fn route_to_modal(&mut self, event: &InputEvent) -> bool {
+        let takes_text = self.modal.as_ref().is_some_and(Modal::takes_text);
+        match self.modal_events_of(event, takes_text) {
+            Some(events) => {
+                self.modal_events.extend(events);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The modal events an input edge becomes, or `None` for an edge that is not one. The lock card takes the same
+    /// events a modal does, so both read them through here. The character a key types comes after its edge, and only
+    /// for a dialog that has an entry (`takes_text`): the keyboard's state is read for it, so the layout and Shift
+    /// decide what was typed.
+    pub(crate) fn modal_events_of(&mut self, event: &InputEvent, takes_text: bool) -> Option<Vec<ModalEvent>> {
+        let mut events = Vec::new();
         match *event {
             InputEvent::Key {
                 device,
@@ -2587,13 +2606,9 @@ impl State {
                 } else {
                     gnoblin_types::KeyState::Released
                 };
-                self.modal_events.push(ModalEvent::Key { keycode, state });
-                // The character comes after its edge, and only for a dialog that has an entry: the keyboard's
-                // state is read for it, so the layout and Shift decide what was typed.
-                if self.modal.as_ref().is_some_and(Modal::takes_text)
-                    && let Some(character) = self.modal_text(device, keycode, state)
-                {
-                    self.modal_events.push(ModalEvent::Text { character });
+                events.push(ModalEvent::Key { keycode, state });
+                if takes_text && let Some(character) = self.modal_text(device, keycode, state) {
+                    events.push(ModalEvent::Text { character });
                 }
             }
             InputEvent::PointerButton { button, pressed, .. } => {
@@ -2602,7 +2617,7 @@ impl State {
                 } else {
                     gnoblin_types::KeyState::Released
                 };
-                self.modal_events.push(ModalEvent::PointerButton {
+                events.push(ModalEvent::PointerButton {
                     x: self.pointer_position.x,
                     y: self.pointer_position.y,
                     button,
@@ -2615,9 +2630,9 @@ impl State {
             | InputEvent::PointerAxis { .. }
             | InputEvent::Touch { .. }
             | InputEvent::Touchpad(_) => {}
-            InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => return false,
+            InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => return None,
         }
-        true
+        Some(events)
     }
 
     /// Sets or clears the modal and damages the outputs it covers, so the change is drawn.
@@ -3605,6 +3620,10 @@ impl Host for State {
         // The damage is taken once for every output, because the backend renders one
         // output at a time and a per-output take would clear the others' damage.
         self.composer.begin_frame_reading(reader);
+        // The shell's lock screen is drawn over the cover, so a change to it describes the cover again.
+        if self.composer.take_lock_ui_changed() && self.lock.state() != LockState::Unlocked {
+            self.lock_tables.forget_painted();
+        }
         // A View the composer drew again has no read-back of its old picture left for a consumer to find.
         self.sync_view_readbacks();
         // And the picture a reader copies is the one this frame drew: a copy asked for after the frame that applied a
@@ -3654,6 +3673,10 @@ impl Host for State {
         if let Some(modal) = self.active_modal().filter(|modal| modal.output() == output) {
             frame.push_layer(Layer::Overlay(modal.overlay().clone()));
         }
+        // The lock card is above the modal and above the shell's lock screen: nothing a script draws covers it.
+        if let Some(card) = self.lock_card_active().filter(|card| card.output() == output) {
+            frame.push_layer(Layer::Overlay(card.overlay().clone()));
+        }
         changed
     }
 
@@ -3663,6 +3686,10 @@ impl Host for State {
         // notifications are derived from. It is recorded before the event is routed, so a
         // key a binding consumes still counts as the user being present.
         self.record_activity();
+        // The lock card takes every key while it is up, ahead of the shell and every client.
+        if self.lock_card_active().is_some() && self.route_to_lock_card(&event) {
+            return;
+        }
         // While a modal is active it takes the keys and pointer buttons, and the clients
         // see none of them; the rest of the input is dropped for the same reason. While the
         // session is locked no modal is active, so the event goes to the lock's own focus.

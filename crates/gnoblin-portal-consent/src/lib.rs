@@ -1,13 +1,16 @@
 //! The consent dialog: the prompt, the requester, and the Deny and Allow buttons. Beside it, the
-//! passphrase dialog ([`SecretUi`]), which is the same kind of Rust-drawn card for `prompt.secret`, and the
-//! polkit authentication dialog ([`PolkitUi`]) for `auth.polkit`.
+//! passphrase dialog ([`SecretUi`]), which is the same kind of Rust-drawn card for `prompt.secret`, the polkit
+//! authentication dialog ([`PolkitUi`]) for `auth.polkit`, and the lock card ([`LockUi`]), which the compositor draws
+//! over its lock cover when no shell holds the lock screen.
 //!
 //! The model ([`Consent`]) decides. Allow stays disabled until the arm delay has
 //! passed, and Deny takes initial focus, so Enter denies unless the user moves.
 
+mod lock;
 mod polkit;
 mod secret;
 
+pub use lock::{LockNotice, LockUi};
 pub use polkit::{PolkitEvent, PolkitUi};
 pub use secret::{SecretResult, SecretUi};
 

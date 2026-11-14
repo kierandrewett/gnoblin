@@ -447,6 +447,8 @@ pub struct Composer {
     /// The compositor's lock node, once added. Its `state` is the session lock's state, so a
     /// shell that attaches while the session is locked reads it in the snapshot.
     lock_node: Option<NodeId>,
+    /// Whether the canvases under the lock node changed since [`Composer::take_lock_ui_changed`].
+    lock_ui_changed: bool,
     /// The focus node the compositor last wrote to the main seat. A `focus` the scene holds
     /// that differs from this was written by the shell.
     published_focus: Option<NodeId>,
@@ -542,6 +544,7 @@ impl Composer {
             lock_requested: Vec::new(),
             main_seat: None,
             lock_node: None,
+            lock_ui_changed: false,
             published_focus: None,
             shell_focus: None,
             screens: BTreeMap::new(),
@@ -736,8 +739,17 @@ impl Composer {
         let dirty = self.scene.take_dirty();
         self.take_secure_scope();
         self.render_canvases();
+        // A change under the lock node dirties the node itself, which is how the lock cover knows to be drawn again.
+        if self.lock_node.is_some_and(|lock| dirty.contains(&lock)) {
+            self.lock_ui_changed = true;
+        }
         self.render_views(&dirty, reader);
         self.damage = Some(self.scene.take_damage());
+    }
+
+    /// Whether the lock node, or a canvas under it, changed since the last call. The lock cover redraws on it.
+    pub fn take_lock_ui_changed(&mut self) -> bool {
+        std::mem::take(&mut self.lock_ui_changed)
     }
 
     /// Paints each Canvas node whose picture is stale: it has none yet, its `content` was written since, or its size
@@ -2708,10 +2720,64 @@ impl Composer {
     /// password reaches the screen that checks it; no client ever sees the keys.
     #[must_use]
     pub fn shell_lock_key_target(&self) -> Option<NodeId> {
-        let lock = self.lock_node?;
-        matches!(self.scene.value(lock, "engaged"), Some(TreeValue::Bool(true)))
-            .then(|| self.shell_key_target())
-            .flatten()
+        self.lock_ui_engaged().then(|| self.shell_key_target()).flatten()
+    }
+
+    /// Whether the shell has engaged the lock: its lock screen is up and holds the lock UI.
+    #[must_use]
+    pub fn lock_ui_engaged(&self) -> bool {
+        self.lock_node
+            .is_some_and(|lock| matches!(self.scene.value(lock, "engaged"), Some(TreeValue::Bool(true))))
+    }
+
+    /// Clears the lock node's `engaged`: the shell that set it no longer holds the tree, so nothing is holding the lock
+    /// screen. Published like any other change, so the next shell reads a lock nobody holds.
+    pub fn release_lock_engaged(&mut self) {
+        let Some(lock) = self.lock_node else {
+            return;
+        };
+        if self.scene.set_value(lock, "engaged", TreeValue::Bool(false)).is_ok() {
+            self.tree_changes.push(TreeChange::Set {
+                node: lock,
+                key: "engaged".to_owned(),
+                value: TreeValue::Bool(false),
+            });
+        }
+    }
+
+    /// Draws the lock screen the shell made over a lock cover: the canvases under the `lock` node, in paint order,
+    /// while the shell holds the tree and has engaged the lock. They are drawn into a frame whose background is the
+    /// cover, so a shell that draws nothing leaves the bare cover, and nothing but those canvases ever shows: no window
+    /// and no canvas outside the lock node's subtree. Returns whether anything was drawn.
+    pub fn compose_lock_ui(&self, output: OutputId, frame: &mut OutputFrame) -> bool {
+        let (Some(lock), Some(rect)) = (self.lock_node, self.scene.outputs().get(&output).copied()) else {
+            return false;
+        };
+        if !self.lock_ui_engaged() || !self.scene.shell_places() {
+            return false;
+        }
+        let under_lock = |mut node: NodeId| {
+            while let Some(parent) = self.scene.parent(node) {
+                if parent == lock {
+                    return true;
+                }
+                node = parent;
+            }
+            false
+        };
+        let ranks = self.paint_ranks();
+        let mut canvases: Vec<(u32, NodeId)> = self
+            .canvases
+            .iter()
+            .filter(|(node, picture)| picture.image.is_some() && self.scene.drawn(**node) && under_lock(**node))
+            .filter_map(|(node, _)| Some((*ranks.get(node)?, *node)))
+            .collect();
+        canvases.sort_unstable();
+        let mut spatial = false;
+        for (_, canvas) in &canvases {
+            self.push_canvas(*canvas, rect, frame, &mut spatial);
+        }
+        !canvases.is_empty()
     }
 
     /// The node the main seat's `focus` names, which the shell may have written.

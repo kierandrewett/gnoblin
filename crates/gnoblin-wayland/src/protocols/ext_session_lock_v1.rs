@@ -96,6 +96,7 @@ use gnoblin_types::{ClientId, Color, OutputId, Rect};
 
 use crate::State;
 use crate::lock_auth::AuthDone;
+use crate::lock_card::CARD_TOKEN;
 use gnoblin_render::transaction::TreeCall;
 
 use crate::log;
@@ -170,6 +171,13 @@ pub(crate) struct ExtSessionLockV1Tables {
     clients: HashMap<WaylandClientId, ClientId>,
     /// The next connection identity.
     next_client: u64,
+}
+
+impl ExtSessionLockV1Tables {
+    /// Makes every output's cover be described again on its next frame, because something drawn over it changed.
+    pub(crate) fn forget_painted(&mut self) {
+        self.painted.clear();
+    }
 }
 
 impl SessionLockHandler for State {
@@ -343,12 +351,17 @@ impl State {
             // the reveal completes, so the shell reads them as locked.
             LockState::Locked | LockState::Unlocking | LockState::CoverFailed => "locked",
         });
+        // The lock card belongs to the compositor's own lock while it stands. Anything else drops it, and with it
+        // whatever was typed into it.
+        if !self.lock_card_serves() {
+            self.lock_card_gone();
+        }
         self.publish();
     }
 
     /// Whether the session is locked by an owner that may be asked to unlock it: the only state in
     /// which a password check can unlock.
-    fn lock_is_held(&self) -> bool {
+    pub(crate) fn lock_is_held(&self) -> bool {
         self.lock.state() == LockState::Locked && self.lock.locker().is_some()
     }
 
@@ -359,7 +372,11 @@ impl State {
             let locked = self.lock_is_held();
             let now = self.lock_auth.now_ms();
             let password = std::mem::take(&mut call.text);
-            if let Some(answer) = self.lock_auth.begin(call.token, password, locked, now) {
+            // The token the built-in card's checks run under is not a shell's to use: its answer would go to the card.
+            if call.token == CARD_TOKEN {
+                self.tree
+                    .answer(call.token, String::new(), "failed: that token is reserved".to_owned());
+            } else if let Some(answer) = self.lock_auth.begin(call.token, password, locked, now) {
                 self.tree.answer(answer.token, answer.result, answer.error);
             }
         }
@@ -379,8 +396,12 @@ impl State {
             let effects = self.lock.apply(LockEvent::UnlockRequested { locker });
             self.apply_lock(effects);
         }
-        self.tree
-            .answer(settled.answer.token, settled.answer.result, settled.answer.error);
+        if settled.answer.token == CARD_TOKEN {
+            self.lock_card_answer(&settled.answer);
+        } else {
+            self.tree
+                .answer(settled.answer.token, settled.answer.result, settled.answer.error);
+        }
     }
 
     /// Runs the `lock` calls the shell or an observer made on the lock node: the compositor takes the
@@ -431,6 +452,7 @@ impl State {
         }
 
         self.forget_dead_lock_surfaces();
+        self.release_dead_lock_screen();
     }
 
     /// Describes the opaque cover for `output`, instead of composing the desktop.
@@ -471,6 +493,11 @@ impl State {
                 // A capture must not read the lock screen's content either.
                 secure: true,
             }));
+        }
+        // The compositor's own lock has no lock surface. What the shell drew for it (the canvases it parented under the
+        // `lock` node, once it has engaged the lock) goes over the cover instead, and the lock card goes over that.
+        if self.lock.locker() == Some(internal_locker()) {
+            self.composer.compose_lock_ui(output, frame);
         }
         true
     }

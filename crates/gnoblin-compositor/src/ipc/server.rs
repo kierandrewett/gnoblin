@@ -92,6 +92,7 @@ use gnoblin_wayland::{
 use super::applied::StartedDocuments;
 use super::consent::Consent;
 use super::polkit::HelperPath;
+use super::lock_card::LockCardService;
 use super::portal::{MALFORMED, PortalScope, PortalService, UNKNOWN_KEY, parse_key, resolve_portal_scope};
 use super::reload::{Reload, ReloadVerdict};
 use super::requests::{BuiltinKind, FrameDelivery, OBSERVE_MS, Requests};
@@ -282,6 +283,7 @@ impl IpcServer {
             applied: StartedDocuments::new(started_with),
             portal: PortalService::new(),
             secret: SecretService::new().with_helper(polkit_helper.map(HelperPath::fixed).unwrap_or_default()),
+            lock_card: LockCardService::new(),
             connections: BTreeMap::new(),
             readers: Arc::clone(&readers),
             start: Instant::now(),
@@ -738,6 +740,8 @@ struct Dispatcher {
     portal: PortalService,
     /// The built-in passphrase dialog: it serves a `prompt.secret` request no shell claimed.
     secret: SecretService,
+    /// The built-in lock card: it serves a locked session whose shell does not hold the lock screen.
+    lock_card: LockCardService,
     /// Every connection that reached the socket, keyed by client.
     connections: BTreeMap<ClientId, Connection>,
     /// Reader threads, one per client, kept so shutdown can join them.
@@ -829,6 +833,7 @@ impl Dispatcher {
         let replies = self.portal.tick(now);
         self.deliver_replies(replies);
         self.pump_portal();
+        self.pump_lock_card();
         self.publish_slots();
         self.deliver(expired);
         self.flush();
@@ -1369,6 +1374,7 @@ impl Dispatcher {
                 self.store.publish_settings(&config);
                 self.portal.configure(&config);
                 self.secret.configure(&config);
+                self.lock_card.configure(&config);
                 crate::portal::report_dialog_style(&config);
                 // Reduced motion turns animations off in the compositor loop. A document that
                 // does not name the key is not reduced, so it animates as before.
@@ -2596,6 +2602,35 @@ impl Dispatcher {
             self.control.set_modal(modal);
         }
         self.deliver_replies(scene.replies);
+    }
+
+    /// Draws the built-in lock card while the session wants it, and checks the passwords it takes. The session decides
+    /// when the card is wanted; this only asks it each turn the session is locked or the card is still set.
+    fn pump_lock_card(&mut self) {
+        if !self.session_locked() && !self.lock_card.wants_pump() {
+            return;
+        }
+        let Some(input) = self.control.lock_card_input() else {
+            return;
+        };
+        let snapshot = match self.observation.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        };
+        let output = snapshot
+            .outputs()
+            .first()
+            .and_then(|id| snapshot.output_rect(*id).map(|rect| (*id, rect)));
+        let unix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| i64::try_from(elapsed.as_secs()).unwrap_or(0));
+        let scene = self.lock_card.pump(output, input, unix, self.now());
+        if let Some(card) = scene.card {
+            self.control.set_lock_card(card);
+        }
+        for password in scene.submits {
+            self.control.lock_card_submit(password);
+        }
     }
 
     /// Opens the built-in dialog for the requests the request layer handed to it and closes it for those that

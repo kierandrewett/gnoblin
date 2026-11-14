@@ -43,6 +43,7 @@ use smithay::reexports::wayland_server::Display;
 use smithay::reexports::wayland_server::backend::InitError;
 
 use crate::clock::{Clock, SystemClock};
+use crate::lock_card::LockCardInput;
 use crate::modal::{Modal, ModalEvent};
 use gnoblin_backend::{Backend, BackendEvent, Host, InputEvent};
 use gnoblin_cursor::{DEFAULT_CURSOR_SIZE, DEFAULT_CURSOR_THEME, ProviderKind};
@@ -672,6 +673,11 @@ impl Server {
                             Command::ModalEvents { reply } => {
                                 let _ = reply.send(state.take_modal_events());
                             }
+                            Command::SetLockCard(card) => state.set_lock_card(card),
+                            Command::LockCardInput { reply } => {
+                                let _ = reply.send(state.take_lock_card_input());
+                            }
+                            Command::LockCardSubmit(password) => state.lock_card_submit(password),
                             Command::InputStats { reply } => {
                                 let _ = reply.send(state.keyboard_tables.router.stats());
                             }
@@ -1264,6 +1270,29 @@ impl ControlHandle {
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
+    /// Sets or clears the built-in lock card: an overlay drawn over the compositor's own lock cover.
+    ///
+    /// The session refuses a card unless its own lock covers it, and clears the card when the lock ends. While the card
+    /// is set every key goes to it ([`ControlHandle::lock_card_input`]) and to nothing else.
+    pub fn set_lock_card(&self, card: Option<Modal>) {
+        self.control.push(Command::SetLockCard(card));
+    }
+
+    /// What the lock card took since the last call and whether it is wanted now (see [`LockCardInput`]), or `None` when
+    /// the loop did not answer in time.
+    #[must_use]
+    pub fn lock_card_input(&self) -> Option<LockCardInput> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::LockCardInput { reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// Checks the password the lock card took, through the PAM check the shell's `authenticate` uses. The answer comes
+    /// back in [`ControlHandle::lock_card_input`]; the session unlocks on an accepted one.
+    pub fn lock_card_submit(&self, password: gnoblin_secret::SecretText) {
+        self.control.push(Command::LockCardSubmit(password));
+    }
+
     /// The router's counters: how many key and button edges it has routed, and how many it found out of
     /// order. `None` when the loop did not answer in time.
     #[must_use]
@@ -1476,6 +1505,14 @@ enum Command {
     ModalEvents {
         reply: std::sync::mpsc::SyncSender<Vec<ModalEvent>>,
     },
+    /// Set or clear the lock card, which draws over the compositor's own lock cover.
+    SetLockCard(Option<Modal>),
+    /// The lock card's input since the last take, and the channel its answer goes back on.
+    LockCardInput {
+        reply: std::sync::mpsc::SyncSender<LockCardInput>,
+    },
+    /// A password the lock card took, to check.
+    LockCardSubmit(gnoblin_secret::SecretText),
     /// The router's counters, and the channel the answer goes back on.
     InputStats {
         reply: std::sync::mpsc::SyncSender<gnoblin_input::Stats>,
