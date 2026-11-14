@@ -38,7 +38,7 @@ use crate::{State, log};
 
 /// An output the desktop gives no place of its own.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Shadow {
+pub(crate) struct OutputShadow {
     /// The output.
     pub(crate) output: OutputId,
     /// The real output it shows a copy of, or `None` when it is off.
@@ -65,7 +65,7 @@ pub(crate) struct OutputPolicy {
     /// The profiles, kept for hardware that is not connected as well as for hardware that is.
     pub(crate) profiles: ProfileStore,
     /// Outputs with no place of their own, in connection order.
-    shadows: Vec<Shadow>,
+    shadows: Vec<OutputShadow>,
     /// The connector and EDID identity of every connected output, for the screen nodes.
     names: BTreeMap<OutputId, (String, String)>,
     /// Calls the loop has not run yet.
@@ -96,12 +96,12 @@ impl OutputPolicy {
     }
 
     /// The shadows as they stand.
-    pub(crate) fn shadows(&self) -> &[Shadow] {
+    pub(crate) fn shadows(&self) -> &[OutputShadow] {
         &self.shadows
     }
 
     /// Replaces the shadows, marking each new or changed one stale so it draws its next frame.
-    pub(crate) fn set_shadows(&mut self, shadows: Vec<Shadow>) {
+    pub(crate) fn set_shadows(&mut self, shadows: Vec<OutputShadow>) {
         for shadow in &shadows {
             if !self.shadows.contains(shadow) {
                 self.stale.insert(shadow.output);
@@ -115,12 +115,12 @@ impl OutputPolicy {
     }
 
     /// The shadow an output is, if it is one.
-    pub(crate) fn shadow(&self, output: OutputId) -> Option<Shadow> {
+    pub(crate) fn shadow(&self, output: OutputId) -> Option<OutputShadow> {
         self.shadows.iter().find(|shadow| shadow.output == output).copied()
     }
 
     /// Whether a shadow has to draw this iteration: its source drew, or it is new or changed.
-    pub(crate) fn shadow_due(&self, shadow: Shadow, source_drew: bool) -> bool {
+    pub(crate) fn shadow_due(&self, shadow: OutputShadow, source_drew: bool) -> bool {
         self.stale.contains(&shadow.output) || (shadow.source.is_some() && source_drew)
     }
 
@@ -404,12 +404,12 @@ impl State {
     }
 
     /// The shadows, for the frame loop.
-    pub(crate) fn shadow_outputs(&self) -> Vec<Shadow> {
+    pub(crate) fn shadow_outputs(&self) -> Vec<OutputShadow> {
         self.output_policy.shadows().to_vec()
     }
 
     /// Whether a shadow has to draw this iteration.
-    pub(crate) fn shadow_due(&self, shadow: Shadow, source_drew: bool) -> bool {
+    pub(crate) fn shadow_due(&self, shadow: OutputShadow, source_drew: bool) -> bool {
         self.output_policy.shadow_due(shadow, source_drew)
     }
 
@@ -421,7 +421,7 @@ impl State {
     /// Describes the frame of a shadow: the source's picture fitted into the panel, or black when it is off.
     ///
     /// Returns whether there is something to draw. A mirror with no picture yet draws nothing and stays due.
-    pub(crate) fn shadow_frame(&mut self, shadow: Shadow, frame: &mut OutputFrame) -> bool {
+    pub(crate) fn shadow_frame(&mut self, shadow: OutputShadow, frame: &mut OutputFrame) -> bool {
         frame.clear();
         let bounds = Rect::new(0, 0, shadow.logical.width, shadow.logical.height);
         if shadow.source.is_some() {

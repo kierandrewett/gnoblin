@@ -1330,10 +1330,10 @@ impl State {
             entry.primary = layout.primary == Some(entry.backend);
         }
 
-        let shadows: Vec<crate::output_policy::Shadow> = connected
+        let shadows: Vec<crate::output_policy::OutputShadow> = connected
             .iter()
             .filter(|output| !real_ids.contains(&output.id))
-            .map(|output| crate::output_policy::Shadow {
+            .map(|output| crate::output_policy::OutputShadow {
                 output: output.id,
                 source: mirrors
                     .iter()
@@ -1369,7 +1369,7 @@ impl State {
     }
 
     /// Publishes a shadow's screen node: what it is and, for a mirror, what it shows.
-    fn publish_shadow_screen(&mut self, shadow: crate::output_policy::Shadow) {
+    fn publish_shadow_screen(&mut self, shadow: crate::output_policy::OutputShadow) {
         let Some((connector, identity)) = self.output_policy.name_of(shadow.output).cloned() else {
             return;
         };

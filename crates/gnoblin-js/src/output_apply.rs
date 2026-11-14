@@ -7,7 +7,7 @@
 
 use std::collections::HashSet;
 
-use gnoblin_tree_client::tree_mirror::lua_class;
+use gnoblin_tree_client::tree_mirror::class_name;
 use rquickjs::{Ctx, Function, IntoJs, Object, Value};
 
 use crate::bindings::{HostState, SharedState};
@@ -63,7 +63,7 @@ pub(crate) fn apply(state: &mut HostState, node: f64, text: String) -> Option<u6
     } = state;
     if tick
         .node(mirror, node)
-        .is_none_or(|record| lua_class(&record.class) != "Screen")
+        .is_none_or(|record| class_name(&record.class) != "Screen")
     {
         return None;
     }
