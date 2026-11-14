@@ -630,7 +630,7 @@ fn the_command_tree_matches_the_schema() {
         actions.sort();
         // A command that is also a hand-written verb carries those verbs beside the object's.
         let verbs: &[&str] = match command.as_str() {
-            "config" => &["get", "reload", "validate"],
+            "config" => &["get", "init", "reload", "validate"],
             _ => &[],
         };
         let mut want = vec!["list".to_owned(), "watch".to_owned()];
@@ -729,7 +729,7 @@ fn config_carries_the_schema_object_and_every_hand_written_verb() {
         .collect();
     assert_eq!(config.len(), 1, "`config` must be declared once");
     let verbs: Vec<&str> = config[0].get_subcommands().map(clap::Command::get_name).collect();
-    for expected in ["get", "reload", "validate", "list", "watch"] {
+    for expected in ["get", "init", "reload", "validate", "list", "watch"] {
         assert!(
             verbs.contains(&expected),
             "`config {expected}` is missing; `config` has {verbs:?}"

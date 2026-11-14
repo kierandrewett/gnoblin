@@ -52,6 +52,12 @@ pub(crate) enum Invocation {
     Check { file: PathBuf, types: bool, json: bool },
     /// Write the editor files for a TypeScript configuration.
     TypesInit { dir: Option<PathBuf>, json: bool },
+    /// Write a starter `init.ts` and the editor files, for `config init`.
+    ConfigInit {
+        dir: Option<PathBuf>,
+        force: bool,
+        json: bool,
+    },
     /// A hand-written verb: the session's state, the version, or a config check.
     Verb { verb: verbs::Verb, json: bool },
 }
@@ -453,6 +459,22 @@ fn verb_commands() -> Vec<Command> {
                             .value_parser(value_parser!(PathBuf))
                             .help("The configuration document to check."),
                     ),
+            )
+            .subcommand(
+                Command::new("init")
+                    .about("Write a starter init.ts and the editor files, so the shell has a config to edit.")
+                    .arg(
+                        Arg::new("dir")
+                            .value_name("DIR")
+                            .value_parser(value_parser!(PathBuf))
+                            .help("Where to write them; defaults to the config directory, $XDG_CONFIG_HOME/gnoblin."),
+                    )
+                    .arg(
+                        Arg::new("force")
+                            .long("force")
+                            .action(ArgAction::SetTrue)
+                            .help("Overwrite an existing init.ts."),
+                    ),
             ),
     ]
 }
@@ -561,6 +583,13 @@ fn config_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usa
         "list" | "watch" => {
             let object = tree::CliObject::find("config").expect("the schema declares the `config` object");
             return object_invocation(object, matches, json);
+        }
+        "init" => {
+            return Ok(Invocation::ConfigInit {
+                dir: sub.get_one::<PathBuf>("dir").cloned(),
+                force: sub.get_flag("force"),
+                json,
+            });
         }
         other => unreachable!("clap refuses `config {other}`"),
     };

@@ -19,7 +19,7 @@ gnoblin.configure {
 }
 ```
 
-In the [TypeScript shell](/typescript-shell) the same settings are the `dialogs` key of `defineConfig`. Keys are
+In the [TypeScript shell](/typescript-config#dialogs) the same settings are the `dialogs` key of `defineConfig`. Keys are
 camelCase there (`buttonLayout`) and the document's kebab-case (`button-layout`) here; the values are the same, and
 the compositor refuses and clamps them the same way.
 

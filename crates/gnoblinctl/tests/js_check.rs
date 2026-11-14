@@ -275,3 +275,167 @@ fn types_init_into_a_path_that_is_a_file_fails_with_a_hint() {
     assert_eq!(code, 1, "{err}");
     assert!(err.contains("hint:"), "{err}");
 }
+
+// --- `config init` ---------------------------------------------------------------------------------------------
+
+fn config_init(target: &Path, extra: &[&str]) -> (u8, String, String) {
+    let mut args = vec![
+        OsString::from("config"),
+        OsString::from("init"),
+        target.as_os_str().to_owned(),
+    ];
+    args.extend(extra.iter().map(OsString::from));
+    run(&args)
+}
+
+#[test]
+fn config_init_writes_the_starter_and_the_editor_files_and_prints_three_next_steps() {
+    let dir = Dir::new();
+    let target = dir.path().join("gnoblin");
+    let (code, out, err) = config_init(&target, &[]);
+    assert_eq!(code, 0, "{err}");
+    let init = target.join("init.ts");
+    assert_eq!(
+        fs::read_to_string(&init).expect("init.ts is written"),
+        gnoblin_js::STARTER_CONFIG,
+        "the starter is the one the runtime ships"
+    );
+    assert!(target.join("gnoblin.d.ts").is_file(), "types init ran");
+    assert!(target.join("tsconfig.json").is_file(), "types init ran");
+    assert!(out.contains("init.ts written"), "{out}");
+    assert!(out.contains("gnoblin.d.ts refreshed"), "{out}");
+    let steps: Vec<&str> = out
+        .lines()
+        .filter(|line| line.starts_with("  ") && line.trim_start().starts_with(|c: char| c.is_ascii_digit()))
+        .collect();
+    assert_eq!(steps.len(), 3, "{out}");
+    assert!(steps[0].contains("1. Open") && steps[0].contains("init.ts"), "{out}");
+    assert!(
+        steps[1].contains("2. Check it with `gnoblinctl check --types") && steps[1].contains("init.ts"),
+        "{out}"
+    );
+    assert!(steps[2].contains("3. Save it") && steps[2].contains("reloads"), "{out}");
+}
+
+#[test]
+fn config_init_does_not_overwrite_a_config_unless_forced() {
+    let dir = Dir::new();
+    let target = dir.path().join("gnoblin");
+    assert_eq!(config_init(&target, &[]).0, 0);
+    fs::write(target.join("init.ts"), "// mine\n").expect("the user edits init.ts");
+
+    let (code, out, err) = config_init(&target, &[]);
+    assert_eq!(code, 1, "{out}");
+    assert!(err.contains("init.ts already exists"), "{err}");
+    assert!(err.contains("--force"), "the hint names the way out: {err}");
+    assert_eq!(
+        fs::read_to_string(target.join("init.ts")).expect("init.ts"),
+        "// mine\n",
+        "a refused run touched nothing"
+    );
+
+    let (code, out, err) = config_init(&target, &["--force"]);
+    assert_eq!(code, 0, "{err}");
+    assert!(out.contains("init.ts replaced"), "{out}");
+    assert_eq!(
+        fs::read_to_string(target.join("init.ts")).expect("init.ts"),
+        gnoblin_js::STARTER_CONFIG
+    );
+}
+
+#[test]
+fn config_init_leaves_an_init_js_alone_because_the_starter_would_shadow_it() {
+    let dir = Dir::new();
+    dir.write("gnoblin/init.js", "export default {};\n");
+    let target = dir.path().join("gnoblin");
+    let (code, _, err) = config_init(&target, &[]);
+    assert_eq!(code, 1, "{err}");
+    assert!(err.contains("init.js already exists"), "{err}");
+    assert!(!target.join("init.ts").exists(), "nothing was written");
+}
+
+#[test]
+fn config_init_reports_what_it_wrote_as_json() {
+    let dir = Dir::new();
+    let target = dir.path().join("gnoblin");
+    let (code, out, err) = config_init(&target, &["--json"]);
+    assert_eq!(code, 0, "{err}");
+    let document: serde_json::Value = serde_json::from_str(&out).expect("--json prints JSON");
+    assert_eq!(document["init"], target.join("init.ts").to_str().expect("UTF-8"));
+    assert_eq!(document["replaced"], false);
+    assert_eq!(document["tsconfig_created"], true);
+    assert_eq!(document["next"].as_array().map(Vec::len), Some(3));
+}
+
+/// The starter with every example switched on: a comment of the form `// code` whose code ends the way a line of the
+/// config does is uncommented, and prose stays.
+fn switched_on(starter: &str) -> String {
+    let mut text = starter
+        .lines()
+        .map(|line| {
+            let body = line.trim_start();
+            match body.strip_prefix("// ") {
+                Some(code) if code.ends_with([',', '{', '}', ';', '[', ']', ')']) => {
+                    format!("{}{code}", &line[..line.len() - body.len()])
+                }
+                _ => line.to_owned(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    text.push('\n');
+    text
+}
+
+#[test]
+fn the_starter_passes_check_as_written_and_with_every_example_switched_on() {
+    let dir = Dir::new();
+    let target = dir.path().join("gnoblin");
+    assert_eq!(config_init(&target, &[]).0, 0);
+    let written = target.join("init.ts");
+    let on = dir.write("on/init.ts", &switched_on(gnoblin_js::STARTER_CONFIG));
+
+    for file in [&written, &on] {
+        // The in-process check: the module graph loads, with no TypeScript compiler involved.
+        let (code, out, err) = check(file, &[]);
+        assert_eq!(code, 0, "{}: stdout {out}\nstderr {err}", file.display());
+
+        // `--types` runs a TypeScript compiler when there is one. Without one it says so and exits 0, which is all a
+        // machine with no compiler can show; with one, exit 0 is the declarations accepting every line.
+        let (code, out, err) = check(file, &["--types"]);
+        assert_eq!(code, 0, "{}: stdout {out}\nstderr {err}", file.display());
+        if format!("{out}{err}").contains("type check skipped") {
+            eprintln!(
+                "no TypeScript compiler on this machine: --types skipped {}",
+                file.display()
+            );
+        }
+    }
+}
+
+#[test]
+fn a_wrong_key_or_a_wrong_value_is_a_type_error_when_a_compiler_is_installed() {
+    let dir = Dir::new();
+    let wrong_key = dir.write(
+        "key/init.ts",
+        "import { defineConfig } from \"gnoblin\";\nexport default defineConfig({ autostrt: [\"waybar\"] });\n",
+    );
+    let wrong_value = dir.write(
+        "value/init.ts",
+        "import { defineConfig } from \"gnoblin\";\nexport default defineConfig({ autostart: [5] });\n",
+    );
+    for (file, named) in [(&wrong_key, "autostrt"), (&wrong_value, "autostart")] {
+        let (code, out, err) = check(file, &["--types"]);
+        let text = format!("{out}{err}");
+        if text.contains("type check skipped") {
+            // No compiler here: the declarations cannot be asked, and the load-time errors are tested in gnoblin-js.
+            eprintln!(
+                "no TypeScript compiler on this machine: {} was not type-checked",
+                file.display()
+            );
+            return;
+        }
+        assert_eq!(code, 1, "{named}: stdout {out}\nstderr {err}");
+        assert!(text.contains(named), "the compiler names the key: {text}");
+    }
+}

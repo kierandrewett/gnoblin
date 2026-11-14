@@ -26,7 +26,7 @@ use gnoblin_cli_style::{
 };
 use gnoblin_config::SearchPaths;
 use gnoblin_js::rquickjs::Value;
-use gnoblin_js::{JsConfig, JsError, JsErrorKind, JsGeneration};
+use gnoblin_js::{JsConfig, JsError, JsErrorKind, JsGeneration, STARTER_CONFIG};
 use gnoblin_js_types::{TSCONFIG_FILE, TYPES_FILE, ensure_user_files};
 use serde_json::{Value as Json, json};
 
@@ -565,6 +565,148 @@ pub(crate) fn types_init(dir: Option<&Path>, json: bool, out: &mut dyn Write, er
             ),
         };
         writeln!(out, "{types}\n{config}")
+    };
+    u8::from(result.is_err())
+}
+
+/// The file `config init` writes: the one the shell reads first.
+const INIT_FILE: &str = "init.ts";
+
+/// The entry the shell falls back to when there is no `init.ts`. A starter written beside it would shadow it, so
+/// `config init` treats it like an existing config.
+const INIT_FILE_JS: &str = "init.js";
+
+/// Writes the starter `init.ts`, refusing to replace a file unless `force`.
+fn write_starter(dir: &Path, init: &Path, force: bool) -> io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true);
+    if force {
+        options.create(true).truncate(true);
+    } else {
+        options.create_new(true);
+    }
+    options.open(init)?.write_all(STARTER_CONFIG.as_bytes())
+}
+
+/// `config init [DIR] [--force]`: write a short, commented `init.ts` and the editor files (`types init`), and say what
+/// to do next. Nothing is replaced unless `--force` is given, so a config you have is never lost to a first-run
+/// command.
+pub(crate) fn config_init(dir: Option<&Path>, force: bool, json: bool, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+    let theme_err = theme(io::stderr().is_terminal());
+    let fail = |err: &mut dyn Write, summary: String, why: Option<String>, hint: &str| {
+        let report = ErrorReport {
+            summary,
+            why,
+            hints: vec![hint.to_owned()],
+        };
+        let _ = writeln!(err, "{}", error_block(&theme_err, &report));
+        1
+    };
+    let Some(dir) = dir
+        .map(Path::to_path_buf)
+        .or_else(|| default_config_dir(&SearchPaths::from_env()))
+    else {
+        return fail(
+            err,
+            "neither XDG_CONFIG_HOME nor HOME is set, so there is no config directory".to_owned(),
+            None,
+            "name the directory: `gnoblinctl config init DIR`",
+        );
+    };
+    let init = dir.join(INIT_FILE);
+    let replaced = init.exists();
+    if !force {
+        for name in [INIT_FILE, INIT_FILE_JS] {
+            let existing = dir.join(name);
+            if existing.exists() {
+                let why = if name == INIT_FILE {
+                    "the shell already has a config to read".to_owned()
+                } else {
+                    format!("an {INIT_FILE} written here would be read instead of it")
+                };
+                return fail(
+                    err,
+                    format!("{} already exists, so nothing was written", existing.display()),
+                    Some(why),
+                    "edit that file, or run `gnoblinctl config init --force` to write the starter over it",
+                );
+            }
+        }
+    }
+    if let Err(error) = write_starter(&dir, &init, force) {
+        return fail(
+            err,
+            format!("cannot write {}: {error}", init.display()),
+            None,
+            "check that the directory is writable, or name another: `gnoblinctl config init DIR`",
+        );
+    }
+    let written = match ensure_user_files(&dir) {
+        Ok(written) => written,
+        Err(error) => {
+            return fail(
+                err,
+                format!("{} was written, but the editor files were not: {error}", init.display()),
+                None,
+                "check that the directory is writable, then run `gnoblinctl types init`",
+            );
+        }
+    };
+    let next = [
+        format!("Open {} in your editor.", init.display()),
+        format!("Check it with `gnoblinctl check --types {}`.", init.display()),
+        "Save it: a running shell reloads the file on save, and `gnoblinctl config reload` does it on request."
+            .to_owned(),
+    ];
+    let result = if json {
+        writeln!(
+            out,
+            "{}",
+            json!({
+                "init": init,
+                "replaced": replaced,
+                "types": written.types,
+                "tsconfig": dir.join(TSCONFIG_FILE),
+                "tsconfig_created": written.tsconfig.is_some(),
+                "next": next,
+            })
+        )
+    } else {
+        let theme = theme(io::stdout().is_terminal());
+        let tsconfig = match &written.tsconfig {
+            Some(path) => format!("{TSCONFIG_FILE} created: {}", path.display()),
+            None => format!(
+                "{TSCONFIG_FILE} kept, it already exists: {}",
+                dir.join(TSCONFIG_FILE).display()
+            ),
+        };
+        let tsconfig_outcome = if written.tsconfig.is_some() {
+            LineOutcome::Ok
+        } else {
+            LineOutcome::Info
+        };
+        let verb = if replaced { "replaced" } else { "written" };
+        let steps: String = next
+            .iter()
+            .enumerate()
+            .map(|(number, step)| format!("\n  {}. {step}", number + 1))
+            .collect();
+        let text = format!(
+            "{}\n{}\n{}\n\nNext:{steps}",
+            status_line(
+                &theme,
+                LineOutcome::Ok,
+                &format!("{INIT_FILE} {verb}: {}", init.display())
+            ),
+            status_line(
+                &theme,
+                LineOutcome::Ok,
+                &format!("{TYPES_FILE} refreshed: {}", written.types.display())
+            ),
+            status_line(&theme, tsconfig_outcome, &tsconfig),
+        );
+        writeln!(out, "{text}")
     };
     u8::from(result.is_err())
 }

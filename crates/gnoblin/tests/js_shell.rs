@@ -1856,4 +1856,188 @@ fn a_window_that_stops_answering_gets_the_alert_and_wait_and_force_quit_close_it
         log.iter().all(|line| !line.contains("threw")),
         "the shell logged a throw: {log:#?}"
     );
+// ---- the starter `gnoblinctl config init` writes -------------------------------------------------------------------
+
+/// The starter with every example switched on. A comment of the form `// code` whose code ends the way a line of the
+/// config does (`,` `{` `}` `;` `[` `]` `)`) is uncommented; prose ends in a word or a full stop and stays.
+fn switched_on(starter: &str) -> String {
+    let mut text = starter
+        .lines()
+        .map(|line| {
+            let body = line.trim_start();
+            match body.strip_prefix("// ") {
+                Some(code) if code.ends_with([',', '{', '}', ';', '[', ']', ')']) => {
+                    format!("{}{code}", &line[..line.len() - body.len()])
+                }
+                _ => line.to_owned(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    text.push('\n');
+    text
+}
+
+/// Lets the Wayland client answer the compositor for `span`, so a negative check does not starve it.
+fn idle(mapper: &mut Mapper, span: Duration) {
+    let until = Instant::now() + span;
+    while Instant::now() < until {
+        mapper.roundtrip();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn the_starter_is_the_stock_config_as_written_and_its_examples_work_switched_on() {
+    let session = Session::start();
+    let mut mapper = Mapper::connect(&session.wayland());
+    mapper.map_window("org.example.first", "First");
+    let config = tempfile::tempdir().expect("a config directory");
+    let init = config.path().join("init.ts");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let ipc = session.ipc();
+
+    // No `init.ts`: the zero-config behaviour, which is what the starter must reproduce.
+    wait_for("the stock config runs", &session, &mut mapper, &shell, || {
+        section(&shell.view(), "workspaces [") == "desktop:FloatingLayout"
+    });
+    wait_for(
+        "the stock config titles the window",
+        &session,
+        &mut mapper,
+        &shell,
+        || !canvases(&ipc).is_empty(),
+    );
+    let zero = shell.view();
+    let zero_spaces = section(&zero, "workspaces [").to_owned();
+    let zero_keys: Vec<String> = bound_keys(&zero).into_iter().map(str::to_owned).collect();
+    let titlebars = canvases(&ipc).len();
+    let zero_generation = shell.generation();
+    let window = ids(&scene(&ipc));
+
+    // The starter as written is a real config (a `defineConfig`, so a reload), and it binds and declares what the
+    // stock one did.
+    fs::write(&init, gnoblin_js::STARTER_CONFIG).expect("init.ts");
+    wait_for("the starter is loaded", &session, &mut mapper, &shell, || {
+        shell.generation() > zero_generation
+    });
+    let written = shell.view();
+    assert_eq!(
+        section(&written, "workspaces ["),
+        zero_spaces,
+        "the workspaces of zero-config"
+    );
+    assert_eq!(bound_keys(&written), zero_keys, "the bindings of zero-config");
+    wait_for("the titlebar is back", &session, &mut mapper, &shell, || {
+        canvases(&ipc).len() == titlebars
+    });
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    assert_eq!(ids(&scene(&ipc)), window, "the window kept its id through the reload");
+
+    // Switched on: the examples are the second workspace, three keys, a rule, an autostart command and `setup`. The
+    // command appends a line to a file, and `notify-send` becomes `true` so the `setup` example starts nothing odd.
+    let marker = config.path().join("autostarted");
+    let on = switched_on(gnoblin_js::STARTER_CONFIG)
+        .replace(
+            "\"waybar\",",
+            &format!("[\"/bin/sh\", \"-c\", \"echo started >> {}\"],", marker.display()),
+        )
+        .replace("\"notify-send\"", "\"true\"");
+    assert_ne!(on, gnoblin_js::STARTER_CONFIG, "the examples were switched on");
+    fs::write(&init, &on).expect("init.ts");
+    wait_for("the examples are on", &session, &mut mapper, &shell, || {
+        section(&shell.view(), "workspaces [") == "desktop:FloatingLayout,work:MasterStackLayout"
+    });
+    let view = shell.view();
+    let keys = bound_keys(&view);
+    for key in ["Super+Return", "Super+b", "Super+q"] {
+        assert!(keys.contains(&key), "the example key {key}: {keys:?}");
+    }
+    for key in &zero_keys {
+        assert!(
+            keys.contains(&key.as_str()),
+            "the stock key {key} is still bound: {keys:?}"
+        );
+    }
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+
+    // The autostart command ran once; a reload does not run it again.
+    wait_for("the autostart command ran", &session, &mut mapper, &shell, || {
+        fs::read_to_string(&marker).is_ok_and(|text| text.lines().count() == 1)
+    });
+    let generation = shell.generation();
+    fs::write(&init, format!("{on}// touched\n")).expect("init.ts");
+    wait_for("the reload", &session, &mut mapper, &shell, || {
+        shell.generation() > generation
+    });
+    idle(&mut mapper, Duration::from_millis(500));
+    assert_eq!(
+        fs::read_to_string(&marker).expect("the marker").lines().count(),
+        1,
+        "a reload does not start an autostart command again"
+    );
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+}
+
+#[test]
+fn protocols_and_touchpad_gestures_reach_the_compositors_document_and_a_reload_takes_them_back() {
+    let session = Session::start();
+    let mut mapper = Mapper::connect(&session.wayland());
+    let dir = tempfile::tempdir().expect("a config directory");
+    let init = dir.path().join("init.ts");
+    let write = |settings: &str| {
+        fs::write(
+            &init,
+            format!("import {{ defineConfig }} from \"gnoblin\";\ndefineConfig({{ {settings} }});\n"),
+        )
+        .expect("init.ts");
+    };
+    let gesture = |fingers: u8| {
+        format!(
+            "touchpadGestures: [{{ name: 'launcher', gesture: 'pinch', fingers: {fingers}, direction: 'out', \
+             command: ['true'] }}]"
+        )
+    };
+    let held = |pointer: &str, ipc: &Path| document(ipc).and_then(|document| document.pointer(pointer).cloned());
+
+    // Added: a camelCase protocol is the document's kebab-case one, and the gesture list is one value.
+    write(&format!("protocols: {{ wlrScreencopy: false }}, {}", gesture(4)));
+    let shell = Shell::start(&session, dir.path(), |_| {});
+    let ipc = session.ipc();
+    wait_for("the document carries both", &session, &mut mapper, &shell, || {
+        held("/protocols/wlr-screencopy", &ipc) == Some(serde_json::json!(false))
+            && held("/touchpad-gestures/0/fingers", &ipc) == Some(serde_json::json!(4))
+    });
+    assert_eq!(
+        held("/touchpad-gestures/0/name", &ipc),
+        Some(serde_json::json!("launcher"))
+    );
+
+    // Changed.
+    write(&format!("protocols: {{ wlrScreencopy: true }}, {}", gesture(3)));
+    wait_for("the document carries the change", &session, &mut mapper, &shell, || {
+        held("/protocols/wlr-screencopy", &ipc) == Some(serde_json::json!(true))
+            && held("/touchpad-gestures/0/fingers", &ipc) == Some(serde_json::json!(3))
+    });
+
+    // Refused: nine fingers is not a gesture. The reload names the key path and the document is untouched.
+    wait_for("the change was swapped in", &session, &mut mapper, &shell, || {
+        shell.generation() > 0
+    });
+    let generation = shell.generation();
+    write(&gesture(9));
+    wait_for("the refusal is reported", &session, &mut mapper, &shell, || {
+        shell
+            .diagnostics()
+            .iter()
+            .any(|text| text.contains("touchpad-gestures") && text.contains("fingers"))
+    });
+    assert_eq!(held("/touchpad-gestures/0/fingers", &ipc), Some(serde_json::json!(3)));
+    assert_eq!(shell.generation(), generation, "the running generation stays");
+
+    // Removed: both are gone from the document, which is their default.
+    write("");
+    wait_for("both are back at their defaults", &session, &mut mapper, &shell, || {
+        held("/protocols", &ipc).is_none() && held("/touchpad-gestures", &ipc).is_none()
+    });
 }

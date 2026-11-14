@@ -57,7 +57,7 @@ To diagnose it:
 3. If the compositor answers but a command exits 4, the compositor and the
    client speak different IPC versions. Upgrade the one that is older.
 
-`gnoblinctl config validate FILE`, `gnoblinctl check FILE` and
+`gnoblinctl config validate FILE`, `gnoblinctl config init`, `gnoblinctl check FILE` and
 `gnoblinctl types init` do not connect to a session. They work before Gnoblin
 is running.
 
@@ -186,6 +186,8 @@ gnoblinctl output call 6 apply
   [TypeScript shell](typescript-shell.md), the request reloads its `init.ts` as well.
 - `gnoblinctl config validate FILE` checks a file with the runtime's parser. It
   needs no session.
+- `gnoblinctl config init [DIR] [--force]` writes a starter `init.ts` for the
+  [TypeScript shell](typescript-shell.md). It needs no session.
 
 ```sh
 gnoblinctl config validate FILE
@@ -222,6 +224,35 @@ gnoblinctl: config-rejected: the shell's configuration was not reloaded, and the
 A document that is refused after the shell reloaded leaves the new shell config running: the two are separate files
 and the shell cannot take its swap back. A session with no `init.ts` has nothing to reload on the shell side, and the
 request reloads the document alone.
+
+### Write a starter config
+
+`gnoblinctl config init` writes a short, commented `init.ts` into the config directory. That is `$XDG_CONFIG_HOME/gnoblin`
+or `~/.config/gnoblin`, and `DIR` names another.
+
+It also runs `gnoblinctl types init`, so an editor completes the keys. Then it prints three steps: open the file, check
+it, and save it to reload.
+
+```sh
+gnoblinctl config init
+```
+
+```text
+ok  init.ts written: /home/me/.config/gnoblin/init.ts
+ok  gnoblin.d.ts refreshed: /home/me/.config/gnoblin/gnoblin.d.ts
+ok  tsconfig.json created: /home/me/.config/gnoblin/tsconfig.json
+
+Next:
+  1. Open /home/me/.config/gnoblin/init.ts in your editor.
+  2. Check it with `gnoblinctl check --types /home/me/.config/gnoblin/init.ts`.
+  3. Save it: a running shell reloads the file on save, and `gnoblinctl config reload` does it on request.
+```
+
+A directory that already has an `init.ts` or an `init.js` is left as it is, and the command exits 1 with an error block
+that names the file. An `init.js` counts because the shell reads `init.ts` first, so a new `init.ts` would hide it. Add
+`--force` to write the starter over `init.ts`. The first line of the output says `replaced` when it did.
+
+With `--json` it prints `init`, `replaced`, `types`, `tsconfig`, `tsconfig_created` and `next`.
 
 ## Check and types
 

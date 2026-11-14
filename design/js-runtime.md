@@ -602,11 +602,33 @@ over fakes, `crates/gnoblin/tests/js_shell.rs` against the real compositor.
 | `style`                                                               | stored as written                                                                                                                                                          | **not applied: needs native style objects (P8)**                                                             |
 | `outputs`                                                             | stored as written. The document has only the global `monitors.global-scale`, and a screen's tree properties are read-only                                                  | **not applied: needs native style objects (P8)**                                                             |
 | `rules`                                                               | stored as written; lane JsStockFocus owns `rules.ts`                                                                                                                       | not applied by this lane                                                                                     |
+| `launcher`                                                            | a `Super+space` key running the command, unless `keys` binds that trigger                                                                                                  | applied (a key, see `keys`)                                                                                  |
+| `focus`, `edgeTiling`, `dragConstraint`                               | script-side overrides of the seat's published settings (see "Focus, rules and snapping status")                                                                            | applied                                                                                                      |
+| `autostart`                                                           | argv lists the shell starts through `gnoblin.spawn` once per session (see "Lists, maps and the first run"); not the document's `autostart`                                 | applied: a command already started this shell is never started again                                         |
+| `protocols`                                                           | document `protocols` (camelCase protocol names to kebab-case, booleans)                                                                                                    | committed; takes effect at the next compositor start                                                         |
+| `touchpadGestures`                                                    | document `touchpad-gestures`, one list value (a reload that drops the key removes the list)                                                                                | applied: live                                                                                                |
 
-The per-setting rule behind the last columns is `crates/gnoblin-config/src/apply.rs` (`RULES`). A section that is a
-list, or a table keyed by names the user chooses (`workspaces`, `autostart`, `shortcuts`, `protocols`,
-`touchpad-gestures`), and the carried sections (`animations`, `keybindings`, `portals`) are not `defineConfig` keys:
-turning `camelCase` keys back into the user's own names is not possible, so they stay in `init.lua`.
+The per-setting rule behind the last columns is `crates/gnoblin-config/src/apply.rs` (`RULES`).
+
+Every top-level section of the document is either a `defineConfig` key or recorded here as not one. The test
+`every_section_of_the_config_document_is_a_key_or_a_recorded_non_key` (`crates/gnoblin-js/tests/config_keys.rs`) fails
+when the schema gains a section that has neither:
+
+| Document section                                                                                                | `defineConfig`                                                                                                                                |
+| --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `compositor`, `window-management`, `cursor`, `appearance`, `dialogs`, `input`, `input-sources`, `accessibility` | a key of the camelCase name                                                                                                                   |
+| `layer-shell`, `keyring`, `auth`, `location`, `compat`, `capture`, `monitors`, `xwayland`, `logging`            | a key of the camelCase name                                                                                                                   |
+| `protocols`, `touchpad-gestures`                                                                                | a key (`protocols`, `touchpadGestures`): their inner names are fixed (protocol names, gesture fields), so camelCase maps back to the document |
+| `workspaces`                                                                                                    | the key `workspaces`, as script objects; the document's list is the Lua host's and is not written                                             |
+| `autostart`                                                                                                     | the key `autostart`, but shell-side (below), not the document section: its entries are keyed by names the user chooses                        |
+| `shortcuts`                                                                                                     | **not a key**: `keys` is the one way to bind a key. Naming it is refused with the mapping in the message (docs/typescript-config.md)          |
+| `keybindings`                                                                                                   | **not a key**: carried and read by nothing; `keys`                                                                                            |
+| `animations`, `portals`                                                                                         | **not keys**: carried and read by nothing                                                                                                     |
+| environment, per-output settings                                                                                | the schema has no environment section. A screen's tree properties are read-only, so `outputs` stays stored as written (native style objects)  |
+
+A table keyed by names the user chooses (`autostart`, `shortcuts`) cannot be a document key: turning `camelCase` keys back
+into the user's own names is not possible. A list (`touchpad-gestures`) can, because it is one value and the keys inside an
+item are fixed.
 
 ### The document commit
 
@@ -679,6 +701,53 @@ held request at `retire`, a lost connection.
 What the real tests do not show: that the built-in dialog opens is shown by the request staying open until its
 requester withdraws it, not by a screenshot of the dialog; `retire` answering a held request is proven against the
 fake link only (the real compositor answers within 250 ms, so a request is rarely held across a swap).
+
+### Lists, maps and the first run
+
+Lane JsConfigLists. Code: `data/js/gnoblin/config.ts` (`CONFIG_KEYS`, `DOCUMENT_LISTS`, `checkShape`, `planAutostart`),
+`data/js/gnoblin/workspace.ts` (`rejectUnknown`, `nearestKey`), `crates/gnoblin-js/src/autostart.rs`,
+`crates/gnoblinctl/src/js.rs` (`config_init`), `data/js/starter/init.ts`. Tests: `crates/gnoblin-js/tests/config_keys.rs`
+(plans and messages), `config_slots.rs` (the document and autostart over fakes), `crates/gnoblin/tests/js_shell.rs`
+(the starter against the real compositor), `crates/gnoblinctl/tests/js_check.rs` (`config init`).
+
+- **`protocols` and `touchpadGestures`.** They go through the document commit unchanged: the first is a section in
+  `DOCUMENT_SECTIONS`, the second a list in `DOCUMENT_LISTS`, which `planDocument` writes as one value. Add, change,
+  removal (the section is gone again) and a refused value (`protocols.wlr-layer-shell`, `touchpad-gestures`) are
+  tested in `config_slots.rs`.
+- **`autostart` is the shell's, not the document's.** The guardian starts the document's `autostart` entries, but it
+  learns them from the Lua host's commit (`commit` in `gnoblin-lua/src/role.rs` sends the `autostart` lines) and retires
+  any child that commit did not list, so a section the shell wrote would be stopped by the next Lua reload. The shell
+  instead starts each command through the spawner `gnoblin.spawn` uses (process group of its own, reaped).
+  `JsShell::apply_settings` runs after a generation is swapped in or loaded, so a failed stage starts nothing.
+- **Identity and limits.** A command is its argv. `JsAutostart` keeps the set of argv lists started by this shell; a
+  reload starts only the new ones, removal stops nothing (the shell keeps no handle to stop), and listing a removed
+  command again does not start it again. A command that cannot be started is a diagnostic and is not remembered, so the
+  next reload tries again. The set is the shell's memory: a restarted runtime role (the guardian restarts it) starts
+  every command again and a survivor from before runs twice. Documented in docs/typescript-config.md.
+- **One way to bind a key.** The document's `shortcuts` (`<Super>Return` chords, `command`, `trigger`, `enable`) is not a
+  key. `RETIRED_KEYS` gives the message for `shortcuts`, `keybindings` and the kebab/snake spellings of
+  `touchpad-gestures`. `trigger = "release"` has no `keys` equivalent (a key acts on press), so such a shortcut stays in
+  `init.lua`.
+- **Messages.** `rejectUnknown` names the place and the key, suggests the nearest valid key within two edits (case, `-`
+  and `_` do not count as edits; ties go to the first in the list), and lists the valid ones. `checkShape` runs first
+  and checks that a table key holds a table and a list key a list, naming `config.<key>`, what it should be and what it
+  got. A nested document value is checked by `Config::from_value` with the document's key path
+  (`dialogs.style.radius`), and a nested name it does not know is listed with the accepted ones.
+- **`gnoblinctl config init [DIR] [--force]`.** Writes `STARTER_CONFIG` (`data/js/starter/init.ts`, embedded in
+  `gnoblin-js`), refuses when `init.ts` or `init.js` exists (an `init.ts` is read first and would hide `init.js`),
+  runs `types init` (`ensure_user_files`), prints three steps, and has a `--json` form. The starter as written is
+  `defaultConfig` (empty `keys`, `rules`, `autostart`, the stock gaps, `decorations: true`, the one `desktop`
+  workspace); its examples are comments that end the way a config line ends, so a test can switch them on.
+- **Proof.** `the_starter_as_written_plans_exactly_what_the_stock_config_plans` compares plans;
+  `the_starter_is_the_stock_config_as_written_and_its_examples_work_switched_on` (real compositor) loads the starter
+  over a no-`init.ts` shell and asserts the same workspaces, the same bound keys and the same titlebar count, then
+  switches every example on and sees the second workspace, the example keys and an autostart command that ran once
+  and not again after a reload. `gnoblinctl check --types` is run on the starter, as written and switched on: it passes
+  when no TypeScript compiler is present (the step is skipped, and the test prints that) and it type-checks when one is.
+- **Not done.** Typed completions for the nested settings of the document sections (`input.keyboard`, ...): they are
+  `DocumentSection` tables in `gnoblin-stock.d.ts`, so an editor does not complete them, and a wrong nested name is a
+  load error that lists the accepted names. A TypeScript emitter in `gnoblin-config-codegen` would generate them from
+  the schema; `style` and `outputs` still need native style objects.
 
 ## Focus, rules and snapping status
 
