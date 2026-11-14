@@ -124,8 +124,11 @@ impl State {
         position: Point<f64, Logical>,
     ) -> Option<(WlSurface, Point<f64, Logical>)> {
         let root = self.windows.get(&window)?.surface.wl_surface()?;
-        let origin = self.composer.window_frame(window)?;
-        let origin = Point::<i32, Logical>::from((origin.x, origin.y));
+        // The window's frame is its window geometry, and a popup is placed from the surface's own origin, which starts
+        // the geometry's offset up and left of the frame.
+        let frame = self.composer.window_frame(window)?;
+        let geometry = geometry_origin(&root);
+        let origin = Point::<i32, Logical>::from((frame.x - geometry.x, frame.y - geometry.y));
         let inside = Point::<f64, Logical>::from((position.x - f64::from(origin.x), position.y - f64::from(origin.y)));
         for (popup, _) in PopupManager::popups_for_surface(&root) {
             let PopupKind::Xdg(xdg) = &popup else {

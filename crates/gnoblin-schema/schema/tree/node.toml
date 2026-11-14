@@ -72,7 +72,8 @@ since = "0.2.0"
 default = [1.0, 1.0, 1.0]
 animated = true
 
-# The local rectangle. Animated, because a resize is a change of the rectangle.
+# The local rectangle. Animated, because a resize is a change of the rectangle. On a `window` it is the window geometry
+# (see `window`), not the size of the client's buffer.
 [[object.property]]
 name = "width"
 type = "double"

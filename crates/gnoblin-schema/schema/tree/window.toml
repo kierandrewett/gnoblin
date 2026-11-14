@@ -3,6 +3,14 @@ version = "0.2.0"
 
 # The `window` class: a toplevel (xdg-shell, X11, foreign toplevel), derived from `node`
 # (design/node-core.md, section 2.4). It has every `node` property, then these.
+#
+# A window's rectangle (`x`, `y`, `width`, `height`) is its window geometry, the part of its surface the user sees as
+# the window: an xdg toplevel's `xdg_surface.set_window_geometry` rectangle, or the whole surface while the client set
+# none, and the whole window for an X11 one. A client that draws a shadow, or a title bar of its own, outside its
+# window geometry has that drawn but it is not the window: the node does not include it, and a node the shell sizes is
+# sent to the client as the size of its window geometry (the `xdg_toplevel.configure` size), so a size written to
+# `width` and `height` comes back unchanged. The surface's pixels outside the rectangle are drawn and are hit only
+# where the client's input region says.
 [[object]]
 name = "window"
 since = "0.2.0"

@@ -295,6 +295,65 @@ impl Client {
         }
     }
 
+    /// A `size` buffer coloured `outside` with the rectangle `inside` (x, y, width, height) in `colour`, in the order
+    /// `wl_shm` stores `argb8888`.
+    fn framed_buffer(
+        &mut self,
+        size: (i32, i32),
+        inside: (i32, i32, i32, i32),
+        colour: [u8; 4],
+        outside: [u8; 4],
+    ) -> wl_buffer::WlBuffer {
+        let stride = size.0 * 4;
+        let length = stride * size.1;
+        let mut file = tempfile::tempfile().expect("a shared memory file");
+        file.set_len(length as u64).expect("a buffer that big");
+        let mut pixels = Vec::with_capacity(length as usize);
+        for y in 0..size.1 {
+            for x in 0..size.0 {
+                let held = x >= inside.0 && x < inside.0 + inside.2 && y >= inside.1 && y < inside.1 + inside.3;
+                let [red, green, blue, alpha] = if held { colour } else { outside };
+                pixels.extend_from_slice(&[blue, green, red, alpha]);
+            }
+        }
+        file.write_all(&pixels).expect("the buffer's pixels");
+        let pool = self.shm.create_pool(file.as_fd(), length, &self.qh, ());
+        let buffer = pool.create_buffer(0, size.0, size.1, stride, wl_shm::Format::Argb8888, &self.qh, ());
+        self.buffers.push((buffer.clone(), pool));
+        buffer
+    }
+
+    /// Creates a toplevel, takes its first configure and maps it with a buffer of `size` whose window geometry is
+    /// `geometry` (x, y, width, height in the surface's coordinates): `inside` colours the part of the buffer in the
+    /// geometry and `outside` the rest, which a client draws as its shadow.
+    fn map_window_geometry(
+        &mut self,
+        title: &str,
+        size: (i32, i32),
+        geometry: (i32, i32, i32, i32),
+        inside: [u8; 4],
+        outside: [u8; 4],
+    ) -> Window {
+        let surface = self.compositor.create_surface(&self.qh, ());
+        let xdg_surface = self.wm_base.get_xdg_surface(&surface, &self.qh, ());
+        let toplevel = xdg_surface.get_toplevel(&self.qh, ());
+        toplevel.set_app_id("org.gnoblin.SurfaceTree".to_owned());
+        toplevel.set_title(title.to_owned());
+        surface.commit();
+        self.roundtrip();
+        let buffer = self.framed_buffer(size, geometry, inside, outside);
+        xdg_surface.set_window_geometry(geometry.0, geometry.1, geometry.2, geometry.3);
+        surface.attach(Some(&buffer), 0, 0);
+        surface.damage(0, 0, size.0, size.1);
+        surface.commit();
+        self.roundtrip();
+        Window {
+            surface,
+            xdg_surface,
+            toplevel,
+        }
+    }
+
     /// Maps a popup of `parent` whose top left corner is at (`x`, `y`) in the parent's window geometry, `size` big
     /// and filled with `colour`.
     fn map_popup(
@@ -569,6 +628,72 @@ fn a_subsurface_that_is_destroyed_leaves_the_screen() {
         video.surface.destroy();
         client.roundtrip();
         session.expect(x + 140, y + 20, BACKGROUND, "destroyed, so gone");
+    });
+}
+
+// The window geometry is the window: a client that draws outside it has that drawn, and not counted.
+
+#[test]
+fn a_window_with_a_shadow_margin_is_placed_by_its_geometry_and_draws_its_shadow() {
+    for_each_renderer(|backend| {
+        let session = Session::start(backend);
+        session.run(|session| {
+            let mut client = Client::connect(session.socket());
+            // 12 pixels of blue shadow around a 100 pixel red window.
+            let _window = client.map_window_geometry("Shadow", (124, 124), (12, 12, 100, 100), RED, BLUE);
+            let (x, y) = mapped_origin(session);
+            let size = session.windows().only().expect("one window").geometry;
+            assert_eq!(
+                (size.width, size.height),
+                (100, 100),
+                "the window is its geometry, not its buffer"
+            );
+            session.expect(x + 50, y + 50, RED, "the window is drawn");
+            session.expect(x + 1, y + 1, RED, "from the geometry's corner");
+            session.expect(x - 6, y - 6, BLUE, "the shadow is drawn outside the geometry");
+            session.expect(x + 105, y + 105, BLUE, "on every side of it");
+            session.expect_steadily(x + 113, y + 50, BACKGROUND, "and stops at the buffer's edge");
+        });
+    });
+}
+
+#[test]
+fn a_bar_above_the_surface_is_the_top_of_the_window() {
+    for_each_renderer(|backend| {
+        let session = Session::start(backend);
+        session.run(|session| {
+            let mut client = Client::connect(session.socket());
+            // Foot: the geometry starts 26 pixels above the surface, and a subsurface there is the title bar.
+            let window = client.map_window_geometry("Bar", (100, 100), (0, -26, 100, 126), RED, RED);
+            let _bar = client.map_subsurface(&window.surface, (0, -26), (100, 26), GREEN);
+            let (x, y) = mapped_origin(session);
+            let size = session.windows().only().expect("one window").geometry;
+            assert_eq!(
+                (size.width, size.height),
+                (100, 126),
+                "the window is its geometry, the bar included"
+            );
+            session.expect(x + 50, y + 10, GREEN, "the bar is at the top of the window");
+            session.expect(x + 50, y + 60, RED, "the main surface is below it");
+            session.expect_steadily(x + 50, y - 3, BACKGROUND, "and nothing is above the window");
+        });
+    });
+}
+
+#[test]
+fn a_popup_of_a_window_with_a_shadow_margin_hangs_from_the_geometry() {
+    for_each_renderer(|backend| {
+        let session = Session::start(backend);
+        session.run(|session| {
+            let mut client = Client::connect(session.socket());
+            let window = client.map_window_geometry("Menu", (124, 124), (12, 12, 100, 100), RED, BLUE);
+            let (x, y) = mapped_origin(session);
+            // A menu at (30, 20) of the window geometry, as the toolkit anchors it to a button there.
+            let _menu = client.map_popup(&window.xdg_surface, (30, 20), (40, 40), GREEN);
+            session.expect(x + 35, y + 25, GREEN, "the menu is at its anchor in the geometry");
+            session.expect(x + 25, y + 25, RED, "and not 12 pixels further up and left");
+            session.expect(x + 105, y + 65, BLUE, "the shadow right of the window is still drawn");
+        });
     });
 }
 

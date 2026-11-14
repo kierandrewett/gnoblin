@@ -979,3 +979,294 @@ fn a_reader_that_cannot_read_leaves_the_view_masked() {
     let picture = captured(&composer, view);
     assert_eq!(probe(&picture, 50, 50), [128, 128, 128, 255]);
 }
+
+// The window node is the window geometry: a client that draws a shadow around its window, or a bar above it, has the
+// part it drew outside the geometry drawn, and not counted as the window.
+
+/// A window picture of `size`: blue all over, the client's shadow, and red inside `geometry`, the window geometry in the
+/// surface's own coordinates.
+fn shadowed(size: Size, geometry: Rect) -> SurfaceSource {
+    let mut pixels = Vec::with_capacity(size.width as usize * size.height as usize * 4);
+    for y in 0..size.height as i32 {
+        for x in 0..size.width as i32 {
+            pixels.extend_from_slice(&if geometry.contains(Point::new(x, y)) { RED } else { BLUE });
+        }
+    }
+    let image = Image::new(size, size.width as usize * 4, pixels).expect("an image of that size");
+    SurfaceSource::Snapshot(Arc::new(image))
+}
+
+/// A composer with the window of a client that committed a buffer of `buffer` and set `geometry` (in the buffer's
+/// coordinates, or none), placed so its window geometry is `size` big with its top left corner at `at`.
+fn csd_window(
+    buffer: Size,
+    geometry: Option<Rect>,
+    at: (i32, i32),
+    size: (u32, u32),
+) -> (Composer, OutputId, WindowId) {
+    let (mut composer, output, window) = drawing();
+    composer.place_window(window, Rect::new(at.0, at.1, size.0, size.1));
+    composer.set_window_content(window, Some(content_of(buffer)));
+    composer.set_window_source(
+        window,
+        Some(shadowed(buffer, geometry.unwrap_or(Rect::from_size(buffer)))),
+    );
+    composer.set_window_client_geometry(window, geometry);
+    (composer, output, window)
+}
+
+/// The last number a `set` of `key` on `node` wrote in `changes`.
+fn published(changes: &[TreeChange], node: NodeId, key: &str) -> Option<f64> {
+    changes.iter().rev().find_map(|change| match change {
+        TreeChange::Set {
+            node: set,
+            key: name,
+            value: TreeValue::Double(number),
+        } if *set == node && name == key => Some(*number),
+        _ => None,
+    })
+}
+
+/// The window's rectangle as the tree publishes it: x, y, width, height.
+fn rect_published(composer: &mut Composer, window: WindowId) -> [Option<f64>; 4] {
+    let node = node_of(composer, window);
+    let changes = composer.take_tree_changes();
+    ["x", "y", "width", "height"].map(|key| published(&changes, node, key))
+}
+
+#[test]
+fn a_window_node_is_its_window_geometry_whatever_the_buffer_around_it() {
+    // (the geometry the client set, in its surface; the buffer it committed): a shadow margin on every side, a bar above
+    // the surface (a negative origin, as foot sets it), a geometry at the origin, and one of a different size.
+    let cases = [
+        (Rect::new(12, 12, 100, 100), Size::new(124, 124)),
+        (Rect::new(0, -26, 100, 126), Size::new(100, 100)),
+        (Rect::new(0, 0, 100, 100), Size::new(100, 100)),
+        (Rect::new(0, 0, 80, 60), Size::new(100, 100)),
+        (Rect::new(30, 20, 60, 50), Size::new(100, 100)),
+    ];
+    for (geometry, buffer) in cases {
+        let (mut composer, _output, window) =
+            csd_window(buffer, Some(geometry), (100, 100), (geometry.width, geometry.height));
+        let frame = Rect::new(100, 100, geometry.width, geometry.height);
+        let published = rect_published(&mut composer, window);
+        assert_eq!(
+            published.map(Option::unwrap_or_default),
+            [100.0, 100.0, f64::from(geometry.width), f64::from(geometry.height)],
+            "the tree publishes the geometry {geometry:?} of a {buffer:?} buffer, not the buffer's rectangle"
+        );
+        assert_eq!(
+            composer.window_frame(window),
+            Some(frame),
+            "the frame is the geometry for {geometry:?}"
+        );
+        assert_eq!(
+            composer.window_node_size(window),
+            Some((geometry.width, geometry.height)),
+            "the size a configure asks for is the geometry's for {geometry:?}"
+        );
+    }
+}
+
+#[test]
+fn a_window_that_set_no_geometry_is_its_buffer() {
+    let buffer = Size::new(124, 90);
+    let (mut composer, _output, window) = csd_window(buffer, None, (100, 100), (124, 90));
+    assert_eq!(
+        rect_published(&mut composer, window).map(Option::unwrap_or_default),
+        [100.0, 100.0, 124.0, 90.0]
+    );
+    // A geometry set and then unset is the buffer again.
+    composer.set_window_client_geometry(window, Some(Rect::new(4, 4, 100, 70)));
+    assert_eq!(
+        composer.window_node_size(window),
+        Some((100, 70)),
+        "a geometry set after the first commit moves the node's size"
+    );
+    composer.set_window_client_geometry(window, None);
+    assert_eq!(composer.window_node_size(window), Some((124, 90)));
+}
+
+#[test]
+fn a_geometry_that_changes_is_published_again() {
+    let (mut composer, _output, window) = csd_window(
+        Size::new(124, 124),
+        Some(Rect::new(12, 12, 100, 100)),
+        (100, 100),
+        (100, 100),
+    );
+    composer.take_tree_changes();
+    composer.set_window_client_geometry(window, Some(Rect::new(8, 8, 108, 108)));
+    assert_eq!(
+        rect_published(&mut composer, window),
+        [None, None, Some(108.0), Some(108.0)],
+        "only the size changed, the node stays where the frame is"
+    );
+    composer.set_window_client_geometry(window, Some(Rect::new(8, 8, 108, 108)));
+    assert!(
+        composer.take_tree_changes().is_empty(),
+        "the same geometry again publishes nothing"
+    );
+}
+
+#[test]
+fn a_surface_is_drawn_at_the_frames_origin_less_the_geometrys_offset() {
+    // The shadow margin is 12 pixels on every side: the window is at (100, 100), and the buffer starts at (88, 88).
+    let (mut composer, output, window) = csd_window(
+        Size::new(124, 124),
+        Some(Rect::new(12, 12, 100, 100)),
+        (100, 100),
+        (100, 100),
+    );
+    let image = shown(&mut composer, output);
+    assert_eq!(probe(&image, 100, 100), RED, "the geometry's corner is the frame's");
+    assert_eq!(probe(&image, 199, 199), RED);
+    assert_eq!(probe(&image, 94, 94), BLUE, "the shadow is drawn outside the geometry");
+    assert_eq!(probe(&image, 205, 205), BLUE);
+    assert_eq!(probe(&image, 87, 87), BACKGROUND, "and stops at the buffer");
+    assert_eq!(composer.window_frame(window), Some(Rect::new(100, 100, 100, 100)));
+}
+
+#[test]
+fn a_commit_damages_the_shadow_outside_the_geometry() {
+    let (mut composer, output, window) = csd_window(
+        Size::new(124, 124),
+        Some(Rect::new(12, 12, 100, 100)),
+        (100, 100),
+        (100, 100),
+    );
+    shown(&mut composer, output);
+    assert_eq!(damage(&mut composer, output), None, "nothing changed");
+    composer.set_window_content(window, Some(content_of(Size::new(124, 124))));
+    let damaged = damage(&mut composer, output).expect("a commit damages");
+    for corner in [(88, 88), (211, 211)] {
+        assert!(
+            damaged.iter().any(|rect| rect.contains(Point::new(corner.0, corner.1))),
+            "the buffer's corner {corner:?} is damaged, not only the geometry: {damaged:?}"
+        );
+    }
+}
+
+#[test]
+fn a_bar_above_the_surface_is_inside_the_window() {
+    // Foot: the main surface is 100 by 100 and the geometry starts 26 above it, so a 26 pixel subsurface bar at (0, -26)
+    // is the top of the window, and the window is 100 by 126 with its corner where the bar's is.
+    let geometry = Rect::new(0, -26, 100, 126);
+    let (mut composer, output, window) = csd_window(Size::new(100, 100), Some(geometry), (100, 100), (100, 126));
+    composer.set_window_surfaces(window, vec![subsurface(10, (0, -26), (100, 26), GREEN)]);
+    let bar = tree_node(&composer, window, 10);
+    let changes = composer.take_tree_changes();
+    assert_eq!(
+        (published(&changes, bar, "x"), published(&changes, bar, "y")),
+        (Some(0.0), Some(0.0)),
+        "the bar is at the window's top left, the node's own origin: {changes:?}"
+    );
+    let image = shown(&mut composer, output);
+    assert_eq!(
+        probe(&image, 150, 110),
+        GREEN,
+        "the bar is on screen at the frame's top"
+    );
+    assert_eq!(probe(&image, 150, 150), RED, "the main surface is below it");
+    assert_eq!(probe(&image, 150, 99), BACKGROUND, "and nothing is above the window");
+    assert_eq!(probe(&image, 150, 225), RED);
+    assert_eq!(probe(&image, 150, 227), BACKGROUND);
+}
+
+#[test]
+fn a_popup_is_placed_from_the_surface_origin_and_published_from_the_geometry_origin() {
+    let (mut composer, output, window) = csd_window(
+        Size::new(124, 124),
+        Some(Rect::new(12, 12, 100, 100)),
+        (100, 100),
+        (100, 100),
+    );
+    // The surface starts at (88, 88). A popup the compositor placed at (90, 80) in it is at (178, 168).
+    composer.set_window_surfaces(window, vec![popup(10, (90, 80), (40, 30), GREEN)]);
+    let popup_node = tree_node(&composer, window, 10);
+    let changes = composer.take_tree_changes();
+    assert_eq!(
+        (
+            published(&changes, popup_node, "x"),
+            published(&changes, popup_node, "y")
+        ),
+        (Some(78.0), Some(68.0)),
+        "the popup's place is relative to the window's node, the geometry: {changes:?}"
+    );
+    let image = shown(&mut composer, output);
+    assert_eq!(probe(&image, 180, 170), GREEN);
+    assert_eq!(probe(&image, 176, 170), RED, "the window itself is left of the popup");
+}
+
+#[test]
+fn the_pick_is_the_geometry_and_the_surface_tree_extent_the_client_asks_to_be_hit_over() {
+    let (mut composer, _output, window) = csd_window(
+        Size::new(124, 124),
+        Some(Rect::new(12, 12, 100, 100)),
+        (100, 100),
+        (100, 100),
+    );
+    let near = |found: Option<(WindowId, PointF)>, expected: (f64, f64)| {
+        let (found, local) = found.expect("the window is hit");
+        assert_eq!(found, window);
+        assert!(
+            (local.x - expected.0).abs() < 1e-6 && (local.y - expected.1).abs() < 1e-6,
+            "the point is {local:?}, expected {expected:?}"
+        );
+    };
+    near(composer.window_at(PointF::new(150.0, 160.0), &|_| true), (50.0, 60.0));
+    assert_eq!(
+        composer.window_at(PointF::new(94.0, 94.0), &|_| true),
+        None,
+        "the shadow is not the window until the surface says it is hit there"
+    );
+    composer.set_window_hit_extent(window, Some(Rect::new(0, 0, 124, 124)));
+    near(composer.window_at(PointF::new(94.0, 94.0), &|_| true), (-6.0, -6.0));
+}
+
+#[test]
+fn a_maximised_frame_fills_the_output_with_the_geometry_and_the_shadow_is_off_screen() {
+    let (mut composer, output, window) = csd_window(
+        Size::new(124, 124),
+        Some(Rect::new(12, 12, 100, 100)),
+        (100, 100),
+        (100, 100),
+    );
+    // The window manager maximises it: the frame is the output, and the client answers with a geometry that size.
+    composer.place_window(window, Rect::new(0, 0, 800, 600));
+    composer.set_window_content(window, Some(content_of(Size::new(824, 624))));
+    composer.set_window_source(window, Some(shadowed(Size::new(824, 624), Rect::new(12, 12, 800, 600))));
+    composer.set_window_client_geometry(window, Some(Rect::new(12, 12, 800, 600)));
+    assert_eq!(composer.window_frame(window), Some(Rect::new(0, 0, 800, 600)));
+    assert_eq!(composer.window_node_size(window), Some((800, 600)));
+    let image = shown(&mut composer, output);
+    for corner in [(0, 0), (799, 0), (0, 599), (799, 599)] {
+        assert_eq!(
+            probe(&image, corner.0, corner.1),
+            RED,
+            "the output's corner {corner:?} is the window, not the shadow around it"
+        );
+    }
+}
+
+#[test]
+fn a_view_of_a_window_shows_the_window_geometry_not_the_shadow() {
+    let (mut composer, output, window) = csd_window(
+        Size::new(124, 124),
+        Some(Rect::new(12, 12, 100, 100)),
+        (100, 100),
+        (100, 100),
+    );
+    let view = view_of(&mut composer, window);
+    frame_reading(&mut composer, output, &mut |_| None);
+    let picture = captured(&composer, view);
+    assert_eq!(probe(&picture, 0, 0), RED, "the window's corner is the picture's");
+    assert_eq!(probe(&picture, 99, 99), RED);
+    for past in [probe(&picture, 100, 100), probe(&picture, 105, 50)] {
+        assert_ne!(past, BLUE, "past the geometry the View shows nothing of the shadow");
+        assert_ne!(
+            past, RED,
+            "and the geometry's picture is not stretched over more than the geometry"
+        );
+    }
+}

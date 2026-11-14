@@ -369,13 +369,16 @@ struct Closing {
 struct WindowNode {
     /// The scene node, while the window is drawn.
     node: Option<NodeId>,
-    /// The window's frame rectangle in global logical coordinates.
+    /// The window's frame rectangle in global logical coordinates: where the window geometry the client set
+    /// (`xdg_surface.set_window_geometry`), or the whole surface when it set none, sits. The window's node is this
+    /// rectangle: its position is the geometry's origin and its size the geometry's size.
     geometry: Rect,
-    /// Where the window geometry the client set (`xdg_surface.set_window_geometry`) starts inside its surface, in
-    /// surface-local pixels; zero when it set none. `geometry` is where that window geometry sits, so the surface
-    /// itself is drawn at `geometry` less this offset: a client that draws a shadow around its window has the
-    /// window placed, and hit, by the part inside the shadow.
+    /// Where the window geometry starts inside the client's surface, in surface-local pixels; zero when it set none.
+    /// The surface is drawn at the node's origin less this offset, so a shadow or a bar the client draws outside its
+    /// window geometry is drawn and is not the window.
     surface_offset: (i32, i32),
+    /// The size of the window geometry the client set, `None` while it set none and the whole surface is the window.
+    geometry_size: Option<Size>,
     /// Its visual transform, kept across node recreation.
     transform: VisualTransform,
     /// The client's `wp_alpha_modifier_v1` factor for its surface, one when it set none.
@@ -432,6 +435,9 @@ struct WindowNode {
     /// The rectangle the window's node takes hits over beyond its own bounds, in surface-local pixels: the surface
     /// tree's, when a subsurface reaches past the root surface.
     hit_extent: Option<Rect>,
+    /// The draw and hit extents last set on the node, in the node's local plane, so a sync that changes neither
+    /// damages nothing.
+    applied_extents: (Option<Rect>, Option<Rect>),
     /// The surfaces of the window's tree below its toplevel surface, in tree order. See [`TreeSurface`].
     tree: Vec<TreeSurface>,
     /// The scene node of each surface in `tree` that is drawn, by the surface's key.
@@ -1253,21 +1259,35 @@ impl Composer {
     fn view_sources(&self, nodes: &BTreeSet<NodeId>) -> BTreeMap<NodeId, ViewPixels> {
         let mut pictures = BTreeMap::new();
         for entry in self.windows.values() {
-            let own = entry.node.zip(entry.buffer.as_ref());
+            let placement = Self::own_placement(entry);
+            let own = entry
+                .node
+                .zip(entry.buffer.as_ref())
+                .map(|(node, source)| (node, source, placement));
             let below = entry
                 .tree
                 .iter()
-                .filter_map(|surface| Some((entry.tree_nodes.get(&surface.key)?.node, &surface.source)));
-            for (node, source) in own.into_iter().chain(below) {
-                if let (true, Some(size)) = (nodes.contains(&node), source_size(source)) {
-                    pictures.insert(
-                        node,
-                        ViewPixels {
-                            source: source.clone(),
-                            size,
-                        },
-                    );
-                }
+                .filter_map(|surface| Some((entry.tree_nodes.get(&surface.key)?.node, &surface.source, None)));
+            for (node, source, placement) in own.into_iter().chain(below) {
+                let (true, Some(size)) = (nodes.contains(&node), source_size(source)) else {
+                    continue;
+                };
+                let crop = match placement {
+                    None => None,
+                    Some((local, frame)) => match view_crop(local, frame, size) {
+                        Some(crop) => Some(crop),
+                        // The buffer lies wholly outside the window geometry: nothing of it is the window.
+                        None => continue,
+                    },
+                };
+                pictures.insert(
+                    node,
+                    ViewPixels {
+                        source: source.clone(),
+                        size,
+                        crop,
+                    },
+                );
             }
         }
         for (node, picture) in &self.canvases {
@@ -1278,6 +1298,7 @@ impl Composer {
                     ViewPixels {
                         source: SurfaceSource::Snapshot(Arc::clone(image)),
                         size: image.size(),
+                        crop: None,
                     },
                 );
             }
@@ -1291,15 +1312,26 @@ impl Composer {
     fn window_pictures(&self, nodes: &BTreeSet<NodeId>, reader: &mut ReadDmabuf<'_>) -> BTreeMap<NodeId, Image> {
         let mut pictures: BTreeMap<NodeId, Image> = BTreeMap::new();
         for entry in self.windows.values() {
-            let own = entry.node.zip(entry.buffer.as_ref());
+            let placement = Self::own_placement(entry);
+            let own = entry
+                .node
+                .zip(entry.buffer.as_ref())
+                .map(|(node, source)| (node, source, placement));
             let below = entry
                 .tree
                 .iter()
-                .filter_map(|surface| Some((entry.tree_nodes.get(&surface.key)?.node, &surface.source)));
-            for (node, source) in own.into_iter().chain(below) {
-                if let Some(image) = nodes.contains(&node).then(|| source_picture(source, reader)).flatten() {
-                    pictures.insert(node, image);
-                }
+                .filter_map(|surface| Some((entry.tree_nodes.get(&surface.key)?.node, &surface.source, None)));
+            for (node, source, placement) in own.into_iter().chain(below) {
+                let Some(image) = nodes.contains(&node).then(|| source_picture(source, reader)).flatten() else {
+                    continue;
+                };
+                // A window's own picture is the part of its buffer inside the window geometry, which is what the
+                // node's rectangle is.
+                let image = match placement {
+                    Some((local, frame)) => geometry_crop(&image, local, frame),
+                    None => image,
+                };
+                pictures.insert(node, image);
             }
         }
         // A View of a subtree that holds canvases draws them too. The view renderer blends straight alpha and a
@@ -1459,6 +1491,7 @@ impl Composer {
                 node: None,
                 geometry,
                 surface_offset: (0, 0),
+                geometry_size: None,
                 transform: VisualTransform::IDENTITY,
                 visible: true,
                 secure: false,
@@ -1483,6 +1516,7 @@ impl Composer {
                 applied_size: None,
                 published_geometry: None,
                 hit_extent: None,
+                applied_extents: (None, None),
                 tree: Vec::new(),
                 tree_nodes: BTreeMap::new(),
                 tree_keys: BTreeMap::new(),
@@ -1492,15 +1526,59 @@ impl Composer {
         self.sync(window, false);
     }
 
-    /// Sets the rectangle a window takes hits over beyond its own surface, in surface-local pixels, or clears it.
+    /// Sets the rectangle a window takes hits over beyond its own geometry, in surface-local pixels, or clears it.
     /// It changes what the pointer and touch reach and draws nothing.
     pub fn set_window_hit_extent(&mut self, window: WindowId, extent: Option<Rect>) {
         let Some(entry) = self.windows.get_mut(&window) else {
             return;
         };
         entry.hit_extent = extent;
-        if let Some(node) = entry.node {
-            let _ = self.scene.set_hit_extent(node, extent);
+        self.apply_extents(window);
+    }
+
+    /// The size of a window's node: the window geometry the client set, or the whole surface while it set none.
+    fn frame_size(entry: &WindowNode, content: Content) -> Size {
+        entry
+            .geometry_size
+            .filter(|size| !size.is_empty())
+            .unwrap_or(content.size)
+    }
+
+    /// Where a window's whole buffer lies in its node's plane and the rectangle of the node, when they are not the
+    /// same: a window whose client draws outside its window geometry. `None` when the buffer is the window.
+    fn own_placement(entry: &WindowNode) -> Option<(Rect, Rect)> {
+        let content = entry.content?;
+        let frame = Rect::from_size(Self::frame_size(entry, content));
+        let (x, y) = entry.surface_offset;
+        let local = Rect::new(-x, -y, content.size.width, content.size.height);
+        (local != frame).then_some((local, frame))
+    }
+
+    /// Brings the node's draw and hit extents to what the window's surface needs. The node is the window geometry
+    /// and its surface is placed at the geometry's offset inside it, so the buffer is drawn over a rectangle that
+    /// starts at the negated offset and runs as far as the buffer does, and the surface tree is hit over the tree's
+    /// bounds moved into the same plane.
+    fn apply_extents(&mut self, window: WindowId) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        let (Some(node), Some(content)) = (entry.node, entry.content) else {
+            return;
+        };
+        let frame = Rect::from_size(Self::frame_size(entry, content));
+        let (x, y) = entry.surface_offset;
+        let draw = Self::own_placement(entry).map(|(local, _)| local);
+        let hit = entry
+            .hit_extent
+            .map(|extent| extent.translate(-x, -y))
+            .filter(|extent| *extent != frame);
+        let (applied_draw, applied_hit) = entry.applied_extents;
+        entry.applied_extents = (draw, hit);
+        if applied_draw != draw {
+            let _ = self.scene.set_draw_extent(node, draw);
+        }
+        if applied_hit != hit {
+            let _ = self.scene.set_hit_extent(node, hit);
         }
     }
 
@@ -1526,7 +1604,8 @@ impl Composer {
     }
 
     /// Publishes a window node's position and size to the tree, when they changed since the last
-    /// publish. The size is the content size; the position is the placed frame's origin.
+    /// publish. The rectangle is the window geometry: its origin and its size, whatever the buffer the client draws
+    /// around it.
     ///
     /// While the shell holds the tree its placement stands, so the position is not published and
     /// the tree is treated as not knowing it: the next publish after the hold writes it.
@@ -1538,11 +1617,12 @@ impl Composer {
         let (Some(node), Some(content)) = (entry.node, entry.content) else {
             return;
         };
+        let size = Self::frame_size(entry, content);
         let values = [
-            f64::from(entry.geometry.x - entry.surface_offset.0),
-            f64::from(entry.geometry.y - entry.surface_offset.1),
-            f64::from(content.size.width),
-            f64::from(content.size.height),
+            f64::from(entry.geometry.x),
+            f64::from(entry.geometry.y),
+            f64::from(size.width),
+            f64::from(size.height),
         ];
         let mut published = entry.published_geometry.unwrap_or([f64::NAN; 4]);
         if holds {
@@ -1768,8 +1848,9 @@ impl Composer {
         matches!(self.scene.value(node, "tiled"), Some(TreeValue::Bool(true)))
     }
 
-    /// The size of a window's node: the content size the client last committed, or the size the
-    /// shell wrote since. `None` when the window has no node.
+    /// The size of a window's node: the window geometry the client last committed (the whole surface while it set
+    /// none), or the size the shell wrote since. This is the size an `xdg_toplevel.configure` asks for. `None` when
+    /// the window has no node.
     #[must_use]
     pub fn window_node_size(&self, window: WindowId) -> Option<(u32, u32)> {
         let node = self.windows.get(&window)?.node?;
@@ -2006,16 +2087,21 @@ impl Composer {
         self.sync(window, false);
     }
 
-    /// Sets where a window's geometry starts inside its surface, as the client's `xdg_surface.set_window_geometry`
-    /// says: the surface is drawn that far up and left of the frame, so the frame's origin is the geometry's.
-    pub fn set_window_surface_offset(&mut self, window: WindowId, x: i32, y: i32) {
+    /// Sets the window geometry the client committed (`xdg_surface.set_window_geometry`), in its surface's
+    /// coordinates, or `None` while it set none and the whole surface is the window. The window's node takes the
+    /// geometry's size, and the surface is drawn at the node's origin less the geometry's origin.
+    pub fn set_window_client_geometry(&mut self, window: WindowId, geometry: Option<Rect>) {
         let Some(entry) = self.windows.get_mut(&window) else {
             return;
         };
-        if entry.surface_offset == (x, y) {
+        let geometry = geometry.filter(|geometry| !geometry.is_empty());
+        let offset = geometry.map_or((0, 0), |geometry| (geometry.x, geometry.y));
+        let size = geometry.map(Rect::size);
+        if entry.surface_offset == offset && entry.geometry_size == size {
             return;
         }
-        entry.surface_offset = (x, y);
+        entry.surface_offset = offset;
+        entry.geometry_size = size;
         self.sync(window, false);
     }
 
@@ -2614,24 +2700,25 @@ impl Composer {
         self.scene.world_matrix(node)
     }
 
-    /// A window's node's bounds projected to the output plane, or `None` when it is not drawn.
+    /// A window's node's bounds projected to the output plane, including what the node draws past them (a client's
+    /// shadow outside its window geometry), or `None` when it is not drawn.
     #[must_use]
     pub fn window_projected_bounds(&self, window: WindowId) -> Option<Rect> {
         let node = self.windows.get(&window)?.node?;
         self.scene.absolute_bounds(node)
     }
 
-    /// The rectangle a window's node covers on the output plane, rounded to whole pixels: where a shell that holds
-    /// the tree put the window. `None` when the window has no node yet or it is not drawn.
+    /// The window geometry on the output plane, rounded to whole pixels: the rectangle of the window's node, where a
+    /// shell that holds the tree put the window. `None` when the window has no node yet or it is not drawn.
     #[must_use]
     pub fn window_frame(&self, window: WindowId) -> Option<Rect> {
         let node = self.windows.get(&window)?.node?;
         self.scene.content_bounds(node).map(gnoblin_types::RectF::to_pixel)
     }
 
-    /// The window drawn under a point on the output plane, and the point in that window's local
-    /// space, which is the surface point the pointer is over. The topmost window wins, and a window
-    /// `accept` refuses passes the point through to what lies under it.
+    /// The window drawn under a point on the output plane, and the point in that window's local space, which is
+    /// relative to the window geometry's origin (the surface point is that point plus the geometry's origin in the
+    /// surface). The topmost window wins, and a window `accept` refuses passes the point through to what lies under it.
     #[must_use]
     pub fn window_at(&self, point: PointF, accept: &dyn Fn(WindowId) -> bool) -> Option<(WindowId, PointF)> {
         let hit = self
@@ -3220,6 +3307,9 @@ impl Composer {
         if entry.closing.is_some() || (entry.tree.is_empty() && entry.tree_nodes.is_empty()) {
             return;
         }
+        // A surface hung straight from the window's own surface is placed in the node's plane, which starts at the
+        // window geometry's origin inside that surface.
+        let origin = entry.surface_offset;
         let mut tree = std::mem::take(&mut entry.tree);
         let mut nodes = std::mem::take(&mut entry.tree_nodes);
         // A surface counts once, and only under a parent that came before it.
@@ -3235,7 +3325,7 @@ impl Composer {
                 },
             };
             let bounds = Rect::from_size(surface.content.size);
-            let transform = Self::tree_transform(surface);
+            let transform = Self::tree_transform(surface, Self::tree_origin(surface, origin));
             if let Some(existing) = nodes.get(&surface.key) {
                 self.update_tree_node(existing.node, bounds, transform, surface);
             } else if let Some(node) = self.create_tree_node(parent, bounds, transform, surface) {
@@ -3253,7 +3343,7 @@ impl Composer {
         self.order_tree_nodes(window_node, &tree, &nodes);
         for surface in &tree {
             if let Some(node) = nodes.get_mut(&surface.key) {
-                self.publish_tree_geometry(node, surface);
+                self.publish_tree_geometry(node, surface, Self::tree_origin(surface, origin));
             }
         }
         for surface in &mut tree {
@@ -3303,10 +3393,20 @@ impl Composer {
         nodes.retain(|key, _| !stale.contains(key));
     }
 
-    /// The transform a surface's node holds: its offset in its parent's plane and its alpha factor.
-    fn tree_transform(surface: &TreeSurface) -> VisualTransform {
+    /// Where a surface's node sits in its parent's plane. A surface hung from the window's own surface is in the
+    /// surface's coordinates, and its parent is the window's node, whose plane starts at the window geometry's origin
+    /// `root` inside that surface. A surface hung from another surface is placed in that surface's plane as it is.
+    fn tree_origin(surface: &TreeSurface, root: (i32, i32)) -> (i32, i32) {
+        match surface.parent {
+            None => (surface.offset.x - root.0, surface.offset.y - root.1),
+            Some(_) => (surface.offset.x, surface.offset.y),
+        }
+    }
+
+    /// The transform a surface's node holds: its place in its parent's plane, `at`, and its alpha factor.
+    fn tree_transform(surface: &TreeSurface, at: (i32, i32)) -> VisualTransform {
         let mut transform = VisualTransform::IDENTITY;
-        transform.base.offset = Vec3::new(f64::from(surface.offset.x), f64::from(surface.offset.y), 0.0);
+        transform.base.offset = Vec3::new(f64::from(at.0), f64::from(at.1), 0.0);
         transform.opacity = if surface.alpha.is_finite() {
             surface.alpha.clamp(0.0, 1.0)
         } else {
@@ -3422,10 +3522,10 @@ impl Composer {
     }
 
     /// Publishes a surface's position and size to the tree when they changed since the last publish.
-    fn publish_tree_geometry(&mut self, node: &mut TreeNode, surface: &TreeSurface) {
+    fn publish_tree_geometry(&mut self, node: &mut TreeNode, surface: &TreeSurface, at: (i32, i32)) {
         let values = [
-            f64::from(surface.offset.x),
-            f64::from(surface.offset.y),
+            f64::from(at.0),
+            f64::from(at.1),
             f64::from(surface.content.size.width),
             f64::from(surface.content.size.height),
         ];
@@ -3846,8 +3946,8 @@ impl Composer {
         let mut transform = entry.transform;
         let (shell_x, shell_y) = entry.shell_offset;
         transform.base.offset = Vec3::new(
-            f64::from(entry.geometry.x - entry.surface_offset.0) + shell_x,
-            f64::from(entry.geometry.y - entry.surface_offset.1) + shell_y,
+            f64::from(entry.geometry.x) + shell_x,
+            f64::from(entry.geometry.y) + shell_y,
             transform.base.offset.z,
         );
         let scale = f64::from(entry.shell_scale);
@@ -3969,29 +4069,36 @@ impl Composer {
             }
             if let Some(entry) = self.windows.get_mut(&window) {
                 entry.node = None;
+                entry.applied_extents = (None, None);
                 // The nodes under the window's node went with it; the tree is kept to be made again.
                 entry.tree_nodes.clear();
                 entry.tree_keys.clear();
             }
             return;
         };
-        let bounds = Rect::from_size(content.size);
+        let size = self
+            .windows
+            .get(&window)
+            .map_or(content.size, |entry| Self::frame_size(entry, content));
+        let bounds = Rect::from_size(size);
         match node {
             Some(node) => {
                 // The window keeps its node: a size change moves the node's bounds, so its id and
-                // the tree's view of it stay the same.
-                let resized = self.windows.get(&window).and_then(|entry| entry.applied_size) != Some(content.size);
+                // the tree's view of it stay the same. The size is the window geometry the client set, so a shell's
+                // write of it survives a commit that leaves the geometry as it was.
+                let resized = self.windows.get(&window).and_then(|entry| entry.applied_size) != Some(size);
                 if resized {
                     if self.scene.bounds(node) != Some(bounds) {
                         let _ = self.scene.set_bounds(node, bounds);
                     }
                     if let Some(entry) = self.windows.get_mut(&window) {
-                        entry.applied_size = Some(content.size);
+                        entry.applied_size = Some(size);
                     }
                 }
                 if force && let Some(current) = self.scene.transform(node).copied() {
                     let _ = self.scene.set_transform(node, current);
                 }
+                self.apply_extents(window);
                 self.publish_geometry(window);
                 self.retarget(window, animate);
                 self.sync_tree(window);
@@ -4046,11 +4153,10 @@ impl Composer {
                         }
                         if let Some(entry) = self.windows.get_mut(&window) {
                             entry.node = Some(id);
-                            entry.applied_size = Some(content.size);
-                            if let Some(extent) = entry.hit_extent {
-                                let _ = self.scene.set_hit_extent(id, Some(extent));
-                            }
+                            entry.applied_size = Some(size);
+                            entry.applied_extents = (None, None);
                         }
+                        self.apply_extents(window);
                         self.publish_geometry(window);
                         if fades_in {
                             self.retarget(window, true);
@@ -4111,9 +4217,11 @@ impl Composer {
                 .map(|(content, source)| (source, content)),
         };
         if let Some((source, content)) = own {
+            let (x, y) = entry.surface_offset;
             let drawn = Drawn {
                 source,
                 content,
+                local: Some(Rect::new(-x, -y, content.size.width, content.size.height)),
                 // The window's placed pose, mid-tween, not its target.
                 opacity: pose.transform.opacity,
                 corner_radius: pose.transform.corner_radius,
@@ -4145,6 +4253,7 @@ impl Composer {
             let drawn = Drawn {
                 source: surface.source.clone(),
                 content: surface.content,
+                local: None,
                 opacity: self.opacity_within(paint.node, *child),
                 corner_radius: 0.0,
                 effects: Effects::new(),
@@ -4169,7 +4278,11 @@ impl Composer {
     /// output or cannot be drawn.
     fn push_surface(&self, paint: &Paint, node: NodeId, drawn: Drawn, frame: &mut OutputFrame, spatial: &mut bool) {
         let output = paint.output;
-        let Some(placed) = self.scene.content_bounds(node).map(RectF::to_pixel) else {
+        let placed = match drawn.local {
+            Some(local) => self.scene.project_local(node, local),
+            None => self.scene.content_bounds(node),
+        };
+        let Some(placed) = placed.map(RectF::to_pixel) else {
             return;
         };
         let dst = Rect::new(
@@ -4178,7 +4291,16 @@ impl Composer {
             placed.width,
             placed.height,
         );
-        let model = self.model(node, output);
+        // A surface drawn in 3D is placed by the node's matrix, which maps the node's own plane: the picture starts
+        // where the node's plane puts it.
+        let model = self.model(node, output).map(|mut model| {
+            if let Some(local) = drawn.local {
+                model.matrix = model
+                    .matrix
+                    .mul(&Mat4::translation(f64::from(local.x), f64::from(local.y), 0.0));
+            }
+            model
+        });
         let on_output = match model {
             // A projected surface's flat rectangle says nothing about where it lands.
             Some(_) => self
@@ -4235,6 +4357,9 @@ struct DrawnView {
 struct ViewPixels {
     source: SurfaceSource,
     size: Size,
+    /// The part of the picture inside the node's rectangle, for a window's own surface when its buffer is not exactly
+    /// the window geometry; `None` draws the whole picture over the node's rectangle.
+    crop: Option<ViewCrop>,
 }
 
 /// What one eye's walk of the source subtree draws with.
@@ -4260,23 +4385,44 @@ impl ViewEmit<'_> {
             return None;
         }
         let pixels = self.pictures.get(&node)?;
-        let (source, size) = if self.secure.is_some_and(|secure| secure.contains(&node)) {
-            match self.treatment {
-                SecureTreatment::Mask => (SurfaceSource::Snapshot(Arc::clone(self.mask)), Size::new(1, 1)),
+        let masked = self.secure.is_some_and(|secure| secure.contains(&node));
+        let (source, src, dst, model) = if masked {
+            let source = match self.treatment {
+                SecureTreatment::Mask => SurfaceSource::Snapshot(Arc::clone(self.mask)),
                 SecureTreatment::Omit => return None,
-            }
+            };
+            (
+                source,
+                RectF::new(0.0, 0.0, 1.0, 1.0),
+                Rect::new(0, 0, bounds.width, bounds.height),
+                model,
+            )
         } else {
-            (pixels.source.clone(), pixels.size)
+            match pixels.crop {
+                None => (
+                    pixels.source.clone(),
+                    RectF::new(0.0, 0.0, f64::from(pixels.size.width), f64::from(pixels.size.height)),
+                    Rect::new(0, 0, bounds.width, bounds.height),
+                    model,
+                ),
+                // The picture covers part of the node's rectangle: its layer starts where that part does.
+                Some(crop) => (
+                    pixels.source.clone(),
+                    crop.src,
+                    Rect::new(0, 0, crop.dst.width, crop.dst.height),
+                    Model {
+                        matrix: model
+                            .matrix
+                            .mul(&Mat4::translation(f64::from(crop.dst.x), f64::from(crop.dst.y), 0.0)),
+                        ..model
+                    },
+                ),
+            }
         };
         Some(Layer::Surface(Surface {
             source,
-            src: RectF {
-                x: 0.0,
-                y: 0.0,
-                width: f64::from(size.width),
-                height: f64::from(size.height),
-            },
-            dst: Rect::new(0, 0, bounds.width, bounds.height),
+            src,
+            dst,
             transform: Transform::Normal,
             opacity: opacity.min(1.0) as f32,
             tint: Color::WHITE,
@@ -4286,6 +4432,73 @@ impl ViewEmit<'_> {
             secure: false,
         }))
     }
+}
+
+/// The part of a window's buffer a View draws, and where it lies in the node's plane: the buffer's rectangle cut to the
+/// window geometry, which is the node's own rectangle.
+#[derive(Clone, Copy, Debug)]
+struct ViewCrop {
+    /// The rectangle of the buffer's pixels to sample.
+    src: RectF,
+    /// The rectangle of the node's plane it covers, in logical pixels.
+    dst: Rect,
+}
+
+/// The crop of a buffer of `pixels` that lies inside the window geometry `frame`, when the buffer, which spans `local` in
+/// the node's plane, is not exactly it. `None` when none of the buffer is inside.
+fn view_crop(local: Rect, frame: Rect, pixels: Size) -> Option<ViewCrop> {
+    let inside = local.intersection(frame)?;
+    let (scale_x, scale_y) = (
+        f64::from(pixels.width) / f64::from(local.width.max(1)),
+        f64::from(pixels.height) / f64::from(local.height.max(1)),
+    );
+    Some(ViewCrop {
+        src: RectF::new(
+            f64::from(inside.x - local.x) * scale_x,
+            f64::from(inside.y - local.y) * scale_y,
+            f64::from(inside.width) * scale_x,
+            f64::from(inside.height) * scale_y,
+        ),
+        dst: inside,
+    })
+}
+
+/// A window's buffer cut to the window geometry `frame` and padded to its size with transparent pixels where the
+/// buffer does not reach: the picture a View stretches over the window's node. `local` is where the buffer lies in
+/// the node's plane.
+fn geometry_crop(image: &Image, local: Rect, frame: Rect) -> Image {
+    let pixels = image.size();
+    let (scale_x, scale_y) = (
+        f64::from(pixels.width) / f64::from(local.width.max(1)),
+        f64::from(pixels.height) / f64::from(local.height.max(1)),
+    );
+    let width = ((f64::from(frame.width) * scale_x).round() as u32).max(1);
+    let height = ((f64::from(frame.height) * scale_y).round() as u32).max(1);
+    let stride = width as usize * 4;
+    let mut data = vec![0u8; stride * height as usize];
+    if let Some(inside) = local.intersection(frame) {
+        let to_x = (f64::from(inside.x - frame.x) * scale_x).round() as usize;
+        let to_y = (f64::from(inside.y - frame.y) * scale_y).round() as usize;
+        let from_x = (f64::from(inside.x - local.x) * scale_x).round() as usize;
+        let from_y = (f64::from(inside.y - local.y) * scale_y).round() as usize;
+        let columns = ((f64::from(inside.width) * scale_x).round() as usize)
+            .min(width as usize - to_x.min(width as usize))
+            .min((pixels.width as usize).saturating_sub(from_x));
+        let rows = ((f64::from(inside.height) * scale_y).round() as usize)
+            .min(height as usize - to_y.min(height as usize))
+            .min((pixels.height as usize).saturating_sub(from_y));
+        for row in 0..rows {
+            let from = (from_y + row) * image.stride() + from_x * 4;
+            let to = (to_y + row) * stride + to_x * 4;
+            if let (Some(source), Some(target)) = (
+                image.data().get(from..from + columns * 4),
+                data.get_mut(to..to + columns * 4),
+            ) {
+                target.copy_from_slice(source);
+            }
+        }
+    }
+    Image::new(Size::new(width, height), stride, data).unwrap_or_else(|| image.clone())
 }
 
 /// Whether a node's plane, through a camera, lands as a plane a picture can show: the matrix's columns for `u`, `v`
@@ -4380,6 +4593,9 @@ struct Paint<'a> {
 struct Drawn {
     source: SurfaceSource,
     content: Content,
+    /// Where the picture sits in its node's own plane when it does not start at the node's corner: the toplevel
+    /// surface of a window whose node is the window geometry starts at the geometry's offset, negated.
+    local: Option<Rect>,
     opacity: f32,
     corner_radius: f32,
     effects: Effects,

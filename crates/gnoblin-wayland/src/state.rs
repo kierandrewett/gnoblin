@@ -2063,8 +2063,19 @@ impl State {
     /// suggested none, so the client chose.
     fn follow_window_geometry(&mut self, window: WindowId, surface: &WlSurface) {
         let geometry = xdg_geometry(surface);
-        let origin = geometry.map_or((0, 0), |geometry| (geometry.loc.x, geometry.loc.y));
-        self.composer.set_window_surface_offset(window, origin.0, origin.1);
+        // The node is the window geometry: it takes the geometry's size, and the surface is drawn at the geometry's
+        // origin inside it.
+        self.composer.set_window_client_geometry(
+            window,
+            geometry.and_then(|geometry| {
+                Some(Rect::new(
+                    geometry.loc.x,
+                    geometry.loc.y,
+                    u32::try_from(geometry.size.w).ok()?,
+                    u32::try_from(geometry.size.h).ok()?,
+                ))
+            }),
+        );
         // A subsurface can reach past the surface it hangs from, and the pointer and touch reach it there too.
         let tree = bbox_from_surface_tree(surface, (0, 0));
         let extent = (tree.size.w > 0 && tree.size.h > 0)
@@ -3189,9 +3200,14 @@ impl State {
         }
         let (window, local) = picked?;
         let root = self.windows.get(&window)?.surface.wl_surface()?;
-        // The scene picks the window by its bounds. The surface the pointer is over is the topmost one of the window's
-        // tree, subsurfaces included, whose input region holds the point: a point the root's input region leaves out
-        // reaches a subsurface laid over it, or nothing.
+        // The scene picks the window by its node, which is the window geometry, so the point it reports is relative to
+        // the geometry's origin. A surface's input region and its subsurfaces are in surface coordinates, which start
+        // at the geometry's offset up and left of that origin.
+        let geometry = xdg_geometry(&root).map_or((0, 0), |geometry| (geometry.loc.x, geometry.loc.y));
+        let local = PointF::new(local.x + f64::from(geometry.0), local.y + f64::from(geometry.1));
+        // The surface the pointer is over is the topmost one of the window's tree, subsurfaces included, whose input
+        // region holds the point: a point the root's input region leaves out reaches a subsurface laid over it, or
+        // nothing.
         let (surface, offset) = under_from_surface_tree(
             &root,
             SmithayPoint::from((local.x, local.y)),

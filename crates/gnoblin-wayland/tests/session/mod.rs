@@ -30,7 +30,7 @@ use gnoblin_wayland::{NewWindowFocus, WmOptions};
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
     wl_buffer, wl_compositor, wl_data_device, wl_data_device_manager, wl_data_offer, wl_data_source, wl_keyboard,
-    wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+    wl_output, wl_pointer, wl_region, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
 use wayland_protocols::ext::data_control::v1::client::{
@@ -324,6 +324,9 @@ pub struct App {
     pub pointer_enters: u32,
     /// How many times the pointer left a surface of this client.
     pub pointer_leaves: u32,
+    /// Where the pointer last said it is, in the coordinates of the surface it is over: the point of an `enter` or a
+    /// `motion`.
+    pub pointer_at: Option<(f64, f64)>,
     /// How many `wl_surface.enter` events arrived: a surface is on an output.
     pub surface_enters: u32,
     /// How many `wl_surface.leave` events arrived.
@@ -782,7 +785,15 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
     ) {
         match event {
             wl_pointer::Event::Button { serial, .. } => state.button_serial = Some(serial),
-            wl_pointer::Event::Enter { .. } => state.pointer_enters += 1,
+            wl_pointer::Event::Enter {
+                surface_x, surface_y, ..
+            } => {
+                state.pointer_enters += 1;
+                state.pointer_at = Some((surface_x, surface_y));
+            }
+            wl_pointer::Event::Motion {
+                surface_x, surface_y, ..
+            } => state.pointer_at = Some((surface_x, surface_y)),
             wl_pointer::Event::Leave { .. } => state.pointer_leaves += 1,
             _ => {}
         }
@@ -1115,6 +1126,7 @@ wayland_client::delegate_noop!(App: ignore wl_shm::WlShm);
 wayland_client::delegate_noop!(App: ignore wl_shm_pool::WlShmPool);
 wayland_client::delegate_noop!(App: ignore wl_buffer::WlBuffer);
 wayland_client::delegate_noop!(App: ignore wl_output::WlOutput);
+wayland_client::delegate_noop!(App: ignore wl_region::WlRegion);
 wayland_client::delegate_noop!(App: ignore xdg_positioner::XdgPositioner);
 
 impl Dispatch<xdg_popup::XdgPopup, ()> for App {
