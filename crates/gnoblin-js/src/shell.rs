@@ -442,10 +442,10 @@ impl JsShell {
                     );
                 }
                 TreeIncoming::Reply(reply) => self.handle_reply(&reply, &mut diagnostics),
-                // A claimed chord or gesture is parked for the input module, which the frame hands it to once
-                // the listeners are planned. A pointer event addressed to a canvas of the UI toolkit and the answer
-                // to one of its measurements are parked for the toolkit's frame. Every other event and answer has no
-                // JavaScript API: it is consumed so it does not pile up.
+                // A claimed chord, gesture or pointer drag is parked for the input module, which the frame hands it
+                // to once the listeners are planned. A pointer event addressed to a canvas of the UI toolkit and the
+                // answer to one of its measurements are parked for the toolkit's frame. Every other event and answer
+                // has no JavaScript API: it is consumed so it does not pile up.
                 TreeIncoming::Chord(chord) => self.state.borrow_mut().input.inbox.push(JsInputMessage::Chord(chord)),
                 TreeIncoming::Gesture(gesture) => self
                     .state
@@ -460,9 +460,9 @@ impl JsShell {
                 TreeIncoming::Answer { token, result, error } => {
                     self.state.borrow_mut().ui.accept_answer(token, &result, &error);
                 }
-                // A claimed pointer chord's drag has no JavaScript API yet (the input module consumes it in a later
-                // package): it is dropped here so it does not pile up.
-                TreeIncoming::PointerChord(_) => {}
+                TreeIncoming::PointerChord(drag) => {
+                    self.state.borrow_mut().input.inbox.push(JsInputMessage::Pointer(drag));
+                }
                 TreeIncoming::Attached(_) | TreeIncoming::Snapshot { .. } => {
                     return Err(JsShellError::Link("attach or snapshot after boot".to_owned()));
                 }

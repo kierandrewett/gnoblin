@@ -20,16 +20,17 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use gnoblin_secret::SecretText;
-use gnoblin_tree_client::tree_mirror::{MirrorValue, NodeId, TreeChord, TreeGesture, lua_class};
+use gnoblin_tree_client::tree_mirror::{MirrorValue, NodeId, TreeChord, TreeGesture, TreePointerChord, lua_class};
 use rquickjs::{Array, Ctx, Function, IntoJs, Object, Value};
 
 use crate::bindings::{HostState, SharedState, parents_first};
 
-/// A claimed chord or gesture the compositor reported, parked until the frame hands it to the module.
+/// A claimed chord, gesture or pointer drag the compositor reported, parked until the frame hands it to the module.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum JsInputMessage {
     Chord(TreeChord),
     Gesture(TreeGesture),
+    Pointer(TreePointerChord),
 }
 
 /// Everything input keeps on the host between frames.
@@ -120,6 +121,15 @@ fn focus(state: &HostState, seat: NodeId) -> f64 {
     match seat_prop(state, seat, "focus") {
         Some(MirrorValue::Node(node)) => state.handles.to_script(*node),
         _ => 0.0,
+    }
+}
+
+/// The seat's drag constraint, `work_area` or `minimum_strip`, as the compositor configured it. Any other text
+/// is passed on as it is, so the script that reads it can refuse it by name.
+fn drag_constraint(state: &HostState, seat: NodeId) -> String {
+    match seat_prop(state, seat, "drag_constraint") {
+        Some(MirrorValue::Text(text)) => text.clone(),
+        _ => "work_area".to_owned(),
     }
 }
 
@@ -234,7 +244,7 @@ pub(crate) fn unclaim(state: &mut HostState, id: i64) {
     );
 }
 
-/// The frame's chord and gesture messages as script objects, for the module's `input` entry.
+/// The frame's chord, gesture and pointer messages as script objects, for the module's `input` entry.
 pub(crate) fn messages_to_js<'js>(ctx: &Ctx<'js>, messages: &[JsInputMessage]) -> rquickjs::Result<Array<'js>> {
     let list = Array::new(ctx.clone())?;
     for (index, message) in messages.iter().enumerate() {
@@ -256,6 +266,17 @@ pub(crate) fn messages_to_js<'js>(ctx: &Ctx<'js>, messages: &[JsInputMessage]) -
                 item.set("dy", gesture.dy)?;
                 item.set("scale", gesture.scale)?;
                 item.set("rotation", gesture.rotation)?;
+            }
+            JsInputMessage::Pointer(pointer) => {
+                item.set("kind", "pointer")?;
+                item.set("claim", pointer.claim as f64)?;
+                item.set("phase", pointer.phase.as_str())?;
+                item.set("x", pointer.x)?;
+                item.set("y", pointer.y)?;
+                item.set("dx", pointer.dx)?;
+                item.set("dy", pointer.dy)?;
+                item.set("button", pointer.button as f64)?;
+                item.set("modifiers", pointer.modifiers.as_str())?;
             }
         }
         list.set(index, item)?;
@@ -303,6 +324,18 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
         Function::new(ctx.clone(), move |seat: f64| -> f64 {
             let state = shared.borrow();
             state.handles.resolve(seat).map_or(0.0, |seat| focus(&state, seat))
+        })?,
+    )?;
+
+    let shared = state.clone();
+    input.set(
+        "dragConstraint",
+        Function::new(ctx.clone(), move |seat: f64| -> String {
+            let state = shared.borrow();
+            state
+                .handles
+                .resolve(seat)
+                .map_or_else(|| "work_area".to_owned(), |seat| drag_constraint(&state, seat))
         })?,
     )?;
 

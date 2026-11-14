@@ -3,8 +3,9 @@
 //!
 //! The grammar is tested against the stock library alone (no host). Everything else runs a real `JsShell`
 //! over `FakeLink`, an in-memory compositor that records the seat claims the shell makes and plays back
-//! scripted chords, gestures, pointer positions and window deaths. Nothing here proves that the real
-//! compositor takes these claims: the fake accepts every claim it is sent.
+//! scripted chords, `pointer_chord` drags, gestures, pointer positions and window deaths. Nothing here proves
+//! that the real compositor takes these claims: the fake accepts every claim it is sent. The real one is
+//! driven by `crates/gnoblin/tests/js_shell.rs`.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -16,7 +17,7 @@ use std::time::Duration;
 use gnoblin_js::{JsConfig, JsGeneration, JsShell, JsShellConfig, stock_modules};
 use gnoblin_tree_client::tree_mirror::{
     Attached, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeChord, TreeGesture,
-    TreeIncoming, TreeLink, TreeTx, TxOp, TxReply,
+    TreeIncoming, TreeLink, TreePointerChord, TreeTx, TxOp, TxReply,
 };
 use tempfile::TempDir;
 
@@ -33,7 +34,7 @@ fn grammar(body: &str) -> String {
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     let source = format!(
         "import {{ emit }} from \"harness\";\n\
-         import {{ parseTrigger, claimOf, Binding, BindingCollection, KeyBinding, FloatingLayout, resolveTriggers }} from \"gnoblin\";\n\
+         import {{ parseTrigger, claimOf, Binding, BindingCollection, KeyBinding, FloatingLayout, resolveTriggers, ClientMoveBinding, ClientResizeBinding, dragConstraintMode, constrainRect }} from \"gnoblin\";\n\
          const thrown = (fn: () => void) => {{ try {{ fn(); }} catch (e: any) {{ return `${{e.name}}: ${{e.message}} [${{e.token}}]`; }} return \"did not throw\"; }};\n\
          {body}\n"
     );
@@ -263,6 +264,16 @@ struct Compositor {
     calls: Vec<(String, i64, i64, String)>,
     /// The seat node each live claim was made on.
     claim_seats: BTreeMap<i64, u64>,
+    /// The pointer chord drags in flight, by claim id.
+    drags: BTreeMap<i64, FakeDrag>,
+}
+
+/// A pointer chord's drag as the fake compositor streams it: where it began and what the chord is.
+struct FakeDrag {
+    seat: u64,
+    origin: (f64, f64),
+    button: i64,
+    modifiers: String,
 }
 
 #[derive(Clone)]
@@ -330,6 +341,8 @@ impl FakeLink {
                         let id = le(&args[0..8]);
                         c.claims.remove(&id);
                         c.claim_seats.remove(&id);
+                        // A drag whose claim goes ends without a word to the owner.
+                        c.drags.remove(&id);
                         c.calls.push((method.clone(), id, 0, String::new()));
                     }
                     _ => {}
@@ -403,8 +416,13 @@ impl TreeLink for FakeLink {
 
 /// The compositor's side of a scripted session.
 trait Script {
+    /// Moves the pointer of `seat`. A pointer chord drag on that seat streams an `update` with the new place.
     fn set_pointer(&self, seat: u64, x: f64, y: f64);
+    /// A key chord's `press` or `release`. A pointer chord (it ends in `ButtonN`) starts its drag at the seat's
+    /// pointer on `press` and ends it there on `release`, as the compositor's `pointer_chord` signal does.
     fn chord(&self, claim: i64, chord: &str, state: &str);
+    /// The compositor ending a live drag with `cancel`.
+    fn cancel_drag(&self, claim: i64);
     fn gesture(&self, claim: i64, phase: &str, dx: f64, dy: f64);
     fn destroy(&self, node: u64);
     fn claim_id(&self, text: &str) -> i64;
@@ -424,14 +442,53 @@ impl Script for Comp {
             set_change(seat, "pointer_x", MirrorValue::Double(x)),
             set_change(seat, "pointer_y", MirrorValue::Double(y)),
         ]);
+        let mut c = self.borrow_mut();
+        let updates: Vec<TreePointerChord> = c
+            .drags
+            .iter()
+            .filter(|(_, drag)| drag.seat == seat)
+            .map(|(claim, drag)| drag_message(*claim, drag, "update", (x, y)))
+            .collect();
+        c.queue.extend(updates.into_iter().map(TreeIncoming::PointerChord));
     }
 
     fn chord(&self, claim: i64, chord: &str, state: &str) {
-        self.borrow_mut().queue.push(TreeIncoming::Chord(TreeChord {
-            claim,
-            chord: chord.into(),
-            state: state.into(),
-        }));
+        let Some((modifiers, button)) = chord.rsplit_once("Button") else {
+            self.borrow_mut().queue.push(TreeIncoming::Chord(TreeChord {
+                claim,
+                chord: chord.into(),
+                state: state.into(),
+            }));
+            return;
+        };
+        let mut c = self.borrow_mut();
+        let seat = *c
+            .claim_seats
+            .get(&claim)
+            .expect("a pointer chord claim was made on a seat");
+        let at = pointer_at(&c, seat);
+        let message = if state == "press" {
+            let drag = FakeDrag {
+                seat,
+                origin: at,
+                button: button.parse().expect("a button number"),
+                modifiers: modifiers.to_owned(),
+            };
+            let message = drag_message(claim, &drag, "start", at);
+            c.drags.insert(claim, drag);
+            message
+        } else {
+            let drag = c.drags.remove(&claim).expect("a drag is live");
+            drag_message(claim, &drag, "end", at)
+        };
+        c.queue.push(TreeIncoming::PointerChord(message));
+    }
+
+    fn cancel_drag(&self, claim: i64) {
+        let mut c = self.borrow_mut();
+        let drag = c.drags.remove(&claim).expect("a drag is live");
+        let message = drag_message(claim, &drag, "cancel", pointer_at(&c, drag.seat));
+        c.queue.push(TreeIncoming::PointerChord(message));
     }
 
     fn gesture(&self, claim: i64, phase: &str, dx: f64, dy: f64) {
@@ -478,6 +535,31 @@ impl Script for Comp {
             other => panic!("node {node} has no double {key}: {other:?}"),
         }
     }
+}
+
+/// The `pointer_chord` signal of `drag` in `phase` with the pointer at `at`.
+fn drag_message(claim: i64, drag: &FakeDrag, phase: &str, at: (f64, f64)) -> TreePointerChord {
+    TreePointerChord {
+        claim,
+        phase: phase.to_owned(),
+        x: at.0,
+        y: at.1,
+        dx: at.0 - drag.origin.0,
+        dy: at.1 - drag.origin.1,
+        button: drag.button,
+        modifiers: drag.modifiers.clone(),
+        time: 0,
+    }
+}
+
+/// Where the seat's pointer is, as the fake compositor holds it.
+fn pointer_at(c: &Compositor, seat: u64) -> (f64, f64) {
+    let props = &c.nodes[&seat].props;
+    let axis = |key: &str| match props.get(key) {
+        Some(MirrorValue::Double(value)) => *value,
+        _ => 0.0,
+    };
+    (axis("pointer_x"), axis("pointer_y"))
 }
 
 fn node(class: &str, parent: u64, props: Vec<(&str, MirrorValue)>) -> Node {
@@ -1023,7 +1105,7 @@ fn a_workspace_layout_is_live_while_in_use_and_leaving_it_cancels_the_drag_in_fl
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
     assert!(comp.claimed().is_empty(), "{:?}", comp.claimed());
     assert_eq!((comp.prop(3, "x"), comp.prop(3, "y")), (10.0, 20.0));
-    comp.chord(id, "<Super>Button1", "release");
+    // The claim is gone, so the compositor ends the drag silently: no end, no cancel.
     comp.set_pointer(5, 90.0, 110.0);
     rig.frame();
     assert_eq!(
@@ -1090,8 +1172,8 @@ fn a_drag_that_is_behind_reads_the_latest_pointer_and_never_queues_a_second_upda
     assert_eq!(rig.log(), "p:start:3:50,60|p:update:70,80");
 
     // This frame the slow key handler runs first and uses up the frame, so the sample for 100,100 waits.
-    comp.set_pointer(5, 100.0, 100.0);
     comp.chord(comp.claim_id("<Super>k"), "<Super>k", "press");
+    comp.set_pointer(5, 100.0, 100.0);
     let diagnostics = rig.frame();
     assert!(
         diagnostics.iter().any(|d| d.contains("budget is used up")),
@@ -1169,6 +1251,279 @@ fn a_drag_gets_its_own_state_per_gesture_and_per_input_context() {
     assert_eq!(
         of("seatB"),
         [":start:3:20,30", ":update:20,90", ":update:20,120", ":end:2"]
+    );
+}
+
+// -- the pointer_chord stream ------------------------------------------------------------------------------
+
+/// Logs everything a pointer drag's event carries.
+const CONTEXT_PROBE: &str = "class Ctx extends PointerDragBinding {\n\
+                                 onStart(e: any) { log.push(`start:${e.client?.id}:${e.x},${e.y}:${e.dx},${e.dy}:b${e.button}:${[...e.modifiers].join('+')}:${e.context === input}:${e.trigger}`); return {}; }\n\
+                                 onUpdate(e: any) { log.push(`update:${e.x},${e.y}:${e.dx},${e.dy}:${e.position.x},${e.position.y}`); }\n\
+                                 onEnd(e: any) { log.push(`end:${e.x},${e.y}:${e.dx},${e.dy}`); }\n\
+                                 onCancel(e: any) { log.push(`cancel:${e.x},${e.y}`); }\n\
+                             }\n";
+
+/// A screen of `width` by `height`, which is the work area of a drag.
+fn add_screen(comp: &Comp, width: f64, height: f64) {
+    comp.borrow_mut().nodes.insert(
+        7,
+        node(
+            "screen",
+            1,
+            vec![
+                ("width", MirrorValue::Double(width)),
+                ("height", MirrorValue::Double(height)),
+                ("primary", MirrorValue::Bool(true)),
+            ],
+        ),
+    );
+}
+
+#[test]
+fn a_pointer_chord_stream_calls_start_update_update_end_with_the_context_of_the_drag() {
+    let comp = world(false);
+    let mut rig = rig(
+        &comp,
+        &entry(&format!(
+            "{CONTEXT_PROBE}input.bind(\"Super+MouseLeft+Drag\", new Ctx({{ id: \"c\", trigger: \"Super+MouseLeft+Drag\" }}));\n"
+        )),
+    );
+    let id = comp.claim_id("<Super>Button1");
+    comp.set_pointer(5, 50.0, 60.0);
+    comp.chord(id, "<Super>Button1", "press");
+    let diagnostics = rig.frame();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    assert_eq!(rig.log(), "", "a press alone starts nothing");
+    comp.set_pointer(5, 70.0, 80.0);
+    rig.frame();
+    comp.set_pointer(5, 75.0, 90.0);
+    rig.frame();
+    comp.chord(id, "<Super>Button1", "release");
+    rig.frame();
+    assert_eq!(
+        rig.log(),
+        "start:3:50,60:0,0:b1:Super:true:Super+MouseLeft+Drag|update:70,80:20,20:70,80|update:75,90:25,30:75,90|end:75,90:25,30"
+    );
+}
+
+#[test]
+fn a_drag_starts_on_the_topmost_client_under_the_press_and_a_press_over_nothing_has_no_client() {
+    let comp = world(false);
+    // Window 8 comes after window 3 in tree order, so it is above it where they overlap.
+    comp.borrow_mut().nodes.insert(
+        8,
+        node(
+            "window",
+            1,
+            vec![
+                ("title", text("on top")),
+                ("x", MirrorValue::Double(40.0)),
+                ("y", MirrorValue::Double(50.0)),
+                ("width", MirrorValue::Double(100.0)),
+                ("height", MirrorValue::Double(100.0)),
+            ],
+        ),
+    );
+    let mut rig = rig(
+        &comp,
+        &entry(&format!(
+            "{PROBE}input.bind(\"Super+MouseLeft+Drag\", new Probe(\"p\", \"Super+MouseLeft+Drag\"));\n"
+        )),
+    );
+    let id = comp.claim_id("<Super>Button1");
+    // A context's binding hears every drag, so a press over no client starts one with no client.
+    for (at, owner) in [((50.0, 60.0), "8"), ((20.0, 30.0), "3"), ((600.0, 600.0), "undefined")] {
+        comp.set_pointer(5, at.0, at.1);
+        comp.chord(id, "<Super>Button1", "press");
+        rig.frame();
+        comp.set_pointer(5, at.0 + 10.0, at.1 + 10.0);
+        rig.frame();
+        comp.chord(id, "<Super>Button1", "release");
+        rig.frame();
+        let wanted = format!("p:start:{owner}:{},{}", at.0, at.1);
+        assert!(rig.log().contains(&wanted), "{wanted} in {}", rig.log());
+    }
+}
+
+#[test]
+fn the_compositors_cancel_calls_on_cancel_once_and_nothing_follows() {
+    let comp = world(false);
+    let mut rig = rig(
+        &comp,
+        &entry(&format!(
+            "{PROBE}input.bind(\"Super+MouseLeft+Drag\", new Probe(\"p\", \"Super+MouseLeft+Drag\"));\n"
+        )),
+    );
+    let id = comp.claim_id("<Super>Button1");
+    comp.set_pointer(5, 50.0, 60.0);
+    comp.chord(id, "<Super>Button1", "press");
+    rig.frame();
+    comp.set_pointer(5, 70.0, 80.0);
+    rig.frame();
+    comp.cancel_drag(id);
+    let diagnostics = rig.frame();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    assert_eq!(rig.log(), "p:start:3:50,60|p:update:70,80|p:cancel:1");
+    // The drag is over: a later press starts a new one, and nothing is called twice.
+    rig.frame();
+    comp.set_pointer(5, 90.0, 90.0);
+    rig.frame();
+    assert_eq!(rig.log(), "p:start:3:50,60|p:update:70,80|p:cancel:1");
+}
+
+#[test]
+fn a_throwing_on_update_cancels_that_drag_only_and_logs_once() {
+    let comp = world(false);
+    let mut rig = rig(
+        &comp,
+        &entry(&format!(
+            "{PROBE}class Bad extends PointerDragBinding {{\n\
+                 onStart() {{ return {{}}; }}\n\
+                 onUpdate() {{ log.push(\"bad:update\"); throw new Error(\"nope\"); }}\n\
+                 onEnd() {{ log.push(\"bad:end\"); }}\n\
+                 onCancel() {{ log.push(\"bad:cancel\"); }}\n\
+             }}\n\
+             input.bind(\"Super+MouseLeft+Drag\", new Bad({{ id: \"bad\", trigger: \"Super+MouseLeft+Drag\" }}));\n\
+             input.bind(\"Super+MouseRight+Drag\", new Probe(\"good\", \"Super+MouseRight+Drag\"));\n"
+        )),
+    );
+    let (bad, good) = (comp.claim_id("<Super>Button1"), comp.claim_id("<Super>Button3"));
+    comp.set_pointer(5, 50.0, 60.0);
+    comp.chord(bad, "<Super>Button1", "press");
+    comp.chord(good, "<Super>Button3", "press");
+    rig.frame();
+    comp.set_pointer(5, 70.0, 80.0);
+    let diagnostics = rig.frame();
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert!(diagnostics[0].contains("nope"), "{diagnostics:?}");
+    comp.set_pointer(5, 90.0, 100.0);
+    let diagnostics = rig.frame();
+    assert!(
+        diagnostics.is_empty(),
+        "the failure is not reported again: {diagnostics:?}"
+    );
+    comp.chord(bad, "<Super>Button1", "release");
+    comp.chord(good, "<Super>Button3", "release");
+    rig.frame();
+    let log = rig.log();
+    let count = |needle: &str| log.split('|').filter(|entry| *entry == needle).count();
+    assert_eq!(count("bad:update"), 1, "{log}");
+    assert_eq!(count("bad:cancel"), 1, "{log}");
+    assert_eq!(count("bad:end"), 0, "{log}");
+    assert_eq!(count("good:update:70,80"), 1, "{log}");
+    assert_eq!(count("good:update:90,100"), 1, "{log}");
+    assert_eq!(count("good:end:2"), 1, "the other drag ran to its end: {log}");
+}
+
+#[test]
+fn the_stock_move_stays_in_the_work_area_and_a_minimum_strip_lets_the_window_leave_it() {
+    for (constraint, far, near) in [
+        ("work_area", (700.0, 600.0), (0.0, 0.0)),
+        ("minimum_strip", (925.0, 725.0), (-225.0, -125.0)),
+    ] {
+        let comp = world(false);
+        add_screen(&comp, 1000.0, 800.0);
+        comp.borrow_mut()
+            .nodes
+            .get_mut(&5)
+            .expect("the seat")
+            .props
+            .insert("drag_constraint".into(), text(constraint));
+        let mut rig = rig(&comp, &entry(FLOATING_ENTRY));
+        let id = comp.claim_id("<Super>Button1");
+        comp.set_pointer(5, 50.0, 60.0);
+        comp.chord(id, "<Super>Button1", "press");
+        rig.frame();
+        comp.set_pointer(5, 2000.0, 2000.0);
+        let diagnostics = rig.frame();
+        assert!(diagnostics.is_empty(), "{constraint}: {diagnostics:?}");
+        assert_eq!((comp.prop(3, "x"), comp.prop(3, "y")), far, "{constraint}, far corner");
+        comp.set_pointer(5, -2000.0, -2000.0);
+        rig.frame();
+        assert_eq!(
+            (comp.prop(3, "x"), comp.prop(3, "y")),
+            near,
+            "{constraint}, near corner"
+        );
+        assert_eq!((comp.prop(3, "width"), comp.prop(3, "height")), (300.0, 200.0));
+        comp.chord(id, "<Super>Button1", "release");
+        rig.frame();
+    }
+}
+
+#[test]
+fn the_drag_constraint_and_the_size_rules_agree_with_the_lua_drag_tests() {
+    let got = grammar(
+        r#"
+        const area = { x: 0, y: 32, width: 1920, height: 1048 };
+        const at = (x: number, y: number, width: number, height: number) => ({ x, y, width, height });
+        const show = (r: any) => `${r.x},${r.y},${r.width},${r.height}`;
+        const client = (extra: any = {}): any => ({ alive: true, fullscreen: false, bounds: at(10, 20, 300, 200), ...extra });
+        const move = new ClientMoveBinding();
+        const size = new ClientResizeBinding();
+        const declines = (binding: any, c: any) =>
+            String(binding.onStart({ client: c, position: { x: 20, y: 30 }, localPosition: { x: 10, y: 10 } }) === false);
+        // Presses at `from`, drags to `to` and reports where the client ended up.
+        const resize = (c: any, from: [number, number], to: [number, number]) => {
+            const state = size.onStart({ client: c, position: { x: from[0], y: from[1] }, localPosition: { x: from[0] - c.bounds.x, y: from[1] - c.bounds.y } });
+            size.onUpdate({ client: c, position: { x: to[0], y: to[1] } }, state);
+            return show(c.bounds);
+        };
+        const slide = (c: any, to: [number, number], constraint: string) => {
+            const state = move.onStart({ client: c, position: { x: 50, y: 60 } });
+            move.onUpdate({ client: c, position: { x: to[0], y: to[1] }, workArea: at(0, 0, 1000, 800), dragConstraint: constraint }, state);
+            return show(c.bounds);
+        };
+        emit([
+            dragConstraintMode(undefined), dragConstraintMode("work_area"), dragConstraintMode("minimum_strip"),
+            thrown(() => dragConstraintMode("loose")), thrown(() => dragConstraintMode(true)),
+            show(constrainRect(at(-400, -400, 600, 400), area, "work_area")),
+            show(constrainRect(at(1800, 1000, 600, 400), area, "work_area")),
+            show(constrainRect(at(100, 200, 600, 400), area, "work_area")),
+            show(constrainRect(at(500, 500, 2000, 1200), area, "work_area")),
+            show(constrainRect(at(-5000, -5000, 600, 400), area, "minimum_strip")),
+            show(constrainRect(at(5000, 5000, 600, 400), area, "minimum_strip")),
+            show(constrainRect(at(100, 200, 600, 400), area, "minimum_strip")),
+            declines(move, client()), declines(move, client({ fullscreen: true })), declines(move, client({ maximised: true })),
+            declines(size, client()), declines(size, client({ fullscreen: true })), declines(size, client({ maximised: true })),
+            resize(client(), [20, 30], [350, 230]),
+            resize(client({ minSize: { width: 150, height: 120 } }), [20, 30], [350, 230]),
+            resize(client({ maxSize: { width: 400, height: 300 } }), [300, 210], [800, 710]),
+            resize(client({ maxSize: { width: 400, height: 300 } }), [20, 30], [-480, -470]),
+            slide(client(), [2000, 2000], "work_area"),
+            slide(client(), [2000, 2000], "minimum_strip"),
+        ].join("\n"));
+        "#,
+    );
+    assert_eq!(
+        got,
+        lines(&[
+            "work_area",
+            "work_area",
+            "minimum_strip",
+            "TypeError: drag_constraint must be work_area or minimum_strip, got loose [undefined]",
+            "TypeError: drag_constraint must be work_area or minimum_strip, got true [undefined]",
+            "0,32,600,400",
+            "1320,680,600,400",
+            "100,200,600,400",
+            "0,32,2000,1200",
+            "-525,-293,600,400",
+            "1845,1005,600,400",
+            "100,200,600,400",
+            "false",
+            "true",
+            "true",
+            "false",
+            "true",
+            "true",
+            "210,140,100,80",
+            "160,100,150,120",
+            "10,20,400,300",
+            "-90,-80,400,300",
+            "700,600,300,200",
+            "925,725,300,200",
+        ])
     );
 }
 

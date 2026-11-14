@@ -955,9 +955,17 @@ declare module "gnoblin" {
         readonly modifiers: ReadonlySet<string>;
         /** The canonical trigger of the binding. */
         readonly trigger: string;
+        /** Pointer drags only: the pointer, the same as `position`. */
+        readonly x?: number;
+        readonly y?: number;
+        /** Pointer drags only: the button, X11 numbering (1 left, 2 middle, 3 right). */
+        readonly button?: number;
+        /** Pointer drags only: the rectangle a dragged window stays in, and the seat's `drag_constraint`. */
+        readonly workArea?: Rect;
+        readonly dragConstraint?: string;
         /** Gestures only: `begin`, `update`, `end` or `cancel`. */
         readonly phase?: string;
-        /** Gestures only: movement since the begin in touchpad units, the spread (1 is unchanged) and the rotation in radians. */
+        /** Gestures only: movement since the begin in touchpad units, the spread (1 is unchanged) and the rotation in radians. A pointer drag's `dx` and `dy` are pixels from the press. */
         readonly dx?: number;
         readonly dy?: number;
         readonly scale?: number;
@@ -990,6 +998,16 @@ declare module "gnoblin" {
         threshold: number;
         constructor(options: PointerDragBindingOptions);
     }
+    /** How a dragged window is kept in the work area: inside it, or with a strip of it inside. */
+    export type DragConstraint = "work_area" | "minimum_strip";
+    /** The visible strip of a window kept inside the work area under `minimum_strip`: 75 pixels. */
+    export const DRAG_STRIP: number;
+    /** The constraint a seat's `drag_constraint` names; undefined and null are `work_area`, any other value throws. */
+    export function dragConstraintMode(value: unknown): DragConstraint;
+    /** One axis: a window of extent `size` at `pos` against an area that starts at `start` and is `span` long. */
+    export function clampAxis(pos: number, size: number, start: number, span: number, mode: DragConstraint): number;
+    /** `rect` moved to the place `mode` allows inside `area`, keeping its size. */
+    export function constrainRect(rect: Rect, area: Rect, mode: DragConstraint): Rect;
     /** Super+MouseLeft drag: the client follows the pointer. */
     export class ClientMoveBinding extends PointerDragBinding {
         constructor(options?: Partial<PointerDragBindingOptions>);

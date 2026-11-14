@@ -374,15 +374,25 @@ export interface Rect {
 export interface BindingClient {
     readonly alive: boolean;
     readonly fullscreen: boolean;
+    /** A maximised client declines a move and a resize: the layout, not the pointer, decides its size. */
+    readonly maximised?: boolean;
+    /** A minimised client is not under the pointer, so the hit test skips it. */
+    readonly minimised?: boolean;
     bounds: Rect;
+    /** The least the client may be resized to. The tree carries no such limit today, so it is usually absent. */
     minSize?: { width: number; height: number };
+    /** The most the client may be resized to. Absent means no limit. */
+    maxSize?: { width: number; height: number };
     floatingBounds?: Rect | null;
 }
 
 /**
  * What the matcher passes to a drag or gesture hook. `position` is the pointer in the compositor's logical
- * space and `localPosition` is relative to the hit client's origin. A gesture event also has `phase`, `dx`,
- * `dy`, `scale`, `rotation` and `progress` (0 to 1, how far a directed gesture has gone).
+ * space and `localPosition` is relative to the hit client's origin. A pointer drag also has `x` and `y` (the
+ * same as `position`), `dx` and `dy` (how far the pointer is from the press), `button` (X11 numbering: 1 left, 2
+ * middle, 3 right), `workArea` (the rectangle a dragged window stays in) and `dragConstraint` (the seat's
+ * `drag_constraint`). A gesture event also has `phase`, `dx`, `dy`, `scale`, `rotation` and `progress` (0 to 1,
+ * how far a directed gesture has gone).
  */
 export interface DragEvent extends BindingEvent {
     readonly context: unknown;
@@ -391,6 +401,11 @@ export interface DragEvent extends BindingEvent {
     readonly layout?: unknown;
     readonly position?: Point;
     readonly localPosition?: Point;
+    readonly x?: number;
+    readonly y?: number;
+    readonly button?: number;
+    readonly workArea?: Rect;
+    readonly dragConstraint?: string;
     readonly deltaTime: number;
     readonly modifiers: ReadonlySet<string>;
     readonly trigger: string;
@@ -683,6 +698,52 @@ function moved(start: Point, now: Point): Point {
     return { x: now.x - start.x, y: now.y - start.y };
 }
 
+/** How a dragged window is kept in the work area: inside it, or with a strip of it inside. */
+export type DragConstraint = "work_area" | "minimum_strip";
+
+/** The visible strip of a window kept inside the work area under `minimum_strip`. */
+export const DRAG_STRIP = 75;
+
+/** The constraint a seat's `drag_constraint` names. Absent is `work_area`; any other value throws. */
+export function dragConstraintMode(value: unknown): DragConstraint {
+    if (value === undefined || value === null || value === "work_area") {
+        return "work_area";
+    }
+    if (value === "minimum_strip") {
+        return "minimum_strip";
+    }
+    throw new TypeError(`drag_constraint must be work_area or minimum_strip, got ${String(value)}`);
+}
+
+/** One axis: a window of extent `size` at `pos`, against an area that starts at `start` and is `span` long. */
+export function clampAxis(pos: number, size: number, start: number, span: number, mode: DragConstraint): number {
+    if (mode === "work_area") {
+        if (size >= span) {
+            return start;
+        }
+        return Math.min(Math.max(pos, start), start + span - size);
+    }
+    const visible = Math.min(DRAG_STRIP, size);
+    const low = start - (size - visible);
+    const high = start + span - visible;
+    return Math.min(Math.max(pos, low), high);
+}
+
+/** `rect` moved to the place `mode` allows inside `area`, keeping its size. */
+export function constrainRect(rect: Rect, area: Rect, mode: DragConstraint): Rect {
+    return {
+        x: clampAxis(rect.x, rect.width, area.x, area.width, mode),
+        y: clampAxis(rect.y, rect.height, area.y, area.height, mode),
+        width: rect.width,
+        height: rect.height,
+    };
+}
+
+/** Whether a window may be dragged: a fullscreen or maximised one declines. */
+function draggable(client: BindingClient): boolean {
+    return !client.fullscreen && client.maximised !== true;
+}
+
 /** What `ClientMoveBinding.onStart` keeps for one drag. */
 export interface MoveState {
     client: BindingClient;
@@ -701,7 +762,7 @@ export class ClientMoveBinding extends PointerDragBinding {
 
     onStart(event: DragEvent): MoveState | false {
         const { client, position } = event;
-        if (!client || !position || client.fullscreen) {
+        if (!client || !position || !draggable(client)) {
             return false;
         }
         return { client, startPointer: { ...position }, startBounds: { ...client.bounds } };
@@ -713,7 +774,11 @@ export class ClientMoveBinding extends PointerDragBinding {
             return;
         }
         const delta = moved(startPointer, event.position);
-        client.bounds = { ...startBounds, x: startBounds.x + delta.x, y: startBounds.y + delta.y };
+        const target = { ...startBounds, x: startBounds.x + delta.x, y: startBounds.y + delta.y };
+        // The seat's constraint keeps the window reachable. Without a work area there is nothing to keep it in.
+        client.bounds = event.workArea
+            ? constrainRect(target, event.workArea, dragConstraintMode(event.dragConstraint))
+            : target;
     }
 
     onEnd(_event: DragEvent, state: object): void {
@@ -773,7 +838,7 @@ export class ClientResizeBinding extends PointerDragBinding {
 
     onStart(event: DragEvent): ResizeState | false {
         const { client, position } = event;
-        if (!client || !position || client.fullscreen) {
+        if (!client || !position || !draggable(client)) {
             return false;
         }
         const start = { ...client.bounds };
@@ -805,19 +870,18 @@ export class ClientResizeBinding extends PointerDragBinding {
             r.height += delta.y;
         }
         const min = client.minSize ?? MIN_SIZE;
-        // The opposite corner is the anchor: a client held at its minimum stops there and does not slide.
-        if (r.width < min.width) {
-            if (corner.endsWith("left")) {
-                r.x -= min.width - r.width;
-            }
-            r.width = min.width;
+        const max = client.maxSize;
+        // The opposite corner is the anchor: a client held at its limit stops there and does not slide.
+        const limitedWidth = Math.max(min.width, Math.min(r.width, max?.width ?? Infinity));
+        if (corner.endsWith("left")) {
+            r.x += r.width - limitedWidth;
         }
-        if (r.height < min.height) {
-            if (corner.startsWith("top")) {
-                r.y -= min.height - r.height;
-            }
-            r.height = min.height;
+        r.width = limitedWidth;
+        const limitedHeight = Math.max(min.height, Math.min(r.height, max?.height ?? Infinity));
+        if (corner.startsWith("top")) {
+            r.y += r.height - limitedHeight;
         }
+        r.height = limitedHeight;
         client.bounds = r;
     }
 

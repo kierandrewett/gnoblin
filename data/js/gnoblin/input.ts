@@ -1,5 +1,5 @@
-// Input: `gnoblin.input`, its contexts and devices, and the matcher that turns the compositor's claimed chords
-// and gestures into calls of `Binding` hooks (owner-spec.md sections 10 and 11).
+// Input: `gnoblin.input`, its contexts and devices, and the matcher that turns the compositor's claimed chords,
+// pointer drags and gestures into calls of `Binding` hooks (owner-spec.md sections 10 and 11).
 //
 // The compositor does not know what a binding is. A binding's trigger becomes a *claim* on a seat: the
 // compositor withholds that chord (or touchpad gesture) from clients and tells the shell each time it changes
@@ -7,11 +7,13 @@
 // when the last of them goes), and decides what a chord event means:
 //
 //   key chord       press -> the highest-precedence binding that does not decline runs `onPress`.
-//   pointer chord   press -> remember the pointer and the client under it. The pointer is sampled once per
-//                   frame; once it has moved past the drag threshold, the candidates' `onStart` are asked in
+//   pointer chord   the compositor streams the drag as `pointer_chord` messages (start, update, end, cancel)
+//                   that carry the pointer's place. A start records the press place and the client under it;
+//                   once an update is past the drag threshold, the candidates' `onStart` are asked in
 //                   precedence order and the first to return a state object owns the drag (`onUpdate` per
-//                   sample, `onEnd` on release, `onCancel` if the client dies, the binding is removed or
-//                   the generation retires). A release before any movement is a click.
+//                   sample, `onEnd` on the end message, `onCancel` on the compositor's cancel, if the client
+//                   dies, the binding is removed, `onUpdate` throws or the generation retires). An end before
+//                   any movement is a click.
 //   gesture         begin/update/end/cancel of a claimed swipe or pinch map to the same four hooks.
 //
 // Precedence: device bindings, then the bindings of the layout that owns the targeted client, then the
@@ -20,9 +22,9 @@
 // same trigger at the same priority are refused when the second is added (`BindingConflictError`).
 //
 // Every hook runs as its own scheduled call, under the shell's per-call budget and with its throw reported
-// and isolated. The pointer is sampled at most once per frame and at most one sample waits at a time: when
-// scripts are behind, the next hook reads the latest position (latest wins). Starts, ends and cancels are
-// never merged or dropped.
+// and isolated. A drag takes at most one sample per frame and at most one waits at a time: when scripts are
+// behind, the next hook reads the latest position (latest wins). Starts, ends and cancels are never merged or
+// dropped.
 //
 // The host is injected, so this module runs without one: `InputHost` is the seat's claims and properties,
 // `InputWorld` is the clients and the scheduler.
@@ -43,6 +45,7 @@ import type {
     GestureTriggerParts,
     ParsedTrigger,
     Point,
+    Rect,
     TriggerClaim,
 } from "gnoblin/bindings";
 
@@ -56,6 +59,8 @@ export interface InputHost {
     focus(seat: number): number;
     /** The seat's devices, one `id:name:caps` item each. */
     devices(seat: number): string[];
+    /** The seat's `drag_constraint`: `work_area` or `minimum_strip`. */
+    dragConstraint(seat: number): string;
     /** A claim id, or a refusal code. */
     claim(seat: number, chord: string, grab: boolean, device: string): number | string;
     claimGesture(seat: number, kind: string, fingers: number, device: string): number | string;
@@ -69,6 +74,8 @@ export interface InputWorld {
     clientOf(node: number): BindingClient | undefined;
     /** Every client, back to front. */
     stack(): BindingClient[];
+    /** The rectangle a dragged window stays in, or null when the tree has no screen yet. */
+    workArea(): Rect | null;
     /** The layouts the workspaces use now. Their bindings go live in every context while they are in use. */
     layouts(): InputLayout[];
     /** Runs `run` later, under the call budget. A throw is reported against `site`. */
@@ -85,6 +92,23 @@ export interface InputChordMessage {
     readonly state: string;
 }
 
+/** A claimed pointer chord's drag that advanced: the compositor's `pointer_chord` signal. */
+export interface InputPointerMessage {
+    readonly kind: "pointer";
+    readonly claim: number;
+    /** `start`, `update`, `end` or `cancel`. */
+    readonly phase: string;
+    /** The pointer in global logical coordinates. */
+    readonly x: number;
+    readonly y: number;
+    /** The pointer's movement since `start`. */
+    readonly dx: number;
+    readonly dy: number;
+    /** The chord's button number: 1 left, 2 middle, 3 right, 8 back, 9 forward. */
+    readonly button: number;
+    readonly modifiers: string;
+}
+
 /** A claimed gesture that advanced. `dx`, `dy` are touchpad units since the begin. */
 export interface InputGestureMessage {
     readonly kind: "gesture";
@@ -98,7 +122,7 @@ export interface InputGestureMessage {
     readonly rotation: number;
 }
 
-export type InputMessage = InputChordMessage | InputGestureMessage;
+export type InputMessage = InputChordMessage | InputPointerMessage | InputGestureMessage;
 
 /** The layout side of a registration: all the input module reads of a layout is its bindings. */
 export interface InputLayout {
@@ -153,12 +177,16 @@ interface Registration {
     readonly claim: ClaimEntry;
 }
 
-/** One pointer chord from its press to its release. */
+/** One pointer chord from its start to its end or cancel. */
 interface PointerPress {
     readonly claim: ClaimEntry;
     readonly origin: Point;
+    readonly button: number;
     readonly client: BindingClient | null;
     readonly candidates: readonly Registration[];
+    /** Where the compositor last said the pointer is. */
+    at: Point;
+    /** Where the last hook that ran saw it. */
     last: Point;
     lastTime: number;
     phase: "pressed" | "dragging" | "done";
@@ -420,6 +448,7 @@ export class InputContext {
             const b = client.bounds;
             if (
                 client.alive &&
+                client.minimised !== true &&
                 position.x >= b.x &&
                 position.x < b.x + b.width &&
                 position.y >= b.y &&
@@ -510,36 +539,21 @@ export class InputContext {
             return;
         }
         if (message.kind === "chord") {
-            if (claim.spec.kind !== "chord") {
-                return;
+            // A pointer chord's press and release are the `pointer` messages' start and end: the compositor
+            // sends no `chord` for them.
+            if (claim.spec.kind === "chord" && !claim.pointer && message.state === "press") {
+                this.#keyPress(claim);
             }
-            if (message.state === "press") {
-                if (claim.pointer) {
-                    this.#pointerPress(claim);
-                } else {
-                    this.#keyPress(claim);
-                }
-            } else if (message.state === "release" && claim.pointer) {
-                this.#pointerRelease(claim);
+            return;
+        }
+        if (message.kind === "pointer") {
+            if (claim.pointer) {
+                this.#pointerMessage(claim, message);
             }
             return;
         }
         if (claim.spec.kind === "gesture") {
             this.#gestureMessage(claim, message);
-        }
-    }
-
-    /** @internal Schedules a sample for each pointer drag whose pointer has moved and has none waiting. */
-    sample(): void {
-        const at = this.pointer;
-        for (const press of this.#presses.values()) {
-            if (press.phase !== "done" && !press.scheduled && (at.x !== press.last.x || at.y !== press.last.y)) {
-                press.scheduled = true;
-                this.#world.schedule(`pointer ${press.claim.specKey}`, () => {
-                    press.scheduled = false;
-                    this.#advance(press);
-                });
-            }
         }
     }
 
@@ -828,19 +842,40 @@ export class InputContext {
 
     // -- pointer drags ------------------------------------------------------------------------------------
 
-    #pointerPress(claim: ClaimEntry): void {
+    #pointerMessage(claim: ClaimEntry, message: InputPointerMessage): void {
+        const at = { x: message.x, y: message.y };
+        if (message.phase === "start") {
+            this.#pointerPress(claim, at, message.button);
+            return;
+        }
+        const press = this.#presses.get(claim.id);
+        if (press === undefined) {
+            return;
+        }
+        press.at = at;
+        if (message.phase === "update") {
+            this.#schedulePointer(press);
+        } else if (message.phase === "end") {
+            this.#pointerRelease(press);
+        } else if (message.phase === "cancel") {
+            this.#cancelPress(press);
+        }
+    }
+
+    #pointerPress(claim: ClaimEntry, origin: Point, button: number): void {
         const previous = this.#presses.get(claim.id);
         if (previous !== undefined) {
-            // A second press before the release: the first one's release was lost. Finish it as cancelled.
+            // A second start before the end: the first one's end was lost. Finish it as cancelled.
             this.#cancelPress(previous);
         }
-        const origin = this.pointer;
         const client = this.hitTest(origin)?.client ?? null;
         const press: PointerPress = {
             claim,
             origin,
+            button,
             client,
             candidates: this.#candidates(claim, client),
+            at: origin,
             last: origin,
             lastTime: this.#host.now(),
             phase: "pressed",
@@ -852,23 +887,44 @@ export class InputContext {
         this.#presses.set(claim.id, press);
     }
 
-    #pointerRelease(claim: ClaimEntry): void {
-        const press = this.#presses.get(claim.id);
-        if (press === undefined) {
+    /** Schedules a sample of the drag unless the pointer has not moved or one already waits (latest wins). */
+    #schedulePointer(press: PointerPress): void {
+        if (press.phase === "done" || press.scheduled || (press.at.x === press.last.x && press.at.y === press.last.y)) {
             return;
         }
-        this.#presses.delete(claim.id);
-        this.#world.schedule(`pointer release ${claim.specKey}`, () => {
+        press.scheduled = true;
+        this.#world.schedule(`pointer ${press.claim.specKey}`, () => {
+            press.scheduled = false;
+            this.#advance(press);
+        });
+    }
+
+    /** The event of a pointer drag hook: the position, how far it is from the press, the button and the work area. */
+    #pointerEvent(registration: Registration, press: PointerPress, position: Point): { event: DragEvent; now: number } {
+        return this.#event(registration, press.client, position, press.lastTime, {
+            x: position.x,
+            y: position.y,
+            dx: position.x - press.origin.x,
+            dy: position.y - press.origin.y,
+            button: press.button,
+            workArea: this.#world.workArea() ?? undefined,
+            dragConstraint: this.#host.dragConstraint(this.#seat),
+        });
+    }
+
+    #pointerRelease(press: PointerPress): void {
+        this.#presses.delete(press.claim.id);
+        this.#world.schedule(`pointer end ${press.claim.specKey}`, () => {
             if (press.phase === "done") {
                 return;
             }
-            // The release may arrive in the frame of the move that started the drag: start it now.
+            // The end may arrive in the frame of the update that starts the drag: start it now.
             this.#advance(press);
             if (press.phase === "dragging" && press.active !== null) {
                 const registration = press.active;
                 const state = press.state as object;
                 press.phase = "done";
-                const { event } = this.#event(registration, press.client, this.pointer, press.lastTime);
+                const { event } = this.#pointerEvent(registration, press, press.at);
                 this.#call(registration, "onEnd", () => registration.binding.onEnd(event, state));
                 return;
             }
@@ -880,7 +936,7 @@ export class InputContext {
         });
     }
 
-    /** A release with no drag: the best click binding that does not decline has it. */
+    /** An end with no drag: the best click binding that does not decline has it. */
     #click(press: PointerPress): void {
         for (const registration of press.candidates) {
             const parsed = registration.parsed;
@@ -890,7 +946,7 @@ export class InputContext {
             if (typeof registration.binding.onPress !== "function") {
                 continue;
             }
-            const { event } = this.#event(registration, press.client, press.last, press.lastTime);
+            const { event } = this.#pointerEvent(registration, press, press.at);
             const outcome = this.#call(registration, "onPress", () => registration.binding.onPress?.(event));
             if (!outcome.ok || outcome.value !== false) {
                 return;
@@ -903,17 +959,21 @@ export class InputContext {
         if (press.phase === "done") {
             return;
         }
-        const at = this.pointer;
+        const at = press.at;
         if (press.phase === "pressed" && !press.declined) {
             this.#tryStart(press, at);
         }
         if (press.phase === "dragging" && press.active !== null && (at.x !== press.last.x || at.y !== press.last.y)) {
             const registration = press.active;
             const state = press.state as object;
-            const { event, now } = this.#event(registration, press.client, at, press.lastTime);
+            const { event, now } = this.#pointerEvent(registration, press, at);
             press.last = at;
             press.lastTime = now;
-            this.#call(registration, "onUpdate", () => registration.binding.onUpdate(event, state));
+            const outcome = this.#call(registration, "onUpdate", () => registration.binding.onUpdate(event, state));
+            if (!outcome.ok) {
+                // A binding that throws has lost the drag: it is told once, and no other drag is touched.
+                this.#cancelPress(press);
+            }
         }
     }
 
@@ -932,7 +992,7 @@ export class InputContext {
             }
             // The start event says where the press was, not where the pointer has got to, so a binding that
             // measures from `position` measures from the press. The update that follows has the current one.
-            const { event } = this.#event(registration, press.client, press.origin, press.lastTime);
+            const { event } = this.#pointerEvent(registration, press, press.origin);
             const state = this.#start(registration, event);
             if (state !== null) {
                 press.phase = "dragging";
@@ -942,16 +1002,18 @@ export class InputContext {
                 return;
             }
         }
-        // Every candidate that was due has declined, so this is not a drag. The press stays one: its release is
-        // still swallowed (the compositor withheld it from the client), but a pointer that has gone this far
-        // is not a click either.
+        // Every candidate that was due has declined, so this is not a drag. The press stays one: its end is
+        // still swallowed (the compositor withheld the press from the client), but a pointer that has gone this
+        // far is not a click either.
         if (moved >= DRAG_THRESHOLD) {
             press.declined = true;
         }
     }
 
     #cancelPress(press: PointerPress): void {
-        this.#presses.delete(press.claim.id);
+        if (this.#presses.get(press.claim.id) === press) {
+            this.#presses.delete(press.claim.id);
+        }
         const was = press.phase;
         press.phase = "done";
         if (was !== "dragging" || press.active === null) {
@@ -960,7 +1022,7 @@ export class InputContext {
         const registration = press.active;
         const state = press.state as object;
         this.#world.schedule(`${registration.binding.constructor.name} "${registration.binding.id}".onCancel`, () => {
-            const { event } = this.#event(registration, press.client, this.pointer, press.lastTime);
+            const { event } = this.#pointerEvent(registration, press, press.at);
             this.#call(registration, "onCancel", () => registration.binding.onCancel(event, state));
         });
     }
@@ -1197,9 +1259,6 @@ export class InputManager {
                     break;
                 }
             }
-        }
-        for (const context of this.#contexts.values()) {
-            context.sample();
         }
     }
 
