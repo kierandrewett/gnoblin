@@ -33,9 +33,6 @@ gnoblin-tree-client.workspace = true
 gnoblin-secret.workspace = true
 # The owner socket's client: the role connects and handshakes as every client does.
 gnoblin-client = { path = "../gnoblin-client" }
-# The idle connection reads the `idle` object of the graph and calls its methods; the fake slot link of
-# `tests/config_slots.rs` implements `SlotLink`, whose `decline` takes the model's reason.
-gnoblin-model = { path = "../gnoblin-model" }
 # The IPC version this build advertises in that handshake.
 gnoblin-proto = { path = "../gnoblin-proto" }
 # The configuration document's validator: the shell checks the document it commits as the Lua host does.
@@ -47,7 +44,7 @@ rustix = { workspace = true, features = ["net", "process"] }
 # The log facade every crate logs through.
 gnoblin-log = { path = "../gnoblin-log" }
 # The host API (`gnoblin.session`, `gnoblin.on`) reads the object graph's values and the schema's signal names, and
-# its options cross the module boundary as JSON.
+# its options cross the module boundary as JSON; the idle connection reads the `idle` object and calls its methods.
 gnoblin-model = { path = "../gnoblin-model" }
 gnoblin-js-types = { path = "../gnoblin-js-types" }
 serde.workspace = true

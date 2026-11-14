@@ -1989,6 +1989,136 @@ declare module "gnoblin" {
         removeListener(listener: DialogListener): void;
     }
 
+    // -- Idle watches and holds -----------------------------------------------
+
+    /** What a watch does when the session goes idle and when it comes back. Every member is optional. */
+    export interface IdleWatchHandlers {
+        /** The session has been idle for the watch's time and nothing inhibits idle. */
+        onIdle?(watch: IdleWatch): void;
+        /** The first input after an idle period, or an inhibitor that took the idle state away. */
+        onResume?(watch: IdleWatch): void;
+        /** The watch has ended; `reason` is `"cancelled"`. */
+        onClosed?(watch: IdleWatch, reason: string): void;
+    }
+
+    /** One idle watch. It is not idle when it starts; every idle period runs `onIdle` until it is cancelled. */
+    export class IdleWatch {
+        /** `"idle-"` and a number. */
+        readonly id: string;
+        /** The idle time asked for, in milliseconds. */
+        readonly ms: number;
+        /** True while the session has been idle for `ms` with no inhibitor. */
+        readonly idle: boolean;
+        /** True until the watch has been cancelled. */
+        readonly alive: boolean;
+        /** Ends the watch; its `onClosed` runs once. */
+        cancel(): void;
+    }
+
+    /** A hold on the session's idle state: while one is alive the session does not go idle. */
+    export class IdleInhibitor {
+        /** The name the hold is recorded under. */
+        readonly holder: string;
+        /** True until the hold is released or the compositor refused it. */
+        readonly alive: boolean;
+        release(): void;
+    }
+
+    export interface IdleMonitor {
+        /** Milliseconds since the last input, as of the last reading; null before the compositor has said. */
+        readonly idleMs: number | null;
+        /** How many holds keep the session awake, as of the last reading; null before the compositor has said. */
+        readonly inhibitors: number | null;
+        /** The live watches, oldest first. */
+        readonly watches: readonly IdleWatch[];
+        /** `ms` is above 0 and at most 86400000; a runtime has at most 256 live watches. */
+        watch(ms: number, handlers?: IdleWatchHandlers): IdleWatch;
+        /** Holds the session awake under `holder`; holding again under a held name returns that hold. */
+        inhibit(holder: string): IdleInhibitor;
+    }
+
+    // -- Authentication -------------------------------------------------------
+
+    /** How a provider can decline: the user is not there to answer, said no, or the prompt cannot be shown. */
+    export type AuthenticationDecline = "locked" | "denied" | "unavailable";
+
+    /** An authentication request a provider holds. */
+    export interface AuthenticationRequest {
+        readonly id: number;
+        readonly title: string;
+        readonly message: string;
+        /** What the request is about, as the offering agent chose it; the compositor does not interpret it. */
+        readonly subject: string;
+        /** When the compositor takes the request back, on its own clock in milliseconds. */
+        readonly deadline: number;
+        /** True until the request is settled or has ended. */
+        readonly open: boolean;
+        /** `answered`, `ended`, `refused`, `timed-out` or `lost`; null while it is open. */
+        readonly completion: string | null;
+        /** The user authenticated as `identity`, a non-empty name of at most 256 bytes. */
+        allow(identity: string): void;
+        /** The request is refused; `reason` defaults to `"denied"`. */
+        decline(reason?: AuthenticationDecline): void;
+    }
+
+    /** Answers the session's authentication requests. Every method is optional. */
+    export class AuthenticationProvider {
+        onRequest?(request: AuthenticationRequest): void;
+        onFinished?(request: AuthenticationRequest): void;
+    }
+
+    export interface AuthenticationManager {
+        /** The provider that answers requests, or null when the built-in agent does. */
+        readonly provider: AuthenticationProvider | null;
+        /** The requests the provider has been offered that have not ended. */
+        readonly requests: readonly AuthenticationRequest[];
+        /** Makes `provider` the session's authentication agent, replacing the one there was. */
+        setProvider(provider: AuthenticationProvider): void;
+        /** Gives the slot back to the built-in agent. */
+        clearProvider(): void;
+    }
+
+    // -- Launch feedback ------------------------------------------------------
+
+    /** Where a launch is. It begins `pending` and leaves it once, for one of the other three. */
+    export type LaunchState = "pending" | "started" | "timed_out" | "ended";
+
+    /** What a launch tells its owner. Every member is optional. */
+    export interface LaunchHandlers {
+        /** The deadline in milliseconds, 100 to 10000. Default 3000. */
+        timeoutMs?: number;
+        onChanged?(launch: Launch, fields: readonly string[]): void;
+        onStarted?(launch: Launch): void;
+        onTimedOut?(launch: Launch): void;
+        /** The launch left `pending`; `reason` is the new state, `replaced`, or why the registry refused it. */
+        onClosed?(launch: Launch, reason: string): void;
+    }
+
+    export class Launch {
+        readonly token: string;
+        readonly application: string;
+        readonly timeoutMs: number;
+        /** Unix time in milliseconds when `begin` was called. */
+        readonly startedAt: number;
+        readonly state: LaunchState;
+        /** True while the launch is `pending`. */
+        readonly alive: boolean;
+        /** Counts the changes of the launch; 0 until the first. */
+        readonly revision: number;
+        /** Ends a pending launch; a launch that is not pending is unchanged. */
+        finish(): void;
+    }
+
+    export interface LaunchFeedback {
+        /** The launches the registry keeps (at most 64), oldest first, pending and finished. */
+        list(): Launch[];
+        /**
+         * Tracks a launch of `application` under `token`, pending at once. A window of the application that appears or
+         * takes focus starts the oldest pending launch it matches.
+         */
+        begin(token: string, application: string, options?: LaunchHandlers): Launch;
+    }
+
     /** A command to run: a command line (split on spaces, started with no shell) or the program and its arguments. */
     export type CommandLine = string | readonly string[];
 
@@ -2141,6 +2271,12 @@ declare module "gnoblin" {
         readonly runtime: Runtime;
         /** The windows in the order they were last focused. */
         readonly focus: FocusHistory;
+        /** Watches for the session going idle, and holds that keep it awake. */
+        readonly idle: IdleMonitor;
+        /** The session's authentication agent: a provider that answers the polkit requests. */
+        readonly authentication: AuthenticationManager;
+        /** Launch feedback: the busy state between asking for an application and its window. */
+        readonly launches: LaunchFeedback;
         /**
          * Starts a program and returns its `Process`: a command line for `/bin/sh`, or an array of the program and
          * its arguments. The same as `gnoblin.process.spawn`.

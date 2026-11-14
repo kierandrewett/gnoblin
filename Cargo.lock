@@ -1446,6 +1446,7 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-client",
  "gnoblin-config",
+ "gnoblin-js-types",
  "gnoblin-log",
  "gnoblin-model",
  "gnoblin-paint",
@@ -1463,6 +1464,7 @@ dependencies = [
  "oxc_transformer",
  "rquickjs",
  "rustix 1.1.6",
+ "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",

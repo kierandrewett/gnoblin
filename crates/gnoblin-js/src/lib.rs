@@ -32,10 +32,10 @@ mod error;
 mod generation;
 mod host;
 mod host_api;
-mod host_process;
-mod host_session;
 mod host_auth;
 mod host_idle;
+mod host_process;
+mod host_session;
 mod input;
 mod loader;
 mod reload;
@@ -58,11 +58,11 @@ pub use console::{
 pub use error::{JsError, JsErrorKind, JsLoadError, JsLocation, JsTsError};
 pub use generation::{JsConfig, JsGeneration};
 pub use host::{JsHost, JsPrepare};
+pub use host_idle::{JsClientIdleLink, JsIdleConnector, JsIdleLink, JsIdleReading};
 pub use host_process::{JsExit, JsProcessCode, JsProcessError, JsProcesses, JsSpawnOptions, JsStarted, JsStream};
 pub use host_session::{
     JsClientSessionLink, JsOperationError, JsSessionEvent, JsSessionLink, JsSessionStatus, JsSessionVerb,
 };
-pub use host_idle::{JsClientIdleLink, JsIdleConnector, JsIdleLink, JsIdleReading};
 pub use loader::{JsLoadState, JsLoader, JsResolver};
 pub use reload::{JsDiagnostic, JsReloader, ReloadReport};
 pub use role::{JsRole, JsRoleConfig, JsRoleLinks, RELOAD_DEBOUNCE, config_dir, entry_in};

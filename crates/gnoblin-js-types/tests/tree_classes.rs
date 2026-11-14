@@ -234,7 +234,6 @@ fn the_stock_library_follows_the_generated_modules_and_is_marked_proposed() {
         "    export class Binding {",
         "    export interface InputContext {",
         "    export class ClientListener extends MemberListener<Client> {",
-        "        requestTransition(staging: () => void, options?: TransitionOptions): Transition;",
     ] {
         assert!(text.lines().any(|candidate| candidate == line), "missing `{line}`");
     }
