@@ -262,7 +262,7 @@ impl FakeCompositor {
     }
 
     /// A screen in the tree already, as at boot: named, placed and sized.
-    pub fn add_screen(&self, id: u64, name: &str, x: f64, y: f64, width: f64, height: f64, primary: bool) {
+    pub fn add_screen(&self, id: u64, name: &str, (x, y, width, height): (f64, f64, f64, f64), primary: bool) {
         self.add_node(
             id,
             ROOT,
@@ -280,8 +280,9 @@ impl FakeCompositor {
 
     /// A screen the compositor makes while the shell runs, as a hotplugged output: created, parented under the root,
     /// then given its name, place, size and primary flag.
-    pub fn create_screen(&self, id: u64, name: &str, x: f64, y: f64, width: f64, height: f64, primary: bool) {
-        self.add_screen(id, name, x, y, width, height, primary);
+    pub fn create_screen(&self, id: u64, name: &str, rect: (f64, f64, f64, f64), primary: bool) {
+        let (x, y, width, height) = rect;
+        self.add_screen(id, name, rect, primary);
         self.publish(vec![
             MirrorChange {
                 class: "screen".to_owned(),

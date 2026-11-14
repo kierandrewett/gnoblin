@@ -34,9 +34,9 @@ fn world(n: u64, second: bool, layout: &str, config: &str) -> Rig {
         "{FILL}defineConfig({{ workspaces: [{{ id: \"1\", layout: {layout} }}, {{ id: \"2\", layout: {layout} }}, {{ id: \"3\", layout: {layout} }}], decorations: false, {config} }});\n"
     );
     let mut rig = rig_setup(IMPORTS, &init, move |comp| {
-        comp.add_screen(A, "output-0", 0.0, 0.0, 1000.0, 800.0, true);
+        comp.add_screen(A, "output-0", (0.0, 0.0, 1000.0, 800.0), true);
         if second {
-            comp.add_screen(B, "output-1", 1000.0, 0.0, 600.0, 400.0, false);
+            comp.add_screen(B, "output-1", (1000.0, 0.0, 600.0, 400.0), false);
         }
         comp.add_node(
             SEAT,
@@ -205,7 +205,8 @@ fn a_hotplugged_output_is_announced_and_an_unplugged_one_is_removed_with_its_las
     settle(&mut rig);
     assert_eq!(rig.eval("g.log.join(';')"), "added output-0");
 
-    rig.comp.create_screen(B, "output-1", 1000.0, 0.0, 600.0, 400.0, false);
+    rig.comp
+        .create_screen(B, "output-1", (1000.0, 0.0, 600.0, 400.0), false);
     settle(&mut rig);
     assert_eq!(rig.eval("String(gnoblin.outputs.length)"), "2");
     assert_eq!(
@@ -448,7 +449,7 @@ fn reconnecting_an_output_adopts_the_parked_windows_and_focuses_one() {
     let mut rig = world(1, false, "new Layout()", "");
     give_focus(&mut rig, 3);
     unplug(&mut rig, A);
-    rig.comp.create_screen(A, "output-0", 0.0, 0.0, 1000.0, 800.0, true);
+    rig.comp.create_screen(A, "output-0", (0.0, 0.0, 1000.0, 800.0), true);
     settle(&mut rig);
     assert!(visible(&rig, 3), "the adopted workspace must show");
     assert_eq!(
@@ -476,7 +477,8 @@ fn a_window_on_a_second_output_goes_to_the_first_when_it_is_unplugged_and_comes_
         "0,0,1000,800",
         "the window follows to the remaining output"
     );
-    rig.comp.create_screen(B, "output-1", 1000.0, 0.0, 600.0, 400.0, false);
+    rig.comp
+        .create_screen(B, "output-1", (1000.0, 0.0, 600.0, 400.0), false);
     settle(&mut rig);
     assert_eq!(
         shown(&mut rig),

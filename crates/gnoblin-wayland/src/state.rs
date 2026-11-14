@@ -3213,11 +3213,15 @@ fn remove_disabled_globals(display_handle: &DisplayHandle, protocols: &Protocols
 /// The Smithay mode for a backend output.
 /// A mode as the screen node's `mode` reads: `WxH@Hz`, the refresh in whole hertz when it is one.
 fn mode_text(mode: gnoblin_output::DisplayMode) -> String {
-    let hertz = f64::from(mode.refresh_mhz) / 1000.0;
-    if mode.refresh_mhz % 1000 == 0 {
+    if mode.refresh_mhz.is_multiple_of(1000) {
         format!("{}x{}@{}", mode.width, mode.height, mode.refresh_mhz / 1000)
     } else {
-        format!("{}x{}@{hertz:.3}", mode.width, mode.height)
+        format!(
+            "{}x{}@{:.3}",
+            mode.width,
+            mode.height,
+            f64::from(mode.refresh_mhz) / 1000.0
+        )
     }
 }
 

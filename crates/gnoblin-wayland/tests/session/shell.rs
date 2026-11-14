@@ -142,7 +142,7 @@ impl Shell {
                 } if *set == node && name == key => Some(value.clone()),
                 _ => None,
             })
-            .last()
+            .next_back()
     }
 
     /// Waits until the last value published for `key` on `node` is `value`.
