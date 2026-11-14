@@ -797,7 +797,7 @@ fn a_user_config_layers_over_the_default_keys_merge_by_trigger_and_workspaces_re
             r#"{"inner":2,"outer":4}"#,
             "clientAdded titleChanged",
             "true",
-            "TypeError: config has no \"kyes\"; expected one of gaps, style, outputs, workspaces, keys, launcher, rules, on, setup, decorations",
+            "TypeError: config has no \"kyes\"; expected one of gaps, style, outputs, workspaces, keys, launcher, rules, on, setup, decorations, focus, edgeTiling, dragConstraint",
             "true",
             &format!("{stock} {media}"),
         ])

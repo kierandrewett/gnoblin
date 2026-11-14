@@ -639,8 +639,10 @@ fn close_is_a_call_on_the_window_and_focus_is_a_write_of_the_seats_focus() {
     );
     rig.frame();
     let log = sent(&comp);
+    // The stock config claims its keys on the seat in the same frame; those are not what this case looks at.
     let ops: Vec<String> = log[0]
         .iter()
+        .filter(|op| !matches!(op, TxOp::Call { method, .. } if method.starts_with("claim")))
         .map(|op| match op {
             TxOp::Call { node, method, .. } => format!("call:{node}:{method}"),
             TxOp::Set {
