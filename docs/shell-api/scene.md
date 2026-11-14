@@ -198,7 +198,6 @@ What it follows:
 
 ## Not built
 
-- A perspective camera on a flat workspace, and the `Camera2D`, `Viewport` and `Display` objects that carry one, belong to
-  the display lane of the specification and are not in this page.
+- A perspective camera that projects a flat workspace's windows is not built, so `ArcLayout` is not seen as a ring.
 - `contentFit` does not fit a client's picture; see [Views](#views).
 - `"capture"` is not a state of the tree: it is kept by the script.

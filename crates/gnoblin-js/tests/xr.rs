@@ -764,10 +764,10 @@ fn a_view_shows_a_client_without_moving_or_reparenting_it() {
     rig.eval("globalThis.w = new View({ content: gnoblin.clients.at(0) }); 1");
     rig.settle();
     assert_eq!(rig.comp.ids_of_class("view").len(), 2);
-    let error = rig.eval("try { v.content = gnoblin.workspaces.at(0); 'ok' } catch (e) { e.message }");
+    let error = rig.eval("try { v.content = {}; 'ok' } catch (e) { e.message }");
     assert!(
-        error.contains("workspace"),
-        "a workspace is not a tree node yet: {error}"
+        error.contains("must be a client, a workspace or null"),
+        "only a client or a workspace is content: {error}"
     );
     // Destroying the View leaves the client where it was.
     rig.eval("v.destroy(); w.destroy(); 1");

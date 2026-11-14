@@ -974,7 +974,7 @@ fn the_pure_helpers_diff_fields_pick_the_initial_workspace_and_check_placements(
             "2",
             "1",
             "null",
-            r#"[{"node":{},"bounds":{"x":1,"y":2,"width":3,"height":4},"visible":true,"tiled":false,"z":0,"rotation":[0,0,0],"scale":[1,1,1]},{"node":{},"bounds":null,"visible":true,"tiled":false,"z":0,"rotation":[0,0,0],"scale":[1,1,1]}]"#,
+            r#"[{"node":{},"bounds":{"x":1,"y":2,"width":3,"height":4},"visible":true,"tiled":false,"z":0,"rotation":[0,0,0],"scale":[1,1,1],"offset":null},{"node":{},"bounds":null,"visible":true,"tiled":false,"z":0,"rotation":[0,0,0],"scale":[1,1,1],"offset":null}]"#,
             "TypeError: w: compute must return an array of placements, got [object Object]",
             "TypeError: w: placement 0 is not for one of the workspace's clients",
             "TypeError: w: placement 0 bounds.x must be a finite number",

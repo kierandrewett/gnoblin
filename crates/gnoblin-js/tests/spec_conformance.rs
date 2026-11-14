@@ -162,6 +162,8 @@ lazy("camera2D", () => new (need("Camera2D"))());
 lazy("camera3D", () => new (need("Camera3D"))({ projection: "perspective", fov: 65, position: { x: 0, y: 0, z: 1600 } }));
 lazy("camera", () => globalThis.camera3D);
 lazy("arcLayout", () => new (need("ArcLayout"))({ radius: 1200, spacing: 0.35 }));
+// A class the library never exports: the probe of `missing_classes_in_fixtures_remain_visible`.
+lazy("missingProbe", () => new (need("MissingProbeClass"))());
 lazy("spatialRoom", () => new (need("Node"))({ id: "xr-room" }));
 lazy("room", () => new (need("Node"))({ id: "xr-room" }));
 lazy("background", () => new (need("Node"))({ id: "background" }));
@@ -923,7 +925,7 @@ fn update_statuses_only_accept_fails_to_runs() {
 
 #[test]
 fn missing_classes_in_fixtures_remain_visible() {
-    let (fixture, class) = ("arcLayout", "ArcLayout");
+    let (fixture, class) = ("missingProbe", "MissingProbeClass");
     let error = run_js(&format!("globalThis.fixtureProbe = {fixture};"), false)
         .expect_err("the unavailable fixture's class must fail the snippet");
     assert!(

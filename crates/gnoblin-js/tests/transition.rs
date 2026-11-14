@@ -634,13 +634,6 @@ fn set_is_one_transition_of_one_object_and_refuses_what_is_not_a_property() {
     );
     assert_eq!(rig.comp.sent_count() - mark, 1);
     assert_eq!(
-        thrown(
-            &mut rig,
-            "g.a.set({ transform: { rotation: { x: 0, y: 0.12, z: 0 } } }, { duration: 250 })"
-        ),
-        "TypeError: Client#3.set: transform is not a writable property"
-    );
-    assert_eq!(
         thrown(&mut rig, "g.a.set({ title: 'x' })"),
         "TypeError: Client#3.set: title is not a writable property"
     );

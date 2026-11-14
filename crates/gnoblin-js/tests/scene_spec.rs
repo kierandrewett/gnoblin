@@ -21,6 +21,13 @@ fn double(value: f64) -> MirrorValue {
 /// A shell over a screen of 1000 by 800, a seat and one 800 by 600 window per entry of `count` (ids 3 on), whose
 /// `init.ts` is `body`.
 fn world(count: u64, body: &str) -> Rig {
+    let (rig, diagnostics) = boot(count, body);
+    assert!(diagnostics.is_empty(), "{diagnostics:?} {:?}", rig.load_diagnostics);
+    rig
+}
+
+/// Like [`world`], returning the diagnostics of the boot frames instead of requiring none.
+fn boot(count: u64, body: &str) -> (Rig, Vec<String>) {
     let mut rig = rig_setup(IMPORTS, body, move |comp| {
         comp.add_node(
             20,
@@ -49,8 +56,7 @@ fn world(count: u64, body: &str) -> Rig {
         }
     });
     let diagnostics = rig.settle();
-    assert!(diagnostics.is_empty(), "{diagnostics:?} {:?}", rig.load_diagnostics);
-    rig
+    (rig, diagnostics)
 }
 
 fn number(rig: &mut Rig, expression: &str) -> f64 {
@@ -274,7 +280,7 @@ fn input_is_forward_capture_or_none_and_the_old_booleans_still_write() {
     rig.settle();
     let view = rig.comp.named("panel").expect("the view");
     assert_eq!(rig.eval("v.input"), "forward");
-    assert_eq!(rig.comp.flag(view, "input").unwrap_or(true), true);
+    assert!(rig.comp.flag(view, "input").unwrap_or(true));
     rig.eval("v.input = 'none'");
     rig.settle();
     assert_eq!(rig.eval("v.input"), "none");
@@ -406,20 +412,22 @@ fn a_view_of_a_workspace_draws_one_child_view_per_client_fitted_to_its_size() {
     all_close(&list(&rig, holder, "scale"), &[0.5, 0.5, 1.0], "contain");
     close(rig.comp.number(holder, "x"), 100.0, "centred across");
     // A window that opens joins the picture, and one that closes leaves it.
-    rig.comp.create_window(30, "late", "late");
-    rig.settle();
+    rig.comp.create_window(900, "late", "late");
+    let diagnostics = rig.settle();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    assert_eq!(rig.eval("gnoblin.workspaces.get('desktop').clients.length"), "3");
     let (_, cards) = picture(&rig, "big");
     assert_eq!(cards.len(), 3, "the new window is in the picture");
     rig.comp.destroy(WIN);
     rig.settle();
     let (_, cards) = picture(&rig, "big");
     let shown: Vec<u64> = cards.iter().map(|card| source_of(&rig, *card)).collect();
-    assert_eq!(shown, vec![WIN + 1, 30]);
+    assert_eq!(shown, vec![WIN + 1, 900]);
     // Destroying the View removes its picture; the other View is not affected.
-    rig.eval("big.destroy()");
+    rig.eval("big.destroy(); 1");
     rig.settle();
     assert!(rig.comp.named("big").is_none());
-    assert_eq!(picture(&rig, "small").1.len(), 3);
+    assert_eq!(picture(&rig, "small").1.len(), 2, "the other View is not affected");
     // A View given a client takes the picture away.
     rig.eval("small.content = gnoblin.clients.at(0)");
     rig.settle();
@@ -535,14 +543,14 @@ fn a_placement_with_bounds_and_a_transform_offsets_the_bounds_and_the_flat_field
 
 #[test]
 fn a_placement_with_a_bad_transform_is_refused_with_the_placement_named() {
-    let mut rig = world(
+    let (_rig, diagnostics) = boot(
         1,
         "class Bad extends Layout {\n\
            compute({ children }) { return [{ node: children[0], transform: { position: [1, 2] } }]; }\n\
          }\n\
          gnoblin.workspaces.add(new Workspace({ id: 'b', layout: new Bad() }));\n",
     );
-    let diagnostics = rig.settle().join("\n");
+    let diagnostics = diagnostics.join("\n");
     assert!(diagnostics.contains("placement 0 transform.position"), "{diagnostics}");
 }
 
