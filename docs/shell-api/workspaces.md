@@ -130,9 +130,15 @@ A `Placement` has the window as `node` and any of these, which it leaves unchang
 | `z`                 | Depth. Negative is in front of the camera.                                             |
 | `rotation`, `scale` | Rotation in radians and scale along each axis, as three numbers.                       |
 
-A layout may also define `onClientAdded(client, context)`, `onClientRemoved(client, context)` and `onAreaChanged(oldArea,
-newArea)`. A layout's `bindings` collection holds the bindings that act on the windows of its workspace, such as the drag that
-moves a floating window: see [Input handlers](input-handlers).
+A layout may also define these hooks:
+
+- `onClientAdded(client, context)` and `onClientRemoved(client, context)` run when a window joins or leaves the workspace.
+- `onAreaChanged(oldArea, newArea)` runs when the area changes.
+- `onClientsSwapped(a, b)` runs when `workspace.clients.swap(a, b)` trades the places of two windows.
+- `findSplit(client, point)` returns the divider a drag would move, or `null`.
+
+A layout's `bindings` collection holds the bindings that act on the windows of its workspace, such as the drag that moves a
+floating window or swaps two tiles: see [Input handlers](input-handlers).
 
 ## Workspace sets
 

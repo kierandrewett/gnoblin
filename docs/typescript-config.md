@@ -86,6 +86,18 @@ These options take a closed set of values:
 | `GridLayout`        | `fill`        | `row` fills a row before starting the next. `column` fills a column first.                                   |
 | `DwindleLayout`     | `split`       | `aspect` splits across the longer side. `horizontal` puts windows side by side. `vertical` stacks them.      |
 
+A tiling layout drags with the pointer:
+
+- `MasterStackLayout`, `DwindleLayout` and `GridLayout` swap two windows with `Super+MouseLeft+Drag`.
+- `MasterStackLayout` and `DwindleLayout` move a divider with `Super+MouseRight+Drag`.
+
+The `triggers` option, `{ swap, resize }`, replaces either trigger, and `null` turns it off. See
+[Input handlers](/shell-api/input-handlers#tiling-drags).
+
+```ts
+new MasterStackLayout({ triggers: { swap: null } });
+```
+
 ### `gaps`
 
 `{ inner, outer }`, each a number of pixels from 0 up. Both default to 0. `inner` is the space between windows and

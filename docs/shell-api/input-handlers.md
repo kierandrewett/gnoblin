@@ -72,9 +72,124 @@ The stock drags are classes you can reuse or extend:
 | --------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `ClientMoveBinding`   | `Super+MouseLeft+Drag`      | The window follows the pointer and stays in the work area. `snap` is how near an edge, in pixels, a drop tiles it; `false` never tiles. |
 | `ClientResizeBinding` | `Super+MouseRight+Drag`     | The corner nearest the press follows the pointer. `edges` is `quadrant`, `nearest` or one corner.                                       |
+| `ClientSwapBinding`   | `Super+MouseLeft+Drag`      | In a tiling layout, drop the tile you hold on another one and the two trade places when you let go.                                     |
+| `SplitResizeBinding`  | `Super+MouseRight+Drag`     | In a tiling layout, the divider nearest the press follows the pointer, and the tiles on both sides follow it.                           |
 
 `dragConstraint` is `work_area`, which keeps a window inside the work area, or `minimum_strip`, which lets a window leave
 until a strip of 75 pixels stays visible. Set it in `defineConfig`.
+
+### Tiling drags
+
+The tiling layouts register the last two classes themselves, under the ids `swap` and `resize`:
+
+- `MasterStackLayout` and `DwindleLayout` register both.
+- `GridLayout` registers `swap` only, since a grid has no divider to drag.
+- `MonocleLayout` registers neither.
+
+Each layout takes a `triggers` option, as `FloatingLayout` does. A string replaces a trigger and `null` leaves that binding
+out.
+
+```ts
+import { MasterStackLayout, defineConfig } from "gnoblin";
+
+defineConfig({
+    workspaces: [
+        {
+            id: "dev",
+            layout: new MasterStackLayout({
+                ratio: 0.6,
+                triggers: { swap: "Alt+MouseLeft+Drag", resize: null },
+            }),
+        },
+    ],
+});
+```
+
+`ClientSwapBinding` changes nothing while the pointer is down. When you let go over another tiled window, the two trade
+places in `workspace.clients` and the layout computes once. A release outside every tile, over the window you hold, or a
+cancel leaves the order as it was.
+
+A floating, fullscreen or maximised window declines the swap, and so does a press with no window under it.
+
+`SplitResizeBinding` asks the layout for the divider nearest the press, through `layout.findSplit(client, point)`. The
+divider follows the pointer as far as the pointer travels, and the layout computes on each frame, so the windows move while
+you drag. A release keeps the ratio, and a cancel puts it back. What a divider is depends on the layout:
+
+- `MasterStackLayout` has one, between the master and the stack. Its `ratio` changes, held to 0.1 to 0.9.
+- `DwindleLayout` has one for each split. The drag changes the ratio of the split it took and leaves the others.
+  `layout.ratio` is still what every split that nobody dragged uses.
+- A layout with no divider declines. That is a grid, or a master stack with a single window.
+
+To drag a divider of your own layout, return a `LayoutSplit` from `findSplit`:
+
+```ts
+import { Layout } from "gnoblin";
+import type { LayoutContext, LayoutSplit, Placement } from "gnoblin";
+
+class Divider implements LayoutSplit {
+    readonly axis = "x";
+    readonly direction = 1;
+    readonly min = 0.2;
+    readonly max = 0.8;
+    readonly span: number;
+    readonly #layout: Halves;
+    readonly #start: number;
+
+    constructor(layout: Halves, span: number) {
+        this.#layout = layout;
+        this.#start = layout.ratio;
+        this.span = span;
+    }
+
+    get ratio(): number {
+        return this.#layout.ratio;
+    }
+
+    set ratio(value: number) {
+        this.#layout.ratio = value;
+    }
+
+    reset(): void {
+        this.#layout.ratio = this.#start;
+    }
+}
+
+class Halves extends Layout {
+    ratio = 0.5;
+    width = 0;
+
+    compute(context: LayoutContext): Placement[] {
+        const { x, y, width, height } = context.area;
+        const left = Math.floor(width * this.ratio);
+        this.width = width;
+        return context.children.map((node, index) => ({
+            node,
+            tiled: true,
+            bounds: index === 0 ? { x, y, width: left, height } : { x: x + left, y, width: width - left, height },
+        }));
+    }
+
+    findSplit(): LayoutSplit | null {
+        return this.width > 0 ? new Divider(this, this.width) : null;
+    }
+}
+```
+
+`span` is the pixels of pointer travel that change the ratio by 1, and `direction` is -1 when moving the pointer right or
+down shrinks the ratio. A layout that keeps its own record of who sits where can also define `onClientsSwapped(a, b)`, which
+runs when a swap trades two windows. `DwindleLayout` uses it to trade two leaves of its tree.
+
+To trade two windows from a script, call `workspace.clients.swap(a, b)`. Both must be in the workspace.
+
+```ts
+import { gnoblin } from "gnoblin";
+
+const dev = gnoblin.workspaces.get("dev");
+const [first, second] = dev?.clients.map((client) => client) ?? [];
+if (dev && first && second) {
+    dev.clients.swap(first, second);
+}
+```
 
 ## Gesture bindings
 

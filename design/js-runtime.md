@@ -397,8 +397,9 @@ tree link that records claims and plays back chords, gestures, pointer positions
   window at least as large as the screen is pinned to its origin), and `minimum_strip` lets it leave as long as 75
   pixels stay inside. The work area is the screen, since the shell has no bars of its own yet. `FloatingLayout`
   registers both as `move` and `resize` (`undefined` keeps the default trigger, `null` leaves the binding out,
-  spec-review 1.19). The `snap` option and `edges: "nearest"` are written (see "Focus, rules and snapping status"). Not
-  written: `ClientSwapBinding`, `SplitResizeBinding`, `WorkspaceSwitchBinding`.
+  spec-review 1.19). The `snap` option and `edges: "nearest"` are written (see "Focus, rules and snapping status").
+  `ClientSwapBinding` and `SplitResizeBinding` are written (see "Tiling bindings status"). Not written:
+  `WorkspaceSwitchBinding`.
 - **Layouts.** The layout of every workspace in `gnoblin.workspaces` is attached to every input context while a
   workspace uses it (checked once per frame): its bindings are live for the clients whose workspace's `layout` it is,
   they follow the layout's `bindings` collection, and they go, cancelling a drag they run, when the workspace takes
@@ -1033,6 +1034,34 @@ snapshot, `JsKeptWindow`), and `workspaceSets` with `activateSet`.
   `workspaces.remove` returns a boolean and refuses the last workspace; `clear()` still empties.
 - **Not done.** Nothing of the five lane targets; the real-compositor proof covers only the keyboard move and resize, the rest
   runs over the fake link.
+
+## Tiling bindings status
+
+Lane JsTilingBindings (`docs/shell-api/input-handlers.md`, "Tiling drags"). Done: `ClientSwapBinding` (id `swap`,
+`Super+MouseLeft+Drag`) and `SplitResizeBinding` (id `resize`, `Super+MouseRight+Drag`) in `data/js/gnoblin/bindings.ts`,
+registered by `MasterStackLayout` and `DwindleLayout` (both) and `GridLayout` (swap only) with the `triggers` option
+`FloatingLayout` has (`null` leaves one out, `layout.bindings.remove("swap")` removes it). `MonocleLayout` has none. Tests:
+`crates/gnoblin-js/tests/tiling_bindings.rs` over the fake link, and the real-compositor test in `js_shell.rs`.
+
+- **Order.** `workspace.clients.swap(a, b)` (new on `MutableCollection`) trades two members' places and marks the workspace
+  dirty; the owner spec's `layout.order.swap` is this, since the order lives on the workspace's collection and a layout has
+  no handle on its workspace. A layout that keeps its own record of who sits where hears it as `onClientsSwapped(a, b)`
+  (`DwindleLayout` trades two leaves of its tree; a tree is placed by its shape, not by the order).
+- **Swap.** The drop target is the tiled client of the dragged client's workspace whose bounds hold the pointer, found by
+  scanning the workspace and not through `context.hitTest`, which can answer with a hidden window of another workspace.
+  Nothing moves while the pointer is down, so the layout computes once, on release. A release outside every tile, over the
+  held tile, or a cancel changes nothing. There is no ghost or drop highlight; the spec's `previewSwap` is not written.
+  A client whose `tiled` flag is false (floating, a dialog), or that is fullscreen or maximised, declines.
+- **Split.** A layout with dividers answers `findSplit(client, point)` with a `LayoutSplit`: the axis the pointer moves
+  along, the pixels of travel that change the ratio by 1 (`span`), the direction, the limits and `reset`. The binding sets
+  `ratio` from the pointer's travel since the press, so the divider follows the pointer exactly, and the layout computes
+  per frame because its own field changed. `MasterStackLayout.ratio` is the field (`direction` -1 for a master on the
+  right or at the bottom, `span` is the extent less the gap). `DwindleLayout` gives each split a ratio of its own
+  (`null` follows `layout.ratio`), picks the split above the pressed tile whose divider is nearest the press, and counts
+  edits in the public field `revision`, because the tree is not a field the workspace could compare. A cancel gives the split
+  back to `layout.ratio`.
+- **Not done.** The spec's `previewSwap` preview, and a split chosen by hit-testing the divider's own pixels: the nearest
+  divider above the pressed tile takes the drag wherever in the tile the press is.
 
 ## Outputs status
 
