@@ -103,6 +103,64 @@ A session with no `init.ts` is not a bare shell. It runs the stock config:
 Creating `init.ts` later loads it at once. An `init.ts` that fails to load when the shell starts is reported in the log,
 and the stock config runs until the file is fixed.
 
+## Window requests
+
+A client asks the compositor for a change of its window: fullscreen, minimise, maximise, raise, activate, move, resize.
+The compositor changes nothing until the shell answers, and the stock shell answers every kind:
+
+| Request          | What the shell does                                                                                              |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `maximize`       | Fills the area the bars leave and keeps the floating rectangle. `unmaximize` puts the window back.               |
+| `fullscreen`     | Covers the whole output, bars included, and goes on top. `unfullscreen` returns the rectangle.                   |
+| `minimize`       | Hides the window and hands the keyboard focus to the topmost window left, or to nobody.                          |
+| `unminimize`     | Shows the window, and focuses it only when nothing holds the focus.                                              |
+| `activate`       | On the shown workspace: shows a minimised window, focuses it and raises it. On another workspace: nothing.       |
+| `raise`, `lower` | Puts the window on top of its siblings or under them. A fullscreen window stays on top.                          |
+| `move`, `resize` | Starts the drag of `Super` with the left or right button. A tiled, maximised or fullscreen window is left alone. |
+| `close`          | Asks the client to close.                                                                                        |
+
+A fullscreen window hides the bars while it shows on the workspace on show, and they return when it leaves, minimises
+or closes. A tiling layout leaves a fullscreen or maximised window where it is.
+
+### Answering a request yourself
+
+A `ClientListener` with an `onRequest(client, request)` method hears every request first. Call `request.handle()` to
+answer it yourself: the built-in answer does not run, and no later listener hears it.
+
+```ts
+import { ClientListener, gnoblin, windowState } from "gnoblin";
+
+class KeepOnTop extends ClientListener {
+    onRequest(client, request) {
+        if (request.kind === "minimize" && client.appId === "org.example.Clock") {
+            request.handle(); // this window never minimises
+        } else if (request.kind === "maximize") {
+            request.handle();
+            windowState.enterFullscreen(client); // answer a maximise as a fullscreen
+        }
+    }
+}
+gnoblin.clients.addListener(new KeepOnTop());
+```
+
+The listeners attached to the client itself are asked first, then those of the collections that hold it, each in the
+order it was attached. The first one to call `request.handle()` wins. A listener that throws is reported and skipped.
+`request.kind` is one of:
+
+- `maximize` and `unmaximize`
+- `fullscreen` and `unfullscreen`
+- `minimize` and `unminimize`
+- `close`, `raise`, `lower` and `activate`
+- `move`, `resize` and `menu`
+
+`windowState` is the policy the built-in answer calls. Its methods return whether they ran, so a listener can answer a
+request with the stock behaviour of another kind:
+
+- `maximise` and `unmaximise`
+- `enterFullscreen` and `leaveFullscreen`
+- `minimise` and `unminimise`
+- `present`, `raise` and `lower`
+
 ## Reloading
 
 Saving `init.ts`, or any module it imports, reloads the shell after a short pause. `gnoblinctl config reload` reloads it on

@@ -28,8 +28,10 @@ Inputs (all in `design/js-research/`):
 
 ## Zero-config baseline
 
-Without any `init.ts`, the stock library runs: one `desktop` workspace, floating layout, one display
-per output, and the stock key bindings of the Lua shell. The stock library is itself TypeScript,
+Without any `init.ts`, the stock library runs: the four floating workspaces `1` to `4` of the Lua stock config
+(`data/default-config/config/10-windows.lua`), one display per output, and the stock key bindings of the Lua shell.
+`Super+1` to `Super+9` show the workspace at that position, so `Super+1` to `Super+4` act and the rest wait for more
+workspaces. A script that never calls `defineConfig` is a program with no keys: it gets one floating `desktop`. The stock library is itself TypeScript,
 shipped in `/usr/share/gnoblin/js/` and embedded as the `gnoblin` module.
 
 ## Slice 1 (first vertical slice, smallest proof)
@@ -798,11 +800,14 @@ the fake link) and one real-compositor test in `crates/gnoblin/tests/js_shell.rs
 - **Rules.** A rule is data: the query keys `appId` and `title` (a glob, matched against the whole text, or a RegExp tested
   anywhere in it), `focused`, `onWorkspace`; the actions `workspace`, `floating`, `size`, `position`, `style`
   (`opacity` is applied, `cornerRadius` and `shadows` are checked and kept with no native effect, like `config.style`),
-  `fullscreen`, `maximised`, `secure`, `skipFocus`; and `all`, `reapply`. The first matching rule applies, and one with
-  `all: true` lets the next matching rule apply too (later wins per field), so a Lua list becomes JavaScript by adding
-  `all: true` to each rule. A rule applies when its window appears; with `reapply` it applies again when appId or title
-  changes (`ClientListener.onAppIdChanged` is new) and undoes `secure`, `fullscreen`, `maximised` and `opacity` when it
-  stops matching, and a rule that still matches writes nothing. A window the shell found at boot is not touched.
+  `fullscreen`, `maximised`, `secure`, `skipFocus`; and `first`, `reapply`. Every matching rule applies in list order and
+  the later wins per field, as every Lua rule list did (`rules_test.lua`: "the last matching rule wins for a field", "rules
+  merge in list order"); a rule with `first: true` ends the search where it matches. A rule applies when its window
+  appears and, unless it says `reapply: false`, again when appId, title or focus changes (`ClientListener.onAppIdChanged`
+  is new; `RuleEngine.onFocusChanged` is the focus read), and undoes `secure`, `fullscreen`, `maximised`, `opacity`, the
+  corner radius and the shadows when it stops matching, to what a rule that still matches sets (else the default). A rule
+  that still matches writes nothing. A window the shell found at boot is not touched. Workspace changes of a window are
+  not a rule input yet: the client has no event for them.
   `compileRules` runs in `desugarConfig`, so a bad rule fails the stage naming `rules[i]` and the field. `role` is
   refused by name: the tree publishes no window role. The Lua `xr` field and the app-id fallback to the WM class are not
   ported (the tree carries no class). A `position` holds the window there (`floatingBounds`), a lone `size` is what the
@@ -817,10 +822,71 @@ the fake link) and one real-compositor test in `crates/gnoblin/tests/js_shell.rs
   a drag that takes hold of a snapped window ends the snapped state. `ClientResizeBinding({ edges: "nearest" })` moves the
   one side the press is nearest to; `quadrant` still moves a corner.
 - **Not done.** `focus_new_windows` launcher origin (no source), a rule's `role`, `xr`, drawing `cornerRadius` and
-  `shadows`, client requests (`activate`, `raise`) as focus input, the Lua `refit` of a snapped window when the work area
-  changes. Rules do not read `focused` again when focus changes.
+  `shadows`, the Lua `refit` of a snapped window when the work area changes. Client requests are in "Client requests
+  status".
   A press on a titlebar canvas does not focus or raise its window: a canvas's pointer events do not reach the client's
   listeners, so `Titlebar` would have to ask for it.
+
+## Client requests status
+
+Lane JsClientRequests, cutover step 1: `data/js/gnoblin/window_state.ts` answers the requests the compositor sends a shell
+and changes nothing for until it is answered (`crates/gnoblin-schema/schema/tree/messages.toml`, the `request` event of a
+node: `maximize unmaximize fullscreen unfullscreen minimize unminimize close raise lower activate move resize menu`). The
+policy is `Window:on_request` and its helpers in `data/lua/gnoblin/shell/init.lua` (`present`, `raise`, `lower`,
+`maximise`, `enter_fullscreen`, `minimise` and their inverses), ported with the same inputs and expected values. The
+tests are `crates/gnoblin-js/tests/client_requests.rs` (the 12 cases of `states_test.lua`, the `shell_test.lua` cases for
+raising with a fullscreen sibling, activation and a repeat fullscreen, and the new cases below, over the fake link) and
+three tests in `crates/gnoblin/tests/js_shell.rs` that run a real Wayland client against the real compositor
+(`xdg_toplevel.set_fullscreen`, `set_minimized` and an `xdg_activation_v1` token earned by a click).
+
+- **Delivery.** A `request` event is parked by `JsUiState` whatever its node and reaches `onUiRequest` handlers in the
+  toolkit's frame. `windowState.start` registers its handler when `gnoblin.ts` loads, so it runs before the window menu's
+  (which also hears `menu`) and a script's answer can stop the menu. A script that never calls `defineConfig` has the
+  policy too: it is not a config key, and a request with no answer is a window that cannot be maximised.
+- **The hook.** `ClientListener.onRequest(client, request)`: the listeners attached to the client first, then each
+  collection that holds it, each in the order attached, called synchronously; the first to call `request.handle()` wins,
+  later listeners are not called and the built-in answer does not run. A throw is reported (`Name.onRequest`) and the
+  next listener is asked. `request` is a `ClientRequest` (`kind`, `client`, `x`, `y` for a menu anchor, `handled`,
+  `handle()`). A listener that handles a request may call `windowState` (`maximise`, `unmaximise`, `enterFullscreen`,
+  `leaveFullscreen`, `minimise`, `unminimise`, `present`, `raise`, `lower`, `beginMove`, `beginResize`), each returning
+  whether it ran. The rule is written in the header of `window_state.ts` and the page `docs/typescript-shell.md`.
+- **Fullscreen covers the whole output.** The Lua `cover_rect` is the whole `Screen` under the bars (`{ x = 0, y = -d.space.y,
+w = d.width, h = d.height }` in the workspace's own space), and `Desk:sync_fullscreen` hides the bars and the workspace
+  clip while a fullscreen window shows. The JavaScript model had the screen less the bars (`screenArea`). The decision is
+  Lua's: the rectangle is `(0, 0, output width, output height)` in screen coordinates (which is the Lua `y = -32` with a 32
+  pixel bar), and `Bar.shown` is false while a fullscreen window shows on the workspace on show (`barsGiveWayTo`,
+  `data/js/gnoblin/widgets.ts`), so it is hidden and takes no room. The bars return when the window leaves fullscreen,
+  minimises, closes or its workspace is hidden. There is no workspace clip in JavaScript: a window is placed in screen
+  coordinates, so the Lua `space.clip` check has no twin. `maximize` still fills `screenArea` (what the bars leave).
+- **Rectangles.** `maximise` keeps the floating rectangle, `enterFullscreen` the windowed one (a maximised or snapped
+  window keeps its flags, and leaving fullscreen returns the maximised rectangle), as `keep_floating` and
+  `data.windowed` did. A repeat `fullscreen` is refused so it cannot overwrite the kept rectangle, and a `maximize` of a
+  fullscreen window is refused. The rule engine and the menu and titlebar maximise/minimise buttons call the same
+  methods, so a window a rule made fullscreen is covered the same way (`cover` and `beforeCover` are gone).
+  A tiling layout leaves a fullscreen or maximised window alone (`layout()` filters them from `compute`, and a change of
+  the covering set makes the workspace compute again).
+- **Raise.** `Client.raise()` keeps a fullscreen sibling on the same workspace on top of the window it raised, as
+  `Window:raise` did; a pinned window (`windowMenu.isAbove`) is still kept by the menu's per-frame `#keepPinned`, which
+  already put a fullscreen window over the pinned ones.
+- **Minimise and activate.** `minimise` writes `minimised`; the compositor hides the window and a layout does not show it
+  again (`writtenVisible`). When the window held the keyboard focus the seat's focus goes to the topmost sibling on its
+  workspace that is not minimised, or to nobody. `unminimise` focuses the window only when nothing holds the focus.
+  `present` (the `activate` request, the compositor's own authority having allowed it) does nothing for a window on a
+  workspace that is not shown; else it unminimises, focuses and raises.
+- **Move and resize.** The request names no pointer and no edge, so `beginMove` and `beginResize` read the seat's pointer
+  and start the stock `ClientMoveBinding` or `ClientResizeBinding` through their own `onStart`, `onUpdate` and `onEnd`
+  (`constrainRect`, the snap on a drop, the minimum size). The drag follows the pointer in a frame hook and ends on the
+  next pointer press or release on a window (the compositor sends the release to the client that holds the implicit
+  grab), when its window goes, or after `REQUEST_DRAG_LIMIT_MS` (30 s) so none follows the pointer for ever. A window that
+  a layout tiles (`Client.tiled`), a fullscreen one and a maximised one are not dragged. A pointer within
+  `RESIZE_CORNER_ZONE` (16) pixels of two sides resizes that corner, anywhere else the nearest side. This is proved over the
+  fake link only: a real `xdg_toplevel.move` needs a client that sends the request with a pointer serial, which the
+  test client does not.
+- **Rules and the stock workspaces** moved in the same lane. Rule lists merge every matching rule (see "Focus, rules and
+  snapping status"); the zero-config baseline is four workspaces, `1` to `4`, named `Workspace 1` to `Workspace 4`
+  (`defineConfig({ workspaces: [{ id, name, layout }] })` gained `name`), and the starter is rewritten to match.
+- **Not done.** The Lua `refit` of a maximised or snapped window when the bars change, and a request for a window on
+  another output (the shell has one primary screen).
 
 ## P7 UI toolkit status
 
