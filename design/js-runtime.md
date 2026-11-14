@@ -136,6 +136,59 @@ compositor commit are not done: they belong to P3 and the process supervisor.
   restarts, the heartbeat watchdog (L3), the Rust fallback when the runtime is down, and passing `gnoblin.hot.data`
   between generations.
 
+## P3 status
+
+`JsShell` (`crates/gnoblin-js/src/shell.rs`) does for QuickJS what `ShellVm` does for Lua, over `gnoblin-tree-client`.
+The object model is TypeScript, embedded as the `gnoblin` module (`crates/gnoblin-js/js/gnoblin.ts`); the Rust side
+(`src/bindings/`) is a set of plain host functions behind `globalThis.__gnoblinHost`. It runs against a fake
+compositor in `crates/gnoblin-js/tests/shell.rs`; it has not been run against the real compositor.
+
+- **Boot order.** `JsShell::new` attaches, drains the snapshot and loads the `gnoblin` module, so `gnoblin.clients`
+  exists for the entry. `load_entry` evaluates `init.ts`. The first `frame()` announces `ready` for the snapshot's
+  nodes, parents first. Then every `frame()` applies the compositor's batches to the mirror, tells the listeners,
+  and sends one transaction.
+- **Protocol rules.** Copied from `ShellVm`, not shared: one transaction in flight, replies matched by position,
+  `stale-base` and `unknown-node` refusals sent again ahead of the next frame's writes, `STALE_RETRIES` (3) in a
+  row. The tests are the Lua ones ported (hold, stale resend, retry cap, unknown node, refusal report).
+- **Objects.** One `Client` per window node and one `Workspace` per workspace node for the life of the generation,
+  so the same node is the same JS object. A client has `id` (the node id as a string), `appId`, `title`, `focused`,
+  `fullscreen`, `x`, `y`, `width`, `height`, `bounds`, `workspace`, `alive`, `close()`, `focus()`. Only the four
+  geometry numbers are writable; the compositor owns the rest. A write is queued and read back at once, and travels
+  at frame end. A destroyed node keeps its last values, is `alive === false`, and every write or call throws a
+  `GnoblinError` (`code` `destroyed`, `target` `Client#3.x`). A value that is not a finite number throws a
+  `TypeError` naming the member. `Client` and `Workspace` cannot be constructed by a script.
+- **Collections.** `gnoblin.clients` and `gnoblin.workspaces` are live `Collection`s: `length`, `at`, `get`, `find`,
+  `filter` and `map` (snapshots), iteration, `where`, `addListener`, `removeListener`. They have no `add`.
+  `where(query)` is a live selection over a data-only query: each key is a property (`id`, `appId`, `title`,
+  `focused`, `fullscreen`, `x`, `y`, `width`, `height` for clients), each value what it must equal or an array of
+  values of which one must. Its membership follows property changes. It is not tracked until it has a listener.
+- **Listeners.** `ClientListener` (`onTitleChanged`, `onFocusChanged`, `onGeometryChanged`, `onClosed`, `onReady`)
+  and `CollectionListener` (`onAdded`, `onRemoved`) are plain base classes; a listener may implement any of the
+  methods, with or without the base class. Argument 1 is the origin object; `onAdded` and `onRemoved` also get the
+  collection. On a collection, a client listener hears every member and stops hearing a member that leaves. On a
+  client, it hears that client.
+- **Replay on attach (decision for spec-review 1.25).** `collection.addListener(l)` calls `l.onAdded(member,
+collection)` at once for each member already in the collection, in collection order, so a config that loads or
+  reloads against existing windows sees them. Member events (`ClientListener`) are not replayed: nothing happened.
+  Adding the same listener twice is a no-op.
+- **When an event fires.** Change events are raised from what the compositor published, compared with what the
+  listeners were last told, so a batch that sets a title to its current value raises nothing, two batches in one
+  frame raise one event with the last value, and the echo of the script's own write raises an event like any
+  other change. A window made in a frame is born with its final values and raises no change event. A node that
+  was there at boot raises no `onAdded`. Order per client: title, focus, geometry; then membership changes.
+- **Errors and budgets.** A listener runs under its own budget (`entry_budget`, 100 ms), the frame's dispatch under
+  `frame_budget` (500 ms); queued calls that do not fit wait for the next frame. A throw is caught in the module,
+  returned as a diagnostic with the `.ts` location, and reported once per site (listener class, method and
+  position); the next listener still runs. A budget or memory trip stops that one call, is reported, and counts a
+  strike (`JsShell::strikes`); the next call still runs. What to do about strikes is the supervisor's.
+- **`gnoblin.spawn(command)`.** A string is a command line, an array is an argv. The shell does not start
+  processes: `JsShell::set_spawner` takes the host's callback (`JsSpawnRequest::Command` or `Argv`), and a refusal
+  or a missing spawner throws `GnoblinError` `spawn-failed`. A top-level `spawn` in `init.ts` runs on every load.
+- **Not done.** Input events, chords, gestures and call answers from the compositor are consumed and dropped: the
+  binding lane owns them. `Workspace` has no `clients`, layout or `add`. No coalescing of repeated writes to one
+  property in a frame. `JsShell` owns its generation: wiring it into `JsHost` staging, so a reload swaps shells,
+  is P5's. The compositor-side `where` evaluation is not built.
+
 ## Questions for the owner (the agent has a default for each)
 
 1. Initial workspace rule for a new toplevel. Default: the workspace shown by the display under the
