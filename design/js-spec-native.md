@@ -402,9 +402,9 @@ apart. User page: docs/shell-api/scene.md. Tests: crates/gnoblin-js/tests/scene_
   the parts it has to the node's `x`, `y`, `z`, `rotation` and `scale`: one transaction per frame, and one transition inside
   `set`/`requestTransition`. `Client` gets the same `position`, `rotation`, `scale` and `transform`; a client's `position` is
   `x`, `y` and its depth `z`, so a transform with a position moves the window's rectangle, as writing `client.x` does.
-- **`View.input`.** `Node.input` is now `"forward" | "capture" | "none"`; `true` and `false` still write (`forward`, `none`).
-  The tree has one flag (`input`), true for `forward` and `capture`; `capture` is the script's. Callers that read the old
-  boolean were migrated (`pickView`, `pinToHead` in xr.ts, by lane SpecXr).
+- **`View.input`.** The compositor's tree has one `input` flag: `"forward"` writes true and `"none"` writes false; reads report
+  only those modes. `"capture"` requires native routing that can stop input at a View, so the shell throws a typed `unsupported`
+  error rather than storing script-only state. Fence 026 uses `"forward"` and still runs because it maps to the native flag.
 - **`View.size`, `contentFit`.** `size` is `{ width, height }` over the tree's `width` and `height`. `contentFit` is kept
   (default `stretch`, which is what the compositor draws for a client); only a workspace's picture is fitted by it.
 - **A `View` of a workspace (027).** Decision: implemented, not refused. A workspace is a script object and the compositor
@@ -426,9 +426,16 @@ apart. User page: docs/shell-api/scene.md. Tests: crates/gnoblin-js/tests/scene_
   which nodes the compositor changed (`plan`'s `touched`), which tree properties a script wrote, and which collections
   changed. A frame runs each changed binding once (in the layout step, before the layouts), repeating up to 8 passes for
   chains; a binding still changing then is reported with what it reads. Errors are per binding and reported once.
-  A property that does not exist is reported, not thrown at `bind` (fence 085 binds `vignette` and `blurRadius`, which nothing
-  defines). A second binding of a property replaces the first. Owners that are destroyed end their bindings. Plain script
-  fields are not tracked (section 16's stated limit).
+  A property that does not exist is reported, not thrown at `bind`. A second binding of a property replaces the first. Owners
+  that are destroyed end their bindings. Plain script fields are not tracked (section 16's stated limit).
+
+Section 15 states: “The recommended contract is `client.properties.bind` for reactive values and `input.bind` for input
+triggers.” Its examples bind `vignette` and `blurRadius` on native objects. Section 16 says user-defined fields need host
+interception. These are native properties by name; no native background effects exist, so fence 085 remains `fails`.
+
+**Gate.** Run `just spec-gate`. Before removing defineConfig, its unchanged init.js test must pass in the normal suite.
+`expected.toml` may retain only five failures: 066, 068, 117 (owner decision); 118 (virtual outputs); and 085 (native
+background effects).
 
 ## Part 3. Replacement design
 

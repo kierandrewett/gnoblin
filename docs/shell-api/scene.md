@@ -67,18 +67,16 @@ room.transform = { rotation: { x: 0, y: Math.PI / 4, z: 0 } };
 
 ### Input
 
-`input` says what a pointer ray does when it reaches the node:
+`input` maps to the compositor's single native input flag:
 
-| Value       | Meaning                                                                       |
-| ----------- | ----------------------------------------------------------------------------- |
-| `"forward"` | The ray hits the node and, for a `View`, goes on to its content. The default. |
-| `"capture"` | The ray hits the node and stops there.                                        |
-| `"none"`    | The ray misses the node. Its children are still tested.                       |
+| Value       | Meaning                                                                                                               |
+| ----------- | --------------------------------------------------------------------------------------------------------------------- |
+| `"forward"` | Sets the flag, enabling input.                                                                                        |
+| `"none"`    | Clears the flag, disabling input.                                                                                     |
+| `"capture"` | Throws `SceneError` with code `unsupported`: stopping a ray at a View needs native input routing, which is not built. |
 
-- A write also takes `true` (`"forward"`) and `false` (`"none"`), and a read gives the string.
-- The tree has one flag for this, `input`, which is true for `"forward"` and `"capture"`.
-- The script keeps the difference between those two. Only code that reads `node.input` sees `"capture"`, as the XR
-  extension's pointer picking does.
+- A write also takes `true` (`"forward"`) and `false` (`"none"`); reads return `"forward"` or `"none"`.
+- The native flag cannot distinguish forwarding through a View from capturing input at it. No script-side shadow state is kept.
 
 ## Views
 
@@ -200,4 +198,4 @@ What it follows:
 
 - A perspective camera that projects a flat workspace's windows is not built, so `ArcLayout` is not seen as a ring.
 - `contentFit` does not fit a client's picture; see [Views](#views).
-- `"capture"` is not a state of the tree: it is kept by the script.
+- `"capture"` needs native input routing to stop a ray at a View; assigning it throws `SceneError` with code `unsupported`.

@@ -39,7 +39,7 @@ pipewire-test:
     cargo test --locked -p gnoblin-wayland --test view_capture_e2e
 
 
-# Run the full JavaScript specification acceptance gate, including the ignored owner-init cutover test.
+# Run the full JavaScript specification acceptance gate, including the owner-init cutover test.
 spec-gate:
     cargo test -p gnoblin-js --test spec_conformance -- --include-ignored
 # Enforce the dependency rules in design/rust-compositor.md over `cargo metadata`.

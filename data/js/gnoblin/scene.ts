@@ -65,7 +65,7 @@ function host(): SceneBackend {
     return backend;
 }
 
-/** Whether a pointer ray that hits a node goes on to its content (`forward`), stops at it (`capture`) or misses it (`none`). */
+/** What a pointer ray does at a node. Native input has one flag: `forward` and `capture` both set it, `none` clears it. */
 export type InputMode = "forward" | "capture" | "none";
 
 /** Initial node values; position units depend on the parent, and rotation is in radians. */
@@ -106,8 +106,7 @@ const live = new Map<NodeId, Node>();
 const gone = new WeakSet<object>();
 /** The ids scripts gave their nodes (`new Node({ id })`): `node.id` answers with them. */
 const givenIds = new WeakMap<object, string>();
-/** The nodes whose `input` is `capture`: the tree has one flag for it and `forward`. */
-const captures = new WeakSet<object>();
+/** Metres in one unit of a node's space, kept by the script because ordinary nodes have no tree property for it. */
 const metresPerUnit = new WeakMap<object, number>();
 /** Set while the scene root is being wrapped: the node already exists in the tree, so the constructor does not make one. */
 let wrapping: NodeId | null = null;
@@ -558,16 +557,11 @@ export class Node {
     }
 
     /**
-     * What a pointer ray that reaches the node does. `forward` (the default): the ray hits the node and, for a `View`,
-     * goes on to its content. `capture`: the ray hits the node and stops there. `none`: the ray misses the node (its
-     * children are still tested). The tree stores one flag, `input`, which is true for `forward` and `capture`; `capture`
-     * is kept by the script. A write also takes `true` (`forward`) and `false` (`none`).
+     * The compositor's input flag enables (`forward`) or disables (`none`) input on this node. `capture` is unavailable:
+     * it requires native routing to stop a ray at a View instead of forwarding to its content.
      */
     get input(): InputMode {
-        if (!this.read<boolean>("input")) {
-            return "none";
-        }
-        return captures.has(this) ? "capture" : "forward";
+        return this.read<boolean>("input") ? "forward" : "none";
     }
     set input(value: boolean | InputMode) {
         const mode = value === true ? "forward" : value === false ? "none" : value;
@@ -575,11 +569,9 @@ export class Node {
             throw new TypeError(`${label(this)}.input: must be "forward", "capture", "none" or a boolean`);
         }
         if (mode === "capture") {
-            captures.add(this);
-        } else {
-            captures.delete(this);
+            throw new SceneError("unsupported", `${label(this)}.input`, "input capture needs compositor routing: not built");
         }
-        this.write("input", mode !== "none");
+        this.write("input", mode === "forward");
     }
 
     /**

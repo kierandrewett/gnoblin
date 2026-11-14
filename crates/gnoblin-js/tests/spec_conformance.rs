@@ -9,9 +9,10 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use gnoblin_js::{JsConfigCommit, JsConfigLink, JsLinkError, JsShell};
-use gnoblin_tree_client::tree_mirror::MirrorValue;
+use gnoblin_tree_client::tree_mirror::{MirrorValue, TxOp};
 use sha2::{Digest, Sha256};
 
 mod common;
@@ -376,7 +377,7 @@ fn boot(files: &[(&str, String)], probe: Option<&str>, session_first: bool) -> R
         }
         comp.add_node(id, ROOT, "window", props);
     }
-    let (config, _clock) = timed_config(&root);
+    let (config, clock) = timed_config(&root);
     let outcome = (|| {
         let mut shell = JsShell::new(Box::new(comp.clone()), config).map_err(|error| error.to_string())?;
         shell.set_config_link(Box::new(AcceptingDocument::default()));
@@ -391,8 +392,58 @@ fn boot(files: &[(&str, String)], probe: Option<&str>, session_first: bool) -> R
         let mut diagnostics = shell
             .load_entry(Path::new("init.js"))
             .map_err(|error| error.to_string())?;
+        let track_mark = comp.sent_count();
         for _ in 0..6 {
             diagnostics.extend(shell.frame().map_err(|error| error.to_string())?.diagnostics);
+        }
+        if files.iter().any(|(_, source)| source.contains("__specComplete")) {
+            let mut complete = shell
+                .eval("String(globalThis.__specComplete)")
+                .map_err(|error| error.to_string())?;
+            let mut elapsed_ms = 0.0;
+            let mut tracks: Vec<(u64, String, Option<u64>, f64, bool)> = Vec::new();
+            for _ in 0..24 {
+                if complete.as_deref() == Some("true") {
+                    break;
+                }
+                clock.advance(Duration::from_millis(100));
+                elapsed_ms += 100.0;
+                diagnostics.extend(shell.frame().map_err(|error| error.to_string())?.diagnostics);
+                for op in comp.ops_since(track_mark) {
+                    if let TxOp::Set {
+                        node,
+                        key,
+                        seconds: Some(seconds),
+                        tween,
+                        ..
+                    } = op
+                        && !tracks.iter().any(|(track_node, track_key, track_tween, _, _)| {
+                            *track_node == node && *track_key == key && *track_tween == tween
+                        })
+                    {
+                        tracks.push((node, key, tween, elapsed_ms + seconds * 1000.0, false));
+                    }
+                }
+                for (node, key, tween, end_at, ended) in &mut tracks {
+                    if !*ended && elapsed_ms >= *end_at {
+                        comp.track_ended(*node, key, true, *tween);
+                        *ended = true;
+                    }
+                }
+                complete = shell
+                    .eval("String(globalThis.__specComplete)")
+                    .map_err(|error| error.to_string())?;
+            }
+            if complete.as_deref() != Some("true") {
+                return Err("top-level await did not settle after 2400 ms and 24 shell frames".to_owned());
+            }
+            let error = shell
+                .eval("globalThis.__specError")
+                .map_err(|error| error.to_string())?
+                .unwrap_or_default();
+            if !error.is_empty() {
+                return Err(error);
+            }
         }
         // The fake compositor applies no effects, so "not applied" notices are the rig, not the snippet.
         if let Some(first) = diagnostics.iter().find(|line| !line.starts_with("not applied")) {
@@ -538,7 +589,17 @@ fn run_js(source: &str, entry: bool) -> Result<(), String> {
                 .replace("__STYLE__", if styled { "true" } else { "false" })
                 .replace("__XR__", if source.contains("xr.") { "true" } else { "false" }),
         ));
-        files.push(("snippet.js", source.to_owned()));
+        let async_entry = source.contains("await transition.finished");
+        let snippet = if async_entry {
+            format!(
+                "globalThis.__specComplete = false; globalThis.__specError = ''; \
+                 (async () => {{ {source} }})().then(() => {{ globalThis.__specComplete = true; }}, \
+                 error => {{ globalThis.__specError = String(error && error.stack || error); globalThis.__specComplete = true; }});"
+            )
+        } else {
+            source.to_owned()
+        };
+        files.push(("snippet.js", snippet));
         files.push((
             "init.js",
             "import \"./prelude.js\";\nimport \"./snippet.js\";\n".to_owned(),
@@ -935,7 +996,6 @@ fn missing_classes_in_fixtures_remain_visible() {
 }
 
 #[test]
-#[ignore = "acceptance gate for the spec-native cutover: remove this ignore when the reference init.js runs; tracked in design/js-spec-native.md part 2"]
 fn the_owners_reference_init_js_runs_unchanged() {
     let input = fs::read(spec_dir().join("init.js.txt")).expect("owner init.js reads as bytes");
     let manifest = expected_manifest();

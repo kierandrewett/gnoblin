@@ -74,7 +74,7 @@ declare module "gnoblin" {
     }
     /** The rotation or scale a node reads: three numbers that also answer to `x`, `y` and `z`. */
     export type AxisTriple = [number, number, number] & { readonly x: number; readonly y: number; readonly z: number };
-    /** What a pointer ray does at a node: `forward` hits it and goes on to its content, `capture` hits it and stops, `none` misses it. */
+    /** `forward` enables the native input flag; `none` clears it. `capture` requires unsupported native routing. */
     export type InputMode = "forward" | "capture" | "none";
 
     // -- Native objects (owner-spec section 4) --------------------------------
@@ -3725,7 +3725,7 @@ declare module "gnoblin/extensions/xr" {
         set scale(value: ScaleInit);
         visible: boolean;
         opacity: number;
-        /** What a pointer ray does at the node: `forward`, `capture` (hit and stop) or `none`. A write also takes a boolean. */
+        /** The native input flag: `forward` enables it, `none` clears it; `capture` throws unsupported without native routing. */
         get input(): InputMode;
         set input(value: boolean | InputMode);
         /** Metres in one unit of the node's space. The script keeps it. Default 1. */

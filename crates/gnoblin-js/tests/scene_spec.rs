@@ -271,7 +271,7 @@ fn a_client_takes_a_transform_in_set_as_one_atomic_write_and_reads_position_and_
 // ---- Nodes: input, the scene and Views ----------------------------------------------------------------------------
 
 #[test]
-fn input_is_forward_capture_or_none_and_the_old_booleans_still_write() {
+fn input_flag_maps_forward_and_none_and_rejects_capture() {
     let mut rig = world(1, "");
     rig.eval(
         "globalThis.v = new View({ id: 'panel', content: gnoblin.clients.at(0), \
@@ -284,11 +284,38 @@ fn input_is_forward_capture_or_none_and_the_old_booleans_still_write() {
     rig.eval("v.input = 'none'");
     rig.settle();
     assert_eq!(rig.eval("v.input"), "none");
-    assert_eq!(rig.comp.flag(view, "input"), Some(false), "none is a miss in the tree");
-    rig.eval("v.input = 'capture'");
-    rig.settle();
-    assert_eq!(rig.eval("v.input"), "capture");
-    assert_eq!(rig.comp.flag(view, "input"), Some(true), "capture is hit in the tree");
+    assert_eq!(
+        rig.comp.flag(view, "input"),
+        Some(false),
+        "none clears the native input flag"
+    );
+    let before = rig.comp.value(view, "input");
+    let message = rig.eval(
+        "(() => { try { v.input = 'capture'; return 'no error'; } \
+         catch (e) { return `${e.code}: ${e.message}`; } })()",
+    );
+    assert!(
+        message.contains("unsupported: View#") && message.contains("input capture needs compositor routing: not built"),
+        "{message}"
+    );
+    assert_eq!(
+        rig.comp.value(view, "input"),
+        before,
+        "the unsupported write changes no native state"
+    );
+    assert_eq!(
+        rig.eval("String(v.input === 'none')"),
+        "true",
+        "failed writes leave script reads unchanged"
+    );
+    let message = thrown(
+        &mut rig,
+        "new View({ content: gnoblin.clients.at(0), input: 'capture' })",
+    );
+    assert!(
+        message.contains("input capture needs compositor routing: not built"),
+        "{message}"
+    );
     rig.eval("v.input = false");
     assert_eq!(rig.eval("v.input"), "none");
     rig.eval("v.input = true");

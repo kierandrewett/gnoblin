@@ -84,10 +84,12 @@
 "078-14-universal-animation-gnoblin-requesttransition.js" = "runs"
 "079-14-universal-animation-gnoblin-requesttransition.js" = "runs"
 "080-2d-3d-camera-and-layout-transition.js" = "runs"
-"081-interactive-transitions-gesture-scrubbing.js" = "fails"
+# Transition.finished needs shell frames; the conformance harness must advance the manual clock for playback.
+"081-interactive-transitions-gesture-scrubbing.js" = "runs"
 "082-optional-per-object-set-shorthand.js" = "runs"
 "083-15-binding-animations-to-state-without-polling.js" = "runs"
 "084-15-binding-animations-to-state-without-polling.js" = "runs"
+# the spec example binds native properties the shell does not define: needs native background effects
 "085-15-binding-animations-to-state-without-polling.js" = "fails"
 "086-16-native-backed-js-objects-and-invisible-change-track.js" = "runs"
 "087-16-native-backed-js-objects-and-invisible-change-track.txt" = "skipped"

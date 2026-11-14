@@ -8,7 +8,7 @@ A fence is a fragment, so it runs behind the documented prelude fixtures. The re
 
 `runs` means the file evaluated without throwing. `fails` names the first error: a missing class, property or method; where the engine does not name it (`not a function`), the line of the fence follows after `@`. `skipped` is a fragment that is not code. A `.ts` fence is a declaration: it runs when every class it declares exists, and its members are not checked. The note column gives the first error past a missing import (the import is declared as a class that throws, so the rest of the file shows), and says when a guard keeps a body from running.
 
-129 files: 113 run, 6 fail, 10 skipped.
+129 files: 114 run, 5 fail, 10 skipped.
 
 | File                                                             | Result                                                                          | Note                                                                                             |
 | ---------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
@@ -93,7 +93,7 @@ A fence is a fragment, so it runs behind the documented prelude fixtures. The re
 | `078-14-universal-animation-gnoblin-requesttransition.js`        | runs                                                                            |                                                                                                  |
 | `079-14-universal-animation-gnoblin-requesttransition.js`        | runs                                                                            |                                                                                                  |
 | `080-2d-3d-camera-and-layout-transition.js`                      | runs                                                                            |                                                                                                  |
-| `081-interactive-transitions-gesture-scrubbing.js`               | fails: `the module never settled: it awaits a promise that nothing can resolve` |                                                                                                  |
+| `081-interactive-transitions-gesture-scrubbing.js`               | runs                                                                            |                                                                                                  |
 | `082-optional-per-object-set-shorthand.js`                       | runs                                                                            |                                                                                                  |
 | `083-15-binding-animations-to-state-without-polling.js`          | runs                                                                            |                                                                                                  |
 | `084-15-binding-animations-to-state-without-polling.js`          | runs                                                                            |                                                                                                  |
