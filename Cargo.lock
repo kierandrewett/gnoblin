@@ -1019,15 +1019,25 @@ name = "gnoblin"
 version = "0.2.0-alpha.0"
 dependencies = [
  "clap",
+ "gnoblin-backend",
+ "gnoblin-client",
  "gnoblin-compat-host",
  "gnoblin-compositor",
+ "gnoblin-js",
  "gnoblin-log",
  "gnoblin-lua",
+ "gnoblin-model",
+ "gnoblin-paint",
+ "gnoblin-proto",
  "gnoblin-services",
  "gnoblin-session",
+ "gnoblin-types",
  "gnoblinctl",
  "rustix 1.1.6",
+ "serde_json",
  "tempfile",
+ "wayland-client",
+ "wayland-protocols",
 ]
 
 [[package]]
@@ -1434,6 +1444,14 @@ dependencies = [
 name = "gnoblin-js"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-client",
+ "gnoblin-config",
+ "gnoblin-log",
+ "gnoblin-model",
+ "gnoblin-paint",
+ "gnoblin-proto",
+ "gnoblin-secret",
+ "gnoblin-tree-client",
  "notify",
  "oxc_allocator",
  "oxc_codegen",
@@ -1444,8 +1462,10 @@ dependencies = [
  "oxc_span",
  "oxc_transformer",
  "rquickjs",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.21",
+ "toml",
 ]
 
 [[package]]
