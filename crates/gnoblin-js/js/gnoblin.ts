@@ -1291,6 +1291,7 @@ function takeErrors(): ErrorReport[] {
 const input = new InputManager(host.input, {
     clientOf: (node) => clientsByNode.get(node),
     stack: () => host.windows().flatMap((node) => clientsByNode.get(node) ?? []),
+    layouts: () => workspaceRoot.list.map((workspace) => wsState(workspace as Workspace).layout),
     schedule: (site, task) => {
         queue.push({ site, task });
     },

@@ -1044,7 +1044,10 @@ declare module "gnoblin" {
         bind(trigger: Trigger, action: ((event: BindingEvent) => void | false) | Binding): Binding;
         /** The topmost client under `position`, in tree order. */
         hitTest(position: Vec2): { client: Client; localPosition: Vec2 } | null;
-        /** Makes a layout's bindings live for the clients `owns` accepts (default: those whose workspace shows it). */
+        /**
+         * Makes a layout's bindings live for the clients `owns` accepts (default: those whose workspace's layout it
+         * is). The layouts of the workspaces are attached by the runtime; this is for any other.
+         */
         attachLayout(layout: Layout, owns?: (client: Client) => boolean): void;
         detachLayout(layout: Layout): void;
     }

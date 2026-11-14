@@ -69,6 +69,8 @@ export interface InputWorld {
     clientOf(node: number): BindingClient | undefined;
     /** Every client, back to front. */
     stack(): BindingClient[];
+    /** The layouts the workspaces use now. Their bindings go live in every context while they are in use. */
+    layouts(): InputLayout[];
     /** Runs `run` later, under the call budget. A throw is reported against `site`. */
     schedule(site: string, run: () => void): void;
     report(site: string, error: unknown): void;
@@ -364,6 +366,10 @@ export class InputContext {
     /** Whether giving up a claim tells the seat: false once the seat itself is gone. */
     #release = true;
     #unfollowOwn: () => void;
+    /** The layouts `syncLayouts` attached, which it also detaches; one attached by hand stays until detached by hand. */
+    readonly #auto = new Set<InputLayout>();
+    /** Layouts whose bindings were refused once, so they are not tried and reported every frame. */
+    readonly #failed = new WeakSet<InputLayout>();
 
     /** @internal Made by `InputManager`: one context per seat the compositor reports. */
     constructor(host: InputHost, world: InputWorld, seat: number) {
@@ -444,6 +450,29 @@ export class InputContext {
     detachLayout(layout: InputLayout): void {
         this.#layouts.get(layout)?.();
         this.#layouts.delete(layout);
+    }
+
+    /** @internal Attaches the layouts the workspaces use and detaches the ones they no longer use. */
+    syncLayouts(wanted: readonly InputLayout[]): void {
+        const inUse = new Set(wanted);
+        for (const layout of [...this.#auto]) {
+            if (!inUse.has(layout)) {
+                this.#auto.delete(layout);
+                this.detachLayout(layout);
+            }
+        }
+        for (const layout of inUse) {
+            if (this.#layouts.has(layout) || this.#failed.has(layout)) {
+                continue;
+            }
+            try {
+                this.attachLayout(layout);
+                this.#auto.add(layout);
+            } catch (error) {
+                this.#failed.add(layout);
+                this.#world.report(`InputContext "${this.name}".attachLayout`, error);
+            }
+        }
     }
 
     /** @internal Whether `claim` is one of this context's. */
@@ -553,6 +582,7 @@ export class InputContext {
             unfollow();
         }
         this.#layouts.clear();
+        this.#auto.clear();
         // Every registration's claim went with it; this is the net for a claim nothing registered against.
         for (const claim of [...this.#claims.values()]) {
             this.#claims.delete(`${claim.specKey}\n${claim.device}`);
@@ -584,8 +614,16 @@ export class InputContext {
                 this.#unregister(registration);
             }
         };
-        for (const binding of source) {
-            add(binding);
+        try {
+            for (const binding of source) {
+                add(binding);
+            }
+        } catch (error) {
+            // A binding the seat refuses leaves nothing of this source behind, so the caller sees all or none.
+            for (const binding of [...held.keys()]) {
+                remove(binding);
+            }
+            throw error;
         }
         const unwatch = source.watch({
             added: add,
@@ -1139,8 +1177,10 @@ export class InputManager {
                 this.#contexts.delete(seat);
             }
         }
+        const layouts = this.#world.layouts();
         for (const context of this.#contexts.values()) {
             context.syncDevices();
+            context.syncLayouts(layouts);
         }
     }
 

@@ -594,10 +594,12 @@ fn rig(comp: &Comp, init: &str) -> Rig {
     rig_with(comp, init, |_| {})
 }
 
-/// Imports and a `log` for entries that record what their bindings did.
-const PRELUDE: &str = "import { gnoblin, FloatingLayout, KeyBinding, PointerDragBinding, GestureBinding } from \"gnoblin\";\n\
+/// Imports and a `log` for entries that record what their bindings did. The one workspace has a layout with no
+/// bindings, so the stock one a config without workspaces gets (floating, with move and resize) claims nothing here.
+const PRELUDE: &str = "import { gnoblin, FloatingLayout, KeyBinding, PointerDragBinding, GestureBinding, Workspace } from \"gnoblin\";\n\
                        const log: string[] = [];\n\
                        (globalThis as any).log = log;\n\
+                       gnoblin.workspaces.add(new Workspace({ id: \"main\", layout: \"monocle\" }));\n\
                        const input = gnoblin.input.primary;\n\
                        (globalThis as any).input = input;\n";
 
@@ -807,8 +809,9 @@ fn device_beats_layout_beats_context_and_an_equal_priority_conflict_is_refused_a
 
 // -- pointer drags -----------------------------------------------------------------------------------------
 
+/// The workspace's layout is a floating one, which the input module attaches by itself.
 const FLOATING_ENTRY: &str = "const layout = new FloatingLayout();\n\
-                              input.attachLayout(layout, () => true);\n\
+                              (gnoblin.workspaces.get(\"main\") as any).layout = layout;\n\
                               (globalThis as any).layout = layout;\n";
 
 #[test]
@@ -998,6 +1001,41 @@ fn the_stock_move_binding_does_not_throw_when_its_window_dies_mid_drag() {
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
     comp.chord(id, "<Super>Button1", "release");
     assert!(rig.frame().is_empty());
+}
+
+#[test]
+fn a_workspace_layout_is_live_while_in_use_and_leaving_it_cancels_the_drag_in_flight() {
+    let comp = world(false);
+    let mut rig = rig(&comp, &entry(FLOATING_ENTRY));
+    assert_eq!(comp.claimed(), ["<Super>Button1", "<Super>Button3"]);
+    let id = comp.claim_id("<Super>Button1");
+    comp.set_pointer(5, 50.0, 60.0);
+    comp.chord(id, "<Super>Button1", "press");
+    rig.frame();
+    comp.set_pointer(5, 80.0, 100.0);
+    rig.frame();
+    assert_eq!((comp.prop(3, "x"), comp.prop(3, "y")), (40.0, 60.0));
+
+    // The workspace takes another layout: the floating layout's bindings go with it, and the move that was
+    // running is cancelled once, which puts the client back.
+    rig.eval("gnoblin.workspaces.get('main').layout = 'monocle'");
+    let diagnostics = rig.frame();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    assert!(comp.claimed().is_empty(), "{:?}", comp.claimed());
+    assert_eq!((comp.prop(3, "x"), comp.prop(3, "y")), (10.0, 20.0));
+    comp.chord(id, "<Super>Button1", "release");
+    comp.set_pointer(5, 90.0, 110.0);
+    rig.frame();
+    assert_eq!(
+        (comp.prop(3, "x"), comp.prop(3, "y")),
+        (10.0, 20.0),
+        "nothing follows the pointer now"
+    );
+
+    // And back: a new instance claims again.
+    rig.eval("gnoblin.workspaces.get('main').layout = new (globalThis.layout.constructor)()");
+    rig.frame();
+    assert_eq!(comp.claimed(), ["<Super>Button1", "<Super>Button3"]);
 }
 
 #[test]

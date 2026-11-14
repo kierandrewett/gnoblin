@@ -253,9 +253,12 @@ tree link that records claims and plays back chords, gestures, pointer positions
   `floatingBounds` on release and restore the start on cancel. `FloatingLayout` registers both as `move` and `resize`
   (`undefined` keeps the default trigger, `null` leaves the binding out, spec-review 1.19). Not written: the `snap`
   option, `edges: "nearest"`, `ClientSwapBinding`, `SplitResizeBinding`, `WorkspaceSwitchBinding`.
-- **Layouts.** `InputContext.attachLayout(layout, owns?)` makes a layout's bindings live for the clients `owns` accepts
-  (default: a client whose workspace's `layout` is that layout, which needs the workspace lane's `Workspace.layout`;
-  until it exists a caller passes `owns`). Bindings the layout gains or loses afterwards follow.
+- **Layouts.** The layout of every workspace in `gnoblin.workspaces` is attached to every input context while a
+  workspace uses it (checked once per frame): its bindings are live for the clients whose workspace's `layout` it is,
+  they follow the layout's `bindings` collection, and they go, cancelling a drag they run, when the workspace takes
+  another layout or leaves the collection. A layout whose bindings the seat refuses is reported once and left
+  unattached. `InputContext.attachLayout(layout, owns?)` and `detachLayout` do the same by hand for a layout no
+  workspace holds, with the client test `owns` (a layout attached by hand is never detached for the workspaces).
 - **Contexts and devices.** One `InputContext` per seat node; `focusedClient` and `pointer` read through to the seat,
   `activeDisplay` is `null`. `devices` is parsed from `Seat.device`; a device's `bind` claims for its name. A context
   or device the seat loses is disposed and its drags cancelled. `new InputContext` is not available: contexts are the
