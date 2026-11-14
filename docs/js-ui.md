@@ -171,6 +171,13 @@ The stock library gives a server-decorated window's bar room of its own instead 
   keeps the frame inside the work area, so a bar is never lost off the top, and an edge snap tiles the frame.
 - A window the compositor maximises or makes fullscreen is sized by the compositor. A maximise through the titlebar or
   the menu goes through the shell, which leaves the bar its room.
+- The frame keeps its place when the bar comes or goes. A bar can arrive after the window was placed: the window mapped
+  before the shell declared decorations, a reload turned them on, or the compositor changed the window's `decoration`.
+    - The content moves down by the bar when it comes and up by it when it goes, so the bar is never drawn above the top of
+      the work area. The frame is clamped inside the area.
+    - A maximised window fills the area again, a snapped one tiles to its zone again, and a tiled one is placed again by its
+      layout.
+    - The rectangles a window returns to follow. A fullscreen window is left alone and fitted when it leaves.
 
 To have no bar on any window, leave `decorations` off.
 

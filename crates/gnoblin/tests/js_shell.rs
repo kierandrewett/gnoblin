@@ -2952,7 +2952,8 @@ fn shows(ipc: &Path, text: &str) -> bool {
 
 /// Whether the shell has told the compositor it draws window decorations (the seat's `decorations_available`). A window
 /// that asks for server-side decorations before this lands is told to draw its own, and the bar comes when the answer
-/// changes, after the shell has placed the window without room for it: a test of the placement waits for this first.
+/// changes, after the shell has placed the window without room for it. The shell then moves the content down by the bar,
+/// so no test needs to wait for this before it maps a window.
 fn decorations_declared(ipc: &Path) -> bool {
     snapshot(ipc).iter().any(|node| {
         node.class == "seat"
@@ -2983,9 +2984,10 @@ fn a_decorated_windows_content_lies_below_its_bar_and_a_titlebar_right_click_ope
     let shell = Shell::start(&session, config.path(), |_| {});
     let ipc = session.ipc();
     wait_for("the shell is running", &session, &mut mapper, &shell, || {
-        shell.generation() >= 1 && decorations_declared(&ipc)
+        shell.generation() >= 1
     });
-    // The window arrives while the shell runs, so the floating layout places it as a frame: the bar, then the content.
+    // The window may arrive before or after the shell has declared decorations: it is placed with no bar room in the first
+    // case and the bar comes with the declaration, and the frame keeps its place either way, so the end state is the same.
     mapper.map_window("org.example.framed", "Framed");
     wait_for("the window placed below its bar", &session, &mut mapper, &shell, || {
         rect_of(&ipc, "org.example.framed").is_some_and(|(_, y, width, _)| y > 0.0 && width > 0.0)
@@ -3055,6 +3057,21 @@ fn bars_under(ipc: &Path, app_id: &str) -> usize {
         .count()
 }
 
+/// The titlebar of the window of `app_id` and where its content starts: `(the bar's height, the content's y)`. `None`
+/// until the window has exactly one bar and a size. The bar lies above the content, so the bar is on screen when the content's
+/// y is at least the bar's height.
+fn bar_and_content(ipc: &Path, app_id: &str) -> Option<(f64, f64)> {
+    let window = scene(ipc).into_iter().find(|window| window.app_id == app_id)?;
+    let bars: Vec<Canvas> = canvases(ipc)
+        .into_iter()
+        .filter(|canvas| canvas.parent == window.id)
+        .collect();
+    let [bar] = bars.as_slice() else {
+        return None;
+    };
+    (window.width > 0.0).then_some((bar.height, window.y))
+}
+
 /// The compositor tells a client that asks for server-side that the shell draws its title bar only while the shell has
 /// declared decorations, and a client that draws its own is left alone, so no window has two bars: the stock shell
 /// mounts a titlebar on the window that asked for one and none on the window that draws its own, and a reload that
@@ -3073,7 +3090,7 @@ fn a_window_that_draws_its_own_title_bar_gets_no_second_one_and_a_server_side_wi
     let shell = Shell::start(&session, config.path(), |_| {});
     let ipc = session.ipc();
     wait_for("the shell is running", &session, &mut asks, &shell, || {
-        shell.generation() >= 1 && decorations_declared(&ipc)
+        shell.generation() >= 1
     });
 
     own.map_window("org.example.own", "Own");
@@ -3087,7 +3104,7 @@ fn a_window_that_draws_its_own_title_bar_gets_no_second_one_and_a_server_side_wi
             own.roundtrip();
             rect_of(&ipc, "org.example.own").is_some_and(|(_, _, width, _)| width > 0.0)
                 && rect_of(&ipc, "org.example.asks").is_some_and(|(_, _, width, _)| width > 0.0)
-                && bars_under(&ipc, "org.example.asks") == 1
+                && bar_and_content(&ipc, "org.example.asks").is_some_and(|(bar, y)| y >= bar)
         },
     );
     assert_eq!(
@@ -3103,9 +3120,9 @@ fn a_window_that_draws_its_own_title_bar_gets_no_second_one_and_a_server_side_wi
         "the asking window's content lies below its bar: {asks_y}"
     );
     assert_eq!(
-        asks.decoration_modes(0),
-        vec![Mode::ServerSide],
-        "the shell had declared decorations, so the first answer is server-side"
+        asks.decoration_modes(0).last(),
+        Some(&Mode::ServerSide),
+        "the shell declared decorations, so the answer is server-side"
     );
     assert!(
         own.decoration_modes(0).is_empty(),
@@ -3121,6 +3138,8 @@ fn a_window_that_draws_its_own_title_bar_gets_no_second_one_and_a_server_side_wi
     wait_for("the reload took the bar away", &session, &mut asks, &shell, || {
         shell.generation() > generation && bars_under(&ipc, "org.example.asks") == 0
     });
+    let (_, off_y, _, _) = rect_of(&ipc, "org.example.asks").expect("the window");
+    assert!(off_y >= 0.0, "with no bar the window is on screen: {off_y}");
     asks.roundtrip();
     assert_eq!(
         asks.decoration_modes(0).last(),
@@ -3135,11 +3154,65 @@ fn a_window_that_draws_its_own_title_bar_gets_no_second_one_and_a_server_side_wi
         "import { defineConfig } from \"gnoblin\";\ndefineConfig({ decorations: true });\n",
     );
     wait_for("the reload brought the bar back", &session, &mut asks, &shell, || {
-        shell.generation() > generation && bars_under(&ipc, "org.example.asks") == 1
+        shell.generation() > generation && bar_and_content(&ipc, "org.example.asks").is_some_and(|(bar, y)| y >= bar)
     });
     asks.roundtrip();
     assert_eq!(asks.decoration_modes(0).last(), Some(&Mode::ServerSide));
     assert_eq!(bars_under(&ipc, "org.example.own"), 0);
+    let log = shell.finish();
+    assert!(
+        log.iter().all(|line| !line.contains("threw")),
+        "the shell logged a throw: {log:#?}"
+    );
+}
+
+/// A window that was mapped before the shell declared decorations is told to draw its own frame and is placed with no room
+/// for a bar. When the shell declares them the compositor renegotiates, the stock shell mounts the bar, and the frame keeps
+/// its place: the content moves down by the bar, so the bar is on screen and not above the top of the output.
+#[test]
+fn a_window_mapped_before_the_shell_declared_decorations_ends_with_its_bar_on_screen() {
+    use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1::Mode;
+    let session = Session::start();
+    let mut mapper = Mapper::connect(&session.wayland()).requesting_server_side();
+    mapper.map_window("org.example.early", "Early");
+    let ipc = session.ipc();
+    assert!(
+        !decorations_declared(&ipc),
+        "no shell has run, so nothing is declared and the window was mapped before the declaration"
+    );
+    let config = tempfile::tempdir().expect("a config directory");
+    // The compositor gives a window no size until the shell does, and a titlebar is as wide as its window.
+    fs::write(
+        config.path().join("init.ts"),
+        r#"import { defineConfig, gnoblin } from "gnoblin";
+
+defineConfig({ decorations: true });
+gnoblin.clients.addListener({
+    onAdded(client: { width: number; height: number }): void {
+        client.width = 300;
+        client.height = 200;
+    },
+});
+"#,
+    )
+    .expect("init.ts");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    wait_for(
+        "the bar is mounted and the content lies below it",
+        &session,
+        &mut mapper,
+        &shell,
+        || bar_and_content(&ipc, "org.example.early").is_some_and(|(bar, y)| bar > 0.0 && y >= bar),
+    );
+    let (bar, y) = bar_and_content(&ipc, "org.example.early").expect("the bar and the window");
+    assert!(y - bar >= 0.0, "the bar's top edge ({}) is on screen", y - bar);
+    assert!(decorations_declared(&ipc), "the shell declared decorations");
+    mapper.roundtrip();
+    assert_eq!(
+        mapper.decoration_modes(0).last(),
+        Some(&Mode::ServerSide),
+        "the window that asked for the shell's bar has it"
+    );
     let log = shell.finish();
     assert!(
         log.iter().all(|line| !line.contains("threw")),
@@ -3180,7 +3253,7 @@ fn a_window_that_stops_answering_gets_the_alert_and_wait_and_force_quit_close_it
     let shell = Shell::start(&session, config.path(), |_| {});
     let ipc = session.ipc();
     wait_for("the shell is running", &session, &mut mapper, &shell, || {
-        shell.generation() >= 1 && decorations_declared(&ipc)
+        shell.generation() >= 1
     });
     mapper.map_window("org.example.stuck", "Stuck");
     wait_for("the window is up", &session, &mut mapper, &shell, || {
@@ -4328,7 +4401,8 @@ fn a_window_on_a_second_virtual_output_follows_to_the_first_when_it_is_unplugged
     // The headless backend takes outputs at runtime through the session's `OutputTap`. Two workspaces fill the output
     // that shows them; the rule sends `org.example.second`'s window to the second workspace, which the second output
     // shows. Unplugging the second output moves that window to the workspace the first shows; unplugging the first too
-    // parks both windows hidden, and they leave the tree; the next output adopts them.
+    // parks both windows hidden, and they keep their nodes (the shell hides them, and remembers their workspaces); the
+    // next output shows the workspace again and they fill it.
     let tap = OutputTap::new();
     let session = Session::start_with({
         let tap = tap.clone();
@@ -4381,27 +4455,36 @@ fn a_window_on_a_second_virtual_output_follows_to_the_first_when_it_is_unplugged
         || rect_of(&ipc, second) == Some(first_rect) && rect_of(&ipc, first) == Some(first_rect),
     );
 
-    // The last output is unplugged: both windows wait hidden. A hidden window fades out and then its node leaves the
-    // tree, and the window comes back as a new node with a new identity. The test waits for that, so the way back does
-    // not depend on whether the next output arrives before the fade ends (which the load on the machine decides).
+    // The last output is unplugged: both windows wait hidden. A shell that holds the tree hides them itself, and the
+    // compositor does not drop their nodes: a window that left the tree would come back as one the shell had never seen,
+    // with no workspace. The pause is longer than a hide's fade, which is what would end a node's life.
     assert!(tap.disconnect(OutputId::new(first_output)));
     wait_for("no screen", &session, &mut mapper, &shell, || screens(&ipc) == 0);
-    wait_for("both windows have left the tree", &session, &mut mapper, &shell, || {
-        gone(&ipc, first) && gone(&ipc, second)
+    wait_for("both windows are hidden", &session, &mut mapper, &shell, || {
+        hidden(&ipc, first) && hidden(&ipc, second)
     });
+    idle(&mut mapper, Duration::from_millis(700));
+    assert!(
+        !gone(&ipc, first) && !gone(&ipc, second),
+        "a parked window keeps its node, so the shell keeps what it knows of it"
+    );
 
-    // The next output adopts them. They are new windows to the shell, so each goes where the rules say: the first to the
-    // workspace the output shows, the second to the other workspace, which no output shows.
+    // The next output shows the workspace the parked desk showed, and both windows come back on it, filling it.
     assert!(tap.connect("HEADLESS-3", 640, 480));
     wait_for("a screen again", &session, &mut mapper, &shell, || screens(&ipc) == 1);
     let back = screens_by_place(&ipc)[0].1;
     assert_eq!((back.2, back.3), (640.0, 480.0));
     wait_for(
-        "the parked windows come back: the first on the new output, the second hidden on its workspace",
+        "the parked windows come back on the new output",
         &session,
         &mut mapper,
         &shell,
-        || rect_of(&ipc, first) == Some(back) && !hidden(&ipc, first) && !gone(&ipc, second) && hidden(&ipc, second),
+        || {
+            rect_of(&ipc, first) == Some(back)
+                && rect_of(&ipc, second) == Some(back)
+                && !hidden(&ipc, first)
+                && !hidden(&ipc, second)
+        },
     );
 }
 

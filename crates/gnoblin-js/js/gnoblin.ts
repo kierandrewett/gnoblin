@@ -2068,9 +2068,37 @@ function fitInto(rect: Rect, area: Rect): Rect {
 }
 
 /**
+ * The bar a window shows above its content, whether or not fullscreen hides it at the moment. `frameInset` is 0 for a
+ * fullscreen window, but the room a window keeps for its bar is not: leaving fullscreen brings the bar back.
+ */
+function barHeight(client: Client): number {
+    return decorations?.titlebarOf(client)?.style.height ?? 0;
+}
+
+/**
+ * The content rectangle `rect` as a frame inside `area`: the content with `bar` on top, shrunk to fit and moved the least
+ * distance that puts all of it inside. A bar is never left above the area's top edge.
+ */
+function fitContent(rect: Rect, bar: number, area: Rect): Rect {
+    const frame = fitInto({ x: rect.x, y: rect.y - bar, width: rect.width, height: rect.height + bar }, area);
+    return { x: frame.x, y: frame.y + bar, width: frame.width, height: Math.max(0, frame.height - bar) };
+}
+
+/** `area` less the room a bar takes along its top: where the content of a window that fills a frame in `area` goes. */
+function belowBar(client: Client, area: Rect): Rect {
+    const bar = barHeight(client);
+    return { x: area.x, y: area.y + bar, width: area.width, height: Math.max(1, area.height - bar) };
+}
+
+/** The part of a client the rectangle it floats at is kept in. */
+interface Floater {
+    floatingBounds?: Rect | null;
+}
+
+/**
  * Fits a window to the work area it is now in: a maximised window fills it, a snapped one tiles to its zone again, a
- * floating one shrinks to fit and moves inside it, and the rectangle it floats at follows. A fullscreen window covers
- * its output.
+ * floating one shrinks to fit and moves inside it (the frame, bar included, stays inside), and the rectangle it floats
+ * at follows. A fullscreen window covers its output.
  */
 function refitClient(client: Client, area: Rect): void {
     if (client.fullscreen) {
@@ -2081,16 +2109,64 @@ function refitClient(client: Client, area: Rect): void {
         return;
     }
     const zone = snappedZone(client);
+    const bar = barHeight(client);
     if (client.maximised) {
         client.bounds = framed(client, area);
     } else if (zone !== null) {
-        snapClient(client as unknown as SnapClient, zone, { edgeTiling: true, area });
+        snapClient(client as unknown as SnapClient, zone, { edgeTiling: true, area: belowBar(client, area) });
     } else {
-        client.bounds = fitInto(client.bounds, area);
+        client.bounds = fitContent(client.bounds, bar, area);
     }
-    const floating = (client as unknown as { floatingBounds?: Rect | null }).floatingBounds;
-    if (floating) {
-        (client as unknown as { floatingBounds: Rect }).floatingBounds = fitInto(floating, area);
+    const floater = client as unknown as Floater;
+    if (floater.floatingBounds) {
+        floater.floatingBounds = fitContent(floater.floatingBounds, bar, area);
+    }
+}
+
+/** What `barHeight` was when a window was last fitted, so the next pass knows a bar came or went. */
+const fittedBar = new WeakMap<Client, number>();
+
+/**
+ * A titlebar came or went (the compositor changed who draws the window's frame, or a reload toggled decorations): the
+ * window's content does not move by itself, so a bar that mounts above a window placed at the top of the area would be
+ * drawn off the screen. The rule is that the FRAME keeps its place: the content moves down by the bar that came, up by the
+ * bar that went, and the result is clamped so the frame stays inside the work area. A maximised window fills the area
+ * again, a snapped one tiles to its zone again, and a window a tiling layout places is placed again by the layout (the
+ * decoration change marks its workspace dirty). The rectangles a window returns to (leaving maximised, unsnapping, the
+ * one it floats at) move the same way, so they do not bring the old offset back. A fullscreen window is left alone and
+ * fitted when it leaves: the rectangle it returns to is the one the bar was fitted to before.
+ */
+function followBar(client: Client, area: Rect): void {
+    if (client.fullscreen) {
+        return;
+    }
+    const bar = barHeight(client);
+    const was = fittedBar.get(client);
+    fittedBar.set(client, bar);
+    if (was === undefined || was === bar) {
+        return;
+    }
+    const delta = bar - was;
+    const moved = (rect: Rect): Rect => fitContent({ ...rect, y: rect.y + delta }, bar, area);
+    const kept = windowState.kept(client).floating;
+    if (kept !== null) {
+        windowState.keep(client, { floating: moved(kept) });
+    }
+    const record = snapRecord(client);
+    if (record !== null) {
+        restoreSnap(client, { zone: record.zone, floating: moved(record.floating) });
+    }
+    const floater = client as unknown as Floater;
+    if (floater.floatingBounds) {
+        floater.floatingBounds = moved(floater.floatingBounds);
+    }
+    const zone = snappedZone(client);
+    if (client.maximised) {
+        client.bounds = framed(client, area);
+    } else if (zone !== null) {
+        snapClient(client as unknown as SnapClient, zone, { edgeTiling: true, area: belowBar(client, area) });
+    } else if (!client.tiled || stateOf(client).floating) {
+        client.bounds = moved(client.bounds);
     }
 }
 
@@ -2933,6 +3009,15 @@ function layoutWorkspaces(): number {
                     guard(`${workspace}.layout.onClientAdded`, () => target.onClientAdded?.(client, context));
                 }
             }
+            // A bar that came or went since a window was last fitted moves its content, before the layout places the
+            // windows it owns; a window that has just arrived is placed with the bar it has, so it only records it.
+            guard(`${workspace}.followBar`, () => {
+                for (const client of children) {
+                    if (client.alive) {
+                        followBar(client, area);
+                    }
+                }
+            });
             if (desk !== null && (state.dirty || !rectsEqual(state.area, area))) {
                 const before = state.area;
                 state.dirty = false;
@@ -3002,6 +3087,8 @@ interface KeptWindow {
     /** The zone a snapped window sits in, and the rectangle unsnapping returns it to. */
     zone: string | null;
     snapFloating: number[] | null;
+    /** The titlebar height the window was last fitted to, so a reload that toggles decorations moves its content. */
+    bar: number | null;
 }
 
 const asArray = (rect: Rect | null | undefined): number[] | null =>
@@ -3009,14 +3096,17 @@ const asArray = (rect: Rect | null | undefined): number[] | null =>
 const asRect = (numbers: number[] | null | undefined): Rect | null =>
     numbers && numbers.length === 4 ? { x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3] } : null;
 
-/** The rectangles each window with one keeps, for the next generation. */
+/** The rectangles each window with one keeps, and the bar it was fitted to, for the next generation. */
 function keptWindows(): KeptWindow[] {
     const kept: KeptWindow[] = [];
     for (const client of clientRoot.list as Client[]) {
         const rects = windowState.kept(client);
         const snap = snapRecord(client);
         const leftAt = (client as unknown as { floatingBounds?: Rect | null }).floatingBounds ?? null;
-        if (rects.floating === null && rects.windowed === null && snap === null && leftAt === null) {
+        // A window that had no bar is the first sight of the next generation, which fits it to the bar it has then.
+        const fitted = fittedBar.get(client) ?? 0;
+        const bar = fitted > 0 ? fitted : null;
+        if (rects.floating === null && rects.windowed === null && snap === null && leftAt === null && bar === null) {
             continue;
         }
         kept.push({
@@ -3026,6 +3116,7 @@ function keptWindows(): KeptWindow[] {
             leftAt: asArray(leftAt),
             zone: snap?.zone ?? null,
             snapFloating: asArray(snap?.floating),
+            bar,
         });
     }
     return kept;
@@ -3039,6 +3130,9 @@ function restoreKept(kept: readonly KeptWindow[]): void {
             continue;
         }
         windowState.keep(client, { floating: asRect(entry.floating), windowed: asRect(entry.windowed) });
+        if (typeof entry.bar === "number") {
+            fittedBar.set(client, entry.bar);
+        }
         const leftAt = asRect(entry.leftAt);
         if (leftAt !== null) {
             (client as unknown as { floatingBounds: Rect }).floatingBounds = leftAt;

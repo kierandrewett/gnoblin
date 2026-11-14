@@ -201,6 +201,8 @@ When an output goes:
 - **No output remains.** The windows wait hidden, their workspace is not active, and the keyboard focus is dropped, because a
   window with no output cannot hold it. The next output to appear shows that workspace again, the windows come back, and the
   first of them takes the focus when nothing else holds it.
+    - The windows stay in the tree while they wait, however long the wait is.
+    - Each comes back as the same window: on the workspace it was on, snapped or maximised as it was.
 
 A script that runs with no output at all still has a workspace on show; it just lays nothing out. A reload hands the next
 configuration what each output showed, by output name, and each output goes back to that workspace when it still exists.

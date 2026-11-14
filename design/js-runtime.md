@@ -1859,6 +1859,28 @@ windows when the declaration changes. Proven by scene and protocol tests: `crate
 manager, decorations off and on, shell connection drop), `crates/gnoblin/tests/js_shell.rs` (a client that draws its own bar
 gets none, a reload toggling decorations) and `crates/gnoblin-js/tests/stock_ui.rs`. It is re-taken on pixels below.
 
+**The late bar is fixed** (lane LateBar; `docs/js-ui.md`, "The room above the client"). The bar can arrive after the window
+was placed: the window mapped before the shell declared decorations, a reload that turned them on, or a client that changes
+its `decoration` later. The floating layout places a window once, so the bar mounted above a window at y = 0 and was drawn
+at y < 0. The rule is that the FRAME keeps its place. The layout driver notes each window's bar height as it fits it
+(`fittedBar`), and when the bar differs the next pass (`followBar`) moves the content by the difference, then clamps the
+frame into the work area. A maximised window fills the area again, a snapped one tiles to its zone from the area less the
+bar, a tiled one is placed again by its layout (the decoration change marks the workspace), and a fullscreen one is left and
+fitted when it leaves. The rectangles a window returns to (`windowState.kept`, the snap record, `floatingBounds`) move with
+it. `refitClient` (an output change) fits frames too. The bar height crosses a reload in the workspace snapshot (`bar` in
+`KeptWindow`), so a reload that turns decorations off lifts the content by the bar that went. Tests: `stock_ui.rs`
+("the frame keeps its place when the bar comes or goes", seven cases) and `js_shell.rs`
+(`a_window_mapped_before_the_shell_declared_decorations_ends_with_its_bar_on_screen`; the decoration reload test checks the
+bar is on screen in both directions; the three tests that waited for the declaration before mapping no longer wait).
+
+**Parked windows keep their nodes** (same lane; `docs/shell-api/outputs.md`, "Unplugging"). With no output left the
+compositor used to hide the windows itself, so each node left the tree when the hide's fade ended, and the next output
+returned them as windows the shell had never seen: a window the shell had moved to the first workspace went back to its
+rule's workspace, hidden. While a shell holds the tree the compositor now keeps the nodes (`remove_outputs_unless`); the
+shell hides the windows of the parked desk itself, so the rule from the Lua shell holds: the windows come back where they
+were, on the workspace the next output shows. The real test `a_window_on_a_second_virtual_output_follows_to_the_first...`
+is back to both windows filling the new output, and waits longer than the fade to prove the nodes stay.
+
 ### Re-verified on pixels (second run)
 
 The release binary of the tree at `origin/rust-compositor` after SsdNegotiation, the reload claim hand-off, the console

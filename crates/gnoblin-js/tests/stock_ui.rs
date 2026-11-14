@@ -1028,6 +1028,215 @@ fn a_window_gains_its_bar_when_the_compositor_makes_it_server_decorated_and_lose
     assert!(rig.comp.children(3).is_empty(), "the bar goes with it");
 }
 
+// ---- the frame keeps its place when the bar comes or goes --------------------------------------------------------------
+//
+// The rule (docs/js-ui.md, "The room above the client"): the FRAME, the content with its bar on top, keeps its place. A
+// bar that comes moves the content down by the bar and one that goes moves it up, then the frame is clamped into the work
+// area, so a bar is never drawn above the screen and no frame leaves the area.
+
+/// The content rectangle the compositor holds for window `node`: `(x, y, width, height)`.
+fn content(rig: &Rig, node: u64) -> (f64, f64, f64, f64) {
+    (
+        rig.comp.number(node, "x"),
+        rig.comp.number(node, "y"),
+        rig.comp.number(node, "width"),
+        rig.comp.number(node, "height"),
+    )
+}
+
+/// The compositor negotiated `decoration` for window `node`.
+fn decorate(rig: &mut Rig, node: u64, decoration: &str) {
+    rig.comp.external_set(node, "decoration", text(decoration));
+    let diagnostics = rig.settle();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+/// The compositor answers a request of window `node`.
+fn request(rig: &mut Rig, node: u64, name: &str) {
+    rig.comp.request(node, name, 0.0, 0.0);
+    let diagnostics = rig.settle();
+    assert!(diagnostics.is_empty(), "{name}: {diagnostics:?}");
+}
+
+#[test]
+fn a_floating_window_placed_before_its_bar_arrived_keeps_its_frame_in_place_and_is_never_above_the_screen() {
+    let mut rig = world(0, "defineConfig({ decorations: true });");
+    rig.comp.create_window_decorated(3, "term", "foot", "client");
+    rig.settle();
+    let placed = content(&rig, 3);
+    assert_eq!(
+        placed.1, 0.0,
+        "a window with no bar is placed at the corner of the area"
+    );
+
+    decorate(&mut rig, 3, "server");
+    let with_bar = content(&rig, 3);
+    assert_eq!(
+        with_bar,
+        (placed.0, placed.1 + 28.0, placed.2, placed.3),
+        "the bar came: the content moved down by it, so the frame (the bar and the content) is where it was"
+    );
+    assert_eq!(
+        with_bar.1 - 28.0,
+        0.0,
+        "the bar's top edge is the area's: it is on screen"
+    );
+    let bar = rig.comp.children(3)[0];
+    assert_eq!(rig.comp.rect(bar), "0,-28,400,28", "the bar is above the content");
+
+    decorate(&mut rig, 3, "client");
+    assert_eq!(
+        content(&rig, 3),
+        placed,
+        "the bar went: the content moved up by it, and the frame did not move"
+    );
+}
+
+#[test]
+fn a_window_the_user_moved_keeps_its_frame_where_it_was_left_and_the_content_follows_the_bar() {
+    let mut rig = world(0, "defineConfig({ decorations: true });");
+    rig.comp.create_window_decorated(3, "term", "foot", "client");
+    rig.settle();
+    exec(
+        &mut rig,
+        "const c = gnoblin.clients.at(0); c.bounds = { x: 300, y: 200, width: 400, height: 300 }; c.floatingBounds = { ...c.bounds }",
+    );
+    rig.settle();
+    assert_eq!(content(&rig, 3), (300.0, 200.0, 400.0, 300.0));
+
+    decorate(&mut rig, 3, "server");
+    assert_eq!(
+        content(&rig, 3),
+        (300.0, 228.0, 400.0, 300.0),
+        "the frame stays at 200 and the content is a bar below it"
+    );
+    assert_eq!(
+        rig.eval("String(gnoblin.clients.at(0).floatingBounds.y)"),
+        "228",
+        "the rectangle the window floats at follows the content"
+    );
+    decorate(&mut rig, 3, "client");
+    assert_eq!(content(&rig, 3), (300.0, 200.0, 400.0, 300.0));
+}
+
+#[test]
+fn a_bar_that_comes_to_a_window_at_the_bottom_of_the_area_keeps_the_whole_frame_inside_it() {
+    let mut rig = world(0, "defineConfig({ decorations: true });");
+    rig.comp.create_window_decorated(3, "term", "foot", "client");
+    rig.settle();
+    exec(
+        &mut rig,
+        "gnoblin.clients.at(0).bounds = { x: 0, y: 500, width: 400, height: 300 }",
+    );
+    rig.settle();
+
+    decorate(&mut rig, 3, "server");
+    let (_, y, _, height) = content(&rig, 3);
+    assert!(y - 28.0 >= 0.0, "the bar is on screen: the content is at {y}");
+    assert!(y + height <= 800.0, "the content ends inside the area: {y} + {height}");
+    assert_eq!(
+        y, 500.0,
+        "the bar took the room above, the window did not slide off the bottom"
+    );
+}
+
+#[test]
+fn a_maximised_window_fills_the_area_again_when_its_bar_comes_or_goes_and_unmaximises_to_the_moved_rectangle() {
+    let mut rig = world(0, "defineConfig({ decorations: true });");
+    rig.comp.create_window_decorated(3, "term", "foot", "server");
+    rig.settle();
+    let floating = content(&rig, 3);
+    request(&mut rig, 3, "maximize");
+    assert_eq!(
+        content(&rig, 3),
+        (0.0, 28.0, 1000.0, 772.0),
+        "the bar's room is left above"
+    );
+
+    decorate(&mut rig, 3, "client");
+    assert_eq!(
+        content(&rig, 3),
+        (0.0, 0.0, 1000.0, 800.0),
+        "with no bar the content is the whole area"
+    );
+    decorate(&mut rig, 3, "server");
+    assert_eq!(content(&rig, 3), (0.0, 28.0, 1000.0, 772.0), "and again with it");
+
+    decorate(&mut rig, 3, "client");
+    request(&mut rig, 3, "unmaximize");
+    assert_eq!(
+        content(&rig, 3),
+        (floating.0, floating.1 - 28.0, floating.2, floating.3),
+        "unmaximising returns the frame to where it was; the bar is gone, so the content is a bar higher"
+    );
+}
+
+#[test]
+fn a_fullscreen_window_covers_the_output_through_a_bar_change_and_returns_with_its_frame_in_place() {
+    let mut rig = world(0, "defineConfig({ decorations: true });");
+    rig.comp.create_window_decorated(3, "term", "foot", "server");
+    rig.settle();
+    let windowed = content(&rig, 3);
+    assert_eq!(windowed.1, 28.0);
+    request(&mut rig, 3, "fullscreen");
+    assert_eq!(content(&rig, 3), (0.0, 0.0, 1000.0, 800.0));
+
+    decorate(&mut rig, 3, "client");
+    assert_eq!(
+        content(&rig, 3),
+        (0.0, 0.0, 1000.0, 800.0),
+        "a bar change does not uncover a fullscreen window"
+    );
+    request(&mut rig, 3, "unfullscreen");
+    assert_eq!(
+        content(&rig, 3),
+        (windowed.0, 0.0, windowed.2, windowed.3),
+        "it comes back with the frame where it was, and the content a bar higher"
+    );
+}
+
+#[test]
+fn a_snapped_window_tiles_to_its_zone_again_when_its_bar_comes_or_goes() {
+    let mut rig = world(0, "defineConfig({ decorations: true });");
+    rig.comp.create_window_decorated(3, "term", "foot", "client");
+    rig.settle();
+    exec(
+        &mut rig,
+        "snapClient(gnoblin.clients.at(0), 'left', { edgeTiling: true, area: { x: 0, y: 0, width: 1000, height: 800 } })",
+    );
+    rig.settle();
+    assert_eq!(content(&rig, 3), (0.0, 0.0, 500.0, 800.0));
+
+    decorate(&mut rig, 3, "server");
+    assert_eq!(
+        content(&rig, 3),
+        (0.0, 28.0, 500.0, 772.0),
+        "the frame is still the whole left half: the bar then the content"
+    );
+    decorate(&mut rig, 3, "client");
+    assert_eq!(content(&rig, 3), (0.0, 0.0, 500.0, 800.0));
+}
+
+#[test]
+fn a_tiled_window_is_placed_again_by_its_layout_when_its_bar_comes_or_goes() {
+    let mut rig = world(
+        0,
+        "defineConfig({ decorations: true, workspaces: [{ id: '1', layout: new MasterStackLayout() }] });",
+    );
+    rig.comp.create_window_decorated(3, "term", "foot", "client");
+    rig.settle();
+    let tile = content(&rig, 3);
+
+    decorate(&mut rig, 3, "server");
+    assert_eq!(
+        content(&rig, 3),
+        (tile.0, tile.1 + 28.0, tile.2, tile.3 - 28.0),
+        "the tile is the frame: the bar takes its top and the content is what is left"
+    );
+    decorate(&mut rig, 3, "client");
+    assert_eq!(content(&rig, 3), tile);
+}
+
 #[test]
 fn the_shell_declares_that_it_draws_decorations_on_the_seat_and_takes_it_back_when_it_retires() {
     let mut rig = world(0, "defineConfig({ decorations: true });");

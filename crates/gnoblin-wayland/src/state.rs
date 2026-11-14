@@ -1415,7 +1415,13 @@ impl State {
             }
             self.output_controls_removed(entry.backend);
             log::debug!(area = "output", connector = %entry.output.name(), "disconnected");
-            let effects = self.with_seat(|fallback, seat| fallback.output_removed(entry.backend, seat));
+            let mut effects = self.with_seat(|fallback, seat| fallback.output_removed(entry.backend, seat));
+            if self.composer.shell_places() {
+                // A shell that holds the tree hides the windows of a desk with no output itself (its `visible`). The
+                // compositor hiding them as well would drop their nodes once the fade ended, and the window would come
+                // back as one the shell had never seen, with nothing of its workspace, its place or its snap.
+                effects.retain(|effect| !matches!(effect, FallbackEffect::Visible { visible: false, .. }));
+            }
             self.apply_decided(effects);
         }
     }

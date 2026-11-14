@@ -42,6 +42,9 @@ pub struct JsKeptWindow {
     pub left_at: Option<JsKeptRect>,
     /// The zone a snapped window sits in and the rectangle unsnapping returns it to.
     pub snapped: Option<(String, JsKeptRect)>,
+    /// The height of the titlebar the window was last fitted to. A reload that turns decorations off or on makes the next
+    /// generation compare it with the bar the window has then, so the frame keeps its place across the reload.
+    pub bar: Option<f64>,
 }
 
 /// The workspaces of a shell, in order, the id of the one the primary output showed, the one each output showed, and the
@@ -101,6 +104,7 @@ impl JsWorkspaceSnapshot {
                     windowed: rect_from(&item, "windowed")?,
                     left_at: rect_from(&item, "leftAt")?,
                     snapped,
+                    bar: item.get::<_, Option<f64>>("bar")?,
                 });
             }
         }
@@ -142,6 +146,7 @@ impl JsWorkspaceSnapshot {
                 item.set("zone", zone.as_str())?;
                 item.set("snapFloating", Vec::from(*rect))?;
             }
+            item.set("bar", window.bar)?;
             kept.set(index, item)?;
         }
         let object = Object::new(ctx.clone())?;
