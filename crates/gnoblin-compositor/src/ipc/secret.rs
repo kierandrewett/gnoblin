@@ -29,7 +29,7 @@
 
 use std::collections::VecDeque;
 
-use gnoblin_portal_consent::{SecretResult, SecretUi};
+use gnoblin_portal::{SecretResult, SecretUi};
 use gnoblin_portal_core::model::ScreenKey;
 use gnoblin_portal_ui::ui::{DialogScheme, DialogShell, Setup, press_events, release_events};
 use gnoblin_render_frame::frame::Overlay;

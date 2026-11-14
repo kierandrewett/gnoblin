@@ -643,8 +643,15 @@ const PORTAL_ALLOWED: &[(&str, &[&str])] = &[
     ("gnoblin-portal-core", &["gnoblin-schema", "gnoblin-types"]),
     ("gnoblin-portal-ui", &["egui", "gnoblin-portal-core", "gnoblin-types"]),
     (
+        // The consent card, and the passphrase card beside it, which holds its entry in a `SecretText`.
         "gnoblin-portal-consent",
-        &["egui", "gnoblin-portal-core", "gnoblin-portal-ui", "gnoblin-types"],
+        &[
+            "egui",
+            "gnoblin-portal-core",
+            "gnoblin-portal-ui",
+            "gnoblin-secret",
+            "gnoblin-types",
+        ],
     ),
     (
         "gnoblin-portal-filechooser",

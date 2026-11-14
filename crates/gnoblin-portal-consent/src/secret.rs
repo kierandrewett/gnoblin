@@ -264,10 +264,10 @@ mod tests {
         let mut ui = dialog();
         typed(&mut ui, "hunter2");
         ui.cancel();
-        assert_eq!(ui.take_result(), Some(SecretResult::Declined));
         assert_eq!(ui.typed(), 0);
         ui.type_char('x');
         assert_eq!(ui.typed(), 0, "an ended dialog takes no more text");
+        assert_eq!(ui.take_result(), Some(SecretResult::Declined));
     }
 
     #[test]
