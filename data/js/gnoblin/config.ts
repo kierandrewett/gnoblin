@@ -14,6 +14,7 @@
 //   outputs             outputs, stored as written (no native effect yet)          OutputProfile + Display
 //   workspaces          workspaces[] with a Layout instance and the gaps           gnoblin.workspaces.add
 //   keys                bindings[] of { trigger, action }, actions a closed union  input.primary.bind
+//   gestureActions      bindings[] of a gesture's directions to actions            input.primary.bind (a SwipeActionBinding)
 //   rules               rules[], compiled from data: a query and its actions        a RuleEngine on gnoblin.clients
 //   focus               focus, the FocusConfig as written (settings the seat lacks)  a FocusPolicy on gnoblin.clients
 //   edgeTiling          edgeTiling, a flag that overrides the seat's edge_tiling     DragEvent.edgeTiling
@@ -41,6 +42,8 @@ import { checkTrigger, dragConstraintMode, parseTrigger } from "gnoblin/bindings
 import type { Binding, DragConstraint } from "gnoblin/bindings";
 import { focusSettings } from "gnoblin/focus";
 import type { FocusConfig } from "gnoblin/focus";
+import { gestureActionBinding } from "gnoblin/gesture_actions";
+import type { GestureActionConfig } from "gnoblin/gesture_actions";
 import { WorkspaceSlideBinding } from "gnoblin/gestures";
 import { openLauncher } from "gnoblin/launcher";
 import type { Gaps, Layout } from "gnoblin/layout";
@@ -252,6 +255,14 @@ export interface GnoblinConfig {
     outputs?: Readonly<Record<string, OutputConfig>>;
     workspaces?: readonly WorkspaceConfig[];
     keys?: Readonly<Record<string, KeyAction>>;
+    /**
+     * Touchpad gestures that run an action when the fingers lift, by the way they went: `Swipe4: { up:
+     * "window.toggle-maximise" }`, `Pinch3: { in: "window.minimise", out: fn }`. The trigger is the gesture and its
+     * finger count; an action is a function or one of `workspace.next`, `workspace.previous`, `window.close`,
+     * `window.minimise` and `window.toggle-maximise`. A gesture here replaces the stock binding of the same trigger
+     * (the three-finger workspace slide); a `keys` entry for one gesture and a `gestureActions` entry is a mistake.
+     */
+    gestureActions?: Readonly<Record<string, GestureActionConfig>>;
     /**
      * The command `Super+space` runs, as a command line or an argv. Absent, `Super+space` opens the stock launcher
      * (an `Entry` that starts what you type). A key of `keys` for `Super+space` takes precedence.
@@ -480,6 +491,7 @@ export const CONFIG_KEYS: readonly string[] = [
     "focus",
     "edgeTiling",
     "dragConstraint",
+    "gestureActions",
     ...DOCUMENT_SECTIONS.map(([name]) => name),
     ...DOCUMENT_LISTS.map(([name]) => name),
 ];
@@ -491,6 +503,7 @@ const SHAPES: Readonly<Record<string, { readonly list: boolean; readonly words: 
     outputs: { list: false, words: "a table of output settings by connector name" },
     workspaces: { list: true, words: 'a list of workspaces such as [{ id: "web" }]' },
     keys: { list: false, words: "a table of triggers and actions" },
+    gestureActions: { list: false, words: "a table of gestures and the actions their directions run" },
     autostart: { list: true, words: "a list of commands" },
     rules: { list: true, words: "a list of window rules" },
     on: { list: false, words: "a table of listeners" },
@@ -586,7 +599,13 @@ export function mergeConfig(base: GnoblinConfig, user: GnoblinConfig): GnoblinCo
     const workspaces =
         user.workspaces === undefined || user.workspaces.length === 0 ? base.workspaces : user.workspaces;
     const declared = new Set((workspaces ?? []).map((workspace) => workspace?.id));
-    const overridden = new Set(Object.keys(user.keys ?? {}).map((trigger) => parseTrigger(trigger, "a key").text));
+    const gestureActions = mergeGestureActions(base.gestureActions, user.gestureActions);
+    // A gesture the user binds, by `keys` or by `gestureActions`, replaces the stock binding of the same trigger.
+    const overridden = new Set(
+        [...Object.keys(user.keys ?? {}), ...Object.keys(user.gestureActions ?? {})].map(
+            (trigger) => parseTrigger(trigger, "a key").text,
+        ),
+    );
     const keys: Record<string, KeyAction> = {};
     for (const [trigger, action] of Object.entries(base.keys ?? {})) {
         const showsMissing =
@@ -631,6 +650,7 @@ export function mergeConfig(base: GnoblinConfig, user: GnoblinConfig): GnoblinCo
             keys,
             on: { ...base.on, ...user.on },
             ...(workspaces === undefined ? {} : { workspaces }),
+            ...(gestureActions === undefined ? {} : { gestureActions }),
             ...(rules === undefined ? {} : { rules }),
             ...(setup === undefined ? {} : { setup }),
             ...(user.decorations === undefined ? {} : { decorations: user.decorations }),
@@ -645,6 +665,23 @@ export function mergeConfig(base: GnoblinConfig, user: GnoblinConfig): GnoblinCo
         sections,
         lists,
     );
+}
+
+/** The gesture tables of two configs as one, by trigger in canonical spelling: the later one's entry wins. */
+function mergeGestureActions(
+    base: GnoblinConfig["gestureActions"],
+    user: GnoblinConfig["gestureActions"],
+): Record<string, GestureActionConfig> | undefined {
+    if (base === undefined && user === undefined) {
+        return undefined;
+    }
+    const merged = new Map<string, [string, GestureActionConfig]>();
+    for (const table of [base, user]) {
+        for (const [trigger, map] of Object.entries(table ?? {})) {
+            merged.set(parseTrigger(trigger, "a gesture").text, [trigger, map]);
+        }
+    }
+    return Object.fromEntries(merged.values());
 }
 
 function isTable(value: unknown): value is object {
@@ -679,7 +716,11 @@ export function desugarConfig(config: GnoblinConfig): ConfigPlan {
         style: checkStyle(config.style),
         outputs: config.outputs ?? {},
         workspaces,
-        bindings: [...planKeys(config.keys ?? {}, ids), ...planLauncher(config.launcher, config.keys ?? {})],
+        bindings: [
+            ...planKeys(config.keys ?? {}, ids),
+            ...planGestureActions(config.gestureActions, config.keys ?? {}),
+            ...planLauncher(config.launcher, config.keys ?? {}),
+        ],
         rules: planRules(config.rules ?? [], ids),
         focus: planFocus(config.focus),
         edgeTiling: checkEdgeTiling(config.edgeTiling),
@@ -747,6 +788,32 @@ function planKeys(keys: Readonly<Record<string, KeyAction>>, workspaces: Readonl
     return Object.entries(keys).map(([trigger, action]) => {
         checkTrigger(trigger, "a key");
         return { trigger, action: resolveAction(action, `keys["${trigger}"]`, workspaces) };
+    });
+}
+
+/**
+ * The bindings of `gestureActions`: each trigger is a gesture and its finger count (`Swipe4`, `Pinch3`) with no direction,
+ * and its table holds the directions that run an action. The binding is made when the host binds the key, so a bad
+ * action is reported with the config's path here and not when a finger lifts.
+ */
+function planGestureActions(
+    gestures: GnoblinConfig["gestureActions"],
+    keys: Readonly<Record<string, KeyAction>>,
+): PlannedKey[] {
+    const bound = new Set(Object.keys(keys).map((trigger) => parseTrigger(trigger, "a key").text));
+    return Object.entries(gestures ?? {}).map(([trigger, map]) => {
+        const where = `gestureActions["${trigger}"]`;
+        const parsed = parseTrigger(trigger, where);
+        if (parsed.kind !== "gesture" || parsed.direction !== null) {
+            throw new TypeError(`${where}: the trigger is a gesture and its finger count, such as Swipe4 or Pinch3`);
+        }
+        if (bound.has(parsed.text)) {
+            throw new Error(`${where}: config.keys binds ${parsed.text} too; give the gesture to one of them`);
+        }
+        const gesture = parsed.gesture;
+        // Built once to check the map, and again for each binding the host makes (a binding belongs to one collection).
+        gestureActionBinding(trigger, map, gesture);
+        return { trigger, action: binding(() => gestureActionBinding(trigger, map, gesture)) };
     });
 }
 

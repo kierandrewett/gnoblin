@@ -86,6 +86,8 @@ export interface TitlebarHooks {
     maximise?(client: TitlebarClient, on: boolean): void;
     /** Minimises the window as the shell does it, which hands the keyboard focus to another window. Else the flag is written. */
     minimise?(client: TitlebarClient): void;
+    /** The seconds an animation takes: 0 while the seat asks for reduced motion. Absent, the seconds it was given. */
+    motion?(seconds: number): number;
 }
 
 /** The buttons of the pointer, as the compositor numbers them (Linux `BTN_LEFT`, `BTN_RIGHT`, `BTN_MIDDLE`). */
@@ -195,8 +197,15 @@ export class Titlebar extends Box {
             client.close();
             return;
         }
-        this.#closing = { closeAt: this.now() + CLOSE_FADE_MS, restoreAt: null };
-        client.animate({ opacity: 0, scale: [0.92, 0.92, 1] }, { duration: CLOSE_FADE_MS / 1000, easing: "in-cubic" });
+        const fade = this.hooks.motion?.(CLOSE_FADE_MS / 1000) ?? CLOSE_FADE_MS / 1000;
+        client.animate({ opacity: 0, scale: [0.92, 0.92, 1] }, { duration: fade, easing: "in-cubic" });
+        if (fade === 0) {
+            // Reduced motion: nothing to wait for, so the window is asked to close now, and comes back as usual if it stays.
+            this.#closing = { closeAt: null, restoreAt: this.now() + CLOSE_RESTORE_MS };
+            client.close();
+            return;
+        }
+        this.#closing = { closeAt: this.now() + fade * 1000, restoreAt: null };
     }
 
     #advanceClose(): void {

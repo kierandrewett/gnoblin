@@ -59,6 +59,8 @@ import { notRespondingAlerts } from "gnoblin/alerts";
 import { barInsets, barsGiveWayTo, barsOnOutputs } from "gnoblin/widgets";
 import { windowState } from "gnoblin/window_state";
 import type { ClientRequest } from "gnoblin/window_state";
+import { gestureDirection, onPinch, onSwipe } from "gnoblin/gesture_actions";
+import type { GestureActions, GestureTools } from "gnoblin/gesture_actions";
 import { repositioning } from "gnoblin/reposition";
 import type { RepositionClient } from "gnoblin/reposition";
 import {
@@ -939,12 +941,12 @@ export class Client {
             }
         }
         const samples = Array.from({ length: CURVE_STEPS + 1 }, (_, i) => curve(i / CURVE_STEPS));
+        // Reduced motion lands the value at once, as the compositor's own safety net would.
+        const seconds = motion(duration);
         for (const [key, value] of entries) {
             const sent = Array.isArray(value) ? [value[0], value[1], value[2]] : (value as number);
             const code =
-                duration === 0
-                    ? host.set(state.node, key, sent)
-                    : host.animate(state.node, key, sent, duration, samples);
+                seconds === 0 ? host.set(state.node, key, sent) : host.animate(state.node, key, sent, seconds, samples);
             if (code != null) {
                 refuse(code, target, "client");
             }
@@ -1985,6 +1987,16 @@ const slides: Slide[] = [];
 /** The workspaces that are not shown but keep their windows drawn until a slide away from them ends. */
 const holding = new Map<Workspace, number>();
 
+/**
+ * The duration the shell gives an animation: `seconds`, or 0 while the seat asks for reduced motion
+ * (`appearance.reduced-motion`, the seat's `reduced_motion`). A 0 makes a slide, a fade or `Client.animate` an instant write.
+ * The compositor lands a timed write at once under reduced motion too, so a shell that forgets this still obeys.
+ */
+function motion(seconds: number): number {
+    const seat = mainSeat();
+    return seat !== undefined && seatHost.settings(seat)?.reducedMotion === true ? 0 : seconds;
+}
+
 /** `gnoblin.workspaces.show(workspace, options)`. */
 function showWorkspace(workspace: Workspace | string, options: ShowOptions = {}): void {
     const target = typeof workspace === "string" ? workspaceRoot.list.find((w) => w.id === workspace) : workspace;
@@ -1994,9 +2006,9 @@ function showWorkspace(workspace: Workspace | string, options: ShowOptions = {})
     if (!wsState(target).attached) {
         throw new GnoblinError("detached", `${target}.show`, "add the workspace to gnoblin.workspaces first");
     }
-    const duration = options.duration ?? 0;
+    const asked = options.duration ?? 0;
     const progress = options.progress ?? 0;
-    if (typeof duration !== "number" || !Number.isFinite(duration) || duration < 0) {
+    if (typeof asked !== "number" || !Number.isFinite(asked) || asked < 0) {
         throw new TypeError(`${target}.show: duration must be a finite number of seconds of at least 0`);
     }
     if (typeof progress !== "number" || !(progress >= 0 && progress <= 1)) {
@@ -2008,6 +2020,7 @@ function showWorkspace(workspace: Workspace | string, options: ShowOptions = {})
     if (options.output !== undefined && !options.output.alive) {
         throw new GnoblinError("destroyed", `${target}.show`, `${options.output} is gone`);
     }
+    const duration = motion(asked);
     ensureDesk();
     const desk = options.output === undefined ? currentDesk() : (deskByOutput.get(options.output) ?? null);
     if (desk === null) {
@@ -3137,6 +3150,50 @@ function focusedClient(): Client | null {
     return seat === undefined ? null : (clientsByNode.get(host.input.focus(seat)) ?? null);
 }
 
+/** Shows the workspace `step` places from the one the output under the pointer shows; nothing past either end. */
+function stepWorkspace(step: number): void {
+    const shown = currentDesk()?.shown ?? null;
+    if (shown === null) {
+        return;
+    }
+    const target = workspaceRoot.list[workspaceRoot.list.indexOf(shown) + step];
+    if (target !== undefined) {
+        showWorkspace(target as Workspace, { duration: SLIDE_SECONDS });
+    }
+}
+
+/** The five actions a touchpad gesture runs: the Lua shell's `Gestures.actions`. */
+const gestureActions: GestureActions = {
+    workspaceNext: () => stepWorkspace(1),
+    workspacePrevious: () => stepWorkspace(-1),
+    windowClose: () => focusedClient()?.close(),
+    windowMinimise: () => {
+        const client = focusedClient();
+        if (client !== null) {
+            windowState.minimise(client);
+        }
+    },
+    windowToggleMaximise: () => {
+        const client = focusedClient();
+        if (client === null) {
+            return;
+        }
+        if (client.maximised) {
+            windowState.unmaximise(client);
+        } else {
+            windowState.maximise(client);
+        }
+    },
+};
+
+/** `gnoblin.gestures`: the five actions and the helpers that bind them to a swipe or a pinch. */
+const gestureTools: GestureTools = {
+    actions: gestureActions,
+    direction: gestureDirection,
+    onSwipe: (map, threshold) => onSwipe(map, threshold, { actions: gestureActions }),
+    onPinch: (map, threshold) => onPinch(map, threshold, { actions: gestureActions }),
+};
+
 /** The stock answers to a client's requests of its window, started with the module so no script has to ask. */
 windowState.start<Client>({
     clientOf: (node) => clientsByNode.get(node),
@@ -3351,6 +3408,7 @@ function decorate(): void {
                 minimise: (client) => {
                     windowState.minimise(client as Client);
                 },
+                motion,
             },
         );
         clientRoot.self.addListener(decorations);
@@ -3624,6 +3682,13 @@ class Gnoblin {
     readonly runtime = hostApi.runtime;
     /** The windows in the order they were last focused. */
     readonly focus = hostApi.focus;
+    /** The touchpad gesture actions (`workspace.next` and four more) and `onSwipe`, `onPinch` and `direction`. */
+    readonly gestures = gestureTools;
+
+    /** The duration the shell gives an animation: `seconds`, or 0 while the seat asks for reduced motion. */
+    motion(seconds: number): number {
+        return motion(seconds);
+    }
 
     /**
      * Starts a program and returns its `Process`. A string is one command line for `/bin/sh`; an array is the

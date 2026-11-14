@@ -15,6 +15,7 @@ export * from "gnoblin/layouts/kiosk";
 export * from "gnoblin/layouts/strip";
 export * from "gnoblin/sets";
 export * from "gnoblin/gestures";
+export * from "gnoblin/gesture_actions";
 export * from "gnoblin/inspect";
 export * from "gnoblin/config";
 export * from "gnoblin/rules";

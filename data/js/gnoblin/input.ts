@@ -63,6 +63,8 @@ export interface SeatSettings {
     readonly autoRaise: boolean;
     readonly autoRaiseDelay: number;
     readonly focusChangeOnPointerRest: boolean;
+    /** The user asked for reduced motion: the shell's animations take no time. */
+    readonly reducedMotion: boolean;
 }
 
 /** What a seat says and does, as plain functions over node ids. The shell's Rust host implements it. */
@@ -84,6 +86,8 @@ export interface InputHost {
     /** A claim id, or a refusal code. */
     claim(seat: number, chord: string, grab: boolean, device: string): number | string;
     claimGesture(seat: number, kind: string, fingers: number, device: string): number | string;
+    /** Makes the devices that report `device` binding-only: a claim id, or a refusal code. */
+    claimDevice(seat: number, device: string): number | string;
     unclaim(seat: number, id: number): void;
     /** Milliseconds on a clock that only goes forward. */
     now(): number;
@@ -113,6 +117,7 @@ const SEAT_DEFAULTS: SeatSettings = Object.freeze({
     autoRaise: false,
     autoRaiseDelay: 500,
     focusChangeOnPointerRest: false,
+    reducedMotion: false,
 });
 
 /** A claimed chord that changed state, as the compositor sends it. */
@@ -356,15 +361,21 @@ class GestureActionBinding extends GestureBinding {
 
 /**
  * Binds `action` to `trigger` in `collection`. A function becomes a `KeyBinding` (a key or a click) or a
- * gesture action; a drag needs the hooks of a `Binding`, so a bare function for one is a mistake. A `Binding`
+ * gesture action; `false` is a function that does nothing, so the trigger is claimed and swallowed. A drag needs the
+ * hooks of a `Binding`, so a bare function for one is a mistake. A `Binding`
  * instance is added as it is, moved to `trigger` when it spells another.
  */
 function bindIn(
     collection: BindingCollection,
     trigger: string,
-    action: ((event: BindingEvent) => void | false) | Binding,
+    action: ((event: BindingEvent) => void | false) | Binding | false,
     what: string,
 ): Binding {
+    // `false` claims the trigger and does nothing with it: the chord is withheld from clients and nothing runs, as the
+    // Lua shell's `seat:bind({ chord = false })` did.
+    if (action === false) {
+        return bindIn(collection, trigger, () => undefined, what);
+    }
     if (typeof action === "function") {
         const parsed = parseTrigger(trigger, `${what}.bind`);
         if (parsed.kind === "pointer" && parsed.action === "drag") {
@@ -404,9 +415,58 @@ export class InputDevice {
         this.capabilities = capabilities;
     }
 
-    /** As `InputContext.bind`, for events from this device. Its bindings run before a layout's or the context's. */
-    bind(trigger: string, action: ((event: BindingEvent) => void | false) | Binding): Binding {
+    /**
+     * As `InputContext.bind`, for events from this device. Its bindings run before a layout's or the context's.
+     * `options.only: true` first makes the device binding-only (see `bindingOnly`); `only: false` is refused, because
+     * it is not a way to say nothing.
+     */
+    bind(
+        trigger: string,
+        action: ((event: BindingEvent) => void | false) | Binding | false,
+        options?: DeviceBindOptions,
+    ): Binding {
+        if (options !== undefined && options.only !== undefined && options.only !== true) {
+            throw new TypeError(
+                `InputDevice "${this.name}".bind: only must be true to make the device binding-only, got ${String(options.only)}`,
+            );
+        }
+        if (options?.only === true) {
+            this.bindingOnly = true;
+        }
         return bindIn(this.bindings, trigger, action, `InputDevice "${this.name}"`);
+    }
+
+    /**
+     * Whether this device is binding-only: its keys reach no client and fire only the bindings made for it or for every
+     * device, so a macro pad never types into a window. Assigning `true` claims the device on the seat; `false` gives the
+     * claim up. The claim is by the device's name, and lasts until the shell goes or it is given up.
+     */
+    get bindingOnly(): boolean {
+        return this.context.isBindingOnly(this.name);
+    }
+
+    set bindingOnly(on: boolean) {
+        if (typeof on !== "boolean") {
+            throw new TypeError(`InputDevice "${this.name}".bindingOnly must be true or false, got ${String(on)}`);
+        }
+        if (on) {
+            this.context.makeBindingOnly(this.name);
+        } else {
+            this.context.releaseBindingOnly(this.name);
+        }
+    }
+}
+
+/** What `InputDevice.bind` takes beside the trigger and the action. */
+export interface DeviceBindOptions {
+    /** `true` makes the device binding-only before the binding is made. The only value that means anything. */
+    only?: true;
+}
+
+/** A device name is one non-empty line: the compositor matches it exactly against what a device reports. */
+function checkDeviceName(name: unknown, what: string): void {
+    if (typeof name !== "string" || name === "" || name.includes("\n")) {
+        throw new TypeError(`${what}: a device name is a non-empty line of text from devices, got ${String(name)}`);
     }
 }
 
@@ -438,6 +498,8 @@ export class InputContext {
     readonly #registrations = new Set<Registration>();
     readonly #layouts = new Map<InputLayout, () => void>();
     readonly #devices = new Map<string, { device: InputDevice; unfollow: () => void }>();
+    /** The claim of each binding-only device, by its name. */
+    readonly #only = new Map<string, number>();
     readonly #presses = new Map<number, PointerPress>();
     readonly #gestures = new Map<number, GestureRun>();
     #order = 0;
@@ -500,8 +562,47 @@ export class InputContext {
      * Throws a `TriggerError` for a bad trigger and a `BindingConflictError` when another binding of this
      * context matches it at the same priority.
      */
-    bind(trigger: string, action: ((event: BindingEvent) => void | false) | Binding): Binding {
+    bind(trigger: string, action: ((event: BindingEvent) => void | false) | Binding | false): Binding {
         return bindIn(this.bindings, trigger, action, `InputContext "${this.name}"`);
+    }
+
+    /** Whether the devices that report `name` are binding-only on this seat. */
+    isBindingOnly(name: string): boolean {
+        return this.#only.has(name);
+    }
+
+    /**
+     * Makes the devices that report `name` (a name from `devices`) binding-only: a key of theirs reaches no client and
+     * fires only the bindings made for the device or for every device, and a chord no binding claims is dropped. Once
+     * is enough: a second call changes nothing. Works before the device is plugged in.
+     */
+    makeBindingOnly(name: string): void {
+        checkDeviceName(name, `InputContext "${this.name}".makeBindingOnly`);
+        if (this.#only.has(name)) {
+            return;
+        }
+        const result = this.#host.claimDevice(this.#seat, name);
+        if (typeof result === "string") {
+            throw this.#world.error(
+                "refused",
+                `InputContext "${this.name}".makeBindingOnly`,
+                `the compositor refused to make "${name}" binding-only (${result})`,
+            );
+        }
+        this.#only.set(name, result);
+    }
+
+    /** Gives the binding-only claim on `name` up, so its keys reach clients again. False when there was none. */
+    releaseBindingOnly(name: string): boolean {
+        const id = this.#only.get(name);
+        if (id === undefined) {
+            return false;
+        }
+        this.#only.delete(name);
+        if (this.#release) {
+            this.#host.unclaim(this.#seat, id);
+        }
+        return true;
     }
 
     /**
@@ -702,6 +803,12 @@ export class InputContext {
                 this.#host.unclaim(this.#seat, claim.id);
             }
         }
+        for (const id of this.#only.values()) {
+            if (release) {
+                this.#host.unclaim(this.#seat, id);
+            }
+        }
+        this.#only.clear();
         this.#registrations.clear();
     }
 

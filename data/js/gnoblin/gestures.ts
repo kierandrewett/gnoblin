@@ -36,6 +36,8 @@ export interface SlideHost {
         [Symbol.iterator](): Iterator<SlideWorkspace>;
     };
     after(seconds: number, run: () => void): void;
+    /** The seconds an animation takes: 0 while the seat asks for reduced motion. Absent, the seconds it was given. */
+    motion?(seconds: number): number;
 }
 
 export interface WorkspaceSlideOptions extends Partial<BindingOptions> {
@@ -211,7 +213,8 @@ export class WorkspaceSlideBinding extends GestureBinding {
 
     #settleBack(slide: SlideState, to: SlideWorkspace): void {
         const width = this.#shell().workspaces.area?.width ?? 0;
-        const options = { duration: SETTLE_BACK_SECONDS, easing: "out-cubic" } as const;
+        const seconds = this.#shell().motion?.(SETTLE_BACK_SECONDS) ?? SETTLE_BACK_SECONDS;
+        const options = { duration: seconds, easing: "out-cubic" } as const;
         const incoming = [...to.clients];
         for (const client of slide.from.clients) {
             client.animate({ x: slide.rest.get(client) ?? client.x }, options);
@@ -219,7 +222,7 @@ export class WorkspaceSlideBinding extends GestureBinding {
         for (const client of incoming) {
             client.animate({ x: (slide.rest.get(client) ?? client.x) - slide.sign * width }, options);
         }
-        this.#shell().after(SETTLE_BACK_SECONDS, () => {
+        this.#shell().after(seconds, () => {
             if (this.#active() === to) {
                 return; // the workspace came in for good meanwhile
             }

@@ -222,6 +222,8 @@ pub(crate) struct JsSeatSettings {
     auto_raise: bool,
     auto_raise_delay: f64,
     focus_change_on_pointer_rest: bool,
+    /// `appearance.reduced-motion`: the shell shortens its animations to zero while it is true.
+    reduced_motion: bool,
 }
 
 impl JsSeatSettings {
@@ -248,6 +250,7 @@ impl JsSeatSettings {
             auto_raise: flag("auto_raise", false),
             auto_raise_delay: delay,
             focus_change_on_pointer_rest: flag("focus_change_on_pointer_rest", false),
+            reduced_motion: flag("reduced_motion", false),
         }
     }
 }
@@ -262,6 +265,7 @@ impl<'js> IntoJs<'js> for JsSeatSettings {
         object.set("autoRaise", self.auto_raise)?;
         object.set("autoRaiseDelay", self.auto_raise_delay)?;
         object.set("focusChangeOnPointerRest", self.focus_change_on_pointer_rest)?;
+        object.set("reducedMotion", self.reduced_motion)?;
         Ok(object.into_value())
     }
 }
@@ -321,20 +325,20 @@ fn claim_args(id: i64, second: i64) -> Vec<u8> {
     args
 }
 
-/// Queues a call on `seat` and records the claim it makes. Refused when the seat is not a live seat node or
-/// the device name is not one line.
+/// Queues a call on `seat` and records the claim it makes: `second` is the claim's second integer (a chord's grab flag, a
+/// gesture's finger count; a device claim has none) and `text` what the compositor reads as its text. Refused when the
+/// seat is not a live seat node or the device name is not one line.
 fn queue_claim(
     state: &mut HostState,
     seat: NodeId,
     method: &str,
-    second: i64,
-    subject: &str,
+    second: Option<i64>,
+    text: String,
     device: &str,
 ) -> JsClaimOutcome {
     if device.contains('\n') {
         return JsClaimOutcome::Refused("invalid-value");
     }
-    let text = claim_text(subject, device);
     let HostState {
         mirror,
         tick,
@@ -350,15 +354,12 @@ fn queue_claim(
     }
     let id = input.last_claim + 1;
     *tokens += 1;
+    let args = match second {
+        Some(second) => claim_args(id, second),
+        None => id.to_le_bytes().to_vec(),
+    };
     if tick
-        .call(
-            mirror,
-            seat,
-            method,
-            claim_args(id, second),
-            *tokens,
-            SecretText::new(text),
-        )
+        .call(mirror, seat, method, args, *tokens, SecretText::new(text))
         .is_err()
     {
         return JsClaimOutcome::Refused("unknown-node");
@@ -370,7 +371,14 @@ fn queue_claim(
 
 /// Claims a chord. `device` is a name from `Seat.device`, or empty for every device.
 pub(crate) fn claim(state: &mut HostState, seat: NodeId, chord: &str, grab: bool, device: &str) -> JsClaimOutcome {
-    queue_claim(state, seat, "claim", i64::from(grab), chord, device)
+    queue_claim(
+        state,
+        seat,
+        "claim",
+        Some(i64::from(grab)),
+        claim_text(chord, device),
+        device,
+    )
 }
 
 /// Claims every gesture of `kind` (`swipe` or `pinch`) with `fingers` contacts.
@@ -381,7 +389,23 @@ pub(crate) fn claim_gesture(
     fingers: i64,
     device: &str,
 ) -> JsClaimOutcome {
-    queue_claim(state, seat, "claim_gesture", fingers, kind, device)
+    queue_claim(
+        state,
+        seat,
+        "claim_gesture",
+        Some(fingers),
+        claim_text(kind, device),
+        device,
+    )
+}
+
+/// Makes the devices that report `device` (a name from `Seat.device`) binding-only: their keys reach no client and fire
+/// only the chords claimed for them or for every device, until the claim is given up. The call's text is the bare name.
+pub(crate) fn claim_device(state: &mut HostState, seat: NodeId, device: &str) -> JsClaimOutcome {
+    if device.is_empty() {
+        return JsClaimOutcome::Refused("invalid-value");
+    }
+    queue_claim(state, seat, "claim_device", None, device.to_owned(), device)
 }
 
 /// Gives a claim up. An id this shell does not hold is ignored, so a double release cannot touch another claim.
@@ -568,6 +592,18 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
 
     let shared = state.clone();
     input.set(
+        "claimDevice",
+        Function::new(ctx.clone(), move |seat: f64, device: String| -> JsClaimOutcome {
+            let mut state = shared.borrow_mut();
+            match state.handles.resolve(seat) {
+                Some(seat) => claim_device(&mut state, seat, &device),
+                None => JsClaimOutcome::Refused("unknown-node"),
+            }
+        })?,
+    )?;
+
+    let shared = state.clone();
+    input.set(
         "unclaim",
         Function::new(ctx.clone(), move |_seat: f64, id: f64| {
             unclaim(&mut shared.borrow_mut(), id as i64);
@@ -590,8 +626,8 @@ mod tests {
     use gnoblin_tree_client::tree_mirror::{MirrorValue, SnapshotNode, TreeMirror, TxOp};
 
     use super::{
-        JsClaimOutcome, JsSeatSettings, claim, claim_args, claim_gesture, clear_focus, devices, focus, pointer,
-        seat_name, seats, unclaim,
+        JsClaimOutcome, JsSeatSettings, claim, claim_args, claim_device, claim_gesture, clear_focus, devices, focus,
+        pointer, seat_name, seats, unclaim,
     };
     use crate::bindings::HostState;
 
@@ -670,6 +706,7 @@ mod tests {
                 auto_raise: false,
                 auto_raise_delay: 500.0,
                 focus_change_on_pointer_rest: false,
+                reduced_motion: false,
             }
         );
         let published = vec![
@@ -677,11 +714,13 @@ mod tests {
             ("focus_mode".to_owned(), MirrorValue::Text("hover".into())),
             ("raise_on_click".to_owned(), MirrorValue::Bool(false)),
             ("auto_raise_delay".to_owned(), MirrorValue::Int(120)),
+            ("reduced_motion".to_owned(), MirrorValue::Bool(true)),
         ];
         let nodes = [node(1, 0, "node", Vec::new()), node(4, 1, "seat", published)];
         let state = HostState::new(TreeMirror::from_snapshot(1, 1, 1, &nodes).expect("a mirror"));
         let settings = JsSeatSettings::of(&state, 4);
         assert!(settings.edge_tiling && !settings.raise_on_click);
+        assert!(settings.reduced_motion, "the seat's reduced_motion is read");
         assert_eq!(settings.focus_mode, "hover");
         assert_eq!(settings.auto_raise_delay, 120.0);
         assert_eq!(
@@ -724,6 +763,40 @@ mod tests {
             ("claim_gesture", claim_args(3, 3).as_slice(), "swipe".to_owned())
         );
         assert_eq!(state.input.claimed(), 3);
+    }
+
+    #[test]
+    fn a_device_claim_is_a_call_with_the_id_and_the_bare_device_name_as_its_text() {
+        // The Lua test "Seat:claim_device is a one-line device name" and the one of `bind{ only = true }`.
+        let mut state = state();
+        assert_eq!(claim_device(&mut state, 4, "Macro Pad"), JsClaimOutcome::Claimed(1));
+        let calls: Vec<(&str, &[u8], String)> = state
+            .tick
+            .ops()
+            .iter()
+            .filter_map(|op| match op {
+                TxOp::Call { method, args, text, .. } => {
+                    Some((method.as_str(), args.as_slice(), text.expose().to_owned()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            calls,
+            [("claim_device", 1_i64.to_le_bytes().as_slice(), "Macro Pad".to_owned())]
+        );
+        for bad in ["", "two\nlines"] {
+            assert_eq!(
+                claim_device(&mut state, 4, bad),
+                JsClaimOutcome::Refused("invalid-value"),
+                "{bad:?}"
+            );
+        }
+        assert_eq!(
+            claim_device(&mut state, 3, "Macro Pad"),
+            JsClaimOutcome::Refused("unknown-node")
+        );
+        assert_eq!(state.input.claimed(), 1, "a refused claim holds nothing");
     }
 
     #[test]

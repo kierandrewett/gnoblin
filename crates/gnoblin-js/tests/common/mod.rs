@@ -39,8 +39,22 @@ pub struct Measure {
     pub text: String,
 }
 
+/// A claim the shell holds on a seat: a chord, a gesture or a device, by the id it allocated.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Claim {
+    pub id: i64,
+    /// `claim`, `claim_gesture` or `claim_device`.
+    pub method: String,
+    /// The call's text: the chord, the gesture's kind or the device name, behind `device` and a line feed when scoped.
+    pub text: String,
+    /// The claim's second integer: a chord's grab flag or a gesture's finger count; 0 for a device.
+    pub second: i64,
+}
+
 pub struct Compositor {
     pub nodes: BTreeMap<u64, Node>,
+    /// The claims made and not given up, in the order they were made.
+    pub claims: Vec<Claim>,
     pub serial: u64,
     /// The ops of each transaction the shell sent, in order.
     pub sent: Vec<Vec<TxOp>>,
@@ -87,6 +101,7 @@ impl Compositor {
         Self {
             nodes: BTreeMap::from([(ROOT, root)]),
             serial: 1,
+            claims: Vec::new(),
             sent: Vec::new(),
             measures: Vec::new(),
             queue: Vec::new(),
@@ -165,6 +180,25 @@ impl Compositor {
                 token,
                 text,
             } => {
+                if matches!(method.as_str(), "claim" | "claim_gesture" | "claim_device") {
+                    if let Some(bits) = args.get(0..8).and_then(|bits| <[u8; 8]>::try_from(bits).ok()) {
+                        self.claims.push(Claim {
+                            id: i64::from_le_bytes(bits),
+                            method: method.clone(),
+                            text: text.expose().to_owned(),
+                            second: args
+                                .get(8..16)
+                                .and_then(|bits| <[u8; 8]>::try_from(bits).ok())
+                                .map_or(0, i64::from_le_bytes),
+                        });
+                    }
+                }
+                if method == "unclaim" {
+                    if let Some(bits) = args.get(0..8).and_then(|bits| <[u8; 8]>::try_from(bits).ok()) {
+                        let id = i64::from_le_bytes(bits);
+                        self.claims.retain(|claim| claim.id != id);
+                    }
+                }
                 if method == "measure" {
                     let bits: [u8; 8] = args.as_slice().try_into().ok()?;
                     self.measures.push(Measure {
@@ -579,6 +613,86 @@ impl FakeCompositor {
                 ..EventFields::default()
             },
         }));
+    }
+
+    /// The id of the live claim whose call text is `text` (a device and a line feed when scoped).
+    pub fn claim_id(&self, text: &str) -> i64 {
+        let c = self.0.borrow();
+        c.claims
+            .iter()
+            .find(|claim| claim.text == text)
+            .unwrap_or_else(|| panic!("no live claim for {text:?}; live: {:?}", c.claims))
+            .id
+    }
+
+    /// The id of the live claim of `kind` (`swipe` or `pinch`) with `fingers` contacts.
+    pub fn gesture_claim(&self, kind: &str, fingers: i64) -> i64 {
+        let c = self.0.borrow();
+        c.claims
+            .iter()
+            .find(|claim| claim.method == "claim_gesture" && claim.text == kind && claim.second == fingers)
+            .unwrap_or_else(|| panic!("no live claim for {kind}{fingers}; live: {:?}", c.claims))
+            .id
+    }
+
+    /// How many `set` ops the shell sent with a duration: what an animation is, as opposed to an instant write.
+    pub fn timed_sets(&self) -> usize {
+        self.0
+            .borrow()
+            .sent
+            .iter()
+            .flatten()
+            .filter(|op| matches!(op, TxOp::Set { seconds: Some(_), .. }))
+            .count()
+    }
+
+    /// A claimed chord changing `state` (`press`, `release` or `repeat`).
+    pub fn chord(&self, claim: i64, chord: &str, state: &str) {
+        self.0
+            .borrow_mut()
+            .queue
+            .push(TreeIncoming::Chord(gnoblin_tree_client::tree_mirror::TreeChord {
+                claim,
+                chord: chord.to_owned(),
+                state: state.to_owned(),
+            }));
+    }
+
+    /// The texts of the live claims, in the order they were made, a line feed shown as `|`.
+    pub fn claimed(&self) -> Vec<String> {
+        self.0
+            .borrow()
+            .claims
+            .iter()
+            .map(|claim| claim.text.replace('\n', "|"))
+            .collect()
+    }
+
+    /// One phase of a touchpad gesture the shell claimed: `kind` is `swipe` or `pinch`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn gesture(
+        &self,
+        claim: i64,
+        kind: &str,
+        fingers: i64,
+        phase: &str,
+        (dx, dy): (f64, f64),
+        scale: f64,
+        rotation: f64,
+    ) {
+        self.0
+            .borrow_mut()
+            .queue
+            .push(TreeIncoming::Gesture(gnoblin_tree_client::tree_mirror::TreeGesture {
+                claim,
+                kind: kind.to_owned(),
+                fingers,
+                phase: phase.to_owned(),
+                dx,
+                dy,
+                scale,
+                rotation,
+            }));
     }
 
     /// The compositor's request of a window (`menu`), anchored at `x`, `y`.

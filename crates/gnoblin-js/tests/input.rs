@@ -337,6 +337,12 @@ impl FakeLink {
                         c.claims.insert(id, (method.clone(), text.expose().to_owned()));
                         c.calls.push((method.clone(), id, second, text.expose().to_owned()));
                     }
+                    "claim_device" => {
+                        let id = le(&args[0..8]);
+                        c.claim_seats.insert(id, *node);
+                        c.claims.insert(id, (method.clone(), text.expose().to_owned()));
+                        c.calls.push((method.clone(), id, 0, text.expose().to_owned()));
+                    }
                     "unclaim" => {
                         let id = le(&args[0..8]);
                         c.claims.remove(&id);
@@ -850,6 +856,123 @@ fn a_binding_that_declines_lets_the_next_tier_have_the_chord() {
         rig.log(),
         "layout|device-declines|layout",
         "layout beats context, the device is asked first and a decline falls through to the layout"
+    );
+}
+
+#[test]
+fn a_device_bound_with_only_is_claimed_once_and_its_chords_are_claimed_for_it() {
+    // Lua: "Seat:bind with only = true makes the device binding-only once, and refuses only without a device".
+    let comp = world(false);
+    let mut rig = rig(
+        &comp,
+        &entry("const pad = input.devices[0];\n(globalThis as any).pad = pad;\n"),
+    );
+    let before = comp.borrow().calls.len();
+    // A refused bind sends no call: `only: false` is not a way to say nothing.
+    assert_eq!(
+        rig.eval("try { pad.bind('F13', () => {}, { only: false }); 'bound' } catch (e) { `${e.name}:${e.message}` }"),
+        "TypeError:InputDevice \"Macro Pad\".bind: only must be true to make the device binding-only, got false"
+    );
+    assert_eq!(comp.borrow().calls.len(), before, "a refused bind sent a call");
+    assert_eq!(rig.eval("String(pad.bindingOnly)"), "false");
+
+    rig.eval("pad.bind('F13', () => {}, { only: true }); pad.bind('F14', () => {}, { only: true }); 'ok'");
+    rig.frame();
+    let calls: Vec<(String, String)> = comp.borrow().calls[before..]
+        .iter()
+        .map(|call| (call.0.clone(), call.3.replace('\n', "|")))
+        .collect();
+    assert_eq!(
+        calls,
+        [
+            ("claim_device".to_owned(), "Macro Pad".to_owned()),
+            ("claim".to_owned(), "Macro Pad|F13".to_owned()),
+            ("claim".to_owned(), "Macro Pad|F14".to_owned()),
+        ],
+        "the device is claimed once, by its bare name, then each chord for it"
+    );
+    assert_eq!(rig.eval("String(pad.bindingOnly)"), "true");
+    assert_eq!(rig.eval("String(input.isBindingOnly('Macro Pad'))"), "true");
+    assert_eq!(comp.borrow().claims.len(), 3, "the claim's id is held with the chords'");
+}
+
+#[test]
+fn binding_only_is_given_up_by_assigning_false_and_by_the_shell_going() {
+    // New: Lua kept the id in `seat.data.only` for `seat:unclaim`; the object has a property for it.
+    let comp = world(false);
+    let mut rig = rig(
+        &comp,
+        &entry("const pad = input.devices[0];\n(globalThis as any).pad = pad;\npad.bindingOnly = true;\n"),
+    );
+    assert_eq!(comp.claimed(), ["Macro Pad"]);
+    rig.eval("pad.bindingOnly = true; 'again'");
+    rig.frame();
+    assert_eq!(comp.claimed(), ["Macro Pad"], "a second assignment claims nothing more");
+    rig.eval("pad.bindingOnly = false; 'off'");
+    rig.frame();
+    assert!(comp.claimed().is_empty(), "false gives the claim up");
+    assert_eq!(comp.borrow().calls.iter().filter(|c| c.0 == "unclaim").count(), 1);
+    assert_eq!(rig.eval("String(input.releaseBindingOnly('Macro Pad'))"), "false");
+    assert_eq!(
+        rig.eval("try { pad.bindingOnly = 1; 'set' } catch (e) { e.message }"),
+        "InputDevice \"Macro Pad\".bindingOnly must be true or false, got 1"
+    );
+}
+
+#[test]
+fn a_device_name_is_one_non_empty_line_and_a_refused_claim_sends_nothing() {
+    // Lua: "Seat:claim_device is a one-line device name".
+    let comp = world(false);
+    let mut rig = rig(&comp, &entry(""));
+    let before = comp.borrow().calls.len();
+    for bad in ["''", "'two\\nlines'", "7"] {
+        let outcome = rig.eval(&format!(
+            "try {{ input.makeBindingOnly({bad}); 'claimed' }} catch (e) {{ e.name }}"
+        ));
+        assert_eq!(outcome, "TypeError", "{bad}");
+    }
+    assert_eq!(comp.borrow().calls.len(), before, "a refused name sent a call");
+    rig.eval("input.makeBindingOnly('Not Plugged In'); 'ok'");
+    rig.frame();
+    assert_eq!(
+        comp.claimed(),
+        ["Not Plugged In"],
+        "a device that is not there yet can be claimed"
+    );
+}
+
+#[test]
+fn a_false_action_claims_the_trigger_and_swallows_it_and_a_function_that_returns_false_declines() {
+    // Lua: "a gesture claimed with a fn of false claims it and runs nothing", and `seat:bind({ chord = false })`.
+    let comp = world(false);
+    let mut rig = rig(
+        &comp,
+        &entry(
+            "input.bind('Super+z', false);\n\
+             input.bind('Swipe5', false);\n\
+             input.bind('Super+d', () => false);\n\
+             input.bind('Super+d', new KeyBinding({ id: 'second', trigger: 'Super+d', priority: -1, action: () => { log.push('second'); } }));\n",
+        ),
+    );
+    assert_eq!(
+        comp.claimed(),
+        ["<Super>z", "swipe", "<Super>d"],
+        "the chord, the gesture and the declining chord are all claimed"
+    );
+    comp.chord(comp.claim_id("<Super>z"), "<Super>z", "press");
+    let swipe = comp.claim_id("swipe");
+    comp.gesture(swipe, "begin", 0.0, 0.0);
+    comp.gesture(swipe, "update", 5.0, 5.0);
+    comp.gesture(swipe, "end", 400.0, 0.0);
+    let diagnostics = rig.frame();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    assert_eq!(rig.log(), "", "nothing ran for the swallowed chord and gesture");
+    comp.chord(comp.claim_id("<Super>d"), "<Super>d", "press");
+    rig.frame();
+    assert_eq!(
+        rig.log(),
+        "second",
+        "a handler that returns false lets the next binding have the chord"
     );
 }
 
