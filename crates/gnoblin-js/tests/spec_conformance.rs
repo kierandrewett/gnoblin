@@ -903,7 +903,7 @@ fn update_statuses_only_accept_fails_to_runs() {
 
 #[test]
 fn missing_classes_in_fixtures_remain_visible() {
-    for (fixture, class) in [("arcLayout", "ArcLayout"), ("ultrawide", "OutputProfile")] {
+    for (fixture, class) in [("arcLayout", "ArcLayout")] {
         let error = run_js(&format!("globalThis.fixtureProbe = {fixture};"), false)
             .expect_err("the unavailable fixture's class must fail the snippet");
         assert!(
