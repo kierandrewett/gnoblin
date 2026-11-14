@@ -3810,6 +3810,7 @@ fn an_open_authentication_request_ends_at_once_when_the_shell_goes_away() {
         assert!(Instant::now() < deadline, "the slot went back to the services role");
         std::thread::sleep(POLL);
     }
+}
 
 // ---- the keyboard move and resize of a window -------------------------------------------------------------------
 

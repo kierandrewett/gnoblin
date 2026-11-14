@@ -180,24 +180,25 @@ impl Compositor {
                 token,
                 text,
             } => {
-                if matches!(method.as_str(), "claim" | "claim_gesture" | "claim_device") {
-                    if let Some(bits) = args.get(0..8).and_then(|bits| <[u8; 8]>::try_from(bits).ok()) {
-                        self.claims.push(Claim {
-                            id: i64::from_le_bytes(bits),
-                            method: method.clone(),
-                            text: text.expose().to_owned(),
-                            second: args
-                                .get(8..16)
-                                .and_then(|bits| <[u8; 8]>::try_from(bits).ok())
-                                .map_or(0, i64::from_le_bytes),
-                        });
-                    }
+                let id_bits = args.get(0..8).and_then(|bits| <[u8; 8]>::try_from(bits).ok());
+                if matches!(method.as_str(), "claim" | "claim_gesture" | "claim_device")
+                    && let Some(bits) = id_bits
+                {
+                    self.claims.push(Claim {
+                        id: i64::from_le_bytes(bits),
+                        method: method.clone(),
+                        text: text.expose().to_owned(),
+                        second: args
+                            .get(8..16)
+                            .and_then(|bits| <[u8; 8]>::try_from(bits).ok())
+                            .map_or(0, i64::from_le_bytes),
+                    });
                 }
-                if method == "unclaim" {
-                    if let Some(bits) = args.get(0..8).and_then(|bits| <[u8; 8]>::try_from(bits).ok()) {
-                        let id = i64::from_le_bytes(bits);
-                        self.claims.retain(|claim| claim.id != id);
-                    }
+                if method == "unclaim"
+                    && let Some(bits) = id_bits
+                {
+                    let id = i64::from_le_bytes(bits);
+                    self.claims.retain(|claim| claim.id != id);
                 }
                 if method == "measure" {
                     let bits: [u8; 8] = args.as_slice().try_into().ok()?;

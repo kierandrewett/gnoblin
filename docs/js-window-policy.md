@@ -65,7 +65,7 @@ the trigger and does nothing with it; a function that returns `false` declines a
 - `Workspace.walk(step)` moves the focus along the workspace's windows.
 - `gnoblin.workspaces.remove(ws)` moves the windows to the neighbour before the workspace (the one after, for the
   first), shows it where the removed one was shown, and refuses the last workspace (returns `false`).
-- A press on a titlebar focuses and raises its window as a press on the window does.
+- A left press on a titlebar focuses and raises its window as a press on the window does.
 - Maximised, snapped and floating windows are refitted when a bar changes the work area.
 - A reload keeps the rectangles a maximised, fullscreen or snapped window returns to.
 

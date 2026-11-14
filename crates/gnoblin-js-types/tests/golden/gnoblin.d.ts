@@ -915,6 +915,11 @@ declare module "gnoblin" {
         readonly output: Output | null;
         /** Shows this workspace on the output under the pointer (the primary output when no pointer says). */
         show(options?: ShowOptions): void;
+        /**
+         * Moves the keyboard focus `step` windows along the workspace's windows: 1 to the next, -1 to the previous. Nothing
+         * moves when no window of the workspace has the focus, and a step past either end leaves it where it is.
+         */
+        walk(step: number): void;
         constructor(options: WorkspaceOptions);
     }
 
@@ -1128,7 +1133,12 @@ declare module "gnoblin" {
     /** A collection that accepts membership changes from scripts. */
     export interface MutableCollection<T> extends Collection<T> {
         add(item: T): void;
-        remove(idOrItem: string | T): void;
+        /**
+         * Removes a member given as itself or by id. True when one was removed; false when there was none or the collection
+         * refused: `gnoblin.workspaces` keeps its last workspace, and a removed one hands its windows to the neighbour
+         * before it (the one after it, for the first), which is shown where it was.
+         */
+        remove(idOrItem: string | T): boolean;
         clear(): void;
     }
 
@@ -1451,7 +1461,26 @@ declare module "gnoblin" {
         readonly context: InputContext;
         /** Bindings that match only this device's events. They run before a layout's and the context's. */
         readonly bindings: BindingCollection;
-        bind(trigger: Trigger, action: ((event: BindingEvent) => void | false) | Binding): Binding;
+        /**
+         * `options.only: true` first makes the device binding-only (`bindingOnly`); `only: false` is refused. An action of
+         * `false` claims the trigger and does nothing with it.
+         */
+        bind(
+            trigger: Trigger,
+            action: ((event: BindingEvent) => void | false) | Binding | false,
+            options?: DeviceBindOptions,
+        ): Binding;
+        /**
+         * Whether the device is binding-only: its keys reach no client and fire only the bindings made for it or for every
+         * device, so a macro pad never types into a window. Assigning `true` claims the device on the seat by its name,
+         * `false` gives the claim up.
+         */
+        bindingOnly: boolean;
+    }
+    /** What `InputDevice.bind` takes beside the trigger and the action. */
+    export interface DeviceBindOptions {
+        /** `true` makes the device binding-only before the binding is made. The only value that means anything. */
+        only?: true;
     }
     /** The window management settings a seat publishes (the schema's `seat` keys in camel case, the compositor's words). */
     export interface SeatSettings {
@@ -1464,6 +1493,8 @@ declare module "gnoblin" {
         readonly autoRaise: boolean;
         readonly autoRaiseDelay: number;
         readonly focusChangeOnPointerRest: boolean;
+        /** The user asked for reduced motion: the shell's animations take no time. */
+        readonly reducedMotion: boolean;
     }
     /** One seat: its devices, its focus, its pointer and the bindings that run on its chords and drags. */
     export interface InputContext {
@@ -1483,7 +1514,17 @@ declare module "gnoblin" {
          * Claims the chord on the seat and runs `action` on it. Returns the binding; `unbind()` releases the
          * claim once no binding needs it. A drag trigger needs a `PointerDragBinding`, not a function.
          */
-        bind(trigger: Trigger, action: ((event: BindingEvent) => void | false) | Binding): Binding;
+        bind(trigger: Trigger, action: ((event: BindingEvent) => void | false) | Binding | false): Binding;
+        /** Whether the devices that report `name` are binding-only on this seat. */
+        isBindingOnly(name: string): boolean;
+        /**
+         * Makes the devices that report `name` (a name from `devices`) binding-only: their keys reach no client and fire
+         * only the bindings made for the device or for every device. A second call changes nothing; the device need not
+         * be plugged in yet.
+         */
+        makeBindingOnly(name: string): void;
+        /** Gives the binding-only claim on `name` up. False when there was none. */
+        releaseBindingOnly(name: string): boolean;
         /** The topmost client under `position`, in tree order. */
         hitTest(position: Vec2): { client: Client; localPosition: Vec2 } | null;
         /**
@@ -2208,6 +2249,19 @@ declare module "gnoblin" {
         outputs?: Record<string, OutputSetting>;
         keys?: Record<string, KeyAction>;
         /**
+         * Touchpad gestures that run an action when the fingers lift, by the way they went: `Swipe4: { up:
+         * "window.toggle-maximise" }`, `Pinch3: { in: "window.minimise", out: fn }`. The trigger is the gesture and its
+         * finger count. A gesture here replaces the stock binding of the same trigger (the three-finger workspace slide);
+         * giving one gesture to `keys` as well is an error.
+         */
+        gestureActions?: Record<string, GestureActionConfig>;
+        /**
+         * Named groups of workspaces to show together, each entry on an output. `gnoblin.workspaces.activateSet(name)` makes
+         * one live. A list that does not check (an empty or repeated name, a set with no entries, a workspace that is not
+         * declared, two entries for one output) refuses the config.
+         */
+        workspaceSets?: readonly WorkspaceSetConfig[];
+        /**
          * The command `Super+space` runs, as a command line or an argv. Absent, `Super+space` opens the stock launcher entry.
          * A key of `keys` for `Super+space` takes precedence.
          */
@@ -2296,6 +2350,10 @@ declare module "gnoblin" {
         readonly authentication: AuthenticationManager;
         /** Launch feedback: the busy state between asking for an application and its window. */
         readonly launches: LaunchFeedback;
+        /** The touchpad gesture actions (`workspace.next` and four more) and `onSwipe`, `onPinch` and `direction`. */
+        readonly gestures: GestureTools;
+        /** The duration the shell gives an animation: `seconds`, or 0 while the seat asks for reduced motion. */
+        motion(seconds: number): number;
         /**
          * Starts a program and returns its `Process`: a command line for `/bin/sh`, or an array of the program and
          * its arguments. The same as `gnoblin.process.spawn`.
@@ -2529,9 +2587,21 @@ declare module "gnoblin" {
     /** The seconds a workspace slide takes in the Lua shell and in the stock keys. */
     export const SLIDE_SECONDS: number;
 
+    /** One set of `defineConfig({ workspaceSets })`: its name and the workspaces it shows. */
+    export interface WorkspaceSetConfig {
+        name: string;
+        entries: readonly { readonly workspace: string | number; readonly output?: string }[];
+    }
+
     export interface WorkspaceCollection extends MutableCollection<Workspace> {
         /** Named groups of workspaces to show together. */
         readonly sets: WorkspaceSets;
+        /**
+         * Makes the set `name` live: each entry shows its workspace on its output, and one whose output is not connected
+         * shows on the primary output, with a report. The live set again changes nothing. False, with a report, for an
+         * unknown set or a workspace that has gone; `sets.activate` throws instead.
+         */
+        activateSet(name: string): boolean;
         /** The area windows are laid out in on the primary output; null while there is none. */
         readonly area: Rect | null;
         show(workspace: Workspace | string, options?: ShowOptions): void;
@@ -2620,6 +2690,8 @@ declare module "gnoblin" {
             [Symbol.iterator](): Iterator<SlideWorkspace>;
         };
         after(seconds: number, run: () => void): void;
+        /** The seconds an animation takes: 0 while the seat asks for reduced motion. */
+        motion?(seconds: number): number;
     }
     export interface WorkspaceSlideOptions extends Partial<BindingOptions> {
         travel?: number;
@@ -2793,12 +2865,92 @@ declare module "gnoblin" {
         buttonColor: string;
         icons: Readonly<Record<"minimise" | "maximise" | "close", string>>;
     }
+    /** The shortest swipe `onSwipe` acts on, in touchpad units. */
+    export const SWIPE_THRESHOLD: number;
+    /** How far from 1 a pinch's scale must be for `onPinch` to act on it. */
+    export const PINCH_THRESHOLD: number;
+    export type SwipeDirection = "left" | "right" | "up" | "down";
+    export type PinchDirection = "in" | "out";
+    /** The five actions the configuration names. `window.minimize` is accepted for `window.minimise`. */
+    export type GestureActionName =
+        | "workspace.next"
+        | "workspace.previous"
+        | "window.close"
+        | "window.minimise"
+        | "window.minimize"
+        | "window.toggle-maximise";
+    export const GESTURE_ACTION_NAMES: readonly GestureActionName[];
+    /** The five stock actions. Each takes nothing: it acts on the workspace under the pointer or the focused window. */
+    export interface GestureActions {
+        /** Shows the workspace after the shown one; nothing at the last. */
+        workspaceNext(): void;
+        workspacePrevious(): void;
+        /** Asks the focused window to close; nothing without one. */
+        windowClose(): void;
+        /** Minimises the focused window, which hands the keyboard to the next one. */
+        windowMinimise(): void;
+        /** Maximises the focused window, or restores it when it is maximised. */
+        windowToggleMaximise(): void;
+    }
+    /** What a gesture runs: the name of a stock action, or a function that gets the gesture's last event. */
+    export type GestureAction = GestureActionName | ((event: DragEvent) => void);
+    export type SwipeMap = { [way in SwipeDirection]?: GestureAction };
+    export type PinchMap = { [way in PinchDirection]?: GestureAction };
+    /** What `defineConfig({ gestureActions })` takes for one gesture: a swipe's four directions or a pinch's two. */
+    export type GestureActionConfig = SwipeMap & PinchMap;
+    export interface GestureActionOptions {
+        id?: string;
+        trigger?: string;
+        /** Touchpad units for a swipe (default 48), the distance of the scale from 1 for a pinch (default 0.12). */
+        threshold?: number;
+        /** What a named action runs. Default the `gnoblin` global's `gestures.actions`. */
+        actions?: GestureActions;
+    }
+    /** A binding that acts when a swipe ends, for the direction it went. Made by `onSwipe`. */
+    export class SwipeActionBinding extends GestureBinding {
+        readonly threshold: number;
+        constructor(map: SwipeMap, options?: GestureActionOptions);
+    }
+    /** A binding that acts when a pinch ends: `out` for a spread and `in` for a gather. Made by `onPinch`. */
+    export class PinchActionBinding extends GestureBinding {
+        readonly threshold: number;
+        constructor(map: PinchMap, options?: GestureActionOptions);
+    }
+    /**
+     * The way a gesture has gone: `left`, `right`, `up` or `down` by its longer axis, or null while it has moved less than
+     * `threshold` (default 48) touchpad units.
+     */
+    export function gestureDirection(
+        event: { readonly dx?: number; readonly dy?: number },
+        threshold?: number,
+    ): SwipeDirection | null;
+    /** A binding for `InputContext.bind` that runs `map[direction]` when a swipe ends, if it went that way. */
+    export function onSwipe(map: SwipeMap, threshold?: number, options?: GestureActionOptions): SwipeActionBinding;
+    /** A binding that runs `map.out` or `map.in` when a pinch ends. */
+    export function onPinch(map: PinchMap, threshold?: number, options?: GestureActionOptions): PinchActionBinding;
+    /** The gesture helpers of the `gnoblin` global. */
+    export interface GestureTools {
+        readonly actions: GestureActions;
+        direction: typeof gestureDirection;
+        onSwipe(map: SwipeMap, threshold?: number): SwipeActionBinding;
+        onPinch(map: PinchMap, threshold?: number): PinchActionBinding;
+    }
+    export function gestureActionBinding(
+        trigger: string,
+        map: GestureActionConfig,
+        gesture: "swipe" | "pinch",
+    ): GestureBinding;
     export const defaultTitlebarStyle: Readonly<TitlebarStyle>;
     export interface TitlebarHooks {
         menu?(client: unknown): void;
         lower?(client: unknown): void;
         maximise?(client: unknown, on: boolean): void;
         minimise?(client: unknown): void;
+        /** The seconds an animation takes: 0 while the seat asks for reduced motion. */
+        motion?(seconds: number): number;
+        /** A button went down on the bar itself: the window is pressed, so it takes the focus. */
+        press?(client: unknown, event: { x: number; y: number; button: number }): void;
+        release?(client: unknown, event: { x: number; y: number; button: number }): void;
     }
     /** The bar above a window's content. A press does what the seat's `double_click`, `middle_click` and `right_click` say. */
     export class Titlebar extends Box {
@@ -3078,10 +3230,22 @@ declare module "gnoblin" {
         edgeTiling(): boolean;
     }
     /** The stock answers to a window's requests, and the drags that `move` and `resize` start. */
+    /** The rectangles a window goes back to when it stops being maximised or fullscreen. */
+    export interface KeptRects {
+        floating: Rect | null;
+        windowed: Rect | null;
+    }
     export class WindowState {
         readonly started: boolean;
         readonly dragging: boolean;
         start<C extends StateClient>(world: WindowStateWorld<C>): void;
+        /**
+         * The rectangles `client` returns to when it leaves maximised or fullscreen. A reload carries them to the next
+         * generation: the host reads this before it goes and `keep`s it in the next.
+         */
+        kept(client: StateClient): KeptRects;
+        /** Gives `client` back the rectangles `kept` took. */
+        keep(client: StateClient, kept: Partial<KeptRects>): void;
         /** Answers `kind` for `client` as the built-in policy does. */
         answer(client: StateClient, kind: ClientRequestKind): void;
         /** Fills the work area, keeping the floating rectangle. False when maximised or fullscreen already. */

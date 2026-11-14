@@ -295,8 +295,11 @@ export class Titlebar extends Box {
 
     override onPress(event: UiPointerEvent): void {
         event.stop();
-        // Whatever the button does, the press lands on the window: it takes the focus and, as the seat says, the top.
-        this.hooks.press?.(this.client, { x: event.x, y: event.y, button: event.button });
+        // A left press lands on the window: it takes the focus and, as the seat says, the top. A right or middle press is
+        // left to its action: the window menu a right click opens holds the keyboard, and the press is heard later.
+        if (event.button === LEFT) {
+            this.hooks.press?.(this.client, { x: event.x, y: event.y, button: event.button });
+        }
         if (event.button === MIDDLE) {
             this.#gesture("middle_click");
             return;

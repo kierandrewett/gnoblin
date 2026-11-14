@@ -544,7 +544,7 @@ fn menus_false_leaves_the_request_unanswered_and_a_request_with_no_anchor_opens_
 // ---- the alert: the cases of alerts_test.lua ------------------------------------------------------------------------
 
 const FAST_ALERTS: &str =
-    "defineConfig({ decorations: true }); notRespondingAlerts.armSeconds = 0.05; notRespondingAlerts.intervalMs = 0;";
+    "defineConfig({ decorations: true }); notRespondingAlerts.armSeconds = 1; notRespondingAlerts.intervalMs = 0;";
 
 fn stuck(rig: &mut Rig, node: u64, on: bool) {
     rig.comp.external_set(node, "unresponsive", MirrorValue::Bool(on));
@@ -640,7 +640,7 @@ fn force_quit_does_nothing_until_the_alert_is_armed_then_kills_the_windows_proce
         card(&mut rig).is_some() && calls_of(&rig, "kill") == 0,
         "Force quit ignores an early press"
     );
-    std::thread::sleep(std::time::Duration::from_millis(120));
+    std::thread::sleep(std::time::Duration::from_millis(1200));
     rig.settle();
     dialog_key(&mut rig, "Return");
     assert_eq!(calls_of(&rig, "kill"), 1, "an armed Force quit calls kill once");
@@ -661,7 +661,7 @@ fn a_press_on_a_button_works_like_the_key_and_a_press_on_the_card_keeps_the_keyb
         Some(MirrorValue::Node(at)),
         "a press on the card focuses it"
     );
-    std::thread::sleep(std::time::Duration::from_millis(120));
+    std::thread::sleep(std::time::Duration::from_millis(1200));
     rig.settle();
     let force = number(
         &mut rig,
