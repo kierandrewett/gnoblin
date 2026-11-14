@@ -1,37 +1,34 @@
 # Add a shortcut
 
-Add a named command shortcut without replacing the rest of the list:
+Add a key that starts a program without replacing the rest of your keys:
 
-```lua
-gnoblin.configure {shortcuts = {my_terminal = {binding = "<Super>Return", command = {"ptyxis", "--new-window"}}}}
+```ts
+import { defineConfig, spawn } from "gnoblin";
+
+export default defineConfig({
+    keys: { "Super+Return": spawn("foot") },
+});
 ```
 
-Use an installed terminal. To change an imported shortcut, use its existing
-name. Only fields you supply change, so this keeps its current binding:
+Use an installed terminal. Your keys are added to the stock keys, so volume, media and workspace keys keep working.
 
-```lua
-gnoblin.configure {
-    shortcuts = {
-        terminal = {command = {"ptyxis", "--new-window"}},
+To change a key that the stock config or an earlier file binds, bind the same trigger. Yours replaces it. This
+replaces the stock volume-up key with a smaller step:
+
+```ts
+import { defineConfig, spawn } from "gnoblin";
+
+export default defineConfig({
+    keys: {
+        XF86AudioRaiseVolume: spawn("wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "2%+"),
     },
-}
+});
 ```
 
-| Field     | Accepted values                                                | Effect                                                                                                     |
-| --------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `binding` | One chord (see [chord syntax](/guides/shortcuts#chord-syntax)) | Runs the command when the key is pressed.                                                                  |
-| `command` | Array of strings                                               | Starts the first item as the program and passes the remaining items as arguments, without shell expansion. |
+| Part                  | Accepted values                                   | Effect                                                                                           |
+| --------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| The trigger           | Modifiers and a key joined by `+`: `Super+Return` | Runs the action when the key is pressed. See [trigger syntax](/guides/shortcuts#trigger-syntax). |
+| `spawn(program, ...)` | A program and its arguments, as strings           | Starts the program, passing the arguments, without shell expansion.                              |
 
-Changes apply on config reload. The [shortcut reference](/config/configure/shortcuts)
-documents built-in actions and other fields.
-
-To disable an imported shortcut:
-
-```lua
-gnoblin.configure {
-    shortcuts = {terminal = {enable = false}},
-}
-```
-
-Use one array item per program argument. See the [shortcut reference](/config/configure/shortcuts)
-for built-in actions and [key names and conflict handling](/guides/shortcuts).
+Changes apply when you save the file. To drop a stock key, bind its trigger to another action. Use one string per
+program argument. See [key names and conflict handling](/guides/shortcuts) for more.

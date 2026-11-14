@@ -1,42 +1,38 @@
 # Organize a growing config
 
-Keep the entry point short and group settings by the kind of change you make.
-For example, let `init.lua` load your local fragments first, then your
-appearance and shortcut overrides. Packages that ship system defaults need no
-line here; Gnoblin loads them before `init.lua`
-(see [system drop-ins](/guides/files_and_load_order#system-drop-ins)):
+Keep the entry point short and group settings by the kind of change you make. For example, let `init.ts` import your
+rules and your shortcuts, and combine them in one `defineConfig`.
 
-```lua
-gnoblin.load("conf.d/**/*.lua")
-gnoblin.load("appearance.lua")
-gnoblin.load("bindings.lua")
+In `rules.ts`:
+
+```ts
+// rules.ts
+export const rules = [{ appId: "org.gnome.TextEditor", maximised: true }];
 ```
 
-Put window rules in `shell.lua`, which the shell loads itself. `init.lua` does not load it:
+In `bindings.ts`:
 
-```lua
--- ~/.config/gnoblin/shell.lua
-seat.data.window_rules = {
-    { match = { app_id = [[^org%.gnome%.TextEditor$]] }, maximised = true },
-}
+```ts
+// bindings.ts
+import { spawn } from "gnoblin";
+
+export const keys = { "Super+d": spawn("fuzzel") };
 ```
 
-Put shortcuts in `bindings.lua`:
+In `init.ts`:
 
-```lua
-gnoblin.configure {
-    shortcuts = {
-        launcher = {binding = "<Super>d", command = {"fuzzel"}},
-    },
-}
+```ts
+import { defineConfig } from "gnoblin";
+import { keys } from "./bindings.ts";
+import { rules } from "./rules.ts";
+
+export default defineConfig({ keys, rules });
 ```
 
-Loaded files share the same Gnoblin API; they do not need `require` or a return
-statement. Keep includes before your personal overrides. Window rules are not a
-configuration call: assigning `seat.data.window_rules` in a [shell file](/user-shell)
-replaces the previous list. Arrays such as `xkb_options` also replace the
-active array, so list all values you intend to keep.
+Imported files share the same Gnoblin library and need no registration. Keep the combining in one place, `init.ts`, so
+you can see which file supplies each setting. Lists such as `rules`, `autostart` and `xkbOptions` replace the stock
+list, so list every value you intend to keep. To add to a list from another file, spread it:
+`rules: [...baseRules, ...localRules]`.
 
-Use `gnoblinctl config path` to find the active entry point and
-`gnoblinctl config reload` to apply changes. Read [file loading and order](/guides/files_and_load_order)
-before adding overlapping files or globs.
+Check the files with `gnoblinctl check init.ts`, and read [file loading and order](/guides/files_and_load_order) before
+adding overlapping files.

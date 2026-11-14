@@ -1,38 +1,27 @@
 # Complete starter config
 
-Save this as `~/.config/gnoblin/init.lua`. Install the commands you use;
-replace `ptyxis` with your terminal.
+Save this as `~/.config/gnoblin/init.ts`, or run `gnoblinctl config init` to write a commented one. Install the
+commands you use; replace `foot` with your terminal.
 
-```lua
--- Load personal fragments. System drop-ins from packages load before this file.
-gnoblin.load("conf.d/**/*.lua")
+```ts
+import { defineConfig, spawn } from "gnoblin";
 
-gnoblin.configure {
-    window_management = {
-        focus_mode = "click",
-    },
-}
-
-gnoblin.configure {shortcuts = {terminal = {binding = "<Super>Return", command = {"ptyxis", "--new-window"}}}}
+export default defineConfig({
+    windowManagement: { focusMode: "click" },
+    keys: { "Super+Return": spawn("foot") },
+});
 ```
 
-| Setting      | Accepted values                           | Default   | Effect                                                                              |
-| ------------ | ----------------------------------------- | --------- | ----------------------------------------------------------------------------------- |
-| `focus_mode` | `"click"`, `"hover"`, or `"hover-strict"` | `"click"` | Selects when pointer or click input changes focus.                                  |
-| `binding`    | One chord                                 | Not set   | Runs the shortcut when pressed. See [chord syntax](/guides/shortcuts#chord-syntax). |
-| `command`    | Nonempty array of strings                 | Not set   | Executable followed by its arguments; Gnoblin does not expand shell syntax.         |
+| Setting     | Accepted values                           | Default        | Effect                                                              |
+| ----------- | ----------------------------------------- | -------------- | ------------------------------------------------------------------- |
+| `focusMode` | `"click"`, `"hover"`, or `"hover-strict"` | `"click"`      | Selects when pointer or click input changes focus.                  |
+| `keys`      | A table from a trigger to an action       | The stock keys | Binds keys. See [trigger syntax](/guides/shortcuts#trigger-syntax). |
 
-Save the file and run `gnoblinctl config reload` to apply it. See the
-[shortcut reference](/config/configure/shortcuts) and
-[window rule reference](/config/window_rule) for field constraints and
-precedence.
+Save the file and the running shell reloads it. See the [defineConfig reference](/typescript-config) and the
+[window rule reference](/config/window_rule) for field constraints and precedence.
 
 This sets click-to-focus and adds a terminal shortcut. To dim unfocused windows, see
 [dim unfocused windows](/recipes/dim-unfocused-windows).
 
-It does not install or start a desktop shell; choose one in
-[shell setup](/bring-your-own-shell).
-If an imported shortcut already uses Super+Enter under another name, override
-that name instead. See the [configuration reference](/config/configure),
-[shortcut settings](/config/configure/shortcuts), and
-[window rule reference](/config/window_rule) for accepted values.
+It does not install or start a desktop shell; choose one in [shell setup](/bring-your-own-shell). If the stock config
+already uses Super+Enter, your key replaces it: a trigger is bound once.
