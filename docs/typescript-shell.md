@@ -203,7 +203,7 @@ See [JavaScript session, process and timer API](/js-host-api).
 `gnoblin.idle.watch(ms, { onIdle, onResume })` runs code when the session has had no input for a while,
 `gnoblin.authentication.setProvider(provider)` makes the shell the session's polkit authentication agent, and
 `gnoblin.launches.begin(token, application)` tracks the busy state between a launch and its window. See
-[Idle, authentication and launch feedback](/js-host-api).
+[Idle, authentication and launch feedback](/js-idle-auth-launches).
 
 ## XR
 

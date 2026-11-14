@@ -3591,3 +3591,53 @@ fn an_authentication_provider_answers_polkit_requests_and_gives_the_slot_back_on
     );
     shell.finish();
 }
+
+/// A shell that goes away without a word, with a request open, is the case a crash is: the compositor holds the claim
+/// and ends the request when the connection closes, so polkit's caller is not left to the request's deadline, and the
+/// slot is the services role's again.
+#[test]
+fn an_open_authentication_request_ends_at_once_when_the_shell_goes_away() {
+    let mut services = Services::start();
+    let mut offerer = services.role_client();
+    let mut mapper = Mapper::connect(&services.session.wayland());
+    let config = tempfile::tempdir().expect("a config directory");
+    save(&config.path().join("init.ts"), AUTHENTICATION);
+    let shell = Shell::start(&services.session, config.path(), |_| {});
+    wait_for(
+        "the shell holds the slot",
+        &services.session,
+        &mut mapper,
+        &shell,
+        || services.provider() == "shell",
+    );
+    let open = offerer
+        .offer(
+            "auth.polkit",
+            "Authentication required",
+            "Authenticate to mount",
+            b"org.example.later",
+            Duration::from_secs(600),
+        )
+        .expect("the slot has a provider");
+    wait_for(
+        "the script saw the request",
+        &services.session,
+        &mut mapper,
+        &shell,
+        || shell.probe().contains("org.example.later"),
+    );
+    shell.finish();
+    let completion = services_event(&mut offerer, "the request ended with the shell", |event| match event {
+        gnoblin_client::Event::RequestFinished { request, completion } if request == open => Some(completion),
+        _ => None,
+    });
+    assert!(
+        !matches!(completion, RequestCompletion::TimedOut | RequestCompletion::Answered),
+        "a request the shell held ends with it, not at its deadline: {completion:?}"
+    );
+    let deadline = Instant::now() + PATIENCE;
+    while services.provider() != "services" {
+        assert!(Instant::now() < deadline, "the slot went back to the services role");
+        std::thread::sleep(POLL);
+    }
+}

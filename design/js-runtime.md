@@ -937,6 +937,65 @@ runs no call on a screen node, so a TypeScript declaration would be a no-op. A s
 rectangle is not refitted on an output move. The menu's Move to workspace and the rule `workspace` action move a window
 with `transferClient` (no refit). `Workspace:walk` and the removal cases are not part of this lane.
 
+## Host API B status
+
+Lane JsHostApiB. User page: `docs/js-host-api.md`. The Lua pages are `docs/shell-api/{idle,privacy,input-grab,text-insertion,
+launch-feedback,tablet-pad-help,window-snapping,authentication}.md`; every one of them is marked "not available yet" and
+the Lua host implements none of them (`design/docs-parity/allow.toml` lists them), so the Lua host was no reference for
+behaviour here: the page and the schema were. What is built is what the compositor serves today; the rest is named below
+and not invented.
+
+**Built.**
+
+- **`gnoblin.idle`** (`data/js/gnoblin/idle.ts`, `crates/gnoblin-js/src/host_idle.rs`). `watch(ms, { onIdle, onResume,
+onClosed })` returns an `IdleWatch`; `inhibit(holder)` returns an `IdleInhibitor`. A watch is a threshold over the
+  compositor's `idle` object (`idle_ms`, `inhibitors`): idle is `inhibitors === 0 && idle_ms >= ms`, so a hold delays
+  idleness as it delays a screen blank. The shell reads the object over an owner connection of its own
+  (`JsClientIdleLink`: one lookup of the object's id on a throwaway connection, then a subscription to that object
+  alone), opened when the running generation first has a watch or a hold and closed when it has neither, because every
+  change of `idle_ms` goes to every subscriber. The connection is a `JsIdleConnector` in `JsRoleLinks`, so a test
+  passes a fake. `JsShell::retire` gives every hold back (`uninhibit`) before it drops the connection.
+- **`gnoblin.authentication`** (`authentication.ts`, `host_auth.rs`). `setProvider(provider)` makes the shell hold the
+  `auth.polkit` slot on a second slot connection (`JsRoleLinks::auth`); the provider is offered each request with its
+  `title`, `message`, `subject` and `deadline`, and settles it with `allow(identity)` (the slot reads a non-empty
+  identity as consent, `gnoblin-service-core/src/agent.rs`) or `decline(reason)`. The shell claims a request as it is
+  offered, so the compositor knows the holder: a shell that is killed ends the request at once. `retire` declines each
+  open request as `unavailable` and releases the slot.
+- **`gnoblin.launches`** (`launches.ts`). The shell's own registry: `begin`, `list`, `finish`, four handlers, the page's
+  limits (token 128, application 512, 100 to 10000 ms, 64 records). Windows answer a launch through two listeners on
+  `gnoblin.clients` attached when the module loads (an arrival, a focus, an application ID that arrives late); the
+  deadline is checked once a frame from `plan`. The compositor has no launch state (`allow.toml` says "documented, not
+  implemented"), so this record is not shared with any other client.
+- One entry call a frame, `wants()`, says whether a script needs the idle connection (bit 1) or the authentication slot
+  (bit 2); a shell that uses neither pays for that call. `JsShell::run_host_api` is the rest.
+
+**Proven.** Against fakes: `crates/gnoblin-js/tests/host_idle.rs` (15 cases), `host_auth.rs` (16) and `host_launches.rs`
+(13), covering the page's rules, the validation tables and the failures first (no connection, a lost one, a refused
+hold or claim, a throwing handler, a request open at `retire`). Against the real compositor (`crates/gnoblin/tests/js_shell.rs`, the
+last four tests): a watch hears the compositor's own idle clock pass its time, the input that ends it, and the next idle
+period; a hold is counted in the compositor's `inhibitors`, keeps the watch from firing with the session idle for far
+longer than the watch's time, and a reload that retires the generation gives it back; a launch is started by a real
+mapped window and another is timed out by its deadline; a provider answers a request that a privileged services
+connection offers (an identity is read by the offering host only, a decline finishes it refused), and a reload that drops
+the provider hands the slot back to the services role and ends the request the old generation held.
+
+**Gaps.**
+
+- A hold is kept by name in the compositor and not by connection (`idle_hold` in `ipc/server.rs`), so a shell that is
+  killed without retiring leaves its holds standing. A chord claim and a slot do not have this problem; the fix is
+  compositor-side (release a connection's holds when it closes) and is not made here. The shell cannot list the
+  holds to clear them at startup.
+- `privacy`, `input-grab`, `text-insertion` and `tablet-pad-help` are not built, because the compositor serves nothing to
+  build them on: no privacy object (the PipeWire monitor is a session-bus service, `org.gnoblin.Privacy`, and carries
+  microphone and camera only), no key-event stream and no keyboard lease (a seat claim takes a chord), no text-input
+  target or `text_target` grant, no `pad-help-requested` event. A guaranteed release of a grab on `retire` or a crash, and a
+  test of it, wait for the lease to exist. A privacy API must be read-only whatever it is built on.
+- The snapping grant has no counterpart because there is nothing to grant: the shell owns the tree and writes `bounds`
+  (`gnoblin/snap`), where the Lua callback holds a one-use capability over a window it does not own.
+- Idle: no `watch:watch(field)`, and the `closed` reasons `config_reloaded` and `runtime_stopped` do not exist (a
+  generation's watches end with it, without a signal); times are milliseconds. Launch feedback: a launch is not linked to
+  the window or process that answered it, as on the Lua page.
+
 ## P7 UI toolkit status
 
 The shell UI toolkit (lane JsUi): `Canvas`, `Box`, `Text`, `Icon`, `Grid` (`data/js/gnoblin/ui.ts`) and the stock
