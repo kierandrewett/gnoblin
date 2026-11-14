@@ -51,7 +51,8 @@ array.
 | `connected`, `alive`        | `false` once the display is gone.                                                                              |
 | `addListener(listener)`     | Attaches an `OutputListener`.                                                                                  |
 
-A script reads these properties and writes none. It changes a display with `apply` and `mirror`, below.
+A script reads these properties and writes none. It changes a display with `apply` and `mirror`, below, or keeps a
+setting for a monitor with an [`OutputProfile`](#hardware-profiles) in `gnoblin.outputs.profiles`.
 
 ## Configure an output
 
@@ -108,7 +109,8 @@ gnoblin.outputs.at(1)!.apply({ enabled: false });
 ```
 
 **Span.** The desktop already is the span: every output is a rectangle in one space and a window across the seam is drawn
-continuously, at any mix of scales. There is no separate span mode; an output that is not mirrored or off is part of it.
+continuously, at any mix of scales. By default each output shows a workspace of its own. A [`span` display](#displays-and-viewports)
+shows one workspace over several outputs.
 
 **In the config.** `outputs` applies the same keys by connector when the config loads, and again when that display is
 plugged in. An entry that does not check fails the config, naming `config.outputs.<connector>.<key>`; one the compositor
@@ -155,6 +157,148 @@ engine as `apply`: the same checks, the same test before the first output is dri
   the layout derives the primary output.
 - **Refusal.** The call completes with `mode-refused`, `scale-refused`, `position-refused`, `enabled-refused`,
   `transform-refused` or `refused`.
+
+## Hardware profiles
+
+An `OutputProfile` is the persistent setting of one monitor: which monitor it is for (`match`) and the mode, scale,
+transform and place it should have. Put it in `gnoblin.outputs.profiles`. A profile is inert while no matching output is
+connected; when one is, the profile applies as one request, and it applies again when the monitor comes back after an
+unplug.
+
+```ts
+import { OutputProfile, gnoblin } from "gnoblin";
+
+const main = new OutputProfile({
+    match: { connector: "DP-1" },
+    mode: { width: 3440, height: 1440, refreshRate: 144 },
+    scale: 1.25,
+    position: { x: 0, y: 0 },
+});
+const side = new OutputProfile({
+    match: { connector: "HDMI-A-1" },
+    mode: "preferred",
+    position: { rightOf: main, align: "top" },
+});
+gnoblin.outputs.profiles.add(main);
+gnoblin.outputs.profiles.add(side);
+```
+
+| Key         | Values                                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------------------------- |
+| `id`        | The profile's name in the collection. Default: the `match` written out, such as `DP-1`.                 |
+| `match`     | `connector`, `make`, `model` and `serial`, all that you give. `serial` is the third part of `identity`. |
+| `mode`      | `"preferred"`, `"3440x1440@144"` or `{ width, height, refreshRate }`.                                   |
+| `scale`     | A number from 0.5 to 4.                                                                                 |
+| `transform` | `"normal"`: the others are refused, as for `output.apply`.                                              |
+| `position`  | `{ x, y }`, or one of `rightOf`, `leftOf`, `above` and `below` naming another profile, with `align`.    |
+| `enabled`   | `false` switches the output off.                                                                        |
+| `vrr`       | Accepted and reported as not applied: the output request has no variable refresh rate key yet.          |
+
+- **By hardware.** `match: { make: "BOE", model: "Panel", serial: "SN42" }` finds a monitor whatever port it is on.
+  `output.make`, `output.model` and `output.identity` show what a connected display reports.
+- **Next to another.** A relative position places the output against the other profile's output.
+    - The neighbour's own settings go first, and the position is sent once its answer is in, so a mode or scale change
+      moves what is next to it.
+    - `align` is `top`, `center` or `bottom` beside the neighbour, and `left`, `center` or `right` above or below it.
+    - A neighbour that is not connected leaves the position unapplied, and a notice says so.
+    - Placements that depend on themselves throw.
+- **Refusal.** The compositor checks the whole arrangement, so an overlap, a gap or a mode the backend refuses leaves the
+  last good one. The refusal is reported as a diagnostic naming `outputs.profiles.<id>.<key>`.
+- **Changing and removing.** Every property but `match` can be assigned later, and the change applies at the next frame.
+  Removing a profile stops the shell from applying it; the compositor keeps the arrangement it applied last.
+
+## Displays and viewports
+
+An `Output` is a connector. A `Display` is what the desktop presents on one or several outputs, under one `Viewport`
+whose `content` is the workspace shown. `gnoblin.displays` is the live collection.
+
+- The shell keeps one `single` display for every output that none of your displays presents, so each monitor is always
+  in the collection.
+- `gnoblin.input.primary.activeDisplay` is the display under the pointer.
+
+```ts
+import { Camera2D, Display, Viewport, Workspace, gnoblin } from "gnoblin";
+
+const desktop = new Workspace({ id: "desktop" });
+const web = new Workspace({ id: "web" });
+gnoblin.workspaces.add(desktop);
+gnoblin.workspaces.add(web);
+
+gnoblin.input.primary.bind("Super+2", () => {
+    const display = gnoblin.input.primary.activeDisplay;
+    if (display) display.viewport.content = web;
+});
+```
+
+Assigning `viewport.content` shows the workspace on that display, as `gnoblin.workspaces.show` does. A workspace is on one
+display at a time: assigning one that another display shows moves it, and that display takes the workspace this one
+showed. Reading `content` gives what the display shows now. Inside a `gnoblin.requestTransition` callback the assignment
+is part of the transition, and a failed callback puts it back.
+
+`new Display({ outputs, mode, viewport })` takes `OutputProfile`s (persistent selectors: the display is parked while no
+matching output is connected and keeps its workspace) or connected `Output`s:
+
+| `mode`     | What it presents                                                                                         |
+| ---------- | -------------------------------------------------------------------------------------------------------- |
+| `"single"` | One output (the default).                                                                                |
+| `"mirror"` | The first output's picture on the others, through the compositor's mirror (scaled to fit, letterboxed).  |
+| `"span"`   | One workspace laid out over the bounding box of the outputs' work areas. A window may straddle the seam. |
+
+```ts
+const spanned = new Display({
+    outputs: [main, side],
+    mode: "span",
+    viewport: new Viewport({ content: desktop, camera: new Camera2D() }),
+});
+gnoblin.displays.add(spanned);
+```
+
+- **One display per output.** `gnoblin.displays.add` throws `output-conflict`, naming both displays, when one of the
+  outputs belongs to a display of yours already. `gnoblin.displays.replace(old, new)` swaps them as one change: it
+  removes `old` and every other display of yours that shares an output with `new`, then adds `new` in `old`'s place.
+- **Removing.** `gnoblin.displays.remove(display)` ends the mirror or span the display made; each of its outputs gets a
+  display of the shell's again. A display of the shell's own cannot be removed.
+- **A span's area.** The bounding box of unequal outputs has corners that no output shows; a window a layout puts there
+  is not visible. Maximise and fullscreen use the output under the window.
+- **A mirror** ends with the display. A reload whose config does not declare it does not undo it: apply
+  `output.mirror(null)` for that.
+
+## Cameras
+
+A viewport looks at its content through a camera, `Camera2D` or `Camera3D`. Both are scene nodes, so a
+`gnoblin.requestTransition` can animate their properties.
+
+```ts
+import { Camera2D, Camera3D, gnoblin } from "gnoblin";
+
+const flat = new Camera2D();
+const deep = new Camera3D({ projection: "perspective", fov: 65, position: { x: 0, y: 0, z: 1600 } });
+let threeD = false;
+gnoblin.input.primary.bind("Super+Tab", () => {
+    threeD = !threeD;
+    gnoblin.requestTransition(
+        () => {
+            const display = gnoblin.input.primary.activeDisplay;
+            if (display) display.viewport.camera = threeD ? deep : flat;
+        },
+        { duration: 750 },
+    );
+});
+```
+
+`Camera2D` has `position` (`{ x, y }`), `zoom` and `rotation` (radians); `Camera3D` has `position`, `projection`, `fov`,
+`size` (orthographic), `near` and `far`.
+
+**What is drawn.** Windows sit directly under the tree root and keep their own positions, so the shell has no
+per-display root to transform. A camera on a viewport is kept and reads back, and nothing more is applied:
+
+- A `Camera2D` that is not the identity (`zoom` 1, `position` 0, `rotation` 0) is reported once per reload as not
+  applied.
+- A `Camera3D` is reported once per reload as `not applied: camera3d (needs a projected workspace)`. A flat-workspace
+  perspective projection is renderer work.
+- `viewport.clearColor` is kept; the compositor has no background colour behind a workspace to apply it to.
+
+A layout can place windows in depth with `z`, `rotation` and `scale`; the camera does not add to that.
 
 ## Listen for plugging and unplugging
 

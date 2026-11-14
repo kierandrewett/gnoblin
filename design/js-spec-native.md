@@ -270,6 +270,37 @@ What to build, in order: `OutputProfile` and `Output` properties (engine exists)
 (`content` is the shown workspace; `mode: "mirror"` is `mirror_of`; `mode: "span"` is the default row), `Camera2D` as the identity
 or zoom/pan of the content, `Camera3D` last. `design/js-outputs.md` gets a replacement section when the first step lands.
 
+### 2.5 Outputs, displays, viewports and cameras (lane SpecOutputs)
+
+Built over the engine that exists; the design and its proofs are in design/js-outputs.md ("Displays, viewports and
+cameras"). Where the specification is ambiguous the lane chose the reading that makes the owner's examples run:
+
+- **A display for every output.** `input.activeDisplay` (spec 9A) and `gnoblin.displays.map(...)` (fence 093) need a
+  display with no `new Display` in the script, so the shell keeps a `single` display for each output no script display
+  presents. `activeDisplay` is the display under the pointer, else the primary output's (as a plain `show` acts on);
+  it is `null` only while no output has a desk.
+- **A workspace is on one display.** Fence 107 assigns one workspace to two displays. The renderer cannot draw a
+  workspace's windows twice (that is a `View` of a workspace, lane SpecScene), so `viewport.content = ws` keeps
+  `gnoblin.workspaces.show`'s swap: the display that showed `ws` takes the workspace the assigned one showed, and
+  `content` reads what the display shows. Shared views of one workspace (spec 9B) are not applied.
+- **`span` is one layout area.** One workspace is laid out over the bounding box of the outputs' work areas (the union of
+  unequal outputs has corners no output shows). The spec's authority policy (fixed bounds, primary, last active) is not
+  built.
+- **`displays.add` rejects, `replace` swaps.** The spec allows "replace or reject"; the lane rejects with both ids
+  (acceptance DW6) and `replace(old, new)` also removes any other script display that overlaps `new`, as the spec says.
+- **`mode: "single"` takes one output.** More are a `TypeError` naming `mirror` and `span`.
+- **Profile identity.** A profile's `id` defaults to its `match` written out; a profile matches the first connected output
+  that fits, and `serial` is the third part of the EDID identity. A relative `position` is sent after the neighbour's
+  answer. `vrr` is accepted and reported as not applied.
+- **`Camera2D` is a node.** `position`, `zoom` and `rotation` are the node's `x`/`y`, scale and turn about Z, so a
+  `requestTransition` animates them. Nothing in the tree can apply them to the windows (design/js-outputs.md), so a
+  non-identity one is kept and reported once per reload.
+- **`Camera3D` on a viewport is accepted, not drawn.** `position`, `projection`, `fov`, `near` and `far` are the camera
+  node's; `size` is held by the script object (the tree has no property). The lane's brief listed `target`; the spec has
+  `rotation` instead, which `Node` owns, so no `target` was added. One notice per reload:
+  `not applied: camera3d (needs a projected workspace)`.
+- **`Viewport.clearColor`** is kept and reported as not applied.
+
 ## Part 3. Replacement design
 
 ### 3.0 Rules

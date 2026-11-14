@@ -108,6 +108,8 @@ export interface InputWorld {
      * The rectangle a dragged window stays in (the work area of its output), or null when the tree has no screen yet.
      */
     workArea(client?: BindingClient): Rect | null;
+    /** The display under `point` (the primary output's when none is), or null when no display has an output. */
+    displayAt(point: Point): unknown;
     /** The layouts the workspaces use now. Their bindings go live in every context while they are in use. */
     layouts(): InputLayout[];
     /** Runs `run` later, under the call budget. A throw is reported against `site`. */
@@ -560,9 +562,12 @@ export class InputContext {
         }
     }
 
-    /** Not wired: displays have no JavaScript object yet. */
-    get activeDisplay(): null {
-        return null;
+    /**
+     * The display under this context's pointer (the primary output's when the pointer is outside every output), or null
+     * while no display has an output. Assigning `viewport.content` of it switches that monitor's workspace.
+     */
+    get activeDisplay(): unknown {
+        return this.#world.displayAt(this.pointer);
     }
 
     /** The pointer in the compositor's logical space. */

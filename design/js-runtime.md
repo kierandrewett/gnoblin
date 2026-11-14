@@ -1127,11 +1127,32 @@ do not see it, and its frame is the source's readback fitted into its panel, or 
 **JS.** `Output.apply(options)`, `Output.mirror(source)`, `Output.connector`, `identity`, `mirrorOf`,
 `OutputListener.onApplied`, and the `outputs` config key applied by connector (`outputRequest` in
 `data/js/gnoblin/config.ts` checks a request and names the key path). A mirrored or off output has no desk, so nothing is
-laid out on it; it gets one back when it is ordinary again. `Display`, `Viewport` and `Camera` are not added.
+laid out on it; it gets one back when it is ordinary again. (`Display`, `Viewport` and the cameras were not added then; see
+"Displays status" below, which reverses that.)
 
 **Not done.** A DRM modeset (the hardware backend refuses `configure_output`), a transform other than `normal` (no
 renderer draws a rotation), the GLES renderer's proof of a mirror, profiles that outlive a session, and
 `wlr-output-management` or `gnoblinctl output call apply` reaching the new path (both keep their old, narrower behaviour).
+
+## Displays status
+
+Lane SpecOutputs. Design and decisions: `design/js-outputs.md` ("Displays, viewports and cameras"), `design/js-spec-native.md`
+part 2.5. User page: `docs/shell-api/outputs.md` ("Hardware profiles", "Displays and viewports", "Cameras"). Tests:
+`crates/gnoblin-js/tests/displays.rs` (fake link), `crates/gnoblin/tests/js_shell.rs` ("logical displays": a span and a
+mirror over two real virtual outputs) and the conformance fences of `crates/gnoblin-js/tests/spec_conformance.rs`.
+
+**Built.** `OutputProfile` and `gnoblin.outputs.profiles`; `Display`, `gnoblin.displays` (with `replace`) and
+`input.activeDisplay`; `Viewport`; `Camera2D`; the spec's `position`, `size`, `near` and `far` on `Camera3D`. The classes are
+`data/js/gnoblin/display.ts`; the reconciler is `display_manager.ts`; the host module wires collections, desks (a desk may
+span others) and the output requests. The requests are the existing `screen.apply` text; nothing changed in the
+compositor.
+
+**Reported as not applied** (once per reload, as a diagnostic): a `Camera3D` on a viewport, a `Camera2D` that is not the
+identity, `Viewport.clearColor`, `OutputProfile.vrr`, a relative profile position whose neighbour is not connected.
+
+**Not done.** A workspace shown on two displays at once (the renderer cannot draw a workspace twice; fence 107 assigns it
+and the second assignment swaps), a perspective or zoomed workspace, the span authority policy, profiles that outlive a
+session, and undoing a mirror or profile a reload no longer declares.
 
 ## Host API B status
 

@@ -591,7 +591,14 @@ export interface Camera3DOptions extends NodeOptions {
     fov?: number;
     /** The distance between a stereo camera's eyes, in metres. */
     ipd?: number;
+    /** Where the camera sits, as the specification writes it (the same as `x`, `y` and `z`). */
+    position?: { x: number; y: number; z: number };
+    /** The visible height in scene units of an orthographic camera. */
+    size?: number;
 }
+
+/** The `size` of each camera: the tree has no property for it, so a script's camera holds it. */
+const cameraSizes = new WeakMap<object, number>();
 
 /** A camera: a space that projects its children. A `View` draws its content through the camera it names. */
 export class Camera3D extends Node {
@@ -607,6 +614,23 @@ export class Camera3D extends Node {
         if (options.far !== undefined) this.far = options.far;
         if (options.fov !== undefined) this.fov = options.fov;
         if (options.ipd !== undefined) this.ipd = options.ipd;
+        if (options.size !== undefined) this.size = options.size;
+        if (options.position !== undefined) {
+            this.x = finite(`${label(this)}.position.x`, options.position.x);
+            this.y = finite(`${label(this)}.position.y`, options.position.y);
+            this.z = finite(`${label(this)}.position.z`, options.position.z);
+        }
+    }
+
+    /** The visible height of an orthographic camera, in scene units. The shell keeps it; nothing draws from it yet. */
+    get size(): number {
+        return cameraSizes.get(this) ?? 1000;
+    }
+    set size(value: number) {
+        if (finite(`${label(this)}.size`, value) <= 0) {
+            throw new RangeError(`${label(this)}.size: must be above 0`);
+        }
+        cameraSizes.set(this, value);
     }
 
     /** `orthographic`, `perspective` or `stereo`. */

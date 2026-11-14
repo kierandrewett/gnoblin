@@ -90,6 +90,9 @@ import {
 import type { ClientStyleInit, ComputedStyle, Style, StyleLayer } from "gnoblin/style";
 import { attachScene, sceneForget, sceneReleaseAll } from "gnoblin/scene";
 import type { SceneBackend } from "gnoblin/scene";
+import { Display, OutputProfile, attachDisplays } from "gnoblin/display";
+import { DisplayManager } from "gnoblin/display_manager";
+import type { DisplayBackend, OutputSet } from "gnoblin/display_manager";
 import { Extensions, XRRuntime } from "gnoblin/xr";
 import type { XRWorld } from "gnoblin/xr";
 import { HostApi } from "gnoblin/session";
@@ -1554,7 +1557,7 @@ export class Output {
     /** The workspace the output shows, or null when it shows none or is gone. */
     get workspace(): Workspace | null {
         const desk = deskByOutput.get(this);
-        return desk !== undefined && stateOf(this).alive ? desk.shown : null;
+        return desk !== undefined && stateOf(this).alive ? effectiveDesk(desk).shown : null;
     }
 
     /**
@@ -1588,7 +1591,7 @@ export class Output {
 
 /** Any object kind supported by a host collection. */
 
-type Member = Client | Workspace | Output;
+type Member = Client | Workspace | Output | Display | OutputProfile;
 
 /** Operations that mutate a script-owned collection. */
 
@@ -1640,6 +1643,8 @@ const QUERY_KEYS: Record<string, readonly string[]> = {
     Client: ["id", "appId", "title", "focused", "fullscreen", "x", "y", "width", "height"],
     Workspace: ["id", "name", "index", "active"],
     Output: ["id", "name", "make", "model", "mode", "scale", "primary", "enabled", "x", "y", "width", "height"],
+    Display: ["id", "mode"],
+    OutputProfile: ["id", "enabled", "scale", "transform"],
 };
 
 /** Tests a member against the data-only property query. */
@@ -1940,11 +1945,31 @@ function rootState(kind: string): Omit<CollectionState, "self"> {
 // Owns the compositor's live objects and the script's workspace list.
 
 /** All native clients in compositor order. */
-
 const clientRoot = collectionState(new Collection<Client>(CREATE, rootState("Client")));
-/** Connected outputs in compositor creation order. */
+/** Hardware profiles in `gnoblin.outputs.profiles`; membership is script-owned and applied by the display manager. */
+const profileRoot = collectionState(
+    new MutableCollection<OutputProfile>(CREATE, {
+        ...rootState("OutputProfile"),
+        mutation: {
+            add: (profile) => displayManager.addProfile(profile as OutputProfile),
+            remove: (profile) => displayManager.removeProfile(profile as OutputProfile),
+            clear: () => {
+                for (const profile of [...profileRoot.list] as OutputProfile[]) {
+                    displayManager.removeProfile(profile);
+                }
+            },
+        },
+    }),
+);
 
-const outputRoot = collectionState(new Collection<Output>(CREATE, rootState("Output")));
+/** `gnoblin.outputs`: the connected outputs, and the profiles that say how each is configured. */
+class OutputCollection extends Collection<Output> {
+    /** The persistent hardware settings: an `OutputProfile` applies when its monitor is connected, also after a hotplug. */
+    readonly profiles = profileRoot.self as MutableCollection<OutputProfile>;
+}
+
+/** Connected outputs in compositor creation order. */
+const outputRoot = collectionState(new OutputCollection(CREATE, rootState("Output")));
 /** Script workspaces and their named sets; membership is script-owned. */
 
 const workspaceRoot = collectionState(
@@ -1965,6 +1990,28 @@ const workspaceRoot = collectionState(
                     removeWorkspace(workspace as Workspace);
                 }
             },
+        },
+    }),
+);
+
+/** `gnoblin.displays`: the logical displays, those of the script and the ones the shell keeps for the other outputs. */
+class DisplayCollection extends MutableCollection<Display> {
+    /**
+     * Swaps `old` for `next` as one validated change: `old` and any other script display that shares an output with
+     * `next` leave, and `next` takes `old`'s place. Nothing changes when the check fails.
+     */
+    replace(old: Display, next: Display): void {
+        displayManager.replaceDisplay(old, next);
+    }
+}
+
+const displayRoot = collectionState(
+    new DisplayCollection(CREATE, {
+        ...rootState("Display"),
+        mutation: {
+            add: (display) => displayManager.addDisplay(display as Display),
+            remove: (display) => displayManager.removeDisplay(display as Display),
+            clear: () => displayManager.clearDisplays(),
         },
     }),
 );
@@ -2030,6 +2077,15 @@ interface Desk {
     output: Output | null;
     shown: Workspace | null;
     parked: boolean;
+    /** The outputs this desk's one workspace is stretched over (this desk's own first), or null for a desk of one output. */
+    spans: Output[] | null;
+    /** The desk whose workspace covers this desk's output too. Such a desk shows no workspace of its own. */
+    spannedBy: Desk | null;
+}
+
+/** The desk that decides what `desk`'s output shows: itself, or the desk spanning over it. */
+function effectiveDesk(desk: Desk): Desk {
+    return desk.spannedBy ?? desk;
 }
 
 /** All live desks, with reverse lookup by output for active workspaces. */
@@ -2068,7 +2124,8 @@ function primaryDesk(): Desk | null {
 function currentDesk(): Desk | null {
     const node = host.pointerScreen();
     const under = node === undefined ? undefined : outputsByNode.get(node);
-    return (under === undefined ? undefined : deskByOutput.get(under)) ?? primaryDesk();
+    const own = (under === undefined ? undefined : deskByOutput.get(under)) ?? primaryDesk();
+    return own === null ? null : effectiveDesk(own);
 }
 
 /** Finds the desk that currently shows a workspace, if any. */
@@ -2092,14 +2149,14 @@ function deskOfClient(client: Client): Desk | null {
 /** A desk for a tree that has no output, so the first workspace is on show whatever the compositor has. */
 function ensureDesk(): void {
     if (desks.length === 0) {
-        desks.push({ output: null, shown: null, parked: false });
+        desks.push({ output: null, shown: null, parked: false, spans: null, spannedBy: null });
     }
 }
 
 /** Gives each desk that shows nothing the first workspace no desk shows. */
 function fillDesks(): void {
     for (const desk of desks) {
-        if (desk.shown !== null) {
+        if (desk.shown !== null || desk.spannedBy !== null) {
             continue;
         }
         const free = (workspaceRoot.list as Workspace[]).find((workspace) => deskShowing(workspace) === null);
@@ -2479,7 +2536,8 @@ function showWorkspace(workspace: Workspace | string, options: ShowOptions = {})
     }
     const duration = motion(asked);
     ensureDesk();
-    const desk = options.output === undefined ? currentDesk() : (deskByOutput.get(options.output) ?? null);
+    const own = options.output === undefined ? currentDesk() : (deskByOutput.get(options.output) ?? null);
+    const desk = own === null ? null : effectiveDesk(own);
     if (desk === null) {
         throw new GnoblinError("no-output", `${target}.show`, "there is no output to show a workspace on");
     }
@@ -2558,6 +2616,7 @@ function addWorkspace(workspace: Workspace): void {
     recompute(workspaceRoot, workspace);
     ensureDesk();
     fillDesks();
+    displayManager.changed();
     adoptOrphans();
 }
 
@@ -2566,6 +2625,7 @@ function addWorkspace(workspace: Workspace): void {
  * first), and that neighbour is shown where the removed one was; none is closed.
  */
 function removeWorkspace(workspace: Workspace): void {
+    displayManager.changed();
     const state = wsState(workspace);
     if (!state.attached) {
         return;
@@ -2639,9 +2699,46 @@ function areaOf(output: Output): Rect | null {
     };
 }
 
+/**
+ * The one area a spanning desk's workspace is laid out in: the bounding box of the work areas of the outputs it covers.
+ * A union of unequal outputs has corners no output shows; a window a layout puts there is not visible.
+ */
+function spanArea(outputs: readonly Output[]): Rect | null {
+    const areas = outputs.map(areaOf).filter((area): area is Rect => area !== null);
+    if (areas.length === 0) {
+        return null;
+    }
+    const left = Math.min(...areas.map((area) => area.x));
+    const top = Math.min(...areas.map((area) => area.y));
+    const right = Math.max(...areas.map((area) => area.x + area.width));
+    const bottom = Math.max(...areas.map((area) => area.y + area.height));
+    return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
 /** The area of the output a desk shows on: null for a desk with no output, a parked one, or an output with no size. */
 function areaOfDesk(desk: Desk): Rect | null {
-    return desk.output === null || desk.parked ? null : areaOf(desk.output);
+    if (desk.output === null || desk.parked) {
+        return null;
+    }
+    return desk.spans === null ? areaOf(desk.output) : spanArea(desk.spans);
+}
+
+/** The output of `desk` that holds the middle of `client`: a spanning desk covers several, any other has one. */
+function deskOutputAt(desk: Desk, client: Client | null): Output | null {
+    if (desk.output === null || desk.parked) {
+        return null;
+    }
+    if (desk.spans === null || client === null) {
+        return desk.output;
+    }
+    const x = client.x + client.width / 2;
+    const y = client.y + client.height / 2;
+    return (
+        desk.spans.find((output) => {
+            const rect = rectOf(output);
+            return rect !== null && x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height;
+        }) ?? desk.output
+    );
 }
 
 /** The primary output as a rectangle: the whole output. Null when the tree has no output yet. */
@@ -2659,19 +2756,21 @@ function screenArea(): Rect | null {
 /** The output rectangle `client` is on, or the primary output's when its workspace is on none. */
 function outputRectOf(client: Client | null): Rect | null {
     const desk = client === null ? null : deskOfClient(client);
-    return desk?.output && !desk.parked ? rectOf(desk.output) : screenRect();
+    const output = desk === null ? null : deskOutputAt(desk, client);
+    return output === null ? screenRect() : rectOf(output);
 }
 
 /** The work area of the output `client` is on, or the primary output's when its workspace is on none. */
 function workAreaOf(client: Client | null): Rect | null {
     const desk = client === null ? null : deskOfClient(client);
-    return desk?.output && !desk.parked ? areaOf(desk.output) : screenArea();
+    const output = desk === null ? null : deskOutputAt(desk, client);
+    return output === null ? screenArea() : areaOf(output);
 }
 
-/** The work area of the output that shows `workspace`, or the primary output's when none does. */
+/** The work area of the output that shows `workspace` (all of a span), or the primary output's when none does. */
 function workAreaOfWorkspace(workspace: Workspace): Rect | null {
     const desk = deskShowing(workspace);
-    return desk?.output && !desk.parked ? areaOf(desk.output) : screenArea();
+    return desk?.output && !desk.parked ? areaOfDesk(desk) : screenArea();
 }
 
 /** Writes the parts of `rect` the client does not have already. */
@@ -3156,6 +3255,7 @@ let laying = false;
 /** Runs one guarded layout pass over workspaces and returns the number recomputed. */
 
 function layoutWorkspaces(): number {
+    displayManager.frame();
     fillDesks();
     // A workspace no output shows hears its hooks for the primary output's area; one an output shows, for that output's.
     const fallback = screenArea();
@@ -3451,6 +3551,7 @@ function adopt(node: NodeId, announce: boolean): void {
  * shell runs is announced; one that was there at boot is not, because the config attaches after it exists.
  */
 function adoptScreen(node: NodeId, announce: boolean): void {
+    displayManager.changed();
     const output = new Output(CREATE, node);
     outputsByNode.set(node, output);
     outputRoot.list.push(output);
@@ -3485,7 +3586,7 @@ function adoptScreen(node: NodeId, announce: boolean): void {
 function giveDesk(output: Output): boolean {
     let desk = desks.find((candidate) => candidate.output === null);
     if (desk === undefined) {
-        desk = { output: null, shown: null, parked: false };
+        desk = { output: null, shown: null, parked: false, spans: null, spannedBy: null };
         desks.push(desk);
     }
     const wasParked = desk.parked;
@@ -3505,6 +3606,7 @@ function giveDesk(output: Output): boolean {
  * dropped, because a window with no output cannot hold it.
  */
 function releaseScreen(output: Output): void {
+    displayManager.changed();
     const held = leave(outputRoot, output, outputsByNode, OUTPUT_KEYS);
     takeDesk(output);
     emitMember(output, held, "onDisconnected", [output]);
@@ -3545,8 +3647,145 @@ function takeDesk(output: Output): void {
             }
         }
     }
+    for (const other of desks) {
+        if (other.spannedBy === desk) {
+            other.spannedBy = null;
+        }
+    }
     deskByOutput.delete(output);
 }
+
+// ---- Displays ----
+// Owns what a `Display` does to the desks and the output requests: the shell side of `gnoblin/display_manager`.
+
+/** Whether two lists hold the same outputs in the same order. */
+function sameOutputs(a: readonly Output[], b: readonly Output[]): boolean {
+    return a.length === b.length && a.every((output, at) => output === b[at]);
+}
+
+/**
+ * Makes the desk of `lead` show one workspace over `members` (the desks of the other members show nothing of their own
+ * and cover the same workspace), or ends the span with null. Asking for the span that holds changes nothing.
+ */
+function spanDesks(lead: Output, members: readonly Output[] | null): void {
+    const desk = deskByOutput.get(lead);
+    if (desk === undefined) {
+        return;
+    }
+    const covered = (members ?? []).filter((output) => deskByOutput.has(output));
+    const next = covered.length > 1 ? covered : null;
+    if (next === null ? desk.spans === null : desk.spans !== null && sameOutputs(desk.spans, next)) {
+        return;
+    }
+    for (const other of desks) {
+        if (other.spannedBy === desk) {
+            other.spannedBy = null;
+        }
+    }
+    desk.spans = next;
+    for (const output of next ?? []) {
+        const under = deskByOutput.get(output);
+        if (under !== undefined && under !== desk) {
+            under.spannedBy = desk;
+            setShown(under, null);
+        }
+    }
+    if (desk.shown !== null) {
+        wsState(desk.shown).dirty = true;
+    }
+    fillDesks();
+}
+
+/** Sends an output request on behalf of a profile or display; a request the shell cannot send is reported, not thrown. */
+function requestOutput(
+    output: Output,
+    setting: OutputConfig & { mirrorOf?: Output | string | null },
+    path: string,
+): void {
+    try {
+        applyOutput(output, setting, `gnoblin.${path}`, path);
+    } catch (error) {
+        say(`${path}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+
+/** A `Collection<Output>` for one display, kept equal to what the display presents. */
+function makeOutputSet(): OutputSet {
+    const collection = new Collection<Output>(CREATE, rootState("Output"));
+    const state = collectionState(collection);
+    return {
+        collection,
+        set(outputs) {
+            const before = state.list as Output[];
+            if (sameOutputs(before, outputs as Output[])) {
+                return;
+            }
+            state.list = [...outputs] as Output[];
+            for (const output of outputs as Output[]) {
+                if (!before.includes(output)) {
+                    queueFor(state, "onAdded", [output, collection]);
+                }
+            }
+            for (const output of before) {
+                if (!outputs.includes(output)) {
+                    queueFor(state, "onRemoved", [output, collection]);
+                }
+            }
+        },
+    };
+}
+
+/** Tells the collection that holds `member` that it joined (`onAdded`) or left (`onRemoved`). */
+function announceMember(member: Display | OutputProfile, joined: boolean): void {
+    const root = member instanceof Display ? displayRoot : profileRoot;
+    if (joined) {
+        queueFor(root, "onAdded", [member, root.self]);
+        recompute(root, member);
+        return;
+    }
+    for (const view of holders(root, member)) {
+        view.members?.delete(member);
+        queueFor(view, "onRemoved", [member, view.self]);
+    }
+}
+
+const displayBackend: DisplayBackend = {
+    outputs: () => liveOutputs(),
+    primary: () => primaryOutput(),
+    hasDesk: (output) => deskByOutput.has(output as Output),
+    shownOn: (output) => {
+        const desk = deskByOutput.get(output as Output);
+        return desk === undefined ? null : effectiveDesk(desk).shown;
+    },
+    attached: (workspace) => wsState(workspace as Workspace).attached,
+    show: (workspace, output) => showWorkspace(workspace as Workspace, { output: output as Output }),
+    span: (lead, members) => spanDesks(lead as Output, members as readonly Output[] | null),
+    mirrorOf: (output) => (output as Output).mirrorOf,
+    mirror: (output, source, path) => requestOutput(output as Output, { mirrorOf: source as Output | null }, path),
+    apply: (output, setting, path) => requestOutput(output as Output, setting as OutputConfig, path),
+    pending: (output) => [...applications.values()].some((pending) => pending.output === output),
+    say,
+    error: (code, target, message) => new GnoblinError(code, target, message),
+    outputSet: makeOutputSet,
+    listed: (member) => announceMember(member, true),
+    unlisted: (member) => announceMember(member, false),
+};
+
+/** Reconciles the script's profiles and displays with the connected outputs. */
+const displayManager = new DisplayManager(
+    displayBackend,
+    profileRoot.list as OutputProfile[],
+    displayRoot.list as Display[],
+);
+attachDisplays({
+    changed: () => displayManager.changed(),
+    isWorkspace: (value) => value instanceof Workspace,
+    isOutput: (value) => value instanceof Output,
+    error: (code, target, message) => new GnoblinError(code, target, message),
+    shown: (display) => displayManager.shown(display),
+    show: (display, workspace) => displayManager.assignContent(display, workspace),
+    outputs: (display) => displayManager.outputsOf(display),
+});
 
 // ---- Output configuration and events ----
 // Owns asynchronous output applications and output-property event delivery.
@@ -3609,6 +3848,7 @@ function settleApplications(): void {
             continue;
         }
         applications.delete(answer.token);
+        displayManager.changed();
         pending.result.done = true;
         pending.result.error = answer.error === "" ? null : answer.error;
         if (pending.result.error !== null && pending.path !== null) {
@@ -3644,6 +3884,7 @@ function configureOutput(output: Output): void {
 
 /** Raises the events one output's changed properties imply, to the listeners that held it. */
 function outputChanged(output: Output): void {
+    displayManager.changed();
     const seen = outputSeen.get(output) as OutputSeen;
     const now = publishedOutput(stateOf(output).node);
     const held = holders(outputRoot, output);
@@ -3925,6 +4166,7 @@ const input = new InputManager(seatHost, {
     clientOf: (node) => clientsByNode.get(node),
     stack: () => host.windows().flatMap((node) => clientsByNode.get(node) ?? []),
     workArea: (client) => workAreaOf((client as Client | undefined) ?? null),
+    displayAt: (point) => displayManager.displayAt(point),
     layouts: () => workspaceRoot.list.map((workspace) => wsState(workspace as Workspace).layout),
     schedule: (site, task) => {
         queue.push({ site, task });
@@ -4589,6 +4831,16 @@ function snapshotScriptState(): () => void {
         });
     }
     restores.push(snapshotStyles(everyStyle));
+    restores.push(displayManager.snapshot());
+    const shownBefore = desks.map((desk) => [desk, desk.shown] as const);
+    restores.push(() => {
+        for (const [desk, shown] of shownBefore) {
+            desk.shown = shown;
+            if (shown !== null) {
+                wsState(shown).dirty = true;
+            }
+        }
+    });
     return () => {
         for (const restore of restores) {
             restore();
@@ -4655,7 +4907,9 @@ class Gnoblin {
     readonly clients = clientRoot.self as Collection<Client>;
     readonly workspaces = workspaceRoot.self as WorkspaceCollection;
     /** The outputs, live across hotplug: an output is added when it is plugged in and removed when it goes. */
-    readonly outputs = outputRoot.self as Collection<Output>;
+    readonly outputs = outputRoot.self as OutputCollection;
+    /** The logical displays: what each monitor shows, and through which camera. See `Display`. */
+    readonly displays = displayRoot.self as DisplayCollection;
     /** The seats of the compositor as input contexts, with the bindings that run on their chords and drags. */
     readonly input = input;
     /** Policy over the compositor's own consent, passphrase and authentication dialogs: listeners that may refuse a request. */
@@ -4902,6 +5156,22 @@ inspect.register(Output, (output) => ({
     },
     brief: { name: output.name, mode: output.mode },
 }));
+inspect.register(Display, (display) => ({
+    name: "Display",
+    id: display.id,
+    fields: {
+        mode: display.mode,
+        outputs: display.outputs.length,
+        workspace: (display.viewport.content as Workspace | null)?.id ?? null,
+    },
+    brief: { mode: display.mode },
+}));
+inspect.register(OutputProfile, (profile) => ({
+    name: "OutputProfile",
+    id: profile.id,
+    fields: { mode: profile.mode ?? null, scale: profile.scale ?? null, enabled: profile.enabled ?? null },
+    brief: { id: profile.id },
+}));
 inspect.register(Collection, (collection) => ({
     name: "Collection",
     fields: {},
@@ -4914,6 +5184,7 @@ for (const node of host.screens()) {
 for (const node of host.windows()) {
     adopt(node, false);
 }
+displayManager.reflow();
 
 Object.defineProperty(globalThis, "gnoblin", { value: gnoblin, enumerable: false });
 // The console's helpers: `inspect.clients()` and the rest are typed at a console prompt without an import. Unlike

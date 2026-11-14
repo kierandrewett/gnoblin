@@ -12,6 +12,7 @@
 
 declare module "gnoblin" {
     import type { GnoblinSignals } from "gnoblin/schema/signals";
+    import type { Camera3D as SceneCamera3D } from "gnoblin/extensions/xr";
 
     // -- Geometry and transforms ---------------------------------------------
 
@@ -695,6 +696,160 @@ declare module "gnoblin" {
         mirror(source: Output | null): OutputApplication;
     }
 
+    // -- Displays, viewports and cameras (owner-spec sections 8 and 9) --------
+
+    /** Which monitor an `OutputProfile` is for. Every key given must match; at least one is required. */
+    export interface OutputMatch {
+        /** The connector name (`DP-1`). */
+        connector?: string;
+        /** The manufacturer as the display reports it. */
+        make?: string;
+        /** The model name as the display reports it. */
+        model?: string;
+        /** The serial number of the monitor's EDID identity. */
+        serial?: string;
+    }
+    /** A mode: `"preferred"`, `"WIDTHxHEIGHT@HERTZ"` or its parts. */
+    export type OutputProfileMode =
+        | "preferred"
+        | string
+        | { readonly width: number; readonly height: number; readonly refreshRate: number };
+    /** Where along the shared edge an output sits: `top`, `center`, `bottom` beside it, `left`, `center`, `right` above or below. */
+    export type OutputAlign = "top" | "center" | "bottom" | "left" | "right";
+    /** What a relative position names: the profile of the neighbour, or an `Output`. */
+    export type PlacementTarget = OutputProfile | Output;
+    /** A pixel position, or a place against the output of another profile. */
+    export type OutputProfilePosition =
+        | { readonly x: number; readonly y: number }
+        | { readonly rightOf: PlacementTarget; readonly align?: OutputAlign }
+        | { readonly leftOf: PlacementTarget; readonly align?: OutputAlign }
+        | { readonly above: PlacementTarget; readonly align?: OutputAlign }
+        | { readonly below: PlacementTarget; readonly align?: OutputAlign };
+    /** The arguments of `new OutputProfile`. */
+    export interface OutputProfileInit {
+        /** Stable name in `gnoblin.outputs.profiles`; default: the `match` written out (`DP-1`). */
+        id?: string;
+        match: OutputMatch;
+        mode?: OutputProfileMode;
+        /** From 0.5 to 4. */
+        scale?: number;
+        transform?: OutputSetting["transform"];
+        /** Asks for variable refresh rate. Accepted and reported as not applied: the output request has no such key yet. */
+        vrr?: boolean;
+        position?: OutputProfilePosition;
+        /** `false` switches the output off. */
+        enabled?: boolean;
+    }
+    /**
+     * The persistent hardware settings of one monitor: its mode, scale, transform and place. A profile is inert while no
+     * matching output is connected and applies when one is, also after a hotplug, as one transaction (an overlap, a gap
+     * or a mode the backend refuses keeps the last good arrangement and is reported). Put it in
+     * `gnoblin.outputs.profiles`. Every property but `match` may be changed; the change applies on the next frame.
+     * Removing a profile does not undo what the compositor applied.
+     */
+    export class OutputProfile {
+        /** Throws a `TypeError` naming the key when one is unknown or out of range. */
+        constructor(init: OutputProfileInit);
+        readonly id: string;
+        readonly match: Readonly<OutputMatch>;
+        mode: OutputProfileMode | undefined;
+        scale: number | undefined;
+        transform: OutputSetting["transform"] | undefined;
+        vrr: boolean | undefined;
+        position: OutputProfilePosition | undefined;
+        enabled: boolean | undefined;
+    }
+    /** The arguments of `new Camera2D`. */
+    export interface Camera2DInit {
+        name?: string;
+        /** Where the camera looks, in pixels of the content. Default `{ x: 0, y: 0 }`. */
+        position?: Vec2;
+        /** Magnification: 1 shows the content at its size. Above 0. */
+        zoom?: number;
+        /** Radians about the view axis. */
+        rotation?: number;
+    }
+    export interface Camera2D extends Omit<Node, "position" | "rotation"> {}
+    /**
+     * A flat camera. `position`, `zoom` and `rotation` are properties of its scene node, so a `requestTransition` animates
+     * them. As the camera of a viewport they are kept and read back, and the shell reports once per reload that it draws
+     * the workspace unscaled and unrotated: windows sit directly under the tree root, so there is no per-display root to
+     * transform (design/js-spec-native.md, part 2, "Cameras").
+     */
+    export class Camera2D {
+        constructor(options?: Camera2DInit);
+        /** Where the camera looks, in pixels of the content. */
+        position: Vec2;
+        /** Magnification; 1 shows the content at its size. */
+        zoom: number;
+        /** The roll about the view axis, in radians. */
+        rotation: number;
+    }
+    /** The arguments of `new Viewport`. */
+    export interface ViewportInit {
+        /** The workspace to show. */
+        content?: Workspace;
+        /** Default: a `Camera2D` with no zoom, pan or roll. */
+        camera?: Camera2D | SceneCamera3D;
+        /** The colour behind the content. Kept and readable; the compositor has no background colour to draw it. */
+        clearColor?: string;
+    }
+    /**
+     * What a display shows and how it looks at it. Assigning `content` on the viewport of a display shows that workspace
+     * there, as `gnoblin.workspaces.show` does (a workspace is on one display at a time: one that another display shows
+     * moves, and that display takes the one this showed). Reading it gives what the display shows now. A `Camera3D` is
+     * accepted and kept, and the shell reports once per reload that it draws a flat workspace only.
+     */
+    export class Viewport {
+        /** Throws a `TypeError` when `content` is not a workspace or `camera` is not a camera. */
+        constructor(init?: ViewportInit);
+        content: Workspace | null;
+        camera: Camera2D | SceneCamera3D;
+        clearColor: string;
+    }
+    /** How a display presents its outputs. */
+    export type DisplayMode = "single" | "mirror" | "span";
+    /** The arguments of `new Display`. */
+    export interface DisplayInit {
+        /** Stable name; default `display-N` in creation order. */
+        id?: string;
+        /** The outputs the display presents: profiles (persistent selectors) or connected outputs. At least one. */
+        outputs: readonly (OutputProfile | Output)[];
+        /** `single` (default) presents one output; `mirror` and `span` present several. */
+        mode?: DisplayMode;
+        viewport?: Viewport;
+    }
+    /**
+     * A logical presentation: one viewport shown on one output (`single`), copied to several (`mirror`, through the
+     * compositor's mirror) or stretched over their union (`span`, one workspace laid out over the bounding box of the
+     * outputs' work areas). An output belongs to one display at a time: `gnoblin.displays.add` refuses a display that shares
+     * an output with another and names both. With no matching output connected the display is parked and its workspace is
+     * kept. The shell keeps a `single` display for each output no script display presents, so `gnoblin.displays` always lists
+     * what each monitor shows.
+     */
+    export class Display {
+        /** Throws a `TypeError` when `outputs` is empty or `viewport` already belongs to another display. */
+        constructor(init: DisplayInit);
+        readonly id: string;
+        mode: DisplayMode;
+        /** The connected outputs the display presents now; empty while the display is parked. */
+        readonly outputs: Collection<Output>;
+        readonly viewport: Viewport;
+    }
+    /** `gnoblin.outputs`: the connected outputs and the profiles that configure them. */
+    export interface OutputCollection extends Collection<Output> {
+        /** The persistent hardware settings. An `OutputProfile` applies when its monitor is connected, also after a hotplug. */
+        readonly profiles: MutableCollection<OutputProfile>;
+    }
+    /** `gnoblin.displays`: the logical displays. */
+    export interface DisplayCollection extends MutableCollection<Display> {
+        /**
+         * Swaps `old` for `next` as one validated change: `old` and every other script display that shares an output with
+         * `next` leave, and `next` takes `old`'s place. Nothing changes when the check fails.
+         */
+        replace(old: Display, next: Display): void;
+    }
+
     // -- Triggers and bindings (owner-spec sections 10 and 11) ----------------
 
     /** The modifiers a canonical trigger writes, in this order. */
@@ -987,8 +1142,11 @@ declare module "gnoblin" {
         readonly bindings: BindingCollection;
         /** Read through to the seat on every call. */
         readonly focusedClient: Client | null;
-        /** Not wired: displays have no JavaScript object yet. */
-        readonly activeDisplay: null;
+        /**
+         * The display under this context's pointer, else the primary output's; null while no display has an output.
+         * Assigning `viewport.content` of it switches that monitor's workspace.
+         */
+        readonly activeDisplay: Display | null;
         readonly pointer: Vec2;
         /** What the seat publishes, with the config's `edgeTiling` and `dragConstraint` over it. */
         readonly settings: SeatSettings;
@@ -1865,7 +2023,9 @@ declare module "gnoblin" {
         /** Compositor-managed: read-only membership. */
         readonly clients: Collection<Client>;
         readonly workspaces: WorkspaceCollection;
-        readonly outputs: Collection<Output>;
+        readonly outputs: OutputCollection;
+        /** The logical displays: what each monitor shows and how it is looked at. See `Display`. */
+        readonly displays: DisplayCollection;
         /** The compositor's seats as input contexts, with the bindings that run on their chords and drags. */
         readonly input: InputManager;
         /**
@@ -3252,6 +3412,10 @@ declare module "gnoblin/extensions/xr" {
         far?: number;
         fov?: number;
         ipd?: number;
+        /** Where the camera sits (the same as `x`, `y` and `z`). */
+        position?: { x: number; y: number; z: number };
+        /** The visible height of an orthographic camera, in scene units. */
+        size?: number;
     }
     export class Camera3D extends Node {
         constructor(options?: Camera3DOptions);
@@ -3261,6 +3425,8 @@ declare module "gnoblin/extensions/xr" {
         far: number;
         fov: number;
         ipd: number;
+        /** The visible height of an orthographic camera, in scene units. The shell keeps it; nothing draws from it yet. */
+        size: number;
         readonly layerBudget: number;
     }
     /** Initial content and pixel dimensions for a view. */

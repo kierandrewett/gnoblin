@@ -84,5 +84,7 @@ export type {
     StyleProperty,
 } from "gnoblin/style";
 export { Camera3D, Node, View } from "gnoblin/scene";
+// Logical displays (owner-spec sections 8 and 9). The manager (`gnoblin/display_manager`) stays with the host.
+export { Camera2D, Display, OutputProfile, Viewport } from "gnoblin/display";
 export { LockScreen, PasswordEntry, defaultLockStyle, formatClock, lockScreen } from "gnoblin/lock";
 export type { LockAnswer, LockBackend, LockStyle } from "gnoblin/lock";

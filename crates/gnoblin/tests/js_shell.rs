@@ -4488,6 +4488,167 @@ fn a_window_on_a_second_virtual_output_follows_to_the_first_when_it_is_unplugged
     );
 }
 
+// ---- logical displays: profiles, span and mirror over two real virtual outputs -----------------------------------------
+
+/// An `init.ts` in the specification's style: a profile for each headless output, a display over both in `mode` that
+/// is added when the second output arrives, and removed when a window of `org.example.second` maps. The probe lists the
+/// displays as `[id, mode, outputs, workspace]`.
+fn displays_init(mode: &str) -> String {
+    format!(
+        r#"import {{ CollectionListener, Display, Layout, OutputProfile, Viewport, Workspace, gnoblin }} from "gnoblin";
+
+class Fill extends Layout {{
+    compute(context: any) {{
+        return context.children.map((node: any) => ({{ node, tiled: true, bounds: {{ ...context.area }} }}));
+    }}
+}}
+
+const one = new Workspace({{ id: "one", layout: new Fill() }});
+const two = new Workspace({{ id: "two", layout: new Fill() }});
+gnoblin.workspaces.add(one);
+gnoblin.workspaces.add(two);
+
+const left = new OutputProfile({{ match: {{ connector: "HEADLESS-1" }}, mode: "preferred" }});
+const right = new OutputProfile({{ match: {{ connector: "HEADLESS-2" }}, position: {{ rightOf: left, align: "top" }} }});
+gnoblin.outputs.profiles.add(left);
+gnoblin.outputs.profiles.add(right);
+
+const both = new Display({{ id: "both", outputs: [left, right], mode: "{mode}", viewport: new Viewport({{ content: one }}) }});
+(globalThis as any).probe = () =>
+    JSON.stringify(gnoblin.displays.map((d) => [d.id, d.mode, d.outputs.length, d.viewport.content?.id ?? null]));
+
+class Join extends CollectionListener {{
+    onAdded(output: any) {{
+        if (output.connector === "HEADLESS-2") gnoblin.displays.add(both);
+    }}
+}}
+gnoblin.outputs.addListener(new Join());
+class Split extends CollectionListener {{
+    onAdded(client: any) {{
+        if (client.appId === "org.example.second") gnoblin.displays.remove(both);
+    }}
+}}
+gnoblin.clients.addListener(new Split());
+"#
+    )
+}
+
+fn write_displays_config(dir: &Path, mode: &str) {
+    fs::write(dir.join("init.ts"), displays_init(mode)).expect("init.ts");
+}
+
+/// The `mirror_of` the compositor publishes for each screen that has one, by place.
+fn mirrors(ipc: &Path) -> Vec<String> {
+    snapshot(ipc)
+        .iter()
+        .filter(|node| node.class == "screen")
+        .flat_map(|node| node.props.iter())
+        .filter(|prop| prop.key == "mirror_of" && !prop.value_text.is_empty())
+        .map(|prop| prop.value_text.clone())
+        .collect()
+}
+
+#[test]
+fn a_span_display_over_two_real_outputs_lays_a_workspace_out_over_both_and_ends_with_its_removal() {
+    // The second output arrives and the script adds one `span` display over both profiles: the workspace the display
+    // shows is laid out over the bounding box of the two outputs, so a window fills both. A window of
+    // `org.example.second` maps and the script removes the display: the first window is laid out in its own output again.
+    let tap = OutputTap::new();
+    let session = Session::start_with({
+        let tap = tap.clone();
+        move |config| config.output_tap = Some(tap)
+    });
+    let config = tempfile::tempdir().expect("a config directory");
+    write_displays_config(config.path(), "span");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    wait_for("the shell runs the config", &session, &mut mapper, &shell, || {
+        shell.generation() > 0 && shell.probe().contains("display-HEADLESS-1")
+    });
+    assert!(tap.connect("HEADLESS-2", 800, 600), "the session takes a second output");
+    wait_for("two screens", &session, &mut mapper, &shell, || screens(&ipc) == 2);
+    wait_for("the span display is listed", &session, &mut mapper, &shell, || {
+        shell.probe() == r#"[["both","span",2,"one"]]"#
+    });
+    let places = screens_by_place(&ipc);
+    let ((_, first), (_, second)) = (places[0], places[1]);
+    let union = (
+        first.0.min(second.0),
+        first.1.min(second.1),
+        (first.0 + first.2).max(second.0 + second.2) - first.0.min(second.0),
+        (first.1 + first.3).max(second.1 + second.3) - first.1.min(second.1),
+    );
+
+    let (primary, other) = ("org.example.first", "org.example.second");
+    mapper.map_window(primary, "First");
+    wait_for("the window fills both outputs", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, primary) == Some(union)
+    });
+
+    mapper.map_window(other, "Second");
+    wait_for(
+        "the span is gone: one display per output",
+        &session,
+        &mut mapper,
+        &shell,
+        || {
+            let probe: serde_json::Value = serde_json::from_str(&shell.probe()).unwrap_or(serde_json::Value::Null);
+            probe.as_array().is_some_and(|list| {
+                list.len() == 2 && list.iter().all(|display| display[1] == "single" && display[2] == 1)
+            })
+        },
+    );
+    wait_for(
+        "the first window is laid out in its own output again",
+        &session,
+        &mut mapper,
+        &shell,
+        || rect_of(&ipc, primary) == Some(first),
+    );
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+}
+
+#[test]
+fn a_mirror_display_over_two_real_outputs_mirrors_in_the_compositor_and_stops_with_its_removal() {
+    let tap = OutputTap::new();
+    let session = Session::start_with({
+        let tap = tap.clone();
+        move |config| config.output_tap = Some(tap)
+    });
+    let config = tempfile::tempdir().expect("a config directory");
+    write_displays_config(config.path(), "mirror");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    wait_for("the shell runs the config", &session, &mut mapper, &shell, || {
+        shell.generation() > 0 && shell.probe().contains("display-HEADLESS-1")
+    });
+    assert!(tap.connect("HEADLESS-2", 800, 600), "the session takes a second output");
+    wait_for("two screens", &session, &mut mapper, &shell, || screens(&ipc) == 2);
+    wait_for(
+        "the second output mirrors the first",
+        &session,
+        &mut mapper,
+        &shell,
+        || mirrors(&ipc) == ["HEADLESS-1"] && shell.probe() == r#"[["both","mirror",2,"one"]]"#,
+    );
+
+    mapper.map_window("org.example.second", "Second");
+    wait_for(
+        "the mirror ends with the display",
+        &session,
+        &mut mapper,
+        &shell,
+        || mirrors(&ipc).is_empty(),
+    );
+    wait_for("each output has a display again", &session, &mut mapper, &shell, || {
+        let probe: serde_json::Value = serde_json::from_str(&shell.probe()).unwrap_or(serde_json::Value::Null);
+        probe.as_array().is_some_and(|list| list.len() == 2)
+    });
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+}
+
 // ---- the host API: session, process, timers, events ---------------------------------------------------------------
 
 /// A config that records what the host API did, for the probe: a timer that ran, a program that ended, the session's
