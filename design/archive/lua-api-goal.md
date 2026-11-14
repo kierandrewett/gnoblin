@@ -1,5 +1,7 @@
 # Goal: overhaul the Gnoblin Lua API into an object-centric API
 
+> Superseded by [design/js-runtime.md](../js-runtime.md): the shell language is TypeScript on QuickJS and the Lua API is deleted. Kept for history.
+
 Make the Lua runtime feel like a living runtime that shell developers can do real work in. Replace snapshots plus loose
 functions that take IDs with live handles, explicit operations and signals.
 

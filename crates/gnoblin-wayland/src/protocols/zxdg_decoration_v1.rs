@@ -6,7 +6,7 @@
 //! client asked for (`client`, `server`, or `unset`) and `decoration` is the answer (`client`, `server`, or `none`).
 //!
 //! Gnoblin's own decorations are the stock `Titlebar` shell node, not a protocol a client speaks
-//! (`design/node-api-refactor.md`, Decision 2). The compositor draws no frame itself, so it promises server-side
+//! (`design/archive/node-api-refactor.md`, Decision 2). The compositor draws no frame itself, so it promises server-side
 //! only while a shell that holds the tree has declared that it draws one: the main seat's `decorations_available`. A
 //! window that asked for server-side with nobody drawing would be undecorated and unmovable, so with no shell, or
 //! one that has not declared decorations, every client is told client-side.

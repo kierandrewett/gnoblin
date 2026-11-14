@@ -1,9 +1,9 @@
 //! Focus, window rules and edge snapping of the stock library: `data/js/gnoblin/{focus,rules,snap}.ts` and the
 //! pieces of `gnoblin.ts` and `bindings.ts` they stand on.
 //!
-//! The cases are the Lua shell's: `crates/gnoblin-lua/tests/lua/{focus,rules,snap}_test.lua`. A Lua case keeps its
-//! inputs and its expected values; where the JavaScript API changed a word (`hover` is `sloppy`, a Lua pattern is a
-//! glob, `last matching rule wins` is `first wins unless all`), the case says so. A case with no Lua original says
+//! The cases are the retired shell's: `the retired retired corpus`. A retired case keeps its
+//! inputs and its expected values; where the JavaScript API changed a word (`hover` is `sloppy`, a retired pattern is a
+//! glob, `last matching rule wins` is `first wins unless all`), the case says so. A case with no retired original says
 //! "new". The pure functions run in a bare generation (no host); everything that touches a window runs a real
 //! `JsShell` over `FakeLink`, an in-memory compositor that records the calls and writes the shell sends and plays back
 //! pointer edges, new windows and drags. Nothing here proves what the real compositor does with those calls: that is
@@ -68,7 +68,7 @@ fn lines(expected: &[&str]) -> String {
 
 #[test]
 fn with_no_options_the_documented_focus_defaults_apply() {
-    // Lua: "with no options, the documented defaults apply".
+    // Before: "with no options, the documented defaults apply".
     let got = run(r#"
         const o = focusSettings({});
         emit([o.mode, o.newWindows, o.raiseOnClick, o.autoRaise, o.autoRaiseDelay, o.changeOnPointerRest].join(","));
@@ -78,7 +78,7 @@ fn with_no_options_the_documented_focus_defaults_apply() {
 
 #[test]
 fn a_user_option_overrides_only_the_key_it_names() {
-    // Lua: "a user option overrides only the key it names" (hover is sloppy).
+    // Before: "a user option overrides only the key it names" (hover is sloppy).
     let got = run(r#"
         const o = focusSettings({ mode: "sloppy" });
         emit([o.mode, o.raiseOnClick].join(","));
@@ -88,8 +88,8 @@ fn a_user_option_overrides_only_the_key_it_names() {
 
 #[test]
 fn a_bad_focus_option_throws_naming_the_key_instead_of_falling_back() {
-    // Lua: "an unknown focus_mode raises", "focus_new_windows accepts only allow or prevent", "auto_raise_delay must be
-    // a non-negative number of milliseconds", "an unknown option name raises". The Lua `sloppy` is invalid there and
+    // Before: "an unknown focus_mode raises", "focus_new_windows accepts only allow or prevent", "auto_raise_delay must be
+    // a non-negative number of milliseconds", "an unknown option name raises". The the retired shell `sloppy` is invalid there and
     // valid here, so the unknown mode is `bogus`.
     let got = run(r#"
         const bad = (u: any) => thrown(() => focusSettings(u));
@@ -121,7 +121,7 @@ fn a_bad_focus_option_throws_naming_the_key_instead_of_falling_back() {
 
 #[test]
 fn a_window_from_a_launcher_takes_focus_only_under_allow() {
-    // Lua: "prevent keeps a window started from a launcher behind; allow focuses it" and "a window not started from a
+    // Before: "prevent keeps a window started from a launcher behind; allow focuses it" and "a window not started from a
     // launcher takes focus under either policy".
     let got = run(r#"
         const prevent = focusSettings({});
@@ -138,7 +138,7 @@ fn a_window_from_a_launcher_takes_focus_only_under_allow() {
 
 #[test]
 fn the_focus_modes_decide_what_the_pointer_over_a_window_does() {
-    // Lua: "click mode never moves focus on hover", "hover mode focuses the window under the pointer, on entry or
+    // Before: "click mode never moves focus on hover", "hover mode focuses the window under the pointer, on entry or
     // movement", "hover-strict focuses only when the pointer enters the window" (hover is sloppy, hover-strict is
     // follow-mouse).
     let got = run(r#"
@@ -159,7 +159,7 @@ fn the_focus_modes_decide_what_the_pointer_over_a_window_does() {
 
 #[test]
 fn the_auto_raise_delay_is_in_seconds_for_the_frame_clock() {
-    // Lua: "auto_raise_delay converts to seconds for the frame clock".
+    // Before: "auto_raise_delay converts to seconds for the frame clock".
     let got = run(r#"
         emit([autoRaiseSeconds(focusSettings({})), autoRaiseSeconds(focusSettings({ autoRaiseDelay: 1500 }))].join(","));
     "#);
@@ -168,7 +168,7 @@ fn the_auto_raise_delay_is_in_seconds_for_the_frame_clock() {
 
 #[test]
 fn a_pointer_rest_focuses_only_in_the_hover_modes_and_only_when_asked() {
-    // Lua: "a pointer rest focuses only in the hover modes, and only when focus_change_on_pointer_rest is on".
+    // Before: "a pointer rest focuses only in the hover modes, and only when focus_change_on_pointer_rest is on".
     let got = run(r#"
         emit([
             REST_SECONDS,
@@ -183,7 +183,7 @@ fn a_pointer_rest_focuses_only_in_the_hover_modes_and_only_when_asked() {
 
 #[test]
 fn only_follow_mouse_clears_focus_when_the_pointer_leaves_the_focused_window() {
-    // Lua: "only hover-strict clears focus when the pointer leaves the focused window".
+    // Before: "only hover-strict clears focus when the pointer leaves the focused window".
     let got = run(r#"
         emit([
             leaveClears(focusSettings({ mode: "follow-mouse" })),
@@ -196,7 +196,7 @@ fn only_follow_mouse_clears_focus_when_the_pointer_leaves_the_focused_window() {
 
 #[test]
 fn the_seats_words_for_the_focus_modes_translate_and_an_unknown_one_throws() {
-    // New: the Lua shell read the seat's words directly.
+    // New: the retired shell read the seat's words directly.
     let got = run(r#"
         const seat = (focusMode: string) => ({
             edgeTiling: false, focusMode, focusNewWindows: "allow", raiseOnClick: false, autoRaise: true,
@@ -227,7 +227,7 @@ fn the_seats_words_for_the_focus_modes_translate_and_an_unknown_one_throws() {
 
 #[test]
 fn the_focus_decision_is_a_pure_function_of_the_settings_and_one_event() {
-    // New: the Lua `Window:on_*` handlers composed the same decisions inline.
+    // New: the the retired shell `Window:on_*` handlers composed the same decisions inline.
     let got = run(r#"
         const d = (settings: any, event: any) => {
             const r = focusDecision(focusSettings(settings), event);
@@ -291,8 +291,8 @@ const VIEW: &str = r#"
 
 #[test]
 fn a_glob_matches_the_whole_text_and_a_regexp_anywhere_in_it() {
-    // Lua: "a pattern matches anywhere in the app_id unless anchored". A Lua pattern `fire` is the glob `*fire*`; the
-    // Lua `^fire$` is the plain text `fire`, which matches the whole id only.
+    // Before: "a pattern matches anywhere in the app_id unless anchored". A retired pattern `fire` is the glob `*fire*`; the
+    // the retired shell `^fire$` is the plain text `fire`, which matches the whole id only.
     let got = run(&format!(
         r#"{VIEW}
         const fs = (pattern: any, appId: string) =>
@@ -324,9 +324,9 @@ fn a_glob_matches_the_whole_text_and_a_regexp_anywhere_in_it() {
 
 #[test]
 fn a_malformed_rule_throws_at_compile_time_naming_its_index_and_field() {
-    // Lua: "a malformed pattern is a compile error", "an unknown rule field raises", "a rule's opacity must be a
+    // Before: "a malformed pattern is a compile error", "an unknown rule field raises", "a rule's opacity must be a
     // number in [0, 1]", "corners is refused at load", "maximised is a boolean rule field". New: the sets-nothing,
-    // needs-a-query and role refusals, which the Lua rule could not express.
+    // needs-a-query and role refusals, which the retired rule could not express.
     let got = run(r#"
         const bad = (list: any) => thrown(() => compileRules(list));
         const ok = { appId: "x", secure: true };
@@ -378,10 +378,10 @@ fn a_malformed_rule_throws_at_compile_time_naming_its_index_and_field() {
 
 #[test]
 fn every_matching_rule_merges_in_list_order_and_a_first_rule_ends_the_search() {
-    // Lua: "the last matching rule wins for a field", "a later rule that does not set a field leaves the earlier
+    // Before: "the last matching rule wins for a field", "a later rule that does not set a field leaves the earlier
     // value", "rules merge in list order: the last matching rule wins for each field, the others are kept". The
     // JavaScript list merges the same way with the same inputs and expected values. New: `first: true` stops the
-    // search at a rule, and the Lua-era `all` option is gone, so it is refused by name.
+    // search at a rule, and the the retired shell-era `all` option is gone, so it is refused by name.
     let got = run(&format!(
         r#"{VIEW}
         const show = (e: any) => [e.fullscreen, e.secure, e.maximised].map(String).join("/");
@@ -428,7 +428,7 @@ fn every_matching_rule_merges_in_list_order_and_a_first_rule_ends_the_search() {
 
 #[test]
 fn a_query_can_read_the_focus_and_the_workspace_of_the_window() {
-    // Lua: "the focused condition follows the window's focus", "a workspace rule carries its workspace id". The Lua
+    // Before: "the focused condition follows the window's focus", "a workspace rule carries its workspace id". The the retired shell
     // `match.workspace_id` is `onWorkspace`, because `workspace` is where the rule sends the window.
     let got = run(&format!(
         r#"{VIEW}
@@ -451,7 +451,7 @@ fn a_query_can_read_the_focus_and_the_workspace_of_the_window() {
 
 #[test]
 fn desugaring_a_config_checks_the_rules_the_focus_keys_and_the_seat_overrides() {
-    // New: the Lua shell read these from the seat and compiled the rules on first use.
+    // New: the retired shell read these from the seat and compiled the rules on first use.
     let got = run(r#"
         const bad = (config: any) => thrown(() => desugarConfig(config));
         const plan = desugarConfig({
@@ -500,7 +500,7 @@ fn desugaring_a_config_checks_the_rules_the_focus_keys_and_the_seat_overrides() 
 
 #[test]
 fn edge_tiling_is_off_unless_it_is_the_boolean_true() {
-    // Lua: "edge tiling is off by default", "a non-boolean edge_tiling raises".
+    // Before: "edge tiling is off by default", "a non-boolean edge_tiling raises".
     let got = run(r#"
         emit([
             edgeTilingEnabled(undefined),
@@ -517,9 +517,9 @@ fn edge_tiling_is_off_unless_it_is_the_boolean_true() {
 
 #[test]
 fn a_pointer_near_an_edge_names_the_zone_and_a_zone_names_a_rectangle() {
-    // Lua: "a pointer within the margin of an edge names that edge", "a pointer away from every edge names no zone",
-    // "left and right tile to the matching half, top fills the area", "an unknown zone has no rectangle", in the Lua
-    // work area of 1920 by 1048 starting at y 32. The Lua rectangle was x, y, w, h; this one is x, y, width, height.
+    // Before: "a pointer within the margin of an edge names that edge", "a pointer away from every edge names no zone",
+    // "left and right tile to the matching half, top fills the area", "an unknown zone has no rectangle", in the the retired shell
+    // work area of 1920 by 1048 starting at y 32. The retired rectangle was x, y, w, h; this one is x, y, width, height.
     let got = run(r#"
         const area = { x: 0, y: 32, width: 1920, height: 1048 };
         const text = (r: any) => (r === null ? "none" : [r.x, r.y, r.width, r.height].join(","));
@@ -1070,7 +1070,7 @@ fn seat(mode: &str) -> Vec<(&'static str, MirrorValue)> {
 
 #[test]
 fn a_new_window_takes_focus_and_a_window_from_before_the_config_does_not() {
-    // Lua: `Window:on_ready` focuses the new window. New: windows already there at boot are left alone, so a reload
+    // Before: `Window:on_ready` focuses the new window. New: windows already there at boot are left alone, so a reload
     // does not take the user's focus.
     let comp = world(vec![]);
     let mut rig = boot(&comp, &config(""));
@@ -1097,7 +1097,7 @@ fn a_rule_can_keep_a_new_window_from_taking_focus() {
 
 #[test]
 fn a_click_focuses_the_window_and_raises_it_when_raise_on_click_is_on() {
-    // Lua: `Window:on_press` (shell_test.lua covers the wiring there). Window 4 is already on top, so it is focused
+    // Before: `Window:on_press` (retired corpus shell covers the wiring there). Window 4 is already on top, so it is focused
     // and not raised; window 3 is raised by being put last under the root.
     let comp = world(vec![]);
     let mut rig = boot(&comp, &config(""));
@@ -1137,7 +1137,7 @@ fn rig_over(comp: &Comp, keys: &str) -> Rig {
 
 #[test]
 fn click_mode_ignores_the_pointer_over_a_window() {
-    // Lua: "click mode never moves focus on hover".
+    // Before: "click mode never moves focus on hover".
     let comp = world(vec![]);
     let mut rig = boot(&comp, &config(""));
     comp.edge(4, "enter");
@@ -1148,7 +1148,7 @@ fn click_mode_ignores_the_pointer_over_a_window() {
 
 #[test]
 fn sloppy_focus_follows_the_pointer_on_entry_and_on_movement_and_keeps_focus_on_leave() {
-    // Lua: "hover mode focuses the window under the pointer, on entry or movement" and Window:on_leave for hover.
+    // Before: "hover mode focuses the window under the pointer, on entry or movement" and Window:on_leave for hover.
     let comp = world(seat("hover"));
     let mut rig = boot(&comp, &config(""));
     comp.edge(4, "enter");
@@ -1168,7 +1168,7 @@ fn sloppy_focus_follows_the_pointer_on_entry_and_on_movement_and_keeps_focus_on_
 
 #[test]
 fn follow_mouse_focuses_on_entry_only_and_clears_focus_when_the_pointer_leaves_the_focused_window() {
-    // Lua: "hover-strict focuses only when the pointer enters the window" and "only hover-strict clears focus when
+    // Before: "hover-strict focuses only when the pointer enters the window" and "only hover-strict clears focus when
     // the pointer leaves the focused window".
     let comp = world(seat("hover-strict"));
     let mut rig = boot(&comp, &config(""));
@@ -1212,7 +1212,7 @@ fn the_configs_focus_mode_wins_over_the_seats() {
 
 #[test]
 fn a_window_pressed_holds_hover_focus_until_the_button_is_released() {
-    // Lua: `Window:on_enter` returns while `pressed` is set.
+    // Before: `Window:on_enter` returns while `pressed` is set.
     let comp = world(seat("hover"));
     let mut rig = boot(&comp, &config(""));
     comp.edge(3, "press");
@@ -1230,7 +1230,7 @@ fn a_window_pressed_holds_hover_focus_until_the_button_is_released() {
 
 #[test]
 fn auto_raise_lifts_the_hovered_focused_window_after_the_delay_unless_the_pointer_left() {
-    // Lua: `Window:on_enter` starts the auto-raise timer and `Window:on_leave` cancels it. Window 3 has the focus.
+    // Before: `Window:on_enter` starts the auto-raise timer and `Window:on_leave` cancels it. Window 3 has the focus.
     let comp = world(vec![
         ("focus_mode", text("hover")),
         ("auto_raise", flag(true)),
@@ -1291,7 +1291,7 @@ fn auto_raise_is_off_by_default_and_a_window_that_lost_focus_is_not_raised() {
 
 #[test]
 fn a_pointer_rest_focuses_after_the_rest_time_and_a_leave_cancels_it() {
-    // Lua: `rest_focus_later`; the rest is 0.2 s.
+    // Before: `rest_focus_later`; the rest is 0.2 s.
     let comp = world(vec![
         ("focus_mode", text("hover")),
         ("focus_change_on_pointer_rest", flag(true)),
@@ -1350,7 +1350,7 @@ fn a_rule_does_not_touch_a_window_the_shell_found_at_boot() {
 
 #[test]
 fn a_workspace_rule_moves_a_new_window_to_the_workspace_it_names() {
-    // Lua: "a workspace rule moves the window to the workspace it names".
+    // Before: "a workspace rule moves the window to the workspace it names".
     let comp = world(vec![]);
     let mut rig = boot(
         &comp,
@@ -1370,7 +1370,7 @@ fn a_workspace_rule_moves_a_new_window_to_the_workspace_it_names() {
 
 #[test]
 fn a_rule_that_names_a_workspace_the_script_removed_is_reported_once_and_leaves_the_window() {
-    // Lua: "a rule naming a missing workspace is reported once and the window stays where it is". The config refuses
+    // Before: "a rule naming a missing workspace is reported once and the window stays where it is". The config refuses
     // a workspace it does not declare, so this one is declared and then removed by the script.
     let comp = world(vec![]);
     let mut rig = boot(
@@ -1393,7 +1393,7 @@ fn a_rule_that_names_a_workspace_the_script_removed_is_reported_once_and_leaves_
 
 #[test]
 fn a_rule_follows_the_app_id_and_undoes_itself_when_it_stops_matching() {
-    // Lua: "a rule that stops matching clears secure", "an app_id that newly matches a rule applies it".
+    // Before: "a rule that stops matching clears secure", "an app_id that newly matches a rule applies it".
     let comp = world(vec![]);
     let mut rig = boot(&comp, &config("rules: [{ appId: \"bank\", secure: true }]"));
     comp.new_window(8, "notes", "x");
@@ -1419,7 +1419,7 @@ fn a_rule_follows_the_app_id_and_undoes_itself_when_it_stops_matching() {
 
 #[test]
 fn a_rule_follows_the_title() {
-    // Lua: "a title change re-evaluates the rules: secure follows the new title".
+    // Before: "a title change re-evaluates the rules: secure follows the new title".
     let comp = world(vec![]);
     let mut rig = boot(&comp, &config("rules: [{ title: \"Secret*\", secure: true }]"));
     comp.new_window(8, "mail", "Inbox");
@@ -1432,7 +1432,7 @@ fn a_rule_follows_the_title() {
 
 #[test]
 fn a_rule_reads_the_focus_again_when_it_changes() {
-    // Lua: the rules are a binding, so `arrange` runs again when a rule's inputs (title, app id, focus, workspace)
+    // Before: the rules are a binding, so `arrange` runs again when a rule's inputs (title, app id, focus, workspace)
     // change. Window 8 opens while window 3 holds the focus, so the rule matches; the focus policy then gives 8 the
     // focus and the rule stops matching; when 3 has it again the rule matches again.
     let comp = world(vec![]);
@@ -1458,7 +1458,7 @@ fn a_rule_reads_the_focus_again_when_it_changes() {
 
 #[test]
 fn a_rule_with_reapply_false_applies_once_when_the_window_appears() {
-    // New: `reapply: false` opts a rule out of what the Lua rules always did.
+    // New: `reapply: false` opts a rule out of what the retired rules always did.
     let comp = world(vec![]);
     let mut rig = boot(
         &comp,
@@ -1476,7 +1476,7 @@ fn a_rule_with_reapply_false_applies_once_when_the_window_appears() {
 
 #[test]
 fn re_applying_rules_that_still_match_writes_nothing() {
-    // Lua: "re-applying unchanged rules writes nothing to the core".
+    // Before: "re-applying unchanged rules writes nothing to the core".
     let comp = world(vec![]);
     let mut rig = boot(&comp, &config("rules: [{ title: \"Secret*\", secure: true }]"));
     comp.new_window(8, "mail", "Secret one");
@@ -1492,7 +1492,7 @@ fn re_applying_rules_that_still_match_writes_nothing() {
 
 #[test]
 fn a_rule_can_maximise_fullscreen_and_dim_a_window() {
-    // Lua: "a maximised rule fills the work area, not only sets the flag", "an opacity rule sets the window's
+    // Before: "a maximised rule fills the work area, not only sets the flag", "an opacity rule sets the window's
     // opacity", over the 1000 by 800 screen. New: fullscreen goes first and a fullscreen window does not maximise.
     let comp = world(vec![]);
     let mut rig = boot(
@@ -1520,7 +1520,7 @@ fn a_rule_can_maximise_fullscreen_and_dim_a_window() {
 
 #[test]
 fn every_matching_rule_applies_and_the_later_wins_until_a_first_rule_ends_the_list() {
-    // Lua: "rules merge in list order: the last matching rule wins for each field, the others are kept".
+    // Before: "rules merge in list order: the last matching rule wins for each field, the others are kept".
     let comp = world(vec![]);
     let mut rig = boot(
         &comp,
@@ -1573,7 +1573,7 @@ const SNAP_AREA: &str = "{ x: 0, y: 0, width: 800, height: 600 }";
 
 #[test]
 fn snapping_tiles_a_window_to_an_edge_and_unsnapping_restores_its_floating_rectangle() {
-    // Lua: "snapping tiles a window to an edge and unsnapping restores its floating rectangle".
+    // Before: "snapping tiles a window to an edge and unsnapping restores its floating rectangle".
     let comp = world(vec![]);
     let mut rig = boot(&comp, &config(""));
     let floating = comp.rect(3);
@@ -1600,7 +1600,7 @@ fn snapping_tiles_a_window_to_an_edge_and_unsnapping_restores_its_floating_recta
 
 #[test]
 fn snapping_a_maximised_window_floats_it_first_and_unsnapping_restores_the_floating_rectangle() {
-    // Lua: "snapping a maximised window floats it first, and unsnapping restores the floating rectangle".
+    // Before: "snapping a maximised window floats it first, and unsnapping restores the floating rectangle".
     let comp = world(vec![("edge_tiling", flag(true))]);
     let mut rig = boot(&comp, &config(""));
     rig.eval(
@@ -1626,7 +1626,7 @@ fn snapping_a_maximised_window_floats_it_first_and_unsnapping_restores_the_float
 
 #[test]
 fn snapping_is_refused_when_edge_tiling_is_off_and_leaves_the_window_where_it_was() {
-    // Lua: "snapping is refused when edge tiling is off and leaves the window where it was".
+    // Before: "snapping is refused when edge tiling is off and leaves the window where it was".
     let comp = world(vec![]);
     let mut rig = boot(&comp, &config(""));
     let before = comp.rect(3);
@@ -1656,7 +1656,7 @@ fn drag_to(comp: &Comp, rig: &mut Rig, to: (f64, f64)) {
 
 #[test]
 fn dropping_a_dragged_window_on_an_edge_tiles_it_when_the_seat_has_edge_tiling_on() {
-    // Lua: `drag` ends with `Snap.edge_zone(s.x, s.y, work_area(), EDGE_MARGIN)` and `w:snap(zone)`; a 1000 by 800
+    // Before: `drag` ends with `Snap.edge_zone(s.x, s.y, work_area(), EDGE_MARGIN)` and `w:snap(zone)`; a 1000 by 800
     // work area, the default margin of 4.
     let comp = world(vec![("edge_tiling", flag(true))]);
     let mut rig = boot(
@@ -1675,7 +1675,7 @@ fn dropping_a_dragged_window_on_an_edge_tiles_it_when_the_seat_has_edge_tiling_o
 
 #[test]
 fn a_drop_on_an_edge_is_only_a_move_when_edge_tiling_is_off() {
-    // Lua: "edge tiling is off by default".
+    // Before: "edge tiling is off by default".
     let comp = world(vec![]);
     let mut rig = boot(
         &comp,

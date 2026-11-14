@@ -1,6 +1,6 @@
 //! `gnoblin.process` on the Rust side: the programs a script starts, and how each one ends.
 //!
-//! The runtime role owns the children, as the Lua host does: nothing but this process can reap them, so a
+//! The runtime role owns the children, as the retired host does: nothing but this process can reap them, so a
 //! process is local to the shell and never crosses the owner socket. Each child gets one waiter thread that
 //! owns it, polls it, enforces the timeout and reads what a captured stream holds. The shell drains the
 //! waiters' channel once a frame ([`JsProcesses::drain`]), so the script's state is only ever touched on
@@ -461,7 +461,7 @@ impl JsProcesses {
 }
 
 impl Drop for JsProcesses {
-    /// A shell that goes away takes its running programs with it: SIGTERM to each group, as the Lua host does.
+    /// A shell that goes away takes its running programs with it: SIGTERM to each group, as the retired host does.
     fn drop(&mut self) {
         for running in self.running.values() {
             if let Ok(reaped) = running.reaped.lock()

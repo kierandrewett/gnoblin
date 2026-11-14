@@ -887,7 +887,7 @@ fn a_binding_that_declines_lets_the_next_tier_have_the_chord() {
 
 #[test]
 fn a_device_bound_with_only_is_claimed_once_and_its_chords_are_claimed_for_it() {
-    // Lua: "Seat:bind with only = true makes the device binding-only once, and refuses only without a device".
+    // Before: "Seat:bind with only = true makes the device binding-only once, and refuses only without a device".
     let comp = world(false);
     let mut rig = rig(
         &comp,
@@ -924,7 +924,7 @@ fn a_device_bound_with_only_is_claimed_once_and_its_chords_are_claimed_for_it() 
 
 #[test]
 fn binding_only_is_given_up_by_assigning_false_and_by_the_shell_going() {
-    // New: Lua kept the id in `seat.data.only` for `seat:unclaim`; the object has a property for it.
+    // New: retired kept the id in `seat.data.only` for `seat:unclaim`; the object has a property for it.
     let comp = world(false);
     let mut rig = rig(
         &comp,
@@ -947,7 +947,7 @@ fn binding_only_is_given_up_by_assigning_false_and_by_the_shell_going() {
 
 #[test]
 fn a_device_name_is_one_non_empty_line_and_a_refused_claim_sends_nothing() {
-    // Lua: "Seat:claim_device is a one-line device name".
+    // Before: "Seat:claim_device is a one-line device name".
     let comp = world(false);
     let mut rig = rig(&comp, &entry(""));
     let before = comp.borrow().calls.len();
@@ -969,7 +969,7 @@ fn a_device_name_is_one_non_empty_line_and_a_refused_claim_sends_nothing() {
 
 #[test]
 fn a_false_action_claims_the_trigger_and_swallows_it_and_a_function_that_returns_false_declines() {
-    // Lua: "a gesture claimed with a fn of false claims it and runs nothing", and `seat:bind({ chord = false })`.
+    // Before: "a gesture claimed with a fn of false claims it and runs nothing", and `seat:bind({ chord = false })`.
     let comp = world(false);
     let mut rig = rig(
         &comp,
@@ -1674,7 +1674,7 @@ fn the_stock_move_stays_in_the_work_area_and_a_minimum_strip_lets_the_window_lea
 }
 
 #[test]
-fn the_drag_constraint_and_the_size_rules_agree_with_the_lua_drag_tests() {
+fn the_drag_constraint_and_the_size_rules_agree_with_the_retired_drag_tests() {
     let got = grammar(
         r#"
         const area = { x: 0, y: 32, width: 1920, height: 1048 };
@@ -1972,7 +1972,7 @@ fn with_no_entry_the_stock_config_runs_four_floating_workspaces_and_claims_the_s
             .eval("gnoblin.workspaces.map((w) => w.id + ':' + w.layout.constructor.name + ':' + w.active).join()")
             .expect("the script runs"),
         Some("1:FloatingLayout:true,2:FloatingLayout:false,3:FloatingLayout:false,4:FloatingLayout:false".to_owned()),
-        "the Lua stock config's four workspaces, the first on show"
+        "the retired stock config's four workspaces, the first on show"
     );
     assert_eq!(
         shell
@@ -1984,7 +1984,7 @@ fn with_no_entry_the_stock_config_runs_four_floating_workspaces_and_claims_the_s
     for chord in [
         "<Super>1",
         "<Super>9",
-        // The Lua shell's strip focus keys, and (below) its three-finger workspace slide.
+        // The retired shell's strip focus keys, and (below) its three-finger workspace slide.
         "<Super>Left",
         "<Super>Right",
         "XF86AudioMute",
@@ -2065,7 +2065,7 @@ fn slide_rig(comp: &Comp) -> Rig {
 
 #[test]
 fn the_stock_swipe_pulls_the_next_workspace_in_under_the_fingers_and_a_long_swipe_slides_on() {
-    // The Lua shell's three-finger slide (shell_vm.rs "a three-finger swipe on the input path slides the stock shell to
+    // The retired shell's three-finger slide (the retired the retired shell-rig test "a three-finger swipe on the input path slides the stock shell to
     // the next workspace"): the fingers move left and the next workspace's windows follow them in before they lift;
     // lifting past a quarter of the travel finishes the slide: `b` is shown, its window slides in over the rest of
     // 0.25 seconds, and the windows of `a` leave and are hidden when that ends.

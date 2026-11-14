@@ -6,7 +6,7 @@ Status: implementation plan for the Rust tree. S1 and S2 are being ported to `cr
 `src/` remains a reference. The audit rows it relies on are in `design/docs-parity/{api,config,guides}.md`.
 
 Related: `design/rust-compositor.md` (Phase 3 at lines 815-826, Phase 4 at 828-861, object model at 1052-1063,
-Configuration and Lua at 1064-1083), `design/lua-api-goal.md`, `design/shell-api-redesign.md`.
+Configuration and Lua at 1064-1083), `design/archive/lua-api-goal.md`, `design/archive/shell-api-redesign.md`.
 
 ## 1. The main finding: the design lives in the legacy C tree
 
@@ -69,7 +69,7 @@ The audit files count MISSING rows as 49 in `api.md`, 14 in `config.md` and 12 i
 
 - The Rust port is the target. The C tree is a reference, and it is deleted at cutover (`rust-compositor.md`, Lua card).
 - Lua names follow the redesign's principles: positional arguments, explicit Operation for every write, one Request
-  lifecycle, one descriptor table, no shims (`design/lua-api-goal.md`).
+  lifecycle, one descriptor table, no shims (`design/archive/lua-api-goal.md`).
 - A new public name is added only where `docs/` already defines it. Anything else is not added.
 - Each slice writes its failure-mode tests first, then the code, then its docs. Verification is the main agent's job.
 - Shipped sections keep their schema names; the schema is the source for the Lua stub, the IPC catalogue and `gnoblinctl`.
@@ -223,8 +223,8 @@ Foundations first, then the window and process surface, then animation, input, C
 ### S12. `org.gnoblin.Compositor` and CheckPermission
 
 - **Status:** deferred, undecided. Kieran has not chosen between the two options below. Do not start S12 until he does.
-- **Option A, keep the interface:** `org.gnoblin.Compositor` at `/org/gnoblin/Compositor` exposes `CheckPermission`, answered from `gnoblin-authority`. Files: `gnoblin-authority`, a new service crate, `gnoblin-services` registration. Needs the permission set (decision 6). Affects: `docs/dbus/index.md` (new Compositor page; the current promise becomes true), `design/docs-parity/api.md` rows 7 and 245 (still MISSING), `design/portal-policy-contract.md:30` (stays as written).
-- **Option B, remove the interface:** the portal provider owns permissions, as proposed in `design/portal-policy-contract.md`. `CheckPermission` and `org.gnoblin.Compositor` are removed, not built. Affects: `docs/dbus/index.md` (Compositor section removed), `design/docs-parity/api.md` rows 7 and 245 (closed as removed), `design/portal-policy-contract.md:30` (Compositor row changes to match its D-Bus removal row), and this plan's S12 row.
+- **Option A, keep the interface:** `org.gnoblin.Compositor` at `/org/gnoblin/Compositor` exposes `CheckPermission`, answered from `gnoblin-authority`. Files: `gnoblin-authority`, a new service crate, `gnoblin-services` registration. Needs the permission set (decision 6). Affects: `docs/dbus/index.md` (new Compositor page; the current promise becomes true), `design/archive/docs-parity/api.md` rows 7 and 245 (still MISSING), `design/portal-policy-contract.md:30` (stays as written).
+- **Option B, remove the interface:** the portal provider owns permissions, as proposed in `design/portal-policy-contract.md`. `CheckPermission` and `org.gnoblin.Compositor` are removed, not built. Affects: `docs/dbus/index.md` (Compositor section removed), `design/archive/docs-parity/api.md` rows 7 and 245 (closed as removed), `design/portal-policy-contract.md:30` (Compositor row changes to match its D-Bus removal row), and this plan's S12 row.
 - **Tests first (either option):** a request from an unattributed process is denied; a permission never comes from an app ID or title.
 - **Docs (option A only):** `docs/dbus/` new page for the Compositor interface.
 
@@ -241,7 +241,7 @@ Foundations first, then the window and process surface, then animation, input, C
 - **Goal:** generate `gnoblin.d.lua` and the reference from the schema; make the audit rows a CI check, so a MISSING
   row without a ledger entry fails; mark the redesign's "Done" items as C-tree work; resolve the timer unit.
 - **Files:** `gnoblin-lua/build.rs`, `gnoblin-config-codegen`, `docs/public/gnoblin.d.lua`, `design/docs-parity/`,
-  `design/shell-api-redesign.md`.
+  `design/archive/shell-api-redesign.md`.
 - **Tests first:** the generated stub matches the schema; a removed member fails the gate.
 - **Docs:** this plan's status line; the parity ledger.
 

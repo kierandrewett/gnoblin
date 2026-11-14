@@ -16,7 +16,7 @@
 use std::collections::HashSet;
 
 use gnoblin_secret::SecretText;
-use gnoblin_tree_client::tree_mirror::{MirrorValue, NodeId, lua_class};
+use gnoblin_tree_client::tree_mirror::{MirrorValue, NodeId, class_name};
 use rquickjs::{Ctx, Function, IntoJs, Object, Value};
 
 use crate::bindings::{HostState, SharedState, parents_first};
@@ -71,7 +71,7 @@ fn lock_node(state: &HostState) -> Option<NodeId> {
         state
             .mirror
             .node(*id)
-            .is_some_and(|record| lua_class(&record.class) == "Lock")
+            .is_some_and(|record| class_name(&record.class) == "Lock")
     })
 }
 
@@ -94,7 +94,7 @@ pub(crate) fn screen_size(state: &HostState) -> Option<(f64, f64)> {
             state
                 .mirror
                 .node(*id)
-                .is_some_and(|record| lua_class(&record.class) == "Screen")
+                .is_some_and(|record| class_name(&record.class) == "Screen")
         })
         .collect();
     let primary = |id: &&NodeId| {

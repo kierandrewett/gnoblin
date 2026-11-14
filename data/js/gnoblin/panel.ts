@@ -1,5 +1,5 @@
 // The stock panel's message: `toast(text)` shows a short message in the top right corner of the screen, fades it in, holds
-// it, fades it out and removes it (data/lua/gnoblin/shell/panel.lua). The bar the Lua panel module shared a file with is
+// it, fades it out and removes it (data/retired shell/gnoblin/shell/panel.retired shell). The bar the retired panel module shared a file with is
 // `Bar`, in `gnoblin/widgets`.
 
 import { Box, Text, uiNow, uiScreen } from "gnoblin/ui";

@@ -185,7 +185,7 @@ const PINCH_DECIDE = 0.1;
 /** Touchpad units for a whole swipe (`progress` 1), and the scale distance for a whole pinch. */
 const SWIPE_TRAVEL = 400;
 const PINCH_TRAVEL = 0.5;
-/** The progress at which a function bound to a gesture fires: Lua's 48 units and 0.12 scale. */
+/** The progress at which a function bound to a gesture fires: the retired shell's 48 units and 0.12 scale. */
 const SWIPE_COMMIT = 48 / SWIPE_TRAVEL;
 const PINCH_COMMIT = 0.12 / PINCH_TRAVEL;
 /** `deltaTime` never exceeds this, so a simulation that integrates it is not thrown by a stall. */
@@ -377,7 +377,7 @@ function bindIn(
     what: string,
 ): Binding {
     // `false` claims the trigger and does nothing with it: the chord is withheld from clients and nothing runs, as the
-    // Lua shell's `seat:bind({ chord = false })` did.
+    // retired shell's `seat:bind({ chord = false })` did.
     if (action === false) {
         return bindIn(collection, trigger, () => undefined, what);
     }

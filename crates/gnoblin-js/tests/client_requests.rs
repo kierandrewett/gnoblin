@@ -1,12 +1,12 @@
 //! What the stock shell answers when a client or a taskbar asks for a window state change: `data/js/gnoblin/window_state.ts`
 //! and the pieces of `gnoblin.ts` it stands on, over the fake compositor of `tests/common`.
 //!
-//! The cases are the Lua shell's: `crates/gnoblin-lua/tests/lua/states_test.lua` (12 cases) and the `shell_test.lua`
+//! The cases are the retired shell's: `the retired retired corpus` (12 cases) and the `retired corpus shell`
 //! cases for raising with a fullscreen sibling, activation and a repeat fullscreen. A case keeps its inputs and its
 //! expected values; where the JavaScript shell differs the case says why. The differences are the model's, not the
-//! policy's: a JavaScript window is placed in screen coordinates, so the Lua rectangle `{ x = 0, y = -32, ... }` (the
+//! policy's: a JavaScript window is placed in screen coordinates, so the retired rectangle `{ x = 0, y = -32, ... }` (the
 //! workspace's own space, which a bar pushes down) is `{ x = 0, y = 0, ... }` here; and there is no workspace clip, so
-//! the Lua `space.clip` check has no counterpart. A case with no Lua original says "new". What the real compositor does
+//! the the retired shell `space.clip` check has no counterpart. A case with no retired original says "new". What the real compositor does
 //! with the writes is `crates/gnoblin/tests/js_shell.rs`.
 
 use gnoblin_tree_client::tree_mirror::MirrorValue;
@@ -113,11 +113,11 @@ fn rect(rig: &Rig, node: u64) -> String {
     rig.comp.rect(node)
 }
 
-// ---- the cases of states_test.lua ----------------------------------------------------------------------------------
+// ---- the cases of retired corpus states ----------------------------------------------------------------------------------
 
 #[test]
 fn a_fullscreen_request_covers_the_whole_output_and_the_window_goes_last_in_its_workspace() {
-    // Lua: "a fullscreen request covers the whole output and the window goes last in its workspace".
+    // Before: "a fullscreen request covers the whole output and the window goes last in its workspace".
     let mut rig = world(2);
     request(&mut rig, 3, "fullscreen");
     assert!(flag(&rig, 3, "fullscreen"), "a fullscreen request must be granted");
@@ -138,7 +138,7 @@ fn a_fullscreen_request_covers_the_whole_output_and_the_window_goes_last_in_its_
 
 #[test]
 fn an_unfullscreen_request_returns_the_rectangle_the_window_had() {
-    // Lua: "an unfullscreen request returns the rectangle the window had".
+    // Before: "an unfullscreen request returns the rectangle the window had".
     let mut rig = world(1);
     let before = rect(&rig, 3);
     request(&mut rig, 3, "fullscreen");
@@ -153,7 +153,7 @@ fn an_unfullscreen_request_returns_the_rectangle_the_window_had() {
 
 #[test]
 fn a_fullscreen_window_covers_the_bars_which_come_back_when_it_leaves() {
-    // Lua: "a fullscreen window covers the bars, which come back when it leaves". The Lua window starts at the
+    // Before: "a fullscreen window covers the bars, which come back when it leaves". The retired window starts at the
     // screen's top in the workspace's own space (y -32); in screen coordinates that is y 0.
     let mut rig = world(1);
     exec(&mut rig, "globalThis.bar = new Bar({ edge: 'top', height: 32 })");
@@ -182,7 +182,7 @@ fn a_fullscreen_window_covers_the_bars_which_come_back_when_it_leaves() {
 
 #[test]
 fn a_fullscreen_window_keeps_covering_the_output_when_a_bar_reserves_space() {
-    // Lua: "a fullscreen window keeps covering the output when a bar reserves space".
+    // Before: "a fullscreen window keeps covering the output when a bar reserves space".
     let mut rig = world(1);
     request(&mut rig, 3, "fullscreen");
     exec(&mut rig, "globalThis.bar = new Bar({ edge: 'top', height: 32 })");
@@ -196,7 +196,7 @@ fn a_fullscreen_window_keeps_covering_the_output_when_a_bar_reserves_space() {
 
 #[test]
 fn fullscreen_over_a_maximised_window_keeps_it_maximised_and_leaving_returns_the_maximised_rectangle() {
-    // Lua: "fullscreen over a maximised window keeps it maximised, and leaving returns the maximised rectangle".
+    // Before: "fullscreen over a maximised window keeps it maximised, and leaving returns the maximised rectangle".
     let mut rig = world(1);
     let floating = rect(&rig, 3);
     request(&mut rig, 3, "maximize");
@@ -215,7 +215,7 @@ fn fullscreen_over_a_maximised_window_keeps_it_maximised_and_leaving_returns_the
 
 #[test]
 fn maximising_fills_the_area_the_bars_leave_and_fullscreen_over_it_fills_the_whole_output() {
-    // New: the Lua case has no bar, so its maximised and fullscreen rectangles are the same. With a 32 pixel bar the
+    // New: the retired case has no bar, so its maximised and fullscreen rectangles are the same. With a 32 pixel bar the
     // maximised window fills what the bar leaves and fullscreen still covers the whole output.
     let mut rig = world(1);
     exec(&mut rig, "globalThis.bar = new Bar({ edge: 'top', height: 32 })");
@@ -237,7 +237,7 @@ fn maximising_fills_the_area_the_bars_leave_and_fullscreen_over_it_fills_the_who
 
 #[test]
 fn closing_a_fullscreen_window_brings_the_bars_back() {
-    // Lua: "closing a fullscreen window brings the bars back".
+    // Before: "closing a fullscreen window brings the bars back".
     let mut rig = world(1);
     exec(&mut rig, "globalThis.bar = new Bar({ edge: 'top', height: 32 })");
     rig.settle();
@@ -254,8 +254,8 @@ fn closing_a_fullscreen_window_brings_the_bars_back() {
 
 #[test]
 fn a_minimise_request_hides_the_window_and_hands_focus_to_the_topmost_window_left() {
-    // Lua: "a minimise request hides the window and hands focus to the topmost window left". The compositor hides a
-    // minimised window (`minimised` is the whole answer), so the Lua `visible = false` has no JavaScript write.
+    // Before: "a minimise request hides the window and hands focus to the topmost window left". The compositor hides a
+    // minimised window (`minimised` is the whole answer), so the the retired shell `visible = false` has no JavaScript write.
     let mut rig = world(2);
     give_focus(&mut rig, 3);
     request(&mut rig, 3, "minimize");
@@ -265,7 +265,7 @@ fn a_minimise_request_hides_the_window_and_hands_focus_to_the_topmost_window_lef
 
 #[test]
 fn minimising_the_last_window_leaves_the_seat_with_no_focus_and_minimising_an_unfocused_window_leaves_it_alone() {
-    // Lua: "minimising the last window leaves the seat with no focus, and minimising an unfocused window leaves it alone".
+    // Before: "minimising the last window leaves the seat with no focus, and minimising an unfocused window leaves it alone".
     let mut rig = world(2);
     give_focus(&mut rig, 4);
     request(&mut rig, 3, "minimize");
@@ -276,7 +276,7 @@ fn minimising_the_last_window_leaves_the_seat_with_no_focus_and_minimising_an_un
 
 #[test]
 fn an_unminimise_request_shows_the_window_and_focuses_it_only_when_nothing_holds_focus() {
-    // Lua: "an unminimise request shows the window, and focuses it only when nothing holds focus".
+    // Before: "an unminimise request shows the window, and focuses it only when nothing holds focus".
     let mut rig = world(2);
     give_focus(&mut rig, 4);
     request(&mut rig, 3, "minimize");
@@ -292,7 +292,7 @@ fn an_unminimise_request_shows_the_window_and_focuses_it_only_when_nothing_holds
 
 #[test]
 fn an_activate_request_brings_a_minimised_window_back_focused_and_on_top() {
-    // Lua: "an activate request brings a minimised window back, focused and on top".
+    // Before: "an activate request brings a minimised window back, focused and on top".
     let mut rig = world(2);
     request(&mut rig, 3, "minimize");
     request(&mut rig, 3, "activate");
@@ -303,7 +303,7 @@ fn an_activate_request_brings_a_minimised_window_back_focused_and_on_top() {
 
 #[test]
 fn a_close_request_calls_the_windows_close_which_the_compositor_turns_into_the_clients_close() {
-    // Lua: "a close request calls the window's close, which the compositor turns into the client's close".
+    // Before: "a close request calls the window's close, which the compositor turns into the client's close".
     let mut rig = world(2);
     request(&mut rig, 4, "close");
     let closes: Vec<u64> = rig
@@ -327,7 +327,7 @@ fn a_close_request_calls_the_windows_close_which_the_compositor_turns_into_the_c
 
 #[test]
 fn raise_and_lower_requests_restack_the_window_among_its_siblings() {
-    // Lua: "raise and lower requests restack the window among its siblings".
+    // Before: "raise and lower requests restack the window among its siblings".
     let mut rig = world(2);
     assert_eq!(stack(&rig, 2).last(), Some(&4), "the second window starts on top");
     request(&mut rig, 3, "raise");
@@ -344,11 +344,11 @@ fn raise_and_lower_requests_restack_the_window_among_its_siblings() {
     );
 }
 
-// ---- the cases of shell_test.lua -----------------------------------------------------------------------------------
+// ---- the cases of retired corpus shell -----------------------------------------------------------------------------------
 
 #[test]
 fn raising_a_window_keeps_a_fullscreen_sibling_above_it_and_a_fullscreen_window_stays_on_top_when_raised() {
-    // Lua: "raising a window keeps a fullscreen sibling above it, and a fullscreen window stays on top when raised",
+    // Before: "raising a window keeps a fullscreen sibling above it, and a fullscreen window stays on top when raised",
     // with a, b, c as windows 3, 4, 5 and `b.fullscreen = true` the plain write of the flag.
     let mut rig = world(3);
     for at in [0, 1, 2] {
@@ -370,7 +370,7 @@ fn raising_a_window_keeps_a_fullscreen_sibling_above_it_and_a_fullscreen_window_
 
 #[test]
 fn an_activate_request_focuses_a_window_on_the_active_workspace() {
-    // Lua: "a client's activate request is decided by the shell as an activation".
+    // Before: "a client's activate request is decided by the shell as an activation".
     let mut rig = world(1);
     request(&mut rig, 3, "activate");
     assert_eq!(focus(&rig), 3, "an activate request must focus");
@@ -378,7 +378,7 @@ fn an_activate_request_focuses_a_window_on_the_active_workspace() {
 
 #[test]
 fn activating_a_window_on_a_hidden_workspace_is_refused_and_leaves_focus_alone() {
-    // Lua: "activating a window on a hidden workspace is refused and leaves focus alone".
+    // Before: "activating a window on a hidden workspace is refused and leaves focus alone".
     let mut rig = world(1);
     exec(&mut rig, "gnoblin.show('other')");
     rig.settle();
@@ -388,7 +388,7 @@ fn activating_a_window_on_a_hidden_workspace_is_refused_and_leaves_focus_alone()
 
 #[test]
 fn activating_the_focused_window_again_changes_nothing() {
-    // Lua: "activating the focused window again changes nothing".
+    // Before: "activating the focused window again changes nothing".
     let mut rig = world(1);
     request(&mut rig, 3, "activate");
     request(&mut rig, 3, "activate");
@@ -397,7 +397,7 @@ fn activating_the_focused_window_again_changes_nothing() {
 
 #[test]
 fn a_repeat_fullscreen_request_is_refused_so_the_windowed_rectangle_is_not_overwritten() {
-    // Lua: `enter_fullscreen` returns false when the window is fullscreen already and keeps `data.windowed`.
+    // Before: `enter_fullscreen` returns false when the window is fullscreen already and keeps `data.windowed`.
     let mut rig = world(1);
     let before = rect(&rig, 3);
     request(&mut rig, 3, "fullscreen");
@@ -413,7 +413,7 @@ fn a_repeat_fullscreen_request_is_refused_so_the_windowed_rectangle_is_not_overw
 
 #[test]
 fn a_maximise_request_while_fullscreen_is_refused() {
-    // Lua: `Window:maximise` returns false when the window is fullscreen.
+    // Before: `Window:maximise` returns false when the window is fullscreen.
     let mut rig = world(1);
     request(&mut rig, 3, "fullscreen");
     request(&mut rig, 3, "maximize");
@@ -423,7 +423,7 @@ fn a_maximise_request_while_fullscreen_is_refused() {
 
 #[test]
 fn an_unminimise_request_for_a_window_that_is_not_minimised_changes_nothing() {
-    // Lua: `Window:unminimise` returns false when the window is not minimised, so it does not take focus either.
+    // Before: `Window:unminimise` returns false when the window is not minimised, so it does not take focus either.
     let mut rig = world(2);
     request(&mut rig, 3, "unminimize");
     assert_eq!(focus(&rig), 0);

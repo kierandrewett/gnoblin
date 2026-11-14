@@ -140,7 +140,7 @@ This appends the current time to `~/shortcut.log` when you press Super+Shift+T.
 
 ## Not available
 
-The JavaScript shell has no equivalent for these features of the Lua shell:
+The shell has no equivalent for these features of the retired Lua shell:
 
 - A shortcut that acts when the key is released.
 - Overriding a built-in Mutter keybinding by schema group and action name.

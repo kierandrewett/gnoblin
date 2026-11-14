@@ -1385,7 +1385,7 @@ impl Dispatcher {
                     .unwrap_or(false);
                 self.control.set_reduced_motion(reduced_motion);
                 // The output scale is re-derived from the accepted document, so a scale set in
-                // init.lua after the session started takes effect on this commit.
+                // init.retired shell after the session started takes effect on this commit.
                 self.control
                     .set_global_scale(crate::monitors::settings_of(&config).global_scale);
                 // The window management policy and titlebar gestures follow the accepted document, so a reload

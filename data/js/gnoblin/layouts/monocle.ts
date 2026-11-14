@@ -1,5 +1,5 @@
 // MonocleLayout: the shown node fills the area and every other node is hidden, not moved. The shown node
-// is the focused one when it is a child, otherwise the first child. Geometry is data/lua/gnoblin/shell/tiling.lua
+// is the focused one when it is a child, otherwise the first child. Geometry is data/retired shell/gnoblin/shell/tiling.retired shell
 // `Monocle`.
 
 import { Layout, tile, tilingGeometry } from "gnoblin/layout";

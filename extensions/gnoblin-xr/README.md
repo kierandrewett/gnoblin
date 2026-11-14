@@ -3,7 +3,7 @@
 `gnoblin-xr` is the XR extension for Gnoblin. It is an out-of-process program on the owner socket. It attaches to the tree,
 reads the `View` nodes under the node named `room`, and plans them into OpenXR layers on every frame. It is purely
 translational: it does not decide what is drawn or where it sits. It copies each View's picture into a swapchain and submits
-the layers. The design is in design/xr-extension.md (D34) and design/node-api-refactor.md, section 9.
+the layers. The design is in design/xr-extension.md (D34) and design/archive/node-api-refactor.md, section 9.
 
 ## What exists
 

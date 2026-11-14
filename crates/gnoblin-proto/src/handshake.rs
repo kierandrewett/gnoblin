@@ -13,7 +13,7 @@
 //! cases the client can build the error that names both versions.
 //!
 //! The frame carries no grant. Who may call what is decided by the compositor from
-//! the peer's kernel identity (design/node-api-refactor.md, D35), not by a claim in the
+//! the peer's kernel identity (design/archive/node-api-refactor.md, D35), not by a claim in the
 //! handshake, so the bytes a grant would have used are reserved and written as zero.
 
 use crate::error::CodecError;

@@ -10,7 +10,7 @@
 //! `reverse`; `crates/gnoblin-schema/schema/tree/tween.toml`). `tween.create` makes one and `tween.destroy` removes it
 //! when the transition is over.
 
-use gnoblin_tree_client::tree_mirror::{NodeId, TxError, lua_class};
+use gnoblin_tree_client::tree_mirror::{NodeId, TxError, class_name};
 use rquickjs::{Ctx, Function, Object, Value};
 
 use crate::bindings::{HostState, JsHostValue, SharedState, prepare, script_value};
@@ -36,7 +36,7 @@ pub(crate) fn destroy(state: &mut HostState, node: NodeId) -> Option<&'static st
     let HostState { mirror, tick, .. } = state;
     match tick.node(mirror, node) {
         None => return None,
-        Some(record) if lua_class(&record.class) != "Tween" => return Some("not-owned"),
+        Some(record) if class_name(&record.class) != "Tween" => return Some("not-owned"),
         Some(_) => {}
     }
     match tick.destroy(mirror, node) {

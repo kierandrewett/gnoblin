@@ -4,7 +4,7 @@
 picks rays against them. It has no dependencies. It does not open a socket, load a runtime, or touch OpenXR or the GPU,
 so every rule here runs under `cargo test` with no headset.
 
-The rules are in `design/node-api-refactor.md`, section 9 (D34). The crate follows them; the module docs in `src/` say
+The rules are in `design/archive/node-api-refactor.md`, section 9 (D34). The crate follows them; the module docs in `src/` say
 which rule each function implements.
 
 ## API

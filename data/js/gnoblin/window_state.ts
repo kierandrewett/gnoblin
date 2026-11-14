@@ -3,7 +3,7 @@
 // The compositor sends a `request` event for each of `maximize unmaximize fullscreen unfullscreen minimize unminimize
 // close raise lower activate move resize menu` and changes nothing until the shell answers, by writing the window's
 // `maximised`, `fullscreen`, `minimised`, its size, or by calling `close`. This module is that answer, ported from the
-// Lua shell (`Window:on_request` and its helpers, data/lua/gnoblin/shell/init.lua), with its tests in
+// retired shell (`Window:on_request` and its helpers, data/retired shell/gnoblin/shell/init.retired shell), with its tests in
 // crates/gnoblin-js/tests/client_requests.rs.
 //
 // Precedence (the contract a script can rely on):

@@ -1,6 +1,6 @@
-// GridLayout: a near-square grid of the nodes in child order. Geometry is data/lua/gnoblin/shell/tiling.lua
+// GridLayout: a near-square grid of the nodes in child order. Geometry is data/retired shell/gnoblin/shell/tiling.retired shell
 // `GridLayout`. `fill` is "row" (left to right, then down) or "column" (top to bottom, then right); a partly
-// filled last row or column is left-aligned. `columns` fixes the column count, which the Lua class cannot.
+// filled last row or column is left-aligned. `columns` fixes the column count, which the retired class cannot.
 // It registers one default binding in `layout.bindings`: `swap` (Super+MouseLeft+Drag, `ClientSwapBinding`) trades the
 // places of two cells. A grid has no divider to drag, so it has no resize binding. `triggers` replaces the trigger, and
 // `null` leaves the binding out.

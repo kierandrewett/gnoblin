@@ -6,7 +6,7 @@
 //! `unknown-method`), which `js/gnoblin.ts` turns into an error naming the member.
 
 use gnoblin_proto::tree::effect;
-use gnoblin_tree_client::tree_mirror::{MirrorValue, NIL, NodeId, TreeMirror, TxAnimation, lua_class};
+use gnoblin_tree_client::tree_mirror::{MirrorValue, NIL, NodeId, TreeMirror, TxAnimation, class_name};
 use rquickjs::function::Opt;
 use rquickjs::{Ctx, Function, Object, Value};
 
@@ -38,7 +38,7 @@ fn ids_of_class(state: &HostState, class: &str) -> Vec<f64> {
             state
                 .mirror
                 .node(*id)
-                .is_some_and(|record| lua_class(&record.class) == class)
+                .is_some_and(|record| class_name(&record.class) == class)
         })
         .map(|id| state.handles.to_script(id))
         .collect()
@@ -194,7 +194,7 @@ pub(crate) fn write_play(
     if let Some(tween) = tween {
         match state.tick.node(&state.mirror, tween) {
             None => return Some("unknown-node"),
-            Some(record) if lua_class(&record.class) != "Tween" => return Some("invalid-value"),
+            Some(record) if class_name(&record.class) != "Tween" => return Some("invalid-value"),
             Some(_) => {}
         }
     }
@@ -223,7 +223,7 @@ pub(crate) fn write_play(
 /// they were mapped in).
 fn stacked_windows(state: &HostState) -> Vec<NodeId> {
     let HostState { mirror, tick, .. } = state;
-    let is_window = |class: &str| lua_class(class) == "Window";
+    let is_window = |class: &str| class_name(class) == "Window";
     let mut order = Vec::new();
     let mut walk = vec![mirror.root()];
     while let Some(id) = walk.pop() {
@@ -267,7 +267,7 @@ pub(crate) fn raise(state: &mut HostState, node: NodeId) -> Option<&'static str>
     let Some(record) = state.tick.node(&state.mirror, node) else {
         return Some("unknown-node");
     };
-    if lua_class(&record.class) != "Window" {
+    if class_name(&record.class) != "Window" {
         return Some("unknown-method");
     }
     if stacked_windows(state).last() == Some(&node) {
@@ -288,7 +288,7 @@ pub(crate) fn lower(state: &mut HostState, node: NodeId) -> Option<&'static str>
     let Some(record) = state.tick.node(&state.mirror, node) else {
         return Some("unknown-node");
     };
-    if lua_class(&record.class) != "Window" {
+    if class_name(&record.class) != "Window" {
         return Some("unknown-method");
     }
     if stacked_windows(state).first() == Some(&node) {

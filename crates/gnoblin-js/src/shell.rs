@@ -1,11 +1,11 @@
-//! The JavaScript shell: what `ShellVm` is for Lua, over the same tree link.
+//! The JavaScript shell: what `ShellVm` is for the retired shell, over the same tree link.
 //!
 //! [`JsShell`] attaches to the compositor's tree, loads the embedded `gnoblin/host` module, evaluates the
 //! user's entry module, and then runs one [`JsShell::frame`] per turn of the runtime loop: it applies the
 //! compositor's batch to the mirror, tells the script's listeners what changed, and sends everything the
 //! script wrote as one transaction.
 //!
-//! The protocol rules are the ones `gnoblin-lua`'s `ShellVm` keeps, because they belong to the tree
+//! The protocol rules are the ones `the retired retired host`'s `ShellVm` keeps, because they belong to the tree
 //! protocol and not to the language: one transaction in flight (a second one built on the same base is
 //! refused as stale), a refusal matched to its transaction by position, a `stale-base` or `unknown-node`
 //! refusal sent again ahead of the next frame's writes, at most [`STALE_RETRIES`] times in a row.
@@ -65,7 +65,7 @@ const HOST_MODULE_NAME: &str = "gnoblin/host";
 const MAX_JOBS_PER_PUMP: usize = 1000;
 
 /// How many times a write the compositor refused `stale-base` is sent again before it is dropped: the
-/// number `gnoblin-lua`'s shell keeps. A node the compositor changes before every landing would refuse the
+/// number `the retired retired host`'s shell keeps. A node the compositor changes before every landing would refuse the
 /// write for ever, and the writes beside it, so after this many refusals in a row the refused write is
 /// dropped and the transaction's other writes go on.
 pub const STALE_RETRIES: u32 = 3;
@@ -82,7 +82,7 @@ const BOOT_POLL: Duration = Duration::from_millis(5);
 /// are compiled in that call, and a budget chosen to bound a user's entry must not starve them.
 const HOST_INSTALL_BUDGET: Duration = Duration::from_secs(5);
 
-/// Calls whose text is content and not a secret, so a retry may send it again. The same list the Lua
+/// Calls whose text is content and not a secret, so a retry may send it again. The same list the the retired shell
 /// shell keeps; no JavaScript call carries text yet, so this only holds the rule in place.
 const PLAIN_TEXT_CALLS: &[&str] = &["measure", "claim", "claim_gesture", "claim_device", "capture"];
 
@@ -108,7 +108,7 @@ pub struct JsShellConfig {
 }
 
 impl JsShellConfig {
-    /// The defaults of the Lua shell: 100 ms per listener call, 500 ms per frame.
+    /// The defaults of the retired shell: 100 ms per listener call, 500 ms per frame.
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self {
             js: JsConfig::new(root),
@@ -468,7 +468,7 @@ impl JsShell {
         self.state.borrow_mut().config.set_link(link);
     }
 
-    /// Puts the running generation's document settings back after something else committed the document (the Lua
+    /// Puts the running generation's document settings back after something else committed the document (the the retired shell
     /// host's own reload does, and its document has none of the shell's settings). The settings are laid over the
     /// document in force and committed; what the other commit set stays as it is.
     ///
@@ -540,7 +540,7 @@ impl JsShell {
     }
 
     /// Makes this shell the owner of the configuration document, as in the JavaScript runtime role: each of its
-    /// commits is the generation's settings alone (nothing a Lua host wrote, and nothing a previous run left in
+    /// commits is the generation's settings alone (nothing a retired host wrote, and nothing a previous run left in
     /// the compositor), it commits on every load so a reload always has an answer, and the generation's
     /// `autostart` commands go into the document for the guardian to start and supervise instead of being
     /// started here.

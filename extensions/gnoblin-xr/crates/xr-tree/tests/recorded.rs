@@ -1,6 +1,6 @@
 //! The planner against a recorded tree.
 //!
-//! `recorded/stock-ring.frames` is what the owner sent to an observer while the real compositor and the stock Lua shell
+//! `recorded/stock-ring.frames` is what the owner sent to an observer while the real compositor and the stock retired shell
 //! ran under Monado's simulated headset (`XR_SMOKE_RECORD=<file> scripts/xr-smoke.sh`): the room built when the `xr` seat
 //! appeared, one window mapped, a second window mapped and the focus moved to it, the second closed, and the room taken
 //! down when the extension went. Each test replays it one change batch at a time, so the planner meets the tree at every

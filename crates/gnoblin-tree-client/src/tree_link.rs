@@ -1,5 +1,5 @@
 //! The owner socket behind [`TreeLink`]: the `tree` namespace of a session socket, carried in
-//! the envelopes `gnoblin_proto` defines. This module owns framing and the wire-to-Lua
+//! the envelopes `gnoblin_proto` defines. This module owns framing and the wire-to-the retired shell
 //! translation; the mirror owns what the messages mean.
 //!
 //! Requests are sent and not awaited. `attach` and `transact` return once the frame is
@@ -474,7 +474,7 @@ fn to_change(change: change::Properties) -> Result<MirrorChange, LinkError> {
     })
 }
 
-/// The value a `set` change carries. A kind the Lua side has no form for is a refusal, not a
+/// The value a `set` change carries. A kind the retired side has no form for is a refusal, not a
 /// silent `nil`: the mirror would otherwise disagree with the compositor about the value.
 fn to_value(change: &change::Properties) -> Result<MirrorValue, LinkError> {
     match change.value_kind.as_str() {
@@ -488,6 +488,6 @@ fn to_value(change: &change::Properties) -> Result<MirrorValue, LinkError> {
         "list_text" => Ok(MirrorValue::Texts(change.value_texts.clone())),
         "list_effect" => Ok(MirrorValue::Effects(change.value_effects.clone())),
         "bytes" => Ok(MirrorValue::Bytes(change.value_bytes.clone())),
-        other => Err(LinkError(format!("a tree value of kind {other} has no Lua form"))),
+        other => Err(LinkError(format!("a tree value of kind {other} has no script form"))),
     }
 }

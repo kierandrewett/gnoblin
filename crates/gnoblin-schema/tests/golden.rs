@@ -1,6 +1,6 @@
 //! The generator-visible surface of the stock schema, pinned to a golden file.
 //!
-//! Every generator (the protobuf build, the Lua bindings, the IPC and CLI
+//! Every generator (the protobuf build, the retired bindings, the IPC and CLI
 //! generators) reads the catalog through `Catalog::objects` and `proto_files`. This
 //! test renders exactly the members those readers see today and compares the text
 //! with `tests/golden/catalog.txt`. A schema-format change that alters any existing

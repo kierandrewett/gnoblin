@@ -21,7 +21,6 @@ const types: Record<string, string> = {
     ".webp": "image/webp",
     ".svg": "image/svg+xml",
     ".json": "application/json",
-    ".lua": "text/plain; charset=utf-8",
 };
 
 /** Development only: serve docs/images (and other non-page files) at /docs/... and docs/public at the site root,

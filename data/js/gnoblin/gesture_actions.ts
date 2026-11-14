@@ -1,6 +1,6 @@
-// Touchpad gestures that run actions, ported from data/lua/gnoblin/shell/gestures.lua (`Gestures.actions`,
+// Touchpad gestures that run actions, ported from data/retired shell/gnoblin/shell/gestures.retired shell (`Gestures.actions`,
 // `Gestures.direction`, `Gestures.on_swipe`, `Gestures.on_pinch`). Each case has its test in
-// crates/gnoblin-js/tests/input.rs (the last seven cases of tests/lua/gestures_test.lua).
+// crates/gnoblin-js/tests/input.rs (the last seven cases of tests/retired shell/retired corpus gestures).
 //
 //   defineConfig({
 //       gestureActions: {

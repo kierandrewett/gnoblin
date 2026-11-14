@@ -1,5 +1,7 @@
 # Lua control surface audit
 
+> Superseded by [design/js-runtime.md](../js-runtime.md): the shell language is TypeScript on QuickJS and the Lua API is deleted. Kept for history.
+
 ## Finding
 
 Lua already controls many day-to-day window-manager operations. This is more than a configuration-only API: it can move and resize windows in two dimensions, change workspaces and monitors, make a window sticky or above others, make trusted focus and interactive-drag requests, make input delivery decisions, declare animations, and request lock or logout.

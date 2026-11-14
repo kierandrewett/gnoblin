@@ -1,4 +1,4 @@
-// The stock launcher (data/lua/gnoblin/shell/launcher.lua): Super+Space opens a command entry on the screen. Return starts
+// The stock launcher (data/retired shell/gnoblin/shell/launcher.retired shell): Super+Space opens a command entry on the screen. Return starts
 // the command and closes the entry; Escape closes it. It is an `Entry` that spawns what was typed. A config that gives
 // `launcher` a command line runs that program on Super+Space instead and has no entry.
 

@@ -1,4 +1,4 @@
-//! The JavaScript shell as the runtime role runs it: the counterpart of `gnoblin-lua`'s `ShellRole`.
+//! The JavaScript shell as the runtime role runs it: the counterpart of `the retired retired host`'s `ShellRole`.
 //!
 //! [`JsRole`] connects a [`JsShell`] to the compositor's owner socket, loads the user's `init.ts` (or
 //! `init.js`) from the config directory, and runs one [`JsShell::frame`] per turn of the role's loop. It owns
@@ -16,7 +16,7 @@
 //!   the generation, and the role restages the generation from disk. Three strikes in 30 s stop the restaging
 //!   and leave the last generation running until the file is edited or the user reloads.
 //!
-//! A link failure ends the shell: [`JsRole::tick`] returns it and the caller drops the role, as the Lua
+//! A link failure ends the shell: [`JsRole::tick`] returns it and the caller drops the role, as the the retired shell
 //! shell's slot does, and the runtime keeps serving without a shell.
 //!
 //! Windows are nodes of the compositor's tree, so a reload re-creates nothing: the new generation wraps the
@@ -186,7 +186,7 @@ impl JsRole {
         let link = SocketTreeLink::new(stream).map_err(|error| JsShellError::Link(error.to_string()))?;
         // Slots and the configuration document travel on the `gnoblin` namespace, which the tree socket does not
         // carry, so the shell holds two more owner connections. Without one the shell still runs: the compositor's
-        // own dialogs serve every request and the document keeps what the Lua host committed, so a failure to
+        // own dialogs serve every request and the document keeps what the retired host committed, so a failure to
         // open either is reported and not fatal.
         let slots: Option<Box<dyn SlotLink>> = match ClientSlotLink::connect(&path, version) {
             Ok(link) => Some(Box::new(link)),
@@ -383,7 +383,7 @@ impl JsRole {
         self.staged(JsReloader::reload_now)
     }
 
-    /// Puts the running generation's document settings back after another commit of the document: the Lua host's
+    /// Puts the running generation's document settings back after another commit of the document: the retired host's
     /// own reload commits a document that has none of them. Called by whoever commits (the runtime role's loop).
     pub fn config_committed(&mut self) {
         match self.shell.config_committed() {

@@ -213,7 +213,7 @@ fn a_key_three_edits_away_is_not_suggested() {
 }
 
 #[test]
-fn the_lua_era_sections_say_what_to_write_instead() {
+fn the_retired_era_sections_say_what_to_write_instead() {
     let got = run(r#"
         const bad = (config: any) => thrown(() => desugarConfig(config));
         emit([bad({ shortcuts: {} }), bad({ keybindings: {} }), bad({ "touchpad-gestures": [] })].join("\n"));
@@ -377,7 +377,7 @@ fn the_starter_as_written_plans_exactly_what_the_stock_config_plans() {
             "3:FloatingLayout",
             "4:FloatingLayout"
         ]),
-        "the Lua stock config's four workspaces"
+        "the retired stock config's four workspaces"
     );
     assert_eq!(plan["decorations"], true);
     assert_eq!(plan["autostart"], serde_json::json!([]));

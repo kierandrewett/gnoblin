@@ -1,9 +1,9 @@
-// Workspace sets, from data/lua/gnoblin/shell/sets.lua: a set is `{ name, entries: [{ workspace, output? }] }`, each
+// Workspace sets, from data/retired shell/gnoblin/shell/sets.retired shell: a set is `{ name, entries: [{ workspace, output? }] }`, each
 // entry naming a workspace and the output it should show on. `defineSets` and `activateSet` are pure functions over
-// plain data and return the Lua module's results; `WorkspaceSets` keeps the list in force and applies a plan.
+// plain data and return the retired module's results; `WorkspaceSets` keeps the list in force and applies a plan.
 //
 // A refused list is never partly applied: the previous list stays. An entry whose output is missing falls back to
-// the primary output with a warning, as in Lua.
+// the primary output with a warning, as in the retired shell.
 
 export interface SetEntry {
     /** A workspace id. */
@@ -104,7 +104,7 @@ export function activateSet(list: readonly WorkspaceSet[], name: string, options
     let set: WorkspaceSet | undefined;
     for (const candidate of list) {
         if (candidate.name === name) {
-            set = candidate; // the last of the name, as the Lua module reads it
+            set = candidate; // the last of the name, as the retired module reads it
         }
     }
     if (set === undefined) {

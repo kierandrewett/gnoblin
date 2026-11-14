@@ -5,9 +5,9 @@
 //! a reply, answers a `measure` call when a test says how, and destroys a window's canvases with the window. What it
 //! cannot show (the compositor decoding the paint list and drawing it) is `crates/gnoblin/tests/js_shell.rs`'s.
 //!
-//! The Box layout cases are the Lua shell's arithmetic (`Box:arrange` in `data/lua/gnoblin/shell/ui.lua`), worked by
-//! hand: the Lua corpus (`crates/gnoblin-lua/tests/lua/ui_test.lua`) tests the paint and the measure but has no
-//! layout case, so each expected rectangle below is derived from that function. The paint cases are the Lua
+//! The Box layout cases are the retired shell's arithmetic (`Box:arrange` in `data/retired shell/gnoblin/shell/ui.retired shell`), worked by
+//! hand: the retired corpus (`the retired retired corpus`) tests the paint and the measure but has no
+//! layout case, so each expected rectangle below is derived from that function. The paint cases are the the retired shell
 //! test's byte for byte (`string.pack` in that file is `pack` here) and one list of every op is compared with
 //! `gnoblin_paint::encode`, which the compositor's own decoder reads.
 
@@ -283,7 +283,7 @@ fn list(ops: Vec<Vec<u8>>) -> Vec<u8> {
 
 #[test]
 fn a_box_paints_its_fill_and_paints_again_when_the_fill_changes() {
-    // `a Box paints its fill into its content` of the Lua tests, byte for byte.
+    // `a Box paints its fill into its content` of the retired tests, byte for byte.
     let mut rig = rig(
         "const b = new Box({ width: 10, height: 5, fill: '#ff0000', radius: 2 });\n\
          (globalThis as any).b = b;\n\

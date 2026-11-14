@@ -2,8 +2,8 @@
 //! `gnoblin.on`, `gnoblin.find`, `gnoblin.focus` and `gnoblin.version` (`data/js/gnoblin/{operation,process,session}.ts`
 //! over `crates/gnoblin-js/src/host_{api,process,session}.rs`).
 //!
-//! The cases are the Lua host's: `crates/gnoblin-lua/tests/failure_modes.rs` (operations, timers, events, find,
-//! process, version, session). A case keeps the Lua case's inputs and expected values; where the JavaScript API changed
+//! The cases are the retired host's: `the retired retired corpus` (operations, timers, events, find,
+//! process, version, session). A case keeps the retired case's inputs and expected values; where the JavaScript API changed
 //! a word (`timers.after` takes milliseconds and returns a timer, `by_id` is `byId`, an event field is camelCase, the
 //! `Operation` is plain TypeScript and its callbacks are queued calls), the case says so.
 //!
@@ -153,7 +153,7 @@ fn until(rig: &mut Rig, what: &str, mut check: impl FnMut(&mut Rig) -> bool) -> 
 
 #[test]
 fn session_status_omits_the_lock_state_until_the_session_publishes_one() {
-    // Lua: `session_status_omits_the_lock_state_until_the_session_publishes_one`.
+    // Before: `session_status_omits_the_lock_state_until_the_session_publishes_one`.
     let (mut rig, _session) = rig("export {};");
     assert_eq!(
         rig.ts("JSON.stringify(gnoblin.session.status())"),
@@ -163,7 +163,7 @@ fn session_status_omits_the_lock_state_until_the_session_publishes_one() {
 
 #[test]
 fn session_status_reports_the_published_lock_state_and_revision() {
-    // Lua: `session_status_reports_the_published_lock_state_and_revision`; the status is read on each call.
+    // Before: `session_status_reports_the_published_lock_state_and_revision`; the status is read on each call.
     let (mut rig, session) = rig("export {};");
     session.0.borrow_mut().status = JsSessionStatus {
         lock_available: true,
@@ -201,7 +201,7 @@ fn a_shell_with_no_session_connection_reports_unavailable_and_refuses_every_verb
 
 #[test]
 fn each_verb_calls_the_session_and_its_operation_settles_with_the_compositors_answer() {
-    // Lua: `an_operation_completes_its_callback_once`, over the five session methods.
+    // Before: `an_operation_completes_its_callback_once`, over the five session methods.
     let (mut rig, session) = rig("g.ops = {
             logout: gnoblin.session.logout(),
             poweroff: gnoblin.session.poweroff(),
@@ -252,7 +252,7 @@ fn each_verb_calls_the_session_and_its_operation_settles_with_the_compositors_an
 
 #[test]
 fn a_refused_verb_fails_the_operation_with_the_typed_error_and_the_message() {
-    // Lua docs `session-runtime.md`: `denied`, `unsupported`, `busy`, `unavailable`, `timed_out`, `internal`.
+    // retired docs `session-runtime.md`: `denied`, `unsupported`, `busy`, `unavailable`, `timed_out`, `internal`.
     let (mut rig, session) = rig(
         "g.ops = [gnoblin.session.suspend(), gnoblin.session.hibernate(), gnoblin.session.reboot()];
          g.ops.forEach((op: any) => op.onComplete((_v: unknown, e: any) => g.log.push(`${e.code}: ${e.message}`)));",
@@ -307,7 +307,7 @@ fn a_lost_connection_fails_every_call_still_waiting() {
 
 #[test]
 fn reload_config_begins_the_reload_verb_and_is_refused_while_the_configuration_loads() {
-    // Lua: `a_script_cannot_ask_for_a_reload_while_the_configuration_loads`, and the two reload answers.
+    // Before: `a_script_cannot_ask_for_a_reload_while_the_configuration_loads`, and the two reload answers.
     let (mut rig, session) = rig("export {};");
     // The entry has run and the shell's first frame is over: a reload may be asked for now.
     rig.ts("g.ok = gnoblin.runtime.reloadConfig();
@@ -344,7 +344,7 @@ const PENDING: &str = "g.op = gnoblin.session.lock();\n";
 
 #[test]
 fn an_operation_calls_each_callback_once_and_a_late_callback_runs_after_the_current_call() {
-    // Lua: `an_operation_completes_its_callback_once`.
+    // Before: `an_operation_completes_its_callback_once`.
     let (mut rig, session) = rig(PENDING);
     rig.ts("g.op.onComplete((v: any) => g.log.push('first ' + v.dispatched)); g.op.onComplete(() => { throw new Error('boom'); }); g.op.onComplete(() => g.log.push('third'))");
     session.finish(1, Ok(serde_json::json!({ "dispatched": true })));
@@ -378,7 +378,7 @@ fn a_callback_that_was_unsubscribed_never_runs() {
 
 #[test]
 fn map_transforms_the_value_and_a_throw_in_it_fails_the_new_operation_internal() {
-    // Lua: `an_operation_map_transforms_its_completion_value`, `an_operation_map_error_fails_the_derived_operation`,
+    // Before: `an_operation_map_transforms_its_completion_value`, `an_operation_map_error_fails_the_derived_operation`,
     // `an_operation_map_propagates_a_source_failure_without_calling_the_mapper`.
     let (mut rig, session) = rig("const first = gnoblin.session.lock();
          const second = gnoblin.session.lock();
@@ -408,7 +408,7 @@ fn map_transforms_the_value_and_a_throw_in_it_fails_the_new_operation_internal()
 
 #[test]
 fn timeout_fails_timed_out_after_its_deadline_and_is_cleared_when_the_source_finishes() {
-    // Lua: `an_operation_timeout_fails_after_its_deadline`, `an_operation_timeout_is_cleared_when_its_source_finishes`.
+    // Before: `an_operation_timeout_fails_after_its_deadline`, `an_operation_timeout_is_cleared_when_its_source_finishes`.
     let (mut rig, session) = rig("g.slow = gnoblin.session.lock().timeout(0.05);
          g.quick = gnoblin.session.lock();
          g.limited = g.quick.timeout(0.05);");
@@ -434,7 +434,7 @@ fn timeout_fails_timed_out_after_its_deadline_and_is_cleared_when_the_source_fin
 
 #[test]
 fn cancel_fails_cancelled_and_ignores_the_late_completion_and_a_settled_operation_cannot_be_cancelled() {
-    // Lua: `cancelling_an_operation_ignores_its_late_completion`, `cancelling_a_completed_operation_is_a_noop`.
+    // Before: `cancelling_an_operation_ignores_its_late_completion`, `cancelling_a_completed_operation_is_a_noop`.
     let (mut rig, session) = rig("g.cancelled = gnoblin.session.lock();
          g.cancelled.onComplete((_v: unknown, e: any) => g.log.push(e.code));
          g.done = gnoblin.session.lock();");
@@ -452,7 +452,7 @@ fn cancel_fails_cancelled_and_ignores_the_late_completion_and_a_settled_operatio
 
 #[test]
 fn a_timer_runs_once_at_the_first_frame_past_its_time_and_never_after_cancel() {
-    // Lua: `a_timer_fires_on_its_tick_and_never_after_cancel`; the JavaScript timer counts milliseconds.
+    // Before: `a_timer_fires_on_its_tick_and_never_after_cancel`; the JavaScript timer counts milliseconds.
     let (mut rig, _session) = rig("g.fired = gnoblin.timers.after(30, () => g.log.push('fired'));
          g.cancelled = gnoblin.timers.after(30, () => g.log.push('cancelled'));
          g.cancelled.cancel();
@@ -506,7 +506,7 @@ fn timers_now_is_monotonic_milliseconds_and_gnoblin_after_is_the_seconds_spellin
 
 #[test]
 fn a_timer_delay_outside_one_day_or_not_a_number_is_refused_and_the_pending_count_is_capped() {
-    // Lua: `a_timer_delay_outside_one_day_or_not_a_number_is_refused`, `the_pending_timer_count_is_capped_at_1024`.
+    // Before: `a_timer_delay_outside_one_day_or_not_a_number_is_refused`, `the_pending_timer_count_is_capped_at_1024`.
     let (mut rig, _session) = rig("export {};");
     for bad in ["-1", "86_400_001", "NaN", "Infinity", "'5'"] {
         assert!(
@@ -546,7 +546,7 @@ fn a_timer_that_throws_is_reported_and_the_next_timer_still_runs() {
 
 #[test]
 fn retiring_the_generation_cancels_its_timers_pending_operations_and_handlers() {
-    // Lua: `a_reload_cancels_the_timers_of_the_previous_run`, `reloading_clears_global_signal_handlers`.
+    // Before: `a_reload_cancels_the_timers_of_the_previous_run`, `reloading_clears_global_signal_handlers`.
     let (mut rig, session) = rig("g.timer = gnoblin.timers.after(50, () => g.log.push('timer'));
          gnoblin.on('gnoblin.session.bell', () => g.log.push('bell'));
          g.op = gnoblin.session.lock();");
@@ -566,7 +566,7 @@ fn retiring_the_generation_cancels_its_timers_pending_operations_and_handlers() 
 
 #[test]
 fn handlers_run_in_order_one_that_throws_does_not_stop_the_rest_and_once_runs_once() {
-    // Lua: `global_signal_handlers_are_ordered_isolated_and_one_shot`; the event's fields are camelCase.
+    // Before: `global_signal_handlers_are_ordered_isolated_and_one_shot`; the event's fields are camelCase.
     let (mut rig, session) = rig("gnoblin.on('gnoblin.session.bell', (e) => g.log.push('a:' + e.count));
          gnoblin.on('gnoblin.session.bell', () => { throw new Error('handler broke'); });
          gnoblin.on('gnoblin.session.bell', (e) => g.log.push('c:' + e.name + ':' + e.object));
@@ -601,7 +601,7 @@ fn off_detaches_by_subscription_and_by_name_and_handler() {
 
 #[test]
 fn hyphen_spellings_name_the_underscored_signal() {
-    // Lua: `hyphenated_event_spellings_subscribe_to_the_underscored_signal`.
+    // Before: `hyphenated_event_spellings_subscribe_to_the_underscored_signal`.
     let (mut rig, session) =
         rig("gnoblin.on('gnoblin.session.reload-requested', (e) => g.log.push(e.name + ':' + e.generation));");
     session.signal(
@@ -615,7 +615,7 @@ fn hyphen_spellings_name_the_underscored_signal() {
 
 #[test]
 fn an_unknown_event_name_is_an_error_that_lists_the_near_matches() {
-    // Lua: `global_event_registration_rejects_unknown_names_and_excess_handlers`,
+    // Before: `global_event_registration_rejects_unknown_names_and_excess_handlers`,
     // `an_unknown_hyphenated_event_is_refused_with_the_underscored_name`.
     let (mut rig, _session) = rig("export {};");
     assert_eq!(
@@ -655,7 +655,7 @@ fn the_handler_count_is_capped_at_1024() {
 
 #[test]
 fn find_filters_windows_by_fields_and_by_predicate_in_list_order() {
-    // Lua: `find_returns_only_live_windows_and_alive_turns_false_on_close`; `app_id` and `appId` are one field.
+    // Before: `find_returns_only_live_windows_and_alive_turns_false_on_close`; `app_id` and `appId` are one field.
     let (mut rig, _session) = rig("export {};");
     assert_eq!(rig.ts("gnoblin.find('Window').map((w: any) => w.id).join()"), "3,5");
     assert_eq!(
@@ -687,7 +687,7 @@ fn find_filters_windows_by_fields_and_by_predicate_in_list_order() {
 
 #[test]
 fn find_refuses_an_unknown_field_kind_or_value_and_names_what_works() {
-    // Lua: `find_refuses_a_table_field_the_kind_does_not_declare_by_name`,
+    // Before: `find_refuses_a_table_field_the_kind_does_not_declare_by_name`,
     // `find_refuses_an_unknown_kind_and_names_the_kinds_that_work`, `a_predicate_error_is_an_error_of_the_find_call`.
     let (mut rig, _session) = rig("export {};");
     let field = thrown(&mut rig, "gnoblin.find('Window', { colour: 'red' })");
@@ -763,7 +763,7 @@ fn focus_history_lists_windows_by_recent_focus_and_filters_by_workspace_and_limi
 
 #[test]
 fn a_spawned_process_has_a_handle_and_its_end_reaches_wait_and_the_listeners() {
-    // Lua: `a_process_reports_its_fields_and_how_it_ended`; `exit_code` is `exitCode`, `closed` is `ProcessListener.onExit`.
+    // Before: `a_process_reports_its_fields_and_how_it_ended`; `exit_code` is `exitCode`, `closed` is `ProcessListener.onExit`.
     let (mut rig, _session) = rig("class Watch extends ProcessListener {
              onExit(process: any, code: number | null) { g.log.push(`exit ${process.id} ${code} ${process.alive}`); }
          }
@@ -797,7 +797,7 @@ fn a_spawned_process_has_a_handle_and_its_end_reaches_wait_and_the_listeners() {
 
 #[test]
 fn kill_ends_the_group_names_the_signal_and_fails_not_found_once_it_has_ended() {
-    // Lua: `changed_names_the_fields_that_moved_and_a_killed_process_names_its_signal`,
+    // Before: `changed_names_the_fields_that_moved_and_a_killed_process_names_its_signal`,
     // `killing_an_ended_process_fails_with_not_found`.
     let (mut rig, _session) = rig(
         "class Watch extends ProcessListener { onExit(process: any, code: number | null) { g.log.push(`${code}:${process.signal}`); } }
@@ -819,7 +819,7 @@ fn kill_ends_the_group_names_the_signal_and_fails_not_found_once_it_has_ended() 
 
 #[test]
 fn list_holds_the_running_processes_oldest_first_and_by_id_finds_them_again() {
-    // Lua: `the_list_holds_running_processes_and_by_id_finds_them_again`.
+    // Before: `the_list_holds_running_processes_and_by_id_finds_them_again`.
     let (mut rig, _session) = rig("g.a = gnoblin.process.spawn(['sleep', '60']);
          g.b = gnoblin.spawn('sleep 60');");
     assert_eq!(rig.ts("gnoblin.process.list().map((p: any) => p.id).join()"), "1,2");
@@ -842,7 +842,7 @@ fn list_holds_the_running_processes_oldest_first_and_by_id_finds_them_again() {
 
 #[test]
 fn a_timeout_ends_the_process_and_reports_it() {
-    // Lua: `a_timeout_ends_the_process_and_reports_it_as_timed_out`.
+    // Before: `a_timeout_ends_the_process_and_reports_it_as_timed_out`.
     let (mut rig, _session) = rig("g.job = gnoblin.process.spawn(['sleep', '60'], { timeout: 0.05 });");
     until(&mut rig, "the timeout ended it", |rig| rig.ts("g.job.alive") == "false");
     assert_eq!(rig.ts("[g.job.timedOut, g.job.signal].join()"), "true,term");
@@ -906,7 +906,7 @@ fn spawn_throws_the_spawn_failed_error_for_a_program_that_cannot_start_and_a_typ
 
 #[test]
 fn version_is_a_frozen_record_of_the_build_identity_with_unknown_for_what_the_build_lacks() {
-    // Lua: `version_is_an_immutable_record_of_the_build_identity`.
+    // Before: `version_is_an_immutable_record_of_the_build_identity`.
     let (mut rig, _session) = rig("export {};");
     assert_eq!(
         rig.ts("Object.keys(gnoblin.version()).sort().join()"),

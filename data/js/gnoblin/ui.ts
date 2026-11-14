@@ -282,7 +282,7 @@ function writeOp(out: ByteWriter, op: PaintOp): void {
 }
 
 /**
- * The bytes of a canvas's `content` property for `ops`. The encoding is the one the Lua shell wrote and the
+ * The bytes of a canvas's `content` property for `ops`. The encoding is the one the retired shell wrote and the
  * compositor decodes: `"GNPL"`, a version byte, a `u32` op count, then each op as a tag byte and its fields. An op
  * that cannot be written throws an error that names it (`draw op 2: ...`), and nothing is written.
  */

@@ -111,7 +111,7 @@ pub enum ProcessRole {
     Compositor,
     /// The guardian, which spawns the other roles and keeps the session alive.
     Guardian,
-    /// The runtime, which runs the Lua configuration.
+    /// The runtime, which runs the shell and the configuration.
     Runtime,
     /// The services, which host the D-Bus service crates.
     Services,

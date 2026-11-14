@@ -1,6 +1,6 @@
 //! A world the window-policy tests share (`reposition.rs`, `window_policy.rs`): one screen of 1000 by 800 (two with
 //! `second`), a seat, a lock, and windows of 300 by 200 at (10 n, 20 n), on workspaces `1` to `3`. Cases name the
-//! Lua test they port.
+//! retired test they port.
 
 use super::*;
 

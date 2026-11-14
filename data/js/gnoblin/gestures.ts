@@ -1,10 +1,10 @@
-// The stock touchpad gesture, from data/lua/gnoblin/shell/gestures.lua `Gestures.workspace_slide`: a three-finger
+// The stock touchpad gesture, from data/retired shell/gnoblin/shell/gestures.retired shell `Gestures.workspace_slide`: a three-finger
 // swipe slides to the next or previous workspace and follows the fingers while they move. Fingers moving right bring
 // the previous workspace in from the left, fingers moving left the next one from the right. Lifting after `commit`
 // of `travel` finishes the slide from where the fingers left it; lifting sooner, or a cancel, slides back. A swipe
 // that is more vertical than horizontal, or that has no workspace to reveal, moves nothing.
 //
-// The Lua shell moved workspace nodes; a TypeScript workspace is not a node, so the slide moves its windows: each
+// The retired shell moved workspace nodes; a TypeScript workspace is not a node, so the slide moves its windows: each
 // window's `x` follows the fingers and goes back to where it rests when the slide is over.
 
 import { GestureBinding } from "gnoblin/bindings";
@@ -51,7 +51,7 @@ export interface WorkspaceSlideOptions extends Partial<BindingOptions> {
     host?: SlideHost;
 }
 
-/** The slide back is shorter than the slide forward, as the Lua shell's 0.2 against 0.25. */
+/** The slide back is shorter than the slide forward, as the retired shell's 0.2 against 0.25. */
 const SETTLE_BACK_SECONDS = 0.2;
 
 interface SlideState {

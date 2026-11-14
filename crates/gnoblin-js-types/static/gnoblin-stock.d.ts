@@ -200,7 +200,7 @@ declare module "gnoblin" {
     /** Rotation about each axis in radians, or the scale along each axis: three numbers. */
     export type Vector3 = readonly [number, number, number];
 
-    /** The curves `Client.animate` knows, named as the Lua shell's `ease` table named them. */
+    /** The curves `Client.animate` knows, named as the retired shell's `ease` table named them. */
     export type ClientEasing = "linear" | "out" | "out-cubic" | "in-cubic" | "in-out";
 
     export interface ClientAnimation {
@@ -1974,7 +1974,7 @@ declare module "gnoblin" {
         output?: Output;
     }
 
-    /** The seconds a workspace slide takes in the Lua shell and in the stock keys. */
+    /** The seconds a workspace slide takes in the retired shell and in the stock keys. */
     export const SLIDE_SECONDS: number;
 
     /** One set of `defineConfig({ workspaceSets })`: its name and the workspaces it shows. */
@@ -2089,7 +2089,7 @@ declare module "gnoblin" {
         seconds?: number;
         host?: SlideHost;
     }
-    /** The three-finger workspace slide of the Lua shell (`Gestures.workspace_slide`), as a binding. */
+    /** The three-finger workspace slide of the retired shell (`Gestures.workspace_slide`), as a binding. */
     export class WorkspaceSlideBinding extends GestureBinding {
         travel: number;
         commit: number;

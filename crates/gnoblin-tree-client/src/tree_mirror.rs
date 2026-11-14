@@ -9,7 +9,7 @@
 //! transaction the compositor applies changes the mirror, through the change batch it
 //! publishes; a refused transaction therefore leaves the mirror exactly as it was.
 //!
-//! This module is pure Rust and knows nothing of Lua. The Lua `core` table is built
+//! This module is pure Rust and knows nothing of the retired shell. The the retired shell `core` table is built
 //! on it in `tree_core`.
 
 use std::collections::BTreeMap;
@@ -28,7 +28,7 @@ pub const NIL: NodeId = 0;
 /// The shell's name for a class the wire carries by its schema name: `seat` is `Seat`. The
 /// schema names are lowercase; the shell's classes are their names with the first letter
 /// capitalised (`tree_core::tree_classes`).
-pub fn lua_class(wire: &str) -> String {
+pub fn class_name(wire: &str) -> String {
     let lower = wire.to_ascii_lowercase();
     let mut chars = lower.chars();
     chars
@@ -39,8 +39,8 @@ pub fn lua_class(wire: &str) -> String {
 
 /// The schema name the wire carries for a shell class: `Seat` is `seat`. The compositor
 /// checks classes by exact schema name, so a class the shell creates is sent this way.
-pub fn wire_class(lua: &str) -> String {
-    lua.to_ascii_lowercase()
+pub fn wire_class(name: &str) -> String {
+    name.to_ascii_lowercase()
 }
 
 /// A property value, one variant per `value_kind` the wire carries.
@@ -246,7 +246,7 @@ pub struct TreeEvent {
     pub fields: EventFields,
 }
 
-/// A claimed chord the compositor saw change state: `claim` is the id the Lua side allocated.
+/// A claimed chord the compositor saw change state: `claim` is the id the retired side allocated.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TreeChord {
     pub claim: i64,
@@ -254,7 +254,7 @@ pub struct TreeChord {
     pub state: String,
 }
 
-/// A claimed touchpad gesture the compositor saw advance: `claim` is the id the Lua side allocated.
+/// A claimed touchpad gesture the compositor saw advance: `claim` is the id the retired side allocated.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TreeGesture {
     pub claim: i64,
@@ -414,7 +414,7 @@ impl TreeMirror {
                 return Err(MirrorError::Snapshot("node id zero".to_owned()));
             }
             let mut record = NodeRecord {
-                class: lua_class(&node.class),
+                class: class_name(&node.class),
                 parent: node.parent,
                 ..NodeRecord::default()
             };
@@ -523,7 +523,7 @@ impl TreeMirror {
                 self.nodes.insert(
                     change.node,
                     NodeRecord {
-                        class: lua_class(&change.class),
+                        class: class_name(&change.class),
                         ..NodeRecord::default()
                     },
                 );
@@ -1126,19 +1126,19 @@ impl TxBuilder {
 
 #[cfg(test)]
 mod class_name_tests {
-    use super::{lua_class, wire_class};
+    use super::{class_name, wire_class};
 
     #[test]
     fn a_wire_class_is_the_shells_capitalised_name() {
-        assert_eq!(lua_class("seat"), "Seat");
-        assert_eq!(lua_class("node"), "Node");
-        assert_eq!(lua_class("View"), "View");
+        assert_eq!(class_name("seat"), "Seat");
+        assert_eq!(class_name("node"), "Node");
+        assert_eq!(class_name("View"), "View");
     }
 
     #[test]
     fn a_shell_class_is_sent_by_its_schema_name() {
         assert_eq!(wire_class("Screen"), "screen");
         assert_eq!(wire_class("Node"), "node");
-        assert_eq!(lua_class(&wire_class("Workspace")), "Workspace");
+        assert_eq!(class_name(&wire_class("Workspace")), "Workspace");
     }
 }

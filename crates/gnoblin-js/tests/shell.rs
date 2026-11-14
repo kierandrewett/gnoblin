@@ -1,7 +1,7 @@
 //! Tests for `JsShell`: the JavaScript shell over the tree protocol.
 //!
 //! The compositor is played by `FakeLink`, an in-memory `TreeLink` modelled on the one in
-//! `gnoblin-lua`'s `shell_vm` tests: it applies every transaction to a node map, answers it with a change
+//! `the retired retired host`'s `shell_vm` tests: it applies every transaction to a node map, answers it with a change
 //! batch carrying the serial and then the reply, refuses a write to a node a published batch changed since
 //! the base (`stale-base`) and a write to a node that is gone (`unknown-node`), and can hold a transaction
 //! in flight.
@@ -626,7 +626,7 @@ fn a_destroyed_window_is_not_alive_keeps_its_values_and_rejects_writes_naming_th
 #[test]
 fn close_is_a_call_on_the_window_and_focus_is_a_write_of_the_seats_focus() {
     // The compositor answers no `focus` call on a window (only `close` and `kill`); a shell gives focus by writing
-    // the seat's `focus`, as the Lua shell's `seat.focus = window` does (crates/gnoblin/tests/js_shell.rs proves it).
+    // the seat's `focus`, as the retired shell's `seat.focus = window` does (crates/gnoblin/tests/js_shell.rs proves it).
     let comp = two_windows();
     comp.borrow_mut().nodes.insert(
         9,
@@ -903,7 +903,7 @@ fn input_events_with_no_api_yet_are_consumed_without_a_failure() {
     assert!(rig.frame().is_empty());
 }
 
-// The protocol rules the Lua shell keeps, held for JavaScript.
+// The protocol rules the retired shell keeps, held for JavaScript.
 
 #[test]
 fn holds_writes_while_a_transaction_is_in_flight() {

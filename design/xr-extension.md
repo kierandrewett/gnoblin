@@ -563,7 +563,7 @@ Code today:
   multi-monitor setup where a client cannot name an output.
 - **Code today:** the wm ends output-scope layer surfaces with their output (`crates/gnoblin-wm/src/wm.rs:1147-1149`).
   The legacy rule contract matches layer surfaces (`type = "layer"`, `layer` namespace pattern,
-  `design/window-rules.md:24`, `:28`). The Rust reference lists `type = "window"` only
+  `design/archive/window-rules.md:24`, `:28`). The Rust reference lists `type = "window"` only
   (`docs/config/window_rule.md:21`). No rule has an `output` action.
 
 ### G13 (new): a layout declares `depth`

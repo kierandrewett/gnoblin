@@ -1,6 +1,6 @@
 //! Text that must not leak.
 //!
-//! A password crosses several hops (the shell's Lua, the tree transaction, the wire, the
+//! A password crosses several hops (the shell's the retired shell, the tree transaction, the wire, the
 //! compositor's batch) and each hop may log, format or keep a copy. [`SecretText`] is the one
 //! type those hops share: its `Debug` never shows the text, it has no `Display`, and the bytes
 //! are overwritten when the value is dropped, so a value that has been handed on leaves no

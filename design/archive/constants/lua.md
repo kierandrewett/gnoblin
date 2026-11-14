@@ -1,5 +1,7 @@
 # Constants audit: lua group
 
+> Superseded by [design/js-runtime.md](../../js-runtime.md): the shell language is TypeScript on QuickJS and the Lua API is deleted. Kept for history.
+
 Read-only audit. No Rust was changed or built. Paths are relative to the worktree root. Line numbers come from the detached worktree at `03c93fe67`.
 
 Method: `grep -rnE '^\s*(pub(\([a-z]+\))? )?(const|static) [A-Z_0-9]+'` per crate, then a read of each hit and of the inline limits in non-test code. Test modules and `tests/` were excluded where the grep made that clear. Counts below are the grep hits, not a full inventory, so a few inline magic numbers are grouped rather than listed one by one.

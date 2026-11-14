@@ -263,7 +263,7 @@ fn only_the_call_text_tree_members_are_sensitive() {
 }
 #[test]
 fn the_owner_socket_only_tree_is_excluded_by_load_dir_except() {
-    // The Lua build excludes `tree` with `load_dir_except` (design/node-core.md section 2.3). The
+    // The retired build excludes `tree` with `load_dir_except` (design/node-core.md section 2.3). The
     // stock schema must still hold it, and the excluded catalog must hold nothing from it.
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("schema");
     let full = stock();

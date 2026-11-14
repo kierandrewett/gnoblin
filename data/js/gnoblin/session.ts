@@ -140,7 +140,7 @@ type HostEvent = OperationEvent | SignalMessage | LostMessage | ExitEvent | Trac
 
 // ---- the event bus -----------------------------------------------------------------------------------------------
 
-/** The most handlers the bus holds, as the Lua host's. */
+/** The most handlers the bus holds, as the retired host's. */
 export const MAX_HANDLERS = 1024;
 
 function camel(name: string): string {

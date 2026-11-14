@@ -1,5 +1,7 @@
 # Gnoblin Lua API
 
+> Superseded by [design/js-runtime.md](../js-runtime.md): the shell language is TypeScript on QuickJS and the Lua API is deleted. Kept for history.
+
 **Status:** internal target design. This file inventories the Lua API present
 in the checkout and proposes the standalone interface. Proposed signatures
 are not implemented unless marked current, and this is not a frozen contract.
@@ -207,7 +209,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.windows` | `list(filter?)`, `focused()`, `by_id(id)`, `snap_context(context)` | **Current.** The native runtime exposes snapshots and trusted snapping. `gnoblinctl lua` exposes snapshots and typed window methods; event callbacks can use trusted focus, menu, move, resize, and snapping contexts on their originating connection. |
 | `gnoblin.workspaces` | `list()`, `active()`, `by_id(id)`, workspace mutations | **Current.** The native runtime exposes read-only revisioned snapshots and typed operations. `gnoblinctl lua` exposes the same reads and namespace mutations; operations wait for completion and return read-only records. |
 | `gnoblin.monitors` | `list()`, `primary()`, `privacy_screen()`, `set_privacy_screen(value)` | **Current.** Both the supervised runtime and `gnoblinctl lua` expose read-only revisioned monitor snapshots and session-scoped privacy-screen overrides. |
-| `gnoblin.outputs` | `list()`, `primary()`, `by_id(id)`, `renderer()` | **Current; native-control API 1.82.** Read-only revisioned output snapshots and cached compositor renderer details. See [Outputs](outputs.md). |
+| `gnoblin.outputs` | `list()`, `primary()`, `by_id(id)`, `renderer()` | **Current; native-control API 1.82.** Read-only revisioned output snapshots and cached compositor renderer details. See [Outputs](../outputs.md). |
 | `gnoblin.layers` | `list(filter?)`, `animation_policy(namespace)` | **Current.** Native runtime and `gnoblinctl lua` expose read-only layer surfaces and effective animation/shadow policy; the console returns a deeply read-only `LayerAnimationPolicy`. |
 | `gnoblin.input` | `devices()`, `list()`, `current()`, `sources()`, `current_source()`, `select_source(selector)`, `orientation_lock()`, `set_orientation_lock(value)`, `text_target(context)` | **Current.** The native runtime and `gnoblinctl lua` expose all methods. The console creates and consumes trusted text targets only from a live event `FocusContext`, over the connection that delivered it. |
 | `gnoblin.appearance` | `color_scheme()` | **Current; native-control API 1.70.** Read the current desktop color scheme as a string or `nil` when the setting is unavailable; `gnoblinctl lua` exposes the same result. |
@@ -619,7 +621,7 @@ or `WorkspaceMove` value instead of an `Operation` handle.
 
 ### Monitors, outputs, and layer surfaces
 
-The current output model and future configuration boundary are described in [Outputs](outputs.md).
+The current output model and future configuration boundary are described in [Outputs](../outputs.md).
 
 | Lua call                                     | Arguments                                                        | Result                                    | Canonical operation                                          |
 | -------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------ |
@@ -678,7 +680,7 @@ and `revision` is an integer. Mutter currently omits `app_id` because
 layer-shell does not provide one. The API inspects client surfaces; it does
 not create or draw them.
 
-Output mode-setting is intentionally absent from the current read-only API. Future output configuration belongs to the session display-configuration interface and must retain its validation and rollback semantics. The internal proposal is in [Outputs](outputs.md).
+Output mode-setting is intentionally absent from the current read-only API. Future output configuration belongs to the session display-configuration interface and must retain its validation and rollback semantics. The internal proposal is in [Outputs](../outputs.md).
 
 ### Input and shortcuts
 

@@ -453,7 +453,7 @@ withhold the input for ever.
 `scripts/xr-smoke.sh` runs the whole stack on an Agent37 instance with no GPU, no seat and no headset. It runs as root
 and fakes nothing. The parts are:
 
-- the real compositor on its headless backend, and the Lua shell with its stock library (the script selects the Lua shell explicitly);
+- the real compositor on its headless backend, and the TypeScript shell with its built-in stock library;
 - two solid-colour Wayland clients (`xr-smoke-client`);
 - `gnoblin-xr`, started by the guardian with `GNOBLIN_XR=1`;
 - Monado with the simulated driver, the null compositor and lavapipe;

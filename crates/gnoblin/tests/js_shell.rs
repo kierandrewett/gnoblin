@@ -810,7 +810,7 @@ fn a_scripts_console_calls_reach_the_session_log_with_their_ts_call_sites() {
     );
 }
 
-/// The workspaces the stock config declares, as the shell's view lists them: the Lua stock config's four.
+/// The workspaces the stock config declares, as the shell's view lists them: the retired stock config's four.
 const STOCK_WORKSPACES: &str = "1:FloatingLayout,2:FloatingLayout,3:FloatingLayout,4:FloatingLayout";
 
 /// A section of the shell's view: what stands between `open` and the next `]`.
@@ -1602,7 +1602,7 @@ fn write_layout_config(dir: &Path, layout: &str) {
 
 #[test]
 fn a_dwindle_workspace_places_two_real_windows_side_by_side_at_the_halves_of_the_screen() {
-    // Lua tiling_test.lua "Dwindle: 2 and 3 windows split the last cell by aspect", against the real compositor: two
+    // retired retired corpus tiling "Dwindle: 2 and 3 windows split the last cell by aspect", against the real compositor: two
     // real Wayland windows are mapped while the shell runs, and what the compositor's tree holds for them is the first
     // half and the second half of the screen, floored to whole pixels.
     let session = Session::start();
@@ -1629,7 +1629,7 @@ fn a_dwindle_workspace_places_two_real_windows_side_by_side_at_the_halves_of_the
 
 #[test]
 fn a_strip_workspace_places_two_real_windows_in_columns_and_scrolls_to_the_focused_one() {
-    // strip_test.lua "a strip lays out one column per window": a column is half the strip wide and the full height. With
+    // retired corpus strip "a strip lays out one column per window": a column is half the strip wide and the full height. With
     // two windows the strip is exactly as wide as the screen, so nothing scrolls whichever has focus.
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
@@ -1711,7 +1711,7 @@ fn a_master_stack_workspace_with_a_ratio_and_a_gap_fills_the_screen_to_both_edge
 }
 
 /// A tiled window is told what the shell wrote, on the wire: its configure size is its tile, it is told all four edges
-/// are tiled, and it is sent the work area as its bounds (ported from the Lua rig's
+/// are tiled, and it is sent the work area as its bounds (ported from the retired rig's
 /// `a_tiling_workspace_configures_three_real_clients_to_their_tiles_with_tiled_edges_and_the_work_area`). The bounds
 /// are the compositor's work area, which the bars of the stock shell may shrink, so they are asserted to lie inside the
 /// screen and not to equal it.
@@ -1816,7 +1816,7 @@ fn assert_configured_for_good(log: &[(i32, i32, Vec<u32>)], maximised: bool, siz
 
 /// A toolkit window that draws at every size it is told, as GTK does, asks to be maximised and then to leave it. The
 /// shell's answer reaches the client as a configure, and the compositor must not configure it back to the size it had
-/// (ported from the Lua rig's `a_window_the_stock_shell_maximises_is_not_configured_back_to_its_old_size`).
+/// (ported from the retired rig's `a_window_the_stock_shell_maximises_is_not_configured_back_to_its_old_size`).
 #[test]
 fn a_window_a_client_maximises_is_not_configured_back_to_its_old_size() {
     const OWN: (i32, i32) = (800, 600);

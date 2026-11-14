@@ -45,7 +45,7 @@ pub enum Effect {
     /// Add one line to the session log.
     ///
     /// The message starts with the `[guardian]` tag and carries no environment
-    /// value, no configuration document and no Lua source, matching the redaction
+    /// value, no configuration document and no retired source, matching the redaction
     /// rule in `design/startup-recovery.md`.
     Log {
         /// How urgent the line is.

@@ -351,7 +351,7 @@ fn workspaces_are_a_mutable_collection_of_objects_a_script_makes() {
     assert_eq!(
         rig.eval("gnoblin.workspaces.remove('web') + ',' + gnoblin.workspaces.length"),
         "false,1",
-        "the last workspace is refused (Lua: `remove_workspace` of the last one is false)"
+        "the last workspace is refused (before: `remove_workspace` of the last one is false)"
     );
     assert_eq!(
         rig.eval("gnoblin.workspaces.clear(); gnoblin.workspaces.length"),
@@ -1005,7 +1005,7 @@ fn three_windows(layout: &str) -> (Comp, FakeLink, Rig) {
 
 #[test]
 fn a_dwindle_workspace_places_its_windows_in_the_split_tree_and_marks_them_tiled() {
-    // tiling_test.lua "Dwindle: 2 and 3 windows split the last cell by aspect" through the layout driver: the window
+    // retired corpus tiling "Dwindle: 2 and 3 windows split the last cell by aspect" through the layout driver: the window
     // that maps second splits the first's cell; the third splits the second's, top and bottom.
     let comp = compositor(false);
     let link = FakeLink(comp.clone());
@@ -1038,7 +1038,7 @@ fn a_dwindle_workspace_places_its_windows_in_the_split_tree_and_marks_them_tiled
 
 #[test]
 fn a_kiosk_workspace_shows_the_focused_window_and_hides_the_rest_as_focus_moves() {
-    // tiling_test.lua "Kiosk" and "Monocle: refocusing shows another window and hides the rest": a change of focus is a
+    // retired corpus tiling "Kiosk" and "Monocle: refocusing shows another window and hides the rest": a change of focus is a
     // reason to lay out again, and the placement's `visible` reaches the window.
     let (comp, link, mut rig) = three_windows("kiosk");
     for id in [10, 11, 12] {
@@ -1066,7 +1066,7 @@ fn a_kiosk_workspace_shows_the_focused_window_and_hides_the_rest_as_focus_moves(
 
 #[test]
 fn a_strip_workspace_scrolls_to_keep_the_focused_column_in_view_as_focus_moves() {
-    // strip_test.lua "a strip lays out one column per window and scrolls to keep the focused one in view": columns are
+    // retired corpus strip "a strip lays out one column per window and scrolls to keep the focused one in view": columns are
     // half the strip wide; the focused third column is brought in (x = 500) and the first when focus goes back.
     let (comp, link, mut rig) = three_windows("strip");
     assert_eq!(
@@ -1152,7 +1152,7 @@ fn showing_a_workspace_hides_the_windows_of_the_one_it_replaces() {
 }
 
 #[test]
-fn a_slide_animates_both_workspaces_with_the_lua_curve_and_hides_the_old_one_when_it_ends() {
+fn a_slide_animates_both_workspaces_with_the_retired_curve_and_hides_the_old_one_when_it_ends() {
     // Desk:show: the new workspace comes in from a screen's width away and the old one leaves the other way, over
     // 0.25 seconds on `ease.out_cubic` sampled 33 times; the old one is hidden when that is over.
     let comp = compositor(false);

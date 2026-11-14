@@ -12,13 +12,13 @@
 use std::collections::HashSet;
 
 use gnoblin_secret::SecretText;
-use gnoblin_tree_client::tree_mirror::{MirrorValue, NIL, NodeId, TreeEvent, TxError, lua_class};
+use gnoblin_tree_client::tree_mirror::{MirrorValue, NIL, NodeId, TreeEvent, TxError, class_name};
 use rquickjs::{Ctx, Function, IntoJs, Object, Value};
 
 use crate::bindings::{HostState, NodeHandles, SharedState, adopt_windows, parents_first};
 
 /// A shell makes the ids of its nodes from the epoch it attached under, so two shells never make the same id: the
-/// epoch in the high bits, a counter in the low ones. The same split `gnoblin-lua`'s shell uses.
+/// epoch in the high bits, a counter in the low ones. The same split `the retired retired host`'s shell uses.
 const EPOCH_SHIFT: u32 = 32;
 const EPOCH_LIMIT: u64 = 1 << 31;
 
@@ -209,7 +209,7 @@ fn owned_canvas(state: &HostState, node: NodeId) -> Result<(), &'static str> {
         });
     }
     match state.tick.node(&state.mirror, node) {
-        Some(record) if lua_class(&record.class) == CANVAS => Ok(()),
+        Some(record) if class_name(&record.class) == CANVAS => Ok(()),
         _ => Err("unknown-node"),
     }
 }
@@ -325,7 +325,7 @@ pub(crate) fn focus(state: &mut HostState, node: NodeId) -> Option<&'static str>
     if node != NIL {
         match state.tick.node(&state.mirror, node) {
             None => return Some("unknown-node"),
-            Some(record) if !state.ui.owned.contains(&node) && lua_class(&record.class) != "Window" => {
+            Some(record) if !state.ui.owned.contains(&node) && class_name(&record.class) != "Window" => {
                 return Some("not-owned");
             }
             Some(_) => {}
@@ -382,7 +382,7 @@ pub(crate) fn locked(state: &HostState) -> bool {
         let Some(record) = state.tick.node(&state.mirror, id) else {
             return false;
         };
-        if lua_class(&record.class) != "Lock" {
+        if class_name(&record.class) != "Lock" {
             return false;
         }
         let engaged = matches!(
@@ -405,7 +405,7 @@ pub(crate) fn screen(state: &HostState) -> Option<(f64, f64)> {
             state
                 .tick
                 .node(&state.mirror, *id)
-                .is_some_and(|record| lua_class(&record.class) == "Screen")
+                .is_some_and(|record| class_name(&record.class) == "Screen")
         })
         .collect();
     let primary = screens

@@ -15,7 +15,7 @@
 // Plain TypeScript over a small host (`TransitionHost`), so the staging and the ownership rules run without a compositor.
 // What the native tween player cannot do is not faked here (`docs/js-transitions.md`, "Not built").
 
-/** How an animation moves from its start to its end, as the Lua shell's `ease` table named them. */
+/** How an animation moves from its start to its end, as the retired shell's `ease` table named them. */
 export type ClientEasing = "linear" | "out" | "out-cubic" | "in-cubic" | "in-out";
 
 export const EASINGS: Readonly<Record<ClientEasing, (t: number) => number>> = {
@@ -26,7 +26,7 @@ export const EASINGS: Readonly<Record<ClientEasing, (t: number) => number>> = {
     "in-out": (t) => (t < 0.5 ? 2 * t * t : 1 - (2 - 2 * t) ** 2 / 2),
 };
 
-/** The curve is sent as this many steps plus the start: 33 samples, as the Lua shell's `node:to` sends. */
+/** The curve is sent as this many steps plus the start: 33 samples, as the retired shell's `node:to` sends. */
 export const CURVE_STEPS = 32;
 
 /** The samples of `curve`: progress from 0 to 1 over `CURVE_STEPS` steps, which is what a timed write carries. */

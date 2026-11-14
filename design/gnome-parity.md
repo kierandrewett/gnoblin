@@ -170,7 +170,7 @@ Gnoblin is the compositor and session integration layer. Bingux owns shell prese
 
 ## Evidence and boundaries
 
-Repository evidence includes `docs/gnome-apps.md`, `docs/wayland-protocols.md`, `docs/shell-integration.md`, `design/gnome-shell-retirement.md`, `design/lua-api.md`, and `design/lua-input-policy.md`. It also includes Gnoblin’s default input and window configuration, plus Bingux’s `docs/window-switcher.md`, `docs/capture.md`, `docs/locking.md`, `docs/desktop-shell.md`, `shell/bingux/README.md`, `shell/bingux/WindowMenu.qml`, `shell/bingux/ControlCentreOverview.qml`, and `shell/bingux/control-centre-services.py`.
+Repository evidence includes `docs/gnome-apps.md`, `docs/wayland-protocols.md`, `docs/shell-integration.md`, `design/gnome-shell-retirement.md`, `design/archive/lua-api.md`, and `design/archive/lua-input-policy.md`. It also includes Gnoblin’s default input and window configuration, plus Bingux’s `docs/window-switcher.md`, `docs/capture.md`, `docs/locking.md`, `docs/desktop-shell.md`, `shell/bingux/README.md`, `shell/bingux/WindowMenu.qml`, `shell/bingux/ControlCentreOverview.qml`, and `shell/bingux/control-centre-services.py`.
 
 The review describes source/documentation capability; it does not claim fresh-session runtime verification for every row.
 

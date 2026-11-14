@@ -5,8 +5,8 @@
 //! the shell. A reload therefore starts only the commands the new config adds.
 //!
 //! **Why not the document's `autostart` section.** The session guardian starts those, but it learns them from the
-//! Lua host's own commit and stops any it was not told of, so a section the shell wrote would be stopped by the
-//! next Lua reload. A command the shell starts is also the shell's: it takes `gnoblin.spawn`'s process group and
+//! retired host's own commit and stops any it was not told of, so a section the shell wrote would be stopped by the
+//! next retired reload. A command the shell starts is also the shell's: it takes `gnoblin.spawn`'s process group and
 //! reaping, and a script can see why one did not start.
 //!
 //! **The limits.** The memory is the shell's, so it is lost when the shell restarts (the guardian restarts a

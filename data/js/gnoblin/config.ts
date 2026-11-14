@@ -33,7 +33,7 @@
 //
 // A key missing from the config adds nothing to the plan. The one exception is `workspaces`: a shell with
 // nowhere to put a window is unusable, so no workspace means the baseline's four floating workspaces, `1` to `4`, the
-// Lua stock config's (data/default-config/config/10-windows.lua).
+// retired stock config's (data/default-config/config/10-windows.retired shell).
 //
 // The host does not apply a user's config alone: it layers it over `defaultConfig` with `mergeConfig`, so a
 // config that says nothing about keys still has the stock ones. The rule is in the comment on `mergeConfig`.
@@ -481,7 +481,7 @@ export const DOCUMENT_SECTIONS = [
 export const DOCUMENT_LISTS = [["touchpadGestures", "touchpad-gestures"]] as const;
 
 /**
- * The names of the Lua-era sections that are not keys of their own, and what to write instead. They are named in
+ * The names of the the retired shell-era sections that are not keys of their own, and what to write instead. They are named in
  * the message when a config uses one.
  */
 const RETIRED_KEYS: Readonly<Record<string, string>> = {
@@ -553,7 +553,7 @@ function checkShape(config: GnoblinConfig): void {
 const LISTENER_EVENTS = ["clientAdded", "clientRemoved", "titleChanged", "focusChanged"];
 
 /**
- * The config the shell runs when the user has none: four floating workspaces, `1` to `4` (the Lua stock config's), and
+ * The config the shell runs when the user has none: four floating workspaces, `1` to `4` (the retired stock config's), and
  * the stock keys. Super+1 to Super+4 show them; Super+5 to Super+9 are bound by position and do nothing until a config
  * declares more workspaces.
  */
@@ -568,7 +568,7 @@ export const defaultConfig: Readonly<GnoblinConfig> = deepFreeze({
         { id: "4", name: "Workspace 4", layout: "floating" },
     ],
     keys: {
-        // The Lua shell's: Super+1 to Super+9 show the workspace at that position, Super+Left and Super+Right move
+        // The retired shell's: Super+1 to Super+9 show the workspace at that position, Super+Left and Super+Right move
         // focus between a strip's columns, and a three-finger swipe slides between workspaces.
         ...show.positions("Super+{n}"),
         "Super+Left": focusColumn("left"),

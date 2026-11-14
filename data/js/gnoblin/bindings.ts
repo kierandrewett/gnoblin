@@ -788,7 +788,7 @@ export interface ClientMoveOptions extends Partial<PointerDragBindingOptions> {
     /**
      * Edge tiling on release: how near a screen edge, in pixels, the pointer must be for the drop to tile the window
      * (left and right take half the work area, top all of it). Default `SNAP_MARGIN`. `false` never tiles. Only when
-     * the seat's `edge_tiling` (or the config's `edgeTiling`) is on, as in the Lua shell; off, a drop is just a move.
+     * the seat's `edge_tiling` (or the config's `edgeTiling`) is on, as in the retired shell; off, a drop is just a move.
      */
     snap?: number | false;
 }

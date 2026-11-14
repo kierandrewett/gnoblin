@@ -1,4 +1,4 @@
-// The stock window menu, ported from data/lua/gnoblin/shell/menus.lua.
+// The stock window menu, ported from data/retired shell/gnoblin/shell/menus.retired shell.
 //
 // The compositor asks for a window's menu in three ways, and each reaches the shell as a `menu` request on the window's
 // node: a client's `xdg_toplevel.show_window_menu` (with a serial the compositor issued), the keyboard's window-menu key,
@@ -6,7 +6,7 @@
 // `right_click`, and it defaults to `menu`. All of them end in `windowMenu.show(client, x, y)`.
 //
 // The menu is a layer over the screen that takes every press, with a card of entries on it. What it guarantees, each with
-// its test in crates/gnoblin-js/tests/stock_ui.rs (the cases of tests/lua/menus_test.lua):
+// its test in crates/gnoblin-js/tests/stock_ui.rs (the cases of tests/retired shell/retired corpus menus):
 //   * It opens with its corner at the anchor, moved back inside the screen when it would run off it.
 //   * Up, Down, Home, End, Tab and Shift+Tab move the selection over the entries that are on. A letter jumps to the next
 //     entry that starts with it. Return and Space run the selection, Right opens a submenu and Left or Escape closes

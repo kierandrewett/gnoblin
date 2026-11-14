@@ -124,7 +124,7 @@ export interface RingResult {
 }
 
 /**
- * Where each of `views` goes (the port of `XrRing.arrange` of `xr.lua`). A pure function of the panels' pixel sizes and
+ * Where each of `views` goes (the port of `XrRing.arrange` of `xr.retired shell`). A pure function of the panels' pixel sizes and
  * the focus. The ring is a carousel: the focused panel is at the front and its neighbours in creation order are on
  * either side (the right side holds the extra one), wrapping round. Without a focus the first view is at the front.
  */

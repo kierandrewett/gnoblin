@@ -1,8 +1,8 @@
-//! Window policy of the stock shell that the Lua shell had and the TypeScript shell gained: the touchpad gesture actions
+//! Window policy of the stock shell that the retired shell had and the TypeScript shell gained: the touchpad gesture actions
 //! and reduced motion (`data/js/gnoblin/gesture_actions.ts`), over the fake compositor of `tests/common`.
 //!
-//! The cases are the Lua shell's: the last seven cases and the reduced-motion cases of
-//! `crates/gnoblin-lua/tests/lua/gestures_test.lua`, with the same inputs and the same expected values. A case with no Lua
+//! The cases are the retired shell's: the last seven cases and the reduced-motion cases of
+//! `the retired retired corpus`, with the same inputs and the same expected values. A case with no the retired shell
 //! original says "new". What the real compositor does with a gesture or a key is `crates/gnoblin/tests/js_shell.rs`.
 
 use gnoblin_tree_client::tree_mirror::MirrorValue;
@@ -23,7 +23,7 @@ fn has_call(rig: &Rig, node: u64, method: &str) -> bool {
 
 #[test]
 fn workspace_next_and_workspace_previous_step_the_shown_workspace_and_stop_at_the_ends() {
-    // Lua: "workspace_next and workspace_previous step the desk".
+    // Before: "workspace_next and workspace_previous step the desk".
     let mut rig = world(0, false, "new Layout()", "");
     assert_eq!(active(&mut rig), "1");
     exec(&mut rig, "gnoblin.gestures.actions.workspacePrevious()");
@@ -45,7 +45,7 @@ fn workspace_next_and_workspace_previous_step_the_shown_workspace_and_stop_at_th
 
 #[test]
 fn window_close_closes_the_focused_window_and_does_nothing_without_one() {
-    // Lua: "window_close closes the focused window and does nothing without one".
+    // Before: "window_close closes the focused window and does nothing without one".
     let mut rig = world(1, false, "new Layout()", "");
     rig.comp.external_set(SEAT, "focus", MirrorValue::Node(0));
     settle(&mut rig);
@@ -60,7 +60,7 @@ fn window_close_closes_the_focused_window_and_does_nothing_without_one() {
 
 #[test]
 fn window_minimise_hides_the_focused_window_and_hands_the_keyboard_on() {
-    // Lua: "window_minimise hides the focused window".
+    // Before: "window_minimise hides the focused window".
     let mut rig = world(2, false, "new Layout()", "");
     give_focus(&mut rig, 3);
     exec(&mut rig, "gnoblin.gestures.actions.windowMinimise()");
@@ -76,7 +76,7 @@ fn window_minimise_hides_the_focused_window_and_hands_the_keyboard_on() {
 
 #[test]
 fn window_toggle_maximise_maximises_the_focused_window_and_then_restores_it() {
-    // Lua: "window_toggle_maximise maximises the focused window and then restores it".
+    // Before: "window_toggle_maximise maximises the focused window and then restores it".
     let mut rig = world(1, false, "new Layout()", "");
     give_focus(&mut rig, 3);
     let floating = rect(&rig, 3);
@@ -101,7 +101,7 @@ fn window_toggle_maximise_maximises_the_focused_window_and_then_restores_it() {
 
 #[test]
 fn direction_names_the_longer_axis_once_the_swipe_has_gone_the_threshold() {
-    // Lua: `Gestures.direction`, the part of "on_swipe runs the fn for the direction a swipe ended in".
+    // Before: `Gestures.direction`, the part of "on_swipe runs the fn for the direction a swipe ended in".
     let mut rig = world(0, false, "new Layout()", "");
     let got = rig.eval(
         "[[10, -120], [90, 30], [20, -20], [-200, 0], [0, 200], [48, 0], [47, 0], [30, 30]] \
@@ -124,7 +124,7 @@ fn direction_names_the_longer_axis_once_the_swipe_has_gone_the_threshold() {
 
 #[test]
 fn on_swipe_runs_the_function_for_the_direction_a_swipe_ended_in_past_the_threshold_only() {
-    // Lua: "on_swipe runs the fn for the direction a swipe ended in, past the threshold only".
+    // Before: "on_swipe runs the fn for the direction a swipe ended in, past the threshold only".
     let mut rig = world(0, false, "new Layout()", "");
     exec(
         &mut rig,
@@ -155,7 +155,7 @@ fn on_swipe_runs_the_function_for_the_direction_a_swipe_ended_in_past_the_thresh
 
 #[test]
 fn on_pinch_runs_out_for_a_spread_and_in_for_a_gather_past_the_threshold_only() {
-    // Lua: "on_pinch runs out for a spread and in for a gather, past the threshold only".
+    // Before: "on_pinch runs out for a spread and in for a gather, past the threshold only".
     let mut rig = world(0, false, "new Layout()", "");
     exec(
         &mut rig,
@@ -177,7 +177,7 @@ fn on_pinch_runs_out_for_a_spread_and_in_for_a_gather_past_the_threshold_only() 
 
 #[test]
 fn a_map_names_only_the_ways_its_gesture_can_go_and_actions_that_exist() {
-    // New: the Lua `map[direction]` took any key and ran any value; a typo here is reported with its path.
+    // New: the the retired shell `map[direction]` took any key and ran any value; a typo here is reported with its path.
     let mut rig = world(0, false, "new Layout()", "");
     let thrown = |rig: &mut Rig, source: &str| {
         rig.eval(&format!(
@@ -201,7 +201,7 @@ fn a_map_names_only_the_ways_its_gesture_can_go_and_actions_that_exist() {
 
 #[test]
 fn a_swipe_bound_through_input_runs_a_named_action_when_it_ends_and_a_cancel_runs_nothing() {
-    // Lua: "a user binds a swipe to an action: four fingers up toggles maximise through the whole chain".
+    // Before: "a user binds a swipe to an action: four fingers up toggles maximise through the whole chain".
     let mut rig = world(1, false, "new Layout()", "");
     give_focus(&mut rig, 3);
     exec(
@@ -239,7 +239,7 @@ fn a_swipe_bound_through_input_runs_a_named_action_when_it_ends_and_a_cancel_run
 
 #[test]
 fn gesture_actions_in_the_config_bind_swipes_and_pinches_and_replace_the_stock_slide() {
-    // New: the Lua configuration named these five actions; `gestureActions` is the TypeScript spelling of that.
+    // New: the retired configuration named these five actions; `gestureActions` is the TypeScript spelling of that.
     let config = "gestureActions: { \
                       Swipe4: { up: 'window.toggle-maximise', left: 'workspace.next' }, \
                       Swipe3: { right: 'window.close' }, \
@@ -303,7 +303,7 @@ fn a_config_that_gives_one_gesture_to_keys_and_to_gesture_actions_is_refused_wit
 
 #[test]
 fn a_gesture_binding_hears_the_raw_dx_dy_scale_and_rotation_next_to_progress() {
-    // Lua: `seat:bind({ Swipe4 = fn })` got `e.phase`, `e.dx`, `e.dy`, `e.scale` and `e.rotation`; the audit row said the
+    // Before: `seat:bind({ Swipe4 = fn })` got `e.phase`, `e.dx`, `e.dy`, `e.scale` and `e.rotation`; the audit row said the
     // TypeScript event carried `progress` only.
     let mut rig = world(1, false, "new Layout()", "");
     exec(
@@ -335,7 +335,7 @@ fn a_gesture_binding_hears_the_raw_dx_dy_scale_and_rotation_next_to_progress() {
 
 #[test]
 fn motion_is_the_given_seconds_and_zero_while_the_seat_asks_for_reduced_motion() {
-    // Lua: `motion(seconds)` of init.lua, "with reduced motion on, ...".
+    // Before: `motion(seconds)` of init.retired shell, "with reduced motion on, ...".
     let mut rig = world(0, false, "new Layout()", "");
     assert_eq!(rig.eval("String(gnoblin.motion(0.25))"), "0.25");
     rig.comp.external_set(SEAT, "reduced_motion", MirrorValue::Bool(true));
@@ -365,7 +365,7 @@ fn leaving_windows_stay_drawn(rig: &mut Rig) -> bool {
 
 #[test]
 fn a_workspace_show_slides_unless_the_seat_asks_for_reduced_motion() {
-    // Lua: "with reduced motion on, a committed swipe writes no tween and still ends in place".
+    // Before: "with reduced motion on, a committed swipe writes no tween and still ends in place".
     let mut rig = world(2, false, "new Layout()", "");
     exec(
         &mut rig,
@@ -394,7 +394,7 @@ fn a_workspace_show_slides_unless_the_seat_asks_for_reduced_motion() {
 
 #[test]
 fn a_committed_swipe_with_reduced_motion_writes_no_tween_and_ends_in_place() {
-    // Lua: "with reduced motion on, a committed swipe writes no tween and still ends in place".
+    // Before: "with reduced motion on, a committed swipe writes no tween and still ends in place".
     let mut rig = world(2, false, "new Layout()", "");
     exec(
         &mut rig,
@@ -419,7 +419,7 @@ fn a_committed_swipe_with_reduced_motion_writes_no_tween_and_ends_in_place() {
 
 #[test]
 fn a_short_swipe_with_reduced_motion_goes_back_at_once() {
-    // New: the slide back of the Lua shell used `motion(0.2)` too.
+    // New: the slide back of the retired shell used `motion(0.2)` too.
     let mut rig = world(2, false, "new Layout()", "");
     exec(
         &mut rig,
@@ -444,7 +444,7 @@ fn a_short_swipe_with_reduced_motion_goes_back_at_once() {
 
 #[test]
 fn client_animate_lands_at_once_under_reduced_motion_and_takes_its_time_otherwise() {
-    // New: `Client.animate` is where a script's own animation goes; the Lua `node:to` took `motion(seconds)`.
+    // New: `Client.animate` is where a script's own animation goes; the the retired shell `node:to` took `motion(seconds)`.
     let mut rig = world(1, false, "new Layout()", "");
     exec(
         &mut rig,
@@ -465,7 +465,7 @@ fn client_animate_lands_at_once_under_reduced_motion_and_takes_its_time_otherwis
 
 #[test]
 fn the_titlebar_close_fades_the_window_out_unless_the_seat_asks_for_reduced_motion() {
-    // New: the Lua fade (`w:to(motion(0.18), ...)`) of decorations.lua, ported with its reduced-motion rule.
+    // New: the retired fade (`w:to(motion(0.18), ...)`) of decorations.retired shell, ported with its reduced-motion rule.
     let close_button = |rig: &Rig| {
         let bar = rig.comp.children(3)[0];
         *rig.comp.children(bar).last().expect("the bar has buttons")
@@ -493,7 +493,7 @@ fn the_titlebar_close_fades_the_window_out_unless_the_seat_asks_for_reduced_moti
 
 #[test]
 fn closing_the_focused_window_hands_the_keyboard_to_its_neighbour_in_every_layout() {
-    // Lua: "closing the focused column moves focus to its neighbour, not to the closed one" (strip.lua:110), for all layouts.
+    // Before: "closing the focused column moves focus to its neighbour, not to the closed one" (strip.retired shell:110), for all layouts.
     for layout in [
         "new Layout()",
         "'master-stack'",
@@ -523,7 +523,7 @@ fn closing_the_focused_window_hands_the_keyboard_to_its_neighbour_in_every_layou
 
 #[test]
 fn closing_a_window_that_is_not_focused_changes_no_focus() {
-    // Lua: the `Strip:on_closed` hand-off runs for the focused window only.
+    // Before: the `Strip:on_closed` hand-off runs for the focused window only.
     let mut rig = world(3, false, "new Layout()", "");
     give_focus(&mut rig, 5);
     close_window(&mut rig, 4);
@@ -543,7 +543,7 @@ fn a_window_the_compositor_already_gave_the_keyboard_to_is_left_alone() {
 
 #[test]
 fn closing_a_focused_dialog_hands_the_keyboard_to_its_parent_and_a_minimised_neighbour_is_skipped() {
-    // New: the Lua strip took the next column whatever it was; a dialog's natural neighbour is its parent.
+    // New: the retired strip took the next column whatever it was; a dialog's natural neighbour is its parent.
     let mut rig = world(3, false, "new Layout()", "");
     create_dialog(&mut rig, 30, 4);
     give_focus(&mut rig, 30);
@@ -567,7 +567,7 @@ fn closing_a_focused_dialog_hands_the_keyboard_to_its_parent_and_a_minimised_nei
 
 #[test]
 fn a_layout_with_its_own_removal_hook_keeps_the_hand_off_to_itself() {
-    // Lua: `Strip` hands the focus on in its own column order; every other layout has the shell's order.
+    // Before: `Strip` hands the focus on in its own column order; every other layout has the shell's order.
     let mut rig = world(
         3,
         false,
@@ -582,7 +582,7 @@ fn a_layout_with_its_own_removal_hook_keeps_the_hand_off_to_itself() {
 
 #[test]
 fn workspace_walk_moves_the_focus_along_the_workspaces_windows() {
-    // Lua: `Workspace:walk(step)`: focus the next window in tree order; no window focused or a step past the end does nothing.
+    // Before: `Workspace:walk(step)`: focus the next window in tree order; no window focused or a step past the end does nothing.
     let mut rig = world(3, false, "new Layout()", "");
     exec(&mut rig, "globalThis.ws = gnoblin.workspaces.get('1')");
     exec(&mut rig, "ws.walk(1)");
@@ -614,7 +614,7 @@ fn workspace_walk_moves_the_focus_along_the_workspaces_windows() {
 
 #[test]
 fn removing_a_workspace_moves_its_windows_to_the_neighbour_before_it() {
-    // Lua: "removing a workspace moves its windows to the neighbour before it".
+    // Before: "removing a workspace moves its windows to the neighbour before it".
     let mut rig = world(1, false, "new Layout()", "");
     exec(
         &mut rig,
@@ -644,7 +644,7 @@ fn removing_a_workspace_moves_its_windows_to_the_neighbour_before_it() {
 
 #[test]
 fn removing_the_active_workspace_shows_its_neighbour_and_the_moved_window_keeps_the_focus() {
-    // Lua: "removing the active workspace shows its neighbour and refocuses the moved window".
+    // Before: "removing the active workspace shows its neighbour and refocuses the moved window".
     let mut rig = world(1, false, "new Layout()", "");
     give_focus(&mut rig, 3);
     exec(&mut rig, "gnoblin.workspaces.remove(gnoblin.workspaces.get('1'))");
@@ -657,7 +657,7 @@ fn removing_the_active_workspace_shows_its_neighbour_and_the_moved_window_keeps_
 
 #[test]
 fn removing_an_inactive_workspace_keeps_the_focus_and_moves_the_stray_window_beside_it() {
-    // Lua: "removing an inactive workspace keeps focus on the focused window and moves the stray window beside it".
+    // Before: "removing an inactive workspace keeps focus on the focused window and moves the stray window beside it".
     let mut rig = world(2, false, "new Layout()", "");
     exec(
         &mut rig,
@@ -681,7 +681,7 @@ fn removing_an_inactive_workspace_keeps_the_focus_and_moves_the_stray_window_bes
 
 #[test]
 fn the_last_workspace_cannot_be_removed() {
-    // Lua: "the last workspace of a desk cannot be removed".
+    // Before: "the last workspace of a desk cannot be removed".
     let mut rig = world(1, false, "new Layout()", "");
     assert_eq!(
         rig.eval("String(gnoblin.workspaces.remove('3'))"),
@@ -715,7 +715,7 @@ fn the_last_workspace_cannot_be_removed() {
 
 #[test]
 fn a_press_on_a_titlebar_focuses_and_raises_its_window() {
-    // The audit row of decorations.lua:74-92: the stock policy of a press on a window (`seat.focus = w`, then `raise`) holds
+    // The audit row of decorations.retired shell:74-92: the stock policy of a press on a window (`seat.focus = w`, then `raise`) holds
     // for the press on its bar too.
     let mut rig = world(2, false, "new Layout()", "decorations: true,");
     give_focus(&mut rig, 4);
@@ -759,7 +759,7 @@ fn a_press_on_a_titlebar_focuses_and_raises_its_window() {
 
 #[test]
 fn a_maximised_window_refits_when_a_bar_reserves_space_at_the_top() {
-    // Lua: "a maximised window refits when a bar reserves space at the top (failure mode 9, maximised)".
+    // Before: "a maximised window refits when a bar reserves space at the top (failure mode 9, maximised)".
     let mut rig = world(1, false, "new Layout()", "");
     exec(&mut rig, "windowState.maximise(gnoblin.clients.get('3'))");
     settle(&mut rig);
@@ -782,7 +782,7 @@ fn a_maximised_window_refits_when_a_bar_reserves_space_at_the_top() {
 
 #[test]
 fn a_snapped_window_refits_when_a_bar_reserves_space_at_the_top() {
-    // Lua: "a snapped window refits when a bar reserves space at the top (failure mode 9, snapped)".
+    // Before: "a snapped window refits when a bar reserves space at the top (failure mode 9, snapped)".
     let mut rig = world(1, false, "new Layout()", "");
     assert_eq!(
         rig.eval(
@@ -808,7 +808,7 @@ fn a_snapped_window_refits_when_a_bar_reserves_space_at_the_top() {
 
 #[test]
 fn a_floating_window_is_brought_inside_the_smaller_work_area() {
-    // Lua: `Desk:arrange` refits every window, a floating one included: `w:refit(self:work_area())`.
+    // Before: `Desk:arrange` refits every window, a floating one included: `w:refit(self:work_area())`.
     let mut rig = world(1, false, "new Layout()", "");
     exec(
         &mut rig,
@@ -894,7 +894,7 @@ const SETS: &str = "workspaceSets: [ \
 
 #[test]
 fn a_set_from_the_config_shows_each_named_workspace_on_its_own_output() {
-    // Lua: "the user's sets show each named workspace on its own output" (a set of the config's `workspace_sets`).
+    // Before: "the user's sets show each named workspace on its own output" (a set of the config's `workspace_sets`).
     let mut rig = world(0, true, "new Layout()", SETS);
     assert_eq!(
         shown(&mut rig),
@@ -914,7 +914,7 @@ fn a_set_from_the_config_shows_each_named_workspace_on_its_own_output() {
 
 #[test]
 fn activating_the_live_set_again_changes_nothing() {
-    // Lua: "activating the live set again in the stock shell changes nothing".
+    // Before: "activating the live set again in the stock shell changes nothing".
     let mut rig = world(0, true, "new Layout()", SETS);
     exec(&mut rig, "gnoblin.workspaces.activateSet('work')");
     settle(&mut rig);
@@ -932,7 +932,7 @@ fn activating_the_live_set_again_changes_nothing() {
 
 #[test]
 fn an_unknown_set_is_refused_reported_and_changes_nothing() {
-    // Lua: "activating an unknown set is refused, reported and changes nothing in the stock shell".
+    // Before: "activating an unknown set is refused, reported and changes nothing in the stock shell".
     let mut rig = world(0, true, "new Layout()", SETS);
     let before = shown(&mut rig);
     assert_eq!(rig.eval("String(gnoblin.workspaces.activateSet('nope'))"), "false");
@@ -949,7 +949,7 @@ fn an_unknown_set_is_refused_reported_and_changes_nothing() {
 
 #[test]
 fn an_output_that_is_not_connected_shows_its_workspace_on_the_primary_output_with_a_report() {
-    // Lua: "an output that is gone shows its workspace on the primary output, with a report".
+    // Before: "an output that is gone shows its workspace on the primary output, with a report".
     let mut rig = world(0, true, "new Layout()", SETS);
     assert_eq!(rig.eval("String(gnoblin.workspaces.activateSet('away'))"), "true");
     let diagnostics = rig.settle();
@@ -968,7 +968,7 @@ fn an_output_that_is_not_connected_shows_its_workspace_on_the_primary_output_wit
 
 #[test]
 fn a_set_entry_without_an_output_shows_on_the_primary_output_and_a_number_names_a_workspace() {
-    // Lua: `set_entries` reads each workspace "as text, whatever the user wrote".
+    // Before: `set_entries` reads each workspace "as text, whatever the user wrote".
     let mut rig = world(0, true, "new Layout()", SETS);
     exec(&mut rig, "gnoblin.workspaces.activateSet('solo')");
     settle(&mut rig);
@@ -981,7 +981,7 @@ fn a_set_entry_without_an_output_shows_on_the_primary_output_and_a_number_names_
 
 #[test]
 fn a_config_whose_sets_do_not_check_is_refused_with_the_key_path_and_the_cause() {
-    // Lua: "a list naming a workspace no desk has is refused whole at start and nothing activates"; here the config fails.
+    // Before: "a list naming a workspace no desk has is refused whole at start and nothing activates"; here the config fails.
     let thrown = |sets: &str| {
         let init = format!(
             "try {{ defineConfig({{ workspaces: [{{ id: '1' }}, {{ id: '2' }}], workspaceSets: {sets} }}); (globalThis as any).out = 'accepted'; }} \
@@ -1028,7 +1028,7 @@ fn a_config_whose_sets_do_not_check_is_refused_with_the_key_path_and_the_cause()
 
 #[test]
 fn a_set_that_names_a_removed_workspace_refuses_to_activate_and_the_sets_stay() {
-    // Lua: "a set whose workspace is removed refuses to activate".
+    // Before: "a set whose workspace is removed refuses to activate".
     let mut rig = world(0, false, "new Layout()", SETS);
     exec(&mut rig, "gnoblin.workspaces.remove('3')");
     settle(&mut rig);

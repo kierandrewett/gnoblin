@@ -1,6 +1,6 @@
 //! Translates the `room` subtree into layers.
 //!
-//! The rules are in `design/node-api-refactor.md`, section 9:
+//! The rules are in `design/archive/node-api-refactor.md`, section 9:
 //!
 //! - Only Views under the node named `room` are considered. The room's own
 //!   ancestors contribute their transform, opacity and visibility, so moving a

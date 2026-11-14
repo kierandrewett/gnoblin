@@ -1,9 +1,9 @@
-// The widgets of the Lua shell's `ui.lua` that the toolkit (`gnoblin/ui`) did not have: `Entry`, a line of text you type
+// The widgets of the retired shell's `ui.retired shell` that the toolkit (`gnoblin/ui`) did not have: `Entry`, a line of text you type
 // into, `Clock`, a text that shows the time, and `Bar`, a strip along the top or bottom of the screen that takes its
 // room from the windows.
 //
 // `EntryModel` is the editing of an `Entry` without any drawing (the text, the caret, the selection), so it can be
-// tested and reused. The keys an `Entry` reads are the ones the Lua `Entry` read: the `key` event of the canvas that
+// tested and reused. The keys an `Entry` reads are the ones the the retired shell `Entry` read: the `key` event of the canvas that
 // holds the keyboard focus, with `key` (the keysym's name) and `text` (what it types).
 
 import { Box, Text, uiScreen } from "gnoblin/ui";
@@ -445,7 +445,7 @@ let primaryOutput: (() => BarOutput | null) | null = null;
 /**
  * Makes every bar give way (hidden, taking no room) while `covered` returns true for the output the bar sits on. The
  * shell passes "a fullscreen window is showing on the workspace that output shows", so a fullscreen window covers the
- * whole output, as the Lua shell's `Desk:sync_fullscreen` did. A bar's own `hideWhen` still applies. Null stops it.
+ * whole output, as the retired shell's `Desk:sync_fullscreen` did. A bar's own `hideWhen` still applies. Null stops it.
  */
 export function barsGiveWayTo(covered: ((output: BarOutput | null) => boolean) | null): void {
     coveredBy = covered;

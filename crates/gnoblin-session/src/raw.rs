@@ -1,7 +1,7 @@
 //! Raw output of the children the guardian starts.
 //!
 //! A child that logs through `gnoblin-log` writes structured lines, which its own subscriber
-//! already formats. Everything else a child prints (a library panic, a Lua `print`, output from
+//! already formats. Everything else a child prints (a library panic, a the retired shell `print`, output from
 //! a C library or from Xwayland) reaches the guardian's standard streams as bare text. This
 //! module reads those streams and logs each line through the facade as component `raw`, tagged
 //! with the child's role and the stream it came from.

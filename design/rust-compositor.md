@@ -94,7 +94,7 @@ back to these.
 3. **Everything a shell touches is an object.** Each object has an identity, a
    lifetime, typed properties, methods that return an `Operation`, and signals.
    Objects that end say so. This is the direction already set in the `lua-api/*`
-   branches (`design/lua-api-goal.md` and `design/shell-api-redesign.md` on
+   branches (`design/archive/lua-api-goal.md` and `design/archive/shell-api-redesign.md` on
    `docs/lua-api-overhaul-design`).
 4. **Contracts are data.** The schema, the contract inventory, the parity ledger
    and the distro matrix are files in the tree, checked by CI. If it is not
@@ -225,7 +225,7 @@ Today there are two wires with overlapping meaning: the private runtime protocol
 snapshots to the Lua worker.
 
 Adding one native method touched about eight registries
-(`design/shell-api-redesign.md`). `src/control/gnoblin-api-operations.h` now
+(`design/archive/shell-api-redesign.md`). `src/control/gnoblin-api-operations.h` now
 drives gates, dispatch and packing from one table, but the Lua stubs, docs and
 tests are still separate.
 
@@ -268,7 +268,7 @@ knowing which members are secret.
 
 ### IPC extensions
 
-> **Removed (survey 16.3, lane 10A).** The extension tier, `config.extensions`, the grants frame and `require(namespace)` are gone. The IPC version stays 0.2.0, since 0.2.0 is unreleased. The accept frame is the whole preamble. This section and the Versioning bullets on the Grants frame describe the retired design; see `design/node-api-refactor.md` D22 (retracted).
+> **Removed (survey 16.3, lane 10A).** The extension tier, `config.extensions`, the grants frame and `require(namespace)` are gone. The IPC version stays 0.2.0, since 0.2.0 is unreleased. The accept frame is the whole preamble. This section and the Versioning bullets on the Grants frame describe the retired design; see `design/archive/node-api-refactor.md` D22 (retracted).
 
 Gnoblin has one generic extension mechanism. An extension is a namespace of
 members that a privileged connection provides on the IPC. Extensions are out of
@@ -1369,7 +1369,7 @@ by porting the workaround.
 | About a dozen `GNOBLIN_*` variables with no scheme; two names for the version file                       | `cli/gnoblinctl-cli.c`, `config/lua/gnoblin-lua-install.c`                                                        | One table of documented variables; internal and test knobs are flags or test injection    |
 | `"normal"` and `"unlock-screen"` aliases handled in three files                                          | `config/gnoblin-config-windows.c:294`, `config/lua/gnoblin-lua-input.c:29`, `input/gnoblin-touchpad-router.c:106` | Enums parse once at the schema boundary; aliases live in one table removed at a break     |
 | Lua operations return an integer `request_id` and a handle; completion goes out under two event names    | `config/lua/gnoblin-lua-operations.c:394`, `control/gnoblin-control-dispatch.c:129`                               | One operation handle and one completion event                                             |
-| Lua accepts `targetType` and `target_type`; `gnoblin.on`, `gnoblin.snapshot`, `launches["end"]` aliases  | `design/lua-api.md` [INFERENCE: line numbers not re-checked]                                                      | One generated name per member; no aliases in IPC 0.2.0                                    |
+| Lua accepts `targetType` and `target_type`; `gnoblin.on`, `gnoblin.snapshot`, `launches["end"]` aliases  | `design/archive/lua-api.md` [INFERENCE: line numbers not re-checked]                                              | One generated name per member; no aliases in IPC 0.2.0                                    |
 | The screenshot path waits for capture by sleeping in a loop                                              | `portal/backend/gnoblin-screenshot-capture.c:299`                                                                 | Completion is an event                                                                    |
 | The API minor is a header literal, read by a regex in the build script                                   | `control/gnoblin-native-control.h:16`, `scripts/build-identity.py` [INFERENCE: regex not re-checked]              | One version source (see "Versioning")                                                     |
 | Fixed 16 ms, 50 ms, 100 ms and 1 s timers in input policy, launches, rules, IBus retry, recovery markers | [INFERENCE]                                                                                                       | Frame clock for frame work, event sources elsewhere; a timer only where time is the input |
@@ -1379,7 +1379,7 @@ by porting the workaround.
 
 Two items need a closer look before they are planned: whether declarative
 command shortcuts and Mutter action groups still bind keys beside Lua input
-policy (`design/lua-input-policy.md`), and whether idle should come from one
+policy (`design/archive/lua-input-policy.md`), and whether idle should come from one
 source instead of both ScreenSaver and the Mutter idle monitor.
 
 ## Optional components and compatibility
@@ -1670,7 +1670,7 @@ Each section below records the choice, its consequences, and the options conside
 | D7  | Smithay tracking             | **Decided:** pinned git revision                                                                                                                                                                                                                                                                                                        |
 | D8  | Licence of the workspace     | **Decided:** GPL-2.0-or-later (kept)                                                                                                                                                                                                                                                                                                    |
 | D9  | Mutter patch freeze          | **Decided:** now, fixes excepted                                                                                                                                                                                                                                                                                                        |
-| D10 | Lua version                  | **Decided:** Lua 5.5, vendored (kept)                                                                                                                                                                                                                                                                                                   |
+| D10 | Shell language               | **Superseded:** TypeScript on QuickJS (`design/js-runtime.md`, J1-J9); the Lua 5.5 decision is history                                                                                                                                                                                                                                  |
 | D11 | Distribution target set      | **Decided:** full list, classified                                                                                                                                                                                                                                                                                                      |
 | D12 | Renderer                     | **Decided:** GLES now, Vulkan later                                                                                                                                                                                                                                                                                                     |
 | D13 | Adapter default set          | **Decided:** reads on; writes off; capture via portal only                                                                                                                                                                                                                                                                              |
@@ -1703,6 +1703,8 @@ See `node-core.md` for the D35 step 3 protocol and schema contract.
 D35 deletes capability gates and grants: there is no capability set, no grants frame and no extension tier, and the owner's connection is the one trust edge. It does not delete user consent. Consent for screen capture and remote input stays, as the decision in the portal process and the enforcement in the compositor, joined by owner-only IPC members (see "Authority: `gnoblin-authority`"). A shell replaces the built-in dialog by claiming `portal.ui` (D19); no claimant means the built-in dialog serves the request, never a refusal.
 
 ### D1: where scripts run
+
+**Update:** the script runtime is the TypeScript shell on QuickJS (`design/js-runtime.md`, J1-J9), and it still runs as a separate process, the runtime role. "Lua worker" and "C script engine" below describe the engine as it was when this was decided.
 
 **Decided 2026-11-04: separate process.** The phase 0 measurements below still
 run, to set the latency budget for input policy decisions.
@@ -1859,6 +1861,8 @@ still allowed; new behaviour goes to the Rust compositor.
 - **From phase 3:** fewer blocked features. More patches to re-derive later.
 
 ### D10: Lua version
+
+**Superseded:** the shell language is TypeScript on QuickJS (`design/js-runtime.md`, J1-J9), and the Lua shell, the Lua API and the `mlua` dependency are deleted. The text below is the decision as it was made.
 
 **Decided 2026-11-04: keep Lua 5.5, vendored.** JavaScript on QuickJS-NG was
 considered and dropped.
@@ -2763,7 +2767,7 @@ Failure modes:
 
 ### D22: general extension system
 
-> **Removed (survey 16.3, lane 10A).** Retracted by `design/node-api-refactor.md` D22 and deleted from the tree: `crates/gnoblin-compositor/src/extensions.rs`, `src/ipc/extension.rs`, the grants frame, `config.extensions` and `require(namespace)`. What follows is history.
+> **Removed (survey 16.3, lane 10A).** Retracted by `design/archive/node-api-refactor.md` D22 and deleted from the tree: `crates/gnoblin-compositor/src/extensions.rs`, `src/ipc/extension.rs`, the grants frame, `config.extensions` and `require(namespace)`. What follows is history.
 
 **Decided 2026-11-05: an extension is a package that host configuration loads. Its manifest declares the powers it contains and the capabilities it wants. Host configuration grants a subset of those capabilities. Each power runs in one isolation tier. The IPC namespace of D21 becomes one power among several.**
 
@@ -3159,7 +3163,7 @@ Consequences:
 
 ### D28: layer registry
 
-**Superseded 2026-11-12: step 8 of `design/node-api-refactor.md` deleted the registry (lane 8C), and layer-shell surfaces stay protocol-owned (O14 b). This section is the record of the design that was removed.**
+**Superseded 2026-11-12: step 8 of `design/archive/node-api-refactor.md` deleted the registry (lane 8C), and layer-shell surfaces stay protocol-owned (O14 b). This section is the record of the design that was removed.**
 
 **Proposed 2026-11-06: layers are runtime objects in one registry. Gnoblin and extensions register them, and the compositor attributes each to its provider. A closed band set orders them and nothing else.** The full design is in `design/layers.md`.
 

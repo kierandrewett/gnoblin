@@ -157,7 +157,7 @@ mod tests {
         let _ = reload.request(FIRST, 1, Tick::ZERO);
         let _ = reload.request(SECOND, 2, Tick::ZERO);
         let answers = reload.finish(&ReloadVerdict::Rejected {
-            message: "init.lua:3: unexpected symbol".to_owned(),
+            message: "init.ts:3: unexpected symbol".to_owned(),
         });
         assert_eq!(answers.len(), 2);
         for (_, envelope) in &answers {

@@ -10,7 +10,7 @@
 //! - A glyph's advance is the font's unhinted advance at the size, in fractional pixels, summed along the line
 //!   from the line's left edge. There is no kerning, shaping or bidirectional reordering: this is a stock-widget
 //!   text path, and text that needs them is not what a titlebar or a panel shows.
-//! - A line box is [`line_height`] tall: one and a half times the size, rounded down, the figure `ui.lua` uses for
+//! - A line box is [`line_height`] tall: one and a half times the size, rounded down, the figure `ui.retired shell` uses for
 //!   `Text.height`. The baseline sits where the font's ascent-to-descent span is centred in that box, rounded to a
 //!   whole pixel so horizontal stems land on pixel rows.
 //! - The extent of a string, a [`gnoblin_types::Size`], is its widest line's advance rounded up to a whole pixel by

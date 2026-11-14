@@ -1,10 +1,10 @@
-// DwindleLayout: a binary split tree in the style of Hyprland. Geometry is data/lua/gnoblin/shell/tiling.lua
+// DwindleLayout: a binary split tree in the style of Hyprland. Geometry is data/retired shell/gnoblin/shell/tiling.retired shell
 // `Dwindle`. Each new node splits the cell of the node that had focus when it arrived (or the last node's cell) in
 // two. A split keeps the direction it was created with: "horizontal" and "vertical" fix it, "aspect" takes the longer
 // side of the cell at creation. `ratio` is the share of the first child of every split and `gap` separates the two
 // halves of each split.
 //
-// The tree is state the layout keeps between computes, as the Lua class kept one per workspace: a node that
+// The tree is state the layout keeps between computes, as the retired class kept one per workspace: a node that
 // goes collapses its split, a node that arrives is inserted. That makes `compute` depend on its history, so one
 // instance must serve one workspace. Every walk is a loop over an explicit stack: a run of windows that each split
 // the last one makes a tree as deep as it is long, and the engine's call stack is short.

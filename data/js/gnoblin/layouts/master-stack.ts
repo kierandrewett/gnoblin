@@ -1,5 +1,5 @@
 // MasterStackLayout: a master column of `masterCount` nodes and a stack of the rest. Geometry is
-// data/lua/gnoblin/shell/tiling.lua `Tiling`, rectangle for rectangle: the master takes `ratio` of the
+// data/retired shell/gnoblin/shell/tiling.retired shell `Tiling`, rectangle for rectangle: the master takes `ratio` of the
 // free width (height for top and bottom), `gap` separates tiles, and every edge is floored.
 // It registers two default bindings in `layout.bindings`: `swap` (Super+MouseLeft+Drag, `ClientSwapBinding`) trades two
 // tiles' places, and `resize` (Super+MouseRight+Drag, `SplitResizeBinding`) drags the divider between master and

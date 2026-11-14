@@ -1,5 +1,7 @@
 # Lua input policy
 
+> Superseded by [design/js-runtime.md](../js-runtime.md): the shell language is TypeScript on QuickJS and the Lua API is deleted. Kept for history.
+
 ## Requested behavior
 
 Lua owns normal-session keyboard and pointer shortcut policy and can handle
@@ -61,7 +63,6 @@ normal shortcuts, conditional forwarding, consumed press/release pairs,
 reload while held, Lua timeout/crash, lock transitions, device removal, native
 Wayland and Xwayland delivery, and cursor response with real input. Published
 reference pages must describe only the implemented subset.
-
 
 ## Delivery status
 

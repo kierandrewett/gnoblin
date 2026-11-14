@@ -1,6 +1,6 @@
 # Cutover survey: steps 6, 7, 8 and 10
 
-Survey for `design/node-api-refactor.md` section 7.2, rows 6, 7, 8 and 10. Read-only: no builds, no tests run.
+Survey for `design/archive/node-api-refactor.md` section 7.2, rows 6, 7, 8 and 10. Read-only: no builds, no tests run.
 Numbers are `wc -l` on the worktree at `489a0cace`. Where a count was not measured, it says so.
 
 ## 1. Measured sizes
@@ -194,7 +194,7 @@ XR uses the stock shell's layout or focus at runtime.
 
 ## 12. Failure-mode mapping
 
-Group-level mapping of the tests in `crates/gnoblin-wm/tests/failure_modes.rs` to the stock shell. Names come from the file; the Lua side is not mapped test by test. `Keep` means the behaviour survives in the object model. `Port` means the assertion moves to a stock Lua test. `Drop` means the behaviour goes. Design citations are to `design/node-core.md` and `design/node-api-refactor.md`.
+Group-level mapping of the tests in `crates/gnoblin-wm/tests/failure_modes.rs` to the stock shell. Names come from the file; the Lua side is not mapped test by test. `Keep` means the behaviour survives in the object model. `Port` means the assertion moves to a stock Lua test. `Drop` means the behaviour goes. Design citations are to `design/node-core.md` and `design/archive/node-api-refactor.md`.
 
 | Group                            | Tests (count)                                                                                                                                                                                                                | Stock equivalent                             | Decision                             | Evidence                                                                                 |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------- |
@@ -582,7 +582,7 @@ Status of the four steps at the base, in one table. Row 8 is brought up to date 
   integration point, which has no visible effect in this tree either.
 - **The `frame-renderers` config key has no reader.** The schema section is `config.toml:1837-1849`, the hook is
   `gnoblin-config/src/hooks.rs:510-512`; `grep` over `gnoblin-session`, `gnoblin-compositor` and `gnoblin-wayland` finds no use,
-  and `design/docs-parity/config.md:47` records "No runtime consumer found".
+  and `design/archive/docs-parity/config.md:47` records "No runtime consumer found".
 - **`Canvas` is schema and Lua only.** `grep -rnil canvas crates --include=*.rs` finds the cursor crate, the schema tests and
   two Lua tests; no match in `gnoblin-render`, `gnoblin-backend` or `gnoblin-wayland`. `transaction.rs:57,138,170` declares
   `BadPaint` but nothing decodes a paint list. The stock `ui.lua:40-41` says "the compositor has no measure request, so the

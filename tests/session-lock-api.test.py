@@ -86,7 +86,7 @@ class SessionLockApiTests(unittest.TestCase):
         bridge = BRIDGE_DOCS
         runtime = (ROOT / "docs/shell-api/session-runtime.md").read_text()
         events = EVENT_DOCS
-        design = (ROOT / "design/lua-api.md").read_text()
+        design = (ROOT / "design/archive/lua-api.md").read_text()
 
         for document in (bridge, runtime, design):
             self.assertIn("dispatched", document)

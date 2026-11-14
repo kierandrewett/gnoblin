@@ -261,7 +261,7 @@ With `--json` it prints `init`, `replaced`, `types`, `tsconfig`, `tsconfig_creat
 ### Convert an init.lua
 
 `gnoblinctl config migrate [FILE] [-o OUT] [--force] [--dry-run]` converts a Lua config to TypeScript. `FILE` is the
-`init.lua` the Lua shell reads, and the command writes `init.ts` beside it, or to `OUT`. It reads the Lua as text and
+`init.lua` to convert, and the command writes `init.ts` beside it, or to `OUT`. It reads the Lua as text and
 never runs it, so it needs no session.
 
 The `shell.lua` beside an `init.lua`, and every file a `gnoblin.load` names, are read too and become one `init.ts`, with

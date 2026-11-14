@@ -20,7 +20,7 @@
 //! key. An instant `set` cancels the track on its key. The tween advances by the
 //! difference between a frame's `now` and the previous frame's `now`, before that
 //! frame's inputs apply. Only the transaction layer and the tween run here: the
-//! harness runs no Lua.
+//! harness runs no the retired shell.
 //!
 //! # File format
 //!

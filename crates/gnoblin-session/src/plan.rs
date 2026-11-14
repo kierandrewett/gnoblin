@@ -24,7 +24,7 @@ pub enum ChildKind {
     Compositor,
     /// `gnoblin --role services`: the D-Bus agents.
     Services,
-    /// `gnoblin --role runtime`: the Lua configuration host.
+    /// `gnoblin --role runtime`: the retired configuration host.
     Runtime,
     /// `xdg-desktop-portal-gnoblin`: the portal backend. The guardian starts it so its bus
     /// name exists before the front and autostart applications, and it is ready-gated for that.

@@ -19,7 +19,6 @@ const TYPES = {
     ".png": "image/png",
     ".webp": "image/webp",
     ".wasm": "application/wasm",
-    ".lua": "text/plain; charset=utf-8",
     ".COPYING": "text/plain; charset=utf-8",
 };
 

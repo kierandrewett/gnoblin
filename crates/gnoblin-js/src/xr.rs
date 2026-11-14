@@ -8,7 +8,7 @@
 
 use std::collections::HashSet;
 
-use gnoblin_tree_client::tree_mirror::{NIL, NodeId, TxError, lua_class};
+use gnoblin_tree_client::tree_mirror::{NIL, NodeId, TxError, class_name};
 use rquickjs::{Ctx, Function, Object};
 
 use crate::bindings::{HostState, JsHostValue, SharedState, parents_first};
@@ -114,7 +114,7 @@ fn nodes(state: &HostState, class: &str) -> Vec<f64> {
             state
                 .mirror
                 .node(*id)
-                .is_some_and(|record| lua_class(&record.class).eq_ignore_ascii_case(class))
+                .is_some_and(|record| class_name(&record.class).eq_ignore_ascii_case(class))
         })
         .map(|id| state.handles.to_script(id))
         .collect()

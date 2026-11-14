@@ -4,7 +4,7 @@
 //! property has to supply the default itself. This table is the one place that knows which properties
 //! of a class a script may see, what kind each is, and whether a script may write it.
 
-use gnoblin_tree_client::tree_mirror::{MirrorValue, lua_class};
+use gnoblin_tree_client::tree_mirror::{MirrorValue, class_name};
 
 /// The kind of value a property holds, and so what a script's value must convert to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -225,7 +225,7 @@ const WINDOW_METHODS: &[&str] = &["focus", "close", "kill"];
 /// The properties a script sees on `class`, which the mirror names by its wire name (`window`) or the
 /// shell's (`Window`).
 pub(crate) fn defs_for(class: &str) -> Option<&'static [JsPropDef]> {
-    match lua_class(class).as_str() {
+    match class_name(class).as_str() {
         "Window" => Some(WINDOW),
         "Screen" => Some(SCREEN),
         "Node" => Some(NODE),
@@ -239,7 +239,7 @@ pub(crate) fn defs_for(class: &str) -> Option<&'static [JsPropDef]> {
 
 /// Whether a script may call `method` on `class`.
 pub(crate) fn may_call(class: &str, method: &str) -> bool {
-    lua_class(class) == "Window" && WINDOW_METHODS.contains(&method)
+    class_name(class) == "Window" && WINDOW_METHODS.contains(&method)
 }
 
 /// The value of a property no write has changed from its schema default.

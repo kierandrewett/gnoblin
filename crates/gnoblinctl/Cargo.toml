@@ -35,7 +35,7 @@ gnoblin-config = { path = "../gnoblin-config" }
 gnoblin-js = { path = "../gnoblin-js" }
 gnoblin-js-types = { path = "../gnoblin-js-types" }
 # `config migrate` converts an `init.lua` to `init.ts`. The converter is a pure function of the Lua text and
-# links no Lua host.
+# links no script host.
 gnoblin-config-migrate = { path = "../gnoblin-config-migrate" }
 serde_json.workspace = true
 

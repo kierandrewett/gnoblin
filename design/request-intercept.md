@@ -146,7 +146,7 @@ gnoblin.audit.intercept("capture.still", function(request) ... end)  -- veto, op
 
 The Lua form names `gnoblin.audit` rather than `gnoblin.intercept` **[JUDGEMENT]**: the
 object is the audit record stream, and the interceptor is a second method on it. This
-matches the object model in `design/lua-api-goal.md`, where each object declares its
+matches the object model in `design/archive/lua-api-goal.md`, where each object declares its
 properties, methods and signals.
 
 ## 4. Options

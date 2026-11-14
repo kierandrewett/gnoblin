@@ -85,7 +85,7 @@ pub enum Event {
     },
     /// The lock protocol was disabled by a configuration reload.
     ProtocolDisabled,
-    /// The runtime process (the Lua host) restarted.
+    /// The runtime process (the retired host) restarted.
     RuntimeRestarted,
 }
 

@@ -57,8 +57,12 @@ The shell reads one file from one directory: `$XDG_CONFIG_HOME/gnoblin` when tha
 3. `init.lua`, which the TypeScript shell does not read (see [Which shell runs](#which-shell-runs))
 
 When two exist, the first wins and the log says which others it ignored, for example
-`init.lua is not read: init.ts takes precedence in the same directory`. `GNOBLIN_CONFIG` names one file instead, and its
-extension (`.ts`, `.mts`, `.js`, `.mjs` or `.lua`) says which shell reads it.
+`init.lua is not read: init.ts takes precedence in the same directory`.
+
+`GNOBLIN_CONFIG` names one file instead:
+
+- Its extension says the language: `.ts`, `.mts`, `.js` or `.mjs`.
+- A `.lua` file is refused with the migrate command.
 
 The shell loads the file, validates the whole document `defineConfig` makes and commits it to the compositor as one
 revision. Every start and every reload commits the document the file describes and nothing else. A setting you delete
@@ -132,7 +136,7 @@ config has no "autostrt" (did you mean "autostart"?); expected one of gaps, styl
 
 A session with no `init.ts` is not a bare shell. It runs the stock config:
 
-- four floating workspaces, `1` to `4` (named `Workspace 1` to `Workspace 4`), the same four the Lua stock config had;
+- four floating workspaces, `1` to `4` (named `Workspace 1` to `Workspace 4`), the same four the Lua-era stock config had;
 - `Super+1` to `Super+9` show the workspace at that position, sliding over a quarter of a second, and do nothing when
   there is none, so `Super+1` to `Super+4` work until you declare more;
 - `Super+Left` and `Super+Right` move focus between the columns of a `strip` workspace;

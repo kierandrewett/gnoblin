@@ -616,7 +616,7 @@ export interface ClientAnimation {
 export interface AnimateOptions {
     /** Seconds. Zero is an instant write. */
     duration: number;
-    /** Default `"out"`, as the Lua shell's. */
+    /** Default `"out"`, as the retired shell's. */
     easing?: ClientEasing;
 }
 
@@ -1046,7 +1046,7 @@ export class Client {
         if (code != null) {
             refuse(code, target, "client");
         }
-        // A fullscreen sibling keeps the top: the Lua `Window:raise` put each back over the window it raised.
+        // A fullscreen sibling keeps the top: the the retired shell `Window:raise` put each back over the window it raised.
         if (!this.fullscreen) {
             const own = membership.get(this) ?? null;
             for (const node of host.windows()) {
@@ -1237,7 +1237,7 @@ export class Workspace {
     }
 
     /**
-     * Moves the keyboard focus `step` windows along the workspace's windows, in the order they are listed (Lua's
+     * Moves the keyboard focus `step` windows along the workspace's windows, in the order they are listed (the retired shell's
      * `Workspace:walk`): `1` to the next, `-1` to the previous. Nothing moves when no window of the workspace has the focus,
      * and a step past either end leaves the focus where it is.
      */
@@ -1724,7 +1724,7 @@ class WorkspaceCollection extends MutableCollection<Workspace> {
      * Makes the set `name` of `defineConfig({ workspaceSets })` (or of `sets.define`) live: each entry shows its
      * workspace on its output, and one whose output is not connected shows on the primary output, with a report.
      * Activating the live set again changes nothing. Refused (false, with a report) for an unknown set or a workspace
-     * that has since gone, as the Lua `activate_set` did; `sets.activate` throws instead.
+     * that has since gone, as the the retired shell `activate_set` did; `sets.activate` throws instead.
      */
     activateSet(name: string): boolean {
         try {
@@ -1770,7 +1770,7 @@ const workspaceRoot = collectionState(
         ...rootState("Workspace"),
         mutation: {
             add: (workspace) => addWorkspace(workspace as Workspace),
-            // The last workspace stays: a shell with nowhere to put a window is unusable (Lua: `remove_workspace` refuses).
+            // The last workspace stays: a shell with nowhere to put a window is unusable (Before: `remove_workspace` refuses).
             remove: (workspace) => {
                 if (workspaceRoot.list.length < 2) {
                     return false;
@@ -1830,7 +1830,7 @@ function clientHolders(client: Client): CollectionState[] {
 }
 
 /**
- * What one output shows: the workspace on it, and what becomes of its windows when the output is unplugged (the Lua
+ * What one output shows: the workspace on it, and what becomes of its windows when the output is unplugged (the the retired shell
  * shell's `Desk`). A desk outlives its output only while no other output is left: it waits `parked`, hidden, for the
  * next output, whose desk it becomes. A tree with no output at all has one desk with none that is not parked, so a
  * script still has a workspace on show. Workspaces are the script's, not an output's: one workspace is on one desk.
@@ -2061,7 +2061,7 @@ function passFocusFrom(workspace: Workspace | null, leaving: Client): void {
     }
 }
 
-/** `client.moveToWorkspace(workspace)`: Lua's `Window:move_to`. */
+/** `client.moveToWorkspace(workspace)`: the retired shell's `Window:move_to`. */
 function moveClientTo(client: Client, workspace: Workspace): boolean {
     if (!(workspace instanceof Workspace)) {
         throw new TypeError(`${client}.moveToWorkspace: needs a Workspace`);
@@ -2131,7 +2131,7 @@ function setShown(desk: Desk, next: Workspace | null): void {
     }
 }
 
-/** Seconds a workspace slide takes, as the Lua shell's `Desk:show`. */
+/** Seconds a workspace slide takes, as the retired shell's `Desk:show`. */
 export const SLIDE_SECONDS = 0.25;
 
 /** How `show` moves to a workspace. */
@@ -2888,7 +2888,7 @@ function layoutWorkspaces(): number {
                 state.area = { ...area };
                 if (before !== null && !rectsEqual(before, area)) {
                     // The work area moved under the windows (a bar came, went or grew): a maximised window fills it
-                    // again, a snapped one tiles to its zone again and a floating one is brought back inside, as the Lua
+                    // again, a snapped one tiles to its zone again and a floating one is brought back inside, as the the retired shell
                     // `Desk:arrange` did. The layout places what it owns after this.
                     guard(`${workspace}.refit`, () => {
                         for (const client of children) {
@@ -3126,7 +3126,7 @@ function adoptScreen(node: NodeId, announce: boolean): void {
 }
 
 /**
- * A screen went away. Its windows move to the workspace another output shows (the Lua shell's `Screen:on_destroyed`),
+ * A screen went away. Its windows move to the workspace another output shows (the retired shell's `Screen:on_destroyed`),
  * fitted to that output; with no other output they wait hidden on the parked desk for the next one, and the focus is
  * dropped, because a window with no output cannot hold it.
  */
@@ -3206,7 +3206,7 @@ function leave(top: CollectionState, member: Member, map: Map<NodeId, Member>, k
 let lastFocus: Client | null = null;
 
 /**
- * Hands the keyboard to the neighbour of a focused window that closed, as the Lua strip did for its columns and every
+ * Hands the keyboard to the neighbour of a focused window that closed, as the retired strip did for its columns and every
  * layout now does: the window after it in the workspace, else the one before; a dialog hands it back to its parent. Nothing
  * moves while the workspace is not shown, a minimised window is skipped, and a window the compositor has already focused
  * is left alone. A layout that has its own `onClientRemoved` (a strip's columns are not in window order) does it itself.
@@ -3487,7 +3487,7 @@ function stepWorkspace(step: number): void {
     }
 }
 
-/** The five actions a touchpad gesture runs: the Lua shell's `Gestures.actions`. */
+/** The five actions a touchpad gesture runs: the retired shell's `Gestures.actions`. */
 const gestureActions: GestureActions = {
     workspaceNext: () => stepWorkspace(1),
     workspacePrevious: () => stepWorkspace(-1),

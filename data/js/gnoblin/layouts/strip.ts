@@ -1,8 +1,8 @@
-// Two layouts whose nodes are not tiled, from data/lua/gnoblin/shell/strip.lua.
+// Two layouts whose nodes are not tiled, from data/retired shell/gnoblin/shell/strip.retired shell.
 // StripLayout: a row of columns, one node per column, scrolled so the focused column stays in view.
 // Carousel3dLayout: nodes on a ring seen in perspective, the focused one at the front.
 //
-// Neither floors its rectangles and neither marks its nodes tiled, as the Lua classes did not.
+// Neither floors its rectangles and neither marks its nodes tiled, as the retired classes did not.
 
 import { Layout } from "gnoblin/layout";
 import type { LayoutContext, LayoutNode, Placement, Rect } from "gnoblin/layout";

@@ -21,7 +21,7 @@
 //!
 //! The handshake is the whole preamble: after the accept frame the next frame is the
 //! client's first request. Who may call what is decided by the compositor from the peer's
-//! kernel identity (design/node-api-refactor.md, D35), and [`privilege`] names the
+//! kernel identity (design/archive/node-api-refactor.md, D35), and [`privilege`] names the
 //! inherited descriptors privileged helpers arrive on. Both are here rather than in the
 //! compositor because they are the contract between two IPC peers: the guardian creates
 //! the descriptor, and the runtime and services role read it. [`report`] is the one-line

@@ -121,7 +121,7 @@ either way, so phase 1 is not wasted if the seat work is later cut back.
 - `shortcuts` (line 2491) is a map of `Shortcut` records (record at line 1462, used at line 2498):
   `binding`, `command`, `trigger`, `enable`. No device field.
 - `keybindings` (line 2481) is a schema key; this review did not trace how the code reads it.
-- `design/lua-input-policy.md` already says the compositor "matches event class and
+- `design/archive/lua-input-policy.md` already says the compositor "matches event class and
   device selectors before sending any request" (lines 18-21), and keeps "physical input
   identity" for each queued event. So the Lua design expects device selectors. The
   code does not have them yet.
@@ -129,7 +129,7 @@ either way, so phase 1 is not wasted if the seat work is later cut back.
   a `seat` name: the requesting seat for `client`, the key event's seat for
   `keyboard`, and "the default seat" for `extension`. A seat concept is therefore
   already in a decided design, but nothing implements it.
-- `design/lua-control.md` line 95 asks for "per-seat cursor image/visibility
+- `design/archive/lua-control.md` line 95 asks for "per-seat cursor image/visibility
   operations". This is the only other seat reference in the design docs.
 
 ### 1.6 Lock
@@ -378,7 +378,7 @@ the agent machine, not in the lane (per the lane rules). Every lane updates
 - Files: `crates/gnoblin-input/src/binding.rs` (`Binding`, line 65, gains an optional
   device matcher); `crates/gnoblin-input/src/chord.rs` (matchers, around lines 396 and
   404); `crates/gnoblin-config/schema/config.toml` (`Shortcut`, line 1462); the matching
-  `crates/gnoblin-config/src/document.rs`; `design/lua-input-policy.md` (device selector
+  `crates/gnoblin-config/src/document.rs`; `design/archive/lua-input-policy.md` (device selector
   names, shared with Lua).
 - Acceptance: a shortcut with a device selector fires only from that device, and its
   press and release are consumed. A key from that device with no matching binding
@@ -519,8 +519,8 @@ down is released by the seat's last release even when the router gave that relea
 **Lane 5.2: docs and decision.**
 
 - Files: `design/input-status.md` (rows for multi-seat and device bindings);
-  `design/rust-compositor.md` (D31 accepted or changed); `design/lua-input-policy.md`
-  (device and seat selectors); `design/docs-parity/config.md` (new `seats` and
+  `design/rust-compositor.md` (D31 accepted or changed); `design/archive/lua-input-policy.md`
+  (device and seat selectors); `design/archive/docs-parity/config.md` (new `seats` and
   `device` keys); changelog.
 - Acceptance: docs match the code; no row says "absent" for a feature that shipped.
 

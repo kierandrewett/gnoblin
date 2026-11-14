@@ -727,7 +727,7 @@ impl SessionSync {
 
 /// The pid as the schema publishes it: 0 when the compositor cannot name the process.
 ///
-/// The model has no null, and a pid of 0 is never a real client, so the Lua runtime
+/// The model has no null, and a pid of 0 is never a real client, so the retired runtime
 /// reads 0 as `nil`.
 fn pid_value(pid: Option<u32>) -> u64 {
     pid.map_or(0, u64::from)

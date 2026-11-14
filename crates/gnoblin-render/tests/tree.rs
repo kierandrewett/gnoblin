@@ -1,4 +1,4 @@
-//! Contract tests for the scene tree the node API relies on (design/node-api-refactor.md
+//! Contract tests for the scene tree the node API relies on (design/archive/node-api-refactor.md
 //! §5 and §8.2).
 //!
 //! Failure modes come first, then happy paths. A case whose behaviour the tree does not

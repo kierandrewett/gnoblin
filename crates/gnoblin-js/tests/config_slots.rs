@@ -240,7 +240,7 @@ impl FakeDoc {
         serde_json::from_str(&text).expect("the document is JSON")
     }
 
-    /// Another party (the Lua host's reload) replaces the document.
+    /// Another party (the retired host's reload) replaces the document.
     fn replace(&self, text: &str) {
         self.0.borrow_mut().current = Some(text.to_owned());
     }
@@ -609,7 +609,7 @@ fn a_reload_that_changes_nothing_commits_nothing() {
 #[test]
 fn settings_return_after_another_commit_of_the_document() {
     let mut rig = role_rig(&init("defineConfig({ dialogs: { style: { radius: 12 } } });"), None);
-    // The Lua host's own reload commits a document of its own, which has none of the shell's settings.
+    // The retired host's own reload commits a document of its own, which has none of the shell's settings.
     rig.doc.replace(r#"{"cursor":{"size":24}}"#);
     rig.role.config_committed();
     assert_eq!(

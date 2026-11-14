@@ -1,5 +1,7 @@
 # Shell API redesign: gaps and plan
 
+> Superseded by [design/js-runtime.md](../js-runtime.md): the shell language is TypeScript on QuickJS and the Lua API is deleted. Kept for history.
+
 Status: implemented on `refactor/lua-api-table`: the `lua_api[]` descriptor table and phases 1 to 4, plus the object
 model (live objects, window visual transforms and native tweens). Phase 5 and round 2 are done; the open items are
 listed under "Open decisions". The findings come from six read-only audits of the Lua API stubs (`src/config/lua/api/*.h`), the runtime and

@@ -1,11 +1,11 @@
 // Window rules: `defineConfig({ rules: [...] })`. A rule is data: a query over a window (appId, title, focused,
-// onWorkspace) and the actions to take on a window that matches. Ported from data/lua/gnoblin/shell/rules.lua and
-// `Window:apply_rules` of data/lua/gnoblin/shell/init.lua; docs/config/window_rule.md has the Lua rule reference and
+// onWorkspace) and the actions to take on a window that matches. Ported from data/retired shell/gnoblin/shell/rules.retired shell and
+// `Window:apply_rules` of data/retired shell/gnoblin/shell/init.retired shell; docs/config/window_rule.md has the retired rule reference and
 // the table below the translation of it.
 //
-//   Lua rule (seat.data.window_rules)        JavaScript rule (defineConfig)
+//   retired rule (seat.data.window_rules)        JavaScript rule (defineConfig)
 //   match = { app_id = "^foo$" }             appId: "foo"        a glob matches the whole text; * is any run, ? one char
-//   match = { app_id = "fire" }              appId: "*fire*"     a Lua pattern matched anywhere; a glob needs the stars
+//   match = { app_id = "fire" }              appId: "*fire*"     a retired pattern matched anywhere; a glob needs the stars
 //   match = { app_id = "^org%.x%.(%w+)$" }   appId: /^org\.x\.\w+$/   a RegExp is tested anywhere in the text, so anchor it
 //   match = { title = "..." }                title: "..." or /.../
 //   match = { focused = true }               focused: true
@@ -18,7 +18,7 @@
 //   (re-evaluated on any rule input change)  re-applied when appId, title or focus changes (`reapply: false` opts a rule out)
 //   xr = false, corners, blur, ...           not ported: the key is an unknown key and is refused by name
 //
-// New actions the Lua rules had no field for: `floating`, `size`, `position`, `skipFocus`.
+// New actions the retired rules had no field for: `floating`, `size`, `position`, `skipFocus`.
 // `role` has no source: the tree publishes no window role, so a rule that asks for one is refused by name.
 //
 // A rule that matches nothing changes nothing. A malformed rule throws at compile time (`defineConfig` runs it),
@@ -63,7 +63,7 @@ export interface RuleConfig {
     first?: boolean;
     /**
      * Apply the rule again when the window's appId, title or focus changes, and undo what it set when it stops matching.
-     * The default is true, as every Lua rule was; `false` applies the rule once, when the window appears.
+     * The default is true, as every retired rule was; `false` applies the rule once, when the window appears.
      */
     reapply?: boolean;
 }

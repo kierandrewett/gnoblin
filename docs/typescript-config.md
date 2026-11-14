@@ -245,8 +245,8 @@ An action is one of these:
 
 ### Moving from `shortcuts` and `keybindings`
 
-`keys` is the one way to bind a key. The `shortcuts` and `keybindings` sections of the Lua config are not `defineConfig`
-keys, and a config that uses either name is refused with a message that points here.
+`keys` is the one way to bind a key. The `shortcuts` and `keybindings` sections of an older `init.lua` are not
+`defineConfig` keys, and a config that uses either name is refused with a message that points here.
 
 A legacy shortcut entry becomes one `keys` entry:
 
@@ -270,7 +270,7 @@ keys: { "Super+Return": spawn("foot") },
 ```
 
 The name that keyed the entry (`terminal`) is not needed. A trigger may be bound once, so a duplicate fails at load.
-A shortcut that must act on key release is not ported: the Lua shell, which stays for one more release, still has it.
+A shortcut that must act on key release has no equivalent.
 
 ### `launcher`
 
@@ -518,7 +518,7 @@ config has no "autostrt" (did you mean "autostart"?); expected one of gaps, styl
 ```
 
 A key is suggested when it is within two edits of what you wrote. Case, `-` and `_` do not count as edits, so
-`window-management` is read as `windowManagement`. A section from the Lua config that has no key names what to write instead.
+`window-management` is read as `windowManagement`. A section from an older `init.lua` that has no key names what to write instead.
 
 A value of the wrong type names the path and what it should be:
 

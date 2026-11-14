@@ -12,7 +12,7 @@
 //!
 //! The `tree/` directory is the owner-socket vocabulary (design/node-core.md
 //! section 2.3). [`catalog`] holds every file and serves the owner connection;
-//! [`public_catalog`] leaves `tree/` out, the same exclusion the Lua and CLI builds
+//! [`public_catalog`] leaves `tree/` out, the same exclusion the retired and CLI builds
 //! make with `load_dir_except`, so a non-owner listing cannot name a tree member.
 
 use std::path::{Component, Path};

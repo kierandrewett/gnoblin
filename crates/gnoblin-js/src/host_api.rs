@@ -146,7 +146,7 @@ fn exit_event(id: u64, exit: &JsExit) -> Json {
 
 /// Every schema signal, as `{"name": "namespace.object.signal", "fields": ["field", ..]}`, in catalog order.
 ///
-/// The catalog is the checked-in schema the compositor and the Lua host are built from, so the names a script may
+/// The catalog is the checked-in schema the compositor and the retired host are built from, so the names a script may
 /// subscribe to are the ones the compositor can raise. It is parsed once per process.
 fn signal_table() -> &'static str {
     static TABLE: LazyLock<String> = LazyLock::new(|| {

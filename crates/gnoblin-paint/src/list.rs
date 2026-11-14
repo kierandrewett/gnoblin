@@ -1,7 +1,7 @@
 //! The paint list: what a `Canvas` node's `content` holds, its binary encoding and its decoder.
 //!
-//! A shell builds a paint list as a Lua array of drawing operations (`data/lua/gnoblin/shell/ui.lua`) and
-//! `data/lua/gnoblin/node.lua` encodes it into the `bytes` value the tree carries. The compositor decodes the
+//! A shell builds a paint list as a retired array of drawing operations (`data/retired shell/gnoblin/shell/ui.retired shell`) and
+//! `data/retired shell/gnoblin/node.retired shell` encodes it into the `bytes` value the tree carries. The compositor decodes the
 //! same bytes here, both to refuse a malformed value at write time (`bad-paint`, design/node-core.md F42) and to
 //! draw it. One decoder serves both, so a value the tree accepts is a value the painter can draw.
 //!

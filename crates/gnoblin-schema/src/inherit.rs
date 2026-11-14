@@ -3,7 +3,7 @@
 //! A namespace may span several files, so inheritance is a catalog step, run by
 //! [`crate::Catalog::new`] after object references are checked, and not a per-file
 //! one. The result replaces each object's member lists in place, so every reader
-//! (the generators, the Lua binding, the golden) sees the resolved object and none
+//! (the generators, the retired binding, the golden) sees the resolved object and none
 //! has to walk the chain itself.
 //!
 //! The rules, checked here:

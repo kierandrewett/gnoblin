@@ -2,7 +2,7 @@
 //! the dividers `MasterStackLayout` and `DwindleLayout` offer them (`Layout.findSplit`) and the order swap they stand on
 //! (`MutableCollection.swap`, `Layout.onClientsSwapped`), over the fake compositor of `tests/common`.
 //!
-//! Cases follow `design/js-research/owner-spec.md` section 11 (snippets 051, 052, 104) and a Lua shell that had no such
+//! Cases follow `design/js-research/owner-spec.md` section 11 (snippets 051, 052, 104) and a retired shell that had no such
 //! drag: every case is new. A drag is a claimed pointer chord whose `start`, `update`, `end` and `cancel` the fake plays
 //! back, with a frame between them. What the real compositor does with the writes is `crates/gnoblin/tests/js_shell.rs`.
 

@@ -707,7 +707,7 @@ fn capture(
 }
 
 /// A View asked for a still writes a PNG of what it shows and answers the path, and answers a path outside the
-/// session's runtime directory with `bad-value` and writes nothing. Ported from the Lua rig's
+/// session's runtime directory with `bad-value` and writes nothing. Ported from the retired rig's
 /// `a_view_capture_the_shell_asks_for_writes_a_png_and_answers_its_path`, which was the only test of the call.
 #[test]
 fn a_views_capture_writes_a_png_and_answers_its_path_and_refuses_a_path_outside_the_runtime_directory() {
@@ -1716,7 +1716,7 @@ fn a_value_set_after_the_snapshot_is_published_once_and_not_repeated_in_it() {
 
 // The shell tells a client how big it is and how it is placed by writing its window node: `width` and `height` are
 // the configure size, and `tiled` is the four tiled edge states with the work area as the bounds
-// (design/node-api-refactor.md, the `Window` members table). These tests read what the client receives.
+// (design/archive/node-api-refactor.md, the `Window` members table). These tests read what the client receives.
 
 /// Sends a transaction of `ops` and returns the serial it was applied at, waiting for the compositor's reply.
 fn apply(wire: &mut Wire, request_id: u64, base_serial: u64, ops: Vec<op::Properties>) -> u64 {

@@ -1,4 +1,4 @@
-// The stock overview (data/lua/gnoblin/shell/overview.lua): while it is on, every workspace is shown at full strength;
+// The stock overview (data/retired shell/gnoblin/shell/overview.retired shell): while it is on, every workspace is shown at full strength;
 // while it is off, all but the active workspace are dimmed. A workspace is the script's, so what is dimmed is the opacity
 // of its windows.
 

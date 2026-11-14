@@ -2,7 +2,7 @@
 //! (`data/js/gnoblin/{menus,alerts,widgets,panel,overview,launcher}.ts`) and the titlebar's gestures and reserved room, over the
 //! fake compositor of `tests/common`.
 //!
-//! The cases are the Lua shell's (`crates/gnoblin-lua/tests/lua/{menus,alerts,ui}_test.lua`), with the same inputs and the same
+//! The cases are the retired shell's (`the retired retired corpus`), with the same inputs and the same
 //! expected values; where the JavaScript shell differs the test says why. A key goes to the node that holds the seat's
 //! focus, a press to the node it lands on, as the real path delivers them.
 
@@ -85,7 +85,7 @@ fn calls_of(rig: &Rig, method: &str) -> usize {
     rig.comp.calls().iter().filter(|(_, m)| m == method).count()
 }
 
-// ---- the menu: the cases of menus_test.lua --------------------------------------------------------------------------
+// ---- the menu: the cases of retired corpus menus --------------------------------------------------------------------------
 
 #[test]
 fn a_menu_request_opens_the_window_menu_with_its_corner_at_the_anchor_and_the_keys_going_to_it() {
@@ -163,7 +163,7 @@ fn down_and_return_run_maximise_the_window_maximises_the_menu_closes_and_the_key
 }
 
 #[test]
-fn up_home_end_tab_and_a_letter_move_the_selection_as_the_lua_menu_does() {
+fn up_home_end_tab_and_a_letter_move_the_selection_as_the_retired_menu_does() {
     // The pure model: rows are labels with an enabled flag, in the order of the window menu.
     let mut rig = world(1, "export {};");
     let got = rig.eval(
@@ -541,7 +541,7 @@ fn menus_false_leaves_the_request_unanswered_and_a_request_with_no_anchor_opens_
     );
 }
 
-// ---- the alert: the cases of alerts_test.lua ------------------------------------------------------------------------
+// ---- the alert: the cases of retired corpus alerts ------------------------------------------------------------------------
 
 const FAST_ALERTS: &str =
     "defineConfig({ decorations: true }); notRespondingAlerts.armSeconds = 1; notRespondingAlerts.intervalMs = 0;";
@@ -754,7 +754,7 @@ fn the_entry_model_types_deletes_moves_and_selects() {
 }
 
 #[test]
-fn an_entry_reads_keys_like_the_lua_entry_and_submits_with_return() {
+fn an_entry_reads_keys_like_the_retired_entry_and_submits_with_return() {
     let mut rig = world(
         1,
         "const e = new Entry({ width: 300, height: 40 }); e.mountTop(); e.focus(); globalThis.e = e; \

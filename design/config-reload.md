@@ -9,7 +9,7 @@ table disagrees with the rules.
 ## How a reload flows
 
 1. `gnoblinctl config reload` (or `gnoblin.runtime.reload_config()` from a script) makes the
-   runtime role evaluate `init.lua` again and validate the result.
+   runtime role evaluate `init.ts` again and validate the result.
 2. A valid document is committed to the compositor (`config.commit`). A refused one is
    rejected (`config.reject`), the runtime keeps its last accepted document, and the caller is
    told which file and line.
@@ -19,7 +19,7 @@ table disagrees with the rules.
    reconciles autostart (`Guardian::reconcile_autostart`).
 4. The reply carries the revision and one line for every accepted setting that was **not**
    applied: `restart required` (a process reads it once, at start) or `no effect` (nothing
-   reads it). `gnoblinctl config reload` prints them, and the Lua operation and the
+   reads it). `gnoblinctl config reload` prints them, and the script call and the
    `gnoblin.config.reloaded` event carry them as `not_applied`.
 
 ## What the status words mean
@@ -135,7 +135,7 @@ Each row below was looked at for a cheap, safe live path and does not have one.
   again, and clients that already hold the registry never see a global added after their
   `get_registry` unless they listen for it. Switching only off would make a reload half-live.
 - `workspaces.*`: the compositor could republish the list, but the stock shell builds each
-  Desk's workspaces once (`Desk:build` in `data/lua/gnoblin/shell/init.lua`), and workspace
+  Desk's workspaces once (the stock `workspace.ts` in `data/js/gnoblin`), and workspace
   sets, the Super+N bindings and the slide gestures all address workspaces by name or
   position. A reload that renames, adds or removes one needs a diff that moves the windows of a
   removed workspace and re-validates the sets; that is a shell feature, not a reload.

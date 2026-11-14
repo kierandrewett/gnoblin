@@ -2,7 +2,7 @@
 //! compositor reports.
 //!
 //! `data/js/gnoblin/input.ts` decides what an input means; this module is what it stands on. It does what the
-//! Lua shell's `node.lua` does for `Seat:claim`, `Seat:claim_gesture` and `Seat:unclaim`:
+//! retired shell's `node.retired shell` does for `Seat:claim`, `Seat:claim_gesture` and `Seat:unclaim`:
 //!
 //! - **Claims.** Each claim id is allocated here, per shell, from 1, never reused, one number space for chords
 //!   and gestures (the compositor's `unclaim` removes either). The claim is a call on the seat node whose
@@ -28,7 +28,7 @@ use std::time::Duration;
 
 use gnoblin_secret::SecretText;
 use gnoblin_tree_client::tree_mirror::{
-    MirrorValue, NIL, NodeId, TreeChord, TreeEvent, TreeGesture, TreeMirror, TreePointerChord, lua_class,
+    MirrorValue, NIL, NodeId, TreeChord, TreeEvent, TreeGesture, TreeMirror, TreePointerChord, class_name,
 };
 use rquickjs::{Array, Ctx, Function, IntoJs, Object, Value};
 
@@ -120,7 +120,7 @@ impl JsInput {
     ) -> bool {
         let on_window = mirror
             .node(event.node)
-            .is_some_and(|record| lua_class(&record.class) == "Window");
+            .is_some_and(|record| class_name(&record.class) == "Window");
         if !on_window || !WINDOW_POINTER_KINDS.contains(&event.kind.as_str()) {
             return false;
         }
@@ -180,7 +180,7 @@ pub(crate) fn seat_nodes(state: &HostState) -> Vec<NodeId> {
             state
                 .mirror
                 .node(*id)
-                .is_some_and(|record| lua_class(&record.class) == "Seat")
+                .is_some_and(|record| class_name(&record.class) == "Seat")
         })
         .collect()
 }
@@ -195,7 +195,7 @@ fn seats(state: &HostState) -> Vec<f64> {
 
 fn seat_prop<'a>(state: &'a HostState, seat: NodeId, key: &str) -> Option<&'a MirrorValue> {
     let record = state.mirror.node(seat)?;
-    (lua_class(&record.class) == "Seat")
+    (class_name(&record.class) == "Seat")
         .then(|| record.props.get(key))
         .flatten()
 }
@@ -299,7 +299,7 @@ fn write_focus(state: &mut HostState, seat: NodeId, target: NodeId) -> Option<&'
     let HostState { mirror, tick, .. } = state;
     let is_seat = tick
         .node(mirror, seat)
-        .is_some_and(|record| lua_class(&record.class) == "Seat");
+        .is_some_and(|record| class_name(&record.class) == "Seat");
     if !is_seat {
         return Some("unknown-node");
     }
@@ -321,7 +321,7 @@ fn declare_decorations(state: &mut HostState, seat: NodeId, available: bool) -> 
     let HostState { mirror, tick, .. } = state;
     let is_seat = tick
         .node(mirror, seat)
-        .is_some_and(|record| lua_class(&record.class) == "Seat");
+        .is_some_and(|record| class_name(&record.class) == "Seat");
     if !is_seat {
         return Some("unknown-node");
     }
@@ -338,7 +338,7 @@ fn declare_decorations(state: &mut HostState, seat: NodeId, available: bool) -> 
 }
 
 /// Queues the first seat's keyboard focus going to `window`. The compositor answers no `focus` call on a window; the
-/// focus is the seat's, and a shell gives it by writing the seat's `focus` (the Lua shell's `seat.focus = window`).
+/// focus is the seat's, and a shell gives it by writing the seat's `focus` (the retired shell's `seat.focus = window`).
 /// Refused with `no-seat` when the tree has no seat.
 pub(crate) fn focus_window(state: &mut HostState, window: NodeId) -> Option<&'static str> {
     let Some(seat) = seat_nodes(state).first().copied() else {
@@ -432,7 +432,7 @@ fn queue_claim(
     } = state;
     let is_seat = tick
         .node(mirror, seat)
-        .is_some_and(|record| lua_class(&record.class) == "Seat");
+        .is_some_and(|record| class_name(&record.class) == "Seat");
     if !is_seat {
         return JsClaimOutcome::Refused("unknown-node");
     }
@@ -906,7 +906,7 @@ mod tests {
 
     #[test]
     fn a_device_claim_is_a_call_with_the_id_and_the_bare_device_name_as_its_text() {
-        // The Lua test "Seat:claim_device is a one-line device name" and the one of `bind{ only = true }`.
+        // The retired test "Seat:claim_device is a one-line device name" and the one of `bind{ only = true }`.
         let mut state = state();
         assert_eq!(claim_device(&mut state, 4, "Macro Pad"), JsClaimOutcome::Claimed(1));
         let calls: Vec<(&str, &[u8], String)> = state

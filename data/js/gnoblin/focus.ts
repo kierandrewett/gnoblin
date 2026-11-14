@@ -1,6 +1,6 @@
 // The focus policy: click, sloppy and follow-mouse focus, whether a new window takes focus, raise on click and
-// auto raise. Ported from data/lua/gnoblin/shell/focus.lua (the decisions) and the `Window:on_*` handlers of
-// data/lua/gnoblin/shell/init.lua (the wiring); the Lua tests are the cases tests/stock_focus.rs runs.
+// auto raise. Ported from data/retired shell/gnoblin/shell/focus.retired shell (the decisions) and the `Window:on_*` handlers of
+// data/retired shell/gnoblin/shell/init.retired shell (the wiring); the retired tests are the cases tests/stock_focus.rs runs.
 //
 // The decisions are pure functions of the settings and one event (`focusDecision`), so they are tested with no
 // shell. `FocusPolicy` is the wiring: a listener for a collection of clients that turns the pointer edges the

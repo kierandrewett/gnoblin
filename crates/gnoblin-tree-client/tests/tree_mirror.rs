@@ -1,4 +1,4 @@
-//! The shell's tree mirror and its transaction builder, with no Lua involved
+//! The shell's tree mirror and its transaction builder, with no retired involved
 //! (design/node-core.md, sections 4.1 and 4.6).
 
 use gnoblin_tree_client::tree_mirror::{
@@ -481,7 +481,7 @@ fn a_pending_insert_and_its_echo_do_not_double_apply_the_window() {
 }
 
 #[test]
-fn debug_of_a_lua_call_never_shows_its_text() {
+fn debug_of_a_retired_call_never_shows_its_text() {
     const SECRET: &str = "hunter2-never-print-me";
     let op = TxOp::Call {
         node: 5,

@@ -1,9 +1,9 @@
 //! The configuration document, from the shell's side: what `defineConfig` writes to it and how a reload takes it back.
 //!
 //! `defineConfig` keys that are document settings (`dialogs`, `appearance`, `cursor`, ...) are one patch of the
-//! document the compositor holds. The runtime role's Lua host commits the document it evaluated; the shell reads
+//! document the compositor holds. The runtime role's retired host commits the document it evaluated; the shell reads
 //! that document back (`config.current`), lays its patch over it and commits the whole result (`config.commit`),
-//! the same two verbs the Lua host uses. The compositor holds only the last accepted document, so a commit must
+//! the same two verbs the retired host uses. The compositor holds only the last accepted document, so a commit must
 //! carry everything.
 //!
 //! **Why the full document and not a patch.** A reload that drops a key must put the setting back to its default,
@@ -11,10 +11,10 @@
 //! the default). So the shell remembers the key paths its last committed patch set ([`KeyPath`]), and the next
 //! commit is built from the current document with those paths taken out and the new patch laid over it. A key the
 //! new generation no longer sets is gone from the document; a section the removal leaves empty goes with it. A
-//! setting the Lua host's own file wrote is not the shell's to take back, because only the paths the shell set are
+//! setting the retired host's own file wrote is not the shell's to take back, because only the paths the shell set are
 //! removed.
 //!
-//! **Validation.** The same validator the compositor and the Lua host use ([`Config::from_value`]) runs on the
+//! **Validation.** The same validator the compositor and the retired host use ([`Config::from_value`]) runs on the
 //! candidate document, so a bad value is refused with its dotted path (`dialogs.style.radius: ...`). The check
 //! runs when `defineConfig` is called, which is while a reload is still staging: a refused value fails the stage,
 //! the running generation stays, and the error is in the reload report. The commit itself happens once the
@@ -159,7 +159,7 @@ pub(crate) struct ConfigState {
     link: Option<Box<dyn JsConfigLink>>,
     /// The key paths the last committed patch set, so the next commit can take them back.
     owned: Vec<KeyPath>,
-    /// Whether the shell owns the whole document: the JavaScript runtime role, where no Lua host commits a file of
+    /// Whether the shell owns the whole document: the JavaScript runtime role, where no retired host commits a file of
     /// its own. Every commit is then the patch alone, laid over an empty document, and is always sent: a reload
     /// that changed nothing is still the answer the compositor is waiting for, and a role that restarts must not
     /// inherit keys the previous run committed.
@@ -214,7 +214,7 @@ impl ConfigState {
         match Config::from_value(candidate) {
             Ok(config) => {
                 // The guardian starts the document's autostart entries, so one that would start a second
-                // keyring is refused here, before the commit, as the Lua host refuses it.
+                // keyring is refused here, before the commit, as the retired host refuses it.
                 if self.owns_document {
                     gnoblin_config::enabled_autostart(&config)?;
                 }

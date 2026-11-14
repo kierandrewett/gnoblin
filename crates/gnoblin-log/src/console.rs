@@ -179,7 +179,7 @@ mod tests {
     #[test]
     fn the_colour_of_a_component_is_stable_and_one_of_six() {
         assert_eq!(colour("wayland"), colour("wayland"));
-        for name in ["wayland", "backend", "render", "compositor", "lua", "ext"] {
+        for name in ["wayland", "backend", "render", "compositor", "js", "ext"] {
             assert!((31..=36).contains(&colour(name)), "{name}");
         }
     }

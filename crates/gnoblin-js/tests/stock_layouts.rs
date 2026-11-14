@@ -1,10 +1,10 @@
 //! The stock TypeScript library (`data/js/gnoblin/`) run in a real generation against a fake `gnoblin` global.
 //!
-//! The geometry cases are the Lua shell's: `crates/gnoblin-lua/tests/lua/tiling_test.lua` for the tiled layouts
-//! and `tests/shell/placement_cases.toml` for floating placement. A case taken from the Lua corpus says so; a
-//! case marked "derived" is not in that corpus (the Lua class has no such option) and its expected rectangles
+//! The geometry cases are the retired shell's: `the retired retired corpus` for the tiled layouts
+//! and `tests/shell/placement_cases.toml` for floating placement. A case taken from the retired corpus says so; a
+//! case marked "derived" is not in that corpus (the retired class has no such option) and its expected rectangles
 //! were worked out by hand from the same algorithm. Rectangles are written `x,y,width,height`, one node after
-//! another, in the Lua tests' 1000 by 800 workspace.
+//! another, in the retired tests' 1000 by 800 workspace.
 
 use std::fs;
 use std::path::Path;
@@ -86,8 +86,8 @@ fn lines(expected: &[&str]) -> String {
 }
 
 #[test]
-fn master_stack_matches_the_lua_tiling_goldens() {
-    // Lua: "1 window fills", "2 and 3 windows give the master and stack rectangles", "the gap separates the
+fn master_stack_matches_the_retired_tiling_goldens() {
+    // Before: "1 window fills", "2 and 3 windows give the master and stack rectangles", "the gap separates the
     // master from the stack and the stack rows", "orientation top puts the master across the top".
     let got = run(r#"
         const l = new MasterStackLayout();
@@ -118,8 +118,8 @@ fn master_stack_matches_the_lua_tiling_goldens() {
 }
 
 #[test]
-fn master_stack_tracks_ratio_gap_and_area_like_lua() {
-    // Lua: "ratio, gap, width and height re-arrange with no handler": the same layout object over a shrinking
+fn master_stack_tracks_ratio_gap_and_area_as_before() {
+    // Before: "ratio, gap, width and height re-arrange with no handler": the same layout object over a shrinking
     // area, then its gap set to 0.
     let got = run(r#"
         const l = new MasterStackLayout({ ratio: 0.25, gap: 12 });
@@ -142,15 +142,15 @@ fn master_stack_tracks_ratio_gap_and_area_like_lua() {
 }
 
 #[test]
-fn master_stack_200_nodes_share_the_stack_in_whole_pixels_like_lua() {
-    // Lua: "200 windows share the stack in whole pixels".
+fn master_stack_200_nodes_share_the_stack_in_whole_pixels_as_before() {
+    // Before: "200 windows share the stack in whole pixels".
     let got = run(r#"
         const children = nodes(200);
         const placed = new MasterStackLayout().compute({ children, area: area() });
         fmt(placed, children);
         emit([rect(placed[0].bounds), rect(placed[1].bounds), rect(placed[199].bounds), placed.length].join(" "));
     "#);
-    // The Lua shell floored each height on its own and ended at 799 of 800; the last tile now ends at the area's edge.
+    // The retired shell floored each height on its own and ended at 799 of 800; the last tile now ends at the area's edge.
     assert_eq!(got, "0,0,500,800 500,0,500,4 500,795,500,5 200");
 }
 
@@ -158,7 +158,7 @@ fn master_stack_200_nodes_share_the_stack_in_whole_pixels_like_lua() {
 fn tiles_that_touch_in_the_layouts_arithmetic_touch_in_pixels_so_the_area_is_covered_to_its_far_edges() {
     // Live verification: ratio 0.6 and a gap of 12 on 1024 by 768 gave a master of 607.2 and a stack of 404.8 that starts
     // at 619.2. Flooring each width apart made the stack 404 wide, and it ended a pixel short of the screen. Flooring
-    // the edges gives 405, and the 200 windows of the Lua corpus now end at 800 instead of 799.
+    // the edges gives 405, and the 200 windows of the retired corpus now end at 800 instead of 799.
     let got = run(r#"
         const children = nodes(200);
         const many = new MasterStackLayout().compute({ children, area: area() });
@@ -197,7 +197,7 @@ fn a_cascade_that_runs_out_of_room_never_lands_a_window_exactly_on_another() {
 }
 
 #[test]
-fn master_stack_options_beyond_the_lua_corpus_are_derived_from_its_algorithm() {
+fn master_stack_options_beyond_the_retired_corpus_are_derived_from_its_algorithm() {
     // Derived: master count, the right and bottom orientations, an offset area, a ratio outside 0.1..0.9, no
     // master at all, and more masters than nodes.
     let got = run(r#"
@@ -226,8 +226,8 @@ fn master_stack_options_beyond_the_lua_corpus_are_derived_from_its_algorithm() {
 }
 
 #[test]
-fn grid_matches_the_lua_tiling_goldens() {
-    // Lua: "1, 2 and 3 windows give the expected cells", "the gap separates cells and a partly filled last row is
+fn grid_matches_the_retired_tiling_goldens() {
+    // Before: "1, 2 and 3 windows give the expected cells", "the gap separates cells and a partly filled last row is
     // left aligned", "fill column goes top to bottom then right", "gap changes re-arrange".
     let got = run(r#"
         emit([
@@ -258,7 +258,7 @@ fn grid_matches_the_lua_tiling_goldens() {
 
 #[test]
 fn grid_with_a_fixed_column_count_is_derived_from_the_auto_algorithm() {
-    // Derived: the Lua class has no `columns`; a fixed count replaces the near-square side and keeps the rest.
+    // Derived: the retired class has no `columns`; a fixed count replaces the near-square side and keeps the rest.
     let got = run(r#"
         emit([
             lay(new GridLayout({ columns: 3 }), 4),
@@ -281,8 +281,8 @@ fn grid_with_a_fixed_column_count_is_derived_from_the_auto_algorithm() {
 }
 
 #[test]
-fn monocle_shows_the_focused_node_or_the_first_like_lua() {
-    // Lua: "the focused window fills the workspace and the rest are hidden", "refocusing shows another window".
+fn monocle_shows_the_focused_node_or_the_first_as_before() {
+    // Before: "the focused window fills the workspace and the rest are hidden", "refocusing shows another window".
     let got = run(r#"
         const visible = (placed) => placed.map((p) => (p.visible ? "T" : "F")).join("");
         const l = new MonocleLayout();
@@ -315,7 +315,7 @@ fn monocle_shows_the_focused_node_or_the_first_like_lua() {
 
 #[test]
 fn every_tiled_layout_gives_finite_whole_pixel_rectangles_for_200_nodes_and_is_deterministic() {
-    // Lua: "200 windows give finite integral rectangles" and "the same sequence replayed twice gives identical
+    // Before: "200 windows give finite integral rectangles" and "the same sequence replayed twice gives identical
     // rectangles". `fmt` throws on a fractional or missing rectangle.
     let got = run(r#"
         const results = [];
@@ -335,8 +335,8 @@ fn every_tiled_layout_gives_finite_whole_pixel_rectangles_for_200_nodes_and_is_d
 }
 
 #[test]
-fn layout_options_have_the_lua_defaults_and_bad_ones_are_refused() {
-    // Lua: "the options have the old layouts' defaults": ratio 0.5, gap 0 (unset here, so the workspace's gap
+fn layout_options_have_the_retired_defaults_and_bad_ones_are_refused() {
+    // Before: "the options have the old layouts' defaults": ratio 0.5, gap 0 (unset here, so the workspace's gap
     // applies), master count 1, orientation left; grid fill row; and the orientation and fill errors.
     let got = run(r#"
         const m = new MasterStackLayout();
@@ -434,8 +434,8 @@ fn placement_goldens() -> (String, usize) {
 }
 
 #[test]
-fn floating_placement_matches_every_lua_golden() {
-    // The goldens the Lua `Floating`, `Cascade` and `Centred` classes are replayed against: free_space is the
+fn floating_placement_matches_every_retired_golden() {
+    // The goldens the the retired shell `Floating`, `Cascade` and `Centred` classes are replayed against: free_space is the
     // `smart` placement, center and cascade keep their names.
     let (cases, count) = placement_goldens();
     assert!(count > 50, "the golden table is not empty: {count}");
@@ -458,7 +458,7 @@ fn floating_placement_matches_every_lua_golden() {
 
 #[test]
 fn floating_places_a_client_once_when_it_is_added() {
-    // Lua `Floating:on_child_added`: a client at its committed size opens in free space, one with no size opens
+    // the retired shell `Floating:on_child_added`: a client at its committed size opens in free space, one with no size opens
     // at 800 by 600, an invisible client is not an obstacle, the client stops being tiled, and a second call
     // does not move it. A client the host has already given floating bounds keeps them.
     let got = run(r#"
@@ -824,7 +824,7 @@ fn a_user_config_layers_over_the_default_keys_merge_by_trigger_and_workspaces_re
         ].join("\n"));
     "#);
     let media = "XF86AudioRaiseVolume XF86AudioLowerVolume XF86AudioMute XF86AudioMicMute XF86AudioPlay XF86AudioNext XF86AudioPrev";
-    // The Lua shell's keys: Super+1 to Super+9 show the workspace at that position, so they name something whichever
+    // The retired shell's keys: Super+1 to Super+9 show the workspace at that position, so they name something whichever
     // workspaces the config declares and survive a config that drops the stock four.
     let others = "Super+2 Super+3 Super+4 Super+5 Super+6 Super+7 Super+8 Super+9 Super+Left Super+Right Swipe3";
     let stock = format!("Super+1 {others}");

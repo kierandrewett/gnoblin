@@ -2,13 +2,13 @@
 //! that is unplugged, `Client.moveToOutput`, and dialogs that stay with their parent, over the fake compositor of
 //! `tests/common`.
 //!
-//! The cases are the Lua shell's `crates/gnoblin-lua/tests/lua/shell_test.lua` (moving, unplugging, reconnecting,
+//! The cases are the retired shell's `the retired retired corpus` (moving, unplugging, reconnecting,
 //! dialogs), keeping their inputs and expected values. Where the TypeScript model differs the case says why. The
-//! difference is the model's: a Lua `Desk` owns its own copy of every workspace, so each output shows "its" workspace
+//! difference is the model's: a the retired shell `Desk` owns its own copy of every workspace, so each output shows "its" workspace
 //! 1; a TypeScript `Workspace` is the script's own object and is on one output at a time, so showing a workspace that
 //! another output shows changes the two outputs' places (a swap). A window's coordinates are the compositor's global
-//! ones, so a window on an output at `x = 1000` has `x >= 1000`; the Lua windows were relative to their desk. A case
-//! with no Lua original says "new". What the real compositor does with the writes is `crates/gnoblin/tests/js_shell.rs`.
+//! ones, so a window on an output at `x = 1000` has `x >= 1000`; the retired windows were relative to their desk. A case
+//! with no retired original says "new". What the real compositor does with the writes is `crates/gnoblin/tests/js_shell.rs`.
 
 use gnoblin_tree_client::tree_mirror::{MirrorChange, MirrorChangeKind, MirrorValue};
 
@@ -183,7 +183,7 @@ fn a_published_make_model_mode_and_scale_are_what_an_output_reads() {
 
 #[test]
 fn a_hotplugged_output_is_announced_and_an_unplugged_one_is_removed_with_its_last_values_readable() {
-    // New: `OutputListener.onConnected` and `onDisconnected`, and `CollectionListener` membership, over the Lua
+    // New: `OutputListener.onConnected` and `onDisconnected`, and `CollectionListener` membership, over the the retired shell
     // `Screen:on_ready` and `Screen:on_destroyed` that made and dropped a `Desk`.
     let mut rig = world(0, false, "new Layout()", "");
     exec(
@@ -242,7 +242,7 @@ fn a_hotplugged_output_is_announced_and_an_unplugged_one_is_removed_with_its_las
 
 #[test]
 fn each_output_shows_its_own_workspace_and_a_workspace_is_on_one_output() {
-    // Lua: "Desk builds" (one desk per screen, each with a workspace showing). Derived: a TypeScript workspace is on
+    // Before: "Desk builds" (one desk per screen, each with a workspace showing). Derived: a TypeScript workspace is on
     // one output, so the second output starts on the first workspace no output shows.
     let mut rig = world(0, true, "new Layout()", "");
     assert_eq!(shown(&mut rig), "output-0=1 output-1=2");
@@ -278,7 +278,7 @@ fn each_output_shows_its_own_workspace_and_a_workspace_is_on_one_output() {
 
 #[test]
 fn a_plain_show_acts_on_the_output_under_the_pointer_and_the_primary_one_when_no_pointer_says() {
-    // Lua: `desk()` is the desk under the pointer (`seat.screen`). Derived: with no pointer screen the primary output.
+    // Before: `desk()` is the desk under the pointer (`seat.screen`). Derived: with no pointer screen the primary output.
     let mut rig = world(0, true, "new Layout()", "");
     exec(&mut rig, "gnoblin.show('3')");
     settle(&mut rig);
@@ -300,7 +300,7 @@ fn a_plain_show_acts_on_the_output_under_the_pointer_and_the_primary_one_when_no
 
 #[test]
 fn a_new_window_joins_the_workspace_shown_on_the_output_under_the_pointer() {
-    // Lua: `Window:on_ready` adds the window to `desk().active`.
+    // Before: `Window:on_ready` adds the window to `desk().active`.
     let mut rig = world(0, true, "new Layout()", "");
     rig.comp.external_set(SEAT, "screen", MirrorValue::Node(B));
     settle(&mut rig);
@@ -316,7 +316,7 @@ fn a_new_window_joins_the_workspace_shown_on_the_output_under_the_pointer() {
 
 #[test]
 fn a_layout_tiles_in_the_area_of_the_output_that_shows_its_workspace() {
-    // Lua: `Desk:arrange` gives each desk's workspaces the desk's own size. Derived: the area is in the compositor's
+    // Before: `Desk:arrange` gives each desk's workspaces the desk's own size. Derived: the area is in the compositor's
     // coordinates, so the second output's starts at its own x.
     let mut rig = world(0, true, "new Fill()", "");
     rig.comp.create_window(30, "one", "foot");
@@ -342,7 +342,7 @@ fn a_layout_tiles_in_the_area_of_the_output_that_shows_its_workspace() {
 
 #[test]
 fn bars_reserve_room_on_their_own_output_and_give_way_to_a_fullscreen_window_there() {
-    // Lua: bars are children of a `Desk` (`Desk:arrange` stacks them on that desk's edges). New: `Bar` takes an output.
+    // Before: bars are children of a `Desk` (`Desk:arrange` stacks them on that desk's edges). New: `Bar` takes an output.
     let mut rig = world(0, true, "new Fill()", "");
     exec(
         &mut rig,
@@ -382,7 +382,7 @@ fn bars_reserve_room_on_their_own_output_and_give_way_to_a_fullscreen_window_the
 
 #[test]
 fn unplugging_one_of_two_outputs_moves_its_windows_to_the_other_output() {
-    // Lua: "unplugging one of two outputs moves its windows to the other output".
+    // Before: "unplugging one of two outputs moves its windows to the other output".
     let mut rig = world(0, true, "new Layout()", "");
     rig.comp.external_set(SEAT, "screen", MirrorValue::Node(B));
     settle(&mut rig);
@@ -405,7 +405,7 @@ fn unplugging_one_of_two_outputs_moves_its_windows_to_the_other_output() {
 
 #[test]
 fn windows_moved_off_an_unplugged_output_are_fitted_to_the_output_that_remains() {
-    // Lua: `Window:move_to` refits (`fit_into`) what it moves; the unplug uses the same. The second output was 600 by
+    // Before: `Window:move_to` refits (`fit_into`) what it moves; the unplug uses the same. The second output was 600 by
     // 400 at x 1000; the window moves to the first (1000 by 800 at the origin).
     let mut rig = world(0, true, "new Layout()", "");
     rig.comp.external_set(SEAT, "screen", MirrorValue::Node(B));
@@ -427,7 +427,7 @@ fn windows_moved_off_an_unplugged_output_are_fitted_to_the_output_that_remains()
 
 #[test]
 fn unplugging_the_last_output_keeps_its_windows_hidden_and_drops_focus() {
-    // Lua: "unplugging the last output keeps its windows hidden and drops focus".
+    // Before: "unplugging the last output keeps its windows hidden and drops focus".
     let mut rig = world(1, false, "new Layout()", "");
     give_focus(&mut rig, 3);
     assert_eq!(focus(&rig), 3);
@@ -445,7 +445,7 @@ fn unplugging_the_last_output_keeps_its_windows_hidden_and_drops_focus() {
 
 #[test]
 fn reconnecting_an_output_adopts_the_parked_windows_and_focuses_one() {
-    // Lua: "reconnecting an output adopts the parked windows and focuses one".
+    // Before: "reconnecting an output adopts the parked windows and focuses one".
     let mut rig = world(1, false, "new Layout()", "");
     give_focus(&mut rig, 3);
     unplug(&mut rig, A);
@@ -497,7 +497,7 @@ fn a_window_on_a_second_output_goes_to_the_first_when_it_is_unplugged_and_comes_
 
 #[test]
 fn moving_a_window_to_an_output_that_is_gone_is_rejected() {
-    // Lua: "moving a window to an output that is not a screen is rejected".
+    // Before: "moving a window to an output that is not a screen is rejected".
     let mut rig = world(1, true, "new Layout()", "");
     exec(&mut rig, "g.second = gnoblin.outputs.at(1);");
     unplug(&mut rig, B);
@@ -514,7 +514,7 @@ fn moving_a_window_to_an_output_that_is_gone_is_rejected() {
 
 #[test]
 fn moving_a_window_to_another_output_reshapes_it_into_that_outputs_work_area() {
-    // Lua: "moving a window to another output reshapes it into that output's work area".
+    // Before: "moving a window to another output reshapes it into that output's work area".
     let mut rig = world(1, true, "new Layout()", "");
     exec(
         &mut rig,
@@ -544,7 +544,7 @@ fn moving_a_window_to_another_output_reshapes_it_into_that_outputs_work_area() {
 
 #[test]
 fn a_maximised_window_fills_the_new_output_when_it_moves() {
-    // Lua: "a maximised window fills the new output when it moves".
+    // Before: "a maximised window fills the new output when it moves".
     let mut rig = world(1, true, "new Layout()", "");
     exec(&mut rig, "windowState.maximise(gnoblin.clients.get('3'));");
     settle(&mut rig);
@@ -560,7 +560,7 @@ fn a_maximised_window_fills_the_new_output_when_it_moves() {
 
 #[test]
 fn a_fullscreen_window_does_not_move_to_another_workspace_or_output() {
-    // Lua: "a fullscreen window does not move to another workspace" and "... another output".
+    // Before: "a fullscreen window does not move to another workspace" and "... another output".
     let mut rig = world(1, true, "new Layout()", "");
     exec(&mut rig, "gnoblin.clients.get('3').fullscreen = true");
     settle(&mut rig);
@@ -587,7 +587,7 @@ fn a_fullscreen_window_does_not_move_to_another_workspace_or_output() {
 
 #[test]
 fn a_moved_window_that_held_the_focus_hands_it_to_a_window_that_stays() {
-    // Lua: "moving the focused window off the active workspace gives focus to a window that stays".
+    // Before: "moving the focused window off the active workspace gives focus to a window that stays".
     let mut rig = world(2, false, "new Layout()", "");
     give_focus(&mut rig, 3);
     assert_eq!(
@@ -651,7 +651,7 @@ fn create_dialog(rig: &mut Rig, id: u64, parent: u64) {
 
 #[test]
 fn a_dialog_is_centred_in_its_parent_and_joins_its_workspace() {
-    // Lua: `Window:on_ready` adds a dialog to its parent and centres it: `(p.width - self.width) // 2`.
+    // Before: `Window:on_ready` adds a dialog to its parent and centres it: `(p.width - self.width) // 2`.
     let mut rig = world(1, false, "new Layout()", "");
     exec(
         &mut rig,
@@ -673,7 +673,7 @@ fn a_dialog_is_centred_in_its_parent_and_joins_its_workspace() {
 
 #[test]
 fn a_dialog_whose_parent_is_on_another_workspace_goes_with_its_parent() {
-    // Lua: "a dialog whose parent is on another workspace goes with its parent".
+    // Before: "a dialog whose parent is on another workspace goes with its parent".
     let mut rig = world(1, false, "new Layout()", "");
     exec(
         &mut rig,
@@ -696,7 +696,7 @@ fn a_dialog_whose_parent_is_on_another_workspace_goes_with_its_parent() {
 
 #[test]
 fn a_dialog_whose_parent_is_closed_has_no_parent_and_is_placed_as_a_normal_window() {
-    // Lua: "a dialog whose parent is closed has no parent_window and is placed as a normal window".
+    // Before: "a dialog whose parent is closed has no parent_window and is placed as a normal window".
     let mut rig = world(1, false, "new Layout()", "");
     rig.comp.destroy(3);
     settle(&mut rig);
@@ -711,7 +711,7 @@ fn a_dialog_whose_parent_is_closed_has_no_parent_and_is_placed_as_a_normal_windo
 
 #[test]
 fn a_dialog_does_not_move_to_another_workspace_on_its_own_but_goes_with_its_parent() {
-    // Lua: "a dialog does not move to another workspace on its own" and "moving a parent window takes its dialog with it".
+    // Before: "a dialog does not move to another workspace on its own" and "moving a parent window takes its dialog with it".
     let mut rig = world(1, false, "new Layout()", "");
     create_dialog(&mut rig, 30, 3);
     assert_eq!(
@@ -730,7 +730,7 @@ fn a_dialog_does_not_move_to_another_workspace_on_its_own_but_goes_with_its_pare
 
 #[test]
 fn a_dialog_follows_its_parent_to_another_output_and_keeps_its_place_in_it() {
-    // Lua: "a dialog follows its parent to another output".
+    // Before: "a dialog follows its parent to another output".
     let mut rig = world(1, true, "new Layout()", "");
     exec(
         &mut rig,
@@ -757,7 +757,7 @@ fn a_dialog_follows_its_parent_to_another_output_and_keeps_its_place_in_it() {
 
 #[test]
 fn a_dialog_moves_with_its_parent_and_a_tiling_layout_leaves_it_alone() {
-    // Lua: a dialog is a child node of its parent, so it moves with it and the workspace's layout never places it.
+    // Before: a dialog is a child node of its parent, so it moves with it and the workspace's layout never places it.
     let mut rig = world(1, false, "new Fill()", "");
     create_dialog(&mut rig, 30, 3);
     assert_eq!(rect(&rig, 3), "0,0,1000,800", "the layout filled the parent");
@@ -774,7 +774,7 @@ fn a_dialog_moves_with_its_parent_and_a_tiling_layout_leaves_it_alone() {
 
 #[test]
 fn a_workspace_set_shows_each_workspace_on_its_own_output() {
-    // Lua: "sets_test.lua" and `workspace_sets` in init.lua: each entry shows `d:show(ws)` on the desk of its output.
+    // Before: "retired corpus sets" and `workspace_sets` in init.retired shell: each entry shows `d:show(ws)` on the desk of its output.
     // The TypeScript shell used to report an entry for a non-primary output and not show it.
     let mut rig = world(0, true, "new Layout()", "");
     exec(
@@ -834,8 +834,8 @@ fn create_launched(rig: &mut Rig, id: u64) {
 
 #[test]
 fn a_launched_window_does_not_take_focus_unless_new_windows_are_allowed_to() {
-    // Lua: `Focus.opens_focused(focus_settings(), self.from_launcher)`: a window from a launcher takes focus only when
-    // `focus_new_windows` is `allow`. The Lua `from_launcher` was a field of the fake core only; here it is the real
+    // Before: `Focus.opens_focused(focus_settings(), self.from_launcher)`: a window from a launcher takes focus only when
+    // `focus_new_windows` is `allow`. The the retired shell `from_launcher` was a field of the fake core only; here it is the real
     // node's property.
     let mut rig = world(1, false, "new Layout()", "");
     give_focus(&mut rig, 3);

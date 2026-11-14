@@ -176,7 +176,7 @@ impl ObjectType {
             || self.signals.iter().any(Signal::is_sensitive)
     }
 
-    /// The object as Lua may see it: `None` when the whole object is secret, otherwise
+    /// The object as retired may see it: `None` when the whole object is secret, otherwise
     /// a copy without every property, method and signal that is itself sensitive.
     ///
     /// A method or signal that carries a secret parameter or field is removed whole,

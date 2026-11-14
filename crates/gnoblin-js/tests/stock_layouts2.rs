@@ -2,12 +2,12 @@
 //! workspace slide gesture, workspace sets and the launcher and workspace keys of the stock config, run in a real
 //! generation against a fake `gnoblin` global.
 //!
-//! The cases are the Lua shell's: `crates/gnoblin-lua/tests/lua/tiling_test.lua` (Dwindle, Kiosk),
-//! `crates/gnoblin-lua/tests/lua/strip_test.lua` (Strip, Carousel3d, the ring), `sets_test.lua` (the pure set cases)
+//! The cases are the retired shell's: `the retired retired corpus` (Dwindle, Kiosk),
+//! `the retired retired corpus` (Strip, Carousel3d, the ring), `retired corpus sets` (the pure set cases)
 //! and the gesture cases of `crates/gnoblin-compositor/tests/shell_vm.rs` (swipe left slides on, a short swipe
-//! slides back). A case taken from that corpus says so; a case marked "derived" is not in it (the Lua class has no
-//! such option, or the case was a property of the Lua node tree) and its expectation was worked out by hand from the
-//! same algorithm. Rectangles are written `x,y,width,height`, in the Lua tests' 1000 by 800 workspace.
+//! slides back). A case taken from that corpus says so; a case marked "derived" is not in it (the retired class has no
+//! such option, or the case was a property of the retired node tree) and its expectation was worked out by hand from the
+//! same algorithm. Rectangles are written `x,y,width,height`, in the retired tests' 1000 by 800 workspace.
 
 use std::fs;
 use std::path::Path;
@@ -112,8 +112,8 @@ fn lines(expected: &[&str]) -> String {
 // -- Dwindle ------------------------------------------------------------------------------------------------------
 
 #[test]
-fn dwindle_matches_the_lua_tiling_goldens() {
-    // Lua: "Dwindle: 2 and 3 windows split the last cell by aspect", "split horizontal puts every window side by
+fn dwindle_matches_the_retired_tiling_goldens() {
+    // Before: "Dwindle: 2 and 3 windows split the last cell by aspect", "split horizontal puts every window side by
     // side", "ratio changes re-arrange with no handler". Windows arrive one at a time, as `ws:add` did.
     let got = run(r#"
         const grow = (layout, n, ctx = {}) => {
@@ -145,9 +145,9 @@ fn dwindle_matches_the_lua_tiling_goldens() {
 }
 
 #[test]
-fn dwindle_has_the_lua_defaults_and_refuses_a_bad_split() {
-    // Lua: "the options have the old layouts' defaults": split aspect, ratio 0.5, gap 0 (unset here, so the
-    // workspace's gap applies). The error is the Lua class's, in the layout's name.
+fn dwindle_has_the_retired_defaults_and_refuses_a_bad_split() {
+    // Before: "the options have the old layouts' defaults": split aspect, ratio 0.5, gap 0 (unset here, so the
+    // workspace's gap applies). The error is the retired class's, in the layout's name.
     let got = run(r#"
         const d = new DwindleLayout();
         emit([
@@ -169,8 +169,8 @@ fn dwindle_has_the_lua_defaults_and_refuses_a_bad_split() {
 }
 
 #[test]
-fn dwindle_clamps_its_ratio_like_lua() {
-    // Lua: `clamp(self.ratio, 0.1, 0.9)`. A ratio of 5 gives the first child 0.9 of the width.
+fn dwindle_clamps_its_ratio_as_before() {
+    // Before: `clamp(self.ratio, 0.1, 0.9)`. A ratio of 5 gives the first child 0.9 of the width.
     let got = run(r#"
         const all = nodes(2);
         const high = new DwindleLayout({ ratio: 5 });
@@ -181,8 +181,8 @@ fn dwindle_clamps_its_ratio_like_lua() {
 }
 
 #[test]
-fn dwindle_gap_collapse_and_focus_insertion_are_derived_from_the_lua_algorithm() {
-    // Derived: the Lua tests give no gap, no closing and no focus to Dwindle. The Lua algorithm: the gap is
+fn dwindle_gap_collapse_and_focus_insertion_are_derived_from_the_retired_algorithm() {
+    // Derived: the retired tests give no gap, no closing and no focus to Dwindle. The retired algorithm: the gap is
     // taken off the width before the ratio ((1000 - 20) * 0.5 = 490); a closed window's sibling takes the split's
     // place; a new window splits the cell of the window that had focus when it arrived.
     let got = run(r#"
@@ -218,8 +218,8 @@ fn dwindle_gap_collapse_and_focus_insertion_are_derived_from_the_lua_algorithm()
 // -- Kiosk --------------------------------------------------------------------------------------------------------
 
 #[test]
-fn kiosk_shows_one_full_window_and_hides_the_rest_like_lua() {
-    // Lua: "Kiosk: 1, 2 and 3 windows show one full-area window and hide the rest".
+fn kiosk_shows_one_full_window_and_hides_the_rest_as_before() {
+    // Before: "Kiosk: 1, 2 and 3 windows show one full-area window and hide the rest".
     let got = run(r#"
         const l = new KioskLayout();
         const shown = (placed) => placed.map((p) => (p.visible ? "T" : "F")).join("");
@@ -251,7 +251,7 @@ fn kiosk_shows_one_full_window_and_hides_the_rest_like_lua() {
 
 #[test]
 fn dwindle_and_kiosk_replay_to_identical_rectangles_and_stay_whole_pixels() {
-    // Lua: "each class: the same sequence replayed twice gives identical rectangles" (three windows, a gap of 4, the
+    // Before: "each class: the same sequence replayed twice gives identical rectangles" (three windows, a gap of 4, the
     // second closed, two more opened) and "200 windows give finite integral rectangles".
     let got = run(r#"
         const replay = (make) => {
@@ -275,8 +275,8 @@ fn dwindle_and_kiosk_replay_to_identical_rectangles_and_stay_whole_pixels() {
 // -- Strip --------------------------------------------------------------------------------------------------------
 
 #[test]
-fn a_column_fraction_clamps_to_a_tenth_and_one_and_a_non_number_is_an_error_like_lua() {
-    // Lua: "a column fraction clamps to 0.1..1 and a non-number or NaN is an error".
+fn a_column_fraction_clamps_to_a_tenth_and_one_and_a_non_number_is_an_error_as_before() {
+    // Before: "a column fraction clamps to 0.1..1 and a non-number or NaN is an error".
     let got = run(r#"
         emit([
             clampColumn(0.5), clampColumn(0), clampColumn(-Infinity), clampColumn(5), clampColumn(Infinity),
@@ -303,8 +303,8 @@ fn a_column_fraction_clamps_to_a_tenth_and_one_and_a_non_number_is_an_error_like
 }
 
 #[test]
-fn a_strip_lays_out_one_column_per_node_and_scrolls_to_keep_the_focused_one_in_view_like_lua() {
-    // Lua: "a strip lays out one column per window and scrolls to keep the focused one in view": 3 windows, the
+fn a_strip_lays_out_one_column_per_node_and_scrolls_to_keep_the_focused_one_in_view_as_before() {
+    // Before: "a strip lays out one column per window and scrolls to keep the focused one in view": 3 windows, the
     // last focused; a column is half the strip wide and the full height; column 3 centres (view 750) then clamps to
     // the 3 * 500 - 1000 = 500 the strip can scroll, so it sits at 500, column 2 at 0 and column 1 at -500.
     let got = run(r#"
@@ -316,7 +316,7 @@ fn a_strip_lays_out_one_column_per_node_and_scrolls_to_keep_the_focused_one_in_v
             named(placed),
             // Derived: a column of 0.25 leaves the strip narrower than the view, so nothing scrolls.
             named(new StripLayout({ column: 0.25 }).compute({ children: list, area: area(), focused: list[2] })),
-            // Derived: a strip does not floor (the Lua one did not): 0.5 of 1001 is 500.5.
+            // Derived: a strip does not floor (the retired one did not): 0.5 of 1001 is 500.5.
             named(new StripLayout().compute({ children: list, area: area(1001), focused: list[2] })),
             // Derived: an area that does not start at the origin moves every column with it.
             named(new StripLayout().compute({ children: list, area: { x: 10, y: 20, width: 1000, height: 800 }, focused: list[2] })),
@@ -334,8 +334,8 @@ fn a_strip_lays_out_one_column_per_node_and_scrolls_to_keep_the_focused_one_in_v
 }
 
 #[test]
-fn a_new_node_opens_after_the_focused_column_not_at_the_end_like_lua() {
-    // Lua: "a new window opens after the focused column, not at the end": three windows, focus on the first, a new
+fn a_new_node_opens_after_the_focused_column_not_at_the_end_as_before() {
+    // Before: "a new window opens after the focused column, not at the end": three windows, focus on the first, a new
     // one -> w1, new, w2, w3. The compositor focuses the arrival in the same frame, and the layout still places it
     // after the column that had focus when it came (the focus it saw last).
     let got = run(r#"
@@ -366,8 +366,8 @@ fn a_new_node_opens_after_the_focused_column_not_at_the_end_like_lua() {
 }
 
 #[test]
-fn focus_left_and_right_move_through_the_columns_and_stop_at_the_ends_like_lua() {
-    // Lua: "focus_left and focus_right move through the columns and stop at the ends".
+fn focus_left_and_right_move_through_the_columns_and_stop_at_the_ends_as_before() {
+    // Before: "focus_left and focus_right move through the columns and stop at the ends".
     let got = run(r#"
         const { list, state } = focusables(3);
         state.current = list[2];
@@ -385,8 +385,8 @@ fn focus_left_and_right_move_through_the_columns_and_stop_at_the_ends_like_lua()
 }
 
 #[test]
-fn scroll_to_pins_the_view_until_the_focused_node_changes_like_lua() {
-    // Lua: "scroll_to pins the view until the focused window changes" and "scroll_to rejects a non-finite offset".
+fn scroll_to_pins_the_view_until_the_focused_node_changes_as_before() {
+    // Before: "scroll_to pins the view until the focused window changes" and "scroll_to rejects a non-finite offset".
     let got = run(r#"
         const { list, state } = focusables(3);
         state.current = list[2];
@@ -423,8 +423,8 @@ fn scroll_to_pins_the_view_until_the_focused_node_changes_like_lua() {
 }
 
 #[test]
-fn closing_the_focused_column_moves_focus_to_its_neighbour_like_lua() {
-    // Lua: "closing the focused column moves focus to its neighbour, not to the closed one".
+fn closing_the_focused_column_moves_focus_to_its_neighbour_as_before() {
+    // Before: "closing the focused column moves focus to its neighbour, not to the closed one".
     let got = run(r#"
         const { list, state } = focusables(3);
         state.current = list[1];
@@ -449,8 +449,8 @@ fn closing_the_focused_column_moves_focus_to_its_neighbour_like_lua() {
 // -- the ring and Carousel3d --------------------------------------------------------------------------------------
 
 #[test]
-fn the_ring_puts_the_focused_card_at_the_front_unscaled_and_opaque_like_lua() {
-    // Lua: "the ring puts the focused card at the front, unscaled and fully opaque".
+fn the_ring_puts_the_focused_card_at_the_front_unscaled_and_opaque_as_before() {
+    // Before: "the ring puts the focused card at the front, unscaled and fully opaque".
     let got = run(r#"
         const s = ring(4, 1, area())[0];
         emit([
@@ -464,8 +464,8 @@ fn the_ring_puts_the_focused_card_at_the_front_unscaled_and_opaque_like_lua() {
 }
 
 #[test]
-fn the_ring_is_symmetric_about_the_front_card_and_fades_toward_the_back_like_lua() {
-    // Lua: "the ring is symmetric about the front card and fades toward the back" (focus 1 of 4: slot 2 is the right
+fn the_ring_is_symmetric_about_the_front_card_and_fades_toward_the_back_as_before() {
+    // Before: "the ring is symmetric about the front card and fades toward the back" (focus 1 of 4: slot 2 is the right
     // neighbour, slot 4 the left, slot 3 the back).
     let got = run(r#"
         const slots = ring(4, 1, area());
@@ -483,8 +483,8 @@ fn the_ring_is_symmetric_about_the_front_card_and_fades_toward_the_back_like_lua
 }
 
 #[test]
-fn the_ring_with_no_nodes_is_empty_and_a_bad_focus_index_is_an_error_like_lua() {
-    // Lua: "the ring with no windows is empty, and a bad focus index is an error".
+fn the_ring_with_no_nodes_is_empty_and_a_bad_focus_index_is_an_error_as_before() {
+    // Before: "the ring with no windows is empty, and a bad focus index is an error".
     let got = run(r#"
         emit([
             ring(0, 1, area()).length,
@@ -505,8 +505,8 @@ fn the_ring_with_no_nodes_is_empty_and_a_bad_focus_index_is_an_error_like_lua() 
 }
 
 #[test]
-fn a_carousel_shows_the_focused_node_at_the_front_and_rotate_wraps_round_the_ring_like_lua() {
-    // Lua: "a Carousel3d shows the focused window at the front and rotate wraps round the ring". The front card of
+fn a_carousel_shows_the_focused_node_at_the_front_and_rotate_wraps_round_the_ring_as_before() {
+    // Before: "a Carousel3d shows the focused window at the front and rotate wraps round the ring". The front card of
     // two has no rotation and sits at depth -F, F = (card height / 2) / tan(fov / 2); its opacity is left to the rules.
     let got = run(r#"
         const { list, state } = focusables(2);
@@ -551,7 +551,7 @@ fn a_carousel_shows_the_focused_node_at_the_front_and_rotate_wraps_round_the_rin
 
 #[test]
 fn a_carousel_turns_the_side_cards_about_the_vertical_axis_by_the_rings_angle() {
-    // Derived: the Lua class wrote only x, y, width and height; the placement carries the ring's angle as a rotation
+    // Derived: the retired class wrote only x, y, width and height; the placement carries the ring's angle as a rotation
     // about the vertical axis (radians) and its depth as `z`, which the node schema has. Of four cards focused on
     // the first, the right neighbour is a quarter turn round the ring and the back card half a turn.
     let got = run(r#"
@@ -614,7 +614,7 @@ fn slide(body: &str) -> String {
 
 #[test]
 fn a_swipe_left_follows_the_fingers_and_lifting_past_a_quarter_slides_on_to_the_next_workspace() {
-    // Lua (shell_vm.rs): "a three-finger swipe on the input path slides the stock shell to the next workspace": the
+    // the retired shell (the retired the retired shell-rig test): "a three-finger swipe on the input path slides the stock shell to the next workspace": the
     // workspace the fingers bring in is showing before they lift, and lifting after more than a quarter of the
     // travel finishes the slide: `desk:show(to, progress)` with 0.25 * (1 - progress) seconds.
     let got = slide(
@@ -641,7 +641,7 @@ fn a_swipe_left_follows_the_fingers_and_lifting_past_a_quarter_slides_on_to_the_
 
 #[test]
 fn a_swipe_short_of_the_commit_slides_back_and_the_incoming_workspace_is_hidden_after() {
-    // Lua (shell_vm.rs): "a swipe that is short of the commit slides back": 50 of 400 units is 0.125, under 0.25.
+    // the retired shell (the retired the retired shell-rig test): "a swipe that is short of the commit slides back": 50 of 400 units is 0.125, under 0.25.
     // The shown workspace slides back to rest and the other one out the way it came, over 0.2 seconds, and is hidden
     // when that ends.
     let got = slide(
@@ -669,7 +669,7 @@ fn a_swipe_short_of_the_commit_slides_back_and_the_incoming_workspace_is_hidden_
 
 #[test]
 fn a_cancel_slides_back_and_an_end_that_is_more_vertical_than_horizontal_does_too() {
-    // Lua: `phase == "end"` commits only when `math.abs(e.dx) >= math.abs(e.dy)`; a cancel never does.
+    // Before: `phase == "end"` commits only when `math.abs(e.dx) >= math.abs(e.dy)`; a cancel never does.
     let got = slide(
         r#"
         const cancelled = world();
@@ -693,8 +693,8 @@ fn a_cancel_slides_back_and_an_end_that_is_more_vertical_than_horizontal_does_to
 }
 
 #[test]
-fn a_swipe_with_no_workspace_to_reveal_or_a_vertical_one_moves_nothing_like_lua() {
-    // Lua: "A gesture that is more vertical than horizontal, or that has no workspace to reveal, moves nothing."
+fn a_swipe_with_no_workspace_to_reveal_or_a_vertical_one_moves_nothing_as_before() {
+    // Before: "A gesture that is more vertical than horizontal, or that has no workspace to reveal, moves nothing."
     // Fingers moving right bring the previous workspace in, and the first workspace has none.
     let got = slide(
         r#"
@@ -712,7 +712,7 @@ fn a_swipe_with_no_workspace_to_reveal_or_a_vertical_one_moves_nothing_like_lua(
 
 #[test]
 fn a_swipe_right_from_the_second_workspace_brings_the_previous_one_in_from_the_left() {
-    // Lua: sign +1 for fingers moving right; the target is `children[position(from) - sign]`; the incoming one starts
+    // Before: sign +1 for fingers moving right; the target is `children[position(from) - sign]`; the incoming one starts
     // a screen's width to the left: x = sign * (progress - 1) * W.
     let got = slide(
         r#"
@@ -733,7 +733,7 @@ fn a_swipe_right_from_the_second_workspace_brings_the_previous_one_in_from_the_l
 
 #[test]
 fn changing_direction_hides_the_workspace_that_came_in_and_something_else_switching_ends_the_slide() {
-    // Lua: `if sign ~= s.sign then reset(s) ...`; and "something else switched workspace under the fingers": the slide
+    // Before: `if sign ~= s.sign then reset(s) ...`; and "something else switched workspace under the fingers": the slide
     // lets go when the new workspace is the one switched to, and resets it when it is not.
     let got = slide(
         r#"
@@ -771,7 +771,7 @@ fn changing_direction_hides_the_workspace_that_came_in_and_something_else_switch
 }
 
 #[test]
-fn the_slide_binding_has_the_lua_travel_and_commit_and_refuses_a_start_without_a_screen() {
+fn the_slide_binding_has_the_retired_travel_and_commit_and_refuses_a_start_without_a_screen() {
     let got = slide(
         r#"
         const w = world();
@@ -816,8 +816,8 @@ fn sets(body: &str) -> String {
 }
 
 #[test]
-fn the_pure_set_cases_of_the_lua_module_give_the_same_results() {
-    // Lua sets_test.lua, case by case: unknown set, empty set, undeclared workspace (whole list refused), a removed
+fn the_pure_set_cases_of_the_retired_module_give_the_same_results() {
+    // retired retired corpus sets, case by case: unknown set, empty set, undeclared workspace (whole list refused), a removed
     // workspace refuses to activate, duplicate and empty names, two entries for one output, an unknown output falls
     // back to the primary with a warning, each workspace on its own output, the live set again changes nothing.
     let got = sets(
@@ -865,7 +865,7 @@ fn the_pure_set_cases_of_the_lua_module_give_the_same_results() {
 
 #[test]
 fn workspace_sets_show_the_named_workspaces_and_keep_the_sets_in_force_when_a_list_is_refused() {
-    // Lua sets_test.lua, the stock-shell cases: the user's sets show each named workspace on its own output; a
+    // retired retired corpus sets, the stock-shell cases: the user's sets show each named workspace on its own output; a
     // refused new list is reported and the old sets stay (here it throws and they stay); an unknown set is refused; an
     // output that is gone shows its workspace on the primary output, with a report; the live set again changes
     // nothing. The environment is told the output of every placement, so a workspace for an output that is not the
@@ -923,8 +923,8 @@ fn workspace_sets_show_the_named_workspaces_and_keep_the_sets_in_force_when_a_li
 // -- the stock keys -----------------------------------------------------------------------------------------------
 
 #[test]
-fn the_stock_config_binds_the_lua_shells_workspace_strip_and_gesture_keys() {
-    // The Lua default shell binds `<Super>1` to `<Super>9` (each shows the workspace at that position), `<Super>Left` and
+fn the_stock_config_binds_the_retired_shells_workspace_strip_and_gesture_keys() {
+    // The retired default shell binds `<Super>1` to `<Super>9` (each shows the workspace at that position), `<Super>Left` and
     // `<Super>Right` (focus between a Strip's columns, nothing on another layout) and the `Swipe3` slide; the launcher
     // is `<Super>space`, which this config leaves unbound until a command is configured.
     let got = run(r#"
@@ -956,7 +956,7 @@ fn the_stock_config_binds_the_lua_shells_workspace_strip_and_gesture_keys() {
 
 #[test]
 fn the_launcher_command_is_bound_to_super_space_through_spawn_unless_keys_binds_it() {
-    // The Lua launcher spawned the text typed into its entry on Return. The in-shell entry is not ported; a configured
+    // The retired launcher spawned the text typed into its entry on Return. The in-shell entry is not ported; a configured
     // command (a command line or an argv) is run by `<Super>space` through `spawn`.
     let got = run(r#"
         const action = (config: any) => JSON.stringify(desugarConfig(config).bindings.map((b) => `${b.trigger} ${JSON.stringify(b.action)}`));

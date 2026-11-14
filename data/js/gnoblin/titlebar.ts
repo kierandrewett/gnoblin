@@ -1,5 +1,5 @@
 // The stock titlebar: a `Box` row of a drag area that holds the title, and the minimise, maximise and close
-// buttons, drawn as a child of the window's node (design/node-api-refactor.md, decision 2a).
+// buttons, drawn as a child of the window's node (design/archive/node-api-refactor.md, decision 2a).
 //
 // Everything that sets how it looks is a plain field of `TitlebarStyle`, so a config can hand its own style over
 // (`new Titlebar(client, { ...defaultTitlebarStyle, focusedFill: "#223" })`), and a later `defineConfig({ style })`
@@ -36,7 +36,7 @@ export interface TitlebarStyle {
     icons: Readonly<Record<TitlebarButton, string>>;
 }
 
-/** The look of the Lua shell's titlebar, with the window buttons beside the close button. */
+/** The look of the retired shell's titlebar, with the window buttons beside the close button. */
 export const defaultTitlebarStyle: Readonly<TitlebarStyle> = {
     height: 28,
     padding: 6,
@@ -103,7 +103,7 @@ const MIDDLE = 274;
 /** Two presses within this many milliseconds on the bar are a double click. */
 const DOUBLE_CLICK_MS = 500;
 
-/** The Lua shell's fade on close: out over 0.18 s, as a window shrinks to 0.92 of its size. */
+/** The retired shell's fade on close: out over 0.18 s, as a window shrinks to 0.92 of its size. */
 export const CLOSE_FADE_MS = 180;
 /** A window that is still there this long after it was asked to close (a client that asks "save changes?") comes back. */
 export const CLOSE_RESTORE_MS = 1500;
@@ -284,7 +284,7 @@ export class Titlebar extends Box {
             case "minimize":
                 this.#minimise();
                 return;
-            // Maximising along one axis has no stock behaviour yet, as in the Lua shell: it does nothing.
+            // Maximising along one axis has no stock behaviour yet, as in the retired shell: it does nothing.
             case "toggle-maximize-horizontally":
             case "toggle-maximize-vertically":
             case "none":

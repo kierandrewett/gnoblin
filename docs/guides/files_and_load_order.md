@@ -15,8 +15,8 @@ set in a terminal.
 When no user config exists, the session runs the stock config described in the
 [TypeScript shell](/typescript-shell#with-no-init-ts). `gnoblinctl config init` writes a starter `init.ts` you can edit.
 
-There are no system drop-in directories: `/etc/gnoblin/conf.d` and `gnoblin/conf.d` under `XDG_DATA_DIRS` belong to the
-Lua shell and the JavaScript shell does not read them. Put a setting you want from a package in your `init.ts`.
+There are no system drop-in directories: `/etc/gnoblin/conf.d` and `gnoblin/conf.d` under `XDG_DATA_DIRS` are not
+read by the shell. Put a setting you want from a package in your `init.ts`.
 
 ## Split a config into files
 

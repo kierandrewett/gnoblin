@@ -659,7 +659,7 @@ mod tests {
         }
     }
 
-    /// The room the stock shell builds (`data/lua/gnoblin/shell/xr.lua`) for two 400 by 300 windows: millimetres, the
+    /// The room the stock shell builds (`data/retired shell/gnoblin/shell/xr.retired shell`) for two 400 by 300 windows: millimetres, the
     /// room's floor 1.4 m under the head, the focused window's View (id 2, window 3) at the front 1.5 m ahead and
     /// 1.15 times larger, and the other's (id 5, window 6) 0.6 rad round the ring to the right, facing the viewer.
     fn stock_ring() -> Vec<snapshot_node::Properties> {

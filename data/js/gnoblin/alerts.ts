@@ -1,4 +1,4 @@
-// The stock "not responding" alert, ported from data/lua/gnoblin/shell/alerts.lua.
+// The stock "not responding" alert, ported from data/retired shell/gnoblin/shell/alerts.retired shell.
 //
 // The compositor pings every client that has a window. One that leaves a ping unanswered for longer than
 // `window-management.check-alive-timeout` (5000 ms by default; 0 turns the pings off) has its windows marked

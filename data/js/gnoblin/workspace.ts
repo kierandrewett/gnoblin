@@ -84,7 +84,7 @@ export function nearestKey(key: string, known: readonly string[]): string | unde
 /**
  * Throws a TypeError for the first key of `object` that is not in `known`. The message names the place (`what`),
  * the key, the nearest valid key when one is within two edits, and every valid key. `hints` give a sentence for a
- * name that is not a typo but a different thing, such as the Lua-era `shortcuts`; it wins over a nearest key.
+ * name that is not a typo but a different thing, such as the the retired shell-era `shortcuts`; it wins over a nearest key.
  */
 export function rejectUnknown(
     object: object,

@@ -22,7 +22,7 @@ pub enum PowerVerb {
 }
 
 impl PowerVerb {
-    /// The name the verb has in the Lua and IPC surface: the method on the `session` object.
+    /// The name the verb has in the retired and IPC surface: the method on the `session` object.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {

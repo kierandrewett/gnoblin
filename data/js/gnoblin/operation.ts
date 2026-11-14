@@ -51,7 +51,7 @@ export interface OperationHost extends ClockHost {
     after(ms: number, fn: () => void): { cancel(): boolean };
 }
 
-/** The ceiling on pending timers, as the Lua host's. A config past it is looping. */
+/** The ceiling on pending timers, as the retired host's. A config past it is looping. */
 export const MAX_TIMERS = 1024;
 
 /** The longest delay a timer takes, in milliseconds: a day. */

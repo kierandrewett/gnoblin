@@ -1,4 +1,4 @@
-// Moving and resizing a window with the keyboard, ported from data/lua/gnoblin/shell/reposition.lua. The window menu's Move
+// Moving and resizing a window with the keyboard, ported from data/retired shell/gnoblin/shell/reposition.retired shell. The window menu's Move
 // and Resize start it, so a window can be placed without a pointer.
 //
 //   Client.moveWithKeys()     the arrow keys move the window by STEP pixels, inside the work area
@@ -8,7 +8,7 @@
 // it runs and gives it back to the window when it ends. It ends when the window closes and when the session locks. Only a
 // floating window can be moved this way: a maximised, fullscreen or tiled window is refused (`false`), and a snapped one
 // is unsnapped first, as a drag does. One window is repositioned at a time. Each case has its test in
-// crates/gnoblin-js/tests/reposition.rs (the cases of tests/lua/reposition_test.lua).
+// crates/gnoblin-js/tests/reposition.rs (the cases of tests/retired shell/retired corpus reposition).
 
 import { clampAxis, dragConstraintMode } from "gnoblin/bindings";
 import type { Rect } from "gnoblin/layout";

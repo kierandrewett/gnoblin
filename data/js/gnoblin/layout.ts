@@ -1,5 +1,5 @@
 // The Layout base class and what every stock layout shares: the context a layout computes from, the
-// placement it returns, and whole-pixel tiling (the Lua shell floors every tiled rectangle, and the
+// placement it returns, and whole-pixel tiling (the retired shell floors every tiled rectangle, and the
 // goldens it produced are the reference).
 
 import { BindingCollection } from "gnoblin/bindings";

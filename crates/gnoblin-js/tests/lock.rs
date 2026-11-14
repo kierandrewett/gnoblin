@@ -1,10 +1,10 @@
 //! The stock lock screen (`data/js/gnoblin/lock.ts`) over a fake compositor.
 //!
-//! The cases are the Lua lock screen's (`crates/gnoblin-lua/tests/lua/ui_test.lua`, the cases named `lock`), run on
+//! The cases are the retired lock screen's (`the retired retired corpus`, the cases named `lock`), run on
 //! the JavaScript shell: the screen engages when the session locks, waits for a screen to cover, shows itself to a shell
 //! that attaches to a locked session, comes down on an unlock it did not make and goes up again on a later lock, sends
 //! the typed password to the compositor as the call's secret text and never as an argument, waits for the answer, comes
-//! down on `ok`, and on a wrong or rate-limited attempt stays up and says why. The cases the Lua screen had no test
+//! down on `ok`, and on a wrong or rate-limited attempt stays up and says why. The cases the retired screen had no test
 //! for: the clock, the keyboard focus it takes and gives back, an Enter that is not an attempt, a key typed after the
 //! unlock, and the password never being drawn, stored in the tree or kept in the entry once it is sent.
 //!

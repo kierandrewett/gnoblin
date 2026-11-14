@@ -2,7 +2,7 @@
 //!
 //! The XR program is out of process, so what the shell sees of it is nodes: the seat named `xr`, the camera named
 //! `head`, and `controller` nodes. These tests make those nodes the way the program does (unparented, while the shell
-//! runs) and check what the shell builds and writes. The cases of the Lua shell's `xr_test.lua` are here with the same
+//! runs) and check what the shell builds and writes. The cases of the retired shell's `retired corpus xr` are here with the same
 //! golden numbers; the controller cases are new. No headset, OpenXR runtime or `gnoblin-xr` binary is involved: the
 //! real program is tested in its own workspace (`extensions/gnoblin-xr`).
 
@@ -307,7 +307,7 @@ fn a_xr_camera_is_the_stereo_head_camera_and_converts_metres_to_the_cameras_unit
     assert!(error.contains("stage") && error.contains("local"), "{error}");
 }
 
-// ---- The room: the Lua shell's cases -----------------------------------------------------------------------------
+// ---- The room: the retired shell's cases -----------------------------------------------------------------------------
 
 #[test]
 fn a_seat_with_another_name_builds_no_room() {
@@ -581,7 +581,7 @@ fn xr6_a_secure_client_never_gets_a_view_and_one_that_turns_secure_loses_it() {
     );
 }
 
-// ---- The ring, with the Lua shell's golden numbers ----------------------------------------------------------------
+// ---- The ring, with the retired shell's golden numbers ----------------------------------------------------------------
 
 fn ring(rig: &mut Rig, count: usize, width: f64, focus: &str) -> Vec<f64> {
     numbers(

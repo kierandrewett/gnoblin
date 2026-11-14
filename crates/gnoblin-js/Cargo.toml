@@ -35,7 +35,7 @@ gnoblin-secret.workspace = true
 gnoblin-client = { path = "../gnoblin-client" }
 # The IPC version this build advertises in that handshake.
 gnoblin-proto = { path = "../gnoblin-proto" }
-# The configuration document's validator: the shell checks the document it commits as the Lua host does.
+# The configuration document's validator: the shell checks the document it commits as the retired host does.
 gnoblin-config = { path = "../gnoblin-config" }
 # The document crosses the owner socket as JSON; the shell reads the one in force and writes the next.
 serde_json.workspace = true

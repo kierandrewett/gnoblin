@@ -1,4 +1,4 @@
 # Documented names the implemented surface does not provide yet.
 # Each entry: name (`gnoblin.a.b`, or `.method` for a method call), doc page, reason, owner-slice (an S-number from
 # design/runtime-surface-plan.md, or `docs wrong`).
-# The docs-parity gate fails on an unlisted gap and on a stale entry. What it reads: design/docs-parity/status.md.
+# The docs-parity gate fails on an unlisted gap and on a stale entry. It reads `crates/gnoblin-js-types/tests/golden/gnoblin.d.ts`.
