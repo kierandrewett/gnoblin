@@ -1998,6 +1998,16 @@ ownership and per-device claims) and `InputManager` (`contexts` and `devices` ar
 `crates/gnoblin-js/tests/input_devices.rs`. Not native: a second `wl_seat` with its own focus, per-device (rather than
 per-kind) settings, applying the `input.mouse` and `input.touchpad` groups.
 
+## Scene status
+
+Lane SpecScene (design/js-spec-native.md, section 2.5; docs/shell-api/scene.md). Built: `gnoblin.scene` and `Scene`,
+writable `position`, `rotation` (Euler or quaternion), `scale` and `transform` on script nodes and on `Client`,
+`Client.committedSize`, `Node.input` as `forward | capture | none`, `View.size` and `contentFit`, a `View` of a workspace
+(a mirror of child Views, `data/js/gnoblin/scene_mirror.ts`), `ArcLayout` and `Placement.transform`, and property bindings
+(`data/js/gnoblin/properties.ts`; `node.bind` and `node.properties.bind`). Tests: `tests/scene_spec.rs` and the fences of
+`tests/spec_conformance.rs`. Not done: a perspective camera on a flat workspace, pixel verification of a workspace View, and
+`contentFit` for a client's picture.
+
 ## Questions for the owner (the agent has a default for each)
 
 1. Initial workspace rule for a new toplevel. Default: the workspace shown by the display under the

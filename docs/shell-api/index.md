@@ -40,6 +40,7 @@ with the [TypeScript shell](/typescript-shell). The [defineConfig reference](/ty
 | `on`, `once`, `off`               | Compositor signals.                                                         | [Events](/events/)                        |
 | `show(workspace, options?)`       | Shows a workspace.                                                          | [Workspaces](workspaces#show-a-workspace) |
 | `extensions`                      | Optional extensions, such as XR.                                            | [XR mode](/xr#scripting-xr-in-typescript) |
+| `scene`                           | The scene: the nodes and views a script makes, and property bindings.       | [Scene and views](scene)                  |
 
 ## More pages
 

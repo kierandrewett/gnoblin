@@ -49,6 +49,33 @@ declare module "gnoblin" {
         rotation: Quaternion | Euler3;
         scale: number | Vec3;
     }
+    /** A vector with the arithmetic a script needs to place nodes: what `node.position` returns. */
+    export interface Position3 extends Vec3 {
+        clone(): Position3;
+        add(other: Vec3): Position3;
+        subtract(other: Vec3): Position3;
+        scale(factor: number): Position3;
+        dot(other: Vec3): number;
+        cross(other: Vec3): Position3;
+        length(): number;
+        normalize(): Position3;
+        distanceTo(other: Vec3): number;
+        toArray(): [number, number, number];
+    }
+    /** Angles about X, Y and Z in radians as a list or an object, or a rotation as a quaternion. A write takes any; a quaternion is stored as Euler angles. */
+    export type RotationInit = readonly [number, number, number] | Euler3 | Quaternion;
+    /** One number for every axis, or a scale for each axis. */
+    export type ScaleInit = number | readonly [number, number, number] | Vec3;
+    /** A placement to write: each part is optional and one left out is not written. */
+    export interface TransformInit {
+        position?: readonly [number, number, number] | Vec3;
+        rotation?: RotationInit;
+        scale?: ScaleInit;
+    }
+    /** The rotation or scale a node reads: three numbers that also answer to `x`, `y` and `z`. */
+    export type AxisTriple = [number, number, number] & { readonly x: number; readonly y: number; readonly z: number };
+    /** What a pointer ray does at a node: `forward` hits it and goes on to its content, `capture` hits it and stops, `none` misses it. */
+    export type InputMode = "forward" | "capture" | "none";
 
     // -- Native objects (owner-spec section 4) --------------------------------
 
@@ -81,14 +108,35 @@ declare module "gnoblin" {
         constructor(code: string, target: string, message: string);
     }
 
+    /** Initial values of a node made with `new Node`. */
+    export interface NodeOptions {
+        /** The node's stable id, as in `new Node({ id: "xr-room" })`. It is also its name. */
+        id?: string;
+        name?: string;
+        x?: number;
+        y?: number;
+        z?: number;
+        position?: readonly [number, number, number] | Vec3;
+        rotation?: RotationInit;
+        scale?: ScaleInit;
+        /** Written after `position`, `rotation` and `scale`. */
+        transform?: TransformInit;
+        visible?: boolean;
+        opacity?: number;
+        input?: boolean | InputMode;
+    }
+
     /** A node in the scene graph. Clients, workspaces and outputs are all nodes. */
     export class Node extends NativeObject {
+        /** Makes a node a script owns: it is in the tree, under no parent, until `add`ed to one. */
+        constructor(options?: NodeOptions);
         /** The node above this one, or null for the root. */
         readonly parent: Node | null;
         /** Child nodes, in stacking order. */
         readonly children: Collection<Node>;
-        /** Position, rotation and scale relative to the parent. */
-        transform: Transform3D;
+        /** Position, rotation and scale relative to the parent. A write takes a plain object and writes the parts it has. */
+        get transform(): Transform3D;
+        set transform(value: Transform3D | TransformInit);
         /** Clamped to `[0, 1]`. */
         opacity: number;
         /** A hidden node is not drawn, and neither are its children. */
@@ -97,18 +145,49 @@ declare module "gnoblin" {
         style: Style;
         /** Set on layout-bearing containers such as a `Workspace`. */
         layout?: Layout | null;
-        /** Convenience accessor for `transform.position`. */
-        position: Vec3;
-        /** Convenience accessor for `transform.rotation`. */
-        rotation: Quaternion | Euler3;
+        /** Convenience accessor for `transform.position`: writes `x`, `y` and `z`. */
+        get position(): Position3;
+        set position(value: readonly [number, number, number] | Vec3);
+        /** Convenience accessor for `transform.rotation`: Euler angles in radians. */
+        get rotation(): AxisTriple;
+        set rotation(value: RotationInit);
         /** Convenience accessor for `transform.scale`. */
-        scale: number | Vec3;
+        get scale(): AxisTriple;
+        set scale(value: ScaleInit);
+        /**
+         * The reactive properties of the node: `properties.bind(name, compute)` sets the property now and again when
+         * anything `compute` read changes (docs/shell-api/scene.md, "Bind a property").
+         */
+        readonly properties: PropertyBindings;
+        /** Shorthand for `properties.bind`. */
+        bind(property: string, compute: () => unknown): PropertyBinding;
         /** Adds `node` as a child of this node. */
         add(node: Node): void;
         /** Removes `node` from this node's children. It is not destroyed. */
         remove(node: Node): void;
         /** Destroys this node. Further reads of `alive` give false, and writes throw. */
         destroy(): void;
+    }
+
+    /** The reactive properties of one object. */
+    export interface PropertyBindings {
+        /**
+         * Makes `property` follow `compute`: it is set to the result now and again whenever a tree property or collection
+         * `compute` read changes, once per frame at most. A second binding of the property replaces the first. A failure of
+         * `compute` or of the write is reported once, not thrown, and the binding goes on following its reads. Plain
+         * script fields are not tracked.
+         */
+        bind(property: string, compute: () => unknown): PropertyBinding;
+    }
+
+    /** One property binding. */
+    export interface PropertyBinding {
+        /** The property the binding writes. */
+        readonly property: string;
+        /** False after `dispose` and after the owner was destroyed. */
+        readonly alive: boolean;
+        /** Ends the binding; the property keeps the last value. Calling it twice is harmless. */
+        dispose(): void;
     }
 
     /** A managed Wayland toplevel (not a `wl_client` connection). */
@@ -730,9 +809,7 @@ declare module "gnoblin" {
     }
     /** A mode: `"preferred"`, `"WIDTHxHEIGHT@HERTZ"` or its parts. */
     export type OutputProfileMode =
-        | "preferred"
-        | string
-        | { readonly width: number; readonly height: number; readonly refreshRate: number };
+        "preferred" | string | { readonly width: number; readonly height: number; readonly refreshRate: number };
     /** Where along the shared edge an output sits: `top`, `center`, `bottom` beside it, `left`, `center`, `right` above or below. */
     export type OutputAlign = "top" | "center" | "bottom" | "left" | "right";
     /** What a relative position names: the profile of the neighbour, or an `Output`. */
@@ -1391,7 +1468,13 @@ declare module "gnoblin" {
     export interface Placement {
         node: Node;
         bounds?: Rect;
-        transform?: Transform3D;
+        /**
+         * The node's placement in 3D, as the specification's spatial layouts return it. A part left out is not written;
+         * the flat `z`, `rotation` and `scale` win when both are given. On a flat workspace `position.x` and `position.y`
+         * move the node from the centre of its `bounds` (or, with no `bounds`, of the area, at the node's own size) in
+         * layout pixels with y down, `position.z` is the depth, and rotation and scale are the node's.
+         */
+        transform?: TransformInit;
         visible?: boolean;
         tiled?: boolean;
         /** Depth: negative is in front of the camera. Default 0. */
@@ -1456,6 +1539,24 @@ declare module "gnoblin" {
     }
     /** Shows one window at a time, filling the area. */
     export class MonocleLayout extends Layout {}
+    /** Options of `ArcLayout`. */
+    export interface ArcOptions {
+        /** The distance from the centre of the arc to each node. Default 1200. */
+        radius?: number;
+        /** The angle between neighbouring nodes in radians. Default 0.35. */
+        spacing?: number;
+    }
+    /**
+     * Nodes on an arc around the viewer, the focused one at the front: node `i` at the angle `(i - selected) * spacing`,
+     * at `(sin(angle) * radius, 0, -cos(angle) * radius)` and turned `-angle` about Y. `radius` and `spacing` are plain
+     * fields: a change recomputes the layout, and a `requestTransition` that assigns them animates it. Returns `transform`
+     * placements; on a flat workspace they are an offset from the centre, a depth, a turn about Y and a scale.
+     */
+    export class ArcLayout extends Layout {
+        constructor(options?: ArcOptions);
+        radius: number;
+        spacing: number;
+    }
     /** Recursive halving: each new client splits the last one. */
     export class DwindleLayout extends Layout {
         /** Which way the next split cuts: by the aspect of the space, or fixed horizontal or vertical. */
@@ -2220,6 +2321,8 @@ declare module "gnoblin" {
         readonly authentication: AuthenticationManager;
         /** Launch feedback: the busy state between asking for an application and its window. */
         readonly launches: LaunchFeedback;
+        /** The scene: `scene.root` is where a script mounts the nodes it makes (docs/shell-api/scene.md). */
+        readonly scene: Scene;
         /** The touchpad gesture actions (`workspace.next` and four more) and `onSwipe`, `onPinch` and `direction`. */
         readonly gestures: GestureTools;
         /** The duration the shell gives an animation: `seconds`, or 0 while the seat asks for reduced motion. */
@@ -3455,6 +3558,24 @@ declare module "gnoblin" {
     /** A scene node a script made: the XR room is one, a View and a Camera3D are others. See `gnoblin/extensions/xr`. */
     export { Camera3D, View } from "gnoblin/extensions/xr";
 
+    /** How a picture is fitted to its View's rectangle. */
+    export type ContentFit = "contain" | "cover" | "stretch";
+
+    /**
+     * The scene the shell draws. There is one, `gnoblin.scene`; its `root` holds the nodes a script makes (`Node`, `View`,
+     * `Camera3D`). Clients and workspaces are reached through `gnoblin.clients` and `gnoblin.workspaces`, so
+     * `root.children` lists script-made nodes only.
+     */
+    export class Scene {
+        private constructor();
+        readonly id: string;
+        readonly alive: boolean;
+        /** The root of the tree: `scene.root.add(room)` mounts a room under it. It cannot be destroyed. */
+        readonly root: import("gnoblin/extensions/xr").Node;
+        /** Metres in one scene unit. The script keeps it. Default 1. */
+        metresPerUnit: number;
+    }
+
     /** Hears the XR extension's sessions begin and end. Override what you need. */
     export interface XRSessionListener {
         onSessionStarted?(session: import("gnoblin/extensions/xr").XRSession): void;
@@ -3498,7 +3619,23 @@ declare module "gnoblin" {
  * The optional XR extension. Importing this module when XR is unavailable throws a message explaining how to enable it.
  */
 declare module "gnoblin/extensions/xr" {
-    import type { Binding, BindingCollection, Client, DragEvent, Viewport } from "gnoblin";
+    import type {
+        Binding,
+        BindingCollection,
+        Client,
+        ContentFit,
+        DragEvent,
+        InputMode,
+        PropertyBinding,
+        PropertyBindings,
+        RotationInit,
+        ScaleInit,
+        Size2D,
+        TransformInit,
+        Vec3,
+        Viewport,
+        Workspace,
+    } from "gnoblin";
 
     /** A point or a direction. */
     export class Vector3 {
@@ -3552,33 +3689,50 @@ declare module "gnoblin/extensions/xr" {
 
     /** Initial node position and pose relative to its parent; rotations are radians. */
     export interface NodeOptions {
+        /** The node's stable id, as in `new Node({ id: "xr-room" })`. It is also its name. */
+        id?: string;
         name?: string;
         x?: number;
         y?: number;
         z?: number;
-        rotation?: readonly [number, number, number];
-        scale?: readonly [number, number, number];
+        position?: readonly [number, number, number] | Vec3;
+        rotation?: RotationInit;
+        scale?: ScaleInit;
+        /** Written after `position`, `rotation` and `scale`. */
+        transform?: TransformInit;
         visible?: boolean;
         opacity?: number;
-        input?: boolean;
+        input?: boolean | InputMode;
     }
     /** A node of the scene a script made. Adding children and destroying it go through the tree. */
     export class Node {
         constructor(options?: NodeOptions);
         readonly alive: boolean;
+        /** The id the node was made with, or else the tree's id. */
         readonly id: string;
         name: string;
         x: number;
         y: number;
         z: number;
-        rotation: readonly [number, number, number];
-        /** The scale along each axis; a panel is scaled by the first component. */
-        scale: readonly [number, number, number];
+        /** The node's position: `x`, `y` and `z`. A write takes a list or `{ x, y, z }`. */
+        get position(): Vector3;
+        set position(value: readonly [number, number, number] | Vec3);
+        /** The angles about X, Y and Z in radians. A write takes a list, `{ x, y, z }` or a quaternion. */
+        get rotation(): [number, number, number] & { readonly x: number; readonly y: number; readonly z: number };
+        set rotation(value: RotationInit);
+        /** The scale along each axis; a panel is scaled by the first component. A write takes one number for every axis. */
+        get scale(): [number, number, number] & { readonly x: number; readonly y: number; readonly z: number };
+        set scale(value: ScaleInit);
         visible: boolean;
         opacity: number;
-        /** Whether a pointer ray can hit the node. */
-        input: boolean;
-        transform: Transform3D;
+        /** What a pointer ray does at the node: `forward`, `capture` (hit and stop) or `none`. A write also takes a boolean. */
+        get input(): InputMode;
+        set input(value: boolean | InputMode);
+        /** Metres in one unit of the node's space. The script keeps it. Default 1. */
+        metresPerUnit: number;
+        /** The placement as a pose. A write takes a plain `{ position, rotation, scale }` and writes the parts it has. */
+        get transform(): Transform3D;
+        set transform(value: Transform3D | TransformInit);
         readonly worldTransform: Transform3D;
         readonly parent: Node | null;
         /** The children this module made, in tree order: a snapshot. */
@@ -3586,6 +3740,10 @@ declare module "gnoblin/extensions/xr" {
         add<T extends Node>(child: T, index?: number): T;
         find(name: string): Node | undefined;
         destroy(): void;
+        /** The reactive properties of the node (docs/shell-api/scene.md, "Bind a property"). */
+        readonly properties: PropertyBindings;
+        /** Shorthand for `properties.bind`. */
+        bind(property: string, compute: () => unknown): PropertyBinding;
     }
     /** Initial camera projection and clipping distances in camera-space units. */
     export interface Camera3DOptions extends NodeOptions {
@@ -3612,21 +3770,30 @@ declare module "gnoblin/extensions/xr" {
         size: number;
         readonly layerBudget: number;
     }
-    /** Initial content and pixel dimensions for a view. */
+    /** Initial content and size for a view; `size` is written before `width` and `height`. */
     export interface ViewOptions extends NodeOptions {
-        content?: Client | null;
+        content?: Client | Workspace | null;
         camera?: Camera3D | null;
+        size?: Size2D;
+        contentFit?: ContentFit;
         width?: number;
         height?: number;
     }
-    /** Draws a client as a picture. The client is not reparented or moved. A workspace cannot be shown yet. */
+    /**
+     * Draws a client or a workspace as a picture. Neither is reparented or moved. A workspace is drawn from one child
+     * View per client, fitted to `size` by `contentFit`; a client's picture is stretched by the compositor.
+     */
     export class View extends Node {
         constructor(options?: ViewOptions);
-        content: Client | null;
+        content: Client | Workspace | null;
         readonly orphaned: boolean;
         camera: Camera3D | null;
         width: number;
         height: number;
+        /** The View's rectangle: the same numbers as `width` and `height`. */
+        size: Size2D;
+        /** `contain`, `cover` or `stretch` (the default). Only a workspace's picture is fitted by it. */
+        contentFit: ContentFit;
     }
 
     /** A button available on an XR controller. */

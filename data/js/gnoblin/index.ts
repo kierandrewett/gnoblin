@@ -13,6 +13,7 @@ export * from "gnoblin/layouts/master-stack";
 export * from "gnoblin/layouts/monocle";
 export * from "gnoblin/layouts/dwindle";
 export * from "gnoblin/layouts/kiosk";
+export * from "gnoblin/layouts/arc";
 export * from "gnoblin/layouts/strip";
 export * from "gnoblin/sets";
 export * from "gnoblin/gestures";
@@ -84,9 +85,12 @@ export type {
     StyleList,
     StyleProperty,
 } from "gnoblin/style";
-export { Camera3D, Node, View } from "gnoblin/scene";
 // Logical displays (owner-spec sections 8 and 9). The manager (`gnoblin/display_manager`) stays with the host.
 export { Camera2D, Display, OutputProfile, Viewport } from "gnoblin/display";
+export { Camera3D, Node, Scene, View } from "gnoblin/scene";
+export type { ContentFit, InputMode, NodeOptions, Size2D, ViewOptions } from "gnoblin/scene";
+export type { PropertyBinding, PropertyBindings } from "gnoblin/properties";
+export type { RotationInit, ScaleInit, TransformInit, Vec3Like } from "gnoblin/spatial";
 export { LockScreen, PasswordEntry, defaultLockStyle, formatClock, lockScreen } from "gnoblin/lock";
 export type { LockAnswer, LockBackend, LockStyle } from "gnoblin/lock";
 // The device classes of a seat and the base class of the shell's objects. The settings ledger stays with the host.

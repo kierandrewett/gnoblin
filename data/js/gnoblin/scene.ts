@@ -1,6 +1,17 @@
 // Scene graph types and objects: this module owns script-created nodes and their lifetimes, not compositor clients.
-// `Node`, `Camera3D` and `View` are the objects XR reads; the host adapter is `SceneBackend`.
-// It owns no rendering or XR session state. Read `scene.ts` first for tree and transform semantics.
+// `Node`, `Camera3D`, `View` and `Scene` are the objects a script and the XR extension use; the host adapter is
+// `SceneBackend`. A node is placed with `position`, `rotation` (Euler radians, or a quaternion on write), `scale` and
+// `transform`, all of which write the tree's `x`, `y`, `z`, `rotation` and `scale`. Read this file first for tree and
+// transform semantics.
+
+import { disposeBindingsOf, noteSignal, propertiesOf, raiseSignal } from "gnoblin/properties";
+import type { PropertyBinding, PropertyBindings } from "gnoblin/properties";
+import { WorkspaceMirror } from "gnoblin/scene_mirror";
+import type { ContentFit, WorkspaceSource } from "gnoblin/scene_mirror";
+import { rotationFrom, scaleFrom, transformFrom, vectorFrom, withAxes } from "gnoblin/spatial";
+import type { AxisTriple, RotationInit, ScaleInit, TransformInit, Triple, Vec3Like } from "gnoblin/spatial";
+
+export type { ContentFit } from "gnoblin/scene_mirror";
 
 type NodeId = number;
 type Scalar = string | number | boolean;
@@ -23,6 +34,8 @@ export interface SceneBackend {
     nodeOf(content: object): NodeId | undefined;
     /** The client a node is, or undefined. */
     contentOf(node: NodeId): object | undefined;
+    /** The workspace `content` is, as what a View of it reads, or undefined for an object that is not one. */
+    workspace(content: object): WorkspaceSource | undefined;
 }
 
 /** What a failed operation on a scene node throws. `code` says why. */
@@ -52,20 +65,27 @@ function host(): SceneBackend {
     return backend;
 }
 
-/** Three numbers: rotation about each axis in radians, or the scale along each axis. */
-export type Triple = readonly [number, number, number];
+/** Whether a pointer ray that hits a node goes on to its content (`forward`), stops at it (`capture`) or misses it (`none`). */
+export type InputMode = "forward" | "capture" | "none";
 
 /** Initial node values; position units depend on the parent, and rotation is in radians. */
 export interface NodeOptions {
+    /** The node's stable name, as `new Node({ id: "xr-room" })` in the specification. It is also `node.id` and `name`. */
+    id?: string;
     name?: string;
     x?: number;
     y?: number;
     z?: number;
-    rotation?: Triple;
-    scale?: Triple;
+    position?: Triple | Vec3Like;
+    /** Angles about X, Y and Z in radians as a list or `{ x, y, z }`, or a quaternion. */
+    rotation?: RotationInit;
+    /** One number for every axis, or a value per axis. */
+    scale?: ScaleInit;
+    /** Written after `position`, `rotation` and `scale`; a part it leaves out is not written. */
+    transform?: TransformInit;
     visible?: boolean;
     opacity?: number;
-    input?: boolean;
+    input?: boolean | InputMode;
 }
 
 /** Puts `node` last under the tree's root, which is where the XR program looks for the room. A node in the tree stays. */
@@ -84,6 +104,13 @@ const nodes = new WeakMap<object, NodeId>();
 /** Every live scene object by node id, so a tree node reached by id is the same object as the one that made it. */
 const live = new Map<NodeId, Node>();
 const gone = new WeakSet<object>();
+/** The ids scripts gave their nodes (`new Node({ id })`): `node.id` answers with them. */
+const givenIds = new WeakMap<object, string>();
+/** The nodes whose `input` is `capture`: the tree has one flag for it and `forward`. */
+const captures = new WeakSet<object>();
+const metresPerUnit = new WeakMap<object, number>();
+/** Set while the scene root is being wrapped: the node already exists in the tree, so the constructor does not make one. */
+let wrapping: NodeId | null = null;
 
 /** The tree node of a scene object. */
 export function nodeIdOf(object: Node): NodeId {
@@ -106,6 +133,7 @@ export function sceneForget(ids: readonly NodeId[]): void {
         if (object !== undefined) {
             live.delete(id);
             gone.add(object);
+            disposeBindingsOf(object);
         }
     }
 }
@@ -136,13 +164,6 @@ function finite(target: string, value: unknown): number {
         throw new TypeError(`${target}: must be a finite number`);
     }
     return value;
-}
-
-function triple(target: string, value: unknown): number[] {
-    if (!Array.isArray(value) || value.length !== 3) {
-        throw new TypeError(`${target}: must be three numbers`);
-    }
-    return value.map((part) => finite(target, part));
 }
 
 // ---- Space: vectors, poses, rays and planes ----------------------------------------------------------------------
@@ -369,7 +390,7 @@ export class Transform3D {
 /** A plain node of the scene: the XR room is one. Children are added with `add` and go with it when it is destroyed. */
 export class Node {
     constructor(options: NodeOptions = {}, cls = "Node") {
-        const made = host().create(cls);
+        const made = wrapping ?? host().create(cls);
         if (typeof made !== "number") {
             throw new SceneError(made, cls, `the shell could not make a ${cls} (${made})`);
         }
@@ -383,14 +404,26 @@ export class Node {
         }
     }
 
-    /** Writes the options a constructor was given; a subclass adds its own. */
+    /**
+     * Writes the options a constructor was given; a subclass adds its own. Placement goes through the setters, so a
+     * subclass that redefines `position` or `rotation` gets its own conversion.
+     */
     protected assign(options: NodeOptions): void {
+        if (options.id !== undefined) {
+            if (typeof options.id !== "string" || options.id === "") {
+                throw new TypeError(`${label(this)}.id: must be a non-empty string`);
+            }
+            givenIds.set(this, options.id);
+            this.name = options.id;
+        }
         if (options.name !== undefined) this.name = options.name;
         if (options.x !== undefined) this.x = options.x;
         if (options.y !== undefined) this.y = options.y;
         if (options.z !== undefined) this.z = options.z;
+        if (options.position !== undefined) this.position = options.position;
         if (options.rotation !== undefined) this.rotation = options.rotation;
         if (options.scale !== undefined) this.scale = options.scale;
+        if (options.transform !== undefined) this.transform = options.transform;
         if (options.visible !== undefined) this.visible = options.visible;
         if (options.opacity !== undefined) this.opacity = options.opacity;
         if (options.input !== undefined) this.input = options.input;
@@ -401,9 +434,9 @@ export class Node {
         return !gone.has(this);
     }
 
-    /** The id as `gnoblinctl` prints it. */
+    /** The id the node was made with (`new Node({ id })`), or else the tree's id as `gnoblinctl` prints it. */
     get id(): string {
-        return String(nodeIdOf(this));
+        return givenIds.get(this) ?? String(nodeIdOf(this));
     }
 
     protected read<T extends Scalar | number[]>(key: string): T {
@@ -458,20 +491,23 @@ export class Node {
         this.write("z", finite(`${label(this)}.z`, value));
     }
 
-    /** Rotation about each axis, in radians. */
-    get rotation(): Triple {
-        return this.read<number[]>("rotation") as unknown as Triple;
+    /**
+     * The angles about X, Y and Z, in radians (turned about X, then Y, then Z). The list also answers to `x`, `y` and
+     * `z`. A write takes a list, `{ x, y, z }` or a quaternion `{ x, y, z, w }`, which is stored as its Euler angles.
+     */
+    get rotation(): AxisTriple {
+        return withAxes(this.read<number[]>("rotation"));
     }
-    set rotation(value: Triple) {
-        this.write("rotation", triple(`${label(this)}.rotation`, value));
+    set rotation(value: RotationInit) {
+        this.write("rotation", rotationFrom(`${label(this)}.rotation`, value));
     }
 
-    /** The scale along each axis. */
-    get scale(): Triple {
-        return this.read<number[]>("scale") as unknown as Triple;
+    /** The scale along each axis; the list also answers to `x`, `y` and `z`. A write takes one number for every axis. */
+    get scale(): AxisTriple {
+        return withAxes(this.read<number[]>("scale"));
     }
-    set scale(value: Triple) {
-        this.write("scale", triple(`${label(this)}.scale`, value));
+    set scale(value: ScaleInit) {
+        this.write("scale", scaleFrom(`${label(this)}.scale`, value));
     }
 
     get visible(): boolean {
@@ -491,15 +527,28 @@ export class Node {
 
     /** The node's own placement: its position, rotation and one uniform scale (the first component of `scale`). */
     get transform(): Transform3D {
-        const [x, y, z] = [this.x, this.y, this.z];
-        return new Transform3D(new Vector3(x, y, z), this.rotation, this.scale[0]);
+        return new Transform3D(this.position, this.rotation, this.scale[0]);
     }
-    set transform(value: Transform3D) {
-        this.x = value.position.x;
-        this.y = value.position.y;
-        this.z = value.position.z;
-        this.rotation = value.rotation.toArray();
-        this.scale = [value.scale, value.scale, value.scale];
+    /**
+     * Places the node: `{ position, rotation, scale }` or a `Transform3D`. A part left out stays as it is. The parts are
+     * checked together before any is written, and the writes go out in the frame's one transaction.
+     */
+    set transform(value: Transform3D | TransformInit) {
+        const parts = transformFrom(`${label(this)}.transform`, value);
+        if (parts.position !== null) this.position = parts.position;
+        if (parts.rotation !== null) this.rotation = parts.rotation;
+        if (parts.scale !== null) this.scale = parts.scale;
+    }
+
+    /** The node's position in its parent's units. A write takes a list or `{ x, y, z }` and sets `x`, `y` and `z`. */
+    get position(): Vector3 {
+        return new Vector3(this.x, this.y, this.z);
+    }
+    set position(value: Triple | Vec3Like) {
+        const [x, y, z] = vectorFrom(`${label(this)}.position`, value);
+        this.x = x;
+        this.y = y;
+        this.z = z;
     }
 
     /** The placement in the space of the topmost scene ancestor: the parents' placements composed in. */
@@ -508,13 +557,53 @@ export class Node {
         return above === null ? this.transform : above.worldTransform.multiply(this.transform);
     }
 
-    /** Whether a pointer ray can hit the node (the tree's `input`). */
-    get input(): boolean {
-        return this.read<boolean>("input");
+    /**
+     * What a pointer ray that reaches the node does. `forward` (the default): the ray hits the node and, for a `View`,
+     * goes on to its content. `capture`: the ray hits the node and stops there. `none`: the ray misses the node (its
+     * children are still tested). The tree stores one flag, `input`, which is true for `forward` and `capture`; `capture`
+     * is kept by the script. A write also takes `true` (`forward`) and `false` (`none`).
+     */
+    get input(): InputMode {
+        if (!this.read<boolean>("input")) {
+            return "none";
+        }
+        return captures.has(this) ? "capture" : "forward";
     }
-    set input(value: boolean) {
-        if (typeof value !== "boolean") throw new TypeError(`${label(this)}.input: must be a boolean`);
-        this.write("input", value);
+    set input(value: boolean | InputMode) {
+        const mode = value === true ? "forward" : value === false ? "none" : value;
+        if (mode !== "forward" && mode !== "capture" && mode !== "none") {
+            throw new TypeError(`${label(this)}.input: must be "forward", "capture", "none" or a boolean`);
+        }
+        if (mode === "capture") {
+            captures.add(this);
+        } else {
+            captures.delete(this);
+        }
+        this.write("input", mode !== "none");
+    }
+
+    /**
+     * Metres in one unit of this node's space; 1 until set, as the specification's default is logical units. The
+     * script keeps it: the tree has no such property for a plain node (a camera's own is `metres`).
+     */
+    get metresPerUnit(): number {
+        return metresPerUnit.get(this) ?? 1;
+    }
+    set metresPerUnit(value: number) {
+        if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+            throw new TypeError(`${label(this)}.metresPerUnit: must be a finite number above 0`);
+        }
+        metresPerUnit.set(this, value);
+    }
+
+    /** The reactive properties of the node: `node.properties.bind("opacity", () => ...)`. */
+    get properties(): PropertyBindings {
+        return propertiesOf(this, () => label(this));
+    }
+
+    /** Shorthand for `node.properties.bind`. */
+    bind(property: string, compute: () => unknown): PropertyBinding {
+        return this.properties.bind(property, compute);
     }
 
     /** The scene node this one is under, or null for one with none or one this module did not make. */
@@ -685,21 +774,40 @@ export class Camera3D extends Node {
     }
 }
 
+/** A width and a height in the View's units. */
+export interface Size2D {
+    width: number;
+    height: number;
+}
+
 /** Initial content and size for a view; width and height are in client pixels. */
 export interface ViewOptions extends NodeOptions {
-    /** The client the View shows. */
+    /** The client or workspace the View shows. */
     content?: object | null;
     /** The camera the content is drawn through. Null is the flat default. */
     camera?: Camera3D | null;
-    /** The View's own rectangle, in pixels: the size its picture is drawn at. */
+    /** The View's own rectangle: the size its picture is drawn at. Written before `width` and `height`. */
+    size?: Size2D;
+    contentFit?: ContentFit;
     width?: number;
     height?: number;
 }
 
+/** The workspace a View shows, and the mirror that draws it. */
+interface Shown {
+    content: object;
+    mirror: WorkspaceMirror;
+}
+
+const shown = new WeakMap<object, Shown>();
+const fits = new WeakMap<object, ContentFit>();
+
 /**
- * A node that draws another node as a picture. `content` names a client and the client is not reparented or moved:
- * a View is a second, separate way to see it. A workspace is not a tree node in this shell, so it cannot be a
- * View's content yet.
+ * A node that draws another node as a picture. `content` is a client or a workspace and is not reparented or moved:
+ * a View is a second, separate way to see it. A client is the picture of its node. A workspace is not a tree node, so
+ * the View keeps a picture made of one child View per client on it (`gnoblin/scene_mirror`), fitted to `size` by
+ * `contentFit`; the children are not in `children`. The picture of a client is stretched to `size` by the compositor:
+ * `contentFit` is kept and read back but only a workspace is fitted by it.
  */
 export class View extends Node {
     constructor(options: ViewOptions = {}, cls = "View") {
@@ -708,34 +816,55 @@ export class View extends Node {
 
     protected override assign(options: ViewOptions): void {
         super.assign(options);
-        if (options.content !== undefined) this.content = options.content;
         if (options.camera !== undefined) this.camera = options.camera;
+        if (options.size !== undefined) this.size = options.size;
         if (options.width !== undefined) this.width = options.width;
         if (options.height !== undefined) this.height = options.height;
+        if (options.contentFit !== undefined) this.contentFit = options.contentFit;
+        if (options.content !== undefined) this.content = options.content;
     }
 
-    /** The client the View shows, or null when it shows none or its client is gone. */
+    /** The client or workspace the View shows, or null when it shows none or its client is gone. */
     get content(): object | null {
+        const mirrored = shown.get(this);
+        if (mirrored !== undefined) {
+            return mirrored.content;
+        }
         const id = this.read<number>("source");
         return id ? (host().contentOf(id) ?? null) : null;
     }
     set content(value: object | null) {
         if (value === null) {
+            unshow(this);
             this.write("source", 0);
             return;
         }
         const id = typeof value === "object" ? host().nodeOf(value) : undefined;
-        if (id === undefined) {
-            throw new TypeError(
-                `${label(this)}.content: must be a client (a workspace is not a tree node, so a View cannot show one yet)`,
-            );
+        if (id !== undefined) {
+            unshow(this);
+            this.write("source", id);
+            return;
         }
-        this.write("source", id);
+        const source = typeof value === "object" ? host().workspace(value) : undefined;
+        if (source === undefined) {
+            throw new TypeError(`${label(this)}.content: must be a client, a workspace or null`);
+        }
+        unshow(this);
+        this.write("source", 0);
+        const mirror = new WorkspaceMirror(
+            host(),
+            source,
+            nodeIdOf(this),
+            this,
+            `${label(this)}.content`,
+            () => fits.get(this) ?? "stretch",
+        );
+        shown.set(this, { content: value, mirror });
     }
 
-    /** Whether the View's client is gone: the tree clears `source` when its node is destroyed. */
+    /** Whether the View's client is gone: the tree clears `source` when its node is destroyed. A workspace is never gone. */
     get orphaned(): boolean {
-        return this.read<number>("source") === 0;
+        return !shown.has(this) && this.read<number>("source") === 0;
     }
 
     get camera(): Camera3D | null {
@@ -761,4 +890,110 @@ export class View extends Node {
     set height(value: number) {
         this.write("height", finite(`${label(this)}.height`, value));
     }
+
+    /** The View's rectangle as the specification names it: `{ width, height }`, the same numbers as `width` and `height`. */
+    get size(): Size2D {
+        return { width: this.width, height: this.height };
+    }
+    set size(value: Size2D) {
+        if (typeof value !== "object" || value === null) {
+            throw new TypeError(`${label(this)}.size: must be { width, height }`);
+        }
+        const width = finite(`${label(this)}.size.width`, value.width);
+        const height = finite(`${label(this)}.size.height`, value.height);
+        this.width = width;
+        this.height = height;
+    }
+
+    /** How a picture is fitted to `size`: `contain`, `cover` or `stretch` (the default, which is what the compositor draws). */
+    get contentFit(): ContentFit {
+        noteSignal(this, "fit");
+        return fits.get(this) ?? "stretch";
+    }
+    set contentFit(value: ContentFit) {
+        if (value !== "contain" && value !== "cover" && value !== "stretch") {
+            throw new TypeError(`${label(this)}.contentFit: must be "contain", "cover" or "stretch"`);
+        }
+        fits.set(this, value);
+        raiseSignal(this, "fit");
+    }
+
+    override destroy(): void {
+        unshow(this);
+        super.destroy();
+    }
+}
+
+/** Stops the mirror of a View that shows a workspace and removes its nodes. A function, not a method: a constructor option calls it before the class's private members exist. */
+function unshow(view: View): void {
+    shown.get(view)?.mirror.stop();
+    shown.delete(view);
+}
+
+/** The root of the tree the compositor keeps: the node a script mounts its own nodes under. It cannot be destroyed. */
+class SceneRoot extends Node {
+    override destroy(): void {
+        throw new SceneError("refused", label(this), "the scene's root is the compositor's and cannot be destroyed");
+    }
+}
+
+const SCENE = Symbol("gnoblin.scene");
+let sceneRoot: SceneRoot | null = null;
+let theScene: Scene | null = null;
+let sceneMetres = 1;
+
+/**
+ * The scene the shell draws: its `root` holds the nodes a script makes (`Node`, `View`, `Camera3D`). There is one,
+ * `gnoblin.scene`. Clients and workspaces are the compositor's and a workspace is not a tree node, so they are
+ * reached through `gnoblin.clients` and `gnoblin.workspaces`, and `root.children` lists script-made nodes only.
+ */
+export class Scene {
+    constructor(token: symbol) {
+        if (token !== SCENE) {
+            throw new TypeError("the scene is `gnoblin.scene`; a script does not make one");
+        }
+    }
+
+    /** The stable id of the one scene. */
+    get id(): string {
+        return "scene";
+    }
+
+    /** Always true: the scene lasts as long as the shell. */
+    get alive(): boolean {
+        return true;
+    }
+
+    /** The root node of the tree. `scene.root.add(room)` mounts a room under it. */
+    get root(): Node {
+        if (sceneRoot === null) {
+            wrapping = host().root();
+            try {
+                sceneRoot = new SceneRoot();
+            } finally {
+                wrapping = null;
+            }
+        }
+        return sceneRoot;
+    }
+
+    /**
+     * Metres in one scene unit: 1 until set, which is the specification's default of logical units. The script keeps
+     * it; a scene that is read by the XR program carries its unit on its camera (`Camera3D.metres`).
+     */
+    get metresPerUnit(): number {
+        return sceneMetres;
+    }
+    set metresPerUnit(value: number) {
+        if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+            throw new TypeError("Scene.metresPerUnit: must be a finite number above 0");
+        }
+        sceneMetres = value;
+    }
+}
+
+/** The one scene, made on first use. `gnoblin.scene` returns it. */
+export function sceneOf(): Scene {
+    theScene ??= new Scene(SCENE);
+    return theScene;
 }

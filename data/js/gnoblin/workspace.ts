@@ -14,6 +14,7 @@ import { MasterStackLayout } from "gnoblin/layouts/master-stack";
 import { MonocleLayout } from "gnoblin/layouts/monocle";
 import { DwindleLayout } from "gnoblin/layouts/dwindle";
 import { KioskLayout } from "gnoblin/layouts/kiosk";
+import { transformFrom } from "gnoblin/spatial";
 import { Carousel3dLayout, StripLayout } from "gnoblin/layouts/strip";
 
 /** The names `new Workspace({ layout })` takes for a stock layout. */
@@ -227,6 +228,8 @@ export interface CheckedPlacement<N extends object> {
     z: number;
     rotation: readonly [number, number, number];
     scale: readonly [number, number, number];
+    /** How far a `transform` moves the node from the centre of its bounds, in pixels, or null when it gives no position. */
+    offset: { x: number; y: number } | null;
 }
 
 /** The rotation of a placement that gives none: no rotation about any axis, in radians. */
@@ -292,14 +295,22 @@ export function checkPlacements<N extends object>(
         if (placement.z !== undefined && (typeof placement.z !== "number" || !Number.isFinite(placement.z))) {
             throw new TypeError(`${at} z must be a finite number`);
         }
+        const moved = placement.transform === undefined ? null : transformFrom(`${at} transform`, placement.transform);
         return {
             node: placement.node,
             bounds,
             visible: placement.visible ?? true,
             tiled: placement.tiled ?? false,
-            z: placement.z ?? 0,
-            rotation: checkVector(placement.rotation, NO_ROTATION, `${at} rotation`),
-            scale: checkVector(placement.scale, UNIT_SCALE, `${at} scale`),
+            z: placement.z ?? moved?.position?.[2] ?? 0,
+            rotation:
+                placement.rotation === undefined
+                    ? (moved?.rotation ?? NO_ROTATION)
+                    : checkVector(placement.rotation, NO_ROTATION, `${at} rotation`),
+            scale:
+                placement.scale === undefined
+                    ? (moved?.scale ?? UNIT_SCALE)
+                    : checkVector(placement.scale, UNIT_SCALE, `${at} scale`),
+            offset: moved?.position == null ? null : { x: moved.position[0], y: moved.position[1] },
         };
     });
 }

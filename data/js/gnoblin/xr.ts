@@ -670,7 +670,7 @@ export function pickView(room: XRRoom, ray: Ray): XRHit | null {
     const views = room.children.filter((child): child is View => child instanceof View);
     for (let at = views.length - 1; at >= 0; at--) {
         const view = views[at];
-        if (!view.visible || !view.input) continue;
+        if (!view.visible || view.input === "none") continue;
         const world = view.worldTransform;
         const plane = world.plane();
         // A quad is one-sided: its front is the +z side, so the ray must travel towards it.
@@ -859,7 +859,7 @@ export class XRRoom extends Node {
             height: client.height,
             visible: !client.minimised,
         });
-        view.input = true;
+        view.input = "forward";
         this.add(view);
         this.#views.set(client, view);
         this.#order.push(client);

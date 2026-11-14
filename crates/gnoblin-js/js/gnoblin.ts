@@ -90,11 +90,25 @@ import {
     syncStyleLists,
 } from "gnoblin/style";
 import type { ClientStyleInit, ComputedStyle, Style, StyleLayer } from "gnoblin/style";
-import { attachScene, sceneForget, sceneReleaseAll } from "gnoblin/scene";
+import { Transform3D, Vector3 as Position, attachScene, sceneForget, sceneOf, sceneReleaseAll } from "gnoblin/scene";
 import type { SceneBackend } from "gnoblin/scene";
 import { Display, OutputProfile, attachDisplays } from "gnoblin/display";
 import { DisplayManager } from "gnoblin/display_manager";
 import type { DisplayBackend, OutputSet } from "gnoblin/display_manager";
+import {
+    attachBindings,
+    disposeBindingsOf,
+    flushBindings,
+    noteHostRead,
+    noteHostTouched,
+    noteHostWrite,
+    noteSignal,
+    propertiesOf,
+    raiseSignal,
+} from "gnoblin/properties";
+import type { PropertyBinding, PropertyBindings } from "gnoblin/properties";
+import { rotationFrom, scaleFrom, transformFrom, vectorFrom, withAxes } from "gnoblin/spatial";
+import type { AxisTriple, ScaleInit, Triple, TransformInit, Vec3Like } from "gnoblin/spatial";
 import { Extensions, XRRuntime } from "gnoblin/xr";
 import type { XRWorld } from "gnoblin/xr";
 import { HostApi } from "gnoblin/session";
@@ -311,8 +325,18 @@ function nodeName(node: NodeId): string {
     return `${host.kind(node) === "screen" ? "Output" : "Client"}#${host.label(node)}`;
 }
 
-host.get = (node, key) => staging.get(node, key) as HostValue | undefined;
-host.set = (node, key, value) => staging.set(node, key, value);
+host.get = (node, key) => {
+    const value = staging.get(node, key) as HostValue | undefined;
+    noteHostRead(node, key, value);
+    return value;
+};
+host.set = (node, key, value) => {
+    const refused = staging.set(node, key, value);
+    if (refused == null) {
+        noteHostWrite(node, key, value);
+    }
+    return refused;
+};
 host.animate = (node, key, value, seconds, samples) => staging.animate(node, key, value, seconds, samples);
 host.call = (node, method) => {
     staging.forbid(`${nodeName(node)}.${method}()`);
@@ -673,14 +697,14 @@ function writeVector(client: Client, key: string, value: unknown): void {
     if (!state.alive) {
         throw new GnoblinError("destroyed", target, "the client is gone");
     }
-    if (
-        !Array.isArray(value) ||
-        value.length !== 3 ||
-        value.some((n) => typeof n !== "number" || !Number.isFinite(n))
-    ) {
-        throw new TypeError(`${target}: must be three finite numbers`);
+    let parts: Triple;
+    try {
+        parts = key === "scale" ? scaleFrom(target, value) : rotationFrom(target, value);
+    } catch (error) {
+        // A list of the wrong size or content keeps the message the shell always gave for it.
+        throw Array.isArray(value) ? new TypeError(`${target}: must be three finite numbers`) : error;
     }
-    const code = host.set(state.node, key, [value[0], value[1], value[2]]);
+    const code = host.set(state.node, key, [parts[0], parts[1], parts[2]]);
     if (code != null) {
         refuse(code, target, "client");
     }
@@ -980,22 +1004,73 @@ export class Client extends NativeObject {
         writeNumber(this, "z", value);
     }
 
-    /** Rotation about each axis in radians. Assigning takes three numbers. */
-    get rotation(): Vector3 {
-        return read<never>(this, "rotation") as Vector3;
+    /**
+     * Rotation about each axis in radians; the list also answers to `x`, `y` and `z`. Assigning takes a list,
+     * `{ x, y, z }` or a quaternion `{ x, y, z, w }`.
+     */
+    get rotation(): AxisTriple {
+        return withAxes(read<never>(this, "rotation"));
     }
 
-    set rotation(value: Vector3) {
+    set rotation(value: Triple | Vec3Like) {
         writeVector(this, "rotation", value);
     }
 
-    /** Scale along each axis. Assigning takes three numbers. */
-    get scale(): Vector3 {
-        return read<never>(this, "scale") as Vector3;
+    /** Scale along each axis; the list also answers to `x`, `y` and `z`. Assigning takes one number for every axis, a list or `{ x, y, z }`. */
+    get scale(): AxisTriple {
+        return withAxes(read<never>(this, "scale"));
     }
 
-    set scale(value: Vector3) {
+    set scale(value: ScaleInit) {
         writeVector(this, "scale", value);
+    }
+
+    /** Where the window is: `x`, `y` and its depth `z`. Assigning takes a list or `{ x, y, z }` and writes the three. */
+    get position(): Position {
+        return new Position(this.x, this.y, this.z);
+    }
+
+    set position(value: Triple | Vec3Like) {
+        const [x, y, z] = vectorFrom(`${this}.position`, value);
+        this.x = x;
+        this.y = y;
+        this.z = z;
+    }
+
+    /** The window's placement: `position`, `rotation` and one uniform scale (the first component of `scale`). */
+    get transform(): Transform3D {
+        return new Transform3D(this.position, this.rotation, this.scale[0]);
+    }
+
+    /**
+     * Places the window: `{ position, rotation, scale }` or a `Transform3D`; a part left out stays as it is. The
+     * parts are checked together, then written as `x`, `y`, `z`, `rotation` and `scale`, which go out in the frame's one
+     * transaction (and, inside `set` or `requestTransition`, as one transition). `position.x` and `.y` are the
+     * window's own rectangle, so a layout that places the window will place it again.
+     */
+    set transform(value: Transform3D | TransformInit) {
+        const parts = transformFrom(`${this}.transform`, value);
+        if (parts.position !== null) this.position = parts.position;
+        if (parts.rotation !== null) this.rotation = parts.rotation;
+        if (parts.scale !== null) this.scale = parts.scale;
+    }
+
+    /**
+     * The size the compositor last published for the window: what the client committed, as against `width` and
+     * `height`, which are what the shell asked for (a write is not published until the client answers it).
+     */
+    get committedSize(): { width: number; height: number } {
+        const state = stateOf(this);
+        if (state.frozen) {
+            return { width: this.width, height: this.height };
+        }
+        const size = {
+            width: host.published(state.node, "width") as number,
+            height: host.published(state.node, "height") as number,
+        };
+        noteHostRead(state.node, "published:width", size.width);
+        noteHostRead(state.node, "published:height", size.height);
+        return size;
     }
 
     /** The workspace the client is on, or null. */
@@ -1142,6 +1217,19 @@ export class Client extends NativeObject {
      */
     set(props: Record<string, unknown>, options?: TransitionOptions): Transition {
         return setProperties(transitions, this, `${this}`, props, options);
+    }
+
+    /**
+     * The reactive properties of the window: `client.properties.bind("opacity", () => ...)` sets `opacity` now and
+     * again whenever a property the function read changes. See `gnoblin/properties`.
+     */
+    get properties(): PropertyBindings {
+        return propertiesOf(this, () => `${this}`);
+    }
+
+    /** Shorthand for `client.properties.bind`. */
+    bind(property: string, compute: () => unknown): PropertyBinding {
+        return this.properties.bind(property, compute);
     }
 
     /** Puts the window on top of every other window. */
@@ -1348,6 +1436,16 @@ export class Workspace extends NativeObject {
      */
     set(props: Record<string, unknown>, options?: TransitionOptions): Transition {
         return setProperties(transitions, this, `${this}`, props, options);
+    }
+
+    /** The reactive properties of the workspace: `workspace.properties.bind("blurRadius", () => ...)`. */
+    get properties(): PropertyBindings {
+        return propertiesOf(this, () => `${this}`);
+    }
+
+    /** Shorthand for `workspace.properties.bind`. */
+    bind(property: string, compute: () => unknown): PropertyBinding {
+        return this.properties.bind(property, compute);
     }
 
     /** Shows this workspace on the output under the pointer (the primary output when no pointer says). */
@@ -1682,6 +1780,7 @@ function contains(state: CollectionState, member: Member): boolean {
 
 function itemsOf(state: CollectionState): Member[] {
     if (state.parent === null) {
+        noteSignal(state, "items");
         return state.list.slice();
     }
     const query = state.query as Query;
@@ -1705,6 +1804,7 @@ export class Collection<T extends Member> implements Iterable<T> {
 
     get length(): number {
         const state = collectionState(this);
+        noteSignal(state, "items");
         return state.parent === null ? state.list.length : itemsOf(state).length;
     }
 
@@ -2227,6 +2327,7 @@ function link(workspace: Workspace, client: Client, arrived: boolean): void {
     const state = wsState(workspace);
     membership.set(client, workspace);
     state.clientsState.list.push(client);
+    raiseSignal(state.clientsState, "items");
     state.dirty = true;
     if (arrived) {
         state.arrived.push(client);
@@ -2241,6 +2342,7 @@ function unlink(workspace: Workspace, client: Client): void {
     const state = wsState(workspace);
     membership.delete(client);
     state.clientsState.list.splice(state.clientsState.list.indexOf(client), 1);
+    raiseSignal(state.clientsState, "items");
     state.dirty = true;
     forgetArrival(state, client);
     queueFor(state.clientsState, "onRemoved", [client, state.clientsState.self]);
@@ -2646,6 +2748,7 @@ function addWorkspace(workspace: Workspace): void {
     state.attached = true;
     state.dirty = true;
     workspaceRoot.list.push(workspace);
+    raiseSignal(workspaceRoot, "items");
     queueFor(workspaceRoot, "onAdded", [workspace, workspaceRoot.self]);
     recompute(workspaceRoot, workspace);
     ensureDesk();
@@ -2669,6 +2772,8 @@ function removeWorkspace(workspace: Workspace): void {
     const at = workspaceRoot.list.indexOf(workspace);
     const neighbour = (workspaceRoot.list[at - 1] ?? workspaceRoot.list[at + 1]) as Workspace | undefined;
     workspaceRoot.list.splice(at, 1);
+    raiseSignal(workspaceRoot, "items");
+    disposeBindingsOf(workspace);
     for (const view of held) {
         view.members?.delete(workspace);
         queueFor(view, "onRemoved", [workspace, view.self]);
@@ -2856,22 +2961,52 @@ function writeShown(client: Client, shown: boolean): void {
 }
 
 /**
+ * The rectangle a placement gives `client`: its bounds moved by the offset of its transform's position, to whole
+ * pixels. With no bounds the rectangle is the window's own size (frame included) centred in `area`.
+ */
+function placementBounds(client: Client, placement: CheckedPlacement<Client>, area: Rect): Rect | null {
+    const { bounds, offset } = placement;
+    if (offset === null) {
+        return bounds;
+    }
+    const height = client.height + client.frameInset;
+    const base = bounds ?? {
+        x: area.x + (area.width - client.width) / 2,
+        y: area.y + (area.height - height) / 2,
+        width: client.width,
+        height,
+    };
+    return { ...base, x: Math.round(base.x + offset.x), y: Math.round(base.y + offset.y) };
+}
+
+/**
  * Writes what a layout's placements say beyond the rectangle: whether the window is tiled, hidden, and where it is in
  * depth. A client the layout gave no placement is as if placed with the defaults, so a window that leaves a tiled
- * layout for a floating one stops being tiled. Only what differs from the client's value is written.
+ * layout for a floating one stops being tiled. Only what differs from the client's value is written. A placement
+ * whose `transform` has a position moves the rectangle by that offset: from `bounds` when it has them, else from the
+ * rectangle of the window's own size centred in `area`.
  */
-function applyPlacements(children: readonly Client[], placements: readonly CheckedPlacement<Client>[]): void {
+function applyPlacements(
+    children: readonly Client[],
+    placements: readonly CheckedPlacement<Client>[],
+    area: Rect,
+): void {
     const placed = new Map(placements.map((placement) => [placement.node, placement]));
     for (const client of children) {
         const placement = placed.get(client);
-        if (placement?.bounds) {
-            writeBounds(client, framed(client, placement.bounds));
+        const bounds = placement ? placementBounds(client, placement, area) : null;
+        if (bounds) {
+            writeBounds(client, framed(client, bounds));
         }
         const tiled = placement?.tiled ?? false;
         if (client.tiled !== tiled) {
             client.tiled = tiled;
         }
-        shownByLayout.set(client, placement?.visible ?? true);
+        const wanted = placement?.visible ?? true;
+        if ((shownByLayout.get(client) ?? true) !== wanted) {
+            raiseSignal(client, "shown");
+        }
+        shownByLayout.set(client, wanted);
         const z = placement?.z ?? 0;
         if (client.z !== z) {
             client.z = z;
@@ -3273,6 +3408,8 @@ function applyStyles(): void {
  */
 
 function layout(): number {
+    // Bindings first, so what they write is laid out in the same frame.
+    guard("gnoblin.properties", flushBindings);
     laying = true;
     try {
         return layoutWorkspaces();
@@ -3382,6 +3519,7 @@ function layoutWorkspaces(): number {
                     applyPlacements(
                         tiled,
                         checkPlacements(target.compute({ ...context, children: tiled }), tiled, site),
+                        area,
                     );
                 });
                 laidOut += 1;
@@ -3559,6 +3697,7 @@ function adopt(node: NodeId, announce: boolean): void {
         const client = new Client(CREATE, node);
         clientsByNode.set(node, client);
         clientRoot.list.push(client);
+        raiseSignal(clientRoot, "items");
         if (announce) {
             queueFor(clientRoot, "onAdded", [client, clientRoot.self]);
             recompute(clientRoot, client);
@@ -3588,6 +3727,7 @@ function adoptScreen(node: NodeId, announce: boolean): void {
     const output = new Output(CREATE, node);
     outputsByNode.set(node, output);
     outputRoot.list.push(output);
+    raiseSignal(outputRoot, "items");
     // A mirror and an output that is off have no place in the desktop, so they get no desk: nothing is laid out there.
     const wasParked = (outputSeen.get(output) as OutputSeen).detached ? false : giveDesk(output);
     if (!announce) {
@@ -3951,6 +4091,8 @@ function leave(top: CollectionState, member: Member, map: Map<NodeId, Member>, k
     freeze(member, keys);
     map.delete(node);
     top.list.splice(top.list.indexOf(member), 1);
+    raiseSignal(top, "items");
+    disposeBindingsOf(member);
     for (const state of held) {
         state.members?.delete(member);
     }
@@ -4003,6 +4145,7 @@ function release(node: NodeId): void {
         membership.delete(client);
         const index = own.clientsState.list.indexOf(client);
         own.clientsState.list.splice(index, 1);
+        raiseSignal(own.clientsState, "items");
         own.dirty = true;
         if (wasFocused && typeof own.layout.onClientRemoved !== "function") {
             handOffFocus(workspace, index, parent);
@@ -4082,6 +4225,7 @@ function plan(created: NodeId[], touched: NodeId[], destroyed: NodeId[]): number
     for (const node of created) {
         adopt(node, true);
     }
+    noteHostTouched(touched);
     for (const node of new Set(touched)) {
         const output = outputsByNode.get(node);
         if (output) {
@@ -4762,8 +4906,38 @@ const sceneBackend: SceneBackend = {
     set: (node, key, value) => host.set(node, key, value),
     nodeOf: (content) => (content instanceof Client ? stateOf(content).node : undefined),
     contentOf: (node) => clientsByNode.get(node),
+    workspace: (content) =>
+        content instanceof Workspace
+            ? {
+                  clients: () =>
+                      [...content.clients].map((client) => {
+                          noteSignal(client, "shown");
+                          return {
+                              node: stateOf(client).node,
+                              x: client.x,
+                              y: client.y,
+                              width: client.width,
+                              height: client.height,
+                              visible: !client.minimised && (shownByLayout.get(client) ?? true),
+                          };
+                      }),
+                  area: () => {
+                      const output = content.output;
+                      return output === null
+                          ? null
+                          : { x: output.x, y: output.y, width: output.width, height: output.height };
+                  },
+              }
+            : undefined,
 };
 attachScene(sceneBackend);
+attachBindings({
+    read: (node, key) =>
+        key.startsWith("published:") ? host.published(node, key.slice("published:".length)) : host.get(node, key),
+    report: (site, error) => {
+        reports.push({ site, error });
+    },
+});
 
 /** The seat that is not the XR program's: the keyboard and pointer of the desktop. */
 function mainSeat(): number | undefined {
@@ -4958,6 +5132,8 @@ class Gnoblin {
     readonly authentication = authentication;
     /** Launch feedback: the busy state between asking for an application and its window. */
     readonly launches = launches;
+    /** The scene: its `root` is where a script mounts the nodes it makes (`Node`, `View`, `Camera3D`). */
+    readonly scene = sceneOf();
 
     /** The programs this shell started: `spawn`, `list`, `byId` and the listeners told when one ends. */
     readonly process = hostApi.process;

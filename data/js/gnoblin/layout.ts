@@ -6,6 +6,7 @@
 // Read `gnoblin/workspace` first to see how a layout is driven; read `gnoblin/layouts/master-stack` for the
 // smallest real layout.
 
+import type { TransformInit } from "gnoblin/spatial";
 import { BindingCollection } from "gnoblin/bindings";
 import type { LayoutSplit, Point } from "gnoblin/bindings";
 
@@ -37,6 +38,15 @@ export interface Placement<N extends LayoutNode = LayoutNode> {
     rotation?: readonly [number, number, number];
     /** Scale along each axis. Default 1. */
     scale?: readonly [number, number, number];
+    /**
+     * The node's placement in 3D, as the specification's spatial layouts return it: a position, a rotation (radians, a list,
+     * `{ x, y, z }` or a quaternion) and a scale (one number or one per axis). On a flat workspace the position's `x` and
+     * `y` move the node from the centre of its `bounds` (or, with no `bounds`, of the area, at the node's own size), in
+     * layout pixels with y down; its `z` is the node's depth; the rotation and scale are the node's. The flat fields
+     * `z`, `rotation` and `scale` win over the transform's when both are given. See `docs/typescript-shell.md`,
+     * "Spatial layouts".
+     */
+    transform?: TransformInit;
 }
 
 /**

@@ -384,6 +384,52 @@ XR program's View layers. What is missing, in order, all compositor work (design
 Then `addVirtualOutput` in `crates/gnoblin-js/js/gnoblin.ts` calls the new host request and returns the `Output`; the class and
 the collection hook stay.
 
+### 2.5 Scene, writable transforms, property bindings and ArcLayout (lane SpecScene)
+
+Spec sections 8, 14, 15 and 16. What is built, and the reading chosen where the specification is silent or two examples pull
+apart. User page: docs/shell-api/scene.md. Tests: crates/gnoblin-js/tests/scene_spec.rs.
+
+- **`Scene` and `gnoblin.scene`.** `Scene` is exported and there is one, `gnoblin.scene`; `new Scene()` throws. `root` is a
+  `Node` wrapping the compositor's tree root (`host.xr.root()`), so `gnoblin.scene.root.add(room)` mounts under the tree's own
+  root, as `mountOnRoot` does for XR. The specification's tree of "Workspace, Client, View, Camera, other Nodes" is mapped to
+  what exists: the script-made classes (`Node`, `View`, `Camera3D`) are tree nodes and are the `children` of a node; `Client` and
+  `Workspace` are separate host classes and are not in `children`. `metresPerUnit` is kept by the script (default 1, logical
+  units); the tree has `metres` on a camera only.
+- **`Node` placement.** `new Node({ id })` sets the node's name and `node.id` answers with it. `position` is a vector
+  (`x`, `y`, `z`); `rotation` reads back as the stored triple that also answers to `x`, `y`, `z`, and a write takes a list,
+  `{ x, y, z }` (079) or a quaternion (stored as Euler angles, turned about X, then Y, then Z); `scale` takes a number.
+  `transform` (082, 124) takes a plain `{ position, rotation, scale }` or a `Transform3D`, checks every part first, and writes
+  the parts it has to the node's `x`, `y`, `z`, `rotation` and `scale`: one transaction per frame, and one transition inside
+  `set`/`requestTransition`. `Client` gets the same `position`, `rotation`, `scale` and `transform`; a client's `position` is
+  `x`, `y` and its depth `z`, so a transform with a position moves the window's rectangle, as writing `client.x` does.
+- **`View.input`.** `Node.input` is now `"forward" | "capture" | "none"`; `true` and `false` still write (`forward`, `none`).
+  The tree has one flag (`input`), true for `forward` and `capture`; `capture` is the script's. Callers that read the old
+  boolean were migrated (`pickView`, `pinToHead` in xr.ts, by lane SpecXr).
+- **`View.size`, `contentFit`.** `size` is `{ width, height }` over the tree's `width` and `height`. `contentFit` is kept
+  (default `stretch`, which is what the compositor draws for a client); only a workspace's picture is fitted by it.
+- **A `View` of a workspace (027).** Decision: implemented, not refused. A workspace is a script object and the compositor
+  has no node for it, so the View keeps a _mirror_: one holder `Node` under the View's node and one child `View` per client,
+  each sourcing the client's own node at the client's place in the area, the holder's `scale` fitting the area into `size`.
+  The mirror is a `watch` (below) over the workspace's membership and the clients' rectangles, so it follows without polling. It
+  does not reparent or move a client, and needs no compositor change. The pixels were not checked on a renderer: the tests check
+  the tree.
+- **`Client.committedSize` (064).** The size the compositor last published (`host.published`), against `width`/`height`
+  which are what was asked.
+- **`ArcLayout` (058).** Stock export, the specification's `compute` verbatim: `transform` placements on the arc. `Placement`
+  gains `transform` (partial parts allowed). Flat workspace: `position.x`/`y` offset the window from the centre of its bounds
+  (or the area, at its own size), in pixels with y down and rounded; `position.z` is `z`; rotation and scale are the window's;
+  flat `z`/`rotation`/`scale` on the placement win. So a flat renderer shows the windows in a row, each with depth and a turn
+  about Y; the true ring needs the perspective camera, which is the display lane's.
+- **Property bindings (083-085, 121).** `node.properties.bind(name, compute)` and the shorthand `node.bind` on `Node`,
+  `Client` and `Workspace` (section 15 recommends `properties.bind`; both are provided, there is no input overload on these
+  classes). Reads are tracked through the host getters (`host.get`) and collection membership; the shell tells the engine
+  which nodes the compositor changed (`plan`'s `touched`), which tree properties a script wrote, and which collections
+  changed. A frame runs each changed binding once (in the layout step, before the layouts), repeating up to 8 passes for
+  chains; a binding still changing then is reported with what it reads. Errors are per binding and reported once.
+  A property that does not exist is reported, not thrown at `bind` (fence 085 binds `vignette` and `blurRadius`, which nothing
+  defines). A second binding of a property replaces the first. Owners that are destroyed end their bindings. Plain script
+  fields are not tracked (section 16's stated limit).
+
 ## Part 3. Replacement design
 
 ### 3.0 Rules

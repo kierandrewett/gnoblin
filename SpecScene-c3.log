@@ -1,0 +1,14 @@
+Gnoblin Markdown review (Jev)........................(no files to check)Skipped
+ruff.................................................(no files to check)Skipped
+shellcheck...........................................(no files to check)Skipped
+eslint...............................................(no files to check)Skipped
+ruff-check...........................................(no files to check)Skipped
+clang-check..........................................(no files to check)Skipped
+shfmt-check..........................................(no files to check)Skipped
+prettier-check...........................................................Passed
+javascript-check.....................................(no files to check)Skipped
+qml-check............................................(no files to check)Skipped
+rustfmt-check........................................(no files to check)Skipped
+nixfmt-check.........................................(no files to check)Skipped
+Sync Beads with GitHub Issues............................................Passed
+exit 0

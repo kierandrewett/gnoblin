@@ -173,6 +173,7 @@ export const NAV: NavSection[] = [
                     { label: "Requests and dialogs", slug: "shell-api/requests" },
                     { label: "Authentication prompts", slug: "shell-api/authentication" },
                     { label: "Tweens and easing", slug: "shell-api/tweens" },
+                    { label: "Scene, views and property bindings", slug: "shell-api/scene" },
                     { label: "Shared types", slug: "shell-api/types" },
                     { label: "Operations, errors and timers", slug: "shell-api/errors" },
                 ],
