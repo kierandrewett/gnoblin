@@ -1103,6 +1103,7 @@ declare module "gnoblin" {
         swap?: Trigger | null;
     }
 
+    /** Windows float where they are put; `placement` picks where a new one starts. */
     export class FloatingLayout extends Layout {
         constructor(options?: {
             placement?: "smart" | "center" | "cascade";
@@ -1110,6 +1111,7 @@ declare module "gnoblin" {
             triggers?: LayoutTriggers;
         });
     }
+    /** Master column plus a stack: the first `masterCount` clients share the master side at `ratio`. */
     export class MasterStackLayout extends Layout {
         constructor(options?: {
             masterCount?: number;
@@ -1119,13 +1121,19 @@ declare module "gnoblin" {
             triggers?: LayoutTriggers;
         });
     }
+    /** Equal cells in rows; `columns: "auto"` picks a count from the client count. */
     export class GridLayout extends Layout {
         constructor(options?: { columns?: number | "auto"; gap?: number; triggers?: Pick<LayoutTriggers, "swap"> });
     }
+    /** Shows one window at a time, filling the area. */
     export class MonocleLayout extends Layout {}
+    /** Recursive halving: each new client splits the last one. */
     export class DwindleLayout extends Layout {
+        /** Which way the next split cuts: by the aspect of the space, or fixed horizontal or vertical. */
         split: "aspect" | "horizontal" | "vertical";
+        /** Share of the space the first half takes, from 0 to 1. */
         ratio: number;
+        /** Pixels between tiles. Undefined uses the workspace gap. */
         gap: number | undefined;
         /**
          * How many times a drag changed the ratio of one split. A split a drag set keeps a ratio of its own, and the
@@ -1147,12 +1155,15 @@ declare module "gnoblin" {
         readonly focused: boolean;
         focus(): void;
     }
+    /** A workspace-like source of clients for the strip and ring helpers. */
     export interface NodeSource {
         readonly clients: Iterable<object>;
     }
     /** A column's width as a fraction of the strip's, held to 0.1 to 1; anything but a number is an error. */
     export function clampColumn(value: unknown): number;
+    /** Scrolling strip of columns; the view follows focus unless `pin` is set. */
     export class StripLayout extends Layout {
+        /** Width of the focused column as a fraction of the area, from 0.1 to 1. */
         column: number;
         /** The view offset `scrollTo` pinned, or null while the view follows the focused column. */
         pin: number | null;
@@ -1161,11 +1172,13 @@ declare module "gnoblin" {
         focusLeft(workspace: NodeSource): void;
         focusRight(workspace: NodeSource): void;
     }
+    /** Shape of the 3D ring: field of view in degrees and card size in pixels. */
     export interface RingOptions {
         fov?: number;
         cardWidth?: number;
         cardHeight?: number;
     }
+    /** One card's place on the ring, with its opacity and depth. */
     export interface RingSlot extends Rect {
         opacity: number;
         /** Degrees: 0 at the front, 180 at the back. */
@@ -1174,7 +1187,9 @@ declare module "gnoblin" {
     }
     /** The pure ring layout of `count` cards with the 1-based `focus` at the front. */
     export function ring(count: number, focus: number, area: Rect, options?: RingOptions): RingSlot[];
+    /** Options for the 3D carousel. Same as `RingOptions`. */
     export interface Carousel3dOptions extends RingOptions {}
+    /** Cards arranged on a ring that rotates; `rotate` moves the focus by `steps`. */
     export class Carousel3dLayout extends Layout {
         fov: number;
         cardWidth: number;
@@ -1195,10 +1210,12 @@ declare module "gnoblin" {
         | BindingAction
         | ((context: { gnoblin: Gnoblin }) => void);
 
+    /** Runs `argv` as a process. The compositor starts it without a shell. */
     export interface SpawnAction {
         readonly kind: "spawn";
         readonly argv: readonly string[];
     }
+    /** Shows the workspace with the given id. */
     export interface ShowAction {
         readonly kind: "show";
         readonly workspace: string;
