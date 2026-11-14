@@ -1347,6 +1347,76 @@ fn a_drag_starts_on_the_topmost_client_under_the_press_and_a_press_over_nothing_
 }
 
 #[test]
+fn a_minimised_client_is_not_under_the_press() {
+    let comp = world(false);
+    comp.borrow_mut().nodes.insert(
+        8,
+        node(
+            "window",
+            1,
+            vec![
+                ("x", MirrorValue::Double(40.0)),
+                ("y", MirrorValue::Double(50.0)),
+                ("width", MirrorValue::Double(100.0)),
+                ("height", MirrorValue::Double(100.0)),
+                ("minimised", MirrorValue::Bool(true)),
+            ],
+        ),
+    );
+    let mut rig = rig(
+        &comp,
+        &entry(&format!(
+            "{PROBE}input.bind(\"Super+MouseLeft+Drag\", new Probe(\"p\", \"Super+MouseLeft+Drag\"));\n"
+        )),
+    );
+    let id = comp.claim_id("<Super>Button1");
+    comp.set_pointer(5, 50.0, 60.0);
+    comp.chord(id, "<Super>Button1", "press");
+    rig.frame();
+    comp.set_pointer(5, 60.0, 70.0);
+    rig.frame();
+    assert_eq!(
+        rig.log(),
+        "p:start:3:50,60|p:update:60,70",
+        "the window below takes the press: the one above is minimised"
+    );
+}
+
+#[test]
+fn a_maximised_client_declines_a_move_and_a_resize_and_the_press_is_consumed() {
+    let comp = world(false);
+    comp.borrow_mut()
+        .nodes
+        .get_mut(&3)
+        .expect("window 3")
+        .props
+        .insert("maximised".into(), MirrorValue::Bool(true));
+    let mut rig = rig(&comp, &entry(FLOATING_ENTRY));
+    for chord in ["<Super>Button1", "<Super>Button3"] {
+        let id = comp.claim_id(chord);
+        comp.set_pointer(5, 50.0, 60.0);
+        comp.chord(id, chord, "press");
+        rig.frame();
+        comp.set_pointer(5, 150.0, 160.0);
+        let diagnostics = rig.frame();
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        comp.chord(id, chord, "release");
+        let diagnostics = rig.frame();
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert_eq!(
+            (
+                comp.prop(3, "x"),
+                comp.prop(3, "y"),
+                comp.prop(3, "width"),
+                comp.prop(3, "height")
+            ),
+            (10.0, 20.0, 300.0, 200.0),
+            "{chord} left the maximised window alone"
+        );
+    }
+}
+
+#[test]
 fn the_compositors_cancel_calls_on_cancel_once_and_nothing_follows() {
     let comp = world(false);
     let mut rig = rig(

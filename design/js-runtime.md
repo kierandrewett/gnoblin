@@ -288,11 +288,10 @@ tree link that records claims and plays back chords, gestures, pointer positions
   space is the space of client `x` and `y` (a press at a window's local point hits it), and that tree order is stacking
   order for `hitTest` (of two windows at one place the one mapped last takes the press). The claims reach the seat before
   the first press only after the shell's first frames, so the test repeats the gesture until a press is claimed.
-- **Proved only against the fake link.** The decline of a maximised client (the `maximised` flag is not a `Client` member
-  until the UI lane's `Client.maximised` lands; the bindings read it when it is there), the drag constraints against a
-  seat that publishes `drag_constraint`, a throwing `onUpdate`, and `cancel`. Key chord and gesture claims use the calls
-  the Lua shell makes, byte for byte, but were not run against the compositor. `Wheel` has no claim. A minimised
-  window is skipped by `hitTest` only once `Client.minimised` exists, and `visible` is not read.
+- **Proved only against the fake link.** The decline of a maximised client, a minimised client being skipped by
+  `hitTest` (`visible` is not read: the shell's `Client` has no such member), the drag constraints against a seat that
+  publishes `drag_constraint`, a throwing `onUpdate`, and `cancel`. Key chord and gesture claims use the calls the Lua
+  shell makes, byte for byte, but were not run against the compositor. `Wheel` has no claim.
 
 ## Pointer chord claims
 
