@@ -30,12 +30,10 @@
 //!    the role ends non-zero and the guardian starts it again, which attaches a fresh shell to the windows already
 //!    there.
 //!
-//! # `GNOBLIN_SHELL_VM`
+//! # The stock library
 //!
-//! [`choose_runtime`] decides which role the binary runs. Unset or `js` is this role; `lua` (or `0`, or the path of
-//! a Lua shell directory) is the Lua role for one more release. A session that has an `init.lua` and neither
-//! `init.ts` nor `init.js`, and did not say which role it wants, keeps the Lua role, so an update does not
-//! replace its configuration with the stock one without a word.
+//! `GNOBLIN_JS_STOCK_DIR` names a directory to read the stock library from instead of the copy compiled in, for a
+//! person working on the stock shell. There is one runtime role and nothing selects it.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -45,7 +43,7 @@ use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{
     Client, ClientError, Environment, Event, Inherited, Reporter, inherited_stream, privilege, report,
 };
-use gnoblin_config::{Config, Language, SearchPaths, enabled_autostart, locate};
+use gnoblin_config::{Config, ConfigPath, Language, SearchPaths, enabled_autostart, locate};
 use gnoblin_model::{Filter, ObjectId, ObjectView, Observation};
 use gnoblin_proto::Version;
 use thiserror::Error;
@@ -56,8 +54,8 @@ use crate::shell::JsShellError;
 
 gnoblin_log::logger!(log = "js");
 
-/// The variable that selects the runtime role and the shell's stock library.
-pub const SHELL_VM_VARIABLE: &str = "GNOBLIN_SHELL_VM";
+/// The variable that names a directory to read the stock library from, instead of the copy compiled in.
+pub const STOCK_DIR_VARIABLE: &str = "GNOBLIN_JS_STOCK_DIR";
 
 /// The variable that turns the config watcher off when it is `0`, so a config is reloaded only when something asks
 /// (`gnoblinctl config reload`).
@@ -82,61 +80,22 @@ const EVENT_BATCH: usize = 256;
 /// The signal the compositor raises on the `session` object when a reload is asked for.
 const RELOAD_REQUESTED: &str = "reload_requested";
 
-/// The page that tells a Lua user how to move to the JavaScript shell. The warnings name it.
-pub const MIGRATION_DOC: &str = "docs/migrating-from-lua.md";
+/// The page that tells a Lua user how to move to the JavaScript shell. The warning about an `init.lua` names it.
+const MIGRATION_DOC: &str = "docs/migrating-from-lua.md";
 
-/// Which role the binary runs for a given environment.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum JsRuntimeChoice {
-    /// The JavaScript role ([`JsRoleRunner`]). `stock_dir` is the directory `js:<dir>` named for the stock library,
-    /// or `None` for the one compiled in.
-    Js {
-        /// Where to read the stock library from instead of the copy compiled in.
-        stock_dir: Option<PathBuf>,
-    },
-    /// The Lua role, asked for (`lua`, `0`, or a Lua shell directory).
-    Lua,
-    /// The Lua role, because the variable was not set and the user has an `init.lua` with no `init.ts` or `init.js`.
-    /// Running the JavaScript role would start them on the stock config and lose their own.
-    LuaForExistingConfig {
-        /// The `init.lua` that decided it.
-        init_lua: PathBuf,
-    },
-}
-
-/// Which role to run for `env` and the configuration `paths` locate.
+/// What the role tells a user whose only configuration is a Lua file, or `None` when the located file is not one.
 ///
-/// | `GNOBLIN_SHELL_VM` | role |
-/// | --- | --- |
-/// | unset or empty | JavaScript, unless only an `init.lua` exists ([`JsRuntimeChoice::LuaForExistingConfig`]) |
-/// | `js` | JavaScript |
-/// | `js:<dir>` | JavaScript, with the stock library read from `<dir>` |
-/// | `lua`, `0`, or anything else (a Lua shell directory) | Lua |
-///
-/// An explicit `js` is honoured even when only an `init.lua` exists: the user asked for it, and the role says that
-/// the file is not read.
-pub fn choose_runtime(env: &dyn Fn(&str) -> Option<String>, paths: &SearchPaths) -> JsRuntimeChoice {
-    match env(SHELL_VM_VARIABLE).as_deref() {
-        None | Some("") => match locate(paths) {
-            Ok(found) if found.exists() && found.language() == Language::Lua => JsRuntimeChoice::LuaForExistingConfig {
-                init_lua: found.path().to_path_buf(),
-            },
-            _ => JsRuntimeChoice::Js { stock_dir: None },
-        },
-        Some("js") => JsRuntimeChoice::Js { stock_dir: None },
-        Some(value) => match value.strip_prefix("js:") {
-            Some(dir) => JsRuntimeChoice::Js {
-                stock_dir: (!dir.is_empty()).then(|| PathBuf::from(dir)),
-            },
-            None => JsRuntimeChoice::Lua,
-        },
-    }
-}
-
-/// [`choose_runtime`] for this process: the real environment and the real search path. The `gnoblin` binary calls it,
-/// because it may name the role crates and not the configuration crate the search path lives in.
-pub fn choose_runtime_from_environment() -> JsRuntimeChoice {
-    choose_runtime(&|name| std::env::var(name).ok(), &SearchPaths::from_env())
+/// Nothing reads Lua, so the stock configuration runs in its place. The session still starts, because a login that
+/// fails over a file the user has not touched yet would lock them out of the machine that holds it; the warning says
+/// what happened and the one command that fixes it.
+fn lua_config_notice(located: &ConfigPath) -> Option<String> {
+    (located.exists() && located.language() == Language::Lua).then(|| {
+        format!(
+            "{} is a Lua config and Gnoblin no longer runs Lua, so the stock config runs instead; run `gnoblinctl \
+             config migrate` to convert it to init.ts (see {MIGRATION_DOC})",
+            located.path().display()
+        )
+    })
 }
 
 /// Why the JavaScript runtime role could not run.
@@ -296,10 +255,7 @@ impl JsRoleRunner {
             .parent()
             .ok_or_else(|| JsRoleError::Config(format!("{} has no directory", located.path().display())))?
             .to_path_buf();
-        let stock = match choose_runtime(&**env, &self.paths) {
-            JsRuntimeChoice::Js { stock_dir } => stock_dir,
-            _ => None,
-        };
+        let stock = env(STOCK_DIR_VARIABLE).filter(|dir| !dir.is_empty()).map(PathBuf::from);
         // The loader confines every import to the config directory, so the directory has to exist. A first login has
         // none: it is made here, which is also what lets the watcher see `init.ts` the day it is written.
         if !dir.is_dir() {
@@ -309,15 +265,10 @@ impl JsRoleRunner {
             log::info!(area = "config", "created the config directory {}", dir.display());
         }
         let mut config = JsRoleConfig::new(dir, stock);
-        if located.exists() && located.language().is_script() {
-            config.entry = located.path().to_path_buf();
+        if let Some(notice) = lua_config_notice(&located) {
+            log::warn!(area = "config", "{notice}");
         } else if located.exists() {
-            // Only reachable when `js` was asked for by name: the default keeps the Lua role for this user.
-            log::warn!(
-                area = "config",
-                "{} is not read by the JavaScript shell, so the stock config runs; move it to init.ts (see {MIGRATION_DOC})",
-                located.path().display()
-            );
+            config.entry = located.path().to_path_buf();
         }
         config.watch = env(WATCH_VARIABLE).as_deref() != Some("0");
         config.shell.xr_declared = env("GNOBLIN_XR").as_deref() == Some("1");
@@ -477,90 +428,59 @@ mod tests {
     }
 
     #[test]
-    fn unset_means_the_javascript_role_when_there_is_no_config_yet() {
-        let (_root, paths) = config_with(&[]);
-        assert_eq!(
-            choose_runtime(&env_of(&[]), &paths),
-            JsRuntimeChoice::Js { stock_dir: None }
-        );
-    }
-
-    #[test]
-    fn unset_or_empty_means_the_javascript_role_for_a_typescript_or_javascript_config() {
-        for file in ["init.ts", "init.js"] {
-            let (_root, paths) = config_with(&[file]);
-            for env in [env_of(&[]), env_of(&[(SHELL_VM_VARIABLE, "")])] {
-                assert_eq!(
-                    choose_runtime(&env, &paths),
-                    JsRuntimeChoice::Js { stock_dir: None },
-                    "{file}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn an_init_lua_with_no_init_ts_keeps_the_lua_role_when_nothing_was_chosen() {
+    fn a_lua_config_alone_gets_one_warning_that_names_the_migration() {
         let (root, paths) = config_with(&["init.lua"]);
-        let expected = root.path().join("config").join("gnoblin").join("init.lua");
+        let located = locate(&paths).expect("a path");
+        let notice = lua_config_notice(&located).expect("a Lua file with nothing to replace it is reported");
+        let init_lua = root.path().join("config").join("gnoblin").join("init.lua");
+        assert!(notice.contains(&init_lua.display().to_string()), "{notice}");
+        assert!(notice.contains("gnoblinctl config migrate"), "{notice}");
+        assert!(notice.contains(MIGRATION_DOC), "{notice}");
+    }
+
+    #[test]
+    fn a_lua_config_alone_runs_the_stock_config_and_keeps_the_session_alive() {
+        let (root, paths) = config_with(&["init.lua"]);
+        let runner = JsRoleRunner {
+            env: Box::new(env_of(&[])),
+            paths,
+        };
+        let config = runner.role_config(&JsCommitLog::default()).expect("a config");
+        let directory = root.path().join("config").join("gnoblin");
         assert_eq!(
-            choose_runtime(&env_of(&[]), &paths),
-            JsRuntimeChoice::LuaForExistingConfig { init_lua: expected }
+            config.entry,
+            directory.join("init.ts"),
+            "the Lua file is not the entry: {:?}",
+            config.entry
         );
     }
 
     #[test]
-    fn an_init_ts_beside_an_init_lua_is_the_javascript_role() {
-        // The user has moved to TypeScript: the old file stays beside it and is only warned about.
-        let (_root, paths) = config_with(&["init.lua", "init.ts"]);
-        assert_eq!(
-            choose_runtime(&env_of(&[]), &paths),
-            JsRuntimeChoice::Js { stock_dir: None }
-        );
-    }
-
-    #[test]
-    fn an_explicit_js_is_honoured_even_with_only_an_init_lua() {
-        let (_root, paths) = config_with(&["init.lua"]);
-        assert_eq!(
-            choose_runtime(&env_of(&[(SHELL_VM_VARIABLE, "js")]), &paths),
-            JsRuntimeChoice::Js { stock_dir: None }
-        );
-    }
-
-    #[test]
-    fn js_with_a_directory_names_the_stock_library() {
-        let (_root, paths) = config_with(&[]);
-        assert_eq!(
-            choose_runtime(&env_of(&[(SHELL_VM_VARIABLE, "js:/opt/stock")]), &paths),
-            JsRuntimeChoice::Js {
-                stock_dir: Some(Path::new("/opt/stock").to_path_buf())
-            }
-        );
-        assert_eq!(
-            choose_runtime(&env_of(&[(SHELL_VM_VARIABLE, "js:")]), &paths),
-            JsRuntimeChoice::Js { stock_dir: None }
-        );
-    }
-
-    #[test]
-    fn lua_zero_and_a_directory_select_the_lua_role_whatever_is_on_disk() {
-        let (_root, paths) = config_with(&["init.ts"]);
-        for value in ["lua", "0", "/usr/share/gnoblin/lua/gnoblin"] {
-            assert_eq!(
-                choose_runtime(&env_of(&[(SHELL_VM_VARIABLE, value)]), &paths),
-                JsRuntimeChoice::Lua,
-                "{value}"
-            );
+    fn a_typescript_or_javascript_config_is_not_reported_as_lua() {
+        for files in [&["init.ts"][..], &["init.js"], &["init.lua", "init.ts"], &[]] {
+            let (_root, paths) = config_with(files);
+            let located = locate(&paths).expect("a path");
+            assert_eq!(lua_config_notice(&located), None, "{files:?}");
         }
     }
 
     #[test]
-    fn a_missing_home_leaves_the_javascript_role_to_say_so() {
-        assert_eq!(
-            choose_runtime(&env_of(&[]), &SearchPaths::default()),
-            JsRuntimeChoice::Js { stock_dir: None }
-        );
+    fn the_stock_library_comes_from_the_named_directory_when_there_is_one() {
+        let (_root, paths) = config_with(&[]);
+        let runner = JsRoleRunner {
+            env: Box::new(env_of(&[(STOCK_DIR_VARIABLE, "/opt/stock")])),
+            paths: paths.clone(),
+        };
+        let config = runner.role_config(&JsCommitLog::default()).expect("a config");
+        assert_eq!(config.shell.stock_dir.as_deref(), Some(Path::new("/opt/stock")));
+        for env in [env_of(&[]), env_of(&[(STOCK_DIR_VARIABLE, "")])] {
+            let runner = JsRoleRunner {
+                env: Box::new(env),
+                paths: paths.clone(),
+            };
+            let config = runner.role_config(&JsCommitLog::default()).expect("a config");
+            assert_eq!(config.shell.stock_dir, None);
+        }
     }
 
     #[test]

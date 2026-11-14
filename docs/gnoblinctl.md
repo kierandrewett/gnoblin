@@ -462,9 +462,8 @@ socket it tried and a hint:
 ```text
 error: no JavaScript shell is running
 why:   cannot connect to /run/user/1000/gnoblin/js.sock: No such file or directory
-hint:  the session must run the JavaScript shell, which is the default: unset
-       `GNOBLIN_SHELL_VM` (or set it to `js`), keep an `init.ts` rather than
-       only an `init.lua` (the Lua shell), and check that `GNOBLIN_JS_CONSOLE` is not `0`
+hint:  the session must be running, with the JavaScript shell: check that the
+       session is up and that `GNOBLIN_JS_CONSOLE` is not `0`
 ```
 
 The prompt prints each result's text on standard output and each error as an

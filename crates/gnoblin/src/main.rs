@@ -10,7 +10,7 @@
 //! | --------------------- | ----------------------------------------------------------------- |
 //! | none (the guardian)   | supervises the session: starts, restarts and stops every child      |
 //! | `--role compositor`   | runs the compositor in the foreground, until it is stopped         |
-//! | `--role runtime`      | runs the JavaScript role (or the Lua host): loads the configuration and serves it |
+//! | `--role runtime`      | runs the JavaScript role: loads the configuration and serves it   |
 //! | `--role services`     | runs the D-Bus agents: polkit, the keyring and slots               |
 //!
 //! The guardian is the default because that is the process a session manager starts: it is
@@ -213,42 +213,16 @@ fn guardian() -> Result<(), Exit> {
     }
 }
 
-/// Runs the runtime: the JavaScript role by default, the Lua host for a session that asks for it, until the session
-/// ends.
+/// Runs the runtime, the JavaScript role, until the session ends.
 ///
-/// `GNOBLIN_SHELL_VM` unset or `js` is the JavaScript role, which locates and evaluates `init.ts` itself and starts no
-/// Lua. `lua` (or `0`, or a Lua shell directory) is the Lua host. A user whose only config is an `init.lua` and who
-/// did not choose gets the Lua host too, with one warning, so an update does not replace their configuration with the
-/// stock one without a word. `gnoblin-lua` and `gnoblin-js` are siblings and neither names the other, so this
-/// binary is where the choice is made.
+/// The role locates and evaluates `init.ts` (or `init.js`) itself, commits the configuration document and serves
+/// `config.reload`. Nothing selects it: there is no other runtime role.
 ///
 /// No signal handler: the guardian's `SIGTERM` ends this process, and a process that has
 /// gone is exactly what the compositor needs to see to release its connection.
 fn runtime() -> Result<(), Exit> {
-    let outcome = match gnoblin_js::choose_runtime_from_environment() {
-        gnoblin_js::JsRuntimeChoice::Js { .. } => {
-            log::info!("runtime role: JavaScript");
-            gnoblin_js::JsRoleRunner::from_environment()
-                .run(never_stopped)
-                .map_err(|error| error.to_string())
-        }
-        choice => {
-            if let gnoblin_js::JsRuntimeChoice::LuaForExistingConfig { init_lua } = &choice {
-                log::warn!(
-                    "{} is a Lua config and there is no init.ts or init.js beside it, so this session runs the \
-                     deprecated Lua shell for this release. The JavaScript shell does not read Lua; move your \
-                     config to init.ts (see {}) or set GNOBLIN_SHELL_VM=js to start with the stock config",
-                    init_lua.display(),
-                    gnoblin_js::MIGRATION_DOC
-                );
-            }
-            log::info!("runtime role: Lua");
-            gnoblin_lua::RoleRunner::from_environment()
-                .run(never_stopped)
-                .map_err(|error| error.to_string())
-        }
-    };
-    match outcome {
+    log::info!("runtime role: JavaScript");
+    match gnoblin_js::JsRoleRunner::from_environment().run(never_stopped) {
         Ok(()) => Ok(()),
         Err(error) => {
             log::error!("{error}");

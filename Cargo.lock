@@ -1084,7 +1084,6 @@ dependencies = [
  "gnoblin-js",
  "gnoblin-lock-auth",
  "gnoblin-log",
- "gnoblin-lua",
  "gnoblin-model",
  "gnoblin-paint",
  "gnoblin-proto",

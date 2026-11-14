@@ -87,10 +87,10 @@ fn no_shell_is_a_clear_error_and_exit_1() {
     assert!(run.err.contains("error: no JavaScript shell is running"), "{}", run.err);
     assert!(run.err.contains("cannot connect to"), "{}", run.err);
     assert!(run.err.contains("hint:"), "{}", run.err);
-    assert!(run.err.contains("GNOBLIN_SHELL_VM"), "{}", run.err);
+    assert!(run.err.contains("GNOBLIN_JS_CONSOLE"), "{}", run.err);
     assert!(
-        !run.err.contains("GNOBLIN_SHELL_VM=js"),
-        "the hint no longer tells you to select the default: {}",
+        !run.err.contains("GNOBLIN_SHELL_VM"),
+        "nothing selects the shell any more: {}",
         run.err
     );
     assert_eq!(run.out, "", "nothing on standard output");

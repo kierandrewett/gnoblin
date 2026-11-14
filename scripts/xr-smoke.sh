@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Whole-stack XR smoke: the real compositor, the stock Lua shell, two Wayland clients, the gnoblin-xr extension and
+# Whole-stack XR smoke: the real compositor, the stock TypeScript shell, two Wayland clients, the gnoblin-xr extension and
 # Monado (simulated headset, null compositor, lavapipe) together, with nothing faked. Prints PASS or FAIL for each
 # assertion and exits non-zero when any fails. See docs/xr.md, "Testing without a headset".
 #
@@ -12,7 +12,6 @@
 # Environment (all optional):
 #   TARGET_DIR   where cargo put the binaries: gnoblin, gnoblin-xr, xr-smoke-client, xr-smoke-tree
 #                (default /home/node/target/debug)
-#   REPO         the repository checkout, for the stock Lua shell (default: this script's repository)
 #   MONADO_DIR   the Monado checkout with its build/ directory (default /opt/monado-src/monado)
 #   KEEP=1       leave the runtime directory and logs in place at the end (default: logs are kept in LOG_DIR, the
 #                runtime directory is removed)
@@ -27,7 +26,6 @@
 #   cargo build --manifest-path extensions/gnoblin-xr/Cargo.toml --bins
 set -u
 
-REPO="${REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 TARGET_DIR="${TARGET_DIR:-/home/node/target/debug}"
 MONADO_DIR="${MONADO_DIR:-/opt/monado-src/monado}"
 LOG_DIR="${LOG_DIR:-/tmp/xr-smoke}"
@@ -171,14 +169,11 @@ setsid bash -c "sleep 3000 | SIMULATED_ENABLE=1 $HANDS XRT_COMPOSITOR_NULL=1 \
 wait_for 20 test -S "$RUN/monado_comp_ipc"
 check "Monado service is listening" test -S "$RUN/monado_comp_ipc"
 
-# ---- Gnoblin: guardian, compositor (headless, software renderer), runtime (stock Lua shell), xr extension ----------
+# ---- Gnoblin: guardian, compositor (headless, software renderer), runtime (stock TypeScript shell), xr extension ----------
 
 export GNOBLIN_XR=1
 export GNOBLIN_XR_PROGRAM="$TARGET_DIR/gnoblin-xr"
 export GNOBLIN_XR_DUMP_DIR="$LOG_DIR/dump"
-# A Lua shell directory selects the Lua runtime role with that stock library: the JavaScript shell is the default now, and
-# this smoke test drives the Lua shell's XR half.
-export GNOBLIN_SHELL_VM="$REPO/data/lua/gnoblin"
 export GNOBLIN_LOG="xr=debug,info"
 export GNOBLIN_IPC_SOCKET="$RUN/gnoblin/ipc.sock"
 export WAYLAND_DISPLAY="$RUN/gnoblin-wayland.sock"

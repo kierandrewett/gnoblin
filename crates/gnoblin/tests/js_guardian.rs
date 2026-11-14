@@ -1,8 +1,8 @@
 //! `gnoblinctl config reload` reaching the JavaScript shell of a real session, as processes.
 //!
 //! The session is the shipped binary: a guardian that starts the compositor, the services role and the runtime
-//! role. `GNOBLIN_SHELL_VM` is unset in most tests, which is the default: the runtime role is the JavaScript one
-//! (`gnoblin_js::JsRoleRunner`) and no Lua host starts. Unless a test is about the watcher, it is switched off
+//! role. The runtime role is the JavaScript one (`gnoblin_js::JsRoleRunner`) and nothing selects it. Unless a test is
+//! about the watcher, it is switched off
 //! (`GNOBLIN_JS_WATCH=0`), so a change to `init.ts` takes effect only when the request comes through the
 //! compositor: `gnoblinctl config reload` is the real command line client, the compositor raises
 //! `session.reload_requested`, the runtime role reloads the shell and answers. Windows are mapped by a real
@@ -77,7 +77,7 @@ impl Session {
     }
 
     /// Starts a session whose config directory holds `files`, with `env` added to the guardian's environment. The
-    /// runtime role is whichever `GNOBLIN_SHELL_VM` in `env` selects, and the default when it names none.
+    /// runtime role is the JavaScript one whatever `env` says.
     fn start_with(files: &[(&str, &str)], env: &[(&str, &str)]) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700)).expect("the directory mode");
@@ -99,8 +99,8 @@ impl Session {
             .env("XDG_DATA_HOME", directory.path().join("data"))
             .env("GNOBLIN_IPC_SOCKET", directory.path().join("ipc.sock"))
             .env("GNOBLIN_TEST_FAST", "1")
-            // The session must not inherit the machine's own choice of shell.
-            .env_remove("GNOBLIN_SHELL_VM")
+            // The session must not inherit the machine's own choice of stock library.
+            .env_remove("GNOBLIN_JS_STOCK_DIR")
             .env_remove("GNOBLIN_JS_WATCH")
             .env_remove("GNOBLIN_CONFIG")
             // The compositor must run headless however the machine that runs the test is set up.
@@ -379,16 +379,14 @@ const CURSOR_32: &str =
     "import { defineConfig } from \"gnoblin\";\nexport default defineConfig({ cursor: { size: 32 } });\n";
 
 #[test]
-fn the_default_session_runs_the_javascript_role_with_no_lua_host_and_commits_init_ts() {
-    // `GNOBLIN_SHELL_VM` is unset: the JavaScript role is the default, and it is the one that read `init.ts`,
-    // validated the document and committed it. Nothing in the session starts the Lua host.
+fn the_default_session_runs_the_javascript_role_and_commits_init_ts() {
+    // The JavaScript role read `init.ts`, validated the document and committed it.
     let session = Session::start_with(&[("init.ts", CURSOR_32)], &[("GNOBLIN_JS_WATCH", "0")]);
     let document = wait_for_revision(&session, 1);
     assert_eq!(document["cursor"]["size"], serde_json::json!(32), "{document}");
     let log = session.log();
     assert!(log.contains("runtime role: JavaScript"), "{log}");
-    assert!(!log.contains("runtime role: Lua"), "the Lua host started:\n{log}");
-    assert!(!log.contains("deprecated Lua shell"), "{log}");
+    assert!(!log.contains("gnoblinctl config migrate"), "{log}");
 }
 
 #[test]
@@ -499,23 +497,21 @@ fn autostart_commands_are_handed_to_the_guardian_which_starts_them() {
 }
 
 #[test]
-fn an_init_lua_with_no_init_ts_keeps_the_lua_role_and_says_so_once() {
-    // An update must not start this user on the stock config with a word about it: the Lua role runs for this
-    // release, and one warning names the migration page.
+fn an_init_lua_with_no_init_ts_runs_the_stock_config_and_says_once_how_to_migrate() {
+    // Nothing reads Lua, so the stock config runs; one warning names the file, the command and the page.
     let session = Session::start_with(
         &[("init.lua", "gnoblin.configure({ cursor = { size = 36 } })\n")],
         &[("GNOBLIN_JS_WATCH", "0")],
     );
     let document = wait_for_revision(&session, 1);
-    assert_eq!(
-        document["cursor"]["size"],
-        serde_json::json!(36),
-        "the Lua config was read: {document}"
-    );
+    assert_eq!(document, serde_json::json!({}), "the Lua file is not read: {document}");
     let log = session.log();
-    assert!(log.contains("runtime role: Lua"), "{log}");
-    assert!(!log.contains("runtime role: JavaScript"), "{log}");
-    assert_eq!(log.matches("deprecated Lua shell").count(), 1, "one warning:\n{log}");
+    assert!(log.contains("runtime role: JavaScript"), "{log}");
+    assert_eq!(
+        log.matches("gnoblinctl config migrate").count(),
+        1,
+        "one warning:\n{log}"
+    );
     assert!(
         log.contains("docs/migrating-from-lua.md"),
         "the warning names the page:\n{log}"
@@ -523,7 +519,7 @@ fn an_init_lua_with_no_init_ts_keeps_the_lua_role_and_says_so_once() {
 }
 
 #[test]
-fn an_init_ts_beside_an_init_lua_is_the_javascript_role_and_the_lua_file_is_named_as_ignored() {
+fn an_init_ts_beside_an_init_lua_wins_and_the_lua_file_is_named_as_ignored() {
     let session = Session::start_with(
         &[
             ("init.ts", CURSOR_32),
@@ -543,41 +539,18 @@ fn an_init_ts_beside_an_init_lua_is_the_javascript_role_and_the_lua_file_is_name
         log.contains("init.lua is not read"),
         "the ignored file is named:\n{log}"
     );
-    assert!(!log.contains("deprecated Lua shell"), "{log}");
+    assert!(!log.contains("gnoblinctl config migrate"), "{log}");
 }
 
 #[test]
-fn gnoblin_shell_vm_lua_selects_the_lua_role_even_when_an_init_ts_exists() {
+fn gnoblin_shell_vm_selects_nothing_any_more() {
+    // The variable that used to pick the Lua role is not read: a session that still sets it runs the JavaScript role.
     let session = Session::start_with(
-        &[
-            ("init.ts", CURSOR_32),
-            ("init.lua", "gnoblin.configure({ cursor = { size = 36 } })\n"),
-        ],
+        &[("init.ts", CURSOR_32)],
         &[("GNOBLIN_SHELL_VM", "lua"), ("GNOBLIN_JS_WATCH", "0")],
     );
     let document = wait_for_revision(&session, 1);
-    assert_eq!(
-        document["cursor"]["size"],
-        serde_json::json!(36),
-        "the Lua host read init.lua: {document}"
-    );
-    let log = session.log();
-    assert!(log.contains("runtime role: Lua"), "{log}");
-    assert!(
-        !log.contains("deprecated Lua shell"),
-        "the user chose it, so there is nothing to warn about:\n{log}"
-    );
-}
-
-#[test]
-fn an_explicit_js_with_only_an_init_lua_runs_the_stock_config_and_says_the_file_is_not_read() {
-    let session = Session::start_with(
-        &[("init.lua", "gnoblin.configure({ cursor = { size = 36 } })\n")],
-        &[("GNOBLIN_SHELL_VM", "js"), ("GNOBLIN_JS_WATCH", "0")],
-    );
-    let document = wait_for_revision(&session, 1);
-    assert_eq!(document, serde_json::json!({}), "the Lua file is not read: {document}");
+    assert_eq!(document["cursor"]["size"], serde_json::json!(32), "{document}");
     let log = session.log();
     assert!(log.contains("runtime role: JavaScript"), "{log}");
-    assert!(log.contains("is not read by the JavaScript shell"), "{log}");
 }

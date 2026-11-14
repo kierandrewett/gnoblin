@@ -77,31 +77,22 @@ reloads.
 
 ## Which shell runs
 
-`GNOBLIN_SHELL_VM` chooses the shell. Leave it unset for the TypeScript shell.
-
-| `GNOBLIN_SHELL_VM`                        | The session runs                                                                                  |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| unset or empty                            | The TypeScript shell, unless you have an `init.lua` and no `init.ts` or `init.js` (next section). |
-| `js`                                      | The TypeScript shell, always.                                                                     |
-| `js:/path/to/gnoblin`                     | The TypeScript shell, reading its stock library from that directory instead of the built-in one.  |
-| `lua`                                     | The Lua shell. It is deprecated and stays for one more release.                                   |
-| `0`, or the path of a Lua shell directory | The Lua shell, with no shell VM or with that directory's.                                         |
+The TypeScript shell is the only shell. Nothing selects it, and `GNOBLIN_SHELL_VM` is not read. To work on the stock
+library, point `GNOBLIN_JS_STOCK_DIR` at a directory to read it from instead of the copy built into the binary.
 
 ### If you still have an `init.lua`
 
-An update does not start you on the stock config and lose yours. When `GNOBLIN_SHELL_VM` is unset and the config
-directory has an `init.lua` but no `init.ts` or `init.js`, the session runs the Lua shell for this release and logs one
-warning:
+Gnoblin does not read Lua. When the config directory has an `init.lua` but no `init.ts` or `init.js`, the session
+starts on the stock config and logs one warning:
 
 ```text
-init.lua is a Lua config and there is no init.ts or init.js beside it, so this session runs the deprecated Lua shell
-for this release. ... move your config to init.ts (see docs/migrating-from-lua.md)
+init.lua is a Lua config and Gnoblin no longer runs Lua, so the stock config runs instead; run `gnoblinctl config
+migrate` to convert it to init.ts (see docs/migrating-from-lua.md)
 ```
 
 [Migrating from Lua](migrating-from-lua.md) maps each Lua construct to its TypeScript equivalent. Run
-`gnoblinctl config migrate` to convert your `init.lua` to an `init.ts`, or `gnoblinctl config init` to write a starter:
-from then on the TypeScript shell runs, and the `init.lua` beside it is ignored. Setting `GNOBLIN_SHELL_VM=js` with only
-an `init.lua` starts the TypeScript shell on the stock config and says that the Lua file is not read.
+`gnoblinctl config migrate` to convert your `init.lua` to an `init.ts`, or `gnoblinctl config init` to write a starter.
+When an `init.ts` exists, the `init.lua` beside it is ignored and the log says so.
 
 ## Check a file
 

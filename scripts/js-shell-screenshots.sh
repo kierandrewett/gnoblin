@@ -112,7 +112,7 @@ start_session() {
 # boot_guardian: starts the session in a process group of its own and waits until the shell has committed a config.
 boot_guardian() {
     : >"$session_home/session.log"
-    setsid env -u WAYLAND_DISPLAY -u DISPLAY -u GNOBLIN_SHELL_VM -u GNOBLIN_CONFIG \
+    setsid env -u WAYLAND_DISPLAY -u DISPLAY -u GNOBLIN_JS_STOCK_DIR -u GNOBLIN_CONFIG \
         XDG_RUNTIME_DIR="$run_dir" \
         XDG_CONFIG_HOME="$session_home/config" \
         XDG_STATE_HOME="$session_home/state" \

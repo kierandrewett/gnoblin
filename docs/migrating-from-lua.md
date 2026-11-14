@@ -1,16 +1,14 @@
 # Migrating from Lua
 
-The TypeScript shell is the default shell. It reads `init.ts` and does not read `init.lua`. The Lua shell stays for one
-more release so that an update never replaces your configuration with the stock one without telling you.
+The TypeScript shell is the only shell. It reads `init.ts` (or `init.js`) and does not read `init.lua`. The Lua shell,
+the Lua API and `GNOBLIN_SHELL_VM=lua` are gone.
 
 ## What happens to an `init.lua` today
 
-- If your config directory has an `init.lua` and no `init.ts` or `init.js`, and you have not set `GNOBLIN_SHELL_VM`, the
-  session runs the Lua shell as before and logs one warning that names this page.
-- Once `init.ts` exists, the TypeScript shell runs. The `init.lua` beside it is ignored and the log says so.
-- `GNOBLIN_SHELL_VM=lua` runs the Lua shell whatever is on disk. It is deprecated and is removed after this release.
-
-See [Which shell runs](typescript-shell.md#which-shell-runs) for the full table.
+- If your config directory has an `init.lua` and no `init.ts` or `init.js`, the session starts on the stock config and
+  logs one warning that names `gnoblinctl config migrate` and this page. Your `init.lua` is not touched.
+- Once `init.ts` exists, it is the config. The `init.lua` beside it is ignored and the log says so.
+- `GNOBLIN_SHELL_VM` is not read.
 
 ## Move your config
 
@@ -20,8 +18,7 @@ See [Which shell runs](typescript-shell.md#which-shell-runs) for the full table.
    command lists each one with its line. Move those across by hand using the table below. Then run
    `gnoblinctl check --types init.ts`: it reports a mistake with its line, and a retired key is refused with the key to
    use instead.
-3. Log out and back in. A running Lua session keeps reading `init.lua`; from the next session the TypeScript shell runs and
-   `init.ts` takes precedence.
+3. Log out and back in. `init.ts` takes precedence over the `init.lua` beside it.
 
 ## The converter
 
