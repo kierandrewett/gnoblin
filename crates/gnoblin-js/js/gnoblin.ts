@@ -60,6 +60,9 @@ import { notRespondingAlerts } from "gnoblin/alerts";
 import { barInsets, barsGiveWayTo, barsOnOutputs } from "gnoblin/widgets";
 import { windowState } from "gnoblin/window_state";
 import type { ClientRequest } from "gnoblin/window_state";
+import { EASINGS, Staging, TransitionEngine, curveSamples, setProperties } from "gnoblin/transition";
+import type { ClientEasing, Transition, TransitionOptions } from "gnoblin/transition";
+import { snapshotStyles } from "gnoblin/style";
 import { gestureDirection, onPinch, onSwipe } from "gnoblin/gesture_actions";
 import type { GestureActions, GestureTools } from "gnoblin/gesture_actions";
 import { repositioning } from "gnoblin/reposition";
@@ -173,6 +176,8 @@ interface Host {
     published(node: NodeId, key: string): HostValue | undefined;
     label(node: NodeId): string | undefined;
     set(node: NodeId, key: string, value: HostValue): string | undefined;
+    /** What `set` would answer, without queuing the write; `timed` also refuses a property the tree cannot animate. */
+    check(node: NodeId, key: string, value: HostValue, timed: boolean): string | undefined;
     /** The same write, carried out over `seconds` along `samples` (progress from 0 to 1). */
     animate(node: NodeId, key: string, value: HostValue, seconds: number, samples: number[]): string | undefined;
     call(node: NodeId, method: string): string | undefined;
@@ -214,6 +219,53 @@ const host = (globalThis as { __gnoblinHost?: Host }).__gnoblinHost;
 if (!host) {
     throw new Error("the gnoblin module needs the shell host and cannot run without it");
 }
+
+// ---- staged writes -----------------------------------------------------------------------------------------------
+//
+// `gnoblin.requestTransition` runs its callback with the host's writes staged (`data/js/gnoblin/transition.ts`). The
+// host functions are replaced here, once, by the staging layer, so every module that reads or writes a node goes through
+// it and none has to know. Outside a callback each call goes straight to the native function.
+
+const staging = new Staging(
+    { get: host.get, set: host.set, animate: host.animate, check: host.check },
+    (code, target, message) => new GnoblinError(code, target, message),
+);
+const nativeCall = host.call;
+const nativeRaise = host.raise;
+const nativeLower = host.lower;
+const nativeApi = { spawn: host.api.spawn, kill: host.api.kill, begin: host.api.begin };
+
+function nodeName(node: NodeId): string {
+    return `${host.kind(node) === "screen" ? "Output" : "Client"}#${host.label(node)}`;
+}
+
+host.get = (node, key) => staging.get(node, key) as HostValue | undefined;
+host.set = (node, key, value) => staging.set(node, key, value);
+host.animate = (node, key, value, seconds, samples) => staging.animate(node, key, value, seconds, samples);
+host.call = (node, method) => {
+    staging.forbid(`${nodeName(node)}.${method}()`);
+    return nativeCall(node, method);
+};
+host.raise = (node) => {
+    staging.forbid(`${nodeName(node)}.raise()`);
+    return nativeRaise(node);
+};
+host.lower = (node) => {
+    staging.forbid(`${nodeName(node)}.lower()`);
+    return nativeLower(node);
+};
+host.api.spawn = (argv, options) => {
+    staging.forbid("gnoblin.spawn()");
+    return nativeApi.spawn(argv, options);
+};
+host.api.kill = (id, signal) => {
+    staging.forbid("Process.kill()");
+    return nativeApi.kill(id, signal);
+};
+host.api.begin = (verb) => {
+    staging.forbid(`gnoblin.session.${verb}()`);
+    return nativeApi.begin(verb);
+};
 
 /** Only this module can make a Client, a Workspace or a Collection: the compositor owns their lifetime. */
 const CREATE = Symbol("gnoblin.create");
@@ -514,19 +566,7 @@ function writeVector(client: Client, key: string, value: unknown): void {
     }
 }
 
-/** How an animation moves from its start to its end, as the Lua shell's `ease` table named them. */
-export type ClientEasing = "linear" | "out" | "out-cubic" | "in-cubic" | "in-out";
-
-const EASINGS: Readonly<Record<ClientEasing, (t: number) => number>> = {
-    linear: (t) => t,
-    out: (t) => 1 - (1 - t) ** 2,
-    "out-cubic": (t) => 1 - (1 - t) ** 3,
-    "in-cubic": (t) => t ** 3,
-    "in-out": (t) => (t < 0.5 ? 2 * t * t : 1 - (2 - 2 * t) ** 2 / 2),
-};
-
-/** The curve is sent as this many steps plus the start: 33 samples, as the Lua shell's `node:to` sends. */
-const CURVE_STEPS = 32;
+export type { ClientEasing } from "gnoblin/transition";
 
 /** The properties of a client `animate` can move, and the kind of value each takes. */
 const ANIMATED_KEYS: Readonly<Record<string, "number" | "vector">> = {
@@ -938,7 +978,7 @@ export class Client {
                 throw new TypeError(`${target}: ${key} must be three finite numbers`);
             }
         }
-        const samples = Array.from({ length: CURVE_STEPS + 1 }, (_, i) => curve(i / CURVE_STEPS));
+        const samples = curveSamples(curve);
         // Reduced motion lands the value at once, as the compositor's own safety net would.
         const seconds = motion(duration);
         for (const [key, value] of entries) {
@@ -949,6 +989,14 @@ export class Client {
                 refuse(code, target, "client");
             }
         }
+    }
+
+    /**
+     * Assigns `props` as one `requestTransition`: the same as `gnoblin.requestTransition(() => { client.opacity = ... })`
+     * for this client. Without `options` the change is atomic and immediate. `options.duration` is in milliseconds.
+     */
+    set(props: Record<string, unknown>, options?: TransitionOptions): Transition {
+        return setProperties(transitions, this, `${this}`, props, options);
     }
 
     /** Puts the window on top of every other window. */
@@ -1136,6 +1184,14 @@ export class Workspace {
 
     get clients(): Collection<Client> {
         return wsState(this).clients;
+    }
+
+    /**
+     * Assigns `props` (`layout`, `gaps`, `name`) as one `requestTransition`: the windows tween from where they are
+     * drawn to where the new layout puts them. Without `options` the change is atomic and immediate.
+     */
+    set(props: Record<string, unknown>, options?: TransitionOptions): Transition {
+        return setProperties(transitions, this, `${this}`, props, options);
     }
 
     /** Shows this workspace on the output under the pointer (the primary output when no pointer says). */
@@ -2680,6 +2736,18 @@ function applyStyles(): void {
  * are written. A workspace that is not shown stays dirty until it is.
  */
 function layout(): number {
+    laying = true;
+    try {
+        return layoutWorkspaces();
+    } finally {
+        laying = false;
+    }
+}
+
+/** Whether the layout pass is running, which a transition cannot start inside: its writes are the pass's own. */
+let laying = false;
+
+function layoutWorkspaces(): number {
     fillDesks();
     // A workspace no output shows hears its hooks for the primary output's area; one an output shows, for that output's.
     const fallback = screenArea();
@@ -3834,6 +3902,72 @@ const hostApi = new HostApi(
     },
 );
 
+/**
+ * What a transition callback can change that is not a tree write, put back when the transition fails: each workspace's
+ * layout, gaps, name and dirty flag, the own fields of the layout it had, and every style. A layout the callback
+ * assigned (and so was not the workspace's layout when the transition began) keeps the field changes made to it.
+ */
+function snapshotScriptState(): () => void {
+    if (laying) {
+        throw new GnoblinError("busy", "gnoblin.requestTransition", "cannot start inside a layout pass");
+    }
+    const restores: (() => void)[] = [];
+    for (const workspace of workspaceRoot.list as Workspace[]) {
+        const state = wsState(workspace);
+        const { layout: held, gaps, name, dirty, fields, gapsSeen } = state;
+        const own = layoutFields(held);
+        restores.push(() => {
+            Object.assign(state, { layout: held, gaps, name, dirty, fields, gapsSeen });
+            for (const key of Reflect.ownKeys(held)) {
+                if (Object.getOwnPropertyDescriptor(held, key)?.enumerable && !own.has(key)) {
+                    Reflect.deleteProperty(held, key);
+                }
+            }
+            for (const [key, value] of own) {
+                Reflect.set(held, key, value);
+            }
+        });
+    }
+    restores.push(snapshotStyles(everyStyle));
+    return () => {
+        for (const restore of restores) {
+            restore();
+        }
+    };
+}
+
+/**
+ * Runs the layout and style passes once against the staged state, so their writes are staged with the callback's. A
+ * placement a layout got wrong is a report the pass would log; here it fails the transition, which is what a
+ * transition with an invalid target does.
+ */
+function settleStaged(): void {
+    const before = reports.length;
+    layout();
+    const failed = reports.splice(before);
+    if (failed.length > 0) {
+        throw failed[0].error;
+    }
+}
+
+const transitions = new TransitionEngine({
+    staging,
+    motion,
+    animated: (key) => Object.hasOwn(ANIMATED_KEYS, key),
+    placed: (node) =>
+        (host.get(node, "width") as number) > 0 &&
+        (host.get(node, "height") as number) > 0 &&
+        host.get(node, "visible") !== false,
+    label: nodeName,
+    after,
+    schedule: (site, task) => {
+        queue.push({ site, task });
+    },
+    snapshot: snapshotScriptState,
+    settle: settleStaged,
+    error: (code, target, message) => new GnoblinError(code, target, message),
+});
+
 class Gnoblin {
     /** The optional extensions: `gnoblin.extensions.xr` is null until the XR program has a session (docs/xr.md). */
     readonly extensions = new Extensions(xrRuntime);
@@ -3868,6 +4002,16 @@ class Gnoblin {
     /** The duration the shell gives an animation: `seconds`, or 0 while the seat asks for reduced motion. */
     motion(seconds: number): number {
         return motion(seconds);
+    }
+
+    /**
+     * Runs `callback` once, now, with every property write staged, and draws the change as one animation: each
+     * written property moves from where it is drawn to the staged value over `options.duration` milliseconds. The
+     * callback also holds layout changes (`workspace.layout = ...`), which move every window from its place. A
+     * failure in the callback leaves the previous state. Nothing animates under reduced motion.
+     */
+    requestTransition(callback: () => void, options?: TransitionOptions): Transition {
+        return transitions.request(callback, options);
     }
 
     /**

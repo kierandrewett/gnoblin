@@ -29,7 +29,7 @@ use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::wire::{PortalRequest, VerifiedCaller};
 use gnoblin_client::{Client, ClientError, PortalOutcome, PortalTicket};
 use gnoblin_compositor::{Compositor, InputTap, OutputTap, SessionConfig, StopHandle};
-use gnoblin_js::{JsHealth, JsRole, JsRoleConfig};
+use gnoblin_js::{JsHealth, JsManualClock, JsRole, JsRoleConfig};
 use gnoblin_log::event::capture::logged;
 use gnoblin_model::{Fields, Filter, Provider, RequestCompletion, TypeKey, Value};
 use gnoblin_proto::tree::op;
@@ -1429,6 +1429,140 @@ fn a_strip_workspace_places_two_real_windows_in_columns_and_scrolls_to_the_focus
     wait_for("two windows in two columns", &session, &mut mapper, &shell, || {
         rect_of(&ipc, "org.example.first") == first && rect_of(&ipc, "org.example.second") == second
     });
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+}
+
+/// An `init.ts` whose workspace tiles by halves side by side and, one second after the shell's clock starts, changes to
+/// rows inside a `requestTransition` of 500 ms. `probe()` says what the script knows: the shell's clock, whether the
+/// transition runs, and the log of its start and finish.
+const TRANSITION_INIT: &str = r#"
+import { DwindleLayout, Layout, Workspace, gnoblin } from "gnoblin";
+class Rows extends Layout {
+    compute(context) {
+        const height = context.area.height / 2;
+        return context.children.map((node, i) => ({
+            node,
+            tiled: true,
+            bounds: { x: context.area.x, y: context.area.y + i * height, width: context.area.width, height },
+        }));
+    }
+}
+const g = globalThis as any;
+g.log = [];
+gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new DwindleLayout() }));
+gnoblin.after(1, () => {
+    g.t = gnoblin.requestTransition(
+        () => {
+            gnoblin.workspaces.get("desk").layout = new Rows();
+        },
+        { duration: 500, easing: "out-cubic" },
+    );
+    g.t.onFinished((result) => g.log.push("finished:" + result.cancelled));
+    g.log.push("started");
+});
+g.probe = () => JSON.stringify({ now: gnoblin.timers.now(), running: g.t === undefined ? null : g.t.running, log: g.log });
+"#;
+
+/// What `TRANSITION_INIT`'s `probe()` says.
+fn transition_probe(shell: &Shell) -> (f64, Option<bool>, Vec<String>) {
+    let probe: serde_json::Value = serde_json::from_str(&shell.probe()).unwrap_or(serde_json::Value::Null);
+    let log = probe["log"]
+        .as_array()
+        .map(|log| {
+            log.iter()
+                .filter_map(|entry| entry.as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default();
+    (probe["now"].as_f64().unwrap_or(-1.0), probe["running"].as_bool(), log)
+}
+
+#[test]
+fn a_layout_change_in_a_transition_commits_to_the_scene_at_once_and_the_transition_ends_at_its_injected_time() {
+    // spec-review AN2: a layout change inside `requestTransition` is computed once and the windows move by id. The
+    // scene holds the committed rectangles (a timed write keeps the target as the node's value, as `tree_live.rs`
+    // proves), so the proof here is what the tree publishes: the rows are in the scene the moment the transition begins,
+    // before any of its 500 ms have passed on the shell's clock, and the transition runs until the clock says it is over.
+    // What the compositor draws on the way is its tween player's: `crates/gnoblin-wayland/tests/tree_live.rs`.
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    fs::write(config.path().join("init.ts"), TRANSITION_INIT).expect("init.ts");
+    let clock = JsManualClock::default();
+    let held = clock.clone();
+    let shell = Shell::start(&session, config.path(), move |config| {
+        config.shell.clock = Arc::new(held)
+    });
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    let (width, height) = screen_size(&ipc);
+    mapper.map_window("org.example.first", "First");
+    mapper.map_window("org.example.second", "Second");
+    let half = (width * 0.5).floor();
+    let side_by_side = (
+        Some((0.0, 0.0, half, height.floor())),
+        Some((half, 0.0, (width - width * 0.5).floor(), height.floor())),
+    );
+    wait_for("two windows side by side", &session, &mut mapper, &shell, || {
+        (rect_of(&ipc, "org.example.first"), rect_of(&ipc, "org.example.second")) == side_by_side
+    });
+    assert_eq!(
+        transition_probe(&shell).1,
+        None,
+        "no transition before the clock reaches its second"
+    );
+
+    clock.advance(Duration::from_secs(1));
+    let rows = (
+        Some((0.0, 0.0, width, height / 2.0)),
+        Some((0.0, height / 2.0, width, height / 2.0)),
+    );
+    wait_for(
+        "the rows in the scene and the transition running",
+        &session,
+        &mut mapper,
+        &shell,
+        || {
+            let (_, running, log) = transition_probe(&shell);
+            running == Some(true)
+                && log == ["started"]
+                && (rect_of(&ipc, "org.example.first"), rect_of(&ipc, "org.example.second")) == rows
+        },
+    );
+
+    // 200 ms of the 500 on the shell's clock: it has ticked past them (the probe reads the clock), and the transition
+    // is still running with the committed rectangles in the scene.
+    clock.advance(Duration::from_millis(200));
+    wait_for("the shell's clock at 1.2 s", &session, &mut mapper, &shell, || {
+        transition_probe(&shell).0 >= 1200.0
+    });
+    let (_, running, log) = transition_probe(&shell);
+    assert_eq!(
+        (running, log),
+        (Some(true), vec!["started".to_owned()]),
+        "mid-way it still runs"
+    );
+    assert_eq!(
+        (rect_of(&ipc, "org.example.first"), rect_of(&ipc, "org.example.second")),
+        rows,
+        "and the scene holds the staged layout's rectangles"
+    );
+
+    clock.advance(Duration::from_millis(400));
+    wait_for(
+        "the transition finished, not cancelled",
+        &session,
+        &mut mapper,
+        &shell,
+        || {
+            let (_, running, log) = transition_probe(&shell);
+            running == Some(false) && log == ["started", "finished:false"]
+        },
+    );
+    assert_eq!(
+        (rect_of(&ipc, "org.example.first"), rect_of(&ipc, "org.example.second")),
+        rows,
+        "the end state is the rows"
+    );
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 }
 

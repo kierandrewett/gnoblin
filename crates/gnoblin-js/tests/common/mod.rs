@@ -397,6 +397,11 @@ impl FakeCompositor {
         self.0.borrow().sent.len()
     }
 
+    /// The ops of the transactions the shell sent after the first `mark`, in order: `mark` is a `sent_count` taken before.
+    pub fn ops_since(&self, mark: usize) -> Vec<TxOp> {
+        self.0.borrow().sent.iter().skip(mark).flatten().cloned().collect()
+    }
+
     /// The `(node, method)` of every call but `measure` the shell sent, in order.
     pub fn calls(&self) -> Vec<(u64, String)> {
         self.0

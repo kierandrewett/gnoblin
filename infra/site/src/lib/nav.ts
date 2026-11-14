@@ -149,6 +149,7 @@ export const NAV: NavSection[] = [
             { label: "Lua language support", slug: "lua-language-support" },
             { label: "JavaScript UI toolkit", slug: "js-ui" },
             { label: "JavaScript window style", slug: "js-style" },
+            { label: "JavaScript animation", slug: "js-transitions" },
             { label: "JavaScript outputs and desks", slug: "js-outputs" },
             { label: "JavaScript session and process API", slug: "js-host-api" },
             { label: "Idle, authentication and launches", slug: "js-idle-auth-launches" },

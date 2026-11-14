@@ -129,6 +129,41 @@ fn curve_is_valid((seconds, samples): JsCurve<'_>) -> bool {
         && samples.iter().all(|sample| (0.0..=1.0).contains(sample))
 }
 
+/// What a write of `node.key` would be, checked as a queued write is and not yet queued: the value in the tree's own
+/// type, or the refusal code. `animation` is the curve a timed write carries.
+pub(crate) fn prepare(
+    state: &HostState,
+    node: NodeId,
+    key: &str,
+    value: &JsScriptValue,
+    animation: Option<JsCurve<'_>>,
+) -> Result<MirrorValue, &'static str> {
+    let HostState {
+        mirror, tick, handles, ..
+    } = state;
+    let Some(record) = tick.node(mirror, node) else {
+        return Err("unknown-node");
+    };
+    let Some(def) = defs_for(&record.class).and_then(|defs| defs.iter().find(|def| def.name == key)) else {
+        return Err("unknown-property");
+    };
+    if !def.writable {
+        return Err("read-only");
+    }
+    let Some(value) = convert(def, value, handles) else {
+        return Err("invalid-value");
+    };
+    if let Some(curve) = animation {
+        if !curve_is_valid(curve) {
+            return Err("invalid-value");
+        }
+        if !def.animated {
+            return Err("not-animated");
+        }
+    }
+    Ok(value)
+}
+
 /// Queues a write of `node.key`, animated when `animation` is given. Returns the refusal code, or `None` when the
 /// write is queued.
 pub(crate) fn write(
@@ -138,29 +173,11 @@ pub(crate) fn write(
     value: &JsScriptValue,
     animation: Option<JsCurve<'_>>,
 ) -> Option<&'static str> {
-    let HostState {
-        mirror, tick, handles, ..
-    } = state;
-    let Some(record) = tick.node(mirror, node) else {
-        return Some("unknown-node");
+    let value = match prepare(state, node, key, value, animation) {
+        Ok(value) => value,
+        Err(code) => return Some(code),
     };
-    let Some(def) = defs_for(&record.class).and_then(|defs| defs.iter().find(|def| def.name == key)) else {
-        return Some("unknown-property");
-    };
-    if !def.writable {
-        return Some("read-only");
-    }
-    let Some(value) = convert(def, value, handles) else {
-        return Some("invalid-value");
-    };
-    if let Some(curve) = animation {
-        if !curve_is_valid(curve) {
-            return Some("invalid-value");
-        }
-        if !def.animated {
-            return Some("not-animated");
-        }
-    }
+    let HostState { mirror, tick, .. } = state;
     let (seconds, samples) = match animation {
         Some((seconds, samples)) => (Some(seconds), Some(samples.to_vec())),
         None => (None, None),
@@ -283,7 +300,7 @@ pub(crate) fn spawn(state: &mut HostState, request: &JsSpawnRequest) -> Option<S
     spawner(request).err().map(|error| error.0)
 }
 
-fn script_value<'js>(value: &Value<'js>) -> JsScriptValue {
+pub(crate) fn script_value<'js>(value: &Value<'js>) -> JsScriptValue {
     if let Some(flag) = value.as_bool() {
         JsScriptValue::Flag(flag)
     } else if let Some(n) = value.as_number() {
@@ -445,6 +462,7 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
 
     // `gnoblin.spawn` and `gnoblin.process` are the module's own (`data/js/gnoblin/session.ts`) over `host.api`.
 
+    crate::transition::install(ctx, &host, state)?;
     crate::input::install(ctx, &host, state)?;
     crate::ui::install(ctx, &host, state)?;
     crate::xr::install(ctx, &host, state)?;
@@ -459,7 +477,9 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
 mod tests {
     use gnoblin_tree_client::tree_mirror::{MirrorValue, SnapshotNode, TreeMirror, TxOp};
 
-    use super::{JsScriptValue, call, ids_of_class, lower, parents_first, raise, read, stacked_windows, write};
+    use super::{
+        JsScriptValue, call, ids_of_class, lower, parents_first, prepare, raise, read, stacked_windows, write,
+    };
     use crate::bindings::{HostState, JsHostValue, NodeHandles};
 
     fn node(id: u64, parent: u64, class: &str, props: Vec<(String, MirrorValue)>) -> SnapshotNode {
@@ -789,6 +809,37 @@ mod tests {
             Some("not-animated")
         );
         assert_eq!(state.tick.ops().len(), 1);
+    }
+
+    #[test]
+    fn prepare_answers_what_a_write_would_and_queues_nothing() {
+        let state = state();
+        let curve = (0.25, &[0.0, 1.0][..]);
+        assert_eq!(
+            prepare(&state, 3, "x", &JsScriptValue::Number(7.0), None),
+            Ok(MirrorValue::Double(7.0))
+        );
+        assert_eq!(
+            prepare(&state, 3, "x", &JsScriptValue::Number(7.0), Some(curve)),
+            Ok(MirrorValue::Double(7.0))
+        );
+        assert_eq!(
+            prepare(&state, 3, "visible", &JsScriptValue::Flag(false), Some(curve)),
+            Err("not-animated")
+        );
+        assert_eq!(
+            prepare(&state, 3, "x", &JsScriptValue::Text("far".to_owned()), None),
+            Err("invalid-value")
+        );
+        assert_eq!(
+            prepare(&state, 3, "nothing", &JsScriptValue::Number(1.0), None),
+            Err("unknown-property")
+        );
+        assert_eq!(
+            prepare(&state, 99, "x", &JsScriptValue::Number(1.0), None),
+            Err("unknown-node")
+        );
+        assert!(state.tick.ops().is_empty(), "checking queues no write");
     }
 
     #[test]

@@ -1061,3 +1061,57 @@ export function mapStyle(computed: ComputedStyle): StyleMapping {
     }
     return { effects, unapplied };
 }
+
+/**
+ * Takes the state of the styles `current()` yields (the scalars, the lists and each list element's fields) and returns
+ * what puts it back. A style that `current()` yields only later (made after the snapshot) is emptied. A failed
+ * `requestTransition` uses it so that the style writes of its callback leave nothing behind. A list handed out before is
+ * not the list that comes back: the script reads it again.
+ */
+export function snapshotStyles(current: () => Iterable<Style>): () => void {
+    interface Saved {
+        scalars: Map<ScalarName, unknown>;
+        lists: Map<ListName, { element: StyleElement; fields: Record<string, unknown> }[]>;
+    }
+    const saved = new Map<Style, Saved>();
+    for (const style of current()) {
+        const store = storeOf(style);
+        saved.set(style, {
+            scalars: new Map(store.scalars),
+            lists: new Map(
+                [...store.lists].map(([name, list]) => [
+                    name,
+                    list.map((element) => ({ element, fields: element.toJSON() })),
+                ]),
+            ),
+        });
+    }
+    return () => {
+        for (const style of current()) {
+            const store = storeOf(style);
+            const before = saved.get(style);
+            store.scalars = new Map(before?.scalars);
+            store.lists = new Map();
+            store.seen = new Map();
+            store.views = new Map();
+            for (const [name, entries] of before?.lists ?? []) {
+                own(
+                    store,
+                    name,
+                    entries.map((entry) => entry.element),
+                );
+                for (const { element, fields } of entries) {
+                    // A filter writes its `kind` out for the reader of `toJSON`; it is not a field to write back.
+                    const { kind: _kind, ...values } = fields;
+                    building += 1;
+                    try {
+                        Object.assign(element, values);
+                    } finally {
+                        building -= 1;
+                    }
+                }
+            }
+        }
+        epoch += 1;
+    };
+}

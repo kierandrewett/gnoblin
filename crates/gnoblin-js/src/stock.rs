@@ -130,6 +130,11 @@ const MODULES: [(&str, &str, &str); 42] = [
         include_str!("../../../data/js/gnoblin/snap.ts"),
     ),
     (
+        "gnoblin/transition",
+        "transition.ts",
+        include_str!("../../../data/js/gnoblin/transition.ts"),
+    ),
+    (
         "gnoblin/widgets",
         "widgets.ts",
         include_str!("../../../data/js/gnoblin/widgets.ts"),

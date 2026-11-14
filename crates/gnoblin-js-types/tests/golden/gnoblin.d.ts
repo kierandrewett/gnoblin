@@ -864,6 +864,11 @@ declare module "gnoblin" {
          * gives the end value. A duration of 0 writes at once.
          */
         animate(values: ClientAnimation, options: AnimateOptions): void;
+        /**
+         * Assigns `props` as one `requestTransition` of this client: the same as staging each assignment in a callback.
+         * A key that is not a writable property is a `TypeError`. Without `options` the change is atomic and immediate.
+         */
+        set(props: Record<string, unknown>, options?: TransitionOptions): Transition;
         close(): void;
         /** Puts the window on top of every other window. */
         raise(): void;
@@ -904,11 +909,56 @@ declare module "gnoblin" {
         easing?: ClientEasing;
     }
 
+    /** The easings of a transition: the ones of `Client.animate`, and the CSS names of the spec (`ease-out` is `out`, `ease-in-out` is `in-out`, `ease-in` is `in-cubic`). */
+    export type TransitionEasing = ClientEasing | "ease-out" | "ease-in-out" | "ease-in";
+
+    export interface TransitionOptions {
+        /** Milliseconds, 0 or more. Default 250. Zero commits the change at once, still as one transaction. */
+        duration?: number;
+        /** Default `"out"`. */
+        easing?: TransitionEasing;
+    }
+
+    /** What a transition ends with: `cancelled` is true when `cancel()` or a newer transition took every property it animated. */
+    export interface TransitionResult {
+        readonly cancelled: boolean;
+    }
+
+    /** Stops a callback before it runs. */
+    export interface TransitionSubscription {
+        unsubscribe(): void;
+    }
+
+    /**
+     * One `gnoblin.requestTransition`. There is no `progress`, `play`, `pause` or `reverse`: the compositor's tween player
+     * cannot be driven by an external progress, so `autoplay: false` and `delay` are refused (docs/js-transitions.md).
+     */
+    export class Transition {
+        readonly id: number;
+        /** The milliseconds the animation takes: the duration asked for, or 0 while the seat asks for reduced motion. */
+        readonly duration: number;
+        /** True from the call until the transition ends or is cancelled. */
+        readonly running: boolean;
+        /** True once `cancel()` or a newer transition took every property it animated. */
+        readonly cancelled: boolean;
+        /** Resolves once with `{ cancelled }`; never rejects. */
+        readonly finished: Promise<TransitionResult>;
+        /** Calls `fn` once, as a queued call, when the transition ends. */
+        onFinished(fn: (result: TransitionResult) => void): TransitionSubscription;
+        /** Writes every property the transition still animates at its end value at once, and settles `finished` with `{ cancelled: true }`. */
+        cancel(): void;
+    }
+
     /** A scene container that owns a layout and holds clients. */
     export class Workspace extends Node {
         readonly clients: Collection<Client>;
         /** Inner and outer gap that every stock layout reads from `LayoutContext`. */
         gaps: Gaps;
+        /**
+         * Assigns `props` (`layout`, `gaps`, `name`) as one `requestTransition`: the windows tween from where they are
+         * drawn to where the new layout puts them. Without `options` the change is atomic and immediate.
+         */
+        set(props: Record<string, unknown>, options?: TransitionOptions): Transition;
         /** Whether an output shows this workspace. With several outputs, several workspaces are active. */
         readonly active: boolean;
         /** The output that shows this workspace, or null while none does. */
@@ -2346,6 +2396,13 @@ declare module "gnoblin" {
         readonly gestures: GestureTools;
         /** The duration the shell gives an animation: `seconds`, or 0 while the seat asks for reduced motion. */
         motion(seconds: number): number;
+        /**
+         * Runs `callback` once, now, with every property write staged, and draws the change as one animation: each written
+         * property moves from where it is drawn to the staged value over `options.duration` milliseconds, and a layout change
+         * moves every window from its place. A failure leaves the previous state. Nothing animates under reduced motion.
+         * The callback may not be async, call `requestTransition` or have a side effect (`spawn`, `raise`).
+         */
+        requestTransition(callback: () => void, options?: TransitionOptions): Transition;
         /**
          * Starts a program and returns its `Process`: a command line for `/bin/sh`, or an array of the program and
          * its arguments. The same as `gnoblin.process.spawn`.

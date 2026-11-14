@@ -22,7 +22,7 @@ use thiserror::Error;
 
 use crate::supervisor::JsClock;
 
-pub(crate) use host::{adopt_windows, install, parents_first, spawn};
+pub(crate) use host::{adopt_windows, install, parents_first, prepare, script_value, spawn};
 
 /// What the shell asked the host to start with the session: one of the config's `autostart` commands.
 #[derive(Clone, Debug, PartialEq, Eq)]

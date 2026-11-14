@@ -60,6 +60,9 @@ const HOST_MODULE: &str = include_str!("../js/gnoblin.ts");
 /// The import name of [`HOST_MODULE`].
 const HOST_MODULE_NAME: &str = "gnoblin/host";
 
+/// The most promise jobs one frame's pump runs, so that a chain of jobs that schedules itself cannot hold the frame.
+const MAX_JOBS_PER_PUMP: usize = 1000;
+
 /// How many times a write the compositor refused `stale-base` is sent again before it is dropped: the
 /// number `gnoblin-lua`'s shell keeps. A node the compositor changes before every landing would refuse the
 /// write for ever, and the writes beside it, so after this many refusals in a row the refused write is
@@ -901,7 +904,33 @@ impl JsShell {
                 Err(other) => return Err(other),
             }
         }
-        Ok(())
+        self.pump_jobs(diagnostics)
+    }
+
+    /// Runs the promise jobs the queued calls left: the reaction of a `.then` on a promise a call settled, such as
+    /// `Transition.finished`. A script that chains jobs without end is cut at [`MAX_JOBS_PER_PUMP`] and the rest wait for
+    /// the next frame, and one that runs out its budget is stopped and counted like any call.
+    fn pump_jobs(&mut self, diagnostics: &mut Vec<String>) -> Result<(), JsShellError> {
+        match self
+            .generation
+            .call_budgeted(self.entry_budget, |ctx| {
+                for _ in 0..MAX_JOBS_PER_PUMP {
+                    if !ctx.execute_pending_job() {
+                        break;
+                    }
+                }
+                Ok(())
+            })
+            .map_err(JsShellError::from)
+        {
+            Ok(()) => Ok(()),
+            Err(JsShellError::Js(error)) if matches!(error.kind, JsErrorKind::Budget | JsErrorKind::Memory) => {
+                self.count_strike(&error);
+                diagnostics.push(format!("a promise job was stopped: {error}"));
+                Ok(())
+            }
+            Err(other) => Err(other),
+        }
     }
 
     /// Lays out the workspaces that changed this frame (membership, shown workspace, area or a layout's own
