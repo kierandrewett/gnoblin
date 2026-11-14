@@ -1254,6 +1254,7 @@ declare module "gnoblin" {
 
     /** A glob (`*` any run, `?` one character) that matches the whole text, or a RegExp tested anywhere in it. */
     export type Pattern = string | RegExp;
+    /** Style fields a rule can set. Only the listed fields exist; others are not rule keys. */
     export interface RuleStyle {
         cornerRadius?: number;
         /** From 0 to 1. Applied to the window. */
@@ -1292,6 +1293,7 @@ declare module "gnoblin" {
          */
         reapply?: boolean;
     }
+    /** The effects a rule set on a window, as `effectsFor` merges them. */
     export interface RuleEffects {
         workspace?: string;
         floating?: boolean;
@@ -1319,15 +1321,19 @@ declare module "gnoblin" {
         readonly focused: boolean;
         readonly workspace: string | null;
     }
-    /** Checks and compiles rules; throws a TypeError naming the rule's index and the field. */
+    /** Checks and compiles rules. Throws a `TypeError` naming the rule index and field. */
     export function compileRules(rules: readonly RuleConfig[], workspaces?: ReadonlySet<string> | null): CompiledRule[];
+    /** Compiles one pattern, a glob string or a RegExp, into the matcher object. `where` names it in errors. */
     export function compilePattern(value: unknown, where: string): object;
+    /** Whether the pattern matches the text: a glob must match the whole text, a RegExp is tested anywhere in it. */
     export function matchesPattern(pattern: object, text: string): boolean;
+    /** Whether a compiled rule's query keys all hold for the window view. */
     export function ruleMatches(rule: CompiledRule, view: RuleView): boolean;
     /** The rules that apply to a window, in list order: the first match, then on while a rule says `all`. */
     export function matchingRules(rules: readonly CompiledRule[], view: RuleView): CompiledRule[];
-    /** What a list of rules sets together: the later rule wins for each field. */
+    /** The effects `rules` sets together: the later rule wins for each field. */
     export function mergeEffects(rules: readonly CompiledRule[]): RuleEffects;
+    /** The effects the matching rules set on a window. */
     export function effectsFor(rules: readonly CompiledRule[], view: RuleView): RuleEffects;
     /** What an undone rule leaves a window with. */
     export const RULE_DEFAULTS: {
@@ -1336,7 +1342,7 @@ declare module "gnoblin" {
         readonly maximised: false;
         readonly opacity: 1;
     };
-    /** What the rule engine asks of the shell. */
+    /** The shell operations the rule engine calls; each takes the client it is about. */
     export interface RuleHost<C extends object> {
         view(client: C): RuleView;
         alive(client: C): boolean;
@@ -1361,7 +1367,9 @@ declare module "gnoblin" {
         onAppIdChanged(client: C): void;
     }
 
+    /** Focus policy for pointer and keyboard focus: `click`, `sloppy` or `follow-mouse`. */
     export type FocusMode = "click" | "sloppy" | "follow-mouse";
+    /** Whether a new window may take focus (`allow`) or never does (`prevent`). */
     export type NewWindowPolicy = "allow" | "prevent";
     /** The `focus` key of a config. A key left out is the seat's. */
     export interface FocusConfig {
@@ -1373,6 +1381,7 @@ declare module "gnoblin" {
         autoRaiseDelay?: number;
         changeOnPointerRest?: boolean;
     }
+    /** Resolved focus settings, with every key set. */
     export interface FocusSettings {
         readonly mode: FocusMode;
         readonly newWindows: NewWindowPolicy;
@@ -1381,17 +1390,24 @@ declare module "gnoblin" {
         readonly autoRaiseDelay: number;
         readonly changeOnPointerRest: boolean;
     }
+    /** The focus settings used when nothing is configured. */
     export const FOCUS_DEFAULTS: FocusSettings;
     /** The defaults with `user` on top; an unknown key or a bad value throws, naming `where`. */
     export function focusSettings(user?: FocusConfig, where?: string, base?: FocusSettings): FocusSettings;
     /** The seat's published settings in the library's words (hover is sloppy, hover-strict is follow-mouse). */
     export function seatFocusSettings(seat: SeatSettings): FocusSettings;
+    /** Whether a new window opened on a launcher token takes focus under these settings. */
     export function opensFocused(settings: FocusSettings, fromLauncher: boolean): boolean;
+    /** Whether hovering a window should focus it, given whether the pointer just entered. */
     export function hoverFocus(settings: FocusSettings, hovering: boolean, entered: boolean): boolean;
+    /** The auto-raise delay in seconds, from the millisecond setting. */
     export function autoRaiseSeconds(settings: FocusSettings): number;
+    /** Seconds the pointer must rest before a rest-focus change applies. */
     export const REST_SECONDS: number;
     export function restFocus(settings: FocusSettings): boolean;
+    /** Whether leaving a window clears focus under these settings. */
     export function leaveClears(settings: FocusSettings): boolean;
+    /** One input event the focus policy reacts to. */
     export type FocusEvent =
         | { readonly kind: "added"; readonly fromLauncher?: boolean; readonly skipFocus?: boolean }
         | { readonly kind: "enter" | "motion"; readonly held: boolean }
@@ -1407,18 +1423,27 @@ declare module "gnoblin" {
     }
     /** What to do about one event under `settings`. Pure. */
     export function focusDecision(settings: FocusSettings, event: FocusEvent): FocusDecision;
-    /** What the focus policy asks of the shell. */
+    /** The shell operations the focus policy calls; each takes the client it is about. */
     export interface FocusHost<C extends object> {
+        /** The settings to apply, read on every event. */
         settings(): FocusSettings;
+        /** Whether the client currently has keyboard focus. */
         focused(client: C): boolean;
+        /** Gives keyboard focus to the client. */
         focus(client: C): void;
+        /** Takes keyboard focus from every window. */
         clearFocus(): void;
+        /** Raises the client above its siblings. */
         raise(client: C): void;
+        /** The current time in milliseconds, for the auto-raise timers. */
         now(): number;
+        /** Whether the client has just appeared. */
         isArrival(client: C): boolean;
+        /** Whether the client opts out of focus when it appears. */
         skipsFocus(client: C): boolean;
         /** Whether `client` opened on a token the launcher minted (`focus.newWindows` then decides). Absent: no. */
         fromLauncher?(client: C): boolean;
+        /** Whether the client still exists. */
         alive(client: C): boolean;
     }
     /** Attached to a collection of clients: focus on a new window, hover and click focus, raise and auto raise. */
