@@ -1,57 +1,43 @@
-# window_effects
+# Window effects
 
-> **Status:** partly available. A shell gives a node a blur or a shadow through the node's `effects` list. Window rules are not a way to do it: `gnoblin.window_rule` was removed (rules are `seat.data.window_rules` in a [shell file](/user-shell)), and the stock shell draws blur and shadow only.
-
-This page says which window effects work today and which do not. The source of
-truth is the code, not this page.
+A window's blur and shadow come from its style. This page says which effects work today and which do not. The source
+of truth is the code, not this page.
 
 ## What works now
 
-| Effect                 | Where it works                                  | Set from                               |
-| ---------------------- | ----------------------------------------------- | -------------------------------------- |
-| Opacity, scale, offset | Animated tweens and open/close fades            | `opacity` rule: yes. Scale, offset: no |
-| Rounded corners        | Software, GLES and Vulkan renderers (see below) | `corners = {radius = n}` rule: yes     |
-| Tint                   | Software, GLES and Vulkan renderers             | No window rule key                     |
-| Blur behind a node     | GLES renderer only                              | The node's `effects` list              |
-| Shadow                 | GLES renderer only                              | The node's `effects` list              |
+| Effect                 | Where it works     | Set from                                            |
+| ---------------------- | ------------------ | --------------------------------------------------- |
+| Opacity                | Every renderer     | `style.opacity`, or a rule's `style`                |
+| Outer shadow           | GLES renderer only | `style.shadows`                                     |
+| Blur behind the window | GLES renderer only | `style.backdropFilter`                              |
+| Rounded corners        | Stored, not drawn  | `style.cornerRadius`                                |
+| Borders, filter, fill  | Stored, not drawn  | `style.borders`, `style.filter`, `style.background` |
 
-## The node `effects` list
+A property that no renderer draws is still stored and reported in the window's `computedStyle`, so a config that sets
+it keeps working when the renderer learns to draw it.
 
-Every node has an `effects` list, in paint order, first to last. A shell sets it
-like any other property:
+## Set an effect
 
-```lua
-node.effects = {
-    { kind = "shadow", offset_y = 4, blur_radius = 16 },
-    { kind = "blur", passes = 3, tint = "#10203040" },
-}
+Set the style where it should apply. X
+
+```ts
+import { defineConfig } from "gnoblin";
+
+export default defineConfig({
+    style: { shadows: [{ y: 8, blur: 24, color: "#00000066" }] },
+    rules: [{ appId: "foot", style: { opacity: 0.92 } }],
+});
 ```
 
-It is the only effects path. The kinds, their fields and ranges, the `skipped`
-list that names an effect the renderer will not draw, and `seat.effect_kinds`
-are on the [Effects](/shell-api/effects) page. The removed `window.add_effect`
-call, user shaders and the `effect.toml` schema file are listed there with what
-replaces each.
+The `style` key sets the style of every window. A window rule's `style` sets the matched window's own style, which beats
+it. The scopes, the full property list and the filters are in [window style](/js-style).
 
-## Window rules that do not apply
+## What a window rule cannot do
 
-These keys are refused when the config loads. Remove them from your rules; they
-have no effect today:
+A rule does not take `blur`, `corners`, `shader`, `animation`, `frame` or `match.layer`. A rule that names one is
+refused when the config loads, and the message names the key. Use `style.backdropFilter` for blur.
 
-- `blur`, `blur-ignore-shadows`
-- `corners` keys other than `radius`, such as `corners.shadow` and `smoothing`
-- `shader`, `shader-uniforms`: there are no user shaders. The `shader` effect
-  kind and the shader guide were removed; use a `blur` effect's `tint` or draw a
-  `Canvas`.
-- `animation`
-- `frame`
-- `match.layer`
+## Background blur from applications
 
-A rule that names one of them is refused, and the config reports an error at load.
-The reason for each key is in the [refused table](/config/window_rule).
-
-## Background blur from applications {#blur-and-opacity}
-
-Applications and shells can ask for blur behind a region they draw, through the
-`ext_background_effect` protocol. That path is separate from the `effects` list and is
-described in [background effects](/background-effects).
+Applications and shells can ask for blur behind a region they draw, through the `ext_background_effect` protocol. That
+path is separate from the style and is described in [background effects](/background-effects).

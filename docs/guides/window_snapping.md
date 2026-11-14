@@ -1,35 +1,33 @@
-# window_snapping
+# Window snapping
 
 [Configuration reference](/config/configure)
 
-With Bingux installed, drag a window toward an edge or press Super+Z to choose
-a layout. Bingux displays the picker; Gnoblin moves and resizes the window.
-The picker controls below belong to Bingux. Other shells can provide their own
-using the [integration API](#shell-integration).
+Dropping a dragged window on a screen edge tiles it. Turn that on in `~/.config/gnoblin/init.ts`:
 
-This supports resizable Wayland and X11 windows. Minimum sizes still apply;
-fullscreen and fixed-size windows are excluded.
+```ts
+import { defineConfig } from "gnoblin";
 
-## Use the picker
+export default defineConfig({
+    edgeTiling: true,
+});
+```
 
-| Action                       | Result                                 |
-| ---------------------------- | -------------------------------------- |
-| Drag toward the top centre   | Show layouts                           |
-| Release at the top edge      | Fill the work area                     |
-| Drag to a side or corner     | Half or quarter screen                 |
-| Release over a layout region | Snap to that region                    |
-| Hold Ctrl while dragging     | Select regions in the active layout    |
-| Super+Z                      | Choose a region for the focused window |
-| Arrows/Tab, then Enter       | Select with the keyboard               |
-| Escape                       | Cancel                                 |
-| Drag a snapped window away   | Restore its original size              |
+The stock config has it on. With it on, drag a window with `Super` and the left button until the pointer is within 4
+pixels of an edge, then release:
 
-Bingux saves layouts in `~/.config/bingux/snapping.ini`.
-It imports Tiling Shell layouts once when available; otherwise it supplies defaults.
+| Drop on        | Result                         |
+| -------------- | ------------------------------ |
+| The left edge  | The left half of the work area |
+| The right edge | The right half                 |
+| The top edge   | The whole work area            |
 
-Windows fill the usable part of the monitor, leaving room for panels that
-reserve space.
-See [drag boundaries](/guides/session_settings#window-drag-boundary) for overlap policy.
+Drag a snapped window away to restore its original size. Windows fill the usable part of the monitor, leaving room for
+panels that reserve space. Minimum sizes still apply; fullscreen and fixed-size windows are excluded. See
+[drag boundaries](/guides/session_settings#window-drag-boundary) for the overlap policy.
+
+With Bingux installed you can also press Super+Z to choose a layout. Bingux displays the picker, saves layouts in
+`~/.config/bingux/snapping.ini`, and imports Tiling Shell layouts once when available. Other shells can provide their
+own using the [integration API](#shell-integration).
 
 ## Shell integration
 

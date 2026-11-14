@@ -1,246 +1,109 @@
-# files_and_load_order
+# Files and load order
 
 [Configuration reference](/config/configure)
 
-Start with one `init.lua`. Split it into modules when that makes it easier
-to read.
+Start with one `init.ts`. Split it into modules when that makes it easier to read. A module is an ordinary TypeScript
+file that `init.ts` imports.
 
 ## Which file is loaded?
 
-The main config file used by your running session is `init.lua` in the config directory.
+The shell reads `init.ts` from the config directory, `~/.config/gnoblin` or `$XDG_CONFIG_HOME/gnoblin` when that
+variable is set. When `init.ts` does not exist it takes `init.js`. The `GNOBLIN_CONFIG` environment variable names one
+file instead, and its extension says which shell reads it. An already-running compositor does not see a variable you
+set in a terminal.
 
-The usual path is `~/.config/gnoblin/init.lua`, or
-`$XDG_CONFIG_HOME/gnoblin/init.lua` when that variable is set.
-The compositor's `GNOBLIN_CONFIG` environment variable overrides it.
+When no user config exists, the session runs the stock config described in the
+[TypeScript shell](/typescript-shell#with-no-initts). `gnoblinctl config init` writes a starter `init.ts` you can edit.
 
-Without that override, Gnoblin checks `init.lua`, then the old
-`gnoblin.toml` and `gnoblin.conf` names. Those names are detected only so Gnoblin
-can report that the file must be converted; TOML and CONF are not parsed. Rename
-or remove an old file after converting it to Lua. Every selected root and
-included configuration file must use the `.lua` suffix.
+There are no system drop-in directories: `/etc/gnoblin/conf.d` and `gnoblin/conf.d` under `XDG_DATA_DIRS` belong to the
+Lua shell and the JavaScript shell does not read them. Put a setting you want from a package in your `init.ts`.
 
-When no user config exists, the session loads the packaged starter configuration,
-followed by the [system drop-ins](#system-drop-ins). The first login copies the
-packaged `init.lua.example` to the selected config path and leaves existing files
-unchanged. Setting `GNOBLIN_CONFIG` in a terminal does not change the environment of
-an already-running compositor.
+## Split a config into files
 
-## System drop-ins
+An import runs the module, and the module's exports are values you put into `defineConfig`. Put each concern in its
+own file and combine them in `init.ts`:
 
-Packages and administrators can add configuration for every user without
-touching anyone's `init.lua`. Gnoblin loads these `.lua` files itself; nobody
-needs to add a `gnoblin.load` line for them.
-
-Gnoblin looks in these directories, in this order:
-
-1. `gnoblin/conf.d/` inside each directory of `XDG_DATA_DIRS`, such as
-   `/usr/share/gnoblin/conf.d/`. The default is `/usr/local/share:/usr/share`.
-   `XDG_DATA_DIRS` lists the highest priority first, so Gnoblin loads the last
-   entry first and the first entry last. When two packages set the same value,
-   the first entry wins.
-2. `/etc/gnoblin/conf.d/`, for settings that belong to this machine. It loads
-   after every package.
-
-Files inside one directory load in filename order (byte order). Name them
-`10-name.lua`, `90-name.lua` and so on to control the sequence. A directory
-that does not exist is skipped. Names that start with a dot, files without the
-`.lua` suffix and subdirectories are ignored; a drop-in can still load its own
-parts with `gnoblin.load("parts/extra.lua")`, relative to the drop-in file.
-
-Where the drop-ins fit depends on whether you have your own `init.lua`:
-
-| Your config               | Order                                                        |
-| ------------------------- | ------------------------------------------------------------ |
-| No `init.lua`             | Built-in defaults, then system drop-ins                      |
-| An `init.lua` of your own | System drop-ins, then your `init.lua` and the files it loads |
-
-Whatever loads later replaces earlier values. A package can change a built-in
-default, and your own config can change what a package set.
-
-A copy of the starter files that the first login made is part of your own
-config. If it contains a rule that a package also sets, your copy overrides the
-package. Delete that rule from your copy to use the package's value. The
-starter files never load the drop-ins a second time.
-
-A drop-in that has a syntax error or fails while it runs is skipped. Gnoblin
-loads the other drop-ins and your own config as usual, writes
-`ignored file <path>: <reason>` to the session log and lists it in the recovery
-notice. It does not reject a reload.
-
-Run `gnoblinctl config reload` after installing or removing a package that
-ships a drop-in.
-
-A Gnoblin installed under its own prefix, such as `/usr/local/lib/gnoblin`, adds
-that prefix's `share` directory to the front of `XDG_DATA_DIRS` for the
-session. Its `share/gnoblin/conf.d/` therefore loads last among the data
-directories.
-
-## Include a file
-
-```lua
-gnoblin.load("appearance.lua")
+```ts
+// appearance.ts
+export const appearance = { colorScheme: "prefer-dark", accent: "teal" } as const;
+export const cursor = { size: 28 } as const;
 ```
 
-The path is relative to the calling file. Absolute and `~/` paths also work.
-The included file uses the same API:
+```ts
+// keys.ts
+import { spawn } from "gnoblin";
 
-```lua
-gnoblin.configure {
-    window_management = {focus_mode = "hover"},
-}
+export const keys = {
+    "Super+Return": spawn("foot"),
+    "Super+d": spawn("fuzzel"),
+};
 ```
 
-## Include a directory
+```ts
+import { defineConfig } from "gnoblin";
+import { appearance, cursor } from "./appearance.ts";
+import { keys } from "./keys.ts";
 
-```lua
-gnoblin.load("conf.d/**/*.lua")
+export default defineConfig({ appearance, cursor, keys });
 ```
 
-Matching files load in filename order (byte order, independent of your language
-settings). Use numbered names such as `10-appearance.lua` and `90-local.lua`
-to make the order predictable.
-
-- `*`, `?` and `[abc]` match within one path segment.
-- `**` also searches subdirectories, without following directory symlinks.
-- Hidden names need an explicit dot in the pattern.
-- An unmatched glob is allowed; a missing exact filename is an error.
-
-Gnoblin reads these files at login and on reload. It does not watch them. After you
-add, remove or change a file, run `gnoblinctl config reload`.
+- A path starts with `./` or `../` and names the file with its extension. It resolves under the config directory, and a
+  path outside it is refused.
+- There is no glob. List each file you import. To control the order of two lists, spread them in the order you want:
+  `rules: [...baseRules, ...localRules]`.
+- A module that is imported twice runs once.
+- A module is a program, so it can compute a value or read the `gnoblin` object like `init.ts` can. Keep it quick: the
+  whole load runs inside one time budget.
+- An import that does not resolve, a syntax error or a throw in any file fails the load at the line you wrote, in that
+  file's own coordinates. The running config stays.
 
 ## Override or append?
 
-Put `gnoblin.load(...)` calls before your personal settings so your changes
-are applied last.
+Settings that are tables merge by key, and lists replace. Build the table or list you want, with a spread when you
+want to append:
 
-Repeated `gnoblin.configure` calls keep settings you have not changed:
+```ts
+import { defineConfig, spawn } from "gnoblin";
 
-```lua
-gnoblin.configure {window_management = {focus_mode = "hover"}}
-gnoblin.configure {window_management = {raise_on_click = true}}
+const common = { "Super+Return": spawn("foot"), "Super+d": spawn("fuzzel") };
+const laptop = { XF86MonBrightnessUp: spawn("brightnessctl", "set", "5%+") };
+
+export default defineConfig({
+    keys: { ...common, ...laptop },
+    autostart: ["waybar", "nm-applet --indicator"],
+});
 ```
 
-The result keeps sloppy focus and raises windows when clicked. The second call
-does not remove settings that it does not mention.
+- `keys` merge by trigger, and a key of yours replaces the stock key with the same trigger.
+- `rules`, `autostart` and `workspaces` are lists. Yours replaces the stock list as a whole.
+- Later properties of an object spread win, so put the file that should have the last word last.
 
-Lists replace earlier values. This applies to `shortcuts` and `autostart`. Window rules are not part of the
-configuration: see [Shell files](/user-shell).
+The [defineConfig reference](/typescript-config#how-your-config-combines-with-the-stock-one) lists how each key
+combines with the stock config.
 
-The `shortcuts` and `autostart` maps merge entries with the same name. Set an
-entry's `enable` field to `false` to disable an imported shortcut or autostart.
-Disabling an autostart entry does not stop a running process.
+## What a config file can do
 
-To remove every shortcut loaded so far:
+`init.ts` and its modules are TypeScript run by the shell. They can use the language's own features and the
+`gnoblin` object. Three limits apply:
 
-```lua
-gnoblin.configure {shortcuts = {}}
+- They cannot read files, and they cannot run programs while loading. Start a program with a key, an `autostart`
+  entry or `gnoblin.spawn` from a function that runs after the load.
+- An endless loop is cut off by the time budget.
+- Each reload evaluates the files again, so a variable does not survive it.
+
+## Reload
+
+A save reloads a running session, and so does `gnoblinctl config reload`. The shell watches the config directory, and
+any module file in it that changes triggers one reload. `GNOBLIN_JS_WATCH=0` turns that off, for a file system that
+cannot be watched.
+
+A reload commits the whole document your files describe, so a setting you delete is back to its default. The
+[TypeScript shell](/typescript-shell#where-the-config-lives) says what a reload does to running `autostart` commands.
+A failed reload keeps the running config, and `gnoblinctl config reload` prints the error with its file, line and
+column.
+
+Check a set of files without a session:
+
+```sh
+gnoblinctl check init.ts
 ```
-
-Use `gnoblin.configure.shortcuts` to add or change individual shortcuts
-without clearing the others.
-
-## Use a Lua module
-
-Use a module when you want a file to return settings for another file to use.
-For ordinary config files, `gnoblin.load` is enough.
-
-In `appearance.lua`:
-
-```lua
-return {window_management = {focus_mode = "hover"}}
-```
-
-In `init.lua`:
-
-```lua
-gnoblin.configure(require("appearance"))
-```
-
-`require("appearance")` loads `appearance.lua` from the directory of the top-level
-`init.lua`. `require("parts.motion")` loads `parts/motion.lua` from the same directory.
-It runs once per reload.
-
-Returning a table does not apply its settings by itself. Pass it to
-`gnoblin.configure` as shown above.
-
-Dots in a module name are directory separators. For a file that should run in place
-and return nothing, use `gnoblin.load("parts/motion.lua")`. Avoid loading the same file
-through both a glob and `require`.
-
-## Available Lua functions
-
-`gnoblin` is available globally in every loaded file and module.
-See the [function reference](/config#api-reference).
-
-Setting names use `snake_case`. The API converts them to Gnoblin's internal
-hyphenated names. String values, shader uniform names and renderer names stay
-literal. Do not supply both spellings of the same key in one table.
-
-Each reload evaluates the files again; Lua variables do not survive it.
-
-Config code can use Lua's table, string, math and UTF-8 helpers. It cannot read
-arbitrary files, run processes or load native modules. These are not available:
-
-- The `os`, `io`, `debug` and `package` libraries. `os.getenv("HOME")` fails
-  with "attempt to index a nil value (global 'os')".
-- `dofile` and `loadfile`. To load another file, use `gnoblin.load`.
-
-To launch programs, use shortcuts or autostart.
-
-Evaluation is limited to 8 MiB of Lua memory, one million instructions and
-32 nested files.
-
-For event-driven compositor behavior, load a Lua module that registers a
-callback with `gnoblin.on`. See [Lua event handlers](/user-scripts) and
-the [event reference](/events/). Keep presentation in separate
-Wayland clients; the runtime API controls compositor state.
-
-## Reload and persistence
-
-| Change                             | Applies                                        | When removed                              |
-| ---------------------------------- | ---------------------------------------------- | ----------------------------------------- |
-| Rules and animations               | On reload                                      | Earlier rules/defaults apply              |
-| Titlebar policy                    | After reload and the app's next surface update | Earlier rules/defaults apply              |
-| Command shortcuts                  | On reload                                      | Binding released; launched process stays  |
-| Built-in keybindings               | On reload                                      | Built-in default applies                  |
-| Window-management preferences      | On reload                                      | Gnoblin default applies                   |
-| Compositor interaction preferences | On reload                                      | Gnoblin default applies                   |
-| Input preferences                  | On reload                                      | GNOME/Mutter settings apply               |
-| Input sources                      | On reload                                      | Session input sources apply               |
-| Orientation lock                   | On reload                                      | GNOME orientation setting applies         |
-| Cursor theme and size              | On reload                                      | Adwaita at 24 logical pixels              |
-| Notifications and layout popup     | On reload                                      | Saved GSettings value stays               |
-| Autostart                          | Reconciled on reload                           | Updated or removed child stops            |
-| Renderer services                  | Restart on reload                              | Enabled frames use native fallback        |
-| Protocols                          | On reload for new clients                      | Default on reload for new clients         |
-| Launcher focus behaviour           | On reload                                      | Default on reload                         |
-| Drag boundary                      | Next drag after reload                         | Defaults to enabled                       |
-| Portal routes                      | Portal service restarts on reload              | Active portal requests may be interrupted |
-| Xwayland server flags              | Xwayland restarts when flags change            | Running X11 apps disconnect               |
-
-If you change a setting with the CLI, a value written in your config file
-will replace that change on the next config reload.
-
-`gnoblinctl config reload` replaces the active Lua configuration and its event
-callbacks. It does not replace native libraries or restart separate desktop
-clients.
-
-## Reload and error notices
-
-Gnoblin draws a small notice at the top centre of the screen when a reload
-finishes and when a shortcut or command you configured does not start.
-Notices never take keyboard focus. A click on a notice dismisses it; a click
-anywhere else goes to the window underneath.
-
-| Event                                 | Notice                                                 | Removed                                                       |
-| ------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------- |
-| A reload applied                      | `Config reloaded`                                      | After about 2 seconds. Another reload restarts the time.      |
-| A reload was rejected                 | `Config reload failed` and the first line of the error | When you click it, or when a later reload succeeds.           |
-| A shortcut or command could not start | `<name> could not start: <reason>`                     | After about 8 seconds. Repeats of the same message show once. |
-
-For example, `media-next could not start: No such file or directory` means the
-command behind the `media-next` shortcut is not installed. A rejected reload
-leaves the active configuration unchanged. Run
-`gnoblinctl config reload` to see the whole error. Up to four notices stack
-under each other; the oldest goes first. Starting the session shows no
-reload notice.
