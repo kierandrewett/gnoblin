@@ -5,11 +5,12 @@
 //! short code for a refusal (`unknown-node`, `unknown-property`, `read-only`, `invalid-value`,
 //! `unknown-method`), which `js/gnoblin.ts` turns into an error naming the member.
 
+use gnoblin_proto::tree::effect;
 use gnoblin_tree_client::tree_mirror::{MirrorValue, NIL, NodeId, TreeMirror, lua_class};
 use rquickjs::{Ctx, Function, Object, Value};
 
 use super::props::{JsPropKind, default_value, defs_for, may_call};
-use super::{HostState, JsHostValue, JsSpawnRequest, NodeHandles, SharedState};
+use super::{HostState, JsHostValue, JsSpawnRequest, NodeHandles, SharedState, effect_from_js};
 
 /// Every node of the mirror, parents before their children. The root's tree comes first, in tree order; then
 /// each tree that has no parent (the compositor makes a window unparented, and a shell parents it), by id.
@@ -82,6 +83,8 @@ pub(crate) enum JsScriptValue {
     Number(f64),
     Text(String),
     Numbers(Vec<f64>),
+    /// An array of effect objects. An empty array is `Numbers`, and an `effects` write takes it as the empty list.
+    Effects(Vec<effect::Properties>),
     Other,
 }
 
@@ -98,6 +101,10 @@ fn convert(kind: JsPropKind, value: &JsScriptValue, handles: &NodeHandles) -> Op
             if list.len() == VECTOR_LEN && list.iter().all(|n| n.is_finite()) =>
         {
             Some(MirrorValue::List(list.clone()))
+        }
+        (JsPropKind::Effects, JsScriptValue::Effects(list)) => Some(MirrorValue::Effects(list.clone())),
+        (JsPropKind::Effects, JsScriptValue::Numbers(list)) if list.is_empty() => {
+            Some(MirrorValue::Effects(Vec::new()))
         }
         _ => None,
     }
@@ -285,11 +292,15 @@ fn script_value<'js>(value: &Value<'js>) -> JsScriptValue {
         JsScriptValue::Number(n)
     } else if let Some(text) = value.as_string().and_then(|text| text.to_string().ok()) {
         JsScriptValue::Text(text)
-    } else if let Some(list) = value
-        .as_array()
-        .and_then(|array| array.iter::<f64>().collect::<Result<Vec<_>, _>>().ok())
-    {
-        JsScriptValue::Numbers(list)
+    } else if let Some(array) = value.as_array() {
+        if let Ok(list) = array.iter::<f64>().collect::<Result<Vec<_>, _>>() {
+            return JsScriptValue::Numbers(list);
+        }
+        let effects: Option<Vec<effect::Properties>> = array
+            .iter::<Object<'js>>()
+            .map(|item| item.ok().and_then(|object| effect_from_js(&object)))
+            .collect();
+        effects.map_or(JsScriptValue::Other, JsScriptValue::Effects)
     } else {
         JsScriptValue::Other
     }

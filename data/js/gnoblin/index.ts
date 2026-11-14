@@ -27,3 +27,31 @@ export * from "gnoblin/alerts";
 export * from "gnoblin/launcher";
 export * from "gnoblin/overview";
 export * from "gnoblin/panel";
+// The style classes and their list elements. The cascade's plumbing (`bindStyle`, `resolveStyle`, ...) stays in the
+// module for the host.
+export {
+    Border,
+    BlurFilter,
+    BrightnessFilter,
+    ClientStyle,
+    ContrastFilter,
+    MAX_STYLE_LIST,
+    SaturateFilter,
+    Shadow,
+    Style,
+} from "gnoblin/style";
+export type {
+    BorderInit,
+    BorderLike,
+    BorderValue,
+    ClientStyleInit,
+    ComputedStyle,
+    CornerRadii,
+    Filter,
+    FilterInit,
+    FilterValue,
+    ShadowInit,
+    ShadowLike,
+    ShadowValue,
+    StyleProperty,
+} from "gnoblin/style";

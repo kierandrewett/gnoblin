@@ -2043,3 +2043,87 @@ fn protocols_and_touchpad_gestures_reach_the_compositors_document_and_a_reload_t
         held("/protocols", &ipc).is_none() && held("/touchpad-gestures", &ipc).is_none()
     });
 }
+
+/// What the compositor holds on the window node of `app` for its style: the effects as `(kind, offset_y, blur_radius,
+/// colour)` and the opacity (1 when the node holds none, which is the schema's default).
+fn style_of(ipc: &Path, app: &str) -> Option<(Vec<(String, f64, f64, String)>, f64)> {
+    let node = support::snapshot(ipc)
+        .into_iter()
+        .find(|node| node.class == "window" && node.app_id == app)?;
+    let effects = node
+        .props
+        .iter()
+        .find(|prop| prop.key == "effects")
+        .map(|prop| {
+            prop.value_effects
+                .iter()
+                .map(|e| (e.kind.clone(), e.offset_y, e.blur_radius, e.colour.clone()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let opacity = node
+        .props
+        .iter()
+        .find(|prop| prop.key == "opacity")
+        .map_or(1.0, |prop| prop.value_double);
+    Some((effects, opacity))
+}
+
+#[test]
+fn a_global_style_becomes_the_effect_list_and_opacity_of_a_mapped_windows_node_and_a_reload_clears_them() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    fs::write(
+        config.path().join("init.ts"),
+        r##"import { Layout, defineConfig } from "gnoblin";
+
+defineConfig({
+    workspaces: [{ id: "desk", layout: new Layout() }],
+    style: { opacity: 0.8, shadows: [{ x: 0, y: 8, blur: 24, color: "#00000066" }] },
+    rules: [{ appId: "org.example.dim", style: { opacity: 0.5 } }],
+    setup: (gnoblin) => {
+        gnoblin.clients.where({ appId: "org.example.glow" }).style.shadows = [{ blur: 30, color: "#38bdf855" }];
+    },
+});
+"##,
+    )
+    .expect("init.ts");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    wait_for("the shell runs the config", &session, &mut mapper, &shell, || {
+        shell.generation() > 0 && shell.view().contains(", 1 workspaces")
+    });
+
+    let (plain, dim, glow) = ("org.example.plain", "org.example.dim", "org.example.glow");
+    for app in [plain, dim, glow] {
+        mapper.map_window(app, app);
+    }
+    let shadow = |blur: f64, colour: &str| vec![("shadow".to_owned(), 0.0, blur, colour.to_owned())];
+    let global = (vec![("shadow".to_owned(), 8.0, 24.0, "#00000066".to_owned())], 0.8);
+    wait_for("the style reaches the nodes", &session, &mut mapper, &shell, || {
+        style_of(&ipc, plain).as_ref() == Some(&global)
+            && style_of(&ipc, dim) == Some((global.0.clone(), 0.5))
+            && style_of(&ipc, glow) == Some((shadow(30.0, "#38bdf855"), 0.8))
+    });
+
+    // Removing the lines is a reload, and the new generation takes the effects and the opacity off the nodes the old
+    // one styled.
+    let generation = shell.generation();
+    fs::write(
+        config.path().join("init.ts"),
+        r#"import { Layout, defineConfig } from "gnoblin";
+
+defineConfig({ workspaces: [{ id: "desk", layout: new Layout() }] });
+"#,
+    )
+    .expect("init.ts");
+    wait_for("the reload clears the style", &session, &mut mapper, &shell, || {
+        shell.generation() > generation
+            && [plain, dim, glow]
+                .iter()
+                .all(|app| style_of(&ipc, app) == Some((Vec::new(), 1.0)))
+    });
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    shell.finish();
+}

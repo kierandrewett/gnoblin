@@ -7,7 +7,7 @@
 //
 //   config key          plan                                                      host applies it as
 //   gaps.inner/outer    workspaces[].gaps, passed to layouts as LayoutContext.gap  Workspace.gaps
-//   style               style, stored as written (no native effect yet)            gnoblin.clients.style
+//   style               style, checked here and read as written                    gnoblin.clients.style
 //   decorations         decorations, a flag                                       a Titlebar on every client
 //   menus               menus, a flag                                             the window menu answers menu requests
 //   alerts              alerts, a flag                                            the not-responding alert watches windows
@@ -45,6 +45,8 @@ import { openLauncher } from "gnoblin/launcher";
 import type { Gaps, Layout } from "gnoblin/layout";
 import { compileRules } from "gnoblin/rules";
 import type { RuleConfig } from "gnoblin/rules";
+import { checkStyleInit } from "gnoblin/style";
+import type { BorderInit, CornerRadii, FilterInit } from "gnoblin/style";
 import { checkGaps, rejectUnknown, resolveLayout } from "gnoblin/workspace";
 import type { StockLayoutName } from "gnoblin/workspace";
 import type { Client } from "gnoblin/host";
@@ -111,13 +113,30 @@ export interface ShadowConfig {
     blur?: number;
     spread?: number;
     color?: string;
+    inset?: boolean;
 }
 
-/** Window style. Stored for the host; nothing applies it natively yet. */
+/**
+ * The style every client starts from: `gnoblin.clients.style` set from the config. The same properties and values as a
+ * `ClientStyle` (docs/js-style.md); a property left out is not set.
+ */
 export interface StyleConfig {
-    cornerRadius?: number;
+    cornerRadius?: number | CornerRadii;
     opacity?: number;
+    background?: string | null;
+    borders?: readonly BorderInit[];
     shadows?: readonly ShadowConfig[];
+    filter?: readonly FilterInit[];
+    backdropFilter?: readonly FilterInit[];
+}
+
+/** `style` as written, after a throwaway style has taken it: a bad value fails the config naming `config.style`. */
+function checkStyle(style: StyleConfig | undefined): StyleConfig {
+    if (style === undefined) {
+        return {};
+    }
+    checkStyleInit(style, "config.style");
+    return style;
 }
 
 /** Hardware profile of one output. Stored for the host; nothing applies it natively yet. */
@@ -644,7 +663,7 @@ export function desugarConfig(config: GnoblinConfig): ConfigPlan {
         decorations: checkDecorations(config.decorations),
         menus: checkSwitch(config.menus, "menus"),
         alerts: checkSwitch(config.alerts, "alerts"),
-        style: config.style ?? {},
+        style: checkStyle(config.style),
         outputs: config.outputs ?? {},
         workspaces,
         bindings: [...planKeys(config.keys ?? {}, ids), ...planLauncher(config.launcher, config.keys ?? {})],

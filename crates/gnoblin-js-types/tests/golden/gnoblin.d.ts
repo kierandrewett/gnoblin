@@ -737,8 +737,16 @@ declare module "gnoblin" {
         secure: boolean;
         /** A floating client is left out of its workspace's tiling and keeps its place. Only the script knows it. */
         floating: boolean;
-        style: ClientStyle;
-        readonly computedStyle: Readonly<ClientStyle>;
+        /**
+         * The overrides this client has, and only those: a property never set here is `undefined` and comes from the
+         * scopes above. Reading a list it does not override gives a copy of the inherited one; the first write to the
+         * copy makes it this client's own. Docs: docs/js-style.md.
+         */
+        readonly style: ClientStyle;
+        /** The style this client resolves to now: frozen, with the layer each value came from in `origin`. */
+        readonly computedStyle: ComputedStyle;
+        /** What of the style is not drawn and why, and the effects the compositor skipped. */
+        readonly styleWarnings: readonly string[];
         /** Whether the window sits in a tiled layout, so its client drops the border and rounding it draws itself. */
         tiled: boolean;
         /** The window's place in depth; negative is in front of the camera. */
@@ -807,25 +815,165 @@ declare module "gnoblin" {
         outer: number;
     }
 
-    // -- Styles ---------------------------------------------------------------
+    // -- Styles (docs/js-style.md) --------------------------------------------
 
-    export interface Shadow {
+    export interface CornerRadii {
+        topLeft: number;
+        topRight: number;
+        bottomRight: number;
+        bottomLeft: number;
+    }
+    /** How many entries a style list holds, and how many effects a window's node carries. */
+    export const MAX_STYLE_LIST: 8;
+    /** What every list element shares: it is written out as plain data. */
+    export abstract class StyleElement {
+        toJSON(): Record<string, unknown>;
+    }
+    export interface BorderInit {
+        width?: number;
+        color?: Color;
+        offset?: number;
+        inset?: boolean;
+    }
+    /** One stroke around the window. Not drawn by any renderer yet. */
+    export class Border extends StyleElement {
+        constructor(init?: BorderInit);
+        /** At least 0. Default 1. */
+        width: number;
+        /** `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`. Default `#ffffff`. */
+        color: Color;
+        offset: number;
+        inset: boolean;
+    }
+    export interface ShadowInit {
         x?: number;
         y?: number;
         blur?: number;
         spread?: number;
-        /** `#rgb`, `#rrggbb` or `#rrggbbaa`. */
-        color?: string;
+        color?: Color;
+        inset?: boolean;
     }
-    export interface Style {
+    /** A shadow behind the window. An inset one is kept and not drawn. */
+    export class Shadow extends StyleElement {
+        constructor(init?: ShadowInit);
+        x: number;
+        y: number;
+        /** From 0 to 100. Default 12. */
+        blur: number;
+        /** From -100 to 100. Default 0. */
+        spread: number;
+        /** Default `#00000080`. */
+        color: Color;
+        inset: boolean;
+    }
+    export class BlurFilter extends StyleElement {
+        constructor(init?: { radius?: number });
+        /** From 0 to 100. Default 12. The compositor blurs at a fixed radius: a positive one switches the blur on. */
+        radius: number;
+    }
+    export class SaturateFilter extends StyleElement {
+        constructor(init?: { amount?: number });
+        /** From 0 to 2. Default 1. */
+        amount: number;
+    }
+    export class BrightnessFilter extends StyleElement {
+        constructor(init?: { amount?: number });
+        /** From 0 to 2. Default 1. */
+        amount: number;
+    }
+    export class ContrastFilter extends StyleElement {
+        constructor(init?: { amount?: number });
+        /** From 0 to 2. Default 1. */
+        amount: number;
+    }
+    export type Filter = BlurFilter | SaturateFilter | BrightnessFilter | ContrastFilter;
+    /** A filter, or the shorthand: `{ blur: 18 }` is a `BlurFilter` of radius 18. */
+    export type FilterInit =
+        Filter | { blur: number } | { saturate: number } | { brightness: number } | { contrast: number };
+    export type BorderLike = Border | BorderInit;
+    export type ShadowLike = Shadow | ShadowInit;
+    export type StyleProperty =
+        "opacity" | "filter" | "backdropFilter" | "cornerRadius" | "borders" | "shadows" | "background";
+    export interface ClientStyleInit {
         opacity?: number;
-        cornerRadius?: number;
-        shadows?: Shadow[];
+        cornerRadius?: number | CornerRadii;
+        background?: Color | null;
+        borders?: readonly BorderLike[];
+        shadows?: readonly ShadowLike[];
+        filter?: readonly FilterInit[];
+        backdropFilter?: readonly FilterInit[];
     }
-    export interface ClientStyle extends Style {
-        borderWidth?: number;
-        borderColor?: string;
+    /**
+     * What one scope sets; a property it does not set is `undefined` (lists: a copy of the inherited list) and
+     * inherited. Assigning `undefined` is `unset`.
+     */
+    export class Style {
+        constructor(init?: {
+            opacity?: number;
+            filter?: readonly FilterInit[];
+            backdropFilter?: readonly FilterInit[];
+        });
+        /** From 0 to 1. Written to the window node's `opacity`. */
+        opacity: number | undefined;
+        /** The chain applied to the window's own content. No renderer draws it yet. */
+        get filter(): Filter[];
+        set filter(value: readonly FilterInit[] | undefined);
+        /** The chain applied to what is behind the window. A blur in it is the one the compositor draws. */
+        get backdropFilter(): Filter[];
+        set backdropFilter(value: readonly FilterInit[] | undefined);
+        /** Takes the named properties back to inheriting. */
+        unset(...names: StyleProperty[]): void;
+        /** Takes every property back to inheriting. */
+        reset(): void;
+        /** What this scope sets, as plain data. */
+        toJSON(): Record<string, unknown>;
     }
+    /** The style of a client, or the defaults a scope of clients gives. */
+    export class ClientStyle extends Style {
+        constructor(init?: ClientStyleInit);
+        /** A number, or one radius per corner. Not drawn by any renderer yet. */
+        cornerRadius: number | Readonly<CornerRadii> | undefined;
+        /** A colour, or `null` for none. Not drawn by any renderer yet. */
+        background: Color | null | undefined;
+        get borders(): Border[];
+        set borders(value: readonly BorderLike[] | undefined);
+        /** Behind the window; the first entry is on top. */
+        get shadows(): Shadow[];
+        set shadows(value: readonly ShadowLike[] | undefined);
+    }
+    export interface BorderValue {
+        readonly width: number;
+        readonly color: Color;
+        readonly offset: number;
+        readonly inset: boolean;
+    }
+    export interface ShadowValue {
+        readonly x: number;
+        readonly y: number;
+        readonly blur: number;
+        readonly spread: number;
+        readonly color: Color;
+        readonly inset: boolean;
+    }
+    export type FilterValue =
+        | { readonly kind: "blur"; readonly radius: number }
+        | { readonly kind: "saturate"; readonly amount: number }
+        | { readonly kind: "brightness"; readonly amount: number }
+        | { readonly kind: "contrast"; readonly amount: number };
+    /** A client's resolved style: frozen data, and the layer each property came from. */
+    export interface ComputedStyle {
+        readonly opacity: number;
+        readonly cornerRadius: number | Readonly<CornerRadii>;
+        readonly background: Color | null;
+        readonly borders: readonly BorderValue[];
+        readonly shadows: readonly ShadowValue[];
+        readonly filter: readonly FilterValue[];
+        readonly backdropFilter: readonly FilterValue[];
+        /** `default`, `global`, `workspace:<id>`, `where(<query>)` or `client`. */
+        readonly origin: Readonly<Record<StyleProperty, string>>;
+    }
+    /** The style a config sets for every client: `gnoblin.clients.style`. */
+    export type StyleConfig = ClientStyleInit;
 
     // -- Collections (owner-spec section 5) -----------------------------------
 
@@ -843,8 +991,17 @@ declare module "gnoblin" {
         filter(predicate: (item: T) => boolean): T[];
         /** A snapshot array. */
         map<U>(mapper: (item: T) => U): U[];
-        /** A live selection. The query is plain data so the compositor can evaluate it. */
-        where(query: Query<T>): Collection<T>;
+        /**
+         * A live selection. The query is plain data so the compositor can evaluate it. `priority` ranks the selection's
+         * `style` among the others a client is in: higher wins, and among equals the one whose style was made later.
+         */
+        where(query: Query<T>, options?: { priority?: number }): Collection<T>;
+        /**
+         * The defaults this collection of clients gives: all of them for `gnoblin.clients`, a workspace's own for its
+         * `clients`, the selected ones for a `where()`. Only a collection of clients has one.
+         */
+        get style(): ClientStyle;
+        set style(value: ClientStyle | ClientStyleInit);
         addListener(listener: CollectionListener<T> | MemberListener<T>): void;
         removeListener(listener: object): void;
     }
@@ -1465,12 +1622,12 @@ declare module "gnoblin" {
         setMaximised(client: C, on: boolean): void;
         setSecure(client: C, on: boolean): void;
         setOpacity(client: C, value: number): void;
+        setStyle(client: C, field: "cornerRadius" | "shadows", value: number | readonly unknown[] | undefined): void;
     }
     /** Applies rules to the windows of a collection it is attached to; `defineConfig` attaches one. */
     export class RuleEngine<C extends object> {
         constructor(rules: readonly CompiledRule[], host: RuleHost<C>);
         skipsFocus(client: C): boolean;
-        styleOf(client: C): { cornerRadius?: number; shadows?: readonly unknown[] };
         onAdded(client: C): void;
         onTitleChanged(client: C): void;
         onAppIdChanged(client: C): void;
@@ -1706,7 +1863,7 @@ declare module "gnoblin" {
     /** Plain data first: `export default defineConfig({ ... })`. Each key desugars to the object API. */
     export interface Config {
         gaps?: Partial<Gaps>;
-        style?: ClientStyle;
+        style?: StyleConfig;
         workspaces?: readonly WorkspaceConfig[];
         /** Keyed by connector name, for example `"DP-1"`. */
         outputs?: Record<string, OutputSetting>;

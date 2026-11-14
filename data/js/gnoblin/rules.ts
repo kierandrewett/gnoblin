@@ -23,6 +23,7 @@
 // A rule that matches nothing changes nothing. A malformed rule throws at compile time (`defineConfig` runs it),
 // naming the rule's index and the field, never at match time.
 
+import { checkStyleInit } from "gnoblin/style";
 import { rejectUnknown } from "gnoblin/workspace";
 
 /** A plain glob (`*` any run of characters, `?` one) matching the whole text, or a RegExp tested anywhere in it. */
@@ -234,6 +235,7 @@ function compileEffects(rule: RuleConfig, where: string, workspaces: ReadonlySet
             if (!Array.isArray(style.shadows)) {
                 fail(`${where}.style.shadows`, "must be an array");
             }
+            checkStyleInit({ shadows: style.shadows }, `${where}.style`);
             effects.shadows = style.shadows;
         }
     }
@@ -352,12 +354,16 @@ export interface RuleHost<C extends object> {
     setMaximised(client: C, on: boolean): void;
     setSecure(client: C, on: boolean): void;
     setOpacity(client: C, value: number): void;
+    /**
+     * Sets one style property of the client's own style, or takes it back to inheriting when `value` is `undefined`.
+     * What a rule's `cornerRadius` and `shadows` become; `setOpacity` is the same for `opacity`.
+     */
+    setStyle(client: C, field: "cornerRadius" | "shadows", value: number | readonly unknown[] | undefined): void;
 }
 
 interface Applied {
     /** The indices of the rules that applied the last time the rules were read. */
     matched: Set<number>;
-    style: { cornerRadius?: number; shadows?: readonly unknown[] };
 }
 
 /**
@@ -383,17 +389,12 @@ export class RuleEngine<C extends object> {
         return this.#skipFocus.has(client);
     }
 
-    /** The corner radius and shadows the rules gave a window: stored, and not drawn by anything yet. */
-    styleOf(client: C): { cornerRadius?: number; shadows?: readonly unknown[] } {
-        return { ...this.#applied.get(client)?.style };
-    }
-
     onAdded(client: C): void {
         if (this.#rules.length === 0 || !this.#host.isArrival(client) || this.#applied.has(client)) {
             return;
         }
         const matched = matchingRules(this.#rules, this.#host.view(client));
-        this.#applied.set(client, { matched: new Set(matched.map((rule) => rule.index)), style: {} });
+        this.#applied.set(client, { matched: new Set(matched.map((rule) => rule.index)) });
         this.#apply(client, mergeEffects(matched));
     }
 
@@ -435,6 +436,11 @@ export class RuleEngine<C extends object> {
                 }
             }
             this.#apply(client, undone);
+            for (const field of ["cornerRadius", "shadows"] as const) {
+                if (stopped.some((rule) => rule.effects[field] !== undefined) && kept[field] === undefined) {
+                    this.#host.setStyle(client, field, undefined);
+                }
+            }
         }
         if (started.length > 0) {
             this.#apply(client, mergeEffects(started));
@@ -458,14 +464,11 @@ export class RuleEngine<C extends object> {
         if (effects.opacity !== undefined) {
             host.setOpacity(client, effects.opacity);
         }
-        const style = this.#applied.get(client)?.style;
-        if (style !== undefined) {
-            if (effects.cornerRadius !== undefined) {
-                style.cornerRadius = effects.cornerRadius;
-            }
-            if (effects.shadows !== undefined) {
-                style.shadows = effects.shadows;
-            }
+        if (effects.cornerRadius !== undefined) {
+            host.setStyle(client, "cornerRadius", effects.cornerRadius);
+        }
+        if (effects.shadows !== undefined) {
+            host.setStyle(client, "shadows", effects.shadows);
         }
         this.#place(client, effects);
         if (effects.fullscreen !== undefined) {

@@ -835,6 +835,14 @@ impl JsShell {
                 diagnostics.push(text);
             }
         }
+        // What the module could not do and says once per generation (a style property no renderer draws).
+        let notices: Vec<String> = self.call_entry(self.entry_budget, |entry| {
+            entry.get::<_, Function<'_>>("takeNotices")?.call(())
+        })?;
+        for notice in notices {
+            log::info!(area = "shell", "{notice}");
+            diagnostics.push(notice);
+        }
         Ok(())
     }
 

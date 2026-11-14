@@ -40,7 +40,7 @@ import { FOCUS_DEFAULTS, FocusPolicy, focusSettings, seatFocusSettings } from "g
 import type { FocusConfig, FocusSettings } from "gnoblin/focus";
 import { InputManager } from "gnoblin/input";
 import type { InputHost, InputMessage } from "gnoblin/input";
-import { RuleEngine, compileRules } from "gnoblin/rules";
+import { RULE_DEFAULTS, RuleEngine, compileRules } from "gnoblin/rules";
 import type { RuleHost, RuleView } from "gnoblin/rules";
 import { attachUi, runUiFrame, uiNodeGone, uiReleaseAll } from "gnoblin/ui";
 import type { UiBackend } from "gnoblin/ui";
@@ -51,6 +51,18 @@ import type { SnapClient } from "gnoblin/snap";
 import { windowMenu } from "gnoblin/menus";
 import { notRespondingAlerts } from "gnoblin/alerts";
 import { barInsets } from "gnoblin/widgets";
+import {
+    ClientStyle,
+    MAX_STYLE_LIST,
+    bindStyle,
+    layeredList,
+    mapStyle,
+    replaceStyle,
+    resolveStyle,
+    styleEpoch,
+    syncStyleLists,
+} from "gnoblin/style";
+import type { ClientStyleInit, ComputedStyle, Style, StyleLayer } from "gnoblin/style";
 
 type NodeId = number;
 type Scalar = string | number | boolean;
@@ -92,6 +104,8 @@ interface Entry {
     /** Cancels what the input matcher has in flight and releases every claim; returns how many calls wait. */
     cancelAll(): number;
     takeErrors(): ErrorReport[];
+    /** What the module could not do, said once per generation: a style property no renderer draws. */
+    takeNotices(): string[];
     /** The config document patch of the running generation, as JSON text: `{}` when it sets none. */
     document(): string;
     /** The commands the running generation's config starts with the session, as JSON text of argv lists. */
@@ -537,6 +551,25 @@ export class Client {
     }
 
     /**
+     * The overrides this client has, and only those: a property that was never set here is `undefined` and comes from
+     * the scopes above (`gnoblin.clients.style`, the workspace's, a `where()` selection's). Reading a list this client
+     * does not override gives a copy of the inherited one; the first write to the copy makes it this client's own.
+     */
+    get style(): ClientStyle {
+        return clientStyle(this);
+    }
+
+    /** The style this client resolves to now: frozen, with the layer each value came from in `origin`. */
+    get computedStyle(): ComputedStyle {
+        return computedStyleOf(this);
+    }
+
+    /** What of the client's style is not drawn and why, and the effects the compositor skipped. */
+    get styleWarnings(): readonly string[] {
+        return styleWarningsOf(this);
+    }
+
+    /**
      * The room a titlebar takes above the window's content, in pixels: 0 for a window with no titlebar or a fullscreen one.
      * `bounds` is the content's rectangle; the frame a layout places is the content with this much added on top (see
      * docs/js-ui.md, "Titlebar").
@@ -961,6 +994,8 @@ interface CollectionState extends Source {
     keys: readonly string[];
     /** Set on a collection scripts may change: what `add`, `remove` and `clear` do. */
     mutation?: Mutation;
+    /** What a `where()` selection ranks by among the selections that style a client: higher wins. */
+    priority?: number;
 }
 
 const collections = new WeakMap<object, CollectionState>();
@@ -1049,9 +1084,10 @@ export class Collection<T extends Member> implements Iterable<T> {
     /**
      * A live selection: it follows additions, removals and changes of the properties the query names. The
      * query is data, so the compositor side can evaluate it too: each key is a property and each value is
-     * what it must equal, or an array of values of which one must.
+     * what it must equal, or an array of values of which one must. `priority` ranks the selection's `style`
+     * among the others a client is in: the higher wins, and among equals the one whose style was made later.
      */
-    where(query: Query): Collection<T> {
+    where(query: Query, options: { priority?: number } = {}): Collection<T> {
         const state = collectionState(this);
         if (typeof query !== "object" || query === null || Array.isArray(query)) {
             throw new TypeError("where: the query must be an object of property values");
@@ -1065,6 +1101,10 @@ export class Collection<T extends Member> implements Iterable<T> {
                 throw new TypeError(`where: \`${key}\` must be a string, number or boolean, or an array of them`);
             }
         }
+        const priority = options?.priority ?? 0;
+        if (typeof priority !== "number" || !Number.isFinite(priority)) {
+            throw new TypeError("where: priority must be a finite number");
+        }
         return new Collection<T>(CREATE, {
             parent: state,
             query: { ...query },
@@ -1072,7 +1112,21 @@ export class Collection<T extends Member> implements Iterable<T> {
             members: null,
             keys: state.keys,
             listeners: [],
+            priority,
         });
+    }
+
+    /**
+     * The defaults this collection of clients gives: `gnoblin.clients.style` to all of them, a workspace's `clients` to
+     * its own, a `where()` selection to the clients in it. Only the properties set here are overridden; see `Client.style`.
+     * Assigning a `ClientStyle` or an object of properties replaces what this scope sets.
+     */
+    get style(): ClientStyle {
+        return scopeStyle(collectionState(this)).style;
+    }
+
+    set style(value: ClientStyle | ClientStyleInit) {
+        replaceStyle(scopeStyle(collectionState(this)).style, value);
     }
 
     /**
@@ -1663,6 +1717,277 @@ function startSlides(area: Rect | null): void {
     }
 }
 
+// ---- styles ------------------------------------------------------------------------------------------------------
+
+/** The style a collection of clients carries, and where it ranks among the selections. */
+interface ScopeStyle {
+    style: ClientStyle;
+    /** The order the scope's style was first asked for in: the tie-break between selections of equal priority. */
+    order: number;
+}
+
+const scopeStyles = new WeakMap<CollectionState, ScopeStyle>();
+/** The `where()` selections that have a style, in the order they got it. */
+const styledSelections: CollectionState[] = [];
+let styleOrder = 0;
+
+/** What a client's style last resolved from and wrote to its node. */
+interface ClientStyleState {
+    /** The client's own overrides, made the first time a script reads `client.style`. */
+    style: ClientStyle | null;
+    applied: boolean;
+    /** The style epoch and the layers the last application was made for. */
+    epoch: number;
+    layers: string;
+    computed: ComputedStyle | null;
+    notes: string[];
+    /** The effects last written, as JSON; null before the first write. */
+    effects: string | null;
+    /** The opacity last written, or the node's own when nothing was written yet. */
+    opacity: number | null;
+}
+
+const clientStyles = new WeakMap<Client, ClientStyleState>();
+/** The texts `takeNotices` has not handed out yet, and every text already said this generation. */
+const notices: string[] = [];
+const noticed = new Set<string>();
+
+function say(text: string): void {
+    if (!noticed.has(text)) {
+        noticed.add(text);
+        notices.push(text);
+    }
+}
+
+function styleState(client: Client): ClientStyleState {
+    let state = clientStyles.get(client);
+    if (state === undefined) {
+        state = {
+            style: null,
+            applied: false,
+            epoch: -1,
+            layers: "",
+            computed: null,
+            notes: [],
+            effects: null,
+            opacity: null,
+        };
+        clientStyles.set(client, state);
+    }
+    return state;
+}
+
+function workspaceOfScope(state: CollectionState): Workspace | undefined {
+    return (workspaceRoot.list as Workspace[]).find((workspace) => wsState(workspace).clientsState === state);
+}
+
+/** `gnoblin.clients`, `Workspace#dev.clients`, and `.where({...})` after either: the front of a scope's error paths. */
+function scopePath(state: CollectionState): string {
+    if (state.parent !== null) {
+        return `${scopePath(state.parent)}.where(${JSON.stringify(state.query)})`;
+    }
+    return state === clientRoot ? "gnoblin.clients" : `Workspace#${workspaceOfScope(state)?.id ?? "?"}.clients`;
+}
+
+/** The name `computedStyle.origin` gives a scope. */
+function scopeOrigin(state: CollectionState): string {
+    if (state.parent !== null) {
+        return scopePath(state).replace(/^gnoblin\.clients\./, "");
+    }
+    return state === clientRoot ? "global" : `workspace:${workspaceOfScope(state)?.id ?? "?"}`;
+}
+
+/** The layers of the scopes above a collection's own: what a list it does not override is inherited from. */
+function layersAbove(state: CollectionState): StyleLayer[] {
+    const layers: StyleLayer[] = [];
+    const global = scopeStyles.get(clientRoot);
+    if (global !== undefined && state !== clientRoot) {
+        layers.push({ origin: "global", style: global.style });
+    }
+    const root = rootOf(state);
+    const scope = root === clientRoot ? undefined : scopeStyles.get(root);
+    if (scope !== undefined && state !== root) {
+        layers.push({ origin: scopeOrigin(root), style: scope.style });
+    }
+    return layers;
+}
+
+/** The scope of `state`, made when first asked for. */
+function scopeStyle(state: CollectionState): ScopeStyle {
+    if (state.keys !== QUERY_KEYS.Client) {
+        throw new TypeError("style: only a collection of clients has a style");
+    }
+    let scope = scopeStyles.get(state);
+    if (scope === undefined) {
+        const style = new ClientStyle();
+        scope = { style, order: styleOrder };
+        styleOrder += 1;
+        scopeStyles.set(state, scope);
+        if (state.parent !== null) {
+            styledSelections.push(state);
+        }
+        bindStyle(style, {
+            path: () => `${scopePath(state)}.style`,
+            below: (name) => layeredList(layersAbove(state), name),
+        });
+    }
+    return scope;
+}
+
+/** The scopes a client sits under, lowest precedence first: global, its workspace, then its `where()` selections. */
+function scopeLayers(client: Client): StyleLayer[] {
+    const layers: StyleLayer[] = [];
+    const global = scopeStyles.get(clientRoot);
+    if (global !== undefined) {
+        layers.push({ origin: "global", style: global.style });
+    }
+    const own = wsOf(client);
+    const workspace = own === null ? undefined : scopeStyles.get(own.clientsState);
+    if (own !== null && workspace !== undefined) {
+        layers.push({ origin: `workspace:${own.id}`, style: workspace.style });
+    }
+    const selected = styledSelections
+        .filter((state) => contains(state, client))
+        .sort(
+            (a, b) =>
+                (a.priority ?? 0) - (b.priority ?? 0) ||
+                (scopeStyles.get(a) as ScopeStyle).order - (scopeStyles.get(b) as ScopeStyle).order,
+        );
+    for (const state of selected) {
+        layers.push({ origin: scopeOrigin(state), style: (scopeStyles.get(state) as ScopeStyle).style });
+    }
+    return layers;
+}
+
+function clientStyle(client: Client): ClientStyle {
+    const state = styleState(client);
+    if (state.style === null) {
+        const style = new ClientStyle();
+        const path = (): string => `Client#${host.label(stateOf(client).node)}.style`;
+        bindStyle(style, {
+            path,
+            below: (name) => layeredList(scopeLayers(client), name),
+            guard: () => {
+                if (!stateOf(client).alive) {
+                    throw new GnoblinError("destroyed", path(), "the client is gone");
+                }
+            },
+        });
+        state.style = style;
+    }
+    return state.style;
+}
+
+/** `scopeLayers` and the client's own overrides on top. */
+function layersOf(client: Client): StyleLayer[] {
+    const own = clientStyles.get(client)?.style;
+    const layers = scopeLayers(client);
+    return own === null || own === undefined ? layers : [...layers, { origin: "client", style: own }];
+}
+
+function computedStyleOf(client: Client): ComputedStyle {
+    if (!stateOf(client).alive) {
+        return clientStyles.get(client)?.computed ?? resolveStyle([]);
+    }
+    return resolveStyle(layersOf(client));
+}
+
+function styleWarningsOf(client: Client): readonly string[] {
+    const notes = (clientStyles.get(client)?.notes ?? []).map((note) => `not applied: style.${note}`);
+    const skipped = (host.get(stateOf(client).node, "skipped") as unknown as string[] | undefined) ?? [];
+    return Object.freeze([...notes, ...skipped.map((text) => `the compositor does not draw the effect ${text}`)]);
+}
+
+/** Every style a script can have changed an array of in place. */
+function* everyStyle(): Generator<Style> {
+    const scopes = [clientRoot, ...(workspaceRoot.list as Workspace[]).map((w) => wsState(w).clientsState)];
+    for (const scope of [...scopes, ...styledSelections]) {
+        const found = scopeStyles.get(scope);
+        if (found !== undefined) {
+            yield found.style;
+        }
+    }
+    for (const client of clientRoot.list as Client[]) {
+        const own = clientStyles.get(client)?.style;
+        if (own !== null && own !== undefined) {
+            yield own;
+        }
+    }
+}
+
+/** Writes what a client's resolved style becomes on its node: the effects list and the opacity, when they changed. */
+function applyClientStyle(client: Client, state: ClientStyleState, layers: StyleLayer[]): void {
+    const node = stateOf(client).node;
+    const label = `Client#${host.label(node)}.style`;
+    const computed = resolveStyle(layers);
+    state.computed = computed;
+    const mapping = mapStyle(computed);
+    state.notes = mapping.unapplied;
+    for (const text of mapping.unapplied) {
+        say(`not applied: style.${text}`);
+    }
+    const refused = (what: string, code: string | undefined | null): void => {
+        if (code != null && code !== "unknown-node") {
+            reports.push({
+                site: label,
+                error: new GnoblinError("refused", label, `the host refused the ${what} (${code})`),
+            });
+        }
+    };
+    if (mapping.effects.length > MAX_STYLE_LIST) {
+        const error = new RangeError(
+            `${label}: a window carries at most ${MAX_STYLE_LIST} effects, the style makes ${mapping.effects.length}`,
+        );
+        state.notes = [...state.notes, error.message];
+        reports.push({ site: label, error });
+    } else {
+        const json = JSON.stringify(mapping.effects);
+        // A window an earlier generation styled keeps its effects: the first application clears them when the style
+        // has none, which is how a line removed from the config takes its effect away on reload.
+        const published = host.published(node, "effects") as unknown as unknown[] | undefined;
+        const unchanged =
+            state.effects === null
+                ? mapping.effects.length === 0 && (published ?? []).length === 0
+                : json === state.effects;
+        if (!unchanged) {
+            refused("effects", host.set(node, "effects", mapping.effects as unknown as HostValue));
+        }
+        state.effects = json;
+    }
+    const before = state.opacity ?? (host.published(node, "opacity") as number);
+    if (computed.opacity !== before) {
+        refused("opacity", host.set(node, "opacity", computed.opacity));
+    }
+    state.opacity = computed.opacity;
+}
+
+/**
+ * Once per frame: checks the arrays scripts changed in place, then resolves and writes the style of each client whose
+ * style or layers moved. A client is looked at again when any style changed (the epoch) or the scopes it sits under
+ * did (a `where()` selection it joined or left, a workspace move); one the pass already did and nothing moved for
+ * costs a comparison.
+ */
+function applyStyles(): void {
+    for (const style of everyStyle()) {
+        for (const error of syncStyleLists(style)) {
+            reports.push({ site: "gnoblin.style", error });
+        }
+    }
+    const epoch = styleEpoch();
+    for (const client of clientRoot.list as Client[]) {
+        const state = styleState(client);
+        const layers = layersOf(client);
+        const key = layers.map((layer) => layer.origin).join("\n");
+        if (state.applied && state.epoch === epoch && state.layers === key) {
+            continue;
+        }
+        state.applied = true;
+        state.epoch = epoch;
+        state.layers = key;
+        guard(`Client#${host.label(stateOf(client).node)}.style`, () => applyClientStyle(client, state, layers));
+    }
+}
+
 /**
  * The layout driver, run once at the end of each frame after every listener. For each workspace it first
  * notices what changed: a layout's own enumerable fields (a snapshot diff, because a field is a plain
@@ -1735,6 +2060,7 @@ function layout(): number {
     }
     startSlides(area);
     guard("gnoblin.workspaces.visibility", syncVisibility);
+    guard("gnoblin.style", applyStyles);
     return laidOut;
 }
 
@@ -2053,7 +2379,16 @@ const ruleHost: RuleHost<Client> = {
         client.secure = on;
     },
     setOpacity: (client, value) => {
-        client.opacity = value;
+        // A rule's opacity is the client's own style, the highest layer; the value an undone rule restores (1) is
+        // the style going back to inheriting.
+        if (value === RULE_DEFAULTS.opacity) {
+            client.style.unset("opacity");
+        } else {
+            client.style.opacity = value;
+        }
+    },
+    setStyle: (client, field, value) => {
+        client.style[field] = value as never;
     },
 };
 
@@ -2281,6 +2616,7 @@ class Gnoblin {
         }
         bindKeys([...plan.bindings, ...planStockLauncher(merged)]);
         installStock(plan);
+        replaceStyle(scopeStyle(clientRoot).style, plan.style);
         attachOn(merged.on ?? {});
         documentPatch = JSON.stringify(plan.document);
         autostartList = JSON.stringify(plan.autostart);
@@ -2353,6 +2689,7 @@ host.entry = {
     pending,
     ready,
     takeErrors,
+    takeNotices: () => notices.splice(0),
     document: () => documentPatch,
     autostart: () => autostartList,
     dialogs: (events) => {

@@ -15,6 +15,10 @@ pub(crate) enum JsPropKind {
     Doubles,
     Text,
     Node,
+    /// A list of effect objects: a node's `effects`.
+    Effects,
+    /// A list of texts: a node's `skipped`.
+    Texts,
 }
 
 /// One property of a class.
@@ -72,6 +76,10 @@ const WINDOW: &[JsPropDef] = &[
     def("secure", JsPropKind::Flag, true),
     // Whether the client has left a liveness ping unanswered too long. The compositor writes it.
     def("unresponsive", JsPropKind::Flag, false),
+    // The node's effects in paint order (blur and shadow), and the ones the compositor cannot draw. The style
+    // cascade writes the first; the second is read-only.
+    def("effects", JsPropKind::Effects, true),
+    def("skipped", JsPropKind::Texts, false),
 ];
 
 /// An output. Its size is the work area the layout driver tiles in, `primary` picks the screen the primary display
@@ -113,6 +121,8 @@ pub(crate) fn default_value(def: &JsPropDef) -> MirrorValue {
         (_, JsPropKind::Doubles) => MirrorValue::List(vec![0.0, 0.0, 0.0]),
         (_, JsPropKind::Text) => MirrorValue::Text(String::new()),
         (_, JsPropKind::Node) => MirrorValue::Node(0),
+        (_, JsPropKind::Effects) => MirrorValue::Effects(Vec::new()),
+        (_, JsPropKind::Texts) => MirrorValue::Texts(Vec::new()),
     }
 }
 
@@ -157,12 +167,14 @@ mod tests {
                 "z",
                 "rotation",
                 "scale",
-                "secure"
+                "secure",
+                "effects"
             ]
         );
         for def in defs_for("window").into_iter().flatten().filter(|def| def.writable) {
             let want = match def.name {
                 "fullscreen" | "maximised" | "minimised" | "tiled" | "visible" | "secure" => JsPropKind::Flag,
+                "effects" => JsPropKind::Effects,
                 "rotation" | "scale" => JsPropKind::Doubles,
                 _ => JsPropKind::Double,
             };

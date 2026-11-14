@@ -14,8 +14,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use gnoblin_proto::tree::effect;
 use gnoblin_tree_client::tree_mirror::{MirrorValue, NodeId, NodeRecord, TreeMirror, TxBuilder};
-use rquickjs::{Ctx, IntoJs, Value};
+use rquickjs::{Array, Ctx, IntoJs, Object, Value};
 use thiserror::Error;
 
 pub(crate) use host::{adopt_windows, install, parents_first, spawn};
@@ -147,6 +148,10 @@ pub(crate) enum JsHostValue {
     Text(String),
     /// A list of numbers: a window's `rotation` and `scale`.
     Numbers(Vec<f64>),
+    /// A list of texts: a node's `skipped` effects.
+    Texts(Vec<String>),
+    /// A node's `effects`, one object per effect with the schema's property names.
+    Effects(Vec<effect::Properties>),
 }
 
 impl JsHostValue {
@@ -161,6 +166,8 @@ impl JsHostValue {
             MirrorValue::Double(n) => Some(Self::Number(*n)),
             MirrorValue::Text(text) => Some(Self::Text(text.clone())),
             MirrorValue::List(numbers) => Some(Self::Numbers(numbers.clone())),
+            MirrorValue::Texts(texts) => Some(Self::Texts(texts.clone())),
+            MirrorValue::Effects(effects) => Some(Self::Effects(effects.clone())),
             _ => None,
         }
     }
@@ -173,6 +180,92 @@ impl<'js> IntoJs<'js> for JsHostValue {
             Self::Number(n) => Ok(Value::new_number(ctx.clone(), n)),
             Self::Text(text) => text.into_js(ctx),
             Self::Numbers(numbers) => numbers.into_js(ctx),
+            Self::Texts(texts) => texts.into_js(ctx),
+            Self::Effects(effects) => {
+                let list = Array::new(ctx.clone())?;
+                for (at, entry) in effects.iter().enumerate() {
+                    list.set(at, effect_to_js(ctx, entry)?)?;
+                }
+                Ok(list.into_value())
+            }
         }
     }
+}
+
+/// The keys of an `effect` object a script writes, named as the schema names them.
+const EFFECT_KEYS: [&str; 14] = [
+    "kind",
+    "downscale",
+    "passes",
+    "algorithm",
+    "noise",
+    "brightness",
+    "contrast",
+    "saturation",
+    "tint",
+    "offset_x",
+    "offset_y",
+    "blur_radius",
+    "spread",
+    "colour",
+];
+
+fn effect_to_js<'js>(ctx: &Ctx<'js>, entry: &effect::Properties) -> rquickjs::Result<Object<'js>> {
+    let object = Object::new(ctx.clone())?;
+    object.set("kind", entry.kind.as_str())?;
+    object.set("downscale", entry.downscale as f64)?;
+    object.set("passes", entry.passes as f64)?;
+    object.set("algorithm", entry.algorithm.as_str())?;
+    object.set("noise", entry.noise)?;
+    object.set("brightness", entry.brightness)?;
+    object.set("contrast", entry.contrast)?;
+    object.set("saturation", entry.saturation)?;
+    object.set("tint", entry.tint.as_str())?;
+    object.set("offset_x", entry.offset_x)?;
+    object.set("offset_y", entry.offset_y)?;
+    object.set("blur_radius", entry.blur_radius)?;
+    object.set("spread", entry.spread)?;
+    object.set("colour", entry.colour.as_str())?;
+    Ok(object)
+}
+
+/// The effect a script's object describes, or `None` when it has a key the schema does not, a field of the wrong
+/// type, a number that is not finite, or a negative or fractional `downscale` or `passes`. A field the object
+/// leaves out keeps the wire's zero value, so a script that wants the documented defaults writes them.
+pub(crate) fn effect_from_js(object: &Object<'_>) -> Option<effect::Properties> {
+    for key in object.keys::<String>() {
+        if !EFFECT_KEYS.contains(&key.ok()?.as_str()) {
+            return None;
+        }
+    }
+    let text = |name: &str| -> Option<String> {
+        object
+            .get::<_, Option<String>>(name)
+            .ok()
+            .map(Option::unwrap_or_default)
+    };
+    let number = |name: &str| -> Option<f64> {
+        let n = object.get::<_, Option<f64>>(name).ok()?.unwrap_or(0.0);
+        n.is_finite().then_some(n)
+    };
+    let whole = |name: &str| -> Option<u64> {
+        let n = number(name)?;
+        (n >= 0.0 && n.fract() == 0.0).then_some(n as u64)
+    };
+    Some(effect::Properties {
+        kind: text("kind")?,
+        downscale: whole("downscale")?,
+        passes: whole("passes")?,
+        algorithm: text("algorithm")?,
+        noise: number("noise")?,
+        brightness: number("brightness")?,
+        contrast: number("contrast")?,
+        saturation: number("saturation")?,
+        tint: text("tint")?,
+        offset_x: number("offset_x")?,
+        offset_y: number("offset_y")?,
+        blur_radius: number("blur_radius")?,
+        spread: number("spread")?,
+        colour: text("colour")?,
+    })
 }
