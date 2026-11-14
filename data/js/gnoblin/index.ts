@@ -65,6 +65,7 @@ export {
     SaturateFilter,
     Shadow,
     Style,
+    StyleElement,
 } from "gnoblin/style";
 export type {
     BorderInit,

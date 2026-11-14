@@ -723,12 +723,13 @@ declare module "gnoblin/schema/signals" {
 // ---------------------------------------------------------------------------
 // The stock library: `import { ... } from "gnoblin"`.
 //
-// PROPOSED API. This half of the file is written by hand, not generated. It is
-// the object model of design/js-research/owner-spec.md (sections 4, 5, 11, 12)
-// plus the simple tier of design/js-research/spec-review.md (section 4), and
-// no runtime implements it yet. A declaration here is a proposal until the
-// stock library ships it; the generated modules above are the part that
-// follows the schema.
+// This half of the file is written by hand, not generated; the generated
+// modules before it follow the schema. It declares what the runtime has: every
+// class, function and const exported by `declare module "gnoblin"` is an export
+// of the runtime module, and every export of the runtime module is declared
+// here or listed with its reason in crates/gnoblin-js/tests/dts_match.rs, which
+// fails when the two disagree. A member that is not implemented yet is not
+// declared.
 // ---------------------------------------------------------------------------
 
 declare module "gnoblin" {
@@ -769,15 +770,26 @@ declare module "gnoblin" {
     /**
      * Every native object has a stable id and an explicit lifetime. Wrappers for the
      * same native id compare equal within a runtime generation. A destroyed object
-     * reads `alive === false`, and a write or method call on it rejects.
+     * reads `alive === false`, and a write or method call on it rejects. A base class for the types only: the runtime
+     * has no such class, so it is not exported and a script cannot import it.
      */
-    export abstract class NativeObject {
+    abstract class NativeObject {
         readonly id: string;
         readonly alive: boolean;
         /** Write several properties at once, optionally as one timed transition. */
         set(properties: object, options?: TransitionOptions): Transition | void;
         addListener(listener: object): void;
         removeListener(listener: object): void;
+    }
+
+    /**
+     * What a failed operation on a native object throws. `code` says why (`destroyed`, `read-only`, `refused`,
+     * `spawn-failed`) and `target` names the object and member, as in `Client#7.x`.
+     */
+    export class GnoblinError extends Error {
+        readonly code: string;
+        readonly target: string;
+        constructor(code: string, target: string, message: string);
     }
 
     export class Node extends NativeObject {
@@ -1232,8 +1244,11 @@ declare module "gnoblin" {
         onRemoved?(item: T): void;
     }
 
-    /** Observes member events; attach to one object, or to a collection for all of its members. */
-    export class MemberListener<T = Client> {
+    /**
+     * Observes member events; attach to one object, or to a collection for all of its members. A base class for the
+     * types only, as `NativeObject` is: extend `ClientListener` or `OutputListener`.
+     */
+    class MemberListener<T = Client> {
         onDestroyed?(item: T): void;
     }
 
@@ -1471,7 +1486,7 @@ declare module "gnoblin" {
      * `threshold` pixels from the press. Pointer events reach the shell once per frame, and when scripts are behind
      * the next `onUpdate` reads the latest position; `onStart`, `onEnd` and `onCancel` are never dropped.
      */
-    export abstract class DragBinding<S extends object = object> extends Binding {
+    abstract class DragBinding<S extends object = object> extends Binding {
         onStart(event: DragStartEvent): S | false;
         onUpdate(event: DragUpdateEvent, state: S): void;
         onEnd(event: DragEndEvent, state: S): void;
@@ -1518,7 +1533,6 @@ declare module "gnoblin" {
     export class SplitResizeBinding extends PointerDragBinding {
         constructor(options?: Partial<BindingOptions>);
     }
-    export class WorkspaceSwitchBinding extends GestureBinding {}
 
     /** The bindings of one layout, device or context, by id. */
     export class BindingCollection implements Iterable<Binding> {
@@ -1755,36 +1769,6 @@ declare module "gnoblin" {
         cardHeight: number;
         constructor(options?: Carousel3dOptions);
         rotate(workspace: NodeSource, steps: number): void;
-    }
-    export class ArcLayout extends Layout {
-        constructor(options?: { radius?: number; spacing?: number });
-    }
-
-    // -- Transitions (owner-spec section 14) ----------------------------------
-
-    export type Easing =
-        "linear" | "ease-in" | "ease-out" | "ease-in-out" | { cubicBezier: [number, number, number, number] };
-
-    /** Every time is in milliseconds. */
-    export interface TransitionOptions {
-        duration?: number;
-        delay?: number;
-        easing?: Easing;
-        /** True by default. */
-        autoplay?: boolean;
-    }
-
-    export class Transition extends NativeObject {
-        /** 0..1, writable when the transition is controlled by hand. */
-        progress: number;
-        readonly running: boolean;
-        readonly duration: number;
-        readonly finished: Promise<void>;
-        play(): void;
-        pause(): void;
-        reverse(): void;
-        finish(): void;
-        cancel(): void;
     }
 
     // -- The simple tier (spec-review section 4) ------------------------------
@@ -4021,3 +4005,23 @@ declare module "gnoblin/extensions/xr" {
 
 /** The runtime object, also reachable as `import { gnoblin } from "gnoblin"`. */
 declare const gnoblin: import("gnoblin").Gnoblin;
+
+/**
+ * The shell's log, as in Node. A call writes one line to the log (component `js`, area `script`; `log` and `info` at
+ * info level, `warn`, `error` and `debug` at theirs) that starts with the call site as `file.ts:line:col`, so
+ * `gnoblinctl logs` shows it and `gnoblinctl console` prints what an expression printed. Strings print as they are,
+ * `%s %d %i %f %j %o %O %c %%` are format specifiers, an object prints as one line of JSON with `[Circular]` where it
+ * loops, and an error prints its stack. A call is cut at 4 KiB and a generation logs at most 200 lines a second: the
+ * ones past it are dropped, and a notice says how many.
+ */
+declare const console: {
+    log(...data: unknown[]): void;
+    info(...data: unknown[]): void;
+    warn(...data: unknown[]): void;
+    error(...data: unknown[]): void;
+    debug(...data: unknown[]): void;
+    /** Logs at error level, starting with "Assertion failed", when `condition` is falsy; never throws. */
+    assert(condition?: unknown, ...data: unknown[]): void;
+    /** Logs `data` as one line of JSON; it does not draw a table. */
+    table(data: unknown): void;
+};

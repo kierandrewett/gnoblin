@@ -1431,6 +1431,65 @@ introspection tools of owner-spec section 18.
   views of computed styles, transition tracks and layout placements (the object model has none yet); `displays` and
   `extensions` expressions of spec section 18 (no such objects).
 
+## Console global status
+
+Lane JsConsoleGlobal: `crates/gnoblin-js/js/console.js` (the formatting), `crates/gnoblin-js/src/script_console.rs` (the
+limit, the call site and the log), `crates/gnoblin-js/tests/script_console.rs`. User pages: `docs/typescript-shell.md`
+("Debugging") and `docs/js-console.md`. A user's first line `console.log("hi")` threw `ReferenceError` until this.
+
+- **Every generation has it.** `JsGeneration::new` evaluates `console.js` as a function expression and calls it with three
+  host functions (`admit`, `emit`, `remap`), so `init.ts`, a module, a listener, a console expression and the throwaway
+  generation of `evaluate_document` all share one global, defined non-enumerable. It formats in JavaScript because the work
+  is about JavaScript values, and it never throws at its caller: a value that cannot be printed (a getter that throws, a
+  `toString` that throws) prints a note instead.
+- **Methods.** `log`, `info`, `warn`, `error`, `debug`, `assert` (error level, `Assertion failed`, no throw) and `table`
+  (the value as one line of JSON, not a drawn table). No `trace`, `dir`, `group` or `time`: the d.ts declares what exists.
+- **Formatting.** Like Node for strings, numbers (`-0`), `%s %d %i %f %j %o %O %c %%` (a first-string format applies only
+  when there are further arguments), and an `Error`, which prints `Name: message` and its stack with every frame remapped to
+  `.ts` coordinates (QuickJS's `stack` has frames only, so the head is added). An object is one line of JSON-like text:
+  keys and strings quoted, `undefined`, functions (`[Function: name]`), symbols and `NaN` named, a cycle `[Circular]`, a
+  `Map`, `Set` and `Date` shown, a class instance prefixed by its class name, depth 6 and 100 items per level. It does not
+  reuse `inspect.render`: that is the host's renderer (a `Client` as `Client#3 { ... }`) and is not there in a bare
+  generation, and one formatter that behaves the same in every generation is worth more than the nicer text.
+- **The log.** Component `js`, field `area=script`; `log` and `info` at info, `warn` at warn, `error` at error and `debug`
+  at debug (the process default is info, so `console.debug` shows with `GNOBLIN_LOG=js:debug`). The message is
+  `file:line:col: text`. One call is one record, which may hold newlines.
+- **The call site.** The first frame of `new Error().stack` that is not in `console.js`, remapped through the generation's
+  source maps (the same `remap` the error stacks use, now a free function `remap_stack`), with the file shown relative to
+  the config root. The engine reports a call at its end and the source map rounds that to the nearest token before it, so
+  the line is the call's, and the column is a token inside it: the last argument when that is an identifier (`init.ts:2:29`
+  for `console.log("a", gnoblin.clients.length)`, the start of `gnoblin`), else the callee's property (`log`). A call that
+  spans lines reports the line of its end.
+- **Caps.** At most 4096 bytes of text per call, cut on a character boundary with `... (N more bytes)`. At most 200 calls a
+  second per generation: the rest are dropped before they are formatted (`admit`), and when the next second starts, or a
+  frame ends after it, one warn line says `N console lines dropped`. The second is counted on `JsConfig::clock`, which
+  `JsShell::new` sets to the shell's clock (`JsShellConfig::clock`), so a test moves it and no real time passes; the frame
+  calls `flush_console` so the notice does not wait for a script that went quiet.
+- **The prompt.** `JsConsole` starts a capture around each expression (`capture_console`, `take_console`), and every reply,
+  ok or not, carries `output`: `[{ level, site, text }]` in order (`site` is `<console>:line:col`). `gnoblinctl console`
+  prints `log`, `info` and `debug` lines on standard output and `warn` and `error` on standard error, before the value; with
+  `--eval` all of them go to standard error so standard output stays the value. The lines are in the log too.
+- **d.ts honesty.** `declare const console` is in `gnoblin-stock.d.ts`. `tests/dts_match.rs` now compares the value exports
+  of `declare module "gnoblin"` (parsed from the d.ts: class, function, const, namespace, enum and re-export names) with
+  `Object.keys` of the runtime module namespace in a booted shell, both ways, each exception in an allow-list with its reason
+  (`DECLARED_NOT_IN_RUNTIME` names the lane that lands it and fails once it has; `RUNTIME_NOT_DECLARED` is plumbing the stock
+  modules share). The first run found: `ArcLayout` and `WorkspaceSwitchBinding` declared with no runtime (removed; they live on
+  in owner-spec.md only), a second `class Transition extends NativeObject` and `Easing` from the proposal beside the real
+  `Transition` (removed, with the `delay` and `autoplay` options the real one refuses), `NativeObject`, `MemberListener` and
+  `DragBinding` declared as importable base classes the runtime does not have (now not exported: types only), `StyleElement`
+  real but not re-exported (now exported by `gnoblin`), and `GnoblinError` exported and documented but not declared (now
+  declared). The header of the d.ts no longer says "PROPOSED API".
+- **Proven.** `tests/script_console.rs` (bare generation and shell over the fake link, reading the log with the level of each
+  record): the levels, the `.ts` call site with a type annotation stripped from the line, the specifiers, objects, cycles,
+  errors with stacks, `assert` and `table`, a hostile value, the byte cap, the 200-a-second limit and its notice on the
+  injected clock, and the notice at a frame end; `tests/shell.rs` (the reply's `output` and the log from a console
+  expression, including a throw after output); `crates/gnoblinctl/tests/console.rs` (where each level is printed);
+  `crates/gnoblin/tests/js_shell.rs` (a real compositor: a load-time call and a listener's call are in the session log as
+  `init.ts:2:29` and `init.ts:8:34`).
+- **Not done.** `console.trace`, `dir`, `group`, `time` and `count`; a table drawn as columns; the host's `inspect` text for
+  a `Client` in `console.log` (it prints its own enumerable fields); a per-generation log of the last lines for
+  `gnoblinctl console` to replay.
+
 ## P9 XR status
 
 Design: `design/js-xr.md` (which spec class is a tree node, a JS class or new native work). User docs: `docs/xr.md`,
