@@ -1,19 +1,7 @@
-// XR on the JS shell: the session, the room, the controllers and the bindings that move a panel (design/js-xr.md).
-//
-// The XR program (`extensions/gnoblin-xr`) is a separate process. It reads the `View` nodes under the node named
-// `room`, submits them as layers, writes the pose of the camera named `head`, and makes the seat named `xr` while it
-// has a session. This module is the shell's side of that and nothing more: it decides where each panel is. It reads
-// everything through the tree, so a handler of this module that stalls delays the next placement and never the
-// program's pose writes or its layers.
-//
-// Presence: the `xr` seat. `gnoblin.extensions.xr` is null without it, an `XRExtension` while it exists, and an
-// `XRSession` that outlives the seat reads `alive === false`. The classes here are what the spec's
-// `gnoblin/extensions/xr` exports (`XRCamera3D`, `XRViewport`, `ViewMoveBinding`, `ViewResizeBinding`).
-//
-// Units: the room is in millimetres (`head.metres = 0.001`). Every option and result of this module that is a size
-// or a distance says metres; the module converts at the edge with the head camera's `metres`.
-//
-// The module reaches the host only through `XRWorld`, so it runs and is tested without one.
+// XR shell integration: this module owns room placement, controller bindings and session wrappers, not the XR runtime.
+// The separate XR program owns tracking and layers; this module reads and writes scene nodes through `XRWorld`.
+// Units are millimetres internally and metres at the script-facing layout boundary.
+// Read `scene.ts` first for node and transform semantics, then this module for room behavior.
 
 import { Binding, BindingCollection } from "gnoblin/bindings";
 import type { ControllerButton, ControllerTriggerParts, DragEvent } from "gnoblin/bindings";
@@ -33,6 +21,7 @@ export interface XRClient {
     height: number;
 }
 
+/** The node and name of the shell's XR seat. */
 export interface XRSeat {
     readonly node: NodeNumber;
     readonly name: string;
@@ -84,6 +73,7 @@ export interface XRRingParams {
     stackStep: number;
 }
 
+/** Default ring dimensions in millimetres and radians. */
 export const RING_DEFAULTS: Readonly<XRRingParams> = Object.freeze({
     radius: 1600,
     eye: 1400,
@@ -103,6 +93,7 @@ export interface RingView<I> {
     readonly height: number;
 }
 
+/** One panel's ring position in millimetres, its scale and its stack tier. */
 export interface RingPose {
     x: number;
     y: number;
@@ -116,6 +107,7 @@ export interface RingPose {
     behind: number;
 }
 
+/** Ring poses in input order and their far-to-near rendering order. */
 export interface RingResult {
     /** One pose per view, in the order of the views. */
     poses: RingPose[];
@@ -124,9 +116,9 @@ export interface RingResult {
 }
 
 /**
- * Where each of `views` goes (the port of `XrRing.arrange` of `xr.retired shell`). A pure function of the panels' pixel sizes and
- * the focus. The ring is a carousel: the focused panel is at the front and its neighbours in creation order are on
- * either side (the right side holds the extra one), wrapping round. Without a focus the first view is at the front.
+ * Places panels around a ring from their pixel sizes and the focused id. The focused panel is at the front, with
+ * neighbours in creation order on either side (the right side holds the extra one), wrapping around; without a focus,
+ * the first panel is at the front.
  */
 export function arrangeRing<I>(
     views: readonly RingView<I>[],
@@ -539,6 +531,7 @@ export class XRList<T extends { readonly id: string }> implements Iterable<T> {
 
 // ---- The camera, the viewport and the head ------------------------------------------------------------------------
 
+/** Initial head-camera tracking and clipping values; near and far are metres. */
 export interface XRCamera3DOptions extends Omit<Camera3DOptions, "near" | "far"> {
     /** The head the camera follows. The program writes the pose onto the camera named `head`. */
     tracking?: XRTrackedPose;
@@ -582,8 +575,10 @@ export class XRCamera3D extends Camera3D {
     }
 }
 
+/** How the XR runtime composes panels: automatically, as layers or through the projection camera. */
 export type XRComposition = "auto" | "layers" | "projection";
 
+/** The scene root, camera and composition the headset should render. */
 export interface XRViewportOptions {
     /** The room: the node the XR program reads. */
     content: Node;
@@ -701,6 +696,7 @@ export interface XRDragEvent extends DragEvent {
     readonly unit: number;
 }
 
+/** Identity, trigger and enablement for a controller drag binding. */
 export interface XRBindingOptions {
     id: string;
     trigger: string;
@@ -783,6 +779,7 @@ function aboveTransform(node: Node): Transform3D {
     return above === null ? Transform3D.identity() : above.worldTransform;
 }
 
+/** Initial tracking mode and rotation behavior for a panel move. */
 export interface ViewMoveOptions extends Partial<XRBindingOptions> {
     /** `controller`: the panel follows the hand (6-DoF). `ray`: the panel follows where the ray points. */
     tracking?: "controller" | "ray";
@@ -878,6 +875,7 @@ function pick(options: Partial<XRBindingOptions>): Partial<XRBindingOptions> {
     return out;
 }
 
+/** Initial scale and minimum dimensions for a panel corner resize. */
 export interface ViewResizeOptions extends Partial<XRBindingOptions> {
     /** How many pixels of the client one metre of the panel is, for the size asked of it on release. */
     pixelsPerMetre?: number;
@@ -1097,12 +1095,14 @@ export class SpatialLayout {
     }
 }
 
+/** Initial layout and client filter for an XR room. */
 export interface XRRoomOptions extends NodeOptions {
     layout?: SpatialLayout | null;
     /** Whether a client gets a panel. Secure clients never do. Default: every client. */
     accept?: (client: XRClient) => boolean;
 }
 
+/** Position and scale of a panel fixed to the head; distances are metres. */
 export interface HeadPanelOptions {
     /** Metres right of, above and in front of the head. Default `0, 0, -1.2`. */
     x?: number;
@@ -1290,6 +1290,7 @@ export class XRListener {
     onSessionEnded(_session: XRSession): void {}
 }
 
+/** One headset session, with its head pose, controllers and optional viewport. */
 export class XRSession {
     readonly #world: XRWorld;
     readonly #seat: NodeNumber;
@@ -1304,11 +1305,9 @@ export class XRSession {
      * How long, in milliseconds, a chord must have been down before a drag starts, and so before the drag claims its
      * buttons. Default 50, at most `MAX_CHORD_SETTLE_MS` (60): a larger value reads back as 60.
      *
-     * The XR program holds every press of the trigger, grip, face button and stick back from the window under the ray
-     * for 150 ms while it waits for a claim (design/js-xr.md, "The claim comes before the press"). A drag claims after
-     * this settle time and the claim then has to reach the program, so a settle time beyond 60 ms would claim after the
-     * hold, and the window would have had the press. A press that nothing claims in the hold reaches the window at the
-     * end of it, so a click waits at most 150 ms.
+     * The XR program holds button presses back from the window under the ray for 150 ms while it waits for a claim.
+     * The shell must claim within this settle interval for a drag to own those inputs before a click reaches the window.
+     * Longer waits would outlast the hold, so `chordSettleMs` is capped at 60 ms.
      */
     get chordSettleMs(): number {
         return this.#chordSettleMs;

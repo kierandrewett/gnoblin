@@ -1,13 +1,6 @@
-// Scene nodes a script makes: `Node`, `Camera3D` and `View` (owner-spec.md section 8, the part that exists today).
-//
-// A `Client` is the compositor's: a script cannot make one. These three are the script's own, and the XR program
-// (design/js-xr.md) reads them: a room is a `Node`, the head is a `Camera3D`, and each panel is a `View` that shows
-// a client. Making an object makes the tree node at once (queued with the frame's other writes), and `destroy()`
-// removes it with its subtree. A `View` names its client in `content` and moves nothing: the client stays in its
-// workspace, and one client may be shown by any number of Views.
-//
-// The module reaches the tree only through `SceneBackend`, which the host module installs with `attachScene`, so it
-// runs (and is tested) without a host.
+// Scene graph types and objects: this module owns script-created nodes and their lifetimes, not compositor clients.
+// `Node`, `Camera3D` and `View` are the objects XR reads; the host adapter is `SceneBackend`.
+// It owns no rendering or XR session state. Read `scene.ts` first for tree and transform semantics.
 
 type NodeId = number;
 type Scalar = string | number | boolean;
@@ -62,6 +55,7 @@ function host(): SceneBackend {
 /** Three numbers: rotation about each axis in radians, or the scale along each axis. */
 export type Triple = readonly [number, number, number];
 
+/** Initial node values; position units depend on the parent, and rotation is in radians. */
 export interface NodeOptions {
     name?: string;
     x?: number;
@@ -583,8 +577,10 @@ export class Node {
     }
 }
 
+/** How a camera maps its scene into the image. */
 export type Projection = "orthographic" | "perspective" | "stereo";
 
+/** Initial projection and clipping values for a camera; near and far use camera-space units. */
 export interface Camera3DOptions extends NodeOptions {
     projection?: Projection;
     /** Metres per unit of the camera's space. */
@@ -665,6 +661,7 @@ export class Camera3D extends Node {
     }
 }
 
+/** Initial content and size for a view; width and height are in client pixels. */
 export interface ViewOptions extends NodeOptions {
     /** The client the View shows. */
     content?: object | null;

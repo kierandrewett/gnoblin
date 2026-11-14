@@ -1,13 +1,7 @@
-// The inspector helper library: plain data about the running shell, and the renderer the console shows values with.
-//
-// `inspect.clients()`, `inspect.workspaces()`, `inspect.bindings()` and `inspect.config()` return plain data (numbers,
-// strings, booleans, arrays and objects of those, nothing live), so a console prints them as they are and a script
-// can keep one without holding a native object. `inspect.render` is what the console server runs over the value of
-// an expression: it handles cycles, native-backed objects, collections and functions, and stops at a size cap.
-//
-// The module reads the running shell through the `gnoblin` global at call time and imports nothing from the host,
-// so the stock library can be embedded and tested without one. The host teaches the renderer its own kinds
-// (`Client`, `Workspace`, `Collection`) with `inspect.register`.
+// Read-only inspection helpers: this module owns plain snapshots and value rendering, not shell state.
+// The host registers its native object types; scripts can use the same helpers without importing the host.
+// Rendering limits and truncation are part of the API; see the types below.
+// Read this module first for plain-data and console-rendering behavior.
 
 /** What a registered kind reports of one instance. */
 export interface InspectView {
@@ -495,4 +489,5 @@ function config(): unknown {
     return merged === undefined || merged === null ? null : plain(merged, { maxBytes: 262144, maxDepth: 10 });
 }
 
+/** The shell inspection API; it returns snapshots rather than live native objects. */
 export const inspect = { clients, workspaces, bindings, config, render, plain, register } as const;

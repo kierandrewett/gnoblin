@@ -1,6 +1,7 @@
-// The user-facing `gnoblin` module: `import { defineConfig, MasterStackLayout } from "gnoblin"`.
-// It only re-exports. The native host objects (`gnoblin.clients`, Client, the listeners) are not here: a
-// config reaches them through the `gnoblin` global or through `setup(gnoblin)`.
+// Public `gnoblin` package entry: this module owns only the export surface, not runtime objects.
+// It re-exports configuration, bindings, layouts, helpers and stable data types.
+// Host objects are reached through the `gnoblin` global or `setup(gnoblin)`.
+// Read `config.ts` first for setup and the distinction between public and host APIs.
 
 export * from "gnoblin/bindings";
 export * from "gnoblin/focus";

@@ -221,7 +221,7 @@ declare module "gnoblin" {
     /** Rotation about each axis in radians, or the scale along each axis: three numbers. */
     export type Vector3 = readonly [number, number, number];
 
-    /** The curves `Client.animate` knows, named as the retired shell's `ease` table named them. */
+    /** The easing curves `Client.animate` accepts. */
     export type ClientEasing = "linear" | "out" | "out-cubic" | "in-cubic" | "in-out";
 
     /** The properties `Client.animate` can tween. A property left out stays where it is. */
@@ -2144,7 +2144,7 @@ declare module "gnoblin" {
         output?: Output;
     }
 
-    /** The seconds a workspace slide takes in the retired shell and in the stock keys. */
+    /** The default duration of a workspace slide, in seconds. */
     export const SLIDE_SECONDS: number;
 
     /** One set of `defineConfig({ workspaceSets })`: its name and the workspaces it shows. */
@@ -2276,7 +2276,7 @@ declare module "gnoblin" {
         seconds?: number;
         host?: SlideHost;
     }
-    /** The three-finger workspace slide of the retired shell (`Gestures.workspace_slide`), as a binding. */
+    /** Slides between workspaces as a binding; `travel` and `commit` are touchpad units. */
     export class WorkspaceSlideBinding extends GestureBinding {
         travel: number;
         commit: number;
@@ -2442,6 +2442,8 @@ declare module "gnoblin" {
     /** The number of canvases the UI toolkit holds alive. */
     export function uiCanvasCount(): number;
 
+    // -- Titlebars and gestures ------------------------------------------------
+
     /** The look of a titlebar: sizes in pixels, fills, and the buttons it shows. */
     export interface TitlebarStyle {
         height: number;
@@ -2474,6 +2476,7 @@ declare module "gnoblin" {
         | "window.minimise"
         | "window.minimize"
         | "window.toggle-maximise";
+    /** The action names `defineConfig({ gestureActions })` accepts. */
     export const GESTURE_ACTION_NAMES: readonly GestureActionName[];
     /** The five stock actions. Each takes nothing: it acts on the workspace under the pointer or the focused window. */
     export interface GestureActions {
@@ -2489,10 +2492,13 @@ declare module "gnoblin" {
     }
     /** What a gesture runs: the name of a stock action, or a function that gets the gesture's last event. */
     export type GestureAction = GestureActionName | ((event: DragEvent) => void);
+    /** Direction-specific actions to run when a swipe or pinch ends. */
     export type SwipeMap = { [way in SwipeDirection]?: GestureAction };
+    /** Direction-specific actions to run when a pinch ends. */
     export type PinchMap = { [way in PinchDirection]?: GestureAction };
     /** What `defineConfig({ gestureActions })` takes for one gesture: a swipe's four directions or a pinch's two. */
     export type GestureActionConfig = SwipeMap & PinchMap;
+    /** Options for constructing and tuning a swipe or pinch binding. */
     export interface GestureActionOptions {
         id?: string;
         trigger?: string;
@@ -2530,12 +2536,15 @@ declare module "gnoblin" {
         onSwipe(map: SwipeMap, threshold?: number): SwipeActionBinding;
         onPinch(map: PinchMap, threshold?: number): PinchActionBinding;
     }
+    /** Builds a binding that recognizes a gesture trigger and dispatches its configured direction action. */
     export function gestureActionBinding(
         trigger: string,
         map: GestureActionConfig,
         gesture: "swipe" | "pinch",
     ): GestureBinding;
+    /** The stock titlebar values. */
     export const defaultTitlebarStyle: Readonly<TitlebarStyle>;
+    /** Hooks for the titlebar's built-in buttons and pointer interaction. */
     export interface TitlebarHooks {
         menu?(client: unknown): void;
         lower?(client: unknown): void;
@@ -2553,6 +2562,7 @@ declare module "gnoblin" {
         readonly inset: number;
         readonly title: Text;
     }
+    /** Tracks titlebars for clients and reports their content insets. */
     export class Decorations {
         constructor(nodeOf: (client: Client) => number, style?: TitlebarStyle, hooks?: TitlebarHooks);
         titlebarOf(client: Client): Titlebar | undefined;
@@ -2562,6 +2572,8 @@ declare module "gnoblin" {
         onDecorationChanged(client: Client): void;
         onRemoved(client: Client): void;
     }
+
+    // -- Stock shell widgets ---------------------------------------------------
 
     /** The text of an entry, the caret and the selection, counted in characters. */
     export class EntryModel {
@@ -2582,6 +2594,7 @@ declare module "gnoblin" {
         selectAll(): void;
         before(at: number): string;
     }
+    /** Initial text, appearance and masking for an entry. */
     export interface EntryOptions extends BoxOptions {
         text?: string;
         secret?: boolean;
@@ -2599,18 +2612,22 @@ declare module "gnoblin" {
         onSubmit?: (text: string) => void;
         shown(text: string): string;
     }
+    /** Formats `date` with the shell's strftime-like tokens. */
     export function formatTime(format: string, date: Date): string;
+    /** Initial format and appearance for a clock. */
     export interface ClockOptions extends BoxOptions {
         format?: string;
         size?: number;
         color?: Color;
         now?: () => Date;
     }
+    /** A text node that refreshes its value on a timer. */
     export class Clock extends Text {
         constructor(options?: ClockOptions);
         format: string;
         now: () => Date;
     }
+    /** An output edge a bar can occupy. */
     export type BarEdge = "top" | "bottom";
     /** The output a bar sits on, as far as the bar needs it. An `Output` satisfies it. */
     export interface BarOutput {
@@ -2620,6 +2637,7 @@ declare module "gnoblin" {
         readonly width: number;
         readonly height: number;
     }
+    /** Initial placement, visibility and appearance for a bar. */
     export interface BarOptions extends BoxOptions {
         edge?: BarEdge;
         hideWhen?: () => boolean;
@@ -2643,6 +2661,7 @@ declare module "gnoblin" {
     /** Tells the bars which output is the primary one, where a bar with no `output` sits. */
     export function barsOnOutputs(primary: (() => BarOutput | null) | null): void;
 
+    /** One item in the stock window menu. */
     export interface MenuEntry {
         label?: string;
         run?: (client: MenuClient) => void;
@@ -2651,6 +2670,7 @@ declare module "gnoblin" {
         submenu?: readonly MenuEntry[] | ((client: MenuClient) => readonly MenuEntry[]);
         separator?: boolean;
     }
+    /** The window state and actions the menu needs. */
     export interface MenuClient {
         readonly alive: boolean;
         fullscreen: boolean;
@@ -2663,7 +2683,9 @@ declare module "gnoblin" {
         moveWithKeys?(): void;
         resizeWithKeys?(): void;
     }
+    /** The stock menu's height for the given entries, in pixels. */
     export function menuHeight(entries: readonly MenuEntry[]): number;
+    /** Places a menu card within an output-sized area, clamped to its edges. */
     export function placeCard(
         anchor: { x: number; y: number },
         size: { width: number; height: number },
@@ -3130,8 +3152,7 @@ declare module "gnoblin" {
 }
 
 /**
- * The XR extension (owner-spec.md section 13, through the out-of-process program of D34 and D35: design/js-xr.md).
- * Importing this module when no XR extension is there fails at load with a message that says what to do.
+ * The optional XR extension. Importing this module when XR is unavailable throws a message explaining how to enable it.
  */
 declare module "gnoblin/extensions/xr" {
     import type { Binding, BindingCollection, Client, DragEvent } from "gnoblin";
@@ -3186,6 +3207,7 @@ declare module "gnoblin/extensions/xr" {
         plane(): Plane;
     }
 
+    /** Initial node position and pose relative to its parent; rotations are radians. */
     export interface NodeOptions {
         name?: string;
         x?: number;
@@ -3222,6 +3244,7 @@ declare module "gnoblin/extensions/xr" {
         find(name: string): Node | undefined;
         destroy(): void;
     }
+    /** Initial camera projection and clipping distances in camera-space units. */
     export interface Camera3DOptions extends NodeOptions {
         projection?: "orthographic" | "perspective" | "stereo";
         metres?: number;
@@ -3240,6 +3263,7 @@ declare module "gnoblin/extensions/xr" {
         ipd: number;
         readonly layerBudget: number;
     }
+    /** Initial content and pixel dimensions for a view. */
     export interface ViewOptions extends NodeOptions {
         content?: Client | null;
         camera?: Camera3D | null;
@@ -3256,7 +3280,9 @@ declare module "gnoblin/extensions/xr" {
         height: number;
     }
 
+    /** A button available on an XR controller. */
     export type ControllerButton = "Trigger" | "Grip" | "Thumbstick" | "Primary" | "Secondary";
+    /** A controller trigger parsed into its hand and buttons. */
     export interface ControllerTriggerParts {
         readonly kind: "controller";
         readonly text: string;
@@ -3268,6 +3294,7 @@ declare module "gnoblin/extensions/xr" {
     /** Parses `Grip+Drag`, `Right.Grip+Drag`, `Trigger+Grip+Drag`. Throws a TypeError naming the wrong token. */
     export function parseControllerTrigger(trigger: unknown, what?: string): ControllerTriggerParts;
 
+    /** The client size and eligibility fields used by XR room placement. */
     export interface XRClient {
         readonly alive: boolean;
         readonly secure: boolean;
@@ -3301,6 +3328,7 @@ declare module "gnoblin/extensions/xr" {
         release(owner: object): void;
     }
 
+    /** A live XR object list; iteration returns a snapshot. */
     export class XRList<T extends { readonly id: string }> implements Iterable<T> {
         readonly size: number;
         get(id: string): T | undefined;
@@ -3310,6 +3338,7 @@ declare module "gnoblin/extensions/xr" {
         [Symbol.iterator](): Iterator<T>;
     }
 
+    /** Initial stereo-camera tracking and clipping values; near and far are metres. */
     export interface XRCamera3DOptions extends Omit<Camera3DOptions, "near" | "far"> {
         tracking?: XRTrackedPose;
         referenceSpace?: "local";
@@ -3324,7 +3353,9 @@ declare module "gnoblin/extensions/xr" {
         readonly referenceSpace: "local";
     }
 
+    /** How XR draws a room: automatic selection, flat layers or projection layers. */
     export type XRComposition = "auto" | "layers" | "projection";
+    /** The room node, head camera and composition mode shown by a session. */
     export interface XRViewportOptions {
         content: Node;
         camera: Camera3D;
@@ -3345,6 +3376,7 @@ declare module "gnoblin/extensions/xr" {
         readonly pose: Transform3D | null;
     }
 
+    /** A controller drag event; its ray and hit replace pointer coordinates. */
     export interface XRDragEvent extends DragEvent {
         /** Always null: the device is the controller, in `controller`. */
         readonly device: null;
@@ -3358,6 +3390,7 @@ declare module "gnoblin/extensions/xr" {
         /** Metres per room unit. */
         readonly unit: number;
     }
+    /** Id, controller trigger and enablement for an XR drag binding. */
     export interface XRBindingOptions {
         id: string;
         trigger: string;
@@ -3375,6 +3408,7 @@ declare module "gnoblin/extensions/xr" {
         /** The controller inputs the binding takes from the window under the ray while its drag runs: its trigger's buttons. */
         claims(): readonly string[];
     }
+    /** Initial tracking, rotation and distance behavior for a panel move. */
     export interface ViewMoveOptions extends Partial<XRBindingOptions> {
         /** `controller`: the panel follows the hand. `ray`: it follows where the ray points. */
         tracking?: "controller" | "ray";
@@ -3387,6 +3421,7 @@ declare module "gnoblin/extensions/xr" {
         tracking: "controller" | "ray";
         rotation: "follow" | "keep";
     }
+    /** Initial scale and minimum panel dimensions for a corner resize. */
     export interface ViewResizeOptions extends Partial<XRBindingOptions> {
         pixelsPerMetre?: number;
         minWidth?: number;
@@ -3400,6 +3435,7 @@ declare module "gnoblin/extensions/xr" {
         minHeight: number;
     }
 
+    /** Ring dimensions and spacing, in millimetres and radians. */
     export interface XRRingParams {
         radius: number;
         eye: number;
@@ -3411,12 +3447,15 @@ declare module "gnoblin/extensions/xr" {
         maxPanels: number;
         stackStep: number;
     }
+    /** Default ring geometry and spacing, in millimetres and radians. */
     export const RING_DEFAULTS: Readonly<XRRingParams>;
+    /** An input panel's identity and pixel dimensions. */
     export interface RingView<I> {
         readonly id: I;
         readonly width: number;
         readonly height: number;
     }
+    /** A panel's placement on the ring: position in millimetres and rotation in radians. */
     export interface RingPose {
         x: number;
         y: number;
@@ -3426,6 +3465,7 @@ declare module "gnoblin/extensions/xr" {
         focused: boolean;
         behind: number;
     }
+    /** One placement for each panel and its back-to-front render order. */
     export interface RingResult {
         poses: RingPose[];
         order: number[];
@@ -3437,6 +3477,7 @@ declare module "gnoblin/extensions/xr" {
         params?: Readonly<XRRingParams>,
     ): RingResult;
 
+    /** The ring layout and stock controller bindings; distances are metres and angles radians. */
     export interface SpatialLayoutOptions {
         /** Metres from the viewer to a panel's centre. Default 1.6. */
         radius?: number;
@@ -3453,7 +3494,7 @@ declare module "gnoblin/extensions/xr" {
         /** The triggers of the stock bindings by id; `null` leaves one out. */
         triggers?: { move?: string | null; resize?: string | null };
     }
-    /** The room's arrangement and its bindings: `layout.bindings.remove("move")` turns the grab off. */
+    /** Computes the room's ring placement and supplies default move and resize bindings. */
     export class SpatialLayout {
         constructor(options?: SpatialLayoutOptions);
         readonly bindings: BindingCollection;
@@ -3461,10 +3502,12 @@ declare module "gnoblin/extensions/xr" {
         arrange<I>(views: readonly RingView<I>[], focus: I | null): RingResult;
     }
 
+    /** Initial room layout and the clients the room may show. */
     export interface XRRoomOptions extends NodeOptions {
         layout?: SpatialLayout | null;
         accept?: (client: XRClient) => boolean;
     }
+    /** Position and scale for a panel fixed to the head; distances are metres. */
     export interface HeadPanelOptions {
         /** Metres right of, above and in front of the head. Default 0, 0, -1.2. */
         x?: number;
@@ -3473,6 +3516,7 @@ declare module "gnoblin/extensions/xr" {
         /** Millimetres of panel for a pixel of window. */
         scale?: number;
     }
+    /** Where a ray hits a view: the world point and panel-local pixel position. */
     export interface XRHit {
         readonly view: View;
         readonly point: Vector3;
@@ -3480,7 +3524,7 @@ declare module "gnoblin/extensions/xr" {
     }
     /** The panel the ray strikes: the room's last View first, because the room lists them back to front. */
     export function pickView(room: XRRoom, ray: Ray): XRHit | null;
-    /** The node the XR program reads, with the head camera and one panel for each client. */
+    /** The room tracks clients, arranges panels and owns the head camera and scene subtree. */
     export class XRRoom extends Node {
         constructor(options?: XRRoomOptions);
         /** The camera the program writes the head pose onto: the one named `head`. */
@@ -3499,10 +3543,12 @@ declare module "gnoblin/extensions/xr" {
         pinToHead(client: XRClient, options?: HeadPanelOptions): View;
     }
 
+    /** Hooks called when a headset session begins and ends. */
     export class XRListener {
         onSessionStarted(session: XRSession): void;
         onSessionEnded(session: XRSession): void;
     }
+    /** One XR session, with its head, controllers, viewport and input context. */
     export class XRSession {
         readonly id: string;
         /** False once the program ended the session. */
@@ -3522,6 +3568,7 @@ declare module "gnoblin/extensions/xr" {
          */
         chordSettleMs: number;
     }
+    /** The XR extension and its current sessions and stock classes. */
     export class XRExtension {
         readonly available: true;
         readonly sessions: XRList<XRSession>;

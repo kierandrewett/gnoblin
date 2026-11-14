@@ -1,11 +1,7 @@
-// The optional module `gnoblin/extensions/xr` (owner-spec.md section 13):
-//
-//     import { XRCamera3D, XRViewport, ViewMoveBinding } from "gnoblin/extensions/xr";
-//
-// Importing it when there is no XR extension fails at load with a message that says what to do. The extension is
-// there when the session declared XR (`GNOBLIN_XR=1`) or when the XR program already has a session; without either,
-// guard the use with `gnoblin.extensions.xr`, which is null while no session exists. The classes themselves are in
-// `gnoblin/xr`, which the stock shell always carries.
+// Optional XR package entry: importing it requires an XR session or an XR-enabled shell.
+// It checks availability, then re-exports the XR scene and binding types; it owns no runtime state.
+// Use `gnoblin.extensions.xr` to guard access when XR may be absent.
+// Read `xr.ts` first for the objects and their units.
 
 import "gnoblin/xr";
 
