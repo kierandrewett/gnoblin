@@ -199,6 +199,11 @@ declare module "gnoblin" {
         readonly output: Output | null;
         /** Shows this workspace on the output under the pointer (the primary output when no pointer says). */
         show(options?: ShowOptions): void;
+        /**
+         * Moves the keyboard focus `step` windows along the workspace's windows: 1 to the next, -1 to the previous. Nothing
+         * moves when no window of the workspace has the focus, and a step past either end leaves it where it is.
+         */
+        walk(step: number): void;
         constructor(options: WorkspaceOptions);
     }
 
@@ -412,7 +417,12 @@ declare module "gnoblin" {
     /** A collection that accepts membership changes from scripts. */
     export interface MutableCollection<T> extends Collection<T> {
         add(item: T): void;
-        remove(idOrItem: string | T): void;
+        /**
+         * Removes a member given as itself or by id. True when one was removed; false when there was none or the collection
+         * refused: `gnoblin.workspaces` keeps its last workspace, and a removed one hands its windows to the neighbour
+         * before it (the one after it, for the first), which is shown where it was.
+         */
+        remove(idOrItem: string | T): boolean;
         clear(): void;
     }
 
@@ -2204,6 +2214,9 @@ declare module "gnoblin" {
         minimise?(client: unknown): void;
         /** The seconds an animation takes: 0 while the seat asks for reduced motion. */
         motion?(seconds: number): number;
+        /** A button went down on the bar itself: the window is pressed, so it takes the focus. */
+        press?(client: unknown, event: { x: number; y: number; button: number }): void;
+        release?(client: unknown, event: { x: number; y: number; button: number }): void;
     }
     /** The bar above a window's content. A press does what the seat's `double_click`, `middle_click` and `right_click` say. */
     export class Titlebar extends Box {
@@ -2483,10 +2496,22 @@ declare module "gnoblin" {
         edgeTiling(): boolean;
     }
     /** The stock answers to a window's requests, and the drags that `move` and `resize` start. */
+    /** The rectangles a window goes back to when it stops being maximised or fullscreen. */
+    export interface KeptRects {
+        floating: Rect | null;
+        windowed: Rect | null;
+    }
     export class WindowState {
         readonly started: boolean;
         readonly dragging: boolean;
         start<C extends StateClient>(world: WindowStateWorld<C>): void;
+        /**
+         * The rectangles `client` returns to when it leaves maximised or fullscreen. A reload carries them to the next
+         * generation: the host reads this before it goes and `keep`s it in the next.
+         */
+        kept(client: StateClient): KeptRects;
+        /** Gives `client` back the rectangles `kept` took. */
+        keep(client: StateClient, kept: Partial<KeptRects>): void;
         /** Answers `kind` for `client` as the built-in policy does. */
         answer(client: StateClient, kind: ClientRequestKind): void;
         /** Fills the work area, keeping the floating rectangle. False when maximised or fullscreen already. */

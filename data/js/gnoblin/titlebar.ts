@@ -88,6 +88,10 @@ export interface TitlebarHooks {
     minimise?(client: TitlebarClient): void;
     /** The seconds an animation takes: 0 while the seat asks for reduced motion. Absent, the seconds it was given. */
     motion?(seconds: number): number;
+    /** A button went down on the bar itself (not on one of its buttons): the window is pressed, so it takes the focus. */
+    press?(client: TitlebarClient, event: { x: number; y: number; button: number }): void;
+    /** The button that went down on the bar came up. */
+    release?(client: TitlebarClient, event: { x: number; y: number; button: number }): void;
 }
 
 /** The buttons of the pointer, as the compositor numbers them (Linux `BTN_LEFT`, `BTN_RIGHT`, `BTN_MIDDLE`). */
@@ -291,6 +295,8 @@ export class Titlebar extends Box {
 
     override onPress(event: UiPointerEvent): void {
         event.stop();
+        // Whatever the button does, the press lands on the window: it takes the focus and, as the seat says, the top.
+        this.hooks.press?.(this.client, { x: event.x, y: event.y, button: event.button });
         if (event.button === MIDDLE) {
             this.#gesture("middle_click");
             return;
@@ -324,6 +330,7 @@ export class Titlebar extends Box {
     }
 
     override onRelease(event: UiPointerEvent): void {
+        this.hooks.release?.(this.client, { x: event.x, y: event.y, button: event.button });
         if (this.#dragFrom !== null) {
             event.stop();
             this.#dragFrom = null;

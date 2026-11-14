@@ -25,12 +25,40 @@ pub struct JsOutputShown {
     pub workspace: String,
 }
 
-/// The workspaces of a shell, in order, the id of the one the primary output showed, and the one each output showed.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// A rectangle as the shell keeps it: `[x, y, width, height]`.
+pub type JsKeptRect = [f64; 4];
+
+/// What a shell remembers of one window beyond where it is: the rectangles it goes back to when it stops being
+/// maximised, fullscreen or snapped. They live in the shell's script, so a reload would lose them and leave a window that
+/// was maximised when the config changed with nothing to return to.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct JsKeptWindow {
+    pub node: NodeId,
+    /// The rectangle a maximised window had before it was maximised.
+    pub floating: Option<JsKeptRect>,
+    /// The rectangle a fullscreen window had before it was.
+    pub windowed: Option<JsKeptRect>,
+    /// Where the user left a floating window (`floatingBounds`).
+    pub left_at: Option<JsKeptRect>,
+    /// The zone a snapped window sits in and the rectangle unsnapping returns it to.
+    pub snapped: Option<(String, JsKeptRect)>,
+}
+
+/// The workspaces of a shell, in order, the id of the one the primary output showed, the one each output showed, and the
+/// windows with rectangles to go back to.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct JsWorkspaceSnapshot {
     pub active: Option<String>,
     pub workspaces: Vec<JsWorkspaceEntry>,
     pub outputs: Vec<JsOutputShown>,
+    pub kept: Vec<JsKeptWindow>,
+}
+
+fn rect_from<'js>(object: &Object<'js>, key: &str) -> rquickjs::Result<Option<JsKeptRect>> {
+    let Some(numbers) = object.get::<_, Option<Vec<f64>>>(key)? else {
+        return Ok(None);
+    };
+    Ok(<JsKeptRect>::try_from(numbers.as_slice()).ok())
 }
 
 impl JsWorkspaceSnapshot {
@@ -57,10 +85,30 @@ impl JsWorkspaceSnapshot {
                 workspace: item.get("workspace")?,
             });
         }
+        let mut kept = Vec::new();
+        // An older shell hands over no `kept`: nothing to restore.
+        if let Some(list) = value.get::<_, Option<Array<'js>>>("kept")? {
+            for item in list.iter::<Object<'js>>() {
+                let item = item?;
+                let node: f64 = item.get("node")?;
+                let snapped = match item.get::<_, Option<String>>("zone")? {
+                    Some(zone) => rect_from(&item, "snapFloating")?.map(|rect| (zone, rect)),
+                    None => None,
+                };
+                kept.push(JsKeptWindow {
+                    node: node as NodeId,
+                    floating: rect_from(&item, "floating")?,
+                    windowed: rect_from(&item, "windowed")?,
+                    left_at: rect_from(&item, "leftAt")?,
+                    snapped,
+                });
+            }
+        }
         Ok(Self {
             active,
             workspaces,
             outputs,
+            kept,
         })
     }
 
@@ -83,10 +131,24 @@ impl JsWorkspaceSnapshot {
             item.set("workspace", entry.workspace.as_str())?;
             shown.set(index, item)?;
         }
+        let kept = Array::new(ctx.clone())?;
+        for (index, window) in self.kept.iter().enumerate() {
+            let item = Object::new(ctx.clone())?;
+            item.set("node", window.node as f64)?;
+            item.set("floating", window.floating.map(Vec::from))?;
+            item.set("windowed", window.windowed.map(Vec::from))?;
+            item.set("leftAt", window.left_at.map(Vec::from))?;
+            if let Some((zone, rect)) = &window.snapped {
+                item.set("zone", zone.as_str())?;
+                item.set("snapFloating", Vec::from(*rect))?;
+            }
+            kept.set(index, item)?;
+        }
         let object = Object::new(ctx.clone())?;
         object.set("active", self.active.as_deref())?;
         object.set("workspaces", list)?;
         object.set("outputs", shown)?;
+        object.set("kept", kept)?;
         Ok(object)
     }
 }

@@ -72,4 +72,4 @@ pub use stock::{STARTER_CONFIG, stock_modules, stock_modules_in};
 pub use supervisor::{JsClock, JsFault, JsFaultAction, JsHealth, JsStrikePolicy, JsSupervisor, JsSystemClock};
 pub use ts::{JsStripped, strip_types};
 pub use watch::{ConfigWatcher, JsWatchError, ReloadRequest};
-pub use workspaces::{JsOutputShown, JsWorkspaceEntry, JsWorkspaceSnapshot};
+pub use workspaces::{JsKeptRect, JsKeptWindow, JsOutputShown, JsWorkspaceEntry, JsWorkspaceSnapshot};

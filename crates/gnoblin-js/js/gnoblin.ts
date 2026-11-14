@@ -52,8 +52,8 @@ import type { UiBackend } from "gnoblin/ui";
 import { defaultTitlebarStyle, Decorations } from "gnoblin/titlebar";
 import { inspect } from "gnoblin/inspect";
 import { WorkspaceSets } from "gnoblin/sets";
-import { snapClient, snappedZone, unsnapClient } from "gnoblin/snap";
-import type { SnapClient } from "gnoblin/snap";
+import { restoreSnap, snapClient, snapRecord, snappedZone, unsnapClient } from "gnoblin/snap";
+import type { SnapClient, SnapZone } from "gnoblin/snap";
 import { windowMenu } from "gnoblin/menus";
 import { notRespondingAlerts } from "gnoblin/alerts";
 import { barInsets, barsGiveWayTo, barsOnOutputs } from "gnoblin/widgets";
@@ -1145,6 +1145,23 @@ export class Workspace {
         showWorkspace(this, options);
     }
 
+    /**
+     * Moves the keyboard focus `step` windows along the workspace's windows, in the order they are listed (Lua's
+     * `Workspace:walk`): `1` to the next, `-1` to the previous. Nothing moves when no window of the workspace has the focus,
+     * and a step past either end leaves the focus where it is.
+     */
+    walk(step: number): void {
+        if (typeof step !== "number" || !Number.isInteger(step)) {
+            throw new TypeError(`${this}.walk: step must be a whole number, got ${String(step)}`);
+        }
+        const list = wsState(this).clientsState.list as Client[];
+        const at = list.findIndex((client) => hasFocus(client));
+        const next = at < 0 ? undefined : list[at + step];
+        if (next !== undefined && next.alive) {
+            next.focus();
+        }
+    }
+
     toString(): string {
         return `Workspace#${wsState(this).id}`;
     }
@@ -1329,7 +1346,8 @@ type Member = Client | Workspace | Output;
 
 interface Mutation {
     add(member: Member): void;
-    remove(member: Member): void;
+    /** False when the collection refuses to let the member go; anything else is taken as done. */
+    remove(member: Member): boolean | void;
     clear(): void;
 }
 
@@ -1548,12 +1566,16 @@ export class MutableCollection<T extends Member> extends Collection<T> {
         this.mutation("add").add(member);
     }
 
-    /** Removes a member, given as itself or by id. A member that is not in the collection is ignored. */
-    remove(member: T | string): void {
+    /**
+     * Removes a member, given as itself or by id. A member that is not in the collection is ignored. True when a member was
+     * removed; false when there was none to remove or the collection refused (`gnoblin.workspaces` keeps its last one).
+     */
+    remove(member: T | string): boolean {
         const target = typeof member === "string" ? this.get(member) : member;
-        if (target !== undefined && collectionState(this).list.includes(target)) {
-            this.mutation("remove").remove(target);
+        if (target === undefined || !collectionState(this).list.includes(target)) {
+            return false;
         }
+        return this.mutation("remove").remove(target) !== false;
     }
 
     clear(): void {
@@ -1613,7 +1635,14 @@ const workspaceRoot = collectionState(
         ...rootState("Workspace"),
         mutation: {
             add: (workspace) => addWorkspace(workspace as Workspace),
-            remove: (workspace) => removeWorkspace(workspace as Workspace),
+            // The last workspace stays: a shell with nowhere to put a window is unusable (Lua: `remove_workspace` refuses).
+            remove: (workspace) => {
+                if (workspaceRoot.list.length < 2) {
+                    return false;
+                }
+                removeWorkspace(workspace as Workspace);
+                return true;
+            },
             clear: () => {
                 for (const workspace of [...workspaceRoot.list]) {
                     removeWorkspace(workspace as Workspace);
@@ -2102,7 +2131,10 @@ function addWorkspace(workspace: Workspace): void {
     adoptOrphans();
 }
 
-/** Takes the workspace out of `gnoblin.workspaces`. Its windows move to the first workspace left; none is closed. */
+/**
+ * Takes the workspace out of `gnoblin.workspaces`. Its windows move to the neighbour before it (the one after it, for the
+ * first), and that neighbour is shown where the removed one was; none is closed.
+ */
 function removeWorkspace(workspace: Workspace): void {
     const state = wsState(workspace);
     if (!state.attached) {
@@ -2110,16 +2142,22 @@ function removeWorkspace(workspace: Workspace): void {
     }
     const held = holders(workspaceRoot, workspace);
     state.attached = false;
-    workspaceRoot.list.splice(workspaceRoot.list.indexOf(workspace), 1);
+    const at = workspaceRoot.list.indexOf(workspace);
+    const neighbour = (workspaceRoot.list[at - 1] ?? workspaceRoot.list[at + 1]) as Workspace | undefined;
+    workspaceRoot.list.splice(at, 1);
     for (const view of held) {
         view.members?.delete(workspace);
         queueFor(view, "onRemoved", [workspace, view.self]);
     }
-    const target = (workspaceRoot.list[0] as Workspace | undefined) ?? null;
+    const target = neighbour ?? null;
     for (const desk of desks) {
         if (desk.shown === workspace) {
             desk.shown = null;
-            const free = (workspaceRoot.list as Workspace[]).find((one) => deskShowing(one) === null) ?? null;
+            // The neighbour takes its place, unless another output shows it already: then the first one no output shows.
+            const free =
+                neighbour !== undefined && deskShowing(neighbour) === null
+                    ? neighbour
+                    : ((workspaceRoot.list as Workspace[]).find((one) => deskShowing(one) === null) ?? null);
             setShown(desk, free);
         }
     }
@@ -2678,6 +2716,16 @@ function layout(): number {
                 state.dirty = false;
                 state.area = { ...area };
                 if (before !== null && !rectsEqual(before, area)) {
+                    // The work area moved under the windows (a bar came, went or grew): a maximised window fills it
+                    // again, a snapped one tiles to its zone again and a floating one is brought back inside, as the Lua
+                    // `Desk:arrange` did. The layout places what it owns after this.
+                    guard(`${workspace}.refit`, () => {
+                        for (const client of children) {
+                            if (client.alive) {
+                                refitClient(client, area);
+                            }
+                        }
+                    });
                     guard(`${workspace}.layout.onAreaChanged`, () => target.onAreaChanged?.(before, { ...area }));
                 }
                 guard(`${workspace}.layout.compute`, () => {
@@ -2703,6 +2751,7 @@ function layout(): number {
             state.fields = layoutFields(state.layout);
         });
     }
+    lastFocus = focusedClient();
     startSlides();
     guard("gnoblin.workspaces.visibility", syncVisibility);
     guard("gnoblin.style", applyStyles);
@@ -2715,6 +2764,68 @@ interface WorkspaceSnapshot {
     workspaces: { id: string; clients: number[] }[];
     /** The workspace each output showed, by the output's name. */
     outputs: { output: string; workspace: string }[];
+    /** The rectangles windows go back to, which live in the generation and would be lost with it. */
+    kept: KeptWindow[];
+}
+
+/** What one window keeps beyond where it is, each rectangle as `[x, y, width, height]`. */
+interface KeptWindow {
+    node: number;
+    /** The rectangle a maximised window had before it was maximised. */
+    floating: number[] | null;
+    /** The rectangle a fullscreen window had before it was. */
+    windowed: number[] | null;
+    /** Where the user left a floating window. */
+    leftAt: number[] | null;
+    /** The zone a snapped window sits in, and the rectangle unsnapping returns it to. */
+    zone: string | null;
+    snapFloating: number[] | null;
+}
+
+const asArray = (rect: Rect | null | undefined): number[] | null =>
+    rect ? [rect.x, rect.y, rect.width, rect.height] : null;
+const asRect = (numbers: number[] | null | undefined): Rect | null =>
+    numbers && numbers.length === 4 ? { x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3] } : null;
+
+/** The rectangles each window with one keeps, for the next generation. */
+function keptWindows(): KeptWindow[] {
+    const kept: KeptWindow[] = [];
+    for (const client of clientRoot.list as Client[]) {
+        const rects = windowState.kept(client);
+        const snap = snapRecord(client);
+        const leftAt = (client as unknown as { floatingBounds?: Rect | null }).floatingBounds ?? null;
+        if (rects.floating === null && rects.windowed === null && snap === null && leftAt === null) {
+            continue;
+        }
+        kept.push({
+            node: stateOf(client).node,
+            floating: asArray(rects.floating),
+            windowed: asArray(rects.windowed),
+            leftAt: asArray(leftAt),
+            zone: snap?.zone ?? null,
+            snapFloating: asArray(snap?.floating),
+        });
+    }
+    return kept;
+}
+
+/** Gives the windows of the last generation the rectangles they were keeping. */
+function restoreKept(kept: readonly KeptWindow[]): void {
+    for (const entry of kept) {
+        const client = clientsByNode.get(entry.node);
+        if (client === undefined || !client.alive) {
+            continue;
+        }
+        windowState.keep(client, { floating: asRect(entry.floating), windowed: asRect(entry.windowed) });
+        const leftAt = asRect(entry.leftAt);
+        if (leftAt !== null) {
+            (client as unknown as { floatingBounds: Rect }).floatingBounds = leftAt;
+        }
+        const floating = asRect(entry.snapFloating);
+        if (entry.zone !== null && floating !== null) {
+            restoreSnap(client, { zone: entry.zone as SnapZone, floating });
+        }
+    }
 }
 
 /** Which window is on which workspace, for the next generation to reconcile against. */
@@ -2729,6 +2840,7 @@ function snapshotWorkspaces(): WorkspaceSnapshot {
             const shown = deskByOutput.get(output)?.shown;
             return shown === null || shown === undefined ? [] : [{ output: output.name, workspace: shown.id }];
         }),
+        kept: keptWindows(),
     };
 }
 
@@ -2738,6 +2850,7 @@ function snapshotWorkspaces(): WorkspaceSnapshot {
  * floating window keeps the place the user gave it.
  */
 function reconcileWorkspaces(previous: WorkspaceSnapshot): void {
+    restoreKept(previous.kept ?? []);
     for (const entry of previous.workspaces) {
         const kept = (workspaceRoot.list as Workspace[]).find((workspace) => workspace.id === entry.id) ?? null;
         const target = kept ?? (workspaceRoot.list[0] as Workspace | undefined) ?? null;
@@ -2918,6 +3031,26 @@ function leave(top: CollectionState, member: Member, map: Map<NodeId, Member>, k
     return held;
 }
 
+/** The window that had the first seat's keyboard focus when the last frame ended: what a closing window is checked against. */
+let lastFocus: Client | null = null;
+
+/**
+ * Hands the keyboard to the neighbour of a focused window that closed, as the Lua strip did for its columns and every
+ * layout now does: the window after it in the workspace, else the one before; a dialog hands it back to its parent. Nothing
+ * moves while the workspace is not shown, a minimised window is skipped, and a window the compositor has already focused
+ * is left alone. A layout that has its own `onClientRemoved` (a strip's columns are not in window order) does it itself.
+ */
+function handOffFocus(workspace: Workspace, index: number, parent: Client | null): void {
+    if (!isShown(workspace) || host.input.seats().length === 0 || focusedClient() !== null) {
+        return;
+    }
+    const list = wsState(workspace).clientsState.list as Client[];
+    const usable = (client: Client | undefined): client is Client =>
+        client !== undefined && client.alive && !client.minimised;
+    const next = [parent ?? undefined, list[index], list[index - 1]].find(usable);
+    next?.focus();
+}
+
 function release(node: NodeId): void {
     const gone = outputsByNode.get(node);
     if (gone !== undefined) {
@@ -2930,12 +3063,19 @@ function release(node: NodeId): void {
     }
     const own = wsOf(client);
     const ownHeld = own ? holders(own.clientsState, client) : [];
+    const wasFocused = lastFocus === client;
+    const parent = client.parentWindow;
     const held = leave(clientRoot, client, clientsByNode, CLIENT_KEYS);
     input.clientGone(client);
     if (own) {
+        const workspace = membership.get(client) as Workspace;
         membership.delete(client);
-        own.clientsState.list.splice(own.clientsState.list.indexOf(client), 1);
+        const index = own.clientsState.list.indexOf(client);
+        own.clientsState.list.splice(index, 1);
         own.dirty = true;
+        if (wasFocused && typeof own.layout.onClientRemoved !== "function") {
+            handOffFocus(workspace, index, parent);
+        }
         forgetArrival(own, client);
         for (const state of ownHeld) {
             state.members?.delete(client);
@@ -3409,6 +3549,23 @@ function decorate(): void {
                     windowState.minimise(client as Client);
                 },
                 motion,
+                // A press on the bar is a press on its window: the focus policy hears it as it hears one on the window.
+                press: (client, event) => {
+                    if (stateOf(client as Client).alive) {
+                        emitMember(client as Client, clientHolders(client as Client), "onPointerPress", [
+                            client,
+                            event,
+                        ]);
+                    }
+                },
+                release: (client, event) => {
+                    if (stateOf(client as Client).alive) {
+                        emitMember(client as Client, clientHolders(client as Client), "onPointerRelease", [
+                            client,
+                            event,
+                        ]);
+                    }
+                },
             },
         );
         clientRoot.self.addListener(decorations);

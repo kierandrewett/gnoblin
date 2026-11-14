@@ -101,3 +101,60 @@ pub fn focused_title(rig: &mut Rig) -> String {
     let focus = focus(rig);
     rig.eval(&format!("gnoblin.clients.get('{focus}')?.title ?? 'none'"))
 }
+
+/// A dialog of window `parent`, mapped as the compositor does: created with its `parent_window` and size.
+pub fn create_dialog(rig: &mut Rig, id: u64, parent: u64) {
+    let props = [
+        ("title", text("dialog")),
+        ("app_id", text("dialog")),
+        ("width", MirrorValue::Double(100.0)),
+        ("height", MirrorValue::Double(60.0)),
+        ("parent_window", MirrorValue::Node(parent)),
+    ];
+    rig.comp.add_node(id, ROOT, "window", props.to_vec());
+    let mut changes = vec![
+        MirrorChange {
+            class: "window".to_owned(),
+            ..change(MirrorChangeKind::Created, id)
+        },
+        MirrorChange {
+            parent: ROOT,
+            index: 99,
+            ..change(MirrorChangeKind::Parented, id)
+        },
+    ];
+    changes.extend(props.into_iter().map(|(key, value)| set_change(id, key, value)));
+    rig.comp.publish(changes);
+    settle(rig);
+}
+
+/// The compositor closes window `node`: the seat's focus drops, and the node goes.
+pub fn close_window(rig: &mut Rig, node: u64) {
+    if focus(rig) == node {
+        rig.comp.external_set(SEAT, "focus", MirrorValue::Node(0));
+    }
+    rig.comp.destroy(node);
+    settle(rig);
+}
+
+/// A second shell on the compositor of `rig`, as a reload starts one, with `config` (the keys of a `defineConfig` object)
+/// over the same three workspaces. The caller `reconcile`s it against the first one's snapshot.
+pub fn next_generation(rig: &Rig, config: &str) -> Rig {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let root = std::fs::canonicalize(dir.path()).expect("the temp dir exists");
+    let init = format!(
+        "{IMPORTS}defineConfig({{ workspaces: [{{ id: \"1\" }}, {{ id: \"2\" }}, {{ id: \"3\" }}], decorations: false, {config} }});\n"
+    );
+    std::fs::write(root.join("init.ts"), init).expect("init.ts is written");
+    let mut shell = gnoblin_js::JsShell::new(Box::new(rig.comp.clone()), gnoblin_js::JsShellConfig::new(&root))
+        .expect("the shell boots");
+    let load_diagnostics = shell
+        .load_entry(std::path::Path::new("init.ts"))
+        .expect("init.ts loads");
+    Rig {
+        shell,
+        comp: rig.comp.clone(),
+        load_diagnostics,
+        _dir: dir,
+    }
+}

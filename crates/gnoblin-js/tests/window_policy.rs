@@ -488,3 +488,393 @@ fn the_titlebar_close_fades_the_window_out_unless_the_seat_asks_for_reduced_moti
         "and the fade's end value is already there"
     );
 }
+
+// ---- the keyboard goes to the neighbour of a window that closes -----------------------------------------------------
+
+#[test]
+fn closing_the_focused_window_hands_the_keyboard_to_its_neighbour_in_every_layout() {
+    // Lua: "closing the focused column moves focus to its neighbour, not to the closed one" (strip.lua:110), for all layouts.
+    for layout in [
+        "new Layout()",
+        "'master-stack'",
+        "'monocle'",
+        "'grid'",
+        "'dwindle'",
+        "'floating'",
+    ] {
+        let mut rig = world(3, false, layout, "");
+        give_focus(&mut rig, 4);
+        close_window(&mut rig, 4);
+        assert_eq!(
+            focus(&rig),
+            5,
+            "{layout}: the window after the closed one takes the keyboard"
+        );
+        close_window(&mut rig, 5);
+        assert_eq!(
+            focus(&rig),
+            3,
+            "{layout}: the last window closing hands it to the one before"
+        );
+        close_window(&mut rig, 3);
+        assert_eq!(focus(&rig), 0, "{layout}: the last window closing leaves no focus");
+    }
+}
+
+#[test]
+fn closing_a_window_that_is_not_focused_changes_no_focus() {
+    // Lua: the `Strip:on_closed` hand-off runs for the focused window only.
+    let mut rig = world(3, false, "new Layout()", "");
+    give_focus(&mut rig, 5);
+    close_window(&mut rig, 4);
+    assert_eq!(focus(&rig), 5, "the focused window keeps the keyboard");
+}
+
+#[test]
+fn a_window_the_compositor_already_gave_the_keyboard_to_is_left_alone() {
+    // New: the compositor may pick the next window itself; the shell hands the keyboard on only to nobody.
+    let mut rig = world(3, false, "new Layout()", "");
+    give_focus(&mut rig, 4);
+    rig.comp.external_set(SEAT, "focus", MirrorValue::Node(3));
+    rig.comp.destroy(4);
+    settle(&mut rig);
+    assert_eq!(focus(&rig), 3);
+}
+
+#[test]
+fn closing_a_focused_dialog_hands_the_keyboard_to_its_parent_and_a_minimised_neighbour_is_skipped() {
+    // New: the Lua strip took the next column whatever it was; a dialog's natural neighbour is its parent.
+    let mut rig = world(3, false, "new Layout()", "");
+    create_dialog(&mut rig, 30, 4);
+    give_focus(&mut rig, 30);
+    close_window(&mut rig, 30);
+    assert_eq!(
+        focus(&rig),
+        4,
+        "the dialog's parent, though the dialog sat last in the list"
+    );
+
+    rig.comp.external_set(5, "minimised", MirrorValue::Bool(true));
+    settle(&mut rig);
+    give_focus(&mut rig, 4);
+    close_window(&mut rig, 4);
+    assert_eq!(
+        focus(&rig),
+        3,
+        "a minimised window is skipped: the window before takes it"
+    );
+}
+
+#[test]
+fn a_layout_with_its_own_removal_hook_keeps_the_hand_off_to_itself() {
+    // Lua: `Strip` hands the focus on in its own column order; every other layout has the shell's order.
+    let mut rig = world(
+        3,
+        false,
+        "new (class extends Layout { onClientRemoved() { globalThis.hooked = (globalThis.hooked ?? 0) + 1; } })()",
+        "",
+    );
+    give_focus(&mut rig, 4);
+    close_window(&mut rig, 4);
+    assert_eq!(rig.eval("String(globalThis.hooked)"), "1", "the layout heard it");
+    assert_eq!(focus(&rig), 0, "and the shell left the hand-off to it");
+}
+
+#[test]
+fn workspace_walk_moves_the_focus_along_the_workspaces_windows() {
+    // Lua: `Workspace:walk(step)`: focus the next window in tree order; no window focused or a step past the end does nothing.
+    let mut rig = world(3, false, "new Layout()", "");
+    exec(&mut rig, "globalThis.ws = gnoblin.workspaces.get('1')");
+    exec(&mut rig, "ws.walk(1)");
+    settle(&mut rig);
+    assert_eq!(focus(&rig), 0, "no focused window: nothing to walk from");
+    give_focus(&mut rig, 4);
+    exec(&mut rig, "ws.walk(1)");
+    settle(&mut rig);
+    assert_eq!(focus(&rig), 5);
+    exec(&mut rig, "ws.walk(1)");
+    settle(&mut rig);
+    assert_eq!(focus(&rig), 5, "past the last window the focus stays");
+    exec(&mut rig, "ws.walk(-1)");
+    settle(&mut rig);
+    assert_eq!(focus(&rig), 4, "a step back");
+    exec(&mut rig, "ws.walk(-1)");
+    settle(&mut rig);
+    assert_eq!(focus(&rig), 3, "and another");
+    exec(&mut rig, "ws.walk(-1)");
+    settle(&mut rig);
+    assert_eq!(focus(&rig), 3, "past the first window the focus stays");
+    assert_eq!(
+        rig.eval("try { ws.walk(1.5); 'walked' } catch (e) { e.message }"),
+        "Workspace#1.walk: step must be a whole number, got 1.5"
+    );
+}
+
+// ---- removing a workspace --------------------------------------------------------------------------------------------
+
+#[test]
+fn removing_a_workspace_moves_its_windows_to_the_neighbour_before_it() {
+    // Lua: "removing a workspace moves its windows to the neighbour before it".
+    let mut rig = world(1, false, "new Layout()", "");
+    exec(
+        &mut rig,
+        "gnoblin.clients.get('3').moveToWorkspace(gnoblin.workspaces.get('3'))",
+    );
+    settle(&mut rig);
+    assert_eq!(rig.eval("String(gnoblin.workspaces.remove('3'))"), "true");
+    settle(&mut rig);
+    assert_eq!(
+        workspace_of(&mut rig, 3),
+        "2",
+        "the window moves to the neighbour before the removed workspace"
+    );
+    assert_eq!(
+        active(&mut rig),
+        "1",
+        "removing an inactive workspace keeps the active one"
+    );
+    assert_eq!(rig.eval("String(gnoblin.workspaces.length)"), "2");
+
+    // The first workspace has none before it: its windows go to the one after.
+    let mut rig = world(1, false, "new Layout()", "");
+    exec(&mut rig, "gnoblin.workspaces.remove('1')");
+    settle(&mut rig);
+    assert_eq!(workspace_of(&mut rig, 3), "2", "the one after it, for the first");
+}
+
+#[test]
+fn removing_the_active_workspace_shows_its_neighbour_and_the_moved_window_keeps_the_focus() {
+    // Lua: "removing the active workspace shows its neighbour and refocuses the moved window".
+    let mut rig = world(1, false, "new Layout()", "");
+    give_focus(&mut rig, 3);
+    exec(&mut rig, "gnoblin.workspaces.remove(gnoblin.workspaces.get('1'))");
+    settle(&mut rig);
+    assert_eq!(active(&mut rig), "2", "the neighbour must become active");
+    assert_eq!(workspace_of(&mut rig, 3), "2", "the window must move to the neighbour");
+    assert_eq!(rig.eval("String(gnoblin.clients.get('3').visible)"), "true");
+    assert_eq!(focus(&rig), 3, "the moved window must keep focus");
+}
+
+#[test]
+fn removing_an_inactive_workspace_keeps_the_focus_and_moves_the_stray_window_beside_it() {
+    // Lua: "removing an inactive workspace keeps focus on the focused window and moves the stray window beside it".
+    let mut rig = world(2, false, "new Layout()", "");
+    exec(
+        &mut rig,
+        "gnoblin.clients.get('4').moveToWorkspace(gnoblin.workspaces.get('2'))",
+    );
+    give_focus(&mut rig, 3);
+    exec(&mut rig, "gnoblin.workspaces.remove('2')");
+    settle(&mut rig);
+    assert_eq!(
+        workspace_of(&mut rig, 4),
+        "1",
+        "the stray window must move to the neighbour before it"
+    );
+    assert_eq!(active(&mut rig), "1", "the active workspace must stay");
+    assert_eq!(
+        focus(&rig),
+        3,
+        "the focused window must keep focus when another workspace goes"
+    );
+}
+
+#[test]
+fn the_last_workspace_cannot_be_removed() {
+    // Lua: "the last workspace of a desk cannot be removed".
+    let mut rig = world(1, false, "new Layout()", "");
+    assert_eq!(
+        rig.eval("String(gnoblin.workspaces.remove('3'))"),
+        "true",
+        "a spare workspace must go"
+    );
+    assert_eq!(
+        rig.eval("String(gnoblin.workspaces.remove('2'))"),
+        "true",
+        "a spare workspace must go"
+    );
+    assert_eq!(
+        rig.eval("String(gnoblin.workspaces.remove(gnoblin.workspaces.get('1')))"),
+        "false",
+        "the last workspace must be refused"
+    );
+    assert_eq!(
+        rig.eval("String(gnoblin.workspaces.length)"),
+        "1",
+        "the refused workspace must stay"
+    );
+    assert_eq!(
+        rig.eval("String(gnoblin.workspaces.remove('nope'))"),
+        "false",
+        "an unknown id removes nothing"
+    );
+    assert_eq!(workspace_of(&mut rig, 3), "1");
+}
+
+// ---- a press on a titlebar -------------------------------------------------------------------------------------------
+
+#[test]
+fn a_press_on_a_titlebar_focuses_and_raises_its_window() {
+    // The audit row of decorations.lua:74-92: the stock policy of a press on a window (`seat.focus = w`, then `raise`) holds
+    // for the press on its bar too.
+    let mut rig = world(2, false, "new Layout()", "decorations: true,");
+    give_focus(&mut rig, 4);
+    let bar = rig.comp.children(3)[0];
+    assert_eq!(
+        rig.comp.children(ROOT).last(),
+        Some(&4),
+        "window 4 is on top to begin with"
+    );
+    rig.comp.pointer(bar, "press", 5.0, 5.0, LEFT);
+    settle(&mut rig);
+    assert_eq!(focus(&rig), 3, "the press focuses the window");
+    assert_eq!(
+        rig.comp.children(ROOT).last(),
+        Some(&3),
+        "and raises it over the other window"
+    );
+    rig.comp.pointer(bar, "release", 5.0, 5.0, LEFT);
+    settle(&mut rig);
+
+    // The same press on a window whose seat keeps the stacking (raise_on_click off) focuses and does not raise.
+    let mut rig = world(
+        2,
+        false,
+        "new Layout()",
+        "decorations: true, focus: { raiseOnClick: false },",
+    );
+    give_focus(&mut rig, 4);
+    let bar = rig.comp.children(3)[0];
+    rig.comp.pointer(bar, "press", 5.0, 5.0, LEFT);
+    settle(&mut rig);
+    assert_eq!(focus(&rig), 3, "the press focuses the window");
+    assert_eq!(
+        rig.comp.children(ROOT).last(),
+        Some(&4),
+        "raise_on_click off: the stacking is left alone"
+    );
+}
+
+// ---- the bars change under maximised and snapped windows -----------------------------------------------------------
+
+#[test]
+fn a_maximised_window_refits_when_a_bar_reserves_space_at_the_top() {
+    // Lua: "a maximised window refits when a bar reserves space at the top (failure mode 9, maximised)".
+    let mut rig = world(1, false, "new Layout()", "");
+    exec(&mut rig, "windowState.maximise(gnoblin.clients.get('3'))");
+    settle(&mut rig);
+    assert_eq!(rect(&rig, 3), "0,0,1000,800", "maximised fills the screen");
+    exec(&mut rig, "g.bar = new Bar({ edge: 'top', height: 32 })");
+    settle(&mut rig);
+    assert_eq!(
+        rect(&rig, 3),
+        "0,32,1000,768",
+        "the window must move below the bar and refit"
+    );
+    exec(&mut rig, "g.bar.destroy()");
+    settle(&mut rig);
+    assert_eq!(
+        rect(&rig, 3),
+        "0,0,1000,800",
+        "and fill the screen again when the bar goes"
+    );
+}
+
+#[test]
+fn a_snapped_window_refits_when_a_bar_reserves_space_at_the_top() {
+    // Lua: "a snapped window refits when a bar reserves space at the top (failure mode 9, snapped)".
+    let mut rig = world(1, false, "new Layout()", "");
+    assert_eq!(
+        rig.eval(
+            "String(snapClient(gnoblin.clients.get('3'), 'right', { edgeTiling: true, area: { x: 0, y: 0, width: 1000, height: 800 } }))"
+        ),
+        "true"
+    );
+    settle(&mut rig);
+    assert_eq!(rect(&rig, 3), "500,0,500,800", "the right half must be tiled");
+    exec(&mut rig, "g.bar = new Bar({ edge: 'top', height: 32 })");
+    settle(&mut rig);
+    assert_eq!(
+        rect(&rig, 3),
+        "500,32,500,768",
+        "the snapped window must move below the bar and refit"
+    );
+    assert_eq!(
+        rig.eval("snappedZone(gnoblin.clients.get('3'))"),
+        "right",
+        "and is still snapped"
+    );
+}
+
+#[test]
+fn a_floating_window_is_brought_inside_the_smaller_work_area() {
+    // Lua: `Desk:arrange` refits every window, a floating one included: `w:refit(self:work_area())`.
+    let mut rig = world(1, false, "new Layout()", "");
+    exec(
+        &mut rig,
+        "gnoblin.clients.get('3').bounds = { x: 100, y: 0, width: 300, height: 200 }",
+    );
+    settle(&mut rig);
+    exec(&mut rig, "g.bar = new Bar({ edge: 'top', height: 32 })");
+    settle(&mut rig);
+    assert_eq!(
+        rect(&rig, 3),
+        "100,32,300,200",
+        "a window under the new bar moves below it"
+    );
+}
+
+// ---- a reload ------------------------------------------------------------------------------------------------------
+
+#[test]
+fn a_reload_keeps_the_rectangles_a_maximised_fullscreen_or_snapped_window_returns_to() {
+    // New: JsClientRequests left it undone: "the kept rectangles across a reload live in the generation".
+    let mut rig = world(3, false, "new Layout()", "");
+    exec(
+        &mut rig,
+        "windowState.maximise(gnoblin.clients.get('3')); \
+         windowState.enterFullscreen(gnoblin.clients.get('4')); \
+         snapClient(gnoblin.clients.get('5'), 'left', { edgeTiling: true, area: { x: 0, y: 0, width: 1000, height: 800 } })",
+    );
+    settle(&mut rig);
+    let snapshot = rig.shell.workspace_snapshot().expect("a snapshot");
+    let kept = |node: u64| snapshot.kept.iter().find(|window| window.node == node).cloned();
+    assert_eq!(
+        kept(3).and_then(|window| window.floating),
+        Some([10.0, 20.0, 300.0, 200.0])
+    );
+    assert_eq!(
+        kept(4).and_then(|window| window.windowed),
+        Some([20.0, 40.0, 300.0, 200.0])
+    );
+    assert_eq!(
+        kept(5).and_then(|window| window.snapped),
+        Some(("left".to_owned(), [30.0, 60.0, 300.0, 200.0]))
+    );
+
+    let mut second = next_generation(&rig, "");
+    second.shell.reconcile(&snapshot).expect("reconciles");
+    settle(&mut second);
+    exec(
+        &mut second,
+        "windowState.unmaximise(gnoblin.clients.get('3')); \
+         windowState.leaveFullscreen(gnoblin.clients.get('4')); \
+         unsnapClient(gnoblin.clients.get('5'))",
+    );
+    settle(&mut second);
+    assert_eq!(
+        rect(&second, 3),
+        "10,20,300,200",
+        "the maximised window goes back to where it floated"
+    );
+    assert_eq!(
+        rect(&second, 4),
+        "20,40,300,200",
+        "the fullscreen window goes back to its windowed rectangle"
+    );
+    assert_eq!(
+        rect(&second, 5),
+        "30,60,300,200",
+        "and the snapped one to the rectangle it was snapped from"
+    );
+}

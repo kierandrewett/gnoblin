@@ -168,6 +168,12 @@ export function isRequestHandled(request: UiRequest): boolean {
     return handledRaw.has(request);
 }
 
+/** The rectangles a window goes back to when it stops being maximised or fullscreen. */
+export interface KeptRects {
+    floating: Rect | null;
+    windowed: Rect | null;
+}
+
 /** The stock answers to a window's requests, and the drags that `move` and `resize` start. */
 export class WindowState {
     #world: WindowStateWorld<StateClient> | null = null;
@@ -176,6 +182,24 @@ export class WindowState {
     /** The rectangle a fullscreen window had, so leaving fullscreen restores it. */
     readonly #windowed = new WeakMap<object, Rect>();
     #drag: RequestDrag | null = null;
+
+    /**
+     * The rectangles `client` returns to when it leaves maximised or fullscreen. They live here, in the shell's script, so a
+     * reload takes them with it unless the host carries them across: it reads this before it goes and `keep`s it in the next.
+     */
+    kept(client: StateClient): KeptRects {
+        return { floating: this.#floating.get(client) ?? null, windowed: this.#windowed.get(client) ?? null };
+    }
+
+    /** Gives `client` back the rectangles `kept` took, so it can leave maximised or fullscreen as it would have. */
+    keep(client: StateClient, kept: Partial<KeptRects>): void {
+        if (kept.floating) {
+            this.#floating.set(client, { ...kept.floating });
+        }
+        if (kept.windowed) {
+            this.#windowed.set(client, { ...kept.windowed });
+        }
+    }
 
     /** Whether the policy answers the compositor's requests. */
     get started(): boolean {

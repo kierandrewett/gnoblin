@@ -334,8 +334,14 @@ fn workspaces_are_a_mutable_collection_of_objects_a_script_makes() {
     );
     assert_eq!(rig.eval("dev.index"), "-1");
     assert_eq!(
-        rig.eval("gnoblin.workspaces.remove('web'); gnoblin.workspaces.length"),
-        "0"
+        rig.eval("gnoblin.workspaces.remove('web') + ',' + gnoblin.workspaces.length"),
+        "false,1",
+        "the last workspace is refused (Lua: `remove_workspace` of the last one is false)"
+    );
+    assert_eq!(
+        rig.eval("gnoblin.workspaces.clear(); gnoblin.workspaces.length"),
+        "0",
+        "`clear` empties it"
     );
 }
 
@@ -825,6 +831,7 @@ fn a_reload_keeps_the_windows_on_the_workspace_of_the_same_id() {
                 output: String::new(),
                 workspace: "desktop".into(),
             }],
+            kept: Vec::new(),
         }
     );
     // The first shell is gone, as a restarted runtime's connection is: its undelivered echoes go with it.
