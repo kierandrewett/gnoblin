@@ -1568,6 +1568,82 @@ busy loops per CPU run beside it passes. Both are the proof a change to these te
   tests: the burst is written in microseconds, and a stall longer than the debounce would split it) and a spawned
   process's own timeout. Those tests wait for a state, with a deadline of seconds.
 
+## Live verification
+
+Lane JsLiveVerify. Until now the shell was proven by scene-tree assertions; nobody had looked at it. This section is what was
+seen on pictures of the shipped binary, how to take them again, and what is wrong with them.
+
+### How the pictures are taken
+
+`scripts/js-shell-screenshots.sh [OUT_DIR [SCENARIO...]]` boots the release `gnoblin` as a session (the guardian, which
+starts the compositor on its headless backend with the software renderer, the services role and the runtime role that runs
+the JavaScript shell), starts real Wayland clients (`foot`, running `gnoblinctl` commands so the windows show real output)
+and takes each picture with `grim` on the compositor's privileged socket (`gnoblin-wayland-privileged.sock`, the same path
+as `docs/troubleshooting.md`), which is the compositor's own screencopy. No `init.ts` is present unless a scenario writes
+one, so the zero-config scenarios run the stock library. Every picture is saved with `NAME.windows.json` (the compositor's
+window list), `NAME.clients.json` (the shell's `x`, `y`, `width`, `height`, `frameInset`, `tiled` and workspace for each
+client, from `gnoblinctl console --eval`) and `NAME.log` (the session log), so a picture that looks wrong has its numbers
+beside it. It needs `grim`, `foot` and `dbus-daemon` (and `wtype` for the menu); `shellcheck` is the lint.
+
+On an Agent37 instance (Debian 12, gVisor, no GPU):
+
+```sh
+apt-get install -y --no-install-recommends grim foot wtype dbus dbus-daemon fonts-dejavu-core libegl1 libgles2 libegl-mesa0 libgl1-mesa-dri
+a37-gate.sh run ID TREE build --release -p gnoblin -p gnoblinctl
+a37-gate.sh in ID TREE scripts/js-shell-screenshots.sh /home/node/shots
+a37 pull ID /home/node/shots/master-stack-decorated.png master-stack-decorated.png
+```
+
+Any Linux box with the build works the same way: `GNOBLIN_BIN_DIR=target/release scripts/js-shell-screenshots.sh ./shots`.
+Each scenario boots its own session over a fresh directory, so one can be run alone by name.
+
+| Scenario                                      | What it shows                                                                             |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `one-window`                                  | zero config, one window, its titlebar                                                     |
+| `cascade`                                     | zero config, three windows of the default size                                            |
+| `master-stack`, `dwindle`                     | three windows, then a reload to the owner's `defineConfig` (no `decorations` key)         |
+| `master-stack-decorated`, `dwindle-decorated` | the same with `decorations: true`                                                         |
+| `shadows-software`, `shadows-gles`            | `style.shadows` on each renderer (the renderer is read at start, so the session restarts) |
+| `csd-double`, `csd-tiled`                     | foot as it comes, drawing its own title bar, under the stock titlebar                     |
+| `window-menu`                                 | the window menu, opened with `Alt+Space` sent by `wtype`                                  |
+| `lock`                                        | `gnoblinctl lock`, then a capture, which is refused                                       |
+
+The pictures (`/home/kieran/dev/lanes/JsLiveVerify-shots/` on the workstation of the lane) are not in the repository except
+four that are clean product states and are in `docs/typescript-shell.md`, "What it looks like": `docs/images/js-shell/`.
+
+### What was seen
+
+- **Zero config, one window (`one-window`).** A 700 by 500 window under a 28 px titlebar (`#414559` while focused, title in
+  `#c6d0f5`, minimise, maximise and close at the right), content directly below it, nothing over it, and black everywhere
+  else: the stock shell draws no wallpaper and no bar. The window sits at the screen's top-left corner. Text is crisp and
+  not clipped.
+- **Master-stack and dwindle with decorations.** The bars lie above each tile, the focused bar is lighter than the others,
+  the 12 px gap is exactly 12 px black, windows touch the screen's edges, and no tile overlaps another.
+- **Window menu.** A card with rounded corners, two groups of entries and a submenu mark, text not clipped, opened at the
+  top-left corner of the window's content because `Alt+Space` has no pointer to anchor to. The titlebar's right click is
+  not drawn: a shipped session has no way to inject a pointer (its EIS socket stays shut until a remote desktop session is
+  approved, and `gnoblin-wayland` offers no virtual pointer), so it is proved by the scene in
+  `crates/gnoblin/tests/js_shell.rs`, `a_decorated_windows_content_lies_below_its_bar_and_a_titlebar_right_click_opens_the_window_menu`.
+- **Shadows.** The software renderer draws none (as `docs/js-style.md` says). GLES draws them: the session was started
+  with `compositor.renderer = "gles"` on Mesa's llvmpipe (surfaceless EGL works under gVisor), and the shadow is visible on
+  the window below it.
+- **The lock screen and the lock card (`lock`).** Not drawn. A locked session refuses every capture (`grim` says
+  `failed to copy output HEADLESS-1`), by design: no pixel leaves a locked compositor. `docs/session-lock.md` says no test
+  reads their pixels and that is still so; an in-process capture that skips the embargo would be a way around the rule
+  being proved, so it was not added.
+
+### Defects
+
+| #   | Picture                           | Diagnosis                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | State                                                                                                                                                                                                                                                  |
+| --- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | `master-stack.png`                | A black column at x = 1023: `tile()` floored each width on its own, so a master of 607.2 and a stack of 404.8 at 619.2 ended at 619 + 404 = 1023. Every tiled layout had it (grid with 3 columns on 1000 px ended at 999; the Lua shell had the same).                                                                                                                                                                                                                                                                | Fixed in `data/js/gnoblin/layout.ts` (`tile` floors edges). Tests: `stock_layouts.rs`, real: `a_master_stack_workspace_with_a_ratio_and_a_gap_fills_the_screen_to_both_edges`. The Lua goldens that pinned the sliver are changed.                     |
+| 2   | `cascade.png` (before the fix)    | Three windows of the default size: the second and the third landed at exactly (324, 268). `placeRect` pushes a cascade that found no free spot back inside the area, pinning every later window to the far corner, so the third hid the second.                                                                                                                                                                                                                                                                       | Fixed in `FloatingLayout.onClientAdded` (`apartFrom` steps back by the cascade step). `placeRect` and its golden table are unchanged. Tests: `stock_layouts.rs`, real: `windows_too_big_for_a_free_spot_cascade_and_never_land_exactly_on_each_other`. |
+| 3   | `master-stack.png`, `dwindle.png` | The owner's `defineConfig({ workspaces })` draws no titlebars. `docs/typescript-config.md` says so in its table (`decorations` is "not layered") and contradicts itself two paragraphs above ("A key you leave out keeps its default"). With foot as the client, foot then draws its own title bar, which is outside its window and off screen for the top row.                                                                                                                                                       | Open, by design, owner's call: should `decorations` default to `true` for a config that leaves it out? The doc and the screenshots in `docs/` say what is.                                                                                             |
+| 4   | `csd-double.png`, `csd-tiled.png` | The compositor answers every `xdg-decoration` with client side, so a client that draws a title bar (foot, GTK) has two. Foot's own is hidden under the shell's. Foot reports its window geometry as (0, -26, 700, 500) with a 700 by 474 buffer, and the compositor holds the window as 700 by 448 (500 less 26 twice); in one exploratory capture of three tiled windows the first (foot told 740, drawing 714) left a 26 px black strip below it; `csd-tiled` (one window) does not show it. Not diagnosed further. | Open. Not asserted: `Mapper` has no window geometry. Starting point: `follow_window_geometry` in `crates/gnoblin-wayland/src/state.rs` and the surface offset in `compose.rs`.                                                                         |
+| 5   | `shadows-gles.png`                | The shadow is the window node's, so it is cast by the content and not by the frame: it has nothing at the titlebar's side. The shadow effect has no rectangle of its own to grow.                                                                                                                                                                                                                                                                                                                                     | Open. Needs the effect to take an extent, in the compositor.                                                                                                                                                                                           |
+| 6   | `master-stack.log`                | A reload logs 19 `a seat claim's chord is already bound for that device` and one `a seat gesture claim was refused` at WARN, from the new generation claiming the stock keys. Whether the keys still work after the reload was not measured (the check was started and not finished).                                                                                                                                                                                                                                 | Open, unverified.                                                                                                                                                                                                                                      |
+| 7   | every `.log`                      | The guardian wraps each INFO line a child prints on stderr as `WARN guardian/raw INFO ...`, so a healthy start is a page of warnings.                                                                                                                                                                                                                                                                                                                                                                                 | Open. Cosmetic, in the guardian's raw capture.                                                                                                                                                                                                         |
+
 ## Questions for the owner (the agent has a default for each)
 
 1. Initial workspace rule for a new toplevel. Default: the workspace shown by the display under the

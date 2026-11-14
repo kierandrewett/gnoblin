@@ -156,6 +156,35 @@ A session with no `init.ts` is not a bare shell. It runs the stock config:
 Creating `init.ts` later loads it at once. An `init.ts` that fails to load when the shell starts is reported in the log,
 and the stock config runs until the file is fixed.
 
+## What it looks like
+
+A session with no `init.ts` shows each window under its titlebar on an empty screen. The stock config has no wallpaper
+and no bar.
+
+![A terminal under the shell's titlebar on an empty screen](images/js-shell/default-desktop.png)
+
+A workspace with a layout tiles its windows. This config tiles three terminals with a master on the left and a gap of 12
+pixels. It sets `decorations: true` because a `defineConfig` that leaves the key out draws no titlebars:
+
+```ts
+import { MasterStackLayout, defineConfig } from "gnoblin";
+
+export default defineConfig({
+    decorations: true,
+    workspaces: [{ id: "dev", layout: new MasterStackLayout({ ratio: 0.6, gap: 12 }) }],
+});
+```
+
+![Three terminals tiled with a master on the left and a gap of 12 pixels](images/js-shell/master-stack.png)
+
+`DwindleLayout({ gap: 12 })` splits the space of the focused window in two for each new window:
+
+![Three terminals tiled by a dwindle layout](images/js-shell/dwindle.png)
+
+The window menu opens on a right click on a titlebar, and with `Alt+Space`:
+
+![The window menu open under a titlebar](images/js-shell/window-menu.png)
+
 ## Window requests
 
 A client asks the compositor for a change of its window: fullscreen, minimise, maximise, raise, activate, move, resize.

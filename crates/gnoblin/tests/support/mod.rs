@@ -419,8 +419,13 @@ impl Mapper {
         self.queue.roundtrip(&mut self.app).expect("a round trip");
     }
 
-    /// Creates a toplevel and maps it with a buffer.
+    /// Creates a toplevel and maps it with a buffer of 200 by 150.
     pub fn map_window(&mut self, app_id: &str, title: &str) {
+        self.map_window_sized(app_id, title, 200, 150);
+    }
+
+    /// Creates a toplevel and maps it with a buffer of `width` by `height`.
+    pub fn map_window_sized(&mut self, app_id: &str, title: &str, width: i32, height: i32) {
         let surface = self.compositor.create_surface(&self.qh, ());
         let xdg = self.wm_base.get_xdg_surface(&surface, &self.qh, ());
         let toplevel = xdg.get_toplevel(&self.qh, ());
@@ -428,7 +433,6 @@ impl Mapper {
         toplevel.set_title(title.to_owned());
         surface.commit();
         self.roundtrip();
-        let (width, height) = (200, 150);
         let stride = width * 4;
         let length = stride * height;
         let file = tempfile::tempfile().expect("a shared memory file");

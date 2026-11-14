@@ -1376,7 +1376,7 @@ fn write_layout_config(dir: &Path, layout: &str) {
     fs::write(
         dir.join("init.ts"),
         format!(
-            "import {{ DwindleLayout, StripLayout, Workspace, gnoblin }} from \"gnoblin\";\n\
+            "import {{ DwindleLayout, MasterStackLayout, StripLayout, Workspace, gnoblin }} from \"gnoblin\";\n\
              gnoblin.workspaces.add(new Workspace({{ id: \"desk\", layout: {layout} }}));\n"
         ),
     )
@@ -1430,6 +1430,101 @@ fn a_strip_workspace_places_two_real_windows_in_columns_and_scrolls_to_the_focus
         rect_of(&ipc, "org.example.first") == first && rect_of(&ipc, "org.example.second") == second
     });
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+}
+
+/// Live verification (design/js-runtime.md, "Live verification"): a screenshot of `MasterStackLayout({ ratio: 0.6, gap:
+/// 12 })` on 1024 by 768 showed a black column at the screen's right edge. The stack was 404 wide and started at 619, so
+/// it ended at 1023: a width floored on its own, where the floors of the master and the gap had already fallen short.
+#[test]
+fn a_master_stack_workspace_with_a_ratio_and_a_gap_fills_the_screen_to_both_edges() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    write_layout_config(config.path(), "new MasterStackLayout({ ratio: 0.6, gap: 12 })");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    let (width, height) = screen_size(&ipc);
+    let apps = ["org.example.first", "org.example.second", "org.example.third"];
+    for app in apps {
+        mapper.map_window(app, app);
+    }
+    // The master is the one at the left edge. The two stack tiles start one gap after it, end at the screen's right edge,
+    // and between them cover the screen's height with one gap between them. Names what does not hold, none when all do.
+    let broken = |ipc: &Path| -> Option<String> {
+        let rects: Vec<(f64, f64, f64, f64)> = apps.iter().map(|app| rect_of(ipc, app)).collect::<Option<_>>()?;
+        let master = rects.iter().find(|rect| rect.0 == 0.0)?;
+        let mut stack: Vec<_> = rects.iter().filter(|rect| rect.0 > 0.0).collect();
+        stack.sort_by(|a, b| a.1.total_cmp(&b.1));
+        let [upper, lower] = stack[..] else {
+            return Some(format!("a stack of {} tiles in {rects:?}", stack.len()));
+        };
+        let problems: Vec<&str> = [
+            (
+                master.1 + master.3 == height,
+                "the master reaches the screen's bottom edge",
+            ),
+            (
+                upper.0 == master.0 + master.2 + 12.0,
+                "the stack starts one gap after the master",
+            ),
+            (
+                upper.0 + upper.2 == width && lower.0 + lower.2 == width,
+                "the stack reaches the screen's right edge",
+            ),
+            (lower.1 == upper.1 + upper.3 + 12.0, "the stack tiles are one gap apart"),
+            (
+                lower.1 + lower.3 == height,
+                "the stack reaches the screen's bottom edge",
+            ),
+        ]
+        .iter()
+        .filter(|(holds, _)| !holds)
+        .map(|(_, what)| *what)
+        .collect();
+        (!problems.is_empty()).then(|| format!("{problems:?} in {rects:?} on {width}x{height}"))
+    };
+    wait_for(
+        "three windows tiled edge to edge",
+        &session,
+        &mut mapper,
+        &shell,
+        || rect_of(&ipc, apps[2]).is_some() && broken(&ipc).is_none(),
+    );
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+}
+
+/// Live verification: three windows of 70 % by 60 % of the screen map one after another and leave no free spot. The
+/// cascade ran into the screen's corner and was pushed back inside it, so the second and the third landed on the same
+/// spot and the third hid the second completely. Windows that find no free spot never share an origin.
+#[test]
+fn windows_too_big_for_a_free_spot_cascade_and_never_land_exactly_on_each_other() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    let (width, height) = screen_size(&ipc);
+    // A second window fits neither in the 30 % beside the first nor in the 40 % below it.
+    let (w, h) = ((width * 0.7) as i32, (height * 0.6) as i32);
+    let apps = ["org.example.first", "org.example.second", "org.example.third"];
+    for app in apps {
+        mapper.map_window_sized(app, app, w, h);
+        wait_for("the window placed", &session, &mut mapper, &shell, || {
+            rect_of(&ipc, app).is_some_and(|(_, _, placed_width, _)| placed_width > 0.0)
+        });
+    }
+    let origins: Vec<(f64, f64)> = apps
+        .iter()
+        .map(|app| {
+            let (x, y, _, _) = rect_of(&ipc, app).expect("a placed window");
+            (x, y)
+        })
+        .collect();
+    for (i, a) in origins.iter().enumerate() {
+        for b in &origins[i + 1..] {
+            assert_ne!(a, b, "two windows share an origin: {origins:?} on {width}x{height}");
+        }
+    }
 }
 
 /// An `init.ts` whose workspace tiles by halves side by side and, one second after the shell's clock starts, changes to

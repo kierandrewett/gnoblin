@@ -99,11 +99,29 @@ export function clamp(value: number, low: number, high: number): number {
     return Math.max(low, Math.min(high, value));
 }
 
-/** A tiled placement at whole pixels: every edge is floored on its own, as the Lua shell does. */
+/**
+ * The float error of the arithmetic before a floor: the right edge of 619.2 + 404.8 is 1023.9999999999999 in IEEE
+ * doubles, and flooring it as it is would lose a pixel that the layout meant to give.
+ */
+const EDGE_EPSILON = 1e-6;
+
+/**
+ * A tiled placement at whole pixels. Each of the four edges is floored on its own, and the size is the distance between
+ * two floored edges. Flooring the width itself would leave a tile short of where the area ends: a master of 607.2 and a
+ * stack of 404.8 that starts at 619.2 are 607 and 404 wide when each is floored apart, and the stack ends at 1023 in an
+ * area that ends at 1024.
+ */
 export function tile<N extends LayoutNode>(node: N, x: number, y: number, width: number, height: number): Placement<N> {
+    const left = Math.floor(x + EDGE_EPSILON);
+    const top = Math.floor(y + EDGE_EPSILON);
     return {
         node,
         tiled: true,
-        bounds: { x: Math.floor(x), y: Math.floor(y), width: Math.floor(width), height: Math.floor(height) },
+        bounds: {
+            x: left,
+            y: top,
+            width: Math.floor(x + width + EDGE_EPSILON) - left,
+            height: Math.floor(y + height + EDGE_EPSILON) - top,
+        },
     };
 }

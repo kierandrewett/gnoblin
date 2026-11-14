@@ -150,7 +150,50 @@ fn master_stack_200_nodes_share_the_stack_in_whole_pixels_like_lua() {
         fmt(placed, children);
         emit([rect(placed[0].bounds), rect(placed[1].bounds), rect(placed[199].bounds), placed.length].join(" "));
     "#);
-    assert_eq!(got, "0,0,500,800 500,0,500,4 500,795,500,4 200");
+    // The Lua shell floored each height on its own and ended at 799 of 800; the last tile now ends at the area's edge.
+    assert_eq!(got, "0,0,500,800 500,0,500,4 500,795,500,5 200");
+}
+
+#[test]
+fn tiles_that_touch_in_the_layouts_arithmetic_touch_in_pixels_so_the_area_is_covered_to_its_far_edges() {
+    // Live verification: ratio 0.6 and a gap of 12 on 1024 by 768 gave a master of 607.2 and a stack of 404.8 that starts
+    // at 619.2. Flooring each width apart made the stack 404 wide, and it ended a pixel short of the screen. Flooring
+    // the edges gives 405, and the 200 windows of the Lua corpus now end at 800 instead of 799.
+    let got = run(r#"
+        const children = nodes(200);
+        const many = new MasterStackLayout().compute({ children, area: area() });
+        emit([
+            lay(new MasterStackLayout({ ratio: 0.6, gap: 12 }), 3, { area: area(1024, 768) }),
+            lay(new MasterStackLayout({ ratio: 0.6, gap: 12, orientation: "top" }), 3, { area: area(1024, 768) }),
+            rect(many[199].bounds),
+        ].join("\n"));
+    "#);
+    assert_eq!(
+        got,
+        lines(&[
+            "0,0,607,768 619,0,405,378 619,390,405,378",
+            "0,0,1024,453 0,465,506,303 518,465,506,303",
+            "500,795,500,5",
+        ])
+    );
+}
+
+#[test]
+fn a_cascade_that_runs_out_of_room_never_lands_a_window_exactly_on_another() {
+    // Live verification: three windows of 700 by 476 (frame included) on 1024 by 768. The second finds no free spot and
+    // cascades into the corner; the third was pinned to the same corner and hid it. The third moves back one cascade step
+    // instead. A window that does have a free spot is not moved: `placeRect` itself is pinned by the goldens.
+    let got = run(r#"
+        const layout = new FloatingLayout();
+        const screen = area(1024, 768);
+        const make = (): any => ({ bounds: { x: 0, y: 0, width: 700, height: 448 }, frameInset: 28 });
+        const [a, b, c] = [make(), make(), make()];
+        layout.onClientAdded(a, { children: [a], area: screen });
+        layout.onClientAdded(b, { children: [a, b], area: screen });
+        layout.onClientAdded(c, { children: [a, b, c], area: screen });
+        emit([a, b, c].map((w) => `${w.bounds.x},${w.bounds.y}`).join(" "));
+    "#);
+    assert_eq!(got, "0,28 324,320 292,288");
 }
 
 #[test]
@@ -177,7 +220,7 @@ fn master_stack_options_beyond_the_lua_corpus_are_derived_from_its_algorithm() {
             "10,20,500,800 510,20,500,800",
             "0,0,900,800 900,0,100,800",
             "0,0,1000,400 0,400,1000,400",
-            "0,0,1000,266 0,266,1000,266 0,533,1000,266",
+            "0,0,1000,266 0,266,1000,267 0,533,1000,267",
         ])
     );
 }
@@ -228,8 +271,8 @@ fn grid_with_a_fixed_column_count_is_derived_from_the_auto_algorithm() {
     assert_eq!(
         got,
         lines(&[
-            "0,0,333,400 333,0,333,400 666,0,333,400 0,400,333,400",
-            "0,0,1000,266 0,266,1000,266 0,533,1000,266",
+            "0,0,333,400 333,0,333,400 666,0,334,400 0,400,333,400",
+            "0,0,1000,266 0,266,1000,267 0,533,1000,267",
             "0,0,500,400 500,0,500,400 0,400,500,400",
             r#"RangeError: GridLayout columns must be "auto" or a whole number of at least 1"#,
             r#"RangeError: GridLayout columns must be "auto" or a whole number of at least 1"#,
