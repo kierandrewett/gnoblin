@@ -295,12 +295,7 @@ impl SecretService {
         for event in events.iter() {
             actions.extend(self.route(event, placement));
         }
-        for event in events.iter_mut() {
-            *event = ModalEvent::Key {
-                keycode: 0,
-                state: KeyState::Released,
-            };
-        }
+        ModalEvent::wipe_all(events);
         let modal = match output {
             Some((id, rect)) if self.active.is_some() => self.frame_modal(id, rect),
             _ => self.clear_modal(),

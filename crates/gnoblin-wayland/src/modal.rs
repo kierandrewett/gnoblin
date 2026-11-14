@@ -78,6 +78,17 @@ pub enum ModalEvent {
     },
 }
 
+impl ModalEvent {
+    /// Overwrites queued events with a key release that carries nothing: a queue that held typed characters must not
+    /// keep them once they are routed.
+    pub fn wipe_all(events: &mut [ModalEvent]) {
+        events.fill(ModalEvent::Key {
+            keycode: 0,
+            state: KeyState::Released,
+        });
+    }
+}
+
 /// The typed character is what a passphrase is made of, so a log or a panic that formats the queue never shows it.
 impl fmt::Debug for ModalEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

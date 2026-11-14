@@ -171,12 +171,7 @@ impl LockCardService {
         for event in &input.events {
             self.dirty |= route(ui, event);
         }
-        for event in &mut input.events {
-            *event = ModalEvent::Key {
-                keycode: 0,
-                state: KeyState::Released,
-            };
-        }
+        ModalEvent::wipe_all(&mut input.events);
         if let Some(password) = ui.take_submitted() {
             scene.submits.push(password);
         }
@@ -192,12 +187,7 @@ impl LockCardService {
             ui.wipe();
             log::info!(area = "lock", "the built-in lock card is down");
         }
-        for event in events.iter_mut() {
-            *event = ModalEvent::Key {
-                keycode: 0,
-                state: KeyState::Released,
-            };
-        }
+        ModalEvent::wipe_all(events);
         self.minute = None;
     }
 

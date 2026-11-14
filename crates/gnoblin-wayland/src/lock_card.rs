@@ -188,12 +188,7 @@ impl State {
     /// Forgets the card and everything it queued: the lock left the state it serves.
     pub(crate) fn lock_card_gone(&mut self) {
         self.lock_card.card = None;
-        for event in &mut self.lock_card.events {
-            *event = ModalEvent::Key {
-                keycode: 0,
-                state: gnoblin_types::KeyState::Released,
-            };
-        }
+        ModalEvent::wipe_all(&mut self.lock_card.events);
         self.lock_card.events.clear();
         self.lock_card.answers.clear();
         self.lock_card.absent_since = None;

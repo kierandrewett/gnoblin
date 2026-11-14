@@ -22,12 +22,12 @@ pub(crate) struct Zone {
     /// The offset before the first transition.
     initial: i32,
     /// What holds after the last transition, when the file says.
-    rule: Option<Rule>,
+    rule: Option<ZoneRule>,
 }
 
 /// A POSIX rule: a standard offset and, when the zone has daylight saving, the dates it starts and ends.
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Rule {
+struct ZoneRule {
     standard: i32,
     daylight: Option<Daylight>,
 }
@@ -182,9 +182,10 @@ impl Header {
         let times = data.get(..times_end)?;
         let indexes = data.get(times_end..indexes_end)?;
         let types = data.get(indexes_end..types_end)?;
-        let offsets: Vec<i32> = types
-            .chunks_exact(6)
-            .map(|chunk| i32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        let (records, _) = types.as_chunks::<6>();
+        let offsets: Vec<i32> = records
+            .iter()
+            .map(|record| i32::from_be_bytes([record[0], record[1], record[2], record[3]]))
             .collect();
         let mut transitions = Vec::with_capacity(self.timecnt);
         for (time, index) in times.chunks_exact(time_size).zip(indexes) {
@@ -196,9 +197,9 @@ impl Header {
             transitions.push((at, *offsets.get(usize::from(*index))?));
         }
         // Before the first transition the zone keeps its first standard-time offset, as libc does.
-        let initial = types.chunks_exact(6).find(|chunk| chunk[4] == 0).map_or_else(
+        let initial = records.iter().find(|record| record[4] == 0).map_or_else(
             || offsets.first().copied(),
-            |chunk| Some(i32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]])),
+            |record| Some(i32::from_be_bytes([record[0], record[1], record[2], record[3]])),
         )?;
         Some(Zone {
             transitions,
@@ -208,7 +209,7 @@ impl Header {
     }
 }
 
-impl Rule {
+impl ZoneRule {
     fn offset_at(&self, unix: i64) -> i32 {
         let Some(daylight) = &self.daylight else {
             return self.standard;
@@ -228,12 +229,12 @@ impl Rule {
 
 /// Parses a POSIX TZ string: `std offset [dst [offset] [,start[/time],end[/time]]]`. A rule form this does not read (the
 /// Julian-day dates) is read as the standard offset alone.
-fn parse_rule(text: &str) -> Option<Rule> {
+fn parse_rule(text: &str) -> Option<ZoneRule> {
     let mut rest = text;
     skip_name(&mut rest)?;
     let standard = -read_offset(&mut rest)?;
     if rest.is_empty() {
-        return Some(Rule {
+        return Some(ZoneRule {
             standard,
             daylight: None,
         });
@@ -245,18 +246,18 @@ fn parse_rule(text: &str) -> Option<Rule> {
         -read_offset(&mut rest)?
     };
     let Some(dates) = rest.strip_prefix(',') else {
-        return Some(Rule {
+        return Some(ZoneRule {
             standard,
             daylight: None,
         });
     };
     let (start, end) = dates.split_once(',')?;
     match (parse_date(start), parse_date(end)) {
-        (Some(start), Some(end)) => Some(Rule {
+        (Some(start), Some(end)) => Some(ZoneRule {
             standard,
             daylight: Some(Daylight { offset, start, end }),
         }),
-        _ => Some(Rule {
+        _ => Some(ZoneRule {
             standard,
             daylight: None,
         }),

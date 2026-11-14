@@ -703,7 +703,7 @@ fn the_screen_shows_the_time_of_day_and_follows_it() {
     let expected = rig.eval(&format!("{at}(1700000000000)"));
     assert_eq!(
         rig.comp.texts(clock),
-        [expected.clone()],
+        std::slice::from_ref(&expected),
         "the clock shows HH:MM of the moment"
     );
     assert!(
@@ -715,7 +715,7 @@ fn the_screen_shows_the_time_of_day_and_follows_it() {
     let expected_later = rig.eval(&format!("{at}(1700000060000)"));
     assert_eq!(
         rig.comp.texts(clock),
-        [expected_later.clone()],
+        std::slice::from_ref(&expected_later),
         "a minute later the clock shows the next minute"
     );
     assert_ne!(expected, expected_later);
