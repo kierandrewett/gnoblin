@@ -17,7 +17,7 @@ Everything marked **NEW** in part 3 is not in the owner's specification and is a
 
 ## Part 1. Inventory
 
-Counts below come from `git grep -E "defineConfig|desugarConfig|mergeConfig|defaultConfig"` on the lane's checkout: 820 hits in 157
+Counts below come from `git grep -E "defineConfig|desugarConfig|mergeConfig|defaultConfig"` on the lane's checkout: 885 hits in 157
 files, of which 297 are in 86 pages under docs/. Two hits in `infra/site/vite.config.ts` (lines 7 and 79) are Vite's own
 `defineConfig` and stay; the removal check excludes that path.
 
@@ -30,18 +30,18 @@ The words the grep cannot find also count: the config-document path (`documentPa
 
 | Where | What it is | In the spec-native world |
 | --- | --- | --- |
-| `data/js/gnoblin/config.ts:706` | `defineConfig`: checks the shape (`desugarConfig`), calls `gnoblin.__register`, returns the config | deleted |
-| `data/js/gnoblin/config.ts:729` | `mergeConfig(base, user)`: the layering rules (lists replace, tables merge, keys merge by canonical trigger) | deleted; layering is gone, a user `init.ts` replaces the stock default (3.4) |
-| `data/js/gnoblin/config.ts:840` | `desugarConfig`: config to `ConfigPlan` (workspaces, bindings, rules, listeners, document, autostart, ...) | deleted; each plan field is a direct object write (3.1) |
-| `data/js/gnoblin/config.ts:675` | `defaultConfig`: four floating workspaces, stock keys, `decorations`, `menus`, `alerts` | imperative library code `gnoblin/starter` (3.4) |
-| `data/js/gnoblin/config.ts:610,634,570,596` | `CONFIG_KEYS`, `SHAPES`, `DOCUMENT_SECTIONS`, `DOCUMENT_LISTS`, `RETIRED_KEYS` (602): key tables and shape checks | deleted; sections become the schema-generated tree behind `gnoblin.settings` (3.1) |
-| `data/js/gnoblin/config.ts:363-441` | `GnoblinConfig` and its helper interfaces (`StyleConfig`, `ProtocolsConfig`, `GestureConfig`, `DialogsConfig`, `OutputConfig` 157, `WorkspaceSetConfig` 272, `ConfigListeners` 285) | deleted; `OutputConfig`/`OutputTransform` move to the output module as the `OutputProfile` init type |
-| `data/js/gnoblin/config.ts:187` | `outputRequest(setting, path)`: the compositor request text for an output setting; also used by `Output.apply` | stays, moves to the output module (`OutputProfile` and `Output.apply` both need it) |
-| `data/js/gnoblin/config.ts:488-561` | key action helpers `spawn`, `show` (`numbered`, `position`, `positions`), `focusColumn`, `binding`, `KeyAction` union (97-114) | deleted as config actions; `input.bind` takes a function (3.1). `show.numbered` becomes the library helper `bindWorkspaceKeys` |
-| `data/js/gnoblin/config.ts:1027` | `planStockLauncher`, `planLauncher` (1005): `Super+space` opens the stock launcher unless a key or `launcher` takes it | a line in `gnoblin/starter`: `input.bind("Super+space", openLauncher)` |
-| `data/js/gnoblin/config.ts:878,911,923` | `planWorkspaceSets`, `commandArgv`, `planAutostart` (rejects a duplicate command) | sets deleted (3.1); autostart check moves to `gnoblin.session.autostart.add` |
-| `data/js/gnoblin/config.ts:1163-1199` | `planDocument`, `checkDecorations`, `checkSwitch`, `checkSetup`, `deepFreeze` | deleted; document patch comes from the settings ledger (3.5) |
-| `data/js/gnoblin/index.ts:20` | `export * from "gnoblin/config"` | the surviving helpers are re-exported from their new modules |
+| `data/js/gnoblin/config.ts:771` | `defineConfig`: checks the shape (`desugarConfig`), calls `gnoblin.__register`, returns the config | deleted |
+| `data/js/gnoblin/config.ts:815` | `mergeConfig(base, user)` and `mergeKeys` (779): the layering rules (lists replace, tables merge, keys merge by canonical trigger) | deleted; layering is gone, a user `init.ts` replaces the stock default (3.4) |
+| `data/js/gnoblin/config.ts:914` | `desugarConfig`: config to `ConfigPlan` (workspaces, bindings, rules, listeners, document, autostart, ...) | deleted; each plan field is a direct object write (3.1) |
+| `data/js/gnoblin/config.ts:740` | `defaultConfig`: four floating workspaces, stock keys, `decorations`, `menus`, `alerts` | imperative library code `gnoblin/starter` (3.4) |
+| `data/js/gnoblin/config.ts:671,695,631,657` | `CONFIG_KEYS`, `SHAPES`, `DOCUMENT_SECTIONS`, `DOCUMENT_LISTS`, `RETIRED_KEYS` (663): key tables and shape checks | deleted; sections become the schema-generated tree behind `gnoblin.settings` (3.1) |
+| `data/js/gnoblin/config.ts:406-487` | `GnoblinConfig` and its helper interfaces (`StyleConfig`, `ProtocolsConfig`, `GestureConfig`, `DialogsConfig`, `OutputConfig` 168, `WorkspaceSetConfig` 301, `ConfigListeners` 316) | deleted; `OutputConfig`/`OutputTransform` move to the output module as the `OutputProfile` init type |
+| `data/js/gnoblin/config.ts:205` | `outputRequest(setting, path)`: the compositor request text for an output setting; also used by `Output.apply` | stays, moves to the output module (`OutputProfile` and `Output.apply` both need it) |
+| `data/js/gnoblin/config.ts:542-621` | key action helpers `spawn`, `show` (`numbered`, `position`, `positions`), `focusColumn`, `binding`, `KeyAction` union (111-124) | deleted as config actions; `input.bind` takes a function (3.1). `show.numbered` becomes the library helper `bindWorkspaceKeys` |
+| `data/js/gnoblin/config.ts:1103` | `planStockLauncher`, `planLauncher` (1081): `Super+space` opens the stock launcher unless a key or `launcher` takes it | a line in `gnoblin/starter`: `input.bind("Super+space", openLauncher)` |
+| `data/js/gnoblin/config.ts:952,985,997` | `planWorkspaceSets`, `commandArgv`, `planAutostart` (rejects a duplicate command) | sets deleted (3.1); autostart check moves to `gnoblin.session.autostart.add` |
+| `data/js/gnoblin/config.ts:1244-1292` | `planDocument`, `checkDecorations`, `checkSwitch`, `checkSetup`, `deepFreeze` | deleted; document patch comes from the settings ledger (3.5) |
+| `data/js/gnoblin/index.ts:21` | `export * from "gnoblin/config"` | the surviving helpers are re-exported from their new modules |
 | `crates/gnoblin-js/js/gnoblin.ts:4464-4497` | `Gnoblin.__register(config)`: merge, desugar, `checkDocument`, add workspaces, sets, `decorate()`, `startMenus()`, `startAlerts()`, `bindKeys`, `installStock`, `replaceStyle`, `configuredOutputs`, `attachOn`, `documentPatch`, `autostartList`, `setup` | deleted; the file body does these through the objects |
 | `crates/gnoblin-js/js/gnoblin.ts:13,23` | import of `desugarConfig`, `defaultConfig`, `mergeConfig`, `outputRequest`, `planStockLauncher` from `gnoblin/config` | import shrinks to `outputRequest` |
 | `crates/gnoblin-js/js/gnoblin.ts:3941-3974` | `installStock(plan)`: attaches the `RuleEngine` and `FocusPolicy` to `gnoblin.clients`; stores `seatOverrides` (3668) and `focusOverrides` (3932) | the focus policy is always attached by the runtime; rules become `WindowRules` (3.3); overrides become `InputContext.settings` writes |
@@ -72,15 +72,15 @@ They never import `defineConfig`; they reach the config through the plan or thro
 
 | Where | Dependency | In the spec-native world |
 | --- | --- | --- |
-| `data/js/gnoblin/rules.ts:1,6,24`; `compileRules` 265, `RuleEngine` | the data-only rules engine, compiled by `planRules` (config.ts:1076) and installed by `installStock`; 522 lines | kept as `WindowRules`, a `CollectionListener` helper (3.3), or deleted: the owner's choice |
-| `data/js/gnoblin/focus.ts:12,55,106` | `FocusConfig`, `FOCUS_KEYS`, `focusSettings(overrides, "config.focus", base)`; the policy reads `focusOverrides` | settings read from `InputContext.settings` (3.1); the policy class stays |
-| `data/js/gnoblin/style.ts` (`checkStyleInit`), config.ts:140 | `config.style` is checked with a throwaway style; `replaceStyle(scopeStyle(clientRoot).style, plan.style)` swaps the layer | `gnoblin.clients.style` is written directly; `checkStyleInit` stays for `new ClientStyle(init)`; the layer swap is the reload mechanism (3.6) |
+| `data/js/gnoblin/rules.ts:1,6,27`; `compileRules` 271, `RuleEngine` 396 | the data-only rules engine, compiled by `planRules` (config.ts:1154) and installed by `installStock`; 540 lines | kept as `WindowRules`, a `CollectionListener` helper (3.3), or deleted: the owner's choice |
+| `data/js/gnoblin/focus.ts:12,58,109` | `FocusConfig`, `FOCUS_KEYS`, `focusSettings(overrides, "config.focus", base)`; the policy reads `focusOverrides` | settings read from `InputContext.settings` (3.1); the policy class stays |
+| `data/js/gnoblin/style.ts` (`checkStyleInit`), config.ts:151 | `config.style` is checked with a throwaway style; `replaceStyle(scopeStyle(clientRoot).style, plan.style)` swaps the layer | `gnoblin.clients.style` is written directly; `checkStyleInit` stays for `new ClientStyle(init)`; the layer swap is the reload mechanism (3.6) |
 | `data/js/gnoblin/dialogs.ts:10,19` | the example in the header uses `defineConfig({ setup })`; `dialogs.style` is a document section | header example rewritten; `dialogs.style` becomes `gnoblin.dialogs.style` (3.1) |
-| `data/js/gnoblin/workspace.ts:7,34,89,109,145` | `resolveLayout` (name or instance), `rejectUnknown`, `checkGaps`, `Workspace` options check; "the host and `defineConfig` import the helpers by name" | stays except the layout-name path; `rejectUnknown` is used by `Workspace`, `Style`, and `WindowRules` |
-| `data/js/gnoblin/input.ts`, `bindings.ts`, `gestures.ts`, `gesture_actions.ts:5,238` | `parseTrigger`/`checkTrigger` (used by `planKeys`), `WorkspaceSlideBinding` (referenced by `defaultConfig`), `GestureActionConfig` and `gestureActionBinding` | trigger parsing stays; `WorkspaceSlideBinding` is renamed `WorkspaceSwitchBinding` (spec 11); `gestureActions` table becomes direct `input.bind` |
+| `data/js/gnoblin/workspace.ts:7,36,91,115,153` | `resolveLayout` (name or instance), `rejectUnknown`, `checkGaps`, `Workspace` options check; "the host and `defineConfig` import the helpers by name" | stays except the layout-name path; `rejectUnknown` is used by `Workspace`, `Style`, and `WindowRules` |
+| `data/js/gnoblin/input.ts`, `bindings.ts`, `gestures.ts`, `gesture_actions.ts:5,249` | `parseTrigger`/`checkTrigger` (used by `planKeys`), `WorkspaceSlideBinding` (referenced by `defaultConfig`), `GestureActionConfig` and `gestureActionBinding` | trigger parsing stays; `WorkspaceSlideBinding` is renamed `WorkspaceSwitchBinding` (spec 11); `gestureActions` table becomes direct `input.bind` |
 | `data/js/gnoblin/titlebar.ts:5`; `menus.ts:21,696,820`; `alerts.ts:19,383` | comments name `defineConfig({ style / menus / alerts })`; `windowMenu.start`, the alert start | the services stay; they are started by the starter and stopped by not starting them |
 | `data/js/gnoblin/sets.ts`; `launcher.ts`; `idle.ts:8-10`; `authentication.ts:10-19` | `defineSets` (workspaceSets), `openLauncher`, examples in the headers that use `defineConfig` | `sets.ts` deleted with `workspaceSets`; the others stay with new header examples |
-| `data/js/gnoblin/inspect.ts:435,491-494` | the inspector reports `__effectiveConfig()`; "null when the entry never called `defineConfig`" | reports the settings ledger and the generation's writes (3.7) |
+| `data/js/gnoblin/inspect.ts:429,485-488` | the inspector reports `__effectiveConfig()`; "null when the entry never called `defineConfig`" | reports the settings ledger and the generation's writes (3.7) |
 
 <!-- prettier-ignore-end -->
 
@@ -90,7 +90,7 @@ They never import `defineConfig`; they reach the config through the plan or thro
 
 | Where | What | In the spec-native world |
 | --- | --- | --- |
-| `data/js/starter/init.ts:1-46` | the starter: `export default defineConfig({ gaps, decorations, workspaces, keys, rules, autostart })` with commented examples | rewritten in the owner's style and used as the stock default (3.4) |
+| `data/js/starter/init.ts:1-50` | the starter: `export default defineConfig({ gaps, decorations, workspaces, keys, rules, autostart })` with commented examples | rewritten in the owner's style and used as the stock default (3.4) |
 | `crates/gnoblinctl/src/js.rs:601-700` (`INIT_FILE`, `write_starter`, `config_init`) | `config init [DIR] [--force]` writes the starter and the editor files | writes the new starter; same flags |
 | `crates/gnoblin-js/src/shell.rs:688`; `gnoblin.ts:4670` | the shell with no `init.ts` runs `loadDefault` | runs the starter module |
 
@@ -132,8 +132,8 @@ They never import `defineConfig`; they reach the config through the plan or thro
 
 | Where | What | In the spec-native world |
 | --- | --- | --- |
-| `crates/gnoblin-js-types/static/gnoblin-stock.d.ts:604,1281,1398,1663,1736,2017,2326,2920` (the `Config` interface 1663-, `defineConfig` 1736, `WorkspaceSetConfig`, `GestureActionConfig`, `effectiveConfig`) | the hand-written declarations of the config surface | deleted; declarations of `gnoblin.settings`, `OutputProfile`, `Display`, ... added |
-| `crates/gnoblin-js-types/tests/golden/gnoblin.d.ts` (8 hits) | the golden of the generated `gnoblin.d.ts` | regenerated |
+| `crates/gnoblin-js-types/static/gnoblin-stock.d.ts:650,1361,1510,1782,1855,2150,2479,2499,3110` (the `Config` interface from 1782, `defineConfig` 1855, `WorkspaceSetConfig`, `GestureActionConfig`, `effectiveConfig`) | the hand-written declarations of the config surface | deleted; declarations of `gnoblin.settings`, `OutputProfile`, `Display`, ... added |
+| `crates/gnoblin-js-types/tests/golden/gnoblin.d.ts` (9 hits) | the golden of the generated `gnoblin.d.ts` | regenerated |
 | `crates/gnoblin-js-types/tests/config_keys.rs` (1 test), `crates/gnoblin-js/tests/dts_match.rs` (4 tests, 8 hits) | the `Config` interface names every key `defineConfig` takes and no other; the d.ts matches the stock sources | replaced by a test that the `gnoblin.settings` declarations match the document schema |
 
 <!-- prettier-ignore-end -->
@@ -278,7 +278,7 @@ or zoom/pan of the content, `Camera3D` last. `design/js-outputs.md` gets a repla
 
 ### 3.1 Every `defineConfig` key and the object that carries it
 
-The 37 keys of `CONFIG_KEYS` (config.ts:610-631, with the 18 sections of `DOCUMENT_SECTIONS` and the one list of `DOCUMENT_LISTS`):
+The 37 keys of `CONFIG_KEYS` (config.ts:671-692, with the 18 sections of `DOCUMENT_SECTIONS` and the one list of `DOCUMENT_LISTS`):
 
 <!-- prettier-ignore-start -->
 
@@ -287,7 +287,7 @@ The 37 keys of `CONFIG_KEYS` (config.ts:610-631, with the 18 sections of `DOCUME
 | `style` | `gnoblin.clients.style.<property> = ...` (spec 6); same property names as `StyleConfig`: `cornerRadius`, `opacity`, `background`, `borders`, `shadows`, `filter`, `backdropFilter`. A per-workspace default is `workspace.clients.style`; a per-selection one is `gnoblin.clients.where({...}).style` | spec |
 | `workspaces` | `new Workspace({ id, name, layout })` then `gnoblin.workspaces.add(ws)` (spec 7). A layout is an instance, `new FloatingLayout({...})`; the string names (`"floating"`) go. Reconciliation by stable `id` on reload is spec 18 | spec (exists) |
 | `gaps.inner` | the layout's `gap` option (`new MasterStackLayout({ gap: 12 })`, `GridLayout({ gap: 8 })`, spec 7 and 12) | spec |
-| `gaps.outer` | `Workspace.gaps` (`{ inner, outer }`), which the shell already has (`LayoutContext.gap`, d.ts:1001); the layout's `area` is the workspace rectangle less the outer gap | in the shell, **not in the spec**; keep |
+| `gaps.outer` | `Workspace.gaps` (`{ inner, outer }`), which the shell already has (`LayoutContext.gap`, d.ts:1058); the layout's `area` is the workspace rectangle less the outer gap | in the shell, **not in the spec**; keep |
 | `keys` | `gnoblin.input.primary.bind(trigger, fn)` (spec 10, 11). The closed `KeyAction` union goes: `spawn(...)` is `() => gnoblin.spawn([...])`, `"close"` is `() => input.focusedClient?.close()`, `show(ws)` is `() => { input.activeDisplay.viewport.content = ws }`, `focusColumn` is a function over the layout. A drag trigger is a layout constructor option (spec 11) | spec |
 | `gestureActions` | `input.bind("Swipe4Up", fn)`, `input.bind("Pinch3In", fn)` (spec 10, fence 038 uses `Swipe3Left`). The stock three-finger slide is `WorkspaceSwitchBinding` bound at `Swipe3Left` and `Swipe3Right` (spec 11, fence 053) | spec; rename `WorkspaceSlideBinding` |
 | `launcher` | `input.bind("Super+space", () => gnoblin.spawn(cmd))`; the starter binds the stock `openLauncher` | spec |
@@ -299,7 +299,7 @@ The 37 keys of `CONFIG_KEYS` (config.ts:610-631, with the 18 sections of `DOCUME
 | `menus` | library `WindowMenu`: `new WindowMenu().start()` answers the compositor's menu requests; not started means unanswered | library helper |
 | `alerts` | library `NotRespondingAlert`: `.start()`, as `menus` | library helper |
 | `rules` | listeners and `where({...}).style` (spec 4, 6, 7). Decision for the owner in 3.3: delete `rules.ts`, or keep it as `WindowRules` | spec / library (3.3) |
-| `focus.mode`, `newWindows`, `raiseOnClick`, `autoRaise`, `autoRaiseDelay`, `changeOnPointerRest` | `gnoblin.input.primary.settings.focus.mode = "sloppy"` and the like (a `focus` table with the six keys). `InputContext.settings` exists read-only today (`SeatSettings`, d.ts:913); it becomes writable and stays an override over the document's `windowManagement` section, as `focusOverrides` and `seatOverrides` are now (gnoblin.ts:3668, 3932). Seat-wide focus policy has no spec home, and an `InputContext` is the specification's seat | **NEW** (writable `settings`) |
+| `focus.mode`, `newWindows`, `raiseOnClick`, `autoRaise`, `autoRaiseDelay`, `changeOnPointerRest` | `gnoblin.input.primary.settings.focus.mode = "sloppy"` and the like (a `focus` table with the six keys). `InputContext.settings` exists read-only today (`SeatSettings`, d.ts:970); it becomes writable and stays an override over the document's `windowManagement` section, as `focusOverrides` and `seatOverrides` are now (gnoblin.ts:3668, 3932). Seat-wide focus policy has no spec home, and an `InputContext` is the specification's seat | **NEW** (writable `settings`) |
 | `edgeTiling`, `dragConstraint` | `gnoblin.input.primary.settings.edgeTiling = true`, `.dragConstraint = "..."`, the same object | **NEW** |
 | `input`, `inputSources` (keyboard, pointer, touchpad) | per-device: `Keyboard.repeatRate`, `repeatDelay`; `Mouse.sensitivity`, `acceleration`; `Touchpad.naturalScroll`, `tapToClick` (spec 10, fence 040). A new device is handled by `gnoblin.input.devices.addListener(new class extends CollectionListener { onAdded(device) {...} }())`. Keyboard layouts (`inputSources`): `Keyboard.layouts` | spec (device classes missing, 2.3) |
 | `cursor` | `gnoblin.input.primary.pointer.cursorTheme`, `.cursorSize` (`PointerState` of spec 10) | **NEW** properties on a spec object |
@@ -349,7 +349,7 @@ This is the shape; the exact text is written when the starter lands (3.4).
 
 ### 3.3 Window rules: keep `WindowRules` or delete `rules.ts`
 
-The data-only engine (`data/js/gnoblin/rules.ts`, 522 lines) takes `{ appId, title, focused, onWorkspace, workspace, floating, size,
+The data-only engine (`data/js/gnoblin/rules.ts`, 540 lines) takes `{ appId, title, focused, onWorkspace, workspace, floating, size,
 position, style, fullscreen, maximised, secure, skipFocus, first, reapply }`. In the specification's model the same things are
 listeners:
 
