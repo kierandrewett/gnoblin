@@ -296,10 +296,14 @@ interface Host {
 
 /** The shell-installed bridge; missing host functions make this module unusable. */
 
-const host = (globalThis as { __gnoblinHost?: Host }).__gnoblinHost;
-if (!host) {
-    throw new Error("the gnoblin module needs the shell host and cannot run without it");
+function requireHost(host: Host | undefined): Host {
+    if (!host) {
+        throw new Error("the gnoblin module needs the shell host and cannot run without it");
+    }
+    return host;
 }
+
+const host = requireHost((globalThis as { __gnoblinHost?: Host }).__gnoblinHost);
 
 // ---- Staged writes ----
 //
@@ -3880,7 +3884,7 @@ function spanDesks(lead: Output, members: readonly Output[] | null): void {
 /** Sends an output request on behalf of a profile or display; a request the shell cannot send is reported, not thrown. */
 function requestOutput(
     output: Output,
-    setting: OutputConfig & { mirrorOf?: Output | string | null },
+    setting: Omit<OutputConfig, "mirrorOf"> & { mirrorOf?: Output | string | null },
     path: string,
 ): void {
     try {
@@ -3995,7 +3999,7 @@ const applications = new Map<number, PendingApplication>();
 /** Sends one request for `output` to the compositor and tracks its answer. */
 function applyOutput(
     output: Output,
-    options: OutputConfig & { mirrorOf?: Output | string | null },
+    options: Omit<OutputConfig, "mirrorOf"> & { mirrorOf?: Output | string | null },
     target: string,
     path: string | null = null,
 ): OutputApplication {
@@ -5288,7 +5292,7 @@ function keyHandler(action: Exclude<ResolvedAction, BindingAction>): () => void 
             return () => {
                 const target = workspaceRoot.list[action.position - 1];
                 if (target !== undefined) {
-                    showWorkspace(target, { duration: SLIDE_SECONDS });
+                    showWorkspace(target as Workspace, { duration: SLIDE_SECONDS });
                 }
             };
         case "focus-column":

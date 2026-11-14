@@ -391,15 +391,21 @@ export class Transition {
      * promise behind. It resolves once, with `{ cancelled }`, and never rejects.
      */
     get finished(): Promise<TransitionResult> {
-        if (this.#promise === null) {
-            const { promise, resolve } = Promise.withResolvers<TransitionResult>();
-            this.#promise = promise;
-            this.#resolve = resolve;
-            if (this.#state !== "running") {
-                resolve({ cancelled: this.#state === "cancelled" });
-            }
+        const existing = this.#promise;
+        if (existing !== null) {
+            return existing;
         }
-        return this.#promise;
+        // ES2023 has no `withResolvers`; the Promise executor synchronously captures its resolver here.
+        let resolve!: (value: TransitionResult | PromiseLike<TransitionResult>) => void;
+        const promise = new Promise<TransitionResult>((settle) => {
+            resolve = settle;
+        });
+        this.#promise = promise;
+        this.#resolve = resolve;
+        if (this.#state !== "running") {
+            resolve({ cancelled: this.#state === "cancelled" });
+        }
+        return promise;
     }
 
     /** Calls `fn({ cancelled })` once, when the transition ends. The returned subscription stops it before it runs. */

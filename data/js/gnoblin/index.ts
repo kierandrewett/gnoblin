@@ -3,6 +3,8 @@
 // Host objects are reached through the `gnoblin` global or `setup(gnoblin)`.
 // Read `config.ts` first for setup and the distinction between public and host APIs.
 
+export type { Rect } from "gnoblin/layout";
+export type { Rect as BindingRect } from "gnoblin/bindings";
 export * from "gnoblin/bindings";
 export * from "gnoblin/focus";
 export * from "gnoblin/input";

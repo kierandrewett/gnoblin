@@ -6,11 +6,14 @@
 // The state of each object is kept in a WeakMap, not in `#` fields, because the manager sits in another module.
 
 import { Camera3D, Node } from "gnoblin/scene";
+import type { NodeOptions } from "gnoblin/scene";
 import { outputRequest } from "gnoblin/config";
 import type { OutputTransform } from "gnoblin/config";
 
 /** What `outputRequest` takes: the keys of one output's request. */
 export type OutputSetting = Parameters<typeof outputRequest>[0];
+/** The live output collection a display presents. */
+export type DisplayOutputCollection = Iterable<object> & { readonly length: number };
 
 /** A point in a plane, as the specification's `Vec2`. */
 export interface DisplayVec2 {
@@ -129,7 +132,7 @@ export interface DisplayHooks {
     /** Shows `workspace` on the display, or keeps it until the display has an output. Throws when it cannot be shown. */
     show(display: Display, workspace: object): void;
     /** The outputs a display presents now, as a `Collection<Output>`. */
-    outputs(display: Display): object;
+    outputs(display: Display): DisplayOutputCollection;
 }
 
 let hooks: DisplayHooks | null = null;
@@ -479,19 +482,21 @@ export class Camera2D extends Node {
         super(options as never);
     }
 
-    protected override assign(options: Camera2DInit): void {
-        const { position, zoom, rotation, ...rest } = options;
-        super.assign(rest as never);
+    protected override assign(options: NodeOptions): void {
+        const { position, zoom, rotation, ...rest } = options as Camera2DInit;
+        super.assign(rest);
         if (position !== undefined) this.position = position;
         if (zoom !== undefined) this.zoom = zoom;
         if (rotation !== undefined) this.rotation = rotation as never;
     }
 
     /** Where the camera looks, in pixels of the content. */
-    get position(): DisplayVec2 {
+    // @ts-expect-error The specification narrows `Node.position` to a flat camera's x/y point.
+    override get position(): DisplayVec2 {
         return { x: this.x, y: this.y };
     }
-    set position(value: DisplayVec2) {
+    // @ts-expect-error As the getter above.
+    override set position(value: DisplayVec2) {
         if (value === null || typeof value !== "object") {
             throw new TypeError(`${this}.position: must be { x, y }`);
         }
@@ -646,7 +651,7 @@ export interface DisplayState {
     /** The output this display spans from, while it does. */
     spanLead: OutputView | null;
     /** The `Collection<Output>` of `live`, once someone asked for it. */
-    outputs: { collection: object; set(outputs: readonly OutputView[]): void } | null;
+    outputs: { collection: DisplayOutputCollection; set(outputs: readonly OutputView[]): void } | null;
 }
 
 const displays = new WeakMap<Display, DisplayState>();
@@ -744,7 +749,7 @@ export class Display {
     }
 
     /** The connected outputs the display presents now: a live `Collection<Output>`, empty while the display is parked. */
-    get outputs(): object {
+    get outputs(): DisplayOutputCollection {
         return shell().outputs(this);
     }
 

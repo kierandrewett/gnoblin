@@ -1,4 +1,0 @@
-# Sibling-owned TS errors; remove after their changes land.
-crates/gnoblin-js/js/gnoblin.ts 85
-data/js/gnoblin/index.ts 1
-data/js/gnoblin/transition.ts 2

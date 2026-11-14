@@ -594,6 +594,15 @@ export class XRViewport extends Viewport {
         throw new TypeError("XRViewport.content: the room is fixed when the viewport is made");
     }
 
+    /** The headset camera, narrowed from the core viewport's flat-or-spatial camera. */
+    override get camera(): Camera3D {
+        return super.camera as Camera3D;
+    }
+    /** Preserve the base setter while narrowing reads to the headset camera. */
+    override set camera(value: Viewport["camera"]) {
+        super.camera = value;
+    }
+
     /** @internal Names the nodes for the program and puts the camera under the room. */
     apply(): void {
         if (this.content.parent === null) {

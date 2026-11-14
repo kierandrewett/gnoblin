@@ -8,7 +8,7 @@
 
 import { Camera3D } from "gnoblin/scene";
 import { Camera2D, Display, OutputProfile, implicitDisplay, isIdentity } from "gnoblin/display";
-import type { OutputAlign, OutputSetting, OutputView, PlacementTarget } from "gnoblin/display";
+import type { DisplayOutputCollection, OutputAlign, OutputSetting, OutputView, PlacementTarget } from "gnoblin/display";
 import {
     displayState,
     profileMatches,
@@ -20,7 +20,7 @@ import {
 
 /** A `Collection<Output>` the manager keeps equal to the outputs a display presents. */
 export interface OutputSet {
-    readonly collection: object;
+    readonly collection: DisplayOutputCollection;
     set(outputs: readonly OutputView[]): void;
 }
 
@@ -278,7 +278,7 @@ export class DisplayManager {
     }
 
     /** The `Collection<Output>` of the outputs the display presents. */
-    outputsOf(display: Display): object {
+    outputsOf(display: Display): DisplayOutputCollection {
         const state = displayState(display);
         if (state.outputs === null) {
             state.outputs = this.#backend.outputSet();
