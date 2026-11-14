@@ -129,17 +129,33 @@ hosted runner.
 ## Full suite
 
 ```sh
-cargo test --workspace --no-fail-fast
+cargo test --workspace --no-fail-fast --locked
 ```
 
-Run it on Agent37 through `lanes/a37-gate.sh run ID TREE test --workspace --no-fail-fast`, with the output sent to a log
-file. A warm run takes about 14 minutes there (the first run adds the build). `--no-fail-fast` makes one failure list
-every other failure instead of hiding them. Shell tests wait on observed state with generous deadlines, never on sleeps
-or on the time a fade takes; the stock config load has a wall-clock budget, so also run `cargo test -p gnoblin` with
-busy loops of twice `nproc` running beside it.
+Run it on Agent37 through `lanes/a37-gate.sh run ID TREE test --workspace --no-fail-fast --locked`, with the output
+sent to a log file. Measured on a 4-CPU instance (lane FinalGreen, 2026-11-14): a warm run takes 6 minutes (336 s and
+352 s; 426 s after a rebuild, 709 s on a fresh instance's first run); `cargo test -p gnoblin --test js_shell` takes
+47 s alone and 85 to 300 s with busy loops of twice `nproc` running beside it. One call of the helper ends at about
+15 minutes whatever `--timeout` it is given (the exec endpoint's own limit), so a loop of `js_shell` runs is split into
+calls of ten plain runs or five loaded ones. `--no-fail-fast` makes one failure list every other failure instead of
+hiding them.
 
-A failing test is never labelled "unrelated" without a baseline run of the same test on a pristine
-`origin/rust-compositor` tree. Until the baseline is red too, the failure belongs to the change under test.
+Shell tests wait on observed state with a deadline that names what it waited for and the last state it saw, never on
+sleeps or on the time a fade or a transition takes. Two things a wait must not read are the script's word for what the
+compositor holds (a View's `input_mode` that the script wrote is not the one the pointer is routed by until the
+compositor has it) and a rectangle taken before the window has a size. A claim that something does not happen is made
+after an event that the compositor sends later than the thing it denies (a marker View the pointer moves onto), not
+after a pause. Also run `cargo test -p gnoblin --test js_shell` ten times plain and five times with busy loops of twice
+`nproc` beside it; the real-compositor tests share the machine with fifty-four siblings, and most of their races only
+show then.
+
+A failing test is never labelled "unrelated" or "a load flake" without a baseline run of the same test on a pristine
+`origin/rust-compositor` tree. Until the baseline is red too, the failure belongs to the change under test. A test that
+fails once is not flaky until the failure is understood: run it alone thirty times plain and thirty times loaded, find
+whether the product, the test's wait or the machine's speed is at fault, and fix that, with a regression test when the
+product was. A longer deadline or a retry is not a fix. A flake the suite shows only in a full parallel run is
+reproduced by running several copies of the test binary at once (`js_shell` under eight workers and eight busy loops
+showed the shell reading a stale `decoration` about once in sixty runs).
 
 ## Boundaries
 
