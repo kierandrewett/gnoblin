@@ -939,7 +939,7 @@ with `transferClient` (no refit). `Workspace:walk` and the removal cases are not
 
 ## Host API B status
 
-Lane JsHostApiB. User page: `docs/js-host-api.md`. The Lua pages are `docs/shell-api/{idle,privacy,input-grab,text-insertion,
+Lane JsHostApiB. User page: `docs/js-idle-auth-launches.md`. The Lua pages are `docs/shell-api/{idle,privacy,input-grab,text-insertion,
 launch-feedback,tablet-pad-help,window-snapping,authentication}.md`; every one of them is marked "not available yet" and
 the Lua host implements none of them (`design/docs-parity/allow.toml` lists them), so the Lua host was no reference for
 behaviour here: the page and the schema were. What is built is what the compositor serves today; the rest is named below
