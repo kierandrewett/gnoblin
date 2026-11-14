@@ -35,7 +35,7 @@ use gnoblin_log::__tracing::span::{Attributes, Id, Record};
 use gnoblin_log::__tracing::{Event as LogEvent, Metadata, Subscriber};
 use gnoblin_log::event::Logged;
 use gnoblin_model::{Provider, RequestCompletion};
-use gnoblin_polkit_auth::{AuthRequest, Identity, current_uid, name_of};
+use gnoblin_polkit_auth::{AuthIdentity, AuthRequest, current_uid, name_of};
 use gnoblin_types::RequestId;
 use support::{Session, TIMEOUT, Wire};
 
@@ -173,7 +173,7 @@ impl Rig {
             "Authentication is needed to run `/usr/bin/true' as the super user".to_owned(),
             String::new(),
             std::collections::BTreeMap::new(),
-            vec![Identity::UnixUser {
+            vec![AuthIdentity::UnixUser {
                 uid: current_uid().expect("a uid"),
             }],
         )

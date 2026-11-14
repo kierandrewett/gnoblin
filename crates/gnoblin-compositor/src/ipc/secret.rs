@@ -43,7 +43,7 @@ use gnoblin_secret::SecretText;
 use gnoblin_types::{KeyState, OutputId, Rect, RequestId, Size, Tick};
 use gnoblin_wayland::{Modal, ModalEvent};
 
-use super::polkit::{HelperPath, Outcome, PolkitDialog};
+use super::polkit::{HelperPath, PolkitDialog, PolkitOutcome};
 use super::portal::{dialog_placement, frame_point, screen_key};
 use super::requests::SecretPrompt;
 use crate::log;
@@ -87,7 +87,7 @@ pub(crate) struct SecretScene {
 }
 
 /// A request the built-in dialogs serve, before its dialog is on screen.
-enum Prompt {
+enum BuiltinPrompt {
     Secret(SecretPrompt),
     Polkit(AuthRequest),
 }
@@ -123,7 +123,7 @@ pub(crate) struct SecretService {
     now: Tick,
     active: Option<Active>,
     /// Prompts waiting for the one on screen to end, oldest first.
-    pending: VecDeque<(RequestId, Prompt)>,
+    pending: VecDeque<(RequestId, BuiltinPrompt)>,
     /// The output the modal is shown on, while it is shown.
     shown: Option<OutputId>,
     locked: bool,
@@ -196,15 +196,15 @@ impl SecretService {
 
     /// Opens the prompt for `request`, or queues it behind the one on screen.
     pub(crate) fn open(&mut self, request: RequestId, prompt: SecretPrompt) -> Vec<SecretAction> {
-        self.enqueue(request, Prompt::Secret(prompt))
+        self.enqueue(request, BuiltinPrompt::Secret(prompt))
     }
 
     /// Opens the polkit dialog for `request`, or queues it behind the one on screen.
     pub(crate) fn open_polkit(&mut self, request: RequestId, auth: AuthRequest) -> Vec<SecretAction> {
-        self.enqueue(request, Prompt::Polkit(auth))
+        self.enqueue(request, BuiltinPrompt::Polkit(auth))
     }
 
-    fn enqueue(&mut self, request: RequestId, prompt: Prompt) -> Vec<SecretAction> {
+    fn enqueue(&mut self, request: RequestId, prompt: BuiltinPrompt) -> Vec<SecretAction> {
         if self.locked {
             return vec![SecretAction::Decline(request)];
         }
@@ -308,10 +308,10 @@ impl SecretService {
         SecretScene { modal, actions }
     }
 
-    fn start(&mut self, request: RequestId, prompt: Prompt) {
+    fn start(&mut self, request: RequestId, prompt: BuiltinPrompt) {
         let mut card = match prompt {
-            Prompt::Secret(prompt) => Card::Secret(SecretUi::new(prompt.title, prompt.message, prompt.subject)),
-            Prompt::Polkit(auth) => Card::Polkit(Box::new(PolkitDialog::new(auth, self.helper.clone()))),
+            BuiltinPrompt::Secret(prompt) => Card::Secret(SecretUi::new(prompt.title, prompt.message, prompt.subject)),
+            BuiltinPrompt::Polkit(auth) => Card::Polkit(Box::new(PolkitDialog::new(auth, self.helper.clone()))),
         };
         self.shell.layout(card.ui(), self.now);
         self.active = Some(Active {
@@ -346,8 +346,10 @@ impl SecretService {
                     active.dirty = true;
                 }
                 match step.outcome {
-                    Some(Outcome::Authenticated { identity }) => SecretAction::Authenticated { request, identity },
-                    Some(Outcome::Declined) => SecretAction::Decline(request),
+                    Some(PolkitOutcome::Authenticated { identity }) => {
+                        SecretAction::Authenticated { request, identity }
+                    }
+                    Some(PolkitOutcome::Declined) => SecretAction::Decline(request),
                     None => return Vec::new(),
                 }
             }

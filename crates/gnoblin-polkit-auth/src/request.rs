@@ -24,7 +24,7 @@ pub const MAX_PAYLOAD: usize = 64 * 1024;
 /// `unix-user` is the only kind a person can be asked for.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
-pub enum Identity {
+pub enum AuthIdentity {
     /// A user, by uid.
     UnixUser {
         /// The user's uid.
@@ -38,13 +38,13 @@ pub enum Identity {
     },
 }
 
-impl Identity {
+impl AuthIdentity {
     /// The text a person reads for this identity: the user's name, or `uid 1000` when no account has that uid.
     #[must_use]
     pub fn label(&self) -> String {
         match self {
-            Identity::UnixUser { uid } => user::name_of(*uid).unwrap_or_else(|| format!("uid {uid}")),
-            Identity::Other { kind } => kind.clone(),
+            AuthIdentity::UnixUser { uid } => user::name_of(*uid).unwrap_or_else(|| format!("uid {uid}")),
+            AuthIdentity::Other { kind } => kind.clone(),
         }
     }
 }
@@ -63,7 +63,7 @@ pub struct AuthRequest {
     /// The action's details, in the agent's locale.
     pub details: BTreeMap<String, String>,
     /// Who may authenticate.
-    pub identities: Vec<Identity>,
+    pub identities: Vec<AuthIdentity>,
     /// The program asking, as the agent resolved it from the details, or the empty string.
     pub requester: String,
 }
@@ -93,7 +93,7 @@ pub enum PayloadError {
 
 /// What an observer is shown of a request: everything a policy needs to decide, and nothing the helper needs.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Observed {
+pub struct ObservedAuth {
     /// The action being authorized.
     #[serde(rename = "actionId")]
     pub action_id: String,
@@ -112,7 +112,7 @@ impl AuthRequest {
         message: String,
         icon_name: String,
         details: BTreeMap<String, String>,
-        identities: Vec<Identity>,
+        identities: Vec<AuthIdentity>,
     ) -> Self {
         let requester = requester_of(&details);
         Self {
@@ -149,17 +149,17 @@ impl AuthRequest {
     /// The request as an observer sees it, as the JSON an offer's subject carries.
     #[must_use]
     pub fn observed(&self) -> Vec<u8> {
-        let observed = Observed {
+        let observed = ObservedAuth {
             action_id: self.action_id.clone(),
             requester: self.requester.clone(),
             identities: self
                 .identities
                 .iter()
                 .map(|identity| match identity {
-                    Identity::UnixUser { uid } => {
+                    AuthIdentity::UnixUser { uid } => {
                         format!("unix-user:{}", user::name_of(*uid).unwrap_or_else(|| uid.to_string()))
                     }
-                    Identity::Other { kind } => kind.clone(),
+                    AuthIdentity::Other { kind } => kind.clone(),
                 })
                 .collect(),
         };
@@ -195,8 +195,8 @@ mod tests {
             String::new(),
             details,
             vec![
-                Identity::UnixUser { uid: 0 },
-                Identity::Other {
+                AuthIdentity::UnixUser { uid: 0 },
+                AuthIdentity::Other {
                     kind: "unix-netgroup".to_owned(),
                 },
             ],

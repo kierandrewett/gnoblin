@@ -1036,7 +1036,7 @@ mod tests {
             "Authentication is needed".to_owned(),
             String::new(),
             std::collections::BTreeMap::new(),
-            vec![gnoblin_polkit_auth::Identity::UnixUser { uid: 0 }],
+            vec![gnoblin_polkit_auth::AuthIdentity::UnixUser { uid: 0 }],
         )
         .encode()
     }

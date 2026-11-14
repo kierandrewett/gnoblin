@@ -1486,3 +1486,9 @@ left = "gnoblin-render-gles::Plan"
 right = "gnoblin-session::Plan"
 kind = "same-name"
 reason = "the clipped source and destination rectangles of a GPU copy and a session's startup plan are different things"
+
+[[allow]]
+left = "gnoblin-polkit-auth::AuthRequest"
+right = "gnoblin-service-core::PolkitRequest"
+kind = "near-shape"
+reason = "PolkitRequest is polkitd's BeginAuthentication arguments in the model's vocabulary; AuthRequest is the payload the compositor's dialog and polkit's helper read, with the requesting program resolved and identities reduced to users"

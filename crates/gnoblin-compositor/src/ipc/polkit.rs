@@ -4,7 +4,7 @@
 //! compositor on `auth.polkit` ([`super::requests`]). Nothing that draws, and nothing a script wrote, decides
 //! whether the password was right: [`PolkitDialog`] collects it in [`PolkitUi`], runs polkit's own
 //! `polkit-agent-helper-1` for the identity the user chose with the request's cookie, shows the PAM prompts the
-//! helper sends back, and reports [`Outcome::Authenticated`] only when the helper itself says `SUCCESS`. The helper
+//! helper sends back, and reports [`PolkitOutcome::Authenticated`] only when the helper itself says `SUCCESS`. The helper
 //! has by then told polkitd, which is the authority (design/js-research/polkit.md).
 //!
 //! [`PolkitDialog`] never touches a socket or the screen. [`super::secret::SecretService`] gives it keys and the
@@ -24,7 +24,9 @@
 
 use std::path::PathBuf;
 
-use gnoblin_polkit_auth::{AuthRequest, HelperError, HelperEvent, HelperSession, Identity, current_uid, locate_helper};
+use gnoblin_polkit_auth::{
+    AuthIdentity, AuthRequest, HelperError, HelperEvent, HelperSession, current_uid, locate_helper,
+};
 use gnoblin_portal::{PolkitEvent, PolkitUi};
 use gnoblin_portal_core::model::ScreenKey;
 
@@ -55,7 +57,7 @@ impl HelperPath {
 
 /// How the dialog ended.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Outcome {
+pub(crate) enum PolkitOutcome {
     /// The helper said `SUCCESS` for this identity, written as polkit writes it: `unix-user:alice`.
     Authenticated { identity: String },
     /// The user cancelled.
@@ -64,11 +66,11 @@ pub(crate) enum Outcome {
 
 /// What one [`PolkitDialog::advance`] did.
 #[derive(Debug, Default, PartialEq, Eq)]
-pub(crate) struct Step {
+pub(crate) struct PolkitStep {
     /// The card changed, so it must be drawn again.
     pub changed: bool,
     /// How the dialog ended, once it did.
-    pub outcome: Option<Outcome>,
+    pub outcome: Option<PolkitOutcome>,
 }
 
 /// One polkit request on screen: its card and the helper behind it.
@@ -93,9 +95,11 @@ impl PolkitDialog {
             .identities
             .iter()
             .filter_map(|identity| match identity {
-                Identity::UnixUser { uid } => gnoblin_polkit_auth::name_of(*uid).map(|name| (Some(*uid) != own, name)),
+                AuthIdentity::UnixUser { uid } => {
+                    gnoblin_polkit_auth::name_of(*uid).map(|name| (Some(*uid) != own, name))
+                }
                 // A group or netgroup is expanded to its users by polkitd; a kind that is left has no helper.
-                Identity::Other { .. } => None,
+                AuthIdentity::Other { .. } => None,
             })
             .collect();
         // Stable: the user's own account first, the others as polkit listed them.
@@ -145,14 +149,14 @@ impl PolkitDialog {
     }
 
     /// Acts on what the user did and on what the helper said since the last call, without waiting.
-    pub(crate) fn advance(&mut self) -> Step {
-        let mut step = Step::default();
+    pub(crate) fn advance(&mut self) -> PolkitStep {
+        let mut step = PolkitStep::default();
         for event in self.ui.take_events() {
             step.changed = true;
             match event {
                 PolkitEvent::Cancel => {
                     self.session = None;
-                    step.outcome = Some(Outcome::Declined);
+                    step.outcome = Some(PolkitOutcome::Declined);
                     return step;
                 }
                 PolkitEvent::Reply(answer) => {
@@ -182,7 +186,7 @@ impl PolkitDialog {
                 HelperEvent::Success => {
                     self.session = None;
                     let user = self.users.get(self.ui.selected()).cloned().unwrap_or_default();
-                    step.outcome = Some(Outcome::Authenticated {
+                    step.outcome = Some(PolkitOutcome::Authenticated {
                         identity: format!("unix-user:{user}"),
                     });
                     return step;
@@ -244,7 +248,7 @@ pub(crate) mod fake {
     use std::os::unix::fs::PermissionsExt as _;
     use std::path::PathBuf;
 
-    use gnoblin_polkit_auth::{AuthRequest, Identity, current_uid, name_of};
+    use gnoblin_polkit_auth::{AuthIdentity, AuthRequest, current_uid, name_of};
 
     use super::HelperPath;
 
@@ -293,7 +297,7 @@ pub(crate) mod fake {
             "Authentication is needed".to_owned(),
             String::new(),
             std::collections::BTreeMap::new(),
-            vec![Identity::UnixUser { uid }],
+            vec![AuthIdentity::UnixUser { uid }],
         )
     }
 
@@ -326,7 +330,7 @@ mod tests {
     use super::*;
 
     /// Advances until `done` holds or the dialog ends, a few seconds at most.
-    fn run_until(dialog: &mut PolkitDialog, mut done: impl FnMut(&mut PolkitDialog) -> bool) -> Option<Outcome> {
+    fn run_until(dialog: &mut PolkitDialog, mut done: impl FnMut(&mut PolkitDialog) -> bool) -> Option<PolkitOutcome> {
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
             let step = dialog.advance();
@@ -370,7 +374,7 @@ mod tests {
         type_text(&mut dialog, "hunter2");
         assert_eq!(
             run_until(&mut dialog, |_| false),
-            Some(Outcome::Authenticated {
+            Some(PolkitOutcome::Authenticated {
                 identity: format!("unix-user:{name}")
             })
         );
@@ -388,7 +392,7 @@ mod tests {
         type_text(&mut dialog, "hunter2");
         assert!(matches!(
             run_until(&mut dialog, |_| false),
-            Some(Outcome::Authenticated { .. })
+            Some(PolkitOutcome::Authenticated { .. })
         ));
     }
 
@@ -414,7 +418,7 @@ mod tests {
         dialog.key(ScreenKey::Escape);
         assert_eq!(
             dialog.advance().outcome,
-            Some(Outcome::Declined),
+            Some(PolkitOutcome::Declined),
             "closing it ends the request unauthenticated"
         );
     }
@@ -427,7 +431,7 @@ mod tests {
             "message".to_owned(),
             String::new(),
             std::collections::BTreeMap::new(),
-            vec![Identity::Other {
+            vec![AuthIdentity::Other {
                 kind: "unix-netgroup".to_owned(),
             }],
         );
@@ -451,7 +455,7 @@ mod tests {
             .expect("a pid");
         assert!(Path::new(&format!("/proc/{pid}")).exists());
         dialog.key(ScreenKey::Escape);
-        assert_eq!(dialog.advance().outcome, Some(Outcome::Declined));
+        assert_eq!(dialog.advance().outcome, Some(PolkitOutcome::Declined));
         assert!(
             !Path::new(&format!("/proc/{pid}")).exists(),
             "the helper is killed and reaped when the user cancels"

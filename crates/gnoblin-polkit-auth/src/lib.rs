@@ -26,7 +26,7 @@ mod user;
 
 pub use gnoblin_secret::SecretText;
 pub use helper::{HELPER_CANDIDATES, HELPER_ENV, HelperError, HelperEvent, HelperSession, locate_helper, parse_line};
-pub use request::{AuthRequest, Identity, MAX_PAYLOAD, Observed, PayloadError};
+pub use request::{AuthIdentity, AuthRequest, MAX_PAYLOAD, ObservedAuth, PayloadError};
 pub use user::{current_uid, name_of, parse_passwd};
 
 gnoblin_log::logger!(log = "polkit-auth");

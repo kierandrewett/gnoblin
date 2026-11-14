@@ -56,7 +56,7 @@ enum Note {
 
 /// What PAM asked, while it waits for the user.
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Prompt {
+struct PamPrompt {
     text: String,
     echo: bool,
 }
@@ -69,7 +69,7 @@ pub struct PolkitUi {
     identities: Vec<String>,
     selected: usize,
     notes: Vec<Note>,
-    prompt: Option<Prompt>,
+    prompt: Option<PamPrompt>,
     entry: SecretText,
     characters: usize,
     /// Set when nothing more can be typed: a helper that could not start, too many failures.
@@ -136,7 +136,7 @@ impl PolkitUi {
             return;
         }
         self.clear_entry();
-        self.prompt = Some(Prompt {
+        self.prompt = Some(PamPrompt {
             text: text.into(),
             echo,
         });

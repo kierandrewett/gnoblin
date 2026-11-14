@@ -19,7 +19,7 @@ use std::time::Duration;
 
 use futures_lite::future;
 use gnoblin_model::{RequestId, RequestOutcome, Tick};
-use gnoblin_polkit_auth::{AuthRequest, HelperEvent, HelperSession, Identity, SecretText, current_uid, name_of};
+use gnoblin_polkit_auth::{AuthIdentity, AuthRequest, HelperEvent, HelperSession, SecretText, current_uid, name_of};
 use gnoblin_service_core::{CapabilitySlot, Offerer, Proposition, Refusal};
 use gnoblin_service_polkit::{AGENT_PATH, AUTHORITY_PATH, AUTHORITY_SERVICE, Polkit};
 use gnoblin_service_testkit::Bus;
@@ -28,6 +28,9 @@ use zbus::{Connection, ObjectPath, OwnedVariant, fdo};
 
 const AGENT_INTERFACE: &str = "org.freedesktop.PolicyKit1.AuthenticationAgent";
 
+/// One `AuthenticationAgentResponse2` call: the uid, the cookie and the identity's details.
+type Response = (u32, String, HashMap<String, OwnedVariant>);
+
 /// What the fake polkitd was told.
 #[derive(Debug, Default)]
 struct AuthorityState {
@@ -35,7 +38,7 @@ struct AuthorityState {
     unregistrations: Mutex<Vec<String>>,
     /// The `AuthenticationAgentResponse2` calls: the uid, the cookie and the identity's details. Only polkit's helper
     /// makes this call; in these tests, the fake helper does.
-    responses: Mutex<Vec<(u32, String, HashMap<String, OwnedVariant>)>>,
+    responses: Mutex<Vec<Response>>,
 }
 
 /// A polkitd that only records registrations.
@@ -259,7 +262,7 @@ fn the_agent_registers_with_polkitd_and_answers_an_authentication() {
             let payload = AuthRequest::decode(&proposition.subject).expect("the offer carries the agent's payload");
             assert_eq!(payload.cookie, "cookie-1");
             assert_eq!(payload.action_id, "org.freedesktop.policykit.exec");
-            assert_eq!(payload.identities, [Identity::UnixUser { uid: 1000 }]);
+            assert_eq!(payload.identities, [AuthIdentity::UnixUser { uid: 1000 }]);
             fixture
                 .polkit
                 .answer(request, &RequestOutcome::answered(b"unix-user:1000".to_vec()))

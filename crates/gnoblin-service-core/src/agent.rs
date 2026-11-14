@@ -234,12 +234,12 @@ fn auth_request(request: &PolkitRequest) -> gnoblin_polkit_auth::AuthRequest {
         .iter()
         .map(|identity| match (identity.kind.as_str(), identity.details.get("uid")) {
             ("unix-user", Some(Value::Uint(uid))) => match u32::try_from(*uid) {
-                Ok(uid) => gnoblin_polkit_auth::Identity::UnixUser { uid },
-                Err(_) => gnoblin_polkit_auth::Identity::Other {
+                Ok(uid) => gnoblin_polkit_auth::AuthIdentity::UnixUser { uid },
+                Err(_) => gnoblin_polkit_auth::AuthIdentity::Other {
                     kind: identity.kind.clone(),
                 },
             },
-            _ => gnoblin_polkit_auth::Identity::Other {
+            _ => gnoblin_polkit_auth::AuthIdentity::Other {
                 kind: identity.kind.clone(),
             },
         })
