@@ -64,7 +64,8 @@ Done criteria (headless, on Agent37):
 | P5 reload and supervisor | watcher, generation swap, failure keep-old, restart, Rust fallback                                                                  | P1, P3        |
 | P6 dialogs               | `gnoblin.dialogs`, `DialogListener`, `SecureEntry`, lease and `request.release`, Rust built-ins for secret entry and polkit         | P3            |
 | P7 console               | JSON-over-socket REPL and inspector, `gnoblinctl console`                                                                           | P3            |
-| P8 later, separate sizes | styles and effect stack, Display mirror and span, transition planner, XR program on the new API                                     | P4            |
+| P8 later, separate sizes | styles and effect stack, Display mirror and span, transition planner                                                                | P4            |
+| P9 XR                    | `gnoblin.extensions.xr` and `gnoblin/extensions/xr` over the out-of-process XR program (J7): room, ring, View, bindings             | P4            |
 
 ### P2 status
 
@@ -1059,6 +1060,38 @@ introspection tools of owner-spec section 18.
   the research note's protocol; top-level `await`; TypeScript at the prompt; per-connection sessions; the inspector's
   views of computed styles, transition tracks and layout placements (the object model has none yet); `displays` and
   `extensions` expressions of spec section 18 (no such objects).
+
+## P9 XR status
+
+Design: `design/js-xr.md` (which spec class is a tree node, a JS class or new native work). User docs: `docs/xr.md`,
+"Scripting XR in TypeScript". No headset, OpenXR runtime or `gnoblin-xr` binary was used; the program was not run.
+
+- **Scene classes.** `data/js/gnoblin/scene.ts` has `Node`, `Camera3D` and `View` over the tree (`__gnoblinHost.xr`,
+  `crates/gnoblin-js/src/xr.rs`: make, insert, destroy and find nodes of those three classes; ids come from the UI
+  toolkit's count; `bindings/props.rs` gains the `node`, `view`, `camera` and `controller` property tables). A write of
+  what a node already holds is left out, because the tree sends every write it is given. `Vector3`, `Transform3D`, `Ray`
+  and `Plane` are the pose arithmetic; a rotation is the program's, Euler about X, then Y, then Z.
+- **The module.** `data/js/gnoblin/xr.ts` is the port of `xr.lua` (`arrangeRing` with the Lua golden numbers, `XRRoom`,
+  `SpatialLayout`, panels for clients, none for dialogs or secure clients, head-locked panels) and the spec's classes
+  (`XRCamera3D`, `XRViewport`, `XRSession`, `XRExtension`, `XRController`, `ViewMoveBinding`, `ViewResizeBinding`). It
+  runs once a frame from the host's UI entry and costs one `seats()` call while no program has a session.
+- **Presence.** `gnoblin.extensions.xr` is null until the seat named `xr` exists and null again after it goes; a held
+  session reads `alive === false`. `gnoblin/extensions/xr` fails at load unless `JsShellConfig::xr_declared`
+  (`GNOBLIN_XR=1`, read in `crates/gnoblin/src/main.rs`) or the seat exists.
+- **Bindings.** `Binding.readTrigger` is a static hook, so an XR binding keeps the `Binding` lifecycle, `enabled`,
+  `priority` and the `BindingCollection` API with its own trigger grammar (`ControllerTriggerParts`, `Grip+Drag`). No seat
+  claims one. They are in `SpatialLayout.bindings`, which a script turns off and replaces like any collection.
+- **Proven against the fake tree** (`crates/gnoblin-js/tests/xr.rs`, 44 cases): absent XR, the import gate, XR1, the
+  Lua room cases and ring goldens, XR3 move (View only), the ray-drag, XR4 resize (zero window writes while dragging,
+  one transaction on release, none when aspect and density hold), cancel, throw, disable and replace, XR6 secure, the
+  `docs/xr.md` snippets.
+- **Proven on the real compositor** (`crates/gnoblin/tests/js_shell.rs`, the last test): an observer makes the `xr` seat,
+  the stock shell builds the room with a head camera and a View per real window, and the room goes with the seat. The
+  seat is the only thing of the program in that test.
+- **Not built.** The program does not publish `controller` nodes, so no controller exists and no drag starts on a
+  headset (`design/js-xr.md`, "New native work"); the grip still reaches the window as `BTN_RIGHT`; the TypeScript rules
+  have no `xr = false` key (`accept` replaces it); `ViewRotateBinding`, `ViewScaleBinding` and `ThrowViewBinding`; a View
+  of a workspace. XR5 (a stalled script does not block pose writes or layers) is unverified.
 
 ## Questions for the owner (the agent has a default for each)
 

@@ -119,6 +119,12 @@ then reloads only when asked.
 `inspect.bindings()` and `inspect.config()` return what the shell holds as plain data. See
 [Console and inspector](/js-console).
 
+## XR
+
+`gnoblin.extensions.xr` is `null` until the XR program has a session, so a config guards it and works without a headset.
+The stock shell builds the room and places the panels when the session starts. See
+[XR mode](/xr#scripting-xr-in-typescript) for the room, the viewport and the bindings that move and resize a panel.
+
 ## When the shell stops
 
 The shell is a client of the compositor. If it exits or is killed, the compositor keeps running and answers every client.

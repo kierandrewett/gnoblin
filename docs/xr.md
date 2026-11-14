@@ -25,7 +25,7 @@ Release packages do not ship `gnoblin-xr`:
 
 If `GNOBLIN_XR=1` is set and no binary is found, the guardian logs one warning and the session starts without it.
 
-The setting is an environment variable because the guardian starts before the Lua configuration runs and reads no
+The setting is an environment variable because the guardian starts before the shell runs its configuration and reads no
 configuration file. A `gnoblin.configure` key would take effect only after a restart of the guardian's child list, which
 nothing does today.
 
@@ -82,7 +82,8 @@ Logs are under the `xr` name: `[guardian] started xr (generation N, pid P)` and 
 
 ## What the stock shell does
 
-The stock shell's XR side is `data/lua/gnoblin/shell/xr.lua`. It reacts to the seat named `xr`.
+The stock shell's XR side is `data/js/gnoblin/xr.ts` (the TypeScript shell; the Lua shell it replaces has the same
+behaviour in `data/lua/gnoblin/shell/xr.lua`). It reacts to the seat named `xr`.
 
 When the seat arrives the shell builds a node named `room` under `root`. The room holds:
 
@@ -111,21 +112,24 @@ Every window gets a `View` under the room when it maps, and loses it when the wi
 
 A dialog has no View of its own. Its parent's View shows it, because the dialog is a child of the parent window.
 
-A window rule can keep a window out of the room. The stock shell reads the rule key `xr`:
+A client that is `secure` never gets a View, and one that turns secure loses it. The compositor enforces that on its
+own: it masks a secure node in every View's picture (`design/security-secure-content-in-views.md`).
 
-```lua
-seat.data.window_rules = {
-  { match = { app_id = "^org%.keepassxc" }, xr = false },
-}
+A script can keep other windows out of the room with an `accept` function. It runs every frame, so a window comes in
+when it starts to say yes:
+
+```ts
+gnoblin.extensions.configure("xr", {
+    accept: (client) => !client.appId.startsWith("org.keepassxc"),
+});
 ```
 
-A window that matches a rule with `xr = false` has no View. When the rule stops matching, the View appears. Rules are
-the stock shell's rules (`data/lua/gnoblin/shell/rules.lua`): the same `match` keys and the same re-evaluation when a
-title or focus changes.
+The Lua shell reads the window rule key `xr = false` for the same thing. The TypeScript rules do not have that key
+(`data/js/gnoblin/rules.ts` refuses it by name), so the function is the one way.
 
 ### The ring
 
-The panels sit on a ring round you. The ring is `XrRing.arrange` in `xr.lua`, a pure function of the windows' sizes and
+The panels sit on a ring round you. The ring is `arrangeRing` in `xr.ts`, a pure function of the windows' sizes and
 the focus, so a window's place never depends on anything but those:
 
 - The ring has a radius of 1.6 m, and the centre of each panel is 1.4 m above the room's floor. The extension reports
@@ -270,6 +274,117 @@ Not wired: the thumbstick click (`BTN_MIDDLE`), the A, X and Y buttons (`BTN_SID
 switching hands. On a Touch-style controller B is the secondary input, so it sends `BTN_RIGHT`, not `BTN_EXTRA`. The ray
 comes from the right hand only.
 
+## Scripting XR in TypeScript
+
+The classes of the spec's `gnoblin/extensions/xr` are in the TypeScript shell. They are objects over the tree's nodes,
+like a `Client`: the XR program is a separate process, and nothing here loads into the shell
+(`design/js-xr.md` says which spec class is which node).
+
+### Is XR there?
+
+`gnoblin.extensions.xr` is `null` until the program has a session, which is while the seat named `xr` exists. A script
+guards the use:
+
+```ts
+const xr = gnoblin.extensions.xr;
+if (xr?.session) {
+    // The session is alive, and the stock room is built.
+}
+```
+
+A session object that a script kept reads `alive === false` once the session ends, and every write to it, to its room
+or to a panel throws. A script that wants to follow the headset comes and goes listens for it:
+
+```ts
+gnoblin.extensions.addListener({
+    onSessionStarted: (session) => {},
+    onSessionEnded: (session) => {},
+});
+```
+
+Importing the module fails at load, with a message that says what to do, when there is no XR extension:
+
+```ts
+import { XRCamera3D, ViewMoveBinding } from "gnoblin/extensions/xr";
+```
+
+The import works when the session declared XR (`GNOBLIN_XR=1`) or when the program already has a session. A config that
+must also work without a headset guards `gnoblin.extensions.xr` instead of importing.
+
+### The room, the head and the viewport
+
+The stock shell builds the room when the session starts. To change what it builds, configure it before the session
+starts, which a config can because it runs first:
+
+```ts
+gnoblin.extensions.configure("xr", {
+    room: true,
+    layout: { radius: 1.8, triggers: { move: "Right.Grip+Drag", resize: null } },
+});
+```
+
+`room: false` builds nothing and leaves the room to the script. A script that builds its own room hands it over with a
+viewport; the program reads the node named `room` and the camera named `head`, and assigning the viewport names them:
+
+```ts
+const xr = gnoblin.extensions.xr;
+if (xr?.session) {
+    const head = new xr.Camera3D({ tracking: xr.session.head, near: 0.05, far: 100 });
+    xr.session.viewport = new xr.Viewport({ content: new xr.Room(), camera: head, composition: "auto" });
+}
+```
+
+`near` and `far` are in metres. The stock room is replaced by the new one. `composition: "projection"` draws each panel
+through the head camera as a projection layer; `"layers"` and `"auto"` leave them as flat quads.
+
+A client can also be shown in a panel that is fixed to your head, in metres in front of the eyes. The window keeps its
+panel on the ring as well:
+
+```ts
+const panel = xr.room.pinToHead(client, { x: 0.1, y: -0.2, z: -1 });
+```
+
+### Moving and resizing a panel
+
+The program does not send controller input to the shell as events. It will write one `controller` node for each
+tracked hand (see "What is not built"), and the shell reads the nodes once a frame.
+
+The bindings follow the ordinary lifecycle, and live in the room layout's `bindings`, a `BindingCollection`:
+
+- `onStart` returns a state object, or `false` to decline.
+- `onUpdate` runs once a frame with that frame's pose.
+- `onEnd` or `onCancel` ends the drag.
+
+| Binding             | Trigger             | What it writes                                                                                        |
+| ------------------- | ------------------- | ----------------------------------------------------------------------------------------------------- |
+| `ViewMoveBinding`   | `Grip+Drag`         | The View's position and rotation, never the client. `tracking: "ray"` follows where the ray points.   |
+| `ViewResizeBinding` | `Grip+Trigger+Drag` | The View's scale on every update, and nothing to the client until release; then at most one new size. |
+
+A trigger is the buttons held together, then `Drag`, with an optional `Left.` or `Right.` hand:
+
+- The buttons are `Trigger`, `Grip`, `Thumbstick`, `Primary` and `Secondary`.
+- A drag starts when exactly those buttons have been down together for 50 ms (`session.chordSettleMs`). A `Grip`
+  pressed an instant before a `Trigger` is not taken for the start of `Grip+Trigger`.
+
+A panel that was moved or resized is pinned: the ring leaves it where it is until `room.unpin(view)`.
+
+- **Resize preview.** The panel grows evenly by the corner under the ray, and the opposite corner stays still.
+- **On release.** The client is asked for a new size once, and only if the size drawn changes the aspect by more than
+  2% or leaves the client's picture under 85% of the pixels the new size shows (`pixelsPerMetre`, 1200).
+- **Tiled workspaces.** A layout that owns the window's rectangle may place the window again.
+
+Turning a binding off and replacing it are the collection's calls:
+
+```ts
+const bindings = xr.room.layout.bindings;
+bindings.remove("move");
+bindings.add(new xr.ViewMoveBinding({ id: "move", trigger: "Right.Grip+Drag", tracking: "ray", rotation: "keep" }));
+bindings.get("resize").enabled = false;
+```
+
+A binding of your own extends `XRControllerDragBinding` and is added the same way. `event.view` is the panel under the
+ray when the drag began, `event.controller.pose` and `event.ray` are the hand, and `event.hit` is where the ray struck.
+
 ## Testing without a headset
 
 `scripts/xr-smoke.sh` runs the whole stack on an Agent37 instance with no GPU, no seat and no headset. It runs as root
@@ -307,13 +422,27 @@ Logs, the tree dump and the pictures are left in `/tmp/xr-smoke`.
 - `GNOBLIN_LOG=xr=debug`: the extension logs one line for every frame with the layers planned and submitted.
 - `XR_SMOKE_HANDS=1`: gives the simulated headset a controller on each hand. Without it the pointing ray is the gaze.
 
+## What is not built
+
+- **The program does not publish controller nodes yet.** The bindings above read `controller` nodes
+  (`design/js-xr.md`, "New native work"): one for each hand, with the aim pose and the trigger and grip values. No schema
+  file declares the class, and the program and the compositor do not write it. Until they do, a headset session has no
+  controllers in `session.controllers` and no drag starts. The shell side is proven against nodes made by a test.
+- **The program still sends the grip as `BTN_RIGHT`.** A binding that owns the grip needs the program to stop sending
+  it to the window under the ray. That arbitration is not designed.
+- **A panel has one scale.** The program reads the first component of a View's `scale`, so a resize previews the growth
+  evenly and the aspect changes when the client's new size lands.
+- **A stalled script.** The program writes the head pose and submits layers without waiting for the shell, and the
+  shell reads the tree once a frame. No test stalls a shell while the program runs: that is unverified.
+
 ## Limits
 
 - You need an OpenXR runtime such as Monado or WiVRn. WiVRn has not been tried.
 - The extension needs a Vulkan device and `XR_KHR_vulkan_enable2`. Without them it runs a headless session, which plans
   and drives the pointer and shows nothing.
 - No headset has shown it. Everything here has run only against Monado's null compositor, which shows nothing, a stub
-  runtime, a fake owner and the real compositor on its headless backend.
+  runtime, a fake owner, a fake tree and the real compositor on its headless backend. The TypeScript XR classes ran only
+  against a fake tree.
 - Head tracking, the layer budget and the eyes a layer declares are proven only that way. Nothing says what a person
   sees, whether a layer swims, or how a real tracker's noise behaves.
 - WiVRn, real controllers and a runtime that loses a session are untried.
