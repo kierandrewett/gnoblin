@@ -1367,16 +1367,16 @@ same `prepare` that a queued write goes through), the staging block at the top o
   compositor's `track_ended`, not the shell's clock.
 - **Acceptance rows** (`spec-review.md`, "Animation"):
 
-| Row | Status                                                                                                                                                                                                                                          |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AN1 | Done: once, one transaction, a returned Promise refused (`tests/transition.rs`).                                                                                                                                                                |
-| AN2 | Done at the player and the shell: the layout is computed once and every window gets timed writes by node id; golden poses at 0, 0.25, 0.5 and 1 for position, opacity, scale and rotation, and a size tween in whole pixels.                    |
-| AN3 | Not done: there is no camera (native and spec work).                                                                                                                                                                                            |
-| AN4 | Partly: no JS runs between the commit and the end (the callback count stays 1 across frames), a scrub is one write and `JsShell::dispatches` stays put over three scrubs (fake link). Not done: the same against a real compositor over 750 ms. |
-| AN5 | Done at the scene: while a track is seeked, `Scene::hit_test` uses the presented rectangle, position, scale and rotation, and a point inside only the target does not hit (`tween_scrub.rs`).                                                   |
-| AN6 | Done over the fake link: `cancel` from running and from ended, `{ cancelled }` once; `progress`, `play()`, `pause()` and `reverse()` write the `tween`, a transition run back to its start settles cancelled and puts the start values back.    |
-| AN7 | Done: an invalid value, a stale (destroyed) client and a throwing layout abort with the previous state and the path in the error.                                                                                                               |
-| AN8 | Done: the newest owns a property and the older goes on with the rest, one with none left ends cancelled, a nested call is an error.                                                                                                             |
+| Row | Status                                                                                                                                                                                                                                                                                                                                |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AN1 | Done: once, one transaction, a returned Promise refused (`tests/transition.rs`).                                                                                                                                                                                                                                                      |
+| AN2 | Done at the player and the shell: the layout is computed once and every window gets timed writes by node id; golden poses at 0, 0.25, 0.5 and 1 for position, opacity, scale and rotation, and a size tween in whole pixels.                                                                                                          |
+| AN3 | Not done: there is no camera (native and spec work).                                                                                                                                                                                                                                                                                  |
+| AN4 | Done: no JS runs between the commit and the end (the callback count stays 1 across frames); a scrub is one write and `JsShell::dispatches` stays put over three scrubs (fake link); against a real compositor a held transition is scrubbed 0, 0.4, 0.1, 1 and let go, and it ends on the compositor's `track_ended` (`js_shell.rs`). |
+| AN5 | Done at the scene: while a track is seeked, `Scene::hit_test` uses the presented rectangle, position, scale and rotation, and a point inside only the target does not hit (`tween_scrub.rs`).                                                                                                                                         |
+| AN6 | Done over the fake link: `cancel` from running and from ended, `{ cancelled }` once; `progress`, `play()`, `pause()` and `reverse()` write the `tween`, a transition run back to its start settles cancelled and puts the start values back.                                                                                          |
+| AN7 | Done: an invalid value, a stale (destroyed) client and a throwing layout abort with the previous state and the path in the error.                                                                                                                                                                                                     |
+| AN8 | Done: the newest owns a property and the older goes on with the rest, one with none left ends cancelled, a nested call is an error.                                                                                                                                                                                                   |
 
 - **Native tweens** (lane TweenNative). `TweenPlayer` seeks to a point of a track, pauses, runs backwards and settles
   (`finish`: forward, back or cancel); a track interpolates `width` and `height` (whole pixels), and `rotation` and `scale`
@@ -1384,8 +1384,10 @@ same `prepare` that a queued write goes through), the staging block at the top o
   "Tweens") holds the play state of the tracks that join it; the compositor sends `track_ended`, which `finished` settles
   on. `crates/gnoblin-render/tests/tween_scrub.rs` has the golden poses and the hit tests, `crates/gnoblin-js/tests/transition.rs`
   the scrub, reverse, delay and end over the fake link.
-- **Not built**: a real-compositor test of a scrub with an injected clock (the fake link only proves what the shell
-  writes), tweening effects and corner radius, `Camera2D`/`Camera3D`, a tree surface for `TweenPlayer::finish`, a
+- **Not built**: presented positions read from a running compositor (a tween's pose is not in the tree an observer
+  reads, so `crates/gnoblin/tests/js_shell.rs` proves the scrub through the `tween` node and the end through
+  `track_ended`, and `crates/gnoblin-wayland/tests/tree_live.rs` proves the poses on the composer with an injected
+  clock), tweening effects and corner radius, `Camera2D`/`Camera3D`, a tree surface for `TweenPlayer::finish`, a
   quaternion rotation path. Spec examples 076 to 079 (`arcLayout.radius`, `camera3D`, `display.viewport`, a `View`) need
   objects the runtime does not have.
 

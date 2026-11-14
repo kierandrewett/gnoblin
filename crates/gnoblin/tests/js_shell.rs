@@ -180,7 +180,7 @@ impl Canvas {
 
 /// Every canvas of the compositor's tree, read through a fresh observer connection.
 fn canvases(ipc: &Path) -> Vec<Canvas> {
-    support::snapshot(ipc)
+    snapshot(ipc)
         .into_iter()
         .filter(|node| node.class == "canvas")
         .map(|node| {
@@ -1878,6 +1878,111 @@ fn a_layout_change_in_a_transition_commits_to_the_scene_at_once_and_the_transiti
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 }
 
+const SCRUB_INIT: &str = r#"
+import { DwindleLayout, Layout, Workspace, gnoblin } from "gnoblin";
+class Rows extends Layout {
+    compute(context) {
+        const height = context.area.height / 2;
+        return context.children.map((node, i) => ({
+            node,
+            tiled: true,
+            bounds: { x: context.area.x, y: context.area.y + i * height, width: context.area.width, height },
+        }));
+    }
+}
+const g = globalThis as any;
+g.log = [];
+gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new DwindleLayout() }));
+// One step for each second the test's clock moves: the transition is staged held, scrubbed three times, then let go.
+const steps = [
+    () => {
+        g.t = gnoblin.requestTransition(
+            () => {
+                gnoblin.workspaces.get("desk").layout = new Rows();
+            },
+            { duration: 400, easing: "linear", autoplay: false },
+        );
+        g.t.onFinished((result) => g.log.push("finished:" + result.cancelled));
+        g.log.push("staged");
+    },
+    () => { g.t.progress = 0.4; g.log.push("p0.4"); },
+    () => { g.t.progress = 0.1; g.log.push("p0.1"); },
+    () => { g.t.progress = 1; g.log.push("p1"); },
+    () => { g.t.play(); g.log.push("play"); },
+];
+steps.forEach((step, i) => gnoblin.after(1 + i, step));
+g.probe = () => JSON.stringify({ now: gnoblin.timers.now(), running: g.t === undefined ? null : g.t.running, log: g.log });
+"#;
+
+/// The play state of the compositor's `tween` node: `(progress, paused)`, or `None` while there is none.
+fn tween_state(ipc: &Path) -> Option<(f64, bool)> {
+    let nodes = snapshot(ipc);
+    let tween = nodes.iter().find(|node| node.class == "tween")?;
+    let value = |key: &str| tween.props.iter().find(|prop| prop.key == key);
+    Some((
+        value("progress").map_or(0.0, |prop| prop.value_double),
+        value("paused").is_some_and(|prop| prop.value_bool),
+    ))
+}
+
+#[test]
+fn a_held_transition_is_scrubbed_through_the_compositors_tween_node_and_ends_on_the_compositors_word() {
+    // AN4, AN6: `autoplay: false` stages the transition held; each scrub is one write the compositor receives as the
+    // `tween` node's `progress`; letting it go at progress 1 ends it by the compositor's `track_ended`, not by the
+    // shell's clock. The presented positions at each progress are asserted against the composer itself in
+    // `crates/gnoblin-wayland/tests/tree_live.rs` (a tween's pose is not in the tree an observer reads).
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    fs::write(config.path().join("init.ts"), SCRUB_INIT).expect("init.ts");
+    let clock = JsManualClock::default();
+    let held = clock.clone();
+    let shell = Shell::start(&session, config.path(), move |config| {
+        config.shell.clock = Arc::new(held)
+    });
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    mapper.map_window("org.example.first", "First");
+    mapper.map_window("org.example.second", "Second");
+    wait_for("two windows", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, "org.example.first").is_some() && rect_of(&ipc, "org.example.second").is_some()
+    });
+
+    let step =
+        |clock: &JsManualClock, session: &Session, mapper: &mut Mapper, shell: &Shell, what: &str, last: &str| {
+            clock.advance(Duration::from_secs(1));
+            wait_for(what, session, mapper, shell, || {
+                transition_probe(shell).2.last().map(String::as_str) == Some(last)
+            });
+        };
+    step(&clock, &session, &mut mapper, &shell, "staged", "staged");
+    wait_for("a held tween node", &session, &mut mapper, &shell, || {
+        tween_state(&ipc) == Some((0.0, true))
+    });
+    for (last, expected) in [("p0.4", (0.4, true)), ("p0.1", (0.1, true)), ("p1", (1.0, true))] {
+        step(&clock, &session, &mut mapper, &shell, last, last);
+        wait_for(last, &session, &mut mapper, &shell, || {
+            tween_state(&ipc) == Some(expected)
+        });
+    }
+    let log = transition_probe(&shell).2;
+    assert!(
+        !log.iter().any(|entry| entry.starts_with("finished")),
+        "a held transition does not end by itself: {log:?}"
+    );
+    step(&clock, &session, &mut mapper, &shell, "play", "play");
+    wait_for(
+        "the compositor ended the track and the transition finished, not cancelled",
+        &session,
+        &mut mapper,
+        &shell,
+        || transition_probe(&shell).2.last().map(String::as_str) == Some("finished:false"),
+    );
+    wait_for("the tween node gone", &session, &mut mapper, &shell, || {
+        tween_state(&ipc).is_none()
+    });
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+}
+
 /// A config directory whose `init.ts` declares one workspace that places nothing and one window rule: a window of
 /// `org.example.placed` goes to (321, 123) and is 222 by 111. No listener of the script touches a window.
 fn write_rules_config(dir: &Path) {
@@ -3240,7 +3345,7 @@ type EffectRow = (String, f64, f64, String);
 /// What the compositor holds on the window node of `app` for its style: the effects and the opacity (1 when the node
 /// holds none, which is the schema's default).
 fn style_of(ipc: &Path, app: &str) -> Option<(Vec<EffectRow>, f64)> {
-    let node = support::snapshot(ipc)
+    let node = snapshot(ipc)
         .into_iter()
         .find(|node| node.class == "window" && node.app_id == app)?;
     let effects = node

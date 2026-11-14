@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use gnoblin_backend::render::compose::Composer;
 use gnoblin_render::transaction::{
-    ClassInfo, PropertyInfo, Timing, TreeChange, TreeOp, TreeTransaction, TreeValue, ValueType,
+    ClassInfo, PropertyInfo, ShellTrackEnd, Timing, TreeChange, TreeOp, TreeTransaction, TreeValue, ValueType,
 };
 use gnoblin_render::{Actor, NodeSpec};
 use gnoblin_types::{NodeId, Rect};
@@ -735,12 +735,13 @@ fn a_seat_focus_with_a_non_node_value_is_refused_wrong_type() {
     assert_eq!(focus_of(&mut composer), None);
 }
 
-/// A schema whose `node` class has the animated doubles the shell tweens: `x`, `opacity` and `width`.
+/// A schema whose `node` class has the animated doubles the shell tweens (`x`, `opacity` and `width`), and a `tween`
+/// with the play state of the tracks that join it.
 struct Animated;
 
 impl ClassInfo for Animated {
     fn has_class(&self, class: &str) -> bool {
-        class == "node"
+        matches!(class, "node" | "tween")
     }
 
     fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
@@ -749,6 +750,16 @@ impl ClassInfo for Animated {
                 kind: ValueType::Double,
                 readonly: false,
                 animated: true,
+            }),
+            ("tween", "progress") => Some(PropertyInfo {
+                kind: ValueType::Double,
+                readonly: false,
+                animated: false,
+            }),
+            ("tween", "paused" | "reverse") => Some(PropertyInfo {
+                kind: ValueType::Bool,
+                readonly: false,
+                animated: false,
             }),
             _ => None,
         }
@@ -791,17 +802,17 @@ impl Live {
     /// at once otherwise. Whether the write applied.
     fn write(&mut self, key: &str, value: f64, seconds: Option<f64>) -> bool {
         let timing = seconds.map(|seconds| Timing::new(seconds, vec![0.0, 0.5, 1.0]));
-        submit(
-            &self.frame,
-            self.serial,
-            TreeTransaction::new(vec![TreeOp::Set {
-                node: WINDOW,
-                key: key.to_owned(),
-                value: TreeValue::Double(value),
-                timing,
-            }]),
-            &self.replies,
-        );
+        self.apply(vec![TreeOp::Set {
+            node: WINDOW,
+            key: key.to_owned(),
+            value: TreeValue::Double(value),
+            timing,
+        }])
+    }
+
+    /// One frame in which the shell sends `ops` as one transaction. Whether it applied.
+    fn apply(&mut self, ops: Vec<TreeOp>) -> bool {
+        submit(&self.frame, self.serial, TreeTransaction::new(ops), &self.replies);
         let Self { composer, frame, .. } = self;
         composer.with_scene(|scene| frame.drain(scene, Instant::now));
         let motion = frame.take_motion();
@@ -955,5 +966,113 @@ fn a_second_timed_set_replaces_the_tween_and_starts_from_where_the_node_is() {
     assert_eq!(live.composer.shell_tracks_running(), 1, "one track owns the property");
     live.composer.advance_motion(500);
     assert_near(live.x(), 10.0, "mid-tween");
+    take_batches();
+}
+
+/// The `tween` node the scrub tests make.
+const TWEEN: NodeId = NodeId::new(0x600);
+
+/// The ops that make [`TWEEN`], optionally held, and a timed write of the window's `x` that joins it.
+fn tween_and_track(paused: bool, to: f64, seconds: f64, delay: f64) -> Vec<TreeOp> {
+    let mut ops = vec![TreeOp::New {
+        class: "tween".to_owned(),
+        id: TWEEN,
+    }];
+    if paused {
+        ops.push(tween_set("paused", TreeValue::Bool(true)));
+    }
+    ops.push(TreeOp::Set {
+        node: WINDOW,
+        key: "x".to_owned(),
+        value: TreeValue::Double(to),
+        timing: Some(Timing {
+            seconds,
+            delay,
+            group: Some(TWEEN),
+            samples: vec![0.0, 0.5, 1.0],
+        }),
+    });
+    ops
+}
+
+fn tween_set(key: &str, value: TreeValue) -> TreeOp {
+    TreeOp::Set {
+        node: TWEEN,
+        key: key.to_owned(),
+        value,
+        timing: None,
+    }
+}
+
+#[test]
+fn a_scrub_moves_the_presented_position_and_the_end_is_reported_once() {
+    let mut live = Live::new();
+    assert!(live.apply(tween_and_track(true, 100.0, 1.0, 0.0)));
+    assert_eq!(
+        live.x(),
+        0.0,
+        "a track that joins a held tween starts held at its start value"
+    );
+    assert_eq!(live.composer.shell_tracks_running(), 1);
+    // The scrub: 0 -> 0.4 -> 0.1 -> 1. Each is one write, and the pose follows it at once.
+    for (progress, expected) in [(0.4, 40.0), (0.1, 10.0), (1.0, 100.0)] {
+        assert!(live.apply(vec![tween_set("progress", TreeValue::Double(progress))]));
+        assert_near(live.x(), expected, "the presented position at the scrubbed progress");
+    }
+    // Time does not move a held track, and a held track at 1 has not ended.
+    live.composer.advance_motion(5000);
+    assert_near(live.x(), 100.0, "held at the target");
+    assert_eq!(live.composer.shell_tracks_running(), 1);
+    assert!(live.composer.take_shell_track_ends().is_empty(), "nothing ended yet");
+    // Let it go: it ends on the next frame, once.
+    assert!(live.apply(vec![tween_set("paused", TreeValue::Bool(false))]));
+    live.composer.advance_motion(16);
+    assert_eq!(
+        live.composer.take_shell_track_ends(),
+        [ShellTrackEnd {
+            node: WINDOW,
+            key: "x".to_owned(),
+            group: Some(TWEEN),
+            completed: true,
+        }]
+    );
+    live.composer.advance_motion(1000);
+    assert!(live.composer.take_shell_track_ends().is_empty(), "reported once");
+    take_batches();
+}
+
+#[test]
+fn a_reversed_group_runs_back_to_the_start_and_reports_cancelled() {
+    let mut live = Live::new();
+    assert!(live.apply(tween_and_track(false, 100.0, 1.0, 0.0)));
+    live.composer.advance_motion(600);
+    assert_near(live.x(), 60.0, "forward");
+    assert!(live.apply(vec![tween_set("reverse", TreeValue::Bool(true))]));
+    live.composer.advance_motion(300);
+    assert_near(live.x(), 30.0, "back along the same path");
+    live.composer.advance_motion(400);
+    assert_eq!(live.x(), 0.0, "the start value, exactly");
+    let ends = live.composer.take_shell_track_ends();
+    assert_eq!(ends.len(), 1);
+    assert!(
+        !ends[0].completed,
+        "a track run back to its start is cancelled, not completed"
+    );
+    take_batches();
+}
+
+#[test]
+fn a_delayed_write_holds_its_start_value_and_a_plain_write_ends_it_cancelled() {
+    let mut live = Live::new();
+    assert!(live.apply(tween_and_track(false, 100.0, 1.0, 0.5)));
+    live.composer.advance_motion(400);
+    assert_eq!(live.x(), 0.0, "still in the delay");
+    live.composer.advance_motion(200);
+    assert_near(live.x(), 10.0, "100 ms into the animation");
+    assert!(live.write("x", 7.0, None));
+    let ends = live.composer.take_shell_track_ends();
+    assert_eq!(ends.len(), 1, "the shell's own write ends the track once: {ends:?}");
+    assert!(!ends[0].completed);
+    assert_eq!(live.x(), 7.0);
     take_batches();
 }
