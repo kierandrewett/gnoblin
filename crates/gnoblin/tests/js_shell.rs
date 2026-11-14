@@ -10,6 +10,9 @@
 //!
 //! The test lives in the binary's crate because that crate may name both the compositor and the shell; the
 //! shell's crate is an IPC client and may link neither (`xtask deps`).
+//!
+//! The tests run in parallel and on a loaded machine. They wait for the state they need, with a deadline, and do not
+//! sleep for the time they guess a state will take (design/js-runtime.md, "Real-compositor tests").
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -41,6 +44,16 @@ use support::{Mapper, Watcher, flag_of, ids, scene, snapshot, spots};
 /// machine gets, so a failure is a state that never came and not a slow turn.
 const PATIENCE: Duration = Duration::from_secs(60);
 
+/// How often a wait looks at the state again. Each look at the compositor's tree is a connection of its own, so this is
+/// also how hard a test leans on a compositor that a loaded machine is already slow to schedule.
+const POLL: Duration = Duration::from_millis(25);
+
+/// What the shell may spend on one listener call, one frame's calls and one staging in a test that is not about the
+/// budgets. They are wall-clock budgets, so a loaded machine that does not schedule the shell's thread for a while
+/// spends them on an honest script and the generation is stopped for it. A test that needs a script to run away sets
+/// its own short ones, and no honest work of the shell must come near them.
+const HONEST_BUDGET: Duration = Duration::from_secs(30);
+
 // ---- the compositor session --------------------------------------------------------------------------------------
 
 /// A headless compositor on sockets of its own.
@@ -71,6 +84,10 @@ impl Session {
             ..SessionConfig::default()
         };
         config.wayland.socket_path = Some(directory.path().join("wayland.sock"));
+        // The compositor pings the client of every mapped window and marks one that has not answered within this
+        // time as unresponsive, which the shell then paints an alert for. A test thread that a loaded machine does not
+        // schedule for that long is not a hung application, so the pings are off unless the test is about them.
+        config.wayland.check_alive_timeout = Duration::ZERO;
         tune(&mut config);
         let thread = std::thread::Builder::new()
             .name("compositor".to_owned())
@@ -178,7 +195,7 @@ fn wait_for_scene(
             Instant::now() < deadline,
             "never reached: {what}; the scene is {held:?}"
         );
-        std::thread::sleep(Duration::from_millis(10));
+        std::thread::sleep(POLL);
     }
 }
 
@@ -204,14 +221,27 @@ const VIEW_PROBE: &str = r#"(() => {
         })();
 })()"#;
 
+/// What a test's own script says of the shell, as text: whatever `globalThis.probe` returns once the script has set it,
+/// for a state of the shell that the compositor's tree does not show.
+const SCRIPT_PROBE: &str = r#"(typeof globalThis.probe === "function" ? String(globalThis.probe()) : "")"#;
+
 /// What the shell thread reports, refreshed after every frame.
+///
+/// It is a snapshot the thread takes when a frame is over, and the frame's effects reach the compositor while it
+/// runs. A test that has seen an effect in the compositor's tree therefore cannot read the shell's side of it here as
+/// settled: the snapshot may be the one before the frame that made the effect. What a test wants to know of the shell
+/// is waited for (a generation above the one it knew, a diagnostic) and read from the same snapshot it waited on.
 #[derive(Default)]
 struct Status {
+    /// How many frames' snapshots the thread has published. Zero until the first frame is over.
+    frames: u64,
     generation: u64,
     degraded: bool,
     diagnostics: Vec<String>,
     /// What the shell's script sees of the clients, as text, for a failure message.
     view: String,
+    /// What the script's `probe` said at the end of the frame, if it set one.
+    probe: String,
     /// Set when the shell ended: why.
     ended: Option<String>,
 }
@@ -224,7 +254,9 @@ struct Shell {
 }
 
 impl Shell {
-    /// Starts the shell over `session`'s owner socket with `dir` as its config directory.
+    /// Starts the shell over `session`'s owner socket with `dir` as its config directory, and returns once its first
+    /// frame is over (or it has ended, which `ended` then says why), so that what `generation` and `diagnostics`
+    /// read from here on is the shell's and not the zero of a thread that has not published yet.
     fn start(session: &Session, dir: &Path, tune: impl FnOnce(&mut JsRoleConfig) + Send + 'static) -> Self {
         let socket = session.ipc().to_str().expect("a UTF-8 socket path").to_owned();
         let dir = dir.to_path_buf();
@@ -239,11 +271,16 @@ impl Shell {
                 let events = logged(|| {
                     let env = move |name: &str| (name == gnoblin_client::unix::SOCKET_VARIABLE).then(|| socket.clone());
                     let mut config = JsRoleConfig::new(&dir, None);
+                    config.shell.entry_budget = HONEST_BUDGET;
+                    config.shell.frame_budget = HONEST_BUDGET;
+                    config.shell.js.stage_budget = HONEST_BUDGET;
                     tune(&mut config);
                     let mut role = match JsRole::connect(&env, config) {
                         Ok(role) => role,
                         Err(error) => {
-                            shared.lock().expect("the status lock").ended = Some(error.to_string());
+                            let mut status = shared.lock().expect("the status lock");
+                            status.frames += 1;
+                            status.ended = Some(error.to_string());
                             return;
                         }
                     };
@@ -254,12 +291,18 @@ impl Shell {
                         let ticked = role.tick();
                         {
                             let mut status = shared.lock().expect("the status lock");
+                            status.frames += 1;
                             status.generation = role.generation_id();
                             status.degraded = matches!(role.health(), JsHealth::Degraded { .. });
                             status.diagnostics = role.diagnostics().to_vec();
                             status.view = role
                                 .shell_mut()
                                 .eval(VIEW_PROBE)
+                                .unwrap_or_else(|error| Some(error.to_string()))
+                                .unwrap_or_default();
+                            status.probe = role
+                                .shell_mut()
+                                .eval(SCRIPT_PROBE)
                                 .unwrap_or_else(|error| Some(error.to_string()))
                                 .unwrap_or_default();
                             if let Err(error) = ticked {
@@ -274,10 +317,31 @@ impl Shell {
                 warnings
             })
             .expect("the shell thread");
-        Self {
+        let shell = Self {
             stop,
             status,
             thread: Mutex::new(Some(thread)),
+        };
+        shell.await_first_frame();
+        shell
+    }
+
+    /// Waits until the thread has published a frame's status or ended, whichever comes first.
+    #[track_caller]
+    fn await_first_frame(&self) {
+        let deadline = Instant::now() + PATIENCE;
+        loop {
+            {
+                let status = self.status.lock().expect("the status lock");
+                if status.frames > 0 {
+                    return;
+                }
+            }
+            assert!(
+                Instant::now() < deadline,
+                "never reached: the shell's first frame, which it publishes once it has connected and booted"
+            );
+            std::thread::sleep(Duration::from_millis(5));
         }
     }
 
@@ -298,6 +362,10 @@ impl Shell {
             |poisoned| poisoned.into_inner().view.clone(),
             |status| status.view.clone(),
         )
+    }
+
+    fn probe(&self) -> String {
+        self.status.lock().expect("the status lock").probe.clone()
     }
 
     fn ended(&self) -> Option<String> {
@@ -347,20 +415,23 @@ fn wait_for(what: &str, session: &Session, mapper: &mut Mapper, shell: &Shell, m
                 &log[log.len().saturating_sub(60)..]
             );
         }
-        std::thread::sleep(Duration::from_millis(10));
+        std::thread::sleep(POLL);
     }
 }
 
-/// The config directory of the tests: `slots.ts` holds the places, `init.ts` a typed listener over them.
-fn write_config(dir: &Path, places: &str) {
-    fs::write(
-        dir.join("slots.ts"),
-        format!("export const places: Record<string, [number, number]> = {places};\n"),
-    )
-    .expect("slots.ts");
-    fs::write(
-        dir.join("init.ts"),
-        r#"import { Layout, Workspace, gnoblin } from "gnoblin";
+/// Saves `text` as the file `path` the way an editor that saves atomically does: the text is written under a name the
+/// watcher does not take for a module and renamed over the file, so a reload reads the old file or the whole new one and
+/// never one that a write has emptied and not yet filled. `fs::write` truncates first, and a machine that leaves the
+/// test thread unscheduled for the watcher's quiet time between the truncation and the data lets a reload run the empty
+/// module.
+fn save(path: &Path, text: &str) {
+    let staged = path.with_extension("part");
+    fs::write(&staged, text).expect("the staged file");
+    fs::rename(&staged, path).expect("the file replaced");
+}
+
+/// The `init.ts` of the tests: a typed listener over the places `slots.ts` holds.
+const PLACING_INIT: &str = r#"import { Layout, Workspace, gnoblin } from "gnoblin";
 import { places } from "./slots.ts";
 
 // A workspace whose layout places nothing, so the listener below is the only thing that moves a window: the
@@ -383,9 +454,24 @@ gnoblin.clients.addListener({
         }
     },
 });
-"#,
-    )
-    .expect("init.ts");
+"#;
+
+/// The `slots.ts` of the tests: the place of each app id, and `"*"` for the others.
+fn write_places(dir: &Path, places: &str) {
+    save(
+        &dir.join("slots.ts"),
+        &format!("export const places: Record<string, [number, number]> = {places};\n"),
+    );
+}
+
+/// The config directory of the tests: `slots.ts` holds the places, `init.ts` a typed listener over them.
+///
+/// The places are saved first, since `init.ts` imports them. A save of two files is not one event for the watcher when
+/// the test is not scheduled between them for longer than its quiet time, and a reload that comes in the middle then
+/// reads the new places with the old `init.ts`, which is a working config, or none yet.
+fn write_config(dir: &Path, places: &str) {
+    write_places(dir, places);
+    save(&dir.join("init.ts"), PLACING_INIT);
 }
 
 #[test]
@@ -418,50 +504,43 @@ fn init_ts_places_the_windows_reloads_on_save_with_the_same_ids_and_keeps_the_ol
     );
     let before = ids(&scene(&ipc));
     assert_eq!(before.len(), 2, "two windows: {before:?}");
+    // `Shell::start` returned after the shell's first frame, so this is the generation that placed the windows.
     let first_generation = shell.generation();
 
-    // Slice criterion 3: an edit is a reload, and the windows keep their ids and take the new places.
+    // Slice criterion 3: an edit is a reload, and the windows keep their ids and take the new places. The generation
+    // is waited for with the places: the places reach the compositor while the frame that made them is still running,
+    // and the generation is what the shell publishes once that frame is over.
     write_config(
         config.path(),
         r#"{ "org.example.first": [500, 400], "org.example.second": [600, 300], "*": [700, 200] }"#,
     );
     wait_for(
-        "both windows at the rewritten places",
+        "both windows at the rewritten places, under a newer generation",
         &session,
         &mut mapper,
         &shell,
         || {
             let now = spots(&scene(&ipc));
-            now.get("org.example.first") == Some(&(500.0, 400.0))
+            shell.generation() > first_generation
+                && now.get("org.example.first") == Some(&(500.0, 400.0))
                 && now.get("org.example.second") == Some(&(600.0, 300.0))
         },
     );
     assert_eq!(ids(&scene(&ipc)), before, "the reload kept every window id");
-    let second_generation = shell.generation();
-    assert!(
-        second_generation > first_generation,
-        "a reload runs a newer generation ({first_generation} -> {second_generation})"
-    );
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 
     // Slice criterion 4: a syntax error keeps the running generation and is reported with its `.ts` position. The
     // old generation still places a window that maps afterwards.
-    fs::write(
-        config.path().join("init.ts"),
+    save(
+        &config.path().join("init.ts"),
         "import { gnoblin } from \"gnoblin\";\n\nconst broken: number = = 5;\n",
-    )
-    .expect("a broken init.ts");
+    );
     wait_for("the syntax error is reported", &session, &mut mapper, &shell, || {
         shell.diagnostics().iter().any(|text| text.contains("init.ts:3:"))
     });
-    // Nothing swaps in after the failed reload: the generation stays what it was when the error was reported.
+    // Nothing swaps in after the failed reload: the generation the shell reports is still the one it reported when the
+    // error was, and it is the one that places the window that maps now.
     let at_the_error = shell.generation();
-    std::thread::sleep(Duration::from_millis(700));
-    assert_eq!(
-        shell.generation(),
-        at_the_error,
-        "the generation that ran before the error still runs"
-    );
     mapper.map_window("org.example.third", "Third");
     wait_for(
         "the old generation places a new window",
@@ -471,13 +550,21 @@ fn init_ts_places_the_windows_reloads_on_save_with_the_same_ids_and_keeps_the_ol
         || spots(&scene(&ipc)).get("org.example.third") == Some(&(700.0, 200.0)),
     );
     assert_eq!(
+        shell.generation(),
+        at_the_error,
+        "the generation that ran before the error still runs"
+    );
+    assert_eq!(
         ids(&scene(&ipc)).get("org.example.first"),
         before.get("org.example.first"),
         "the failed reload kept the window ids"
     );
 
-    // Fixing the file is seen even though the failed module was in no generation's graph.
-    write_config(
+    // Fixing the file is seen even though the failed module was in no generation's graph. `init.ts` is saved before
+    // the places it imports: a reload that comes between the two reads the fixed file with the old places, and not the
+    // broken file again, which would be reported a second time.
+    save(&config.path().join("init.ts"), PLACING_INIT);
+    write_places(
         config.path(),
         r#"{ "org.example.first": [10, 20], "org.example.second": [30, 40], "*": [50, 60] }"#,
     );
@@ -496,6 +583,14 @@ fn init_ts_places_the_windows_reloads_on_save_with_the_same_ids_and_keeps_the_ol
         "and once: {warnings:?}"
     );
 }
+
+/// What a test that needs a script to run away gives one listener call, and what it gives a staging. A runaway is
+/// interrupted only at the end of its budget, so these are also the longest the test waits for each interrupt, and they
+/// are wall-clock: they have to stay far above what the shell's honest calls and stagings take on a machine that other
+/// tests keep busy (a staging took up to two seconds on the Agent37 runner with nothing else running), or the shell
+/// stops an honest script and the test has proved nothing about the runaway.
+const RUNAWAY_CALL: Duration = Duration::from_secs(1);
+const RUNAWAY_STAGE: Duration = Duration::from_secs(5);
 
 /// An `init.ts` whose handler for the window `org.example.spin` never returns, unless the window has been marked.
 ///
@@ -532,10 +627,9 @@ fn a_handler_that_never_returns_is_interrupted_the_compositor_keeps_answering_an
 
     let config = tempfile::tempdir().expect("a config directory");
     fs::write(config.path().join("init.ts"), SPIN_ONCE).expect("init.ts");
-    // A quarter of a second per listener call: long enough that a loaded machine does not trip an honest handler,
-    // short enough that the test is quick.
+    // The first generation's listener hangs once, and only that call is the runaway.
     let shell = Shell::start(&session, config.path(), |config| {
-        config.shell.entry_budget = Duration::from_millis(250);
+        config.shell.entry_budget = RUNAWAY_CALL;
     });
     let ipc = session.ipc();
     wait_for(
@@ -612,9 +706,9 @@ gnoblin.clients.addListener({
     )
     .expect("init.ts");
     let shell = Shell::start(&session, config.path(), |config| {
-        config.shell.entry_budget = Duration::from_millis(250);
+        config.shell.entry_budget = RUNAWAY_CALL;
         // The restaged generation replays the hanging window while it loads, so staging is what runs out.
-        config.shell.js.stage_budget = Duration::from_millis(500);
+        config.shell.js.stage_budget = RUNAWAY_STAGE;
     });
     let ipc = session.ipc();
     wait_for(
@@ -706,7 +800,7 @@ fn a_shell_with_no_init_file_runs_the_stock_config_and_a_defined_config_layers_o
     // A user `defineConfig` replaces the workspaces whole and merges the keys by trigger: its `Super+Return` is
     // added, its `XF86AudioMute` replaces the stock one, and the other stock keys stay, `Super+1` included: it shows
     // the workspace at position 1, so it still names something.
-    fs::write(config.path().join("init.ts"), LAYERED_CONFIG).expect("init.ts");
+    save(&config.path().join("init.ts"), LAYERED_CONFIG);
     wait_for("the layered config runs", &session, &mut mapper, &shell, || {
         section(&shell.view(), "workspaces [") == "a:MasterStackLayout,b:GridLayout"
     });
@@ -811,14 +905,23 @@ fn a_shell_that_dies_leaves_the_compositor_answering_and_a_restarted_one_reattac
     assert_eq!(before.len(), 2, "two windows: {before:?}");
 
     // The shell dies: its thread ends and its owner connection closes, which is all the compositor can see of a
-    // process that was killed. The pause is for the compositor to take the close in before the next window maps.
+    // process that was killed.
     let log = shell.finish();
     assert!(shell.ended().is_none(), "the shell was stopped, not failed: {log:?}");
-    std::thread::sleep(Duration::from_millis(300));
+    // The compositor has taken the close in once the two windows are back at the places its own policy gave them,
+    // which it never knew the shell had changed. A window that mapped before that would be held for a shell that is no
+    // longer there.
+    wait_for_scene(
+        "the fallback policy takes the two windows back",
+        &watch,
+        &mut mapper,
+        |now| {
+            now.get("org.example.first") == Some(&(32.0, 32.0)) && now.get("org.example.second") == Some(&(64.0, 64.0))
+        },
+    );
 
     // Criterion 6, the compositor's half: with no shell holding the tree it still answers, and the Rust fallback
-    // policy is in charge again. It never knew where the shell put the two windows, so they return to the places it
-    // gave them, and a window that maps now takes the next step of the cascade.
+    // policy is in charge again: a window that maps now takes the next step of the cascade.
     mapper.map_window("org.example.third", "Third");
     let (during, _) = wait_for_scene(
         "the fallback policy placing the three windows",
@@ -1034,13 +1137,19 @@ fn rect_of(ipc: &Path, app: &str) -> Option<(f64, f64, f64, f64)> {
 }
 
 /// Holds Super and presses `code` at `from`, moves the pointer to `first`, and returns once the compositor holds
-/// `expected` for `app`: the drag is live and has moved the window. The shell claims its chords in its first frames,
-/// so a press that comes before a claim is live is the window's, and moves nothing: the gesture is repeated until a
-/// press is the shell's. Super and the button stay down for the caller to release with [`end_drag`].
+/// `expected` for `app`: the drag is live and has moved the window.
+///
+/// The shell's claims of its chords reach the compositor a few frames after the shell starts. A press that comes before
+/// that is nobody's claim: the compositor gives it to the window, and the window's client hears it. That tells the two
+/// apart with no time guessed. A press the client heard moved nothing, is let go of, and the gesture is repeated; one the
+/// client did not hear is the shell's, and the window follows it, however long the shell takes to say so. Super and the
+/// button stay down for the caller to release with [`end_drag`].
 #[track_caller]
+#[allow(clippy::too_many_arguments)]
 fn begin_drag(
     session: &Session,
     mapper: &mut Mapper,
+    shell: &Shell,
     app: &str,
     code: u32,
     from: (i32, i32),
@@ -1048,29 +1157,41 @@ fn begin_drag(
     expected: (f64, f64, f64, f64),
 ) {
     let ipc = session.ipc();
+    let pointer = mapper.pointer();
     let deadline = Instant::now() + PATIENCE;
+    let mut attempts = 0_u32;
     loop {
+        attempts += 1;
         super_key(session, true);
         motion(session, from.0, from.1);
-        std::thread::sleep(Duration::from_millis(40));
+        // The press is the window's, if nobody has claimed it, only once the compositor has the pointer over the window.
+        wait_for("the pointer over the window", session, mapper, shell, || pointer.over());
+        let heard = pointer.presses();
         button(session, code, true);
         motion(session, first.0, first.1);
-        let attempt = Instant::now() + Duration::from_millis(1500);
-        while Instant::now() < attempt {
-            mapper.roundtrip();
-            if rect_of(&ipc, app) == Some(expected) {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(10));
+        let mut unclaimed = false;
+        wait_for(
+            "the drag took the window, or the press reached the window's client",
+            session,
+            mapper,
+            shell,
+            || {
+                unclaimed = pointer.presses() > heard;
+                unclaimed || rect_of(&ipc, app) == Some(expected)
+            },
+        );
+        if !unclaimed {
+            return;
         }
         button(session, code, false);
         super_key(session, false);
         assert!(
             Instant::now() < deadline,
-            "no drag ever took the window: it is at {:?}, expected {expected:?}",
+            "no drag ever took the window: {attempts} presses reached its client instead, and it is at {:?}, \
+             expected {expected:?}",
             rect_of(&ipc, app)
         );
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(POLL);
     }
 }
 
@@ -1090,7 +1211,7 @@ fn follow(session: &Session, mapper: &mut Mapper, app: &str, to: (i32, i32), exp
             Instant::now() < deadline,
             "the window never followed the pointer to {to:?}: it is at {now:?}, expected {expected:?}"
         );
-        std::thread::sleep(Duration::from_millis(10));
+        std::thread::sleep(POLL);
     }
 }
 
@@ -1156,6 +1277,7 @@ fn a_super_drag_takes_the_window_on_top_where_two_overlap() {
     begin_drag(
         &session,
         &mut mapper,
+        &shell,
         over,
         BTN_LEFT,
         (350, 250),
@@ -1185,6 +1307,7 @@ fn super_drags_move_and_resize_a_real_window_through_the_pointer_chord_stream() 
     begin_drag(
         &session,
         &mut mapper,
+        &shell,
         app,
         BTN_LEFT,
         (350, 250),
@@ -1198,6 +1321,7 @@ fn super_drags_move_and_resize_a_real_window_through_the_pointer_chord_stream() 
     begin_drag(
         &session,
         &mut mapper,
+        &shell,
         app,
         BTN_RIGHT,
         (550, 390),
@@ -1212,6 +1336,7 @@ fn super_drags_move_and_resize_a_real_window_through_the_pointer_chord_stream() 
     begin_drag(
         &session,
         &mut mapper,
+        &shell,
         app,
         BTN_RIGHT,
         (370, 260),
@@ -1348,8 +1473,8 @@ fn a_window_rule_places_a_newly_mapped_window_of_its_app_and_leaves_another_alon
     wait_for("the rule places its window", &session, &mut mapper, &shell, || {
         rect_of(&ipc, placed) == Some((321.0, 123.0, 222.0, 111.0))
     });
-    // The shell has now run the rule against both windows: the second one needed the same frames the first did.
-    std::thread::sleep(Duration::from_millis(300));
+    // The shell handled the other window before this one mapped and handles what the compositor tells it in order, so
+    // when this window is where its rule puts it, the rule has been run against both.
     mapper.roundtrip();
     assert_eq!(
         rect_of(&ipc, other),
@@ -1400,12 +1525,18 @@ fn focused_app(shell: &Shell) -> Option<String> {
     (focus != "undefined").then(|| focus.to_owned())
 }
 
-/// A press and release of the left button at `at`, with the pointer moved there first.
-fn click(session: &Session, at: (i32, i32)) {
+/// Moves the pointer to `at` and waits until the compositor has it over a window of the client, which the client is told
+/// when it is. A press that comes before is no window's, so it is not sent until the pointer is there.
+#[track_caller]
+fn point_at(session: &Session, mapper: &mut Mapper, shell: &Shell, at: (i32, i32)) {
+    let pointer = mapper.pointer();
     motion(session, at.0, at.1);
-    std::thread::sleep(Duration::from_millis(40));
+    wait_for("the pointer over a window", session, mapper, shell, || pointer.over());
+}
+
+/// A press and release of the left button where the pointer is.
+fn click(session: &Session) {
     button(session, BTN_LEFT, true);
-    std::thread::sleep(Duration::from_millis(40));
     button(session, BTN_LEFT, false);
 }
 
@@ -1432,29 +1563,26 @@ fn a_click_focuses_and_raises_a_real_window_so_the_compositor_picks_it_over_the_
         focused_app(&shell).as_deref() == Some(over)
     });
 
-    // Where only the window below shows: the press is its, the shell focuses and raises it. The claims and the
-    // pointer need a moment to settle, so the click is repeated until the window has heard it.
-    let deadline = Instant::now() + PATIENCE;
-    while rect_of(&ipc, under).map(|rect| rect.0) != Some(301.0) {
-        click(&session, (320, 210));
-        let attempt = Instant::now() + Duration::from_millis(1000);
-        while Instant::now() < attempt && rect_of(&ipc, under).map(|rect| rect.0) != Some(301.0) {
-            mapper.roundtrip();
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        assert!(
-            Instant::now() < deadline,
-            "the click never reached the window below: {:?}",
-            scene(&ipc)
-        );
-    }
+    // Where only the window below shows: the press is its, and the shell focuses and raises it. The click is sent once
+    // the pointer is over the window, which is all that has to settle, so there is one click and the window has heard it
+    // once.
+    point_at(&session, &mut mapper, &shell, (320, 210));
+    click(&session);
+    wait_for(
+        "the window below hears the press",
+        &session,
+        &mut mapper,
+        &shell,
+        || rect_of(&ipc, under).map(|rect| rect.0) == Some(301.0),
+    );
     wait_for("the window below has the focus", &session, &mut mapper, &shell, || {
         focused_app(&shell).as_deref() == Some(under)
     });
 
     // Where both show: the compositor gives the press to the window it draws on top. It is the one that was clicked
     // only if the raise reached the compositor's stacking.
-    click(&session, (450, 300));
+    point_at(&session, &mut mapper, &shell, (450, 300));
+    click(&session);
     wait_for("a press lands on one of the two", &session, &mut mapper, &shell, || {
         rect_of(&ipc, under).map(|rect| rect.0) == Some(302.0) || rect_of(&ipc, over).map(|rect| rect.0) == Some(401.0)
     });
@@ -1603,24 +1731,18 @@ fn a_client_activate_request_raises_and_focuses_its_window() {
         rect_of(&ipc, first) == Some((100.0, 100.0, 200.0, 150.0))
     });
 
-    // A click on the first window earns it the serial an activation token needs. The claims and the pointer need a
-    // moment to settle, so the click is repeated until the window has heard it.
-    let deadline = Instant::now() + PATIENCE;
-    while mapper.press_serial().is_none() || rect_of(&ipc, first).map(|rect| rect.0) != Some(101.0) {
-        click(&session, (120, 110));
-        let attempt = Instant::now() + Duration::from_millis(1000);
-        while Instant::now() < attempt
-            && (mapper.press_serial().is_none() || rect_of(&ipc, first).map(|rect| rect.0) != Some(101.0))
-        {
-            mapper.roundtrip();
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        assert!(
-            Instant::now() < deadline,
-            "the click never reached the window: {:?}",
-            scene(&ipc)
-        );
-    }
+    // A click on the first window earns it the serial an activation token needs. The click is sent once the pointer is
+    // over the window, which is all that has to settle, so there is one click and the window has heard it once.
+    let pointer = mapper.pointer();
+    point_at(&session, &mut mapper, &shell, (120, 110));
+    click(&session);
+    wait_for(
+        "the first window hears the click",
+        &session,
+        &mut mapper,
+        &shell,
+        || pointer.presses() > 0 && rect_of(&ipc, first).map(|rect| rect.0) == Some(101.0),
+    );
     let serial = mapper.press_serial().expect("the click was sent to the client");
 
     // A third window appears over it and takes the focus.
@@ -1644,7 +1766,8 @@ fn a_client_activate_request_raises_and_focuses_its_window() {
     );
     // Where both show, the compositor gives a press to the window it draws on top: it is `first` only if the raise
     // reached the compositor's stacking.
-    click(&session, (280, 230));
+    point_at(&session, &mut mapper, &shell, (280, 230));
+    click(&session);
     wait_for("a press lands on one of the two", &session, &mut mapper, &shell, || {
         rect_of(&ipc, first).map(|rect| rect.0) == Some(102.0) || rect_of(&ipc, third).map(|rect| rect.0) == Some(251.0)
     });
@@ -1685,11 +1808,10 @@ fn defined_config_settings_reach_the_compositors_document_a_refused_value_is_rep
     let dir = tempfile::tempdir().expect("a config directory");
     let init = dir.path().join("init.ts");
     let write = |settings: &str| {
-        fs::write(
+        save(
             &init,
-            format!("import {{ defineConfig }} from \"gnoblin\";\ndefineConfig({{ {settings} }});\n"),
-        )
-        .expect("init.ts");
+            &format!("import {{ defineConfig }} from \"gnoblin\";\ndefineConfig({{ {settings} }});\n"),
+        );
     };
     write("dialogs: { style: { radius: 12, buttonLayout: 'stretch' } }");
     let shell = Shell::start(&session, dir.path(), |_| {});
@@ -1756,7 +1878,11 @@ fn consent_request(app_id: &str) -> PortalRequest {
 /// How the compositor settled `ticket` within `within`, or `None` while the request is still being asked.
 /// `Client::portal_outcome` waits as long as the request lives, so this reads events and takes the outcome when it
 /// has arrived.
-fn settled(client: &mut Client<UnixTransport>, ticket: PortalTicket, within: Duration) -> Option<PortalOutcome> {
+fn settled(
+    client: &mut Client<UnixTransport>,
+    ticket: PortalTicket,
+    within: Duration,
+) -> Option<Result<PortalOutcome, ClientError>> {
     client
         .set_read_timeout(Some(Duration::from_millis(50)))
         .expect("a read deadline");
@@ -1767,40 +1893,71 @@ fn settled(client: &mut Client<UnixTransport>, ticket: PortalTicket, within: Dur
             Err(error) => panic!("the requester's connection failed: {error}"),
         }
         if let Some(outcome) = client.take_portal_outcome(ticket) {
-            return Some(outcome.expect("the outcome decodes"));
+            return Some(outcome);
         }
     }
     None
 }
 
-/// Whether a consent request from `app_id` was refused at once by a dialog listener. A request nobody refuses is
-/// asked of the user by the built-in dialog and stays open, so this withdraws it.
-fn refused_by_policy(session: &Session, app_id: &str) -> bool {
+/// What the compositor did with a consent request.
+#[derive(Debug, PartialEq, Eq)]
+enum Consent {
+    /// A dialog listener refused it at once, which reads as the user's own refusal.
+    Refused,
+    /// Nobody refused it, so the built-in dialog asked the user and the request stayed open until this withdrew it.
+    Asked,
+    /// The compositor was still taking an earlier request out of its dialog queue and did not look at this one.
+    Busy,
+}
+
+/// Sends a consent request from `app_id` and says what became of it. A request nobody refuses is asked of the user by
+/// the built-in dialog and stays open, so this withdraws it; the compositor answers the next request `busy` until it
+/// has taken the withdrawn one out, which [`consent_answer`] waits out.
+fn consent(session: &Session, app_id: &str) -> Consent {
     let mut requester = owner_client(&session.ipc());
     let ticket = requester
         .portal_ui(&consent_request(app_id))
         .expect("the request is sent");
-    if let Some(outcome) = settled(&mut requester, ticket, Duration::from_millis(1500)) {
-        assert_eq!(
-            outcome,
-            PortalOutcome::Cancelled("user".to_owned()),
-            "a refusal reads as the user's"
-        );
-        return true;
+    match settled(&mut requester, ticket, Duration::from_millis(1500)) {
+        Some(Ok(PortalOutcome::Cancelled(who))) if who == "user" => Consent::Refused,
+        Some(Err(ClientError::Refused { code, .. })) if code == "busy" => Consent::Busy,
+        Some(other) => panic!("a consent request settled as neither a refusal nor a busy dialog: {other:?}"),
+        None => {
+            // The withdrawal's own acknowledgement carries the ticket's id and no outcome, so the outcome is not
+            // read: the requester leaving ends the request as well.
+            requester.portal_cancel(ticket).expect("the withdrawal is sent");
+            Consent::Asked
+        }
     }
-    // Still open: the built-in dialog is asking the user. Withdraw it so the next request is not queued behind it.
-    // The withdrawal's own acknowledgement carries the ticket's id and no outcome, so the outcome is not read: the
-    // requester leaving ends the request as well.
-    requester.portal_cancel(ticket).expect("the withdrawal is sent");
-    std::thread::sleep(Duration::from_millis(200));
-    false
 }
 
-/// Retries `refused_by_policy` until the shell's observation is in place, which it is a moment after its config loads.
+/// Asks about `app_id` until the compositor looks at the request, and returns what it did. The shell's observation of
+/// the dialogs is claimed in its first frames and a request is shown to it for a short window only, so a request that
+/// the shell was too slow for is asked of the user and this returns [`Consent::Asked`] for it: a test that waits for a
+/// refusal asks again.
+#[track_caller]
+fn consent_answer(session: &Session, mapper: &mut Mapper, shell: &Shell, app_id: &str) -> Consent {
+    let mut answer = Consent::Busy;
+    wait_for(
+        "the compositor looks at a consent request",
+        session,
+        mapper,
+        shell,
+        || {
+            answer = consent(session, app_id);
+            answer != Consent::Busy
+        },
+    );
+    answer
+}
+
+/// Asks about `app_id` until a dialog listener refuses it. The listener's refusal has to reach the compositor within
+/// the observation window of the request, which a shell that a loaded machine is slow to schedule can miss, so the
+/// request is repeated.
 #[track_caller]
 fn refused_once_observing(session: &Session, mapper: &mut Mapper, shell: &Shell, app_id: &str) {
     wait_for("a listener refuses the request", session, mapper, shell, || {
-        refused_by_policy(session, app_id)
+        consent(session, app_id) == Consent::Refused
     });
 }
 
@@ -1830,8 +1987,9 @@ fn a_dialog_listener_that_declines_a_consent_request_refuses_it_and_one_it_leave
     let shell = Shell::start(&session, dir.path(), |_| {});
 
     refused_once_observing(&session, &mut mapper, &shell, STRICT);
-    assert!(
-        !refused_by_policy(&session, OTHER),
+    assert_eq!(
+        consent_answer(&session, &mut mapper, &shell, OTHER),
+        Consent::Asked,
         "a request the listener did not decline is asked of the user by the built-in dialog"
     );
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
@@ -1863,12 +2021,15 @@ defineConfig({
 "#,
     )
     .expect("init.ts");
-    let shell = Shell::start(&session, dir.path(), |_| {});
+    let shell = Shell::start(&session, dir.path(), |config| {
+        config.shell.entry_budget = RUNAWAY_CALL;
+    });
 
     refused_once_observing(&session, &mut mapper, &shell, STRICT);
     let generation = shell.generation();
-    assert!(
-        !refused_by_policy(&session, SLOW),
+    assert_eq!(
+        consent_answer(&session, &mut mapper, &shell, SLOW),
+        Consent::Asked,
         "the runaway listener is skipped: nothing refuses the request and the built-in dialog opens"
     );
     wait_for("the runaway call is reported", &session, &mut mapper, &shell, || {
@@ -1973,17 +2134,14 @@ fn a_decorated_windows_content_lies_below_its_bar_and_a_titlebar_right_click_ope
         "no overlap: the bar's bottom edge is at or above the content's top edge"
     );
 
-    // A right click on the bar opens the window menu.
+    // A right click on the bar opens the window menu. The bar is painted (its title is shown), so the press that lands
+    // on it is the shell's, and one click is all there is to send.
     let (at_x, at_y) = ((x + 12.0) as i32, (y - bar.height / 2.0) as i32);
-    let mut opened = false;
+    motion(&session, at_x, at_y);
+    button(&session, BTN_RIGHT, true);
+    button(&session, BTN_RIGHT, false);
     wait_for("the window menu painted", &session, &mut mapper, &shell, || {
-        if !opened {
-            motion(&session, at_x, at_y);
-            button(&session, BTN_RIGHT, true);
-            button(&session, BTN_RIGHT, false);
-        }
-        opened = shows(&ipc, "Maximise") && shows(&ipc, "Close");
-        opened
+        shows(&ipc, "Maximise") && shows(&ipc, "Close")
     });
     tap_key(&session, KEY_ESC);
     wait_for("Escape closes the menu", &session, &mut mapper, &shell, || {
@@ -1999,6 +2157,25 @@ fn a_decorated_windows_content_lies_below_its_bar_and_a_titlebar_right_click_ope
     );
 }
 
+/// The UI config of the alert test: decorations, and a `probe` that says of the one window `waiting/armed`. `waiting` is
+/// whether the alert still waits on a window its user chose Wait for, which it does until it has seen the window answer a
+/// ping. `armed` is whether the Force quit of the window's open alert is armed, and `undefined` while no alert is open.
+fn write_alert_config(dir: &Path) {
+    fs::write(
+        dir.join("init.ts"),
+        r#"import { defineConfig, gnoblin, notRespondingAlerts } from "gnoblin";
+
+defineConfig({ decorations: true });
+
+(globalThis as { probe?: () => string }).probe = () =>
+    gnoblin.clients
+        .map((client) => `${notRespondingAlerts.tracker.isWaiting(client)}/${notRespondingAlerts.cardOf(client)?.armed}`)
+        .join(",");
+"#,
+    )
+    .expect("init.ts");
+}
+
 /// A client that leaves the compositor's liveness ping unanswered gets the not-responding alert, which names its window, and
 /// Escape (Wait) closes it. The Force quit button, armed after half a second, is answered by `Window:kill`, which the
 /// compositor refuses for its own process (this test's), so the alert closes and the test survives.
@@ -2009,7 +2186,7 @@ fn a_window_that_stops_answering_gets_the_alert_and_wait_and_force_quit_close_it
     });
     let mut mapper = Mapper::connect(&session.wayland());
     let config = tempfile::tempdir().expect("a config directory");
-    write_ui_config(config.path());
+    write_alert_config(config.path());
     let shell = Shell::start(&session, config.path(), |_| {});
     let ipc = session.ipc();
     wait_for("the shell is running", &session, &mut mapper, &shell, || {
@@ -2026,21 +2203,40 @@ fn a_window_that_stops_answering_gets_the_alert_and_wait_and_force_quit_close_it
         while !check() {
             assert!(
                 Instant::now() < deadline,
-                "never reached: {what}; the shell logged {:?}",
-                shell.diagnostics()
+                "never reached: {what}; the shell logged {:?} and its probe says {:?}",
+                shell.diagnostics(),
+                shell.probe()
             );
-            std::thread::sleep(Duration::from_millis(25));
+            std::thread::sleep(POLL);
         }
     };
     let alert = "Stuck is not responding";
     wait_until("the alert opened", Box::new(|| shows(&ipc, alert)));
-    tap_key(&session, KEY_ESC);
-    wait_until("Escape (Wait) closed the alert", Box::new(|| !shows(&ipc, alert)));
+    // Escape is Wait. The alert takes the keyboard when it opens, and a key that comes before it has is the window's,
+    // so Escape is sent again for as long as the alert is there.
+    wait_until(
+        "Escape (Wait) closed the alert",
+        Box::new(|| {
+            if shows(&ipc, alert) {
+                tap_key(&session, KEY_ESC);
+            }
+            !shows(&ipc, alert)
+        }),
+    );
 
-    // The client answers again, then stops: a second alert, and Force quit once it is armed.
-    mapper.roundtrip();
+    // The client answers again, and goes on answering until the shell has seen it do so. A window that said Wait gets no
+    // second alert before the shell has seen it answer and then stop, and the shell looks at its windows only a few times
+    // a second: a client that stopped again at once would leave it to how soon a loaded machine schedules the shell.
+    wait_for(
+        "the shell sees the window answer",
+        &session,
+        &mut mapper,
+        &shell,
+        || shell.probe() == "false/undefined",
+    );
+    // Then it stops again: a second alert, and Force quit once the shell has armed it.
     wait_until("the alert came back", Box::new(|| shows(&ipc, alert)));
-    std::thread::sleep(Duration::from_millis(700));
+    wait_until("Force quit is armed", Box::new(|| shell.probe() == "false/true"));
     tap_key(&session, KEY_TAB);
     tap_key(&session, KEY_ENTER);
     wait_until("Force quit closed the alert", Box::new(|| !shows(&ipc, alert)));
@@ -2361,7 +2557,7 @@ fn the_starter_is_the_stock_config_as_written_and_its_examples_work_switched_on(
 
     // The starter as written is a real config (a `defineConfig`, so a reload), and it binds and declares what the
     // stock one did.
-    fs::write(&init, gnoblin_js::STARTER_CONFIG).expect("init.ts");
+    save(&init, gnoblin_js::STARTER_CONFIG);
     wait_for("the starter is loaded", &session, &mut mapper, &shell, || {
         shell.generation() > zero_generation
     });
@@ -2388,7 +2584,7 @@ fn the_starter_is_the_stock_config_as_written_and_its_examples_work_switched_on(
         )
         .replace("\"notify-send\"", "\"true\"");
     assert_ne!(on, gnoblin_js::STARTER_CONFIG, "the examples were switched on");
-    fs::write(&init, &on).expect("init.ts");
+    save(&init, &on);
     wait_for("the examples are on", &session, &mut mapper, &shell, || {
         section(&shell.view(), "workspaces [") == format!("{STOCK_WORKSPACES},work:MasterStackLayout")
     });
@@ -2410,7 +2606,7 @@ fn the_starter_is_the_stock_config_as_written_and_its_examples_work_switched_on(
         fs::read_to_string(&marker).is_ok_and(|text| text.lines().count() == 1)
     });
     let generation = shell.generation();
-    fs::write(&init, format!("{on}// touched\n")).expect("init.ts");
+    save(&init, &format!("{on}// touched\n"));
     wait_for("the reload", &session, &mut mapper, &shell, || {
         shell.generation() > generation
     });
@@ -2430,11 +2626,10 @@ fn protocols_and_touchpad_gestures_reach_the_compositors_document_and_a_reload_t
     let dir = tempfile::tempdir().expect("a config directory");
     let init = dir.path().join("init.ts");
     let write = |settings: &str| {
-        fs::write(
+        save(
             &init,
-            format!("import {{ defineConfig }} from \"gnoblin\";\ndefineConfig({{ {settings} }});\n"),
-        )
-        .expect("init.ts");
+            &format!("import {{ defineConfig }} from \"gnoblin\";\ndefineConfig({{ {settings} }});\n"),
+        );
     };
     let gesture = |fingers: u8| {
         format!(
@@ -2447,6 +2642,8 @@ fn protocols_and_touchpad_gestures_reach_the_compositors_document_and_a_reload_t
     // Added: a camelCase protocol is the document's kebab-case one, and the gesture list is one value.
     write(&format!("protocols: {{ wlrScreencopy: false }}, {}", gesture(4)));
     let shell = Shell::start(&session, dir.path(), |_| {});
+    // The generation the first config runs under, which `Shell::start` waited for the first frame of.
+    let first = shell.generation();
     let ipc = session.ipc();
     wait_for("the document carries both", &session, &mut mapper, &shell, || {
         held("/protocols/wlr-screencopy", &ipc) == Some(serde_json::json!(false))
@@ -2464,9 +2661,11 @@ fn protocols_and_touchpad_gestures_reach_the_compositors_document_and_a_reload_t
             && held("/touchpad-gestures/0/fingers", &ipc) == Some(serde_json::json!(3))
     });
 
-    // Refused: nine fingers is not a gesture. The reload names the key path and the document is untouched.
+    // Refused: nine fingers is not a gesture. The reload names the key path and the document is untouched. The
+    // generation that took the change in is waited for: the document changes while the frame that swapped it in is
+    // still running, and the generation is what the shell publishes when that frame is over.
     wait_for("the change was swapped in", &session, &mut mapper, &shell, || {
-        shell.generation() > 0
+        shell.generation() > first
     });
     let generation = shell.generation();
     write(&gesture(9));
@@ -2555,14 +2754,13 @@ defineConfig({
     // Removing the lines is a reload, and the new generation takes the effects and the opacity off the nodes the old
     // one styled.
     let generation = shell.generation();
-    fs::write(
-        config.path().join("init.ts"),
+    save(
+        &config.path().join("init.ts"),
         r#"import { Layout, defineConfig } from "gnoblin";
 
 defineConfig({ workspaces: [{ id: "desk", layout: new Layout() }] });
 "#,
-    )
-    .expect("init.ts");
+    );
     wait_for("the reload clears the style", &session, &mut mapper, &shell, || {
         shell.generation() > generation
             && [plain, dim, glow]
