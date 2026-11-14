@@ -475,7 +475,7 @@ fn bindings_carry_the_lifecycle_hooks_and_a_collection_keeps_them_by_id() {
             r#"Error: a binding with id "swap" is already in this collection"#,
             "0",
             "TypeError: Binding id must be a non-empty string",
-            r#"TypeError: Binding "x" trigger must be a trigger such as "Super+Return", got Super++"#,
+            r#"TypeError: Binding "x" trigger: an empty part after "Super"; write a literal plus as "plus" (token "" in "Super++")"#,
             r#"RangeError: Binding "x" priority must be a finite number"#,
         ])
     );
@@ -683,7 +683,7 @@ fn a_config_that_is_not_in_the_closed_set_is_refused_naming_the_key() {
             "TypeError: config has no \"colour\"; expected one of gaps, style, outputs, workspaces, keys, rules, on, setup",
             "Error: keys[\"Super+1\"] shows workspace \"nowhere\", which the config does not declare",
             "TypeError: keys[\"Super+X\"] must be spawn(...), show(...), \"close\" or a function",
-            "TypeError: a key must be a trigger such as \"Super+Return\", got Super+",
+            "TypeError: a key: an empty part after \"Super\"; write a literal plus as \"plus\" (token \"\" in \"Super+\")",
             "TypeError: keys[\"Super+X\"] must be spawn(...), show(...), \"close\" or a function",
             "Error: workspaces[1]: a workspace with id \"a\" is already declared",
             "TypeError: workspaces[0].layout must be a Layout or one of floating, master-stack, grid, monocle, got spiral",

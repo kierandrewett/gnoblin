@@ -842,48 +842,126 @@ declare module "gnoblin" {
         readonly connected: boolean;
     }
 
-    // -- Bindings (owner-spec section 11) -------------------------------------
+    // -- Triggers and bindings (owner-spec sections 10 and 11) ----------------
 
-    export type Modifier = "Super" | "Ctrl" | "Alt" | "Shift";
+    /** The modifiers a canonical trigger writes, in this order. */
+    export type Modifier = "Shift" | "Ctrl" | "Alt" | "Meta" | "Super" | "Hyper";
+    /** Every spelling of a modifier a trigger accepts (`Control`, `Primary`, `Mod1`, `Logo` are aliases). */
+    export type ModifierName = Modifier | "Control" | "Primary" | "Mod1" | "Logo";
+    type ModifierPrefix =
+        | ""
+        | `${ModifierName}+`
+        | `${ModifierName}+${ModifierName}+`
+        | `${ModifierName}+${ModifierName}+${ModifierName}+`;
+    export type MouseButton = "MouseLeft" | "MouseMiddle" | "MouseRight";
+    /** `Super+MouseLeft+Drag` drags; `Super+MouseLeft` and `Super+MouseLeft+Click` click. */
+    export type PointerTrigger = `${ModifierPrefix}${MouseButton}` | `${ModifierPrefix}${MouseButton}+${"Drag" | "Click"}`;
+    /** Parsed, but the compositor has no wheel claim yet, so binding one throws. */
+    export type WheelTrigger = `${ModifierPrefix}Wheel${"" | "Up" | "Down" | "Left" | "Right"}`;
+    /** A touchpad gesture with 2 to 5 fingers, optionally a direction: `Swipe3Left`, `Pinch4In`. */
+    export type GestureTrigger =
+        | `Swipe${2 | 3 | 4 | 5}`
+        | `Swipe${2 | 3 | 4 | 5}${"Left" | "Right" | "Up" | "Down"}`
+        | `Pinch${2 | 3 | 4 | 5}`
+        | `Pinch${2 | 3 | 4 | 5}${"In" | "Out"}`;
     /**
-     * A key chord (`"Super+Return"`), a pointer chord (`"Super+MouseLeft"`), or a drag
-     * (`"Super+MouseLeft+Drag"`). Proposed grammar: modifiers joined with `+`, then the key.
+     * Modifiers then one key, by keysym name and never by the character it types: `Super+1` and `Super+Shift+1`
+     * are two triggers, and `Super+!` is refused. The key names are the compositor's, so the type cannot list them.
      */
-    export type Trigger = `${Modifier}+${string}` | `XF86${string}`;
+    export type KeyTrigger = `${ModifierPrefix}${string}`;
+    export type Trigger = PointerTrigger | WheelTrigger | GestureTrigger | KeyTrigger;
+
+    interface TriggerBase {
+        /** The canonical spelling. Two spellings of one trigger have one `text`. */
+        readonly text: string;
+        readonly modifiers: readonly Modifier[];
+    }
+    export type ParsedTrigger =
+        | (TriggerBase & { readonly kind: "key"; readonly key: string })
+        | (TriggerBase & { readonly kind: "pointer"; readonly button: MouseButton; readonly action: "click" | "drag" })
+        | (TriggerBase & { readonly kind: "wheel"; readonly direction: "up" | "down" | "left" | "right" | null })
+        | (TriggerBase & {
+              readonly kind: "gesture";
+              readonly gesture: "swipe" | "pinch";
+              readonly fingers: number;
+              readonly direction: "left" | "right" | "up" | "down" | "in" | "out" | null;
+          });
+    /** Throws a `TriggerError` naming the token that is wrong. */
+    export function parseTrigger(trigger: string, what?: string): ParsedTrigger;
+    export class TriggerError extends TypeError {
+        readonly token: string;
+        readonly trigger: string;
+    }
+    /** Two bindings of one collection match one trigger at one priority. */
+    export class BindingConflictError extends Error {
+        readonly trigger: string;
+        readonly ids: readonly [string, string];
+    }
 
     export interface BindingOptions {
-        id?: string;
+        id: string;
         trigger: Trigger;
         enabled?: boolean;
+        /** Higher wins inside one tier (device, then layout, then context). */
         priority?: number;
     }
 
-    export class Binding extends NativeObject {
-        id: string;
+    export class Binding {
+        readonly id: string;
+        /** Assigning a new trigger moves the binding and cancels a drag it runs. */
         trigger: Trigger;
         enabled: boolean;
         priority: number;
+        readonly parsed: ParsedTrigger;
         constructor(options: BindingOptions);
+        /** Takes the binding out of the collection that holds it. */
+        unbind(): void;
+        onStart(event: DragStartEvent): object | false;
+        onUpdate(event: DragUpdateEvent, state: object): void;
+        onEnd(event: DragEndEvent, state: object): void;
+        onCancel(event: DragCancelEvent, state: object): void;
+        /** A key press or a click. Return `false` to let the next tier have it. */
+        onPress?(event: BindingEvent): void | false;
     }
-    export class KeyBinding extends Binding {}
-    export class PointerBinding extends Binding {}
+    export interface KeyBindingOptions extends BindingOptions {
+        action?: (event: BindingEvent) => void | false;
+    }
+    export class KeyBinding extends Binding {
+        constructor(options: KeyBindingOptions);
+    }
+    export class PointerBinding extends KeyBinding {}
     export class GestureBinding extends Binding {}
-    export class WorkspaceSwitchBinding extends GestureBinding {}
 
-    export interface DragEvent {
-        context: InputContext;
-        device: InputDevice;
-        /** Set when a managed toplevel is hit. */
-        client?: Client;
-        layout?: Layout;
-        /** Workspace logical coordinates for an ordinary pointer drag. */
-        position?: Vec2;
-        /** Coordinates local to the hit target. */
-        localPosition?: Vec2;
-        /** Seconds since the previous event; never negative. */
-        deltaTime: number;
-        timestamp: number;
-        modifiers: ReadonlySet<string>;
+    export interface BindingEvent {
+        readonly timestamp: number;
+        readonly [field: string]: unknown;
+    }
+    export interface DragEvent extends BindingEvent {
+        readonly context: InputContext;
+        /** The device the chord came from when the claim was for one device; null for every device. */
+        readonly device: InputDevice | null;
+        /** The client under the pointer at the press (a key press: the focused client). */
+        readonly client?: Client;
+        /** The layout whose binding this is, for a layout binding. */
+        readonly layout?: Layout;
+        /** The pointer in compositor logical coordinates. A drag's start event holds the press position. */
+        readonly position?: Vec2;
+        /** Coordinates relative to the hit client's origin. */
+        readonly localPosition?: Vec2;
+        /** Seconds since the previous event of this gesture, at most 0.1. */
+        readonly deltaTime: number;
+        readonly modifiers: ReadonlySet<string>;
+        /** The canonical trigger of the binding. */
+        readonly trigger: string;
+        /** Gestures only: `begin`, `update`, `end` or `cancel`. */
+        readonly phase?: string;
+        /** Gestures only: movement since the begin in touchpad units, the spread (1 is unchanged) and the rotation in radians. */
+        readonly dx?: number;
+        readonly dy?: number;
+        readonly scale?: number;
+        readonly rotation?: number;
+        /** Gestures only: 0 to 1, how far the gesture has gone its own way. */
+        readonly progress?: number;
     }
     export type DragStartEvent = DragEvent;
     export type DragUpdateEvent = DragEvent;
@@ -891,9 +969,10 @@ declare module "gnoblin" {
     export type DragCancelEvent = DragEvent;
 
     /**
-     * `onStart` returns a fresh per-gesture state object, or `false` to decline. Each
-     * later callback receives that state, so one binding instance can serve two
-     * input contexts at once.
+     * `onStart` returns a fresh per-gesture state object, or `false` to decline. Each later callback receives that
+     * state, so one binding instance can serve two input contexts at once. A drag starts once the pointer has gone
+     * `threshold` pixels from the press. Pointer events reach the shell once per frame, and when scripts are behind
+     * the next `onUpdate` reads the latest position; `onStart`, `onEnd` and `onCancel` are never dropped.
      */
     export abstract class DragBinding<S extends object = object> extends Binding {
         onStart(event: DragStartEvent): S | false;
@@ -901,12 +980,23 @@ declare module "gnoblin" {
         onEnd(event: DragEndEvent, state: S): void;
         onCancel(event: DragCancelEvent, state: S): void;
     }
-    export class PointerDragBinding<S extends object = object> extends DragBinding<S> {}
-    export class ClientMoveBinding extends PointerDragBinding {
-        constructor(options?: Partial<BindingOptions> & { snap?: number });
+    export interface PointerDragBindingOptions extends BindingOptions {
+        /** Pixels the pointer must move from the press before `onStart`. Default 4. */
+        threshold?: number;
     }
+    export class PointerDragBinding<S extends object = object> extends DragBinding<S> {
+        threshold: number;
+        constructor(options: PointerDragBindingOptions);
+    }
+    /** Super+MouseLeft drag: the client follows the pointer. */
+    export class ClientMoveBinding extends PointerDragBinding {
+        constructor(options?: Partial<PointerDragBindingOptions>);
+    }
+    export type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
+    /** Super+MouseRight drag: the corner chosen at the press follows the pointer; it never changes mid-drag. */
     export class ClientResizeBinding extends PointerDragBinding {
-        constructor(options?: Partial<BindingOptions> & { edges?: "nearest" | "quadrant" });
+        edges: "quadrant" | ResizeCorner;
+        constructor(options?: Partial<PointerDragBindingOptions> & { edges?: "quadrant" | ResizeCorner });
     }
     export class ClientSwapBinding extends PointerDragBinding {
         constructor(options?: Partial<BindingOptions>);
@@ -914,14 +1004,55 @@ declare module "gnoblin" {
     export class SplitResizeBinding extends PointerDragBinding {
         constructor(options?: Partial<BindingOptions>);
     }
+    export class WorkspaceSwitchBinding extends GestureBinding {}
+
+    /** The bindings of one layout, device or context, by id. */
+    export class BindingCollection implements Iterable<Binding> {
+        readonly size: number;
+        /** Refuses a taken id, a binding that is in another collection and an equal-priority match. */
+        add(binding: Binding): Binding;
+        get(id: string): Binding | undefined;
+        has(id: string): boolean;
+        remove(id: string): boolean;
+        clear(): void;
+        [Symbol.iterator](): Iterator<Binding>;
+    }
 
     export interface InputDevice {
         readonly id: string;
         readonly name: string;
+        readonly capabilities: readonly string[];
+        readonly context: InputContext;
+        /** Bindings that match only this device's events. They run before a layout's and the context's. */
+        readonly bindings: BindingCollection;
+        bind(trigger: Trigger, action: ((event: BindingEvent) => void | false) | Binding): Binding;
     }
+    /** One seat: its devices, its focus, its pointer and the bindings that run on its chords and drags. */
     export interface InputContext {
-        readonly id: string;
-        readonly devices: Collection<InputDevice>;
+        readonly name: string;
+        readonly devices: readonly InputDevice[];
+        readonly bindings: BindingCollection;
+        /** Read through to the seat on every call. */
+        readonly focusedClient: Client | null;
+        /** Not wired: displays have no JavaScript object yet. */
+        readonly activeDisplay: null;
+        readonly pointer: Vec2;
+        /**
+         * Claims the chord on the seat and runs `action` on it. Returns the binding; `unbind()` releases the
+         * claim once no binding needs it. A drag trigger needs a `PointerDragBinding`, not a function.
+         */
+        bind(trigger: Trigger, action: ((event: BindingEvent) => void | false) | Binding): Binding;
+        /** The topmost client under `position`, in tree order. */
+        hitTest(position: Vec2): { client: Client; localPosition: Vec2 } | null;
+        /** Makes a layout's bindings live for the clients `owns` accepts (default: those whose workspace shows it). */
+        attachLayout(layout: Layout, owns?: (client: Client) => boolean): void;
+        detachLayout(layout: Layout): void;
+    }
+    export interface InputManager {
+        readonly contexts: readonly InputContext[];
+        /** The first seat. Throws when the compositor reports none. */
+        readonly primary: InputContext;
+        readonly devices: readonly InputDevice[];
     }
 
     // -- Layouts (owner-spec section 12) --------------------------------------
@@ -952,7 +1083,7 @@ declare module "gnoblin" {
      */
     export class Layout extends NativeObject {
         readonly workspace: Workspace;
-        readonly bindings: MutableCollection<Binding>;
+        readonly bindings: BindingCollection;
         onClientAdded?(client: Client, context: LayoutContext): void;
         onClientRemoved?(client: Client, context: LayoutContext): void;
         onAreaChanged?(oldArea: Rect, newArea: Rect): void;
@@ -1086,6 +1217,8 @@ declare module "gnoblin" {
         readonly clients: Collection<Client>;
         readonly workspaces: MutableCollection<Workspace>;
         readonly outputs: Collection<Output>;
+        /** The compositor's seats as input contexts, with the bindings that run on their chords and drags. */
+        readonly input: InputManager;
         /**
          * Run `staging` once, now, and send every property write it makes as one
          * transaction that the compositor animates. It is not called per frame, and

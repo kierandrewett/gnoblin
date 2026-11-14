@@ -25,6 +25,8 @@ import {
     resolveLayout,
 } from "gnoblin/workspace";
 import type { StockLayoutName, WorkspaceOptions } from "gnoblin/workspace";
+import { InputManager } from "gnoblin/input";
+import type { InputHost, InputMessage } from "gnoblin/input";
 
 type NodeId = number;
 type Scalar = string | number | boolean;
@@ -50,6 +52,10 @@ interface Entry {
     next(): number;
     pending(): number;
     ready(nodes: NodeId[]): number;
+    /** Hands the frame's claimed chords and gestures to the input matcher; returns how many calls wait. */
+    input(messages: InputMessage[]): number;
+    /** Cancels what the input matcher has in flight and releases every claim; returns how many calls wait. */
+    cancelAll(): number;
     takeErrors(): ErrorReport[];
     /** Lays out the workspaces that changed, once each; returns how many it laid out. */
     layout(): number;
@@ -68,6 +74,7 @@ interface Host {
     windows(): NodeId[];
     screens(): NodeId[];
     spawn(command: string | string[]): string | undefined;
+    input: InputHost;
     entry?: Entry;
 }
 
@@ -114,6 +121,12 @@ interface Source {
     listeners: object[];
 }
 
+/** A call the module itself queues (an input hook), run beside the listeners' under the same budget. */
+interface Task {
+    site: string;
+    task(): void;
+}
+
 interface Invocation {
     source: Source;
     listener: object;
@@ -121,7 +134,7 @@ interface Invocation {
     args: unknown[];
 }
 
-const queue: Invocation[] = [];
+const queue: (Invocation | Task)[] = [];
 let reports: ErrorReport[] = [];
 
 function handlerOf(listener: object, method: string): unknown {
@@ -134,7 +147,15 @@ function describeListener(listener: object): string {
 }
 
 /** Runs one queued call if its listener is still attached; a throw is reported, never propagated. */
-function run(call: Invocation): void {
+function run(call: Invocation | Task): void {
+    if ("task" in call) {
+        try {
+            call.task();
+        } catch (error) {
+            reports.push({ site: call.site, error });
+        }
+        return;
+    }
     if (!call.source.listeners.includes(call.listener)) {
         return;
     }
@@ -1173,6 +1194,7 @@ function release(node: NodeId): void {
     const own = wsOf(client);
     const ownHeld = own ? holders(own.clientsState, client) : [];
     const held = leave(clientRoot, client, clientsByNode, CLIENT_KEYS);
+    input.clientGone(client);
     if (own) {
         membership.delete(client);
         own.clientsState.list.splice(own.clientsState.list.indexOf(client), 1);
@@ -1266,9 +1288,23 @@ function takeErrors(): ErrorReport[] {
     return taken;
 }
 
+const input = new InputManager(host.input, {
+    clientOf: (node) => clientsByNode.get(node),
+    stack: () => host.windows().flatMap((node) => clientsByNode.get(node) ?? []),
+    schedule: (site, task) => {
+        queue.push({ site, task });
+    },
+    report: (site, error) => {
+        reports.push({ site, error });
+    },
+    error: (code, target, message) => new GnoblinError(code, target, message),
+});
+
 class Gnoblin {
     readonly clients = clientRoot.self as Collection<Client>;
     readonly workspaces = workspaceRoot.self as WorkspaceCollection;
+    /** The seats of the compositor as input contexts, with the bindings that run on their chords and drags. */
+    readonly input = input;
 
     /**
      * Starts a program. A string is one command line for the host to run; an array is the program and its
@@ -1321,4 +1357,12 @@ host.entry = {
     finishLoad: ensureDefaultWorkspace,
     snapshot: snapshotWorkspaces,
     reconcile: reconcileWorkspaces,
+    input: (messages) => {
+        input.deliver(messages);
+        return queue.length;
+    },
+    cancelAll: () => {
+        input.cancelAll();
+        return queue.length;
+    },
 };

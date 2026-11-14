@@ -37,6 +37,7 @@ use thiserror::Error;
 use crate::bindings::{self, HostState, JsSpawner, SharedState};
 use crate::error::{JsError, JsErrorKind};
 use crate::generation::{JsConfig, JsGeneration};
+use crate::input::{JsInputMessage, messages_to_js};
 use crate::stock::stock_modules;
 use crate::ts::strip_types;
 use crate::workspaces::{JsWorkspaceSnapshot, coalesce_sets};
@@ -306,12 +307,17 @@ impl JsShell {
                     );
                 }
                 TreeIncoming::Reply(reply) => self.handle_reply(&reply, &mut diagnostics),
-                // Input events, claimed chords and gestures and call answers have no JavaScript API yet:
-                // the binding framework owns them. They are consumed so they do not pile up.
-                TreeIncoming::Event(_)
-                | TreeIncoming::Chord(_)
-                | TreeIncoming::Gesture(_)
-                | TreeIncoming::Answer { .. } => {}
+                // A claimed chord or gesture is parked for the input module, which the frame hands it to once
+                // the listeners are planned. Pointer and key events addressed to nodes and call answers have no
+                // JavaScript API: they are consumed so they do not pile up.
+                TreeIncoming::Chord(chord) => self.state.borrow_mut().input.inbox.push(JsInputMessage::Chord(chord)),
+                TreeIncoming::Gesture(gesture) => self
+                    .state
+                    .borrow_mut()
+                    .input
+                    .inbox
+                    .push(JsInputMessage::Gesture(gesture)),
+                TreeIncoming::Event(_) | TreeIncoming::Answer { .. } => {}
                 TreeIncoming::Attached(_) | TreeIncoming::Snapshot { .. } => {
                     return Err(JsShellError::Link("attach or snapshot after boot".to_owned()));
                 }
@@ -343,6 +349,26 @@ impl JsShell {
         Ok(JsFrame { diagnostics })
     }
 
+    /// Ends the generation's hold on input: every drag and gesture a binding is running gets its `onCancel`
+    /// once, under the call budget, and every seat claim is released, so no pointer or chord stays captured
+    /// by a generation that is going away. The caller runs this before it drops or replaces the shell (a
+    /// reload swaps generations, a shutdown ends it). The `unclaim` calls travel in the transaction this
+    /// sends; when an earlier transaction is still in flight they wait for the next [`JsShell::frame`]. The
+    /// compositor releases a connection's claims by itself when the shell dies, so a crash cannot leave a
+    /// chord claimed.
+    pub fn retire(&mut self) -> Result<JsFrame, JsShellError> {
+        let mut diagnostics = Vec::new();
+        let pending: usize = self.call_entry(self.frame_budget, |entry| {
+            entry.get::<_, Function<'_>>("cancelAll")?.call(())
+        })?;
+        let started = Instant::now();
+        self.state.borrow_mut().input.inbox.clear();
+        self.run_pending(pending, started, &mut diagnostics)?;
+        self.collect_reports(&mut diagnostics)?;
+        self.send_transaction()?;
+        Ok(JsFrame { diagnostics })
+    }
+
     /// Hands the frame's changes to the module's `plan`, then runs the queued listener calls one by one,
     /// each under its own budget, until they are all run or the frame's budget is.
     fn dispatch(
@@ -360,11 +386,30 @@ impl JsShell {
             })?;
         }
         let (created, touched, destroyed) = (ids(created), ids(touched), ids(destroyed));
-        let mut pending: usize = self.call_entry(self.frame_budget, move |entry| {
+        let _queued: usize = self.call_entry(self.frame_budget, move |entry| {
             entry
                 .get::<_, Function<'_>>("plan")?
                 .call((created, touched, destroyed))
         })?;
+        // The input matcher runs after the plan, so a client that died in this frame has already cancelled
+        // its drags when the frame's chord messages are read. It runs every frame, with or without messages:
+        // a drag samples the pointer once per frame.
+        let messages = std::mem::take(&mut self.state.borrow_mut().input.inbox);
+        let pending: usize = self.call_entry(self.frame_budget, move |entry| {
+            let list = messages_to_js(entry.ctx(), &messages)?;
+            entry.get::<_, Function<'_>>("input")?.call((list,))
+        })?;
+        self.run_pending(pending, started, diagnostics)
+    }
+
+    /// Runs the queued calls one by one, each under its own budget, until they are all run or the frame's
+    /// budget is used up. Calls that do not fit wait for the next frame.
+    fn run_pending(
+        &mut self,
+        mut pending: usize,
+        started: Instant,
+        diagnostics: &mut Vec<String>,
+    ) -> Result<(), JsShellError> {
         while pending > 0 {
             if started.elapsed() >= self.frame_budget {
                 diagnostics.push(format!(

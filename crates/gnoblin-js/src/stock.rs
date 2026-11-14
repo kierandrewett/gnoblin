@@ -20,6 +20,11 @@ const MODULES: [(&str, &str, &str); 9] = [
         include_str!("../../../data/js/gnoblin/bindings.ts"),
     ),
     (
+        "gnoblin/input",
+        "input.ts",
+        include_str!("../../../data/js/gnoblin/input.ts"),
+    ),
+    (
         "gnoblin/layout",
         "layout.ts",
         include_str!("../../../data/js/gnoblin/layout.ts"),

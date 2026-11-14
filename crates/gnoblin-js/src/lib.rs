@@ -21,6 +21,7 @@ mod bindings;
 mod error;
 mod generation;
 mod host;
+mod input;
 mod loader;
 mod reload;
 mod shell;

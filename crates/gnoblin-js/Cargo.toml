@@ -29,6 +29,8 @@ notify.workspace = true
 thiserror.workspace = true
 # The tree protocol's client side: the mirror, the transaction builder and the link trait the shell runs over.
 gnoblin-tree-client.workspace = true
+# The text of a seat claim travels as a `SecretText`, which is what the call op carries.
+gnoblin-secret.workspace = true
 # The log facade every crate logs through.
 gnoblin-log = { path = "../gnoblin-log" }
 

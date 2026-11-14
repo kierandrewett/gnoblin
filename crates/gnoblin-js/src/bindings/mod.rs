@@ -53,6 +53,8 @@ pub(crate) struct HostState {
     pub spawner: Option<JsSpawner>,
     /// The last call token handed out. The compositor echoes it in an answer, which nothing reads yet.
     pub tokens: u64,
+    /// The seat claims this shell holds and the chords and gestures waiting for the frame's dispatch.
+    pub input: crate::input::JsInput,
 }
 
 pub(crate) type SharedState = Rc<RefCell<HostState>>;
@@ -65,6 +67,7 @@ impl HostState {
             graveyard: HashMap::new(),
             spawner: None,
             tokens: 0,
+            input: crate::input::JsInput::new(),
         }
     }
 }

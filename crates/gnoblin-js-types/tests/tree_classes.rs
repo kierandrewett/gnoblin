@@ -231,7 +231,8 @@ fn the_stock_library_follows_the_generated_modules_and_is_marked_proposed() {
         "    export class Client extends Node {",
         "    export class Workspace extends Node {",
         "    export class Layout extends NativeObject {",
-        "    export class Binding extends NativeObject {",
+        "    export class Binding {",
+        "    export interface InputContext {",
         "    export class ClientListener extends MemberListener<Client> {",
         "        requestTransition(staging: () => void, options?: TransitionOptions): Transition;",
     ] {
