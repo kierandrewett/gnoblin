@@ -22,14 +22,16 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use gnoblin_backend::InputEvent;
 use gnoblin_client::Client;
 use gnoblin_client::unix::UnixTransport;
-use gnoblin_compositor::{Compositor, SessionConfig, StopHandle};
+use gnoblin_compositor::{Compositor, InputTap, SessionConfig, StopHandle};
 use gnoblin_js::{JsHealth, JsRole, JsRoleConfig};
 use gnoblin_log::event::capture::logged;
 use gnoblin_proto::tree::snapshot_node;
 use gnoblin_proto::tree::tree::{AttachArgs, AttachedPayload, SnapshotPayload};
 use gnoblin_proto::{Envelope, Version, read_frame, write_frame};
+use gnoblin_types::{DeviceId, OutputId, Point};
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_registry, wl_shm, wl_shm_pool, wl_surface};
 use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle};
@@ -45,6 +47,8 @@ const PATIENCE: Duration = Duration::from_secs(60);
 struct Session {
     directory: tempfile::TempDir,
     stop: StopHandle,
+    /// Where a test sends the input a device would: it takes the seat path a real pointer's events take.
+    input: InputTap,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -54,9 +58,11 @@ impl Session {
         // The compositor refuses an IPC directory that is not private, as `$XDG_RUNTIME_DIR` is.
         fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).expect("the directory mode");
         let stop = StopHandle::new();
+        let input = InputTap::new();
         let mut config = SessionConfig {
             ipc_socket: Some(directory.path().join("ipc.sock")),
             stop: Some(stop.clone()),
+            input_tap: Some(input.clone()),
             ..SessionConfig::default()
         };
         config.wayland.socket_path = Some(directory.path().join("wayland.sock"));
@@ -69,6 +75,7 @@ impl Session {
         let session = Self {
             directory,
             stop,
+            input,
             thread: Some(thread),
         };
         let deadline = Instant::now() + PATIENCE;
@@ -111,6 +118,8 @@ struct Window {
     app_id: String,
     x: f64,
     y: f64,
+    width: f64,
+    height: f64,
 }
 
 /// Every node of the compositor's tree, read through a fresh observer connection.
@@ -174,6 +183,8 @@ fn scene(ipc: &Path) -> Vec<Window> {
                 app_id: node.app_id.clone(),
                 x: value("x"),
                 y: value("y"),
+                width: value("width"),
+                height: value("height"),
             }
         })
         .collect()
@@ -950,5 +961,255 @@ export const swatch = new Box({ width: 120, height: 40, fill: "#336699" });
     assert!(
         log.iter().all(|line| !line.contains("threw")),
         "the shell logged a throw: {log:#?}"
+    );
+}
+
+// ---- pointer chord drags: move and resize a real window ----------------------------------------------------------
+
+/// The evdev codes of the buttons and the key the stock bindings are made of: Super+Button1 moves, Super+Button3
+/// resizes.
+const BTN_LEFT: u32 = 272;
+const BTN_RIGHT: u32 = 273;
+const KEY_LEFTMETA: u32 = 125;
+
+/// Sends `event` to the session as a device would: it takes the seat path of a real pointer's or keyboard's.
+fn send(session: &Session, event: InputEvent) {
+    assert!(session.input.inject(event), "the session is serving input");
+}
+
+fn motion(session: &Session, x: i32, y: i32) {
+    send(
+        session,
+        InputEvent::PointerMotion {
+            device: DeviceId::VIRTUAL,
+            output: OutputId::new(0),
+            position: Point::new(x, y),
+        },
+    );
+}
+
+fn button(session: &Session, code: u32, pressed: bool) {
+    send(
+        session,
+        InputEvent::PointerButton {
+            device: DeviceId::VIRTUAL,
+            button: code,
+            pressed,
+        },
+    );
+}
+
+fn super_key(session: &Session, pressed: bool) {
+    send(
+        session,
+        InputEvent::Key {
+            device: DeviceId::VIRTUAL,
+            keycode: KEY_LEFTMETA,
+            pressed,
+        },
+    );
+}
+
+/// The rectangle the compositor holds for the window of `app`.
+fn rect_of(ipc: &Path, app: &str) -> Option<(f64, f64, f64, f64)> {
+    scene(ipc)
+        .into_iter()
+        .find(|window| window.app_id == app)
+        .map(|window| (window.x, window.y, window.width, window.height))
+}
+
+/// Holds Super and presses `code` at `from`, moves the pointer to `first`, and returns once the compositor holds
+/// `expected` for `app`: the drag is live and has moved the window. The shell claims its chords in its first frames,
+/// so a press that comes before a claim is live is the window's, and moves nothing: the gesture is repeated until a
+/// press is the shell's. Super and the button stay down for the caller to release with [`end_drag`].
+#[track_caller]
+fn begin_drag(
+    session: &Session,
+    mapper: &mut Mapper,
+    app: &str,
+    code: u32,
+    from: (i32, i32),
+    first: (i32, i32),
+    expected: (f64, f64, f64, f64),
+) {
+    let ipc = session.ipc();
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        super_key(session, true);
+        motion(session, from.0, from.1);
+        std::thread::sleep(Duration::from_millis(40));
+        button(session, code, true);
+        motion(session, first.0, first.1);
+        let attempt = Instant::now() + Duration::from_millis(1500);
+        while Instant::now() < attempt {
+            mapper.roundtrip();
+            if rect_of(&ipc, app) == Some(expected) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        button(session, code, false);
+        super_key(session, false);
+        assert!(
+            Instant::now() < deadline,
+            "no drag ever took the window: it is at {:?}, expected {expected:?}",
+            rect_of(&ipc, app)
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// Moves the pointer on and waits for the window to follow it to `expected`.
+#[track_caller]
+fn follow(session: &Session, mapper: &mut Mapper, app: &str, to: (i32, i32), expected: (f64, f64, f64, f64)) {
+    let ipc = session.ipc();
+    motion(session, to.0, to.1);
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        mapper.roundtrip();
+        let now = rect_of(&ipc, app);
+        if now == Some(expected) {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the window never followed the pointer to {to:?}: it is at {now:?}, expected {expected:?}"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// Lets go of the button and of Super, and checks the window stays where the drag left it.
+#[track_caller]
+fn end_drag(session: &Session, mapper: &mut Mapper, app: &str, code: u32, expected: (f64, f64, f64, f64)) {
+    button(session, code, false);
+    super_key(session, false);
+    let ipc = session.ipc();
+    let settled = Instant::now() + Duration::from_millis(500);
+    while Instant::now() < settled {
+        mapper.roundtrip();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(
+        rect_of(&ipc, app),
+        Some(expected),
+        "the window stays where the drag left it"
+    );
+}
+
+/// A config directory whose `init.ts` creates a floating workspace with the default `FloatingLayout` and puts every
+/// window at (300, 200), 200 by 150.
+fn write_drag_config(dir: &Path) {
+    fs::write(
+        dir.join("init.ts"),
+        r#"import { FloatingLayout, Workspace, gnoblin } from "gnoblin";
+
+gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new FloatingLayout() }));
+
+// The window starts at a known place and size. The stock layout leaves a window that has floating bounds alone.
+gnoblin.clients.addListener({
+    onAdded(client: { x: number; y: number; width: number; height: number; floatingBounds?: object }): void {
+        client.x = 300;
+        client.y = 200;
+        client.width = 200;
+        client.height = 150;
+        client.floatingBounds = { x: 300, y: 200, width: 200, height: 150 };
+    },
+});
+"#,
+    )
+    .expect("init.ts");
+}
+
+#[test]
+fn a_super_drag_takes_the_window_on_top_where_two_overlap() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    write_drag_config(config.path());
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    // Both sit at the same place; the one mapped last is drawn above the other.
+    mapper.map_window("org.example.under", "Under");
+    mapper.map_window("org.example.over", "Over");
+    let (under, over) = ("org.example.under", "org.example.over");
+    let ipc = session.ipc();
+    let start = Some((300.0, 200.0, 200.0, 150.0));
+    wait_for("both windows at their start", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, under) == start && rect_of(&ipc, over) == start
+    });
+    // The press is over both: the window above takes it, and the one below stays.
+    begin_drag(
+        &session,
+        &mut mapper,
+        over,
+        BTN_LEFT,
+        (350, 250),
+        (400, 290),
+        (350.0, 240.0, 200.0, 150.0),
+    );
+    end_drag(&session, &mut mapper, over, BTN_LEFT, (350.0, 240.0, 200.0, 150.0));
+    assert_eq!(rect_of(&ipc, under), start, "the window below stayed");
+}
+
+#[test]
+fn super_drags_move_and_resize_a_real_window_through_the_pointer_chord_stream() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    write_drag_config(config.path());
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    mapper.map_window("org.example.drag", "Drag");
+    let app = "org.example.drag";
+    let ipc = session.ipc();
+    wait_for("the window at its start", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, app) == Some((300.0, 200.0, 200.0, 150.0))
+    });
+
+    // Super+Button1 moves the window by the pointer's delta. The press is at (350, 250), inside the window, so the
+    // pointer's space is the window's space.
+    begin_drag(
+        &session,
+        &mut mapper,
+        app,
+        BTN_LEFT,
+        (350, 250),
+        (400, 290),
+        (350.0, 240.0, 200.0, 150.0),
+    );
+    follow(&session, &mut mapper, app, (410, 300), (360.0, 250.0, 200.0, 150.0));
+    end_drag(&session, &mut mapper, app, BTN_LEFT, (360.0, 250.0, 200.0, 150.0));
+
+    // Super+Button3 from the bottom-right quadrant moves that corner and keeps the top-left one.
+    begin_drag(
+        &session,
+        &mut mapper,
+        app,
+        BTN_RIGHT,
+        (550, 390),
+        (590, 420),
+        (360.0, 250.0, 240.0, 180.0),
+    );
+    follow(&session, &mut mapper, app, (610, 440), (360.0, 250.0, 260.0, 200.0));
+    end_drag(&session, &mut mapper, app, BTN_RIGHT, (360.0, 250.0, 260.0, 200.0));
+
+    // From the top-left quadrant that corner moves, and it is still the one that moves when the pointer goes past the
+    // opposite corner: the bottom-right corner (620, 450) stays and the window is held at its minimum size, 100 by 80.
+    begin_drag(
+        &session,
+        &mut mapper,
+        app,
+        BTN_RIGHT,
+        (370, 260),
+        (420, 290),
+        (410.0, 280.0, 210.0, 170.0),
+    );
+    follow(&session, &mut mapper, app, (1200, 900), (520.0, 370.0, 100.0, 80.0));
+    end_drag(&session, &mut mapper, app, BTN_RIGHT, (520.0, 370.0, 100.0, 80.0));
+
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    let log = shell.finish();
+    assert!(
+        log.iter().all(|message| !message.contains("claim")),
+        "the shell logged nothing about a claim: {log:?}"
     );
 }

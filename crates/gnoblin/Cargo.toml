@@ -63,3 +63,7 @@ gnoblin-log = { path = "../gnoblin-log", features = ["capture"] }
 # `tests/js_shell.rs` decodes the paint lists the compositor holds and draws one, to read a pixel the shell's script
 # painted.
 gnoblin-paint = { path = "../gnoblin-paint" }
+# The pointer drag test sends the input events a device would through the session's input tap, and names the type
+# of the tap's events and the ids they carry.
+gnoblin-backend = { path = "../gnoblin-backend" }
+gnoblin-types = { path = "../gnoblin-types" }
