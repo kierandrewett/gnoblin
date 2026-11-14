@@ -431,18 +431,46 @@ fn wait_for(what: &str, session: &Session, mapper: &mut Mapper, shell: &Shell, m
             );
         }
         if Instant::now() >= deadline {
+            // Read while the shell and the compositor are as they were when the wait ran out: stopping the shell hands
+            // the tree back, and a scene read after that is not the one that never reached the state.
+            let diagnostics = shell.diagnostics();
+            let view = shell.view();
+            let seen = scene(&session.ipc());
+            let nodes = window_nodes(&session.ipc());
             let log = shell.finish();
             panic!(
-                "never reached: {what}; shell diagnostics {:?}; the shell sees {:?}; the compositor's scene {:?}; \
-                 the shell logged {:#?}",
-                shell.diagnostics(),
-                shell.view(),
-                scene(&session.ipc()),
+                "never reached: {what}; shell diagnostics {diagnostics:?}; the shell sees {view:?}; the compositor's scene \
+                 {seen:?}; the window nodes {nodes:#?}; the shell logged {:#?}",
                 &log[log.len().saturating_sub(60)..]
             );
         }
         std::thread::sleep(POLL);
     }
+}
+
+/// Every window node of the compositor's tree with the properties it carries, for a failure message. A property at its
+/// default is not carried, so a window that has no size shows no `width`.
+fn window_nodes(ipc: &Path) -> Vec<String> {
+    snapshot(ipc)
+        .iter()
+        .filter(|node| node.class == "window")
+        .map(|node| {
+            let props: Vec<String> = node
+                .props
+                .iter()
+                .map(|prop| {
+                    if !prop.value_text.is_empty() {
+                        format!("{}={}", prop.key, prop.value_text)
+                    } else if prop.value_bool {
+                        format!("{}=true", prop.key)
+                    } else {
+                        format!("{}={}", prop.key, prop.value_double)
+                    }
+                })
+                .collect();
+            format!("{}: {}", node.app_id, props.join(" "))
+        })
+        .collect()
 }
 
 /// Saves `text` as the file `path` the way an editor that saves atomically does: the text is written under a name the
@@ -1827,8 +1855,10 @@ fn a_window_a_client_maximises_is_not_configured_back_to_its_old_size() {
     let ipc = session.ipc();
     let app = "org.example.toolkit";
     let window = mapper.map_toolkit_window(app, "Toolkit", OWN);
+    // The window's node is in the tree before it has a size, and a size that is not set reads as zero in a snapshot:
+    // the window is placed once it has one, and natural is what it is then.
     wait_for("the shell places the window", &session, &mut mapper, &shell, || {
-        rect_of(&ipc, app).is_some()
+        rect_of(&ipc, app).is_some_and(|(_, _, width, height)| width > 0.0 && height > 0.0)
     });
     let natural = rect_of(&ipc, app).expect("the window's place");
     let natural_size = (natural.2 as i32, natural.3 as i32);
@@ -2113,12 +2143,16 @@ fn transition_probe(shell: &Shell) -> (f64, Option<bool>, Vec<String>) {
 }
 
 #[test]
-fn a_layout_change_in_a_transition_commits_to_the_scene_at_once_and_the_transition_ends_at_its_injected_time() {
+fn a_layout_change_in_a_transition_commits_to_the_scene_and_the_transition_ends_on_the_compositors_word() {
     // spec-review AN2: a layout change inside `requestTransition` is computed once and the windows move by id. The
     // scene holds the committed rectangles (a timed write keeps the target as the node's value, as `tree_live.rs`
-    // proves), so the proof here is what the tree publishes: the rows are in the scene the moment the transition begins,
-    // before any of its 500 ms have passed on the shell's clock, and the transition runs until the clock says it is over.
-    // What the compositor draws on the way is its tween player's: `crates/gnoblin-wayland/tests/tree_live.rs`.
+    // proves), so the proof here is what the tree publishes: the rows are in the scene once the transition has begun
+    // and stay there when it has ended. The shell's clock starts the transition (the script's timer at one second) and
+    // nothing else: the 500 ms of its tracks are the compositor's tween player's, run on the compositor's own clock,
+    // and the transition ends on the compositor's word. How long it runs is therefore not something this test can
+    // hold, and a loaded machine ends it before a test that asked whether it was "still running" has looked. That it
+    // is running mid-way, with the rows in the scene, is proved on a transition held at its start
+    // (`a_held_transition_is_scrubbed_through_the_compositors_tween_node_and_ends_on_the_compositors_word`).
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
     fs::write(config.path().join("init.ts"), TRANSITION_INIT).expect("init.ts");
@@ -2152,39 +2186,17 @@ fn a_layout_change_in_a_transition_commits_to_the_scene_at_once_and_the_transiti
         Some((0.0, height / 2.0, width, height / 2.0)),
     );
     wait_for(
-        "the rows in the scene and the transition running",
+        "the transition started and the rows in the scene",
         &session,
         &mut mapper,
         &shell,
         || {
-            let (_, running, log) = transition_probe(&shell);
-            running == Some(true)
-                && log == ["started"]
+            transition_probe(&shell).2.first().map(String::as_str) == Some("started")
                 && (rect_of(&ipc, "org.example.first"), rect_of(&ipc, "org.example.second")) == rows
         },
     );
-
-    // 200 ms of the 500 on the shell's clock: it has ticked past them (the probe reads the clock), and the transition
-    // is still running with the committed rectangles in the scene.
-    clock.advance(Duration::from_millis(200));
-    wait_for("the shell's clock at 1.2 s", &session, &mut mapper, &shell, || {
-        transition_probe(&shell).0 >= 1200.0
-    });
-    let (_, running, log) = transition_probe(&shell);
-    assert_eq!(
-        (running, log),
-        (Some(true), vec!["started".to_owned()]),
-        "mid-way it still runs"
-    );
-    assert_eq!(
-        (rect_of(&ipc, "org.example.first"), rect_of(&ipc, "org.example.second")),
-        rows,
-        "and the scene holds the staged layout's rectangles"
-    );
-
-    clock.advance(Duration::from_millis(400));
     wait_for(
-        "the transition finished, not cancelled",
+        "the compositor ended the transition and it finished, not cancelled",
         &session,
         &mut mapper,
         &shell,
@@ -2264,10 +2276,18 @@ fn a_held_transition_is_scrubbed_through_the_compositors_tween_node_and_ends_on_
     });
     let mut mapper = Mapper::connect(&session.wayland());
     let ipc = session.ipc();
+    let (width, height) = screen_size(&ipc);
     mapper.map_window("org.example.first", "First");
     mapper.map_window("org.example.second", "Second");
-    wait_for("two windows", &session, &mut mapper, &shell, || {
-        rect_of(&ipc, "org.example.first").is_some() && rect_of(&ipc, "org.example.second").is_some()
+    // The transition changes the layout the shell computes for its windows, so the clock does not stage it until the
+    // shell has laid both out: a window that is in the compositor's tree may not yet be one of the shell's.
+    let half = (width * 0.5).floor();
+    wait_for("two windows side by side", &session, &mut mapper, &shell, || {
+        (rect_of(&ipc, "org.example.first"), rect_of(&ipc, "org.example.second"))
+            == (
+                Some((0.0, 0.0, half, height.floor())),
+                Some((half, 0.0, (width - width * 0.5).floor(), height.floor())),
+            )
     });
 
     let step =
@@ -2281,6 +2301,19 @@ fn a_held_transition_is_scrubbed_through_the_compositors_tween_node_and_ends_on_
     wait_for("a held tween node", &session, &mut mapper, &shell, || {
         tween_state(&ipc) == Some((0.0, true))
     });
+    // The staged layout is the scene's while the transition is held at its start: a timed write keeps its target as the
+    // node's value. This is what the transition that plays by itself cannot say, since its tracks end on a wall clock.
+    let rows = (
+        Some((0.0, 0.0, width, height / 2.0)),
+        Some((0.0, height / 2.0, width, height / 2.0)),
+    );
+    wait_for(
+        "the rows in the scene while held",
+        &session,
+        &mut mapper,
+        &shell,
+        || (rect_of(&ipc, "org.example.first"), rect_of(&ipc, "org.example.second")) == rows,
+    );
     for (last, expected) in [("p0.4", (0.4, true)), ("p0.1", (0.1, true)), ("p1", (1.0, true))] {
         step(&clock, &session, &mut mapper, &shell, last, last);
         wait_for(last, &session, &mut mapper, &shell, || {
@@ -5753,9 +5786,30 @@ fn a_reload_hands_every_seat_claim_over_so_each_shortcut_fires_once_and_a_remove
 
 // ---- a View of a client: `input` is forward, capture or none ----------------------------------------------------------
 
+/// The `input_mode` the compositor's tree holds for each of its Views, sorted. A value at its default is not carried in
+/// a snapshot, so a View in `forward` reads as that here.
+fn view_modes(ipc: &Path) -> Vec<String> {
+    let mut modes: Vec<String> = snapshot(ipc)
+        .iter()
+        .filter(|node| node.class == "view")
+        .map(|node| {
+            node.props
+                .iter()
+                .find(|prop| prop.key == "input_mode")
+                .map_or_else(|| "forward".to_owned(), |prop| prop.value_text.clone())
+        })
+        .collect();
+    modes.sort();
+    modes
+}
+
 /// A config that makes a View of the window of `org.example.shown` at (600, 300), as large as the window, whose `input`
 /// is `capture`. The script hears the View's pointer edges in `heard`, and gives the pointer back to the client by
 /// setting the View to `forward` once it has heard a release.
+///
+/// A second View with no content, at (50, 500), is the test's last word. The script is sent what the compositor
+/// decides in the order the compositor decides it, so a script that has heard the pointer reach this View has heard
+/// every edge the click before it was going to cost it, and a test can say that the script heard no more.
 const CAPTURE_VIEW_INIT: &str = r#"import { Layout, View, defineConfig, gnoblin } from "gnoblin";
 import type { Client, NodePointerEvent } from "gnoblin";
 
@@ -5768,6 +5822,12 @@ defineConfig({
 const heard: string[] = [];
 let panel: View | null = null;
 (globalThis as any).probe = () => `${panel === null ? "none" : panel.input}|${heard.join(";")}`;
+
+const marker = new View({ size: { width: 100, height: 100 } });
+marker.x = 50;
+marker.y = 500;
+marker.onPointerEnter = () => heard.push("marker");
+gnoblin.scene.root.add(marker);
 
 gnoblin.clients.addListener({
     onAdded(client: Client): void {
@@ -5804,12 +5864,18 @@ fn a_script_sets_a_client_view_to_capture_and_sees_its_press_then_sets_forward_a
     });
     let shown = "org.example.shown";
     mapper.map_window(shown, "Shown");
+    // The script's own View is a promise until the compositor holds it: the pointer is routed by what the compositor
+    // holds, so a move that comes first lands on nothing and the script is never sent the enter that the test waits for.
     wait_for(
-        "the window at its place and a View of it",
+        "the window at its place and the compositor holding the View in capture beside the marker",
         &session,
         &mut mapper,
         &shell,
-        || rect_of(&ipc, shown) == Some((100.0, 100.0, 200.0, 150.0)) && shell.probe().starts_with("capture|"),
+        || {
+            rect_of(&ipc, shown) == Some((100.0, 100.0, 200.0, 150.0))
+                && shell.probe().starts_with("capture|")
+                && view_modes(&ipc) == ["capture", "forward"]
+        },
     );
 
     // In `capture` the pointer over the View is the script's: it hears the edges, in the View's own plane, and the
@@ -5838,8 +5904,16 @@ fn a_script_sets_a_client_view_to_capture_and_sees_its_press_then_sets_forward_a
     assert_eq!(pointer.presses(), 0, "the client heard nothing of a captured press");
     assert!(!pointer.over(), "the pointer never entered the client");
 
-    // The script set the View to `forward` on the release: the same click now goes through to the client, at the
-    // point of its surface the View shows there, and the script is sent no more of it.
+    // The script set the View to `forward` on the release, and the compositor routes by its own copy of that: a move
+    // that comes before the write has landed is still over a captured View, and no later move would correct it. Then
+    // the same click goes through to the client, at the point of its surface the View shows there.
+    wait_for(
+        "the compositor holds both Views in forward",
+        &session,
+        &mut mapper,
+        &shell,
+        || view_modes(&ipc) == ["forward", "forward"],
+    );
     motion(&session, 651, 341);
     wait_for(
         "the pointer enters the client through the View",
@@ -5852,10 +5926,21 @@ fn a_script_sets_a_client_view_to_capture_and_sees_its_press_then_sets_forward_a
     wait_for("the client hears the press", &session, &mut mapper, &shell, || {
         pointer.presses() == 1
     });
-    let probe = shell.probe();
-    assert!(
-        probe.starts_with("forward|enter;press@50,40;release;leave") && probe.matches("press").count() == 1,
-        "the script hears the pointer leave the View and no press of the forwarded click: {probe}"
+
+    // The script is sent no more of it. Its edges arrive in the order the compositor sent them, so once it has heard
+    // the pointer reach the marker it has heard the leave and anything the forwarded click was going to cost it.
+    motion(&session, 100, 550);
+    wait_for(
+        "the script hears the pointer reach the marker",
+        &session,
+        &mut mapper,
+        &shell,
+        || shell.probe().ends_with(";marker"),
+    );
+    assert_eq!(
+        shell.probe(),
+        "forward|enter;press@50,40;release;leave;marker",
+        "the script hears the pointer leave the View and no press of the forwarded click"
     );
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
     shell.finish();
