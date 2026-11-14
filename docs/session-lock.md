@@ -29,14 +29,13 @@ back in; protocol globals are registered at compositor startup. See the
 
 A lock request asks your shell to show its lock screen. Gnoblin sends the
 request as the `gnoblin.session.lock-requested` event to every shell client
-that subscribed to it, and to the Lua configuration when it listens for the
-event. The shell starts its locker, and the locker takes the lock with
+that subscribed to it. The shell starts its locker, and the locker takes the lock with
 `ext-session-lock-v1`. Gnoblin binds no key and starts no locker.
 
 These sources send the request:
 
 - `gnoblinctl session lock`
-- `gnoblin.session.lock()` in the Lua configuration
+- `gnoblin.session.lock()` in `init.ts`
 - `org.freedesktop.ScreenSaver.Lock`, or `SetActive(true)`, on the session bus
 - `loginctl lock-session` for your graphical session. Gnoblin locks when logind
   asks for the session lock, and locks before a suspend or hibernate: logind's
@@ -59,7 +58,7 @@ unlock.
 
 `ScreenSaver.GetActive` returns `false` for `unlocked` and `true` for
 `covering`, `locked`, or `failsafe`. These are the compositor's
-[lock states](/bridge/#track-lock-state); only `locked` confirms the
+[lock states](/bridge/session-and-windows#track-lock-state); only `locked` confirms the
 lock transition.
 
 Subscribe to `org.freedesktop.ScreenSaver.ActiveChanged` on the session bus at
@@ -72,46 +71,26 @@ If the compositor connection is interrupted, Gnoblin sends no unlock signal.
 It reconnects and reports a changed boolean from the current state. After the
 idle service restarts, read `GetActive` again for its initial value.
 
-To lock with a key of your choice, bind a key in the Lua configuration:
+To lock with a key of your choice, bind a key in `init.ts`:
 
-```lua
-gnoblin.configure {
-    keybindings = {
-        keyboard = {
-            lock_screen = {
-                binding = "<Super>l",
-                callback = function()
-                    gnoblin.session.lock()
-                end,
-            },
+```ts
+import { defineConfig } from "gnoblin";
+
+export default defineConfig({
+    keys: {
+        "Super+l": ({ gnoblin }) => {
+            gnoblin.session.lock();
         },
     },
-}
+});
 ```
 
-To receive the request in your Lua configuration, listen for the event and
-start the locker. This handler starts `swaylock` on each request and logs when
-the lock does not take effect:
-
-```lua
-gnoblin.on("gnoblin.session.lock-requested", function(event)
-    gnoblin.process.spawn({"swaylock", "-f"})
-    event.request:finished():on_complete(function(outcome)
-        if outcome ~= "locked" then
-            print("swaylock did not lock the session")
-        end
-    end)
-end)
-```
-
-`event.request` is a [`Request`](/shell-api/requests) of kind `"lock"`. Its
-`finished()` Operation reports one of two outcomes:
-
-- `"locked"`: the session locked.
-- `"timeout"`: the session did not lock within 30 seconds.
+The TypeScript configuration does not receive `gnoblin.session.lock-requested`. It sees the outcome instead: listen
+for `gnoblin.session.lock_state_changed`, which reports `locked` once the lock took (see
+[Lifecycle events](/events/lifecycle#session)).
 
 A shell process that connects to the [compositor bridge](/bridge/) subscribes
-to the same event.
+to `gnoblin.session.lock-requested` and starts its locker.
 
 Check the result from a terminal:
 

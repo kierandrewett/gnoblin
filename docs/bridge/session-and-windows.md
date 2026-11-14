@@ -120,16 +120,16 @@ event to learn what Mutter actually did.
 ## Read snapshots
 
 Send an empty `arguments` object for reads without filters. `focus.history`
-uses the same filters as the Lua method: string `workspace_id` and
+uses the same filters as the runtime method: string `workspace_id` and
 `monitor_id`, plus integer `limit` from 1 to 256 (default 50).
 
 The response contains the snapshot directly in `result`. List reads return JSON
 arrays, including an empty array when there are no records.
 
 Snapshot reads are available after native control seeds their state. API 1.37
-collection reads also require a connected Lua supervisor.
+collection reads also require a connected shell supervisor.
 
-`windows.list` returns the same filtered, read-only window records as the Lua
+`windows.list` returns the same filtered, read-only window records as the shell
 API.
 
 `launches.snapshot` keeps the collection revision available when the array is
@@ -155,7 +155,7 @@ results.
 
 API 1.1 `windows` sends an initial window snapshot, then window and workspace
 events. Each event includes `revision`, `sequence`, and monotonic `time` in
-microseconds. Socket events use `event` where Lua records use `name`.
+microseconds. Socket events use `event` where runtime records use `name`.
 
 The initial snapshot establishes the window baseline. Existing windows do
 not emit `created` when a client subscribes. Workspace state is not part of
@@ -185,8 +185,8 @@ title and namespace. Records include a revision and do not have application
 IDs. The method accepts exact-string filters `monitor_id`, `namespace`, and
 `layer`.
 
-Request API 1.2 or newer. Every supported client version uses the shared Lua
-snapshot for this read; the Lua supervisor must be connected.
+Request API 1.2 or newer. Every supported client version uses the shared runtime
+snapshot for this read; the shell supervisor must be connected.
 
 ```json
 { "op": "api", "id": "layers", "api_version": { "major": 1, "minor": 2 }, "method": "layer.list", "arguments": {} }

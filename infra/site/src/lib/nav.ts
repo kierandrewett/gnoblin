@@ -88,6 +88,7 @@ export const NAV: NavSection[] = [
                     { label: "Autostart", slug: "config/configure/autostart" },
                     { label: "Compositor", slug: "config/configure/compositor" },
                     { label: "Cursor", slug: "config/configure/cursor" },
+                    { label: "Dialogs", slug: "config/configure/dialogs" },
                     { label: "Layer shell", slug: "config/configure/layer_shell" },
                     { label: "Protocols", slug: "config/configure/protocols" },
                     { label: "XWayland", slug: "config/configure/xwayland" },

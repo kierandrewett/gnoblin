@@ -198,11 +198,9 @@ gnoblinctl config validate FILE
 valid
 ```
 
-A file that does not parse exits 1 with `invalid-config`, and names the line:
-
-```text
-gnoblinctl: invalid-config: /home/node/cli-e2e/bad.lua:1: syntax error near 'is'
-```
+A `.ts` or `.js` file is checked as `gnoblinctl check` checks it, so a syntax error exits 1 with the
+`error: file:line:column` block shown under [What a module check finds](#what-a-module-check-finds). A JSON document
+that does not parse exits 1 with `invalid-config`.
 
 `config reload` with the TypeScript shell reloads the shell first and then the configuration document, and the reply is
 one answer for both:
@@ -404,7 +402,7 @@ error: no JavaScript shell is running
 why:   cannot connect to /run/user/1000/gnoblin/js.sock: No such file or directory
 hint:  the session must run the JavaScript shell, which is the default: unset
        `GNOBLIN_SHELL_VM` (or set it to `js`), keep an `init.ts` rather than
-       only an `init.lua`, and check that `GNOBLIN_JS_CONSOLE` is not `0`
+       only an `init.lua` (the Lua shell), and check that `GNOBLIN_JS_CONSOLE` is not `0`
 ```
 
 The prompt prints each result's text on standard output and each error as an

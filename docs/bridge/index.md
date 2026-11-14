@@ -3,6 +3,10 @@
 Connect a shell or session tool to Gnoblin’s compositor through the local Unix
 socket. The bridge provides versioned snapshots, events, and operations.
 
+This reference describes the socket the Mutter-based compositor serves. Its
+"shell runtime" is the shell VM the session runs, which is the TypeScript shell
+by default (see [TypeScript shell](/typescript-shell)).
+
 ## Start here
 
 - [Connect and frame requests](/bridge/connection): socket path, greeting,
@@ -26,5 +30,5 @@ named events. Use `api` for one versioned method call. The [connection
 reference](/bridge/connection) documents each request and the server greeting.
 
 Before calling an optional method, check `hello.methods`, `hello.events`, and
-`hello.capabilities`. The [Lua runtime reference](/shell-api/) documents the
+`hello.capabilities`. The [shell API reference](/shell-api/) documents the
 same Gnoblin operations for configuration and shell integrations.

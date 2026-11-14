@@ -19,9 +19,9 @@ To include Gnoblin's GTK-based portal backend, use:
 ./build.sh --with-portal
 ```
 
-It requires GTK4 4.22 or newer and `xdg-desktop-portal` 1.21.1 or newer. You
-can instead configure another installed backend for Gnoblin with
-[`gnoblin.configure.portals`](/config/configure/portals).
+It needs the GTK4 and `xdg-desktop-portal` development packages that
+[build from source](install-source.md) lists. You can instead configure another
+installed backend for Gnoblin with the [`portals` key](/config/configure/portals).
 
 To rebuild one upstream component, select its CMake target:
 
@@ -34,8 +34,8 @@ Each target prepares its pinned source and checks its own development
 dependencies. Use the default command after rebuilding to write the complete
 session into the selected prefix.
 
-Native compositor changes require a fresh session. A Lua config reload does not
-load rebuilt libraries. For Lua API methods, events, and operation results, use
+Native compositor changes require a fresh session. A config reload does not
+load rebuilt libraries. For shell API methods, events, and operation results, use
 the [runtime API reference](/shell-api/) and [event catalog](/events/).
 
 ## Preview a change

@@ -148,7 +148,7 @@ Mutter unmaximizes a maximized window, restores its saved pre-snap frame when
 available, or minimizes it. The response includes `id` and `action`, whose
 value is `unmaximize`, `restore`, or `minimize`. The operation fails while the
 session is locked or if the target window has closed. Every
-supported socket client uses the shared Lua operation, which requires the Lua
+supported socket client uses the shared runtime operation, which requires the shell
 supervisor.
 
 Targets and contexts belong to the connection that created them:
@@ -181,16 +181,16 @@ Targets may also set `maximize`, `required_modifiers`, or
 `forbidden_modifiers`. Modifier filters accept only `control`.
 
 The token is bound to the connection, live drag, and runtime generation. The
-first accepted Lua or socket offer owns the drag; only its owner can replace
+first accepted shell or socket offer owns the drag; only its owner can replace
 the target list. Disconnect or replacing the event subscription revokes a
 socket token and clears its offer.
 
 Mutter rechecks the release pointer, modifiers, monitor, and work area before
-applying a match. Trusted keyboard `SnapContext` is available to Lua only.
+applying a match. Trusted keyboard `SnapContext` is available to the shell runtime only.
 
 The socket exposes these reads at the listed API versions:
 
-| API version | Socket method             | Lua read                            | Arguments                                                  |
+| API version | Socket method             | Runtime read                        | Arguments                                                  |
 | ----------- | ------------------------- | ----------------------------------- | ---------------------------------------------------------- |
 | 1.19        | `version`                 | `gnoblin.version()`                 | None                                                       |
 | 1.19        | `capabilities.list`       | `gnoblin.capabilities.list()`       | None                                                       |
@@ -218,16 +218,16 @@ The socket exposes these reads at the listed API versions:
   `revision` on the corresponding lock-state event.
 
 Mutter answers this socket read directly from its current state, so the read
-does not require the Lua supervisor. It reports compositor availability, not
-Lua supervisor health. The socket cannot report a final state after the
+does not require the shell supervisor. It reports compositor availability, not
+shell supervisor health. The socket cannot report a final state after the
 compositor stops; a failed connection means the compositor is unavailable.
 
 ### API 1.20: config reload
 
 API 1.20 adds `runtime.reload_config()` with no arguments. In a standalone
-native session, reload validates and applies the complete Lua configuration
+native session, reload validates and applies the complete shell configuration
 while the session is running. Native settings, policies, autostart entries,
-and Lua callbacks are updated as one transaction.
+and shell callbacks are updated as one transaction.
 
 If loading or applying the candidate fails, Gnoblin keeps the previous
 configuration active. The native open-animation matcher uses updated rules for
@@ -239,7 +239,7 @@ The result contains `ok: true`, `action: "config reload"`, and
 `runtime_generation`. This is the generation the new runtime will receive if
 Gnoblin activates the new config.
 
-The Lua operation succeeds after Gnoblin loads and validates the new config.
+The runtime operation succeeds after Gnoblin loads and validates the new config.
 It does not mean the config is active yet. Subscribe to
 `gnoblin.config.reloaded` to know when the new config is active. If the
 session stops first, Gnoblin discards the new config and does not send this
@@ -256,14 +256,14 @@ API 1.20 clients can subscribe to config reload events:
 - `gnoblin.config.reload_failed` includes `path`, an error string, `sequence`,
   and monotonic-clock `time`.
 
-Lua listeners receive the same event fields.
+shell listeners receive the same event fields.
 If a reload is already in progress, a second request returns an error. It does
 not emit `gnoblin.config.reload_failed` because Gnoblin has not loaded or
 validated a second config.
 
 ### API 1.68: modal key focus contexts
 
-- Lua listeners may receive a `Grant`. API 1.68 socket clients
+- shell listeners may receive a `Grant`. API 1.68 socket clients
   may receive `focus_context`, a token bound to their connection.
 - Gnoblin issues a context only for real, non-repeated key presses and
   releases. Synthetic and input-method events are excluded.
@@ -271,7 +271,7 @@ validated a second config.
   compositor operation can use it once; before, the first operation used it up.
 - Gnoblin still delivers the key event if no context is available.
 
-If the Lua runtime stops while a socket client owns the active session, Gnoblin
+If the shell runtime stops while a socket client owns the active session, Gnoblin
 ends it with `runtime_stopped`.
 
 Modal and bare-Super sessions capture those key events for the shell instead
@@ -366,7 +366,7 @@ already be closing.
 ### API version 1.35: snake_case window fields
 
 Window snapshots and window-change event records now include snake_case fields
-that match Lua records. New clients should use:
+that match runtime records. New clients should use:
 
 - `app_id`, `workspace_id`, and `monitor_id`;
 - `last_user_time`;
@@ -374,7 +374,7 @@ that match Lua records. New clients should use:
 
 API 1.x retains camelCase fields for compatibility. Socket window lifecycle
 events include both naming styles in `window` and `last` records, and list both
-spellings in `changed`. Lua callbacks use snake_case names only.
+spellings in `changed`. shell callbacks use snake_case names only.
 
 ### API version 1.69: focus denial events
 
@@ -409,7 +409,7 @@ The event contains:
 - `features` for rings, strips, and dials, with optional labels;
 - `edition_mode`, which is false for tablet-button help.
 
-Lua callbacks receive the same event. The shell owns the overlay and can
+shell callbacks receive the same event. The shell owns the overlay and can
 dismiss it at any time. Gnoblin retains no OSD actor, so later help presses
 produce new events.
 

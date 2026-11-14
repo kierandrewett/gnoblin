@@ -3,19 +3,30 @@
 Choose a check based on the code you changed. The source build, native tests,
 nested preview, and real login each verify a different part of the session.
 
+## Test the TypeScript shell
+
+The TypeScript shell and the config document have Rust tests. Run them with
+`cargo test -p gnoblin-js -p gnoblin-js-types -p gnoblinctl`. The tests in `crates/gnoblin/tests/js_shell.rs` run the
+shell against a headless compositor in the test's own process, so they need no seat or display. A passing run proves the
+shell's behaviour over the compositor's own sockets; it does not prove a graphical login (see
+[hardware verification](real-hardware-verification.md)).
+
+The nested-session scripts below belong to the Mutter-based session. Four of them (marked "Lua shell") exercise the
+deprecated Lua shell; see [Migrating from Lua](/migrating-from-lua).
+
 ## Available checks
 
-| Command or test                           | What it checks                                                                                         | Requirement                                                        |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| `make check`                              | Source manifests, patch metadata, scripts, configuration, and packaging checks                         | Python and repository tooling                                      |
-| `make test`                               | CTest runtime, Lua configuration, protocol, and CLI tests                                              | A configured build in `build/make`                                 |
-| `tests/test-gnoblin-devkit.sh`            | Config, native controls, and visible workspace animation frames in a fresh nested Gnoblin session      | A working Wayland desktop and `grim`                               |
-| `tests/test-privacy-pipewire.py`          | Live microphone and camera activity through `gnoblin.privacy.state()`                                  | Source build, Wayland desktop, PipeWire tools                      |
-| `tests/test-window-csd-reconstruction.py` | Lua `remove_csd` pixel behavior in a fresh nested Gnoblin session                                      | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
-| `tests/test-window-native-borders.py`     | Lua border rule pixels in a fresh nested Gnoblin session                                               | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
-| `tests/test-window-rule-lifecycle.py`     | Repeated Lua window-rule reloads preserve a live window in a fresh nested session                      | Source-build prefix, Wayland desktop, and Quickshell               |
-| `tests/test-window-native-shadows.py`     | Lua replacement shadow pixels, rule removal, and translucent content in a fresh nested Gnoblin session | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
-| `tests/test-window-manager.sh`            | Mutter unit, Wayland, backend, and focus tests                                                         | A working seat and file-monitoring support                         |
+| Command or test                           | What it checks                                                                                                | Requirement                                                        |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `make check`                              | Source manifests, patch metadata, scripts, configuration, and packaging checks                                | Python and repository tooling                                      |
+| `make test`                               | CTest runtime, configuration, protocol, and CLI tests                                                         | A configured build in `build/make`                                 |
+| `tests/test-gnoblin-devkit.sh`            | Config, native controls, and visible workspace animation frames in a fresh nested Gnoblin session             | A working Wayland desktop and `grim`                               |
+| `tests/test-privacy-pipewire.py`          | Live microphone and camera activity through `gnoblin.privacy.state()`                                         | Source build, Wayland desktop, PipeWire tools                      |
+| `tests/test-window-csd-reconstruction.py` | Lua shell: `remove_csd` pixel behavior in a fresh nested Gnoblin session                                      | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
+| `tests/test-window-native-borders.py`     | Lua shell: border rule pixels in a fresh nested Gnoblin session                                               | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
+| `tests/test-window-rule-lifecycle.py`     | Lua shell: repeated window-rule reloads preserve a live window in a fresh nested session                      | Source-build prefix, Wayland desktop, and Quickshell               |
+| `tests/test-window-native-shadows.py`     | Lua shell: replacement shadow pixels, rule removal, and translucent content in a fresh nested Gnoblin session | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
+| `tests/test-window-manager.sh`            | Mutter unit, Wayland, backend, and focus tests                                                                | A working seat and file-monitoring support                         |
 
 `make` builds the session and `make test` runs the CTest suites after it. The nested pixel tests
 (`test-window-csd-reconstruction`, `test-window-native-borders`, `test-window-rule-lifecycle` and
@@ -28,10 +39,10 @@ GNOBLIN_DEVKIT_EXEC='python3 tests/test-window-csd-reconstruction.py' make previ
 Use the same form for the other three tests. Replace the script name in `GNOBLIN_DEVKIT_EXEC`.
 `test-window-rule-lifecycle` also needs `GNOBLIN_DEVKIT_CONFIG_SOURCE=tests/configs/window-rule-lifecycle`.
 
-## Test the Lua runtime in a preview
+## Test the shell runtime in a preview
 
 Run `tests/test-gnoblin-devkit.sh` to build or reuse the private nested viewer and check
-that a Lua configuration loads and that `gnoblinctl` can query and mutate
+that a configuration loads and that `gnoblinctl` can query and mutate
 compositor state. It uses temporary home and XDG directories, a private D-Bus
 session, and the host Wayland display. It is not a login or a sandbox.
 

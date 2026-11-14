@@ -49,28 +49,28 @@ the connection.
 
 Launch feedback uses Gnoblin's native controller.
 
-API 1.50 routes `launch.begin` and `launch.end` through the Lua runtime. These
+API 1.50 routes `launch.begin` and `launch.end` through the shell runtime. These
 calls return an operation descriptor and complete through
 `gnoblin.operation.completed`; subscribe to that event to receive the result.
 Earlier API versions keep the synchronous native route.
 
-API 1.54 adds the Lua-backed `launch.status` route. Every supported client
-version now reads through the Lua runtime. The request still
+API 1.54 adds the runtime-backed `launch.status` route. Every supported client
+version now reads through the shell runtime. The request still
 enables launch-change events for the connection.
 
 Clients with API 1.29 or newer read `session.status` directly from Mutter
-without the Lua supervisor. The response contains `state`, `lock_available`,
+without the shell supervisor. The response contains `state`, `lock_available`,
 `revision`, and `lock_state` when locking is available. The revision matches
 the lock-state event and remains unchanged between lock transitions.
 
-API 1.52 and newer serve `workspace.list` from the Lua workspace snapshot.
+API 1.52 and newer serve `workspace.list` from the runtime workspace snapshot.
 The reply keeps the `{ "workspaces": [...] }` wrapper and `windows` count.
-Earlier API versions use the native route. Lua callers use
+Earlier API versions use the native route. shell callers use
 `gnoblin.workspaces.list()`.
 
-API 1.53 and newer serve `window.list` from the Lua window snapshot. The reply
+API 1.53 and newer serve `window.list` from the runtime window snapshot. The reply
 keeps its `{ "windows": [...] }` wrapper and fields such as `appId` and
-`geometry`. Older API versions use Mutter's native route. Lua callers use
+`geometry`. Older API versions use Mutter's native route. shell callers use
 `gnoblin.windows.list()`.
 
 `launch.begin` requests cursor feedback for an application hint. It does not
@@ -88,7 +88,7 @@ their documented minimum version. An unsupported or malformed requested version
 returns an error and closes that connection.
 
 Use the API-version tables above to choose a socket method and its minimum
-version. For Lua calls, see the [runtime API reference](/shell-api/).
+version. For runtime calls, see the [runtime API reference](/shell-api/).
 
 ### API version 1.31: privacy stop methods
 

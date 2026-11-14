@@ -221,7 +221,11 @@ See the [TypeSafe API reference](https://api.typesafe.ai/docs) and
 for provider details. Agents only run Jev automatically when `.env` opts
 in with `GNOBLIN_DOCS_JEV_PROVIDER`.
 
-## Lua API registration and annotations
+## Legacy Lua API registration and annotations
+
+The TypeScript shell is the default; this section covers the deprecated Lua shell, which stays for one more release
+(see [Migrating from Lua](docs/migrating-from-lua.md)). Its API types for the TypeScript shell are the
+`gnoblin-js-types` crate and `data/js/gnoblin/*.ts`, not these annotations.
 
 Every function the Lua runtime installs is one row of `lua_api[]` in
 `src/config/lua/gnoblin-lua.c`. A row names the Lua path (`windows.list`, or `Window:close` for a
@@ -371,7 +375,7 @@ The fixture requires one monitor at the origin. It scales screenshot
 coordinates with that monitor and injects focus clicks through Mutter's
 RemoteDesktop test session.
 
-The VM config must load
+The test writes a Lua file, so the VM runs the deprecated Lua shell, and its config must load
 `conf.d/**/*.lua` from `~/.config/gnoblin/init.lua`. Run:
 
 ```sh

@@ -43,14 +43,14 @@ fade-out without help from the client.
 
 ## Disable the protocol
 
-In `init.lua`:
+In `init.ts`:
 
-```lua
-gnoblin.configure {
-    protocols = {
-        ext_background_effect_v1 = false,
-    },
-}
+```ts
+import { defineConfig } from "gnoblin";
+
+export default defineConfig({
+    protocols: { extBackgroundEffectV1: false },
+});
 ```
 
 Log out and back in. This setting controls the global in the Gnoblin session.

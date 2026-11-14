@@ -8,41 +8,40 @@ vendored XML alone does not mean a protocol is available.
 ## Configure availability
 
 Gnoblin enables the listed interfaces by default in its own session. Disable
-one in `init.lua` with its Lua key:
+one in `init.ts` with its key:
 
-```lua
-gnoblin.configure {
-    protocols = {
-        wlr_screencopy = false,
-    },
-}
+```ts
+import { defineConfig } from "gnoblin";
+
+export default defineConfig({
+    protocols: { wlrScreencopy: false },
+});
 ```
 
-Lua underscores become hyphens in the native setting name. Apply changes with
+A camel-case key is the hyphenated native setting name (`wlrScreencopy` is `wlr-screencopy`). Apply changes with
 `gnoblinctl config reload`; this adds or removes the global for new clients.
 Clients that already bound an interface keep their existing connection until
 they disconnect.
 
-Gnoblin rejects a reload that disables `ext_session_lock` while the session is
+Gnoblin rejects a reload that disables `extSessionLock` while the session is
 locked. Unlock first, then reload the configuration.
 
 ## Available interfaces
 
-| Lua key                           | Advertised interface (linked XML)                                                                                                                                                  | XML version | Use it for                                           | Guide                                        |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ---------------------------------------------------- | -------------------------------------------- |
-| `wlr_layer_shell`                 | [`zwlr_layer_shell_v1`](https://github.com/swaywm/wlroots/blob/master/protocol/wlr-layer-shell-unstable-v1.xml)                                                                    | 5           | Bars, docks, launchers, overlays and exclusive zones | [Choose a shell](bring-your-own-shell.md)    |
-| `wlr_screencopy`                  | [`zwlr_screencopy_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/screencopy/wlr-screencopy-unstable-v1.xml)                                         | 3           | Native output capture                                | [Session settings](/guides/session_settings) |
-| `ext_foreign_toplevel_list`       | [`ext_foreign_toplevel_list_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/foreign-toplevel-list/ext-foreign-toplevel-list-v1.xml)                          | 1           | Enumerate toplevel windows                           | [Shell integration](shell-integration.md)    |
-| `wlr_foreign_toplevel_management` | [`zwlr_foreign_toplevel_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/foreign-toplevel-management/wlr-foreign-toplevel-management-unstable-v1.xml) | 3           | Inspect and control windows                          | [Shell integration](shell-integration.md)    |
-| `ext_data_control`                | [`ext_data_control_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/data-control/ext-data-control-v1.xml)                                             | 1           | Clipboard managers                                   | [Session settings](/guides/session_settings) |
-| `ext_idle_notify`                 | [`ext_idle_notifier_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/idle-notify/ext-idle-notify-v1.xml)                                                      | 2           | Idle notifications                                   | [Session settings](/guides/session_settings) |
-| `wlr_gamma_control`               | [`zwlr_gamma_control_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/gamma-control/wlr-gamma-control-unstable-v1.xml)                                | 1           | Per-output gamma                                     | [Session settings](/guides/session_settings) |
-| `wlr_output_power_management`     | [`zwlr_output_power_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/output-power-management/wlr-output-power-management-unstable-v1.xml)             | 1           | Output power state                                   | [Session settings](/guides/session_settings) |
-| `ext_session_lock`                | [`ext_session_lock_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/session-lock/ext-session-lock-v1.xml)                                             | 1           | Secure session locking with an external locker       | [Session locking](/session-lock)             |
-| `ext_background_effect_v1`        | [`ext_background_effect_manager_v1`](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/blob/main/staging/ext-background-effect/ext-background-effect-v1.xml)              | 1           | Client-defined background blur regions               | [Background blur](background-effects.md)     |
-| `xdg_decoration`                  | [`zxdg_decoration_manager_v1`](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/blob/main/staging/xdg-decoration/xdg-decoration-unstable-v1.xml)                         | 1           | Negotiate client or server titlebars                 | None                                         |
-| `kde_server_decoration`           | [`org_kde_kwin_server_decoration_manager`](https://invent.kde.org/libraries/plasma-wayland-protocols/-/blob/master/src/protocols/server-decoration.xml)                            | 1           | Let GTK Wayland windows use compositor decorations   | None                                         |
-| `blur_fade`                       | [`gnoblin_blur_fade_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/blur-fade/gnoblin-blur-fade-v1.xml)                                              | 1           | Per-item blur fade metadata                          | [Background effects](background-effects.md)  |
+| Config key                     | Advertised interface (linked XML)                                                                                                                                                  | XML version | Use it for                                           | Guide                                        |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ---------------------------------------------------- | -------------------------------------------- |
+| `wlrLayerShell`                | [`zwlr_layer_shell_v1`](https://github.com/swaywm/wlroots/blob/master/protocol/wlr-layer-shell-unstable-v1.xml)                                                                    | 5           | Bars, docks, launchers, overlays and exclusive zones | [Choose a shell](bring-your-own-shell.md)    |
+| `wlrScreencopy`                | [`zwlr_screencopy_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/screencopy/wlr-screencopy-unstable-v1.xml)                                         | 3           | Native output capture                                | [Session settings](/guides/session_settings) |
+| `extForeignToplevelList`       | [`ext_foreign_toplevel_list_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/foreign-toplevel-list/ext-foreign-toplevel-list-v1.xml)                          | 1           | Enumerate toplevel windows                           | [Shell integration](shell-integration.md)    |
+| `wlrForeignToplevelManagement` | [`zwlr_foreign_toplevel_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/foreign-toplevel-management/wlr-foreign-toplevel-management-unstable-v1.xml) | 3           | Inspect and control windows                          | [Shell integration](shell-integration.md)    |
+| `extDataControl`               | [`ext_data_control_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/data-control/ext-data-control-v1.xml)                                             | 1           | Clipboard managers                                   | [Session settings](/guides/session_settings) |
+| `extIdleNotify`                | [`ext_idle_notifier_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/idle-notify/ext-idle-notify-v1.xml)                                                      | 2           | Idle notifications                                   | [Session settings](/guides/session_settings) |
+| `wlrGammaControl`              | [`zwlr_gamma_control_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/gamma-control/wlr-gamma-control-unstable-v1.xml)                                | 1           | Per-output gamma                                     | [Session settings](/guides/session_settings) |
+| `wlrOutputPowerManagement`     | [`zwlr_output_power_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/output-power-management/wlr-output-power-management-unstable-v1.xml)             | 1           | Output power state                                   | [Session settings](/guides/session_settings) |
+| `extSessionLock`               | [`ext_session_lock_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/session-lock/ext-session-lock-v1.xml)                                             | 1           | Secure session locking with an external locker       | [Session locking](/session-lock)             |
+| `extBackgroundEffectV1`        | [`ext_background_effect_manager_v1`](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/blob/main/staging/ext-background-effect/ext-background-effect-v1.xml)              | 1           | Client-defined background blur regions               | [Background blur](background-effects.md)     |
+| `xdgDecoration`                | [`zxdg_decoration_manager_v1`](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/blob/main/staging/xdg-decoration/xdg-decoration-unstable-v1.xml)                         | 1           | Negotiate client or server titlebars                 | None                                         |
+| `kdeServerDecoration`          | [`org_kde_kwin_server_decoration_manager`](https://invent.kde.org/libraries/plasma-wayland-protocols/-/blob/master/src/protocols/server-decoration.xml)                            | 1           | Let GTK Wayland windows use compositor decorations   | None                                         |
 
 The XML version is the interface's maximum. Bind the version the running
 compositor advertises, or a lower one.

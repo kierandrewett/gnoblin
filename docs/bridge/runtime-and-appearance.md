@@ -53,7 +53,7 @@ asynchronously with the resulting record. `inherit` clears the runtime
 override, restores a configured boolean if present, or follows the system
 setting otherwise. A runtime request does not write the config file.
 
-Lua changes the same setting with an override. A newer request of either kind
+The shell runtime changes the same setting with an override. A newer request of either kind
 replaces an older one.
 
 Config reload reapplies a boolean `input.orientation_lock` value and ends every
@@ -79,7 +79,7 @@ Request API 1.66 or newer:
 }
 ```
 
-### API version 1.67: Lua runtime health
+### API version 1.67: shell runtime health
 
 Read worker health directly from Mutter with `runtime.status`:
 

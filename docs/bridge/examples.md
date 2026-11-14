@@ -35,7 +35,7 @@ snapshots instead of polling the command.
 
 ## Python: watch windows
 
-The [Python watcher](/bridge/examples#example-watch-the-window-list)
+The [Python watcher](/bridge/examples#python-watch-windows)
 subscribes with `{"op":"windows"}` and prints each full snapshot. Keep its
 connection open for as long as your dock or switcher needs updates. An empty
 `windows` array means no eligible windows, not a request failure.

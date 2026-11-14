@@ -16,31 +16,30 @@ Bingux is one separate project built on these interfaces.
 
 _Bingux is one separate shell example; Gnoblin provides the compositor and window management._
 
-The [configuration reference](/config/configure) describes the Lua
+The [configuration reference](/config/configure) describes the
 settings. The [CLI](cli/index.md) is convenient for commands; the
 [compositor bridge](bridge/index.md) supplies subscriptions and shortcuts
 to a long-running shell. [Wayland protocols](wayland-protocols.md) serve native
-clients, and [Lua event handlers](user-scripts.md) react to compositor events.
+clients, and [event handlers](user-scripts.md) react to compositor events.
 
 ## Assemble a small desktop
 
 Install a bar, launcher, notification daemon and terminal. This example uses
 Waybar, Fuzzel, Mako and Foot. They are independent applications; replace any
 of them with a component you prefer. Put this in a **new**
-`~/.config/gnoblin/init.lua`:
+`~/.config/gnoblin/init.ts`:
 
-```lua
-gnoblin.configure {
-    cursor = {theme = "default", size = 28},
-    autostart = {
-        bar = {command = {"waybar"}},
-        notifications = {command = {"mako"}},
+```ts
+import { defineConfig, spawn } from "gnoblin";
+
+export default defineConfig({
+    cursor: { theme: "default", size: 28 },
+    autostart: ["waybar", "mako"],
+    keys: {
+        "Super+d": spawn("fuzzel"),
+        "Super+Return": spawn("foot"),
     },
-    shortcuts = {
-        launcher = {binding = "<Super>d", command = {"fuzzel"}},
-        terminal = {binding = "<Super>Return", command = {"foot"}},
-    },
-}
+});
 ```
 
 ![Settings app open under Waybar](images/gnoblin-waybar-settings.png)
@@ -54,23 +53,17 @@ Capture this example from the checkout with
 `scripts/capture-doc-examples.sh waybar-settings`. It uses a disposable config and
 profile; see the [capture script](devkit.md#documentation-captures) for setup.
 
-A shell or package that installs Lua files into `/usr/share/gnoblin/conf.d/`
-needs nothing in the user's `init.lua`: Gnoblin loads those files before
-`init.lua` (see [system drop-ins](/guides/files_and_load_order#system-drop-ins)).
+A shell or package ships its settings as a TypeScript module that your `init.ts` imports; there are no system
+drop-in directories. [Load order and merging](/guides/files_and_load_order) explain why the order matters.
 
-If your existing `init.lua` loads other files installed by a shell, keep those
-`gnoblin.load(...)` lines and put your additions after them. Use an imported
-shortcut's existing name when changing its command. [Load order and merging](/guides/files_and_load_order)
-explain why the order matters.
-
-Log in to Gnoblin. The active file is `~/.config/gnoblin/init.lua`. Run
+Log in to Gnoblin. The active file is `~/.config/gnoblin/init.ts`. Run
 `gnoblinctl config reload` to apply edits; Gnoblin reports any
 configuration errors. See the [autostart guide](/guides/autostart) for launch
 timing and named entries.
 
 Waybar's Sway and Hyprland modules expect those compositors' own IPC and do
 not gain that IPC merely by running under Gnoblin. Configure supported generic
-modules or write a module using [window data](bridge/index.md#windows-and-controls).
+modules or write a module using [window data](bridge/session-and-windows.md#read-snapshots).
 
 ## Give each visible function an owner
 
@@ -89,14 +82,14 @@ several languages.
 
 ## Choose the right interface
 
-| Task                                 | Interface                                                  |
-| ------------------------------------ | ---------------------------------------------------------- |
-| Change a window from a script        | `gnoblinctl window ...`                                    |
-| Maintain a live switcher or dock     | Compositor bridge `windows` subscription                   |
-| Place a bar or dock                  | `zwlr_layer_shell_v1`                                      |
-| Capture output with a native client  | `zwlr_screencopy_manager_v1`, subject to its protocol gate |
-| Apply per-app styling                | `seat.data.window_rules` in a [shell file](/user-shell)    |
-| React to a window or workspace event | Lua callback registered with `gnoblin.on`                  |
+| Task                                 | Interface                                                        |
+| ------------------------------------ | ---------------------------------------------------------------- |
+| Change a window from a script        | `gnoblinctl window ...`                                          |
+| Maintain a live switcher or dock     | Compositor bridge `windows` subscription                         |
+| Place a bar or dock                  | `zwlr_layer_shell_v1`                                            |
+| Capture output with a native client  | `zwlr_screencopy_manager_v1`, subject to its protocol gate       |
+| Apply per-app styling                | `rules` in [`init.ts`](/typescript-config#rules)                 |
+| React to a window or workspace event | `on` listener in `init.ts` (see [event handlers](/user-scripts)) |
 
 The desktop portal backend decides what each app may do. Disabling a Wayland
 protocol does not change what a portal backend allows for screen sharing or

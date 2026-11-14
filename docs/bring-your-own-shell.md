@@ -81,7 +81,7 @@ Gnoblin provides window management, locking, desktop services, and a small
 recovery panel for shell setup.
 
 Native notifications and the keyboard-layout popup are optional.
-See [session settings](/guides/session_settings#native-features).
+See [session settings](/guides/session_settings#protocol-settings).
 
 Gnoblin paints a solid black background behind desktop surfaces so areas
 uncovered while windows move are repainted. This is not a wallpaper client.

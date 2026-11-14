@@ -4,7 +4,7 @@ The `windowManagement` key sets the compositor's focus, raise, tiling and titleb
 them, except `attachModalDialogs` and `disableWorkarounds`, which nothing reads.
 
 The `focus`, `edgeTiling` and `dragConstraint` keys of `defineConfig` are the same policy written for the shell: see
-[the shell's own keys](#the-shells-own-keys).
+[the keys the shell owns](#keys-the-shell-owns).
 
 ```ts
 import { defineConfig } from "gnoblin";
@@ -116,7 +116,7 @@ The three titlebar click fields accept these values:
 These settings control what a click on the stock titlebar does. Applications that draw their own client-side
 titlebars handle those clicks themselves, and GTK applications usually do, so this section does not change them.
 
-## The shell's own keys
+## Keys the shell owns
 
 The shell reads this policy from the main seat, so a reload changes its next focus, raise or titlebar decision. The
 `defineConfig` keys below set the same policy for the shell alone. A key you leave out is the seat's.

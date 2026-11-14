@@ -95,7 +95,7 @@ Malformed JSON and oversized input disconnect the client. Other invalid requests
 | 1.13            | `gnoblin.focus.policy-changed`                                                                        |
 | 1.17            | Privacy state reads and `gnoblin.privacy.changed`                                                     |
 | 1.18            | Animation registry, preview operations, and animation lifecycle events                                |
-| 1.19            | Shared Lua reads for version, capabilities, focus, and settings                                       |
+| 1.19            | Shared runtime reads for version, capabilities, focus, and settings                                   |
 | 1.20            | Native `runtime.reload_config` for supported runtime settings                                         |
 | 1.21            | `session.lock` and compositor-confirmed lock-state events                                             |
 | 1.22            | Held and modal shortcut sessions, bare-Super capture, and forwarded key events                        |
@@ -117,33 +117,33 @@ Malformed JSON and oversized input disconnect the client. Other invalid requests
 
 | Minimum version | Added methods or events                                                                                           |
 | --------------- | ----------------------------------------------------------------------------------------------------------------- |
-| 1.37            | Lua snapshot reads for windows, workspaces, monitors, layers, and launches                                        |
-| 1.38            | Adds `window.restore_or_minimize`; all supported clients use the Lua operation                                    |
+| 1.37            | Runtime snapshot reads for windows, workspaces, monitors, layers, and launches                                    |
+| 1.38            | Adds `window.restore_or_minimize`; all supported clients use the runtime operation                                |
 | 1.39            | `launches.snapshot` with collection revision                                                                      |
 | 1.40            | Shared `shortcuts.list` snapshot read                                                                             |
-| 1.41            | Shared `shortcuts.actions` read backed by the installed Lua runtime                                               |
-| 1.46            | Adds shared Lua input reads; all client versions now use them                                                     |
-| 1.47            | Adds Lua-backed `privacy.state`; all client versions now use it                                                   |
-| 1.48            | Adds Lua operation for `window.restore_or_minimize`; all clients now use it                                       |
-| 1.49            | Lua runtime operation for `session.lock`                                                                          |
-| 1.50            | Lua operations for `launch.begin` and `launch.end`                                                                |
-| 1.51            | Added a Lua-backed response adapter; current builds answer directly from Mutter                                   |
-| 1.52            | Adds Lua-backed `workspace.list`; all client versions now use it                                                  |
-| 1.53            | Adds Lua-backed `window.list`; all client versions now use it                                                     |
-| 1.54            | Adds Lua-backed `launch.status`; all client versions now use it                                                   |
-| 1.55            | Lua-backed `shortcut.list` read                                                                                   |
-| 1.56            | Lua-backed `shortcut.actions` read                                                                                |
-| 1.57            | Adds Lua-backed `layer.list`; all client versions now use it                                                      |
-| 1.58            | Adds Lua-backed `monitor.list`; all client versions now use it                                                    |
-| 1.59            | Adds the Lua-backed `window.match` read; all client versions now use it                                           |
-| 1.60            | Basic legacy `window.action` requests use typed Lua operations for all supported client versions                  |
+| 1.41            | Shared `shortcuts.actions` read backed by the installed shell runtime                                             |
+| 1.46            | Adds shared runtime input reads; all client versions now use them                                                 |
+| 1.47            | Adds runtime-backed `privacy.state`; all client versions now use it                                               |
+| 1.48            | Adds runtime operation for `window.restore_or_minimize`; all clients now use it                                   |
+| 1.49            | shell runtime operation for `session.lock`                                                                        |
+| 1.50            | runtime operations for `launch.begin` and `launch.end`                                                            |
+| 1.51            | Added a runtime-backed response adapter; current builds answer directly from Mutter                               |
+| 1.52            | Adds runtime-backed `workspace.list`; all client versions now use it                                              |
+| 1.53            | Adds runtime-backed `window.list`; all client versions now use it                                                 |
+| 1.54            | Adds runtime-backed `launch.status`; all client versions now use it                                               |
+| 1.55            | runtime-backed `shortcut.list` read                                                                               |
+| 1.56            | runtime-backed `shortcut.actions` read                                                                            |
+| 1.57            | Adds runtime-backed `layer.list`; all client versions now use it                                                  |
+| 1.58            | Adds runtime-backed `monitor.list`; all client versions now use it                                                |
+| 1.59            | Adds the runtime-backed `window.match` read; all client versions now use it                                       |
+| 1.60            | Basic legacy `window.action` requests use typed runtime operations for all supported client versions              |
 | 1.61            | Legacy `window.action` adds a resize request routed through `window.resize`                                       |
 | 1.62            | Legacy `window.action` maps move to `window.move`                                                                 |
 | 1.63            | Adds `workspace` and `monitor` actions to `window.action`                                                         |
 | 1.64            | `shortcut.session.end` ends an owned active session without removing its binding                                  |
 | 1.65            | `location.authorize_app` grants location access for a verified application identity                               |
 | 1.66            | `input.orientation_lock` read and `input.set_orientation_lock` update                                             |
-| 1.67            | Native status reads remain available while a Lua worker restarts                                                  |
+| 1.67            | Native status reads remain available while a shell worker restarts                                                |
 | 1.68            | `gnoblin.shortcut.session.key` may carry one-use focus authority                                                  |
 | 1.69            | Adds `gnoblin.window.activation-denied` for strict focus-policy denials                                           |
 | 1.70            | Adds the shared `appearance.color_scheme` read                                                                    |
@@ -164,6 +164,6 @@ Malformed JSON and oversized input disconnect the client. Other invalid requests
 | 1.88            | Adds the `gnoblin.output.added`, `gnoblin.output.changed` and `gnoblin.output.removed` events and output fields   |
 | 1.89            | Changes the results of the session power methods to the real logind answer or error                               |
 | 1.90            | Ends every runtime override at a reload; `monitors.set_privacy_screen` fails when no output has a privacy screen  |
-| 1.91            | Adds the `input.grab` Lua runtime operations and the `gnoblin.input.grab.*` events                                |
+| 1.91            | Adds the `input.grab` shell runtime operations and the `gnoblin.input.grab.*` events                              |
 | 1.92            | A `focus_context` token lasts for its whole gesture: each operation can use it once, not the first one only       |
 | 1.93            | Adds `client_type` (`"wayland"` or `"x11"`) to window records and as a window rule match key                      |

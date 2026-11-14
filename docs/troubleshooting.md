@@ -60,18 +60,18 @@ Check which case applies:
   If the message still appears, include the output of `journalctl -b -u gdm` in
   your bug report.
 
-If no configuration exists, the first login copies the packaged `init.lua.example`
-to `~/.config/gnoblin/init.lua`. An existing file is never replaced.
+If no configuration exists, the session runs the stock TypeScript config. `gnoblinctl config init` writes a starter `~/.config/gnoblin/init.ts`
+and never replaces an existing file.
 
 Gnoblin starts with its embedded configuration before applying the user
-configuration. If Lua loading or native settings fail, it tries the last
+configuration. If loading `init.ts` or the native settings fail, it tries the last
 accepted settings, then keeps embedded defaults if those also fail.
 
 The top-left ImGui recovery panel appears above application and shell layers
 and shows the error. Choose **Open config** to open its folder, fix the config
 in an editor, then choose **Reload** or run
 `gnoblinctl config reload` from a terminal. Gnoblin keeps failed files unchanged. See
-[the TypeScript shell](/typescript-shell#with-no-initts).
+[the TypeScript shell](/typescript-shell#with-no-init-ts).
 
 The panel requires a running compositor. A missing library or a native
 compositor crash prevents it from displaying; inspect the login logs above
@@ -108,24 +108,22 @@ Open the network's sign-in page in a browser. The NetworkManager secret agent ha
 gnoblinctl config reload
 ```
 
-Edit `~/.config/gnoblin/init.lua` and read the reload error. Then check:
+Edit `~/.config/gnoblin/init.ts` and read the reload error. Then check:
 
 - Does this setting restart a child service, and does that affect its clients?
-  See [reload behavior](/guides/files_and_load_order#reload-and-persistence).
-- Did an unmatched include glob load nothing?
+  See [reload behavior](/guides/files_and_load_order#reload).
+- Did an `import` in `init.ts` name a file that is not there?
 - Did a later list replace your rules or shortcuts?
 
 ## My component's shortcuts or rules disappeared
 
-Nonempty lists in `gnoblin.configure` replace earlier lists.
-[Append to the existing list](/guides/files_and_load_order#override-or-append)
-or edit its entries after the component loads.
+A list in your `init.ts` (`rules`, `autostart`) replaces the stock list as a whole. Copy the entries you still want into
+yours; see [how your config combines with the stock one](/typescript-config#how-your-config-combines-with-the-stock-one).
 
 ## A window rule does not match
 
-Every matcher must match. Text matchers use case-sensitive Lua patterns, not
-JavaScript or PCRE regex. Check anchors, escaping (`%.` matches a literal
-dot), and the raw app ID. See [window rules](/guides/window_rules).
+Every matcher must match. A text matcher is a string, which must equal the
+value, or a JavaScript `RegExp`. Check anchors, escaping (`\.` matches a literal dot), and the raw app ID. See [window rules](/guides/window_rules).
 
 ## A shortcut fails
 
@@ -156,7 +154,7 @@ its running process.
 
 The application or panel must draw a translucent background.
 Rule opacity fades text too; it does not replace client background transparency.
-See [blur](/guides/window_effects#blur-and-opacity).
+See [blur](/guides/window_effects#background-blur-from-applications).
 
 ## Gnoblin is slow or stutters after login
 
@@ -272,10 +270,8 @@ xrdb -query | rg Xft.dpi
 
 To draw X11 apps at their normal size, set the X11 scale to 1:
 
-```lua
-gnoblin.configure {
-    xwayland = {scaling_factor = 1},
-}
+```ts
+xwayland: { scalingFactor: 1 },
 ```
 
 Reload the config. Xwayland does not restart, and X11 apps then report
@@ -289,21 +285,12 @@ Use `0` to return to the automatic value. The accepted values are listed in the
 A window from an app that is not the focused app can open behind the focused
 window.
 
-With `focus_new_windows = "prevent"` set, the focused window stays in front
+With `focus: { newWindows: "prevent" }` set, the focused window stays in front
 and Mutter sets an attention flag on the new window. The flag does not produce
 a notification by itself.
 
-The starter config raises modal dialogs, such as a portal prompt, with a
-`gnoblin.window.created` handler in `config/10-windows.lua`. If you replaced
-that file, add the handler back:
-
-```lua
-gnoblin.on("gnoblin.window.created", function(event)
-    if event.window.modal then
-        event.window:set_above(true)
-    end
-end)
-```
+A modal dialog from a background app, such as a portal prompt, is one of these windows. To let it take focus and
+stay in front, set `focus: { newWindows: "allow" }`.
 
 Other windows from background apps stay behind the focused window. Check them
 with `gnoblinctl window list --json`; a hidden window has `"focused": false`.
@@ -316,22 +303,20 @@ The starter config uses `allow`, which lets an app take focus when it opens a
 window. A background app can then interrupt your typing. To keep focus where it
 is, set `prevent`:
 
-```lua
-gnoblin.configure {
-    window_management = {focus_new_windows = "prevent"},
-}
+```ts
+focus: { newWindows: "prevent" },
 ```
 
-See [focus options](/config/configure/window_management#focus-and-raising).
+See [focus options](/typescript-config#focus).
 
 ### `wl-copy` does not return
 
-With `focus_new_windows = "prevent"`, `wl-copy` from `wl-clipboard` can
+With `focus: { newWindows: "prevent" }`, `wl-copy` from `wl-clipboard` can
 block until you stop it. It opens a small window and waits for keyboard focus
 before it sets the clipboard, and `prevent` does not give that window focus. With
 `allow` it exits at once.
 
-To use `wl-copy`, set `focus_new_windows` to `allow`.
+To use `wl-copy`, set `focus.newWindows` to `allow`.
 
 ## An app cannot take a screenshot
 

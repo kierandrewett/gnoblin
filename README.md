@@ -31,11 +31,11 @@ Gnoblin is built on Mutter. It does not ship a desktop shell UI.
 - **Compositor effects.** Configure [blur, opacity, rounded corners, borders,
   shadows and layer animations](docs/guides/window_effects.md) with
   window rules.
-- **Live configuration.** Edit [one Lua file](docs/config.md) for window rules, shortcuts,
+- **Live configuration.** Edit [one TypeScript file](docs/config.md) for window rules, shortcuts,
   autostart, protocol gates and animation behavior. Reload applies the settings
   supported by the runtime; startup-only changes need a new session.
 - **Window control and scripting.** [`gnoblinctl`](docs/cli/index.md) exposes windows, workspaces,
-  monitors and input sources. Lua callbacks and the user-private compositor
+  monitors and input sources. TypeScript listeners and the user-private compositor
   bridge expose supported runtime state and actions.
 - **External desktop controls.** A separate shell or desktop clients provide
   bars, docks, launchers, notifications and other visible controls.
@@ -52,8 +52,9 @@ Gnoblin is built on Mutter. It does not ship a desktop shell UI.
 - **Portal routing.** Gnoblin routes portal interfaces to the backend you choose.
   It does not manage app permissions; the selected backend decides them. The
   Gnoblin backend shows its normal consent dialogs.
-- **Lua runtime.** Configure the compositor and handle supported runtime events
-  with Lua. See [how Lua configuration works](docs/user-scripts.md).
+- **TypeScript shell.** Configure the compositor and handle supported runtime events
+  with TypeScript. See [event handlers](docs/user-scripts.md) and the
+  [TypeScript shell](docs/typescript-shell.md).
 
 ## Supported protocols
 
@@ -101,7 +102,7 @@ setup. `make preview` tries the build in a window first, and
 [Install](docs/installation.md) from the package repository on Fedora, openSUSE, Debian, Arch Linux or Alpine,
 on NixOS, or from source. You can also [try a nested session](docs/devkit.md) without logging out.
 
-[Configuration](docs/config.md) · [Window effects](docs/guides/window_effects.md) · [Lua config](docs/user-scripts.md) · [All docs](docs/index.md)
+[Configuration](docs/config.md) · [Window effects](docs/guides/window_effects.md) · [Event handlers](docs/user-scripts.md) · [All docs](docs/index.md)
 
 Built from the [Gnoblin Mutter fork](https://github.com/kierandrewett/gnoblin-mutter),
 based on [upstream Mutter](https://gitlab.gnome.org/GNOME/mutter).

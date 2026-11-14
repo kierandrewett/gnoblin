@@ -87,7 +87,7 @@ The request fails if the token expired, its scope was already used, it belongs t
 was revoked. The first connection that uses a gesture keeps it; other connections lose their tokens for it.
 
 Config reloads, session locks, subscription changes, and disconnects revoke
-socket tokens. Native Lua `Window:focus(grant)` uses its protected
+socket tokens. Native `Window.focus(grant)` uses its protected
 `Grant` instead of a socket token.
 
 Any compositor-socket client can focus a listed window with an XDG Activation
@@ -95,7 +95,7 @@ token. The client must create the token after user input on one of its Wayland
 surfaces, and the socket connection must belong to that same process.
 
 Mutter verifies the input serial and source surface; Gnoblin consumes the token
-once. Requests fail while the session is locked. Lua callbacks do not receive
+once. Requests fail while the session is locked. shell callbacks do not receive
 raw activation tokens or input serials.
 
 ### API version 1.11: dynamic shortcut bindings
@@ -237,7 +237,7 @@ Use `shortcut.bind` and `shortcut.unbind` to register a connection-owned
 accelerator. The native bridge reports activation through
 `gnoblin.shortcut.binding-activated`. It does not provide modal grabs, held
 modifier sessions, a switcher fallback, or buffered typing. See
-[API version 1.11](#api-version-111-dynamic-shortcuts) for the request shape.
+[API version 1.11](#api-version-1-11-dynamic-shortcut-bindings) for the request shape.
 
 Window, workspace, input, privacy, animation, and
 launch methods are listed in the API-version tables above. They use
@@ -257,14 +257,14 @@ event names and the `layer-lifecycle-events` capability.
 ```
 
 Every event includes state `revision`, `sequence`, and monotonic `time`. Layer
-records use the fields from [`layer.list`](#api-version-12-layer-surfaces).
+records use the fields from [`layer.list`](/bridge/session-and-windows#layer-surfaces).
 
 - `created` includes `layer`. Its stable ID is `layer.id`; it may be unmapped.
 - `changed` includes `layer_id`, the updated `layer`, and a `changed` array of
   fields. Mapping and unmapping are changes; per-record `revision` is excluded.
 - `removed` includes `layer_id` and the final record as `last`.
 
-Lua receives the same events, with its layer snapshot refreshed before each
+The shell runtime receives the same events, with its layer snapshot refreshed before each
 callback.
 
 ## Built-in and configured shortcuts

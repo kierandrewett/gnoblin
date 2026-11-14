@@ -36,7 +36,7 @@ export default defineConfig({
 
 Default: `true`. The compositor accepts this setting but does not read it, so `true` and `false` behave the same.
 To change how far a dragged window may leave the work area, use the `dragConstraint` key of `defineConfig`: see the
-[window management reference](/config/configure/window_management#the-shells-own-keys).
+[window management reference](/config/configure/window_management#keys-the-shell-owns).
 
 ## Protocol settings
 

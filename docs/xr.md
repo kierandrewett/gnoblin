@@ -26,7 +26,7 @@ Release packages do not ship `gnoblin-xr`:
 If `GNOBLIN_XR=1` is set and no binary is found, the guardian logs one warning and the session starts without it.
 
 The setting is an environment variable because the guardian starts before the shell runs its configuration and reads no
-configuration file. A `gnoblin.configure` key would take effect only after a restart of the guardian's child list, which
+configuration file. A configuration key would take effect only after a restart of the guardian's child list, which
 nothing does today.
 
 ### What the program gets
@@ -82,8 +82,7 @@ Logs are under the `xr` name: `[guardian] started xr (generation N, pid P)` and 
 
 ## What the stock shell does
 
-The stock shell's XR side is `data/js/gnoblin/xr.ts` (the TypeScript shell; the Lua shell it replaces has the same
-behaviour in `data/lua/gnoblin/shell/xr.lua`). It reacts to the seat named `xr`.
+The stock shell's XR side is `data/js/gnoblin/xr.ts`. It reacts to the seat named `xr`.
 
 When the seat arrives the shell builds a node named `room` under `root`. The room holds:
 
@@ -124,8 +123,7 @@ gnoblin.extensions.configure("xr", {
 });
 ```
 
-The Lua shell reads the window rule key `xr = false` for the same thing. The TypeScript rules do not have that key
-(`data/js/gnoblin/rules.ts` refuses it by name), so the function is the one way.
+The window rules have no `xr` key (`data/js/gnoblin/rules.ts` refuses it by name), so the function is the one way.
 
 ### The ring
 
@@ -455,7 +453,7 @@ withhold the input for ever.
 `scripts/xr-smoke.sh` runs the whole stack on an Agent37 instance with no GPU, no seat and no headset. It runs as root
 and fakes nothing. The parts are:
 
-- the real compositor on its headless backend, and the stock Lua shell;
+- the real compositor on its headless backend, and the Lua shell with its stock library (the script selects the Lua shell explicitly);
 - two solid-colour Wayland clients (`xr-smoke-client`);
 - `gnoblin-xr`, started by the guardian with `GNOBLIN_XR=1`;
 - Monado with the simulated driver, the null compositor and lavapipe;
