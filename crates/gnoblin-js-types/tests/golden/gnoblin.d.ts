@@ -545,6 +545,8 @@ declare module "gnoblin/schema/tree" {
         readonly screenWidth: number;
         /** Schema name `screen_height`. */
         readonly screenHeight: number;
+        /** Schema name `output_scale`. Default `1`. */
+        readonly outputScale: number;
         /** Default `"normal"`. */
         transform: string;
         /** Default `false`. */
@@ -646,6 +648,10 @@ declare module "gnoblin/schema/tree" {
         tiled: boolean;
         /** Default `false`. */
         readonly unresponsive: boolean;
+        /** Schema name `parent_window`. */
+        readonly parentWindow: Window | null;
+        /** Schema name `from_launcher`. Default `false`. */
+        readonly fromLauncher: boolean;
         focus(): Reply;
         close(): Reply;
         kill(): Reply;

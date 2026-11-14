@@ -600,6 +600,7 @@ object screen since 0.2.0 secret false
   property screen_y type double since 0.2.0 secret false
   property screen_width type double since 0.2.0 secret false
   property screen_height type double since 0.2.0 secret false
+  property output_scale type double since 0.2.0 secret false
   property transform type string since 0.2.0 secret false
   property primary type bool since 0.2.0 secret false
   property enabled type bool since 0.2.0 secret false
@@ -761,6 +762,8 @@ object window since 0.2.0 secret false
   property workspace type object:workspace since 0.2.0 secret false
   property tiled type bool since 0.2.0 secret false
   property unresponsive type bool since 0.2.0 secret false
+  property parent_window type object:window since 0.2.0 secret false
+  property from_launcher type bool since 0.2.0 secret false
   method focus since 0.2.0 secret false function false
   method close since 0.2.0 secret false function false
   method kill since 0.2.0 secret false function false
@@ -2265,13 +2268,15 @@ message Screen {
     // since 0.2.0
     double screen_height = 27;
     // since 0.2.0
-    string transform = 28;
+    double output_scale = 28;
     // since 0.2.0
-    bool primary = 29;
+    string transform = 29;
     // since 0.2.0
-    bool enabled = 30;
+    bool primary = 30;
     // since 0.2.0
-    string mode = 31;
+    bool enabled = 31;
+    // since 0.2.0
+    string mode = 32;
   }
 
   // Method `capture`, since 0.2.0.
@@ -2629,6 +2634,10 @@ message Window {
     bool tiled = 26;
     // since 0.2.0
     bool unresponsive = 27;
+    // since 0.2.0; object id of `window`
+    string parent_window = 28;
+    // since 0.2.0
+    bool from_launcher = 29;
   }
 
   // Method `focus`, since 0.2.0.

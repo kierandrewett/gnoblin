@@ -105,6 +105,54 @@ impl Shell {
         wait("a window node", || self.window_node())
     }
 
+    /// Every window node the compositor announced, in the order it did.
+    pub fn window_nodes(&self) -> Vec<NodeId> {
+        self.batches
+            .lock()
+            .expect("the batch lock is not poisoned")
+            .iter()
+            .flat_map(|batch| &batch.changes)
+            .filter_map(|change| match change {
+                TreeChange::Created { node, class, .. } if class == "window" => Some(*node),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Waits until `count` window nodes were announced, and returns them in order.
+    #[track_caller]
+    pub fn wait_window_nodes(&self, count: usize) -> Vec<NodeId> {
+        wait(&format!("{count} window node(s)"), || {
+            Some(self.window_nodes()).filter(|nodes| nodes.len() >= count)
+        })
+    }
+
+    /// The value the compositor last published for `key` on `node`: its last `set`.
+    pub fn published(&self, node: NodeId, key: &str) -> Option<TreeValue> {
+        self.batches
+            .lock()
+            .expect("the batch lock is not poisoned")
+            .iter()
+            .flat_map(|batch| &batch.changes)
+            .filter_map(|change| match change {
+                TreeChange::Set {
+                    node: set,
+                    key: name,
+                    value,
+                } if *set == node && name == key => Some(value.clone()),
+                _ => None,
+            })
+            .last()
+    }
+
+    /// Waits until the last value published for `key` on `node` is `value`.
+    #[track_caller]
+    pub fn wait_published(&self, node: NodeId, key: &str, value: &TreeValue) {
+        wait(&format!("{key} = {value:?} on {node:?}"), || {
+            (self.published(node, key).as_ref() == Some(value)).then_some(())
+        });
+    }
+
     /// The names of the requests the compositor delivered for `node`, in the order they arrived.
     pub fn requests(&self, node: NodeId) -> Vec<&'static str> {
         self.batches

@@ -53,6 +53,15 @@ type = "double"
 since = "0.2.0"
 readonly = true
 
+# The factor the output composes at: 2 is a HiDPI panel. The compositor publishes it with the mode. It is not `scale`,
+# which the `node` base already holds as the three-axis scale of the node's own picture.
+[[object.property]]
+name = "output_scale"
+type = "double"
+since = "0.2.0"
+default = 1.0
+readonly = true
+
 [[object.property]]
 name = "transform"
 type = "string"

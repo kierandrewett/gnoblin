@@ -460,6 +460,16 @@ impl HeadlessHandle {
         Ok(())
     }
 
+    /// Connects a 60 Hz output of `width` by `height` at scale one on the next dispatch: the output a test that needs
+    /// no particular mode or scale asks for.
+    ///
+    /// # Errors
+    ///
+    /// [`BackendError::DegenerateMode`] when either side is zero.
+    pub fn connect_virtual_output(&self, connector: &str, width: u32, height: u32) -> Result<(), BackendError> {
+        self.connect_output(connector, DisplayMode::new(width, height, 60_000), Scale::integral(1))
+    }
+
     /// Disconnects an output on the next dispatch.
     pub fn disconnect_output(&self, output: OutputId) {
         self.requests().disconnect.push(output);

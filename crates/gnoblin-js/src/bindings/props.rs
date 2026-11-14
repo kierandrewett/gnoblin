@@ -62,6 +62,10 @@ const WINDOW: &[JsPropDef] = &[
     animated("width", JsPropKind::Double),
     animated("height", JsPropKind::Double),
     def("workspace", JsPropKind::Node, false),
+    // The window this one is a dialog of, and whether a launcher's activation token opened it. The compositor writes
+    // both from the client's protocol requests.
+    def("parent_window", JsPropKind::Node, false),
+    def("from_launcher", JsPropKind::Flag, false),
     // Written by the shell: the window sits in a tiled layout, so its client drops its border and rounding.
     def("tiled", JsPropKind::Flag, true),
     // A hidden node is neither drawn nor hit.
@@ -82,13 +86,21 @@ const WINDOW: &[JsPropDef] = &[
     def("skipped", JsPropKind::Texts, false),
 ];
 
-/// An output. Its size is the work area the layout driver tiles in, `primary` picks the screen the primary display
-/// shows, and its `name` is what a workspace set's entry calls it.
+/// An output. Its rectangle is the work area the layout driver tiles in, `primary` picks the screen the primary display
+/// shows, and `name` is what a workspace set's entry calls it. The compositor owns every property.
 const SCREEN: &[JsPropDef] = &[
     def("name", JsPropKind::Text, false),
+    def("make", JsPropKind::Text, false),
+    def("model", JsPropKind::Text, false),
+    def("x", JsPropKind::Double, false),
+    def("y", JsPropKind::Double, false),
     def("width", JsPropKind::Double, false),
     def("height", JsPropKind::Double, false),
+    def("output_scale", JsPropKind::Double, false),
+    def("transform", JsPropKind::Text, false),
+    def("mode", JsPropKind::Text, false),
     def("primary", JsPropKind::Flag, false),
+    def("enabled", JsPropKind::Flag, false),
 ];
 
 /// A plain node: what the XR room is. A script sets its name, placement and visibility, and nothing else.
@@ -199,7 +211,9 @@ pub(crate) fn may_call(class: &str, method: &str) -> bool {
 /// The value of a property no write has changed from its schema default.
 pub(crate) fn default_value(def: &JsPropDef) -> MirrorValue {
     match (def.name, def.kind) {
-        ("visible", _) => MirrorValue::Bool(true),
+        ("visible", _) | ("enabled", _) => MirrorValue::Bool(true),
+        ("output_scale", _) => MirrorValue::Double(1.0),
+        ("transform", _) => MirrorValue::Text("normal".to_owned()),
         ("opacity", _) => MirrorValue::Double(1.0),
         ("input", _) => MirrorValue::Bool(true),
         ("metres", _) => MirrorValue::Double(0.001),

@@ -25,13 +25,50 @@
 //!    `a_headless_session_that_cannot_make_the_renderer_is_refused_naming_the_setting`.
 
 use gnoblin_backend::Backend as BackendTrait;
-use gnoblin_backend::headless::{Headless, HeadlessConfig};
+use gnoblin_backend::headless::{Headless, HeadlessConfig, HeadlessHandle};
 use gnoblin_backend::nested::{Nested, NestedConfig};
 use gnoblin_config::RendererChoice;
 use gnoblin_render_frame::frame::SecureTreatment;
 use gnoblin_wayland::State;
 
 use crate::Error;
+
+/// Where a test hotplugs outputs of a headless session it started: filled when the session builds its backend, empty
+/// before that and for a backend with no virtual outputs. Every clone shares one session.
+#[derive(Clone, Debug, Default)]
+pub struct OutputTap {
+    handle: std::sync::Arc<std::sync::Mutex<Option<HeadlessHandle>>>,
+}
+
+impl OutputTap {
+    /// A tap with no session behind it.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Connects a 60 Hz virtual output at scale one on the session's next turn. `false` when no headless session
+    /// serves yet, or the size has a zero side.
+    pub fn connect(&self, connector: &str, width: u32, height: u32) -> bool {
+        let handle = self.handle.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        handle
+            .as_ref()
+            .is_some_and(|handle| handle.connect_virtual_output(connector, width, height).is_ok())
+    }
+
+    /// Disconnects an output on the session's next turn. `false` when no headless session serves yet.
+    pub fn disconnect(&self, output: gnoblin_types::OutputId) -> bool {
+        let handle = self.handle.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        handle.as_ref().is_some_and(|handle| {
+            handle.disconnect_output(output);
+            true
+        })
+    }
+
+    fn fill(&self, handle: HeadlessHandle) {
+        *self.handle.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(handle);
+    }
+}
 
 /// Builds the [`Error::RendererRefused`] for `renderer` on `backend`, naming the
 /// `compositor.renderer` setting. `reason` says why that backend cannot draw with it.
@@ -81,6 +118,20 @@ impl Backend {
         renderer: RendererChoice,
         treatment: SecureTreatment,
     ) -> Result<Box<dyn BackendTrait<State>>, Error> {
+        self.build_tapped(renderer, treatment, None)
+    }
+
+    /// [`Backend::build`] that also hands a headless backend's hotplug handle to `tap`.
+    ///
+    /// # Errors
+    ///
+    /// The same refusals as [`Backend::build`].
+    pub fn build_tapped(
+        self,
+        renderer: RendererChoice,
+        treatment: SecureTreatment,
+        tap: Option<&OutputTap>,
+    ) -> Result<Box<dyn BackendTrait<State>>, Error> {
         match self {
             Backend::Headless => {
                 let config = HeadlessConfig {
@@ -88,7 +139,12 @@ impl Backend {
                     ..HeadlessConfig::from_setting(renderer)
                 };
                 match Headless::with_config(config) {
-                    Ok(headless) => Ok(Box::new(headless)),
+                    Ok(headless) => {
+                        if let Some(tap) = tap {
+                            tap.fill(headless.handle());
+                        }
+                        Ok(Box::new(headless))
+                    }
                     Err(_) => Err(refused(
                         renderer,
                         "headless",

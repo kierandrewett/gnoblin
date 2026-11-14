@@ -77,6 +77,26 @@ since = "0.2.0"
 default = false
 readonly = true
 
+# The window this one is a dialog of: set by the client with `xdg_toplevel.set_parent` or `xdg-foreign`, written by the
+# compositor and null when the window has no parent or its parent is gone. The shell centres a dialog in its parent,
+# moves the two together and keeps them on one output.
+[[object.property]]
+name = "parent_window"
+type = "object:window"
+since = "0.2.0"
+readonly = true
+
+# Whether the window opened on an activation token that the session's launcher minted. The compositor sets it when the
+# window redeems a `xdg_activation_v1` token that a privileged or trusted connection (the launcher or the shell as a
+# Wayland client) asked for, so the shell's `focus-new-windows` policy can tell a launched window from one the client
+# opened itself. A program started with `gnoblin.spawn` is not marked: the shell's spawner does not mint a token.
+[[object.property]]
+name = "from_launcher"
+type = "bool"
+since = "0.2.0"
+default = false
+readonly = true
+
 # Give the window keyboard focus. The shell's focus policy decides.
 [[object.method]]
 name = "focus"

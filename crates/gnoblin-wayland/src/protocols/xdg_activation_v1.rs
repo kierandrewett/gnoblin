@@ -109,6 +109,9 @@ struct XdgActivationV1Minted {
     token: TokenId,
     /// The session leader it was minted for; zero until launch attribution lands.
     leader: u32,
+    /// Whether a privileged or trusted connection (the session's launcher or shell) minted it, rather than an
+    /// application with a click's serial. A window that redeems such a token was started by a launcher.
+    launcher: bool,
 }
 
 /// The activation tokens and the authority that decides about them.
@@ -241,6 +244,7 @@ impl XdgActivationHandler for State {
             XdgActivationV1Minted {
                 token: token_id,
                 leader,
+                launcher: privileged,
             },
         );
         log::debug!(area = "activation", leader, ?serial, "token minted");
@@ -291,6 +295,12 @@ impl State {
             match window {
                 Some(window) => {
                     log::debug!(area = "activation", %window, "allowed");
+                    if minted.launcher {
+                        // The window answers a token the session's own launcher minted for the program it started,
+                        // which is the only launch attribution the compositor has; the shell reads it as
+                        // `from_launcher`.
+                        self.composer.set_window_from_launcher(window);
+                    }
                     self.window_request(window, WindowRequest::Activate);
                 }
                 None => {

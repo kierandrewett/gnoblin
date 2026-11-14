@@ -109,7 +109,7 @@ pub use accessibility::{
     configure_from_environment as configure_accessibility_from_environment,
     configure_from_store as configure_accessibility_from_store,
 };
-pub use backend::Backend;
+pub use backend::{Backend, OutputTap};
 pub use bell::{
     configure_from_environment as configure_bell_from_environment, configure_from_store as configure_bell_from_store,
 };
@@ -232,6 +232,9 @@ pub struct SessionConfig {
     /// A tap a test feeds the input events a real device sends and the EIS protocol cannot carry (a touchpad's
     /// gestures), or [`None`] for the usual session. The session fills it when it starts serving.
     pub input_tap: Option<InputTap>,
+    /// A tap a test hotplugs virtual outputs of a headless session with, or [`None`] for the usual session. The
+    /// session fills it when it builds its backend.
+    pub output_tap: Option<OutputTap>,
 }
 
 /// Where a test sends input a device would, into a running session.
@@ -402,12 +405,13 @@ impl Compositor {
             .and_then(|path| path.file_name())
             .map(|name| name.to_string_lossy().into_owned());
         let backend_name = config.backend.name();
-        let backend = config.backend.build(
+        let backend = config.backend.build_tapped(
             config.renderer.unwrap_or(gnoblin_config::RendererChoice::Auto),
             config.secure_treatment.map_or_else(
                 Default::default,
                 gnoblin_backend::render::renderer::secure_treatment_from_setting,
             ),
+            config.output_tap.as_ref(),
         )?;
         let wayland = gnoblin_wayland::Config {
             observer: Some(observer),

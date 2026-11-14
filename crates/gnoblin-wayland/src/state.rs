@@ -62,7 +62,7 @@ use smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrabState;
 use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::xwm::X11Surface;
 
-use gnoblin_backend::render::compose::{Composer, Content, MainSeatPolicy};
+use gnoblin_backend::render::compose::{Composer, Content, MainSeatPolicy, ScreenInfo};
 use gnoblin_backend::{Host, InputEvent, TouchPhase};
 use gnoblin_config::{Protocols, TitlebarAction};
 use gnoblin_input::Activity;
@@ -1293,6 +1293,10 @@ impl State {
         for entry in &mut self.outputs {
             entry.primary = layout.primary == Some(entry.backend);
         }
+        let backends: Vec<OutputId> = self.outputs.iter().map(|entry| entry.backend).collect();
+        for backend in backends {
+            self.publish_screen(backend);
+        }
         // The lock hears the whole layout once, after every change landed: it restarts
         // its presentation barrier from this set, so a hotplugged output is covered
         // before it shows anything.
@@ -1364,6 +1368,7 @@ impl State {
             primary: false,
             rect,
         });
+        self.publish_screen(output.id);
         let effects = self.with_seat(|fallback, seat| fallback.output_added(output.id, rect, seat));
         self.apply_decided(effects);
     }
@@ -1386,6 +1391,23 @@ impl State {
         );
         self.composer.set_output_scale(backend, output.scale);
         self.move_output(index, rect);
+        self.publish_screen(backend);
+    }
+
+    /// Publishes an output's make, model, mode, scale and whether it is primary on its screen node.
+    fn publish_screen(&mut self, backend: OutputId) {
+        let Some(entry) = self.outputs.iter().find(|entry| entry.backend == backend) else {
+            return;
+        };
+        let physical = entry.output.physical_properties();
+        let info = ScreenInfo {
+            make: physical.make,
+            model: physical.model,
+            mode: mode_text(entry.mode),
+            scale: entry.scale.as_f64(),
+            primary: entry.primary,
+        };
+        self.composer.set_output_info(backend, &info);
     }
 
     /// Applies a new layout rectangle to an output that is already connected.
@@ -2257,6 +2279,9 @@ impl State {
                 .unwrap_or_default()
         });
         let transient_for = parent.as_ref().and_then(|parent| self.window_of(parent));
+        // The shell reads the relation as the node's `parent_window`, so it can centre a dialog in its parent and
+        // move the two together; the record below keeps it for the window manager's own policy.
+        self.composer.set_window_parent(window, transient_for);
         // xdg_toplevel.set_parent makes a window transient, so any parented toplevel is a
         // dialog unless it asked to be modal; a parentless toplevel is normal whatever hint it sent.
         let kind = match (transient_for, hint) {
@@ -3186,6 +3211,16 @@ fn remove_disabled_globals(display_handle: &DisplayHandle, protocols: &Protocols
 }
 
 /// The Smithay mode for a backend output.
+/// A mode as the screen node's `mode` reads: `WxH@Hz`, the refresh in whole hertz when it is one.
+fn mode_text(mode: gnoblin_output::DisplayMode) -> String {
+    let hertz = f64::from(mode.refresh_mhz) / 1000.0;
+    if mode.refresh_mhz % 1000 == 0 {
+        format!("{}x{}@{}", mode.width, mode.height, mode.refresh_mhz / 1000)
+    } else {
+        format!("{}x{}@{hertz:.3}", mode.width, mode.height)
+    }
+}
+
 fn smithay_mode(output: &gnoblin_backend::Output) -> Mode {
     Mode {
         size: SmithaySize::from((output.mode.width as i32, output.mode.height as i32)),

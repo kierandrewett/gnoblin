@@ -355,6 +355,15 @@ struct WindowNode {
     published_state: Option<[bool; 4]>,
     /// Whether `unresponsive` was last published to the node as true. A node starts false.
     published_unresponsive: bool,
+    /// The window this one is a dialog of (`xdg_toplevel.set_parent`, xdg-foreign), by identity: the parent may map
+    /// after the dialog, so the node it names is looked up when the relation is published.
+    parent: Option<WindowId>,
+    /// The parent's node last published to this node's `parent_window`. `None` is a window with no parent.
+    published_parent: Option<NodeId>,
+    /// Whether the window opened on a token a launcher minted, as the shell reads it in `from_launcher`.
+    from_launcher: bool,
+    /// Whether `from_launcher` was last published to the node as true. A node starts false.
+    published_from_launcher: bool,
     /// The rectangle the window's node takes hits over beyond its own bounds, in surface-local pixels: the surface
     /// tree's, when a subsurface reaches past the root surface.
     hit_extent: Option<Rect>,
@@ -381,6 +390,18 @@ pub struct MainSeatPolicy {
     pub right_click: &'static str,
     /// The declared workspaces, one `id:name` item each. Empty when the configuration declares none.
     pub workspaces: Vec<String>,
+}
+
+/// What an output is, beyond its rectangle: the values the compositor publishes on the output's screen node.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScreenInfo {
+    pub make: String,
+    pub model: String,
+    /// The mode being driven, as `WxH@Hz`.
+    pub mode: String,
+    pub scale: f64,
+    /// Whether the layout's primary logical monitor is on this output.
+    pub primary: bool,
 }
 
 /// The session's scene and the windows it draws.
@@ -642,6 +663,35 @@ impl Composer {
             });
         }
         self.publish_seat_screen();
+    }
+
+    /// Publishes what an output is beyond its rectangle to its screen node: the maker and model, the mode as
+    /// `WxH@Hz`, the scale, the transform and whether it is the primary output. Each value that differs from what
+    /// the node holds is stored and announced as a `set`; an output with no screen node yet publishes nothing.
+    pub fn set_output_info(&mut self, output: OutputId, info: &ScreenInfo) {
+        let Some(node) = self.screens.get(&output).copied() else {
+            return;
+        };
+        let values = [
+            ("make", TreeValue::Text(info.make.clone())),
+            ("model", TreeValue::Text(info.model.clone())),
+            ("mode", TreeValue::Text(info.mode.clone())),
+            ("output_scale", TreeValue::Double(info.scale)),
+            ("transform", TreeValue::Text("normal".to_owned())),
+            ("primary", TreeValue::Bool(info.primary)),
+            ("enabled", TreeValue::Bool(true)),
+        ];
+        for (key, value) in values {
+            if self.scene.value(node, key) == Some(&value) {
+                continue;
+            }
+            let _ = self.scene.set_value(node, key, value.clone());
+            self.tree_changes.push(TreeChange::Set {
+                node,
+                key: key.to_owned(),
+                value,
+            });
+        }
     }
 
     /// Damages an output in full, so its next frame repaints every pixel.
@@ -1332,6 +1382,10 @@ impl Composer {
                 app_id: String::new(),
                 published_state: None,
                 published_unresponsive: false,
+                parent: None,
+                published_parent: None,
+                from_launcher: false,
+                published_from_launcher: false,
                 applied_size: None,
                 published_geometry: None,
                 hit_extent: None,
@@ -1366,6 +1420,8 @@ impl Composer {
             self.drop_node(node);
         }
         self.order.retain(|candidate| *candidate != window);
+        // A dialog whose parent is gone has no parent: the shell is told, as it is of any other change.
+        self.publish_dialogs_of(window);
     }
 
     /// Removes a window's node from the scene, recording its destruction for the tree.
@@ -1470,6 +1526,80 @@ impl Composer {
             key: "unresponsive".to_owned(),
             value: TreeValue::Bool(unresponsive),
         });
+    }
+
+    /// Records the window `window` is a dialog of (`xdg_toplevel.set_parent` or xdg-foreign), or that it has none, and
+    /// publishes it as the node's `parent_window`. A parent that has no node yet is published when it gets one.
+    pub fn set_window_parent(&mut self, window: WindowId, parent: Option<WindowId>) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        if entry.parent == parent {
+            return;
+        }
+        entry.parent = parent;
+        self.publish_relations(window);
+    }
+
+    /// Marks the window as opened on a token a launcher minted, and publishes it as the node's `from_launcher`. The
+    /// mark stays for the life of the window.
+    pub fn set_window_from_launcher(&mut self, window: WindowId) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        if entry.from_launcher {
+            return;
+        }
+        entry.from_launcher = true;
+        self.publish_relations(window);
+    }
+
+    /// Publishes the node references and marks a window's record holds: `parent_window` as the parent's node (none
+    /// while the parent has no node) and `from_launcher`. Only a change is published, and a window with no node waits.
+    fn publish_relations(&mut self, window: WindowId) {
+        let parent_node = self
+            .windows
+            .get(&window)
+            .and_then(|entry| entry.parent)
+            .and_then(|parent| self.windows.get(&parent))
+            .and_then(|parent| parent.node);
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        let Some(node) = entry.node else {
+            return;
+        };
+        if entry.published_parent != parent_node {
+            entry.published_parent = parent_node;
+            let _ = self.scene.set_reference(node, "parent_window", parent_node);
+            self.tree_changes.push(TreeChange::Set {
+                node,
+                key: "parent_window".to_owned(),
+                value: TreeValue::Node(parent_node),
+            });
+        }
+        if entry.from_launcher && !entry.published_from_launcher {
+            entry.published_from_launcher = true;
+            let _ = self.scene.set_value(node, "from_launcher", TreeValue::Bool(true));
+            self.tree_changes.push(TreeChange::Set {
+                node,
+                key: "from_launcher".to_owned(),
+                value: TreeValue::Bool(true),
+            });
+        }
+    }
+
+    /// Publishes the relation of every window that is a dialog of `parent`, now that its node exists or is gone.
+    fn publish_dialogs_of(&mut self, parent: WindowId) {
+        let dialogs: Vec<WindowId> = self
+            .windows
+            .iter()
+            .filter(|(_, entry)| entry.parent == Some(parent))
+            .map(|(window, _)| *window)
+            .collect();
+        for dialog in dialogs {
+            self.publish_relations(dialog);
+        }
     }
 
     /// The `[fullscreen, maximised, minimised]` flags the shell holds on a window's node, or
@@ -3565,6 +3695,8 @@ impl Composer {
                             self.retarget(window, true);
                         }
                         self.sync_tree(window);
+                        self.publish_relations(window);
+                        self.publish_dialogs_of(window);
                     }
                     Err(error) => {
                         log::warn!(area = "render", %window, ?error, "the window's node is refused; it is not drawn");
@@ -6041,6 +6173,139 @@ mod tests {
             TreeChange::Set { node: set, key, value: TreeValue::Text(text) }
                 if *set == node && key == "app_id" && text == "org.gnoblin.Alpha"
         )));
+    }
+
+    /// The node a `parent_window` set named last, over the changes taken.
+    fn parent_published(changes: &[TreeChange], node: NodeId) -> Option<Option<NodeId>> {
+        changes.iter().rev().find_map(|change| match change {
+            TreeChange::Set {
+                node: set,
+                key,
+                value: TreeValue::Node(target),
+            } if *set == node && key == "parent_window" => Some(*target),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn a_dialog_publishes_its_parents_node_once_both_have_nodes() {
+        let (mut composer, _) = screen();
+        let (parent, dialog) = (WindowId::new(1), WindowId::new(2));
+        composer.insert_window(parent, Rect::new(10, 10, 100, 100));
+        composer.insert_window(dialog, Rect::new(20, 20, 50, 50));
+        // The relation is known before either window has content: nothing is published until the nodes exist.
+        composer.set_window_parent(dialog, Some(parent));
+        composer.set_window_content(dialog, Some(content()));
+        let dialog_node = node_of(&composer, dialog);
+        let changes = composer.take_tree_changes();
+        assert_eq!(
+            parent_published(&changes, dialog_node),
+            None,
+            "the parent has no node yet"
+        );
+        composer.set_window_content(parent, Some(content()));
+        let parent_node = node_of(&composer, parent);
+        let changes = composer.take_tree_changes();
+        assert_eq!(
+            parent_published(&changes, dialog_node),
+            Some(Some(parent_node)),
+            "the dialog hears of its parent when the parent's node appears: {changes:?}"
+        );
+        assert_eq!(
+            composer.scene.reference(dialog_node, "parent_window"),
+            Some(parent_node)
+        );
+    }
+
+    #[test]
+    fn a_dialog_with_a_node_and_a_parent_with_a_node_publishes_at_once_and_clears_with_the_parent() {
+        let (mut composer, _) = screen();
+        let (parent, dialog) = (WindowId::new(1), WindowId::new(2));
+        for window in [parent, dialog] {
+            composer.insert_window(window, Rect::new(10, 10, 100, 100));
+            composer.set_window_content(window, Some(content()));
+        }
+        let (parent_node, dialog_node) = (node_of(&composer, parent), node_of(&composer, dialog));
+        composer.take_tree_changes();
+        composer.set_window_parent(dialog, Some(parent));
+        let changes = composer.take_tree_changes();
+        assert_eq!(parent_published(&changes, dialog_node), Some(Some(parent_node)));
+        composer.set_window_parent(dialog, Some(parent));
+        assert!(
+            composer.take_tree_changes().is_empty(),
+            "an unchanged relation publishes nothing"
+        );
+        composer.remove_window(parent);
+        let changes = composer.take_tree_changes();
+        assert_eq!(
+            parent_published(&changes, dialog_node),
+            Some(None),
+            "a dialog whose parent closed has no parent: {changes:?}"
+        );
+        assert_eq!(composer.scene.reference(dialog_node, "parent_window"), None);
+    }
+
+    #[test]
+    fn a_window_marked_from_a_launcher_publishes_the_mark_once_it_has_a_node() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(10, 10, 100, 100));
+        composer.set_window_from_launcher(window);
+        composer.set_window_content(window, Some(content()));
+        let node = node_of(&composer, window);
+        let changes = composer.take_tree_changes();
+        let marks = |changes: &[TreeChange]| {
+            changes
+                .iter()
+                .filter(|change| {
+                    matches!(change, TreeChange::Set { node: set, key, value: TreeValue::Bool(true) }
+                        if *set == node && key == "from_launcher")
+                })
+                .count()
+        };
+        assert_eq!(marks(&changes), 1, "{changes:?}");
+        composer.set_window_from_launcher(window);
+        assert_eq!(marks(&composer.take_tree_changes()), 0, "the mark is published once");
+    }
+
+    #[test]
+    fn an_output_publishes_its_identity_mode_scale_and_primary_flag_only_when_they_change() {
+        let mut composer = Composer::new();
+        let output = OutputId::new(7);
+        let info = ScreenInfo {
+            make: "Gnoblin".to_owned(),
+            model: "HEADLESS-1".to_owned(),
+            mode: "800x600@60".to_owned(),
+            scale: 1.0,
+            primary: true,
+        };
+        composer.set_output_info(output, &info);
+        assert!(
+            composer.take_tree_changes().is_empty(),
+            "an output with no screen node publishes nothing"
+        );
+        composer.set_output(output, Rect::new(0, 0, 800, 600));
+        composer.take_tree_changes();
+        composer.set_output_info(output, &info);
+        let node = composer.screen_node(output).expect("the output has a screen node");
+        assert_eq!(composer.scene.text(node, "make"), Some("Gnoblin"));
+        assert_eq!(composer.scene.text(node, "model"), Some("HEADLESS-1"));
+        assert_eq!(composer.scene.text(node, "mode"), Some("800x600@60"));
+        assert_eq!(composer.scene.number(node, "output_scale"), Some(1.0));
+        assert_eq!(composer.scene.value(node, "primary"), Some(&TreeValue::Bool(true)));
+        composer.take_tree_changes();
+        composer.set_output_info(output, &info);
+        assert!(composer.take_tree_changes().is_empty());
+        let demoted = ScreenInfo { primary: false, ..info };
+        composer.set_output_info(output, &demoted);
+        assert_eq!(
+            composer.take_tree_changes(),
+            vec![TreeChange::Set {
+                node,
+                key: "primary".to_owned(),
+                value: TreeValue::Bool(false),
+            }]
+        );
     }
 
     #[test]

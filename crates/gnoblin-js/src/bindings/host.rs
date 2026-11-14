@@ -590,6 +590,44 @@ mod tests {
     }
 
     #[test]
+    fn a_screen_reads_its_identity_and_a_window_its_dialog_relation_with_schema_defaults() {
+        let nodes = [
+            node(1, 0, "node", Vec::new()),
+            node(
+                5,
+                1,
+                "screen",
+                vec![
+                    ("make".into(), MirrorValue::Text("Gnoblin".into())),
+                    ("mode".into(), MirrorValue::Text("800x600@60".into())),
+                ],
+            ),
+            node(6, 1, "window", vec![("parent_window".into(), MirrorValue::Node(7))]),
+            node(7, 1, "window", Vec::new()),
+        ];
+        let state = HostState::new(TreeMirror::from_snapshot(1, 1, 1, &nodes).expect("a mirror"));
+        assert_eq!(
+            read(&state, 5, "make", false),
+            Some(JsHostValue::Text("Gnoblin".into()))
+        );
+        assert_eq!(
+            read(&state, 5, "mode", false),
+            Some(JsHostValue::Text("800x600@60".into()))
+        );
+        assert_eq!(read(&state, 5, "model", false), Some(JsHostValue::Text(String::new())));
+        assert_eq!(
+            read(&state, 5, "transform", false),
+            Some(JsHostValue::Text("normal".into()))
+        );
+        assert_eq!(read(&state, 5, "output_scale", false), Some(JsHostValue::Number(1.0)));
+        assert_eq!(read(&state, 5, "enabled", false), Some(JsHostValue::Flag(true)));
+        assert_eq!(read(&state, 5, "primary", false), Some(JsHostValue::Flag(false)));
+        assert_eq!(read(&state, 6, "parent_window", false), Some(JsHostValue::Number(7.0)));
+        assert_eq!(read(&state, 7, "parent_window", false), Some(JsHostValue::Number(0.0)));
+        assert_eq!(read(&state, 7, "from_launcher", false), Some(JsHostValue::Flag(false)));
+    }
+
+    #[test]
     fn visible_opacity_and_the_transform_read_as_their_schema_defaults_when_never_written() {
         let state = state();
         assert_eq!(read(&state, 3, "visible", false), Some(JsHostValue::Flag(true)));
