@@ -3,7 +3,7 @@
 // in `xr.ts`, which imports this module, so this one imports only the types of `xr.ts`.
 // Read `xr.ts` first for the objects and their units.
 
-import { Binding, BindingCollection } from "gnoblin/bindings";
+import { Binding } from "gnoblin/bindings";
 import type { ControllerButton, ControllerTriggerParts, DragEvent } from "gnoblin/bindings";
 import { Transform3D, Vector3 } from "gnoblin/scene";
 import type { Node, Plane, Ray, View } from "gnoblin/scene";
@@ -518,31 +518,4 @@ export class ViewScaleBinding extends XRControllerDragBinding {
         const s = state as ScaleState;
         s.view.transform = s.startLocal;
     }
-}
-
-// ---- The bindings of a spatial layout -----------------------------------------------------------------------------
-
-/**
- * The bindings of a `SpatialLayout`. The layout installs its stock bindings by id (`move`, `resize`, `rotate`) and the
- * specification's examples (066, 068, 117) add a binding under an id that is taken, so an `add` here replaces the
- * member with that id. Two bindings may also share a chord (066 gives `move` the chord `resize` has): the one added
- * last is offered a drag first, and the other is offered it when that one declines.
- */
-export class SpatialBindings extends BindingCollection {
-    override add(binding: Binding): Binding {
-        const previous = this.get(binding.id);
-        if (previous !== undefined) {
-            this.remove(binding.id);
-        }
-        try {
-            return super.add(binding);
-        } catch (error) {
-            // A refused binding leaves the collection as it was, the one it would have replaced included.
-            if (previous !== undefined) super.add(previous);
-            throw error;
-        }
-    }
-
-    /** @internal A chord is not exclusive here, so nothing is refused for sharing one. */
-    override assertFree(): void {}
 }

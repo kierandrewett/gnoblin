@@ -336,7 +336,8 @@ answered; the three fences stay `fails`, pending the owner decision (replace by 
 ### 2.7 The XR extension surface (lane SpecXr)
 
 Spec section 13 and fences 060 to 071 and 114 to 118, over the out-of-process XR program (design/js-xr.md; decision J7 stays,
-there is no `.so`). The harness table moves by eight rows: fences 065 to 071 and 117 run, and 118 fails only on the
+there is no `.so`). The harness table moves by five rows: fences 065, 067 and 069 to 071 run (066, 068 and 117 wait for the owner's
+decision above), and 118 fails only on the
 compositor (below). Built, with the readings the specification leaves open:
 
 - **`xr.ControllerDragBinding`** is `XRControllerDragBinding`, the base the shell's own bindings already used; the extension now
@@ -349,12 +350,10 @@ compositor (below). Built, with the readings the specification leaves open:
 - **`ViewScaleBinding`** adds the metres the hand moved along the direction it pointed in when the drag began to the View's
   scale, kept between `minScale` and `maxScale` (0.2 and 3). The specification's text adds an unsigned distance, which can only
   grow the panel; a signed travel lets a pull shrink it, and the limits are the specification's.
-- **`ViewMoveBinding({ tracking: "ray" })`** (068) already existed; fences 066, 068 and 117 failed only on "a binding with that id
-  is already in this collection". The specification is ambiguous (the table above calls it an owner decision). The reading that
-  makes the owner's examples run: `SpatialLayout.bindings` replaces a binding added under a taken id (`SpatialBindings`), and a
-  chord is not exclusive there (066 gives `move` the chord `resize` holds), so two bindings on one chord are offered the drag
-  newest first and an older one gets it when the newer declines in `onStart`. The other layouts' collections still refuse a
-  duplicate id.
+- **`ViewMoveBinding({ tracking: "ray" })`** (068) already existed. Fences 066, 068 and 117 fail on "a binding with that id is
+  already in this collection" and stay `fails`, pending the owner decision (replace by id or refuse; see "Not a gap in the shell"
+  above). `SpatialLayout.bindings` is a plain `BindingCollection`: a duplicate id and a second binding on one chord at one
+  priority are refused, as in every other layout.
 - **Pinning moved into the runtime.** A user binding such as 067 writes the View's transform and says "keep the new spatial
   pose" in `onEnd`; the ring re-placed an unpinned View a frame later. The runtime now pins the View under the ray for each drag
   and unpins it on a cancel unless it was pinned before, so no binding needs to know about the ring.

@@ -364,20 +364,17 @@ own, and `layout.bindings` is their collection:
 ```ts
 const xr = gnoblin.extensions.xr;
 if (xr?.room) {
-    const spatial = new xr.SpatialLayout({ triggers: { move: "Right.Grip+Drag", rotate: null } });
+    const spatial = new xr.SpatialLayout({ triggers: { rotate: null } });
     spatial.bindings.add(new xr.ViewScaleBinding({ minScale: 0.5, maxScale: 2 }));
-    // An id that is taken is replaced, so this swaps the move for a ray drag.
+    // The stock `move` holds the id, so remove it before adding a ray drag in its place.
+    spatial.bindings.remove("move");
     spatial.bindings.add(new xr.ViewMoveBinding({ id: "move", tracking: "ray", rotation: "keep" }));
     xr.room.layout = spatial;
 }
 ```
 
-Two rules to know:
-
-- `bindings.add` replaces a binding that has the same id, so a script overrides a stock binding by adding its own. The
-  new binding goes to the end of the collection.
-- Two bindings may share a chord. The one added last is offered the drag first, and the other is offered it if that
-  one declines in `onStart`.
+`bindings.add` refuses a binding whose id is taken, as every layout's collection does, so a script removes the stock
+binding first. A binding that matches the same trigger at the same priority as another is refused too.
 
 A cancelled drag, which an untracked hand or a throw causes, puts the panel back where it was.
 

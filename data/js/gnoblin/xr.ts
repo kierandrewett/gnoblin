@@ -4,12 +4,12 @@
 // Units are millimetres internally and metres at the script-facing layout boundary.
 // Read `scene.ts` first for node and transform semantics, then this module for room behavior.
 
+import { BindingCollection } from "gnoblin/bindings";
 import type { ControllerButton, ControllerTriggerParts } from "gnoblin/bindings";
 import { Viewport } from "gnoblin/display";
 import { Camera3D, Node, Plane, Ray, SceneError, Transform3D, Vector3, View, mountOnRoot } from "gnoblin/scene";
 import type { Camera3DOptions, NodeOptions, SceneBackend } from "gnoblin/scene";
 import {
-    SpatialBindings,
     ViewMoveBinding,
     ViewResizeBinding,
     ViewRotateBinding,
@@ -715,10 +715,10 @@ const LAYOUT_TRIGGERS = { move: "Grip+Drag", resize: "Grip+Trigger+Drag", rotate
 /**
  * The room's arrangement: panels on a ring round the viewer, and the bindings that move, resize and rotate them. The
  * ring is `arrangeRing`; `bindings` is the layout's collection, so `layout.bindings.remove("move")` turns a binding
- * off and `layout.bindings.add(new ViewMoveBinding({ tracking: "ray" }))` replaces it (`SpatialBindings`).
+ * off and a `layout.bindings.add(new ViewMoveBinding({ tracking: "ray" }))` after it puts another in its place.
  */
 export class SpatialLayout {
-    readonly bindings = new SpatialBindings();
+    readonly bindings = new BindingCollection();
     readonly ring: XRRingParams;
 
     constructor(options: SpatialLayoutOptions = {}) {
@@ -1387,8 +1387,6 @@ export class XRRuntime {
             }
             const candidates = bindings
                 .filter((binding) => binding.enabled && matches(binding.parsed, controller))
-                // Newest first among equals, so a binding a script added is offered the chord before the stock one.
-                .reverse()
                 .sort((a, b) => b.priority - a.priority);
             if (candidates.length === 0) {
                 continue;

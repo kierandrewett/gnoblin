@@ -67,9 +67,11 @@
 "063-what-does-the-xr-session-own.ts" = "runs"
 "064-xr-scene-and-view-creation.js" = "fails"
 "065-xr-scene-and-view-creation.js" = "runs"
-"066-controller-inputs-and-trigger-grammar.js" = "runs"
+# pending owner decision: replace by id or refuse (design/js-spec-native.md 2.6)
+"066-controller-inputs-and-trigger-grammar.js" = "fails"
 "067-xr-viewmovebinding-pure-js-6-dof-grab.js" = "runs"
-"068-ray-dragging-a-distant-panel.js" = "runs"
+# pending owner decision: replace by id or refuse (design/js-spec-native.md 2.6)
+"068-ray-dragging-a-distant-panel.js" = "fails"
 "069-xr-viewresizebinding-live-view-preview-client-resize-o.js" = "runs"
 "070-xr-view-rotation-and-scaling-small-fully-js.js" = "runs"
 "071-user-defined-throw-inertia-interaction.js" = "runs"
@@ -118,7 +120,8 @@
 "114-u-use-xr-without-xr-apis-in-the-core-camera-class.js" = "runs"
 "115-v-disable-a-default-xr-grip-interaction.js" = "runs"
 "116-w-xr-ray-drag-instead-of-following-the-controller-s-fu.js" = "runs"
-"117-x-xr-preview-resize-defer-real-client-configure-until-.js" = "runs"
+# pending owner decision: replace by id or refuse (design/js-spec-native.md 2.6)
+"117-x-xr-preview-resize-defer-real-client-configure-until-.js" = "fails"
 "118-y-head-locked-bingux-panel-without-coupling-bingux-to-.js" = "fails"
 "119-z-observe-output-mode-and-hotplug-state.js" = "runs"
 "120-aa-input-context-with-different-shortcuts-for-a-second.js" = "runs"

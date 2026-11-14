@@ -3879,10 +3879,7 @@ declare module "gnoblin/extensions/xr" {
     /** Computes the room's ring placement and supplies default move, resize and rotate bindings. */
     export class SpatialLayout {
         constructor(options?: SpatialLayoutOptions);
-        /**
-         * The layout's bindings by id. An `add` under an id that is taken replaces that binding, and two bindings may
-         * share a chord: the one added last is offered a drag first, the other when that one declines.
-         */
+        /** The layout's bindings by id; a duplicate id is refused, so `remove` a stock binding before adding its replacement. */
         readonly bindings: BindingCollection;
         readonly ring: XRRingParams;
         arrange<I>(views: readonly RingView<I>[], focus: I | null): RingResult;

@@ -1914,64 +1914,64 @@ fn the_spatial_layout_triggers_name_rotate_and_snippet_065_runs() {
 }
 
 #[test]
-fn a_binding_added_under_a_taken_id_replaces_it_and_snippets_066_068_and_117_run() {
+fn a_duplicate_binding_id_or_chord_on_the_spatial_layout_is_refused_and_fences_066_068_and_117_wait_for_the_owner() {
+    // The owner has not decided whether `add` replaces a binding that has the id: it is refused, as in every layout.
+    // 117 declares `xr` itself; the others assume it.
+    for (file, id, assumes) in [
+        (
+            "066-controller-inputs-and-trigger-grammar.js.txt",
+            "move",
+            "const xr = gnoblin.extensions.xr;",
+        ),
+        (
+            "068-ray-dragging-a-distant-panel.js.txt",
+            "move",
+            "const xr = gnoblin.extensions.xr;",
+        ),
+        (
+            "117-x-xr-preview-resize-defer-real-client-configure-until-.js.txt",
+            "resize",
+            "",
+        ),
+    ] {
+        let mut rig = world(&[(800.0, 600.0)], "");
+        xr_arrives(&mut rig);
+        let body = fence(file);
+        let got = thrown(
+            &mut rig,
+            &format!("const spatial = gnoblin.extensions.xr.room.layout; {assumes} {body}"),
+        );
+        assert_eq!(
+            got,
+            format!("Error|a binding with id \"{id}\" is already in this collection"),
+            "{file}"
+        );
+    }
     let mut rig = world(&[(800.0, 600.0)], "");
     xr_arrives(&mut rig);
-    // 066: move gets another trigger, rotate goes, and a ray move takes the id `move`, on the chord resize holds.
-    let body = fence("066-controller-inputs-and-trigger-grammar.js.txt");
-    rig.eval(&format!(
-        "(() => {{ const xr = gnoblin.extensions.xr; const spatial = xr.room.layout; {body} return 1; }})()"
-    ));
-    assert_eq!(rig.eval(BINDINGS), "resize=Grip+Trigger+Drag,move=Trigger+Grip+Drag");
+    let layout = "gnoblin.extensions.xr.room.layout.bindings";
     assert_eq!(
-        rig.eval("gnoblin.extensions.xr.room.layout.bindings.get('move').tracking"),
-        "ray"
+        thrown(
+            &mut rig,
+            &format!("{layout}.add(new ViewMoveBinding({{ id: 'move' }}))")
+        ),
+        "Error|a binding with id \"move\" is already in this collection"
     );
-    // 068: a ray move under the default id.
-    let body = fence("068-ray-dragging-a-distant-panel.js.txt");
+    assert_ne!(
+        thrown(
+            &mut rig,
+            &format!("{layout}.add(new ViewMoveBinding({{ id: 'other', trigger: 'Grip+Trigger+Drag' }}))")
+        ),
+        "none",
+        "a second binding on the chord of `resize` at the same priority is refused"
+    );
+    // Removing the stock binding first is the way to replace it.
     rig.eval(&format!(
-        "(() => {{ const xr = gnoblin.extensions.xr; const spatial = xr.room.layout; {body} return 1; }})()"
+        "{layout}.remove('move'); {layout}.add(new ViewMoveBinding({{ id: 'move', tracking: 'ray', rotation: 'keep' }})); 1"
     ));
-    assert_eq!(rig.eval(BINDINGS), "resize=Grip+Trigger+Drag,move=Grip+Drag");
-    // 117 declares `xr` itself and assumes `spatial`.
-    let body = fence("117-x-xr-preview-resize-defer-real-client-configure-until-.js.txt");
-    rig.eval(&format!(
-        "(() => {{ const spatial = gnoblin.extensions.xr.room.layout; {body} return 1; }})()"
-    ));
-    assert_eq!(rig.eval(BINDINGS), "move=Grip+Drag,resize=Grip+Trigger+Drag");
-    assert_eq!(rig.eval("gnoblin.extensions.xr.room.layout.bindings.size"), "2");
-}
-
-#[test]
-fn two_bindings_on_one_chord_are_offered_the_newest_first_and_a_decline_falls_through() {
-    let mut rig = drag_world(
-        "gnoblin.extensions.configure('xr', { layout: { triggers: { move: null, resize: null, rotate: null } } });",
-    );
-    rig.eval(
-        "globalThis.log = [];
-         globalThis.make = (name, take) => class extends XRControllerDragBinding {
-             constructor() { super({ id: name, trigger: 'Grip+Drag' }); }
-             onStart() { log.push(name); return take ? { n: 1 } : false; }
-         };
-         globalThis.bindings = gnoblin.extensions.xr.room.layout.bindings;
-         bindings.add(new (make('old', true))());
-         bindings.add(new (make('new', false))());
-         1",
-    );
-    grip(&mut rig, 1.0);
     assert_eq!(
-        rig.eval("log.join(',')"),
-        "new,old",
-        "the newest declines, so the older one takes it"
-    );
-    grip(&mut rig, 0.0);
-    rig.eval("log.length = 0; bindings.add(new (make('new', true))()); 1");
-    assert_eq!(rig.eval("bindings.size"), "2", "the same id replaced the binding");
-    grip(&mut rig, 1.0);
-    assert_eq!(
-        rig.eval("log.join(',')"),
-        "new",
-        "the newest takes it and the older is not asked"
+        rig.eval(BINDINGS),
+        "resize=Grip+Trigger+Drag,rotate=Trigger+Thumbstick+Drag,move=Grip+Drag"
     );
 }
 
