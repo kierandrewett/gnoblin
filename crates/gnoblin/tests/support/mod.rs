@@ -403,6 +403,9 @@ pub struct Mapper {
     /// Whether the windows ask for server-side decorations (`xdg-decoration`) before they first commit, as a GTK or
     /// Qt client that wants the shell's title bar does. A client that does not is one that draws its own.
     server_side: bool,
+    /// The window geometry (`xdg_surface.set_window_geometry`: x, y, width, height in surface coordinates) every window
+    /// sets before its first buffer, as a client that draws a title bar outside its main surface does.
+    geometry: Option<(i32, i32, i32, i32)>,
     seat: Option<wl_seat::WlSeat>,
     /// The protocol objects of every window mapped, kept so they stay mapped.
     windows: Vec<(
@@ -439,6 +442,7 @@ impl Mapper {
             seat: None,
             windows: Vec::new(),
             server_side: false,
+            geometry: None,
             decorations: Vec::new(),
         }
     }
@@ -449,6 +453,14 @@ impl Mapper {
     #[must_use]
     pub fn requesting_server_side(mut self) -> Self {
         self.server_side = true;
+        self
+    }
+
+    /// Makes every window this client maps from now on set the window geometry `(x, y, width, height)` before its first
+    /// buffer, the way foot does with its title bar above the main surface (`(0, -26, 700, 500)` for a 700 by 474 buffer).
+    #[must_use]
+    pub fn with_window_geometry(mut self, geometry: (i32, i32, i32, i32)) -> Self {
+        self.geometry = Some(geometry);
         self
     }
 
@@ -499,6 +511,9 @@ impl Mapper {
         let buffer = pool.create_buffer(0, width, height, stride, wl_shm::Format::Argb8888, &self.qh, ());
         surface.attach(Some(&buffer), 0, 0);
         surface.damage(0, 0, width, height);
+        if let Some((x, y, geometry_width, geometry_height)) = self.geometry {
+            xdg.set_window_geometry(x, y, geometry_width, geometry_height);
+        }
         surface.commit();
         self.roundtrip();
         self.windows.push((surface, xdg, toplevel));

@@ -9,7 +9,7 @@
 # Usage: scripts/js-shell-screenshots.sh [OUT_DIR [SCENARIO...]]
 #
 # SCENARIO is one or more of: one-window cascade master-stack master-stack-decorated dwindle dwindle-decorated
-# shadows-software shadows-gles csd-double csd-own csd-tiled window-menu lock. The default is all of them.
+# shadows-software shadows-gles csd-double csd-own csd-tiled reload-tiled transition-mid window-menu lock. The default is all of them.
 # GNOBLIN_BIN_DIR names where `gnoblin` and `gnoblinctl` are (default: $CARGO_TARGET_DIR/release, else
 # target/release).
 #
@@ -26,7 +26,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bin_dir="${GNOBLIN_BIN_DIR:-${CARGO_TARGET_DIR:-$repo_root/target}/release}"
 out_dir="${1:-$PWD/js-shell-shots}"
 shift || true
-wanted="${*:-one-window cascade master-stack master-stack-decorated dwindle dwindle-decorated shadows-software shadows-gles csd-double csd-own csd-tiled window-menu lock}"
+wanted="${*:-one-window cascade master-stack master-stack-decorated dwindle dwindle-decorated shadows-software shadows-gles csd-double csd-own csd-tiled reload-tiled transition-mid window-menu lock}"
 
 for tool in grim foot dbus-daemon; do
     command -v "$tool" >/dev/null || {
@@ -149,9 +149,10 @@ ctl() {
 # window APP_ID TITLE BACKGROUND_HEX COMMAND [FOOT_OPTION...]: one foot window running COMMAND, in a tint of its own so the
 # windows can be told apart. foot takes a colour without the leading `#`. COMMAND is what the picture shows, so it is a
 # real program of the session (`gnoblinctl ...`) and not text typed for the picture. The compositor asks clients for
-# client-side decorations while no shell draws them, so foot draws a title bar of its own then unless it is told not to:
-# `plain_window` passes `csd.preferred=none`, so a picture of a config with decorations off shows no bar at all. A foot
-# as it comes (`window`) asks for server-side, and the shell's titlebar is its one bar whenever decorations are on.
+# client-side decorations while no shell draws them, so foot draws a title bar of its own then; foot as it comes asks for
+# server-side (it does not need `-o csd.preferred=server`), and the shell's titlebar is its one bar whenever decorations
+# are on. `-o csd.preferred=client` makes foot draw its own bar whatever the answer, and `none` leaves it no bar at all,
+# which the compositor reads as a client that draws its own: the shell gives such a window none.
 window() {
     local app_id="$1" title="$2" colour="$3" command="$4"
     shift 4
@@ -163,9 +164,9 @@ window() {
     client_pids+=("$!")
 }
 
-# plain_window APP_ID TITLE BACKGROUND_HEX COMMAND: a window that draws no titlebar of its own.
+# plain_window APP_ID TITLE BACKGROUND_HEX COMMAND: foot as it comes, which asks for the shell's titlebar.
 plain_window() {
-    window "$@" -o csd.preferred=none
+    window "$@"
 }
 
 # shoot NAME: one PNG of the output through the privileged screencopy socket, beside what the compositor holds for
@@ -363,11 +364,48 @@ scenario_lock() {
     stop_session
 }
 
+# reload-tiled: three tiled windows, then a reload of the same file. The shell's new generation takes the windows over, so
+# the picture after must be the picture before, pixel for pixel.
+scenario_reload_tiled() {
+    start_session
+    three
+    set_config "import { MasterStackLayout, defineConfig } from \"gnoblin\";
+
+export default defineConfig({
+    decorations: true,
+    workspaces: [{ id: \"dev\", layout: new MasterStackLayout({ ratio: 0.6, gap: 12 }) }],
+});"
+    shoot reload-before
+    ctl config reload
+    sleep 2
+    shoot reload-after
+    if cmp -s "$out_dir/reload-before.png" "$out_dir/reload-after.png"; then
+        echo "js-shell-screenshots: the pictures before and after the reload are identical"
+    else
+        echo "js-shell-screenshots: the pictures before and after the reload DIFFER"
+    fi
+    stop_session
+}
+
+# transition-mid: one window moved 600 px right in a requestTransition of 6 s, and a picture 2 s into it. The transition
+# runs on the compositor's real clock, so a long duration is how a script catches a frame in the middle of it.
+scenario_transition_mid() {
+    start_session
+    plain_window org.example.status "gnoblinctl status" "#1e3a5f" "gnoblinctl status"
+    wait_windows 1
+    ctl console --eval 'gnoblin.requestTransition(() => { gnoblin.clients.at(0).x = 600; }, { duration: 6000, easing: "linear" })' >"$out_dir/transition.eval.log" 2>&1 || true
+    sleep 2
+    WAYLAND_DISPLAY="$run_dir/gnoblin-wayland-privileged.sock" XDG_RUNTIME_DIR="$run_dir" grim "$out_dir/transition-mid.png"
+    echo "js-shell-screenshots: wrote $out_dir/transition-mid.png"
+    shoot transition-end
+    stop_session
+}
+
 main() {
     local scenario
     for scenario in $wanted; do
         case "$scenario" in
-            one-window | cascade | master-stack | master-stack-decorated | dwindle | dwindle-decorated | shadows-software | shadows-gles | csd-double | csd-own | csd-tiled | window-menu | lock)
+            one-window | cascade | master-stack | master-stack-decorated | dwindle | dwindle-decorated | shadows-software | shadows-gles | csd-double | csd-own | csd-tiled | reload-tiled | transition-mid | window-menu | lock)
                 "scenario_${scenario//-/_}"
                 ;;
             *)

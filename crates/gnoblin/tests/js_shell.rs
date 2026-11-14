@@ -1744,6 +1744,30 @@ fn windows_too_big_for_a_free_spot_cascade_and_never_land_exactly_on_each_other(
     }
 }
 
+/// Live verification: foot draws its title bar in a subsurface above its main surface and says so with a window geometry
+/// of (0, -26, 700, 500) around a 700 by 474 buffer. The window is the geometry, 700 by 500. The tree publishes the
+/// surface's rectangle instead (`publish_geometry` in `compose.rs`: the geometry less its offset, at the buffer's size), 700
+/// by 474; a first run of the shipped binary with the stock bar held such a window at 700 by 448. Run it with `--ignored`.
+#[test]
+#[ignore = "open defect (design/js-runtime.md, Live verification, #4): the tree publishes the buffer size, 700 by 474, not the window geometry"]
+fn a_client_side_decorated_window_is_held_at_its_window_geometry_not_its_buffer_less_its_bar() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland()).with_window_geometry((0, -26, 700, 500));
+    let ipc = session.ipc();
+    mapper.map_window_sized("org.example.csd", "Client drawn bar", 700, 474);
+    wait_for("the window placed", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, "org.example.csd").is_some_and(|(_, _, width, _)| width > 0.0)
+    });
+    let (_, _, width, height) = rect_of(&ipc, "org.example.csd").expect("the window");
+    assert_eq!(
+        (width, height),
+        (700.0, 500.0),
+        "the window is its geometry, the bar included"
+    );
+}
+
 /// An `init.ts` whose workspace tiles by halves side by side and, one second after the shell's clock starts, changes to
 /// rows inside a `requestTransition` of 500 ms. `probe()` says what the script knows: the shell's clock, whether the
 /// transition runs, and the log of its start and finish.
