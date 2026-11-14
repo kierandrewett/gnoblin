@@ -85,6 +85,14 @@ Pointer events are handled by methods on a canvas:
 - An event goes to the canvas the pointer is over, then up through its parents until a handler calls `event.stop()`.
 - The event's `x` and `y` are in the coordinates of the canvas whose handler runs.
 
+A key goes to the canvas that holds the keyboard focus, then up through its parents, in `onKey(event)`:
+
+- `canvas.focus()` gives a canvas the keyboard. It receives keys only while it holds it.
+- The event has `key` (the keysym's name: `Return`, `a`), `text` (what the key types, empty for a key that types
+  nothing), `pressed` (false for the release) and `stop()`.
+- `canvas.mountTop()` puts a canvas over every window, as a menu or a dialog needs.
+- `secure: true` keeps a canvas out of screen captures.
+
 ## Titlebar
 
 With `defineConfig({ decorations: true })` every window gets a `Titlebar`, a canvas under the window's node. The stock
@@ -96,7 +104,12 @@ window:
 - Its width is the window's width, and it is hidden while the window is fullscreen.
 - Its fill follows the focus and its title follows the window's title.
 - The close button closes the window. The other buttons set the window's `minimised` and `maximised`.
-- A press on the bar drags the window. A second press within half a second maximises or restores it.
+- A press on the bar drags the window. A second press within half a second, a middle click and a right click do what
+  the seat's `double_click`, `middle_click` and `right_click` say: `toggle-maximize`, `lower`, `menu`, `minimize` or
+  `none` (the two one-axis maximise actions do nothing, as in the Lua shell). `menu` opens the window menu at the pointer.
+- The close button fades the window out over 0.18 s (it shrinks to 0.92 of its size) and then closes it. A window that is
+  still there 1.5 s later, a client that asked "save changes?", is shown again. A window its client closes itself is gone
+  from the compositor at once, so there is nothing to fade.
 
 Its look is plain data, `TitlebarStyle`:
 
@@ -115,11 +128,94 @@ The style has these fields:
 - `titleSize`, `titleColor` and `titleFont`.
 - `buttons`, in order, and `buttonSize`, `buttonColor` and `icons`.
 
-The titlebar is drawn over the top of the window: it does not reserve room above the client.
+### The room above the client
+
+The compositor always asks clients to draw their own decorations: decoration mode is client-side, and the tree has no
+server-side flag. A window that draws a header bar of its own therefore shows two when `decorations` is on.
+
+The stock library decorates every window, as the Lua shell did, and gives the bar room of its own instead of drawing
+over the client:
+
+- The bar is a child of the window's node at `y = -height`: it lies above the node, never over it.
+- `client.bounds` (and `x`, `y`, `width` and `height`) is the content's rectangle. The frame is the content with the bar
+  on top, and `client.frameInset` is the bar's height (0 without a bar, and while the window is fullscreen).
+- A layout places frames. The layout driver writes a placement `y` plus the inset and a height minus the inset, so a
+  tiled window's bar is on its tile. Floating placement places the frame and puts the content below the bar. Dragging
+  keeps the frame inside the work area, so a bar is never lost off the top, and an edge snap tiles the frame.
+- A window the compositor maximises or makes fullscreen is sized by the compositor. A maximise through the titlebar or
+  the menu goes through the shell, which leaves the bar its room.
+
+To have no bar, leave `decorations` off.
+
+## Entry, Clock and Bar
+
+`Entry` is a line of text you type into. Give it the keyboard and it reads `onKey`:
+
+| Key                           | Effect                                                           |
+| ----------------------------- | ---------------------------------------------------------------- |
+| Letters and other typing keys | Type at the caret, over the selection                            |
+| BackSpace, Delete             | Remove the selection, or the character before or after the caret |
+| Left, Right, Home, End        | Move the caret. With Shift held they select                      |
+| Control+A                     | Select all                                                       |
+| Return                        | Call `entry.onSubmit(text)`                                      |
+| Escape, Tab, other keys       | Left for the caller                                              |
+
+A key an entry uses it stops. `secret: true` shows a `*` for each character. The editing itself is `EntryModel`, with no
+drawing: `text`, `caret`, `selection`, `insert`, `backspace`, `delete`, `left`, `right`, `home`, `end` and `selectAll`.
+
+`Clock` is a `Text` that shows the time as a strftime format, `%H:%M` by default. `formatTime` supports `%H %I %M %S
+%p %d %e %m %y %Y %j %a %A %b %B %T %R %F %%`.
+
+`Bar` is a strip along the `top` or `bottom` of the primary screen, over the windows and as wide as the screen. It takes
+its room from them:
+
+- `gnoblin.workspaces.area` and the layouts' work area are the screen less the bars (`barInsets()`).
+- `hideWhen` hides a bar, and gives its room back, while it returns true.
+
+## The stock shell UI
+
+Each of these is on in the stock config and has a switch.
+
+### Window menu
+
+Switch: `defineConfig({ menus: false })`. The module is `gnoblin/menus`.
+
+- The compositor asks for a window's menu as a `menu` request on the window's node: a client's `show_window_menu`, the
+  window-menu key (Alt+Space) and a program's `request_menu`. The titlebar's right click asks too.
+- The shell answers every request with `windowMenu.show(client, x, y)`. With `menus: false` the requests are left
+  unanswered: nothing opens, and the compositor waits for nothing.
+- Entries: Restore or Maximise, Minimise, Move, Resize, Always on top, Move to workspace and Close. Move and Resize are
+  the keyboard modes, which are not ported: they are off unless the client has `moveWithKeys` and `resizeWithKeys`.
+- Keys: Up, Down, Home, End, Tab and Shift+Tab move over the entries that are on; a letter jumps; Return and Space run;
+  Right and Left open and close the submenu; Escape closes.
+- A press outside closes the menu and is not passed on. One menu is open at a time. It closes when its window goes or
+  the session locks, and the keyboard goes back to where it was.
+- Assign `windowMenu.items = (client) => [...]` to change what it offers and `windowMenu.show` to draw another.
+
+### Not-responding alert
+
+Switch: `defineConfig({ alerts: false })`. The module is `gnoblin/alerts`.
+
+- A window the compositor marks `unresponsive` gets a card with Wait (the default, and Escape) and Force quit.
+- Force quit calls `client.kill()` and does nothing for the first 0.5 s. The compositor refuses its own process, init
+  and a process that did not open the window.
+- A window the user waited on gets no second alert until it has answered a ping and stopped answering again.
+- No alert opens under a lock, and an alert closes an open window menu first. The state machine is `AlertTracker`.
+
+### Launcher, toast and overview
+
+- **Launcher** (`gnoblin/launcher`). With no `launcher` command in the config, Super+Space opens an `Entry` on the
+  screen. Return starts what you typed (`gnoblin.spawn`) and Escape closes it. `launcher: "wofi"` runs that program on
+  the key instead.
+- **`toast(text)`** shows a message card in the top right corner for a few seconds.
+- **`overview.toggle()`** dims the windows of the workspaces that are not shown, or gives them all full strength, as the
+  Lua `toggle_overview` did.
+
+The consent and passphrase dialogs are not here: the compositor draws them, and `gnoblin.dialogs` observes them.
 
 ## What is not done
 
-- The right and middle click gestures of the Lua titlebar, and the fade on close.
-- Dragging with a real pointer. It moves the window by how far the pointer is from where it was pressed, and has been
-  tested against a fake compositor only.
-- The `gnoblin.d.ts` declarations do not describe the toolkit yet.
+- Dragging a titlebar with a real pointer. It moves the window by how far the pointer is from where it was pressed, and
+  has been tested against a fake compositor only. A right click on the bar is proved on the real compositor.
+- The keyboard Move and Resize modes of the Lua window menu.
+- A fade on close for a window the client closes itself.

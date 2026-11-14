@@ -51,6 +51,11 @@ struct Session {
 
 impl Session {
     fn start() -> Self {
+        Self::start_with(|_| {})
+    }
+
+    /// A session whose configuration `tune` has changed (a liveness timeout, say).
+    fn start_with(tune: impl FnOnce(&mut SessionConfig)) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         // The compositor refuses an IPC directory that is not private, as `$XDG_RUNTIME_DIR` is.
         fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).expect("the directory mode");
@@ -63,6 +68,7 @@ impl Session {
             ..SessionConfig::default()
         };
         config.wayland.socket_path = Some(directory.path().join("wayland.sock"));
+        tune(&mut config);
         let thread = std::thread::Builder::new()
             .name("compositor".to_owned())
             .spawn(move || {
@@ -107,6 +113,8 @@ impl Drop for Session {
 #[derive(Clone, Debug)]
 struct Canvas {
     parent: u64,
+    x: f64,
+    y: f64,
     width: f64,
     height: f64,
     /// The paint list the compositor accepted, decoded; `None` before the shell has painted.
@@ -133,6 +141,8 @@ fn canvases(ipc: &Path) -> Vec<Canvas> {
             let prop = |key: &str| node.props.iter().find(|prop| prop.key == key);
             Canvas {
                 parent: node.parent,
+                x: prop("x").map_or(0.0, |prop| prop.value_double),
+                y: prop("y").map_or(0.0, |prop| prop.value_double),
                 width: prop("width").map_or(0.0, |prop| prop.value_double),
                 height: prop("height").map_or(0.0, |prop| prop.value_double),
                 list: prop("content").map(|content| {
@@ -1674,4 +1684,176 @@ defineConfig({
         shell.generation() > generation
     });
     refused_once_observing(&session, &mut mapper, &shell, STRICT);
+}
+
+// ---- the stock UI: reserved titlebar room, the window menu and the not-responding alert ---------------------------
+
+const KEY_ESC: u32 = 1;
+const KEY_TAB: u32 = 15;
+const KEY_ENTER: u32 = 28;
+
+/// Presses and releases a key as a keyboard would.
+fn tap_key(session: &Session, keycode: u32) {
+    for pressed in [true, false] {
+        send(
+            session,
+            InputEvent::Key {
+                device: DeviceId::VIRTUAL,
+                keycode,
+                pressed,
+            },
+        );
+    }
+}
+
+/// Whether some canvas of the tree paints `text`.
+fn shows(ipc: &Path, text: &str) -> bool {
+    canvases(ipc).iter().any(|canvas| {
+        canvas.list.as_ref().is_some_and(|list| {
+            list.ops
+                .iter()
+                .any(|op| matches!(op, gnoblin_paint::PaintOp::Text { text: shown, .. } if shown == text))
+        })
+    })
+}
+
+fn write_ui_config(dir: &Path) {
+    fs::write(
+        dir.join("init.ts"),
+        "import { defineConfig } from \"gnoblin\";\ndefineConfig({ decorations: true });\n",
+    )
+    .expect("init.ts");
+}
+
+/// A mapped window with decorations on has its content below the bar and the bar above it, and does not overlap it. A right
+/// click on the bar, through the session's input path, opens the window menu, which the compositor holds as painted
+/// canvases, and Escape closes it.
+#[test]
+fn a_decorated_windows_content_lies_below_its_bar_and_a_titlebar_right_click_opens_the_window_menu() {
+    let session = Session::start();
+    let mut mapper = Mapper::connect(&session.wayland());
+    let config = tempfile::tempdir().expect("a config directory");
+    write_ui_config(config.path());
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let ipc = session.ipc();
+    wait_for("the shell is running", &session, &mut mapper, &shell, || {
+        shell.generation() >= 1
+    });
+    // The window arrives while the shell runs, so the floating layout places it as a frame: the bar, then the content.
+    mapper.map_window("org.example.framed", "Framed");
+    wait_for("the window placed below its bar", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, "org.example.framed").is_some_and(|(_, y, width, _)| y > 0.0 && width > 0.0)
+            && shows(&ipc, "Framed")
+    });
+    let (x, y, width, height) = rect_of(&ipc, "org.example.framed").expect("the window");
+    let window = scene(&ipc)
+        .into_iter()
+        .find(|window| window.app_id == "org.example.framed")
+        .expect("the mapped window");
+    let bars: Vec<Canvas> = canvases(&ipc)
+        .into_iter()
+        .filter(|canvas| canvas.parent == window.id)
+        .collect();
+    assert_eq!(bars.len(), 1, "one titlebar under the window: {bars:?}");
+    let bar = &bars[0];
+    assert_eq!(bar.x, 0.0, "the bar starts at the content's left edge");
+    assert!(
+        bar.height > 0.0 && width > 0.0 && height > 0.0,
+        "{bar:?} {width}x{height}"
+    );
+    assert_eq!(
+        bar.y, -bar.height,
+        "the bar lies above the window's content, in the window's own coordinates"
+    );
+    assert!(
+        y >= bar.height,
+        "the bar (top at {}) is on screen, and the content (top at {y}) starts where the bar ends",
+        y - bar.height
+    );
+    assert!(
+        bar.y + bar.height <= 0.0,
+        "no overlap: the bar's bottom edge is at or above the content's top edge"
+    );
+
+    // A right click on the bar opens the window menu.
+    let (at_x, at_y) = ((x + 12.0) as i32, (y - bar.height / 2.0) as i32);
+    let mut opened = false;
+    wait_for("the window menu painted", &session, &mut mapper, &shell, || {
+        if !opened {
+            motion(&session, at_x, at_y);
+            button(&session, BTN_RIGHT, true);
+            button(&session, BTN_RIGHT, false);
+        }
+        opened = shows(&ipc, "Maximise") && shows(&ipc, "Close");
+        opened
+    });
+    tap_key(&session, KEY_ESC);
+    wait_for("Escape closes the menu", &session, &mut mapper, &shell, || {
+        if shows(&ipc, "Maximise") {
+            tap_key(&session, KEY_ESC);
+        }
+        !shows(&ipc, "Maximise")
+    });
+    let log = shell.finish();
+    assert!(
+        log.iter().all(|line| !line.contains("threw")),
+        "the shell logged a throw: {log:#?}"
+    );
+}
+
+/// A client that leaves the compositor's liveness ping unanswered gets the not-responding alert, which names its window, and
+/// Escape (Wait) closes it. The Force quit button, armed after half a second, is answered by `Window:kill`, which the
+/// compositor refuses for its own process (this test's), so the alert closes and the test survives.
+#[test]
+fn a_window_that_stops_answering_gets_the_alert_and_wait_and_force_quit_close_it() {
+    let session = Session::start_with(|config| {
+        config.wayland.check_alive_timeout = Duration::from_millis(800);
+    });
+    let mut mapper = Mapper::connect(&session.wayland());
+    let config = tempfile::tempdir().expect("a config directory");
+    write_ui_config(config.path());
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let ipc = session.ipc();
+    wait_for("the shell is running", &session, &mut mapper, &shell, || {
+        shell.generation() >= 1
+    });
+    mapper.map_window("org.example.stuck", "Stuck");
+    wait_for("the window is up", &session, &mut mapper, &shell, || {
+        rect_of(&ipc, "org.example.stuck").is_some() && shows(&ipc, "Stuck")
+    });
+
+    // The client reads none of its events from here on, so it answers no ping.
+    let wait_until = |what: &str, mut check: Box<dyn FnMut() -> bool>| {
+        let deadline = Instant::now() + PATIENCE;
+        while !check() {
+            assert!(
+                Instant::now() < deadline,
+                "never reached: {what}; the shell logged {:?}",
+                shell.diagnostics()
+            );
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    };
+    let alert = "Stuck is not responding";
+    wait_until("the alert opened", Box::new(|| shows(&ipc, alert)));
+    tap_key(&session, KEY_ESC);
+    wait_until("Escape (Wait) closed the alert", Box::new(|| !shows(&ipc, alert)));
+
+    // The client answers again, then stops: a second alert, and Force quit once it is armed.
+    mapper.roundtrip();
+    wait_until("the alert came back", Box::new(|| shows(&ipc, alert)));
+    std::thread::sleep(Duration::from_millis(700));
+    tap_key(&session, KEY_TAB);
+    tap_key(&session, KEY_ENTER);
+    wait_until("Force quit closed the alert", Box::new(|| !shows(&ipc, alert)));
+    assert!(
+        rect_of(&ipc, "org.example.stuck").is_some(),
+        "the compositor refused to kill its own process: the window is still there"
+    );
+    mapper.roundtrip();
+    let log = shell.finish();
+    assert!(
+        log.iter().all(|line| !line.contains("threw")),
+        "the shell logged a throw: {log:#?}"
+    );
 }

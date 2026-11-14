@@ -751,6 +751,17 @@ declare module "gnoblin" {
         close(): void;
         /** Puts the window on top of every other window. */
         raise(): void;
+        /** Puts the window under every other window. */
+        lower(): void;
+        /** Kills the process that owns the window (SIGKILL): the not-responding alert's Force quit. The compositor may refuse. */
+        kill(): void;
+        /** Whether the client has left a liveness ping unanswered too long. */
+        readonly unresponsive: boolean;
+        /** Whether the window is maximised. Writing asks the compositor to maximise or restore it. */
+        maximised: boolean;
+        minimised: boolean;
+        /** The room a titlebar takes above the content: `bounds` is the content, the frame is the content with this on top. */
+        readonly frameInset: number;
     }
 
     /** Rotation about each axis in radians, or the scale along each axis: three numbers. */
@@ -1649,10 +1660,16 @@ declare module "gnoblin" {
         outputs?: Record<string, OutputSetting>;
         keys?: Record<string, KeyAction>;
         /**
-         * The command `Super+space` runs, as a command line or an argv. Nothing is bound when it is absent. A key of
-         * `keys` for `Super+space` takes precedence.
+         * The command `Super+space` runs, as a command line or an argv. Absent, `Super+space` opens the stock launcher entry.
+         * A key of `keys` for `Super+space` takes precedence.
          */
         launcher?: string | readonly string[];
+        /** A titlebar above every window's content. The stock config turns it on; a config that does not ask has none. */
+        decorations?: boolean;
+        /** Whether the stock window menu answers the compositor's menu requests. On by default. */
+        menus?: boolean;
+        /** Whether the stock not-responding alert opens for a window that stops answering. On by default. */
+        alerts?: boolean;
         rules?: readonly RuleConfig[];
         /** Focus settings; a key left out is the seat's. */
         focus?: FocusConfig;
@@ -1827,6 +1844,396 @@ declare module "gnoblin" {
         seconds: number;
         constructor(options?: WorkspaceSlideOptions);
     }
+
+    // -- The UI toolkit and the stock shell UI (docs/js-ui.md) -----------------
+
+    export type Color = string;
+    export type PaintOp =
+        | {
+              op: "rect";
+              x: number;
+              y: number;
+              width: number;
+              height: number;
+              radius?: number;
+              fill?: Color;
+              stroke?: Color;
+              strokeWidth?: number;
+          }
+        | { op: "line"; x1: number; y1: number; x2: number; y2: number; width?: number; color?: Color }
+        | { op: "text"; text: string; x?: number; y?: number; size?: number; color?: Color; font?: string }
+        | { op: "icon"; name: string; x?: number; y?: number; size?: number; color?: Color }
+        | { op: "pushClip"; x: number; y: number; width: number; height: number; radius?: number }
+        | { op: "popClip" }
+        | { op: "pushOpacity"; alpha: number }
+        | { op: "popOpacity" };
+
+    export class UiPointerEvent {
+        readonly kind: string;
+        x: number;
+        y: number;
+        readonly button: number;
+        readonly dx: number;
+        readonly dy: number;
+        readonly target: Canvas;
+        stopped: boolean;
+        stop(): void;
+    }
+    /** A key sent to the canvas that holds the keyboard focus. `key` is the keysym's name, `text` what it types. */
+    export class UiKeyEvent {
+        readonly key: string;
+        readonly text: string;
+        readonly pressed: boolean;
+        readonly target: Canvas;
+        stopped: boolean;
+        stop(): void;
+    }
+
+    export interface CanvasOptions {
+        x?: number;
+        y?: number;
+        width?: number;
+        height?: number;
+        visible?: boolean;
+        opacity?: number;
+        secure?: boolean;
+    }
+    /** A node that paints what `draw()` returns. */
+    export class Canvas {
+        constructor(options?: CanvasOptions);
+        readonly node: number;
+        parent: Canvas | null;
+        readonly children: Canvas[];
+        x: number;
+        y: number;
+        visible: boolean;
+        opacity: number;
+        secure: boolean;
+        width: number | null;
+        height: number | null;
+        readonly alive: boolean;
+        readonly focused: boolean;
+        draw(): PaintOp[];
+        refresh(): void;
+        arrange(): void;
+        add(child: Canvas): this;
+        remove(child: Canvas): void;
+        mount(parentNode: number): void;
+        /** Makes this canvas the last child of the root, over every window. */
+        mountTop(): void;
+        /** Gives this canvas the seat's keyboard focus. */
+        focus(): void;
+        contains(other: Canvas | null): boolean;
+        destroy(): void;
+        onPress?(event: UiPointerEvent): void;
+        onRelease?(event: UiPointerEvent): void;
+        onMotion?(event: UiPointerEvent): void;
+        onScroll?(event: UiPointerEvent): void;
+        onEnter?(event: UiPointerEvent): void;
+        onLeave?(event: UiPointerEvent): void;
+        onKey?(event: UiKeyEvent): void;
+    }
+    export type Direction = "row" | "column" | "none";
+    export interface BoxOptions extends CanvasOptions {
+        direction?: Direction;
+        gap?: number;
+        padding?: number;
+        grow?: number;
+        fill?: Color;
+        radius?: number;
+        children?: readonly Canvas[];
+    }
+    export class Box extends Canvas {
+        constructor(options?: BoxOptions);
+        direction: Direction;
+        gap: number;
+        padding: number;
+        grow: number;
+        fill: Color;
+        radius: number;
+    }
+    export interface TextMetrics {
+        width: number;
+        height: number;
+        ascent: number;
+    }
+    export interface TextOptions extends BoxOptions {
+        text?: string;
+        size?: number;
+        color?: Color;
+        font?: string;
+        ellipsize?: boolean;
+    }
+    export class Text extends Box {
+        constructor(options?: TextOptions);
+        text: string;
+        size: number;
+        color: Color;
+        font: string;
+        ellipsize: boolean;
+        metrics(): TextMetrics;
+    }
+    export interface IconOptions extends BoxOptions {
+        icon?: string;
+        size?: number;
+        color?: Color;
+    }
+    export class Icon extends Box {
+        constructor(options?: IconOptions);
+        icon: string;
+        size: number;
+        color: Color;
+    }
+    export class Grid extends Box {}
+    export function encodePaintList(ops: readonly PaintOp[]): number[];
+    export function uiCanvasCount(): number;
+
+    export interface TitlebarStyle {
+        height: number;
+        padding: number;
+        gap: number;
+        radius: number;
+        focusedFill: string;
+        unfocusedFill: string;
+        titleSize: number;
+        titleColor: string;
+        titleFont: string;
+        buttons: readonly ("minimise" | "maximise" | "close")[];
+        buttonSize: number;
+        buttonColor: string;
+        icons: Readonly<Record<"minimise" | "maximise" | "close", string>>;
+    }
+    export const defaultTitlebarStyle: Readonly<TitlebarStyle>;
+    export interface TitlebarHooks {
+        menu?(client: unknown): void;
+        lower?(client: unknown): void;
+        maximise?(client: unknown, on: boolean): void;
+    }
+    /** The bar above a window's content. A press does what the seat's `double_click`, `middle_click` and `right_click` say. */
+    export class Titlebar extends Box {
+        constructor(client: Client, style?: TitlebarStyle, hooks?: TitlebarHooks);
+        readonly inset: number;
+        readonly title: Text;
+    }
+    export class Decorations {
+        constructor(nodeOf: (client: Client) => number, style?: TitlebarStyle, hooks?: TitlebarHooks);
+        titlebarOf(client: Client): Titlebar | undefined;
+        /** The height of the bar above `client`'s content; 0 without a bar or while fullscreen. */
+        insetOf(client: Client): number;
+        onAdded(client: Client): void;
+        onRemoved(client: Client): void;
+    }
+
+    /** The text of an entry, the caret and the selection, counted in characters. */
+    export class EntryModel {
+        text: string;
+        readonly length: number;
+        readonly caret: number;
+        readonly anchor: number;
+        readonly selection: { start: number; end: number } | null;
+        readonly selectedText: string;
+        insert(text: string): void;
+        backspace(): void;
+        delete(): void;
+        move(at: number, extend?: boolean): void;
+        left(extend?: boolean): void;
+        right(extend?: boolean): void;
+        home(extend?: boolean): void;
+        end(extend?: boolean): void;
+        selectAll(): void;
+        before(at: number): string;
+    }
+    export interface EntryOptions extends BoxOptions {
+        text?: string;
+        secret?: boolean;
+        size?: number;
+        color?: Color;
+        font?: string;
+        selectionFill?: Color;
+    }
+    /** A line of text you type into; give it the keyboard with `focus()`. */
+    export class Entry extends Box {
+        constructor(options?: EntryOptions);
+        readonly model: EntryModel;
+        text: string;
+        secret: boolean;
+        onSubmit?: (text: string) => void;
+        shown(text: string): string;
+    }
+    export function formatTime(format: string, date: Date): string;
+    export interface ClockOptions extends BoxOptions {
+        format?: string;
+        size?: number;
+        color?: Color;
+        now?: () => Date;
+    }
+    export class Clock extends Text {
+        constructor(options?: ClockOptions);
+        format: string;
+        now: () => Date;
+    }
+    export type BarEdge = "top" | "bottom";
+    export interface BarOptions extends BoxOptions {
+        edge?: BarEdge;
+        hideWhen?: () => boolean;
+    }
+    /** A strip along the top or bottom of the primary screen that takes its room from the windows. */
+    export class Bar extends Box {
+        constructor(options?: BarOptions);
+        edge: BarEdge;
+        hideWhen: (() => boolean) | null;
+        readonly shown: boolean;
+    }
+    export function barInsets(): { top: number; bottom: number };
+
+    export interface MenuEntry {
+        label?: string;
+        run?: (client: MenuClient) => void;
+        enabled?: boolean;
+        checked?: boolean;
+        submenu?: readonly MenuEntry[] | ((client: MenuClient) => readonly MenuEntry[]);
+        separator?: boolean;
+    }
+    export interface MenuClient {
+        readonly alive: boolean;
+        fullscreen: boolean;
+        readonly tiled: boolean;
+        readonly secure?: boolean;
+        readonly workspace: { readonly id: string; readonly name: string; readonly active: boolean } | null;
+        maximised: boolean;
+        minimised: boolean;
+        close(): void;
+        moveWithKeys?(): void;
+        resizeWithKeys?(): void;
+    }
+    export function menuHeight(entries: readonly MenuEntry[]): number;
+    export function placeCard(
+        anchor: { x: number; y: number },
+        size: { width: number; height: number },
+        area: { width: number; height: number },
+    ): { x: number; y: number };
+    export interface NavRow {
+        readonly label: string;
+        readonly enabled: boolean;
+        readonly submenu: boolean;
+    }
+    /** Which row of a menu the keyboard is on. */
+    export class MenuNavigator<R extends NavRow = NavRow> {
+        constructor(rows: readonly R[]);
+        readonly rows: readonly R[];
+        readonly depth: 1 | 2;
+        readonly subRows: readonly R[];
+        readonly index: number;
+        active(): readonly R[];
+        selected(): R | null;
+        isSelected(row: R): boolean;
+        select(row: R): void;
+        move(step: 1 | -1): void;
+        home(): void;
+        end(): void;
+        jump(letter: string): void;
+        openSubmenu(rows: readonly R[]): void;
+        closeSubmenu(): void;
+    }
+    export type MenuKeyAction =
+        | { do: "move"; step: 1 | -1 }
+        | { do: "home" | "end" | "activate" | "right" | "left" | "escape" }
+        | { do: "jump"; letter: string };
+    export function menuKeyAction(key: string, text: string): MenuKeyAction | null;
+    /** The menu now open: a layer over the screen with a card of entries. */
+    export class WindowMenu extends Box {
+        readonly client: MenuClient;
+        readonly nav: MenuNavigator;
+        readonly panel: Box;
+        sub: Box | null;
+    }
+    /** The stock window menu. Assign `items` to change what it offers and `show` to draw another. */
+    export class WindowMenus {
+        readonly started: boolean;
+        readonly current: WindowMenu | null;
+        items(client: MenuClient): MenuEntry[];
+        show(client: MenuClient, x?: number, y?: number): WindowMenu | null;
+        open(client: MenuClient, x: number, y: number): WindowMenu | null;
+        close(): boolean;
+        isAbove(client: MenuClient): boolean;
+        setAbove(client: MenuClient, on: boolean): void;
+    }
+    export const windowMenu: WindowMenus;
+
+    export interface AlertClient {
+        readonly alive: boolean;
+        readonly unresponsive: boolean;
+        readonly title: string;
+        readonly secure?: boolean;
+        kill(): void;
+    }
+    export type AlertAnswer = "wait" | "force" | "recovered";
+    export interface AlertChanges<W> {
+        open: W[];
+        close: W[];
+    }
+    /** Which windows get an alert and which are waited on. */
+    export class AlertTracker<W extends AlertClient> {
+        isOpen(window: W): boolean;
+        isWaiting(window: W): boolean;
+        check(windows: Iterable<W>, locked: boolean): AlertChanges<W>;
+        /** Returns whether the window is to be killed. */
+        answered(window: W, answer: AlertAnswer): boolean;
+    }
+    export function cleanText(text: string, max: number): string;
+    export class NotRespondingDialog extends Box {
+        index: number;
+        armed: boolean;
+        onChosen?: (answer: "wait" | "force") => void;
+        select(index: number): void;
+        arm(): void;
+        activate(index: number): void;
+    }
+    export interface AlertOptions {
+        armSeconds?: number;
+        intervalMs?: number;
+    }
+    export class NotRespondingAlerts {
+        armSeconds: number;
+        intervalMs: number;
+        readonly started: boolean;
+        cardOf(client: AlertClient): NotRespondingDialog | undefined;
+        check(): void;
+    }
+    export const notRespondingAlerts: NotRespondingAlerts;
+
+    export interface LauncherOptions extends EntryOptions {
+        spawn?: (command: string) => void;
+    }
+    /** A command entry, 600 by 48: Return starts the typed command, Escape closes it. */
+    export class Launcher extends Entry {
+        constructor(options?: LauncherOptions);
+    }
+    export function openLauncher(options?: LauncherOptions): Launcher;
+
+    export interface OverviewWorkspace {
+        readonly active: boolean;
+        readonly clients: Iterable<{ opacity: number }>;
+    }
+    export const DIMMED_OPACITY: 0.4;
+    export class Overview {
+        constructor(workspaces: () => Iterable<OverviewWorkspace>);
+        readonly on: boolean;
+        toggle(): boolean;
+    }
+    export const overview: Overview;
+
+    export interface ToastOptions {
+        fadeIn?: number;
+        hold?: number;
+        fadeOut?: number;
+        now?: () => number;
+    }
+    export class Toast extends Box {
+        constructor(text: string, options?: ToastOptions);
+        readonly message: Text;
+    }
+    export function toast(text: string, options?: ToastOptions): Toast;
 
     export const gnoblin: Gnoblin;
 }

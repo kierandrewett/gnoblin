@@ -799,9 +799,47 @@ strokeWidth }`, `line`, `text`, `icon`, `pushClip`, `popClip`, `pushOpacity`, `p
   decoded list with `gnoblin-paint`'s painter (the one the compositor links), not from the compositor's output: a
   `View` capture was not tried. Real pointer events on a titlebar are not exercised, so the drag is proven against the
   fake link only.
-- **Not done.** The right and middle click gestures and the fade on close of `decorations.lua`; the titlebar reserves no
-  room above the client (it draws over the top, as the Lua one did); `Bar`, `Clock` and `Entry`; declarations for the
-  toolkit in `gnoblin-stock.d.ts`.
+- **Not done.** The keyboard Move and Resize modes of the window menu (`reposition.lua`); a fade for a window its client
+  closes itself (the node is gone from the compositor at once); dragging a titlebar with a real pointer.
+
+## Stock shell UI status
+
+Lane JsStockShellUi: `Entry`, `Clock` and `Bar` (`data/js/gnoblin/widgets.ts`), the window menu (`menus.ts`), the
+not-responding alert (`alerts.ts`), `toast` (`panel.ts`), the overview (`overview.ts`), the launcher (`launcher.ts`), and
+the titlebar's gestures, fade and reserved room. User page: `docs/js-ui.md`.
+
+- **Host.** The toolkit's events now include a `key` sent to the canvas that holds the seat's focus (`Canvas.focus()`,
+  `ui.focus`, written as the seat's `focus`) and a `request` made of any window (`menu`, with its anchor); a key event
+  is never printed. `ui.top` (`Canvas.mountTop`) parents the windows the compositor left without a parent to the root,
+  as `Client.raise` does (`adopt_windows`, shared), and puts a canvas last, over them. The host reads the seat's
+  `pointer_x`, `pointer_y`, `double_click`, `middle_click` and `right_click`, whether the lock is engaged or its `state`
+  is not `not-locked`, and the primary screen's size. A canvas may be `secure`. `Window` gains `unresponsive`, `kill`
+  (callable now) and the host's `lower` (`Client.lower()`).
+- **Menu.** The pure parts are `menuHeight`, `placeCard`, `MenuNavigator` and `menuKeyAction`; the controller is
+  `windowMenu`. It answers `menu` requests, opens one menu at a time on a layer over the screen, keeps the keyboard where
+  it was and closes with its window and on a lock. `defineConfig({ menus: false })` never starts it: the compositor still
+  sends the requests, and nothing answers them. The compositor does not wait for the shell, so there is no timeout to
+  add. A shell that never calls `defineConfig` has no menu, as it has no stock keys. Always on top is kept by the menu
+  controller (a pinned window is raised again when another window comes over it), not by the compositor.
+- **Alert.** `AlertTracker` is the state machine. The alert reads `unresponsive` a few times a second (the property is
+  written, not signalled) and its Force quit calls `Client.kill()`.
+- **Titlebar room.** Decision: the compositor's decoration mode is client-side and the tree has no server-side flag, so
+  decoration cannot be opted into per client; the stock library keeps the Lua behaviour (every window gets a bar) and
+  reserves the room instead of drawing over the content. `client.bounds` is the content, `client.frameInset` the bar,
+  layouts place frames; see `docs/js-ui.md`, "The room above the client".
+- **Launcher.** With no `launcher` command and no key bound to `Super+space`, the host binds the stock entry
+  (`planStockLauncher`; `plan.bindings` is unchanged).
+- **Proven against the fake link** (`crates/gnoblin-js/tests/stock_ui.rs`, the cases of `menus_test.lua`,
+  `alerts_test.lua` and `ui_test.lua`; the fake compositor moved to `tests/common`): menu opening, anchor and clamping,
+  keyboard navigation, pointer selection, submenu, Restore, Minimise, Close, Always on top, secure, lock, replacing
+  `items` and `show`, a throwing entry, `menus: false`; the alert tracker, Wait, Force quit and its arming, the alert
+  closing on recovery, a closed window and a lock, `alerts: false`; `EntryModel`, `Entry` keys, `formatTime`, `Clock`,
+  `Bar`, toast, overview, launcher; the titlebar's seat actions, the content below its bar, `frameInset`.
+- **Proven on the real compositor** (`crates/gnoblin/tests/js_shell.rs`, the last two tests): a mapped decorated window's
+  content starts where its bar ends, with the bar on screen above it and no overlap; a right click on the bar through the
+  session's input path opens the menu, which the compositor holds as painted canvases, and Escape closes it. A client
+  that answers no ping gets the alert, Escape (Wait) closes it, and Force quit (armed) closes it: the compositor refuses
+  `kill` for its own process, which is this test's, so the kill itself is proven against the fake link only.
 
 ## Questions for the owner (the agent has a default for each)
 
