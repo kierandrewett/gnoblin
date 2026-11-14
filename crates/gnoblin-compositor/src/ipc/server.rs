@@ -2183,8 +2183,10 @@ impl Dispatcher {
     }
 
     /// Serves `idle.inhibit` and `idle.uninhibit`: one named hold on idle notifications is
-    /// added or removed. The hold is recorded on the compositor's idle tables, so the next
-    /// snapshot publishes the new `inhibitors` count.
+    /// added or removed. The hold belongs to the calling connection: the name is scoped to it,
+    /// `uninhibit` releases only its own, and the connection's ending releases the rest
+    /// (`Dispatcher::close` and `Dispatcher::lost`). The hold is recorded on the compositor's
+    /// idle tables, so the next snapshot publishes the new `inhibitors` count.
     fn idle_call(
         &mut self,
         client: ClientId,
@@ -2203,7 +2205,7 @@ impl Dispatcher {
         };
         self.reply_with_operation(client, envelope, &operation);
         let outcome = match text_argument(arguments, "holder") {
-            Some(holder) => match self.control.idle_hold(&holder, method == "inhibit") {
+            Some(holder) => match self.control.idle_hold(client, &holder, method == "inhibit") {
                 Some(Ok(_)) => OperationOutcome::Done,
                 Some(Err(_)) => OperationOutcome::Failed(TOO_MANY_INHIBITORS),
                 None => OperationOutcome::Failed(IDLE_UNAVAILABLE),
@@ -2741,6 +2743,7 @@ impl Dispatcher {
         let replies = self.portal.departed(client);
         self.deliver_replies(replies);
         self.consent.departed(client, &self.control);
+        self.control.release_idle_holds_of(client);
     }
 
     /// Ends one connection: its subscriptions, its writer and its reader.
@@ -2760,6 +2763,7 @@ impl Dispatcher {
         let replies = self.portal.departed(client);
         self.deliver_replies(replies);
         self.consent.departed(client, &self.control);
+        self.control.release_idle_holds_of(client);
         // A peer that is gone does not need its socket shut down; a peer that is still
         // there is told, so its reader returns instead of waiting for a next frame.
         let _ = connection.writer.shutdown(if shutdown {

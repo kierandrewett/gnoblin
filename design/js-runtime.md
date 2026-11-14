@@ -1041,7 +1041,9 @@ onClosed })` returns an `IdleWatch`; `inhibit(holder)` returns an `IdleInhibitor
   (`JsClientIdleLink`: one lookup of the object's id on a throwaway connection, then a subscription to that object
   alone), opened when the running generation first has a watch or a hold and closed when it has neither, because every
   change of `idle_ms` goes to every subscriber. The connection is a `JsIdleConnector` in `JsRoleLinks`, so a test
-  passes a fake. `JsShell::retire` gives every hold back (`uninhibit`) before it drops the connection.
+  passes a fake. `JsShell::retire` gives every hold back (`uninhibit`) before it drops the connection. The compositor
+  keeps each hold for the connection that made it (`idle.toml`; `Dispatcher::close` and `lost` release them), so a shell
+  killed without retiring leaves none behind, and a lost idle connection ends the script's holds (`IdleMonitor.lost`).
 - **`gnoblin.authentication`** (`authentication.ts`). Replaced by the observation-only API of the "Polkit status" section: there is no provider, no `allow` and no second slot connection.
 - **`gnoblin.launches`** (`launches.ts`). The shell's own registry: `begin`, `list`, `finish`, four handlers, the page's
   limits (token 128, application 512, 100 to 10000 ms, 64 records). Windows answer a launch through two listeners on
@@ -1051,20 +1053,17 @@ onClosed })` returns an `IdleWatch`; `inhibit(holder)` returns an `IdleInhibitor
 - One entry call a frame, `wants()`, says whether a script needs the idle connection (bit 1); a shell that does not
   pays for that call. `JsShell::run_host_api` is the rest.
 
-**Proven.** Against fakes: `crates/gnoblin-js/tests/host_idle.rs` (15 cases), `host_auth.rs` (16) and `host_launches.rs`
+**Proven.** Against fakes: `crates/gnoblin-js/tests/host_idle.rs` (16 cases), `host_auth.rs` (16) and `host_launches.rs`
 (13), covering the page's rules, the validation tables and the failures first (no connection, a lost one, a refused
 hold or claim, a throwing handler, a request open at `retire`). Against the real compositor (`crates/gnoblin/tests/js_shell.rs`, the
-last four tests): a watch hears the compositor's own idle clock pass its time, the input that ends it, and the next idle
+idle and launch tests): a watch hears the compositor's own idle clock pass its time, the input that ends it, and the next idle
 period; a hold is counted in the compositor's `inhibitors`, keeps the watch from firing with the session idle for far
-longer than the watch's time, and a reload that retires the generation gives it back; a launch is started by a real
-mapped window and another is timed out by its deadline.
+longer than the watch's time, and a reload that retires the generation gives it back; a shell that dies without retiring
+leaves the compositor counting no hold and the next shell's watch hears the session go idle; a launch is started by a
+real mapped window and another is timed out by its deadline.
 
 **Gaps.**
 
-- A hold is kept by name in the compositor and not by connection (`idle_hold` in `ipc/server.rs`), so a shell that is
-  killed without retiring leaves its holds standing. A chord claim and a slot do not have this problem; the fix is
-  compositor-side (release a connection's holds when it closes) and is not made here. The shell cannot list the
-  holds to clear them at startup.
 - `privacy`, `input-grab`, `text-insertion` and `tablet-pad-help` are not built, because the compositor serves nothing to
   build them on: no privacy object (the PipeWire monitor is a session-bus service, `org.gnoblin.Privacy`, and carries
   microphone and camera only), no key-event stream and no keyboard lease (a seat claim takes a chord), no text-input

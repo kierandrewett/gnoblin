@@ -286,9 +286,16 @@ export class IdleMonitor {
         }
     }
 
-    /** The connection to the compositor ended: nothing is idle any more, and the last reading is forgotten. */
+    /**
+     * The connection to the compositor ended: nothing is idle any more, and the last reading is forgotten. The holds
+     * went with it, because the compositor keeps each one for the connection that made it, so they are not holds now.
+     */
     lost(): void {
         this.#reading = null;
+        for (const inhibitor of this.#inhibitors.values()) {
+            IdleInhibitor.end(inhibitor);
+        }
+        this.#inhibitors.clear();
         for (const watch of this.#watches) {
             const resume = IdleWatch.settle(watch, false);
             resume?.(this.#host);

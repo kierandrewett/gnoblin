@@ -29,16 +29,22 @@ type = "uint"
 since = "0.2.0"
 
 # How many holds keep the session awake: the Wayland `zwp_idle_inhibit_v1` surfaces
-# plus the holders `inhibit` has recorded. While it is non-zero no idle notification
-# fires, and an idle one is resumed. Read-only: the compositor sets it.
+# plus the holders `inhibit` has recorded, whichever connection recorded them. While it
+# is non-zero no idle notification fires, and an idle one is resumed. Read-only: the
+# compositor sets it.
 [[object.property]]
 name = "inhibitors"
 type = "uint"
 since = "0.2.0"
 
 # Hold the session awake under `holder`, a name the caller chooses and that is unique
-# among its holders. Holding again under the same name changes nothing. The holders
-# are capped; past the cap the operation fails with `too-many-inhibitors`.
+# among the holders of the calling connection. A holder is scoped to the connection that
+# made it: another connection that uses the same name holds separately, and a connection
+# releases only its own. Holding again under the same name from the same connection
+# changes nothing. The compositor releases every holder of a connection when that
+# connection ends, cleanly or not, so a caller that dies without giving its holds back
+# does not keep the session awake. The holders are capped across all connections; past
+# the cap the operation fails with `too-many-inhibitors`.
 [[object.method]]
 name = "inhibit"
 since = "0.2.0"
@@ -48,8 +54,9 @@ name = "holder"
 type = "string"
 since = "0.2.0"
 
-# Release the hold `holder` names. A name that holds nothing is a no-op, and the
-# operation is `done` either way.
+# Release the hold `holder` names on the calling connection. A name the connection holds
+# nothing under (another connection's hold of the same name is not its to release) is a
+# no-op, and the operation is `done` either way.
 [[object.method]]
 name = "uninhibit"
 since = "0.2.0"

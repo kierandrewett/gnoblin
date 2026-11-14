@@ -293,7 +293,7 @@ impl JsIdle {
                 self.link = None;
                 self.gave_up = true;
                 diagnostics.push(format!(
-                    "the idle connection is lost ({error}); idle watches stop firing"
+                    "the idle connection is lost ({error}); idle watches stop firing and the compositor has given back its holds"
                 ));
                 JsIdlePoll {
                     reading: None,

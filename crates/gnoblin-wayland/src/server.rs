@@ -649,9 +649,15 @@ impl Server {
                                 // read of the window's pose sees it.
                                 let _ = reply.send(state.window_visual(window, change));
                             }
-                            Command::IdleHold { holder, held, reply } => {
-                                let _ = reply.send(state.idle_hold(holder, held));
+                            Command::IdleHold {
+                                client,
+                                holder,
+                                held,
+                                reply,
+                            } => {
+                                let _ = reply.send(state.idle_hold(client, holder, held));
                             }
+                            Command::IdleReleaseHolds { client } => state.release_idle_holds_of(client),
                             Command::WindowProcess { window, reply } => {
                                 let _ = reply.send(state.window_process_for_control(window));
                             }
@@ -963,17 +969,27 @@ impl ControlHandle {
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
-    /// Adds (`held` true) or removes one named idle holder. `None` when the loop did not
-    /// answer in time; otherwise `Err` when adding would exceed the holder cap, and `Ok`
-    /// with whether the set changed (adding a held name, or removing one that was held).
-    pub fn idle_hold(&self, holder: &str, held: bool) -> Option<Result<bool, String>> {
+    /// Adds (`held` true) or removes one named idle holder of the IPC connection `client`. A
+    /// name is scoped to its connection, so the same name from another connection is another
+    /// hold. `None` when the loop did not answer in time; otherwise `Err` when adding would
+    /// exceed the holder cap, and `Ok` with whether the set changed (adding a held name, or
+    /// removing one that was held).
+    pub fn idle_hold(&self, client: ClientId, holder: &str, held: bool) -> Option<Result<bool, String>> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::IdleHold {
+            client,
             holder: holder.to_owned(),
             held,
             reply,
         });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// Releases every idle hold the IPC connection `client` made, as when that connection has
+    /// ended without giving them back. Holds of other connections and Wayland inhibitor
+    /// surfaces are untouched.
+    pub fn release_idle_holds_of(&self, client: ClientId) {
+        self.control.push(Command::IdleReleaseHolds { client });
     }
 
     /// The process behind a window's client. `None` when the loop did not answer in time;
@@ -1400,12 +1416,15 @@ enum Command {
         change: WindowVisual,
         reply: std::sync::mpsc::SyncSender<Result<(), WindowVisualRefusal>>,
     },
-    /// Adds or removes one idle holder; see `ControlHandle::idle_hold`.
+    /// Adds or removes one idle holder of one connection; see `ControlHandle::idle_hold`.
     IdleHold {
+        client: ClientId,
         holder: String,
         held: bool,
         reply: std::sync::mpsc::SyncSender<Result<bool, String>>,
     },
+    /// Releases every idle hold one connection made; see `ControlHandle::release_idle_holds_of`.
+    IdleReleaseHolds { client: ClientId },
     /// The process behind a window's client; see `ControlHandle::window_process`.
     WindowProcess {
         window: WindowId,

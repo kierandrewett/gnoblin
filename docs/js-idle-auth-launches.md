@@ -54,9 +54,14 @@ session is not idle, and every watch resumes. `inhibitor.release()` gives it bac
 hold returns the same object. If the compositor refuses the hold (it keeps a limited number), `inhibitor.alive` is `false`
 and the shell logs why.
 
-The shell gives every hold back when the generation ends, which a reload and a shutdown both do. The compositor records a
-hold by name and not by connection, so a shell that is killed without ending its generation leaves its holds standing
-until the same name is released. Keep your holders few and named for what they are.
+The shell gives every hold back when the generation ends, which a reload and a shutdown both do. The compositor also
+keeps each hold for the connection that made it:
+
+- A shell that is killed without ending its generation leaves no hold behind. The holds end with its connection.
+- If the shell loses its connection while a script holds, those holds are already gone and `inhibitor.alive` turns
+  `false`.
+- A name belongs to your shell alone. Another program that holds under the same name makes a separate hold.
+- The compositor keeps at most 256 holds across all programs, so keep your holders few and named for what they are.
 
 ### What differs from the Lua page
 

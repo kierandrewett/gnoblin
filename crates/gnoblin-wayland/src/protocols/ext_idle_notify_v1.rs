@@ -38,6 +38,11 @@
 //! 4. **A notification outlives its client.** The object's `destroyed` hook removes the
 //!    record, and a record whose object is gone is skipped, so a dead client's
 //!    notification cannot be sent to a recycled object id.
+//! 5. **A named hold outlives the connection that made it.** A holder belongs to the IPC
+//!    connection that recorded it, and the compositor releases a connection's holders when it
+//!    ends, so a shell that is killed without giving its holds back cannot keep the display
+//!    awake for ever: `a_connection_that_closes_gives_back_only_its_own_holds` in
+//!    `gnoblin-compositor`'s `tests/idle.rs`.
 
 use std::sync::Arc;
 
@@ -50,6 +55,7 @@ use smithay::reexports::wayland_server::{DataInit, DisplayHandle, Resource};
 use smithay::wayland::{Dispatch2, GlobalDispatch2};
 
 use gnoblin_input::Activity;
+use gnoblin_types::ClientId;
 
 use crate::State;
 use crate::access::{Access, ClientRole};
@@ -67,8 +73,10 @@ struct ExtIdleNotifyV1Notification {
     idled: bool,
 }
 
-/// The most named idle holders the session keeps at once. A holder is one ScreenSaver
-/// inhibit, so this bounds what one D-Bus caller can pile up.
+/// The most named idle holders the session keeps at once, counted across every connection.
+/// A holder is one ScreenSaver inhibit or one script hold, so this bounds what the
+/// callers can pile up. It is not a per-connection share: the services role carries every
+/// D-Bus caller's inhibit over one connection and must not be capped below the session.
 pub(crate) const IDLE_HOLDER_CAP: usize = 256;
 
 /// The idle notifications and inhibitors the session holds.
@@ -78,9 +86,12 @@ pub(crate) struct ExtIdleNotifyV1Tables {
     notifications: Vec<ExtIdleNotifyV1Notification>,
     /// The surfaces whose clients asked that the session never idle.
     inhibits: Vec<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
-    /// The named holders the session's own clients (the ScreenSaver bridge) asked to keep
-    /// it awake. A holder is an opaque name; adding a held name again changes nothing.
-    holders: std::collections::BTreeSet<String>,
+    /// The named holders the session's own clients (the ScreenSaver bridge, a shell's
+    /// script) asked to keep it awake, each with the IPC connection that holds it. A holder
+    /// is an opaque name scoped to its connection: two connections that use one name hold
+    /// twice, and a connection releases only its own. Adding a held pair again changes
+    /// nothing.
+    holders: std::collections::BTreeSet<(ClientId, String)>,
     /// The idle state last published to the observation snapshot: idle seconds and the
     /// inhibitor count. The snapshot is republished when either moves, not on every turn.
     published: Option<(u64, usize)>,
@@ -249,22 +260,35 @@ impl State {
         self.idle_tables.inhibits.len() + self.idle_tables.holders.len()
     }
 
-    /// Adds (`held` true) or removes one named idle holder. Adding a name already held and
-    /// removing one not held change nothing. `Ok` carries whether the set changed; `Err`
-    /// refuses a new name once [`IDLE_HOLDER_CAP`] names are held.
-    pub(crate) fn idle_hold(&mut self, holder: String, held: bool) -> Result<bool, String> {
+    /// Adds (`held` true) or removes the named idle holder of one IPC connection. Adding a
+    /// name the connection already holds and removing one it does not hold change nothing.
+    /// `Ok` carries whether the set changed; `Err` refuses a new hold once
+    /// [`IDLE_HOLDER_CAP`] holders are held.
+    pub(crate) fn idle_hold(&mut self, client: ClientId, holder: String, held: bool) -> Result<bool, String> {
+        let key = (client, holder);
         let changed = if held {
-            if !self.idle_tables.holders.contains(&holder) && self.idle_tables.holders.len() >= IDLE_HOLDER_CAP {
+            if !self.idle_tables.holders.contains(&key) && self.idle_tables.holders.len() >= IDLE_HOLDER_CAP {
                 return Err(format!("at most {IDLE_HOLDER_CAP} idle inhibitors may be held at once"));
             }
-            self.idle_tables.holders.insert(holder)
+            self.idle_tables.holders.insert(key)
         } else {
-            self.idle_tables.holders.remove(&holder)
+            self.idle_tables.holders.remove(&key)
         };
         if changed {
             self.refresh_idle();
         }
         Ok(changed)
+    }
+
+    /// Releases every named hold of one IPC connection that has ended, so a connection that
+    /// went away without giving its holds back does not keep the session awake. Surface
+    /// inhibitors are the Wayland client's and are not touched.
+    pub(crate) fn release_idle_holds_of(&mut self, client: ClientId) {
+        let before = self.idle_tables.holders.len();
+        self.idle_tables.holders.retain(|(holder, _)| *holder != client);
+        if self.idle_tables.holders.len() != before {
+            self.refresh_idle();
+        }
     }
 
     /// Records or drops one inhibitor.
