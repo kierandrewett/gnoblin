@@ -2047,8 +2047,12 @@ fn a_fullscreen_window_with_a_shadow_margin_fills_the_screen_with_its_geometry()
     // The client answers the configure with a geometry that size and a buffer with its margin around it: the window is
     // still the screen, and the margin is outside it.
     let deadline = Instant::now() + PATIENCE;
-    while !mapper.configured(0).is_some_and(|(width, _)| width > 0) {
-        assert!(Instant::now() < deadline, "the client was never configured to a size");
+    let screen = (screen_width as i32, screen_height as i32);
+    while mapper.configured(0) != Some(screen) {
+        assert!(
+            Instant::now() < deadline,
+            "the client was never configured to the screen's size"
+        );
         mapper.roundtrip();
         std::thread::sleep(POLL);
     }
