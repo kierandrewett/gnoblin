@@ -87,6 +87,26 @@ declare module "gnoblin" {
         /** The geometry the layout gave the client. */
         bounds: Rect;
         readonly workspace: Workspace | null;
+        /**
+         * The window this one is a dialog of (`xdg_toplevel.set_parent`), or null. A dialog is centred in its parent when
+         * it opens, moves with it, stays on its workspace and output, and is left out of the layout's tiling.
+         */
+        readonly parentWindow: Client | null;
+        /**
+         * Whether the window opened on an activation token the session's launcher minted, so `focus.newWindows` treats it
+         * as launched. A program started with `gnoblin.spawn` is not marked: the shell's spawner mints no token.
+         */
+        readonly fromLauncher: boolean;
+        /** The output that shows the client's workspace, or null while no output shows it. */
+        readonly output: Output | null;
+        /**
+         * Moves the window to `workspace` and fits it to that workspace's work area; a window that leaves the shown
+         * workspace hands its focus to one that stays, and its dialogs go with it. False, and nothing moves, for a
+         * fullscreen window, a dialog, a dead window, a workspace not in `gnoblin.workspaces`, or the one it is on.
+         */
+        moveToWorkspace(workspace: Workspace): boolean;
+        /** `moveToWorkspace` to the workspace `output` shows. False when the output is gone or shows none. */
+        moveToOutput(output: Output): boolean;
         /** Where the user left the client in a floating layout. */
         floatingBounds?: Rect;
         /** Whether the window covers its output. Writing asks the compositor to make it fullscreen or restore it. */
@@ -161,6 +181,12 @@ declare module "gnoblin" {
         readonly clients: Collection<Client>;
         /** Inner and outer gap that every stock layout reads from `LayoutContext`. */
         gaps: Gaps;
+        /** Whether an output shows this workspace. With several outputs, several workspaces are active. */
+        readonly active: boolean;
+        /** The output that shows this workspace, or null while none does. */
+        readonly output: Output | null;
+        /** Shows this workspace on the output under the pointer (the primary output when no pointer says). */
+        show(options?: ShowOptions): void;
         constructor(options: WorkspaceOptions);
     }
 
@@ -424,19 +450,59 @@ declare module "gnoblin" {
         onRequest?(client: Client, request: ClientRequest<Client>): void;
     }
 
+    /**
+     * Observes the outputs: attach it to one output, or to `gnoblin.outputs` for all of them. A listener on the
+     * collection hears `onConnected` for an output plugged in while the shell runs, not for those there at start.
+     */
     export class OutputListener extends MemberListener<Output> {
+        /** The output appeared: it was plugged in, or made by the compositor. */
+        onConnected?(output: Output): void;
+        /** The output is gone. Its last values stay readable and `connected` is false. */
+        onDisconnected?(output: Output): void;
+        /** The output's mode (`WxH@Hz`) changed. */
         onModeChanged?(output: Output, mode: string): void;
         onScaleChanged?(output: Output, scale: number): void;
-        onConnectionChanged?(output: Output, connected: boolean): void;
+        /** The output's place or size in the compositor's coordinates changed. */
+        onGeometryChanged?(output: Output, geometry: Rect): void;
     }
 
-    /** A connected physical or virtual output: read-only capabilities and applied state. */
+    /**
+     * A connected output, the compositor's `screen` node. It shows one workspace at a time (`workspace`, `show`), and
+     * the work area the layouts tile in is its rectangle less the bars on it. A destroyed one keeps its last values and
+     * reads `connected === false`. Its properties are the compositor's: none is written from a script. Docs:
+     * docs/js-outputs.md.
+     */
     export class Output extends NativeObject {
-        readonly connector: string;
+        /** The name the compositor gives the output: what a workspace set's entry and `outputs.where({ name })` use. */
+        readonly name: string;
+        readonly make: string;
+        readonly model: string;
+        /** The mode being driven, `WxH@Hz`. */
         readonly mode: string;
+        /** The factor the output composes at: 2 is a HiDPI panel. */
         readonly scale: number;
-        readonly position: Vec2;
+        readonly transform: string;
+        /** Whether this is the primary output, the one the stock bars and `gnoblin.workspaces.area` are on. */
+        readonly primary: boolean;
+        readonly enabled: boolean;
+        readonly x: number;
+        readonly y: number;
+        readonly width: number;
+        readonly height: number;
+        readonly position: { x: number; y: number };
+        /** The whole output in the compositor's coordinates. */
+        readonly bounds: Rect;
+        /** What a layout tiles in on this output: the output less its bars. Null for a gone output or one with no size. */
+        readonly area: Rect | null;
+        /** Whether the display is still connected: false once the compositor destroyed the output. */
         readonly connected: boolean;
+        /** The workspace the output shows, or null when it shows none or is gone. */
+        readonly workspace: Workspace | null;
+        /**
+         * Shows `workspace` (itself or its id) on this output. A workspace another output shows moves here and that
+         * output takes the workspace this one showed, so no workspace is on two outputs.
+         */
+        show(workspace: Workspace | string, options?: ShowOptions): void;
     }
 
     // -- Triggers and bindings (owner-spec sections 10 and 11) ----------------
@@ -1091,6 +1157,8 @@ declare module "gnoblin" {
         now(): number;
         isArrival(client: C): boolean;
         skipsFocus(client: C): boolean;
+        /** Whether `client` opened on a token the launcher minted (`focus.newWindows` then decides). Absent: no. */
+        fromLauncher?(client: C): boolean;
         alive(client: C): boolean;
     }
     /** Attached to a collection of clients: focus on a new window, hover and click focus, raise and auto raise. */
@@ -1363,6 +1431,8 @@ declare module "gnoblin" {
         duration?: number;
         /** How much of the slide a touchpad gesture has made already, 0 to 1. */
         progress?: number;
+        /** The output to show it on. Left out, the one under the pointer, else the primary one. */
+        output?: Output;
     }
 
     /** The seconds a workspace slide takes in the Lua shell and in the stock keys. */
@@ -1371,7 +1441,7 @@ declare module "gnoblin" {
     export interface WorkspaceCollection extends MutableCollection<Workspace> {
         /** Named groups of workspaces to show together. */
         readonly sets: WorkspaceSets;
-        /** The area windows are laid out in, which is the primary screen; null while there is none. */
+        /** The area windows are laid out in on the primary output; null while there is none. */
         readonly area: Rect | null;
         show(workspace: Workspace | string, options?: ShowOptions): void;
     }
@@ -1428,7 +1498,8 @@ declare module "gnoblin" {
     export interface SetsEnvironment {
         declared(): ReadonlySet<string>;
         outputs(): { names: readonly string[]; primary: string };
-        show(workspace: string): void;
+        /** Shows `workspace` on the output named `output`; left out, where the shell would show it. */
+        show(workspace: string, output?: string): void;
         report(message: string): void;
     }
     export class WorkspaceSets {
@@ -1702,20 +1773,36 @@ declare module "gnoblin" {
         now: () => Date;
     }
     export type BarEdge = "top" | "bottom";
+    /** The output a bar sits on, as far as the bar needs it. An `Output` satisfies it. */
+    export interface BarOutput {
+        readonly alive: boolean;
+        readonly x: number;
+        readonly y: number;
+        readonly width: number;
+        readonly height: number;
+    }
     export interface BarOptions extends BoxOptions {
         edge?: BarEdge;
         hideWhen?: () => boolean;
+        /** The output the bar sits on. Left out, the primary output; a bar whose output is unplugged is hidden. */
+        output?: BarOutput | null;
     }
-    /** A strip along the top or bottom of the primary screen that takes its room from the windows. */
+    /** A strip along the top or bottom of an output (the primary one unless `output` names another) that takes its room from the windows there. */
     export class Bar extends Box {
         constructor(options?: BarOptions);
         edge: BarEdge;
         hideWhen: (() => boolean) | null;
+        output: BarOutput | null;
+        /** The output the bar sits on now: its own, or the primary one. */
+        readonly onOutput: BarOutput | null;
         readonly shown: boolean;
     }
-    export function barInsets(): { top: number; bottom: number };
-    /** Makes every bar give way (hidden, taking no room) while `covered` returns true; null stops it. */
-    export function barsGiveWayTo(covered: (() => boolean) | null): void;
+    /** The room the bars take from the top and the bottom of `output` (the primary output when none is given). */
+    export function barInsets(output?: BarOutput | null): { top: number; bottom: number };
+    /** Makes every bar give way (hidden, taking no room) while `covered` returns true for its output; null stops it. */
+    export function barsGiveWayTo(covered: ((output: BarOutput | null) => boolean) | null): void;
+    /** Tells the bars which output is the primary one, where a bar with no `output` sits. */
+    export function barsOnOutputs(primary: (() => BarOutput | null) | null): void;
 
     export interface MenuEntry {
         label?: string;
@@ -1846,8 +1933,8 @@ declare module "gnoblin" {
         focused(): C | null;
         focus(client: C | null): void;
         onActiveWorkspace(client: C): boolean;
-        output(): Rect | null;
-        workArea(): Rect | null;
+        output(client?: C): Rect | null;
+        workArea(client?: C): Rect | null;
         framed(client: C, frame: Rect): Rect;
         snapped(client: C): boolean;
         unsnap(client: C): void;

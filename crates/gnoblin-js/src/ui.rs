@@ -366,6 +366,16 @@ pub(crate) fn seat_text(state: &HostState, key: &str) -> Option<String> {
     }
 }
 
+/// The screen the first seat's pointer is on (the seat's `screen`), as the number a script reads, or `None` while the
+/// tree has no seat or the seat names no screen.
+pub(crate) fn pointer_screen(state: &HostState) -> Option<f64> {
+    let seat = first_seat(state)?;
+    match state.tick.get(&state.mirror, seat, "screen") {
+        Some(MirrorValue::Node(id)) if *id != NIL => Some(state.handles.to_script(*id)),
+        _ => None,
+    }
+}
+
 /// Whether the session is locked or about to be: nothing opens over the lock screen.
 pub(crate) fn locked(state: &HostState) -> bool {
     parents_first(&state.mirror).into_iter().any(|id| {
@@ -802,6 +812,24 @@ mod tests {
         );
         assert_eq!(seat_text(&state, "double_click").as_deref(), Some("toggle-maximize"));
         assert_eq!(seat_text(&state, "name"), None);
+    }
+
+    #[test]
+    fn the_pointer_screen_is_the_screen_the_seat_names_and_none_without_one() {
+        assert_eq!(pointer_screen(&session()), None, "the seat names no screen");
+        let nodes = [
+            snapshot(1, 0, "node"),
+            node_with(2, 1, "seat", vec![("screen".into(), MirrorValue::Node(4))]),
+            node_with(4, 1, "screen", Vec::new()),
+        ];
+        let state = HostState::new(TreeMirror::from_snapshot(1, 1, 1, &nodes).expect("a mirror"));
+        assert_eq!(pointer_screen(&state), Some(4.0));
+        let nodes = [
+            snapshot(1, 0, "node"),
+            node_with(2, 1, "seat", vec![("screen".into(), MirrorValue::Node(0))]),
+        ];
+        let state = HostState::new(TreeMirror::from_snapshot(1, 1, 1, &nodes).expect("a mirror"));
+        assert_eq!(pointer_screen(&state), None, "a cleared reference is no screen");
     }
 
     #[test]

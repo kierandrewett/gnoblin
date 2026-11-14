@@ -47,11 +47,11 @@ import type { UiBackend } from "gnoblin/ui";
 import { defaultTitlebarStyle, Decorations } from "gnoblin/titlebar";
 import { inspect } from "gnoblin/inspect";
 import { WorkspaceSets } from "gnoblin/sets";
-import { snappedZone, unsnapClient } from "gnoblin/snap";
+import { snapClient, snappedZone, unsnapClient } from "gnoblin/snap";
 import type { SnapClient } from "gnoblin/snap";
 import { windowMenu } from "gnoblin/menus";
 import { notRespondingAlerts } from "gnoblin/alerts";
-import { barInsets, barsGiveWayTo } from "gnoblin/widgets";
+import { barInsets, barsGiveWayTo, barsOnOutputs } from "gnoblin/widgets";
 import { windowState } from "gnoblin/window_state";
 import type { ClientRequest } from "gnoblin/window_state";
 import {
@@ -154,6 +154,8 @@ interface Host {
     lower(node: NodeId): string | undefined;
     windows(): NodeId[];
     screens(): NodeId[];
+    /** The screen the main seat's pointer is on, or undefined while the seat names none. */
+    pointerScreen(): NodeId | undefined;
     spawn(command: string | string[]): string | undefined;
     input: InputHost;
     ui: Omit<UiBackend, "now">;
@@ -233,8 +235,25 @@ export class ClientListener {
 
 /** Observes membership: an object joining or leaving a collection. */
 export class CollectionListener {
-    onAdded?(member: Client | Workspace, collection: Collection<Client | Workspace>): void;
-    onRemoved?(member: Client | Workspace, collection: Collection<Client | Workspace>): void;
+    onAdded?(member: Client | Workspace | Output, collection: Collection<Client | Workspace | Output>): void;
+    onRemoved?(member: Client | Workspace | Output, collection: Collection<Client | Workspace | Output>): void;
+}
+
+/**
+ * Observes the outputs: attach it to one output, or to `gnoblin.outputs` for all of them. A listener on the
+ * collection hears `onConnected` for an output that is plugged in while the shell runs, not for the ones that were
+ * there when it started.
+ */
+export class OutputListener {
+    /** The output appeared: it was plugged in, or made by the compositor. */
+    onConnected?(output: Output): void;
+    /** The output is gone. Its last values stay readable; `connected` is false. */
+    onDisconnected?(output: Output): void;
+    /** The output's mode (`WxH@Hz`) changed. */
+    onModeChanged?(output: Output, mode: string): void;
+    onScaleChanged?(output: Output, scale: number): void;
+    /** The output's place or size in the compositor's coordinates changed. */
+    onGeometryChanged?(output: Output, geometry: Rect): void;
 }
 
 interface Source {
@@ -336,6 +355,8 @@ const CLIENT_KEYS = [
     "rotation",
     "scale",
     "secure",
+    "parent_window",
+    "from_launcher",
 ];
 
 /** What listeners were last told about a client, to raise an event only for a real change. */
@@ -347,6 +368,8 @@ interface Seen {
     y: number;
     width: number;
     height: number;
+    /** The node of the window this one is a dialog of, 0 for none. */
+    parent: number;
 }
 
 interface NodeState {
@@ -396,6 +419,7 @@ function publishedValues(node: NodeId): Seen {
         y: host.published(node, "y") as number,
         width: host.published(node, "width") as number,
         height: host.published(node, "height") as number,
+        parent: host.published(node, "parent_window") as number,
     };
 }
 
@@ -515,6 +539,10 @@ const clientsByNode = new Map<NodeId, Client>();
 const membership = new WeakMap<Client, Workspace>();
 /** The clients that were there when the shell booted: a layout does not place them again. */
 const preexisting = new WeakSet<Client>();
+/** The clients a layout was offered as arrivals: a dialog never is, so a layout is never told one left. */
+const offered = new WeakSet<Client>();
+/** The dialogs already centred in their parent. */
+const centred = new WeakSet<Client>();
 
 /** A toplevel window the compositor manages. */
 export class Client {
@@ -753,6 +781,50 @@ export class Client {
         return membership.get(this) ?? null;
     }
 
+    /**
+     * The window this one is a dialog of (`xdg_toplevel.set_parent`), or null. A dialog is centred in its parent when
+     * it opens, moves with it, stays on its workspace and output, and is left out of the layout's tiling.
+     */
+    get parentWindow(): Client | null {
+        const node = read<number>(this, "parent_window");
+        return node ? (clientsByNode.get(node) ?? null) : null;
+    }
+
+    /**
+     * Whether the window opened on an activation token the session's launcher minted, so `focus.newWindows` treats it as
+     * launched. The compositor sets it when the window redeems such a token; a program started with `gnoblin.spawn` is
+     * not marked, because the shell's spawner mints no token.
+     */
+    get fromLauncher(): boolean {
+        return read<boolean>(this, "from_launcher");
+    }
+
+    /** The output that shows the client's workspace, or null while no output shows it (or the output is gone). */
+    get output(): Output | null {
+        const desk = deskOfClient(this);
+        return desk?.parked === false ? desk.output : null;
+    }
+
+    /**
+     * Moves the window to `workspace` and fits it to that workspace's work area: a maximised window fills it, a snapped
+     * one re-snaps, a floating one is shrunk to fit and moved inside it. A window that leaves the shown workspace hands
+     * its focus to a window that stays. Its dialogs go with it. Refused (false, and nothing moves) for a fullscreen
+     * window, a dialog (it moves only with its parent), a dead window, a workspace that is not in
+     * `gnoblin.workspaces`, or the workspace it is on already.
+     */
+    moveToWorkspace(workspace: Workspace): boolean {
+        return moveClientTo(this, workspace);
+    }
+
+    /** `moveToWorkspace` to the workspace `output` shows. False when the output is gone or shows none. */
+    moveToOutput(output: Output): boolean {
+        if (!(output instanceof Output)) {
+            throw new TypeError(`${this}.moveToOutput: needs an Output`);
+        }
+        const shown = output.alive ? output.workspace : null;
+        return shown !== null && moveClientTo(this, shown);
+    }
+
     addListener(listener: ClientListener): void {
         assertListener(listener, `Client#${host.label(stateOf(this).node)}.addListener`);
         const { listeners } = stateOf(this);
@@ -978,9 +1050,15 @@ export class Workspace {
         return workspaceRoot.list.indexOf(this);
     }
 
-    /** Whether the primary display shows this workspace. */
+    /** Whether an output shows this workspace. With several outputs, several workspaces are active. */
     get active(): boolean {
-        return activeWorkspace === this;
+        return isShown(this);
+    }
+
+    /** The output that shows this workspace, or null while none does. */
+    get output(): Output | null {
+        const desk = deskShowing(this);
+        return desk !== null && !desk.parked ? desk.output : null;
     }
 
     get layout(): Layout {
@@ -1009,9 +1087,9 @@ export class Workspace {
         return wsState(this).clients;
     }
 
-    /** Shows this workspace on the primary display. */
-    show(): void {
-        showWorkspace(this);
+    /** Shows this workspace on the output under the pointer (the primary output when no pointer says). */
+    show(options?: ShowOptions): void {
+        showWorkspace(this, options);
     }
 
     toString(): string {
@@ -1019,7 +1097,182 @@ export class Workspace {
     }
 }
 
-type Member = Client | Workspace;
+const OUTPUT_KEYS = [
+    "name",
+    "make",
+    "model",
+    "x",
+    "y",
+    "width",
+    "height",
+    "output_scale",
+    "transform",
+    "mode",
+    "primary",
+    "enabled",
+];
+
+/** What listeners were last told about an output, to raise an event only for a real change. */
+interface OutputSeen {
+    mode: string;
+    scale: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+const outputSeen = new WeakMap<object, OutputSeen>();
+
+function publishedOutput(node: NodeId): OutputSeen {
+    return {
+        mode: host.published(node, "mode") as string,
+        scale: host.published(node, "output_scale") as number,
+        x: host.published(node, "x") as number,
+        y: host.published(node, "y") as number,
+        width: host.published(node, "width") as number,
+        height: host.published(node, "height") as number,
+    };
+}
+
+/**
+ * A connected output, the compositor's `screen` node: a physical or virtual display with its place in the layout. It
+ * shows one workspace at a time (`workspace`, `show`), and the work area the layouts tile in is its rectangle less the
+ * bars on it. It is made and destroyed by the compositor as displays come and go; a destroyed one keeps its last values
+ * and reads `connected === false`.
+ */
+export class Output {
+    constructor(token: symbol, node: NodeId) {
+        if (token !== CREATE) {
+            throw new TypeError("an Output is made by the compositor, not by a script");
+        }
+        states.set(this, {
+            node,
+            alive: true,
+            frozen: null,
+            listeners: [],
+            readied: false,
+            seen: null,
+            floating: false,
+        });
+        outputSeen.set(this, publishedOutput(node));
+    }
+
+    get id(): string {
+        return host.label(stateOf(this).node) ?? "?";
+    }
+
+    get alive(): boolean {
+        return stateOf(this).alive;
+    }
+
+    /** Whether the display is still connected: false once the compositor destroyed the output. */
+    get connected(): boolean {
+        return stateOf(this).alive;
+    }
+
+    /** The name the compositor gives the output, which a workspace set's entry and `gnoblin.outputs.where` use. */
+    get name(): string {
+        return read<string>(this, "name");
+    }
+
+    get make(): string {
+        return read<string>(this, "make");
+    }
+
+    get model(): string {
+        return read<string>(this, "model");
+    }
+
+    /** The mode being driven, `WxH@Hz`. */
+    get mode(): string {
+        return read<string>(this, "mode");
+    }
+
+    /** The factor the output composes at: 2 is a HiDPI panel. */
+    get scale(): number {
+        return read<number>(this, "output_scale");
+    }
+
+    get transform(): string {
+        return read<string>(this, "transform");
+    }
+
+    /** Whether this is the primary output, the one the stock shell's bars and `gnoblin.workspaces.area` are on. */
+    get primary(): boolean {
+        return read<boolean>(this, "primary");
+    }
+
+    get enabled(): boolean {
+        return read<boolean>(this, "enabled");
+    }
+
+    get x(): number {
+        return read<number>(this, "x");
+    }
+
+    get y(): number {
+        return read<number>(this, "y");
+    }
+
+    get width(): number {
+        return read<number>(this, "width");
+    }
+
+    get height(): number {
+        return read<number>(this, "height");
+    }
+
+    get position(): { x: number; y: number } {
+        return { x: this.x, y: this.y };
+    }
+
+    /** The whole output in the compositor's coordinates. */
+    get bounds(): Rect {
+        return { x: this.x, y: this.y, width: this.width, height: this.height };
+    }
+
+    /** What a layout tiles in on this output: the output less the bars on it. Null for a gone output or one with no size. */
+    get area(): Rect | null {
+        return stateOf(this).alive ? areaOf(this) : null;
+    }
+
+    /** The workspace the output shows, or null when it shows none or is gone. */
+    get workspace(): Workspace | null {
+        const desk = deskByOutput.get(this);
+        return desk !== undefined && stateOf(this).alive ? desk.shown : null;
+    }
+
+    /**
+     * Shows `workspace` (itself or its id) on this output. A workspace another output shows moves here and that output
+     * takes the workspace this one showed, so no workspace is on two outputs. `options.duration` slides the windows.
+     */
+    show(workspace: Workspace | string, options: ShowOptions = {}): void {
+        showWorkspace(workspace, { ...options, output: this });
+    }
+
+    addListener(listener: OutputListener): void {
+        assertListener(listener, `${this}.addListener`);
+        const { listeners } = stateOf(this);
+        if (!listeners.includes(listener)) {
+            listeners.push(listener);
+        }
+    }
+
+    removeListener(listener: OutputListener): void {
+        const { listeners } = stateOf(this);
+        const at = listeners.indexOf(listener);
+        if (at >= 0) {
+            listeners.splice(at, 1);
+        }
+    }
+
+    toString(): string {
+        return `Output#${host.label(stateOf(this).node)}`;
+    }
+}
+
+type Member = Client | Workspace | Output;
 
 interface Mutation {
     add(member: Member): void;
@@ -1057,6 +1310,7 @@ function collectionState(collection: object): CollectionState {
 const QUERY_KEYS: Record<string, readonly string[]> = {
     Client: ["id", "appId", "title", "focused", "fullscreen", "x", "y", "width", "height"],
     Workspace: ["id", "name", "index", "active"],
+    Output: ["id", "name", "make", "model", "mode", "scale", "primary", "enabled", "x", "y", "width", "height"],
 };
 
 function matches(query: Query, member: Member): boolean {
@@ -1254,31 +1508,34 @@ export class MutableCollection<T extends Member> extends Collection<T> {
     }
 }
 
-/** The workspaces of the script, which also say which of them the primary display shows. */
+/** The workspaces of the script, which also say which of them each output shows. */
 class WorkspaceCollection extends MutableCollection<Workspace> {
     /** Named groups of workspaces to show together, each entry on an output. */
     readonly sets = new WorkspaceSets({
         declared: () => new Set((workspaceRoot.list as Workspace[]).map((workspace) => workspace.id)),
-        outputs: () => {
-            const screens = host.screens();
-            const names = screens.map((id) => String(host.get(id, "name") ?? ""));
-            const primary = screens.find((id) => host.get(id, "primary") === true) ?? screens[0];
-            return { names, primary: primary === undefined ? "" : String(host.get(primary, "name") ?? "") };
-        },
-        show: (id) => showWorkspace(id, { duration: SLIDE_SECONDS }),
+        outputs: () => ({
+            names: liveOutputs().map((output) => output.name),
+            primary: primaryOutput()?.name ?? "",
+        }),
+        show: (id, output) =>
+            showWorkspace(id, {
+                duration: SLIDE_SECONDS,
+                ...(output === undefined ? {} : { output: liveOutputs().find((one) => one.name === output) }),
+            }),
         report: (message) => {
             reports.push({ site: "gnoblin.workspaces.sets", error: new Error(message) });
         },
     });
 
-    /** The area windows are laid out in, which is the primary screen; null while the tree has none. */
+    /** The area windows are laid out in on the primary output; null while the tree has none. */
     get area(): Rect | null {
         return screenArea();
     }
 
     /**
-     * Shows a workspace on the primary display, given as itself or by id. With `options.duration` the windows slide
-     * from one workspace to the other; without it the switch is at once.
+     * Shows a workspace, given as itself or by id, on `options.output`, or on the output under the pointer (the primary
+     * output when no pointer says). With `options.duration` the windows slide from one workspace to the other; without
+     * it the switch is at once.
      */
     show(workspace: Workspace | string, options?: ShowOptions): void {
         showWorkspace(workspace, options);
@@ -1297,6 +1554,7 @@ function rootState(kind: string): Omit<CollectionState, "self"> {
 }
 
 const clientRoot = collectionState(new Collection<Client>(CREATE, rootState("Client")));
+const outputRoot = collectionState(new Collection<Output>(CREATE, rootState("Output")));
 const workspaceRoot = collectionState(
     new WorkspaceCollection(CREATE, {
         ...rootState("Workspace"),
@@ -1335,7 +1593,7 @@ function recompute(top: CollectionState, member: Member): void {
     }
 }
 
-function emitMember(client: Client, held: CollectionState[], method: string, args: unknown[]): void {
+function emitMember(client: Client | Output, held: CollectionState[], method: string, args: unknown[]): void {
     queueFor(stateOf(client), method, args);
     for (const state of held) {
         queueFor(state, method, args);
@@ -1354,8 +1612,81 @@ function clientHolders(client: Client): CollectionState[] {
     return own ? [...all, ...holders(own.clientsState, client)] : all;
 }
 
-/** The workspace the primary display shows, or null when there is none. */
-let activeWorkspace: Workspace | null = null;
+/**
+ * What one output shows: the workspace on it, and what becomes of its windows when the output is unplugged (the Lua
+ * shell's `Desk`). A desk outlives its output only while no other output is left: it waits `parked`, hidden, for the
+ * next output, whose desk it becomes. A tree with no output at all has one desk with none that is not parked, so a
+ * script still has a workspace on show. Workspaces are the script's, not an output's: one workspace is on one desk.
+ */
+interface Desk {
+    output: Output | null;
+    shown: Workspace | null;
+    parked: boolean;
+}
+
+const desks: Desk[] = [];
+const deskByOutput = new WeakMap<Output, Desk>();
+const outputsByNode = new Map<NodeId, Output>();
+
+/** The outputs that are connected, in the order the compositor made them. */
+function liveOutputs(): Output[] {
+    return outputRoot.list as Output[];
+}
+
+/** The output flagged primary, or the first one; null while the tree has none. */
+function primaryOutput(): Output | null {
+    const list = liveOutputs();
+    return list.find((output) => output.primary) ?? list[0] ?? null;
+}
+
+/** The desk of the primary output; with no output, the desk a tree without one keeps (or a parked one). */
+function primaryDesk(): Desk | null {
+    const output = primaryOutput();
+    return output === null ? (desks.find((desk) => desk.output === null) ?? null) : (deskByOutput.get(output) ?? null);
+}
+
+/** The desk a new window, a key and a plain `show` act on: the one under the pointer, else the primary one. */
+function currentDesk(): Desk | null {
+    const node = host.pointerScreen();
+    const under = node === undefined ? undefined : outputsByNode.get(node);
+    return (under === undefined ? undefined : deskByOutput.get(under)) ?? primaryDesk();
+}
+
+function deskShowing(workspace: Workspace): Desk | null {
+    return desks.find((desk) => desk.shown === workspace) ?? null;
+}
+
+/** Whether an output (or the tree's one output-less desk) shows `workspace`. A parked desk shows nothing. */
+function isShown(workspace: Workspace): boolean {
+    const desk = deskShowing(workspace);
+    return desk !== null && !desk.parked;
+}
+
+/** The desk the workspace `client` is on is shown on, or null. */
+function deskOfClient(client: Client): Desk | null {
+    const workspace = membership.get(client);
+    return workspace === undefined ? null : deskShowing(workspace);
+}
+
+/** A desk for a tree that has no output, so the first workspace is on show whatever the compositor has. */
+function ensureDesk(): void {
+    if (desks.length === 0) {
+        desks.push({ output: null, shown: null, parked: false });
+    }
+}
+
+/** Gives each desk that shows nothing the first workspace no desk shows. */
+function fillDesks(): void {
+    for (const desk of desks) {
+        if (desk.shown !== null) {
+            continue;
+        }
+        const free = (workspaceRoot.list as Workspace[]).find((workspace) => deskShowing(workspace) === null);
+        if (free !== undefined) {
+            setShown(desk, free);
+        }
+    }
+}
 /**
  * False until the first frame: the entry module is still adding workspaces, and the windows that were
  * there at boot join one only when it is done, or a reload could not put them back where they were.
@@ -1378,6 +1709,7 @@ function link(workspace: Workspace, client: Client, arrived: boolean): void {
     state.dirty = true;
     if (arrived) {
         state.arrived.push(client);
+        offered.add(client);
     }
     queueFor(state.clientsState, "onAdded", [client, state.clientsState.self]);
     recompute(state.clientsState, client);
@@ -1399,7 +1731,7 @@ function forgetArrival(state: WorkspaceState, client: Client): void {
     const at = state.arrived.indexOf(client);
     if (at >= 0) {
         state.arrived.splice(at, 1);
-    } else {
+    } else if (offered.has(client) || preexisting.has(client)) {
         state.departed.push(client);
     }
 }
@@ -1416,6 +1748,121 @@ function moveClient(client: Client, target: Workspace | null, arrived: boolean):
     if (target) {
         link(target, client, arrived);
     }
+    // A dialog stays with its parent: it goes wherever the parent goes.
+    for (const dialog of dialogsOf(client)) {
+        moveClient(dialog, target, false);
+    }
+}
+
+/** The live clients that are dialogs of `parent`. */
+function dialogsOf(parent: Client): Client[] {
+    return (clientRoot.list as Client[]).filter((client) => client.alive && client.parentWindow === parent);
+}
+
+/**
+ * Puts a dialog where its parent is, and centres it in the parent the first time. Returns whether it did: a dialog
+ * whose parent is on no workspace (or is gone) is placed as any other window.
+ */
+function placeDialog(client: Client): boolean {
+    const parent = client.parentWindow;
+    const workspace = parent === null ? undefined : membership.get(parent);
+    if (parent === null || workspace === undefined) {
+        return false;
+    }
+    if (membership.get(client) !== workspace) {
+        moveClient(client, workspace, false);
+    }
+    if (!centred.has(client)) {
+        centred.add(client);
+        client.x = parent.x + Math.floor((parent.width - client.width) / 2);
+        client.y = parent.y + Math.floor((parent.height - client.height) / 2);
+    }
+    return true;
+}
+
+/** A rectangle that moved to another output: shrunk to the area when larger, then moved inside it. */
+function fitInto(rect: Rect, area: Rect): Rect {
+    const width = Math.min(rect.width, area.width);
+    const height = Math.min(rect.height, area.height);
+    return {
+        x: Math.min(Math.max(rect.x, area.x), area.x + area.width - width),
+        y: Math.min(Math.max(rect.y, area.y), area.y + area.height - height),
+        width,
+        height,
+    };
+}
+
+/**
+ * Fits a window to the work area it is now in: a maximised window fills it, a snapped one tiles to its zone again, a
+ * floating one shrinks to fit and moves inside it, and the rectangle it floats at follows. A fullscreen window covers
+ * its output.
+ */
+function refitClient(client: Client, area: Rect): void {
+    if (client.fullscreen) {
+        const output = outputRectOf(client);
+        if (output !== null) {
+            client.bounds = output;
+        }
+        return;
+    }
+    const zone = snappedZone(client);
+    if (client.maximised) {
+        client.bounds = framed(client, area);
+    } else if (zone !== null) {
+        snapClient(client as unknown as SnapClient, zone, { edgeTiling: true, area });
+    } else {
+        client.bounds = fitInto(client.bounds, area);
+    }
+    const floating = (client as unknown as { floatingBounds?: Rect | null }).floatingBounds;
+    if (floating) {
+        (client as unknown as { floatingBounds: Rect }).floatingBounds = fitInto(floating, area);
+    }
+}
+
+/** Hands the keyboard to the first window still showing on `workspace`, or to nobody. A tree with no seat has none. */
+function passFocusFrom(workspace: Workspace | null, leaving: Client): void {
+    if (host.input.seats().length === 0) {
+        return;
+    }
+    const next =
+        workspace === null
+            ? undefined
+            : (wsState(workspace).clientsState.list as Client[]).find(
+                  (one) => one !== leaving && one.alive && !one.minimised,
+              );
+    if (next === undefined) {
+        input.primary.clearFocus();
+    } else {
+        next.focus();
+    }
+}
+
+/** `client.moveToWorkspace(workspace)`: Lua's `Window:move_to`. */
+function moveClientTo(client: Client, workspace: Workspace): boolean {
+    if (!(workspace instanceof Workspace)) {
+        throw new TypeError(`${client}.moveToWorkspace: needs a Workspace`);
+    }
+    const from = membership.get(client) ?? null;
+    if (
+        !client.alive ||
+        !wsState(workspace).attached ||
+        client.fullscreen ||
+        client.parentWindow !== null ||
+        from === workspace
+    ) {
+        return false;
+    }
+    const wasFocused = hasFocus(client);
+    moveClient(client, workspace, true);
+    // The window left the screen, so the focus passes to a window that stays.
+    if (wasFocused && !isShown(workspace)) {
+        passFocusFrom(from, client);
+    }
+    const area = workAreaOfWorkspace(workspace);
+    if (area !== null) {
+        refitClient(client, area);
+    }
+    return true;
 }
 
 /** `workspace.clients.add(client)`: the client leaves its workspace and joins this one. */
@@ -1443,13 +1890,13 @@ function clearClients(workspace: Workspace): void {
     }
 }
 
-/** Makes `next` the workspace the primary display shows. */
-function setActive(next: Workspace | null): void {
-    const before = activeWorkspace;
+/** Makes `next` the workspace `desk` shows. */
+function setShown(desk: Desk, next: Workspace | null): void {
+    const before = desk.shown;
     if (before === next) {
         return;
     }
-    activeWorkspace = next;
+    desk.shown = next;
     if (next) {
         wsState(next).dirty = true;
     }
@@ -1469,6 +1916,8 @@ export interface ShowOptions {
     duration?: number;
     /** How much of the slide a touchpad gesture has made already, 0 to 1: the slide carries on from there. */
     progress?: number;
+    /** The output to show it on. Left out, the one under the pointer, else the primary one. */
+    output?: Output;
 }
 
 /** A slide the next layout pass starts: the windows of `from` leave and the windows of `to` come in. */
@@ -1502,8 +1951,24 @@ function showWorkspace(workspace: Workspace | string, options: ShowOptions = {})
     if (typeof progress !== "number" || !(progress >= 0 && progress <= 1)) {
         throw new TypeError(`${target}.show: progress must be a number from 0 to 1`);
     }
-    const from = activeWorkspace;
-    setActive(target as Workspace);
+    if (options.output !== undefined && !(options.output instanceof Output)) {
+        throw new TypeError(`${target}.show: output must be an Output`);
+    }
+    if (options.output !== undefined && !options.output.alive) {
+        throw new GnoblinError("destroyed", `${target}.show`, `${options.output} is gone`);
+    }
+    ensureDesk();
+    const desk = options.output === undefined ? currentDesk() : (deskByOutput.get(options.output) ?? null);
+    if (desk === null) {
+        throw new GnoblinError("no-output", `${target}.show`, "there is no output to show a workspace on");
+    }
+    const from = desk.shown;
+    // A workspace is on one desk: one an other desk shows changes places with the one this desk showed.
+    const other = desks.find((candidate) => candidate !== desk && candidate.shown === target);
+    setShown(desk, target as Workspace);
+    if (other !== undefined) {
+        setShown(other, from);
+    }
     if (from !== null && from !== target && duration > 0) {
         slides.push({
             from,
@@ -1540,6 +2005,11 @@ function runTimers(): void {
     }
 }
 
+/** The workspace a window that has none joins: the one the output under the pointer shows, else the initial rule's. */
+function newWindowWorkspace(): Workspace | null {
+    return currentDesk()?.shown ?? initialWorkspace(workspaceRoot.list as Workspace[]);
+}
+
 /** Gives each window that has no workspace the one the initial-workspace rule names. */
 function adoptOrphans(): void {
     if (!opened) {
@@ -1549,7 +2019,10 @@ function adoptOrphans(): void {
         if (membership.has(client)) {
             continue;
         }
-        const target = initialWorkspace(workspaceRoot.list as Workspace[]);
+        if (placeDialog(client)) {
+            continue;
+        }
+        const target = newWindowWorkspace();
         if (target === null) {
             return;
         }
@@ -1574,9 +2047,8 @@ function addWorkspace(workspace: Workspace): void {
     workspaceRoot.list.push(workspace);
     queueFor(workspaceRoot, "onAdded", [workspace, workspaceRoot.self]);
     recompute(workspaceRoot, workspace);
-    if (activeWorkspace === null) {
-        setActive(workspace);
-    }
+    ensureDesk();
+    fillDesks();
     adoptOrphans();
 }
 
@@ -1594,9 +2066,12 @@ function removeWorkspace(workspace: Workspace): void {
         queueFor(view, "onRemoved", [workspace, view.self]);
     }
     const target = (workspaceRoot.list[0] as Workspace | undefined) ?? null;
-    if (activeWorkspace === workspace) {
-        activeWorkspace = null;
-        setActive(target);
+    for (const desk of desks) {
+        if (desk.shown === workspace) {
+            desk.shown = null;
+            const free = (workspaceRoot.list as Workspace[]).find((one) => deskShowing(one) === null) ?? null;
+            setShown(desk, free);
+        }
     }
     for (const client of [...state.clientsState.list] as Client[]) {
         moveClient(client, target, true);
@@ -1615,34 +2090,70 @@ function ensureDefaultWorkspace(): void {
     addWorkspace(new Workspace({ id: "desktop" }));
 }
 
-/** The primary screen's size as a rectangle at the origin: the whole output. Null when the tree has no screen yet. */
-function screenRect(): Rect | null {
-    const screens = host.screens();
-    const node = screens.find((id) => host.get(id, "primary") === true) ?? screens[0];
-    if (node === undefined) {
+/** An output's rectangle in the compositor's coordinates. Null for a gone output or one with no size yet. */
+function rectOf(output: Output): Rect | null {
+    const state = stateOf(output);
+    if (!state.alive) {
         return null;
     }
-    const width = host.get(node, "width");
-    const height = host.get(node, "height");
+    const width = host.get(state.node, "width");
+    const height = host.get(state.node, "height");
     if (typeof width !== "number" || typeof height !== "number" || !(width > 0) || !(height > 0)) {
         return null;
     }
-    return { x: 0, y: 0, width, height };
+    const x = host.get(state.node, "x");
+    const y = host.get(state.node, "y");
+    return { x: typeof x === "number" ? x : 0, y: typeof y === "number" ? y : 0, width, height };
 }
 
-/** The area windows are laid out in: the output less what the bars take. Null when the tree has no screen yet. */
-function screenArea(): Rect | null {
-    const output = screenRect();
-    if (output === null) {
+/** What a layout tiles in on `output`: its rectangle less the bars on it. */
+function areaOf(output: Output): Rect | null {
+    const rect = rectOf(output);
+    if (rect === null) {
         return null;
     }
-    const insets = barInsets();
+    const insets = barInsets(output);
     return {
-        x: 0,
-        y: insets.top,
-        width: output.width,
-        height: Math.max(1, output.height - insets.top - insets.bottom),
+        x: rect.x,
+        y: rect.y + insets.top,
+        width: rect.width,
+        height: Math.max(1, rect.height - insets.top - insets.bottom),
     };
+}
+
+/** The area of the output a desk shows on: null for a desk with no output, a parked one, or an output with no size. */
+function areaOfDesk(desk: Desk): Rect | null {
+    return desk.output === null || desk.parked ? null : areaOf(desk.output);
+}
+
+/** The primary output as a rectangle: the whole output. Null when the tree has no output yet. */
+function screenRect(): Rect | null {
+    const output = primaryOutput();
+    return output === null ? null : rectOf(output);
+}
+
+/** The area windows are laid out in on the primary output. Null when the tree has no output yet. */
+function screenArea(): Rect | null {
+    const output = primaryOutput();
+    return output === null ? null : areaOf(output);
+}
+
+/** The output rectangle `client` is on, or the primary output's when its workspace is on none. */
+function outputRectOf(client: Client | null): Rect | null {
+    const desk = client === null ? null : deskOfClient(client);
+    return desk?.output && !desk.parked ? rectOf(desk.output) : screenRect();
+}
+
+/** The work area of the output `client` is on, or the primary output's when its workspace is on none. */
+function workAreaOf(client: Client | null): Rect | null {
+    const desk = client === null ? null : deskOfClient(client);
+    return desk?.output && !desk.parked ? areaOf(desk.output) : screenArea();
+}
+
+/** The work area of the output that shows `workspace`, or the primary output's when none does. */
+function workAreaOfWorkspace(workspace: Workspace): Rect | null {
+    const desk = deskShowing(workspace);
+    return desk?.output && !desk.parked ? areaOf(desk.output) : screenArea();
 }
 
 /** Writes the parts of `rect` the client does not have already. */
@@ -1725,7 +2236,7 @@ function applyPlacements(children: readonly Client[], placements: readonly Check
  */
 function syncVisibility(): void {
     for (const workspace of workspaceRoot.list as Workspace[]) {
-        const shown = workspace === activeWorkspace || holding.has(workspace);
+        const shown = isShown(workspace) || holding.has(workspace);
         for (const client of wsState(workspace).clientsState.list as Client[]) {
             const want = shown && (shownByLayout.get(client) ?? true);
             if (client.alive && (writtenVisible.get(client) ?? true) !== want) {
@@ -1741,12 +2252,14 @@ function syncVisibility(): void {
  * the windows of the one that leaves move a screen's width the other way. The leaving windows stay drawn until
  * the slide ends, then go back to where they rest, hidden.
  */
-function startSlides(area: Rect | null): void {
+function startSlides(): void {
     for (const slide of slides.splice(0)) {
+        const { from, to, direction, duration, progress } = slide;
+        // The slide is as long as the output the incoming workspace is on is wide.
+        const area = workAreaOfWorkspace(to);
         if (area === null) {
             continue;
         }
-        const { from, to, direction, duration, progress } = slide;
         const travel = direction * area.width;
         for (const client of wsState(to).clientsState.list as Client[]) {
             const rest = client.x;
@@ -1771,7 +2284,7 @@ function startSlides(area: Rect | null): void {
             }
             holding.delete(from);
             for (const [client, rest] of resting) {
-                if (client.alive && membership.get(client) === from && activeWorkspace !== from) {
+                if (client.alive && membership.get(client) === from && !isShown(from)) {
                     writeShown(client, false);
                     client.x = rest;
                 }
@@ -2060,10 +2573,14 @@ function applyStyles(): void {
  */
 function layout(): number {
     runTimers();
-    const area = screenArea();
+    fillDesks();
+    // A workspace no output shows hears its hooks for the primary output's area; one an output shows, for that output's.
+    const fallback = screenArea();
     let laidOut = 0;
     for (const workspace of workspaceRoot.list as Workspace[]) {
         const state = wsState(workspace);
+        const desk = deskShowing(workspace);
+        const area = desk === null ? fallback : areaOfDesk(desk);
         guard(`${workspace}.layout`, () => {
             const fields = layoutFields(state.layout);
             if (fieldsChanged(state.fields, fields)) {
@@ -2107,7 +2624,7 @@ function layout(): number {
                     guard(`${workspace}.layout.onClientAdded`, () => target.onClientAdded?.(client, context));
                 }
             }
-            if (activeWorkspace === workspace && (state.dirty || !rectsEqual(state.area, area))) {
+            if (desk !== null && (state.dirty || !rectsEqual(state.area, area))) {
                 const before = state.area;
                 state.dirty = false;
                 state.area = { ...area };
@@ -2117,9 +2634,14 @@ function layout(): number {
                 guard(`${workspace}.layout.compute`, () => {
                     const site = `${workspace}.layout.compute`;
                     // A client the script floats (a window rule, `client.floating`) keeps its own place, and so does one
-                    // that covers the output (fullscreen) or fills the work area (maximised).
+                    // that covers the output (fullscreen) or fills the work area (maximised). A dialog stays with its
+                    // parent, centred in it, and is never tiled.
                     const tiled = children.filter(
-                        (client) => !stateOf(client).floating && !client.fullscreen && !client.maximised,
+                        (client) =>
+                            !stateOf(client).floating &&
+                            !client.fullscreen &&
+                            !client.maximised &&
+                            client.parentWindow === null,
                     );
                     applyPlacements(
                         tiled,
@@ -2132,25 +2654,32 @@ function layout(): number {
             state.fields = layoutFields(state.layout);
         });
     }
-    startSlides(area);
+    startSlides();
     guard("gnoblin.workspaces.visibility", syncVisibility);
     guard("gnoblin.style", applyStyles);
     return laidOut;
 }
 
 interface WorkspaceSnapshot {
+    /** The workspace the primary output showed. */
     active: string | null;
     workspaces: { id: string; clients: number[] }[];
+    /** The workspace each output showed, by the output's name. */
+    outputs: { output: string; workspace: string }[];
 }
 
 /** Which window is on which workspace, for the next generation to reconcile against. */
 function snapshotWorkspaces(): WorkspaceSnapshot {
     return {
-        active: activeWorkspace?.id ?? null,
+        active: primaryDesk()?.shown?.id ?? null,
         workspaces: (workspaceRoot.list as Workspace[]).map((workspace) => ({
             id: workspace.id,
             clients: (wsState(workspace).clientsState.list as Client[]).map((client) => stateOf(client).node),
         })),
+        outputs: liveOutputs().flatMap((output) => {
+            const shown = deskByOutput.get(output)?.shown;
+            return shown === null || shown === undefined ? [] : [{ output: output.name, workspace: shown.id }];
+        }),
     };
 }
 
@@ -2170,9 +2699,27 @@ function reconcileWorkspaces(previous: WorkspaceSnapshot): void {
             }
         }
     }
+    // Each output shows what it showed; the primary output's workspace is the one the snapshot calls active.
+    const wanted: [Desk, Workspace][] = [];
+    for (const entry of previous.outputs ?? []) {
+        const output = liveOutputs().find((one) => one.name === entry.output);
+        const workspace = (workspaceRoot.list as Workspace[]).find((one) => one.id === entry.workspace);
+        const desk = output === undefined ? undefined : deskByOutput.get(output);
+        if (desk !== undefined && workspace !== undefined) {
+            wanted.push([desk, workspace]);
+        }
+    }
+    const primary = primaryDesk();
     const shown = (workspaceRoot.list as Workspace[]).find((workspace) => workspace.id === previous.active);
-    if (shown) {
-        setActive(shown);
+    if (primary !== null && shown !== undefined && !wanted.some(([desk]) => desk === primary)) {
+        wanted.push([primary, shown]);
+    }
+    for (const [desk, workspace] of wanted) {
+        const other = desks.find((candidate) => candidate !== desk && candidate.shown === workspace);
+        if (other !== undefined) {
+            setShown(other, desk.shown);
+        }
+        setShown(desk, workspace);
     }
 }
 
@@ -2183,6 +2730,10 @@ function reconcileWorkspaces(previous: WorkspaceSnapshot): void {
  */
 function adopt(node: NodeId, announce: boolean): void {
     const kind = host.kind(node);
+    if (kind === "screen" && !outputsByNode.has(node)) {
+        adoptScreen(node, announce);
+        return;
+    }
     if (kind === "window" && !clientsByNode.has(node)) {
         const client = new Client(CREATE, node);
         clientsByNode.set(node, client);
@@ -2192,14 +2743,116 @@ function adopt(node: NodeId, announce: boolean): void {
             recompute(clientRoot, client);
             stateOf(client).readied = true;
             emitMember(client, holders(clientRoot, client), "onReady", [client]);
-            // A window that appears joins the workspace the primary display shows.
-            const target = opened ? initialWorkspace(workspaceRoot.list as Workspace[]) : null;
-            if (target !== null) {
-                moveClient(client, target, true);
+            // A window that appears joins the workspace the output under the pointer shows; a dialog joins its parent's
+            // and is centred in it.
+            if (opened && !placeDialog(client)) {
+                const target = newWindowWorkspace();
+                if (target !== null) {
+                    moveClient(client, target, true);
+                }
             }
         } else {
             preexisting.add(client);
         }
+    }
+}
+
+/**
+ * Wraps a screen node the first time it is seen and gives it a desk: the output-less desk a tree kept (or a parked one
+ * that waited for it), else a new one that shows the first workspace no desk shows. A screen that appears while the
+ * shell runs is announced; one that was there at boot is not, because the config attaches after it exists.
+ */
+function adoptScreen(node: NodeId, announce: boolean): void {
+    const output = new Output(CREATE, node);
+    outputsByNode.set(node, output);
+    outputRoot.list.push(output);
+    let desk = desks.find((candidate) => candidate.output === null);
+    if (desk === undefined) {
+        desk = { output: null, shown: null, parked: false };
+        desks.push(desk);
+    }
+    const wasParked = desk.parked;
+    desk.output = output;
+    desk.parked = false;
+    deskByOutput.set(output, desk);
+    fillDesks();
+    if (desk.shown !== null) {
+        wsState(desk.shown).dirty = true;
+    }
+    if (!announce) {
+        return;
+    }
+    queueFor(outputRoot, "onAdded", [output, outputRoot.self]);
+    recompute(outputRoot, output);
+    emitMember(output, holders(outputRoot, output), "onConnected", [output]);
+    // The windows that waited hidden come back, and one takes the keyboard when nobody holds it.
+    if (wasParked && desk.shown !== null && host.input.seats().length > 0 && focusedClient() === null) {
+        const first = (wsState(desk.shown).clientsState.list as Client[]).find((one) => one.alive && !one.minimised);
+        first?.focus();
+    }
+}
+
+/**
+ * A screen went away. Its windows move to the workspace another output shows (the Lua shell's `Screen:on_destroyed`),
+ * fitted to that output; with no other output they wait hidden on the parked desk for the next one, and the focus is
+ * dropped, because a window with no output cannot hold it.
+ */
+function releaseScreen(output: Output): void {
+    const held = leave(outputRoot, output, outputsByNode, OUTPUT_KEYS);
+    const desk = deskByOutput.get(output);
+    if (desk !== undefined) {
+        desk.output = null;
+        const survivor = desks.find((candidate) => candidate !== desk && candidate.output !== null);
+        const shown = desk.shown;
+        if (survivor !== undefined) {
+            desks.splice(desks.indexOf(desk), 1);
+            const target = survivor.shown ?? (workspaceRoot.list[0] as Workspace | undefined) ?? null;
+            if (shown !== null && target !== null && shown !== target) {
+                const area = areaOfDesk(survivor);
+                for (const client of [...wsState(shown).clientsState.list] as Client[]) {
+                    if (client.parentWindow === null) {
+                        moveClient(client, target, true);
+                        if (area !== null) {
+                            refitClient(client, area);
+                        }
+                    }
+                }
+            }
+            if (shown !== null) {
+                wsState(shown).dirty = true;
+            }
+        } else {
+            desk.parked = true;
+            const holder = host.input.seats().length > 0 ? focusedClient() : null;
+            if (holder !== null && shown !== null && membership.get(holder) === shown) {
+                input.primary.clearFocus();
+            }
+        }
+    }
+    deskByOutput.delete(output);
+    emitMember(output, held, "onDisconnected", [output]);
+    for (const state of held) {
+        queueFor(state, "onRemoved", [output, state.self]);
+    }
+}
+
+/** Raises the events one output's changed properties imply, to the listeners that held it. */
+function outputChanged(output: Output): void {
+    const seen = outputSeen.get(output) as OutputSeen;
+    const now = publishedOutput(stateOf(output).node);
+    const held = holders(outputRoot, output);
+    if (now.mode !== seen.mode) {
+        seen.mode = now.mode;
+        emitMember(output, held, "onModeChanged", [output, now.mode]);
+    }
+    if (now.scale !== seen.scale) {
+        seen.scale = now.scale;
+        emitMember(output, held, "onScaleChanged", [output, now.scale]);
+    }
+    if (now.x !== seen.x || now.y !== seen.y || now.width !== seen.width || now.height !== seen.height) {
+        const { x, y, width, height } = now;
+        Object.assign(seen, { x, y, width, height });
+        emitMember(output, held, "onGeometryChanged", [output, { x, y, width, height }]);
     }
 }
 
@@ -2217,6 +2870,11 @@ function leave(top: CollectionState, member: Member, map: Map<NodeId, Member>, k
 }
 
 function release(node: NodeId): void {
+    const gone = outputsByNode.get(node);
+    if (gone !== undefined) {
+        releaseScreen(gone);
+        return;
+    }
     const client = clientsByNode.get(node);
     if (!client) {
         return;
@@ -2261,8 +2919,22 @@ function changed(client: Client): void {
     }
     if (now.x !== seen.x || now.y !== seen.y || now.width !== seen.width || now.height !== seen.height) {
         const { x, y, width, height } = now;
+        const [dx, dy] = [x - seen.x, y - seen.y];
         Object.assign(seen, { x, y, width, height });
         emitMember(client, held, "onGeometryChanged", [client, { x, y, width, height }]);
+        // A dialog moves with its parent.
+        if (dx !== 0 || dy !== 0) {
+            for (const dialog of dialogsOf(client)) {
+                dialog.x += dx;
+                dialog.y += dy;
+            }
+        }
+    }
+    if (now.parent !== seen.parent) {
+        seen.parent = now.parent;
+        if (opened && now.parent !== 0) {
+            placeDialog(client);
+        }
     }
 }
 
@@ -2278,6 +2950,11 @@ function plan(created: NodeId[], touched: NodeId[], destroyed: NodeId[]): number
         adopt(node, true);
     }
     for (const node of new Set(touched)) {
+        const output = outputsByNode.get(node);
+        if (output) {
+            outputChanged(output);
+            recompute(outputRoot, output);
+        }
         const client = clientsByNode.get(node);
         if (client) {
             changed(client);
@@ -2368,7 +3045,7 @@ const seatHost: InputHost = {
 const input = new InputManager(seatHost, {
     clientOf: (node) => clientsByNode.get(node),
     stack: () => host.windows().flatMap((node) => clientsByNode.get(node) ?? []),
-    workArea: screenArea,
+    workArea: (client) => workAreaOf((client as Client | undefined) ?? null),
     layouts: () => workspaceRoot.list.map((workspace) => wsState(workspace as Workspace).layout),
     schedule: (site, task) => {
         queue.push({ site, task });
@@ -2383,9 +3060,10 @@ attachUi({ ...host.ui, now: () => host.input.now() }, (site, error) => {
     reports.push({ site, error });
 });
 
-/** Whether a fullscreen window is showing on the workspace on show: what makes the bars give way. */
-function fullscreenShowing(): boolean {
-    const shown = activeWorkspace;
+/** Whether a fullscreen window is showing on the workspace `output` shows: what makes its bars give way. */
+function fullscreenShowing(output: { alive: boolean } | null): boolean {
+    const desk = output === null ? primaryDesk() : (deskByOutput.get(output as Output) ?? null);
+    const shown = desk === null || desk.parked ? null : desk.shown;
     if (shown === null) {
         return false;
     }
@@ -2393,6 +3071,7 @@ function fullscreenShowing(): boolean {
 }
 
 barsGiveWayTo(fullscreenShowing);
+barsOnOutputs(primaryOutput);
 
 /** Calls the `onRequest` of the client's own listeners, then of the collections that hold it, until one handles it. */
 function dispatchRequest(client: Client, request: ClientRequest<Client>): void {
@@ -2448,10 +3127,10 @@ windowState.start<Client>({
     },
     onActiveWorkspace: (client) => {
         const own = membership.get(client);
-        return own !== undefined && own === activeWorkspace;
+        return own !== undefined && isShown(own);
     },
-    output: screenRect,
-    workArea: screenArea,
+    output: (client) => outputRectOf(client ?? null),
+    workArea: (client) => workAreaOf(client ?? null),
     framed,
     snapped: (client) => snappedZone(client) !== null,
     unsnap: (client) => {
@@ -2590,6 +3269,7 @@ function installStock(plan: ConfigPlan): void {
         raise: (client) => client.raise(),
         now: () => host.input.now(),
         isArrival: (client) => !preexisting.has(client),
+        fromLauncher: (client) => client.fromLauncher,
         skipsFocus: (client) => rules.skipsFocus(client),
         alive: (client) => client.alive,
     });
@@ -2793,6 +3473,8 @@ class Gnoblin {
     readonly extensions = new Extensions(xrRuntime);
     readonly clients = clientRoot.self as Collection<Client>;
     readonly workspaces = workspaceRoot.self as WorkspaceCollection;
+    /** The outputs, live across hotplug: an output is added when it is plugged in and removed when it goes. */
+    readonly outputs = outputRoot.self as Collection<Output>;
     /** The seats of the compositor as input contexts, with the bindings that run on their chords and drags. */
     readonly input = input;
     /** Policy over the compositor's own consent and passphrase dialogs: listeners that may refuse a request. */
@@ -2816,7 +3498,7 @@ class Gnoblin {
         }
     }
 
-    /** Shows a workspace, given as itself or by id, on the primary display. See `WorkspaceCollection.show`. */
+    /** Shows a workspace, given as itself or by id, on the output under the pointer. See `WorkspaceCollection.show`. */
     show(workspace: Workspace | string, options?: ShowOptions): void {
         showWorkspace(workspace, options);
     }
@@ -2883,7 +3565,7 @@ function keyHandler(action: Exclude<ResolvedAction, BindingAction>): () => void 
             };
         case "focus-column":
             return () => {
-                const shown = activeWorkspace;
+                const shown = currentDesk()?.shown ?? null;
                 if (shown !== null && shown.layout instanceof StripLayout) {
                     if (action.direction === "left") {
                         shown.layout.focusLeft(shown);
@@ -2952,12 +3634,32 @@ inspect.register(Workspace, (workspace) => ({
     },
     brief: { name: workspace.name, active: workspace.active },
 }));
+inspect.register(Output, (output) => ({
+    name: "Output",
+    id: output.id,
+    fields: {
+        name: output.name,
+        mode: output.mode,
+        scale: output.scale,
+        primary: output.primary,
+        x: output.x,
+        y: output.y,
+        width: output.width,
+        height: output.height,
+        workspace: output.workspace?.id ?? null,
+        ...(output.connected ? {} : { connected: false }),
+    },
+    brief: { name: output.name, mode: output.mode },
+}));
 inspect.register(Collection, (collection) => ({
     name: "Collection",
     fields: {},
     items: [...collection],
 }));
 
+for (const node of host.screens()) {
+    adopt(node, false);
+}
 for (const node of host.windows()) {
     adopt(node, false);
 }

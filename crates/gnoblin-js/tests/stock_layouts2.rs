@@ -868,17 +868,18 @@ fn workspace_sets_show_the_named_workspaces_and_keep_the_sets_in_force_when_a_li
     // Lua sets_test.lua, the stock-shell cases: the user's sets show each named workspace on its own output; a
     // refused new list is reported and the old sets stay (here it throws and they stay); an unknown set is refused; an
     // output that is gone shows its workspace on the primary output, with a report; the live set again changes
-    // nothing. Derived: a workspace for an output that is not the primary one is reported and not shown, because the
-    // TypeScript shell has one set of workspaces.
+    // nothing. The environment is told the output of every placement, so a workspace for an output that is not the
+    // primary one is shown there (`tests/outputs.rs` proves the shell shows it).
     let got = sets(
         r#"
         const shown: string[] = [];
+        const where: string[] = [];
         const reports: string[] = [];
         let declared = new Set(["1", "2", "3"]);
         const sets = new WorkspaceSets({
             declared: () => declared,
             outputs: () => ({ names: ["DP-1", "HDMI-1"], primary: "DP-1" }),
-            show: (id) => shown.push(id),
+            show: (id, output) => { shown.push(id); where.push(`${id}@${output}`); },
             report: (message) => reports.push(message),
         });
         sets.define([set("work", [{ workspace: "2", output: "DP-1" }]), set("away", [{ workspace: "3", output: "GONE-1" }]), set("split", [{ workspace: "1", output: "DP-1" }, { workspace: "2", output: "HDMI-1" }])]);
@@ -898,6 +899,7 @@ fn workspace_sets_show_the_named_workspaces_and_keep_the_sets_in_force_when_a_li
         const refused = (() => { try { sets.activate("away"); return "ok"; } catch (e: any) { return `${e.name}: ${e.message} ${e instanceof WorkspaceSetError}`; } })();
         out.push(refused);
         out.push(sets.active as string);
+        out.push(where.join(","));
         emit(out.join("\n"));
     "#,
     );
@@ -910,9 +912,10 @@ fn workspace_sets_show_the_named_workspaces_and_keep_the_sets_in_force_when_a_li
             "2|live again changes nothing",
             "WorkspaceSetError: no set is named \"nope\"",
             "2,3|1|workspace set \"away\": output \"GONE-1\" is not connected; its workspace shows on the primary output",
-            "2,3,1|2|workspace set \"split\": workspace \"2\" is for output \"HDMI-1\", which this shell does not show workspaces on",
+            "2,3,1,2|1|undefined",
             "WorkspaceSetError: set \"away\" names workspace \"3\", which no workspace has true",
             "split",
+            "2@DP-1,3@DP-1,1@DP-1,2@HDMI-1",
         ])
     );
 }

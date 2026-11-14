@@ -165,7 +165,8 @@ export interface SetsEnvironment {
     declared(): ReadonlySet<string>;
     /** The connected outputs and the primary one. */
     outputs(): { names: readonly string[]; primary: string };
-    show(workspace: string): void;
+    /** Shows `workspace` on the output named `output`; left out, on the one the shell would show it on. */
+    show(workspace: string, output?: string): void;
     /** A condition the user should hear of that does not stop the activation. */
     report(message: string): void;
 }
@@ -203,9 +204,9 @@ export class WorkspaceSets {
     }
 
     /**
-     * Makes the set `name` live: each entry shows its workspace on its output. A workspace for an output other than
-     * the primary one is reported and not shown, because workspaces are per shell, not per output. Activating the
-     * live set again changes nothing. An unknown set or a workspace that has since gone throws `WorkspaceSetError`.
+     * Makes the set `name` live: each entry shows its workspace on its output. An entry whose output is not connected
+     * is reported and shows on the primary output. Activating the live set again changes nothing. An unknown set or a
+     * workspace that has since gone throws `WorkspaceSetError`.
      */
     activate(name: string): SetPlan {
         const { names, primary } = this.#environment.outputs();
@@ -229,13 +230,7 @@ export class WorkspaceSets {
         }
         this.#active = name;
         for (const placement of plan.placements) {
-            if (placement.output === primary) {
-                this.#environment.show(placement.workspace);
-            } else {
-                this.#environment.report(
-                    `workspace set ${JSON.stringify(name)}: workspace ${JSON.stringify(placement.workspace)} is for output ${JSON.stringify(placement.output)}, which this shell does not show workspaces on`,
-                );
-            }
+            this.#environment.show(placement.workspace, placement.output);
         }
         return plan;
     }

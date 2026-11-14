@@ -428,6 +428,14 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
 
     let shared = state.clone();
     host.set(
+        "pointerScreen",
+        Function::new(ctx.clone(), move || -> Option<f64> {
+            crate::ui::pointer_screen(&shared.borrow())
+        })?,
+    )?;
+
+    let shared = state.clone();
+    host.set(
         "spawn",
         Function::new(ctx.clone(), move |command: Value<'js>| -> Option<String> {
             let Some(request) = request_of(&command) else {

@@ -18,11 +18,19 @@ pub struct JsWorkspaceEntry {
     pub clients: Vec<NodeId>,
 }
 
-/// The workspaces of a shell, in order, and the id of the one that was shown.
+/// What one output showed: the output's name and the id of its workspace.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct JsOutputShown {
+    pub output: String,
+    pub workspace: String,
+}
+
+/// The workspaces of a shell, in order, the id of the one the primary output showed, and the one each output showed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct JsWorkspaceSnapshot {
     pub active: Option<String>,
     pub workspaces: Vec<JsWorkspaceEntry>,
+    pub outputs: Vec<JsOutputShown>,
 }
 
 impl JsWorkspaceSnapshot {
@@ -40,7 +48,20 @@ impl JsWorkspaceSnapshot {
                 clients: clients.into_iter().map(|id| id as NodeId).collect(),
             });
         }
-        Ok(Self { active, workspaces })
+        let shown: Array<'js> = value.get("outputs")?;
+        let mut outputs = Vec::with_capacity(shown.len());
+        for item in shown.iter::<Object<'js>>() {
+            let item = item?;
+            outputs.push(JsOutputShown {
+                output: item.get("output")?,
+                workspace: item.get("workspace")?,
+            });
+        }
+        Ok(Self {
+            active,
+            workspaces,
+            outputs,
+        })
     }
 
     /// The object `entry.reconcile(previous)` takes.
@@ -55,9 +76,17 @@ impl JsWorkspaceSnapshot {
             )?;
             list.set(index, item)?;
         }
+        let shown = Array::new(ctx.clone())?;
+        for (index, entry) in self.outputs.iter().enumerate() {
+            let item = Object::new(ctx.clone())?;
+            item.set("output", entry.output.as_str())?;
+            item.set("workspace", entry.workspace.as_str())?;
+            shown.set(index, item)?;
+        }
         let object = Object::new(ctx.clone())?;
         object.set("active", self.active.as_deref())?;
         object.set("workspaces", list)?;
+        object.set("outputs", shown)?;
         Ok(object)
     }
 }

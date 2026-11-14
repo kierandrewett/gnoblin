@@ -419,66 +419,104 @@ export class Clock extends Text {
 
 export type BarEdge = "top" | "bottom";
 
+/** The output a bar sits on, as far as the bar needs it: its rectangle in the compositor's coordinates. */
+export interface BarOutput {
+    readonly alive: boolean;
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+}
+
 export interface BarOptions extends BoxOptions {
     edge?: BarEdge;
     /** When this returns true the bar is hidden and takes no room: a fullscreen window covers the screen. */
     hideWhen?: () => boolean;
+    /** The output the bar sits on. Left out, the primary output; a bar whose output is unplugged is hidden. */
+    output?: BarOutput | null;
 }
 
 /** The bars that are alive, in the order they were made. */
 const bars: Bar[] = [];
 
-let coveredBy: (() => boolean) | null = null;
+let coveredBy: ((output: BarOutput | null) => boolean) | null = null;
+let primaryOutput: (() => BarOutput | null) | null = null;
 
 /**
- * Makes every bar give way (hidden, taking no room) while `covered` returns true. The shell passes "a fullscreen window
- * is showing on the workspace on show", so a fullscreen window covers the whole output, as the Lua shell's
- * `Desk:sync_fullscreen` did. A bar's own `hideWhen` still applies. Null stops it.
+ * Makes every bar give way (hidden, taking no room) while `covered` returns true for the output the bar sits on. The
+ * shell passes "a fullscreen window is showing on the workspace that output shows", so a fullscreen window covers the
+ * whole output, as the Lua shell's `Desk:sync_fullscreen` did. A bar's own `hideWhen` still applies. Null stops it.
  */
-export function barsGiveWayTo(covered: (() => boolean) | null): void {
+export function barsGiveWayTo(covered: ((output: BarOutput | null) => boolean) | null): void {
     coveredBy = covered;
 }
 
+/** Tells the bars which output is the primary one, the output a bar with no `output` of its own sits on. */
+export function barsOnOutputs(primary: (() => BarOutput | null) | null): void {
+    primaryOutput = primary;
+}
+
 /**
- * A strip along the top or bottom of the primary screen, over the windows, that takes its room from them: the layouts
- * place windows in what the bars leave (`barInsets`). It is a row of boxes (`padding` 6, `gap` 12) as wide as the
- * screen. Bars on one edge stack in the order they were made. Make one and it is there; `destroy()` takes it away.
+ * A strip along the top or bottom of an output (the primary one unless `output` names another), over the windows, that
+ * takes its room from the windows there: the layouts place windows in what the bars leave (`barInsets`). It is a row
+ * of boxes (`padding` 6, `gap` 12) as wide as the output. Bars on one edge of one output stack in the order they were
+ * made. Make one and it is there; `destroy()` takes it away.
  */
 export class Bar extends Box {
     edge: BarEdge = "top";
     hideWhen: (() => boolean) | null = null;
+    output: BarOutput | null = null;
 
     constructor(options: BarOptions = {}) {
         super({ direction: "row", height: 32, fill: "#1e1e2e", padding: 6, gap: 12, ...options });
         if (options.edge !== undefined) this.edge = options.edge;
         if (options.hideWhen !== undefined) this.hideWhen = options.hideWhen;
+        if (options.output !== undefined) this.output = options.output;
         bars.push(this);
         this.mountTop();
     }
 
+    /** The output the bar sits on now: its own, or the primary one. Null while there is none. */
+    get onOutput(): BarOutput | null {
+        return this.output ?? primaryOutput?.() ?? null;
+    }
+
     /** Whether the bar is on show, and so takes room. */
     get shown(): boolean {
-        return this.alive && !(this.hideWhen?.() ?? false) && !(coveredBy?.() ?? false);
+        if (!this.alive) {
+            return false;
+        }
+        const output = this.onOutput;
+        if (this.output !== null && !output?.alive) {
+            return false;
+        }
+        return !(this.hideWhen?.() ?? false) && !(coveredBy?.(output) ?? false);
     }
 
     override refresh(): void {
         this.visible = this.shown;
-        const screen = uiScreen();
-        if (screen === null) {
+        const output = this.onOutput;
+        const place = output?.alive
+            ? { x: output.x, y: output.y, width: output.width, height: output.height }
+            : this.output === null
+              ? uiScreen()
+              : null;
+        if (place === null) {
             return;
         }
-        this.width = screen.width;
+        const origin = "x" in place ? place : { ...place, x: 0, y: 0 };
+        this.width = origin.width;
         let before = 0;
         for (const other of liveBars()) {
             if (other === this) {
                 break;
             }
-            if (other.edge === this.edge && other.shown) {
+            if (other.edge === this.edge && other.onOutput === output && other.shown) {
                 before += other.height;
             }
         }
-        this.x = 0;
-        this.y = this.edge === "top" ? before : screen.height - before - this.height;
+        this.x = origin.x;
+        this.y = this.edge === "top" ? origin.y + before : origin.y + origin.height - before - this.height;
     }
 }
 
@@ -491,12 +529,16 @@ function liveBars(): Bar[] {
     return bars;
 }
 
-/** The room the bars take from the top and the bottom of the primary screen. Windows are laid out in what is left. */
-export function barInsets(): { top: number; bottom: number } {
+/**
+ * The room the bars take from the top and the bottom of `output` (the primary output when none is given). Windows are
+ * laid out in what is left.
+ */
+export function barInsets(output?: BarOutput | null): { top: number; bottom: number } {
+    const on = output ?? primaryOutput?.() ?? null;
     let top = 0;
     let bottom = 0;
     for (const bar of liveBars()) {
-        if (!bar.shown) {
+        if (!bar.shown || bar.onOutput !== on) {
             continue;
         }
         if (bar.edge === "top") {

@@ -253,6 +253,8 @@ export interface FocusHost<C extends object> {
     isArrival(client: C): boolean;
     /** Whether a window rule asked that `client` not take focus when it appears. */
     skipsFocus(client: C): boolean;
+    /** Whether `client` opened on a token the launcher minted (`focus.newWindows` then decides). Absent: no. */
+    fromLauncher?(client: C): boolean;
     alive(client: C): boolean;
 }
 
@@ -280,7 +282,8 @@ export class FocusPolicy<C extends object> {
             return;
         }
         const skipFocus = this.#host.skipsFocus(client);
-        this.#run(client, focusDecision(this.#host.settings(), { kind: "added", skipFocus }));
+        const fromLauncher = this.#host.fromLauncher?.(client) ?? false;
+        this.#run(client, focusDecision(this.#host.settings(), { kind: "added", skipFocus, fromLauncher }));
     }
 
     onPointerEnter(client: C): void {

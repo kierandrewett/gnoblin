@@ -28,7 +28,7 @@ use gnoblin_backend::InputEvent;
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::wire::{PortalRequest, VerifiedCaller};
 use gnoblin_client::{Client, ClientError, PortalOutcome, PortalTicket};
-use gnoblin_compositor::{Compositor, InputTap, SessionConfig, StopHandle};
+use gnoblin_compositor::{Compositor, InputTap, OutputTap, SessionConfig, StopHandle};
 use gnoblin_js::{JsHealth, JsRole, JsRoleConfig};
 use gnoblin_log::event::capture::logged;
 use gnoblin_model::Fields;
@@ -38,7 +38,7 @@ use gnoblin_proto::{Envelope, Kind, read_frame, write_frame};
 use gnoblin_types::{DeviceId, OutputId, Point, Version};
 
 mod support;
-use support::{Mapper, Watcher, flag_of, ids, scene, snapshot, spots};
+use support::{Mapper, Watcher, flag_of, ids, scene, screens, snapshot, spots};
 
 /// How long a test waits for a state before it fails. A passing run never waits this long: it is the margin a busy
 /// machine gets, so a failure is a state that never came and not a slow turn.
@@ -2981,6 +2981,150 @@ fn the_xr_programs_seat_makes_the_stock_shell_build_a_room_with_a_view_per_windo
         2,
         "both windows are still in the tree: {:?}",
         scene(&ipc)
+    );
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    shell.finish();
+}
+
+// ---- outputs -----------------------------------------------------------------------------------------------------
+
+/// An `init.ts` whose two workspaces fill the output that shows them, and whose rule sends the windows of
+/// `org.example.second` to the second workspace.
+fn write_outputs_config(dir: &Path) {
+    fs::write(
+        dir.join("init.ts"),
+        r#"import { Layout, defineConfig } from "gnoblin";
+
+class Fill extends Layout {
+    compute(context: any) {
+        return context.children.map((node: any) => ({ node, tiled: true, bounds: { ...context.area } }));
+    }
+}
+
+defineConfig({
+    workspaces: [{ id: "1", layout: new Fill() }, { id: "2", layout: new Fill() }],
+    decorations: false,
+    rules: [{ appId: "org.example.second", workspace: "2" }],
+});
+"#,
+    )
+    .expect("init.ts");
+}
+
+/// The screens of the compositor's tree by place: each one's output number (from its `output-N` name) and rectangle.
+fn screens_by_place(ipc: &Path) -> Vec<(u64, (f64, f64, f64, f64))> {
+    let mut found: Vec<(u64, (f64, f64, f64, f64))> = snapshot(ipc)
+        .iter()
+        .filter(|node| node.class == "screen")
+        .map(|node| {
+            let value = |key: &str| {
+                node.props
+                    .iter()
+                    .find(|prop| prop.key == key)
+                    .map_or(0.0, |prop| prop.value_double)
+            };
+            let name = node
+                .props
+                .iter()
+                .find(|prop| prop.key == "name")
+                .map(|prop| prop.value_text.clone())
+                .unwrap_or_default();
+            let number = name
+                .strip_prefix("output-")
+                .and_then(|n| n.parse().ok())
+                .expect("a screen is named output-N");
+            (number, (value("x"), value("y"), value("width"), value("height")))
+        })
+        .collect();
+    found.sort_by(|a, b| a.1.0.total_cmp(&b.1.0));
+    found
+}
+
+/// Whether the shell hid the window of `app`: its node holds `visible` false (true is the default, and not carried).
+fn hidden(ipc: &Path, app: &str) -> bool {
+    snapshot(ipc)
+        .iter()
+        .filter(|node| node.class == "window" && node.app_id == app)
+        .any(|node| node.props.iter().any(|prop| prop.key == "visible" && !prop.value_bool))
+}
+
+#[test]
+fn a_window_on_a_second_virtual_output_follows_to_the_first_when_it_is_unplugged_and_parked_windows_return_with_the_next_output()
+ {
+    // The headless backend takes outputs at runtime through the session's `OutputTap`. Two workspaces fill the output
+    // that shows them; the rule sends `org.example.second`'s window to the second workspace, which the second output
+    // shows. Unplugging the second output moves that window to the workspace the first shows; unplugging the first too
+    // parks both windows hidden; the next output adopts them.
+    let tap = OutputTap::new();
+    let session = Session::start_with({
+        let tap = tap.clone();
+        move |config| config.output_tap = Some(tap)
+    });
+    let config = tempfile::tempdir().expect("a config directory");
+    write_outputs_config(config.path());
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    wait_for("the shell runs the config", &session, &mut mapper, &shell, || {
+        shell.generation() > 0 && shell.view().contains(", 2 workspaces")
+    });
+    assert!(tap.connect("HEADLESS-2", 800, 600), "the session takes a second output");
+    wait_for("two screens", &session, &mut mapper, &shell, || screens(&ipc) == 2);
+    let places = screens_by_place(&ipc);
+    let (first_output, first_rect) = places[0];
+    let (second_output, second_rect) = places[1];
+    assert_eq!(
+        second_rect.2, 800.0,
+        "the second output is the 800 by 600 one: {places:?}"
+    );
+
+    let (first, second) = ("org.example.first", "org.example.second");
+    mapper.map_window(first, "First");
+    wait_for(
+        "the first window fills the first output",
+        &session,
+        &mut mapper,
+        &shell,
+        || rect_of(&ipc, first) == Some(first_rect),
+    );
+    mapper.map_window(second, "Second");
+    wait_for(
+        "the second window fills the second output",
+        &session,
+        &mut mapper,
+        &shell,
+        || rect_of(&ipc, second) == Some(second_rect),
+    );
+
+    // The second output is unplugged: its window follows to the first output.
+    assert!(tap.disconnect(OutputId::new(second_output)));
+    wait_for("one screen", &session, &mut mapper, &shell, || screens(&ipc) == 1);
+    wait_for(
+        "the second window is on the first output",
+        &session,
+        &mut mapper,
+        &shell,
+        || rect_of(&ipc, second) == Some(first_rect) && rect_of(&ipc, first) == Some(first_rect),
+    );
+
+    // The last output is unplugged: both windows wait hidden.
+    assert!(tap.disconnect(OutputId::new(first_output)));
+    wait_for("no screen", &session, &mut mapper, &shell, || screens(&ipc) == 0);
+    wait_for("both windows are hidden", &session, &mut mapper, &shell, || {
+        hidden(&ipc, first) && hidden(&ipc, second)
+    });
+
+    // The next output adopts them.
+    assert!(tap.connect("HEADLESS-3", 640, 480));
+    wait_for("a screen again", &session, &mut mapper, &shell, || screens(&ipc) == 1);
+    let back = screens_by_place(&ipc)[0].1;
+    assert_eq!((back.2, back.3), (640.0, 480.0));
+    wait_for(
+        "the parked windows come back on the new output",
+        &session,
+        &mut mapper,
+        &shell,
+        || rect_of(&ipc, first) == Some(back) && rect_of(&ipc, second) == Some(back) && !hidden(&ipc, first),
     );
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
     shell.finish();

@@ -820,6 +820,11 @@ fn a_reload_keeps_the_windows_on_the_workspace_of_the_same_id() {
                     clients: vec![3],
                 },
             ],
+            // The fake screen has no name: the output is told apart by its empty one.
+            outputs: vec![gnoblin_js::JsOutputShown {
+                output: String::new(),
+                workspace: "desktop".into(),
+            }],
         }
     );
     // The first shell is gone, as a restarted runtime's connection is: its undelivered echoes go with it.

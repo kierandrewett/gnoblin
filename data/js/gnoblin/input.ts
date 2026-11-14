@@ -94,8 +94,8 @@ export interface InputWorld {
     clientOf(node: number): BindingClient | undefined;
     /** Every client, back to front. */
     stack(): BindingClient[];
-    /** The rectangle a dragged window stays in, or null when the tree has no screen yet. */
-    workArea(): Rect | null;
+    /** The rectangle a dragged window stays in (the work area of its output), or null when the tree has no screen yet. */
+    workArea(client?: BindingClient): Rect | null;
     /** The layouts the workspaces use now. Their bindings go live in every context while they are in use. */
     layouts(): InputLayout[];
     /** Runs `run` later, under the call budget. A throw is reported against `site`. */
@@ -1006,7 +1006,7 @@ export class InputContext {
             dx: position.x - press.origin.x,
             dy: position.y - press.origin.y,
             button: press.button,
-            workArea: this.#world.workArea() ?? undefined,
+            workArea: this.#world.workArea(press.client ?? undefined) ?? undefined,
             dragConstraint: this.#host.dragConstraint(this.#seat),
             edgeTiling: this.settings.edgeTiling,
         });

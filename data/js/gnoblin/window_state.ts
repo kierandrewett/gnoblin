@@ -135,10 +135,10 @@ export interface WindowStateWorld<C extends StateClient> {
     focus(client: C | null): void;
     /** Whether the window's workspace is the one on show. */
     onActiveWorkspace(client: C): boolean;
-    /** The whole output: what a fullscreen window covers. Null while the tree has no screen. */
-    output(): Rect | null;
-    /** The output less what the bars take: what a maximised window fills. */
-    workArea(): Rect | null;
+    /** The whole output `client` is on: what a fullscreen window covers. Null while the tree has no screen. */
+    output(client?: C): Rect | null;
+    /** The output `client` is on less what the bars take: what a maximised window fills. */
+    workArea(client?: C): Rect | null;
     /** `frame` is where the window's frame goes; this is the content's rectangle in it (a titlebar takes the top). */
     framed(client: C, frame: Rect): Rect;
     snapped(client: C): boolean;
@@ -258,7 +258,7 @@ export class WindowState {
         this.#floating.set(client, before);
         client.floatingBounds = { ...before };
         client.maximised = true;
-        const area = world.workArea();
+        const area = world.workArea(client);
         if (area !== null) {
             client.bounds = world.framed(client, area);
         }
@@ -288,7 +288,7 @@ export class WindowState {
         if (client.fullscreen) {
             return false;
         }
-        const output = world.output();
+        const output = world.output(client);
         if (output !== null) {
             this.#windowed.set(client, { ...client.bounds });
         }
@@ -437,7 +437,7 @@ export class WindowState {
             dx: at.x - origin.x,
             dy: at.y - origin.y,
             button: 1,
-            workArea: world.workArea() ?? undefined,
+            workArea: world.workArea(client) ?? undefined,
             dragConstraint: world.dragConstraint(),
             edgeTiling: world.edgeTiling(),
         };

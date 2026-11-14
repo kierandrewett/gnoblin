@@ -261,6 +261,46 @@ impl FakeCompositor {
         ]);
     }
 
+    /// A screen in the tree already, as at boot: named, placed and sized.
+    pub fn add_screen(&self, id: u64, name: &str, x: f64, y: f64, width: f64, height: f64, primary: bool) {
+        self.add_node(
+            id,
+            ROOT,
+            "screen",
+            vec![
+                ("name", text(name)),
+                ("x", MirrorValue::Double(x)),
+                ("y", MirrorValue::Double(y)),
+                ("width", MirrorValue::Double(width)),
+                ("height", MirrorValue::Double(height)),
+                ("primary", MirrorValue::Bool(primary)),
+            ],
+        );
+    }
+
+    /// A screen the compositor makes while the shell runs, as a hotplugged output: created, parented under the root,
+    /// then given its name, place, size and primary flag.
+    pub fn create_screen(&self, id: u64, name: &str, x: f64, y: f64, width: f64, height: f64, primary: bool) {
+        self.add_screen(id, name, x, y, width, height, primary);
+        self.publish(vec![
+            MirrorChange {
+                class: "screen".to_owned(),
+                ..change(MirrorChangeKind::Created, id)
+            },
+            MirrorChange {
+                parent: ROOT,
+                index: 99,
+                ..change(MirrorChangeKind::Parented, id)
+            },
+            set_change(id, "name", text(name)),
+            set_change(id, "x", MirrorValue::Double(x)),
+            set_change(id, "y", MirrorValue::Double(y)),
+            set_change(id, "width", MirrorValue::Double(width)),
+            set_change(id, "height", MirrorValue::Double(height)),
+            set_change(id, "primary", MirrorValue::Bool(primary)),
+        ]);
+    }
+
     /// The compositor writes a property of its own.
     pub fn external_set(&self, node: u64, key: &str, value: MirrorValue) {
         if let Some(entry) = self.0.borrow_mut().nodes.get_mut(&node) {
