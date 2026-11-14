@@ -1748,32 +1748,56 @@ fn the_chord_settle_time_is_a_number_of_milliseconds_the_programs_hold_can_cover
     );
 }
 
-#[test]
-fn a_drag_claims_its_grip_after_the_settle_time_and_not_on_the_press() {
+/// A world with the default settle time and a right hand at the origin, on the manual clock that stands still until the
+/// test moves it.
+fn settling_world() -> Rig {
     let mut rig = world(&[(800.0, 600.0)], "");
     xr_arrives(&mut rig);
     hand(&rig, RIGHT_HAND, "right", 0.0, 0.0, 0.0);
     rig.settle();
+    rig
+}
+
+/// Moves the clock `ms` milliseconds and runs a frame.
+fn after(rig: &mut Rig, ms: u64) {
+    rig.advance(ms);
+    let diagnostics = rig.frame();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn a_drag_claims_its_grip_after_the_settle_time_and_not_on_the_press() {
+    let mut rig = settling_world();
     assert_eq!(rig.eval("String(gnoblin.extensions.xr.session.chordSettleMs)"), "50");
-    let pressed = std::time::Instant::now();
     grip(&mut rig, 1.0);
     assert!(
         claimed(&rig, RIGHT_HAND).is_empty(),
         "the claim is not made on the frame of the press: the chord has to settle first"
     );
-    // The program holds the press for 150 ms, so the claim has to come well inside that on a quiet machine; a loaded
-    // one is given seconds, because this test proves the order, not the speed.
-    let limit = std::time::Duration::from_secs(5);
-    while claimed(&rig, RIGHT_HAND).is_empty() {
-        assert!(pressed.elapsed() < limit, "the grip was never claimed");
-        std::thread::sleep(std::time::Duration::from_millis(5));
-        let diagnostics = rig.frame();
-        assert!(diagnostics.is_empty(), "{diagnostics:?}");
-    }
+    after(&mut rig, 49);
     assert!(
-        pressed.elapsed() >= std::time::Duration::from_millis(50),
-        "claimed after {:?}, before the 50 ms settle time was over",
-        pressed.elapsed()
+        claimed(&rig, RIGHT_HAND).is_empty(),
+        "49 ms is short of the 50 ms settle time, which is what the program's hold has to cover"
     );
-    assert_eq!(claimed(&rig, RIGHT_HAND), ["grip"]);
+    after(&mut rig, 1);
+    assert_eq!(
+        claimed(&rig, RIGHT_HAND),
+        ["grip"],
+        "claimed once the chord has settled"
+    );
+}
+
+#[test]
+fn a_settle_time_past_the_cap_claims_at_the_cap_so_the_claim_still_fits_the_programs_hold() {
+    let mut rig = settling_world();
+    rig.eval("gnoblin.extensions.xr.session.chordSettleMs = 10000; 1");
+    grip(&mut rig, 1.0);
+    after(&mut rig, 59);
+    assert!(claimed(&rig, RIGHT_HAND).is_empty());
+    after(&mut rig, 1);
+    assert_eq!(
+        claimed(&rig, RIGHT_HAND),
+        ["grip"],
+        "claimed at 60 ms, not at the 10 s that was asked for"
+    );
 }
