@@ -3,11 +3,13 @@
 //! [`Hands`] is one frame of both controllers: the aim pose and every input the program publishes on a `controller`
 //! node. The pointer reads only the right hand, and only through the [`Arbiter`]: a shell binding that owns an input
 //! (`controller.claimed`, [`Claims`]) keeps it from reaching the window under the ray, so a `Grip+Drag` that moves a
-//! panel is not also a right click in it. The arbiter has no OpenXR types, no socket and no clock.
+//! panel is not also a right click in it. A binding claims after its chord has settled, so the arbiter holds every press
+//! for [`CLAIM_HOLD`] and forwards it only if no claim came. The arbiter has no OpenXR types, no socket and no clock of
+//! its own: the frame's display time is its clock.
 
-use xr_scene::Pose;
+use xr_scene::{Pose, Ray};
 
-use crate::{ControllerState, RELEASE_THRESHOLD, SCROLL_DEADZONE, pointing_ray};
+use crate::{ControllerState, PRESS_THRESHOLD, RELEASE_THRESHOLD, SCROLL_DEADZONE, pointing_ray};
 
 /// Which hand a controller is in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -101,28 +103,170 @@ impl Claims {
     }
 }
 
-/// One input's gate: a claimed input is withheld, and a press that began under the claim stays withheld until the
-/// input is released, even if the claim goes first.
-#[derive(Debug, Clone, Copy, Default)]
-struct Gate {
-    latched: bool,
+/// How long a press of the trigger, the grip, the secondary button or the stick is held back from the window before
+/// it is forwarded, in nanoseconds (150 ms).
+///
+/// A shell binding claims an input only after its chord has settled (`session.chordSettleMs`, at most 60 ms) and the
+/// claim has travelled shell, compositor and program: the real stock shell on a headless compositor made a claim
+/// visible 106 to 125 ms after the press was written (`crates/gnoblin/tests/js_shell.rs`, with 25 ms of polling in
+/// that). The program holds a press for longer than that, so a press the shell is going to claim is gone before the
+/// window sees it. A press that is not claimed in time is forwarded at the deadline, whether the shell is slow, dead or
+/// has no binding for it: the program never waits for the shell, and nothing but the pointer's own events is delayed.
+pub const CLAIM_HOLD: i64 = 150_000_000;
+
+/// What a gate gives the pointer for one frame.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Gated {
+    /// Nothing: the input is idle, held back or withheld.
+    Zero,
+    /// The raw value, because the window has the press (or this is the frame it is let go).
+    Raw,
+    /// The press, as a full value, at the pointing ray the hand had when the input went down. The press may be
+    /// forwarded well after the hand moved, so it lands where it was aimed.
+    Press(Option<Ray>),
 }
 
+/// Where an input is between the hand and the window.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+enum Phase {
+    /// Not down, or down in the band that is not yet a press.
+    #[default]
+    Idle,
+    /// Down since `since`, unclaimed so far and not yet forwarded. `released` is set when it came back up inside the
+    /// hold: a tap, which the window gets as a press and a release when the hold is over.
+    Held {
+        since: i64,
+        ray: Option<Ray>,
+        released: bool,
+    },
+    /// The press of a tap went out this frame and its release follows on the next. `then` is a second press that came
+    /// down while the first still waited, and is held from `since` on.
+    Tap { then: Option<(i64, Option<Ray>)> },
+    /// The window has the press and gets the raw values until the input is let go or claimed.
+    Passing,
+    /// A press that began under a claim, or was taken by one: it stays withheld until the input is let go, even if the
+    /// claim goes first.
+    Withheld,
+}
+
+/// One input's gate. It decides from the raw value, the claim and the clock; it has no other input.
+#[derive(Debug, Clone, Copy, Default)]
+struct Gate {
+    phase: Phase,
+}
+
+/// The value at which an input counts as pressed and the value at or under which it counts as released.
+#[derive(Debug, Clone, Copy)]
+struct Thresholds {
+    press: f32,
+    release: f32,
+    /// Whether a press that is released inside the hold is replayed to the window (a button's click). A stick that
+    /// comes back inside the hold scrolls nothing.
+    replay: bool,
+}
+
+const BUTTON: Thresholds = Thresholds {
+    press: PRESS_THRESHOLD,
+    release: RELEASE_THRESHOLD,
+    replay: true,
+};
+
+const STICK: Thresholds = Thresholds {
+    press: SCROLL_DEADZONE,
+    release: SCROLL_DEADZONE,
+    replay: false,
+};
+
 impl Gate {
-    /// Whether the input is withheld from the pointer. `floor` is the value at or under which it counts as released.
-    fn blocked(&mut self, raw: f32, claimed: bool, floor: f32) -> bool {
-        let held = raw > floor;
-        if claimed {
-            self.latched = held;
-            return true;
+    /// Moves the gate to `now` with the input at `raw`, `claimed` or not, and says what the window gets. `ray` is the
+    /// pointing ray of this frame.
+    fn step(&mut self, raw: f32, claimed: bool, at: Thresholds, now: i64, ray: Option<Ray>) -> Gated {
+        let down = raw > at.release;
+        let pressing = raw >= at.press && down;
+        match self.phase {
+            Phase::Idle => {
+                if claimed {
+                    if pressing {
+                        self.phase = Phase::Withheld;
+                    }
+                } else if pressing {
+                    self.phase = Phase::Held {
+                        since: now,
+                        ray,
+                        released: false,
+                    };
+                }
+                Gated::Zero
+            }
+            Phase::Withheld => {
+                if !down {
+                    self.phase = Phase::Idle;
+                }
+                Gated::Zero
+            }
+            Phase::Passing => {
+                if claimed {
+                    // A press the window already has is let go, so that no button stays down in it.
+                    self.phase = if down { Phase::Withheld } else { Phase::Idle };
+                    Gated::Zero
+                } else {
+                    if !down {
+                        self.phase = Phase::Idle;
+                    }
+                    Gated::Raw
+                }
+            }
+            Phase::Tap { then } => {
+                self.phase = then.map_or(Phase::Idle, |(since, ray)| Phase::Held {
+                    since,
+                    ray,
+                    released: false,
+                });
+                Gated::Zero
+            }
+            Phase::Held {
+                since,
+                ray: pinned,
+                released,
+            } => {
+                if claimed {
+                    // The shell took it inside the hold: the window never has it.
+                    self.phase = if down { Phase::Withheld } else { Phase::Idle };
+                    return Gated::Zero;
+                }
+                let due = now.saturating_sub(since) >= CLAIM_HOLD;
+                if released && pressing {
+                    // Pressed again before the first press was let through: the first goes out now and in order.
+                    self.phase = Phase::Tap { then: Some((now, ray)) };
+                    return Gated::Press(pinned);
+                }
+                if !released && !down {
+                    if !at.replay {
+                        self.phase = Phase::Idle;
+                        return Gated::Zero;
+                    }
+                    self.phase = Phase::Held {
+                        since,
+                        ray: pinned,
+                        released: true,
+                    };
+                }
+                if !due {
+                    return Gated::Zero;
+                }
+                if released || !down {
+                    self.phase = Phase::Tap { then: None };
+                } else {
+                    self.phase = Phase::Passing;
+                }
+                Gated::Press(pinned)
+            }
         }
-        self.latched &= held;
-        self.latched
     }
 
-    /// `raw`, or zero while the input is withheld.
-    fn pass(&mut self, raw: f32, claimed: bool, floor: f32) -> f32 {
-        if self.blocked(raw, claimed, floor) { 0.0 } else { raw }
+    /// The input's source is gone (the hand was lost): nothing is held, and nothing that was held is clicked.
+    fn lose(&mut self) {
+        self.phase = Phase::Idle;
     }
 }
 
@@ -130,8 +274,13 @@ impl Gate {
 ///
 /// The select input is the trigger. The secondary input is the grip or the upper face button, whichever is pressed
 /// further; a claimed grip withholds the grip and leaves the button, a claimed `secondary` the reverse. The stick
-/// scrolls unless it is claimed. A claimed input is zero for the pointer, so a button that was down when the claim
-/// arrived is released to the window by the pointer's own edge detection.
+/// scrolls unless it is claimed.
+///
+/// Every press waits [`CLAIM_HOLD`] before the window gets it, and a claim that arrives in that time takes it: the
+/// window never sees an input the shell claims. A press that is let go inside the hold reaches the window as a press
+/// and a release one frame apart when the hold is over, at the ray the hand had when it went down. A press that the
+/// window already has when a claim arrives (the claim was later than the hold) is let go by zeroing the input, so the
+/// pointer's own edge detection releases it.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Arbiter {
     trigger: Gate,
@@ -141,28 +290,43 @@ pub struct Arbiter {
 }
 
 impl Arbiter {
-    /// The pointer's sample for `hands` this frame under `claims`.
-    pub fn sample(&mut self, hands: &Hands, claims: Claims) -> ControllerState {
-        let right = hands.right.unwrap_or_default();
-        let trigger = self.trigger.pass(right.trigger, claims.trigger, RELEASE_THRESHOLD);
-        let grip = self.grip.pass(right.grip, claims.grip, RELEASE_THRESHOLD);
-        let button = self.secondary.pass(
-            if right.secondary { 1.0 } else { 0.0 },
-            claims.secondary,
-            RELEASE_THRESHOLD,
-        );
-        // The deflection's length decides whether a claimed stick was held, so a stick that rests is not.
-        let (x, y) = right.thumbstick;
-        let scroll = if self.stick.blocked(x.hypot(y), claims.thumbstick, SCROLL_DEADZONE) {
-            (0.0, 0.0)
-        } else {
-            (x, y)
+    /// The pointer's sample for `hands` this frame under `claims`, at display time `now` in nanoseconds.
+    pub fn sample(&mut self, hands: &Hands, claims: Claims, now: i64) -> ControllerState {
+        let ray = pointing_ray(hands.right.and_then(|right| right.aim).as_ref(), hands.gaze.as_ref());
+        let Some(right) = hands.right else {
+            for gate in [&mut self.trigger, &mut self.grip, &mut self.secondary, &mut self.stick] {
+                gate.lose();
+            }
+            return ControllerState {
+                ray,
+                ..ControllerState::default()
+            };
         };
+        let trigger = self.trigger.step(right.trigger, claims.trigger, BUTTON, now, ray);
+        let grip = self.grip.step(right.grip, claims.grip, BUTTON, now, ray);
+        let face = if right.secondary { 1.0 } else { 0.0 };
+        let button = self.secondary.step(face, claims.secondary, BUTTON, now, ray);
+        // The deflection's length decides whether a stick was held, so a stick that rests is not.
+        let (x, y) = right.thumbstick;
+        let stick = self.stick.step(x.hypot(y), claims.thumbstick, STICK, now, ray);
+        let analog = |gated: Gated, raw: f32| match gated {
+            Gated::Zero => 0.0,
+            Gated::Raw => raw,
+            Gated::Press(_) => 1.0,
+        };
+        // A press that was let through late is aimed where the hand was when it went down.
+        let aimed = [trigger, grip, button]
+            .into_iter()
+            .find_map(|gated| match gated {
+                Gated::Press(Some(pinned)) => Some(pinned),
+                _ => None,
+            })
+            .or(ray);
         ControllerState {
-            ray: pointing_ray(right.aim.as_ref(), hands.gaze.as_ref()),
-            select: trigger,
-            secondary: grip.max(button),
-            scroll,
+            ray: aimed,
+            select: analog(trigger, right.trigger),
+            secondary: analog(grip, right.grip).max(analog(button, face)),
+            scroll: if stick == Gated::Zero { (0.0, 0.0) } else { (x, y) },
         }
     }
 }

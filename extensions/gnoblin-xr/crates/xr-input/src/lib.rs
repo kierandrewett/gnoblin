@@ -15,11 +15,12 @@
 //!
 //! [`Hands`] is a frame of both controllers with every input the program publishes on a `controller` node, and the
 //! [`Arbiter`] turns the right hand into the [`ControllerState`] above while a shell binding's claim
-//! (`controller.claimed`, [`Claims`]) keeps an input from reaching the window under the ray.
+//! (`controller.claimed`, [`Claims`]) keeps an input from reaching the window under the ray. A press waits
+//! [`CLAIM_HOLD`] for a claim before the window gets it.
 
 mod hands;
 
-pub use hands::{Arbiter, Claims, Hand, HandState, Hands};
+pub use hands::{Arbiter, CLAIM_HOLD, Claims, Hand, HandState, Hands};
 use xr_scene::{Pose, Ray};
 
 /// The Linux evdev code for the left button. The select input produces it.

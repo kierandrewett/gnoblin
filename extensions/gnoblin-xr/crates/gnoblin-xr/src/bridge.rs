@@ -210,7 +210,7 @@ fn run_loop<R: Runtime, P: Presenter, S: FrameSource>(
                 let mut planned = plan(tree.model(), &head, opts);
                 let hands = frames.locate_hands(frame.display_time)?;
                 let claims = parts.controllers.claims(tree, Hand::Right);
-                let controller = parts.arbiter.sample(&hands, claims);
+                let controller = parts.arbiter.sample(&hands, claims, frame.display_time);
                 parts
                     .pointer
                     .update(tree, &planned.layers, &controller, frame.display_time)?;
@@ -1242,15 +1242,18 @@ mod tests {
         let (sink, ops) = std::sync::mpsc::channel();
         let mut tree =
             TreeClient::from_stream(serve_with_ops(room_of(&[(2, 0.0, -1000.0)]), false, Some(sink))).expect("attach");
-        let mut runtime = FakeRuntime::new(script(4));
+        // The press waits for a claim for `CLAIM_HOLD` (nine frames here), so the trigger is held for twelve frames.
+        let mut runtime = FakeRuntime::new(spaced_script(15));
         let frame = |select: f32| ControllerState {
             select,
             ..aiming(ahead(0.0))
         };
-        runtime.hands_script = [frame(0.0), frame(1.0), frame(1.0), frame(0.0)]
-            .iter()
-            .map(hands_from_pointer)
-            .collect();
+        runtime.hands_script = [
+            0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0,
+        ]
+        .into_iter()
+        .map(|select| hands_from_pointer(&frame(select)))
+        .collect();
         let mut frames = FrameLoop::new(runtime);
         let outcome = run(
             &mut tree,
@@ -1284,7 +1287,7 @@ mod tests {
             &["motion", "button", "scroll", "leave"],
         );
         let mut tree = TreeClient::from_stream(stream).expect("attach");
-        let mut runtime = FakeRuntime::new(script(3));
+        let mut runtime = FakeRuntime::new(spaced_script(13));
         runtime.hands = hands_from_pointer(&ControllerState {
             select: 1.0,
             scroll: (0.0, -1.0),
@@ -1303,7 +1306,7 @@ mod tests {
         )
         .expect("a refusal does not end the bridge");
         assert_eq!(outcome, Outcome::SessionExited);
-        assert_eq!(reports.plans.len(), 3, "every frame ran");
+        assert_eq!(reports.plans.len(), 13, "every frame ran");
         assert!(!received(&ops).is_empty(), "the bridge kept trying");
     }
 
@@ -1446,6 +1449,15 @@ mod tests {
     pub(super) fn script(frames: u32) -> Vec<Step> {
         let mut steps = vec![state(SessionState::Ready)];
         steps.extend((1..=frames).map(|n| timing(i64::from(n))));
+        steps.push(state(SessionState::Exiting));
+        steps
+    }
+
+    /// A session of `frames` frames a 60 Hz display frame apart. An input the pointer is given waits `CLAIM_HOLD`
+    /// of display time for a claim, so a test of buttons or scroll needs real time between its frames.
+    pub(super) fn spaced_script(frames: u32) -> Vec<Step> {
+        let mut steps = vec![state(SessionState::Ready)];
+        steps.extend((1..=frames).map(|n| timing(i64::from(n) * 16_666_667)));
         steps.push(state(SessionState::Exiting));
         steps
     }

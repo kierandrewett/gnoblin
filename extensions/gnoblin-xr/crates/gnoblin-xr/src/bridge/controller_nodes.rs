@@ -69,7 +69,12 @@ fn pointing(grip: f32) -> Hands {
 
 /// Runs the bridge over a room of one window with `hands` as the runtime's samples, one for each frame, and calls
 /// `after_frame(index, owner)` after each frame (the shell's moment to write). Returns the fake owner.
-fn run_hands(hands: Vec<Hands>, mut after_frame: impl FnMut(usize, &Owner)) -> Owner {
+fn run_hands(hands: Vec<Hands>, after_frame: impl FnMut(usize, &Owner)) -> Owner {
+    run_hands_counting_frames(hands, after_frame).0
+}
+
+/// As [`run_hands`], and the number of frames the runtime ended (each with the layers it was given, if any).
+fn run_hands_counting_frames(hands: Vec<Hands>, mut after_frame: impl FnMut(usize, &Owner)) -> (Owner, usize) {
     let (stream, owner) = owner::serve(room_of(&[(2, 0.0, -1000.0)]));
     let mut tree = TreeClient::from_stream(stream).expect("attach");
     let frames = i64::try_from(hands.len()).expect("a few frames");
@@ -91,7 +96,57 @@ fn run_hands(hands: Vec<Hands>, mut after_frame: impl FnMut(usize, &Owner)) -> O
         },
     )
     .expect("the bridge runs");
-    owner
+    let ended = frames.runtime().submitted.len();
+    (owner, ended)
+}
+
+/// The first frame after which the program has sent the window `count` right-button events, or `None`.
+fn frame_of_right_event(per_frame: &[usize], count: usize) -> Option<usize> {
+    per_frame.iter().position(|seen| *seen >= count)
+}
+
+/// The frames a press waits for a claim, as whole frames of the 60 Hz test display: the hold, rounded up.
+const HOLD_FRAMES: usize = ((xr_input::CLAIM_HOLD + FRAME - 1) / FRAME) as usize;
+
+/// One value for each frame: `[(1, 0.0), (3, 1.0)]` is one frame at 0 and three at 1.
+fn runs(pattern: &[(usize, f32)]) -> Vec<f32> {
+    pattern
+        .iter()
+        .flat_map(|(frames, value)| vec![*value; *frames])
+        .collect()
+}
+
+/// The right hand pointing at the window with the grip squeezed to each value in turn.
+fn grips(pattern: &[(usize, f32)]) -> Vec<Hands> {
+    runs(pattern).into_iter().map(pointing).collect()
+}
+
+/// The right hand pointing at the window with the trigger pulled to each value in turn.
+fn triggers(pattern: &[(usize, f32)]) -> Vec<Hands> {
+    runs(pattern)
+        .into_iter()
+        .map(|trigger| Hands {
+            right: Some(HandState {
+                trigger,
+                ..pointing(0.0).right.expect("right")
+            }),
+            ..Hands::default()
+        })
+        .collect()
+}
+
+/// The right hand pointing at the window with the stick pushed up to each value in turn.
+fn sticks(pattern: &[(usize, f32)]) -> Vec<Hands> {
+    runs(pattern)
+        .into_iter()
+        .map(|push| Hands {
+            right: Some(HandState {
+                thumbstick: (0.0, push),
+                ..pointing(0.0).right.expect("right")
+            }),
+            ..Hands::default()
+        })
+        .collect()
 }
 
 /// The ids of every controller the program made.
@@ -214,39 +269,63 @@ fn the_session_ending_destroys_the_controller_and_the_seat() {
     );
 }
 
+/// The window's `BTN_LEFT` events, pressed (`1`) or released (`0`), in order.
+fn presses_of_the_left_button(owner: &Owner) -> Vec<u64> {
+    inputs(owner)
+        .into_iter()
+        .filter(|(kind, button, _)| kind == "button" && *button == 0x110)
+        .map(|(_, _, pressed)| pressed)
+        .collect()
+}
+
+/// How many scroll events the window got.
+fn scrolls(owner: &Owner) -> usize {
+    inputs(owner).iter().filter(|(kind, ..)| kind == "scroll").count()
+}
+
+/// Every button event the window got, of any button, as `(button, pressed)`.
+fn buttons(owner: &Owner) -> Vec<(u64, u64)> {
+    inputs(owner)
+        .into_iter()
+        .filter(|(kind, ..)| kind == "button")
+        .map(|(_, button, pressed)| (button, pressed))
+        .collect()
+}
+
 #[test]
-fn an_unclaimed_grip_still_reaches_the_window_as_the_right_button() {
-    let owner = run_hands(
-        vec![pointing(0.0), pointing(1.0), pointing(1.0), pointing(0.0)],
-        |_, _| {},
-    );
+fn an_unclaimed_grip_reaches_the_window_as_the_right_button_after_the_hold_and_not_before() {
+    let mut per_frame = Vec::new();
+    let owner = run_hands(grips(&[(1, 0.0), (14, 1.0), (2, 0.0)]), |_, owner| {
+        per_frame.push(presses_of_the_right_button(owner).len());
+    });
     assert_eq!(
         presses_of_the_right_button(&owner),
         [1, 0],
-        "pressed with the grip, released with it"
+        "pressed, then released with the grip, in order"
     );
+    // The squeeze began on frame 1. Nothing reaches the window while a claim may still come, and the press is there
+    // by the first frame at or after the hold.
+    let pressed = frame_of_right_event(&per_frame, 1).expect("the press was delivered");
+    assert_eq!(pressed, 1 + HOLD_FRAMES, "the press waited for the hold and no longer");
+    assert!(per_frame[..pressed].iter().all(|seen| *seen == 0));
 }
 
 #[test]
 fn a_claimed_grip_is_withheld_from_the_window_while_the_node_still_says_it_is_squeezed() {
     let mut squeezed_while_claimed = false;
-    let owner = run_hands(
-        vec![pointing(0.0), pointing(1.0), pointing(1.0), pointing(0.0)],
-        |frame, owner| {
-            if frame == 0 {
-                // The shell's Grip binding claims the input as soon as it sees the hand.
-                let (right, _) = owner.controller("right").expect("the hand arrived in the first frame");
-                owner.claim(right, &["grip"]);
-            }
-            if frame == 2 {
-                let (_, node) = owner.controller("right").expect("right");
-                squeezed_while_claimed = node.number("grip") == Some(1.0);
-            }
-        },
-    );
-    assert_eq!(
-        presses_of_the_right_button(&owner),
-        Vec::<u64>::new(),
+    let owner = run_hands(grips(&[(1, 0.0), (14, 1.0), (2, 0.0)]), |frame, owner| {
+        if frame == 0 {
+            // The shell's Grip binding claims the input as soon as it sees the hand.
+            let (right, _) = owner.controller("right").expect("the hand arrived in the first frame");
+            owner.claim(right, &["grip"]);
+        }
+        if frame == 12 {
+            let (_, node) = owner.controller("right").expect("right");
+            squeezed_while_claimed = node.number("grip") == Some(1.0);
+        }
+    });
+    assert!(
+        presses_of_the_right_button(&owner).is_empty(),
         "no right click in the window"
     );
     assert!(squeezed_while_claimed, "the shell reads the grip it claimed");
@@ -255,25 +334,65 @@ fn a_claimed_grip_is_withheld_from_the_window_while_the_node_still_says_it_is_sq
 }
 
 #[test]
+fn a_grip_that_becomes_a_claimed_drag_inside_the_hold_gives_the_window_no_button_event_at_all() {
+    // The claim lands on every frame the hold covers, the last included: a drag the shell starts after its settle.
+    for after in 2..HOLD_FRAMES {
+        let owner = run_hands(grips(&[(1, 0.0), (16, 1.0), (2, 0.0)]), |frame, owner| {
+            if frame == after {
+                let (right, _) = owner.controller("right").expect("right");
+                owner.claim(right, &["grip"]);
+            }
+            if frame == 17 {
+                // The drag ends with the squeeze.
+                let (right, _) = owner.controller("right").expect("right");
+                owner.claim(right, &[]);
+            }
+        });
+        assert!(
+            buttons(&owner).is_empty(),
+            "claimed after frame {after}: the window never heard of the grip, got {:?}",
+            buttons(&owner)
+        );
+    }
+}
+
+#[test]
+fn a_tap_the_shell_never_claims_is_a_press_then_a_release_when_the_hold_is_over() {
+    let mut per_frame = Vec::new();
+    let owner = run_hands(grips(&[(1, 0.0), (2, 1.0), (12, 0.0)]), |_, owner| {
+        per_frame.push(presses_of_the_right_button(owner).len());
+    });
+    assert_eq!(presses_of_the_right_button(&owner), [1, 0], "a click, in order");
+    assert_eq!(
+        frame_of_right_event(&per_frame, 1),
+        Some(1 + HOLD_FRAMES),
+        "delivered at the deadline, though the finger was up after two frames"
+    );
+    assert_eq!(frame_of_right_event(&per_frame, 2), Some(2 + HOLD_FRAMES));
+}
+
+#[test]
+fn a_tap_the_shell_claims_inside_the_hold_is_not_a_click() {
+    let owner = run_hands(grips(&[(1, 0.0), (2, 1.0), (12, 0.0)]), |frame, owner| {
+        if frame == 4 {
+            let (right, _) = owner.controller("right").expect("right");
+            owner.claim(right, &["grip"]);
+        }
+    });
+    assert!(buttons(&owner).is_empty(), "got {:?}", buttons(&owner));
+}
+
+#[test]
 fn a_claim_the_shell_gives_back_lets_the_next_squeeze_through_to_the_window() {
     let owner = run_hands(
-        vec![
-            pointing(0.0),
-            pointing(1.0),
-            pointing(1.0),
-            pointing(0.0),
-            pointing(0.0),
-            pointing(1.0),
-            pointing(1.0),
-            pointing(0.0),
-        ],
+        grips(&[(1, 0.0), (10, 1.0), (3, 0.0), (12, 1.0), (2, 0.0)]),
         |frame, owner| {
             let (right, _) = owner.controller("right").expect("the hand arrived in the first frame");
             if frame == 0 {
                 // The shell's drag starts: it claims the grip, as `controller.claim` writes the list.
                 owner.claim(right, &["grip"]);
             }
-            if frame == 3 {
+            if frame == 12 {
                 // The drag ended: the shell writes the empty list, as the real compositor publishes it.
                 owner.claim(right, &[]);
             }
@@ -287,54 +406,106 @@ fn a_claim_the_shell_gives_back_lets_the_next_squeeze_through_to_the_window() {
 }
 
 #[test]
-fn a_grip_the_window_already_has_is_released_when_the_claim_arrives() {
-    let owner = run_hands(
-        vec![pointing(1.0), pointing(1.0), pointing(1.0), pointing(0.0)],
-        |frame, owner| {
-            if frame == 0 {
-                let (right, _) = owner.controller("right").expect("right");
-                owner.claim(right, &["grip"]);
-            }
-        },
-    );
+fn a_grip_the_window_already_has_is_released_when_a_late_claim_arrives() {
+    let mut per_frame = Vec::new();
+    let owner = run_hands(grips(&[(1, 0.0), (20, 1.0), (2, 0.0)]), |frame, owner| {
+        per_frame.push(presses_of_the_right_button(owner).len());
+        if frame == 12 {
+            // A shell that is slower than the hold: the press went out at frame 9.
+            let (right, _) = owner.controller("right").expect("right");
+            owner.claim(right, &["grip"]);
+        }
+    });
     assert_eq!(
         presses_of_the_right_button(&owner),
         [1, 0],
-        "pressed before the claim, released by it, and the squeeze that goes on is the shell's"
+        "pressed at the deadline, released by the claim, and the squeeze that goes on is the shell's"
+    );
+    assert_eq!(frame_of_right_event(&per_frame, 1), Some(1 + HOLD_FRAMES));
+    assert_eq!(
+        frame_of_right_event(&per_frame, 2),
+        Some(13),
+        "released the frame after the claim, long before the hand let go"
     );
 }
 
 #[test]
 fn a_claim_of_one_input_leaves_the_others_to_the_window() {
-    let owner = run_hands(
-        vec![
-            Hands {
-                right: Some(HandState {
-                    trigger: 0.0,
-                    ..pointing(0.0).right.expect("right")
+    let owner = run_hands(triggers(&[(1, 0.0), (2, 1.0), (12, 0.0)]), |frame, owner| {
+        if frame == 0 {
+            let (right, _) = owner.controller("right").expect("right");
+            owner.claim(right, &["grip"]);
+        }
+    });
+    assert_eq!(presses_of_the_left_button(&owner), [1, 0], "the trigger still clicks");
+}
+
+/// The shell's moment: claim `name` after frame `at`.
+fn claim_after(at: usize, name: &'static str) -> impl FnMut(usize, &Owner) {
+    move |frame, owner| {
+        if frame == at {
+            let (right, _) = owner.controller("right").expect("right");
+            owner.claim(right, &[name]);
+        }
+    }
+}
+
+#[test]
+fn the_trigger_and_the_stick_are_held_and_claimed_as_the_grip_is() {
+    let trigger_hands = || triggers(&[(1, 0.0), (16, 1.0), (2, 0.0)]);
+    let stick_hands = || sticks(&[(1, 0.0), (16, 1.0), (2, 0.0)]);
+
+    // Claimed inside the hold: nothing reaches the window.
+    let owner = run_hands(trigger_hands(), claim_after(4, "trigger"));
+    assert!(presses_of_the_left_button(&owner).is_empty());
+    let owner = run_hands(stick_hands(), claim_after(4, "thumbstick"));
+    assert_eq!(scrolls(&owner), 0);
+
+    // Not claimed: forwarded after the hold, and a tap is a press and a release.
+    let owner = run_hands(trigger_hands(), |_, _| {});
+    assert_eq!(presses_of_the_left_button(&owner), [1, 0]);
+    let owner = run_hands(triggers(&[(1, 0.0), (2, 1.0), (12, 0.0)]), |_, _| {});
+    assert_eq!(presses_of_the_left_button(&owner), [1, 0], "a tap is a click");
+    let owner = run_hands(stick_hands(), |_, _| {});
+    assert!(scrolls(&owner) > 0, "a held stick scrolls once the hold is over");
+    let owner = run_hands(sticks(&[(1, 0.0), (2, 1.0), (14, 0.0)]), |_, _| {});
+    assert_eq!(scrolls(&owner), 0, "a flick shorter than the hold scrolls nothing");
+}
+
+#[test]
+fn a_shell_that_never_answers_delays_only_the_press_and_the_pose_and_the_frames_go_on() {
+    // No claim is ever written. The hand moves on every frame (along its own ray, so it keeps aiming at the window),
+    // so the controller node is written on every frame.
+    let frames = 20_i32;
+    let moving: Vec<Hands> = (0..frames)
+        .map(|n| Hands {
+            right: Some(HandState {
+                aim: Some(Pose {
+                    position: [0.0, 0.0, -0.01 * f64::from(n)],
+                    orientation: IDENTITY,
                 }),
-                ..Hands::default()
-            },
-            Hands {
-                right: Some(HandState {
-                    trigger: 1.0,
-                    ..pointing(0.0).right.expect("right")
-                }),
-                ..Hands::default()
-            },
-            pointing(0.0),
-        ],
-        |frame, owner| {
-            if frame == 0 {
-                let (right, _) = owner.controller("right").expect("right");
-                owner.claim(right, &["grip"]);
-            }
-        },
-    );
-    let lefts: Vec<u64> = inputs(&owner)
-        .into_iter()
-        .filter(|(kind, button, _)| kind == "button" && *button == 0x110)
-        .map(|(_, _, pressed)| pressed)
+                grip: if (1..18).contains(&n) { 1.0 } else { 0.0 },
+                ..HandState::default()
+            }),
+            ..Hands::default()
+        })
         .collect();
-    assert_eq!(lefts, [1, 0], "the trigger still clicks");
+    let mut per_frame = Vec::new();
+    let mut writes = Vec::new();
+    let (owner, ended) = run_hands_counting_frames(moving, |_, owner| {
+        per_frame.push(presses_of_the_right_button(owner).len());
+        let before: usize = writes.iter().sum();
+        writes.push(controller_transactions(owner).len() - before);
+    });
+    assert_eq!(
+        presses_of_the_right_button(&owner),
+        [1, 0],
+        "forwarded after the deadline with nobody to claim it, and released with the squeeze"
+    );
+    assert_eq!(frame_of_right_event(&per_frame, 1), Some(1 + HOLD_FRAMES));
+    assert!(
+        writes[..=HOLD_FRAMES + 1].iter().all(|count| *count >= 1),
+        "the controller was written on every frame of the hold: {writes:?}"
+    );
+    assert_eq!(ended, 20, "every frame was ended, the hold or not");
 }
