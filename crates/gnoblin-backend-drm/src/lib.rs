@@ -549,7 +549,10 @@ fn output_of(connector: &plan::Connector) -> Option<Output> {
     let descriptor = connector.descriptor();
     let mode = *descriptor.modes.first()?;
     let scale = descriptor.scales.first().copied().unwrap_or(Scale::integral(1));
-    Some(Output::new(connector.id, connector.name.clone(), mode, scale))
+    Some(
+        Output::new(connector.id, connector.name.clone(), mode, scale)
+            .with_identity(connector.edid.as_ref().and_then(gnoblin_output::Edid::identity)),
+    )
 }
 
 /// The backend error a gamma or power change is reported as.

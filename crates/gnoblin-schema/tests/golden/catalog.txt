@@ -622,8 +622,12 @@ object screen since 0.2.0 secret false
   property primary type bool since 0.2.0 secret false
   property enabled type bool since 0.2.0 secret false
   property mode type string since 0.2.0 secret false
+  property connector type string since 0.2.0 secret false
+  property identity type string since 0.2.0 secret false
+  property mirror_of type string since 0.2.0 secret false
   method capture since 0.2.0 secret false function false
   method apply since 0.2.0 secret false function false
+    param text type string since 0.2.0 secret false
   signal destroyed since 0.2.0 secret false
   signal mode_changed since 0.2.0 secret false
 object seat since 0.2.0 secret false
@@ -2362,13 +2366,22 @@ message Screen {
     bool enabled = 32;
     // since 0.2.0
     string mode = 33;
+    // since 0.2.0
+    string connector = 34;
+    // since 0.2.0
+    string identity = 35;
+    // since 0.2.0
+    string mirror_of = 36;
   }
 
   // Method `capture`, since 0.2.0.
   message CaptureArgs {}
 
   // Method `apply`, since 0.2.0.
-  message ApplyArgs {}
+  message ApplyArgs {
+    // since 0.2.0
+    string text = 1;
+  }
 
   // Signal `destroyed`, since 0.2.0.
   message DestroyedPayload {}

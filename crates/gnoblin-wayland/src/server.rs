@@ -834,9 +834,12 @@ impl Server {
                     // A hotplug, a removal or a mode change: the whole layout is
                     // recomputed from the connected set, once, rather than patched
                     // per event.
-                    state.sync_outputs(backend.outputs());
+                    state.settle_outputs(backend.as_mut());
                     state.refresh_output_controls(&crate::output_control::BackendControl(backend.as_mut()));
                 }
+                // A shell's `screen.apply` is run here, where the backend it drives is held. A change it makes is
+                // settled at once rather than waiting for the backend's own report on the next turn.
+                state.run_output_applies(backend.as_mut());
                 sync_output_manager(state, backend.as_mut(), outputs_changed);
                 state.apply_output_controls(&mut crate::output_control::BackendControl(backend.as_mut()));
                 state.apply_dmabuf_imports(backend.as_mut());

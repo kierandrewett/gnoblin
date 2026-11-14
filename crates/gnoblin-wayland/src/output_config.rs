@@ -206,6 +206,7 @@ impl OutputConfigHost for BackendOutputConfig<'_> {
             .map(|(id, mode, before, after)| OutputChange {
                 id,
                 mode,
+                before_mode: mode,
                 before,
                 after,
             })
@@ -236,14 +237,16 @@ impl State {
     }
 }
 
-/// One output change in a configuration: the mode it is driven in, and the scale to move it
-/// from and to. Rollback reuses the same mode with the old scale.
+/// One output change in a configuration: the mode and scale to move it from and to. Rollback restores the mode
+/// and the scale the head had.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct OutputChange {
     /// The head being changed.
     pub(crate) id: OutputId,
-    /// The mode the head is driven in during the change.
+    /// The mode the head is driven in after the change.
     pub(crate) mode: DisplayMode,
+    /// The mode the head had before the change.
+    pub(crate) before_mode: DisplayMode,
     /// The scale the head had before the change.
     pub(crate) before: Scale,
     /// The scale the head moves to.
@@ -291,7 +294,7 @@ pub(crate) fn apply_in_order(
             let mut restored = Vec::new();
             let mut stuck = Vec::new();
             for done in steps[..index].iter().rev() {
-                match configure(done.id, done.mode, done.before) {
+                match configure(done.id, done.before_mode, done.before) {
                     Ok(()) => restored.push(done.id),
                     Err(_) => stuck.push(done.id),
                 }
@@ -318,6 +321,7 @@ mod tests {
         OutputChange {
             id: OutputId::new(id),
             mode: DisplayMode::new(1920, 1080, 60_000),
+            before_mode: DisplayMode::new(1920, 1080, 60_000),
             before: Scale::from_percent(from),
             after: Scale::from_percent(to),
         }

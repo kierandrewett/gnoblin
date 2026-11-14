@@ -214,6 +214,16 @@ impl Session {
         )
     }
 
+    /// [`Session::start_shelled`] for a session whose outputs a test can hotplug.
+    pub fn start_shelled_detached(tree: TreeHooks) -> (Self, gnoblin_backend::headless::HeadlessHandle) {
+        let backend = Headless::new();
+        let outputs = backend.handle();
+        (
+            Self::create_with(Box::new(backend), Protocols::default(), WmOptions::default(), tree),
+            outputs,
+        )
+    }
+
     /// Builds the session, its sockets and the handle a worker thread uses.
     fn create(
         backend: Box<dyn gnoblin_backend::Backend<gnoblin_wayland::State>>,
@@ -495,6 +505,31 @@ impl Client {
         file.set_len(length as u64).expect("a buffer that big");
         let pool = self.shm.create_pool(file.as_fd(), length, &self.qh, ());
         pool.create_buffer(0, width, height, stride, wl_shm::Format::Argb8888, &self.qh, ())
+    }
+
+    /// A buffer filled with one colour, given as the B, G, R, A bytes of `Argb8888` on a little-endian machine.
+    pub fn solid_buffer(&self, width: i32, height: i32, bgra: [u8; 4]) -> wl_buffer::WlBuffer {
+        use std::io::Write;
+        let stride = width * 4;
+        let length = stride * height;
+        let mut file = tempfile::tempfile().expect("a shared memory file");
+        let row: Vec<u8> = bgra.iter().copied().cycle().take(stride as usize).collect();
+        for _ in 0..height {
+            file.write_all(&row).expect("a filled buffer");
+        }
+        let pool = self.shm.create_pool(file.as_fd(), length, &self.qh, ());
+        pool.create_buffer(0, width, height, stride, wl_shm::Format::Argb8888, &self.qh, ())
+    }
+
+    /// Creates a toplevel and maps it with a buffer of one colour.
+    pub fn map_solid_window(&mut self, app_id: &str, title: &str, size: (i32, i32), bgra: [u8; 4]) -> Window {
+        let window = self.create_window(app_id, title);
+        let buffer = self.solid_buffer(size.0, size.1, bgra);
+        window.surface.attach(Some(&buffer), 0, 0);
+        window.surface.damage(0, 0, size.0, size.1);
+        window.surface.commit();
+        self.roundtrip();
+        window
     }
 
     /// Creates a toplevel and commits it once, which is what asks for a configure.

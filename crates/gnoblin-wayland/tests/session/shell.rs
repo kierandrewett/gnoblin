@@ -25,7 +25,7 @@ struct WindowTable;
 
 impl ClassInfo for WindowTable {
     fn has_class(&self, class: &str) -> bool {
-        matches!(class, "node" | "window" | "seat")
+        matches!(class, "node" | "window" | "seat" | "screen")
     }
 
     fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
@@ -44,7 +44,7 @@ impl ClassInfo for WindowTable {
     }
 
     fn has_method(&self, class: &str, method: &str) -> bool {
-        class == "window" && method == "close"
+        matches!((class, method), ("window", "close") | ("screen", "apply"))
     }
 }
 
@@ -279,6 +279,67 @@ impl Shell {
                     "the shell's answer was refused: {code:?}"
                 ),
             }
+        }
+    }
+
+    /// Every screen node the compositor announced, in the order it did.
+    pub fn screen_nodes(&self) -> Vec<NodeId> {
+        self.batches
+            .lock()
+            .expect("the batch lock is not poisoned")
+            .iter()
+            .flat_map(|batch| &batch.changes)
+            .filter_map(|change| match change {
+                TreeChange::Created { node, class, .. } if class == "screen" => Some(*node),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Waits until `count` screen nodes were announced, and returns them in order.
+    #[track_caller]
+    pub fn wait_screen_nodes(&self, count: usize) -> Vec<NodeId> {
+        wait(&format!("{count} screen node(s)"), || {
+            Some(self.screen_nodes()).filter(|nodes| nodes.len() >= count)
+        })
+    }
+
+    /// Sends `text` as `apply` on a screen node and waits for the compositor's answer: `Ok` when it took effect, the
+    /// refusal's text when it did not.
+    #[track_caller]
+    pub fn apply(&self, node: NodeId, text: &str) -> Result<(), String> {
+        static TOKENS: AtomicU64 = AtomicU64::new(1);
+        let token = TOKENS.fetch_add(1, Ordering::SeqCst);
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            let call = TreeTransaction::new(vec![TreeOp::TreeCall {
+                node,
+                method: "apply".to_owned(),
+                args: Vec::new(),
+                text: SecretText::new(text),
+                token,
+            }]);
+            match self.transact(call) {
+                Ok(()) => break,
+                Err(code) => assert!(
+                    matches!(code, Code::StaleBase) && Instant::now() < deadline,
+                    "the apply call was refused: {code:?}"
+                ),
+            }
+        }
+        let answer = wait("the apply answer", || {
+            self.batches
+                .lock()
+                .expect("the batch lock is not poisoned")
+                .iter()
+                .flat_map(|batch| &batch.answers)
+                .find(|answer| answer.token == token)
+                .cloned()
+        });
+        if answer.error.is_empty() {
+            Ok(())
+        } else {
+            Err(answer.error)
         }
     }
 

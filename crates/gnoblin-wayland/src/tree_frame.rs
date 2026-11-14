@@ -665,6 +665,9 @@ pub struct TreeFrame {
     window_calls: Vec<TreeCall>,
     /// `capture` calls on View nodes, in op order, for the compositor to answer. The text is the path to write.
     view_captures: Vec<TreeCall>,
+    /// `apply` calls on screen nodes, in op order, for the compositor to run through the output engine. The text is the
+    /// request; the compositor answers each under its token.
+    output_calls: Vec<TreeCall>,
     /// What the shell's writes to animated properties asked of the compositor's tracks, in op
     /// order, for the compositor to play or end. A pending track is not held in the batch: the
     /// compositor decides how it lands, so reduced motion is applied where the tracks are.
@@ -711,6 +714,7 @@ impl TreeFrame {
             window_writes: Vec::new(),
             window_calls: Vec::new(),
             view_captures: Vec::new(),
+            output_calls: Vec::new(),
             motion: Vec::new(),
             answers: Vec::new(),
             tracks: Vec::new(),
@@ -834,6 +838,11 @@ impl TreeFrame {
     /// Take the `capture` calls made on View nodes since the last take, in op order, for the compositor to answer.
     pub fn take_view_captures(&mut self) -> Vec<TreeCall> {
         std::mem::take(&mut self.view_captures)
+    }
+
+    /// Take the `apply` calls made on screen nodes since the last take, in op order, for the compositor to run.
+    pub fn take_output_calls(&mut self) -> Vec<TreeCall> {
+        std::mem::take(&mut self.output_calls)
     }
 
     /// Take the motion the shell asked for since the last take, in the order the writes applied,
@@ -1007,6 +1016,11 @@ impl TreeFrame {
                         .into_iter()
                         .partition(|call| scene.class(call.node) == Some("view") && call.method == "capture");
                     self.view_captures.extend(captures);
+                    // An output `apply` is the compositor's to run and answer: the shell is never handed it back.
+                    let (applies, calls): (Vec<TreeCall>, Vec<TreeCall>) = calls
+                        .into_iter()
+                        .partition(|call| scene.class(call.node) == Some("screen") && call.method == "apply");
+                    self.output_calls.extend(applies);
                     self.authentications.extend(auths);
                     self.lock_calls.extend(locks);
                     self.claims.extend(claims);

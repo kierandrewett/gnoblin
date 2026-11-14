@@ -67,7 +67,6 @@ use gnoblin_backend::{Host, InputEvent, TouchPhase};
 use gnoblin_config::{Protocols, TitlebarAction};
 use gnoblin_input::Activity;
 use gnoblin_lock::{Embargo, Lock, State as LockState};
-use gnoblin_output::{LayoutConfig, compute};
 use gnoblin_render::Mat4;
 use gnoblin_render::transaction::PointerInput;
 use gnoblin_render_frame::frame::{ColourMatrix, Layer, OutputFrame, View};
@@ -522,6 +521,8 @@ pub struct State {
     pub(crate) windows: BTreeMap<WindowId, WindowEntry>,
     /// The outputs, in connection order.
     pub(crate) outputs: Vec<OutputEntry>,
+    /// What the session remembers about outputs between layouts: profiles, mirrors and outputs that are off.
+    pub(crate) output_policy: crate::output_policy::OutputPolicy,
     /// The next window identity to hand out.
     next_window: u32,
     /// The clients an embedder adopted through [`State::adopt_client`], by the tag it was handed.
@@ -561,7 +562,7 @@ pub struct State {
     pub(crate) lock_card: crate::lock_card::LockCardTables,
     /// The output whose frame the host described last, and its damage, so the frame
     /// hook can record what was drawn.
-    last_frame: Option<(OutputId, Vec<Rect>)>,
+    pub(crate) last_frame: Option<(OutputId, Vec<Rect>)>,
 
     /// The session lock and protection-cover policy. Every request, output change
     /// and committed lock surface is an event for it, and the effects it returns are
@@ -853,6 +854,7 @@ impl State {
             focus: None,
             windows: BTreeMap::new(),
             outputs: Vec::new(),
+            output_policy: crate::output_policy::OutputPolicy::default(),
             next_window: 1,
             adopted: HashMap::new(),
             protection_generation: None,
@@ -1261,37 +1263,60 @@ impl State {
 
     /// Reconciles the outputs with what the backend reports.
     ///
-    /// The whole layout is recomputed from the connected set, so a hotplug, a
-    /// removal and a mode change all end in the same place: one declarative layout
-    /// from `gnoblin-output`, applied to the Smithay outputs and to the window
-    /// manager. A layout the engine refuses leaves the previous one in place and is
-    /// logged, because a display configuration mistake must not end the session.
+    /// The whole layout is recomputed from the connected set and the profiles, so a hotplug, a removal, a mode
+    /// change and an `apply` all end in the same place: one declarative layout from `gnoblin-output`, applied to the
+    /// Smithay outputs and to the window manager. A layout the engine refuses falls back to the plain row, because a
+    /// display configuration mistake must not end the session. An output the layout gives no place (a mirror, or one
+    /// that is off) becomes a shadow: it keeps its screen node and shows the mirrored picture or black.
     pub(crate) fn sync_outputs(&mut self, outputs: &[gnoblin_backend::Output]) {
         let connected: Vec<&gnoblin_backend::Output> = outputs
             .iter()
             .filter(|output| output.mode.width > 0 && output.mode.height > 0)
             .collect();
+        let everything: Vec<OutputId> = connected.iter().map(|output| output.id).collect();
         if connected.is_empty() {
-            self.remove_outputs_unless(&[]);
+            self.remove_outputs_unless(&[], &[]);
+            self.output_policy.set_shadows(Vec::new());
+            self.output_policy.remember(&[]);
             self.report_outputs();
             return;
         }
+        self.output_policy.remember(&connected);
         let descriptors: Vec<_> = connected.iter().map(|output| output.descriptor()).collect();
-        let connectors: Vec<String> = connected.iter().map(|output| output.connector.clone()).collect();
-        let layout = match compute(&descriptors, &LayoutConfig::row_over(&connectors)) {
-            Ok(layout) => layout,
-            Err(error) => {
-                log::warn!(
-                    area = "output",
-                    ?error,
-                    "the layout was refused; keeping the previous one"
-                );
-                return;
-            }
+        let sightings: Vec<gnoblin_output::OutputSighting<'_>> = connected
+            .iter()
+            .map(|output| gnoblin_output::OutputSighting {
+                connector: &output.connector,
+                identity: output.identity.as_deref(),
+            })
+            .collect();
+        let Some((layout, config)) = crate::output_policy::plan(&descriptors, &sightings, &self.output_policy.profiles)
+        else {
+            return;
         };
 
-        self.remove_outputs_unless(&connected.iter().map(|output| output.id).collect::<Vec<_>>());
-        for output in &connected {
+        // A mirror shows the picture of the output it clones; an output no monitor holds is off.
+        let mirrors: Vec<(OutputId, OutputId)> = config
+            .outputs
+            .iter()
+            .filter(|entry| entry.enabled)
+            .filter_map(|entry| {
+                let source = entry.mirror_of.as_deref()?;
+                let output = connected.iter().find(|output| output.connector == entry.connector)?;
+                let source = connected.iter().find(|output| output.connector == source)?;
+                Some((output.id, source.id))
+            })
+            .collect();
+        let placed = |id: OutputId| layout.monitors.iter().any(|monitor| monitor.contains(id));
+        let real: Vec<&gnoblin_backend::Output> = connected
+            .iter()
+            .copied()
+            .filter(|output| placed(output.id) && !mirrors.iter().any(|(mirror, _)| *mirror == output.id))
+            .collect();
+        let real_ids: Vec<OutputId> = real.iter().map(|output| output.id).collect();
+
+        self.remove_outputs_unless(&real_ids, &everything);
+        for output in &real {
             let Some(monitor) = layout.monitor_of(output.id) else {
                 log::warn!(area = "output", connector = %output.connector, "the layout does not place this output");
                 continue;
@@ -1304,9 +1329,38 @@ impl State {
         for entry in &mut self.outputs {
             entry.primary = layout.primary == Some(entry.backend);
         }
+
+        let shadows: Vec<crate::output_policy::Shadow> = connected
+            .iter()
+            .filter(|output| !real_ids.contains(&output.id))
+            .map(|output| crate::output_policy::Shadow {
+                output: output.id,
+                source: mirrors
+                    .iter()
+                    .find(|(mirror, _)| *mirror == output.id)
+                    .map(|(_, source)| *source),
+                logical: output.logical_size(),
+                mode: output.mode,
+                scale: output.scale,
+            })
+            .collect();
+        for shadow in &shadows {
+            // A shadow shows its source's rectangle (the pair is one monitor) or, when it is off, a rectangle of its
+            // own size at the origin. The scene draws and damages nothing for it.
+            let rect = shadow
+                .source
+                .and_then(|source| self.output_rect(source))
+                .unwrap_or_else(|| Rect::new(0, 0, shadow.logical.width, shadow.logical.height));
+            self.composer.set_shadow_output(shadow.output, rect);
+        }
+        self.output_policy.set_shadows(shadows);
+
         let backends: Vec<OutputId> = self.outputs.iter().map(|entry| entry.backend).collect();
         for backend in backends {
             self.publish_screen(backend);
+        }
+        for shadow in self.shadow_outputs() {
+            self.publish_shadow_screen(shadow);
         }
         // The lock hears the whole layout once, after every change landed: it restarts
         // its presentation barrier from this set, so a hotplugged output is covered
@@ -1314,8 +1368,38 @@ impl State {
         self.report_outputs();
     }
 
-    /// Removes every output the connected set no longer names.
-    fn remove_outputs_unless(&mut self, keep: &[OutputId]) {
+    /// Publishes a shadow's screen node: what it is and, for a mirror, what it shows.
+    fn publish_shadow_screen(&mut self, shadow: crate::output_policy::Shadow) {
+        let Some((connector, identity)) = self.output_policy.name_of(shadow.output).cloned() else {
+            return;
+        };
+        let mirror_of = shadow
+            .source
+            .and_then(|source| self.output_policy.name_of(source))
+            .map(|(name, _)| name.clone())
+            .unwrap_or_default();
+        let info = ScreenInfo {
+            make: "Gnoblin".to_owned(),
+            model: connector.clone(),
+            mode: mode_text(shadow.mode),
+            scale: shadow.scale.as_f64(),
+            primary: false,
+            connector,
+            identity,
+            mirror_of,
+            enabled: shadow.source.is_some(),
+        };
+        self.composer.set_output_info(shadow.output, &info);
+    }
+
+    /// Takes every output that is not in `keep` out of the desktop. One that is still connected (`connected`) becomes
+    /// a shadow, so its screen node stays; one that is gone loses its node as well.
+    fn remove_outputs_unless(&mut self, keep: &[OutputId], connected: &[OutputId]) {
+        for shadow in self.output_policy.shadows().to_vec() {
+            if !connected.contains(&shadow.output) {
+                self.composer.remove_output(shadow.output);
+            }
+        }
         let gone: Vec<usize> = self
             .outputs
             .iter()
@@ -1326,7 +1410,9 @@ impl State {
         for index in gone.into_iter().rev() {
             let entry = self.outputs.remove(index);
             self.display_handle.remove_global::<Self>(entry.global);
-            self.composer.remove_output(entry.backend);
+            if !connected.contains(&entry.backend) {
+                self.composer.remove_output(entry.backend);
+            }
             self.output_controls_removed(entry.backend);
             log::debug!(area = "output", connector = %entry.output.name(), "disconnected");
             let effects = self.with_seat(|fallback, seat| fallback.output_removed(entry.backend, seat));
@@ -1411,12 +1497,21 @@ impl State {
             return;
         };
         let physical = entry.output.physical_properties();
+        let identity = self
+            .output_policy
+            .name_of(backend)
+            .map(|(_, identity)| identity.clone())
+            .unwrap_or_default();
         let info = ScreenInfo {
             make: physical.make,
             model: physical.model,
             mode: mode_text(entry.mode),
             scale: entry.scale.as_f64(),
             primary: entry.primary,
+            connector: entry.output.name(),
+            identity,
+            mirror_of: String::new(),
+            enabled: true,
         };
         self.composer.set_output_info(backend, &info);
     }
@@ -3629,6 +3724,9 @@ impl Host for State {
         // The shell's answers to window requests: its `close` calls, then the state and size it wrote.
         let window_calls = self.tree.take_window_calls();
         self.run_window_calls(window_calls);
+        // The shell's output configurations wait for the loop, which holds the backend they drive.
+        let output_calls = self.tree.take_output_calls();
+        self.queue_output_applies(output_calls);
         let window_writes = self.tree.take_window_writes();
         self.answer_window_writes(window_writes);
         self.follow_decorations_available();
@@ -3672,6 +3770,10 @@ impl Host for State {
     }
 
     fn frame(&mut self, output: OutputId, frame: &mut OutputFrame) -> bool {
+        // An output with no place of its own shows its source's picture or black; the scene knows nothing of it.
+        if let Some(shadow) = self.output_policy.shadow(output) {
+            return self.shadow_frame(shadow, frame);
+        }
         // `compose` and `cover_frame` clear the frame, and clearing drops the magnified view
         // and colour transform, so the settings are applied after them. A locked session
         // draws no accessibility, so the lock cover reads the same whatever the user has set.

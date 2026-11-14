@@ -473,6 +473,14 @@ pub struct ScreenInfo {
     pub scale: f64,
     /// Whether the layout's primary logical monitor is on this output.
     pub primary: bool,
+    /// The connector the backend knows the output by.
+    pub connector: String,
+    /// The monitor's EDID identity, empty when it reports none.
+    pub identity: String,
+    /// The connector this output shows a copy of, empty when it shows its own picture.
+    pub mirror_of: String,
+    /// Whether the output is on.
+    pub enabled: bool,
 }
 
 /// The session's scene and the windows it draws.
@@ -681,6 +689,14 @@ impl Composer {
         self.sync_screen(output, rect);
     }
 
+    /// Declares the screen node of an output the desktop gives no place of its own (a mirror, or one that is off):
+    /// the node exists and carries `rect`, but the scene draws and damages nothing for it, so no window, pointer or
+    /// damage computation sees a second monitor. A previous real declaration of the output is withdrawn.
+    pub fn set_shadow_output(&mut self, output: OutputId, rect: Rect) {
+        self.scene.remove_output(output);
+        self.sync_screen(output, rect);
+    }
+
     /// Declares the scale an output composes at. A canvas on it is painted at this scale on the next frame.
     pub fn set_output_scale(&mut self, output: OutputId, scale: Scale) {
         if self.output_scales.insert(output, scale) != Some(scale) {
@@ -768,7 +784,10 @@ impl Composer {
             ("output_scale", TreeValue::Double(info.scale)),
             ("transform", TreeValue::Text("normal".to_owned())),
             ("primary", TreeValue::Bool(info.primary)),
-            ("enabled", TreeValue::Bool(true)),
+            ("enabled", TreeValue::Bool(info.enabled)),
+            ("connector", TreeValue::Text(info.connector.clone())),
+            ("identity", TreeValue::Text(info.identity.clone())),
+            ("mirror_of", TreeValue::Text(info.mirror_of.clone())),
         ];
         for (key, value) in values {
             if self.scene.value(node, key) == Some(&value) {
@@ -7003,6 +7022,10 @@ mod tests {
             mode: "800x600@60".to_owned(),
             scale: 1.0,
             primary: true,
+            connector: "HEADLESS-1".to_owned(),
+            identity: String::new(),
+            mirror_of: String::new(),
+            enabled: true,
         };
         composer.set_output_info(output, &info);
         assert!(

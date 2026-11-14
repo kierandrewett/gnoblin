@@ -201,9 +201,17 @@ pub fn render(
             .map_err(|error| log::debug!(area = "frame", %error, "a client's GPU buffer was not read for a View"))
             .ok()
     });
-    let outputs: Vec<OutputId> = backend.outputs().iter().map(|output| output.id).collect();
+    // An output with no place of its own (a mirror, or one that is off) is drawn after the ones that have: a mirror
+    // shows the finished picture of its source, so the source is drawn first whatever order the backend lists them.
+    let outputs: Vec<OutputId> = backend
+        .outputs()
+        .iter()
+        .map(|output| output.id)
+        .filter(|output| !state.is_shadow(*output))
+        .collect();
     let mut drew = false;
     let mut damage: Vec<Rect> = Vec::new();
+    let mut drawn_outputs: Vec<OutputId> = Vec::new();
     for output in outputs {
         let drawn = backend.render(state, output);
         let changed = state.frame_damage(output).is_some();
@@ -214,6 +222,7 @@ pub fn render(
             log::warn!(area = "frame", ?error, %output, "a frame could not be drawn");
         }
         if changed {
+            drawn_outputs.push(output);
             if let Some(rects) = state.frame_damage(output) {
                 drew = true;
                 damage.clear();
@@ -232,6 +241,22 @@ pub fn render(
                 // frame reached the output, with its timestamp read now.
                 state.present_frame(output);
             }
+        }
+    }
+    for shadow in state.shadow_outputs() {
+        let source_drew = shadow.source.is_some_and(|source| drawn_outputs.contains(&source));
+        if !state.shadow_due(shadow, source_drew) {
+            continue;
+        }
+        if let Some(source) = shadow.source {
+            // The mirror shows what the source's screen shows, pointer included, as the source's own readback has it.
+            match backend.capture(source, true) {
+                Some(picture) => state.set_mirror_picture(shadow.output, picture),
+                None => continue,
+            }
+        }
+        if let Err(error) = backend.render(state, shadow.output) {
+            log::warn!(area = "frame", ?error, output = %shadow.output, "a mirrored frame could not be drawn");
         }
     }
     // A View the renderer drew into a texture has no picture on the CPU: the ones a consumer reads are read back now,

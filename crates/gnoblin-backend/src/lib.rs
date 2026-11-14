@@ -188,6 +188,9 @@ pub struct Output {
     pub mode: DisplayMode,
     /// The scale the output composes at.
     pub scale: Scale,
+    /// The monitor's EDID identity (`MAN:product:serial`), or `None` for an output that reports none. A saved profile
+    /// is keyed by the connector and this, so a different panel on the same port does not inherit it.
+    pub identity: Option<String>,
 }
 
 impl Output {
@@ -199,7 +202,15 @@ impl Output {
             connector: connector.into(),
             mode,
             scale,
+            identity: None,
         }
+    }
+
+    /// The same output with the EDID identity its monitor reported.
+    #[must_use]
+    pub fn with_identity(mut self, identity: Option<String>) -> Self {
+        self.identity = identity;
+        self
     }
 
     /// The logical extent the mode and scale produce.

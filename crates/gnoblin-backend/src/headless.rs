@@ -82,6 +82,9 @@ struct HeadlessControl {
     gamma: HashMap<OutputId, [Vec<u16>; 3]>,
     /// The power state set per output. No entry means the output is on.
     power: HashMap<OutputId, bool>,
+    /// Mode changes still allowed before one is refused, or `None` for no injected failure. The refusal happens once:
+    /// a rollback that follows it must succeed, or a test could not tell a restore from a stuck output.
+    configure_budget: Option<u32>,
 }
 
 fn locked<T>(shared: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -425,8 +428,8 @@ impl InputSource for HeadlessInput {
 struct HeadlessRequests {
     /// The presentation state the caller last set, if it set one.
     present: Option<bool>,
-    /// Outputs to connect, with the connector, mode and scale to connect them at.
-    connect: Vec<(String, DisplayMode, Scale)>,
+    /// Outputs to connect, with the connector, mode, scale and EDID identity to connect them at.
+    connect: Vec<(String, DisplayMode, Scale, Option<String>)>,
     /// Outputs to disconnect.
     disconnect: Vec<OutputId>,
 }
@@ -456,8 +459,39 @@ impl HeadlessHandle {
                 height: mode.height,
             });
         }
-        self.requests().connect.push((connector.to_owned(), mode, scale));
+        self.requests().connect.push((connector.to_owned(), mode, scale, None));
         Ok(())
+    }
+
+    /// [`Self::connect_output`] for a monitor that reports an EDID identity, so a saved profile can tell it from
+    /// another monitor on the same connector.
+    ///
+    /// # Errors
+    ///
+    /// [`BackendError::DegenerateMode`] when the mode covers no pixels.
+    pub fn connect_identified_output(
+        &self,
+        connector: &str,
+        mode: DisplayMode,
+        scale: Scale,
+        identity: &str,
+    ) -> Result<(), BackendError> {
+        if mode.width == 0 || mode.height == 0 {
+            return Err(BackendError::DegenerateMode {
+                width: mode.width,
+                height: mode.height,
+            });
+        }
+        self.requests()
+            .connect
+            .push((connector.to_owned(), mode, scale, Some(identity.to_owned())));
+        Ok(())
+    }
+
+    /// Makes the mode change after the next `allowed` ones fail once, as a driver that refuses a modeset half way
+    /// through a configuration does. The change that fails and every one after it behave as before.
+    pub fn refuse_configure_after(&self, allowed: u32) {
+        locked(&self.control).configure_budget = Some(allowed);
     }
 
     /// Connects a 60 Hz output of `width` by `height` at scale one on the next dispatch: the output a test that needs
@@ -581,7 +615,7 @@ impl Headless {
         let mut backend = Self::empty();
         backend.renderer = config.renderer;
         backend.secure_treatment = config.secure_treatment;
-        backend.try_push_output(DEFAULT_CONNECTOR, DEFAULT_MODE, Scale::integral(1))?;
+        backend.try_push_output(DEFAULT_CONNECTOR, DEFAULT_MODE, Scale::integral(1), None)?;
         Ok(backend)
     }
 
@@ -737,7 +771,7 @@ impl Headless {
     /// request goes through [`Self::resize`], which reports the same problems as a
     /// [`BackendError`].
     pub fn push_output(&mut self, connector: &str, mode: DisplayMode, scale: Scale) {
-        self.try_push_output(connector, mode, scale)
+        self.try_push_output(connector, mode, scale, None)
             .expect("a virtual output whose renderer this machine can create");
     }
 
@@ -751,7 +785,13 @@ impl Headless {
     /// # Panics
     ///
     /// Panics if `mode` covers no pixels.
-    fn try_push_output(&mut self, connector: &str, mode: DisplayMode, scale: Scale) -> Result<(), RenderError> {
+    fn try_push_output(
+        &mut self,
+        connector: &str,
+        mode: DisplayMode,
+        scale: Scale,
+        identity: Option<String>,
+    ) -> Result<(), RenderError> {
         assert!(
             mode.width > 0 && mode.height > 0,
             "a mode that covers no pixels cannot be an output: {mode:?}"
@@ -759,7 +799,7 @@ impl Headless {
         let target = HeadlessTarget::with_renderer(self.renderer, mode, scale)?;
         let id = OutputId::new(self.next_output);
         self.next_output = self.next_output.saturating_add(1);
-        let output = Output::new(id, connector, mode, scale);
+        let output = Output::new(id, connector, mode, scale).with_identity(identity);
         self.outputs.push(output.clone());
         self.targets.push(target);
         self.pending.push(BackendEvent::OutputConnected(output));
@@ -869,8 +909,9 @@ impl Headless {
             // names nothing and reports nothing.
             let _ = self.remove_output(output);
         }
-        for (connector, mode, scale) in requests.connect {
-            self.push_output(&connector, mode, scale);
+        for (connector, mode, scale, identity) in requests.connect {
+            self.try_push_output(&connector, mode, scale, identity)
+                .expect("a virtual output whose renderer this machine can create");
         }
     }
 
@@ -1035,6 +1076,17 @@ impl<S: Host + 'static> Backend<S> for Headless {
     }
 
     fn configure_output(&mut self, output: OutputId, mode: DisplayMode, scale: Scale) -> Result<(), BackendError> {
+        {
+            let mut control = locked(&self.control);
+            match control.configure_budget {
+                Some(0) => {
+                    control.configure_budget = None;
+                    return Err(BackendError::Unsupported(output));
+                }
+                Some(left) => control.configure_budget = Some(left - 1),
+                None => {}
+            }
+        }
         self.resize(output, mode, scale)
     }
 }

@@ -62,11 +62,13 @@ since = "0.2.0"
 default = 1.0
 readonly = true
 
+# Set with `apply`. The compositor draws only `normal`: a rotation or reflection is refused by `apply`.
 [[object.property]]
 name = "transform"
 type = "string"
 since = "0.2.0"
 default = "normal"
+readonly = true
 
 [[object.property]]
 name = "primary"
@@ -74,11 +76,13 @@ type = "bool"
 since = "0.2.0"
 default = false
 
+# Whether the output is on. Set with `apply`; an output that is off shows black and has no place in the desktop.
 [[object.property]]
 name = "enabled"
 type = "bool"
 since = "0.2.0"
 default = true
+readonly = true
 
 # `WxH@Hz`.
 [[object.property]]
@@ -87,9 +91,46 @@ type = "string"
 since = "0.2.0"
 readonly = true
 
-# Apply an output configuration.
+# The connector the backend knows the output by (`DP-1`, `eDP-1`, `Virtual-1`). `name` is the node's own label.
+[[object.property]]
+name = "connector"
+type = "string"
+since = "0.2.0"
+default = ""
+readonly = true
+
+# The monitor's EDID identity (`MAN:product:serial`), empty for an output that reports none. A saved profile is keyed by
+# the connector and this, so the same panel gets its arrangement back on the same port.
+[[object.property]]
+name = "identity"
+type = "string"
+since = "0.2.0"
+default = ""
+readonly = true
+
+# The connector this output shows an exact copy of, or empty. A mirrored output has no place of its own in the desktop:
+# its `x`, `y`, `width` and `height` are its source's, and the pointer has one monitor for the
+# pair. Set with `apply`.
+[[object.property]]
+name = "mirror_of"
+type = "string"
+since = "0.2.0"
+default = ""
+readonly = true
+
+# Apply an output configuration through the transactional engine and keep it as the output's profile. The text is one
+# `key=value` per line: `mode` (`3440x1440@144` or `preferred`), `scale` (`1.25` or `default`), `transform` (`normal`),
+# `position` (`X,Y` or `auto`), `enabled` (`true` or `false`) and `mirror_of` (a connector, or empty for none). A key left
+# out keeps its value. The compositor answers under the call's token: an empty error is success; a refusal (a mode the
+# backend will not set, a layout with an overlap or a gap, a mirror of a missing output) names the key, and leaves the last
+# good arrangement in place, with the mode and scale the backend had restored.
 [[object.method]]
 name = "apply"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "text"
+type = "string"
 since = "0.2.0"
 
 # Emitted when the screen's mode changes.
