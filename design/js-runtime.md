@@ -223,20 +223,27 @@ tree link that records claims and plays back chords, gestures, pointer positions
   from 1, never reused. A claim is released with the last binding that needs it, and every claim on `retire`. Claims
   are queued writes, so they travel with the frame's transaction. A function bound to a drag, or to a wheel (no
   compositor claim exists for it), throws at `bind`.
-- **Frame loop.** The compositor's `chord` and `gesture` signals are parked by `JsShell::frame` and handed to the
-  input module after the listeners are planned. The module only schedules: each hook runs as its own call under the
-  per-call budget (`entry_budget`), a throw is reported once per site and never stops the others, and calls that do
-  not fit the frame's budget wait for the next frame. The pointer is not an event stream: a drag reads `pointer_x`
-  and `pointer_y` from the mirror once per frame, and at most one sample waits behind the scripts, which read the
-  latest position when they run (latest wins). Gesture updates merge the same way. `onStart`, `onEnd` and `onCancel`
-  are never merged or dropped.
-- **Drags.** A press records the pointer and the client under it (`InputContext.hitTest`: the topmost client in tree
-  order whose bounds hold the point). Once the pointer is `threshold` (default 4) pixels away, the candidates are asked
-  `onStart` in precedence order; the first to return a state object owns the drag, and its `event.position` is the
-  press position, so a binding that measures from `position` measures from the press. A release with no drag is a
-  click (`onPress`); a pointer that went past the threshold and was declined is neither. State lives in the gesture,
-  per context, never on the binding. A client dying mid-drag, the binding being removed or given another trigger, a
-  second press on the same claim and `JsShell::retire` each call `onCancel` once.
+- **Frame loop.** The compositor's `chord`, `pointer_chord` and `gesture` signals are parked by `JsShell::frame` and
+  handed to the input module after the listeners are planned. The module only schedules: each hook runs as its own
+  call under the per-call budget (`entry_budget`), a throw is reported once per site and never stops the others, and
+  calls that do not fit the frame's budget wait for the next frame. A pointer drag is read from the `pointer_chord`
+  messages (the position travels in them; the seat's `pointer_x` and `pointer_y` are not sampled), and at most one
+  sample waits behind the scripts, which read the latest position when they run (latest wins). Gesture updates merge
+  the same way. `onStart`, `onEnd` and `onCancel` are never merged or dropped.
+- **Drags.** `start` records the press place and the client under it (`InputContext.hitTest`: the topmost client in
+  tree order whose bounds hold the point and that is not minimised; the real tree's order was not proved against
+  overlapping windows, see below). Once an `update` is `threshold` (default 4) pixels from the press, the candidates
+  are asked `onStart` in precedence order; the first to return a state object owns the drag, and its `event.position`
+  is the press position, so a binding that measures from `position` measures from the press. `end` is the release: a
+  drag that has started gets `onEnd` at the end place, an `end` with no drag is a click (`onPress`), and a pointer that
+  went past the threshold and was declined is neither. The compositor's `cancel` calls `onCancel`. A drag event
+  carries `x`, `y` (the same as `position`), `dx`, `dy` (from the press), `button` (X11 numbering), `modifiers`, the
+  `context`, the `client` under the press, and `workArea` and `dragConstraint` (the primary screen's rectangle and the
+  seat's `drag_constraint`). State lives in the gesture, per context, never on the binding. A client dying mid-drag, the
+  binding being removed or given another trigger, a second `start` on the same claim, an `onUpdate` that throws (that
+  drag alone: it is reported once and stops, the other drags run on) and `JsShell::retire` each call `onCancel`
+  once. The compositor says nothing of a drag whose claim goes, so the module cancels the drags of a binding it
+  releases itself.
 - **Gestures.** A directed gesture (`Swipe3Left`) starts when its direction is known (12 touchpad units of centroid
   movement, 0.1 of scale for a pinch); an undirected one starts at the begin. `event.progress` is 0 to 1 along the
   binding's own direction (400 units for a swipe, 0.5 of scale for a pinch). A function bound to a gesture runs once
@@ -249,10 +256,19 @@ tree link that records claims and plays back chords, gestures, pointer positions
   context's and layouts' bindings for that trigger are candidates of the device's claim too.
 - **Stock bindings.** `ClientMoveBinding` (Super+MouseLeft+Drag) and `ClientResizeBinding` (Super+MouseRight+Drag,
   `edges: "quadrant"` by default, the corner picked from the initial pointer position and never changed, a minimum of
-  100 by 80 held against the opposite corner) are TypeScript over `client.bounds` and `event.position`; they write
-  `floatingBounds` on release and restore the start on cancel. `FloatingLayout` registers both as `move` and `resize`
-  (`undefined` keeps the default trigger, `null` leaves the binding out, spec-review 1.19). Not written: the `snap`
-  option, `edges: "nearest"`, `ClientSwapBinding`, `SplitResizeBinding`, `WorkspaceSwitchBinding`.
+  100 by 80 held against the opposite corner, `client.minSize` and `client.maxSize` when the client has them; the tree
+  carries no size limits today, so they are absent) are TypeScript over `client.bounds` and `event.position`; they
+  write `floatingBounds` on release and restore the start on cancel. A fullscreen or maximised client declines both:
+  `onStart` returns `false`, and the compositor has already withheld the press from the client and the shell's nodes,
+  so the press is consumed and ignored (the shell cannot hand a withheld press back, so there is no better answer; a
+  maximised window is not floated first as the Lua shell's drag did). A move keeps the window where the seat's
+  `drag_constraint` allows (`dragConstraintMode`, `clampAxis`, `constrainRect` in `gnoblin/bindings`, ported from
+  `data/lua/gnoblin/shell/drag.lua` with its test cases): `work_area` keeps the window inside the primary screen (a
+  window at least as large as the screen is pinned to its origin), and `minimum_strip` lets it leave as long as 75
+  pixels stay inside. The work area is the screen, since the shell has no bars of its own yet. `FloatingLayout`
+  registers both as `move` and `resize` (`undefined` keeps the default trigger, `null` leaves the binding out,
+  spec-review 1.19). Not written: the `snap` option, `edges: "nearest"`, `ClientSwapBinding`, `SplitResizeBinding`,
+  `WorkspaceSwitchBinding`.
 - **Layouts.** The layout of every workspace in `gnoblin.workspaces` is attached to every input context while a
   workspace uses it (checked once per frame): its bindings are live for the clients whose workspace's `layout` it is,
   they follow the layout's `bindings` collection, and they go, cancelling a drag they run, when the workspace takes
@@ -263,11 +279,20 @@ tree link that records claims and plays back chords, gestures, pointer positions
   `activeDisplay` is `null`. `devices` is parsed from `Seat.device`; a device's `bind` claims for its name. A context
   or device the seat loses is disposed and its drags cancelled. `new InputContext` is not available: contexts are the
   compositor's seats.
-- **Proved only against the fake link.** That the real compositor takes these claims. The compositor reads a pointer
-  chord such as `<Super>Button1` as a pointer claim and streams its drag (see "Pointer chord claims"); the input module
-  does not consume that stream yet. Key chord and gesture claims use the calls the Lua shell makes, byte for byte, but
-  were not run against the compositor. Pointer coordinates are assumed to share a space with client `x` and `y`.
-  `Wheel` has no claim. The tree order as z-order for `hitTest` is assumed.
+- **Proved against the real compositor.** `crates/gnoblin/tests/js_shell.rs`, `super_drags_move_and_resize_a_real_window_through_the_pointer_chord_stream`
+  and `a_super_drag_takes_the_window_on_top_where_two_overlap`: a real session, a real Wayland window, an `init.ts`
+  with a floating workspace and the default `FloatingLayout`, and Super, pointer motion and Button1 and Button3 injected
+  through the session's input tap (the seat path a device's events take). Super+Button1 moves the window by the pointer's
+  delta, Super+Button3 resizes from the corner nearest the press and holds the same corner when the pointer crosses the
+  window, down to the 100 by 80 minimum, all read back from the compositor's scene. This also proves that the pointer's
+  space is the space of client `x` and `y` (a press at a window's local point hits it), and that tree order is stacking
+  order for `hitTest` (of two windows at one place the one mapped last takes the press). The claims reach the seat before
+  the first press only after the shell's first frames, so the test repeats the gesture until a press is claimed.
+- **Proved only against the fake link.** The decline of a maximised client (the `maximised` flag is not a `Client` member
+  until the UI lane's `Client.maximised` lands; the bindings read it when it is there), the drag constraints against a
+  seat that publishes `drag_constraint`, a throwing `onUpdate`, and `cancel`. Key chord and gesture claims use the calls
+  the Lua shell makes, byte for byte, but were not run against the compositor. `Wheel` has no claim. A minimised
+  window is skipped by `hitTest` only once `Client.minimised` exists, and `visible` is not read.
 
 ## Pointer chord claims
 
@@ -323,11 +348,11 @@ signal, in order:
   drag.
 - Everything is per pointer and button: two buttons held together are two drags, each with its own `start` place.
 
-**What the JS side does with it** (the input module's job, not written yet). `start` is the press, `update` the
-sample a drag takes from the mirror's `pointer_x` and `pointer_y` today, `end` the release and `cancel` the
-`onCancel`; `dx` and `dy` are measured from the press by the compositor. `JsShell::frame` drops
-`TreeIncoming::PointerChord` for now: parking it in `JsInput::inbox` beside `Chord` and `Gesture` is the whole host
-change.
+**What the JS side does with it** (`crates/gnoblin-js/src/input.rs`, `data/js/gnoblin/input.ts`). `JsShell::frame`
+parks each `TreeIncoming::PointerChord` in `JsInput::inbox` beside `Chord` and `Gesture`, and hands the frame's batch
+to the input module as `{ kind: "pointer", claim, phase, x, y, dx, dy, button, modifiers }`. `start` is the press, each
+`update` a drag sample, `end` the release and `cancel` the `onCancel` ("Drags" in "P3c status"). The pointer's place
+comes from the message, not from the seat's `pointer_x` and `pointer_y`. A pointer claim gets no `chord` message.
 
 ## P3b status
 
