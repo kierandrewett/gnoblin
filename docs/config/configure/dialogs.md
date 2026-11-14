@@ -19,6 +19,30 @@ gnoblin.configure {
 }
 ```
 
+In the [TypeScript shell](/typescript-shell) the same settings are the `dialogs` key of `defineConfig`. Keys are
+camelCase there (`buttonLayout`) and the document's kebab-case (`button-layout`) here; the values are the same, and
+the compositor refuses and clamps them the same way.
+
+```ts
+import { defineConfig } from "gnoblin";
+
+export default defineConfig({
+    dialogs: {
+        style: {
+            radius: 14,
+            accent: "#89b4fa",
+            font: { family: "monospace", size: 16 },
+            buttonLayout: "stretch",
+            scale: 1.25,
+        },
+    },
+});
+```
+
+A value the compositor refuses (`radius: 5000`) fails the reload with the key path
+(`defineConfig: dialogs.style.radius: ...`) and leaves the running config in place. Removing the `dialogs` key and
+reloading puts every setting back to `Stock`.
+
 | Setting         | Accepted value                       | Default |
 | --------------- | ------------------------------------ | ------- |
 | `radius`        | An integer; the dialog uses 0 to 24  | Stock   |
@@ -52,3 +76,43 @@ drawn in the default face: the dialogs use the fonts they embed and do not look 
 fonts yet.
 
 A dialog that is open keeps the look it opened with; the next one uses the new style.
+
+## Refusing a request from a script
+
+A script can look at each request before its dialog opens and refuse it. This is policy only: it cannot allow a
+request, answer for the user, or see a passphrase.
+
+```ts
+import { DialogListener, defineConfig } from "gnoblin";
+
+class NoScreenshots extends DialogListener {
+    onConsentRequest(request) {
+        if (request.subject === "Screenshot" && request.appId !== "org.gnome.Shell") {
+            request.decline("screenshots are off");
+        }
+    }
+}
+
+export default defineConfig({
+    setup() {
+        gnoblin.dialogs.addListener(new NoScreenshots());
+    },
+});
+```
+
+The compositor shows each consent and passphrase request to the shell for 250 ms before the dialog opens.
+`request.decline(reason)` refuses it: the requester is told it was cancelled and no dialog opens.
+
+A listener that does nothing, throws, or runs past its time budget leaves the request to the built-in dialog. That
+dialog asks the user with the same delay and the same identity line as ever.
+
+A request has:
+
+- `kind`: `consent` or `secret`;
+- `appId`: the app the compositor verified;
+- `subject`: the portal interface of a consent request, or the app's own prompt text of a passphrase request, which
+  is not to be trusted as identity;
+- `deadline`.
+
+It has no method that allows a request and gives no access to a secret. A listener that throws is logged once and the
+next listener still runs.

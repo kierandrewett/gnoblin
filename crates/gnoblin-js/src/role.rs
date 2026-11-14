@@ -32,10 +32,12 @@ use std::time::Duration;
 use gnoblin_client::Client;
 use gnoblin_client::unix::{UnixTransport, socket_path};
 use gnoblin_proto::Version;
+use gnoblin_tree_client::slot_link::{ClientSlotLink, SlotLink};
 use gnoblin_tree_client::tree_link::SocketTreeLink;
 use gnoblin_tree_client::tree_mirror::TreeLink;
 
 use crate::bindings::{JsSpawnError, JsSpawnRequest};
+use crate::config::{JsClientConfigLink, JsConfigLink};
 use crate::generation::JsGeneration;
 use crate::reload::{JsReloader, ReloadReport};
 use crate::shell::{JsShell, JsShellConfig, JsShellError};
@@ -104,6 +106,15 @@ impl JsRoleConfig {
     }
 }
 
+/// The connections a role has besides the tree: each is optional, and the role runs without it.
+#[derive(Default)]
+pub struct JsRoleLinks {
+    /// For slots: the observation of the compositor's own dialogs.
+    pub slots: Option<Box<dyn SlotLink>>,
+    /// For the configuration document: the settings a `defineConfig` sets.
+    pub config: Option<Box<dyn JsConfigLink>>,
+}
+
 /// The reloader's commit: it hands a generation that evaluated cleanly to the role, which swaps it into the
 /// shell once the reloader has finished.
 type Commit = Box<dyn FnMut(&JsGeneration) -> Result<(), String>>;
@@ -136,23 +147,62 @@ impl JsRole {
         let path = socket_path(env).map_err(JsShellError::Link)?;
         let transport = UnixTransport::connect(&path)
             .map_err(|error| JsShellError::Link(format!("cannot connect to {}: {error}", path.display())))?;
-        let (major, minor, patch) = gnoblin_proto::IPC_VERSION;
-        let client = Client::connect(transport, Version::new(major, minor, patch))
-            .map_err(|error| JsShellError::Link(error.to_string()))?;
+        let version = {
+            let (major, minor, patch) = gnoblin_proto::IPC_VERSION;
+            Version::new(major, minor, patch)
+        };
+        let client = Client::connect(transport, version).map_err(|error| JsShellError::Link(error.to_string()))?;
         let stream = client
             .into_inner()
             .into_stream()
             .map_err(|error| JsShellError::Link(error.to_string()))?;
         let link = SocketTreeLink::new(stream).map_err(|error| JsShellError::Link(error.to_string()))?;
-        Self::over_link(Box::new(link), config)
+        // Slots and the configuration document travel on the `gnoblin` namespace, which the tree socket does not
+        // carry, so the shell holds two more owner connections. Without one the shell still runs: the compositor's
+        // own dialogs serve every request and the document keeps what the Lua host committed, so a failure to
+        // open either is reported and not fatal.
+        let slots: Option<Box<dyn SlotLink>> = match ClientSlotLink::connect(&path, version) {
+            Ok(link) => Some(Box::new(link)),
+            Err(error) => {
+                log::warn!(
+                    area = "shell-vm",
+                    "the shell has no slot connection ({error}); the built-in dialogs serve prompts"
+                );
+                None
+            }
+        };
+        let document: Option<Box<dyn JsConfigLink>> = match JsClientConfigLink::connect(&path, version) {
+            Ok(link) => Some(Box::new(link)),
+            Err(error) => {
+                log::warn!(
+                    area = "shell-vm",
+                    "the shell has no configuration connection ({error}); its document settings are not committed"
+                );
+                None
+            }
+        };
+        Self::over_link(
+            Box::new(link),
+            JsRoleLinks {
+                slots,
+                config: document,
+            },
+            config,
+        )
     }
 
     /// Boots the shell over `link` and loads the user's entry. With no entry file, or an entry that fails to
     /// load, the stock default config runs instead (one floating `desktop`, the stock keys): a shell is never
     /// left bare. The diagnostic says why a failing entry was not used.
-    pub fn over_link(link: Box<dyn TreeLink>, config: JsRoleConfig) -> Result<Self, JsShellError> {
+    pub fn over_link(link: Box<dyn TreeLink>, links: JsRoleLinks, config: JsRoleConfig) -> Result<Self, JsShellError> {
         let mut shell = JsShell::new(link, config.shell.clone())?;
         shell.set_spawner(Box::new(spawn_detached));
+        if let Some(slots) = links.slots {
+            shell.set_slot_link(slots);
+        }
+        if let Some(document) = links.config {
+            shell.set_config_link(document);
+        }
         let staging = shell.staging();
 
         let handoff: Rc<RefCell<Option<JsGeneration>>> = Rc::default();
@@ -263,6 +313,20 @@ impl JsRole {
             };
         }
         self.staged(JsReloader::reload_now)
+    }
+
+    /// Puts the running generation's document settings back after another commit of the document: the Lua host's
+    /// own reload commits a document that has none of them. Called by whoever commits (the runtime role's loop).
+    pub fn config_committed(&mut self) {
+        match self.shell.config_committed() {
+            Ok(diagnostics) => {
+                for diagnostic in diagnostics {
+                    log::warn!(area = "shell-vm", "{diagnostic}");
+                    self.diagnostics.push(diagnostic);
+                }
+            }
+            Err(error) => self.ended = Some(error),
+        }
     }
 
     /// Runs the stock default config in the running generation, which is the bare one. A failure is a

@@ -22,10 +22,14 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use gnoblin_backend::InputEvent;
+use gnoblin_client::unix::UnixTransport;
+use gnoblin_client::wire::{PortalRequest, VerifiedCaller};
+use gnoblin_client::{Client, ClientError, PortalOutcome, PortalTicket};
 use gnoblin_compositor::{Compositor, InputTap, SessionConfig, StopHandle};
 use gnoblin_js::{JsHealth, JsRole, JsRoleConfig};
 use gnoblin_log::event::capture::logged;
-use gnoblin_types::{DeviceId, OutputId, Point};
+use gnoblin_model::Fields;
+use gnoblin_types::{DeviceId, OutputId, Point, Version};
 
 mod support;
 use support::{Mapper, Watcher, ids, scene, snapshot, spots};
@@ -1445,4 +1449,229 @@ fn a_click_focuses_and_raises_a_real_window_so_the_compositor_picks_it_over_the_
     assert_eq!(focused_app(&shell).as_deref(), Some(under));
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
     shell.finish();
+}
+
+// ---- the configuration document and the dialog observation ------------------------------------------------------
+
+/// A fresh owner connection to the session, for what a test reads or asks of the compositor itself.
+fn owner_client(ipc: &Path) -> Client<UnixTransport> {
+    let transport = UnixTransport::connect(ipc).expect("the session is listening");
+    let (major, minor, patch) = gnoblin_proto::IPC_VERSION;
+    Client::connect(transport, Version::new(major, minor, patch)).expect("the handshake")
+}
+
+/// The configuration document the compositor holds, or `None` while it has accepted none.
+fn document(ipc: &Path) -> Option<serde_json::Value> {
+    let (_, bytes) = owner_client(ipc).configuration().expect("the document reads")?;
+    Some(serde_json::from_slice(&bytes).expect("the document is JSON"))
+}
+
+fn radius(ipc: &Path) -> Option<i64> {
+    document(ipc)?.pointer("/dialogs/style/radius")?.as_i64()
+}
+
+#[test]
+fn defined_config_settings_reach_the_compositors_document_a_refused_value_is_reported_and_a_reload_takes_them_back() {
+    let session = Session::start();
+    let mut mapper = Mapper::connect(&session.wayland());
+    let dir = tempfile::tempdir().expect("a config directory");
+    let init = dir.path().join("init.ts");
+    let write = |settings: &str| {
+        fs::write(
+            &init,
+            format!("import {{ defineConfig }} from \"gnoblin\";\ndefineConfig({{ {settings} }});\n"),
+        )
+        .expect("init.ts");
+    };
+    write("dialogs: { style: { radius: 12, buttonLayout: 'stretch' } }");
+    let shell = Shell::start(&session, dir.path(), |_| {});
+
+    wait_for("the document carries the radius", &session, &mut mapper, &shell, || {
+        radius(&session.ipc()) == Some(12)
+    });
+    assert_eq!(
+        document(&session.ipc()).and_then(|document| document.pointer("/dialogs/style/button-layout").cloned()),
+        Some(serde_json::json!("stretch")),
+        "a camelCase key is the document's kebab-case one"
+    );
+
+    // The compositor's own validation refuses 5000, and the reload is reported with the key path.
+    wait_for("the first generation runs", &session, &mut mapper, &shell, || {
+        shell.generation() > 0
+    });
+    let generation = shell.generation();
+    write("dialogs: { style: { radius: 5000 } }");
+    wait_for("the refusal is reported", &session, &mut mapper, &shell, || {
+        shell
+            .diagnostics()
+            .iter()
+            .any(|text| text.contains("dialogs.style.radius"))
+    });
+    assert_eq!(radius(&session.ipc()), Some(12), "the document in force is untouched");
+    assert_eq!(shell.generation(), generation, "the running generation stays");
+
+    // A reload that no longer sets the key puts it back to its default: it is gone from the document.
+    write("");
+    wait_for(
+        "the setting is back at its default",
+        &session,
+        &mut mapper,
+        &shell,
+        || document(&session.ipc()).is_some_and(|document| document.pointer("/dialogs").is_none()),
+    );
+    wait_for(
+        "the reload swapped the generation in",
+        &session,
+        &mut mapper,
+        &shell,
+        || shell.generation() > generation,
+    );
+}
+
+/// The apps the policies of the tests below tell apart: one is refused, one is left alone, one never returns.
+const STRICT: &str = "org.example.Strict";
+const OTHER: &str = "org.example.Other";
+const SLOW: &str = "org.example.Slow";
+
+/// A screenshot request as a portal asks for it: the interface, and the app the portal verified as asking.
+fn consent_request(app_id: &str) -> PortalRequest {
+    PortalRequest {
+        interface: "Screenshot".to_owned(),
+        caller: VerifiedCaller::new(0, app_id),
+        prompt: "Allow this?".to_owned(),
+        timeout_ms: 30_000,
+        options: Fields::default(),
+        parent_window: String::new(),
+    }
+}
+
+/// How the compositor settled `ticket` within `within`, or `None` while the request is still being asked.
+/// `Client::portal_outcome` waits as long as the request lives, so this reads events and takes the outcome when it
+/// has arrived.
+fn settled(client: &mut Client<UnixTransport>, ticket: PortalTicket, within: Duration) -> Option<PortalOutcome> {
+    client
+        .set_read_timeout(Some(Duration::from_millis(50)))
+        .expect("a read deadline");
+    let deadline = Instant::now() + within;
+    while Instant::now() < deadline {
+        match client.next_event() {
+            Ok(_) | Err(ClientError::Idle) => {}
+            Err(error) => panic!("the requester's connection failed: {error}"),
+        }
+        if let Some(outcome) = client.take_portal_outcome(ticket) {
+            return Some(outcome.expect("the outcome decodes"));
+        }
+    }
+    None
+}
+
+/// Whether a consent request from `app_id` was refused at once by a dialog listener. A request nobody refuses is
+/// asked of the user by the built-in dialog and stays open, so this withdraws it.
+fn refused_by_policy(session: &Session, app_id: &str) -> bool {
+    let mut requester = owner_client(&session.ipc());
+    let ticket = requester
+        .portal_ui(&consent_request(app_id))
+        .expect("the request is sent");
+    if let Some(outcome) = settled(&mut requester, ticket, Duration::from_millis(1500)) {
+        assert_eq!(
+            outcome,
+            PortalOutcome::Cancelled("user".to_owned()),
+            "a refusal reads as the user's"
+        );
+        return true;
+    }
+    // Still open: the built-in dialog is asking the user. Withdraw it so the next request is not queued behind it.
+    // The withdrawal's own acknowledgement carries the ticket's id and no outcome, so the outcome is not read: the
+    // requester leaving ends the request as well.
+    requester.portal_cancel(ticket).expect("the withdrawal is sent");
+    std::thread::sleep(Duration::from_millis(200));
+    false
+}
+
+/// Retries `refused_by_policy` until the shell's observation is in place, which it is a moment after its config loads.
+#[track_caller]
+fn refused_once_observing(session: &Session, mapper: &mut Mapper, shell: &Shell, app_id: &str) {
+    wait_for("a listener refuses the request", session, mapper, shell, || {
+        refused_by_policy(session, app_id)
+    });
+}
+
+const POLICY: &str = r#"import { DialogListener, defineConfig } from "gnoblin";
+
+class Policy extends DialogListener {
+    onConsentRequest(request: { subject: string; appId: string; decline(reason?: string): void }): void {
+        if (request.subject === "Screenshot" && request.appId === "org.example.Strict") {
+            request.decline("screenshots are off");
+        }
+    }
+}
+
+defineConfig({
+    setup(gnoblin: { dialogs: { addListener(listener: DialogListener): void } }): void {
+        gnoblin.dialogs.addListener(new Policy());
+    },
+});
+"#;
+
+#[test]
+fn a_dialog_listener_that_declines_a_consent_request_refuses_it_and_one_it_leaves_alone_reaches_the_built_in_dialog() {
+    let session = Session::start();
+    let mut mapper = Mapper::connect(&session.wayland());
+    let dir = tempfile::tempdir().expect("a config directory");
+    fs::write(dir.path().join("init.ts"), POLICY).expect("init.ts");
+    let shell = Shell::start(&session, dir.path(), |_| {});
+
+    refused_once_observing(&session, &mut mapper, &shell, STRICT);
+    assert!(
+        !refused_by_policy(&session, OTHER),
+        "a request the listener did not decline is asked of the user by the built-in dialog"
+    );
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+}
+
+#[test]
+fn a_dialog_listener_that_runs_out_its_budget_is_skipped_and_the_built_in_dialog_opens() {
+    let session = Session::start();
+    let mut mapper = Mapper::connect(&session.wayland());
+    let dir = tempfile::tempdir().expect("a config directory");
+    fs::write(
+        dir.path().join("init.ts"),
+        r#"import { DialogListener, defineConfig } from "gnoblin";
+
+class Policy extends DialogListener {
+    onConsentRequest(request: { appId: string; decline(reason?: string): void }): void {
+        if (request.appId === "org.example.Slow") {
+            while (true) {}
+        }
+        request.decline("policy");
+    }
+}
+
+defineConfig({
+    setup(gnoblin: { dialogs: { addListener(listener: DialogListener): void } }): void {
+        gnoblin.dialogs.addListener(new Policy());
+    },
+});
+"#,
+    )
+    .expect("init.ts");
+    let shell = Shell::start(&session, dir.path(), |_| {});
+
+    refused_once_observing(&session, &mut mapper, &shell, STRICT);
+    let generation = shell.generation();
+    assert!(
+        !refused_by_policy(&session, SLOW),
+        "the runaway listener is skipped: nothing refuses the request and the built-in dialog opens"
+    );
+    wait_for("the runaway call is reported", &session, &mut mapper, &shell, || {
+        shell
+            .diagnostics()
+            .iter()
+            .any(|text| text.contains("a listener call was stopped"))
+    });
+    // The shell restages the generation after the strike and observes again.
+    wait_for("the generation restarted", &session, &mut mapper, &shell, || {
+        shell.generation() > generation
+    });
+    refused_once_observing(&session, &mut mapper, &shell, STRICT);
 }

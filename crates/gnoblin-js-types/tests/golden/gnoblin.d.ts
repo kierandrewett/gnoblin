@@ -1564,6 +1564,70 @@ declare module "gnoblin" {
         vrr?: boolean;
     }
 
+    /** A value of the config document. */
+    export type DocumentValue =
+        string | number | boolean | readonly DocumentValue[] | { readonly [key: string]: DocumentValue };
+
+    /** One section of the config document. Keys are camelCase or the document's kebab-case. */
+    export interface DocumentSection {
+        readonly [setting: string]: DocumentValue | undefined;
+    }
+
+    /** The look of the compositor's own dialogs (`dialogs.style` in the document); the compositor clamps it. */
+    export interface DialogStyleConfig {
+        /** The corner radius in points; a dialog is never rounder than 24. */
+        radius?: number;
+        /** A named accent, `#rgb` or `#rrggbb`. */
+        accent?: string;
+        font?: { family?: string; size?: number };
+        buttonLayout?: "start" | "end" | "stretch" | "stacked";
+        /** A number from 0.1 to 100; a dialog is drawn at 1 to 3. */
+        scale?: number;
+    }
+
+    export interface DialogsConfig {
+        style?: DialogStyleConfig;
+    }
+
+    /** What a request is: a consent dialog for a portal request, or the compositor's passphrase prompt. */
+    export type DialogKind = "consent" | "secret";
+
+    /** A request the compositor is about to open a dialog for. It lives for the observation window and no longer. */
+    export interface DialogRequest {
+        readonly kind: DialogKind;
+        /** The app id the compositor verified for whoever asks. Empty when the request names none. */
+        readonly appId: string;
+        /**
+         * What is asked about: the portal interface of a consent request (`Screenshot`), the app's own prompt text of a
+         * passphrase request (not to be trusted as identity).
+         */
+        readonly subject: string;
+        /** When the compositor takes the request back, in milliseconds on its own clock. */
+        readonly deadline: number;
+        /** Refuses the request by policy; the dialog never opens. There is no method that allows one. */
+        decline(reason?: string): void;
+    }
+
+    export interface ConsentRequest extends DialogRequest {
+        readonly kind: "consent";
+    }
+
+    export interface SecretRequest extends DialogRequest {
+        readonly kind: "secret";
+    }
+
+    /** Observes the requests of the compositor's dialogs. Every method is optional. */
+    export class DialogListener {
+        onConsentRequest?(request: ConsentRequest): void;
+        onSecretRequest?(request: SecretRequest): void;
+    }
+
+    export interface DialogManager {
+        readonly listeners: readonly DialogListener[];
+        addListener(listener: DialogListener): void;
+        removeListener(listener: DialogListener): void;
+    }
+
     export interface ConfigEvents {
         clientAdded?(client: Client): void;
         clientRemoved?(client: Client): void;
@@ -1594,6 +1658,25 @@ declare module "gnoblin" {
         on?: ConfigEvents;
         /** The escape hatch: runs after the declarative part and may use any class. */
         setup?(gnoblin: Gnoblin): void | Promise<void>;
+        /** The compositor's own dialogs: committed to the config document (`dialogs.style`). */
+        dialogs?: DialogsConfig;
+        /** Settings of the config document, committed to it. Keys are camelCase: `windowManagement`, `buttonLayout`. */
+        compositor?: DocumentSection;
+        windowManagement?: DocumentSection;
+        cursor?: DocumentSection;
+        appearance?: DocumentSection;
+        input?: DocumentSection;
+        inputSources?: DocumentSection;
+        accessibility?: DocumentSection;
+        layerShell?: DocumentSection;
+        keyring?: DocumentSection;
+        auth?: DocumentSection;
+        location?: DocumentSection;
+        compat?: DocumentSection;
+        capture?: DocumentSection;
+        monitors?: DocumentSection;
+        xwayland?: DocumentSection;
+        logging?: DocumentSection;
     }
 
     /** An identity function with a typed parameter, plus the registration the runtime reads. */
@@ -1608,6 +1691,11 @@ declare module "gnoblin" {
         readonly outputs: Collection<Output>;
         /** The compositor's seats as input contexts, with the bindings that run on their chords and drags. */
         readonly input: InputManager;
+        /**
+         * Policy over the compositor's own consent and passphrase dialogs. Attached listeners may refuse a request
+         * before its dialog opens; nothing here allows one or reads a secret.
+         */
+        readonly dialogs: DialogManager;
         /**
          * Run `staging` once, now, and send every property write it makes as one
          * transaction that the compositor animates. It is not called per frame, and

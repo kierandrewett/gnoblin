@@ -13,12 +13,15 @@
 import { desugarConfig, defaultConfig, mergeConfig } from "gnoblin/config";
 import type {
     BindingAction,
+    ConfigListeners,
     ConfigPlan,
     GnoblinConfig,
     GnoblinHost,
     PlannedKey,
     ResolvedAction,
 } from "gnoblin/config";
+import { DialogManager } from "gnoblin/dialogs";
+import type { DialogEvent } from "gnoblin/dialogs";
 import { StripLayout } from "gnoblin/layouts/strip";
 import { Layout } from "gnoblin/layout";
 import type { Gaps, LayoutContext } from "gnoblin/layout";
@@ -65,6 +68,13 @@ interface ErrorReport {
     error: unknown;
 }
 
+/** What the frame's dialog listeners decided about one observed request. */
+interface Verdict {
+    request: number;
+    deny: boolean;
+    reason: string;
+}
+
 interface Entry {
     plan(created: NodeId[], touched: NodeId[], destroyed: NodeId[]): number;
     next(): number;
@@ -77,6 +87,14 @@ interface Entry {
     /** Cancels what the input matcher has in flight and releases every claim; returns how many calls wait. */
     cancelAll(): number;
     takeErrors(): ErrorReport[];
+    /** The config document patch of the running generation, as JSON text: `{}` when it sets none. */
+    document(): string;
+    /** What the compositor sent for the dialog observation slot; returns how many calls wait. */
+    dialogs(events: DialogEvent[]): number;
+    /** The verdicts the frame's listeners gave, each once. */
+    takeVerdicts(): Verdict[];
+    /** Whether a dialog listener is attached, so the shell holds the observation slot. */
+    dialogsWanted(): boolean;
     /** Lays out the workspaces that changed, once each; returns how many it laid out. */
     layout(): number;
     /** Runs the UI toolkit's frame: measurements and pointer events in, every canvas arranged and painted. */
@@ -90,6 +108,8 @@ interface Entry {
 }
 
 interface Host {
+    /** Checks a document patch (JSON) against the document in force: the validator's problems, or undefined. */
+    config: { check(patch: string): string | undefined };
     kind(node: NodeId): string | undefined;
     get(node: NodeId, key: string): HostValue | undefined;
     published(node: NodeId, key: string): HostValue | undefined;
@@ -1639,7 +1659,10 @@ function layout(): number {
                     const site = `${workspace}.layout.compute`;
                     // A client the script floats (a window rule, `client.floating`) keeps its own place.
                     const tiled = children.filter((client) => !stateOf(client).floating);
-                    applyPlacements(tiled, checkPlacements(target.compute({ ...context, children: tiled }), tiled, site));
+                    applyPlacements(
+                        tiled,
+                        checkPlacements(target.compute({ ...context, children: tiled }), tiled, site),
+                    );
                 });
                 laidOut += 1;
             }
@@ -2025,11 +2048,75 @@ function decorate(): void {
     }
 }
 
+/** The verdicts the dialog listeners gave since the shell last took them. */
+let verdicts: Verdict[] = [];
+
+const dialogs = new DialogManager({
+    schedule: (site, task) => {
+        queue.push({ site, task });
+    },
+    verdict: (request, deny, reason) => {
+        verdicts.push({ request, deny, reason });
+    },
+});
+
+/** The config document patch this generation declared, as JSON text. The shell commits it once the generation runs. */
+let documentPatch = "{}";
+
+/**
+ * The `on` handlers of a config as listeners of `gnoblin.clients`: a membership listener for `clientAdded` and
+ * `clientRemoved`, a client listener for `titleChanged` and `focusChanged`. A listener a config does not give is
+ * not attached, so no call is queued for an event nobody asked about.
+ */
+function attachOn(on: ConfigListeners): void {
+    if (on.clientAdded !== undefined || on.clientRemoved !== undefined) {
+        const members = new CollectionListener();
+        if (on.clientAdded !== undefined) {
+            members.onAdded = (member) => {
+                if (member instanceof Client) {
+                    on.clientAdded?.(member);
+                }
+            };
+        }
+        if (on.clientRemoved !== undefined) {
+            members.onRemoved = (member) => {
+                if (member instanceof Client) {
+                    on.clientRemoved?.(member);
+                }
+            };
+        }
+        clientRoot.self.addListener(members);
+    }
+    if (on.titleChanged !== undefined || on.focusChanged !== undefined) {
+        const clients = new ClientListener();
+        if (on.titleChanged !== undefined) {
+            clients.onTitleChanged = (client, title) => on.titleChanged?.(client, title);
+        }
+        if (on.focusChanged !== undefined) {
+            clients.onFocusChanged = (client, focused) => on.focusChanged?.(client, focused);
+        }
+        clientRoot.self.addListener(clients);
+    }
+}
+
+/** Refuses a config whose document settings the validator would refuse, with the key path in the message. */
+function checkDocument(patch: ConfigPlan["document"]): void {
+    if (Object.keys(patch).length === 0) {
+        return;
+    }
+    const problems = host.config.check(JSON.stringify(patch));
+    if (problems != null) {
+        throw new GnoblinError("invalid-config", "defineConfig", problems);
+    }
+}
+
 class Gnoblin {
     readonly clients = clientRoot.self as Collection<Client>;
     readonly workspaces = workspaceRoot.self as WorkspaceCollection;
     /** The seats of the compositor as input contexts, with the bindings that run on their chords and drags. */
     readonly input = input;
+    /** Policy over the compositor's own consent and passphrase dialogs: listeners that may refuse a request. */
+    readonly dialogs = dialogs;
 
     /**
      * Starts a program. A string is one command line for the host to run; an array is the program and its
@@ -2061,11 +2148,15 @@ class Gnoblin {
 
     /**
      * The hook `defineConfig` calls with the config it was given. The config is laid over the stock one
-     * (`mergeConfig`), then the declared workspaces become real `Workspace` objects in `gnoblin.workspaces` and
-     * the keys are bound on the first seat.
+     * (`mergeConfig`), then the document settings are checked (a refused value throws, which fails the stage and
+     * keeps the running generation), the declared workspaces become real `Workspace` objects in
+     * `gnoblin.workspaces`, the keys are bound on the first seat, the `on` handlers are attached and `setup` runs.
+     * The document settings themselves are committed by the shell once this generation is the running one.
      */
     __register(config: GnoblinConfig): void {
-        const plan = desugarConfig(mergeConfig(defaultConfig, config));
+        const merged = mergeConfig(defaultConfig, config);
+        const plan = desugarConfig(merged);
+        checkDocument(plan.document);
         for (const planned of plan.workspaces) {
             addWorkspace(new Workspace({ id: planned.id, layout: planned.layout, gaps: planned.gaps }));
         }
@@ -2074,6 +2165,9 @@ class Gnoblin {
         }
         bindKeys(plan.bindings);
         installStock(plan);
+        attachOn(merged.on ?? {});
+        documentPatch = JSON.stringify(plan.document);
+        plan.setup?.(gnoblin as unknown as GnoblinHost);
     }
 }
 
@@ -2142,6 +2236,17 @@ host.entry = {
     pending,
     ready,
     takeErrors,
+    document: () => documentPatch,
+    dialogs: (events) => {
+        dialogs.deliver(events);
+        return queue.length;
+    },
+    takeVerdicts: () => {
+        const taken = verdicts;
+        verdicts = [];
+        return taken;
+    },
+    dialogsWanted: () => dialogs.wanted,
     layout,
     finishLoad: ensureDefaultWorkspace,
     loadDefault: () => gnoblin.__register(defaultConfig),

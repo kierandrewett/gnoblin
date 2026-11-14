@@ -478,6 +478,9 @@ fn reload<T: Transport + 'static>(
                 warnings,
                 not_applied,
             }) => {
+                // The Lua host's document has none of the settings a JavaScript config sets in the document, so
+                // they go back on before the reload is announced.
+                shell.config_committed();
                 host.keep_reload();
                 host.announce_reload(loaded.path.path(), revision, &warnings, &not_applied);
                 host.answer_reload(Ok(Reloaded {

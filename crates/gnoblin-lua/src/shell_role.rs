@@ -143,6 +143,10 @@ pub trait ShellFrame {
     fn reload(&mut self) -> Result<(), String> {
         Ok(())
     }
+
+    /// The Lua host committed the configuration document again (its own reload), and the document it committed
+    /// has none of the settings this shell's config sets. The shell lays them over the document in force again.
+    fn config_committed(&mut self) {}
 }
 
 /// Starts the JavaScript shell for the role: the environment, and the stock directory `js:<dir>` named.
@@ -252,6 +256,14 @@ impl ShellSlot {
         match self.role.as_mut() {
             Some(SlotShell::Js(frame)) => frame.reload(),
             _ => Ok(()),
+        }
+    }
+
+    /// Tells a JavaScript shell that the document was committed again, by the Lua host's own reload, so it puts
+    /// the settings its config sets back. The Lua shell VM and an empty slot have nothing to put back.
+    pub fn config_committed(&mut self) {
+        if let Some(SlotShell::Js(frame)) = self.role.as_mut() {
+            frame.config_committed();
         }
     }
 }

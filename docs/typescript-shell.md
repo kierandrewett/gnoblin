@@ -68,6 +68,7 @@ still has the media keys. The rule:
 | `launcher`                       | Yours, when you give one.                                                           |
 | `gaps`, `style`, `outputs`, `on` | Merged by key, your value winning. A nested object, such as a shadow, is one value. |
 | `setup`                          | Yours, when you give one.                                                           |
+| `dialogs`, `appearance`, ...     | The document settings (below), merged by key, your value winning.                   |
 
 `decorations` is not layered. The stock config turns titlebars on, and a `defineConfig` that does not ask for
 `decorations: true` has none.
@@ -78,6 +79,97 @@ it would name nothing. The stock `Super+1` to `Super+9` show by position, so the
 
 A `init.ts` that does not call `defineConfig` is a program, not a config. It runs as written; the stock keys are not
 added, and a config that declares no workspace still gets the stock `desktop`.
+
+## Settings of the config document
+
+Keys that are settings of the compositor's config document (the ones `gnoblin.configure` takes in Lua) are applied
+from `defineConfig` too. Write them in camelCase: `windowManagement`, `buttonLayout`, `reducedMotion`.
+
+```ts
+export default defineConfig({
+    appearance: { colorScheme: "prefer-dark", reducedMotion: true },
+    cursor: { size: 28 },
+    dialogs: { style: { radius: 14, buttonLayout: "stretch" } },
+});
+```
+
+The sections are:
+
+- `compositor`, `windowManagement`, `cursor`, `appearance`, `dialogs`;
+- `input`, `inputSources`, `accessibility`, `layerShell`, `keyring`;
+- `auth`, `location`, `compat`, `capture`, `monitors`, `xwayland`, `logging`.
+
+Each is the section of that name in the [configuration reference](/config/configure). The compositor applies a
+setting the way the reference says: live, at the next start, or not at all. A setting that is not in effect is
+logged as `not applied: ...`.
+
+The shell lays your settings over the document the compositor holds and commits the whole result, so whatever the
+Lua `init.lua` set is kept.
+
+- A value the compositor's validation refuses fails the reload with the key path and leaves the running config, and
+  the document, as they were.
+- A reload that drops a key puts it back to its default.
+- Sections that are lists, or tables keyed by names you choose, stay in `init.lua`. They are `workspaces`,
+  `autostart`, `shortcuts`, `protocols` and `touchpadGestures`.
+
+`style` and `outputs` are accepted and stored but have no effect: they need native style objects.
+
+## Listeners and `setup`
+
+`on` is sugar for listeners on `gnoblin.clients`: `clientAdded`, `clientRemoved`, `titleChanged` and `focusChanged`.
+A listener that throws is logged once and the others still run.
+
+```ts
+export default defineConfig({
+    on: {
+        clientAdded: (client) => client.title === "Calculator" && (client.width = 320),
+        focusChanged: (client, focused) => focused && gnoblin.spawn(["notify-send", client.title]),
+    },
+    setup(gnoblin) {
+        // Runs once, after everything above, with the whole object API.
+        gnoblin.dialogs.addListener(new NoScreenshots());
+    },
+});
+```
+
+`setup` runs inside the same time budget as the rest of the file, and a throw in it fails the config like any other
+error in `init.ts`.
+
+## Dialogs
+
+The compositor draws its consent and passphrase dialogs itself. A script can restyle them (the `dialogs` key above)
+and refuse a request before its dialog opens:
+
+```ts
+import { DialogListener } from "gnoblin";
+
+class NoScreenshots extends DialogListener {
+    onConsentRequest(request) {
+        if (request.subject === "Screenshot") {
+            request.decline("screenshots are off");
+        }
+    }
+}
+
+gnoblin.dialogs.addListener(new NoScreenshots());
+```
+
+`gnoblin.dialogs.addListener` and `removeListener` attach and detach a `DialogListener`. Its methods are optional:
+
+- `onConsentRequest(request)` for a portal consent request;
+- `onSecretRequest(request)` for a passphrase request.
+
+A request has these members:
+
+- `kind`, `consent` or `secret`;
+- `appId`, the app id the compositor verified;
+- `subject`, what is asked about;
+- `deadline`;
+- `decline(reason)`, which refuses the request.
+
+There is no way to allow a request and none to read a secret. Each request is shown to the shell for 250 ms. A
+listener that throws, runs past its budget or does nothing leaves it to the built-in dialog. See
+[`gnoblin.configure.dialogs`](/config/configure/dialogs).
 
 ## Reloading
 

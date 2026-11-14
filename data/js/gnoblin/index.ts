@@ -18,5 +18,6 @@ export * from "gnoblin/gestures";
 export * from "gnoblin/config";
 export * from "gnoblin/rules";
 export * from "gnoblin/snap";
+export * from "gnoblin/dialogs";
 export * from "gnoblin/titlebar";
 export * from "gnoblin/ui";

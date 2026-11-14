@@ -59,6 +59,8 @@ pub(crate) struct HostState {
     pub handles: NodeHandles,
     /// What the UI toolkit keeps between frames: the canvases it made, its measurements and the events for it.
     pub ui: crate::ui::JsUiState,
+    /// The configuration document: the link to the compositor's, and what the shell last committed to it.
+    pub config: crate::config::ConfigState,
 }
 
 pub(crate) type SharedState = Rc<RefCell<HostState>>;
@@ -74,6 +76,7 @@ impl HostState {
             input: crate::input::JsInput::new(),
             handles: NodeHandles::default(),
             ui: crate::ui::JsUiState::default(),
+            config: crate::config::ConfigState::new(),
         }
     }
 }

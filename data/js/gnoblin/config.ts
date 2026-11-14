@@ -18,6 +18,12 @@
 //   dragConstraint      dragConstraint, overrides the seat's drag_constraint         DragEvent.dragConstraint
 //   on                  listeners[] of { event, handler }                          typed listener sugar
 //   setup(gnoblin)      setup, run by the host after the declarative part          the full object API
+//   dialogs, appearance, cursor, input, ...  document, a patch of the config document   gnoblin.config commit
+//
+// The document sections (`DOCUMENT_SECTIONS`) are the settings of the config document the compositor holds, in
+// camelCase (`windowManagement`, `buttonLayout`); the plan carries them as the document writes them
+// (`window-management`, `button-layout`) and the host lays that patch over the document in force. The table of
+// what each `defineConfig` key becomes is in design/js-runtime.md.
 //
 // A key missing from the config adds nothing to the plan. The one exception is `workspaces`: a shell with
 // nowhere to put a window is unusable, so no workspace means the baseline's single floating `desktop`.
@@ -35,6 +41,7 @@ import { compileRules } from "gnoblin/rules";
 import type { RuleConfig } from "gnoblin/rules";
 import { checkGaps, rejectUnknown, resolveLayout } from "gnoblin/workspace";
 import type { StockLayoutName } from "gnoblin/workspace";
+import type { Client } from "gnoblin/host";
 
 /** What the host puts at `globalThis.gnoblin`. The library names no member of it beyond `__register`. */
 export interface GnoblinHost {
@@ -122,9 +129,35 @@ export interface WorkspaceConfig {
 }
 
 export interface ConfigListeners {
-    clientAdded?(client: unknown): void;
-    clientRemoved?(client: unknown): void;
-    titleChanged?(client: unknown, title: string): void;
+    clientAdded?(client: Client): void;
+    clientRemoved?(client: Client): void;
+    titleChanged?(client: Client, title: string): void;
+    focusChanged?(client: Client, focused: boolean): void;
+}
+
+/** A value of the config document: what a setting holds. */
+export type DocumentValue =
+    string | number | boolean | readonly DocumentValue[] | { readonly [key: string]: DocumentValue };
+
+/** One section of the config document, as a table of settings. Keys are camelCase or the document's kebab-case. */
+export interface DocumentSection {
+    readonly [setting: string]: DocumentValue | undefined;
+}
+
+/** The look of the compositor's own consent and passphrase dialogs (`dialogs.style` in the document). */
+export interface DialogStyleConfig {
+    /** The corner radius in points; a dialog is never rounder than 24. */
+    radius?: number;
+    /** A named accent, `#rgb` or `#rrggbb`. */
+    accent?: string;
+    font?: { family?: string; size?: number };
+    buttonLayout?: "start" | "end" | "stretch" | "stacked";
+    /** A number from 0.1 to 100; a dialog is drawn at 1 to 3. */
+    scale?: number;
+}
+
+export interface DialogsConfig {
+    style?: DialogStyleConfig;
 }
 
 export interface GnoblinConfig {
@@ -152,6 +185,25 @@ export interface GnoblinConfig {
     on?: ConfigListeners;
     /** Runs after the declarative part and may use any class of the object API. */
     setup?(gnoblin: GnoblinHost): void;
+    /** The compositor's own dialogs. Committed to the config document. */
+    dialogs?: DialogsConfig;
+    /** Committed to the config document: the settings of the matching section. */
+    compositor?: DocumentSection;
+    windowManagement?: DocumentSection;
+    cursor?: DocumentSection;
+    appearance?: DocumentSection;
+    input?: DocumentSection;
+    inputSources?: DocumentSection;
+    accessibility?: DocumentSection;
+    layerShell?: DocumentSection;
+    keyring?: DocumentSection;
+    auth?: DocumentSection;
+    location?: DocumentSection;
+    compat?: DocumentSection;
+    capture?: DocumentSection;
+    monitors?: DocumentSection;
+    xwayland?: DocumentSection;
+    logging?: DocumentSection;
 }
 
 export interface PlannedWorkspace {
@@ -170,6 +222,9 @@ export interface PlannedListener {
     readonly handler: (...args: never[]) => void;
 }
 
+/** The document patch a config makes: each section it sets, with the keys as the document spells them. */
+export type DocumentPatch = { readonly [section: string]: DocumentSection };
+
 export interface ConfigPlan {
     readonly gaps: Gaps;
     readonly style: StyleConfig;
@@ -185,6 +240,7 @@ export interface ConfigPlan {
     readonly dragConstraint: DragConstraint | null;
     readonly listeners: readonly PlannedListener[];
     readonly setup: ((gnoblin: GnoblinHost) => void) | undefined;
+    readonly document: DocumentPatch;
 }
 
 /** `spawn("ghostty")` or `spawn("wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle")`; an argv array works too. */
@@ -263,6 +319,33 @@ export function binding(create: () => Binding): BindingAction {
     return Object.freeze({ kind: "binding", create });
 }
 
+/**
+ * The sections of the config document a `defineConfig` key may set: the key as written in a config and the
+ * section as the document names it. Sections that are lists or tables keyed by the user's own names
+ * (`workspaces`, `autostart`, `shortcuts`, `protocols`, `touchpad-gestures`) and the ones only carried
+ * (`animations`, `keybindings`, `portals`) are not here: a camelCase key cannot be turned back into a name the
+ * user chose.
+ */
+export const DOCUMENT_SECTIONS = [
+    ["compositor", "compositor"],
+    ["windowManagement", "window-management"],
+    ["cursor", "cursor"],
+    ["appearance", "appearance"],
+    ["dialogs", "dialogs"],
+    ["input", "input"],
+    ["inputSources", "input-sources"],
+    ["accessibility", "accessibility"],
+    ["layerShell", "layer-shell"],
+    ["keyring", "keyring"],
+    ["auth", "auth"],
+    ["location", "location"],
+    ["compat", "compat"],
+    ["capture", "capture"],
+    ["monitors", "monitors"],
+    ["xwayland", "xwayland"],
+    ["logging", "logging"],
+] as const;
+
 const TOP_LEVEL_KEYS = [
     "gaps",
     "style",
@@ -277,8 +360,9 @@ const TOP_LEVEL_KEYS = [
     "focus",
     "edgeTiling",
     "dragConstraint",
+    ...DOCUMENT_SECTIONS.map(([name]) => name),
 ];
-const LISTENER_EVENTS = ["clientAdded", "clientRemoved", "titleChanged"];
+const LISTENER_EVENTS = ["clientAdded", "clientRemoved", "titleChanged", "focusChanged"];
 
 /** The config the shell runs when the user has none: one floating `desktop` workspace and the stock keys. */
 export const defaultConfig: Readonly<GnoblinConfig> = deepFreeze({
@@ -347,26 +431,53 @@ export function mergeConfig(base: GnoblinConfig, user: GnoblinConfig): GnoblinCo
     Object.assign(keys, user.keys);
     const rules = user.rules ?? base.rules;
     const setup = user.setup ?? base.setup;
+    const sections: { [name: string]: object } = {};
+    for (const [name] of DOCUMENT_SECTIONS) {
+        const lower = base[name];
+        const higher = user[name];
+        if (lower !== undefined || higher !== undefined) {
+            sections[name] =
+                lower === undefined || higher === undefined ? (lower ?? higher ?? {}) : mergeTables(lower, higher);
+        }
+    }
     const launcher = user.launcher ?? base.launcher;
     // The focus keys merge by key, so a config that sets one keeps the base's others; the other two are single values.
     const focus = base.focus === undefined && user.focus === undefined ? undefined : { ...base.focus, ...user.focus };
     const edgeTiling = user.edgeTiling ?? base.edgeTiling;
     const dragConstraint = user.dragConstraint ?? base.dragConstraint;
-    return {
-        gaps: { ...base.gaps, ...user.gaps },
-        style: { ...base.style, ...user.style },
-        outputs: { ...base.outputs, ...user.outputs },
-        keys,
-        on: { ...base.on, ...user.on },
-        ...(workspaces === undefined ? {} : { workspaces }),
-        ...(rules === undefined ? {} : { rules }),
-        ...(setup === undefined ? {} : { setup }),
-        ...(user.decorations === undefined ? {} : { decorations: user.decorations }),
-        ...(launcher === undefined ? {} : { launcher }),
-        ...(focus === undefined ? {} : { focus }),
-        ...(edgeTiling === undefined ? {} : { edgeTiling }),
-        ...(dragConstraint === undefined ? {} : { dragConstraint }),
-    };
+    return Object.assign(
+        {
+            gaps: { ...base.gaps, ...user.gaps },
+            style: { ...base.style, ...user.style },
+            outputs: { ...base.outputs, ...user.outputs },
+            keys,
+            on: { ...base.on, ...user.on },
+            ...(workspaces === undefined ? {} : { workspaces }),
+            ...(rules === undefined ? {} : { rules }),
+            ...(setup === undefined ? {} : { setup }),
+            ...(user.decorations === undefined ? {} : { decorations: user.decorations }),
+            ...(launcher === undefined ? {} : { launcher }),
+            ...(focus === undefined ? {} : { focus }),
+            ...(edgeTiling === undefined ? {} : { edgeTiling }),
+            ...(dragConstraint === undefined ? {} : { dragConstraint }),
+        },
+        sections,
+    );
+}
+
+function isTable(value: unknown): value is object {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** `user` laid over `base` key by key, one level of table at a time; a list or a scalar of the user's replaces. */
+function mergeTables<T extends object>(base: T, user: T): T {
+    const merged: Record<string, unknown> = { ...base };
+    for (const [key, value] of Object.entries(user)) {
+        const before = merged[key];
+        merged[key] = isTable(before) && isTable(value) ? mergeTables(before, value) : value;
+    }
+    // The keys are the two tables' own, so the result has the shape both have.
+    return merged as T;
 }
 
 /** The plan for `config`, see the table at the top of this file. Pure: the same config gives an equal plan. */
@@ -391,6 +502,7 @@ export function desugarConfig(config: GnoblinConfig): ConfigPlan {
         dragConstraint: checkDragConstraint(config.dragConstraint),
         listeners: planListeners(config.on ?? {}),
         setup: checkSetup(config.setup),
+        document: planDocument(config),
     };
 }
 
@@ -507,6 +619,59 @@ function planListeners(on: ConfigListeners): PlannedListener[] {
         }
         return { event: event as keyof ConfigListeners, handler: handler as PlannedListener["handler"] };
     });
+}
+
+/** One value of the document, checked to be something the document can hold, with its keys in the document's spelling. */
+function documentValue(value: unknown, where: string): DocumentValue {
+    if (typeof value === "string" || typeof value === "boolean") {
+        return value;
+    }
+    if (typeof value === "number") {
+        if (!Number.isFinite(value)) {
+            throw new RangeError(`${where} must be a finite number`);
+        }
+        return value;
+    }
+    if (Array.isArray(value)) {
+        return value.map((item, i) => documentValue(item, `${where}[${i}]`));
+    }
+    if (isTable(value)) {
+        return documentTable(value, where);
+    }
+    throw new TypeError(`${where} must be a string, a number, a boolean, a list or a table of settings`);
+}
+
+/** A table of settings with its keys in the document's spelling: `buttonLayout` is `button-layout`. */
+function documentTable(table: object, where: string): { [setting: string]: DocumentValue } {
+    const settings: { [setting: string]: DocumentValue } = {};
+    for (const [written, value] of Object.entries(table)) {
+        if (value === undefined) {
+            continue;
+        }
+        // A key already in the document's spelling is left alone.
+        const key = written.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+        if (key in settings) {
+            throw new TypeError(`${where}.${written} sets "${key}" twice`);
+        }
+        settings[key] = documentValue(value, `${where}.${written}`);
+    }
+    return settings;
+}
+
+/** The document patch `config` makes: only the sections it sets. */
+function planDocument(config: GnoblinConfig): DocumentPatch {
+    const patch: { [section: string]: DocumentSection } = {};
+    for (const [name, section] of DOCUMENT_SECTIONS) {
+        const settings = config[name];
+        if (settings === undefined) {
+            continue;
+        }
+        if (!isTable(settings)) {
+            throw new TypeError(`config.${name} must be a table of settings`);
+        }
+        patch[section] = documentTable(settings, `config.${name}`);
+    }
+    return patch;
 }
 
 function checkDecorations(decorations: GnoblinConfig["decorations"]): boolean {

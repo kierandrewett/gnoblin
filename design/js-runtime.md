@@ -488,8 +488,9 @@ compositor stands in only for the unit tests of `swap_generation` (`crates/gnobl
 - **The loop.** `JsRole::connect` reads the socket by the `GNOBLIN_IPC_SOCKET` rule, handshakes as a client at this
   build's version, and hands the handshaken socket to a `SocketTreeLink`. Each `tick` acts on a reload request, runs
   `JsShell::frame`, and then acts on strikes. A link failure ends the shell: `tick` returns it, the slot empties and the
-  role keeps serving, as for Lua. There is no second connection for slots and dialogs yet: they belong to the dialogs
-  package. `gnoblin.spawn` starts the program in a process group of its own with no terminal and reaps it.
+  role keeps serving, as for Lua. Slots and the configuration document use two more owner connections the role opens
+  (see "P6 config document and slots status"). `gnoblin.spawn` starts the program in a process group of its own with
+  no terminal and reaps it.
 - **Reload.** The role owns a `ConfigWatcher` (100 ms debounce), a `JsReloader` and a `JsSupervisor`. The reloader
   stages the entry in a generation of its own (`JsHost::set_prepare` gives it the shell's host objects over the shell's
   tree mirror, `JsStaging::prepare`), and the commit closure keeps a second handle on it (`JsGeneration::share`).
@@ -521,8 +522,8 @@ compositor stands in only for the unit tests of `swap_generation` (`crates/gnobl
   merge by canonical trigger, the user's replacing the stock key, and a stock key that shows a workspace the merged
   config does not declare is dropped; `gaps`, `style`, `outputs` and `on` merge by key; `setup` is the user's when
   given; `decorations` is not layered (a config that does not ask for titlebars has none, as `desugarConfig` says). An `init.ts` that never calls `defineConfig` is a program: it runs as written and gets no stock keys, only
-  the stock workspace when it declared none (`finishLoad`). `style`, `outputs`, `rules`, `on` and `setup` are still
-  not applied by the host.
+  the stock workspace when it declared none (`finishLoad`). `on` and `setup` are applied and the config document
+  sections reach the compositor (see "P6 config document and slots status"); `style`, `outputs` and `rules` are not.
 - **Reload request path (`gnoblinctl config reload`).** The JS shell lives in the runtime role's process, beside the
   Lua host that already answers `config.reload`: the compositor raises `session.reload_requested`, and the role's
   loop reloads the document. No new verb or schema member was added; `ShellFrame::reload` (default `Ok`) and
@@ -564,9 +565,120 @@ compositor stands in only for the unit tests of `swap_generation` (`crates/gnobl
   without it the next batch is a `Gap` or every later write waits for ever. The stock floating layout places an
   arrival after the listeners have run, so a config that wants its own listener to place windows declares a workspace
   with the base `Layout`, as the tests do.
-- **Not done.** The second owner connection for slots and dialogs, input events and chords (the binding lane), and
-  the host's application of `style`, `outputs`, `rules`, `on` and `setup`. Removing `init.ts` under a running shell
-  keeps its generation until the session restarts.
+- **Not done.** Input events and chords (the binding lane). The document, slots, `on` and `setup` are in "P6 config
+  document and slots status"; `style`, `outputs` and `rules` are still not applied. Removing `init.ts` under a running
+  shell keeps its generation until the session restarts.
+
+## P6 config document and slots status
+
+Lane JsConfigSlots. `defineConfig` keys that are settings of the config document now reach it, a script can observe
+and refuse the compositor's own dialogs, and `on` and `setup` run. Code: `crates/gnoblin-js/src/config.rs` (the
+document), `crates/gnoblin-js/src/dialogs.rs` and `data/js/gnoblin/dialogs.ts` (`gnoblin.dialogs`),
+`JsShell::apply_document`/`run_dialogs`, `JsRole` (the connections). Tests: `crates/gnoblin-js/tests/config_slots.rs`
+over fakes, `crates/gnoblin/tests/js_shell.rs` against the real compositor.
+
+### What each `defineConfig` key becomes
+
+| `defineConfig` key                                                    | Becomes                                                                                                                                                                    | State                                                                                                        |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `gaps`                                                                | `Workspace.gaps`, a script property (no document key, no tree property)                                                                                                    | applied                                                                                                      |
+| `workspaces`                                                          | `Workspace` objects in `gnoblin.workspaces`. The document's `workspaces` section is the Lua host's list, read at start                                                     | applied as script objects; not written to the document                                                       |
+| `keys`                                                                | `gnoblin.input.primary.bind`: seat claims, a tree call (the document's `keybindings` is carried and read by nothing)                                                       | applied                                                                                                      |
+| `decorations`                                                         | a `Titlebar` canvas node per client, a tree write                                                                                                                          | applied                                                                                                      |
+| `on` (`clientAdded`, `clientRemoved`, `titleChanged`, `focusChanged`) | listeners on `gnoblin.clients`: a `CollectionListener` and a `ClientListener`                                                                                              | applied                                                                                                      |
+| `setup(gnoblin)`                                                      | called once after everything above, inside the generation's load budget                                                                                                    | applied                                                                                                      |
+| `dialogs.style`                                                       | document `dialogs.style` (`radius`, `accent`, `font.family`, `font.size`, `button-layout`, `scale`)                                                                        | applied: live, the next dialog uses it                                                                       |
+| `appearance`                                                          | document `appearance` (`color-scheme`, `accent`, `reduced-motion`, `high-contrast`)                                                                                        | applied: live                                                                                                |
+| `cursor`                                                              | document `cursor` (`theme`, `size`, `providers`)                                                                                                                           | applied: live                                                                                                |
+| `windowManagement`                                                    | document `window-management` (focus, raise, edge tiling, titlebar actions, ...)                                                                                            | applied: live, except `attach-modal-dialogs` and `disable-workarounds` (unused)                              |
+| `input`                                                               | document `input`: `keyboard` is live; `mouse`, `touchpad`, `trackball`, `pointing-stick`, `tablets`, `styluses`, `orientation-lock` are accepted and read by no device yet | `keyboard` applied; the rest not applied (notice from the compositor)                                        |
+| `inputSources`                                                        | document `input-sources` (`sources`, `per-window`)                                                                                                                         | applied: live                                                                                                |
+| `accessibility`                                                       | document `accessibility` (magnifier, colour filter)                                                                                                                        | applied: live                                                                                                |
+| `compositor`                                                          | document `compositor`: `visual-bell`, `visual-bell-type` live; `renderer` at the next compositor start; the rest unused                                                    | partly applied                                                                                               |
+| `monitors`                                                            | document `monitors`: `global-scale` live; `privacy-screen` unused                                                                                                          | partly applied                                                                                               |
+| `xwayland`                                                            | document `xwayland`                                                                                                                                                        | applied: live (restarts the X11 server when no X11 client is connected)                                      |
+| `keyring`, `location`, `compat`, `capture`, `logging`                 | document sections read when a process starts                                                                                                                               | committed; takes effect at the next start of that process (the compositor says so in a `not applied` notice) |
+| `layerShell`, `auth`                                                  | document sections nothing reads yet                                                                                                                                        | committed; not applied (notice)                                                                              |
+| `style`                                                               | stored as written                                                                                                                                                          | **not applied: needs native style objects (P8)**                                                             |
+| `outputs`                                                             | stored as written. The document has only the global `monitors.global-scale`, and a screen's tree properties are read-only                                                  | **not applied: needs native style objects (P8)**                                                             |
+| `rules`                                                               | stored as written; lane JsStockFocus owns `rules.ts`                                                                                                                       | not applied by this lane                                                                                     |
+
+The per-setting rule behind the last columns is `crates/gnoblin-config/src/apply.rs` (`RULES`). A section that is a
+list, or a table keyed by names the user chooses (`workspaces`, `autostart`, `shortcuts`, `protocols`,
+`touchpad-gestures`), and the carried sections (`animations`, `keybindings`, `portals`) are not `defineConfig` keys:
+turning `camelCase` keys back into the user's own names is not possible, so they stay in `init.lua`.
+
+### The document commit
+
+- **Keys.** A section key is camelCase in a config and kebab-case in the document (`windowManagement` is
+  `window-management`, `buttonLayout` is `button-layout`); a key already kebab-case is left alone, and two spellings
+  of one key are a `TypeError`. `desugarConfig` puts the result in `ConfigPlan.document`, plain JSON, and
+  `mergeConfig` merges the sections by key (a list or a scalar of the user's replaces).
+- **The shell's connections.** `JsRole::connect` opens two owner connections besides the tree's: a `ClientSlotLink` (the
+  one the Lua role uses) and a `JsClientConfigLink`, which reads `config.current` and writes `config.commit`, the two
+  verbs the Lua host uses. `JsRole::over_link` takes them as `JsRoleLinks`; each is optional and the role runs without
+  it (the compositor's own dialogs serve, and the document keeps what the Lua host committed), reported once.
+- **Full document, not a patch.** The compositor holds one document and derives its settings from each one it
+  accepts, so a commit must carry everything. The shell commits the document in force with the generation's patch
+  laid over it, and remembers the key paths the patch set. The next commit starts from the document in force with those
+  paths taken out (a table the removal empties goes with it) and the new patch laid on. That is the
+  generation-overlay rule of spec-review 1.27: a reload that drops `dialogs.style.radius` puts it back to its default,
+  and a setting the shell never made (the Lua file's) is not touched. A document that would not change is not
+  committed.
+- **Validation and where it is reported.** `Config::from_value`, the validator the compositor and the Lua host use,
+  runs on the document the commit would send. It runs when `defineConfig` is called, which is while a reload is
+  staging: `host.config.check` throws a `GnoblinError` (`defineConfig: dialogs.style.radius: ...`, the document's key
+  path), the entry fails, `ReloadReport.errors` carries it with the file and line, and the running generation and the
+  document stay. The compositor refuses nothing here itself: it records and parses a committed document and keeps its
+  last good settings when one does not decode, so the check is the runtime's. A commit the compositor does refuse
+  (it can, for `xwayland`) happens after the swap, which cannot be taken back: it is a diagnostic with the compositor's
+  reason, and the notices of an accepted commit (`not applied: ...`) are diagnostics too.
+- **The Lua host's reload commits too.** `gnoblinctl config reload` reloads the shell first and then the Lua host,
+  which commits a document with none of the shell's settings. `ShellFrame::config_committed` (called by the Lua
+  role right after its commit, before it announces the reload) makes the shell lay its settings back over the document
+  in force. For the sliver between the two commits the settings are at their defaults.
+
+### Slots and `gnoblin.dialogs`
+
+- **The slot.** `dialogs.observe`, from design `popups-portals.md` 7.5: the compositor shows the shell each consent and
+  passphrase request for 250 ms before its own dialog opens, under the title `consent:<interface>` or `secret`. The only
+  answer it reads is `deny`, which refuses the request by policy (the requester sees `cancelled(user)`); anything
+  else, silence, a decline or a departure leaves it to the built-in dialog.
+- **Claim and release.** The shell claims the slot while the running generation has a dialog listener and gives it back
+  when it has none, so a config with no listener never delays a dialog. A refused claim, or no connection, is reported
+  once and not retried until the listeners are gone. `JsShell::retire` (a reload swap, a restage, a shutdown) answers each
+  observation it still holds `pass` and releases the slot; the next generation claims it again on its first frame. A
+  crash releases it, because the compositor releases a connection's claims when it closes.
+- **Per frame.** `JsShell::frame` polls the `SlotLink` once, hands the offers to `entry.dialogs`, runs the queued
+  listener calls under the usual budgets, takes `entry.takeVerdicts` and sends each: `claim_request`, then `answer`
+  with the fixed bytes `deny` or `pass`. Nothing a script wrote is ever an answer, and the slot has no way to carry a
+  passphrase. A `finished` event (the window ended) closes the request, so a late `decline` refuses nothing.
+- **API.** `DialogListener` with optional `onConsentRequest(request)` and `onSecretRequest(request)`;
+  `gnoblin.dialogs.addListener/removeListener`. A request has `kind`, `appId`, `subject`, `deadline` and
+  `decline(reason = "policy")`. `appId` is the compositor's verified id. `subject` is the portal interface of a consent
+  request and the app's own prompt text of a passphrase request. There is no method that allows a request and no
+  access to a secret. One queued call per listener, then one that settles the request, so a listener that throws or
+  runs out its budget costs the others nothing; the failure is reported once per site.
+- **Budget.** A listener that runs past `entry_budget` is interrupted, counts a strike (the supervisor restages the
+  generation after it, as for any listener) and the request passes. The compositor's window is 250 ms in any case: a
+  shell that is wedged costs the user at most that.
+
+### Proof
+
+Against the real compositor (`crates/gnoblin/tests/js_shell.rs`): `defineConfig({ dialogs })` is in the document the
+compositor holds, read back through a second owner connection (`button-layout` camelCase to kebab-case); a radius of 5000
+is refused at the reload with `dialogs.style.radius` in the shell's diagnostics, the generation stays and the document
+is untouched; a reload without the key removes `dialogs` from the document. A listener that declines a request from
+one app refuses it (the requester gets `cancelled(user)` without anything withdrawing it) while a request from another
+app stays open for the built-in dialog; a listener that never returns is interrupted, the request is not refused and
+the built-in dialog serves it, the generation restarts and the next request is refused again. Against fakes
+(`crates/gnoblin-js/tests/config_slots.rs`): the patch, the removal and the no-op commits, a foreign commit, a refused
+commit, notices, the missing links, `on`, `setup`, the claim and release, the verdict words, isolation, the budget, a
+held request at `retire`, a lost connection.
+
+What the real tests do not show: that the built-in dialog opens is shown by the request staying open until its
+requester withdraws it, not by a screenshot of the dialog; `retire` answering a held request is proven against the
+fake link only (the real compositor answers within 250 ms, so a request is rarely held across a swap).
 
 ## Focus, rules and snapping status
 

@@ -680,7 +680,7 @@ fn a_config_that_is_not_in_the_closed_set_is_refused_naming_the_key() {
     assert_eq!(
         got,
         lines(&[
-            "TypeError: config has no \"colour\"; expected one of gaps, style, outputs, workspaces, keys, launcher, rules, on, setup, decorations, focus, edgeTiling, dragConstraint",
+            "TypeError: config has no \"colour\"; expected one of gaps, style, outputs, workspaces, keys, launcher, rules, on, setup, decorations, focus, edgeTiling, dragConstraint, compositor, windowManagement, cursor, appearance, dialogs, input, inputSources, accessibility, layerShell, keyring, auth, location, compat, capture, monitors, xwayland, logging",
             "Error: keys[\"Super+1\"] shows workspace \"nowhere\", which the config does not declare",
             "TypeError: keys[\"Super+X\"] must be spawn(...), show(...), show.position(...), focusColumn(...), binding(...), \"close\" or a function",
             "TypeError: a key: an empty part after \"Super\"; write a literal plus as \"plus\" (token \"\" in \"Super+\")",
@@ -693,7 +693,7 @@ fn a_config_that_is_not_in_the_closed_set_is_refused_naming_the_key() {
             "TypeError: rules[0] has no \"match\"; expected one of appId, title, role, focused, onWorkspace, workspace, floating, size, position, style, fullscreen, maximised, secure, skipFocus, all, reapply",
             "RangeError: gaps.inner must be a finite number of at least 0, got -1",
             "TypeError: gaps has no \"middle\"; expected one of inner, outer",
-            "TypeError: on has no \"clientMoved\"; expected one of clientAdded, clientRemoved, titleChanged",
+            "TypeError: on has no \"clientMoved\"; expected one of clientAdded, clientRemoved, titleChanged, focusChanged",
             "TypeError: on.clientAdded must be a function",
             "TypeError: setup must be a function",
             "TypeError: show.numbered needs a template with {n}, such as \"Super+{n}\"",
@@ -797,7 +797,7 @@ fn a_user_config_layers_over_the_default_keys_merge_by_trigger_and_workspaces_re
             r#"{"inner":2,"outer":4}"#,
             "clientAdded titleChanged",
             "true",
-            "TypeError: config has no \"kyes\"; expected one of gaps, style, outputs, workspaces, keys, launcher, rules, on, setup, decorations, focus, edgeTiling, dragConstraint",
+            "TypeError: config has no \"kyes\"; expected one of gaps, style, outputs, workspaces, keys, launcher, rules, on, setup, decorations, focus, edgeTiling, dragConstraint, compositor, windowManagement, cursor, appearance, dialogs, input, inputSources, accessibility, layerShell, keyring, auth, location, compat, capture, monitors, xwayland, logging",
             "true",
             &format!("{stock} {media}"),
         ])

@@ -27,6 +27,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use gnoblin_tree_client::slot_link::SlotLink;
 use gnoblin_tree_client::tree_mirror::{
     MirrorChangeKind, NodeId, SnapshotNode, TreeIncoming, TreeLink, TreeMirror, TxBuilder, TxOp, TxReply,
 };
@@ -35,6 +36,8 @@ use rquickjs::{Array, FromJs, Function, Module, Object, Value};
 use thiserror::Error;
 
 use crate::bindings::{self, HostState, JsSpawner, SharedState};
+use crate::config::{Applied, JsConfigLink, parse_patch};
+use crate::dialogs::{JsDialogs, events_to_js, verdicts_from_js};
 use crate::error::{JsError, JsErrorKind};
 use crate::generation::{JsConfig, JsGeneration};
 use crate::input::{JsInputMessage, messages_to_js};
@@ -182,6 +185,8 @@ pub struct JsShell {
     reported: HashMap<String, u64>,
     /// How many times a call ran past its wall-clock or memory budget in this generation.
     strikes: u32,
+    /// The shell's connection for slots, and the observation of the compositor's own dialogs on it.
+    dialogs: JsDialogs,
 }
 
 impl JsShell {
@@ -231,6 +236,7 @@ impl JsShell {
             stale_refusals: 0,
             reported: HashMap::new(),
             strikes: 0,
+            dialogs: JsDialogs::new(),
         })
     }
 
@@ -320,6 +326,7 @@ impl JsShell {
             }
             Err(other) => return Err(other),
         }
+        self.apply_document(&mut diagnostics, true)?;
         self.collect_reports(&mut diagnostics)?;
         Ok(diagnostics)
     }
@@ -330,6 +337,97 @@ impl JsShell {
         self.call_entry(self.entry_budget, |entry| {
             entry.get::<_, Function<'_>>("finishLoad")?.call::<_, ()>(())
         })
+    }
+
+    /// Gives the shell its connection for slots: the observation of the compositor's own dialogs runs on it. The
+    /// shell holds `dialogs.observe` while the running generation has a dialog listener. Without a link no
+    /// listener ever runs and the compositor's dialogs serve every request, which is reported once.
+    pub fn set_slot_link(&mut self, link: Box<dyn SlotLink>) {
+        self.dialogs.set_link(link);
+    }
+
+    /// Gives the shell its connection for the configuration document. A generation's document settings are
+    /// validated against, and committed to, the document that connection reads. Without one a config that sets
+    /// document keys is validated against an empty document and nothing is committed, which is reported.
+    pub fn set_config_link(&mut self, link: Box<dyn JsConfigLink>) {
+        self.state.borrow_mut().config.set_link(link);
+    }
+
+    /// Puts the running generation's document settings back after something else committed the document (the Lua
+    /// host's own reload does, and its document has none of the shell's settings). The settings are laid over the
+    /// document in force and committed; what the other commit set stays as it is.
+    ///
+    /// # Errors
+    ///
+    /// The link failed or the generation's entry did.
+    pub fn config_committed(&mut self) -> Result<Vec<String>, JsShellError> {
+        let mut diagnostics = Vec::new();
+        self.apply_document(&mut diagnostics, false)?;
+        Ok(diagnostics)
+    }
+
+    /// Commits the running generation's document settings: the patch it declared is laid over the document in
+    /// force, after what the last committed generation set is taken back (`retract`), so a key a reload dropped
+    /// returns to its default. A refusal is a diagnostic: the document in force stays.
+    fn apply_document(&mut self, diagnostics: &mut Vec<String>, retract: bool) -> Result<(), JsShellError> {
+        let text: String = self.call_entry(self.entry_budget, |entry| {
+            entry.get::<_, Function<'_>>("document")?.call(())
+        })?;
+        let patch = match parse_patch(&text) {
+            Ok(patch) => patch,
+            Err(reason) => {
+                diagnostics.push(format!("the configuration settings were not committed: {reason}"));
+                return Ok(());
+            }
+        };
+        let outcome = self.state.borrow_mut().config.apply(&patch, retract);
+        match outcome {
+            Ok(Applied::Unchanged) => {}
+            Ok(Applied::Committed(committed)) => {
+                log::info!(
+                    area = "config",
+                    revision = committed.revision,
+                    "the shell committed its configuration settings"
+                );
+                diagnostics.extend(
+                    committed
+                        .notices
+                        .into_iter()
+                        .map(|notice| format!("not applied: {notice}")),
+                );
+            }
+            Err(reason) => diagnostics.push(format!(
+                "the configuration settings were not committed, and the document in force stays: {reason}"
+            )),
+        }
+        Ok(())
+    }
+
+    /// The dialog observation of one frame: what the compositor offered goes to the listeners, which run under the
+    /// usual budgets, and the verdicts they gave go back. A request the listeners did not refuse is answered
+    /// `pass`, so it never waits on a script. The slot is claimed or released to match the generation's listeners.
+    fn run_dialogs(&mut self, diagnostics: &mut Vec<String>) -> Result<(), JsShellError> {
+        let events = self.dialogs.poll(diagnostics);
+        if !events.is_empty() {
+            let started = Instant::now();
+            let pending: usize = self.call_entry(self.frame_budget, move |entry| {
+                let list = events_to_js(entry.ctx(), &events)?;
+                entry.get::<_, Function<'_>>("dialogs")?.call((list,))
+            })?;
+            self.run_pending(pending, started, diagnostics)?;
+        }
+        let verdicts = self.call_entry(self.entry_budget, |entry| {
+            let list: Array<'_> = entry.get::<_, Function<'_>>("takeVerdicts")?.call(())?;
+            verdicts_from_js(&list)
+        })?;
+        for verdict in &verdicts {
+            self.dialogs.answer(verdict);
+        }
+        let wanted: bool = self.call_entry(self.entry_budget, |entry| {
+            entry.get::<_, Function<'_>>("dialogsWanted")?.call(())
+        })?;
+        self.dialogs.sync(wanted, diagnostics);
+        Ok(())
     }
 
     /// The id of the generation that runs.
@@ -358,6 +456,7 @@ impl JsShell {
         // The windows that were there at boot join a workspace on the first frame.
         self.finish_load()?;
         let mut diagnostics = Vec::new();
+        self.apply_document(&mut diagnostics, true)?;
         self.collect_reports(&mut diagnostics)?;
         Ok(diagnostics)
     }
@@ -375,6 +474,7 @@ impl JsShell {
         })?;
         self.finish_load()?;
         let mut diagnostics = Vec::new();
+        self.apply_document(&mut diagnostics, true)?;
         self.collect_reports(&mut diagnostics)?;
         Ok(diagnostics)
     }
@@ -509,6 +609,7 @@ impl JsShell {
         outcome?;
         self.run_layouts(&mut diagnostics)?;
         self.run_ui(&mut diagnostics)?;
+        self.run_dialogs(&mut diagnostics)?;
         self.collect_reports(&mut diagnostics)?;
 
         self.send_transaction()?;
@@ -531,6 +632,7 @@ impl JsShell {
         self.state.borrow_mut().input.inbox.clear();
         self.state.borrow_mut().input.forget_window_events();
         self.run_pending(pending, started, &mut diagnostics)?;
+        self.dialogs.retire();
         self.collect_reports(&mut diagnostics)?;
         self.send_transaction()?;
         Ok(JsFrame { diagnostics })

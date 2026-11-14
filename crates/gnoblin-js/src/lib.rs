@@ -18,8 +18,12 @@
 //!   which one from a shell to the next that reloads.
 //! - [`JsRole`] is the runtime role's shell: it connects a [`JsShell`] to the owner socket, loads the user's
 //!   `init.ts`, and owns the watcher, reloader and supervisor that swap a new generation in or keep the old one.
+//!   It holds the shell's two other owner connections: one for slots (the dialog observation of `gnoblin.dialogs`)
+//!   and one for the configuration document (what `defineConfig` sets in it).
 
 mod bindings;
+mod config;
+mod dialogs;
 mod error;
 mod generation;
 mod host;
@@ -36,12 +40,13 @@ mod watch;
 mod workspaces;
 
 pub use bindings::{JsSpawnError, JsSpawnRequest, JsSpawner};
+pub use config::{JsClientConfigLink, JsConfigCommit, JsConfigLink, JsLinkError};
 pub use error::{JsError, JsErrorKind, JsLoadError, JsLocation, JsTsError};
 pub use generation::{JsConfig, JsGeneration};
 pub use host::{JsHost, JsPrepare};
 pub use loader::{JsLoadState, JsLoader, JsResolver};
 pub use reload::{JsDiagnostic, JsReloader, ReloadReport};
-pub use role::{JsRole, JsRoleConfig, RELOAD_DEBOUNCE, config_dir, entry_in};
+pub use role::{JsRole, JsRoleConfig, JsRoleLinks, RELOAD_DEBOUNCE, config_dir, entry_in};
 pub use rquickjs;
 pub use shell::{JsFrame, JsShell, JsShellConfig, JsShellError, JsStaging, STALE_RETRIES};
 pub use stock::{stock_modules, stock_modules_in};

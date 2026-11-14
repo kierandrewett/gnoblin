@@ -13,7 +13,9 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 
-use gnoblin_js::{JsRole, JsRoleConfig, JsShell, JsShellConfig, JsShellError, JsSpawnError, JsSpawnRequest};
+use gnoblin_js::{
+    JsRole, JsRoleConfig, JsRoleLinks, JsShell, JsShellConfig, JsShellError, JsSpawnError, JsSpawnRequest,
+};
 use gnoblin_tree_client::tree_mirror::{
     Attached, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeIncoming, TreeLink, TreeTx,
     TxOp, TxReply,
@@ -1151,7 +1153,12 @@ fn a_role_swaps_in_a_reloaded_generation_over_the_same_windows_and_a_failed_relo
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("init.ts"), places_at(100)).expect("init.ts");
-    let mut role = JsRole::over_link(Box::new(FakeLink(comp.clone())), JsRoleConfig::new(&root, None)).expect("a role");
+    let mut role = JsRole::over_link(
+        Box::new(FakeLink(comp.clone())),
+        JsRoleLinks::default(),
+        JsRoleConfig::new(&root, None),
+    )
+    .expect("a role");
     let booted = role.generation_id();
     assert_eq!(booted, 1, "the entry loaded as the first staged generation");
     role.tick().expect("a frame");

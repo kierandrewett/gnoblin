@@ -246,6 +246,10 @@ impl gnoblin_lua::shell_role::ShellFrame for JsShellFrame {
         let errors: Vec<String> = report.errors.iter().map(ToString::to_string).collect();
         Err(errors.join("; "))
     }
+
+    fn config_committed(&mut self) {
+        self.0.config_committed();
+    }
 }
 
 /// The variable that turns the config watcher off when it is `0`, so a script is reloaded only by

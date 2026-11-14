@@ -35,6 +35,10 @@ gnoblin-secret.workspace = true
 gnoblin-client = { path = "../gnoblin-client" }
 # The IPC version this build advertises in that handshake.
 gnoblin-proto = { path = "../gnoblin-proto" }
+# The configuration document's validator: the shell checks the document it commits as the Lua host does.
+gnoblin-config = { path = "../gnoblin-config" }
+# The document crosses the owner socket as JSON; the shell reads the one in force and writes the next.
+serde_json.workspace = true
 # The log facade every crate logs through.
 gnoblin-log = { path = "../gnoblin-log" }
 
@@ -46,3 +50,5 @@ toml.workspace = true
 # The paint list tests compare the toolkit's bytes with the compositor's own encoder and decoder
 # (`tests/ui.rs`); the shell itself never links the painter.
 gnoblin-paint.workspace = true
+# The fake slot link of `tests/config_slots.rs` implements `SlotLink`, whose `decline` takes the model's reason.
+gnoblin-model = { path = "../gnoblin-model" }

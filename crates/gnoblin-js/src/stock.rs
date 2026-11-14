@@ -12,7 +12,7 @@ use crate::ts::strip_types;
 
 /// `(import name, file under data/js/gnoblin, source)`. `gnoblin` is the user-facing module and only
 /// re-exports the others.
-const MODULES: [(&str, &str, &str); 20] = [
+const MODULES: [(&str, &str, &str); 21] = [
     ("gnoblin", "index.ts", include_str!("../../../data/js/gnoblin/index.ts")),
     (
         "gnoblin/bindings",
@@ -83,6 +83,11 @@ const MODULES: [(&str, &str, &str); 20] = [
         "gnoblin/config",
         "config.ts",
         include_str!("../../../data/js/gnoblin/config.ts"),
+    ),
+    (
+        "gnoblin/dialogs",
+        "dialogs.ts",
+        include_str!("../../../data/js/gnoblin/dialogs.ts"),
     ),
     (
         "gnoblin/titlebar",

@@ -392,6 +392,7 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
 
     crate::input::install(ctx, &host, state)?;
     crate::ui::install(ctx, &host, state)?;
+    crate::config::install(ctx, &host, state)?;
 
     ctx.globals().set("__gnoblinHost", host)
 }

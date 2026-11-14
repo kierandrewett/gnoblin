@@ -67,3 +67,7 @@ gnoblin-paint = { path = "../gnoblin-paint" }
 # of the tap's events and the ids they carry.
 gnoblin-backend = { path = "../gnoblin-backend" }
 gnoblin-types = { path = "../gnoblin-types" }
+# The configuration and dialog tests read the document the compositor holds, ask it for a consent dialog the way
+# the portal does (a request's options are the model's `Fields`) and refuse nothing a fake could answer.
+gnoblin-model = { path = "../gnoblin-model" }
+serde_json.workspace = true
