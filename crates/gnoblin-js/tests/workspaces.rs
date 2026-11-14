@@ -349,6 +349,20 @@ fn a_config_with_no_workspace_gets_one_floating_desktop_and_define_config_makes_
     );
     drop(bare);
     comp.borrow_mut().queue.clear();
+    // `defineConfig` layers the stock keys in and binds them on the first seat, so this rig has a seat.
+    comp.borrow_mut().nodes.insert(
+        100,
+        Node {
+            class: "seat".into(),
+            parent: 1,
+            props: BTreeMap::from([
+                ("name".to_owned(), MirrorValue::Text("seat0".into())),
+                ("pointer_x".to_owned(), MirrorValue::Double(0.0)),
+                ("pointer_y".to_owned(), MirrorValue::Double(0.0)),
+                ("device".to_owned(), MirrorValue::Texts(Vec::new())),
+            ]),
+        },
+    );
     let mut declared = rig(
         &comp,
         &init(

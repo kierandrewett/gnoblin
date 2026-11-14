@@ -60,7 +60,7 @@ import { area, nodes, fmt, lay, thrown, rect, emit } from "harness";
 import {
     Binding, BindingCollection, resolveTriggers, Layout, insetRect,
     FloatingLayout, MasterStackLayout, GridLayout, MonocleLayout,
-    defineConfig, desugarConfig, defaultConfig, spawn, show,
+    defineConfig, desugarConfig, defaultConfig, mergeConfig, spawn, show,
 } from "gnoblin";
 "#;
 
@@ -749,6 +749,53 @@ fn decorations_are_on_in_the_default_config_and_off_in_one_that_does_not_ask() {
             "true",
             "false",
             "TypeError: config.decorations: must be true or false",
+        ])
+    );
+}
+
+#[test]
+fn a_user_config_layers_over_the_default_keys_merge_by_trigger_and_workspaces_replace_whole() {
+    let got = run(r#"
+        const keys = (c: any) => Object.keys(c.keys ?? {}).join(" ");
+        const ids = (c: any) => (c.workspaces ?? []).map((w: any) => w.id).join(" ");
+        const before = JSON.stringify(defaultConfig);
+        const nothing = mergeConfig(defaultConfig, {});
+        const own = mergeConfig(defaultConfig, { keys: { "super+1": spawn("one"), "Super+Return": spawn("term") } });
+        const other = mergeConfig(defaultConfig, { workspaces: [{ id: "a" }, { id: "b", layout: "grid" }] });
+        const same = mergeConfig(defaultConfig, { workspaces: [{ id: "desktop", layout: "grid" }] });
+        const gaps = mergeConfig({ gaps: { inner: 2 } }, { gaps: { outer: 4 } });
+        const on = mergeConfig({ on: { clientAdded() {} } }, { on: { titleChanged() {} } });
+        emit([
+            ids(nothing) + " | " + keys(nothing),
+            ids(own) + " | " + keys(own),
+            JSON.stringify(own.keys!["super+1"]),
+            ids(other) + " | " + keys(other),
+            ids(same) + " | " + (same.keys!["Super+1"] as any).kind,
+            (same.workspaces![0] as any).layout,
+            JSON.stringify(gaps.gaps),
+            Object.keys(on.on!).join(" "),
+            JSON.stringify(defaultConfig) === before,
+            thrown(() => mergeConfig(defaultConfig, { kyes: {} } as any)),
+            thrown(() => mergeConfig(defaultConfig, { keys: { "Super+!": "close" } })).startsWith("TypeError: a key: "),
+            desugarConfig(other).bindings.map((b) => b.trigger).join(" "),
+        ].join("\n"));
+    "#);
+    let media = "XF86AudioRaiseVolume XF86AudioLowerVolume XF86AudioMute XF86AudioMicMute XF86AudioPlay XF86AudioNext XF86AudioPrev";
+    assert_eq!(
+        got,
+        lines(&[
+            &format!("desktop | Super+1 {media}"),
+            &format!("desktop | {media} super+1 Super+Return"),
+            r#"{"kind":"spawn","argv":["one"]}"#,
+            &format!("a b | {media}"),
+            "desktop | show",
+            "grid",
+            r#"{"inner":2,"outer":4}"#,
+            "clientAdded titleChanged",
+            "true",
+            "TypeError: config has no \"kyes\"; expected one of gaps, style, outputs, workspaces, keys, rules, on, setup, decorations",
+            "true",
+            media,
         ])
     );
 }

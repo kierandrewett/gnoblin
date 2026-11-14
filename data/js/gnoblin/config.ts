@@ -18,8 +18,11 @@
 //
 // A key missing from the config adds nothing to the plan. The one exception is `workspaces`: a shell with
 // nowhere to put a window is unusable, so no workspace means the baseline's single floating `desktop`.
+//
+// The host does not apply a user's config alone: it layers it over `defaultConfig` with `mergeConfig`, so a
+// config that says nothing about keys still has the stock ones. The rule is in the comment on `mergeConfig`.
 
-import { checkTrigger } from "gnoblin/bindings";
+import { checkTrigger, parseTrigger } from "gnoblin/bindings";
 import type { Gaps, Layout } from "gnoblin/layout";
 import { checkGaps, rejectUnknown, resolveLayout } from "gnoblin/workspace";
 import type { StockLayoutName } from "gnoblin/workspace";
@@ -209,6 +212,53 @@ export function defineConfig(config: GnoblinConfig): GnoblinConfig {
     const host = (globalThis as { gnoblin?: { __register?: (config: GnoblinConfig) => void } }).gnoblin;
     host?.__register?.(config);
     return config;
+}
+
+/**
+ * `user` laid over `base`, the rule the host applies to `defaultConfig` and the user's `defineConfig`:
+ *
+ * - `workspaces` and `rules` are lists, and a list the user gives replaces the base's whole. An absent or empty
+ *   `workspaces` keeps the base's.
+ * - `gaps`, `style` and `outputs` merge by key, the user's value winning; a nested object (a shadow) is one value.
+ * - `keys` merge by trigger, compared in canonical spelling, so `"super+1"` replaces the base's `"Super+1"`. A base
+ *   key that shows a workspace the merged config does not declare is dropped: it would name nothing.
+ * - `on` merges by event, and `setup` is the user's when they give one. `decorations` is not layered: a config that
+ *   does not ask for titlebars has none (only the stock config itself turns them on).
+ *
+ * Pure: neither argument is changed. The user's config is checked for unknown keys here, so a typo is reported
+ * against `config` as `desugarConfig` would.
+ */
+export function mergeConfig(base: GnoblinConfig, user: GnoblinConfig): GnoblinConfig {
+    if (user === null || typeof user !== "object") {
+        throw new TypeError("a config must be an object");
+    }
+    rejectUnknown(user, TOP_LEVEL_KEYS, "config");
+    const workspaces =
+        user.workspaces === undefined || user.workspaces.length === 0 ? base.workspaces : user.workspaces;
+    const declared = new Set((workspaces ?? []).map((workspace) => workspace?.id));
+    const overridden = new Set(Object.keys(user.keys ?? {}).map((trigger) => parseTrigger(trigger, "a key").text));
+    const keys: Record<string, KeyAction> = {};
+    for (const [trigger, action] of Object.entries(base.keys ?? {})) {
+        const showsMissing =
+            action !== null && typeof action === "object" && action.kind === "show" && !declared.has(action.workspace);
+        if (!showsMissing && !overridden.has(parseTrigger(trigger, "a key").text)) {
+            keys[trigger] = action;
+        }
+    }
+    Object.assign(keys, user.keys);
+    const rules = user.rules ?? base.rules;
+    const setup = user.setup ?? base.setup;
+    return {
+        gaps: { ...base.gaps, ...user.gaps },
+        style: { ...base.style, ...user.style },
+        outputs: { ...base.outputs, ...user.outputs },
+        keys,
+        on: { ...base.on, ...user.on },
+        ...(workspaces === undefined ? {} : { workspaces }),
+        ...(rules === undefined ? {} : { rules }),
+        ...(setup === undefined ? {} : { setup }),
+        ...(user.decorations === undefined ? {} : { decorations: user.decorations }),
+    };
 }
 
 /** The plan for `config`, see the table at the top of this file. Pure: the same config gives an equal plan. */

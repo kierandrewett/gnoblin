@@ -20,7 +20,8 @@ gnoblinctl config reload
 gnoblinctl config validate FILE
 ```
 
-`config validate` needs no running session.
+`config validate` needs no running session. `config reload` also reloads the `init.ts` of the
+[TypeScript shell](../typescript-shell.md), and exits 1 with `file:line:column` when that file fails to load.
 
 ## TypeScript configuration
 

@@ -412,7 +412,7 @@ fn serve<T: Transport + 'static>(
     let start = Instant::now();
     while !stop() {
         if host.take_reload_request() {
-            reload(host, paths, reporter)?;
+            reload(host, paths, reporter, shell)?;
         }
         if let Err(ended) = shell.tick(start.elapsed().as_secs_f64()) {
             log::error!(area = "runtime", "{ended}");
@@ -442,11 +442,27 @@ fn serve<T: Transport + 'static>(
 /// A refusal is reported to the compositor, which answers the caller of `config reload`. The
 /// role keeps serving either way: a bad edit must not take down the runtime that holds the
 /// last good document.
+///
+/// A JavaScript shell reloads first, so a script that fails refuses the request before the document
+/// is touched and the caller reads the script's `file:line:column`. A document refused after the
+/// shell reloaded leaves the new script running: the two are separate files and the shell's swap
+/// cannot be taken back.
 fn reload<T: Transport + 'static>(
     host: &mut Host<T>,
     paths: &SearchPaths,
     reporter: &mut Reporter,
+    shell: &mut ShellSlot,
 ) -> Result<(), RoleError> {
+    if let Err(report) = shell.reload() {
+        let reason = format!("the shell's configuration was not reloaded, and the running one stays: {report}");
+        log::error!(area = "runtime", "{reason}");
+        host.answer_reload(Err(&reason));
+        reporter.write(&report::config_rejected(0, &reason));
+        host.client_mut()
+            .reject_config(&reason)
+            .map_err(|error| RoleError::Commit(error.to_string()))?;
+        return Ok(());
+    }
     // A reload that cannot even run, such as the file having been removed, is still a
     // refusal: the compositor is waiting on an answer, and the runtime keeps its last good document.
     let outcome = match host.reload_config(paths) {

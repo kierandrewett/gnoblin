@@ -136,6 +136,13 @@ impl ShellRole {
 pub trait ShellFrame {
     /// Run one frame at `now` (seconds on the frame clock). An error ends the shell.
     fn tick(&mut self, now: f64) -> Result<(), String>;
+
+    /// Reloads the shell's own configuration from disk because `gnoblinctl config reload` asked. `Err` carries the
+    /// report for the caller (`file:line:column: message`); the shell keeps what it was running. A shell with no
+    /// configuration of its own has nothing to reload.
+    fn reload(&mut self) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 /// Starts the JavaScript shell for the role: the environment, and the stock directory `js:<dir>` named.
@@ -233,6 +240,19 @@ impl ShellSlot {
             self.role = None;
         }
         result
+    }
+
+    /// Asks a JavaScript shell to reload its configuration. The Lua shell VM loads its files once per session
+    /// (docs/user-shell.md), and an empty slot has no shell, so for both this is `Ok`.
+    ///
+    /// # Errors
+    ///
+    /// The reload failed; the text is the report to give the caller of `config reload`.
+    pub fn reload(&mut self) -> Result<(), String> {
+        match self.role.as_mut() {
+            Some(SlotShell::Js(frame)) => frame.reload(),
+            _ => Ok(()),
+        }
     }
 }
 

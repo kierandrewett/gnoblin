@@ -237,7 +237,20 @@ impl gnoblin_lua::shell_role::ShellFrame for JsShellFrame {
     fn tick(&mut self, _now: f64) -> Result<(), String> {
         self.0.tick().map_err(|error| error.to_string())
     }
+
+    fn reload(&mut self) -> Result<(), String> {
+        let report = self.0.reload_now();
+        if report.ok {
+            return Ok(());
+        }
+        let errors: Vec<String> = report.errors.iter().map(ToString::to_string).collect();
+        Err(errors.join("; "))
+    }
 }
+
+/// The variable that turns the config watcher off when it is `0`, so a script is reloaded only by
+/// `gnoblinctl config reload`.
+const JS_WATCH_VARIABLE: &str = "GNOBLIN_JS_WATCH";
 
 /// Starts the JavaScript shell over the session's owner socket, loading `init.ts` from the user's config
 /// directory and the stock library from `stock` when `js:<dir>` named one.
@@ -247,7 +260,8 @@ fn launch_js_shell(
 ) -> Result<Box<dyn gnoblin_lua::shell_role::ShellFrame>, String> {
     let dir = gnoblin_js::config_dir(env)
         .ok_or_else(|| "neither XDG_CONFIG_HOME nor HOME is set, so there is no config directory".to_owned())?;
-    let config = gnoblin_js::JsRoleConfig::new(dir, stock.map(std::path::Path::to_path_buf));
+    let mut config = gnoblin_js::JsRoleConfig::new(dir, stock.map(std::path::Path::to_path_buf));
+    config.watch = env(JS_WATCH_VARIABLE).as_deref() != Some("0");
     let role = gnoblin_js::JsRole::connect(env, config).map_err(|error| error.to_string())?;
     Ok(Box::new(JsShellFrame(role)))
 }

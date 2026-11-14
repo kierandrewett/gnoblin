@@ -13,7 +13,6 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::os::fd::AsFd as _;
 use std::os::unix::fs::PermissionsExt as _;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -23,19 +22,13 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use gnoblin_backend::InputEvent;
-use gnoblin_client::Client;
-use gnoblin_client::unix::UnixTransport;
 use gnoblin_compositor::{Compositor, InputTap, SessionConfig, StopHandle};
 use gnoblin_js::{JsHealth, JsRole, JsRoleConfig};
 use gnoblin_log::event::capture::logged;
-use gnoblin_proto::tree::snapshot_node;
-use gnoblin_proto::tree::tree::{AttachArgs, AttachedPayload, SnapshotPayload};
-use gnoblin_proto::{Envelope, Version, read_frame, write_frame};
 use gnoblin_types::{DeviceId, OutputId, Point};
-use wayland_client::globals::{GlobalListContents, registry_queue_init};
-use wayland_client::protocol::{wl_buffer, wl_compositor, wl_registry, wl_shm, wl_shm_pool, wl_surface};
-use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle};
-use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
+
+mod support;
+use support::{Mapper, Watcher, ids, scene, spots};
 
 /// How long a test waits for a state before it fails. A passing run never waits this long: it is the margin a busy
 /// machine gets, so a failure is a state that never came and not a slow turn.
@@ -104,91 +97,7 @@ impl Drop for Session {
     }
 }
 
-// ---- the scene, read as an observer ------------------------------------------------------------------------------
-
-fn version() -> Version {
-    let (major, minor, patch) = gnoblin_proto::IPC_VERSION;
-    Version::new(major, minor, patch)
-}
-
-/// One window as the compositor's tree holds it.
-#[derive(Clone, Debug, PartialEq)]
-struct Window {
-    id: u64,
-    app_id: String,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-}
-
-/// Every node of the compositor's tree, read through a fresh observer connection.
-fn observe(ipc: &Path) -> Vec<snapshot_node::Properties> {
-    let transport = UnixTransport::connect(ipc).expect("the session is listening");
-    let mut stream = Client::connect(transport, version())
-        .expect("the handshake")
-        .into_inner()
-        .into_stream()
-        .expect("the handshaken socket");
-    stream
-        .set_read_timeout(Some(Duration::from_secs(30)))
-        .expect("a read deadline");
-    write_frame(
-        &mut stream,
-        &Envelope::request_message(
-            "tree",
-            "attach",
-            1,
-            &AttachArgs {
-                version: 1,
-                mode: "observer".to_owned(),
-            },
-        ),
-    )
-    .expect("the attach");
-    let _attached: AttachedPayload = read_frame(&mut stream)
-        .expect("the attach reply frame")
-        .expect("an attach reply")
-        .payload_as()
-        .expect("the attach payload decodes");
-    let mut nodes: Vec<snapshot_node::Properties> = Vec::new();
-    loop {
-        let chunk: SnapshotPayload = read_frame(&mut stream)
-            .expect("a snapshot frame")
-            .expect("a snapshot chunk")
-            .payload_as()
-            .expect("the chunk decodes");
-        nodes.extend(chunk.nodes);
-        if chunk.last {
-            break;
-        }
-    }
-    nodes
-}
-
-/// Every window of the compositor's tree. A value at its default is not carried in a snapshot, so it reads as zero.
-fn scene(ipc: &Path) -> Vec<Window> {
-    observe(ipc)
-        .into_iter()
-        .filter(|node| node.class == "window")
-        .map(|node| {
-            let value = |key: &str| {
-                node.props
-                    .iter()
-                    .find(|prop| prop.key == key)
-                    .map_or(0.0, |prop| prop.value_double)
-            };
-            Window {
-                id: node.id,
-                app_id: node.app_id.clone(),
-                x: value("x"),
-                y: value("y"),
-                width: value("width"),
-                height: value("height"),
-            }
-        })
-        .collect()
-}
+// ---- canvases, read as an observer -------------------------------------------------------------------------------
 
 /// One canvas as the compositor's tree holds it.
 #[derive(Clone, Debug)]
@@ -213,7 +122,7 @@ impl Canvas {
 
 /// Every canvas of the compositor's tree, read through a fresh observer connection.
 fn canvases(ipc: &Path) -> Vec<Canvas> {
-    observe(ipc)
+    support::snapshot(ipc)
         .into_iter()
         .filter(|node| node.class == "canvas")
         .map(|node| {
@@ -229,159 +138,47 @@ fn canvases(ipc: &Path) -> Vec<Canvas> {
         })
         .collect()
 }
-
-/// The spots of the windows by app id.
-fn spots(windows: &[Window]) -> BTreeMap<String, (f64, f64)> {
-    windows
-        .iter()
-        .map(|window| (window.app_id.clone(), (window.x, window.y)))
-        .collect()
-}
-
-fn ids(windows: &[Window]) -> BTreeMap<String, u64> {
-    windows
-        .iter()
-        .map(|window| (window.app_id.clone(), window.id))
-        .collect()
-}
-
-// ---- real Wayland windows ----------------------------------------------------------------------------------------
-
-#[derive(Default)]
-struct App;
-
-/// A Wayland client that maps toplevels with a buffer, as an application does.
-struct Mapper {
-    _connection: Connection,
-    queue: EventQueue<App>,
-    app: App,
-    qh: QueueHandle<App>,
-    compositor: wl_compositor::WlCompositor,
-    shm: wl_shm::WlShm,
-    wm_base: xdg_wm_base::XdgWmBase,
-    /// The protocol objects of every window mapped, kept so they stay mapped.
-    windows: Vec<(
-        wl_surface::WlSurface,
-        xdg_surface::XdgSurface,
-        xdg_toplevel::XdgToplevel,
-    )>,
-}
-
-impl Mapper {
-    fn connect(socket: &Path) -> Self {
-        let stream = UnixStream::connect(socket).expect("the session is listening");
-        let connection = Connection::from_socket(stream).expect("a client connection");
-        let (globals, queue) = registry_queue_init::<App>(&connection).expect("the global list");
-        let qh = queue.handle();
-        let compositor = globals
-            .bind(&qh, 1..=1, ())
-            .expect("the session advertises wl_compositor");
-        let shm = globals.bind(&qh, 1..=1, ()).expect("the session advertises wl_shm");
-        let wm_base = globals
-            .bind(&qh, 1..=6, ())
-            .expect("the session advertises xdg_wm_base");
-        Self {
-            _connection: connection,
-            queue,
-            app: App,
-            qh,
-            compositor,
-            shm,
-            wm_base,
-            windows: Vec::new(),
-        }
-    }
-
-    /// Processes every event the session has sent, which answers its pings.
-    fn roundtrip(&mut self) {
-        self.queue.roundtrip(&mut self.app).expect("a round trip");
-    }
-
-    /// Creates a toplevel and maps it with a buffer.
-    fn map_window(&mut self, app_id: &str, title: &str) {
-        let surface = self.compositor.create_surface(&self.qh, ());
-        let xdg = self.wm_base.get_xdg_surface(&surface, &self.qh, ());
-        let toplevel = xdg.get_toplevel(&self.qh, ());
-        toplevel.set_app_id(app_id.to_owned());
-        toplevel.set_title(title.to_owned());
-        surface.commit();
-        self.roundtrip();
-        let (width, height) = (200, 150);
-        let stride = width * 4;
-        let length = stride * height;
-        let file = tempfile::tempfile().expect("a shared memory file");
-        file.set_len(u64::try_from(length).expect("a length"))
-            .expect("a buffer that big");
-        let pool = self.shm.create_pool(file.as_fd(), length, &self.qh, ());
-        let buffer = pool.create_buffer(0, width, height, stride, wl_shm::Format::Argb8888, &self.qh, ());
-        surface.attach(Some(&buffer), 0, 0);
-        surface.damage(0, 0, width, height);
-        surface.commit();
-        self.roundtrip();
-        self.windows.push((surface, xdg, toplevel));
-    }
-}
-
-macro_rules! ignore_events {
-    ($($proxy:ty),* $(,)?) => {$(
-        impl Dispatch<$proxy, ()> for App {
-            fn event(_: &mut Self, _: &$proxy, _: <$proxy as Proxy>::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
-        }
-    )*};
-}
-
-ignore_events!(
-    wl_compositor::WlCompositor,
-    wl_surface::WlSurface,
-    wl_shm::WlShm,
-    wl_shm_pool::WlShmPool,
-    wl_buffer::WlBuffer,
-    xdg_toplevel::XdgToplevel,
-);
-
-impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
-    fn event(
-        _: &mut Self,
-        _: &wl_registry::WlRegistry,
-        _: wl_registry::Event,
-        _: &GlobalListContents,
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-    }
-}
-
-impl Dispatch<xdg_wm_base::XdgWmBase, ()> for App {
-    fn event(
-        _: &mut Self,
-        wm_base: &xdg_wm_base::XdgWmBase,
-        event: xdg_wm_base::Event,
-        _: &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-        if let xdg_wm_base::Event::Ping { serial } = event {
-            wm_base.pong(serial);
-        }
-    }
-}
-
-impl Dispatch<xdg_surface::XdgSurface, ()> for App {
-    fn event(
-        _: &mut Self,
-        xdg: &xdg_surface::XdgSurface,
-        event: xdg_surface::Event,
-        _: &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-        if let xdg_surface::Event::Configure { serial } = event {
-            xdg.ack_configure(serial);
-        }
-    }
-}
-
 // ---- the shell, in a thread of its own ---------------------------------------------------------------------------
+
+/// Polls what the compositor has published of its windows, keeping the Wayland client answering, until `check` holds
+/// on their spots. Returns the windows and their spots. The failure message carries the last scene.
+#[track_caller]
+fn wait_for_scene(
+    what: &str,
+    watch: &Watcher,
+    mapper: &mut Mapper,
+    mut check: impl FnMut(&BTreeMap<String, (f64, f64)>) -> bool,
+) -> (Vec<support::Window>, BTreeMap<String, (f64, f64)>) {
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        mapper.roundtrip();
+        let now = watch.scene();
+        let held = spots(&now);
+        if check(&held) {
+            return (now, held);
+        }
+        assert!(
+            Instant::now() < deadline,
+            "never reached: {what}; the scene is {held:?}"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// What the shell thread reads out of the script after every frame, as text: the clients, the workspaces and the
+/// keys bound on the first seat. A seat-less tree reads as `no seat` for the keys.
+const VIEW_PROBE: &str = r#"(() => {
+    const keys = (() => {
+        try {
+            return [...gnoblin.input.primary.bindings].map((b) => b.trigger).join(",");
+        } catch (error) {
+            return "no seat";
+        }
+    })();
+    const spaces = gnoblin.workspaces.map((w) => `${w.id}:${w.layout.constructor.name}`).join(",");
+    return `${gnoblin.clients.length} clients, ${gnoblin.workspaces.length} workspaces [${spaces}] keys[${keys}]: ` +
+        gnoblin.clients.map((c) => `${c.appId}@${c.x},${c.y}`).join(";");
+})()"#;
 
 /// What the shell thread reports, refreshed after every frame.
 #[derive(Default)]
@@ -435,10 +232,7 @@ impl Shell {
                             status.diagnostics = role.diagnostics().to_vec();
                             status.view = role
                                 .shell_mut()
-                                .eval(
-                                    "`${gnoblin.clients.length} clients, ${gnoblin.workspaces.length} workspaces: ` + \
-                                     gnoblin.clients.map((c) => `${c.appId}@${c.x},${c.y}`).join(';')",
-                                )
+                                .eval(VIEW_PROBE)
                                 .unwrap_or_else(|error| Some(error.to_string()))
                                 .unwrap_or_default();
                             if let Err(error) = ticked {
@@ -830,24 +624,215 @@ gnoblin.clients.addListener({
     });
 }
 
+/// A section of the shell's view: what stands between `open` and the next `]`.
+fn section<'a>(view: &'a str, open: &str) -> &'a str {
+    view.split_once(open)
+        .and_then(|(_, rest)| rest.split_once(']'))
+        .map_or("", |(inside, _)| inside)
+}
+
+/// The triggers the shell's view says are bound, in order.
+fn bound_keys(view: &str) -> Vec<&str> {
+    section(view, "keys[")
+        .split(',')
+        .filter(|key| !key.is_empty())
+        .collect()
+}
+
+const LAYERED_CONFIG: &str = r#"import { defineConfig, spawn } from "gnoblin";
+
+export default defineConfig({
+    workspaces: [
+        { id: "a", layout: "master-stack" },
+        { id: "b", layout: "grid" },
+    ],
+    keys: { "super+Return": spawn("true"), XF86AudioMute: spawn("true") },
+});
+"#;
+
 #[test]
-fn a_shell_with_no_init_file_runs_bare_and_loads_the_file_when_it_appears() {
+fn a_shell_with_no_init_file_runs_the_stock_config_and_a_defined_config_layers_over_it() {
     let session = Session::start();
     let mut mapper = Mapper::connect(&session.wayland());
     mapper.map_window("org.example.first", "First");
     let config = tempfile::tempdir().expect("a config directory");
     let shell = Shell::start(&session, config.path(), |_| {});
     let ipc = session.ipc();
-    // The first generation after the file appears is the first one with user code.
-    wait_for("the shell is up", &session, &mut mapper, &shell, || {
-        shell.status.lock().expect("the status lock").ended.is_none()
-    });
-    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 
-    write_config(config.path(), r#"{ "org.example.first": [21, 22] }"#);
-    wait_for("the new file places the window", &session, &mut mapper, &shell, || {
-        spots(&scene(&ipc)).get("org.example.first") == Some(&(21.0, 22.0))
+    // No `init.ts`: the stock default config is a real runtime config. It declares one floating `desktop`, and
+    // its keys are bound on the seat (through the real compositor, which took the claims or the shell would have
+    // reported a refusal).
+    wait_for("the stock config runs", &session, &mut mapper, &shell, || {
+        section(&shell.view(), "workspaces [") == "desktop:FloatingLayout"
     });
+    let keys = shell.view();
+    let keys = bound_keys(&keys);
+    assert_eq!(keys.first(), Some(&"Super+1"), "the stock keys: {keys:?}");
+    assert!(keys.contains(&"XF86AudioMute"), "the stock keys: {keys:?}");
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    let stock = shell.generation();
+    let window = ids(&scene(&ipc));
+
+    // A user `defineConfig` replaces the workspaces whole and merges the keys by trigger: its `Super+Return` is
+    // added, its `XF86AudioMute` replaces the stock one, `Super+1` (which showed the dropped `desktop`) goes, and
+    // the other stock keys stay.
+    fs::write(config.path().join("init.ts"), LAYERED_CONFIG).expect("init.ts");
+    wait_for("the layered config runs", &session, &mut mapper, &shell, || {
+        section(&shell.view(), "workspaces [") == "a:MasterStackLayout,b:GridLayout"
+    });
+    assert!(shell.generation() > stock, "the file is a reload");
+    let view = shell.view();
+    let keys = bound_keys(&view);
+    assert!(keys.contains(&"super+Return"), "the user's key: {keys:?}");
+    assert_eq!(
+        keys.iter().filter(|key| **key == "XF86AudioMute").count(),
+        1,
+        "{keys:?}"
+    );
+    assert!(
+        keys.contains(&"XF86AudioPlay"),
+        "a stock key the user left alone: {keys:?}"
+    );
+    assert!(
+        !keys.contains(&"Super+1"),
+        "the stock key for the dropped workspace: {keys:?}"
+    );
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
+    assert_eq!(ids(&scene(&ipc)), window, "the window kept its id through the reload");
+
+    // And an imperative `init.ts` is still a reload that places the window.
+    write_config(config.path(), r#"{ "org.example.first": [21, 22] }"#);
+    wait_for(
+        "the imperative file places the window",
+        &session,
+        &mut mapper,
+        &shell,
+        || spots(&scene(&ipc)).get("org.example.first") == Some(&(21.0, 22.0)),
+    );
+}
+
+/// Places `y` from `onAdded` and `x` (plus one) from `onReady`, so the two ways a generation learns of a window are
+/// told apart by where the window ends up. The workspace's layout places nothing.
+fn write_guarded_config(dir: &Path, places: &str) {
+    fs::write(
+        dir.join("slots.ts"),
+        format!("export const places: Record<string, [number, number]> = {places};\n"),
+    )
+    .expect("slots.ts");
+    fs::write(
+        dir.join("init.ts"),
+        r#"import { Layout, Workspace, gnoblin } from "gnoblin";
+import { places } from "./slots.ts";
+
+gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new Layout() }));
+
+gnoblin.clients.addListener({
+    onAdded(client: { appId: string; y: number }): void {
+        const at: [number, number] | undefined = places[client.appId];
+        if (at !== undefined) {
+            client.y = at[1];
+        }
+    },
+    onReady(client: { appId: string; x: number }): void {
+        const at: [number, number] | undefined = places[client.appId];
+        if (at !== undefined) {
+            client.x = at[0] + 1;
+        }
+    },
+});
+"#,
+    )
+    .expect("init.ts");
+}
+
+#[test]
+fn a_shell_that_dies_leaves_the_compositor_answering_and_a_restarted_one_reattaches() {
+    let session = Session::start();
+    let mut mapper = Mapper::connect(&session.wayland());
+    let ipc = session.ipc();
+    // An observer that stays attached from before the first window: a window the compositor places itself reaches
+    // an observer as changes, and a snapshot of the tree does not carry them.
+    let watch = Watcher::attach(&ipc);
+    mapper.map_window("org.example.first", "First");
+    mapper.map_window("org.example.second", "Second");
+    // No shell has run yet, so the compositor's own policy placed these: a cascade from (32, 32) by 32.
+    wait_for_scene("the fallback cascade", &watch, &mut mapper, |now| {
+        now.get("org.example.first") == Some(&(32.0, 32.0)) && now.get("org.example.second") == Some(&(64.0, 64.0))
+    });
+
+    let config = tempfile::tempdir().expect("a config directory");
+    write_guarded_config(
+        config.path(),
+        r#"{ "org.example.first": [111, 222], "org.example.second": [333, 444] }"#,
+    );
+    let shell = Shell::start(&session, config.path(), |_| {});
+    wait_for(
+        "both windows placed by the shell",
+        &session,
+        &mut mapper,
+        &shell,
+        || {
+            let now = spots(&watch.scene());
+            now.get("org.example.first") == Some(&(112.0, 222.0))
+                && now.get("org.example.second") == Some(&(334.0, 444.0))
+        },
+    );
+    let before = ids(&watch.scene());
+    assert_eq!(before.len(), 2, "two windows: {before:?}");
+
+    // The shell dies: its thread ends and its owner connection closes, which is all the compositor can see of a
+    // process that was killed. The pause is for the compositor to take the close in before the next window maps.
+    let log = shell.finish();
+    assert!(shell.ended().is_none(), "the shell was stopped, not failed: {log:?}");
+    std::thread::sleep(Duration::from_millis(300));
+
+    // Criterion 6, the compositor's half: with no shell holding the tree it still answers, and the Rust fallback
+    // policy is in charge again. It never knew where the shell put the two windows, so they return to the places it
+    // gave them, and a window that maps now takes the next step of the cascade.
+    mapper.map_window("org.example.third", "Third");
+    let (during, _) = wait_for_scene(
+        "the fallback policy placing the three windows",
+        &watch,
+        &mut mapper,
+        |now| {
+            now.get("org.example.third") == Some(&(96.0, 96.0))
+                && now.get("org.example.first") == Some(&(32.0, 32.0))
+                && now.get("org.example.second") == Some(&(64.0, 64.0))
+        },
+    );
+    assert_eq!(
+        scene(&ipc).len(),
+        3,
+        "the compositor still answers a fresh connection while no shell holds the tree"
+    );
+    assert_eq!(
+        ids(&during).get("org.example.first"),
+        before.get("org.example.first"),
+        "the window ids survive the shell"
+    );
+
+    // The shell's half: a restarted shell takes the tree again, is told every window is ready (`x` + 1) and learns
+    // of each (`y`), places the window mapped while it was away, and none of them changes its id.
+    write_guarded_config(
+        config.path(),
+        r#"{ "org.example.first": [500, 400], "org.example.second": [600, 300], "org.example.third": [900, 800] }"#,
+    );
+    let shell = Shell::start(&session, config.path(), |_| {});
+    wait_for("the restarted shell reattaches", &session, &mut mapper, &shell, || {
+        let now = spots(&watch.scene());
+        now.get("org.example.first") == Some(&(501.0, 400.0))
+            && now.get("org.example.second") == Some(&(601.0, 300.0))
+            && now.get("org.example.third") == Some(&(901.0, 800.0))
+    });
+    let after = ids(&watch.scene());
+    assert_eq!(after.get("org.example.first"), before.get("org.example.first"));
+    assert_eq!(after.get("org.example.second"), before.get("org.example.second"));
+    assert_eq!(
+        after.get("org.example.third"),
+        ids(&during).get("org.example.third"),
+        "no window was re-created"
+    );
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 }
 
 /// The UI toolkit against the real compositor (design/js-runtime.md, "P7 UI toolkit status"): a script makes a `Box`

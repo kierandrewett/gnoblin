@@ -81,6 +81,10 @@ pub struct JsRoleConfig {
     pub policy: JsStrikePolicy,
     /// The quiet time the watcher waits for after a change.
     pub debounce: Duration,
+    /// Whether the config directory is watched and a save reloads. Off, a reload happens only when asked
+    /// (`gnoblinctl config reload`): for a config directory on a file system that cannot be watched, and for a
+    /// test that proves the request path and not the watcher.
+    pub watch: bool,
 }
 
 impl JsRoleConfig {
@@ -95,6 +99,7 @@ impl JsRoleConfig {
             entry,
             policy: JsStrikePolicy::default(),
             debounce: RELOAD_DEBOUNCE,
+            watch: true,
         }
     }
 }
@@ -116,6 +121,8 @@ pub struct JsRole {
     diagnostics: Vec<String>,
     /// Why the shell ended during a reload, for the next [`tick`](Self::tick) to return.
     ended: Option<JsShellError>,
+    /// The user's entry module, which may not exist.
+    entry: PathBuf,
 }
 
 impl JsRole {
@@ -140,8 +147,9 @@ impl JsRole {
         Self::over_link(Box::new(link), config)
     }
 
-    /// Boots the shell over `link` and loads the user's entry. The shell runs bare, with the stock library
-    /// and no user code, when there is no entry file or the entry fails; the diagnostic says why.
+    /// Boots the shell over `link` and loads the user's entry. With no entry file, or an entry that fails to
+    /// load, the stock default config runs instead (one floating `desktop`, the stock keys): a shell is never
+    /// left bare. The diagnostic says why a failing entry was not used.
     pub fn over_link(link: Box<dyn TreeLink>, config: JsRoleConfig) -> Result<Self, JsShellError> {
         let mut shell = JsShell::new(link, config.shell.clone())?;
         shell.set_spawner(Box::new(spawn_detached));
@@ -162,12 +170,16 @@ impl JsRole {
         reloader.set_prepare(Box::new(move |generation| staging.prepare(generation)));
 
         let root = &config.shell.js.root;
-        let watcher = match ConfigWatcher::new(root, config.debounce) {
-            Ok(watcher) => Some(watcher),
-            Err(error) => {
-                log::warn!(area = "shell-vm", "the config directory is not watched: {error}");
-                None
+        let watcher = if config.watch {
+            match ConfigWatcher::new(root, config.debounce) {
+                Ok(watcher) => Some(watcher),
+                Err(error) => {
+                    log::warn!(area = "shell-vm", "the config directory is not watched: {error}");
+                    None
+                }
             }
+        } else {
+            None
         };
         let mut role = Self {
             shell,
@@ -177,15 +189,21 @@ impl JsRole {
             handled_strikes: 0,
             diagnostics: Vec::new(),
             ended: None,
+            entry: config.entry.clone(),
         };
         if config.entry.is_file() {
-            role.reload_now();
+            if !role.reload_now().ok {
+                // The entry is broken at startup: the shell still has to work, so the stock config runs until the
+                // file is fixed (the watcher, or a reload, then swaps the user's generation in).
+                role.run_default_config();
+            }
         } else {
             log::info!(
                 area = "shell-vm",
-                "no {} to load; the shell runs without user code until it exists",
+                "no {} to load; the stock config runs until it exists",
                 config.entry.display()
             );
+            role.run_default_config();
             role.rearm_watcher();
         }
         Ok(role)
@@ -227,10 +245,42 @@ impl JsRole {
         Ok(())
     }
 
-    /// Reloads from disk because the user asked (`gnoblinctl reload`) or at startup. A deliberate retry clears the
-    /// supervisor's strikes.
+    /// Reloads from disk because the user asked (`gnoblinctl config reload`) or at startup. A deliberate retry
+    /// clears the supervisor's strikes. With no entry file there is nothing to reload: the stock config keeps
+    /// running and the report says so.
     pub fn reload_now(&mut self) -> ReloadReport {
+        if !self.entry.is_file() {
+            return ReloadReport {
+                ok: true,
+                generation: Some(self.shell.generation_id()),
+                errors: Vec::new(),
+                warnings: vec![format!(
+                    "{} does not exist; the running config stays",
+                    self.entry.display()
+                )],
+                changed: Vec::new(),
+                health: self.reloader.health(),
+            };
+        }
         self.staged(JsReloader::reload_now)
+    }
+
+    /// Runs the stock default config in the running generation, which is the bare one. A failure is a
+    /// diagnostic; a failed link ends the shell, as everywhere else.
+    fn run_default_config(&mut self) {
+        match self.shell.load_default_config() {
+            Ok(diagnostics) => {
+                for diagnostic in diagnostics {
+                    log::warn!(area = "shell-vm", "{diagnostic}");
+                    self.diagnostics.push(diagnostic);
+                }
+            }
+            Err(JsShellError::Js(error)) => {
+                log::warn!(area = "shell-vm", "the stock config did not load: {error}");
+                self.diagnostics.push(error.to_string());
+            }
+            Err(error) => self.ended = Some(error),
+        }
     }
 
     /// Stages with `run` and swaps the staged generation into the shell when it was accepted. A failed stage puts

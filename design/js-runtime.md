@@ -409,10 +409,10 @@ compositor stands in only for the unit tests of `swap_generation` (`crates/gnobl
   `gnoblin` modules from `<dir>` (the layout of `data/js/gnoblin`; a file that is not there is the compiled-in one).
   Unset, `0` or a directory are what they were: the Lua shell VM. The Lua host still loads `init.lua` and commits the
   configuration, so only the shell changes. The user's entry is `init.ts` in `$XDG_CONFIG_HOME/gnoblin` (else
-  `$HOME/.config/gnoblin`), falling back to `init.js`. With neither file the shell runs bare and loads `init.ts` when it
-  appears.
+  `$HOME/.config/gnoblin`), falling back to `init.js`. With neither file the shell runs the stock default config
+  (below) and loads `init.ts` when it appears.
 - **Wiring without a cycle.** `gnoblin-js` and `gnoblin-lua` are siblings and neither names the other. `gnoblin-lua`
-  holds a `ShellFrame` trait (`tick(now)`), `ShellSlot::from_env_or_js` and `RoleRunner::run_with_js`; the `gnoblin`
+  holds a `ShellFrame` trait (`tick(now)`, `reload()`), `ShellSlot::from_env_or_js` and `RoleRunner::run_with_js`; the `gnoblin`
   binary, which already names both ends, wraps a `JsRole` in a `ShellFrame` and passes the launcher. A build that
   passes none refuses `js` with one warning and serves without a shell. `xtask deps` lists `gnoblin-js` among the
   binary's role entry crates for this.
@@ -441,15 +441,46 @@ compositor stands in only for the unit tests of `swap_generation` (`crates/gnobl
   `JsRole::reload_now`) clears the strikes. The shell is a process of its own, so the compositor never waits for a
   script: the test runs the role in a thread, spins a handler for ever, reads the scene through an observer connection
   while it spins, and maps one more window afterwards.
-- **Proven against the real compositor** (`crates/gnoblin/tests/js_shell.rs`; slice criteria 1, 3, 4 and 5): `init.ts`
-  with annotations and an enum importing `./slots.ts` places two mapped windows; a rewrite reloads with the same window
-  ids and new places; a syntax error leaves the old behaviour in force (a window mapped afterwards is placed by it) and
-  is logged once as `init.ts:3:<col>`; fixing the file recovers; a `while (true)` in `onAdded` is interrupted and the
-  generation restarts (the restaged one reads the mark the first wrote and does not hang), the scene answers an
-  observer meanwhile and still updates; a handler that hangs in every generation (it hangs the restage too, while it
-  loads) latches `Degraded` after three strikes and the last generation keeps placing windows; a shell with no
-  `init.ts` runs bare and loads the file when it appears. Not proven here: slice criterion 6
-  (killing the process and the Rust fallback), which needs the guardian and the fallback shell.
+- **Zero-config and layering.** `JsShell::load_default_config` (the `loadDefault` hook of the host module) registers
+  `defaultConfig` alone, as a real runtime config: the `desktop` workspace with `FloatingLayout` (and its move and
+  resize bindings) and the stock keys, each claimed on the first seat. The role runs it when there is no entry file
+  and when the entry fails to load at startup, so a shell is never bare. `defineConfig` no longer registers only
+  the workspaces: the host (`__register`) lays the user's config over `defaultConfig` with `mergeConfig`
+  (`data/js/gnoblin/config.ts`), applies the merged workspaces, and binds the merged keys on the first seat
+  (`spawn`, `show`, `"close"` and function actions; a tree with no seat has no keyboard, so the keys are left out). The merge
+  rule: `workspaces` and `rules` replace as a whole (an absent or empty `workspaces` keeps the stock one); `keys`
+  merge by canonical trigger, the user's replacing the stock key, and a stock key that shows a workspace the merged
+  config does not declare is dropped; `gaps`, `style`, `outputs` and `on` merge by key; `setup` is the user's when
+  given; `decorations` is not layered (a config that does not ask for titlebars has none, as `desugarConfig` says). An `init.ts` that never calls `defineConfig` is a program: it runs as written and gets no stock keys, only
+  the stock workspace when it declared none (`finishLoad`). `style`, `outputs`, `rules`, `on` and `setup` are still
+  not applied by the host.
+- **Reload request path (`gnoblinctl config reload`).** The JS shell lives in the runtime role's process, beside the
+  Lua host that already answers `config.reload`: the compositor raises `session.reload_requested`, and the role's
+  loop reloads the document. No new verb or schema member was added; `ShellFrame::reload` (default `Ok`) and
+  `ShellSlot::reload` let `RoleRunner` ask the shell first, and the `gnoblin` binary's `JsShellFrame` calls
+  `JsRole::reload_now`. A shell that fails refuses the whole request (`config-rejected`, exit 1) with the report
+  `file:line:column: message` before the document is touched, and keeps its generation; a document refused after the
+  shell reloaded leaves the new shell generation running, because the swap cannot be taken back. With no entry file
+  `reload_now` is a successful no-op. `GNOBLIN_JS_WATCH=0` (`JsRoleConfig::watch`) turns the watcher off.
+- **Proven against the real compositor** (`crates/gnoblin/tests/js_shell.rs`, in-process shell over a real
+  headless compositor; `crates/gnoblin/tests/js_guardian.rs`, the shipped binary under its guardian with
+  `GNOBLIN_SHELL_VM=js`; slice criteria 1, 3, 4, 5 and 6): `init.ts` with annotations and an enum importing
+  `./slots.ts` places two mapped windows; a rewrite reloads with the same window ids and new places; a syntax error
+  leaves the old behaviour in force (a window mapped afterwards is placed by it) and is logged once as
+  `init.ts:3:<col>`; fixing the file recovers; a `while (true)` in `onAdded` is interrupted and the generation
+  restarts (the restaged one reads the mark the first wrote and does not hang), the scene answers an observer
+  meanwhile and still updates; a handler that hangs in every generation (it hangs the restage too, while it loads)
+  latches `Degraded` after three strikes and the last generation keeps placing windows. Criterion 6: with the shell
+  gone (its owner connection closed in `js_shell.rs`; the runtime process `SIGKILL`ed in `js_guardian.rs`, where the
+  guardian restarts it) the compositor answers a fresh connection, the Rust fallback policy places a window mapped
+  meanwhile at the next step of the cascade (96, 96 after (32, 32) and (64, 64)) and takes the two windows the shell
+  had moved back to the places it gave them (it never knew the shell's), and the restarted shell reattaches, is told
+  every window is ready, learns of each and places them again with their ids unchanged. Zero-config: with no
+  `init.ts` the shell runs `desktop` with `FloatingLayout` and the stock keys, and a `defineConfig` layered over it
+  has its workspaces, its keys, the stock keys it left alone and not the stock key that showed the dropped
+  workspace; the file's appearing is a reload. `gnoblinctl config reload` against the real session with the watcher
+  off: an edit alone changes nothing; the request exits 0 and the shell takes the file with the same window id; a
+  syntax error exits 1 with `init.ts:3:` and the old generation places a new window; the fixed file recovers.
 - **What the real tree changed in the binding.** The fake compositor's ids are small and its windows hang under the
   root; the real tree's are not. (1) The compositor's own nodes have ids with bit 63 set, which a script number
   cannot hold, so a node crosses into script as a number from `NodeHandles` (`bindings/mod.rs`): an id below
@@ -464,9 +495,9 @@ compositor stands in only for the unit tests of `swap_generation` (`crates/gnobl
   without it the next batch is a `Gap` or every later write waits for ever. The stock floating layout places an
   arrival after the listeners have run, so a config that wants its own listener to place windows declares a workspace
   with the base `Layout`, as the tests do.
-- **Not done.** The second owner connection for slots and dialogs, input events and chords (the binding lane), the
-  `gnoblinctl reload` request path into `JsRole::reload_now`, and the stock config plan applied as a runtime (the
-  shell with no `init.ts` runs bare, not as `defaultConfig`).
+- **Not done.** The second owner connection for slots and dialogs, input events and chords (the binding lane), and
+  the host's application of `style`, `outputs`, `rules`, `on` and `setup`. Removing `init.ts` under a running shell
+  keeps its generation until the session restarts.
 
 ## P7 UI toolkit status
 

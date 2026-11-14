@@ -182,7 +182,8 @@ gnoblinctl output call 6 apply
 ## Config
 
 - `gnoblinctl config get` prints the configuration the compositor last accepted.
-- `gnoblinctl config reload` asks the runtime to re-read its configuration.
+- `gnoblinctl config reload` asks the runtime to re-read its configuration. When the runtime runs the
+  [TypeScript shell](typescript-shell.md), the request reloads its `init.ts` as well.
 - `gnoblinctl config validate FILE` checks a file with the runtime's parser. It
   needs no session.
 
@@ -199,6 +200,28 @@ A file that does not parse exits 1 with `invalid-config`, and names the line:
 ```text
 gnoblinctl: invalid-config: /home/node/cli-e2e/bad.lua:1: syntax error near 'is'
 ```
+
+`config reload` with the TypeScript shell reloads the shell first and then the configuration document, and the reply is
+one answer for both:
+
+```sh
+gnoblinctl config reload
+```
+
+```text
+reloaded: revision 3
+```
+
+A `init.ts` that fails to load refuses the whole request before the document is touched. The running shell keeps
+its config, the command exits 1, and the message names the file, line and column in the `.ts` source:
+
+```text
+gnoblinctl: config-rejected: the shell's configuration was not reloaded, and the running one stays: init.ts:3:22: Unexpected token
+```
+
+A document that is refused after the shell reloaded leaves the new shell config running: the two are separate files
+and the shell cannot take its swap back. A session with no `init.ts` has nothing to reload on the shell side, and the
+request reloads the document alone.
 
 ## Check and types
 

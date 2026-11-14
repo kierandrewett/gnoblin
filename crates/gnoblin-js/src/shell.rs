@@ -362,6 +362,23 @@ impl JsShell {
         Ok(diagnostics)
     }
 
+    /// Runs the stock default config as the generation's whole config, for a shell with no user entry (or whose
+    /// entry could not load): one floating `desktop` workspace and the stock keys, declared exactly as a user's
+    /// `defineConfig({})` would declare them. Returns the failures of calls that ran while it loaded.
+    ///
+    /// # Errors
+    ///
+    /// The stock config threw (a bug in the library) or the link failed.
+    pub fn load_default_config(&mut self) -> Result<Vec<String>, JsShellError> {
+        self.call_entry(self.entry_budget, |entry| {
+            entry.get::<_, Function<'_>>("loadDefault")?.call::<_, ()>(())
+        })?;
+        self.finish_load()?;
+        let mut diagnostics = Vec::new();
+        self.collect_reports(&mut diagnostics)?;
+        Ok(diagnostics)
+    }
+
     /// Which window is on which workspace and which workspace is shown, to hand to the shell of the next
     /// generation. Workspaces are script objects, so the compositor cannot say.
     pub fn workspace_snapshot(&mut self) -> Result<JsWorkspaceSnapshot, JsShellError> {

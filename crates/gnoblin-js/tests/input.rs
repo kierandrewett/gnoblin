@@ -1796,3 +1796,80 @@ fn retiring_the_shell_cancels_what_is_running_once_and_releases_every_claim() {
     rig.shell.retire().expect("retire runs again");
     assert_eq!(rig.log(), "p:start:3:50,60|p:update:70,80|p:cancel:1");
 }
+
+// -- the stock config as a runtime config ------------------------------------------------------------------
+
+/// A shell over `comp` that has run no entry.
+fn bare_shell(comp: &Comp) -> (JsShell, TempDir) {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
+    let shell = JsShell::new(Box::new(FakeLink(comp.clone())), JsShellConfig::new(&root)).expect("the shell boots");
+    (shell, dir)
+}
+
+#[test]
+fn with_no_entry_the_stock_config_runs_one_floating_desktop_and_claims_the_stock_keys() {
+    let comp = world(false);
+    let (mut shell, _dir) = bare_shell(&comp);
+    let loaded = shell.load_default_config().expect("the stock config loads");
+    assert!(loaded.is_empty(), "{loaded:?}");
+    let frame = shell.frame().expect("a frame");
+    assert!(frame.diagnostics.is_empty(), "{:?}", frame.diagnostics);
+
+    assert_eq!(
+        shell
+            .eval("gnoblin.workspaces.map((w) => w.id + ':' + w.layout.constructor.name + ':' + w.active).join()")
+            .expect("the script runs"),
+        Some("desktop:FloatingLayout:true".to_owned())
+    );
+    let claimed = comp.claimed();
+    for chord in [
+        "<Super>1",
+        "XF86AudioMute",
+        "XF86AudioPlay",
+        // The floating layout's own move and resize bindings.
+        "<Super>Button1",
+        "<Super>Button3",
+    ] {
+        assert!(
+            claimed.iter().any(|held| held.contains(chord)),
+            "the stock config claims {chord}: {claimed:?}"
+        );
+    }
+}
+
+#[test]
+fn a_defined_config_is_layered_over_the_stock_one_and_its_keys_are_claimed() {
+    let comp = world(false);
+    let mut rig = rig(
+        &comp,
+        "import { defineConfig, spawn } from \"gnoblin\";\n\
+         export default defineConfig({\n\
+         \x20   workspaces: [{ id: \"a\", layout: \"monocle\" }, { id: \"b\", layout: \"monocle\" }],\n\
+         \x20   keys: { \"Super+Return\": spawn(\"true\"), \"XF86AudioMute\": spawn(\"true\") },\n\
+         });\n",
+    );
+    assert_eq!(
+        rig.eval("gnoblin.workspaces.map((w) => w.id).join()"),
+        "a,b",
+        "the user's workspaces replace the stock one"
+    );
+    let claimed = rig.comp.claimed();
+    assert!(
+        claimed.iter().any(|held| held.contains("<Super>Return")),
+        "the user's key is claimed: {claimed:?}"
+    );
+    assert!(
+        claimed.iter().any(|held| held.contains("XF86AudioPlay")),
+        "a stock key the user did not mention survives: {claimed:?}"
+    );
+    assert!(
+        !claimed.iter().any(|held| held.contains("<Super>1")),
+        "the stock Super+1 showed the workspace the user dropped, so it is gone: {claimed:?}"
+    );
+    assert_eq!(
+        claimed.iter().filter(|held| held.contains("XF86AudioMute")).count(),
+        1,
+        "a key the user redefined is claimed once: {claimed:?}"
+    );
+}

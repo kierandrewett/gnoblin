@@ -10,8 +10,8 @@
 // invocation per interested listener; the host then runs them one by one under a time budget each, so a
 // listener that throws or never returns does not stop the others.
 
-import { desugarConfig, defaultConfig } from "gnoblin/config";
-import type { GnoblinConfig } from "gnoblin/config";
+import { desugarConfig, defaultConfig, mergeConfig } from "gnoblin/config";
+import type { GnoblinConfig, GnoblinHost, PlannedKey, ResolvedAction } from "gnoblin/config";
 import { Layout } from "gnoblin/layout";
 import type { Gaps, LayoutContext } from "gnoblin/layout";
 import {
@@ -66,6 +66,8 @@ interface Entry {
     ui(): void;
     /** Gives a config that declared no workspace the stock one. */
     finishLoad(): void;
+    /** Registers the stock config alone, for a shell that has no user entry to run. */
+    loadDefault(): void;
     snapshot(): WorkspaceSnapshot;
     reconcile(previous: WorkspaceSnapshot): void;
 }
@@ -1388,17 +1390,52 @@ class Gnoblin {
     }
 
     /**
-     * The hook `defineConfig` calls with the config it was given: the declared workspaces become real
-     * `Workspace` objects in `gnoblin.workspaces`.
+     * The hook `defineConfig` calls with the config it was given. The config is laid over the stock one
+     * (`mergeConfig`), then the declared workspaces become real `Workspace` objects in `gnoblin.workspaces` and
+     * the keys are bound on the first seat.
      */
     __register(config: GnoblinConfig): void {
-        const plan = desugarConfig(config);
+        const plan = desugarConfig(mergeConfig(defaultConfig, config));
         for (const planned of plan.workspaces) {
             addWorkspace(new Workspace({ id: planned.id, layout: planned.layout, gaps: planned.gaps }));
         }
         if (plan.decorations) {
             decorate();
         }
+        bindKeys(plan.bindings);
+    }
+}
+
+/** What a key of the config does when it is pressed. */
+function keyHandler(action: ResolvedAction): () => void {
+    switch (action.kind) {
+        case "spawn":
+            return () => gnoblin.spawn([...action.argv]);
+        case "show":
+            return () => gnoblin.show(action.workspace);
+        case "close":
+            return () => (input.primary.focusedClient as Client | null)?.close();
+        case "call":
+            return () => action.handler({ gnoblin: gnoblin as unknown as GnoblinHost });
+    }
+}
+
+/** Binds the config's keys on the first seat. A tree with no seat has no keyboard to bind, so its keys are left out. */
+function bindKeys(keys: readonly PlannedKey[]): void {
+    if (keys.length === 0) {
+        return;
+    }
+    let seat;
+    try {
+        seat = input.primary;
+    } catch (error) {
+        if (error instanceof GnoblinError && error.code === "no-seat") {
+            return;
+        }
+        throw error;
+    }
+    for (const { trigger, action } of keys) {
+        seat.bind(trigger, keyHandler(action));
     }
 }
 
@@ -1418,6 +1455,7 @@ host.entry = {
     takeErrors,
     layout,
     finishLoad: ensureDefaultWorkspace,
+    loadDefault: () => gnoblin.__register(defaultConfig),
     snapshot: snapshotWorkspaces,
     reconcile: reconcileWorkspaces,
     input: (messages) => {
