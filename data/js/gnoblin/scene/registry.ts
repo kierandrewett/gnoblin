@@ -23,6 +23,21 @@ export function mountOnRoot(node: Node): void {
     }
 }
 
+/**
+ * Puts `node` last under `parent`, a node of the tree that is not a scene node of this module (a canvas of the UI
+ * toolkit, say). A node already in the tree moves. This is how a `View` goes into an outlet of a window frame.
+ */
+export function mountUnder(node: Node, parent: NodeId): void {
+    const code = host().insert(nodeIdOf(node), parent, -1);
+    if (code !== undefined) {
+        throw new SceneError(
+            errorCodeOfRefusal(code),
+            `${label(node)}.mount`,
+            `the shell refused to mount the node (${code})`,
+        );
+    }
+}
+
 /** The node a script object stands for, for the objects of this module. */
 export const nodes = new WeakMap<object, NodeId>();
 

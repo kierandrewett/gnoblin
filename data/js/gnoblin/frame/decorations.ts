@@ -1,0 +1,191 @@
+// `Decorations`: the collection listener that gives every window a `WindowFrame`.
+// Attach it to `gnoblin.clients` (`startDecorations` does) and it frames each client that is there and each that arrives,
+// calls the script's `frame` callback to fill the frame, rebuilds the frame when the window's `decoration` changes, and
+// takes it away when the window leaves. design/window-frame.md, decision 1.
+
+import type { FrameClient, FrameHooks } from "gnoblin/frame/client";
+import { WindowFrame } from "gnoblin/frame/frame";
+import type { FrameKind } from "gnoblin/frame/frame";
+import { NO_INSET } from "gnoblin/frame/inset";
+import type { FrameInset } from "gnoblin/frame/inset";
+import { defaultTitlebarStyle, titlebarFill } from "gnoblin/titlebar";
+import type { TitlebarStyle } from "gnoblin/titlebar";
+
+/** A client the decorations can ask who draws its frame. A `Client` of the host module is one. */
+export interface DecoratedClient extends FrameClient {
+    /**
+     * Who draws the window's frame, as the compositor negotiated it (`Window.decoration`): `server` when the shell
+     * does, `client` when the client draws its own title bar, `none` for a window nobody frames.
+     */
+    readonly decoration: string;
+}
+
+/**
+ * Fills a frame. It runs once for each window when its frame is made, and again when the window's `decoration` changes,
+ * with the window and its frame: read the outlets you want and put nodes in them. It returns `false` to give this window
+ * no frame at all. A frame of a window that draws its own frame (`frame.server` false) has the underlay and the overlay only.
+ */
+export type FrameFill = (client: DecoratedClient, frame: WindowFrame) => false | void;
+
+/** Picks a fill for the windows it matches: the first rule that matches a window decides. `frame: false` frames none. */
+export interface FrameRule {
+    /** The application id, or an expression it must match. */
+    appId?: string | RegExp;
+    /** The title the window has when its frame is made, or an expression it must match. */
+    title?: string | RegExp;
+    frame: FrameFill | false;
+}
+
+/** What the shell host supplies `Decorations` so a script does not have to: where a window's node is, and what its buttons do. */
+export interface FrameHost {
+    nodeOf(client: DecoratedClient): number;
+    hooks: FrameHooks;
+}
+
+let frameHost: FrameHost | null = null;
+
+/** Connects the decorations to the shell host. The shell calls it once per generation. */
+export function attachFrameHost(host: FrameHost): void {
+    frameHost = host;
+}
+
+/** Options of `Decorations`. Every one is optional; the shell's own supply `nodeOf` and `hooks`. */
+export interface DecorationsOptions {
+    /** Fills the frame of each window that no rule picked. Left out, the stock titlebar (`style`). */
+    frame?: FrameFill;
+    /** Fills the frames of the windows a rule matches, ahead of `frame`. */
+    rules?: readonly FrameRule[];
+    /** The look of the stock titlebar. Read live, so a change reaches the bars that are there. */
+    style?: TitlebarStyle;
+    /** Puts resize handles this many pixels outside the frame of every server window. Left out, there are none. */
+    resizeHandles?: number;
+    nodeOf?: (client: DecoratedClient) => number;
+    hooks?: FrameHooks;
+}
+
+function matches(wanted: string | RegExp | undefined, actual: string): boolean {
+    return wanted === undefined || (typeof wanted === "string" ? wanted === actual : wanted.test(actual));
+}
+
+/**
+ * Gives every window a `WindowFrame` and fills it. A window the compositor told to be server-decorated gets a `server`
+ * frame with edges and an inset; any other window gets a `layers` frame, which has the underlay and the overlay and no
+ * inset: a client that draws its own title bar (a GTK or Qt window, foot) never gets a second bar over it.
+ * The compositor tells a client that asks for server-side that the server draws only while this shell has declared
+ * decorations (`Seat.decorations_available`), so a window that asked for a frame the shell does not draw is told to draw its own.
+ *
+ * `insetOf(client)` is how much room the client's frame takes round its content: 0 on every side for a client with no
+ * frame. The layout driver leaves that much free round every window it places, so the frame and the content never overlap.
+ */
+export class Decorations {
+    readonly style: TitlebarStyle;
+    readonly hooks: FrameHooks;
+    readonly #nodeOf: (client: DecoratedClient) => number;
+    readonly #fill: FrameFill;
+    readonly #rules: readonly FrameRule[];
+    readonly #resizeHandles: number;
+    readonly #frames = new Map<DecoratedClient, WindowFrame>();
+
+    constructor(options: DecorationsOptions = {}) {
+        this.style = options.style ?? { ...defaultTitlebarStyle };
+        this.hooks = options.hooks ?? frameHost?.hooks ?? {};
+        this.#nodeOf = options.nodeOf ?? ((client) => this.#host().nodeOf(client));
+        this.#fill = options.frame ?? titlebarFill(this.style);
+        this.#rules = options.rules ?? [];
+        this.#resizeHandles = options.resizeHandles ?? 0;
+    }
+
+    #host(): FrameHost {
+        if (frameHost === null) {
+            throw new Error("Decorations needs the shell host to find a window's node: pass `nodeOf`");
+        }
+        return frameHost;
+    }
+
+    /** The frame of `client`, if it has one. */
+    frameOf(client: DecoratedClient): WindowFrame | undefined {
+        return this.#frames.get(client);
+    }
+
+    /** The room `client`'s frame takes round its content: nothing on any side with no frame, or while fullscreen. */
+    insetOf(client: DecoratedClient): FrameInset {
+        return this.#frames.get(client)?.inset ?? NO_INSET;
+    }
+
+    /** The room `client`'s frame keeps for itself even while fullscreen hides it. */
+    reservedOf(client: DecoratedClient): FrameInset {
+        return this.#frames.get(client)?.reserved ?? NO_INSET;
+    }
+
+    /**
+     * Takes the frame of `client` away and makes it again, calling the fill again. A rule that reads the title or a
+     * fill that reads another property of the window is decided when the frame is made, so a script that wants it
+     * decided again calls this.
+     */
+    reframe(client: DecoratedClient): void {
+        this.#drop(client);
+        this.#build(client);
+    }
+
+    onAdded(client: DecoratedClient): void {
+        this.#follow(client);
+    }
+
+    /** The compositor changed who draws the client's frame: the frame is made again for it. */
+    onDecorationChanged(client: DecoratedClient): void {
+        this.#follow(client);
+    }
+
+    onRemoved(client: DecoratedClient): void {
+        this.#drop(client);
+    }
+
+    #drop(client: DecoratedClient): void {
+        this.#frames.get(client)?.destroy();
+        this.#frames.delete(client);
+    }
+
+    /** Makes the client's frame when it has none, and again when the kind of frame it takes has changed. */
+    #follow(client: DecoratedClient): void {
+        const have = this.#frames.get(client);
+        if (have?.kind === this.#kindOf(client)) {
+            return;
+        }
+        this.#drop(client);
+        this.#build(client);
+    }
+
+    #kindOf(client: DecoratedClient): FrameKind {
+        return client.decoration === "server" ? "server" : "layers";
+    }
+
+    #fillFor(client: DecoratedClient): FrameFill | false {
+        const appId = client.appId ?? "";
+        const rule = this.#rules.find(
+            (candidate) => matches(candidate.appId, appId) && matches(candidate.title, client.title),
+        );
+        return rule === undefined ? this.#fill : rule.frame;
+    }
+
+    /** Fills a new frame. A fill that throws or returns `false` leaves no frame behind, so no half-built one takes room. */
+    #build(client: DecoratedClient): void {
+        const fill = this.#fillFor(client);
+        if (fill === false) {
+            return;
+        }
+        const frame = new WindowFrame(client, this.#nodeOf(client), { kind: this.#kindOf(client), hooks: this.hooks });
+        try {
+            if (fill(client, frame) === false) {
+                frame.destroy();
+                return;
+            }
+            if (frame.server && this.#resizeHandles > 0) {
+                frame.resizeHandles(this.#resizeHandles);
+            }
+        } catch (error) {
+            frame.destroy();
+            throw error;
+        }
+        this.#frames.set(client, frame);
+    }
+}

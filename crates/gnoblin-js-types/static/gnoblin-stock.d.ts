@@ -319,8 +319,8 @@ declare module "gnoblin" {
         maximised: boolean;
         /** Whether the window is minimised. Writing asks the compositor to minimise or restore it. */
         minimised: boolean;
-        /** The room a titlebar takes above the content: `bounds` is the content, the frame is the content with this on top. */
-        readonly frameInset: number;
+        /** The room the window's frame takes on each side of the content: `bounds` is the content, the frame is the content with this round it. */
+        readonly frameInset: FrameInset;
     }
 
     /** Rotation about each axis in radians, or the scale along each axis: three numbers. */
@@ -2355,7 +2355,12 @@ declare module "gnoblin" {
         stop(): void;
     }
 
-    /** Options for a canvas: its position and size in pixels, and whether it is shown, see-through or secure. */
+    /**
+     * Where a canvas that is a child of a window sits: `frame` in front of the content and part of the window's frame, `over`
+     * in front and not part of it, `under` behind the content and not part of it.
+     */
+    export type CanvasPlacement = "frame" | "over" | "under";
+    /** Options for a canvas: its position and size in pixels, and whether it is shown, see-through, secure or takes the pointer. */
     export interface CanvasOptions {
         x?: number;
         y?: number;
@@ -2364,6 +2369,8 @@ declare module "gnoblin" {
         visible?: boolean;
         opacity?: number;
         secure?: boolean;
+        input?: boolean;
+        placement?: CanvasPlacement;
     }
     /** A node that paints what `draw()` returns. */
     export class Canvas {
@@ -2376,6 +2383,11 @@ declare module "gnoblin" {
         visible: boolean;
         opacity: number;
         secure: boolean;
+        /** Whether the pointer lands on the canvas; with false it goes through to what is under. */
+        input: boolean;
+        placement: CanvasPlacement;
+        /** The reactive properties of the canvas: `canvas.properties.bind("visible", () => !client.focused)`. */
+        readonly properties: PropertyBindings;
         width: number | null;
         height: number | null;
         readonly alive: boolean;
@@ -2560,34 +2572,393 @@ declare module "gnoblin" {
     }
     /** The stock titlebar values. */
     export const defaultTitlebarStyle: Readonly<TitlebarStyle>;
-    /** Hooks for the titlebar's built-in buttons and pointer interaction. */
-    export interface TitlebarHooks {
-        menu?(client: unknown): void;
-        lower?(client: unknown): void;
-        maximise?(client: unknown, on: boolean): void;
-        minimise?(client: unknown): void;
+    /** What a window frame needs of a window. A `Client` is one. */
+    export interface FrameClient {
+        readonly title: string;
+        readonly focused: boolean;
+        readonly fullscreen: boolean;
+        /** The content's size: the frame is the content with its inset round it. */
+        readonly width: number;
+        readonly height?: number;
+        readonly appId?: string;
+        /** False once the compositor has destroyed the window. */
+        readonly alive?: boolean;
+        x: number;
+        y: number;
+        maximised: boolean;
+        minimised: boolean;
+        /** The content's rectangle, which a `ResizeHandle` writes. */
+        bounds?: Rect;
+        minSize?: { width: number; height: number };
+        maxSize?: { width: number; height: number };
+        close(): void;
+        animate?(
+            values: { opacity?: number; scale?: [number, number, number] },
+            options: { duration: number; easing?: "ease-in" | "ease-out" },
+        ): void;
+    }
+    /** What the seat's click actions do that a frame cannot do alone: the shell supplies them. */
+    export interface FrameHooks {
+        menu?(client: FrameClient): void;
+        lower?(client: FrameClient): void;
+        maximise?(client: FrameClient, on: boolean): void;
+        minimise?(client: FrameClient): void;
         /** The milliseconds an animation takes: 0 while the seat asks for reduced motion. */
         motion?(duration: number): number;
-        /** A button went down on the bar itself: the window is pressed, so it takes the focus. */
-        press?(client: unknown, event: { x: number; y: number; button: number }): void;
-        release?(client: unknown, event: { x: number; y: number; button: number }): void;
+        /** A button went down on the frame itself: the window is pressed, so it takes the focus. */
+        press?(client: FrameClient, event: { x: number; y: number; button: number }): void;
+        release?(client: FrameClient, event: { x: number; y: number; button: number }): void;
     }
-    /** The bar above a window's content. A press does what the seat's `double_click`, `middle_click` and `right_click` say. */
-    export class Titlebar extends Box {
-        constructor(client: Client, style?: TitlebarStyle, hooks?: TitlebarHooks);
-        readonly inset: number;
-        readonly title: Text;
+    /** What a part is made for: the window, the shell's hooks and the actions every part shares. */
+    export interface FrameContext {
+        readonly client: FrameClient;
+        readonly hooks: FrameHooks;
+        readonly actions: WindowActions;
     }
-    /** Tracks titlebars for clients and reports their content insets. */
+    /** The fade of a window being closed, in milliseconds. */
+    export const CLOSE_FADE_MS: number;
+    /** A window still there this long after it was asked to close is shown again, in milliseconds. */
+    export const CLOSE_RESTORE_MS: number;
+    /** The three clicks the seat gives an action to. */
+    export type SeatGesture = "double_click" | "middle_click" | "right_click";
+    /** What a frame does to its window: close with a fade, maximise, minimise and the seat's click actions. */
+    export class WindowActions {
+        constructor(client: FrameClient, hooks?: FrameHooks);
+        readonly client: FrameClient;
+        readonly hooks: FrameHooks;
+        /** The clock the double click and the fade are timed by, in milliseconds. */
+        now: () => number;
+        /** Whether the window is fading out to be closed, or has been asked to close and has not gone yet. */
+        readonly closing: boolean;
+        /** Fades the window out and closes it; a window that stays is shown again. */
+        close(): void;
+        /** Takes a close on to its next step. A frame calls it once a frame. */
+        advance(): void;
+        toggleMaximise(): void;
+        minimise(): void;
+        /** Runs what the seat says a click does. */
+        gesture(property: SeatGesture): void;
+    }
+    /** The room a window's frame takes on each side of its content, in pixels. */
+    export interface FrameInset {
+        readonly top: number;
+        readonly right: number;
+        readonly bottom: number;
+        readonly left: number;
+    }
+    /** No room on any side. */
+    export const NO_INSET: FrameInset;
+    /** Whether `inset` takes no room on any side. */
+    export function isNoInset(inset: FrameInset): boolean;
+    /** Whether two insets are the same on every side. */
+    export function sameInset(a: FrameInset, b: FrameInset): boolean;
+    /** The frame of a content rectangle: `content` with `inset` added on each side. */
+    export function growRect(content: Rect, inset: FrameInset): Rect;
+    /** The content rectangle of a frame: `frame` less `inset` on each side. */
+    export function shrinkRect(frame: Rect, inset: FrameInset): Rect;
+    /** `area` less `inset`, at least one pixel each way. */
+    export function insetArea(area: Rect, inset: FrameInset): Rect;
+    /** The rectangle `start` becomes when the corner or side `corner` of it moves by `delta`. */
+    export function resizedRect(
+        start: Rect,
+        corner: ResizeCorner | ResizeEdge,
+        delta: { x: number; y: number },
+        min?: { width: number; height: number },
+        max?: { width: number; height: number },
+    ): Rect;
+    /** The window's content size and the room its frame takes round it. */
+    export interface FrameGeometry {
+        readonly width: number;
+        readonly height: number;
+        readonly inset: FrameInset;
+    }
+    /** What an outlet asks of the frame that made it. */
+    export interface OutletOwner {
+        readonly client: FrameClient;
+        geometry(): FrameGeometry;
+    }
+    /** A place in a window frame that a script fills with its own nodes. An outlet is a `Box`. */
+    export class Outlet extends Box {
+        constructor(owner: OutletOwner, name: string, options?: BoxOptions);
+        readonly name: string;
+        readonly owner: OutletOwner;
+        /** Hides the outlet and takes back its room while true. */
+        hidden: boolean;
+        /** Hides the outlet and takes back its room while it returns true for the window. */
+        hideWhen: ((client: FrameClient) => boolean) | null;
+        /** Runs once a frame before the outlet is placed. */
+        onRefresh: (() => void) | null;
+        onAdded: ((child: Canvas | Node) => void) | null;
+        /** Whether the outlet shows and takes its room now. */
+        readonly shown: boolean;
+        readonly enabled: boolean;
+        /** Puts a canvas or a scene node last under the outlet. */
+        add(child: Canvas | Node): this;
+        /** Destroys every node that was added. */
+        clear(): void;
+    }
+    /** The four edges of a frame. */
+    export type Side = "top" | "right" | "bottom" | "left";
+    /** The three zones of an edge, in order along it. */
+    export interface EdgeZones {
+        readonly start: Outlet;
+        readonly center: Outlet;
+        readonly end: Outlet;
+    }
+    /** An edge of a frame. Its thickness is room the layout leaves round the window's content. */
+    export class EdgeOutlet extends Outlet {
+        constructor(owner: OutletOwner, side: Side);
+        readonly side: Side;
+        /** The thickness in pixels, or null to measure the nodes added. */
+        size: number | null;
+        /** The room the edge takes while the window is not fullscreen. */
+        readonly reserved: number;
+        /** The room the edge takes now. */
+        readonly thickness: number;
+        readonly start: Outlet;
+        readonly center: Outlet;
+        readonly end: Outlet;
+    }
+    /** The four corners of a frame. */
+    export type Corner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
+    /** A square at a corner of a frame, over the edges that meet there. It takes no room. */
+    export class CornerOutlet extends Outlet {
+        constructor(owner: OutletOwner, corner: Corner);
+        readonly corner: Corner;
+        /** The side of the square, or null for the thicker of the two edges that meet there. */
+        size: number | null;
+    }
+    /** Which side of the window's content a layer sits. */
+    export type LayerKind = "under" | "over";
+    /** The underlay behind a window's content or the overlay in front of it. It takes no room and no pointer. */
+    export class LayerOutlet extends Outlet {
+        constructor(owner: OutletOwner, kind: LayerKind);
+        readonly kind: LayerKind;
+        /** How many pixels past the frame the layer reaches on every side. */
+        bleed: number;
+    }
+    /** What a frame is for: `server` for a window the shell frames, `layers` for one that draws its own frame. */
+    export type FrameKind = "server" | "layers";
+    /** The content outlet: where the client's surface sits. It is not fillable. */
+    export interface ContentOutlet {
+        readonly rect: Rect;
+        readonly inset: FrameInset;
+    }
+    /** The surface round one window's content, with outlets a script fills with its own nodes. */
+    export class WindowFrame implements FrameContext, OutletOwner {
+        constructor(
+            client: FrameClient,
+            node: number,
+            options?: { kind?: FrameKind; hooks?: FrameHooks; actions?: WindowActions },
+        );
+        readonly client: FrameClient;
+        readonly hooks: FrameHooks;
+        readonly actions: WindowActions;
+        readonly kind: FrameKind;
+        readonly server: boolean;
+        readonly alive: boolean;
+        geometry(): FrameGeometry;
+        /** The room the frame takes round the content now: nothing while fullscreen or with no server frame. */
+        readonly inset: FrameInset;
+        /** The room the frame keeps for itself even while fullscreen hides it. */
+        readonly reserved: FrameInset;
+        readonly content: ContentOutlet;
+        readonly top: EdgeOutlet;
+        readonly bottom: EdgeOutlet;
+        readonly left: EdgeOutlet;
+        readonly right: EdgeOutlet;
+        readonly topLeft: CornerOutlet;
+        readonly topRight: CornerOutlet;
+        readonly bottomLeft: CornerOutlet;
+        readonly bottomRight: CornerOutlet;
+        /** The first zone of the top edge. */
+        readonly start: Outlet;
+        readonly center: Outlet;
+        readonly end: Outlet;
+        /** The layer behind the window's content. */
+        readonly underlay: LayerOutlet;
+        /** The layer in front of the window. */
+        readonly overlay: LayerOutlet;
+        /** Puts the eight resize handles round the frame, `thickness` pixels reaching outside it. */
+        resizeHandles(thickness?: number, options?: Omit<ResizeHandlesOptions, "thickness">): ResizeHandles;
+        destroy(): void;
+    }
+    /** A client the decorations can ask who draws its frame. */
+    export interface DecoratedClient extends FrameClient {
+        readonly decoration: string;
+    }
+    /** Fills a frame; returns false to give the window no frame. */
+    export type FrameFill = (client: DecoratedClient, frame: WindowFrame) => false | void;
+    /** Picks a fill for the windows it matches: the first rule that matches decides. */
+    export interface FrameRule {
+        appId?: string | RegExp;
+        title?: string | RegExp;
+        frame: FrameFill | false;
+    }
+    /** Options of `Decorations` and `startDecorations`. */
+    export interface DecorationsOptions {
+        /** Fills the frame of each window that no rule picked. Left out, the stock titlebar. */
+        frame?: FrameFill;
+        rules?: readonly FrameRule[];
+        /** The look of the stock titlebar. */
+        style?: TitlebarStyle;
+        /** Puts resize handles this many pixels outside the frame of every server window. */
+        resizeHandles?: number;
+        nodeOf?: (client: DecoratedClient) => number;
+        hooks?: FrameHooks;
+    }
+    /** Gives every window a `WindowFrame` and fills it. A collection listener for `gnoblin.clients`. */
     export class Decorations {
-        constructor(nodeOf: (client: Client) => number, style?: TitlebarStyle, hooks?: TitlebarHooks);
-        titlebarOf(client: Client): Titlebar | undefined;
-        /** The height of the bar above `client`'s content; 0 without a bar (a window that draws its own frame has none) or while fullscreen. */
-        insetOf(client: Client): number;
-        onAdded(client: Client): void;
-        onDecorationChanged(client: Client): void;
-        onRemoved(client: Client): void;
+        constructor(options?: DecorationsOptions);
+        readonly style: TitlebarStyle;
+        readonly hooks: FrameHooks;
+        frameOf(client: DecoratedClient): WindowFrame | undefined;
+        /** The room `client`'s frame takes round its content: nothing without a frame or while fullscreen. */
+        insetOf(client: DecoratedClient): FrameInset;
+        reservedOf(client: DecoratedClient): FrameInset;
+        /** Takes the frame away and makes it again, calling the fill again. */
+        reframe(client: DecoratedClient): void;
+        onAdded(client: DecoratedClient): void;
+        onDecorationChanged(client: DecoratedClient): void;
+        onRemoved(client: DecoratedClient): void;
     }
+    /** What a press on a part of a frame does to the window: a drag moves it, clicks run the seat's actions. */
+    export class WindowDrag {
+        constructor(context: FrameContext);
+        readonly context: FrameContext;
+        /** Makes a canvas a drag area. */
+        attach(canvas: Canvas): void;
+        press(event: UiPointerEvent): void;
+        motion(event: UiPointerEvent): void;
+        release(event: UiPointerEvent): void;
+    }
+    /** The window's title as one line of text that follows the window. */
+    export class TitleText extends Text {
+        constructor(context: FrameContext, options?: TextOptions);
+        readonly context: FrameContext;
+    }
+    /** The three window buttons. */
+    export type WindowButtonName = "minimise" | "maximise" | "close";
+    /** The icon of each window button. */
+    export const defaultButtonIcons: Readonly<Record<WindowButtonName, string>>;
+    /** Options of a `WindowButton`. */
+    export interface WindowButtonOptions extends IconOptions {
+        /** The icon the maximise button shows while the window is maximised. */
+        restoreIcon?: string;
+    }
+    /** One of the window's buttons as an icon. */
+    export class WindowButton extends Icon {
+        constructor(context: FrameContext, name: WindowButtonName, options?: WindowButtonOptions);
+        readonly context: FrameContext;
+        readonly name: WindowButtonName;
+        restoreIcon: string | null;
+    }
+    /** Options of `WindowButtons`. */
+    export interface WindowButtonsOptions extends BoxOptions {
+        buttons?: readonly WindowButtonName[];
+        button?: WindowButtonOptions;
+        icons?: Partial<Record<WindowButtonName, string>>;
+    }
+    /** The window's buttons in a row. */
+    export class WindowButtons extends Box {
+        constructor(context: FrameContext, options?: WindowButtonsOptions);
+        readonly buttons: Map<WindowButtonName, WindowButton>;
+    }
+    /** Options of an `AppIcon`. */
+    export interface AppIconOptions extends BoxOptions {
+        size?: number;
+        color?: string;
+    }
+    /** The letter and colour of an application id. */
+    export function appTile(appId: string): { letter: string; colour: string };
+    /** A rounded tile with the application's initial. */
+    export class AppIcon extends Box {
+        constructor(context: FrameContext, options?: AppIconOptions);
+        readonly context: FrameContext;
+        size: number;
+        color: string;
+    }
+    /** A box that moves the window when it is dragged and answers the seat's double, middle and right clicks. */
+    export class DragArea extends Box {
+        constructor(context: FrameContext, options?: BoxOptions);
+        readonly context: FrameContext;
+        readonly drag: WindowDrag;
+    }
+    /** The side or corner of the window a resize handle holds. */
+    export type ResizeSide = ResizeCorner | ResizeEdge;
+    /** A node that resizes its window when it is dragged. */
+    export class ResizeHandle extends Box {
+        constructor(context: FrameContext, side: ResizeSide, options?: BoxOptions);
+        readonly context: FrameContext;
+        readonly side: ResizeSide;
+        /** Whether the handle is as large as its parent while the parent leaves its nodes where they are. */
+        fitParent: boolean;
+    }
+    /** Options of `ResizeHandles`, in pixels. */
+    export interface ResizeHandlesOptions {
+        thickness?: number;
+        inside?: number;
+        corner?: number;
+    }
+    /** The eight handles round a window's frame that resize it. */
+    export class ResizeHandles extends Box {
+        constructor(context: FrameContext, options?: ResizeHandlesOptions);
+        thickness: number;
+        inside: number;
+        corner: number;
+        readonly handles: Map<ResizeSide, ResizeHandle>;
+    }
+    /** A colour, or a function of the window that makes one. */
+    export type FrameColour = string | ((client: FrameClient) => string);
+    /** Options of `FrameBorder`. */
+    export interface FrameBorderOptions extends CanvasOptions {
+        thickness?: number;
+        color?: FrameColour;
+        radius?: number;
+    }
+    /** A ring along the edge of the frame; given a function for its colour it is a focus ring. */
+    export class FrameBorder extends Canvas {
+        constructor(context: FrameContext, options?: FrameBorderOptions);
+        readonly context: FrameContext;
+        thickness: number;
+        color: FrameColour;
+        radius: number;
+    }
+    /** A box as large as the frame, for the underlay. */
+    export class FrameBackdrop extends Box {
+        constructor(options?: BoxOptions);
+    }
+    /** Options of `FrameGlow`. */
+    export interface FrameGlowOptions extends CanvasOptions {
+        color?: string;
+        strength?: number;
+        radius?: number;
+        steps?: number;
+    }
+    /** A soft halo round the frame, painted behind it into the underlay's `bleed`. */
+    export class FrameGlow extends Canvas {
+        constructor(options?: FrameGlowOptions);
+        color: string;
+        strength: number;
+        radius: number;
+        steps: number;
+    }
+    /** One of the window buttons, as a titlebar names it. */
+    export type TitlebarButton = WindowButtonName;
+    /** The bar above a window's content. A press does what the seat's `double_click`, `middle_click` and `right_click` say. */
+    export class Titlebar extends DragArea {
+        constructor(client: FrameClient, style?: TitlebarStyle, hooks?: FrameHooks, actions?: WindowActions);
+        readonly client: FrameClient;
+        style: TitlebarStyle;
+        readonly hooks: FrameHooks;
+        readonly dragArea: Box;
+        readonly title: TitleText;
+        readonly buttons: Map<TitlebarButton, WindowButton>;
+        /** The clock the double click and the fade are timed by, in milliseconds. */
+        now: () => number;
+    }
+    /** The frame callback of the stock decoration: a `Titlebar` in the top outlet of a server frame. */
+    export function titlebarFill(style: TitlebarStyle): FrameFill;
 
     // -- Stock shell widgets ---------------------------------------------------
 
@@ -2769,7 +3140,7 @@ declare module "gnoblin" {
         readonly maximised: boolean;
         readonly tiled: boolean;
         readonly secure?: boolean;
-        readonly frameInset?: number;
+        readonly frameInset?: FrameInset;
         readonly workspace: { readonly active: boolean } | null;
         bounds: Rect;
         floatingBounds?: Rect | null;
@@ -2838,7 +3209,7 @@ declare module "gnoblin" {
         readonly tiled: boolean;
         bounds: Rect;
         floatingBounds?: Rect | null;
-        readonly frameInset?: number;
+        readonly frameInset?: FrameInset;
         minSize?: { width: number; height: number };
         maxSize?: { width: number; height: number };
     }
@@ -2946,7 +3317,7 @@ declare module "gnoblin" {
     }
     export const notRespondingAlerts: NotRespondingAlerts;
     /** Puts the stock titlebar on every window, once. A config that does not call it has no titlebars. */
-    export function startDecorations(): void;
+    export function startDecorations(options?: DecorationsOptions): void;
     /** Starts the window menu, which answers the compositor's menu requests, once. */
     export function startWindowMenu(): void;
     /** Starts the not-responding alert, the dialog for a window that stops answering, once. */

@@ -31,9 +31,11 @@ const EPOCH_LIMIT: u64 = 1 << 31;
 /// The class of the nodes the toolkit makes.
 const CANVAS: &str = "Canvas";
 
-/// The properties of a canvas a script may write as a number, and as a flag.
+/// The properties of a canvas a script may write as a number, as a flag and as a word.
 const NUMBER_KEYS: &[&str] = &["x", "y", "width", "height", "opacity"];
 const FLAG_KEYS: &[&str] = &["visible", "input", "clip", "secure"];
+/// The properties of a canvas a script may write as a word: where it sits among a window's content and frame.
+const TEXT_KEYS: &[&str] = &["placement"];
 
 /// The event kinds that reach a canvas: the pointer's, and a key (a canvas holds the seat's keyboard focus when
 /// the script asks for it, as a menu or an entry does).
@@ -276,6 +278,14 @@ pub(crate) fn set_flag(state: &mut HostState, node: NodeId, key: &str, value: bo
         return Some("unknown-property");
     }
     write(state, node, key, MirrorValue::Bool(value))
+}
+
+/// Queues a write of a word property of a canvas of ours. The compositor refuses a word that is not one it knows.
+pub(crate) fn set_text(state: &mut HostState, node: NodeId, key: &str, value: String) -> Option<&'static str> {
+    if !TEXT_KEYS.contains(&key) {
+        return Some("unknown-property");
+    }
+    write(state, node, key, MirrorValue::Text(value))
 }
 
 /// Queues a write of a canvas's encoded paint list. The compositor decodes it and refuses one that is malformed.

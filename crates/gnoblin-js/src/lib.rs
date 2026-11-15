@@ -90,4 +90,4 @@ pub use supervisor::{
 };
 pub use ts::{JsStripped, strip_types};
 pub use watch::{ConfigWatcher, JsWatchError, ReloadRequest};
-pub use workspaces::{JsKeptRect, JsKeptWindow, JsOutputShown, JsWorkspaceEntry, JsWorkspaceSnapshot};
+pub use workspaces::{JsKeptInset, JsKeptRect, JsKeptWindow, JsOutputShown, JsWorkspaceEntry, JsWorkspaceSnapshot};

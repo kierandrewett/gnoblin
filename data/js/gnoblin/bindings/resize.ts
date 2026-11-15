@@ -47,6 +47,54 @@ function nearestEdge(where: Point, width: number, height: number): ResizeEdge {
 const MIN_SIZE = { width: 100, height: 80 };
 
 /**
+ * The rectangle `start` becomes when the corner or side `corner` of it moves by `delta`. The opposite corner is the
+ * anchor: a rectangle held at a limit stops there and does not slide. An axis no side moves on keeps the size it had,
+ * whatever the limits say. The smallest size is `min`, or `MIN_SIZE`; `max` is none when absent. This is the arithmetic
+ * of `ClientResizeBinding` and of a frame's `ResizeHandle`.
+ */
+export function resizedRect(
+    start: Rect,
+    corner: ResizeCorner | ResizeEdge,
+    delta: Point,
+    min: { width: number; height: number } = MIN_SIZE,
+    max?: { width: number; height: number },
+): Rect {
+    const r = { ...start };
+    // The sides that move with the pointer: a corner moves two, an edge moves one.
+    const left = corner.endsWith("left");
+    const right = corner.endsWith("right");
+    const top = corner.startsWith("top");
+    const bottom = corner.startsWith("bottom");
+    if (left) {
+        r.x += delta.x;
+        r.width -= delta.x;
+    } else if (right) {
+        r.width += delta.x;
+    }
+    if (top) {
+        r.y += delta.y;
+        r.height -= delta.y;
+    } else if (bottom) {
+        r.height += delta.y;
+    }
+    if (left || right) {
+        const limitedWidth = Math.max(min.width, Math.min(r.width, max?.width ?? Infinity));
+        if (left) {
+            r.x += r.width - limitedWidth;
+        }
+        r.width = limitedWidth;
+    }
+    if (top || bottom) {
+        const limitedHeight = Math.max(min.height, Math.min(r.height, max?.height ?? Infinity));
+        if (top) {
+            r.y += r.height - limitedHeight;
+        }
+        r.height = limitedHeight;
+    }
+    return r;
+}
+
+/**
  * Super+MouseRight drag: the corner nearest the pointer at the press moves with it and the opposite corner
  * stays. The corner is chosen from the initial position only, so crossing the client's middle mid-drag does
  * not switch corners.
@@ -88,44 +136,7 @@ export class ClientResizeBinding extends PointerDragBinding {
         if (!client.alive || !event.position) {
             return;
         }
-        const delta = moved(pointer, event.position);
-        const r = { ...start };
-        // The sides that move with the pointer: a corner moves two, an edge moves one.
-        const left = corner.endsWith("left");
-        const right = corner.endsWith("right");
-        const top = corner.startsWith("top");
-        const bottom = corner.startsWith("bottom");
-        if (left) {
-            r.x += delta.x;
-            r.width -= delta.x;
-        } else if (right) {
-            r.width += delta.x;
-        }
-        if (top) {
-            r.y += delta.y;
-            r.height -= delta.y;
-        } else if (bottom) {
-            r.height += delta.y;
-        }
-        const min = client.minSize ?? MIN_SIZE;
-        const max = client.maxSize;
-        // The opposite corner is the anchor: a client held at its limit stops there and does not slide.
-        // An axis no side moves on keeps the size it had, whatever the limits say.
-        if (left || right) {
-            const limitedWidth = Math.max(min.width, Math.min(r.width, max?.width ?? Infinity));
-            if (left) {
-                r.x += r.width - limitedWidth;
-            }
-            r.width = limitedWidth;
-        }
-        if (top || bottom) {
-            const limitedHeight = Math.max(min.height, Math.min(r.height, max?.height ?? Infinity));
-            if (top) {
-                r.y += r.height - limitedHeight;
-            }
-            r.height = limitedHeight;
-        }
-        client.bounds = r;
+        client.bounds = resizedRect(start, corner, moved(pointer, event.position), client.minSize, client.maxSize);
     }
 
     onEnd(_event: DragEvent, state: object): void {

@@ -4,7 +4,7 @@ use rquickjs::{Ctx, Function, Object, Value};
 
 use super::{
     JsUiAnswer, JsUiEvent, create, destroy, focus, focused, insert, locked, measure, mount_top, paint, screen,
-    seat_number, seat_text, set_flag, set_number,
+    seat_number, seat_text, set_flag, set_number, set_text,
 };
 use crate::bindings::SharedState;
 
@@ -63,6 +63,11 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
                     set_flag(&mut state, node, &key, flag)
                 } else if let Some(number) = value.as_number() {
                     set_number(&mut state, node, &key, number)
+                } else if let Some(word) = value.as_string() {
+                    match word.to_string() {
+                        Ok(word) => set_text(&mut state, node, &key, word),
+                        Err(_) => Some("invalid-value"),
+                    }
                 } else {
                     Some("invalid-value")
                 }

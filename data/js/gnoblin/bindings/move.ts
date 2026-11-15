@@ -4,6 +4,7 @@ import { PointerDragBinding } from "gnoblin/bindings/binding";
 import type { PointerDragBindingOptions } from "gnoblin/bindings/binding";
 import { constrainRect, dragConstraintMode, draggable, moved } from "gnoblin/bindings/drag";
 import type { BindingClient, DragEvent, Point, Rect } from "gnoblin/bindings/types";
+import { growRect, insetArea, NO_INSET, shrinkRect } from "gnoblin/frame/inset";
 import { edgeZone, forgetSnap, SNAP_MARGIN, snapClient } from "gnoblin/snap";
 import type { SnapClient } from "gnoblin/snap";
 
@@ -59,19 +60,15 @@ export class ClientMoveBinding extends PointerDragBinding {
         const delta = moved(startPointer, event.position);
         const target = { ...startBounds, x: startBounds.x + delta.x, y: startBounds.y + delta.y };
         // The seat's constraint keeps the window reachable. Without a work area there is nothing to keep it in. The
-        // frame (the content with its titlebar above) is what stays in: a bar dragged off the top could not be
+        // frame (the content with its frame around it) is what stays in: a titlebar dragged off the top could not be
         // grabbed again.
         if (!event.workArea) {
             client.bounds = target;
             return;
         }
-        const inset = client.frameInset ?? 0;
-        const frame = constrainRect(
-            { ...target, y: target.y - inset, height: target.height + inset },
-            event.workArea,
-            dragConstraintMode(event.dragConstraint),
-        );
-        client.bounds = { x: frame.x, y: frame.y + inset, width: target.width, height: target.height };
+        const inset = client.frameInset ?? NO_INSET;
+        const frame = constrainRect(growRect(target, inset), event.workArea, dragConstraintMode(event.dragConstraint));
+        client.bounds = { ...shrinkRect(frame, inset), width: target.width, height: target.height };
     }
 
     onEnd(event: DragEvent, state: object): void {
@@ -85,8 +82,7 @@ export class ClientMoveBinding extends PointerDragBinding {
         }
         const zone = edgeZone(event.position.x, event.position.y, event.workArea, this.snap);
         if (zone !== null) {
-            const inset = client.frameInset ?? 0;
-            const area = { ...event.workArea, y: event.workArea.y + inset, height: event.workArea.height - inset };
+            const area = insetArea(event.workArea, client.frameInset ?? NO_INSET);
             snapClient(client as SnapClient, zone, { edgeTiling: true, area });
         }
     }

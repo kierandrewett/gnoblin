@@ -8,6 +8,8 @@
 // imports the host, so a test can attach a fake. Frames are driven by `runUiFrame`, see its doc.
 
 import { GnoblinError, errorCodeOfRefusal } from "gnoblin/errors";
+import { disposeBindingsOf, propertiesOf } from "gnoblin/properties";
+import type { PropertyBindings } from "gnoblin/properties";
 
 // ---- The host ----------------------------------------------------------------------------------------------------
 
@@ -17,7 +19,7 @@ export interface UiBackend {
     create(): number | undefined;
     insert(node: number, parent: number, index: number): string | undefined;
     destroy(node: number): string | undefined;
-    set(node: number, key: string, value: number | boolean): string | undefined;
+    set(node: number, key: string, value: number | boolean | string): string | undefined;
     /** Writes the encoded paint list as the node's `content`. */
     paint(node: number, bytes: number[]): string | undefined;
     /** Asks the compositor how much room `text` takes. The answer comes back from `takeAnswers` under the token. */
@@ -392,6 +394,14 @@ const HANDLERS: Readonly<Record<string, "onPress" | "onRelease" | "onMotion" | "
 // ---- Canvas ------------------------------------------------------------------------------------------------------
 
 /** Options for `Canvas`. Each field given is set before the first frame. Sizes are pixels. */
+/**
+ * Where a canvas that is a child of a window sits: `frame` (the default) in front of the window's content and part of
+ * the window's frame, so rounded corners, the border and a frame shadow follow it; `over` in front and not part of the
+ * frame; `under` painted behind the window's content and not part of the frame. Under any other parent a canvas is
+ * painted in tree order and `placement` only says whether it counts as part of a frame.
+ */
+export type CanvasPlacement = "frame" | "over" | "under";
+
 export interface CanvasOptions {
     x?: number;
     y?: number;
@@ -401,6 +411,9 @@ export interface CanvasOptions {
     opacity?: number;
     /** Never captured by a `View`: the window it belongs to is secure. */
     secure?: boolean;
+    /** Whether the pointer lands on the canvas. A canvas with `input` false lets the pointer through to what is under it. */
+    input?: boolean;
+    placement?: CanvasPlacement;
 }
 
 /** The node properties a canvas keeps in step with its fields, and the value the tree starts them at. */
@@ -412,6 +425,8 @@ interface Written {
     visible: boolean;
     opacity: number;
     secure: boolean;
+    input: boolean;
+    placement: CanvasPlacement;
 }
 
 /**
@@ -430,10 +445,27 @@ export class Canvas {
     opacity = 1;
     /** Whether a capture of the screen masks this canvas. Set it on what shows a secure window's text. */
     secure = false;
+    /**
+     * Whether the pointer lands on this canvas. With `false` it goes through to what is under the canvas, as it does
+     * for the empty layer of a frame; the canvas's children are still tested.
+     */
+    input = true;
+    /** Where the canvas sits among a window's content and frame: see `CanvasPlacement`. */
+    placement: CanvasPlacement = "frame";
     #width: number | null = null;
     #height: number | null = null;
     #alive = true;
-    #written: Written = { x: 0, y: 0, width: 0, height: 0, visible: true, opacity: 1, secure: false };
+    #written: Written = {
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+        visible: true,
+        opacity: 1,
+        secure: false,
+        input: true,
+        placement: "frame",
+    };
     // The bytes last written. A frame skips the paint when the new bytes are the same.
     #content: number[] | null = null;
 
@@ -449,8 +481,19 @@ export class Canvas {
         if (options.visible !== undefined) this.visible = options.visible;
         if (options.opacity !== undefined) this.opacity = options.opacity;
         if (options.secure !== undefined) this.secure = options.secure;
+        if (options.input !== undefined) this.input = options.input;
+        if (options.placement !== undefined) this.placement = options.placement;
         if (options.width !== undefined) this.#width = options.width;
         if (options.height !== undefined) this.#height = options.height;
+    }
+
+    /**
+     * The reactive properties of the canvas: `canvas.properties.bind("visible", () => !client.focused)` sets the field
+     * now and again whenever a client or node property the function read changes, with no script running. The bindings
+     * end with the canvas.
+     */
+    get properties(): PropertyBindings {
+        return propertiesOf(this, () => `${this.constructor.name}#${this.node}`);
     }
 
     /** The width in pixels: what was assigned, else the size the content naturally has. `null` goes back to natural. */
@@ -583,6 +626,7 @@ export class Canvas {
 
     #bury(): void {
         this.#alive = false;
+        disposeBindingsOf(this);
         live.delete(this.node);
         for (const child of [...this.children]) {
             child.parent = null;
@@ -625,6 +669,8 @@ export class Canvas {
             visible: this.visible,
             opacity: this.opacity,
             secure: this.secure,
+            input: this.input,
+            placement: this.placement,
         };
         for (const key of ["x", "y", "width", "height", "opacity"] as const) {
             if (now[key] !== written[key]) {
@@ -639,6 +685,14 @@ export class Canvas {
         if (now.secure !== written.secure) {
             this.#write("secure", now.secure);
             written.secure = now.secure;
+        }
+        if (now.input !== written.input) {
+            this.#write("input", now.input);
+            written.input = now.input;
+        }
+        if (now.placement !== written.placement) {
+            this.#write("placement", now.placement);
+            written.placement = now.placement;
         }
         const bytes = encodePaintList(this.draw());
         if (this.#content === null || !sameBytes(this.#content, bytes)) {
@@ -655,7 +709,7 @@ export class Canvas {
         }
     }
 
-    #write(key: string, value: number | boolean): void {
+    #write(key: string, value: number | boolean | string): void {
         const code = host().set(this.node, key, value);
         if (code === "unknown-node") {
             this.markGone();

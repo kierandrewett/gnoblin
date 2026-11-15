@@ -1,6 +1,8 @@
 // The shapes a binding handler receives and the options every binding takes: the event, the client it acts on, a
 // drag in progress. Types only, so a layout or a test can name them without the binding classes.
 
+import type { FrameInset } from "gnoblin/frame/inset";
+
 /** What the host passes to a hook. The fields are the host's; the library only reads the ones a hook names. */
 export interface BindingEvent {
     readonly timestamp: number;
@@ -39,10 +41,10 @@ export interface BindingClient {
     maxSize?: { width: number; height: number };
     floatingBounds?: Rect | null;
     /**
-     * The room a titlebar takes above the content. The frame, which must stay on screen, is the content with this
-     * much on top.
+     * The room the window's frame takes around the content on each side. The frame, which must stay on screen, is the
+     * content with this much around it.
      */
-    readonly frameInset?: number;
+    readonly frameInset?: FrameInset;
 }
 
 /**
