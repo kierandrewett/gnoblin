@@ -98,7 +98,7 @@ export function changed(client: Client): void {
     if (now.decoration !== seen.decoration) {
         seen.decoration = now.decoration;
         emitMember(client, held, "onDecorationChanged", [client, now.decoration]);
-        // The bar's room above the window came or went: the workspace's layout places it again.
+        // The frame's room round the window came or went: the workspace's layout places it again.
         const own = wsOf(client);
         if (own) {
             own.dirty = true;

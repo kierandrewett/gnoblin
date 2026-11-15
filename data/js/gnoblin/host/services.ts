@@ -6,6 +6,9 @@ import { notRespondingAlerts } from "gnoblin/alerts";
 import { AuthenticationManager } from "gnoblin/authentication";
 import { DialogManager } from "gnoblin/dialogs";
 import { errorCodeOfRefusal, GnoblinError } from "gnoblin/errors";
+import type { FrameHooks } from "gnoblin/frame/client";
+import { attachFrameHost, Decorations } from "gnoblin/frame/decorations";
+import type { DecorationsOptions } from "gnoblin/frame/decorations";
 import { host } from "gnoblin/host/bridge";
 import { Client } from "gnoblin/host/client";
 import { clientHolders, emitMember } from "gnoblin/host/collection_events";
@@ -21,55 +24,50 @@ import { attachLock } from "gnoblin/lock";
 import { windowMenu } from "gnoblin/menus/windows";
 import { snappedZone, unsnapClient } from "gnoblin/snap";
 import type { SnapClient } from "gnoblin/snap";
-import { Decorations, defaultTitlebarStyle } from "gnoblin/titlebar";
 import { windowState } from "gnoblin/window_state";
 
+/** What a window's frame can ask of the shell: the menu, the stacking, the maximise and minimise policy, and the focus. */
+function frameHooks(): FrameHooks {
+    return {
+        menu: (client) => {
+            if (windowMenu.started) {
+                windowMenu.show(client as Client);
+            }
+        },
+        lower: (client) => (client as Client).lower(),
+        maximise: (client, on) => {
+            if (on) {
+                windowState.maximise(client as Client);
+            } else {
+                windowState.unmaximise(client as Client);
+            }
+        },
+        minimise: (client) => {
+            windowState.minimise(client as Client);
+        },
+        motion,
+        // A press on the frame is a press on its window: the focus policy hears it as it hears one on the window.
+        press: (client, event) => {
+            if (stateOf(client as Client).alive) {
+                emitMember(client as Client, clientHolders(client as Client), "onPointerPress", [client, event]);
+            }
+        },
+        release: (client, event) => {
+            if (stateOf(client as Client).alive) {
+                emitMember(client as Client, clientHolders(client as Client), "onPointerRelease", [client, event]);
+            }
+        },
+    };
+}
+
 /**
- * Puts the stock titlebar on every window, once: the buttons, the drag and the double click. Library code for an
- * `init.ts` that wants titlebars; a config that does not call it has none. Calling it again changes nothing.
+ * Gives every window a frame, once: the stock titlebar with its buttons, the drag and the double click, or the frame the
+ * options fill. Library code for an `init.ts` that wants frames; a config that does not call it has none. Calling it
+ * again changes nothing. It declares to the compositor that this shell draws decorations.
  */
-export function startDecorations(): void {
+export function startDecorations(options: DecorationsOptions = {}): void {
     if (ctx.decorations === null) {
-        ctx.decorations = new Decorations(
-            (client) => stateOf(client as Client).node,
-            { ...defaultTitlebarStyle },
-            {
-                menu: (client) => {
-                    if (windowMenu.started) {
-                        windowMenu.show(client as Client);
-                    }
-                },
-                lower: (client) => (client as Client).lower(),
-                maximise: (client, on) => {
-                    if (on) {
-                        windowState.maximise(client as Client);
-                    } else {
-                        windowState.unmaximise(client as Client);
-                    }
-                },
-                minimise: (client) => {
-                    windowState.minimise(client as Client);
-                },
-                motion,
-                // A press on the bar is a press on its window: the focus policy hears it as it hears one on the window.
-                press: (client, event) => {
-                    if (stateOf(client as Client).alive) {
-                        emitMember(client as Client, clientHolders(client as Client), "onPointerPress", [
-                            client,
-                            event,
-                        ]);
-                    }
-                },
-                release: (client, event) => {
-                    if (stateOf(client as Client).alive) {
-                        emitMember(client as Client, clientHolders(client as Client), "onPointerRelease", [
-                            client,
-                            event,
-                        ]);
-                    }
-                },
-            },
-        );
+        ctx.decorations = new Decorations(options);
         ctx.clientRoot.self.addListener(ctx.decorations);
     }
 }
@@ -164,6 +162,9 @@ export function startNotRespondingAlert(): void {
 export function installServices(): void {
     // The stock lock screen is part of the runtime, not of a config: a locked session must always have one to type into.
     attachLock(host.lock);
+
+    // The frames of the windows find a window's node and what their buttons ask of the shell here.
+    attachFrameHost({ nodeOf: (client) => stateOf(client as Client).node, hooks: frameHooks() });
 
     // Dialog request manager backed by the shell callback queue.
     ctx.dialogs = new DialogManager({

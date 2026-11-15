@@ -6,7 +6,7 @@ import type { Client } from "gnoblin/host/client";
 import { ctx } from "gnoblin/host/context";
 import { deskShowing, fillDesks } from "gnoblin/host/desks";
 import { guard } from "gnoblin/host/dispatch";
-import { followBar, refitClient } from "gnoblin/host/fitting";
+import { followFrame, refitClient } from "gnoblin/host/fitting";
 import { stateOf } from "gnoblin/host/node_state";
 import { applyPlacements, startSlides, syncVisibility } from "gnoblin/host/placements";
 import { focusedClient } from "gnoblin/host/seat";
@@ -110,12 +110,12 @@ function layoutWorkspaces(): number {
                     guard(`${workspace}.layout.onClientAdded`, () => target.onClientAdded?.(client, context));
                 }
             }
-            // A bar that came or went since a window was last fitted moves its content, before the layout places the
-            // windows it owns; a window that has just arrived is placed with the bar it has, so it only records it.
-            guard(`${workspace}.followBar`, () => {
+            // A frame that came, went or changed since a window was last fitted moves its content, before the layout places
+            // the windows it owns; a window that has just arrived is placed with the frame it has, so it only records it.
+            guard(`${workspace}.followFrame`, () => {
                 for (const client of children) {
-                    if (client.alive) {
-                        followBar(client, area);
+                    if (client.alive && followFrame(client, area)) {
+                        state.dirty = true;
                     }
                 }
             });

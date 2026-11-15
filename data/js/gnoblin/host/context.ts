@@ -21,8 +21,9 @@ import type { WorkspaceState } from "gnoblin/host/workspace_state";
 import type { IdleMonitor } from "gnoblin/idle";
 import type { InputManager } from "gnoblin/input/manager";
 import type { LaunchFeedback } from "gnoblin/launches";
+import type { Decorations } from "gnoblin/frame/decorations";
+import type { FrameInset } from "gnoblin/frame/inset";
 import type { HostApi } from "gnoblin/session/host_api";
-import type { Decorations } from "gnoblin/titlebar";
 import type { TransitionEngine } from "gnoblin/transition/engine";
 import type { Staging } from "gnoblin/transition/staging";
 import type { NodeId } from "gnoblin/types";
@@ -107,8 +108,8 @@ export class HostContext {
      */
     readonly writtenVisible = new WeakMap<Client, boolean>();
 
-    /** What `barHeight` was when a window was last fitted, so the next pass knows a bar came or went. */
-    readonly fittedBar = new WeakMap<Client, number>();
+    /** The room a window's frame kept when it was last fitted, so the next pass knows a frame came, went or changed. */
+    readonly fittedInset = new WeakMap<Client, FrameInset>();
 
     /** Styles attached to scopes, keyed by the collection state they affect. */
     readonly scopeStyles = new WeakMap<CollectionState, ScopeStyle>();

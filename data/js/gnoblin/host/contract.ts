@@ -185,6 +185,9 @@ export interface KeptWindow {
     /** The zone a snapped window sits in, and the rectangle unsnapping returns it to. */
     zone: string | null;
     snapFloating: number[] | null;
-    /** The titlebar height the window was last fitted to, so a reload that toggles decorations moves its content. */
-    bar: number | null;
+    /**
+     * The room the window's frame kept when it was last fitted (top, right, bottom, left), so a reload that changes the
+     * frame moves its content.
+     */
+    inset: number[] | null;
 }

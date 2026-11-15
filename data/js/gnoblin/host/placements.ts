@@ -2,6 +2,7 @@
 // the slides that carry windows between workspaces.
 
 import type { Client } from "gnoblin/host/client";
+import { growRect } from "gnoblin/frame/inset";
 import { ctx } from "gnoblin/host/context";
 import { isShown } from "gnoblin/host/desks";
 import { writeProperty } from "gnoblin/host/node_state";
@@ -44,12 +45,12 @@ function placementBounds(client: Client, placement: CheckedPlacement<Client>, ar
     if (offset === null) {
         return bounds;
     }
-    const height = client.height + client.frameInset;
+    const room = growRect({ x: 0, y: 0, width: client.width, height: client.height }, client.frameInset);
     const base = bounds ?? {
-        x: area.x + (area.width - client.width) / 2,
-        y: area.y + (area.height - height) / 2,
-        width: client.width,
-        height,
+        x: area.x + (area.width - room.width) / 2,
+        y: area.y + (area.height - room.height) / 2,
+        width: room.width,
+        height: room.height,
     };
     return { ...base, x: Math.round(base.x + offset.x), y: Math.round(base.y + offset.y) };
 }

@@ -2,6 +2,7 @@
 // of windows a layout was not placing. `snapshotWorkspaces` writes it when a generation ends and
 // `reconcileWorkspaces` puts it back in the next.
 
+import { insetFromNumbers, insetToNumbers } from "gnoblin/frame/inset";
 import type { Client } from "gnoblin/host/client";
 import { ctx } from "gnoblin/host/context";
 import type { KeptWindow, WorkspaceSnapshot } from "gnoblin/host/contract";
@@ -24,16 +25,16 @@ const asArray = (rect: Rect | null | undefined): number[] | null =>
 const asRect = (numbers: number[] | null | undefined): Rect | null =>
     numbers && numbers.length === 4 ? { x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3] } : null;
 
-/** The rectangles each window with one keeps, and the bar it was fitted to, for the next generation. */
+/** The rectangles each window with one keeps, and the frame inset it was fitted to, for the next generation. */
 function keptWindows(): KeptWindow[] {
     const kept: KeptWindow[] = [];
     for (const client of ctx.clientRoot.list as Client[]) {
         const rects = windowState.kept(client);
         const snap = snapRecord(client);
         const leftAt = (client as unknown as { floatingBounds?: Rect | null }).floatingBounds ?? null;
-        // Keep a known zero too: a later generation must detect a bar appearing after one without a bar.
-        const bar = ctx.fittedBar.get(client) ?? null;
-        if (rects.floating === null && rects.windowed === null && snap === null && leftAt === null && bar === null) {
+        // Keep a known zero too: a later generation must detect a frame appearing after one without a frame.
+        const inset = ctx.fittedInset.get(client) ?? null;
+        if (rects.floating === null && rects.windowed === null && snap === null && leftAt === null && inset === null) {
             continue;
         }
         kept.push({
@@ -43,7 +44,7 @@ function keptWindows(): KeptWindow[] {
             leftAt: asArray(leftAt),
             zone: snap?.zone ?? null,
             snapFloating: asArray(snap?.floating),
-            bar,
+            inset: inset === null ? null : insetToNumbers(inset),
         });
     }
     return kept;
@@ -57,8 +58,9 @@ function restoreKept(kept: readonly KeptWindow[]): void {
             continue;
         }
         windowState.keep(client, { floating: asRect(entry.floating), windowed: asRect(entry.windowed) });
-        if (typeof entry.bar === "number") {
-            ctx.fittedBar.set(client, entry.bar);
+        const inset = insetFromNumbers(entry.inset);
+        if (inset !== null) {
+            ctx.fittedInset.set(client, inset);
         }
         const leftAt = asRect(entry.leftAt);
         if (leftAt !== null) {

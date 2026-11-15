@@ -10,6 +10,8 @@
 import { resolveTriggers } from "gnoblin/bindings/binding";
 import { ClientMoveBinding } from "gnoblin/bindings/move";
 import { ClientResizeBinding } from "gnoblin/bindings/resize";
+import { growRect, NO_INSET, shrinkRect } from "gnoblin/frame/inset";
+import type { FrameInset } from "gnoblin/frame/inset";
 import { Layout } from "gnoblin/layout";
 import type { LayoutContext, Rect } from "gnoblin/layout";
 
@@ -52,9 +54,10 @@ export interface FloatingClient {
     visible?: boolean;
     tiled?: boolean;
     /**
-     * The room a titlebar takes above the content. A window is placed as a frame: the content with this much on top.
+     * The room the window's frame takes round the content. A window is placed as a frame: the content with this much
+     * on each side.
      */
-    readonly frameInset?: number;
+    readonly frameInset?: FrameInset;
 }
 
 const DEFAULT_TRIGGERS = { move: "Super+MouseLeft+Drag", resize: "Super+MouseRight+Drag" } as const;
@@ -108,23 +111,18 @@ export class FloatingLayout extends Layout {
         const size = client.size ?? client.bounds;
         const width = size.width > 0 ? size.width : DEFAULT_WIDTH;
         const height = size.height > 0 ? size.height : DEFAULT_HEIGHT;
-        const inset = client.frameInset ?? 0;
+        const inset = client.frameInset ?? NO_INSET;
         const occupied: Rect[] = [];
         for (const other of context.children as readonly FloatingClient[]) {
             if (other !== client && other.visible !== false) {
-                // Another window takes its bar's room as well as its content's.
-                const room = other.frameInset ?? 0;
-                occupied.push({
-                    x: other.bounds.x,
-                    y: other.bounds.y - room,
-                    width: other.bounds.width,
-                    height: other.bounds.height + room,
-                });
+                // Another window takes its frame's room as well as its content's.
+                occupied.push(growRect(other.bounds, other.frameInset ?? NO_INSET));
             }
         }
-        const spot = this.place(width, height + inset, context.area, occupied);
+        const room = growRect({ x: 0, y: 0, width, height }, inset);
+        const spot = this.place(room.width, room.height, context.area, occupied);
         const frame = apartFrom(spot, occupied, context.area, this.cascadeStep);
-        client.bounds = { x: frame.x, y: frame.y + inset, width: frame.width, height: frame.height - inset };
+        client.bounds = shrinkRect(frame, inset);
         this.placed.add(client);
     }
 }

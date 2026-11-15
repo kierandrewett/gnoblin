@@ -28,6 +28,9 @@ pub struct JsOutputShown {
 /// A rectangle as the shell keeps it: `[x, y, width, height]`.
 pub type JsKeptRect = [f64; 4];
 
+/// The room a window's frame takes on each side of its content, as the shell keeps it: `[top, right, bottom, left]`.
+pub type JsKeptInset = [f64; 4];
+
 /// What a shell remembers of one window beyond where it is: the rectangles it goes back to when it stops being
 /// maximised, fullscreen or snapped. They live in the shell's script, so a reload would lose them and leave a window that
 /// was maximised when the config changed with nothing to return to.
@@ -42,9 +45,10 @@ pub struct JsKeptWindow {
     pub left_at: Option<JsKeptRect>,
     /// The zone a snapped window sits in and the rectangle unsnapping returns it to.
     pub snapped: Option<(String, JsKeptRect)>,
-    /// The height of the titlebar the window was last fitted to. A reload that turns decorations off or on makes the next
-    /// generation compare it with the bar the window has then, so the frame keeps its place across the reload.
-    pub bar: Option<f64>,
+    /// The room the window's frame kept when the window was last fitted. A reload that turns decorations off or on, or
+    /// changes the frame, makes the next generation compare it with the inset the window has then, so the frame keeps
+    /// its place across the reload.
+    pub inset: Option<JsKeptInset>,
 }
 
 /// The workspaces of a shell, in order, the id of the one the primary output showed, the one each output showed, and the
@@ -57,11 +61,12 @@ pub struct JsWorkspaceSnapshot {
     pub kept: Vec<JsKeptWindow>,
 }
 
-fn rect_from<'js>(object: &Object<'js>, key: &str) -> rquickjs::Result<Option<JsKeptRect>> {
+/// Four numbers under `key`: a kept rectangle or a kept inset. `None` when absent or not four numbers.
+fn four_from<'js>(object: &Object<'js>, key: &str) -> rquickjs::Result<Option<[f64; 4]>> {
     let Some(numbers) = object.get::<_, Option<Vec<f64>>>(key)? else {
         return Ok(None);
     };
-    Ok(<JsKeptRect>::try_from(numbers.as_slice()).ok())
+    Ok(<[f64; 4]>::try_from(numbers.as_slice()).ok())
 }
 
 impl JsWorkspaceSnapshot {
@@ -95,16 +100,16 @@ impl JsWorkspaceSnapshot {
                 let item = item?;
                 let node: f64 = item.get("node")?;
                 let snapped = match item.get::<_, Option<String>>("zone")? {
-                    Some(zone) => rect_from(&item, "snapFloating")?.map(|rect| (zone, rect)),
+                    Some(zone) => four_from(&item, "snapFloating")?.map(|rect| (zone, rect)),
                     None => None,
                 };
                 kept.push(JsKeptWindow {
                     node: node as NodeId,
-                    floating: rect_from(&item, "floating")?,
-                    windowed: rect_from(&item, "windowed")?,
-                    left_at: rect_from(&item, "leftAt")?,
+                    floating: four_from(&item, "floating")?,
+                    windowed: four_from(&item, "windowed")?,
+                    left_at: four_from(&item, "leftAt")?,
                     snapped,
-                    bar: item.get::<_, Option<f64>>("bar")?,
+                    inset: four_from(&item, "inset")?,
                 });
             }
         }
@@ -146,7 +151,7 @@ impl JsWorkspaceSnapshot {
                 item.set("zone", zone.as_str())?;
                 item.set("snapFloating", Vec::from(*rect))?;
             }
-            item.set("bar", window.bar)?;
+            item.set("inset", window.inset.map(Vec::from))?;
             kept.set(index, item)?;
         }
         let object = Object::new(ctx.clone())?;

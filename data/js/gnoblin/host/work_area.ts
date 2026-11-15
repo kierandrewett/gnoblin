@@ -1,6 +1,7 @@
 // Rectangles: an output's, the area a layout tiles in on it (the output less its bars), and which of those a
 // client is in.
 
+import { shrinkRect } from "gnoblin/frame/inset";
 import { host } from "gnoblin/host/bridge";
 import type { Client } from "gnoblin/host/client";
 import { deskOfClient, deskShowing, primaryOutput } from "gnoblin/host/desks";
@@ -117,13 +118,9 @@ export function workAreaOfWorkspace(workspace: Workspace): Rect | null {
 }
 
 /**
- * The content's rectangle for a frame: the titlebar lies above the content, so the frame's top edge is the bar's and the
- * content starts a bar lower. A client with no titlebar is the frame.
+ * The content's rectangle for a frame: the window's frame lies round the content, so the content is the frame less the
+ * frame's inset on each side. A client with no frame is the frame.
  */
 export function framed(client: Client, frame: Rect): Rect {
-    const inset = client.frameInset;
-    if (!(inset > 0)) {
-        return frame;
-    }
-    return { x: frame.x, y: frame.y + inset, width: frame.width, height: Math.max(0, frame.height - inset) };
+    return shrinkRect(frame, client.frameInset);
 }

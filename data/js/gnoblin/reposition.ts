@@ -11,6 +11,8 @@
 // are in crates/gnoblin-js/tests/reposition.rs.
 
 import { clampAxis, dragConstraintMode } from "gnoblin/bindings/drag";
+import { growRect, NO_INSET, shrinkRect } from "gnoblin/frame/inset";
+import type { FrameInset } from "gnoblin/frame/inset";
 import type { Rect } from "gnoblin/layout";
 import { restoreSnap, snapRecord, unsnapClient } from "gnoblin/snap";
 import type { SnapClient, SnapRecord } from "gnoblin/snap";
@@ -34,7 +36,7 @@ export interface RepositionClient extends SnapClient {
     readonly maximised: boolean;
     readonly tiled: boolean;
     readonly secure?: boolean;
-    readonly frameInset?: number;
+    readonly frameInset?: FrameInset;
     readonly workspace: { readonly active: boolean } | null;
     floatingBounds?: Rect | null;
 }
@@ -101,18 +103,21 @@ export class RepositionGrab extends Box {
         }
         const at = client.bounds;
         if (this.mode === "move") {
-            // The frame is what stays inside the area: a titlebar lies above the content.
-            const inset = client.frameInset ?? 0;
+            // The frame is what stays inside the area: the window's frame lies round the content.
+            const inset = client.frameInset ?? NO_INSET;
             const mode = dragConstraintMode(world.dragConstraint());
-            client.bounds = {
-                x: clampAxis(at.x + dx, at.width, area.x, area.width, mode),
-                y: clampAxis(at.y + dy - inset, at.height + inset, area.y, area.height, mode) + inset,
-                width: at.width,
-                height: at.height,
+            const frame = growRect(at, inset);
+            const kept = {
+                ...frame,
+                x: clampAxis(frame.x + dx, frame.width, area.x, area.width, mode),
+                y: clampAxis(frame.y + dy, frame.height, area.y, area.height, mode),
             };
+            client.bounds = { ...shrinkRect(kept, inset), width: at.width, height: at.height };
         } else {
-            const widest = area.x + area.width - at.x;
-            const tallest = area.y + area.height - at.y;
+            // The frame's far edges are what reach the area's.
+            const inset = client.frameInset ?? NO_INSET;
+            const widest = area.x + area.width - at.x - inset.right;
+            const tallest = area.y + area.height - at.y - inset.bottom;
             client.bounds = {
                 x: at.x,
                 y: at.y,

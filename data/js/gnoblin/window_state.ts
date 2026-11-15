@@ -35,6 +35,7 @@ import { ClientMoveBinding } from "gnoblin/bindings/move";
 import { ClientResizeBinding } from "gnoblin/bindings/resize";
 import type { ResizeCorner } from "gnoblin/bindings/resize";
 import type { DragEvent, Point, Rect } from "gnoblin/bindings/types";
+import type { FrameInset } from "gnoblin/frame/inset";
 import { onUiFrame, onUiRequest, uiPointer } from "gnoblin/ui";
 import type { UiRequest } from "gnoblin/ui";
 import { NEVER, onWake } from "gnoblin/wake";
@@ -122,7 +123,7 @@ export interface StateClient {
     bounds: Rect;
     /** The rectangle a snap restores for a maximised window; kept current here so a snap after a maximise is right. */
     floatingBounds?: Rect | null;
-    readonly frameInset?: number;
+    readonly frameInset?: FrameInset;
     minSize?: { width: number; height: number };
     maxSize?: { width: number; height: number };
 }
@@ -146,7 +147,7 @@ export interface WindowStateWorld<C extends StateClient> {
     output(client?: C): Rect | null;
     /** The output `client` is on less what the bars take: what a maximised window fills. */
     workArea(client?: C): Rect | null;
-    /** `frame` is where the window's frame goes; this is the content's rectangle in it (a titlebar takes the top). */
+    /** `frame` is where the window's frame goes; this is the content's rectangle in it (the frame's inset is taken off). */
     framed(client: C, frame: Rect): Rect;
     snapped(client: C): boolean;
     unsnap(client: C): void;

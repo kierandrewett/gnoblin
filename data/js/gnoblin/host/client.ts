@@ -2,6 +2,8 @@
 // the window is gone) and every write is queued as one tree write.
 
 import { GnoblinError } from "gnoblin/errors";
+import { NO_INSET } from "gnoblin/frame/inset";
+import type { FrameInset } from "gnoblin/frame/inset";
 import { CREATE, host } from "gnoblin/host/bridge";
 import { ctx } from "gnoblin/host/context";
 import { deskOfClient } from "gnoblin/host/desks";
@@ -155,7 +157,7 @@ export class Client extends NativeObject {
      * Who draws the window's frame, as the compositor negotiated it: `server` when the shell's titlebar does (the client
      * asked for server-side and this shell declared decorations, or the window is an X11 one), `client` when the client
      * draws its own title bar (a GTK, Qt or foot window), `none` for a window nobody frames. The compositor writes it.
-     * `frameInset` is reserved only for a `server` window.
+     * `frameInset` is taken only for a `server` window.
      */
     get decoration(): string {
         return read<string>(this, "decoration");
@@ -186,12 +188,12 @@ export class Client extends NativeObject {
     }
 
     /**
-     * The room a titlebar takes above the window's content, in pixels: 0 for a window with no titlebar or a fullscreen one.
-     * `bounds` is the content's rectangle; the frame a layout places is the content with this much added on top (see
-     * docs/js-ui.md, "Titlebar").
+     * The room the window's frame takes on each side of its content, in pixels: 0 on every side for a window with no
+     * frame or a fullscreen one. `bounds` is the content's rectangle; the frame a layout places is the content with this
+     * much added on each side (see docs/js-window-frame.md).
      */
-    get frameInset(): number {
-        return ctx.decorations?.insetOf(this) ?? 0;
+    get frameInset(): FrameInset {
+        return ctx.decorations?.insetOf(this) ?? NO_INSET;
     }
 
     /**
