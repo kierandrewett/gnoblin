@@ -25,7 +25,7 @@
 //! - [`JsRoleRunner`] is the whole runtime role: it locates the config, boots a [`JsRole`] that owns the
 //!   configuration document, reports to the guardian, and serves `config.reload`.
 //! - [`evaluate_document`] reads a config's document in a throwaway shell over an inert tree, with no session: the
-//!   dry-run of `gnoblinctl check` and the services role's first-boot read of the document.
+//!   dry run of `gnoblinctl check`.
 
 mod bindings;
 mod config;

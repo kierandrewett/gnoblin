@@ -10,13 +10,11 @@
 //! So the decision goes in this order:
 //!
 //! 1. A configuration the compositor has already accepted in this session.
-//! 2. The user's own `init.ts` or `init.js`, evaluated here in a throwaway generation with no host
-//!    ([`gnoblin_js::evaluate_document`]). No object of the specification carries `keyring.enabled`, so a
-//!    config has no source for it: its document has no `keyring` section and the flag is the schema default
-//!    (on). A config that cannot be evaluated without a session is not guessed at; the order goes on.
-//! 3. An accepted configuration, waited for at most [`CONFIGURATION_WAIT`]. This is the only source
-//!    when the config cannot be evaluated here.
-//! 4. The last accepted file, then the schema default.
+//! 2. An accepted configuration, waited for at most [`CONFIGURATION_WAIT`].
+//! 3. The last accepted file, then the schema default.
+//!
+//! The user's `init.ts` is not evaluated here: no object of the specification carries `keyring.enabled`, so a config
+//! has no say and the flag is on unless a configuration the compositor accepted, or the last accepted file, says off.
 //!
 //! [`decide`] is that rule. The agent runs it on its own thread, so starting the role never blocks
 //! on the compositor.
@@ -50,9 +48,6 @@ pub enum KeyringSource {
         /// The revision the compositor reported.
         revision: u64,
     },
-    /// The user's `init.ts` or `init.js` was evaluated by the services role itself before the runtime committed
-    /// anything. No config carries `keyring.enabled`, so the schema default (on) decided.
-    ConfigFile,
     /// No accepted configuration arrived in time, and the last accepted file decided.
     LastAccepted,
     /// No accepted configuration arrived and there is no readable last accepted file, so the schema
@@ -64,7 +59,6 @@ impl fmt::Display for KeyringSource {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             KeyringSource::Accepted { revision } => write!(formatter, "accepted revision {revision}"),
-            KeyringSource::ConfigFile => formatter.write_str("the user's config file"),
             KeyringSource::LastAccepted => formatter.write_str("last accepted file"),
             KeyringSource::Default => formatter.write_str("schema default"),
         }
@@ -89,23 +83,16 @@ pub struct KeyringDecision {
 /// configuration also decides at once, by falling back, because the compositor only accepts
 /// documents its runtime validated. A read error is kept as the reason, and polling continues.
 ///
-/// `config_file` is asked once, after the first poll found nothing accepted: it returns the document
-/// the user's own config evaluates to, or `None` when there is no JavaScript config to evaluate.
-/// A document decides at once ([`KeyringSource::ConfigFile`]); an error is kept as the reason and
-/// the wait goes on.
-///
 /// `last_accepted` is read only when nothing else decided. It returns the flag of the last accepted
 /// file, or `None` when there is no such file.
 pub fn decide(
     mut accepted: impl FnMut() -> Result<Option<(u64, Vec<u8>)>, String>,
-    config_file: impl FnOnce() -> Result<Option<Vec<u8>>, String>,
     last_accepted: impl FnOnce() -> Result<Option<bool>, String>,
     wait: Duration,
     poll: Duration,
 ) -> KeyringDecision {
     let started = Instant::now();
     let mut last_problem = None;
-    let mut config_file = Some(config_file);
     loop {
         match accepted() {
             Ok(Some((revision, document))) => {
@@ -124,25 +111,6 @@ pub fn decide(
             Ok(None) => {}
             Err(problem) => last_problem = Some(problem),
         }
-        if let Some(read) = config_file.take() {
-            match read() {
-                Ok(Some(document)) => match gnoblin_config::keyring_enabled_from_document(&document) {
-                    Ok(enabled) => {
-                        return KeyringDecision {
-                            enabled,
-                            source: KeyringSource::ConfigFile,
-                            reason: "the user's config file was evaluated before any configuration was accepted"
-                                .to_owned(),
-                        };
-                    }
-                    Err(problem) => {
-                        last_problem = Some(format!("the config file's document is unreadable: {problem}"));
-                    }
-                },
-                Ok(None) => {}
-                Err(problem) => last_problem = Some(format!("the config file was not evaluated: {problem}")),
-            }
-        }
         let elapsed = started.elapsed();
         if elapsed >= wait {
             break;
@@ -154,26 +122,6 @@ pub fn decide(
         None => format!("no accepted configuration within {wait:?}"),
     };
     fallback(last_accepted, reason)
-}
-
-/// The document the user's own config commits, evaluated here without a session, for [`decide`].
-///
-/// `None` when there is no config file yet, so the accepted configuration is waited for instead.
-///
-/// # Errors
-///
-/// The config exists and is JavaScript or TypeScript but cannot be evaluated without a compositor; the
-/// text says where.
-pub fn config_document(paths: &gnoblin_config::SearchPaths) -> Result<Option<Vec<u8>>, String> {
-    let Ok(located) = gnoblin_config::locate(paths) else {
-        return Ok(None);
-    };
-    if !located.exists() {
-        return Ok(None);
-    }
-    gnoblin_js::evaluate_document(located.path())
-        .map(Some)
-        .map_err(|error| error.to_string())
 }
 
 /// The decision when no accepted configuration decided: the last accepted file, else the default.
@@ -359,7 +307,6 @@ fn decide_and_serve(
 ) {
     let decision = decide(
         || host.configuration().map_err(|error| format!("{error:?}")),
-        || config_document(&gnoblin_config::SearchPaths::from_env()),
         gnoblin_config::last_good_keyring_enabled_from_environment,
         CONFIGURATION_WAIT,
         CONFIGURATION_POLL,
@@ -451,7 +398,7 @@ mod tests {
         // First boot: the compositor has accepted nothing. The decision must not be taken early:
         // the store is only touched once it returns, so waiting here is what keeps it untouched.
         let started = Instant::now();
-        let decision = decide(|| Ok(None), || Ok(None), || Ok(None), WAIT, Duration::from_millis(5));
+        let decision = decide(|| Ok(None), || Ok(None), WAIT, Duration::from_millis(5));
         assert!(started.elapsed() >= WAIT, "the decision waited for the configuration");
         assert_eq!(decision.source, KeyringSource::Default);
         assert!(decision.enabled);
@@ -461,20 +408,14 @@ mod tests {
     fn first_boot_with_the_keyring_off_in_the_accepted_document_decides_off_even_with_no_last_accepted_file() {
         // The reported bug: `keyring.enabled = false` in the user's config, no last accepted file yet. The
         // accepted configuration decides, so the keyring is not served.
-        let decision = decide(|| Ok(Some((1, document(false)))), || Ok(None), || Ok(None), WAIT, POLL);
+        let decision = decide(|| Ok(Some((1, document(false)))), || Ok(None), WAIT, POLL);
         assert!(!decision.enabled);
         assert_eq!(decision.source, KeyringSource::Accepted { revision: 1 });
     }
 
     #[test]
     fn an_accepted_configuration_with_the_keyring_on_decides_on() {
-        let decision = decide(
-            || Ok(Some((2, document(true)))),
-            || Ok(None),
-            || Ok(Some(false)),
-            WAIT,
-            POLL,
-        );
+        let decision = decide(|| Ok(Some((2, document(true)))), || Ok(Some(false)), WAIT, POLL);
         assert!(
             decision.enabled,
             "the accepted configuration beats the last accepted file"
@@ -490,7 +431,6 @@ mod tests {
                 polls += 1;
                 Ok((polls > 3).then(|| (1, document(false))))
             },
-            || Ok(None),
             || Ok(Some(true)),
             Duration::from_secs(5),
             POLL,
@@ -502,7 +442,7 @@ mod tests {
 
     #[test]
     fn a_timeout_falls_back_to_the_last_accepted_file_and_says_so() {
-        let decision = decide(|| Ok(None), || Ok(None), || Ok(Some(false)), WAIT, POLL);
+        let decision = decide(|| Ok(None), || Ok(Some(false)), WAIT, POLL);
         assert!(!decision.enabled, "the last accepted file says off");
         assert_eq!(decision.source, KeyringSource::LastAccepted);
         assert!(
@@ -519,7 +459,7 @@ mod tests {
 
     #[test]
     fn a_timeout_with_no_last_accepted_file_falls_back_to_the_schema_default_and_says_so() {
-        let decision = decide(|| Ok(None), || Ok(None), || Ok(None), WAIT, POLL);
+        let decision = decide(|| Ok(None), || Ok(None), WAIT, POLL);
         assert!(decision.enabled);
         assert_eq!(decision.source, KeyringSource::Default);
         assert!(
@@ -531,13 +471,7 @@ mod tests {
 
     #[test]
     fn a_timeout_with_an_unreadable_last_accepted_file_falls_back_to_the_default_and_says_so() {
-        let decision = decide(
-            || Ok(None),
-            || Ok(None),
-            || Err("configuration not readable".to_owned()),
-            WAIT,
-            POLL,
-        );
+        let decision = decide(|| Ok(None), || Err("configuration not readable".to_owned()), WAIT, POLL);
         assert!(decision.enabled);
         assert_eq!(decision.source, KeyringSource::Default);
         assert!(
@@ -560,7 +494,6 @@ mod tests {
                 }
             },
             || Ok(None),
-            || Ok(None),
             Duration::from_secs(5),
             POLL,
         );
@@ -570,13 +503,7 @@ mod tests {
 
     #[test]
     fn a_timeout_after_a_read_error_names_the_error() {
-        let decision = decide(
-            || Err("connection refused".to_owned()),
-            || Ok(None),
-            || Ok(None),
-            WAIT,
-            POLL,
-        );
+        let decision = decide(|| Err("connection refused".to_owned()), || Ok(None), WAIT, POLL);
         assert!(decision.reason.contains("connection refused"), "{}", decision.reason);
     }
 
@@ -588,7 +515,6 @@ mod tests {
                 polls.set(polls.get() + 1);
                 Ok(Some((1, b"not json".to_vec())))
             },
-            || Ok(None),
             || Ok(Some(false)),
             Duration::from_secs(5),
             POLL,
@@ -597,93 +523,5 @@ mod tests {
         assert_eq!(decision.source, KeyringSource::LastAccepted);
         assert!(decision.reason.contains("is unreadable"), "{}", decision.reason);
         assert_eq!(polls.get(), 1, "an unreadable document does not wait for another");
-    }
-
-    use super::config_document;
-    use gnoblin_config::SearchPaths;
-
-    /// A search path whose config directory holds `files`, and the directory that owns it.
-    fn config_with(files: &[(&str, &str)]) -> (tempfile::TempDir, SearchPaths) {
-        let root = tempfile::tempdir().expect("a temp dir");
-        let directory = root.path().join("config").join("gnoblin");
-        std::fs::create_dir_all(&directory).expect("the config directory");
-        for (name, source) in files {
-            std::fs::write(directory.join(name), source).expect("the config file");
-        }
-        let paths = SearchPaths {
-            config_home: Some(root.path().join("config")),
-            ..SearchPaths::default()
-        };
-        (root, paths)
-    }
-
-    /// A config in the owner's style that has nothing to say about the keyring: a workspace and no more. A keyring
-    /// setting has no object in the specification, so no `init.ts` can switch the keyring off.
-    const WORKSPACE_ONLY: &str = r#"import { FloatingLayout, Workspace, gnoblin } from "gnoblin";
-gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new FloatingLayout() }));"#;
-
-    #[test]
-    fn a_config_that_leaves_the_keyring_alone_decides_on() {
-        let (_root, paths) = config_with(&[("init.ts", WORKSPACE_ONLY)]);
-        let decision = decide(|| Ok(None), || config_document(&paths), || Ok(Some(false)), WAIT, POLL);
-        assert!(decision.enabled, "the config file beats the last accepted file");
-        assert_eq!(decision.source, KeyringSource::ConfigFile);
-    }
-
-    #[test]
-    fn init_js_decides_too() {
-        let (_root, paths) = config_with(&[("init.js", WORKSPACE_ONLY)]);
-        let decision = decide(|| Ok(None), || config_document(&paths), || Ok(Some(false)), WAIT, POLL);
-        assert!(decision.enabled, "{}", decision.reason);
-        assert_eq!(decision.source, KeyringSource::ConfigFile);
-    }
-
-    #[test]
-    fn an_accepted_configuration_beats_the_config_file() {
-        // The config file's document says off and the accepted one says on: the accepted one wins.
-        let decision = decide(
-            || Ok(Some((3, document(true)))),
-            || Ok(Some(document(false))),
-            || Ok(None),
-            WAIT,
-            POLL,
-        );
-        assert!(decision.enabled);
-        assert_eq!(decision.source, KeyringSource::Accepted { revision: 3 });
-    }
-
-    #[test]
-    fn a_config_that_cannot_be_evaluated_without_a_session_waits_for_the_accepted_document() {
-        let (_root, paths) = config_with(&[("init.ts", "throw new Error(\"needs the compositor\");\n")]);
-        let mut polls = 0;
-        let decision = decide(
-            || {
-                polls += 1;
-                Ok((polls > 2).then(|| (1, document(false))))
-            },
-            || config_document(&paths),
-            || Ok(None),
-            Duration::from_secs(5),
-            POLL,
-        );
-        assert!(!decision.enabled);
-        assert_eq!(decision.source, KeyringSource::Accepted { revision: 1 });
-    }
-
-    #[test]
-    fn a_config_that_cannot_be_evaluated_names_why_when_the_wait_runs_out() {
-        let (_root, paths) = config_with(&[("init.ts", "throw new Error(\"needs the compositor\");\n")]);
-        let decision = decide(|| Ok(None), || config_document(&paths), || Ok(None), WAIT, POLL);
-        assert_eq!(decision.source, KeyringSource::Default);
-        assert!(decision.reason.contains("needs the compositor"), "{}", decision.reason);
-    }
-
-    #[test]
-    fn a_lua_config_or_no_config_is_left_to_the_accepted_document() {
-        // Nothing reads Lua, so the runtime runs the stock config and its accepted document is the only source.
-        let (_root, paths) = config_with(&[("init.lua", "gnoblin.configure { keyring = { enabled = false } }")]);
-        assert_eq!(config_document(&paths), Ok(None));
-        let (_empty, paths) = config_with(&[]);
-        assert_eq!(config_document(&paths), Ok(None));
     }
 }

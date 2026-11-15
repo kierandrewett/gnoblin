@@ -672,13 +672,9 @@ the Lua host committed. Now the JavaScript role does all of it and starts no Lua
   compositor after the stage leaves the new generation running, as it did before. A shell link failure ends the role
   non-zero and the guardian starts it again.
 - **Keyring first boot** (`crates/gnoblin-services/src/keyring.rs`, `decide`). Order: a configuration the compositor
-  already accepted; the user's `init.ts` or `init.js` evaluated by `gnoblin_js::evaluate_document`; an accepted
-  configuration waited for (20 s); the last accepted file; the schema default. `evaluate_document` evaluates the entry in
-  a throwaway generation over an inert tree (the root and one seat, no windows or outputs), a 1 s budget and 32 MiB, and
-  returns the document the entry's objects wrote (the device settings). No object of the spec carries `keyring.enabled`,
-  so that document has no `keyring` section and the flag is the schema default. A config that needs the compositor while
-  it loads cannot be read that way; the error is kept as the reason and the wait goes on. `gnoblin-services` therefore
-  depends on `gnoblin-js` (`xtask deps` accepts the edge: both are role entry crates and neither names an engine).
+  already accepted; an accepted configuration waited for (20 s); the last accepted file; the schema default. The user's
+  `init.ts` is not evaluated: no object of the spec carries `keyring.enabled`, so a config has no say, and the services
+  role no longer depends on `gnoblin-js` (`evaluate_document` stays for `gnoblinctl check`).
 - **`gnoblinctl config validate FILE`** routes `.ts`, `.mts`, `.js` and `.mjs` to the same in-process check as
   `gnoblinctl check`.
 - **Proven against the real compositor.** `crates/gnoblin/tests/js_runtime_role.rs` runs the shipped `JsRoleRunner`

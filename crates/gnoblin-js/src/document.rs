@@ -3,17 +3,15 @@
 //! [`evaluate_document`] answers "what would this config commit?" without a session. It boots a throwaway
 //! [`JsShell`] over an inert tree (the root node and one seat, which every compositor has: no windows, no outputs, no
 //! devices), runs the entry in it with a short budget and reads the document the entry's objects wrote
-//! ([`JsShell::declared_document`]). The services role uses it for the first-boot `keyring.enabled` decision,
-//! which has to be made before the runtime role has committed anything.
+//! ([`JsShell::declared_document`]). `gnoblinctl check` uses it as its dry run.
 //!
 //! **What it reads.** The shell is the real one, so a spec-style `init.ts` (workspaces, bindings, listeners)
 //! loads as written and writes the same document it would in a session. Nothing starts: no program is spawned, no
-//! claim is made, no transaction is answered. `keyring` and `autostart` have no source in an `init.ts` any more, so a
-//! config's document holds only what the device objects wrote, and the keyring keeps its default.
+//! claim is made, no transaction is answered. `keyring` and `autostart` have no source in an `init.ts`, so a
+//! config's document holds only what the device objects wrote.
 //!
 //! **What it cannot read.** The tree is empty, so a config that decides a setting from live state (`gnoblin.outputs`,
-//! `gnoblin.clients`) sees none. The caller treats this document as a first-boot hint and waits for the document the
-//! runtime commits, which is authoritative. A config that throws or needs more than [`DOCUMENT_BUDGET`] is an error.
+//! `gnoblin.clients`) sees none. A config that throws or needs more than [`DOCUMENT_BUDGET`] is an error.
 
 use std::path::Path;
 use std::time::Duration;

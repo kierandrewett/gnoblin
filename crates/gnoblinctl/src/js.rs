@@ -1,7 +1,7 @@
 //! `check` for a TypeScript or JavaScript module, and `types init`.
 //!
-//! `check FILE` runs the module in the dry-run host, the evaluation `gnoblin_js::evaluate_document` makes for the
-//! services role: the shell's own library and objects over an inert tree (the root and one seat, no windows, no
+//! `check FILE` runs the module in the dry-run host, the evaluation `gnoblin_js::evaluate_document` makes: the
+//! shell's own library and objects over an inert tree (the root and one seat, no windows, no
 //! outputs). A spec-style `init.ts` that builds workspaces, binds keys and attaches listeners loads as written, and
 //! what a session refuses is refused here: a syntax error, an import that does not resolve, a name the `gnoblin`
 //! module does not export, a bad trigger, a refused value and a top-level throw, all at the line the author wrote, in
@@ -67,8 +67,8 @@ pub(crate) fn theme(is_terminal: bool) -> OutputTheme {
     OutputTheme::resolve(ColorChoice::Auto, &OutputEnvironment::detect(is_terminal))
 }
 
-/// Runs `file` in the dry-run host: `gnoblin_js::evaluate_document`, the same evaluation the services role makes of an
-/// `init.ts` before the runtime has committed anything. The shell's own library and objects run over an inert tree (the
+/// Runs `file` in the dry-run host: `gnoblin_js::evaluate_document`, the evaluation of an
+/// `init.ts` over an inert tree. The shell's own library and objects run over an inert tree (the
 /// root and one seat, no windows, no outputs), so a spec-style file loads as written and every check a session makes
 /// is made here: a syntax error, an import that does not resolve, a name the `gnoblin` module does not export, a bad
 /// trigger, a refused value, a throw. Nothing starts and nothing is bound.

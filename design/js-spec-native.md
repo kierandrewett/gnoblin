@@ -845,9 +845,9 @@ overrides of the focus, edge-tiling and drag-constraint settings and the focus p
 `autostart` used, the `autostart` argument of `host.config.check`, `gnoblin-js-types/tests/config_keys.rs`, and the
 declarations of `Config`, `defineConfig`, `WorkspaceSetConfig`, `GestureActionConfig` and `effectiveConfig` in
 `gnoblin-stock.d.ts` (the golden is regenerated). `outputRequest` and `OutputConfig` moved to `data/js/gnoblin/display.ts`.
-What stays: the document's `autostart` section and the guardian's handling of it, `evaluate_document` (the dry-run of
-`gnoblinctl check` and the keyring's first-boot read, which now finds no `keyring` setting and so decides the schema
-default), and `ConfigState`'s validator, which still refuses a document that would start a second keyring.
+What stays: the document's `autostart` section and the guardian's handling of it, `evaluate_document` (the dry run of
+`gnoblinctl check`; the keyring's first boot no longer evaluates the config, because no `keyring` setting can come from
+it), and `ConfigState`'s validator, which still refuses a document that would start a second keyring.
 
 ## Appendix: docs pages that mention the identifiers
 
