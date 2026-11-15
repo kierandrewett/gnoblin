@@ -814,6 +814,8 @@ run over the device objects (`mouse.sensitivity`, `keyboard.repeatDelay`), the o
 
 <!-- prettier-ignore-end -->
 
+**The converter and the dropped keys (lane RmCtl).** `gnoblinctl config migrate` no longer carries a dropped key over. Every setting of `autostart`, `touchpad-gestures`, the seat's `workspace_sets`, `edge_tiling` and `drag_constraint`, and of the document's sections (`focus`, `keyring`, `protocols`, `dialogs.style`, `input`, the rest) is an `UNMAPPED` comment and a line in the report, with the status column above as its reason, and the file starts with `// INCOMPLETE: N unmapped settings, see comments`. The converter tests that carried those keys into a `defineConfig` object (the section name mapping, autostart in name order, workspace sets checked against the declared workspaces, `edgeTiling`, `dragConstraint`, `alerts: false` as a key) are deleted with the keys; `alerts = false` is kept as the absence of `startNotRespondingAlert()`. A rule that matches on `focused` or `workspace_id` is left out whole, because a listener hears a window once and a Lua rule ran again when either changed, and `secure` is left out of a rule because a `Client` has no property to write it to.
+
 ## Appendix: docs pages that mention the identifiers
 
 The count is mentions of `defineConfig`, `desugarConfig`, `mergeConfig` or `defaultConfig` per page.

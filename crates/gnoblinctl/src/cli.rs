@@ -49,7 +49,7 @@ pub(crate) enum Invocation {
     Completions { shell: Shell, output: Option<PathBuf> },
     /// Print the logged records, or follow them.
     Log { request: Box<logs::LogRequest> },
-    /// Check a file without connecting: a module by loading it, anything else as `config validate`.
+    /// Check a file without connecting: a module in the dry-run shell, anything else as `config validate`.
     Check { file: PathBuf, types: bool, json: bool },
     /// Write the editor files for a TypeScript configuration.
     TypesInit { dir: Option<PathBuf>, json: bool },

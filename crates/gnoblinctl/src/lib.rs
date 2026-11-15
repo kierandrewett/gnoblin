@@ -159,8 +159,8 @@ pub fn run(
             json,
         } => {
             if js::is_module(&path) {
-                // A TypeScript or JavaScript config is checked in process, as `check` does: the module graph loads
-                // with the runtime's own loader, so the file is refused for the reasons the shell would give.
+                // A TypeScript or JavaScript config is checked in process, as `check` does: it runs in the dry-run
+                // host, so the file is refused for the reasons the shell would give.
                 js::check(&path, false, json, out, err)
             } else {
                 match verbs::validate(&path, json, out) {

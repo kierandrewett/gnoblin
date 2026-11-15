@@ -504,7 +504,7 @@ fn the_starter_passes_check_as_written_and_with_every_example_switched_on() {
     let on = dir.write("on/init.ts", &switched_on(gnoblin_js::STARTER_CONFIG));
 
     for file in [&written, &on] {
-        // The in-process check: the module graph loads, with no TypeScript compiler involved.
+        // The in-process check: the file runs in the dry-run host, with no TypeScript compiler involved.
         let (code, out, err) = check(file, &[]);
         assert_eq!(code, 0, "{}: stdout {out}\nstderr {err}", file.display());
 
