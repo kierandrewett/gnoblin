@@ -46,10 +46,7 @@ fn files_under(dir: &Path, ext: &str, into: &mut Vec<PathBuf>) {
 /// What a script reads as TypeScript: the library, the starter and the declarations.
 fn typescript_sources() -> Vec<PathBuf> {
     let root = repo();
-    let mut files = vec![
-        root.join("crates/gnoblin-js/js/gnoblin.ts"),
-        root.join("crates/gnoblin-js-types/static/gnoblin-stock.d.ts"),
-    ];
+    let mut files = vec![root.join("crates/gnoblin-js-types/static/gnoblin-stock.d.ts")];
     files_under(&root.join("data/js"), "ts", &mut files);
     files
 }

@@ -3,7 +3,7 @@
 //! Each is a thin closure over a free function that works on [`HostState`] and plain Rust values, so the
 //! logic is testable without an engine. A function that can fail returns `undefined` for success and a
 //! short code for a refusal (`unknown-node`, `unknown-property`, `read-only`, `invalid-value`,
-//! `unknown-method`), which `js/gnoblin.ts` turns into an error naming the member.
+//! `unknown-method`), which `data/js/gnoblin/host.ts` turns into an error naming the member.
 
 use gnoblin_proto::tree::effect;
 use gnoblin_tree_client::tree_mirror::{MirrorValue, NIL, NodeId, TreeMirror, TxAnimation, class_name};

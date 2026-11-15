@@ -1,7 +1,7 @@
 //! Host objects: the native functions behind the `gnoblin` module.
 //!
 //! A script never sees the tree. It sees `Client` and `Collection` objects written in TypeScript
-//! (`js/gnoblin.ts`), and those call the functions installed here as `globalThis.__gnoblinHost`. The
+//! (`data/js/gnoblin/host.ts`), and those call the functions installed here as `globalThis.__gnoblinHost`. The
 //! functions answer from the tree mirror, with this frame's queued writes on top, and queue writes into
 //! the transaction builder. They return plain numbers, strings and booleans, and report a refusal as a
 //! code string that the module turns into a typed error naming the member, so no failure here depends on

@@ -86,7 +86,7 @@ not the documented way any more.
 
 **Where it lives.** `data/js/gnoblin/display.ts` holds the objects a script makes (`OutputProfile`, `Display`,
 `Viewport`, `Camera2D`) and `display_manager.ts` the `DisplayManager` that reconciles them with the connected outputs.
-The host module (`crates/gnoblin-js/js/gnoblin.ts`) owns the collections, the desks and the output requests, and gives
+The host module (`data/js/gnoblin/host.ts`) owns the collections, the desks and the output requests, and gives
 the manager a `DisplayBackend`. The compositor and its protocol are unchanged: everything below is the existing
 `screen.apply` text, mirror and the per-output desks.
 

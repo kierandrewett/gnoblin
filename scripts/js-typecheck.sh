@@ -18,13 +18,11 @@ cat >"$temporary_config" <<EOF
     "lib": ["ES2023"],
     "paths": {
       "gnoblin": ["$repo_root/data/js/gnoblin/index.ts"],
-      "gnoblin/*": ["$repo_root/data/js/gnoblin/*"],
-      "gnoblin/host*": ["$repo_root/crates/gnoblin-js/js/gnoblin.ts"]
+      "gnoblin/*": ["$repo_root/data/js/gnoblin/*"]
     }
   },
   "include": [
-    "$repo_root/data/js/**/*.ts",
-    "$repo_root/crates/gnoblin-js/js/*.ts"
+    "$repo_root/data/js/**/*.ts"
   ],
   "exclude": ["$repo_root/data/js/starter"]
 }

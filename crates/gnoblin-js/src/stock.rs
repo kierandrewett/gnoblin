@@ -1,9 +1,9 @@
 //! The stock library: the TypeScript every generation can import as the embedded `gnoblin` modules.
 //!
-//! The sources live in `data/js/gnoblin/` and are compiled into the binary. [`stock_modules`] strips their
-//! types once and returns the name to JavaScript map [`JsConfig::embed`](crate::JsConfig::embed) takes. The
-//! modules import one another by their embedded names (`gnoblin/layout`), because the loader resolves a
-//! relative import only against a file module.
+//! The sources live in `data/js/gnoblin/` and the whole directory is compiled into the binary (`build.rs` lists it).
+//! [`stock_modules`] strips their types once and returns the name to JavaScript map
+//! [`JsConfig::embed`](crate::JsConfig::embed) takes. The modules import one another by their embedded names
+//! (`gnoblin/layout`), because the loader resolves a relative import only against a file module.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -15,258 +15,10 @@ use crate::ts::strip_types;
 /// `init.ts`; a test holds the two statement for statement. The examples in it are comments to switch on.
 pub const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/init.ts");
 
-/// `(import name, file under data/js/gnoblin, source)`. `gnoblin` is the user-facing module and only
-/// re-exports the others.
-const MODULES: [(&str, &str, &str); 52] = [
-    ("gnoblin", "index.ts", include_str!("../../../data/js/gnoblin/index.ts")),
-    (
-        "gnoblin/bindings",
-        "bindings.ts",
-        include_str!("../../../data/js/gnoblin/bindings.ts"),
-    ),
-    (
-        "gnoblin/devices",
-        "devices.ts",
-        include_str!("../../../data/js/gnoblin/devices.ts"),
-    ),
-    (
-        "gnoblin/input",
-        "input.ts",
-        include_str!("../../../data/js/gnoblin/input.ts"),
-    ),
-    (
-        "gnoblin/input_list",
-        "input_list.ts",
-        include_str!("../../../data/js/gnoblin/input_list.ts"),
-    ),
-    (
-        "gnoblin/native_object",
-        "native_object.ts",
-        include_str!("../../../data/js/gnoblin/native_object.ts"),
-    ),
-    (
-        "gnoblin/layout",
-        "layout.ts",
-        include_str!("../../../data/js/gnoblin/layout.ts"),
-    ),
-    (
-        "gnoblin/layouts/floating",
-        "layouts/floating.ts",
-        include_str!("../../../data/js/gnoblin/layouts/floating.ts"),
-    ),
-    (
-        "gnoblin/layouts/grid",
-        "layouts/grid.ts",
-        include_str!("../../../data/js/gnoblin/layouts/grid.ts"),
-    ),
-    (
-        "gnoblin/layouts/master-stack",
-        "layouts/master-stack.ts",
-        include_str!("../../../data/js/gnoblin/layouts/master-stack.ts"),
-    ),
-    (
-        "gnoblin/layouts/monocle",
-        "layouts/monocle.ts",
-        include_str!("../../../data/js/gnoblin/layouts/monocle.ts"),
-    ),
-    (
-        "gnoblin/layouts/dwindle",
-        "layouts/dwindle.ts",
-        include_str!("../../../data/js/gnoblin/layouts/dwindle.ts"),
-    ),
-    (
-        "gnoblin/layouts/kiosk",
-        "layouts/kiosk.ts",
-        include_str!("../../../data/js/gnoblin/layouts/kiosk.ts"),
-    ),
-    (
-        "gnoblin/layouts/strip",
-        "layouts/strip.ts",
-        include_str!("../../../data/js/gnoblin/layouts/strip.ts"),
-    ),
-    (
-        "gnoblin/gestures",
-        "gestures.ts",
-        include_str!("../../../data/js/gnoblin/gestures.ts"),
-    ),
-    (
-        "gnoblin/workspace",
-        "workspace.ts",
-        include_str!("../../../data/js/gnoblin/workspace.ts"),
-    ),
-    (
-        "gnoblin/dialogs",
-        "dialogs.ts",
-        include_str!("../../../data/js/gnoblin/dialogs.ts"),
-    ),
-    (
-        "gnoblin/authentication",
-        "authentication.ts",
-        include_str!("../../../data/js/gnoblin/authentication.ts"),
-    ),
-    (
-        "gnoblin/idle",
-        "idle.ts",
-        include_str!("../../../data/js/gnoblin/idle.ts"),
-    ),
-    (
-        "gnoblin/launches",
-        "launches.ts",
-        include_str!("../../../data/js/gnoblin/launches.ts"),
-    ),
-    (
-        "gnoblin/titlebar",
-        "titlebar.ts",
-        include_str!("../../../data/js/gnoblin/titlebar.ts"),
-    ),
-    ("gnoblin/ui", "ui.ts", include_str!("../../../data/js/gnoblin/ui.ts")),
-    (
-        "gnoblin/focus",
-        "focus.ts",
-        include_str!("../../../data/js/gnoblin/focus.ts"),
-    ),
-    (
-        "gnoblin/snap",
-        "snap.ts",
-        include_str!("../../../data/js/gnoblin/snap.ts"),
-    ),
-    (
-        "gnoblin/transition",
-        "transition.ts",
-        include_str!("../../../data/js/gnoblin/transition.ts"),
-    ),
-    (
-        "gnoblin/widgets",
-        "widgets.ts",
-        include_str!("../../../data/js/gnoblin/widgets.ts"),
-    ),
-    (
-        "gnoblin/menus",
-        "menus.ts",
-        include_str!("../../../data/js/gnoblin/menus.ts"),
-    ),
-    (
-        "gnoblin/alerts",
-        "alerts.ts",
-        include_str!("../../../data/js/gnoblin/alerts.ts"),
-    ),
-    (
-        "gnoblin/launcher",
-        "launcher.ts",
-        include_str!("../../../data/js/gnoblin/launcher.ts"),
-    ),
-    (
-        "gnoblin/overview",
-        "overview.ts",
-        include_str!("../../../data/js/gnoblin/overview.ts"),
-    ),
-    (
-        "gnoblin/panel",
-        "panel.ts",
-        include_str!("../../../data/js/gnoblin/panel.ts"),
-    ),
-    (
-        "gnoblin/style",
-        "style.ts",
-        include_str!("../../../data/js/gnoblin/style.ts"),
-    ),
-    (
-        "gnoblin/inspect",
-        "inspect.ts",
-        include_str!("../../../data/js/gnoblin/inspect.ts"),
-    ),
-    (
-        "gnoblin/scene",
-        "scene.ts",
-        include_str!("../../../data/js/gnoblin/scene.ts"),
-    ),
-    (
-        "gnoblin/display",
-        "display.ts",
-        include_str!("../../../data/js/gnoblin/display.ts"),
-    ),
-    (
-        "gnoblin/display_manager",
-        "display_manager.ts",
-        include_str!("../../../data/js/gnoblin/display_manager.ts"),
-    ),
-    ("gnoblin/xr", "xr.ts", include_str!("../../../data/js/gnoblin/xr.ts")),
-    (
-        "gnoblin/xr_bindings",
-        "xr_bindings.ts",
-        include_str!("../../../data/js/gnoblin/xr_bindings.ts"),
-    ),
-    (
-        "gnoblin/virtual_output",
-        "virtual_output.ts",
-        include_str!("../../../data/js/gnoblin/virtual_output.ts"),
-    ),
-    (
-        "gnoblin/extensions/xr",
-        "extensions/xr.ts",
-        include_str!("../../../data/js/gnoblin/extensions/xr.ts"),
-    ),
-    (
-        "gnoblin/window_state",
-        "window_state.ts",
-        include_str!("../../../data/js/gnoblin/window_state.ts"),
-    ),
-    (
-        "gnoblin/operation",
-        "operation.ts",
-        include_str!("../../../data/js/gnoblin/operation.ts"),
-    ),
-    (
-        "gnoblin/process",
-        "process.ts",
-        include_str!("../../../data/js/gnoblin/process.ts"),
-    ),
-    (
-        "gnoblin/session",
-        "session.ts",
-        include_str!("../../../data/js/gnoblin/session.ts"),
-    ),
-    (
-        "gnoblin/reposition",
-        "reposition.ts",
-        include_str!("../../../data/js/gnoblin/reposition.ts"),
-    ),
-    (
-        "gnoblin/gesture_actions",
-        "gesture_actions.ts",
-        include_str!("../../../data/js/gnoblin/gesture_actions.ts"),
-    ),
-    (
-        "gnoblin/lock",
-        "lock.ts",
-        include_str!("../../../data/js/gnoblin/lock.ts"),
-    ),
-    (
-        "gnoblin/spatial",
-        "spatial.ts",
-        include_str!("../../../data/js/gnoblin/spatial.ts"),
-    ),
-    (
-        "gnoblin/starter",
-        "starter.ts",
-        include_str!("../../../data/js/gnoblin/starter.ts"),
-    ),
-    (
-        "gnoblin/properties",
-        "properties.ts",
-        include_str!("../../../data/js/gnoblin/properties.ts"),
-    ),
-    (
-        "gnoblin/scene_mirror",
-        "scene_mirror.ts",
-        include_str!("../../../data/js/gnoblin/scene_mirror.ts"),
-    ),
-    (
-        "gnoblin/layouts/arc",
-        "layouts/arc.ts",
-        include_str!("../../../data/js/gnoblin/layouts/arc.ts"),
-    ),
-];
+// `MODULES`: `(import name, file under data/js/gnoblin, source)` for every `.ts` file under that directory, written by
+// `build.rs` so a new module needs no edit here. `gnoblin` is the user-facing module and only re-exports the others;
+// `gnoblin/host` is the object model.
+include!(concat!(env!("OUT_DIR"), "/stock_modules.rs"));
 
 /// The stock modules by import name, as JavaScript, ready to embed in a [`JsConfig`](crate::JsConfig).
 ///
@@ -310,5 +62,35 @@ mod tests {
         for (name, source) in &modules {
             assert!(!source.starts_with("throw new Error"), "{name}: {source}");
         }
+    }
+
+    /// The table is generated from the directory, so a file cannot be left out; this holds the generator to it.
+    #[test]
+    fn every_ts_file_under_the_stock_directory_is_embedded() {
+        fn walk(dir: &Path, found: &mut Vec<String>, root: &Path) {
+            for entry in std::fs::read_dir(dir).expect("the stock directory is readable") {
+                let path = entry.expect("a directory entry").path();
+                if path.is_dir() {
+                    walk(&path, found, root);
+                } else if path.extension().is_some_and(|extension| extension == "ts") {
+                    let relative = path.strip_prefix(root).expect("under the root");
+                    found.push(relative.to_string_lossy().replace('\\', "/"));
+                }
+            }
+        }
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js/gnoblin");
+        let mut on_disk = Vec::new();
+        walk(&root, &mut on_disk, &root);
+        on_disk.sort();
+        let embedded: Vec<&str> = MODULES.iter().map(|(_, file, _)| *file).collect();
+        assert_eq!(embedded, on_disk);
+    }
+
+    #[test]
+    fn import_names_follow_the_path() {
+        let names: Vec<&str> = MODULES.iter().map(|(name, _, _)| *name).collect();
+        assert!(names.contains(&"gnoblin"), "index.ts is the user-facing module");
+        assert!(names.contains(&"gnoblin/layouts/arc"));
+        assert!(names.contains(&"gnoblin/host"));
     }
 }

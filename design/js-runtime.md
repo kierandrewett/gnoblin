@@ -282,7 +282,7 @@ would start `wpctl`, open the launcher and slide the window the test drags.
 ## P3 status
 
 `JsShell` (`crates/gnoblin-js/src/shell.rs`) does for QuickJS what `ShellVm` does for Lua, over `gnoblin-tree-client`.
-The object model is TypeScript (`crates/gnoblin-js/js/gnoblin.ts`), embedded as `gnoblin/host`. `JsShell` embeds the
+The object model is TypeScript (`data/js/gnoblin/host.ts`), embedded as `gnoblin/host`. `JsShell` embeds the
 stock library beside it and appends `export * from "gnoblin/host"` to the stock `gnoblin` index, so one
 `import { Workspace, ClientListener } from "gnoblin"` reaches both; the stock sources are unchanged. The Rust side
 (`src/bindings/`) is a set of plain host functions behind `globalThis.__gnoblinHost`. It runs against a fake
@@ -504,7 +504,7 @@ comes from the message, not from the seat's `pointer_x` and `pointer_y`. A point
 
 ## P3b status
 
-Workspaces and the layout driver (`crates/gnoblin-js/js/gnoblin.ts`, `data/js/gnoblin/workspace.ts`,
+Workspaces and the layout driver (`data/js/gnoblin/host.ts`, `data/js/gnoblin/workspace.ts`,
 `crates/gnoblin-js/src/workspaces.rs`, tests in `crates/gnoblin-js/tests/workspaces.rs`).
 
 - **A workspace is the script's.** `new Workspace({ id, name?, layout?, gaps? })` (`layout` is a `Layout` or a stock
@@ -1249,7 +1249,7 @@ the titlebar's gestures, fade and reserved room. User page: `docs/js-ui.md`.
 
 Lane JsStyle. The style model of owner-spec section 6 (`design/js-research/owner-spec.md`) over the existing node
 `effects` and `opacity`, with no renderer feature added. Code: `data/js/gnoblin/style.ts` (the classes, the cascade, the
-mapping to effects; no host import), the style section of `crates/gnoblin-js/js/gnoblin.ts` (scopes, `Client.style`,
+mapping to effects; no host import), the style section of `data/js/gnoblin/host.ts` (scopes, `Client.style`,
 the frame pass), `effects` and `skipped` in `crates/gnoblin-js/src/bindings/props.rs`. Tests:
 `crates/gnoblin-js/tests/style.rs` over fakes, `a_global_style_becomes_the_effect_list_...` in
 `crates/gnoblin/tests/js_shell.rs` against the real compositor. User page: `docs/js-style.md`.
@@ -1343,7 +1343,7 @@ the frame pass), `effects` and `skipped` in `crates/gnoblin-js/src/bindings/prop
 Lane JsTransitions. `gnoblin.requestTransition(callback, options)` of owner-spec section 14 over the existing tween player,
 with no native change. Code: `data/js/gnoblin/transition.ts` (the staging, the engine, `Transition`; no host import),
 `crates/gnoblin-js/src/transition.rs` (`__gnoblinHost.check`, the tree's validation of a write without queuing it, the
-same `prepare` that a queued write goes through), the staging block at the top of `crates/gnoblin-js/js/gnoblin.ts`
+same `prepare` that a queued write goes through), the staging block at the top of `data/js/gnoblin/host.ts`
 (replaces `host.get/set/animate/call/raise/lower` and the spawn, kill and session verbs of `host.api`), `snapshotStyles` in
 `style.ts`. Tests: `crates/gnoblin-js/tests/transition.rs` over the fake link, `a_layout_change_in_a_transition_...` in
 `crates/gnoblin/tests/js_shell.rs` against the real compositor. User page: `docs/js-transitions.md`.
@@ -1594,7 +1594,7 @@ Design: `design/js-xr.md` (which spec class is a tree node, a JS class or new na
 ## Host API A status
 
 User docs: `docs/js-host-api.md`. Rust: `crates/gnoblin-js/src/host_{api,process,session}.rs` (`__gnoblinHost.api`, JSON in and
-out). TypeScript: `data/js/gnoblin/{operation,process,session}.ts`, wired in `js/gnoblin.ts` (`HostApi`, `apiFrame`).
+out). TypeScript: `data/js/gnoblin/{operation,process,session}.ts`, wired in `data/js/gnoblin/host.ts` (`HostApi`, `apiFrame`).
 
 - **Session.** The shell holds one more owner connection (`JsClientSessionLink`, a thread of its own). It subscribes to the
   whole graph, keeps the `session` object's lock properties for `status()`, calls `logout`, `poweroff`, `reboot`, `suspend`

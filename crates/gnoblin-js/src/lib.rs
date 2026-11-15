@@ -13,7 +13,7 @@
 //!   interrupts and panics and decides between restaging and giving up.
 //! - [`stock_modules`] is the TypeScript stock library (`data/js/gnoblin/`) as embedded `gnoblin` modules.
 //! - [`JsShell`] runs the shell over the compositor's tree: `gnoblin.clients` and the rest of the object
-//!   model in `js/gnoblin.ts` (the `gnoblin/host` module), over the host functions in `bindings`, with the
+//!   model in `data/js/gnoblin/host.ts` (the `gnoblin/host` module), over the host functions in `bindings`, with the
 //!   frame loop of `ShellVm`. A workspace is a script object: [`JsWorkspaceSnapshot`] carries which window was on
 //!   which one from a shell to the next that reloads.
 //! - [`JsConsole`] is the live console: a Unix socket that evaluates what `gnoblinctl console` sends in the running

@@ -1,7 +1,7 @@
 //! The Rust side of workspaces: what a reload carries from one shell to the next, and how a frame's
 //! property writes are coalesced.
 //!
-//! A workspace is a script object (`Workspace` in `js/gnoblin.ts`), so the compositor does not know which
+//! A workspace is a script object (`Workspace` in `data/js/gnoblin/host.ts`), so the compositor does not know which
 //! workspace a window is on. A new generation starts without that knowledge. [`JsWorkspaceSnapshot`] is
 //! what the old shell hands over ([`JsShell::workspace_snapshot`](crate::JsShell::workspace_snapshot)) and
 //! the new shell reconciles by workspace id ([`JsShell::reconcile`](crate::JsShell::reconcile)).

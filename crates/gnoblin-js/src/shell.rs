@@ -50,17 +50,12 @@ use crate::host_session::JsSessionLink;
 use crate::input::{self, JsInputMessage, messages_to_js};
 use crate::stock::stock_modules_in;
 use crate::supervisor::{JsClock, JsSystemClock};
-use crate::ts::strip_types;
 use crate::workspaces::{JsWorkspaceSnapshot, coalesce_sets};
 
 gnoblin_log::logger!(log = "js");
 
-/// The object model of the `gnoblin` global (`gnoblin.clients`, `Client`, the listeners), in TypeScript. It
-/// is stripped when a shell boots, like a user's file, and embedded as `gnoblin/host`, which the stock
-/// `gnoblin` module re-exports.
-const HOST_MODULE: &str = include_str!("../js/gnoblin.ts");
-
-/// The import name of [`HOST_MODULE`].
+/// The import name of the object model of the `gnoblin` global (`gnoblin.clients`, `Client`, the listeners): the stock
+/// module `data/js/gnoblin/host.ts`, which the user-facing `gnoblin` module re-exports.
 const HOST_MODULE_NAME: &str = "gnoblin/host";
 
 /// The most promise jobs one frame's pump runs, so that a chain of jobs that schedules itself cannot hold the frame.
@@ -236,15 +231,14 @@ impl JsShell {
         let state: SharedState = Rc::new(RefCell::new(HostState::with_clock(mirror, Arc::clone(&config.clock))));
         state.borrow_mut().xr = crate::xr::JsXrState::declared(config.xr_declared);
 
-        let host_module = strip_types(Path::new("gnoblin/host.ts"), HOST_MODULE).map_err(JsError::from)?;
         let mut js = config.js.clone();
         // The console's rate limit counts on the clock the scripts read, so a test that moves it moves that too.
         js.clock = Arc::clone(&config.clock);
         let embedded = Arc::make_mut(&mut js.embedded);
         // The user-facing `gnoblin` module is the stock index plus the host's exports, so one import line
         // reaches `Workspace` and `ClientListener` alike. The stock sources stay as they are: their own
-        // tests embed them without a host. A module the caller embedded under a name stays: the caller
-        // knows what it wants.
+        // tests embed them without a host (the host module is only evaluated when something imports it).
+        // A module the caller embedded under a name stays: the caller knows what it wants.
         let mut stock = stock_modules_in(config.stock_dir.as_deref());
         stock
             .entry("gnoblin".to_owned())
@@ -253,7 +247,6 @@ impl JsShell {
         for (name, source) in stock {
             embedded.entry(name).or_insert(source);
         }
-        embedded.insert(HOST_MODULE_NAME.to_owned(), host_module.code);
         // Generation 0 is the bare one (the host objects and no user code); the reloader numbers the ones it
         // stages from 1.
         let generation = JsGeneration::new(&js, 0)?;

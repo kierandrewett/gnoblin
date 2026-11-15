@@ -1,5 +1,5 @@
 //! Focus, window rules and edge snapping of the stock library: `data/js/gnoblin/{focus,rules,snap}.ts` and the
-//! pieces of `gnoblin.ts` and `bindings.ts` they stand on.
+//! pieces of `gnoblin/host` and `bindings.ts` they stand on.
 //!
 //! The cases are the retired shell's: `the retired retired corpus`. A retired case keeps its
 //! inputs and its expected values; where the JavaScript API changed a word (`hover` is `sloppy`, a retired pattern is a

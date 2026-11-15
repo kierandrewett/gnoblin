@@ -5,7 +5,7 @@ reading the JS source and the named test, not on running it. Lanes that were sti
 `unverified` marks anything I did not read. Design decisions are `design/js-runtime.md` J1-J9. J9: Lua stays the reference until JS passes the
 same corpus, then Lua is deleted.
 
-Path abbreviations: `S/` = `data/lua/gnoblin/shell/`, `N` = `data/lua/gnoblin/node.lua`, `J/` = `data/js/gnoblin/`, `G` = `crates/gnoblin-js/js/gnoblin.ts`,
+Path abbreviations: `S/` = `data/lua/gnoblin/shell/`, `N` = `data/lua/gnoblin/node.lua`, `J/` = `data/js/gnoblin/`, `G` = `data/js/gnoblin/host.ts`,
 `T/` = `crates/gnoblin-js/tests/`, `LT/` = `crates/gnoblin-lua/tests/lua/` (case files `*_test.lua`), `RT` = `crates/gnoblin/tests/js_shell.rs` (real compositor).
 Status words: `done` (file + proving test), `partial`, `not ported`, `dropped` (by decision), `native` (needs compositor/schema work first).
 
