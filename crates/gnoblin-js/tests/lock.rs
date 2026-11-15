@@ -17,6 +17,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 use std::rc::Rc;
+use std::time::Duration;
 
 use gnoblin_js::{JsShell, JsShellConfig};
 use gnoblin_paint::{PaintOp, decode};
@@ -25,6 +26,9 @@ use gnoblin_tree_client::tree_mirror::{
     TreeIncoming, TreeLink, TreeTx, TxOp, TxReply,
 };
 use tempfile::TempDir;
+
+mod common;
+use common::{frame_runs, go_quiet};
 
 const ROOT: u64 = 1;
 const LOCK: u64 = 2;
@@ -976,4 +980,94 @@ fn a_late_answer_after_an_external_unlock_is_dropped() {
         rig.comp.screen().is_none(),
         "a screen that is down has nothing to say about an answer"
     );
+}
+
+// ---- change gating ------------------------------------------------------------------------------------------------
+//
+// A quiet turn runs no frame (`tests/frame_gating.rs`). The lock screen is the one part that must not rest while it is
+// up: it renews the compositor's lease and follows the clock and the entry every frame, and the compositor puts its own
+// card up when the lease lapses. So a screen that is up keeps every turn running, and a session without one is quiet.
+
+#[test]
+fn a_session_with_no_lock_screen_is_quiet_and_the_locks_state_wakes_the_next_frame() {
+    let mut rig = unlocked();
+    go_quiet(&mut rig.shell);
+    for _ in 0..25 {
+        assert!(!frame_runs(&mut rig.shell), "an unlocked session woke a frame");
+    }
+    assert_eq!(rig.shell.next_wake(), None);
+    rig.comp.lock_state("pending");
+    assert!(frame_runs(&mut rig.shell), "the lock's state did not wake a frame");
+    assert!(
+        rig.comp.screen().is_some(),
+        "the screen came up in the frame the state woke"
+    );
+}
+
+#[test]
+fn a_screen_that_is_up_runs_every_turn_and_the_unlock_that_takes_it_down_lets_the_loop_rest() {
+    let mut rig = locked();
+    for _ in 0..10 {
+        assert_eq!(
+            rig.shell.next_wake(),
+            Some(Duration::ZERO),
+            "the screen is due every turn"
+        );
+        assert!(frame_runs(&mut rig.shell), "a screen that is up skipped a turn");
+    }
+    rig.comp.lock_state("not-locked");
+    assert!(frame_runs(&mut rig.shell));
+    assert!(
+        rig.comp.screen().is_none(),
+        "the unlock took the screen down in its frame"
+    );
+    go_quiet(&mut rig.shell);
+    assert_eq!(rig.shell.next_wake(), None, "with the screen gone nothing is due");
+}
+
+#[test]
+fn a_password_answer_is_read_by_the_frame_it_arrives_in() {
+    let mut rig = locked();
+    let screen = rig.comp.screen().expect("the lock screen is up");
+    rig.type_text("nope");
+    rig.enter();
+    let token = rig.check_token();
+    rig.comp.answer(token, "", "denied");
+    assert!(frame_runs(&mut rig.shell), "the answer did not wake a frame");
+    assert_eq!(
+        rig.comp.texts(screen.message),
+        ["Wrong password."],
+        "the very next frame read it"
+    );
+    rig.type_text("hunter2");
+    rig.enter();
+    let token = rig.check_token();
+    rig.comp.answer(token, "ok", "");
+    assert!(frame_runs(&mut rig.shell), "the accepting answer did not wake a frame");
+    assert!(
+        rig.comp.screen().is_none(),
+        "an ok answer took the screen down in its frame"
+    );
+}
+
+#[test]
+fn a_screen_that_was_accepted_rests_until_the_state_moves_and_the_next_lock_wakes_a_frame() {
+    let mut rig = locked();
+    rig.type_text("pw");
+    rig.enter();
+    let token = rig.check_token();
+    rig.comp.answer(token, "ok", "");
+    assert!(frame_runs(&mut rig.shell));
+    go_quiet(&mut rig.shell);
+    assert_eq!(
+        rig.shell.next_wake(),
+        None,
+        "the state still reads locked, but an accepted password has nothing left to draw"
+    );
+    rig.comp.lock_state("not-locked");
+    assert!(frame_runs(&mut rig.shell), "the state's move did not wake a frame");
+    go_quiet(&mut rig.shell);
+    rig.comp.lock_state("pending");
+    assert!(frame_runs(&mut rig.shell), "a later lock did not wake a frame");
+    assert!(rig.comp.screen().is_some(), "a later lock puts the screen up again");
 }

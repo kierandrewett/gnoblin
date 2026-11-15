@@ -917,3 +917,87 @@ fn version_is_a_frozen_record_of_the_build_identity_with_unknown_for_what_the_bu
         "a write to the immutable record is refused"
     );
 }
+
+// ---- change gating: what happens outside the script wakes the next frame ---------------------------------------------
+//
+// A quiet turn runs no frame (`tests/frame_gating.rs`), so a process that ended or a call that finished is seen only
+// because a quiet turn reads these links. Each case lets the shell go quiet, makes one thing happen on the link and asserts
+// that the very next frame ran and the script heard it in that frame.
+
+/// Runs the turns until one runs a frame, or fails after the patience: for a process, which ends on its own time.
+#[track_caller]
+fn until_a_frame_runs(rig: &mut Rig, what: &str) {
+    let deadline = Instant::now() + PATIENCE;
+    while !rig.next_frame_runs() {
+        assert!(Instant::now() < deadline, "no frame ran for: {what}");
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
+#[test]
+fn a_process_that_ends_wakes_the_next_frame_and_a_running_one_wakes_nothing() {
+    let (mut rig, _session) = rig("class Watch extends ProcessListener {
+             onExit(process: any, code: number | null) { g.log.push(`exit ${code}`); }
+         }
+         gnoblin.process.addListener(new Watch());");
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let stop = dir.path().join("stop");
+    // The child runs until the test creates the file, so the turns before it are quiet by construction.
+    rig.ts(&format!(
+        "g.job = gnoblin.process.spawn(['sh', '-c', 'until [ -e \"$1\" ]; do sleep 0.01; done; exit 7', 'sh', '{}']);",
+        stop.display()
+    ));
+    rig.quiet();
+    for _ in 0..25 {
+        assert!(!rig.next_frame_runs(), "a process that is still running woke a frame");
+    }
+    assert_eq!(rig.shell.next_wake(), None, "nothing is due while the child runs");
+    fs::write(&stop, "").expect("the stop file");
+    until_a_frame_runs(&mut rig, "the process ended");
+    assert_eq!(rig.ts("g.log.join()"), "exit 7", "the frame it woke told the listener");
+    rig.quiet();
+}
+
+#[test]
+fn a_process_past_its_timeout_wakes_the_next_frame_without_anything_arriving() {
+    let (mut rig, _session) = rig("g.job = gnoblin.process.spawn(['sleep', '60'], { timeout: 50 });");
+    rig.quiet();
+    until_a_frame_runs(&mut rig, "the timeout ended the process");
+    assert_eq!(rig.ts("[g.job.alive, g.job.timedOut].join()"), "false,true");
+}
+
+#[test]
+fn a_session_call_that_finishes_wakes_the_next_frame_and_its_callback_runs_in_it() {
+    let (mut rig, session) = rig("g.op = gnoblin.session.lock();
+         g.op.onComplete((v: any) => g.log.push('done ' + v.dispatched));");
+    rig.quiet();
+    assert!(!rig.next_frame_runs(), "a call that is still out wakes nothing");
+    session.finish(1, Ok(serde_json::json!({ "dispatched": true })));
+    assert!(rig.next_frame_runs(), "the answer did not wake a frame");
+    assert_eq!(rig.ts("g.log.join()"), "done true");
+    rig.quiet();
+}
+
+#[test]
+fn a_session_signal_wakes_the_next_frame_and_its_handler_runs_in_it() {
+    let (mut rig, session) = rig("gnoblin.on('gnoblin.session.bell', (e) => g.log.push('bell ' + e.count));");
+    rig.quiet();
+    session.signal("gnoblin.session.bell", 1, serde_json::json!({ "count": 3 }));
+    assert!(rig.next_frame_runs(), "the signal did not wake a frame");
+    assert_eq!(rig.ts("g.log.join()"), "bell 3");
+    rig.quiet();
+}
+
+#[test]
+fn a_lost_session_connection_wakes_the_next_frame_and_fails_the_calls_waiting() {
+    let (mut rig, session) = rig("g.op = gnoblin.session.poweroff();");
+    rig.quiet();
+    session
+        .0
+        .borrow_mut()
+        .inbox
+        .push(JsSessionEvent::Lost("the compositor closed the connection".to_owned()));
+    assert!(rig.next_frame_runs(), "the loss did not wake a frame");
+    assert_eq!(rig.ts("g.op.error.code"), "unavailable");
+    rig.quiet();
+}

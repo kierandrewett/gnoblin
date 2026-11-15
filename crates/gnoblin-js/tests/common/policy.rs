@@ -21,42 +21,45 @@ pub fn world(n: u64, second: bool, layout: &str, config: &str) -> Rig {
     let init = format!(
         "{FILL}for (const id of [\"1\", \"2\", \"3\"]) gnoblin.workspaces.add(new Workspace({{ id, layout: {layout} }}));\n{config}\n"
     );
-    let mut rig = rig_setup(IMPORTS, &init, move |comp| {
-        comp.add_screen(20, "output-0", (0.0, 0.0, 1000.0, 800.0), true);
-        if second {
-            comp.add_screen(22, "output-1", (1000.0, 0.0, 600.0, 400.0), false);
-        }
-        comp.add_node(
-            SEAT,
-            ROOT,
-            "seat",
-            vec![
-                ("name", text("seat0")),
-                ("pointer_x", MirrorValue::Double(0.0)),
-                ("pointer_y", MirrorValue::Double(0.0)),
-            ],
-        );
-        comp.add_node(LOCK, ROOT, "lock", Vec::new());
-        for i in 1..=n {
-            comp.add_node(
-                2 + i,
-                ROOT,
-                "window",
-                vec![
-                    ("title", text(&format!("win{i}"))),
-                    ("app_id", text("foot")),
-                    ("decoration", text("server")),
-                    ("x", MirrorValue::Double(10.0 * i as f64)),
-                    ("y", MirrorValue::Double(20.0 * i as f64)),
-                    ("width", MirrorValue::Double(300.0)),
-                    ("height", MirrorValue::Double(200.0)),
-                ],
-            );
-        }
-    });
+    let mut rig = rig_setup(IMPORTS, &init, move |comp| populate(comp, n, second));
     let diagnostics = rig.settle();
     assert!(diagnostics.is_empty(), "{diagnostics:?} {:?}", rig.load_diagnostics);
     rig
+}
+
+/// The session `world` is over, in the compositor before the shell attaches: the screens, a seat, a lock and `n` windows.
+pub fn populate(comp: &FakeCompositor, n: u64, second: bool) {
+    comp.add_screen(20, "output-0", (0.0, 0.0, 1000.0, 800.0), true);
+    if second {
+        comp.add_screen(22, "output-1", (1000.0, 0.0, 600.0, 400.0), false);
+    }
+    comp.add_node(
+        SEAT,
+        ROOT,
+        "seat",
+        vec![
+            ("name", text("seat0")),
+            ("pointer_x", MirrorValue::Double(0.0)),
+            ("pointer_y", MirrorValue::Double(0.0)),
+        ],
+    );
+    comp.add_node(LOCK, ROOT, "lock", Vec::new());
+    for i in 1..=n {
+        comp.add_node(
+            2 + i,
+            ROOT,
+            "window",
+            vec![
+                ("title", text(&format!("win{i}"))),
+                ("app_id", text("foot")),
+                ("decoration", text("server")),
+                ("x", MirrorValue::Double(10.0 * i as f64)),
+                ("y", MirrorValue::Double(20.0 * i as f64)),
+                ("width", MirrorValue::Double(300.0)),
+                ("height", MirrorValue::Double(200.0)),
+            ],
+        );
+    }
 }
 
 /// Runs a statement in the script. `Rig::eval` wants a value back; a statement has none.

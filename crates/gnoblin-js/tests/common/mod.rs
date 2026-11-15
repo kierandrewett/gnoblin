@@ -541,6 +541,16 @@ impl FakeCompositor {
         });
     }
 
+    /// Sends the shell `message` as it is, for a test about what the link may carry and not about any one of its kinds.
+    pub fn push(&self, message: TreeIncoming) {
+        self.0.borrow_mut().queue.push(message);
+    }
+
+    /// What the compositor has said that the shell has not read yet.
+    pub fn queued(&self) -> Vec<TreeIncoming> {
+        self.0.borrow().queue.clone()
+    }
+
     pub fn measures(&self) -> Vec<Measure> {
         self.0.borrow().measures.clone()
     }
@@ -776,6 +786,29 @@ pub fn honest_role_config(root: impl Into<PathBuf>) -> JsRoleConfig {
     config
 }
 
+// ---- change gating ------------------------------------------------------------------------------------------------
+//
+// A turn the shell finds nothing to do on costs nothing, and a change that does not wake it is never drawn
+// (`tests/frame_gating.rs`). What each wake test asks of a shell, whatever fake it sits on.
+
+/// Whether the next frame did its work. False when the turn was found quiet.
+pub fn frame_runs(shell: &mut JsShell) -> bool {
+    let before = shell.frame_stats().run;
+    shell.frame().expect("a frame");
+    shell.frame_stats().run > before
+}
+
+/// Runs frames until the shell is quiet: the frame after the last one that did work finds nothing and stops.
+#[track_caller]
+pub fn go_quiet(shell: &mut JsShell) {
+    for _ in 0..12 {
+        if !frame_runs(shell) {
+            return;
+        }
+    }
+    panic!("the shell never went quiet: {:?}", shell.frame_stats());
+}
+
 // ---- the rig ------------------------------------------------------------------------------------------------------
 pub struct Rig {
     pub shell: JsShell,
@@ -790,6 +823,17 @@ impl Rig {
     /// does.
     pub fn advance(&self, ms: u64) {
         self.clock.advance(Duration::from_millis(ms));
+    }
+
+    /// Runs frames until the shell is quiet. See [`go_quiet`].
+    #[track_caller]
+    pub fn quiet(&mut self) {
+        go_quiet(&mut self.shell);
+    }
+
+    /// Whether the next frame did its work. See [`frame_runs`].
+    pub fn next_frame_runs(&mut self) -> bool {
+        frame_runs(&mut self.shell)
     }
 
     pub fn frame(&mut self) -> Vec<String> {

@@ -16,7 +16,7 @@ use std::rc::Rc;
 use gnoblin_js::{JsIdleLink, JsIdleReading, JsLinkError, JsShell};
 
 mod common;
-use common::{FakeCompositor, honest_config};
+use common::{FakeCompositor, frame_runs, go_quiet, honest_config};
 
 #[derive(Default)]
 struct Idle {
@@ -437,4 +437,59 @@ fn a_handler_that_throws_is_reported_once_and_the_next_watch_still_runs() {
     rig.hear(0, 0);
     let again = rig.hear(300, 0);
     assert!(again.is_empty(), "the failure site is reported once: {again:?}");
+}
+
+// --- change gating -----------------------------------------------------------------------------------------------
+//
+// A quiet turn runs no frame (`tests/frame_gating.rs`), so the compositor's reading is heard because a quiet turn reads
+// the connection and keeps what it said for the frame it then runs.
+
+#[test]
+fn a_reading_wakes_the_next_frame_and_a_connection_that_says_nothing_wakes_nothing() {
+    let mut rig = rig(ONE_WATCH);
+    go_quiet(&mut rig.shell);
+    for _ in 0..25 {
+        assert!(
+            !frame_runs(&mut rig.shell),
+            "an open connection with nothing to say woke a frame"
+        );
+    }
+    assert_eq!(
+        rig.shell.next_wake(),
+        None,
+        "a watch is not a timer: the reading is what moves it"
+    );
+    rig.idle.say(300, 0);
+    assert!(frame_runs(&mut rig.shell), "the reading did not wake a frame");
+    assert_eq!(rig.log(), "idle", "the watch heard it in the frame it woke");
+    go_quiet(&mut rig.shell);
+    rig.idle.say(0, 0);
+    assert!(frame_runs(&mut rig.shell), "the user's return did not wake a frame");
+    assert_eq!(rig.log(), "idle,resume");
+}
+
+#[test]
+fn a_hold_the_script_gives_back_is_sent_by_the_frame_it_wakes() {
+    // A release is script that ran outside a frame, so it wakes one, and that frame sends the command.
+    let mut rig = rig("g.h = gnoblin.idle.inhibit('player');");
+    go_quiet(&mut rig.shell);
+    assert_eq!(rig.idle.calls(), ["inhibit player"]);
+    rig.eval("g.h.release()");
+    assert!(frame_runs(&mut rig.shell), "the release did not wake a frame");
+    assert_eq!(rig.idle.calls(), ["inhibit player", "uninhibit player"]);
+}
+
+#[test]
+fn a_lost_connection_wakes_the_next_frame() {
+    let mut rig = rig(ONE_WATCH);
+    rig.hear(400, 0);
+    go_quiet(&mut rig.shell);
+    rig.idle.0.borrow_mut().fail_poll = Some("the socket closed".to_owned());
+    assert!(frame_runs(&mut rig.shell), "the loss did not wake a frame");
+    assert_eq!(
+        rig.log(),
+        "idle,resume",
+        "the script was told in the frame the loss woke"
+    );
+    go_quiet(&mut rig.shell);
 }

@@ -22,7 +22,7 @@ use gnoblin_tree_client::tree_mirror::{
 use tempfile::TempDir;
 
 mod common;
-use common::{RUNAWAY_BUDGET, honest_config, honest_role_config};
+use common::{RUNAWAY_BUDGET, frame_runs, go_quiet, honest_config, honest_role_config};
 
 // --- the fake tree ---------------------------------------------------------------------------------------------
 
@@ -1070,5 +1070,73 @@ fn a_reload_keeps_the_dialog_slot_for_a_generation_with_a_listener_and_releases_
             "release_slot dialogs.observe",
             "claim_slot dialogs.observe"
         ]
+    );
+}
+
+// --- change gating -----------------------------------------------------------------------------------------------
+//
+// A quiet turn runs no frame (`tests/frame_gating.rs`). The compositor waits a few hundred milliseconds for the shell's
+// verdict on an offer, so an offer has to wake the very next turn and be answered by it.
+
+#[test]
+fn an_offer_wakes_the_next_frame_and_is_answered_by_it() {
+    let mut rig = rig(&init(REFUSE_SCREENSHOTS));
+    go_quiet(&mut rig.shell);
+    for _ in 0..25 {
+        assert!(!frame_runs(&mut rig.shell), "an idle slot woke a frame");
+    }
+    rig.slots
+        .offer(7, "consent:Screenshot", "Take a picture?", "org.example.App");
+    assert!(frame_runs(&mut rig.shell), "the offer did not wake a frame");
+    assert!(
+        rig.slots.calls().contains(&"answer 7 deny".to_owned()),
+        "the verdict went back in the frame the offer woke: {:?}",
+        rig.slots.calls()
+    );
+    go_quiet(&mut rig.shell);
+}
+
+#[test]
+fn a_lost_slot_connection_wakes_the_next_frame() {
+    let mut rig = rig(&init(REFUSE_SCREENSHOTS));
+    go_quiet(&mut rig.shell);
+    rig.slots.0.borrow_mut().fail_poll = Some("broken pipe".to_owned());
+    let before = rig.shell.frame_stats().run;
+    let diagnostics = rig.frame();
+    assert!(rig.shell.frame_stats().run > before, "the loss did not wake a frame");
+    assert!(
+        diagnostics.iter().any(|text| text.contains("slot connection is lost")),
+        "the frame it woke reported it: {diagnostics:?}"
+    );
+    go_quiet(&mut rig.shell);
+}
+
+#[test]
+fn the_end_of_a_request_wakes_the_next_frame_and_closes_it_for_the_listener() {
+    let mut rig = rig(&init(
+        "g.kept = [];\n\
+         class Keep extends DialogListener {\n\
+         \x20   onConsentRequest(request: any) { g.kept.push(request); }\n\
+         }\n\
+         gnoblin.dialogs.addListener(new Keep());",
+    ));
+    go_quiet(&mut rig.shell);
+    rig.slots.offer(5, "consent:Screenshot", "m", "app");
+    assert!(frame_runs(&mut rig.shell));
+    go_quiet(&mut rig.shell);
+    rig.slots.0.borrow_mut().inbox.push(SlotEvent::Finished {
+        request: 5,
+        completion: "ended",
+    });
+    assert!(
+        frame_runs(&mut rig.shell),
+        "the end of the request did not wake a frame"
+    );
+    rig.eval("g.kept[0].decline('too late')");
+    go_quiet(&mut rig.shell);
+    assert_eq!(
+        rig.slots.took("answer 5 deny"),
+        0,
+        "the frame the end woke closed the request, so a decline after it refuses nothing"
     );
 }

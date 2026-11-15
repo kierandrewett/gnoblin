@@ -2189,3 +2189,23 @@ fn a_virtual_output_is_checked_when_it_is_made_and_the_compositor_refuses_to_cre
     assert_eq!(rig.eval("gnoblin.outputs.remove([...gnoblin.outputs][0])"), "false");
     assert!(thrown(&mut rig, "gnoblin.outputs.clear()").starts_with("GnoblinError|Collection.clear"));
 }
+
+// ---- change gating ------------------------------------------------------------------------------------------------
+
+#[test]
+fn a_running_session_keeps_the_loop_running_every_turn_and_its_end_lets_the_loop_rest() {
+    // The session follows the room and the drags every frame, whether or not the program wrote anything this turn.
+    let mut rig = world(&[(800.0, 600.0)], "");
+    rig.quiet();
+    assert_eq!(rig.shell.next_wake(), None, "with no session nothing is due");
+    xr_arrives(&mut rig);
+    for _ in 0..10 {
+        assert_eq!(rig.shell.next_wake(), Some(std::time::Duration::ZERO));
+        assert!(rig.next_frame_runs(), "a session that is up skipped a turn");
+    }
+    rig.comp.destroy(XR_SEAT);
+    assert!(rig.next_frame_runs(), "the end of the session did not wake a frame");
+    assert!(rig.comp.named("room").is_none(), "the room came down in that frame");
+    rig.quiet();
+    assert_eq!(rig.shell.next_wake(), None, "with the session gone nothing is due");
+}
