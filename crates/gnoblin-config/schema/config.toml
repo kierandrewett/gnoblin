@@ -1539,6 +1539,36 @@ default = { enum = "auto" }
 doc = "Which renderer draws the compositor's frames."
 since = "0.2.0"
 
+[[section.field]]
+key = "gpu-memory-budget-mib"
+kind = "int"
+min = 0
+max = 16777216
+accepted = "an integer from 0 to 16777216 mebibytes; 0 turns the budget off"
+default = { int = 6144 }
+doc = "The most memory the compositor holds, in mebibytes: every client's live buffers, what the renderers hold and what capture keeps. A client buffer that would pass it is refused with wl_display.error.no_memory after caches that can be remade have been given back. 0 turns the budget off."
+since = "0.2.0"
+
+[[section.field]]
+key = "client-memory-limit-mib"
+kind = "int"
+min = 0
+max = 16777216
+accepted = "an integer from 0 to 16777216 mebibytes; 0 turns the limit off"
+default = { int = 2048 }
+doc = "The most live buffer memory one client may hold, in mebibytes. A client that asks for a buffer past it is ended with wl_display.error.no_memory. 0 turns the limit off."
+since = "0.2.0"
+
+[[section.field]]
+key = "client-surface-limit"
+kind = "int"
+min = 0
+max = 1000000
+accepted = "an integer from 0 to 1000000; 0 turns the limit off"
+default = { int = 4096 }
+doc = "The most surfaces (toplevels, popups, subsurfaces, cursors) one client may hold at once. A client that asks for another is ended with wl_display.error.no_memory. 0 turns the limit off."
+since = "0.2.0"
+
 [[section]]
 key = "window-management"
 type = "WindowManagement"
