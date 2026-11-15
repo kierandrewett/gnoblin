@@ -196,3 +196,28 @@ still holds; its refused request was never counted.
 **Not covered.** The driver's own memory, a driver-reported number to check the estimates against, the `wl_shm_pool`
 objects themselves (each holds a descriptor and a sparse mapping, so a client that makes thousands of pools is bounded by
 the descriptor limit, not by the budget), and a client that holds nothing (an idle connection), which costs nothing here.
+
+**Verification (lane GpuBudget).** Each claim here is exercised by a named test or series and stored under
+`tests/gpu-memory-soak/`.
+
+- _Red with the check off._ 34 new tests each fail on a copy of the tree with the piece they test switched off (admission,
+  release, eviction, publication, configuration, the dmabuf accounting order, the DRM arithmetic) and pass as committed.
+  This is red with the check off; no commit has them failing against a tree that lacks the budget, because they were written
+  beside it. The switches and the per-test table are in `RED.txt`.
+- _The quiet shell._ With the default bounds and the production period, a stock shell with five windows runs no frame and
+  the tree's serial does not move for four periods while the counters are on the screen node
+  (`a_stock_shell_at_the_production_memory_period_does_no_work_when_nothing_happens` asserts the budget, the clients' bytes
+  and zero refusals first). With the clients' counter changing on every publication the same test fails at the frame count.
+- _The flake._ `a_mode_change_a_hotplug_and_a_mirror_keep_the_factor` failed with `UnknownNode` 1 time in 60 on the base
+  commit and 5 in 30 on the tree; it was a stale node in the test, fixed there (60 of 60 since). `FLAKE.txt`.
+- _Soaks._ Four 25-minute runs (software and GLES on llvmpipe, a budget of 384 MiB with the pressure client and the
+  default), all exit 0. Under 384 MiB: the software run refused 73 requests and gave back 560 MiB of caches, the GLES run
+  refused 137 and gave back none (its capture session keeps the frame cache in use, so nothing was reclaimable); in both,
+  every refused client went and the bytes the clients held returned to 0, the resident set did not climb (second-half
+  slopes -1.94 and -0.49 MiB a minute) and the descriptors and threads stayed in the range of the runs before the budget.
+  Under the default budget nothing was refused or evicted. `README.md` and `RUNS-budget.txt` there.
+- _Limits of all of this._ No GPU and no DRM node: llvmpipe, gVisor, a debug build; the DRM accounting is checked on fakes;
+  the resident set includes the stock shell, which shares the process.
+- _Throughput._ 300-second runs of the base commit and the tree on the same box gave 181 and 205 cycles (software) and 177
+  and 142 (GLES). The sign changes and the earlier box's 25-minute series differ from these by as much, so the runs show
+  the spread of the instances and not a cost of the budget; a cost smaller than that spread is not excluded.

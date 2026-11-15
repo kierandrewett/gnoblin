@@ -1,0 +1,31 @@
+# Series of lane GpuBudget (issue gnoblin-4z5 stays open): the compositor with the enforced budget.
+
+## software.budget-384
+command: GNOBLIN_SOAK_RENDERER=software GNOBLIN_SOAK_SECONDS=1500 GNOBLIN_SOAK_SAMPLE_SECONDS=15 GNOBLIN_SOAK_LOCK_EVERY=25 GNOBLIN_SOAK_RSS_LIMIT_MIB=6144 GNOBLIN_SOAK_BUDGET_MIB=384 GNOBLIN_SOAK_OUT=software.budget-384.jsonl gpu_memory_soak-514cdcca3896e364 --ignored --nocapture
+start: 2026-11-15T17:55:12Z  end: 2026-11-15T18:20:17Z  exit=0
+
+## gles.budget-384
+command: GNOBLIN_SOAK_RENDERER=gles GNOBLIN_SOAK_SECONDS=1500 GNOBLIN_SOAK_SAMPLE_SECONDS=15 GNOBLIN_SOAK_LOCK_EVERY=25 GNOBLIN_SOAK_RSS_LIMIT_MIB=6144 GNOBLIN_SOAK_BUDGET_MIB=384 GNOBLIN_SOAK_OUT=gles.budget-384.jsonl gpu_memory_soak-514cdcca3896e364 --ignored --nocapture
+start: 2026-11-15T18:20:17Z  end: 2026-11-15T18:45:23Z  exit=0
+
+## software.default
+command: GNOBLIN_SOAK_RENDERER=software GNOBLIN_SOAK_SECONDS=1500 GNOBLIN_SOAK_SAMPLE_SECONDS=15 GNOBLIN_SOAK_LOCK_EVERY=25 GNOBLIN_SOAK_RSS_LIMIT_MIB=6144  GNOBLIN_SOAK_OUT=software.default.jsonl gpu_memory_soak-514cdcca3896e364 --ignored --nocapture
+start: 2026-11-15T18:45:23Z  end: 2026-11-15T19:10:27Z  exit=0
+
+## gles.default
+command: GNOBLIN_SOAK_RENDERER=gles GNOBLIN_SOAK_SECONDS=1500 GNOBLIN_SOAK_SAMPLE_SECONDS=15 GNOBLIN_SOAK_LOCK_EVERY=25 GNOBLIN_SOAK_RSS_LIMIT_MIB=6144  GNOBLIN_SOAK_OUT=gles.default.jsonl gpu_memory_soak-514cdcca3896e364 --ignored --nocapture
+start: 2026-11-15T19:10:27Z  end: 2026-11-15T19:35:31Z  exit=0
+
+## host
+host: Linux 4.19.0-gvisor x86_64; nproc 4; model name	: unknown
+mesa: libegl-mesa0 22.3.6-1+deb12u2;libgl1-mesa-dri 22.3.6-1+deb12u2
+executable: /home/node/target/debug/deps/gpu_memory_soak-514cdcca3896e364
+commit: the tree of d8352eb9d (4c4969f77 after the rebase onto fe5114d0a): the soak harness with the pressure client; the compositor is the Rust compositor with the budget, debug build
+
+## throughput A/B (300 s each, default budget, one box, run in this order)
+base = f3e7ddbf3 built in its own target directory; tree = the tree of this series. Same command as above with
+GNOBLIN_SOAK_SECONDS=300; series in ab-*.jsonl.
+software base 181 cycles, tree 205 cycles; gles base 177 cycles, tree 142 cycles. The difference changes sign, and the
+25-minute runs differ from the earlier box's by as much (software 1266 cycles before the budget there, 1044 here), so
+this shows the run-to-run spread of the instances, not a cost of the budget: no A/B of enough length was run to
+separate the two.

@@ -132,10 +132,24 @@ change whose target would pass the budget is refused the same way (`memory: ...`
 - At most 256 windows are managed at once. A window past that is left unmanaged. That is the session's limit; the
   per-client surface limit above is what stops one client from making them without end.
 
+## What was measured
+
+Four 25-minute soaks with the stock shell, windows coming and going, a lock every 25 cycles and a screen recorder open:
+the software renderer and GLES on llvmpipe, each under a budget of 384 MiB with a client that keeps asking for more, and
+under the default budget. All four finished.
+
+- Under 384 MiB, the software run refused 73 requests and gave back 560 MiB of caches first. The GLES run refused 137 and
+  gave back none, because its recorder keeps the frame cache in use.
+- Every refused client went without disturbing the session, and the bytes the clients held returned to 0 afterwards.
+- The resident set did not climb, and descriptors and threads stayed in their ranges.
+- Under the default budget nothing was refused or evicted.
+
+The machines had no GPU and no DRM device, so these runs show the accounting and the refusals, not a driver's memory. The
+series, the command lines and the exit codes are in `tests/gpu-memory-soak/`.
+
 ## Known limit
 
 On a machine whose only Vulkan device is the software driver (lavapipe, Mesa 22.3.6), the Vulkan renderer makes the
 process grow by about 0.8 MiB a frame. The driver does this, and the numbers above do not show it.
 
-Do not choose the Vulkan renderer there for a long session. A real GPU's driver has not been measured. The measurements are
-in `tests/gpu-memory-soak/`.
+Do not choose the Vulkan renderer there for a long session. A real GPU's driver has not been measured.
