@@ -133,8 +133,6 @@ const RUNTIME_NOT_DECLARED: &[(&str, &str)] = &[
     ("MENU_COLOURS", "the stock window menu's palette"),
     ("defaultMenuItems", "the stock window menu's entries"),
     // Tuning constants of the stock modules, read by their tests.
-    ("CLOSE_FADE_MS", CONSTANT),
-    ("CLOSE_RESTORE_MS", CONSTANT),
     ("DEFAULT_LAUNCH_TIMEOUT_MS", CONSTANT),
     ("MAX_IDLE_MS", CONSTANT),
     ("MAX_IDLE_WATCHES", CONSTANT),

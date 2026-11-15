@@ -467,7 +467,7 @@ fn the_titlebars_right_click_opens_the_menu_at_the_pointer_and_its_middle_click_
     rig.comp.external_set(21, "pointer_x", MirrorValue::Double(120.0));
     rig.comp.external_set(21, "pointer_y", MirrorValue::Double(90.0));
     rig.settle();
-    let bar = rig.comp.children(3)[0];
+    let bar = titlebar(&rig, 3);
     rig.comp.pointer(bar, "press", 5.0, 5.0, MIDDLE);
     rig.settle();
     assert!(!menu_open(&mut rig), "a middle click lowers, it does not open a menu");
@@ -951,7 +951,7 @@ fn a_decorated_window_is_placed_with_its_content_below_its_bar() {
     let mut rig = world(0, DECORATED);
     rig.comp.create_window(3, "term", "foot");
     rig.settle();
-    assert_eq!(rig.eval("String(gnoblin.clients.at(0).frameInset)"), "28");
+    assert_eq!(rig.eval("String(gnoblin.clients.at(0).frameInset.top)"), "28");
     // Smart placement puts the first window's frame at the corner of the screen: the bar there, the content a bar below.
     assert_eq!(rig.comp.number(3, "y"), 28.0, "the content starts below the bar");
     assert_eq!(
@@ -976,7 +976,7 @@ fn a_decorated_window_is_placed_with_its_content_below_its_bar() {
     rig.comp.external_set(3, "fullscreen", MirrorValue::Bool(true));
     rig.settle();
     assert_eq!(
-        rig.eval("String(gnoblin.clients.at(0).frameInset)"),
+        rig.eval("String(gnoblin.clients.at(0).frameInset.top)"),
         "0",
         "a fullscreen window has no bar and no inset"
     );
@@ -989,7 +989,7 @@ fn a_window_that_draws_its_own_title_bar_gets_no_titlebar_and_no_room_for_one() 
     rig.settle();
     assert_eq!(rig.eval("gnoblin.clients.at(0).decoration"), "client");
     assert_eq!(
-        rig.eval("String(gnoblin.clients.at(0).frameInset)"),
+        rig.eval("String(gnoblin.clients.at(0).frameInset.top)"),
         "0",
         "a second bar over the client's own is the double title bar"
     );
@@ -1003,12 +1003,12 @@ fn a_window_that_draws_its_own_title_bar_gets_no_titlebar_and_no_room_for_one() 
     rig.comp.create_window(4, "other", "foot");
     rig.settle();
     assert_eq!(rig.eval("gnoblin.clients.at(1).decoration"), "server");
-    assert_eq!(rig.eval("String(gnoblin.clients.at(1).frameInset)"), "28");
+    assert_eq!(rig.eval("String(gnoblin.clients.at(1).frameInset.top)"), "28");
     assert_eq!(rig.comp.children(4).len(), 1, "the server-decorated window has its bar");
     // A window nobody frames has none either.
     rig.comp.create_window_decorated(5, "bare", "xterm", "none");
     rig.settle();
-    assert_eq!(rig.eval("String(gnoblin.clients.at(2).frameInset)"), "0");
+    assert_eq!(rig.eval("String(gnoblin.clients.at(2).frameInset.top)"), "0");
     assert!(rig.comp.children(5).is_empty());
 }
 
@@ -1021,7 +1021,7 @@ fn a_window_gains_its_bar_when_the_compositor_makes_it_server_decorated_and_lose
 
     rig.comp.external_set(3, "decoration", text("server"));
     rig.settle();
-    assert_eq!(rig.eval("String(gnoblin.clients.at(0).frameInset)"), "28");
+    assert_eq!(rig.eval("String(gnoblin.clients.at(0).frameInset.top)"), "28");
     assert_eq!(
         rig.comp.children(3).len(),
         1,
@@ -1031,7 +1031,7 @@ fn a_window_gains_its_bar_when_the_compositor_makes_it_server_decorated_and_lose
     // The shell reloaded with decorations off, or the client asked for its own frame again.
     rig.comp.external_set(3, "decoration", text("client"));
     rig.settle();
-    assert_eq!(rig.eval("String(gnoblin.clients.at(0).frameInset)"), "0");
+    assert_eq!(rig.eval("String(gnoblin.clients.at(0).frameInset.top)"), "0");
     assert!(rig.comp.children(3).is_empty(), "the bar goes with it");
 }
 
@@ -1274,7 +1274,7 @@ fn declared(rig: &Rig) -> bool {
 #[test]
 fn the_titlebar_does_what_the_seat_says_a_double_a_middle_and_a_right_click_do() {
     let mut rig = world(1, DECORATED);
-    let bar = rig.comp.children(3)[0];
+    let bar = titlebar(&rig, 3);
     rig.comp.pointer(bar, "press", 5.0, 5.0, LEFT);
     rig.comp.pointer(bar, "press", 5.0, 5.0, LEFT);
     rig.settle();

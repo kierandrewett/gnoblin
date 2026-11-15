@@ -635,23 +635,29 @@ fn a_window_gets_one_titlebar_and_loses_it_when_the_window_closes() {
     let diagnostics = rig.settle();
     assert_eq!(diagnostics, Vec::<String>::new());
     let bars = rig.comp.children(3);
-    assert_eq!(bars.len(), 1, "exactly one titlebar node under the window");
+    assert_eq!(
+        bars.len(),
+        1,
+        "exactly one node under the window: the frame's top outlet"
+    );
     assert_eq!(
         rig.comp.canvases().len(),
-        6,
-        "the bar, its drag area, its title and its three buttons"
+        7,
+        "the top outlet, the bar in it, its drag area, its title and its three buttons"
     );
     assert_eq!(
         rig.comp.rect(bars[0]),
         "0,-28,400,28",
-        "the bar is as wide as the window"
+        "the outlet is the bar's room: as wide as the window and as high as the bar"
     );
-    assert_eq!(rig.eval("uiCanvasCount()"), "6");
+    let bar = rig.comp.children(bars[0])[0];
+    assert_eq!(rig.comp.rect(bar), "0,0,400,28", "the bar fills its outlet");
+    assert_eq!(rig.eval("uiCanvasCount()"), "7");
 
     rig.settle();
     assert_eq!(rig.comp.children(3).len(), 1, "later frames do not add another");
 
-    let title = rig.comp.children(rig.comp.children(bars[0])[0])[0];
+    let title = rig.comp.children(rig.comp.children(bar)[0])[0];
     rig.comp.external_set(3, "title", text("renamed"));
     rig.settle();
     let list = decode(&rig.comp.content(title).expect("painted")).expect("decodes");
@@ -688,7 +694,7 @@ fn every_window_has_a_titlebar_of_its_own_including_the_ones_there_at_boot() {
     assert_eq!(comp.children(3).len(), 1);
     assert_eq!(comp.children(4).len(), 1);
     assert_ne!(comp.children(3), comp.children(4));
-    assert_eq!(comp.canvases().len(), 12);
+    assert_eq!(comp.canvases().len(), 14);
 }
 
 #[test]
@@ -708,7 +714,8 @@ fn the_close_button_of_a_decorated_window_closes_that_window() {
     let mut rig = rig("startDecorations();");
     rig.comp.create_window(3, "term", "foot");
     rig.settle();
-    let bar = rig.comp.children(3)[0];
+    let outlet = rig.comp.children(3)[0];
+    let bar = rig.comp.children(outlet)[0];
     let close = *rig.comp.children(bar).last().expect("the close button is last");
     rig.comp.pointer(close, "press", 4.0, 4.0, LEFT);
     rig.settle();

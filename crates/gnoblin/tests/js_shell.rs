@@ -1175,7 +1175,15 @@ export const swatch = new Box({ width: 120, height: 40, fill: "#336699" });
         .find(|window| window.app_id == "org.example.decorated")
         .expect("the mapped window");
     let bars: Vec<&Canvas> = found.iter().filter(|canvas| canvas.parent == window.id).collect();
-    assert_eq!(bars.len(), 1, "exactly one titlebar under the window: {bars:?}");
+    assert_eq!(
+        bars.len(),
+        1,
+        "exactly one node under the window, the frame's top outlet: {bars:?}"
+    );
+    let bar = found
+        .iter()
+        .find(|canvas| canvas.parent == bars[0].id)
+        .expect("the titlebar in the top outlet");
     let fills_bar = |canvas: &Canvas| {
         canvas.list.as_ref().is_some_and(|list| {
             list.ops.iter().any(|op| {
@@ -1184,11 +1192,7 @@ export const swatch = new Box({ width: 120, height: 40, fill: "#336699" });
             })
         })
     };
-    assert!(
-        fills_bar(bars[0]),
-        "the bar is filled with a titlebar colour: {:?}",
-        bars[0]
-    );
+    assert!(fills_bar(bar), "the bar is filled with a titlebar colour: {bar:?}");
     let icons = found
         .iter()
         .filter(|canvas| {
@@ -1202,8 +1206,8 @@ export const swatch = new Box({ width: 120, height: 40, fill: "#336699" });
     assert_eq!(icons, 1, "one close icon");
     assert_eq!(
         found.len(),
-        7,
-        "the box, and the bar with its drag area, title and three buttons: {found:?}"
+        8,
+        "the box, the top outlet, and the bar with its drag area, title and three buttons: {found:?}"
     );
     let log = shell.finish();
     assert!(

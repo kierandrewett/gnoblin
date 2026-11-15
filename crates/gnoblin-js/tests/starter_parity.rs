@@ -89,7 +89,7 @@ fn digest(rig: &mut Rig) -> serde_json::Value {
     let children: Vec<usize> = [3_u64, 4, 5].iter().map(|id| rig.comp.children(*id).len()).collect();
     let frames = serde_json::json!({
         "children": children,
-        "inset": rig.eval("String(gnoblin.clients.at(2).frameInset)"),
+        "inset": rig.eval("String(gnoblin.clients.at(2).frameInset.top)"),
         "focus": format!("{:?}", rig.comp.value(21, "focus")),
     });
     let world = rig.eval(

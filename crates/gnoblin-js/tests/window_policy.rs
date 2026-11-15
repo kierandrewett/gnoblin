@@ -467,7 +467,7 @@ fn client_animate_lands_at_once_under_reduced_motion_and_takes_its_time_otherwis
 fn the_titlebar_close_fades_the_window_out_unless_the_seat_asks_for_reduced_motion() {
     // New: the retired fade (`w:to(motion(0.18), ...)`) of decorations.retired shell, ported with its reduced-motion rule.
     let close_button = |rig: &Rig| {
-        let bar = rig.comp.children(3)[0];
+        let bar = titlebar(rig, 3);
         *rig.comp.children(bar).last().expect("the bar has buttons")
     };
     let mut rig = world(1, false, "new Layout()", "startDecorations();");
@@ -719,7 +719,7 @@ fn a_press_on_a_titlebar_focuses_and_raises_its_window() {
     // for the press on its bar too.
     let mut rig = world(2, false, "new Layout()", "startDecorations();");
     give_focus(&mut rig, 4);
-    let bar = rig.comp.children(3)[0];
+    let bar = titlebar(&rig, 3);
     assert_eq!(
         rig.comp.children(ROOT).last(),
         Some(&4),
@@ -741,7 +741,7 @@ fn a_press_on_a_titlebar_focuses_and_raises_its_window() {
     rig.comp.external_set(SEAT, "raise_on_click", MirrorValue::Bool(false));
     settle(&mut rig);
     give_focus(&mut rig, 4);
-    let bar = rig.comp.children(3)[0];
+    let bar = titlebar(&rig, 3);
     rig.comp.pointer(bar, "press", 5.0, 5.0, LEFT);
     settle(&mut rig);
     assert_eq!(focus(&rig), 3, "the press focuses the window");

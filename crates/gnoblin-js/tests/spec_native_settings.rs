@@ -93,7 +93,7 @@ fn titlebars_the_window_menu_and_the_alert_are_started_by_helpers_and_only_once(
     rig.comp.create_window(4, "two", "foot");
     rig.settle();
     assert_eq!(
-        rig.eval("String(gnoblin.clients.at(1).frameInset)"),
+        rig.eval("String(gnoblin.clients.at(1).frameInset.top)"),
         "0",
         "no titlebar until the helper runs"
     );
@@ -102,7 +102,7 @@ fn titlebars_the_window_menu_and_the_alert_are_started_by_helpers_and_only_once(
     );
     rig.comp.create_window(5, "three", "foot");
     rig.settle();
-    assert_eq!(rig.eval("String(gnoblin.clients.at(2).frameInset)"), "28");
+    assert_eq!(rig.eval("String(gnoblin.clients.at(2).frameInset.top)"), "28");
     assert_eq!(rig.eval("String(windowMenu.started)"), "true");
     assert_eq!(rig.eval("String(notRespondingAlerts.started)"), "true");
     assert_eq!(

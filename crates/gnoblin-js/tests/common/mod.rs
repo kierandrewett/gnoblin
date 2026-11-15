@@ -865,6 +865,12 @@ impl Rig {
     }
 }
 
+/// The stock titlebar of window `window`: the node in the frame's top outlet, which is the window's one child.
+pub fn titlebar(rig: &Rig, window: u64) -> u64 {
+    let outlet = rig.comp.children(window)[0];
+    rig.comp.children(outlet)[0]
+}
+
 /// A shell over a fresh fake compositor whose `init.ts` is `imports` followed by `init_body`.
 pub fn rig_with(imports: &str, init_body: &str) -> Rig {
     rig_setup(imports, init_body, |_| {})

@@ -837,7 +837,7 @@ fn a_reload_keeps_the_windows_on_the_workspace_of_the_same_id() {
                     windowed: None,
                     left_at: None,
                     snapped: None,
-                    bar: Some(0.0),
+                    inset: Some([0.0; 4]),
                 },
                 gnoblin_js::JsKeptWindow {
                     node: 4,
@@ -845,7 +845,7 @@ fn a_reload_keeps_the_windows_on_the_workspace_of_the_same_id() {
                     windowed: None,
                     left_at: None,
                     snapped: None,
-                    bar: Some(0.0),
+                    inset: Some([0.0; 4]),
                 },
             ],
         }

@@ -180,7 +180,7 @@ fn a_cascade_that_runs_out_of_room_never_lands_a_window_exactly_on_another() {
     let got = run(r#"
         const layout = new FloatingLayout();
         const screen = area(1024, 768);
-        const make = (): any => ({ bounds: { x: 0, y: 0, width: 700, height: 448 }, frameInset: 28 });
+        const make = (): any => ({ bounds: { x: 0, y: 0, width: 700, height: 448 }, frameInset: { top: 28, right: 0, bottom: 0, left: 0 } });
         const [a, b, c] = [make(), make(), make()];
         layout.onClientAdded(a, { children: [a], area: screen });
         layout.onClientAdded(b, { children: [a, b], area: screen });
