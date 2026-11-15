@@ -325,6 +325,20 @@ impl JsRole {
         self.shell.next_wake()
     }
 
+    /// Sleeps until a connection of the shell (or `own`, the caller's connection to the compositor) has something to
+    /// read or `timeout` passes (see [`JsShell::wait_for_input`]). The runtime role's turn waits here.
+    ///
+    /// # Errors
+    ///
+    /// The kernel refused the wait: a connection's descriptor is no longer open. The shell has ended.
+    pub fn wait_for_input(
+        &self,
+        own: Option<std::os::fd::BorrowedFd<'_>>,
+        timeout: Duration,
+    ) -> Result<bool, JsShellError> {
+        self.shell.wait_for_input(own, timeout)
+    }
+
     /// Runs one frame: acts on a reload the watcher asked for, applies the compositor's batches and runs the
     /// listeners, sends what they wrote, and restages the generation when a listener ran past its budget.
     ///

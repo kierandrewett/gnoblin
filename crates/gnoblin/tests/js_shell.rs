@@ -6107,6 +6107,65 @@ fn a_stock_shell_over_the_real_links_does_no_work_when_nothing_happens() {
     assert_eq!(role.next_wake(), None, "nothing is due");
 }
 
+#[test]
+fn a_quiet_turn_over_the_real_links_does_not_wait_for_bytes() {
+    // Each link used to wait up to a millisecond for bytes on every turn, so a turn that found everything quiet took
+    // two: the tree link's and the slot link's. A link is read now only when the kernel says it has bytes, so a quiet
+    // turn is a few system calls. The proof is the fastest of many turns and not their mean: a wait that is built in
+    // makes every turn at least two milliseconds, however loaded the machine is, while a machine busy with other work
+    // slows some turns and leaves the quickest alone.
+    const TURNS: u32 = 300;
+    let session = Session::start();
+    let mut mapper = Mapper::connect(&session.wayland());
+    for number in 0..5 {
+        mapper.map_window(&format!("org.example.window{number}"), &format!("Window {number}"));
+    }
+    let config = tempfile::tempdir().expect("a config directory");
+    let mut role = role_over(&session, config.path());
+    tick_until_quiet(&mut role, REST);
+    let mut fastest = Duration::MAX;
+    for _ in 0..TURNS {
+        let started = Instant::now();
+        role.tick().expect("the shell runs");
+        fastest = fastest.min(started.elapsed());
+    }
+    assert!(
+        fastest < Duration::from_millis(1),
+        "the quickest of {TURNS} quiet turns took {fastest:?}: a link waited for bytes that were not coming"
+    );
+}
+
+#[test]
+fn a_wait_for_input_ends_at_its_deadline_when_quiet_and_when_the_compositor_sends_something() {
+    let session = Session::start();
+    let mut mapper = Mapper::connect(&session.wayland());
+    let config = tempfile::tempdir().expect("a config directory");
+    let mut role = role_over(&session, config.path());
+    tick_until_quiet(&mut role, REST);
+
+    let started = Instant::now();
+    let woke = role
+        .wait_for_input(None, Duration::from_millis(80))
+        .expect("the wait is allowed");
+    assert!(!woke, "nothing was sent");
+    assert!(
+        started.elapsed() >= Duration::from_millis(80),
+        "it waited for its deadline"
+    );
+
+    // A window the compositor tells the shell of ends a long wait at once.
+    mapper.map_window("org.example.late", "Late");
+    let started = Instant::now();
+    let woke = role
+        .wait_for_input(None, Duration::from_secs(20))
+        .expect("the wait is allowed");
+    assert!(woke, "the compositor sent the window");
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "the wait did not end when the bytes arrived"
+    );
+}
+
 /// The CPU time this thread has used: what a turn computes, apart from the time it waits in a read.
 fn thread_cpu() -> Duration {
     let now = rustix::time::clock_gettime(rustix::time::ClockId::ThreadCPUTime);

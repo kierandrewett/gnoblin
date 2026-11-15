@@ -345,8 +345,14 @@ pub trait TreeLink {
     fn attach(&mut self, version: u64) -> Result<(), LinkError>;
     /// Send one transaction. Its reply arrives through [`TreeLink::poll`].
     fn transact(&mut self, tx: &TreeTx) -> Result<(), LinkError>;
-    /// Drain everything that has arrived since the last call, in arrival order.
+    /// Drain everything that has arrived since the last call, in arrival order. It never waits for bytes that have
+    /// not arrived: a link with a socket looks first whether there is anything to read.
     fn poll(&mut self) -> Result<Vec<TreeIncoming>, LinkError>;
+    /// The descriptor that becomes readable when the compositor sends something, for a loop that sleeps on several
+    /// connections at once. `None` for a link with no descriptor, which is every in-memory one.
+    fn wait_fd(&self) -> Option<std::os::fd::BorrowedFd<'_>> {
+        None
+    }
 }
 
 /// The mirror's view of one node.

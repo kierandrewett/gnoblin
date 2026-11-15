@@ -9,6 +9,8 @@
 //! the tests use ([`crate::loopback`]) does the same, so the client above this seam
 //! is exercised exactly as it will be on a socket.
 
+use std::os::fd::BorrowedFd;
+
 use gnoblin_proto::Handshake;
 
 use crate::error::HandshakeError;
@@ -38,5 +40,17 @@ pub trait Transport: gnoblin_proto::Transport {
         Err(crate::ClientError::Codec(gnoblin_proto::CodecError::Io(
             std::io::Error::new(std::io::ErrorKind::Unsupported, "this transport has no read deadline"),
         )))
+    }
+
+    /// Whether a read would return without waiting: a frame or some bytes of one are already here, or the peer has
+    /// closed. The default is yes, which is "try and see": a transport that cannot tell reads and learns.
+    fn has_input(&self) -> bool {
+        true
+    }
+
+    /// The descriptor that becomes readable when [`Transport::has_input`] would turn true, for a caller that waits on
+    /// several connections with one `poll(2)`. `None` for a transport that has no descriptor.
+    fn wait_fd(&self) -> Option<BorrowedFd<'_>> {
+        None
     }
 }

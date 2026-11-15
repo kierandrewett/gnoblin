@@ -1,7 +1,8 @@
 //! The shell's links beside the tree: the dialog slots, the idle connection, the session link and the host
 //! API, and what each hands the script every frame.
 
-use std::time::Instant;
+use std::os::fd::BorrowedFd;
+use std::time::{Duration, Instant};
 
 use gnoblin_tree_client::slot_link::{SlotEvent, SlotLink};
 use rquickjs::{Array, Function};
@@ -26,6 +27,22 @@ impl JsShell {
     pub fn set_session_link(&mut self, link: Box<dyn JsSessionLink>) {
         self.note_script_ran();
         self.state.borrow_mut().api.session = Some(link);
+    }
+
+    /// Sleeps until one of the shell's connections (the tree, the slots, and the idle connection while it is open) is
+    /// readable, `own` (the role's own connection, which the shell does not hold) is, or `timeout` has passed. It says
+    /// whether something was readable. A loop that waits here instead of in a timed read of each connection spends no
+    /// time in a turn that finds every connection quiet: the reads that follow are made only for a connection the kernel
+    /// has said holds bytes.
+    ///
+    /// # Errors
+    ///
+    /// The kernel refused the wait, which means a connection's descriptor is no longer open.
+    pub fn wait_for_input(&self, own: Option<BorrowedFd<'_>>, timeout: Duration) -> Result<bool, JsShellError> {
+        let sources = [self.link.wait_fd(), self.dialogs.wait_fd(), self.idle.wait_fd(), own];
+        let fds: Vec<BorrowedFd<'_>> = sources.into_iter().flatten().collect();
+        gnoblin_client::wait_readable(&fds, timeout)
+            .map_err(|error| JsShellError::Link(format!("waiting for the compositor: {error}")))
     }
 
     /// The host API's frame: what happened outside the script (a process ended, the compositor finished a call or

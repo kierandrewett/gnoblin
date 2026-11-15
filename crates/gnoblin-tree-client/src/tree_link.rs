@@ -6,6 +6,7 @@
 //! written; their answers come back through [`TreeLink::poll`], in arrival order.
 
 use std::io::{self, Read};
+use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
@@ -24,8 +25,9 @@ use crate::tree_mirror::{
 
 const NAMESPACE: &str = "tree";
 
-/// How long one read waits for bytes that have not arrived. Short, so a poll never stalls the
-/// caller: whatever has arrived by then is returned, and the rest comes on a later poll.
+/// How long a read waits for the rest of a frame it has begun. A read is only made when the socket has bytes (see
+/// [`SocketTreeLink::fill`]), so this is paid only when a frame arrives in pieces, and then it is short, so a poll never
+/// stalls the caller: whatever has arrived by then is kept, and the rest comes on a later poll.
 const READ_WAIT: Duration = Duration::from_millis(1);
 
 /// How long a write may block before the compositor is treated as stuck.
@@ -72,8 +74,14 @@ impl SocketTreeLink {
             .map_err(|error| LinkError(format!("writing to the tree socket: {error}")))
     }
 
-    /// Read whatever bytes are waiting. `Ok(false)` means nothing arrived before the read timed out.
+    /// Read whatever bytes are waiting. `Ok(false)` means there were none.
+    ///
+    /// The socket is asked first, with no wait, because a read of a quiet socket waits out its whole read timeout: that
+    /// was a millisecond of every idle turn of the shell, for a link that had nothing to say.
     fn fill(&mut self) -> Result<bool, LinkError> {
+        if !gnoblin_client::readable_now(&self.stream) {
+            return Ok(false);
+        }
         let mut chunk = [0u8; 4096];
         match self.stream.read(&mut chunk) {
             Ok(0) => Err(LinkError("the compositor closed the tree socket".to_owned())),
@@ -147,6 +155,10 @@ impl TreeLink for SocketTreeLink {
             gnoblin_secret::wipe(&mut op.text);
         }
         sent
+    }
+
+    fn wait_fd(&self) -> Option<BorrowedFd<'_>> {
+        Some(self.stream.as_fd())
     }
 
     fn poll(&mut self) -> Result<Vec<TreeIncoming>, LinkError> {
@@ -489,5 +501,39 @@ fn to_value(change: &change::Properties) -> Result<MirrorValue, LinkError> {
         "list_effect" => Ok(MirrorValue::Effects(change.value_effects.clone())),
         "bytes" => Ok(MirrorValue::Bytes(change.value_bytes.clone())),
         other => Err(LinkError(format!("a tree value of kind {other} has no script form"))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::os::unix::net::UnixStream;
+    use std::time::Duration;
+
+    use super::SocketTreeLink;
+    use crate::tree_mirror::TreeLink;
+
+    /// A link over one end of a socket pair, and the far end.
+    fn pair() -> (SocketTreeLink, UnixStream) {
+        let (near, far) = UnixStream::pair().expect("a socket pair");
+        (SocketTreeLink::new(near).expect("a link"), far)
+    }
+
+    #[test]
+    fn a_poll_of_a_quiet_link_returns_at_once_whatever_the_read_timeout() {
+        let (mut link, _far) = pair();
+        // Were the socket read, this would wait the whole timeout: the poll asks whether there are bytes first.
+        link.stream
+            .set_read_timeout(Some(Duration::from_secs(60)))
+            .expect("a read timeout");
+        assert!(link.poll().expect("a quiet link").is_empty());
+        assert!(link.wait_fd().is_some(), "a socket link has a descriptor to sleep on");
+    }
+
+    #[test]
+    fn a_closed_compositor_is_still_reported_by_a_poll() {
+        let (mut link, far) = pair();
+        drop(far);
+        let error = link.poll().expect_err("the peer is gone");
+        assert!(error.0.contains("closed"), "{}", error.0);
     }
 }

@@ -19,6 +19,8 @@ gnoblin-proto = { path = "../gnoblin-proto" }
 zeroize.workspace = true
 # The tree's payloads are generated messages; the lock view decodes the few it reads.
 prost.workspace = true
+# Whether a socket has bytes to read, asked with a zero timeout, and one wait over several sockets (`src/ready.rs`).
+rustix = { workspace = true, features = ["event"] }
 
 [dev-dependencies]
 # The tests build a graph from the checked-in schema, so the loopback pair is

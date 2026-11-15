@@ -81,6 +81,8 @@ mod loopback;
 #[cfg(unix)]
 mod loopback_lock;
 #[cfg(unix)]
+mod ready;
+#[cfg(unix)]
 mod reporter;
 #[cfg(unix)]
 mod transport;
@@ -99,6 +101,8 @@ pub use inherit::{Environment, Inherited, file as inherited_file, stream as inhe
 pub use lock::SessionLock;
 #[cfg(unix)]
 pub use loopback::{Loopback, Server};
+#[cfg(unix)]
+pub use ready::{readable_now, wait_readable};
 #[cfg(unix)]
 pub use reporter::Reporter;
 #[cfg(unix)]

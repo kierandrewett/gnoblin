@@ -113,24 +113,51 @@ happen, and asserts that the very next frame ran and that the script heard it in
 
 #### What a turn costs over the real links
 
-| Windows | Idle connection | Frames run in 3 s | Turn, wall clock | Turn, thread CPU |
-| ------- | --------------- | ----------------- | ---------------- | ---------------- |
-| 0       | no              | 0                 | 2.17 ms          | 1.72 ms          |
-| 25      | no              | 0                 | 2.19 ms          | 1.77 ms          |
-| 100     | no              | 0                 | 2.19 ms          | 1.76 ms          |
-| 300     | no              | 0                 | 2.18 ms          | 1.69 ms          |
-| 100     | open            | 6                 | 3.28 ms          | 2.66 ms          |
+| Windows | Idle connection | Frames run in 3 s | Turn, wall clock, before | Turn, wall clock, now | Turn, thread CPU, now |
+| ------- | --------------- | ----------------- | ------------------------ | --------------------- | --------------------- |
+| 0       | no              | 0                 | 2542 us                  | 10.1 us               | 10 us                 |
+| 25      | no              | 0                 | 2489 us                  | 12.9 us               | 15 us                 |
+| 100     | no              | 0                 | 2448 us                  | 12.6 us               | 15 us                 |
+| 300     | no              | 0                 | 2537 us                  | 13.8 us               | 15 us                 |
+| 100     | open            | 6 (4 before)      | 3676 us                  | 21.3 us               | 20 us                 |
 
 Release, 4-CPU Agent37 instance, `idle_turn_cost_over_the_real_links` (ignored): a real compositor session with the
-stock config, 3 s of turns at the loop's pace to count the frames, then the mean of 2000 back-to-back role ticks. The
-open idle connection is a script's `gnoblin.idle.watch`. The six frames came with it: the same session without the
-watch ran none, and what the watch adds to the shell is the idle readings the connection delivers.
+stock config, 3 s of turns at the loop's pace to count the frames, then the mean of 2000 back-to-back role ticks. "Before"
+is the tip `87590e21c` and "now" is the same test with the change below, on the same instance. The open idle connection is
+a script's `gnoblin.idle.watch`. The frames came with it in both runs: the same session without the watch ran none, and
+what the watch adds to the shell is the idle readings the connection delivers, so the count follows the compositor's
+idle clock and not this change.
 
-The cost does not depend on the windows, so gating does what it says: no frame runs. What is left is not the shell but
-the reads. The tree link and the slot link each wait up to 1 ms for bytes on every poll (`READ_WAIT` in
-`gnoblin-tree-client/src/tree_link.rs` and `slot_link.rs`), and an open idle connection waits 1 ms more. That is the
-2 ms of wall time, and the third millisecond when an idle watch is open.
+The cost did not depend on the windows, so gating did what it says: no frame ran. What was left was not the shell but the
+reads. The tree link, the slot link and an open idle connection each waited up to 1 ms for bytes on every poll
+(`READ_WAIT` in `gnoblin-tree-client/src/tree_link.rs` and `slot_link.rs`, and in `host_idle.rs`), which is the 2.5 ms of
+wall time, and the third millisecond when an idle watch is open.
 
-The thread-CPU column is an upper bound. Agent37 runs gVisor, which charges the thread for part of a timed read, so the
-CPU a real kernel spends in those waits is not measured here. Replacing the timed reads with one `poll(2)` over the links
-and the loop's own connection would take an idle turn to microseconds. That is not done.
+#### One wait over the links
+
+- **A read is made only when there is something to read.** `gnoblin_client::readable_now` asks the kernel with a zero
+  timeout, so a quiet link costs one system call and no wait. The tree link asks before each read of its socket, and the
+  links that hold a `Client` (slots, idle) ask `Client::has_input`, which also counts an event the client has already
+  queued and the bytes its reader has already taken from the socket. `READ_WAIT` is now only the backstop for the rest
+  of a frame that arrived in pieces: the bytes read so far are kept, as before, and the next turn goes on from them.
+- **The loop sleeps in one `poll(2)`.** `JsRoleRunner::run` waits in `JsRole::wait_for_input`, which polls the tree
+  link, the slot link, the idle link while it is open and the role's own connection to the compositor together. It
+  ends when any of them has bytes, at the shell's next wake (`JsShell::next_wake`), or after `FRAME_WAIT` (16 ms), which
+  is the longest a turn sleeps because four things are not watched by the wait: the config watcher, the console
+  socket, the session thread's events and the guardian's stop flag. A frame that is due now still waits `MIN_WAIT`
+  (1 ms) so a script that keeps asking for one is not spun on, and a bytes-ready link ends even that wait. A link that
+  has bytes now wakes a turn at once, where before the turn saw them up to 16 ms late when the loop was sleeping on
+  another connection.
+- **A link with no descriptor is unchanged.** `wait_fd` defaults to `None`, so the in-memory fakes of the tests read as
+  they did.
+
+What proves it: `a_quiet_turn_over_the_real_links_does_not_wait_for_bytes` (the fastest of 300 quiet turns over real
+links is under a millisecond, which the old wait made impossible; it is the minimum and not the mean so a loaded machine
+cannot fail it, which three runs under eight busy loops on four CPUs showed a mean does),
+`a_wait_for_input_ends_at_its_deadline_when_quiet_and_when_the_compositor_sends_something`, and the unit tests of the
+readiness check (`gnoblin-client/src/ready.rs`, `unix.rs`) and of a quiet tree link
+(`a_poll_of_a_quiet_link_returns_at_once_whatever_the_read_timeout`). `frame_gating`, `wake_sources` and `host_idle`
+pass unchanged.
+
+The thread-CPU column was an upper bound before: Agent37 runs gVisor, which charges the thread for part of a timed
+read. With no timed read left it measures the turn itself.

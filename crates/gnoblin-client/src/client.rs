@@ -679,6 +679,19 @@ impl<T: Transport> Client<T> {
         self.transport.set_read_timeout(timeout)
     }
 
+    /// Whether [`Client::next_event`] would return without waiting for the compositor: an event is already queued, or
+    /// the transport has bytes. A role that reads only when this is true never waits out a read timeout for nothing.
+    pub fn has_input(&self) -> bool {
+        !self.inbox.is_empty() || self.transport.has_input()
+    }
+
+    /// The descriptor to wait on for this connection, where the transport has one (see [`crate::wait_readable`]). It
+    /// becomes readable when the compositor sends something; an event already queued is not signalled by it, so
+    /// check [`Client::has_input`] first.
+    pub fn wait_fd(&self) -> Option<std::os::fd::BorrowedFd<'_>> {
+        self.transport.wait_fd()
+    }
+
     /// Give the connection back, for a caller that owns the socket.
     pub fn into_inner(self) -> T {
         self.transport

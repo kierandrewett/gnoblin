@@ -11,6 +11,8 @@
 //! generation has a listener and released when it has none, when it is retired (a reload or a shutdown), and by the
 //! compositor when the connection closes, so a crashed shell leaves no observer behind.
 
+use std::os::fd::BorrowedFd;
+
 use gnoblin_tree_client::slot_link::{SlotEvent, SlotLink};
 use rquickjs::{Array, Ctx, Object};
 
@@ -60,6 +62,11 @@ impl JsDialogs {
 
     pub(crate) fn set_link(&mut self, link: Box<dyn SlotLink>) {
         self.link = Some(link);
+    }
+
+    /// The descriptor of the slot connection, while there is one.
+    pub(crate) fn wait_fd(&self) -> Option<BorrowedFd<'_>> {
+        self.link.as_ref().and_then(|link| link.wait_fd())
     }
 
     /// Claims the slot while the running generation has a listener and gives it back when it has none.

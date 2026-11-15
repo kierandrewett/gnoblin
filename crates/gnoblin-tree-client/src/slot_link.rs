@@ -21,7 +21,8 @@ use gnoblin_types::RequestId;
 
 use crate::tree_mirror::LinkError;
 
-/// How long a poll waits for bytes that have not arrived. Short, so a frame never stalls on it.
+/// How long a read waits for the rest of a frame it has begun. A poll reads only when the socket has bytes, so this is
+/// paid when a frame arrives in pieces, and it is short so a frame never stalls on it.
 const READ_WAIT: Duration = Duration::from_millis(1);
 
 /// How long a request waits for the compositor's reply. The compositor answers a slot or request call at
@@ -68,8 +69,14 @@ pub trait SlotLink {
     /// Decline a claimed request: this shell will not answer it, so the compositor serves it another way. `reason`
     /// says why, as the requester sees it; `None` is a plain decline.
     fn decline(&mut self, request: u64, reason: Option<DeclineReason>) -> Result<(), LinkError>;
-    /// Everything that has arrived, oldest first. An error is the loss of the connection.
+    /// Everything that has arrived, oldest first. An error is the loss of the connection. It never waits for bytes that
+    /// have not arrived.
     fn poll(&mut self) -> Result<Vec<SlotEvent>, LinkError>;
+    /// The descriptor that becomes readable when the compositor sends something, for a loop that sleeps on several
+    /// connections at once. `None` for a link with no descriptor.
+    fn wait_fd(&self) -> Option<std::os::fd::BorrowedFd<'_>> {
+        None
+    }
 }
 
 /// Reads the wire name of a decline reason: `locked`, `denied` or `unavailable`. The error names the three
@@ -153,9 +160,14 @@ impl<T: Transport> SlotLink for ClientSlotLink<T> {
         self.replying(|client| client.decline_with(RequestId::new(request), reason))
     }
 
+    fn wait_fd(&self) -> Option<std::os::fd::BorrowedFd<'_>> {
+        self.client.wait_fd()
+    }
+
     fn poll(&mut self) -> Result<Vec<SlotEvent>, LinkError> {
         let mut events = Vec::new();
-        loop {
+        // A read of a quiet connection waits out its timeout, so the connection is asked first.
+        while self.client.has_input() {
             match self.client.next_event() {
                 Ok(Event::RequestOffered {
                     request,
@@ -178,10 +190,11 @@ impl<T: Transport> SlotLink for ClientSlotLink<T> {
                 }),
                 // The shell is neither a host that offers requests nor a subscriber to the graph.
                 Ok(Event::RequestAnswered { .. } | Event::Model(_) | Event::Lock(_)) => {}
-                Err(ClientError::Idle) => return Ok(events),
+                Err(ClientError::Idle) => break,
                 Err(error) => return Err(refusal(error)),
             }
         }
+        Ok(events)
     }
 }
 

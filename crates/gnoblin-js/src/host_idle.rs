@@ -13,6 +13,7 @@
 //! connection, so a shell that is killed without retiring leaves its holds standing until the same name is released:
 //! unlike a chord claim or a slot, nothing releases them when the connection closes.
 
+use std::os::fd::BorrowedFd;
 use std::path::Path;
 use std::time::Duration;
 
@@ -26,7 +27,8 @@ use crate::config::JsLinkError;
 
 gnoblin_log::logger!(log = "js");
 
-/// How long a poll waits for bytes that have not arrived. Short, so a frame never stalls on it.
+/// How long a read waits for the rest of a frame it has begun. A poll reads only when the socket has bytes, so this is
+/// paid when a frame arrives in pieces, and it is short so a frame never stalls on it.
 const READ_WAIT: Duration = Duration::from_millis(1);
 
 /// How long a call waits for the compositor's reply. The compositor answers an `idle` call at once.
@@ -53,6 +55,11 @@ pub trait JsIdleLink {
     ///
     /// The connection ended, or the `idle` object went away.
     fn poll(&mut self) -> Result<Option<JsIdleReading>, JsLinkError>;
+    /// The descriptor that becomes readable when the compositor sends a reading, for a loop that sleeps on several
+    /// connections at once. `None` for a link with no descriptor, which is every fake.
+    fn wait_fd(&self) -> Option<BorrowedFd<'_>> {
+        None
+    }
     /// Holds the session awake under `holder`.
     ///
     /// # Errors
@@ -174,8 +181,13 @@ impl<T: Transport> JsClientIdleLink<T> {
 }
 
 impl<T: Transport> JsIdleLink for JsClientIdleLink<T> {
+    fn wait_fd(&self) -> Option<BorrowedFd<'_>> {
+        self.client.wait_fd()
+    }
+
     fn poll(&mut self) -> Result<Option<JsIdleReading>, JsLinkError> {
-        loop {
+        // A read of a quiet connection waits out its timeout, so the connection is asked first.
+        while self.client.has_input() {
             match self.client.next_event() {
                 Ok(Event::Model(Observation::Changed {
                     object,
@@ -251,6 +263,11 @@ impl JsIdle {
     /// Whether the connection is open: the frame must keep running its side of the exchange.
     pub(crate) fn is_open(&self) -> bool {
         self.link.is_some()
+    }
+
+    /// The descriptor of the idle connection, while it is open.
+    pub(crate) fn wait_fd(&self) -> Option<BorrowedFd<'_>> {
+        self.link.as_ref().and_then(|link| link.wait_fd())
     }
 
     /// Opens the connection while the generation wants one and closes it when it does not.

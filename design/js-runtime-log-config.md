@@ -187,8 +187,9 @@ Now the JavaScript role does all of it and starts no Lua. Code: `crates/gnoblin-
     The shell commits during that boot; the role then reports to the guardian, in the Lua role's order: one `autostart`
     line per enabled entry of the document, then `config-accepted REVISION`, then `ready` with `GNOBLIN_CONFIG_REVISION`.
 
-    It then serves one frame per turn (`FRAME_WAIT`, 16 ms, is how long a turn waits on the compositor), reloads on
-    `reload_requested`, and reports every commit the watcher's reload made.
+    It then serves one frame per turn (`FRAME_WAIT`, 16 ms, is the longest a turn sleeps, and a turn ends at once when a
+    connection of the shell has bytes), reloads on `reload_requested`, and reports every commit the watcher's reload
+    made.
 
 - **The shell owns the document** (`JsShell::own_document`, `ConfigState::owns_document`). Each commit is the
   generation's document patch laid over an empty document: nothing the compositor held before is read, so a key deleted

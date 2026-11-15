@@ -69,13 +69,19 @@ pub const WATCH_VARIABLE: &str = "GNOBLIN_JS_WATCH";
 /// such a child without building one. It is the variable the Lua role reads, and both roles honour it.
 pub const TEST_CRASH_VARIABLE: &str = "GNOBLIN_TEST_RUNTIME_CRASH";
 
-/// How long one turn waits for the compositor to say something before it runs the shell's frame.
+/// The longest one turn waits for the compositor to say something before it runs the shell's frame.
 ///
-/// A frame applies the tree's changes and runs the listeners, so this is the latency a script sees. It is one display
-/// frame at 60 Hz; an idle role wakes that often and does one cheap frame.
+/// A turn also ends the moment a connection has bytes, so this bounds the latency of what has no descriptor to wait on
+/// (a saved config file, a console expression, the session thread's events, the guardian's stop). It is one display
+/// frame at 60 Hz; an idle role wakes that often and does one cheap turn.
 pub const FRAME_WAIT: Duration = Duration::from_millis(16);
 
-/// The shortest wait of a turn: a shell whose frame is due now still lets the compositor's events in first.
+/// How long a read of the role's own connection waits for the rest of a frame it has begun. The connection is read only
+/// when the kernel says it has bytes, so this is paid only when a frame arrives in pieces.
+const PARTIAL_FRAME_WAIT: Duration = Duration::from_millis(1);
+
+/// The shortest wait of a turn when a frame is due now, so a shell that keeps asking for one is not spun on. The wait
+/// still ends at once when a connection has bytes.
 const MIN_WAIT: Duration = Duration::from_millis(1);
 
 /// How many events of the object graph one turn takes before it runs a frame, so a compositor that never goes quiet
@@ -176,11 +182,12 @@ impl JsRoleRunner {
         let snapshot = client
             .subscribe(Filter::All)
             .map_err(|error| JsRoleError::Connect(format!("cannot subscribe to the session: {error}")))?;
-        // From here every read that times out is "nothing yet", and the timeout is the clock the turns below run on.
-        // It is set after the handshake and the snapshot, which are waits for a reply a loaded compositor may be slow to
-        // send.
+        // From here the loop sleeps in `wait_for_input` and reads this connection only when it has bytes. The timeout is
+        // what remains of the old pacing: a frame that arrives in pieces waits this long for the rest and the next turn
+        // goes on from there. It is set after the handshake and the snapshot, which are waits for a reply a loaded
+        // compositor may be slow to send.
         client
-            .set_read_timeout(Some(FRAME_WAIT))
+            .set_read_timeout(Some(PARTIAL_FRAME_WAIT))
             .map_err(|error| JsRoleError::Connect(format!("cannot set the read deadline: {error}")))?;
         let mut sessions: BTreeSet<ObjectId> = snapshot
             .objects()
@@ -211,21 +218,24 @@ impl JsRoleRunner {
         reporter.ready(&[("GNOBLIN_CONFIG_REVISION".to_owned(), revision.to_string())]);
 
         let mut reload_asked = false;
-        let mut waiting = FRAME_WAIT;
         while !stop() {
-            // The wait for the compositor is the turn's clock: it ends at once when something arrives, and when
-            // nothing does it ends at the shell's next timer, or after `FRAME_WAIT`, which is how often the tree
-            // link and the links beside it are looked at.
-            let wait = role
-                .next_wake()
-                .map_or(FRAME_WAIT, |due| due.clamp(MIN_WAIT, FRAME_WAIT));
-            if wait != waiting {
-                client
-                    .set_read_timeout(Some(wait))
-                    .map_err(|error| JsRoleError::Serving(format!("cannot set the read deadline: {error}")))?;
-                waiting = wait;
-            }
+            // The wait is the turn's clock. It ends at once when the compositor, or any connection of the shell (the
+            // tree, the slots, the idle watch), has bytes to read, so an idle shell does no reads at all. When nothing
+            // arrives it ends at the shell's next timer, or after `FRAME_WAIT`, which is how often what has no
+            // descriptor (the config watcher, the console, the session thread's events and the stop flag) is looked at.
+            let wait = if client.has_input() {
+                Duration::ZERO
+            } else {
+                role.next_wake()
+                    .map_or(FRAME_WAIT, |due| due.clamp(MIN_WAIT, FRAME_WAIT))
+            };
+            role.wait_for_input(client.wait_fd(), wait)
+                .map(drop)
+                .map_err(|error| JsRoleError::Serving(error.to_string()))?;
             for _ in 0..EVENT_BATCH {
+                if !client.has_input() {
+                    break;
+                }
                 match client.next_event() {
                     Ok(Event::Model(Observation::Opened { view, .. })) => {
                         if is_session(&view) {

@@ -35,7 +35,7 @@
 //!    length prefix and lose the stream's framing: `a_read_timeout_inside_a_frame_loses_nothing`.
 
 use std::io::{self, BufReader, Read, Write};
-use std::os::fd::{BorrowedFd, OwnedFd};
+use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -179,6 +179,15 @@ impl Transport for UnixTransport {
             .map_err(|error| crate::ClientError::Codec(CodecError::Io(error)))
     }
 
+    fn has_input(&self) -> bool {
+        // The reader's own buffer first: bytes it already took from the socket are not readable on the socket.
+        !self.reader.buffer().is_empty() || crate::ready::readable_now(self.reader.get_ref())
+    }
+
+    fn wait_fd(&self) -> Option<BorrowedFd<'_>> {
+        Some(self.reader.get_ref().as_fd())
+    }
+
     fn receive_handshake(&mut self) -> Result<Handshake, HandshakeError> {
         let mut frame = [0u8; HANDSHAKE_LEN];
         // A peer that sent an envelope instead starts with a length prefix, and one
@@ -292,6 +301,24 @@ mod tests {
             matches!(&error, CodecError::Io(io) if io.kind() == std::io::ErrorKind::Unsupported),
             "{error}"
         );
+    }
+
+    #[test]
+    fn a_transport_says_whether_a_read_would_find_bytes() {
+        let (mut far, mut client) = pair();
+        assert!(!client.has_input(), "nothing has been sent");
+        write_frame(
+            &mut far,
+            &Envelope::request("gnoblin", "object.subscribe", 1, Vec::new()),
+        )
+        .expect("write");
+        assert!(client.has_input(), "a frame is waiting on the socket");
+        let envelope = gnoblin_proto::Transport::receive(&mut client, &mut Vec::new())
+            .expect("a frame")
+            .expect("not the end");
+        assert_eq!(envelope.request_id, 1);
+        assert!(!client.has_input(), "the frame is taken and nothing else came");
+        assert!(client.wait_fd().is_some(), "a socket has a descriptor to wait on");
     }
 
     #[test]
