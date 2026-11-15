@@ -700,6 +700,10 @@ pub enum BackendEvent {
     /// left to draw on and must end. It is reported once, on the first dispatch
     /// after the failure.
     Disconnected,
+    /// The person ended the session through the backend's own surface: the last window of a nested session was
+    /// closed. It is a logout and not a failure, so the host ends the session the way a logout does, and a
+    /// supervisor does not restart it. Closing one of several windows is only [`BackendEvent::OutputDisconnected`].
+    SessionEnded,
 }
 
 /// What a backend needs from the compositor it drives.

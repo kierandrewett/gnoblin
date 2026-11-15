@@ -557,6 +557,7 @@ impl Server {
             screenshots: Screenshots::default(),
             global_scale: Mutex::new(None),
             logout: std::sync::atomic::AtomicBool::new(false),
+            backend_lost: std::sync::atomic::AtomicBool::new(false),
         });
         event_loop
             .handle()
@@ -782,6 +783,8 @@ impl Server {
     /// error is not one of them.
     pub fn run(self) -> Result<(), LoopError> {
         let socket_path = self.socket_path.clone();
+        // The closure below owns `control`; the flag it sets is read after the loop through this second handle.
+        let lost = Arc::clone(&self.control);
         let result = {
             let Self {
                 mut event_loop,
@@ -791,6 +794,7 @@ impl Server {
                 frames,
                 clock,
                 mut global_scale,
+                stop,
                 ..
             } = self;
             // The loop's own handle, so a sandbox listener created during a dispatch
@@ -845,6 +849,17 @@ impl Server {
                     }
                 }
                 let events = backend.dispatch(state);
+                // The two ways a backend ends a session are different endings. The person closing the last
+                // window of a hosted session is a logout; the device that drives the backend going away is a
+                // failure no output survives, and a loop that kept running would serve nothing for ever.
+                if events.iter().any(|event| matches!(event, BackendEvent::SessionEnded)) {
+                    control.logout.store(true, std::sync::atomic::Ordering::SeqCst);
+                    stop.stop();
+                }
+                if events.iter().any(|event| matches!(event, BackendEvent::Disconnected)) {
+                    control.backend_lost.store(true, std::sync::atomic::Ordering::SeqCst);
+                    stop.stop();
+                }
                 let outputs_changed = scale_changed || events.iter().any(is_output_change);
                 if outputs_changed {
                     // A hotplug, a removal or a mode change: the whole layout is
@@ -870,6 +885,9 @@ impl Server {
             })
         };
         let _ = std::fs::remove_file(&socket_path);
+        if lost.backend_lost.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(LoopError::BackendLost);
+        }
         result.map_err(LoopError::Stopped)
     }
 }
@@ -1627,6 +1645,8 @@ struct Control {
     global_scale: Mutex<Option<Option<u32>>>,
     /// Set when a logout ends the loop, so the caller can tell a logout from a stop.
     logout: std::sync::atomic::AtomicBool,
+    /// Set when the backend reports that the device driving it is gone, which ends the loop with a failure.
+    backend_lost: std::sync::atomic::AtomicBool,
 }
 
 impl Control {
@@ -1826,12 +1846,20 @@ pub enum LoopError {
     /// The event loop failed. This is a lost socket or a failed dispatch, not a
     /// client's protocol error.
     Stopped(CalloopError),
+    /// The device that drives the backend went away: a nested session's parent compositor died, or the GPU was
+    /// removed. Every output is gone and none can come back, so the session ends with a failure and a supervisor
+    /// may start it again.
+    BackendLost,
 }
 
 impl std::fmt::Display for LoopError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Stopped(error) => write!(formatter, "the compositor loop stopped: {error}"),
+            Self::BackendLost => write!(
+                formatter,
+                "the backend lost the device that drives it, so the session has no output and ends"
+            ),
         }
     }
 }

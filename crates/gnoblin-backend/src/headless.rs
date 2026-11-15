@@ -383,6 +383,10 @@ struct HeadlessRequests {
     connect: Vec<(String, DisplayMode, Scale, Option<String>)>,
     /// Outputs to disconnect.
     disconnect: Vec<OutputId>,
+    /// Whether the person ended the session through the backend's own surface.
+    end_session: bool,
+    /// Whether the thing driving the backend went away.
+    lose_device: bool,
 }
 
 /// A caller's control over a headless backend a session already owns.
@@ -458,6 +462,18 @@ impl HeadlessHandle {
     /// Disconnects an output on the next dispatch.
     pub fn disconnect_output(&self, output: OutputId) {
         self.requests().disconnect.push(output);
+    }
+
+    /// Ends the session as closing the last window of a nested one does: the backend reports
+    /// [`BackendEvent::SessionEnded`] on the next dispatch.
+    pub fn end_session(&self) {
+        self.requests().end_session = true;
+    }
+
+    /// Loses the device that drives the backend, as a nested session's parent dying does: every output is gone and
+    /// the backend reports [`BackendEvent::Disconnected`] once, on the next dispatch.
+    pub fn lose_device(&self) {
+        self.requests().lose_device = true;
     }
 
     /// Stops presenting frames, or resumes.
@@ -823,6 +839,17 @@ impl Headless {
         let requests = std::mem::take(&mut *self.requests.lock().unwrap_or_else(PoisonError::into_inner));
         if let Some(present) = requests.present {
             self.presenting = present;
+        }
+        if requests.lose_device {
+            // Nothing this backend owns survives the device, so the outputs go without per-output events.
+            self.outputs.clear();
+            self.targets.clear();
+            self.pending.clear();
+            self.pending.push(BackendEvent::Disconnected);
+            return;
+        }
+        if requests.end_session {
+            self.pending.push(BackendEvent::SessionEnded);
         }
         for output in requests.disconnect {
             // A caller that unplugs an output twice is not an error: the second request
