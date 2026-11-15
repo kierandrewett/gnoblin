@@ -85,6 +85,21 @@ GNOBLIN_PARITY_RUNTIME_BASE=/home/node/fedora/tmp/parity-rt`. The base must be i
 
 The stored reports are in `reports/`. Each says where it was produced and what Mutter it ran.
 
+## Record the reference session
+
+`reference-session/` holds what a stock Mutter 51 headless session puts on the session bus and on its Wayland socket,
+recorded by `scripts/reference-session-record.sh` from a Fedora 45 root file system as the Mutter-reference steps above
+set one up (`GNOBLIN_PARITY_MUTTER_ROOT=<root> scripts/reference-session-record.sh <root>/tmp/out`; it also needs
+`systemd` for `busctl`, `wayland-utils`, `dbus-tools`, `python3-dbus`, `pipewire` and `gtk4-devel-tools` in the root).
+`run.txt` says which versions, which command lines and which exit codes. The files are the output of the commands, not
+edits of it. `dbus-monitor-mutter.txt` is the part of `busctl monitor` that Mutter's own connection sent; the full stream
+is 440 KB of the tool's own traffic and is not kept.
+
+`scripts/reference-session-matrix.py` compares the recording with every adapter's `support-matrix.json` and writes
+`design/adapter-support-matrices.md`; `--check` fails when that page is stale, and `tests/reference-session-matrix.test.py`
+runs it. The page also lists what the session could not show: the stock GNOME portal refused every call here because its
+sandbox check opens `/proc/PID/root`, so the redirect map's known consumers are still [INFERENCE].
+
 ## Recorded divergences
 
 A step may record that one target differs from the reference, and why:

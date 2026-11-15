@@ -1,0 +1,10 @@
+[image]
+id = "opensuse-leap-16.0"
+image = "registry.opensuse.org/opensuse/leap:16.0"
+probed = false
+reason = "zypper install exited 104: repository signature verification failed under the instance (gpg without /proc), so no package was installed. The script now passes --no-gpg-checks; the re-run did not finish in the time available"
+
+[run]
+box = "yz1mlf9hly"
+date = "2026-11-15"
+host = "Linux 4.19.0-gvisor x86_64"

@@ -13,6 +13,7 @@ mod layout;
 mod logging;
 mod metadata;
 mod native_libs;
+mod native_probe;
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -23,6 +24,8 @@ usage: cargo xtask <subcommand>
 subcommands:
   deps               check the workspace dependency rules from design/rust-compositor.md
   native-libs       fail on a -sys crate in a lock file whose system packages the CI install list lacks
+  native-probe       probe an image's root file system for the native libraries the workspace needs; see
+                     xtask/src/native_probe.rs (list, packages, check, unprobed, matrix)
   gen-proto          write the generated .proto text to target/gen-proto, to read
   compat-report      print every compat adapter's declared support matrix
   dupes              fail on a struct or enum two crates declare twice
@@ -53,6 +56,7 @@ fn main() -> ExitCode {
         ("dupes", []) => dupes::run(true),
         ("dupes", [flag]) if flag == "--deny" => dupes::run(true),
         ("dupes", [flag]) if flag == "--warn" => dupes::run(false),
+        ("native-probe", _) => native_probe::run(&rest),
         ("dist", _) => dist::run(&rest),
         (
             "deps" | "gen-proto" | "dupes" | "compat-report" | "logging" | "layout" | "docs-parity" | "native-libs",

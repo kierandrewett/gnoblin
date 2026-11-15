@@ -1,0 +1,299 @@
+# The native libraries the workspace needs, and the version each one needs at least.
+#
+# `cargo xtask native-probe` reads this file and checks a root file system against it. Nothing here is written from
+# memory: every `crates` and `evidence` entry names the build file, `Cargo.toml` feature or source line that makes
+# the library a need, and a floor is filled in only where one of those states it. A library whose crate declares no
+# floor has none: its probe result is recorded, never judged. A floor that is a driver capability and not a library
+# version (GLES 3) is a `floor-note`, which the probe prints beside the version it found.
+#
+# `kind`:
+#   link    the build links it, so the development package must be installed to build
+#   dlopen  opened at run time with dlopen; the build does not need it, a machine that lacks it loses the feature
+#   build   needed only while building or testing (bindgen, sqlcipher, the wlcs harness), never by the compositor itself
+#   run     a program or file the compositor starts or reads at run time
+#
+# `mutter-floor` is what the Mutter-based product needs for the same library, where the repository states one. It is a
+# comparison, not a requirement of the candidate: the rewrite removes these floors (design/rust-compositor.md, "What
+# the rewrite does and does not fix").
+#
+# `packages` lists, for each package family, the packages that provide the pkg-config file or the shared object. The
+# families are the package managers: apt (Debian, Ubuntu), dnf (Fedora, Rocky), zypper (openSUSE), pacman (Arch) and
+# apk (Alpine); `nix` lists nixpkgs attributes, which are evaluated and not installed, because a Nix root file system
+# holds a store and no .pc files to read. `scripts/native-probe.sh` installs the packages into an image's root file
+# system before the check.
+
+[[library]]
+id = "libinput"
+kind = "link"
+crates = ["input-sys"]
+evidence = "Cargo.toml: smithay feature backend_libinput enables input 0.10 with features libinput_1_11..libinput_1_19 (cargo tree -e features -i input)"
+pkg-config = ["libinput"]
+sonames = ["libinput.so.10"]
+floor = "1.19"
+floor-from = "input 0.10.0 feature libinput_1_19 is the highest enabled; input-sys 1.19.0 binds libinput 1.19"
+mutter-floor = "1.30"
+mutter-floor-from = "design/rust-compositor.md: patch 99/0059 (libinput 1.30)"
+[library.packages]
+apt = ["libinput-dev"]
+dnf = ["libinput-devel"]
+zypper = ["libinput-devel"]
+pacman = ["libinput"]
+apk = ["libinput-dev"]
+nix = ["libinput"]
+
+[[library]]
+id = "libudev"
+kind = "link"
+crates = ["libudev-sys"]
+evidence = "libudev-sys 0.1.4 build.rs: pkg_config::find_library(\"libudev\"); smithay feature backend_udev"
+pkg-config = ["libudev"]
+sonames = ["libudev.so.1"]
+[library.packages]
+apt = ["libudev-dev"]
+dnf = ["systemd-devel"]
+zypper = ["libudev-devel"]
+pacman = ["systemd-libs"]
+apk = ["eudev-dev"]
+nix = ["systemd"]
+
+[[library]]
+id = "libseat"
+kind = "link"
+crates = ["libseat-sys"]
+evidence = "libseat-sys 0.2.0 build.rs: pkg_config::probe_library(\"libseat\"); smithay feature backend_session_libseat"
+pkg-config = ["libseat"]
+sonames = ["libseat.so.1"]
+[library.packages]
+apt = ["libseat-dev"]
+dnf = ["libseat-devel"]
+zypper = ["libseat-devel"]
+pacman = ["seatd"]
+apk = ["seatd-dev"]
+nix = ["seatd"]
+
+[[library]]
+id = "libdrm"
+kind = "link"
+crates = ["drm-sys"]
+evidence = "drm-sys 0.8.1 build.rs: pkgconf.probe(\"libdrm\"); smithay feature backend_drm"
+pkg-config = ["libdrm"]
+sonames = ["libdrm.so.2"]
+[library.packages]
+apt = ["libdrm-dev"]
+dnf = ["libdrm-devel"]
+zypper = ["libdrm-devel"]
+pacman = ["libdrm"]
+apk = ["libdrm-dev"]
+nix = ["libdrm"]
+
+[[library]]
+id = "gbm"
+kind = "link"
+crates = ["gbm-sys"]
+evidence = "gbm-sys 0.4.0 links libgbm; smithay feature backend_gbm. gbm.pc carries Mesa's version, so this row is also the Mesa version of the image"
+pkg-config = ["gbm"]
+sonames = ["libgbm.so.1"]
+[library.packages]
+apt = ["libgbm-dev"]
+dnf = ["mesa-libgbm-devel"]
+zypper = ["libgbm-devel"]
+pacman = ["mesa"]
+apk = ["mesa-dev"]
+nix = ["mesa"]
+
+[[library]]
+id = "egl-gles"
+kind = "dlopen"
+crates = ["smithay"]
+evidence = "smithay feature renderer_gl opens libEGL.so.1 with libloading (scripts/ci-install-system-libraries.sh: panics without it); gnoblin-render-gles/src/egl.rs asks for a GLES 3 context"
+pkg-config = ["egl", "glesv2"]
+sonames = ["libEGL.so.1", "libGLESv2.so.2"]
+floor-note = "GLES 3.0 context (gnoblin-render-gles/src/egl.rs); GLES 3.1 for the proposed D18 depth pass. A driver capability, so the probe cannot judge it from a version"
+[library.packages]
+apt = ["libegl1", "libgles2", "libegl-dev", "libgles-dev"]
+dnf = ["mesa-libEGL", "libglvnd-gles", "libglvnd-devel"]
+zypper = ["Mesa-libEGL1", "Mesa-libGLESv2-2", "libglvnd-devel"]
+pacman = ["libglvnd", "mesa"]
+apk = ["mesa-egl", "mesa-gles", "libglvnd-dev"]
+nix = ["libglvnd", "mesa"]
+
+[[library]]
+id = "vulkan-loader"
+kind = "dlopen"
+crates = ["ash"]
+evidence = "gnoblin-render-vulkan/src/error.rs: libvulkan.so.1 opened at run time; ash feature loaded"
+pkg-config = ["vulkan"]
+sonames = ["libvulkan.so.1"]
+floor = "1.1"
+floor-from = "gnoblin-render-vulkan/src/context.rs:369: api_version(vk::API_VERSION_1_1)"
+[library.packages]
+apt = ["libvulkan1", "libvulkan-dev"]
+dnf = ["vulkan-loader", "vulkan-loader-devel"]
+zypper = ["libvulkan1", "vulkan-devel"]
+pacman = ["vulkan-icd-loader"]
+apk = ["vulkan-loader", "vulkan-loader-dev"]
+nix = ["vulkan-loader"]
+
+[[library]]
+id = "libxkbcommon"
+kind = "link"
+crates = ["xkbcommon"]
+evidence = "xkbcommon 0.9.0 src/xkb/ffi.rs: #[link(name = \"xkbcommon\")]"
+pkg-config = ["xkbcommon"]
+sonames = ["libxkbcommon.so.0"]
+[library.packages]
+apt = ["libxkbcommon-dev"]
+dnf = ["libxkbcommon-devel"]
+zypper = ["libxkbcommon-devel"]
+pacman = ["libxkbcommon"]
+apk = ["libxkbcommon-dev"]
+nix = ["libxkbcommon"]
+
+[[library]]
+id = "pixman"
+kind = "link"
+crates = ["pixman-sys"]
+evidence = "pixman-sys 0.1.0 build.rs: cargo:rustc-link-lib=pixman-1; Cargo.toml: smithay feature renderer_pixman (the D12 software path)"
+pkg-config = ["pixman-1"]
+sonames = ["libpixman-1.so.0"]
+[library.packages]
+apt = ["libpixman-1-dev"]
+dnf = ["pixman-devel"]
+zypper = ["libpixman-1-0-devel"]
+pacman = ["pixman"]
+apk = ["pixman-dev"]
+nix = ["pixman"]
+
+[[library]]
+id = "libwayland"
+kind = "build"
+crates = ["wayland-sys"]
+evidence = "wayland-sys 0.31.11 build.rs probes wayland-client and wayland-server only with its `client` and `server` features, and the workspace enables neither (cargo tree -e features -i wayland-sys shows only `default`): the compositor serves the protocol in Rust and links no libwayland. scripts/ci-install-system-libraries.sh installs libwayland-dev for the C++ harness of scripts/wlcs.sh"
+pkg-config = ["wayland-client", "wayland-server"]
+sonames = ["libwayland-client.so.0", "libwayland-server.so.0"]
+mutter-floor = "1.25"
+mutter-floor-from = "design/rust-compositor.md: patch 82-wayland-compat (wayland-server 1.25)"
+[library.packages]
+apt = ["libwayland-dev"]
+dnf = ["wayland-devel"]
+zypper = ["wayland-devel"]
+pacman = ["wayland"]
+apk = ["wayland-dev"]
+nix = ["wayland"]
+
+[[library]]
+id = "pipewire"
+kind = "link"
+crates = ["pipewire-sys", "libspa-sys"]
+evidence = "pipewire-sys and libspa-sys 0.10.1 build.rs: system-deps probes libpipewire-0.3 and libspa-0.2; gnoblin-capture, gnoblin-pipewire-export and gnoblin-service-privacy enable the pipewire feature v0_3_34"
+pkg-config = ["libpipewire-0.3", "libspa-0.2"]
+sonames = ["libpipewire-0.3.so.0"]
+floor = "0.3.34"
+floor-from = "pipewire 0.10.1 features v0_3_32, v0_3_33, v0_3_34 (the highest) gate the API the crates call"
+mutter-floor = "1.4.11"
+mutter-floor-from = "tests/parity/README.md: Mutter 51 needs pipewire 1.4.11"
+[library.packages]
+apt = ["libpipewire-0.3-dev"]
+dnf = ["pipewire-devel"]
+zypper = ["pipewire-devel"]
+pacman = ["pipewire"]
+apk = ["pipewire-dev"]
+nix = ["pipewire"]
+
+[[library]]
+id = "libclang"
+kind = "build"
+crates = ["clang-sys", "libspa-sys"]
+evidence = "libspa-sys and pipewire-sys run bindgen, which loads libclang.so (scripts/ci-install-system-libraries.sh; design/pipewire-capture-spike.md: libclang 21 failed on glibc's bits/floatn.h)"
+pkg-config = []
+sonames = ["libclang.so", "libclang-"]
+[library.packages]
+apt = ["libclang-dev"]
+dnf = ["clang-devel"]
+zypper = ["clang-devel"]
+pacman = ["clang"]
+apk = ["clang-dev"]
+nix = ["libclang"]
+
+[[library]]
+id = "openssl"
+kind = "link"
+crates = ["libsqlite3-sys"]
+evidence = "Cargo.toml: rusqlite feature bundled-sqlcipher; libsqlite3-sys build.rs builds SQLCipher from source against the system OpenSSL (OPENSSL_DIR or the default search) and links libcrypto; scripts/ci-install-system-libraries.sh: openssl/crypto.h"
+pkg-config = ["openssl"]
+sonames = ["libcrypto.so"]
+[library.packages]
+apt = ["libssl-dev"]
+dnf = ["openssl-devel"]
+zypper = ["libopenssl-devel"]
+pacman = ["openssl"]
+apk = ["openssl-dev"]
+nix = ["openssl"]
+
+[[library]]
+id = "libpam"
+kind = "dlopen"
+crates = ["gnoblin-lock-auth"]
+evidence = "gnoblin-lock-auth/src/ffi.rs:19: LIBRARY = \"libpam.so.0\", opened with dlopen on each check"
+pkg-config = []
+sonames = ["libpam.so.0"]
+[library.packages]
+apt = ["libpam0g"]
+dnf = ["pam"]
+zypper = ["pam"]
+pacman = ["pam"]
+apk = ["linux-pam"]
+nix = ["linux-pam"]
+
+[[library]]
+id = "polkit-helper"
+kind = "run"
+crates = ["gnoblin-polkit-auth"]
+evidence = "gnoblin-polkit-auth/src/helper.rs:44: HELPER_CANDIDATES, the places a distribution installs polkit-agent-helper-1"
+pkg-config = []
+files = [
+  "usr/lib/polkit-1/polkit-agent-helper-1",
+  "usr/libexec/polkit-1/polkit-agent-helper-1",
+  "usr/lib/policykit-1/polkit-agent-helper-1",
+]
+[library.packages]
+apt = ["policykit-1"]
+dnf = ["polkit"]
+zypper = ["polkit"]
+pacman = ["polkit"]
+apk = ["polkit"]
+nix = ["polkit"]
+
+[[library]]
+id = "xwayland"
+kind = "run"
+crates = ["gnoblin-xwayland"]
+evidence = "gnoblin-xwayland/src/settings.rs:352,515: the Xwayland binary is looked up in a directory on PATH"
+pkg-config = []
+files = ["usr/bin/Xwayland"]
+[library.packages]
+apt = ["xwayland"]
+dnf = ["xorg-x11-server-Xwayland"]
+zypper = ["xwayland"]
+pacman = ["xorg-xwayland"]
+apk = ["xwayland"]
+nix = ["xwayland"]
+
+# Libraries a reader expects in this list that no crate links or opens. Each names what was checked, so the absence is
+# a finding and not an omission.
+
+[[not-linked]]
+id = "libei"
+evidence = "Cargo.lock has no libei or -sys crate for it; the EIS server is `reis` 0.7.1, pure Rust (crates/gnoblin-input-eis)"
+
+[[not-linked]]
+id = "fontconfig and freetype"
+evidence = "Cargo.lock has no fontconfig-sys or freetype-sys crate; the shell's fonts are `epaint_default_fonts`, embedded"
+
+[[not-linked]]
+id = "systemd, libsystemd and elogind"
+evidence = "no crate links libsystemd or libelogind. libseat chooses a logind backend inside the distribution's own libseat build, so the libseat row is where a session manager shows up"
+
+[[not-linked]]
+id = "glib, gtk, gobject introspection"
+evidence = "Cargo.lock has no glib-sys, gtk-sys or gobject-sys crate; they are a Mutter floor only (design/packaging-research.md: GLib 2.86)"

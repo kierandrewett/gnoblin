@@ -45,6 +45,11 @@ const NO_NATIVE: &[&str] = &[
     "windows-sys",
 ];
 
+/// The `-sys` crates [`NATIVE`] says link a system library, for `native-probe`, which accounts for each of them.
+pub fn native_crates() -> impl Iterator<Item = &'static str> {
+    NATIVE.iter().map(|(name, _)| *name)
+}
+
 pub fn run() -> ExitCode {
     match check(Path::new(".")) {
         Ok(problems) if problems.is_empty() => {

@@ -826,7 +826,11 @@ Open:
   baseline can be recorded.
 - The MSRV is measured at 1.97.0 (1.96.0 fails on `cranelift-assembler-x64` 0.137.1,
   which needs 1.97.0). `just msrv` and the CI `msrv` job check it.
-- The native dependency probe on every target image.
+- The native dependency probe on six more target images: `el-9`, `opensuse-leap-15.5`,
+  `opensuse-leap-15.6`, `opensuse-leap-16.0`, `opensuse-tumbleweed-current` and the
+  four NixOS channels (13 of 22 are probed; the probe, its table and the scripts are
+  done). The table needs `polkitd` for Debian 13 and Ubuntu 26.04, and Debian 11 and
+  Arch need a re-run (see "Native probe results").
 - The `lua-api/*` phases landed or their design frozen.
 - A real-hardware check of the DRM mode and scale change (`Backend::configure_output`
   in `gnoblin-backend-drm`). It is off unless the session sets `GNOBLIN_DRM_MODESET=1`
@@ -1608,12 +1612,54 @@ Breaks with a decided path:
 
 ## Distribution and toolchain
 
-- **Native dependencies of the candidate** [INFERENCE: confirm with the phase 0
-  dependency probe]: libinput, libudev, libseat, libdrm, GBM and EGL with GLES
-  from Mesa, libxkbcommon, Pixman, PipeWire (capture), Xwayland at run time. Lua
-  is vendored through `mlua`. D-Bus is `zbus` (pure Rust). EIS is `reis` (pure
-  Rust) [INFERENCE: check crate maturity]. No GTK, GLib, GObject introspection,
-  `gcr`, Glycin or `libei`.
+- **Native dependencies of the candidate**, confirmed by the Phase 0 probe
+  (`tests/native-probe/libraries.toml`, each row naming the build file or
+  `Cargo.toml` feature that makes it a need; `cargo xtask native-probe`):
+  linked: libinput, libudev, libseat, libdrm, GBM, libxkbcommon, Pixman,
+  PipeWire and OpenSSL's libcrypto (SQLCipher is built from source against it);
+  opened at run time: EGL with GLES (Mesa), the Vulkan loader and libpam; run
+  time programs: Xwayland and polkit's `polkit-agent-helper-1`; build time only:
+  libclang (bindgen) and libwayland (the wlcs harness). The compositor links no
+  libwayland: `wayland-sys` is built with neither its `client` nor its `server`
+  feature. Lua is vendored through `mlua`. D-Bus is `zbus` (pure Rust). EIS is
+  `reis` (pure Rust) [INFERENCE: check crate maturity]. No GTK, GLib, GObject
+  introspection, `gcr`, Glycin, `libei`, fontconfig, freetype, libsystemd or
+  elogind: `Cargo.lock` has no crate that links any of them.
+- **Native dependency floors.** Only three libraries have a floor, because
+  only three crates declare one. The rest are recorded, never judged.
+
+    | Library   | Candidate floor | Where it comes from                                                   | Mutter product floor |
+    | --------- | --------------- | --------------------------------------------------------------------- | -------------------- |
+    | libinput  | 1.19            | `input` 0.10 feature `libinput_1_19`, the highest enabled             | 1.30                 |
+    | PipeWire  | 0.3.34          | `pipewire` 0.10 feature `v0_3_34`, the highest enabled                | 1.4.11               |
+    | Vulkan    | API 1.1         | `gnoblin-render-vulkan/src/context.rs`: `API_VERSION_1_1`             | none                 |
+    | EGL, GLES | GLES 3.0        | `gnoblin-render-gles/src/egl.rs`: a GLES 3 context (D18 asks for 3.1) | none                 |
+
+    GLES is a driver capability, not a library version, so the probe records
+    Mesa's version and cannot judge it. Results per image are in
+    `tests/native-probe/MATRIX.md` (generated; the xtask test fails when it is
+    stale) and `tests/native-probe/results/`; the section "Native probe results"
+    below summarises them.
+
+- **Native probe results (2026-11-15).** 13 of the 22 target images were unpacked
+  and probed on an Agent37 instance, 3 more were tried and failed, 6 were not reached (`scripts/native-probe.sh`; the run record,
+  command lines and exit codes are in each `tests/native-probe/results/ID.toml`).
+  Of those 13, only Rocky 8 is under a floor: libinput
+  1.16.3 (floor 1.19) and PipeWire 0.3.6 (floor 0.3.34), and its repositories have
+  no libseat. Every other image that has the libraries meets all three floors, Debian 12 and
+  Ubuntu 22.04 included (libinput 1.22.1 and 1.20.0; PipeWire 0.3.65 and 0.3.48),
+  which is what the Mutter floors (libinput 1.30, PipeWire 1.4.11) keep out. Debian
+  11 could not install most packages: its `deb.debian.org` suite was gone and the
+  archive mirror answered 404 for them, so its row is mostly `-`, which means
+  "not installable from the mirror", not "absent from the release". Debian 13 and
+  Ubuntu 26.04 have no `policykit-1` (the table needs `polkitd`), Alpine edge has no
+  `seatd-dev` or `libglvnd-dev` under those names, and Arch's first run failed its
+  `clang` install on a partial upgrade (the script now runs `pacman -Syu`; not
+  re-run). Not probed: `el-9` and both openSUSE images that were tried (gpg cannot
+  start in the instance's chroot; the script now disables signature checks, and
+  the re-run did not finish), `opensuse-leap-15.5`, `opensuse-leap-15.6` and the
+  four NixOS targets (not reached). Nothing here builds the workspace or starts a
+  graphics driver, so a floor that holds is not a package gate.
 - **Toolchain floor:** the MSRV comes from the exact pinned revisions, not from
   a release number. The cached `smithay-0.7.0` declares `rust-version` 1.80.1;
   Smithay master declares 1.87 and `mlua` 0.12 declares 1.88 (prior-art survey).
@@ -3311,11 +3357,17 @@ Needs Kieran:
 - [x] Write the capture-embargo failure-mode list in the crate docs of
       `gnoblin-capture`, each entry naming its test, and cross-link it from
       `gnoblin-lock`.
-- [ ] Probe native dependency versions on every target image.
-- [ ] Record every GNOME and Mutter D-Bus name and private Wayland protocol that
+- [ ] Probe native dependency versions on every target image. Done for 13 of 22
+      (`cargo xtask native-probe`, `tests/native-probe/`); the rest are listed
+      under Open above.
+- [x] Record every GNOME and Mutter D-Bus name and private Wayland protocol that
       a reference session uses (`busctl monitor`, `WAYLAND_DEBUG`), and write
-      the first adapter support matrices from it.
-- [ ] Create one Beads epic and one issue per lane, published to GitHub.
+      the first adapter support matrices from it
+      (`tests/parity/reference-session/`, `adapter-support-matrices.md`).
+      Gap: the stock portal's calls into Mutter could not be recorded.
+- [ ] Create one Beads epic and one issue per lane, published to GitHub. The
+      list is written in `lane-issues.md`; Beads could not be used cleanly from
+      this worktree (no database; the shared one is another lane's).
 
 ## Known gaps and plan ambiguities
 

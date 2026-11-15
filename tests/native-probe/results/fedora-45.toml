@@ -1,0 +1,206 @@
+[image]
+id = "fedora-45"
+image = "fedora:45"
+probed = true
+os_id = "fedora"
+os_version = "45"
+family = "dnf"
+
+[run]
+box = "yz1mlf9hly"
+date = "2026-11-15T12:01:32Z"
+fetch = "python3 scripts/oci-rootfs.py fedora:45"
+fetch-exit = "0"
+host = "Linux 4.19.0-gvisor x86_64"
+install = "dnf install of the packages in tests/native-probe/libraries.toml"
+install-exit = "0"
+packages-not-installed = "mesa-libGLES"
+xtask = "/home/node/target/debug/xtask native-probe check"
+
+[[library]]
+id = "libinput"
+status = "ok"
+version = "1.32.0"
+via = "pkg-config libinput"
+floor = "1.19"
+mutter = "ok"
+found = [
+    "usr/lib64/libinput.so.10",
+    "usr/lib64/libinput.so.10.13.0",
+]
+packages = ["libinput-devel 1.32.0"]
+
+[[library]]
+id = "libudev"
+status = "recorded"
+version = "262"
+via = "pkg-config libudev"
+found = [
+    "usr/lib64/libudev.so.1",
+    "usr/lib64/libudev.so.1.7.15",
+]
+packages = ["systemd-devel 262.1"]
+
+[[library]]
+id = "libseat"
+status = "recorded"
+version = "0.9.3"
+via = "pkg-config libseat"
+found = ["usr/lib64/libseat.so.1"]
+packages = ["libseat-devel 0.9.3"]
+
+[[library]]
+id = "libdrm"
+status = "recorded"
+version = "2.4.134"
+via = "pkg-config libdrm"
+found = [
+    "usr/lib64/libdrm.so.2",
+    "usr/lib64/libdrm.so.2.134.0",
+]
+packages = ["libdrm-devel 2.4.134"]
+
+[[library]]
+id = "gbm"
+status = "recorded"
+version = "26.2.6"
+via = "pkg-config gbm"
+found = [
+    "usr/lib64/libgbm.so.1",
+    "usr/lib64/libgbm.so.1.0.0",
+]
+packages = ["mesa-libgbm-devel 26.2.6"]
+
+[[library]]
+id = "egl-gles"
+status = "recorded"
+version = "1.5"
+via = "pkg-config egl"
+found = [
+    "usr/lib64/libEGL.so.1",
+    "usr/lib64/libEGL.so.1.1.0",
+    "usr/lib64/libGLESv2.so.2",
+    "usr/lib64/libGLESv2.so.2.1.0",
+]
+packages = [
+    "mesa-libEGL 26.2.6",
+    "mesa-libGLES absent",
+    "libglvnd-devel 1.7.0",
+]
+
+[[library]]
+id = "vulkan-loader"
+status = "ok"
+version = "1.4.350"
+via = "pkg-config vulkan"
+floor = "1.1"
+found = [
+    "usr/lib64/libvulkan.so.1",
+    "usr/lib64/libvulkan.so.1.4.350",
+]
+packages = [
+    "vulkan-loader 1.4.350.0",
+    "vulkan-loader-devel 1.4.350.0",
+]
+
+[[library]]
+id = "libxkbcommon"
+status = "recorded"
+version = "1.13.1"
+via = "pkg-config xkbcommon"
+found = [
+    "usr/lib64/libxkbcommon.so.0",
+    "usr/lib64/libxkbcommon.so.0.13.1",
+]
+packages = ["libxkbcommon-devel 1.13.1"]
+
+[[library]]
+id = "pixman"
+status = "recorded"
+version = "0.46.2"
+via = "pkg-config pixman-1"
+found = [
+    "usr/lib64/libpixman-1.so.0",
+    "usr/lib64/libpixman-1.so.0.46.2",
+]
+packages = ["pixman-devel 0.46.2"]
+
+[[library]]
+id = "libwayland"
+status = "recorded"
+version = "1.26.0"
+via = "pkg-config wayland-client"
+mutter = "ok"
+found = [
+    "usr/lib64/libwayland-client.so.0",
+    "usr/lib64/libwayland-client.so.0.26.0",
+    "usr/lib64/libwayland-server.so.0",
+    "usr/lib64/libwayland-server.so.0.26.0",
+]
+packages = ["wayland-devel 1.26.0"]
+
+[[library]]
+id = "pipewire"
+status = "ok"
+version = "1.6.11"
+via = "pkg-config libpipewire-0.3"
+floor = "0.3.34"
+mutter = "ok"
+found = [
+    "usr/lib64/libpipewire-0.3.so.0",
+    "usr/lib64/libpipewire-0.3.so.0.1611.0",
+]
+packages = ["pipewire-devel 1.6.11"]
+
+[[library]]
+id = "libclang"
+status = "recorded"
+version = "23.1.5"
+via = "package clang-devel"
+found = [
+    "usr/lib64/libclang-cpp.so",
+    "usr/lib64/libclang-cpp.so.23.1",
+    "usr/lib64/libclang.so",
+    "usr/lib64/libclang.so.23.1",
+    "usr/lib64/libclang.so.23.1.5",
+]
+packages = ["clang-devel 23.1.5"]
+
+[[library]]
+id = "openssl"
+status = "recorded"
+version = "4.0.3"
+via = "pkg-config openssl"
+found = [
+    "usr/lib64/libcrypto.so",
+    "usr/lib64/libcrypto.so.4",
+    "usr/lib64/libcrypto.so.4.0.3",
+]
+packages = ["openssl-devel 4.0.3"]
+
+[[library]]
+id = "libpam"
+status = "recorded"
+version = "1.7.2"
+via = "package pam"
+found = [
+    "usr/lib64/libpam.so.0",
+    "usr/lib64/libpam.so.0.85.1",
+]
+packages = ["pam 1.7.2"]
+
+[[library]]
+id = "polkit-helper"
+status = "recorded"
+version = "127"
+via = "package polkit"
+found = ["usr/lib/polkit-1/polkit-agent-helper-1"]
+packages = ["polkit 127"]
+
+[[library]]
+id = "xwayland"
+status = "recorded"
+version = "24.1.15"
+via = "package xorg-x11-server-Xwayland"
+found = ["usr/bin/Xwayland"]
+packages = ["xorg-x11-server-Xwayland 24.1.15"]

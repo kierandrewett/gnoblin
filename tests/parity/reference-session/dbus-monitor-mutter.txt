@@ -1,0 +1,454 @@
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=1  Timestamp="Sun 2026-11-15 12:17:59.746664 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=Hello
+  UniqueName=:1.2
+  MESSAGE "" {
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=2  Timestamp="Sun 2026-11-15 12:17:59.746988 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',interface='ca.desrt.dconf.Writer',path='/ca/desrt/dconf/Writer/user',arg0path='/org/gnome/desktop/interface/'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=3  Timestamp="Sun 2026-11-15 12:17:59.747079 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',interface='ca.desrt.dconf.Writer',path='/ca/desrt/dconf/Writer/user',arg0path='/org/gnome/desktop/privacy/'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=4  Timestamp="Sun 2026-11-15 12:17:59.747144 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',interface='ca.desrt.dconf.Writer',path='/ca/desrt/dconf/Writer/user',arg0path='/org/gnome/mutter/wayland/'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=5  Timestamp="Sun 2026-11-15 12:17:59.747193 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',interface='ca.desrt.dconf.Writer',path='/ca/desrt/dconf/Writer/user',arg0path='/org/gnome/mutter/experimental/'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=6  Timestamp="Sun 2026-11-15 12:17:59.747284 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',interface='ca.desrt.dconf.Writer',path='/ca/desrt/dconf/Writer/user',arg0path='/org/gnome/settings-daemon/peripherals/touchscreen/'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=7  Timestamp="Sun 2026-11-15 12:17:59.905992 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',interface='ca.desrt.dconf.Writer',path='/ca/desrt/dconf/Writer/user',arg0path='/org/gnome/desktop/peripherals/mouse/'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=8  Timestamp="Sun 2026-11-15 12:17:59.906090 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',interface='ca.desrt.dconf.Writer',path='/ca/desrt/dconf/Writer/user',arg0path='/org/gnome/desktop/a11y/mouse/'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=9  Timestamp="Sun 2026-11-15 12:17:59.914832 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',interface='ca.desrt.dconf.Writer',path='/ca/desrt/dconf/Writer/user',arg0path='/org/gnome/desktop/peripherals/touchpad/'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=10  Timestamp="Sun 2026-11-15 12:17:59.915006 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',interface='ca.desrt.dconf.Writer',path='/ca/desrt/dconf/Writer/user',arg0path='/org/gnome/desktop/peripherals/trackball/'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=11  Timestamp="Sun 2026-11-15 12:17:59.915173 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',interface='ca.desrt.dconf.Writer',path='/ca/desrt/dconf/Writer/user',arg0path='/org/gnome/desktop/peripherals/pointingstick/'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=12  Timestamp="Sun 2026-11-15 12:17:59.915213 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',interface='ca.desrt.dconf.Writer',path='/ca/desrt/dconf/Writer/user',arg0path='/org/gnome/desktop/peripherals/keyboard/'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=13  Timestamp="Sun 2026-11-15 12:17:59.915260 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',interface='ca.desrt.dconf.Writer',path='/ca/desrt/dconf/Writer/user',arg0path='/org/gnome/desktop/a11y/keyboard/'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=14  Timestamp="Sun 2026-11-15 12:17:59.962513 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',interface='ca.desrt.dconf.Writer',path='/ca/desrt/dconf/Writer/user',arg0path='/org/gnome/desktop/wm/preferences/'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=15  Timestamp="Sun 2026-11-15 12:17:59.962842 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',interface='ca.desrt.dconf.Writer',path='/ca/desrt/dconf/Writer/user',arg0path='/org/gnome/mutter/'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=16  Timestamp="Sun 2026-11-15 12:17:59.962907 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',interface='ca.desrt.dconf.Writer',path='/ca/desrt/dconf/Writer/user',arg0path='/org/gnome/desktop/input-sources/'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=2  Version=1 Cookie=17  Timestamp="Sun 2026-11-15 12:17:59.963822 UTC"
+  Sender=:1.2  Destination=org.gnome.SessionManager  Path=/org/gnome/SessionManager  Interface=org.gnome.SessionManager  Member=Setenv
+  UniqueName=:1.2
+  MESSAGE "ss" {
+          STRING "WAYLAND_DISPLAY";
+          STRING "wayland-ref";
+  };
+
+‣ Type=method_call  Endian=l  Flags=2  Version=1 Cookie=18  Timestamp="Sun 2026-11-15 12:17:59.963992 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=UpdateActivationEnvironment
+  UniqueName=:1.2
+  MESSAGE "a{ss}" {
+          ARRAY "{ss}" {
+                  DICT_ENTRY "ss" {
+                          STRING "WAYLAND_DISPLAY";
+                          STRING "wayland-ref";
+                  };
+          };
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=19  Timestamp="Sun 2026-11-15 12:17:59.964368 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',interface='ca.desrt.dconf.Writer',path='/ca/desrt/dconf/Writer/user',arg0path='/org/gnome/desktop/wm/keybindings/'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=20  Timestamp="Sun 2026-11-15 12:17:59.964573 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',interface='ca.desrt.dconf.Writer',path='/ca/desrt/dconf/Writer/user',arg0path='/org/gnome/mutter/keybindings/'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=21  Timestamp="Sun 2026-11-15 12:17:59.964629 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',interface='ca.desrt.dconf.Writer',path='/ca/desrt/dconf/Writer/user',arg0path='/org/gnome/mutter/wayland/keybindings/'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=22  Timestamp="Sun 2026-11-15 12:17:59.966347 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',interface='ca.desrt.dconf.Writer',path='/ca/desrt/dconf/Writer/user',arg0path='/org/gnome/desktop/sound/'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=23  Timestamp="Sun 2026-11-15 12:17:59.966902 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=RequestName
+  UniqueName=:1.2
+  MESSAGE "su" {
+          STRING "org.gnome.Mutter.DisplayConfig";
+          UINT32 1;
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=24  Timestamp="Sun 2026-11-15 12:17:59.967423 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',path='/org/freedesktop/DBus',arg0='org.gnome.SettingsDaemon.Color'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=25  Timestamp="Sun 2026-11-15 12:17:59.967525 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=GetNameOwner
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "org.gnome.SettingsDaemon.Color";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=26  Timestamp="Sun 2026-11-15 12:17:59.967596 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',sender='org.gnome.SettingsDaemon.Color',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',path='/org/gnome/SettingsDaemon/Color',arg0='org.gnome.SettingsDaemon.Color'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=27  Timestamp="Sun 2026-11-15 12:17:59.967636 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',sender='org.gnome.SettingsDaemon.Color',interface='org.gnome.SettingsDaemon.Color',path='/org/gnome/SettingsDaemon/Color'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=28  Timestamp="Sun 2026-11-15 12:17:59.967678 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=GetNameOwner
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "org.gnome.SettingsDaemon.Color";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=29  Timestamp="Sun 2026-11-15 12:17:59.967717 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',path='/org/freedesktop/DBus',arg0='org.gnome.SettingsDaemon.Power.Screen'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=30  Timestamp="Sun 2026-11-15 12:17:59.967757 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=GetNameOwner
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "org.gnome.SettingsDaemon.Power.Screen";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=31  Timestamp="Sun 2026-11-15 12:17:59.967900 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',sender='org.gnome.SettingsDaemon.Power.Screen',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',path='/org/gnome/SettingsDaemon/Power',arg0='org.gnome.SettingsDaemon.Power.Screen'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=32  Timestamp="Sun 2026-11-15 12:17:59.967947 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',sender='org.gnome.SettingsDaemon.Power.Screen',interface='org.gnome.SettingsDaemon.Power.Screen',path='/org/gnome/SettingsDaemon/Power'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=33  Timestamp="Sun 2026-11-15 12:17:59.967994 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=GetNameOwner
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "org.gnome.SettingsDaemon.Power.Screen";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=34  Timestamp="Sun 2026-11-15 12:17:59.968091 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=RequestName
+  UniqueName=:1.2
+  MESSAGE "su" {
+          STRING "org.gnome.Mutter.ColorManager";
+          UINT32 0;
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=35  Timestamp="Sun 2026-11-15 12:17:59.968180 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',path='/org/freedesktop/DBus',arg0='org.gnome.SessionManager'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=36  Timestamp="Sun 2026-11-15 12:17:59.968222 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=GetNameOwner
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "org.gnome.SessionManager";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=37  Timestamp="Sun 2026-11-15 12:17:59.968257 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',sender='org.gnome.SessionManager',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',path='/org/gnome/SessionManager',arg0='org.gnome.SessionManager'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=38  Timestamp="Sun 2026-11-15 12:17:59.968281 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=GetNameOwner
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "org.gnome.SessionManager";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=39  Timestamp="Sun 2026-11-15 12:17:59.968820 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=RequestName
+  UniqueName=:1.2
+  MESSAGE "su" {
+          STRING "org.gnome.Mutter.IdleMonitor";
+          UINT32 1;
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=40  Timestamp="Sun 2026-11-15 12:17:59.968913 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=RequestName
+  UniqueName=:1.2
+  MESSAGE "su" {
+          STRING "org.gnome.Mutter.InputMapping";
+          UINT32 0;
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=41  Timestamp="Sun 2026-11-15 12:17:59.969002 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=RequestName
+  UniqueName=:1.2
+  MESSAGE "su" {
+          STRING "org.gnome.Mutter.ScreenCast";
+          UINT32 0;
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=42  Timestamp="Sun 2026-11-15 12:17:59.969057 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=RequestName
+  UniqueName=:1.2
+  MESSAGE "su" {
+          STRING "org.gnome.Mutter.RemoteDesktop";
+          UINT32 0;
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=43  Timestamp="Sun 2026-11-15 12:17:59.969766 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=RequestName
+  UniqueName=:1.2
+  MESSAGE "su" {
+          STRING "org.gnome.Mutter.InputCapture";
+          UINT32 0;
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=44  Timestamp="Sun 2026-11-15 12:17:59.969860 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',path='/org/freedesktop/DBus',arg0='org.gnome.Orca.KeyboardMonitor'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=45  Timestamp="Sun 2026-11-15 12:17:59.969899 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=GetNameOwner
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "org.gnome.Orca.KeyboardMonitor";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=46  Timestamp="Sun 2026-11-15 12:17:59.969930 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=RequestName
+  UniqueName=:1.2
+  MESSAGE "su" {
+          STRING "org.freedesktop.a11y.Manager";
+          UINT32 1;
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=47  Timestamp="Sun 2026-11-15 12:17:59.969996 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=RequestName
+  UniqueName=:1.2
+  MESSAGE "su" {
+          STRING "org.gnome.Mutter.ServiceChannel";
+          UINT32 0;
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=93  Timestamp="Sun 2026-11-15 12:18:03.476723 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',path='/org/freedesktop/DBus',arg0=':1.34'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=94  Timestamp="Sun 2026-11-15 12:18:03.476771 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=GetNameOwner
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING ":1.34";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=103  Timestamp="Sun 2026-11-15 12:18:03.489761 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=RemoveMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',path='/org/freedesktop/DBus',arg0=':1.34'";
+  };
+
+‣ Type=signal  Endian=l  Flags=1  Version=1 Cookie=104  Timestamp="Sun 2026-11-15 12:18:03.489841 UTC"
+  Sender=:1.2  Path=/org/gnome/Mutter/ScreenCast/Session/u1  Interface=org.gnome.Mutter.ScreenCast.Session  Member=Closed
+  UniqueName=:1.2
+  MESSAGE "" {
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=107  Timestamp="Sun 2026-11-15 12:18:03.491181 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',path='/org/freedesktop/DBus',arg0=':1.34'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=108  Timestamp="Sun 2026-11-15 12:18:03.491269 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=GetNameOwner
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING ":1.34";
+  };
+
+‣ Type=signal  Endian=l  Flags=1  Version=1 Cookie=110  Timestamp="Sun 2026-11-15 12:18:03.491351 UTC"
+  Sender=:1.2  Path=/org/gnome/Mutter/RemoteDesktop/Session/u1  Interface=org.freedesktop.DBus.Properties  Member=PropertiesChanged
+  UniqueName=:1.2
+  MESSAGE "sa{sv}as" {
+          STRING "org.gnome.Mutter.RemoteDesktop.Session";
+          ARRAY "{sv}" {
+                  DICT_ENTRY "sv" {
+                          STRING "CurrentKeymap";
+                          VARIANT "a{sv}" {
+                                  ARRAY "{sv}" {
+                                          DICT_ENTRY "sv" {
+                                                  STRING "name";
+                                                  VARIANT "s" {
+                                                          STRING "English (US)";
+                                                  };
+                                          };
+                                          DICT_ENTRY "sv" {
+                                                  STRING "source";
+                                                  VARIANT "u" {
+                                                          UINT32 0;
+                                                  };
+                                          };
+                                  };
+                          };
+                  };
+          };
+          ARRAY "s" {
+          };
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=118  Timestamp="Sun 2026-11-15 12:18:03.502068 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=RemoveMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',path='/org/freedesktop/DBus',arg0=':1.34'";
+  };
+
+‣ Type=signal  Endian=l  Flags=1  Version=1 Cookie=119  Timestamp="Sun 2026-11-15 12:18:03.502123 UTC"
+  Sender=:1.2  Path=/org/gnome/Mutter/RemoteDesktop/Session/u1  Interface=org.gnome.Mutter.RemoteDesktop.Session  Member=Closed
+  UniqueName=:1.2
+  MESSAGE "" {
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=121  Timestamp="Sun 2026-11-15 12:18:03.502834 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=AddMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',path='/org/freedesktop/DBus',arg0=':1.34'";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=122  Timestamp="Sun 2026-11-15 12:18:03.502879 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=GetNameOwner
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING ":1.34";
+  };
+
+‣ Type=method_call  Endian=l  Flags=0  Version=1 Cookie=128  Timestamp="Sun 2026-11-15 12:18:03.504851 UTC"
+  Sender=:1.2  Destination=org.freedesktop.DBus  Path=/org/freedesktop/DBus  Interface=org.freedesktop.DBus  Member=RemoveMatch
+  UniqueName=:1.2
+  MESSAGE "s" {
+          STRING "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',path='/org/freedesktop/DBus',arg0=':1.34'";
+  };
+
+‣ Type=signal  Endian=l  Flags=1  Version=1 Cookie=129  Timestamp="Sun 2026-11-15 12:18:03.504922 UTC"
+  Sender=:1.2  Path=/org/gnome/Mutter/InputCapture/Session/u1  Interface=org.gnome.Mutter.InputCapture.Session  Member=Closed
+  UniqueName=:1.2
+  MESSAGE "" {
+  };
+

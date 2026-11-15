@@ -1,0 +1,200 @@
+[image]
+id = "alpine-edge"
+image = "alpine:edge"
+probed = true
+os_id = "alpine"
+os_version = "3.25.0_alpha20260805"
+family = "apk"
+
+[run]
+box = "yz1mlf9hly"
+date = "2026-11-15T12:06:34Z"
+fetch = "python3 scripts/oci-rootfs.py alpine:edge"
+fetch-exit = "0"
+host = "Linux 4.19.0-gvisor x86_64"
+install = "apk install of the packages in tests/native-probe/libraries.toml"
+install-exit = "0"
+packages-not-installed = "seatd-dev libglvnd-dev"
+xtask = "/home/node/target/debug/xtask native-probe check"
+
+[[library]]
+id = "libinput"
+status = "ok"
+version = "1.32.0"
+via = "pkg-config libinput"
+floor = "1.19"
+mutter = "ok"
+found = [
+    "usr/lib/libinput.so.10",
+    "usr/lib/libinput.so.10.13.0",
+]
+packages = ["libinput-dev 1.32.0-r0"]
+
+[[library]]
+id = "libudev"
+status = "recorded"
+version = "251"
+via = "pkg-config libudev"
+found = [
+    "usr/lib/libudev.so.1",
+    "usr/lib/libudev.so.1.6.3",
+]
+packages = ["eudev-dev 3.2.14-r8"]
+
+[[library]]
+id = "libseat"
+status = "missing"
+packages = ["seatd-dev absent"]
+
+[[library]]
+id = "libdrm"
+status = "recorded"
+version = "2.4.134"
+via = "pkg-config libdrm"
+found = [
+    "usr/lib/libdrm.so.2",
+    "usr/lib/libdrm.so.2.134.0",
+]
+packages = ["libdrm-dev 2.4.134-r0"]
+
+[[library]]
+id = "gbm"
+status = "recorded"
+version = "26.3.0"
+via = "pkg-config gbm"
+found = [
+    "usr/lib/libgbm.so.1",
+    "usr/lib/libgbm.so.1.0.0",
+]
+packages = ["mesa-dev 26.3.0-r0"]
+
+[[library]]
+id = "egl-gles"
+status = "recorded"
+version = "26.3.0"
+via = "pkg-config egl"
+found = [
+    "usr/lib/libEGL.so.1",
+    "usr/lib/libEGL.so.1.0.0",
+    "usr/lib/libGLESv2.so.2",
+    "usr/lib/libGLESv2.so.2.0.0",
+]
+packages = [
+    "mesa-egl 26.3.0-r0",
+    "mesa-gles 26.3.0-r0",
+    "libglvnd-dev absent",
+]
+
+[[library]]
+id = "vulkan-loader"
+status = "ok"
+version = "1.4.360"
+via = "pkg-config vulkan"
+floor = "1.1"
+found = [
+    "usr/lib/libvulkan.so.1",
+    "usr/lib/libvulkan.so.1.4.360",
+]
+packages = [
+    "vulkan-loader 1.4.360-r0",
+    "vulkan-loader-dev 1.4.360-r0",
+]
+
+[[library]]
+id = "libxkbcommon"
+status = "recorded"
+version = "1.13.2"
+via = "pkg-config xkbcommon"
+found = [
+    "usr/lib/libxkbcommon.so.0",
+    "usr/lib/libxkbcommon.so.0.13.2",
+]
+packages = ["libxkbcommon-dev 1.13.2-r0"]
+
+[[library]]
+id = "pixman"
+status = "recorded"
+version = "0.46.4"
+via = "pkg-config pixman-1"
+found = [
+    "usr/lib/libpixman-1.so.0",
+    "usr/lib/libpixman-1.so.0.46.4",
+]
+packages = ["pixman-dev 0.46.4-r0"]
+
+[[library]]
+id = "libwayland"
+status = "recorded"
+version = "1.26.0"
+via = "pkg-config wayland-client"
+mutter = "ok"
+found = [
+    "usr/lib/libwayland-client.so.0",
+    "usr/lib/libwayland-client.so.0.26.0",
+    "usr/lib/libwayland-server.so.0",
+    "usr/lib/libwayland-server.so.0.26.0",
+]
+packages = ["wayland-dev 1.26.0-r0"]
+
+[[library]]
+id = "pipewire"
+status = "ok"
+version = "1.6.11"
+via = "pkg-config libpipewire-0.3"
+floor = "0.3.34"
+mutter = "ok"
+found = [
+    "usr/lib/libpipewire-0.3.so.0",
+    "usr/lib/libpipewire-0.3.so.0.1611.0",
+]
+packages = ["pipewire-dev 1.6.11-r0"]
+
+[[library]]
+id = "libclang"
+status = "recorded"
+found = [
+    "usr/lib/libclang-cpp.so",
+    "usr/lib/libclang-cpp.so.23.1",
+    "usr/lib/libclang.so",
+    "usr/lib/libclang.so.23.1",
+    "usr/lib/libclang.so.23.1.5",
+]
+packages = ["clang-dev absent"]
+
+[[library]]
+id = "openssl"
+status = "recorded"
+version = "3.5.9"
+via = "pkg-config openssl"
+found = [
+    "usr/lib/libcrypto.so",
+    "usr/lib/libcrypto.so.3",
+]
+packages = ["openssl-dev 3.5.9-r1"]
+
+[[library]]
+id = "libpam"
+status = "recorded"
+version = "1.7.1"
+via = "package linux-pam"
+found = [
+    "usr/lib/libpam.so.0",
+    "usr/lib/libpam.so.0.85.1",
+]
+packages = ["linux-pam 1.7.1-r4"]
+
+[[library]]
+id = "polkit-helper"
+status = "recorded"
+version = "128"
+via = "package polkit"
+found = ["usr/lib/polkit-1/polkit-agent-helper-1"]
+packages = ["polkit 128-r0"]
+
+[[library]]
+id = "xwayland"
+status = "recorded"
+version = "24.1.15"
+via = "package xwayland"
+found = ["usr/bin/Xwayland"]
+packages = ["xwayland 24.1.15-r0"]

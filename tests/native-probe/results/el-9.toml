@@ -1,0 +1,10 @@
+[image]
+id = "el-9"
+image = "quay.io/rockylinux/rockylinux:9"
+probed = false
+reason = "dnf install exited 1: gpg could not start under the instance (GPGME: Invalid crypto engine, no /proc), so no package was installed. The script now passes --nogpgcheck; the re-run did not finish in the time available"
+
+[run]
+box = "yz1mlf9hly"
+date = "2026-11-15"
+host = "Linux 4.19.0-gvisor x86_64"

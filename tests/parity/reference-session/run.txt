@@ -1,0 +1,23 @@
+recorded: 2026-11-15T12:17:58Z
+host: Linux 4.19.0-gvisor x86_64
+os: Fedora Linux 45 (Container Image)
+mutter: mutter 51.0 (prefix /opt/mutter51)
+busctl: systemd 262 (262.1-1.fc45)
+wayland-info: wayland-utils-1.3.0-4.fc45.x86_64
+libwayland: libwayland-client-1.26.0-3.fc45.x86_64
+dbus: D-Bus Message Bus Daemon 1.16.4
+$ mutter --headless --wayland --wayland-display wayland-ref --virtual-monitor 1280x720 (pid 64201)
+$ busctl --user list --no-pager -> exit 0
+names owned by pid 64201: org.freedesktop.a11y.Manager org.gnome.Mutter.ColorManager org.gnome.Mutter.DisplayConfig org.gnome.Mutter.IdleMonitor org.gnome.Mutter.InputCapture org.gnome.Mutter.InputMapping org.gnome.Mutter.RemoteDesktop org.gnome.Mutter.ScreenCast org.gnome.Mutter.ServiceChannel
+mutter's connection: :1.2
+introspected :1.2: 16 object path(s)
+$ python3 /tmp/reference-session-sessions.py /tmp/refout -> exit 0
+calls recorded in dbus-calls.txt
+$ wayland-info -> exit 0
+$ WAYLAND_DEBUG=1 wayland-info -> exit 0
+$ GDK_BACKEND=wayland WAYLAND_DEBUG=1 GTK_A11Y=none NO_AT_BRIDGE=1 GSETTINGS_BACKEND=memory GSK_RENDERER=cairo timeout 15 gtk4-widget-factory -> exit 133 (142 trace lines, 0 request(s) to gtk_shell1 or gtk_surface1)
+$ GDK_BACKEND=wayland WAYLAND_DEBUG=1 GTK_A11Y=none NO_AT_BRIDGE=1 GSETTINGS_BACKEND=memory GSK_RENDERER=cairo timeout 15 gtk4-node-editor -> exit 124 (446 trace lines, 2 request(s) to gtk_shell1 or gtk_surface1)
+gtk4 client kept: gtk4-node-editor
+portal calls recorded in dbus-calls.txt
+monitor stopped; 1259 message(s) in dbus-monitor.txt
+mutter stopped

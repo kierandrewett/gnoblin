@@ -1,0 +1,385 @@
+<!-- :1.2 /org/gnome/Mutter/ScreenCast/Session/u1 -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <interface name="org.freedesktop.DBus.Properties">
+    <method name="Get">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="out"/>
+    </method>
+    <method name="GetAll">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="a{sv}" name="properties" direction="out"/>
+    </method>
+    <method name="Set">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="in"/>
+    </method>
+    <signal name="PropertiesChanged">
+      <arg type="s" name="interface_name"/>
+      <arg type="a{sv}" name="changed_properties"/>
+      <arg type="as" name="invalidated_properties"/>
+    </signal>
+  </interface>
+  <interface name="org.freedesktop.DBus.Introspectable">
+    <method name="Introspect">
+      <arg type="s" name="xml_data" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.DBus.Peer">
+    <method name="Ping"/>
+    <method name="GetMachineId">
+      <arg type="s" name="machine_uuid" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.gnome.Mutter.ScreenCast.Session">
+    <method name="Start"/>
+    <method name="Stop"/>
+    <method name="RecordMonitor">
+      <arg type="s" name="connector" direction="in"/>
+      <arg type="a{sv}" name="properties" direction="in"/>
+      <arg type="o" name="stream_path" direction="out"/>
+    </method>
+    <method name="RecordWindow">
+      <arg type="a{sv}" name="properties" direction="in"/>
+      <arg type="o" name="stream_path" direction="out"/>
+    </method>
+    <method name="RecordArea">
+      <arg type="i" name="x" direction="in"/>
+      <arg type="i" name="y" direction="in"/>
+      <arg type="i" name="width" direction="in"/>
+      <arg type="i" name="height" direction="in"/>
+      <arg type="a{sv}" name="properties" direction="in"/>
+      <arg type="o" name="stream_path" direction="out"/>
+    </method>
+    <method name="RecordVirtual">
+      <arg type="a{sv}" name="properties" direction="in"/>
+      <arg type="o" name="stream_path" direction="out"/>
+    </method>
+    <signal name="Closed"/>
+  </interface>
+</node>
+
+
+<!-- :1.2 /org/gnome/Mutter/ScreenCast/Stream/u1 -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <interface name="org.freedesktop.DBus.Properties">
+    <method name="Get">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="out"/>
+    </method>
+    <method name="GetAll">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="a{sv}" name="properties" direction="out"/>
+    </method>
+    <method name="Set">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="in"/>
+    </method>
+    <signal name="PropertiesChanged">
+      <arg type="s" name="interface_name"/>
+      <arg type="a{sv}" name="changed_properties"/>
+      <arg type="as" name="invalidated_properties"/>
+    </signal>
+  </interface>
+  <interface name="org.freedesktop.DBus.Introspectable">
+    <method name="Introspect">
+      <arg type="s" name="xml_data" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.DBus.Peer">
+    <method name="Ping"/>
+    <method name="GetMachineId">
+      <arg type="s" name="machine_uuid" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.gnome.Mutter.ScreenCast.Stream">
+    <method name="Start"/>
+    <method name="Stop"/>
+    <signal name="PipeWireStreamAdded">
+      <arg type="u" name="node_id"/>
+    </signal>
+    <property type="a{sv}" name="Parameters" access="read"/>
+  </interface>
+</node>
+
+
+<!-- :1.2 /org/gnome/Mutter/ScreenCast/Session/u1 -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+</node>
+
+
+<!-- :1.2 /org/gnome/Mutter/RemoteDesktop/Session/u1 -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <interface name="org.freedesktop.DBus.Properties">
+    <method name="Get">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="out"/>
+    </method>
+    <method name="GetAll">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="a{sv}" name="properties" direction="out"/>
+    </method>
+    <method name="Set">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="in"/>
+    </method>
+    <signal name="PropertiesChanged">
+      <arg type="s" name="interface_name"/>
+      <arg type="a{sv}" name="changed_properties"/>
+      <arg type="as" name="invalidated_properties"/>
+    </signal>
+  </interface>
+  <interface name="org.freedesktop.DBus.Introspectable">
+    <method name="Introspect">
+      <arg type="s" name="xml_data" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.DBus.Peer">
+    <method name="Ping"/>
+    <method name="GetMachineId">
+      <arg type="s" name="machine_uuid" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.gnome.Mutter.RemoteDesktop.Session">
+    <method name="Start"/>
+    <method name="Stop"/>
+    <method name="NotifyKeyboardKeycode">
+      <arg type="u" name="keycode" direction="in"/>
+      <arg type="b" name="state" direction="in"/>
+    </method>
+    <method name="NotifyKeyboardKeysym">
+      <arg type="u" name="keysym" direction="in"/>
+      <arg type="b" name="state" direction="in"/>
+    </method>
+    <method name="NotifyPointerButton">
+      <arg type="i" name="button" direction="in"/>
+      <arg type="b" name="state" direction="in"/>
+    </method>
+    <method name="NotifyPointerAxis">
+      <arg type="d" name="dx" direction="in"/>
+      <arg type="d" name="dy" direction="in"/>
+      <arg type="u" name="flags" direction="in"/>
+    </method>
+    <method name="NotifyPointerAxisDiscrete">
+      <arg type="u" name="axis" direction="in"/>
+      <arg type="i" name="steps" direction="in"/>
+    </method>
+    <method name="NotifyPointerMotionRelative">
+      <arg type="d" name="dx" direction="in"/>
+      <arg type="d" name="dy" direction="in"/>
+    </method>
+    <method name="NotifyPointerMotionAbsolute">
+      <arg type="s" name="stream" direction="in"/>
+      <arg type="d" name="x" direction="in"/>
+      <arg type="d" name="y" direction="in"/>
+    </method>
+    <method name="NotifyTouchDown">
+      <arg type="s" name="stream" direction="in"/>
+      <arg type="u" name="slot" direction="in"/>
+      <arg type="d" name="x" direction="in"/>
+      <arg type="d" name="y" direction="in"/>
+    </method>
+    <method name="NotifyTouchMotion">
+      <arg type="s" name="stream" direction="in"/>
+      <arg type="u" name="slot" direction="in"/>
+      <arg type="d" name="x" direction="in"/>
+      <arg type="d" name="y" direction="in"/>
+    </method>
+    <method name="NotifyTouchUp">
+      <arg type="u" name="slot" direction="in"/>
+    </method>
+    <method name="EnableClipboard">
+      <arg type="a{sv}" name="options" direction="in"/>
+    </method>
+    <method name="DisableClipboard"/>
+    <method name="SetSelection">
+      <arg type="a{sv}" name="options" direction="in"/>
+    </method>
+    <method name="SelectionWrite">
+      <arg type="u" name="serial" direction="in"/>
+      <arg type="h" name="fd" direction="out"/>
+    </method>
+    <method name="SelectionWriteDone">
+      <arg type="u" name="serial" direction="in"/>
+      <arg type="b" name="success" direction="in"/>
+    </method>
+    <method name="SelectionRead">
+      <arg type="s" name="mime_type" direction="in"/>
+      <arg type="h" name="fd" direction="out"/>
+    </method>
+    <method name="ConnectToEIS">
+      <arg type="a{sv}" name="options" direction="in"/>
+      <arg type="h" name="fd" direction="out"/>
+    </method>
+    <method name="SetKeymap">
+      <arg type="a{sv}" name="options" direction="in"/>
+    </method>
+    <method name="SetKeymapLayoutIndex">
+      <arg type="u" name="index" direction="in"/>
+    </method>
+    <signal name="Closed"/>
+    <signal name="SelectionOwnerChanged">
+      <arg type="a{sv}" name="options"/>
+    </signal>
+    <signal name="SelectionTransfer">
+      <arg type="s" name="mime_type"/>
+      <arg type="u" name="serial"/>
+    </signal>
+    <property type="s" name="SessionId" access="read"/>
+    <property type="b" name="CapsLockState" access="read">
+      <annotation name="org.freedesktop.DBus.Deprecated" value="true"/>
+    </property>
+    <property type="b" name="NumLockState" access="read">
+      <annotation name="org.freedesktop.DBus.Deprecated" value="true"/>
+    </property>
+    <property type="a{sv}" name="KeymapCapabilities" access="read"/>
+    <property type="a{sv}" name="CurrentKeymap" access="read"/>
+  </interface>
+  <interface name="org.gnome.Mutter.Clipboard">
+    <method name="Enable">
+      <arg type="a{sv}" name="options" direction="in"/>
+    </method>
+    <method name="Disable"/>
+    <method name="SetSelection">
+      <arg type="a{sv}" name="options" direction="in"/>
+    </method>
+    <method name="SelectionWrite">
+      <arg type="u" name="serial" direction="in"/>
+      <arg type="h" name="fd" direction="out"/>
+    </method>
+    <method name="SelectionWriteDone">
+      <arg type="u" name="serial" direction="in"/>
+      <arg type="b" name="success" direction="in"/>
+    </method>
+    <method name="SelectionRead">
+      <arg type="s" name="mime_type" direction="in"/>
+      <arg type="h" name="fd" direction="out"/>
+    </method>
+    <signal name="SelectionOwnerChanged">
+      <arg type="a{sv}" name="options"/>
+    </signal>
+    <signal name="SelectionTransfer">
+      <arg type="s" name="mime_type"/>
+      <arg type="u" name="serial"/>
+    </signal>
+  </interface>
+</node>
+
+
+<!-- :1.2 /org/gnome/Mutter/InputCapture/Session/u1 -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <interface name="org.freedesktop.DBus.Properties">
+    <method name="Get">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="out"/>
+    </method>
+    <method name="GetAll">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="a{sv}" name="properties" direction="out"/>
+    </method>
+    <method name="Set">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="in"/>
+    </method>
+    <signal name="PropertiesChanged">
+      <arg type="s" name="interface_name"/>
+      <arg type="a{sv}" name="changed_properties"/>
+      <arg type="as" name="invalidated_properties"/>
+    </signal>
+  </interface>
+  <interface name="org.freedesktop.DBus.Introspectable">
+    <method name="Introspect">
+      <arg type="s" name="xml_data" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.DBus.Peer">
+    <method name="Ping"/>
+    <method name="GetMachineId">
+      <arg type="s" name="machine_uuid" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.gnome.Mutter.Clipboard">
+    <method name="Enable">
+      <arg type="a{sv}" name="options" direction="in"/>
+    </method>
+    <method name="Disable"/>
+    <method name="SetSelection">
+      <arg type="a{sv}" name="options" direction="in"/>
+    </method>
+    <method name="SelectionWrite">
+      <arg type="u" name="serial" direction="in"/>
+      <arg type="h" name="fd" direction="out"/>
+    </method>
+    <method name="SelectionWriteDone">
+      <arg type="u" name="serial" direction="in"/>
+      <arg type="b" name="success" direction="in"/>
+    </method>
+    <method name="SelectionRead">
+      <arg type="s" name="mime_type" direction="in"/>
+      <arg type="h" name="fd" direction="out"/>
+    </method>
+    <signal name="SelectionOwnerChanged">
+      <arg type="a{sv}" name="options"/>
+    </signal>
+    <signal name="SelectionTransfer">
+      <arg type="s" name="mime_type"/>
+      <arg type="u" name="serial"/>
+    </signal>
+  </interface>
+  <interface name="org.gnome.Mutter.InputCapture.Session">
+    <method name="GetZones">
+      <arg type="u" name="serial" direction="out"/>
+      <arg type="a(uuii)" name="zones" direction="out"/>
+    </method>
+    <method name="AddBarrier">
+      <arg type="u" name="serial" direction="in"/>
+      <arg type="(iiii)" name="position" direction="in"/>
+      <arg type="u" name="id" direction="out"/>
+    </method>
+    <method name="ClearBarriers"/>
+    <method name="Enable"/>
+    <method name="Disable"/>
+    <method name="ConnectToEIS">
+      <arg type="h" name="fd" direction="out"/>
+    </method>
+    <method name="Release">
+      <arg type="a{sv}" name="options" direction="in"/>
+    </method>
+    <method name="Close"/>
+    <signal name="Activated">
+      <arg type="u" name="barrier_id"/>
+      <arg type="u" name="activation_id"/>
+      <arg type="(dd)" name="cursor_position"/>
+    </signal>
+    <signal name="Deactivated">
+      <arg type="u" name="activation_id"/>
+    </signal>
+    <signal name="ZonesChanged"/>
+    <signal name="Disabled"/>
+    <signal name="Closed"/>
+  </interface>
+</node>
+
+

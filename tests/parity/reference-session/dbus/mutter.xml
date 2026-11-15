@@ -1,0 +1,613 @@
+<!-- :1.2 / -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <node name="org"/>
+</node>
+
+<!-- :1.2 /org -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <node name="gnome"/>
+  <node name="freedesktop"/>
+</node>
+
+<!-- :1.2 /org/freedesktop -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <node name="a11y"/>
+</node>
+
+<!-- :1.2 /org/freedesktop/a11y -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <node name="Manager"/>
+</node>
+
+<!-- :1.2 /org/freedesktop/a11y/Manager -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <interface name="org.freedesktop.DBus.Properties">
+    <method name="Get">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="out"/>
+    </method>
+    <method name="GetAll">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="a{sv}" name="properties" direction="out"/>
+    </method>
+    <method name="Set">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="in"/>
+    </method>
+    <signal name="PropertiesChanged">
+      <arg type="s" name="interface_name"/>
+      <arg type="a{sv}" name="changed_properties"/>
+      <arg type="as" name="invalidated_properties"/>
+    </signal>
+  </interface>
+  <interface name="org.freedesktop.DBus.Introspectable">
+    <method name="Introspect">
+      <arg type="s" name="xml_data" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.DBus.Peer">
+    <method name="Ping"/>
+    <method name="GetMachineId">
+      <arg type="s" name="machine_uuid" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.a11y.PointerLocator">
+    <method name="QueryPointer">
+      <arg type="a{sv}" name="app_data" direction="out"/>
+      <arg type="d" name="rel_x" direction="out"/>
+      <arg type="d" name="rel_y" direction="out"/>
+    </method>
+    <signal name="PointerPositionChanged"/>
+  </interface>
+  <interface name="org.freedesktop.a11y.KeyboardMonitor">
+    <method name="GrabKeyboard"/>
+    <method name="UngrabKeyboard"/>
+    <method name="WatchKeyboard"/>
+    <method name="UnwatchKeyboard"/>
+    <method name="SetKeyGrabs">
+      <arg type="au" name="modifiers" direction="in"/>
+      <arg type="a(uu)" name="keystrokes" direction="in"/>
+    </method>
+    <signal name="KeyEvent">
+      <arg type="b" name="released"/>
+      <arg type="u" name="state"/>
+      <arg type="u" name="keysym"/>
+      <arg type="u" name="unichar"/>
+      <arg type="q" name="keycode"/>
+    </signal>
+  </interface>
+</node>
+
+<!-- :1.2 /org/gnome -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <node name="Mutter"/>
+</node>
+
+<!-- :1.2 /org/gnome/Mutter -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <node name="DisplayConfig"/>
+  <node name="IdleMonitor"/>
+  <node name="InputCapture"/>
+  <node name="ServiceChannel"/>
+  <node name="InputMapping"/>
+  <node name="ScreenCast"/>
+  <node name="ColorManager"/>
+  <node name="RemoteDesktop"/>
+</node>
+
+<!-- :1.2 /org/gnome/Mutter/ColorManager -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <interface name="org.freedesktop.DBus.Properties">
+    <method name="Get">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="out"/>
+    </method>
+    <method name="GetAll">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="a{sv}" name="properties" direction="out"/>
+    </method>
+    <method name="Set">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="in"/>
+    </method>
+    <signal name="PropertiesChanged">
+      <arg type="s" name="interface_name"/>
+      <arg type="a{sv}" name="changed_properties"/>
+      <arg type="as" name="invalidated_properties"/>
+    </signal>
+  </interface>
+  <interface name="org.freedesktop.DBus.Introspectable">
+    <method name="Introspect">
+      <arg type="s" name="xml_data" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.DBus.Peer">
+    <method name="Ping"/>
+    <method name="GetMachineId">
+      <arg type="s" name="machine_uuid" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.gnome.Mutter.ColorManager">
+    <method name="CalibrateMonitor">
+      <arg type="s" name="connector" direction="in"/>
+      <arg type="o" name="session" direction="out"/>
+    </method>
+  </interface>
+</node>
+
+<!-- :1.2 /org/gnome/Mutter/DisplayConfig -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <interface name="org.freedesktop.DBus.Properties">
+    <method name="Get">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="out"/>
+    </method>
+    <method name="GetAll">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="a{sv}" name="properties" direction="out"/>
+    </method>
+    <method name="Set">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="in"/>
+    </method>
+    <signal name="PropertiesChanged">
+      <arg type="s" name="interface_name"/>
+      <arg type="a{sv}" name="changed_properties"/>
+      <arg type="as" name="invalidated_properties"/>
+    </signal>
+  </interface>
+  <interface name="org.freedesktop.DBus.Introspectable">
+    <method name="Introspect">
+      <arg type="s" name="xml_data" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.DBus.Peer">
+    <method name="Ping"/>
+    <method name="GetMachineId">
+      <arg type="s" name="machine_uuid" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.gnome.Mutter.DisplayConfig">
+    <method name="GetResources">
+      <arg type="u" name="serial" direction="out"/>
+      <arg type="a(uxiiiiiuaua{sv})" name="crtcs" direction="out"/>
+      <arg type="a(uxiausauaua{sv})" name="outputs" direction="out"/>
+      <arg type="a(uxuudu)" name="modes" direction="out"/>
+      <arg type="i" name="max_screen_width" direction="out"/>
+      <arg type="i" name="max_screen_height" direction="out"/>
+    </method>
+    <method name="ApplyConfiguration">
+      <arg type="u" name="serial" direction="in"/>
+      <arg type="b" name="persistent" direction="in"/>
+      <arg type="a(uiiiuaua{sv})" name="crtcs" direction="in"/>
+      <arg type="a(ua{sv})" name="outputs" direction="in"/>
+    </method>
+    <method name="ChangeBacklight">
+      <annotation name="org.freedesktop.DBus.Deprecated" value="true"/>
+      <arg type="u" name="serial" direction="in"/>
+      <arg type="u" name="output" direction="in"/>
+      <arg type="i" name="value" direction="in"/>
+      <arg type="i" name="new_value" direction="out"/>
+    </method>
+    <method name="SetBacklight">
+      <arg type="u" name="serial" direction="in"/>
+      <arg type="s" name="connector" direction="in"/>
+      <arg type="i" name="value" direction="in"/>
+    </method>
+    <method name="GetCrtcGamma">
+      <arg type="u" name="serial" direction="in"/>
+      <arg type="u" name="crtc" direction="in"/>
+      <arg type="aq" name="red" direction="out"/>
+      <arg type="aq" name="green" direction="out"/>
+      <arg type="aq" name="blue" direction="out"/>
+    </method>
+    <method name="SetCrtcGamma">
+      <arg type="u" name="serial" direction="in"/>
+      <arg type="u" name="crtc" direction="in"/>
+      <arg type="aq" name="red" direction="in"/>
+      <arg type="aq" name="green" direction="in"/>
+      <arg type="aq" name="blue" direction="in"/>
+    </method>
+    <method name="GetCurrentState">
+      <arg type="u" name="serial" direction="out"/>
+      <arg type="a((ssss)a(siiddada{sv})a{sv})" name="monitors" direction="out"/>
+      <arg type="a(iiduba(ssss)a{sv})" name="logical_monitors" direction="out"/>
+      <arg type="a{sv}" name="properties" direction="out"/>
+    </method>
+    <method name="ApplyMonitorsConfig">
+      <arg type="u" name="serial" direction="in"/>
+      <arg type="u" name="method" direction="in"/>
+      <arg type="a(iiduba(ssa{sv}))" name="logical_monitors" direction="in"/>
+      <arg type="a{sv}" name="properties" direction="in"/>
+    </method>
+    <method name="SetOutputCTM">
+      <arg type="u" name="serial" direction="in"/>
+      <arg type="u" name="output" direction="in"/>
+      <arg type="(ttttttttt)" name="ctm" direction="in"/>
+    </method>
+    <signal name="MonitorsChanged"/>
+    <property type="(uaa{sv})" name="Backlight" access="read"/>
+    <property type="i" name="PowerSaveMode" access="readwrite"/>
+    <property type="b" name="PanelOrientationManaged" access="read"/>
+    <property type="b" name="ApplyMonitorsConfigAllowed" access="read"/>
+    <property type="b" name="NightLightSupported" access="read"/>
+    <property type="b" name="HasExternalMonitor" access="read"/>
+  </interface>
+</node>
+
+<!-- :1.2 /org/gnome/Mutter/IdleMonitor -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <interface name="org.freedesktop.DBus.Properties">
+    <method name="Get">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="out"/>
+    </method>
+    <method name="GetAll">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="a{sv}" name="properties" direction="out"/>
+    </method>
+    <method name="Set">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="in"/>
+    </method>
+    <signal name="PropertiesChanged">
+      <arg type="s" name="interface_name"/>
+      <arg type="a{sv}" name="changed_properties"/>
+      <arg type="as" name="invalidated_properties"/>
+    </signal>
+  </interface>
+  <interface name="org.freedesktop.DBus.Introspectable">
+    <method name="Introspect">
+      <arg type="s" name="xml_data" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.DBus.Peer">
+    <method name="Ping"/>
+    <method name="GetMachineId">
+      <arg type="s" name="machine_uuid" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.DBus.ObjectManager">
+    <method name="GetManagedObjects">
+      <arg type="a{oa{sa{sv}}}" name="object_paths_interfaces_and_properties" direction="out"/>
+    </method>
+    <signal name="InterfacesAdded">
+      <arg type="o" name="object_path"/>
+      <arg type="a{sa{sv}}" name="interfaces_and_properties"/>
+    </signal>
+    <signal name="InterfacesRemoved">
+      <arg type="o" name="object_path"/>
+      <arg type="as" name="interfaces"/>
+    </signal>
+  </interface>
+  <node name="Core"/>
+</node>
+
+<!-- :1.2 /org/gnome/Mutter/IdleMonitor/Core -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <interface name="org.freedesktop.DBus.Properties">
+    <method name="Get">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="out"/>
+    </method>
+    <method name="GetAll">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="a{sv}" name="properties" direction="out"/>
+    </method>
+    <method name="Set">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="in"/>
+    </method>
+    <signal name="PropertiesChanged">
+      <arg type="s" name="interface_name"/>
+      <arg type="a{sv}" name="changed_properties"/>
+      <arg type="as" name="invalidated_properties"/>
+    </signal>
+  </interface>
+  <interface name="org.freedesktop.DBus.Introspectable">
+    <method name="Introspect">
+      <arg type="s" name="xml_data" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.DBus.Peer">
+    <method name="Ping"/>
+    <method name="GetMachineId">
+      <arg type="s" name="machine_uuid" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.gnome.Mutter.IdleMonitor">
+    <method name="GetIdletime">
+      <arg type="t" name="idletime" direction="out"/>
+    </method>
+    <method name="AddIdleWatch">
+      <arg type="t" name="interval" direction="in"/>
+      <arg type="u" name="id" direction="out"/>
+    </method>
+    <method name="AddUserActiveWatch">
+      <arg type="u" name="id" direction="out"/>
+    </method>
+    <method name="RemoveWatch">
+      <arg type="u" name="id" direction="in"/>
+    </method>
+    <method name="ResetIdletime"/>
+    <signal name="WatchFired">
+      <arg type="u" name="id"/>
+    </signal>
+  </interface>
+</node>
+
+<!-- :1.2 /org/gnome/Mutter/InputCapture -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <interface name="org.freedesktop.DBus.Properties">
+    <method name="Get">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="out"/>
+    </method>
+    <method name="GetAll">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="a{sv}" name="properties" direction="out"/>
+    </method>
+    <method name="Set">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="in"/>
+    </method>
+    <signal name="PropertiesChanged">
+      <arg type="s" name="interface_name"/>
+      <arg type="a{sv}" name="changed_properties"/>
+      <arg type="as" name="invalidated_properties"/>
+    </signal>
+  </interface>
+  <interface name="org.freedesktop.DBus.Introspectable">
+    <method name="Introspect">
+      <arg type="s" name="xml_data" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.DBus.Peer">
+    <method name="Ping"/>
+    <method name="GetMachineId">
+      <arg type="s" name="machine_uuid" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.gnome.Mutter.InputCapture">
+    <method name="CreateSession">
+      <arg type="u" name="capabilities" direction="in"/>
+      <arg type="o" name="session_path" direction="out"/>
+    </method>
+    <property type="u" name="SupportedCapabilities" access="read"/>
+  </interface>
+</node>
+
+<!-- :1.2 /org/gnome/Mutter/InputMapping -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <interface name="org.freedesktop.DBus.Properties">
+    <method name="Get">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="out"/>
+    </method>
+    <method name="GetAll">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="a{sv}" name="properties" direction="out"/>
+    </method>
+    <method name="Set">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="in"/>
+    </method>
+    <signal name="PropertiesChanged">
+      <arg type="s" name="interface_name"/>
+      <arg type="a{sv}" name="changed_properties"/>
+      <arg type="as" name="invalidated_properties"/>
+    </signal>
+  </interface>
+  <interface name="org.freedesktop.DBus.Introspectable">
+    <method name="Introspect">
+      <arg type="s" name="xml_data" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.DBus.Peer">
+    <method name="Ping"/>
+    <method name="GetMachineId">
+      <arg type="s" name="machine_uuid" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.gnome.Mutter.InputMapping">
+    <method name="GetDeviceMapping">
+      <arg type="o" name="device_node" direction="in"/>
+      <arg type="(iiii)" name="rect" direction="out"/>
+    </method>
+  </interface>
+</node>
+
+<!-- :1.2 /org/gnome/Mutter/RemoteDesktop -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <interface name="org.freedesktop.DBus.Properties">
+    <method name="Get">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="out"/>
+    </method>
+    <method name="GetAll">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="a{sv}" name="properties" direction="out"/>
+    </method>
+    <method name="Set">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="in"/>
+    </method>
+    <signal name="PropertiesChanged">
+      <arg type="s" name="interface_name"/>
+      <arg type="a{sv}" name="changed_properties"/>
+      <arg type="as" name="invalidated_properties"/>
+    </signal>
+  </interface>
+  <interface name="org.freedesktop.DBus.Introspectable">
+    <method name="Introspect">
+      <arg type="s" name="xml_data" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.DBus.Peer">
+    <method name="Ping"/>
+    <method name="GetMachineId">
+      <arg type="s" name="machine_uuid" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.gnome.Mutter.RemoteDesktop">
+    <method name="CreateSession">
+      <arg type="o" name="session_path" direction="out"/>
+    </method>
+    <property type="u" name="SupportedDeviceTypes" access="read"/>
+    <property type="i" name="Version" access="read"/>
+  </interface>
+</node>
+
+<!-- :1.2 /org/gnome/Mutter/ScreenCast -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <interface name="org.freedesktop.DBus.Properties">
+    <method name="Get">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="out"/>
+    </method>
+    <method name="GetAll">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="a{sv}" name="properties" direction="out"/>
+    </method>
+    <method name="Set">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="in"/>
+    </method>
+    <signal name="PropertiesChanged">
+      <arg type="s" name="interface_name"/>
+      <arg type="a{sv}" name="changed_properties"/>
+      <arg type="as" name="invalidated_properties"/>
+    </signal>
+  </interface>
+  <interface name="org.freedesktop.DBus.Introspectable">
+    <method name="Introspect">
+      <arg type="s" name="xml_data" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.DBus.Peer">
+    <method name="Ping"/>
+    <method name="GetMachineId">
+      <arg type="s" name="machine_uuid" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.gnome.Mutter.ScreenCast">
+    <method name="CreateSession">
+      <arg type="a{sv}" name="properties" direction="in"/>
+      <arg type="o" name="session_path" direction="out"/>
+    </method>
+    <property type="i" name="Version" access="read"/>
+  </interface>
+</node>
+
+<!-- :1.2 /org/gnome/Mutter/ServiceChannel -->
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.90.1 -->
+<node>
+  <interface name="org.freedesktop.DBus.Properties">
+    <method name="Get">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="out"/>
+    </method>
+    <method name="GetAll">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="a{sv}" name="properties" direction="out"/>
+    </method>
+    <method name="Set">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="in"/>
+    </method>
+    <signal name="PropertiesChanged">
+      <arg type="s" name="interface_name"/>
+      <arg type="a{sv}" name="changed_properties"/>
+      <arg type="as" name="invalidated_properties"/>
+    </signal>
+  </interface>
+  <interface name="org.freedesktop.DBus.Introspectable">
+    <method name="Introspect">
+      <arg type="s" name="xml_data" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.DBus.Peer">
+    <method name="Ping"/>
+    <method name="GetMachineId">
+      <arg type="s" name="machine_uuid" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.gnome.Mutter.ServiceChannel">
+    <method name="OpenWaylandServiceConnection">
+      <arg type="u" name="service_client_type" direction="in"/>
+      <arg type="h" name="fd" direction="out"/>
+    </method>
+    <method name="OpenWaylandConnection">
+      <arg type="a{sv}" name="options" direction="in"/>
+      <arg type="h" name="fd" direction="out"/>
+    </method>
+  </interface>
+</node>
+

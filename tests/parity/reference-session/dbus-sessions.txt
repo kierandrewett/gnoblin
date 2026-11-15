@@ -1,0 +1,41 @@
+$ org.gnome.Mutter.ScreenCast /org/gnome/Mutter/ScreenCast org.gnome.Mutter.ScreenCast.CreateSession({})
+  reply dbus.ObjectPath('/org/gnome/Mutter/ScreenCast/Session/u1')
+$ org.gnome.Mutter.ScreenCast /org/gnome/Mutter/ScreenCast/Session/u1 org.freedesktop.DBus.Properties.GetAll('org.gnome.Mutter.ScreenCast.Session')
+  reply dbus.Dictionary({}, signature=dbus.Signature('sv'))
+$ org.gnome.Mutter.ScreenCast /org/gnome/Mutter/ScreenCast/Session/u1 org.gnome.Mutter.ScreenCast.Session.RecordMonitor('Meta-0', {})
+  reply dbus.ObjectPath('/org/gnome/Mutter/ScreenCast/Stream/u1')
+$ org.gnome.Mutter.ScreenCast /org/gnome/Mutter/ScreenCast/Stream/u1 org.freedesktop.DBus.Properties.GetAll('org.gnome.Mutter.ScreenCast.Stream')
+  reply dbus.Dictionary({dbus.String('Parameters'): dbus.Dictionary({dbus.String('position'): dbus.Struct((dbus.Int32(0), dbus.Int32(0)), signature=None, variant_level=1), dbus.String('size'): dbus.Struct((dbus.Int32(1280), dbus.Int32(720)), signature=None, variant_level=1), dbus.String('output-name'): dbus.String('Meta-0', variant_level=1)}, signature=dbus.Signature('sv'), variant_level=1)}, signature=dbus.Signature('sv'))
+$ org.gnome.Mutter.ScreenCast /org/gnome/Mutter/ScreenCast/Session/u1 org.gnome.Mutter.ScreenCast.Session.Start()
+  reply None
+$ org.gnome.Mutter.ScreenCast /org/gnome/Mutter/ScreenCast/Stream/u1 org.freedesktop.DBus.Properties.GetAll('org.gnome.Mutter.ScreenCast.Stream')
+  reply dbus.Dictionary({dbus.String('Parameters'): dbus.Dictionary({dbus.String('position'): dbus.Struct((dbus.Int32(0), dbus.Int32(0)), signature=None, variant_level=1), dbus.String('size'): dbus.Struct((dbus.Int32(1280), dbus.Int32(720)), signature=None, variant_level=1), dbus.String('output-name'): dbus.String('Meta-0', variant_level=1)}, signature=dbus.Signature('sv'), variant_level=1)}, signature=dbus.Signature('sv'))
+$ org.gnome.Mutter.ScreenCast /org/gnome/Mutter/ScreenCast/Session/u1 org.gnome.Mutter.ScreenCast.Session.Stop()
+  reply None
+$ org.gnome.Mutter.RemoteDesktop /org/gnome/Mutter/RemoteDesktop org.gnome.Mutter.RemoteDesktop.CreateSession()
+  reply dbus.ObjectPath('/org/gnome/Mutter/RemoteDesktop/Session/u1')
+$ org.gnome.Mutter.RemoteDesktop /org/gnome/Mutter/RemoteDesktop/Session/u1 org.freedesktop.DBus.Properties.GetAll('org.gnome.Mutter.RemoteDesktop.Session')
+  reply dbus.Dictionary({dbus.String('SessionId'): dbus.String('c3639acf-25be-4e93-9162-6f7a88e685e0', variant_level=1), dbus.String('CapsLockState'): dbus.Boolean(False, variant_level=1), dbus.String('NumLockState'): dbus.Boolean(False, variant_level=1), dbus.String('KeymapCapabilities'): dbus.Dictionary({}, signature=dbus.Signature('sv'), variant_level=1), dbus.String('CurrentKeymap'): dbus.Dictionary({dbus.String('name'): dbus.String('English (US)', variant_level=1), dbus.String('source'): dbus.UInt32(0, variant_level=1)}, signature=dbus.Signature('sv'), variant_level=1)}, signature=dbus.Signature('sv'))
+$ org.gnome.Mutter.RemoteDesktop /org/gnome/Mutter/RemoteDesktop/Session/u1 org.gnome.Mutter.RemoteDesktop.Session.Start()
+  reply None
+$ org.gnome.Mutter.RemoteDesktop /org/gnome/Mutter/RemoteDesktop/Session/u1 org.gnome.Mutter.RemoteDesktop.Session.NotifyPointerMotionRelative(1.0, 1.0)
+  reply None
+$ org.gnome.Mutter.RemoteDesktop /org/gnome/Mutter/RemoteDesktop/Session/u1 org.gnome.Mutter.RemoteDesktop.Session.NotifyKeyboardKeysym(dbus.UInt32(97), True)
+  reply None
+$ org.gnome.Mutter.RemoteDesktop /org/gnome/Mutter/RemoteDesktop/Session/u1 org.gnome.Mutter.RemoteDesktop.Session.NotifyKeyboardKeysym(dbus.UInt32(97), False)
+  reply None
+$ org.gnome.Mutter.RemoteDesktop /org/gnome/Mutter/RemoteDesktop/Session/u1 org.gnome.Mutter.RemoteDesktop.Session.ConnectToEIS({})
+  reply <dbus.UnixFd object at 0x7ea11f834bd0>
+  (the reply is a file descriptor for the EIS socket: UnixFd)
+$ org.gnome.Mutter.RemoteDesktop /org/gnome/Mutter/RemoteDesktop/Session/u1 org.gnome.Mutter.RemoteDesktop.Session.Stop()
+  reply None
+$ org.gnome.Mutter.InputCapture /org/gnome/Mutter/InputCapture org.gnome.Mutter.InputCapture.CreateSession(dbus.UInt32(3))
+  reply dbus.ObjectPath('/org/gnome/Mutter/InputCapture/Session/u1')
+$ org.gnome.Mutter.InputCapture /org/gnome/Mutter/InputCapture/Session/u1 org.freedesktop.DBus.Properties.GetAll('org.gnome.Mutter.InputCapture.Session')
+  reply dbus.Dictionary({}, signature=dbus.Signature('sv'))
+$ org.gnome.Mutter.InputCapture /org/gnome/Mutter/InputCapture/Session/u1 org.gnome.Mutter.InputCapture.Session.GetZones()
+  reply (dbus.UInt32(0), dbus.Array([dbus.Struct((dbus.UInt32(1280), dbus.UInt32(720), dbus.Int32(0), dbus.Int32(0)), signature=None)], signature=dbus.Signature('(uuii)')))
+$ org.gnome.Mutter.InputCapture /org/gnome/Mutter/InputCapture/Session/u1 org.gnome.Mutter.InputCapture.Session.Disable()
+  error org.freedesktop.DBus.Error.Failed: Session not enabled
+$ org.gnome.Mutter.InputCapture /org/gnome/Mutter/InputCapture/Session/u1 org.gnome.Mutter.InputCapture.Session.Close()
+  reply None

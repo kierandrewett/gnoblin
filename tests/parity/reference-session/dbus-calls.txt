@@ -1,0 +1,75 @@
+$ busctl --user get-property org.gnome.Mutter.DisplayConfig /org/gnome/Mutter/DisplayConfig org.gnome.Mutter.DisplayConfig PowerSaveMode
+i 0
+[exit 0]
+
+$ busctl --user get-property org.gnome.Mutter.DisplayConfig /org/gnome/Mutter/DisplayConfig org.gnome.Mutter.DisplayConfig ApplyMonitorsConfigAllowed
+b true
+[exit 0]
+
+$ busctl --user get-property org.gnome.Mutter.DisplayConfig /org/gnome/Mutter/DisplayConfig org.gnome.Mutter.DisplayConfig NightLightSupported
+b false
+[exit 0]
+
+$ busctl --user get-property org.gnome.Mutter.DisplayConfig /org/gnome/Mutter/DisplayConfig org.gnome.Mutter.DisplayConfig PanelOrientationManaged
+b false
+[exit 0]
+
+$ busctl --user call org.gnome.Mutter.DisplayConfig /org/gnome/Mutter/DisplayConfig org.gnome.Mutter.DisplayConfig GetCurrentState
+ua((ssss)a(siiddada{sv})a{sv})a(iiduba(ssss)a{sv})a{sv} 2 1 "Meta-0" "MetaVendor" "MetaVirtualMonitor" "0x00" 1 "1280x720@60.000" 1280 720 60 1 3 1 1.25 1.33333 2 "is-current" b true "is-preferred" b true 6 "is-builtin" b false "display-name" s "MetaVendor" "is-for-lease" b false "color-mode" u 0 "supported-color-modes" au 1 0 "rgb-range" u 1 1 0 0 1 0 true 1 "Meta-0" "MetaVendor" "MetaVirtualMonitor" "0x00" 0 2 "layout-mode" u 1 "supports-changing-layout-mode" b true
+[exit 0]
+
+$ busctl --user call org.gnome.Mutter.DisplayConfig /org/gnome/Mutter/DisplayConfig org.gnome.Mutter.DisplayConfig GetResources
+ua(uxiiiiiuaua{sv})a(uxiausauaua{sv})a(uxuudu)ii 2 0 0 0 65535 65535
+[exit 0]
+
+$ busctl --user call org.gnome.Mutter.IdleMonitor /org/gnome/Mutter/IdleMonitor/Core org.gnome.Mutter.IdleMonitor GetIdletime
+t 3407
+[exit 0]
+
+$ busctl --user get-property org.gnome.Mutter.ScreenCast /org/gnome/Mutter/ScreenCast org.gnome.Mutter.ScreenCast Version
+i 4
+[exit 0]
+
+$ busctl --user get-property org.gnome.Mutter.RemoteDesktop /org/gnome/Mutter/RemoteDesktop org.gnome.Mutter.RemoteDesktop SupportedDeviceTypes
+u 7
+[exit 0]
+
+$ busctl --user get-property org.gnome.Mutter.RemoteDesktop /org/gnome/Mutter/RemoteDesktop org.gnome.Mutter.RemoteDesktop Version
+i 1
+[exit 0]
+
+$ busctl --user get-property org.gnome.Mutter.InputCapture /org/gnome/Mutter/InputCapture org.gnome.Mutter.InputCapture SupportedCapabilities
+u 15
+[exit 0]
+
+$ busctl --user get-property org.gnome.Mutter.InputCapture /org/gnome/Mutter/InputCapture org.gnome.Mutter.InputCapture Version
+Failed to get property Version on interface org.gnome.Mutter.InputCapture: No such property “Version”
+[exit 1]
+
+$ busctl --user get-property org.gnome.Mutter.ServiceChannel /org/gnome/Mutter/ServiceChannel org.gnome.Mutter.ServiceChannel Version
+Failed to get property Version on interface org.gnome.Mutter.ServiceChannel: No such property “Version”
+[exit 1]
+
+$ busctl --user call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus UpdateActivationEnvironment a{ss} 4 WAYLAND_DISPLAY wayland-ref XDG_CURRENT_DESKTOP GNOME XDG_RUNTIME_DIR /tmp/refsession.ohl278 GDK_BACKEND wayland
+[exit 0]
+
+$ busctl --user call org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop org.freedesktop.portal.Settings ReadAll as 1 org.gnome.desktop.interface
+Call failed: Access denied
+[exit 1]
+
+$ busctl --user get-property org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop org.freedesktop.portal.ScreenCast AvailableSourceTypes
+u 0
+[exit 0]
+
+$ busctl --user get-property org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop org.freedesktop.portal.ScreenCast AvailableCursorModes
+u 0
+[exit 0]
+
+$ busctl --user get-property org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop org.freedesktop.portal.RemoteDesktop AvailableDeviceTypes
+u 0
+[exit 0]
+
+$ busctl --user call org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop org.freedesktop.portal.ScreenCast CreateSession a{sv} 2 handle_token s refreq session_handle_token s refsession
+Call failed: Access denied
+[exit 1]
+

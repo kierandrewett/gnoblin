@@ -1,0 +1,207 @@
+[image]
+id = "ubuntu-24.04"
+image = "ubuntu:24.04"
+probed = true
+os_id = "ubuntu"
+os_version = "24.04"
+family = "apt"
+
+[run]
+box = "yz1mlf9hly"
+date = "2026-11-15T12:04:23Z"
+fetch = "python3 scripts/oci-rootfs.py ubuntu:24.04"
+fetch-exit = "0"
+host = "Linux 4.19.0-gvisor x86_64"
+install = "apt install of the packages in tests/native-probe/libraries.toml"
+install-exit = "0"
+packages-not-installed = "none"
+xtask = "/home/node/target/debug/xtask native-probe check"
+
+[[library]]
+id = "libinput"
+status = "ok"
+version = "1.25.0"
+via = "pkg-config libinput"
+floor = "1.19"
+mutter = "below-floor"
+found = [
+    "usr/lib/x86_64-linux-gnu/libinput.so.10",
+    "usr/lib/x86_64-linux-gnu/libinput.so.10.13.0",
+]
+packages = ["libinput-dev 1.25.0-1ubuntu3.7"]
+
+[[library]]
+id = "libudev"
+status = "recorded"
+version = "255"
+via = "pkg-config libudev"
+found = [
+    "usr/lib/x86_64-linux-gnu/libudev.so.1",
+    "usr/lib/x86_64-linux-gnu/libudev.so.1.7.8",
+]
+packages = ["libudev-dev 255.4-1ubuntu8.18"]
+
+[[library]]
+id = "libseat"
+status = "recorded"
+version = "0.8.0"
+via = "pkg-config libseat"
+found = ["usr/lib/x86_64-linux-gnu/libseat.so.1"]
+packages = ["libseat-dev 0.8.0-1"]
+
+[[library]]
+id = "libdrm"
+status = "recorded"
+version = "2.4.125"
+via = "pkg-config libdrm"
+found = [
+    "usr/lib/x86_64-linux-gnu/libdrm.so.2",
+    "usr/lib/x86_64-linux-gnu/libdrm.so.2.125.0",
+]
+packages = ["libdrm-dev 2.4.125-1ubuntu0.1~24.04.2"]
+
+[[library]]
+id = "gbm"
+status = "recorded"
+version = "25.2.8-0ubuntu0.24.04.4"
+via = "pkg-config gbm"
+found = [
+    "usr/lib/x86_64-linux-gnu/libgbm.so.1",
+    "usr/lib/x86_64-linux-gnu/libgbm.so.1.0.0",
+]
+packages = ["libgbm-dev 25.2.8-0ubuntu0.24.04.4"]
+
+[[library]]
+id = "egl-gles"
+status = "recorded"
+version = "1.5"
+via = "pkg-config egl"
+found = [
+    "usr/lib/x86_64-linux-gnu/libEGL.so.1",
+    "usr/lib/x86_64-linux-gnu/libEGL.so.1.1.0",
+    "usr/lib/x86_64-linux-gnu/libGLESv2.so.2",
+    "usr/lib/x86_64-linux-gnu/libGLESv2.so.2.1.0",
+]
+packages = [
+    "libegl1 1.7.0-1build1",
+    "libgles2 1.7.0-1build1",
+    "libegl-dev 1.7.0-1build1",
+    "libgles-dev 1.7.0-1build1",
+]
+
+[[library]]
+id = "vulkan-loader"
+status = "ok"
+version = "1.3.275"
+via = "pkg-config vulkan"
+floor = "1.1"
+found = [
+    "usr/lib/x86_64-linux-gnu/libvulkan.so.1",
+    "usr/lib/x86_64-linux-gnu/libvulkan.so.1.3.275",
+]
+packages = [
+    "libvulkan1 1.3.275.0-1build1",
+    "libvulkan-dev 1.3.275.0-1build1",
+]
+
+[[library]]
+id = "libxkbcommon"
+status = "recorded"
+version = "1.6.0"
+via = "pkg-config xkbcommon"
+found = [
+    "usr/lib/x86_64-linux-gnu/libxkbcommon.so.0",
+    "usr/lib/x86_64-linux-gnu/libxkbcommon.so.0.0.0",
+]
+packages = ["libxkbcommon-dev 1.6.0-1build1"]
+
+[[library]]
+id = "pixman"
+status = "recorded"
+version = "0.42.2"
+via = "pkg-config pixman-1"
+found = [
+    "usr/lib/x86_64-linux-gnu/libpixman-1.so.0",
+    "usr/lib/x86_64-linux-gnu/libpixman-1.so.0.42.2",
+]
+packages = ["libpixman-1-dev 0.42.2-1build1"]
+
+[[library]]
+id = "libwayland"
+status = "recorded"
+version = "1.22.0"
+via = "pkg-config wayland-client"
+mutter = "below-floor"
+found = [
+    "usr/lib/x86_64-linux-gnu/libwayland-client.so.0",
+    "usr/lib/x86_64-linux-gnu/libwayland-client.so.0.22.0",
+    "usr/lib/x86_64-linux-gnu/libwayland-server.so.0",
+    "usr/lib/x86_64-linux-gnu/libwayland-server.so.0.22.0",
+]
+packages = ["libwayland-dev 1.22.0-2.1build1"]
+
+[[library]]
+id = "pipewire"
+status = "ok"
+version = "1.0.5"
+via = "pkg-config libpipewire-0.3"
+floor = "0.3.34"
+mutter = "below-floor"
+found = [
+    "usr/lib/x86_64-linux-gnu/libpipewire-0.3.so.0",
+    "usr/lib/x86_64-linux-gnu/libpipewire-0.3.so.0.1005.0",
+]
+packages = ["libpipewire-0.3-dev 1.0.5-1ubuntu3.3"]
+
+[[library]]
+id = "libclang"
+status = "recorded"
+version = "18.0"
+via = "package libclang-dev"
+found = [
+    "usr/lib/x86_64-linux-gnu/libclang-18.so",
+    "usr/lib/x86_64-linux-gnu/libclang-18.so.1",
+    "usr/lib/x86_64-linux-gnu/libclang-18.so.18",
+]
+packages = ["libclang-dev 1:18.0-59~exp2"]
+
+[[library]]
+id = "openssl"
+status = "recorded"
+version = "3.0.13"
+via = "pkg-config openssl"
+found = [
+    "usr/lib/x86_64-linux-gnu/libcrypto.so",
+    "usr/lib/x86_64-linux-gnu/libcrypto.so.3",
+]
+packages = ["libssl-dev 3.0.13-0ubuntu3.16"]
+
+[[library]]
+id = "libpam"
+status = "recorded"
+version = "1.5.3"
+via = "package libpam0g"
+found = [
+    "usr/lib/x86_64-linux-gnu/libpam.so.0",
+    "usr/lib/x86_64-linux-gnu/libpam.so.0.85.1",
+]
+packages = ["libpam0g 1.5.3-5ubuntu5.7"]
+
+[[library]]
+id = "polkit-helper"
+status = "recorded"
+version = "124"
+via = "package policykit-1"
+found = [
+    "usr/lib/policykit-1/polkit-agent-helper-1",
+    "usr/lib/polkit-1/polkit-agent-helper-1",
+]
+packages = ["policykit-1 124-2ubuntu1.24.04.4"]
+
+[[library]]
+id = "xwayland"
+status = "recorded"
+version = "23.2.6"
+via = "package xwayland"
+found = ["usr/bin/Xwayland"]
+packages = ["xwayland 2:23.2.6-1ubuntu0.8"]

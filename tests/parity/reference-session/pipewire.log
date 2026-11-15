@@ -1,0 +1,5 @@
+[E][12:17:59.714439] mod.rt       | [     module-rt.c:  295 pw_rtkit_bus_get()] Failed to connect to system bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+[W][12:17:59.714715] mod.rt       | [     module-rt.c:  975 rtkit_get_bus()] Realtime scheduling disabled: insufficient realtime privileges, Portal not found on session bus, and no system bus for RTKit: Connection refused
+[W][12:17:59.721317] default      | [        thread.c:  119 impl_create()] pthread_setname error: No such file or directory
+[W][12:18:03.486457] mod.access   | [ module-access.c:  204 context_check_access()] 0x55fda5c82a70: client 0x55fda5c63410 flatpak check failed: No such file or directory
+[W][12:18:03.890409] mod.access   | [ module-access.c:  204 context_check_access()] 0x55fda5c82a70: client 0x55fda5c63410 flatpak check failed: No such file or directory
