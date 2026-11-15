@@ -7,12 +7,14 @@
 //! # Order
 //!
 //! A scale-only change commits nothing: the CRTC keeps its mode blob, the output composes at the new scale
-//! from its next frame, and it is marked dirty so that frame repaints everything. A mode change is an atomic
+//! from its next frame, and it is marked dirty so that frame repaints everything. A change of the supersample factor
+//! is the same, plus a new virtual surface (the buffers' composing target, `mode * s` pixels) made before anything
+//! is marked, so a surface the GPU refuses leaves the output exactly as it was. A mode change is an atomic
 //! modeset, and every step that can fail comes before the step that cannot be undone:
-//!
-//! 1. the pure decision ([`crate::plan::modeset`]): no pixels, not driven, dark, or a mode the connector does not list
-//!    are refused before anything is allocated;
-//! 2. buffers for the new size are allocated beside the old ones, which stay in use;
+//! 1. the pure decision ([`crate::plan::modeset`]): no pixels, not driven, dark, a mode the connector does not list, or a
+//!    supersample factor that is not a whole virtual size within the GPU's texture limit are refused before anything
+//!    is allocated;
+//! 2. buffers for the new size (and its virtual surface) are allocated beside the old ones, which stay in use;
 //! 3. an atomic commit with `TEST_ONLY` over the new buffers;
 //! 4. the real commit, which scans the new buffers' [`COMMITTED_SLOT`] out;
 //! 5. only now the output's buffers are replaced (the old ones are dropped after the commit that stopped
@@ -45,7 +47,9 @@
 //!    refusal to do so is reported with the success, because the mode did change:
 //!    `the_gamma_table_is_written_again_after_the_commit`.
 
+use gnoblin_backend::Output;
 use gnoblin_output::DisplayMode;
+use gnoblin_output::supersample::MAX_VIRTUAL_EDGE;
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_types::{Scale, Size};
 
@@ -111,13 +115,25 @@ pub(crate) trait ModesetKernel {
     /// that stands in for an allowed change says [`RealModeset::ON`].
     fn real_modeset(&self) -> RealModeset;
 
-    /// Allocates buffers for an output of `size` physical pixels, with [`COMMITTED_SLOT`] cleared so the first frame on
-    /// the new mode is black and not whatever memory held.
+    /// Allocates buffers for an output shown at `shown` physical pixels and composed on a virtual surface of
+    /// `composed` pixels (the same size when there is no supersampling), with [`COMMITTED_SLOT`] cleared so the first
+    /// frame on the new mode is black and not whatever memory held.
     ///
     /// # Errors
     ///
     /// [`RenderError`] when the buffers cannot be made. The output is untouched.
-    fn allocate(&mut self, size: Size) -> Result<Self::Buffers, RenderError>;
+    fn allocate(&mut self, shown: Size, composed: Size) -> Result<Self::Buffers, RenderError>;
+
+    /// Gives `buffers` a virtual surface of `composed` pixels, keeping the scan-out buffers.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError`] when the surface cannot be made. `buffers` keep the one they had, so the frame on screen is not
+    /// lost.
+    fn recompose(&mut self, buffers: &mut Self::Buffers, composed: Size) -> Result<(), RenderError>;
+
+    /// The largest edge, in pixels, a virtual surface of this GPU can have, within the compositor's own limit.
+    fn max_composed_edge(&mut self) -> u32;
 
     /// An atomic commit with `TEST_ONLY` of `mode` over `buffers`. It stages nothing: on `Ok` and on `Err` the
     /// kernel and the surface are as they were.
@@ -219,7 +235,45 @@ impl std::fmt::Display for ModesetError {
 
 impl std::error::Error for ModesetError {}
 
-/// Changes one live output from `current` to `mode` and `scale`.
+/// What an output is asked to compose at: a mode, the scale clients are told, and the supersample factor.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct Composition {
+    /// The mode the display is driven at.
+    pub(crate) mode: DisplayMode,
+    /// The scale before supersampling.
+    pub(crate) scale: Scale,
+    /// The supersample factor; one is none.
+    pub(crate) supersample: Scale,
+}
+
+impl Composition {
+    /// The pixels of the virtual surface this composition is made on.
+    fn composed(&self) -> Size {
+        Output::virtual_extent(self.mode, self.supersample)
+    }
+
+    /// The pixels the display shows.
+    fn shown(&self) -> Size {
+        Size::new(self.mode.width, self.mode.height)
+    }
+
+    /// The pure decision for this composition, with the GPU's limit asked only when a virtual surface is needed.
+    fn decide<K: ModesetKernel>(
+        &self,
+        kernel: &mut K,
+        connector: &Connector,
+        current: &OutputState,
+    ) -> Result<ModesetStep, ModesetError> {
+        let limit = if self.supersample.is_identity() {
+            MAX_VIRTUAL_EDGE
+        } else {
+            kernel.max_composed_edge()
+        };
+        modeset(connector, current, self.mode, self.scale, self.supersample, limit).map_err(ModesetError::Refused)
+    }
+}
+
+/// Changes one live output from `current` to `wanted`.
 ///
 /// `buffers` and `presenter` are the output's: on `Err` neither is touched, so the output keeps presenting what it was
 /// presenting, a flip in flight included. On `Ok` the buffers are the new ones and the presenter is reset onto them.
@@ -231,18 +285,26 @@ pub(crate) fn configure<K: ModesetKernel>(
     kernel: &mut K,
     connector: &Connector,
     current: &OutputState,
-    mode: DisplayMode,
-    scale: Scale,
+    wanted: Composition,
     buffers: &mut Option<K::Buffers>,
     presenter: &mut Presenter,
 ) -> Result<ModesetOutcome, ModesetError> {
-    match modeset(connector, current, mode, scale).map_err(ModesetError::Refused)? {
+    match wanted.decide(kernel, connector, current)? {
         ModesetStep::Unchanged => Ok(ModesetOutcome {
             state: *current,
             kind: ModesetKind::Unchanged,
             gamma_failure: None,
         }),
         ModesetStep::Scale(state) => {
+            // A new factor is a new virtual surface. It is made before the presenter is touched: a surface the GPU
+            // refuses leaves the output composing, and presenting, exactly as it did.
+            if state.supersample != current.supersample
+                && let Some(held) = buffers.as_mut()
+            {
+                kernel
+                    .recompose(held, wanted.composed())
+                    .map_err(ModesetError::Buffers)?;
+            }
             presenter.mark_dirty();
             Ok(ModesetOutcome {
                 state,
@@ -254,8 +316,9 @@ pub(crate) fn configure<K: ModesetKernel>(
             if !kernel.real_modeset().is_on() {
                 return Err(ModesetError::Disabled);
             }
+            let mode = wanted.mode;
             let fresh = kernel
-                .allocate(Size::new(mode.width, mode.height))
+                .allocate(wanted.shown(), wanted.composed())
                 .map_err(ModesetError::Buffers)?;
             kernel.test(mode, &fresh).map_err(ModesetError::Test)?;
             if let Err(reason) = kernel.commit(mode, &fresh) {
@@ -280,7 +343,7 @@ pub(crate) fn configure<K: ModesetKernel>(
 }
 
 /// Checks that [`configure`] would be accepted, changing nothing: the pure decision, then buffers for the new size and
-/// a test-only commit over them. A scale-only change needs no kernel.
+/// a test-only commit over them. A scale or factor change needs no kernel; its limit is part of the decision.
 ///
 /// # Errors
 ///
@@ -289,10 +352,9 @@ pub(crate) fn check<K: ModesetKernel>(
     kernel: &mut K,
     connector: &Connector,
     current: &OutputState,
-    mode: DisplayMode,
-    scale: Scale,
+    wanted: Composition,
 ) -> Result<(), ModesetError> {
-    match modeset(connector, current, mode, scale).map_err(ModesetError::Refused)? {
+    match wanted.decide(kernel, connector, current)? {
         ModesetStep::Unchanged | ModesetStep::Scale(_) => Ok(()),
         ModesetStep::Mode(_) => {
             // Refused here too, so a configuration is turned down before any output has been driven.
@@ -300,9 +362,9 @@ pub(crate) fn check<K: ModesetKernel>(
                 return Err(ModesetError::Disabled);
             }
             let fresh = kernel
-                .allocate(Size::new(mode.width, mode.height))
+                .allocate(wanted.shown(), wanted.composed())
                 .map_err(ModesetError::Buffers)?;
-            kernel.test(mode, &fresh).map_err(ModesetError::Test)
+            kernel.test(wanted.mode, &fresh).map_err(ModesetError::Test)
         }
     }
 }
@@ -329,6 +391,8 @@ mod tests {
     /// Buffers that say when they are dropped, so the order against the commit is checked.
     struct Held {
         size: Size,
+        /// The virtual surface the output composes on, which is `size` when there is no supersampling.
+        composed: Size,
         log: Log,
     }
 
@@ -344,6 +408,9 @@ mod tests {
     #[derive(Default)]
     struct Fake {
         log: Log,
+        /// The texture limit the GPU reports, or 8192 when none is set.
+        limit: Option<u32>,
+        refuse_recompose: bool,
         refuse_allocation: bool,
         refuse_test: bool,
         refuse_commit: bool,
@@ -361,6 +428,7 @@ mod tests {
         fn held(&self, size: Size) -> Held {
             Held {
                 size,
+                composed: size,
                 log: Rc::clone(&self.log),
             }
         }
@@ -385,12 +453,36 @@ mod tests {
             }
         }
 
-        fn allocate(&mut self, size: Size) -> Result<Held, RenderError> {
-            self.note(format!("allocate {}x{}", size.width, size.height));
+        fn allocate(&mut self, shown: Size, composed: Size) -> Result<Held, RenderError> {
+            if composed == shown {
+                self.note(format!("allocate {}x{}", shown.width, shown.height));
+            } else {
+                self.note(format!(
+                    "allocate {}x{} composed {}x{}",
+                    shown.width, shown.height, composed.width, composed.height
+                ));
+            }
             if self.refuse_allocation {
                 return Err(RenderError::Unavailable);
             }
-            Ok(self.held(size))
+            // `Held` has a destructor, so the struct update syntax cannot move out of it.
+            let mut held = self.held(shown);
+            held.composed = composed;
+            Ok(held)
+        }
+
+        fn recompose(&mut self, buffers: &mut Held, composed: Size) -> Result<(), RenderError> {
+            self.note(format!("recompose {}x{}", composed.width, composed.height));
+            if self.refuse_recompose {
+                return Err(RenderError::Unavailable);
+            }
+            buffers.composed = composed;
+            Ok(())
+        }
+
+        fn max_composed_edge(&mut self) -> u32 {
+            self.note("limit".to_owned());
+            self.limit.unwrap_or(MAX_VIRTUAL_EDGE)
         }
 
         fn test(&mut self, mode: DisplayMode, buffers: &Held) -> Result<(), String> {
@@ -461,6 +553,15 @@ mod tests {
         (Some(fake.held(Size::new(1920, 1080))), presenter)
     }
 
+    /// A request for `mode` and `scale` with no supersampling.
+    fn ask(mode: DisplayMode, scale: Scale) -> Composition {
+        Composition {
+            mode,
+            scale,
+            supersample: Scale::IDENTITY,
+        }
+    }
+
     fn size_of(buffers: &Option<Held>) -> Option<(u32, u32)> {
         buffers.as_ref().map(|held| (held.size.width, held.size.height))
     }
@@ -473,8 +574,7 @@ mod tests {
             &mut fake,
             &connector(true),
             &lit(),
-            FOUR_K,
-            Scale::integral(2),
+            ask(FOUR_K, Scale::integral(2)),
             &mut buffers,
             &mut presenter,
         )
@@ -534,8 +634,7 @@ mod tests {
             &mut fake,
             &connector(true),
             &lit(),
-            UNLISTED,
-            Scale::integral(1),
+            ask(UNLISTED, Scale::integral(1)),
             &mut buffers,
             &mut presenter,
         )
@@ -566,8 +665,7 @@ mod tests {
             &mut fake,
             &connector(true),
             &lit(),
-            FOUR_K,
-            Scale::integral(1),
+            ask(FOUR_K, Scale::integral(1)),
             &mut buffers,
             &mut presenter,
         )
@@ -600,8 +698,7 @@ mod tests {
             &mut fake,
             &connector(true),
             &lit(),
-            FOUR_K,
-            Scale::integral(1),
+            ask(FOUR_K, Scale::integral(1)),
             &mut buffers,
             &mut presenter,
         )
@@ -640,8 +737,7 @@ mod tests {
             &mut fake,
             &connector(true),
             &lit(),
-            FOUR_K,
-            Scale::integral(1),
+            ask(FOUR_K, Scale::integral(1)),
             &mut buffers,
             &mut presenter,
         )
@@ -665,8 +761,7 @@ mod tests {
             &mut fake,
             &connector(true),
             &lit(),
-            FOUR_K,
-            Scale::integral(1),
+            ask(FOUR_K, Scale::integral(1)),
             &mut buffers,
             &mut presenter,
         )
@@ -686,8 +781,7 @@ mod tests {
             &mut fake,
             &connector(true),
             &lit(),
-            FULL_HD,
-            Scale::integral(2),
+            ask(FULL_HD, Scale::integral(2)),
             &mut buffers,
             &mut presenter,
         )
@@ -716,8 +810,7 @@ mod tests {
             &mut fake,
             &connector(true),
             &lit(),
-            FULL_HD,
-            Scale::integral(1),
+            ask(FULL_HD, Scale::integral(1)),
             &mut buffers,
             &mut presenter,
         )
@@ -740,8 +833,7 @@ mod tests {
             &mut fake,
             &connector(true),
             &dark,
-            FOUR_K,
-            Scale::integral(1),
+            ask(FOUR_K, Scale::integral(1)),
             &mut buffers,
             &mut presenter,
         )
@@ -751,8 +843,7 @@ mod tests {
             &mut fake,
             &connector(false),
             &lit(),
-            FOUR_K,
-            Scale::integral(1),
+            ask(FOUR_K, Scale::integral(1)),
             &mut buffers,
             &mut presenter,
         )
@@ -773,8 +864,7 @@ mod tests {
             &mut fake,
             &connector(true),
             &lit(),
-            FOUR_K,
-            Scale::integral(1),
+            ask(FOUR_K, Scale::integral(1)),
             &mut buffers,
             &mut presenter,
         )
@@ -802,8 +892,7 @@ mod tests {
             &mut fake,
             &connector(true),
             &lit(),
-            FOUR_K,
-            Scale::integral(1),
+            ask(FOUR_K, Scale::integral(1)),
             &mut buffers,
             &mut presenter,
         )
@@ -825,8 +914,7 @@ mod tests {
             &mut fake,
             &connector(true),
             &lit(),
-            FOUR_K,
-            Scale::integral(1),
+            ask(FOUR_K, Scale::integral(1)),
             &mut buffers,
             &mut presenter,
         )
@@ -860,24 +948,29 @@ mod tests {
     #[test]
     fn a_check_allocates_and_tests_and_commits_nothing() {
         let mut fake = Fake::default();
-        check(&mut fake, &connector(true), &lit(), FOUR_K, Scale::integral(1)).expect("would be accepted");
+        check(&mut fake, &connector(true), &lit(), ask(FOUR_K, Scale::integral(1))).expect("would be accepted");
         assert_eq!(
             fake.calls(),
             ["allocate 3840x2160", "test 3840x2160 over 3840", "drop 3840x2160"]
         );
         fake.clear();
-        check(&mut fake, &connector(true), &lit(), FULL_HD, Scale::integral(2)).expect("a scale needs no kernel");
+        check(&mut fake, &connector(true), &lit(), ask(FULL_HD, Scale::integral(2))).expect("a scale needs no kernel");
         assert!(fake.calls().is_empty());
         let mut refusing = Fake {
             refuse_test: true,
             ..Fake::default()
         };
         assert!(matches!(
-            check(&mut refusing, &connector(true), &lit(), FOUR_K, Scale::integral(1)),
+            check(&mut refusing, &connector(true), &lit(), ask(FOUR_K, Scale::integral(1))),
             Err(ModesetError::Test(_))
         ));
         assert!(matches!(
-            check(&mut refusing, &connector(true), &lit(), UNLISTED, Scale::integral(1)),
+            check(
+                &mut refusing,
+                &connector(true),
+                &lit(),
+                ask(UNLISTED, Scale::integral(1))
+            ),
             Err(ModesetError::Refused(_))
         ));
     }
@@ -895,8 +988,7 @@ mod tests {
             &mut fake,
             &connector(true),
             &lit(),
-            FOUR_K,
-            Scale::integral(1),
+            ask(FOUR_K, Scale::integral(1)),
             &mut buffers,
             &mut presenter,
         )
@@ -914,7 +1006,7 @@ mod tests {
         assert_eq!(size_of(&buffers), Some((1920, 1080)), "the output keeps its buffers");
 
         assert_eq!(
-            check(&mut fake, &connector(true), &lit(), FOUR_K, Scale::integral(1)),
+            check(&mut fake, &connector(true), &lit(), ask(FOUR_K, Scale::integral(1))),
             Err(ModesetError::Disabled),
             "a configuration is tested before any output is driven, so the refusal comes then"
         );
@@ -933,8 +1025,7 @@ mod tests {
             &mut fake,
             &connector(true),
             &lit(),
-            FULL_HD,
-            Scale::integral(2),
+            ask(FULL_HD, Scale::integral(2)),
             &mut buffers,
             &mut presenter,
         )
@@ -944,15 +1035,14 @@ mod tests {
             &mut fake,
             &connector(true),
             &lit(),
-            FULL_HD,
-            Scale::integral(1),
+            ask(FULL_HD, Scale::integral(1)),
             &mut buffers,
             &mut presenter,
         )
         .expect("the same mode is nothing to do");
         assert_eq!(same.kind, ModesetKind::Unchanged);
         assert!(fake.calls().is_empty());
-        check(&mut fake, &connector(true), &lit(), FULL_HD, Scale::integral(2)).expect("a scale needs no kernel");
+        check(&mut fake, &connector(true), &lit(), ask(FULL_HD, Scale::integral(2))).expect("a scale needs no kernel");
     }
 
     #[test]
@@ -971,5 +1061,187 @@ mod tests {
         for on in ["1", "true", "yes", "on", "TRUE"] {
             assert_eq!(from(Some(on)), RealModeset::ON, "{on:?} is an opt-in");
         }
+    }
+
+    /// A request for `mode` at `scale` composed at `supersample` times the mode.
+    fn ask_supersampled(mode: DisplayMode, scale: Scale, supersample: u32) -> Composition {
+        Composition {
+            supersample: Scale::integral(supersample),
+            ..ask(mode, scale)
+        }
+    }
+
+    #[test]
+    fn a_supersample_factor_makes_a_new_virtual_surface_and_repaints_in_full() {
+        let mut fake = Fake::default();
+        let (mut buffers, mut presenter) = presenting(&fake);
+        fake.clear();
+        let outcome = configure(
+            &mut fake,
+            &connector(true),
+            &lit(),
+            ask_supersampled(FULL_HD, Scale::integral(1), 2),
+            &mut buffers,
+            &mut presenter,
+        )
+        .expect("2x on full HD is 3840x2160");
+        assert_eq!(outcome.kind, ModesetKind::Scale, "a factor commits no mode");
+        assert_eq!(outcome.state.supersample, Scale::integral(2));
+        assert_eq!(
+            fake.calls(),
+            ["limit", "recompose 3840x2160"],
+            "the kernel is never asked"
+        );
+        let held = buffers.as_ref().expect("the buffers are kept");
+        assert_eq!(
+            (held.size, held.composed),
+            (Size::new(1920, 1080), Size::new(3840, 2160)),
+            "the scan-out buffers stay at the mode and the virtual surface is twice it"
+        );
+        assert!(presenter.is_dirty(), "the next frame repaints");
+        assert_eq!(presenter.front(), Some(0), "the buffer on screen is still the front");
+    }
+
+    #[test]
+    fn a_virtual_surface_the_gpu_refuses_leaves_the_output_exactly_as_it_was() {
+        let mut fake = Fake {
+            refuse_recompose: true,
+            ..Fake::default()
+        };
+        let (mut buffers, mut presenter) = presenting(&fake);
+        let before = presenter.clone();
+        let error = configure(
+            &mut fake,
+            &connector(true),
+            &lit(),
+            ask_supersampled(FULL_HD, Scale::integral(1), 2),
+            &mut buffers,
+            &mut presenter,
+        )
+        .expect_err("no surface");
+        assert_eq!(error, ModesetError::Buffers(RenderError::Unavailable));
+        assert_eq!(
+            presenter, before,
+            "nothing is marked dirty for a change that was not made"
+        );
+        let held = buffers.as_ref().expect("the buffers are kept");
+        assert_eq!(
+            held.composed,
+            Size::new(1920, 1080),
+            "the old surface is still the one drawn on"
+        );
+    }
+
+    #[test]
+    fn a_factor_past_the_gpus_limit_is_refused_before_anything_is_made() {
+        let mut fake = Fake {
+            limit: Some(2048),
+            ..Fake::default()
+        };
+        let (mut buffers, mut presenter) = presenting(&fake);
+        fake.clear();
+        let error = configure(
+            &mut fake,
+            &connector(true),
+            &lit(),
+            ask_supersampled(FULL_HD, Scale::integral(1), 2),
+            &mut buffers,
+            &mut presenter,
+        )
+        .expect_err("3840 is above 2048");
+        let text = error.to_string();
+        assert!(
+            text.contains("3840") && text.contains("2048") && text.contains("1920x1080"),
+            "{text}"
+        );
+        assert_eq!(fake.calls(), ["limit"], "only the limit was asked");
+    }
+
+    #[test]
+    fn a_mode_change_with_a_factor_allocates_the_shown_and_the_composed_size() {
+        let mut fake = Fake::default();
+        let (mut buffers, mut presenter) = presenting(&fake);
+        fake.clear();
+        configure(
+            &mut fake,
+            &connector(true),
+            &lit(),
+            ask_supersampled(FOUR_K, Scale::integral(1), 2),
+            &mut buffers,
+            &mut presenter,
+        )
+        .expect("4K at 2x is 7680x4320");
+        assert_eq!(
+            fake.calls(),
+            [
+                "limit",
+                "allocate 3840x2160 composed 7680x4320",
+                "test 3840x2160 over 3840",
+                "commit 3840x2160 over 3840",
+                "drop 1920x1080",
+                "gamma"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_factor_of_one_never_asks_the_gpu_for_its_limit() {
+        let mut fake = Fake::default();
+        let (mut buffers, mut presenter) = presenting(&fake);
+        fake.clear();
+        configure(
+            &mut fake,
+            &connector(true),
+            &lit(),
+            ask(FULL_HD, Scale::integral(2)),
+            &mut buffers,
+            &mut presenter,
+        )
+        .expect("a scale");
+        assert!(fake.calls().is_empty(), "no virtual surface, so no limit to ask");
+    }
+
+    #[test]
+    fn an_output_with_no_buffers_yet_makes_none_for_a_new_factor() {
+        let mut fake = Fake::default();
+        let mut buffers: Option<Held> = None;
+        let mut presenter = Presenter::new();
+        configure(
+            &mut fake,
+            &connector(true),
+            &lit(),
+            ask_supersampled(FULL_HD, Scale::integral(1), 2),
+            &mut buffers,
+            &mut presenter,
+        )
+        .expect("a factor");
+        assert!(buffers.is_none(), "the first frame allocates them at the right sizes");
+        assert_eq!(fake.calls(), ["limit"]);
+    }
+
+    #[test]
+    fn a_check_of_a_factor_asks_the_limit_and_allocates_nothing() {
+        let mut fake = Fake::default();
+        check(
+            &mut fake,
+            &connector(true),
+            &lit(),
+            ask_supersampled(FULL_HD, Scale::integral(1), 2),
+        )
+        .expect("would be accepted");
+        assert_eq!(fake.calls(), ["limit"]);
+        let mut tight = Fake {
+            limit: Some(1920),
+            ..Fake::default()
+        };
+        assert!(matches!(
+            check(
+                &mut tight,
+                &connector(true),
+                &lit(),
+                ask_supersampled(FULL_HD, Scale::integral(1), 2)
+            ),
+            Err(ModesetError::Refused(ModesetRefusal::Supersample(_)))
+        ));
     }
 }

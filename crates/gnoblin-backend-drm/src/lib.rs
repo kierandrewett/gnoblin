@@ -79,6 +79,7 @@ use smithay::reexports::drm::control::crtc;
 use crate::frame::{Presented, present};
 use crate::libinput::Libinput;
 use crate::libinput::map::Screen;
+use crate::modeset::Composition;
 use crate::present::{OutputPresenter, Presenter, complete_flips};
 use crate::scanout::{Buffers, Device as ScanoutDevice, Flip, LiveModeset};
 use crate::session::{SeatEvent, SeatState, Transition};
@@ -320,6 +321,10 @@ impl Drm {
         } else {
             plan::OutputState::lit(known.mode, known.scale, Orientation::Normal)
         };
+        let state = plan::OutputState {
+            supersample: known.supersample,
+            ..state
+        };
         Ok((connector, state, index, self.channels[index].crtc))
     }
 
@@ -329,6 +334,7 @@ impl Drm {
         if let Some(known) = self.outputs.iter_mut().find(|known| known.id == output) {
             known.mode = state.mode;
             known.scale = state.scale;
+            known.supersample = state.supersample;
         }
         let screens = self.screens();
         if let Input::Live(libinput) = &mut self.input {
@@ -343,7 +349,7 @@ impl Drm {
             output,
             mode: state.mode,
             scale: state.scale,
-            supersample: Scale::IDENTITY,
+            supersample: state.supersample,
         });
     }
 
@@ -469,7 +475,7 @@ impl<S: Host + 'static> Backend<S> for Drm {
         let Some(known) = self.outputs.iter().find(|known| known.id == output) else {
             return Err(BackendError::UnknownOutput(output));
         };
-        let (scale, size) = (known.scale, known.mode);
+        let (scale, size, composed) = (known.effective_scale(), known.mode, known.virtual_size());
         let Some(index) = self.channels.iter().position(|channel| channel.id == output) else {
             return Err(BackendError::Unpresentable(output));
         };
@@ -479,7 +485,11 @@ impl<S: Host + 'static> Backend<S> for Drm {
             self.channels[index].presenter.mark_dirty();
         }
         let physical = gnoblin_types::Size::new(size.width, size.height);
-        if self.buffers.get(&output).is_some_and(|buffers| !buffers.fits(physical)) {
+        if self
+            .buffers
+            .get(&output)
+            .is_some_and(|buffers| !buffers.fits(physical, composed))
+        {
             self.buffers.remove(&output);
         }
         let buffers = match self.buffers.entry(output) {
@@ -489,7 +499,8 @@ impl<S: Host + 'static> Backend<S> for Drm {
                     .gpu
                     .plane_formats(crtc)
                     .ok_or(BackendError::Unpresentable(output))?;
-                let buffers = Buffers::new(&self.scanout, physical, &formats).map_err(BackendError::Render)?;
+                let buffers =
+                    Buffers::new(&self.scanout, physical, composed, &formats).map_err(BackendError::Render)?;
                 entry.insert(buffers)
             }
         };
@@ -626,16 +637,13 @@ impl<S: Host + 'static> Backend<S> for Drm {
         scale: Scale,
         supersample: Scale,
     ) -> Result<(), BackendError> {
-        if !supersample.is_identity() {
-            return Err(BackendError::Supersample(output));
-        }
         let (connector, current, index, crtc) = self.modeset_target(output)?;
         // The buffers leave the map for the length of the call so the kernel adapter can borrow the rest of the
         // backend; a refused change gives them back untouched.
         let mut buffers = self.buffers.remove(&output);
         let mut kernel = LiveModeset {
             gpu: &self.gpu,
-            device: &self.scanout,
+            device: &mut self.scanout,
             output,
             crtc,
             real_modeset: self.real_modeset,
@@ -644,8 +652,11 @@ impl<S: Host + 'static> Backend<S> for Drm {
             &mut kernel,
             &connector,
             &current,
-            mode,
-            scale,
+            Composition {
+                mode,
+                scale,
+                supersample,
+            },
             &mut buffers,
             &mut self.channels[index].presenter,
         );
@@ -669,18 +680,24 @@ impl<S: Host + 'static> Backend<S> for Drm {
         scale: Scale,
         supersample: Scale,
     ) -> Result<(), BackendError> {
-        if !supersample.is_identity() {
-            return Err(BackendError::Supersample(output));
-        }
         let (connector, current, _, crtc) = self.modeset_target(output)?;
         let mut kernel = LiveModeset {
             gpu: &self.gpu,
-            device: &self.scanout,
+            device: &mut self.scanout,
             output,
             crtc,
             real_modeset: self.real_modeset,
         };
-        modeset::check(&mut kernel, &connector, &current, mode, scale).map_err(|error| modeset_error(output, &error))
+        let wanted = Composition {
+            mode,
+            scale,
+            supersample,
+        };
+        modeset::check(&mut kernel, &connector, &current, wanted).map_err(|error| modeset_error(output, &error))
+    }
+
+    fn max_virtual_edge(&mut self, _output: OutputId) -> u32 {
+        self.scanout.max_composed_edge()
     }
 
     fn dispatch(&mut self, host: &mut S) -> Vec<BackendEvent> {
@@ -742,9 +759,12 @@ const DISABLED_HINT: &str = "set GNOBLIN_DRM_MODESET=1 to turn it on";
 ///
 /// A mode with no pixels is [`BackendError::DegenerateMode`]; a mode the connector does not list is
 /// [`BackendError::Unsupported`]; an output with no monitor, no CRTC or no light is [`BackendError::Unpresentable`];
-/// buffers that cannot be made are [`BackendError::Render`]; a kernel refusal in the test or the commit is logged with
-/// its reason and reported as [`BackendError::ModesetRefused`]; a mode change the process has not opted in to is
-/// [`BackendError::ModesetDisabled`], with the variable that turns it on. In every case the output stays as it was.
+/// a supersample factor that does not give a whole virtual size within the GPU's limit is
+/// [`BackendError::Supersample`] (the message naming the numbers is the policy's, which asks
+/// [`Backend::max_virtual_edge`] first); buffers that cannot be made are [`BackendError::Render`]; a kernel refusal in
+/// the test or the commit is logged with its reason and reported as [`BackendError::ModesetRefused`]; a mode change the
+/// process has not opted in to is [`BackendError::ModesetDisabled`], with the variable that turns it on. In every case
+/// the output stays as it was.
 fn modeset_error(output: OutputId, error: &modeset::ModesetError) -> BackendError {
     match error {
         modeset::ModesetError::Refused(plan::ModesetRefusal::DegenerateMode(mode)) => BackendError::DegenerateMode {
@@ -761,6 +781,7 @@ fn modeset_error(output: OutputId, error: &modeset::ModesetError) -> BackendErro
             log::warn!(area = "drm", output = %output, "a mode change was refused: real modesetting is off; set {}=1 to turn it on", MODESET_ENV);
             BackendError::ModesetDisabled(output, DISABLED_HINT)
         }
+        modeset::ModesetError::Refused(plan::ModesetRefusal::Supersample(_)) => BackendError::Supersample(output),
         modeset::ModesetError::Buffers(error) => BackendError::Render(*error),
         modeset::ModesetError::Test(_) | modeset::ModesetError::Commit { .. } => {
             log::warn!(area = "drm", output = %output, reason = %error, "the kernel refused a mode change; the output keeps its mode");
@@ -776,6 +797,7 @@ mod tests {
     use crate::plan::ModesetRefusal;
     use gnoblin_backend::{BackendError, InputSource};
     use gnoblin_output::DisplayMode;
+    use gnoblin_output::supersample::SupersampleError;
     use gnoblin_types::OutputId;
 
     #[test]
@@ -812,6 +834,19 @@ mod tests {
         assert_eq!(modeset_error(output, &dark), BackendError::Unpresentable(output));
         let no_crtc = ModesetError::Refused(ModesetRefusal::NotDriven("DP-1".to_owned()));
         assert_eq!(modeset_error(output, &no_crtc), BackendError::Unpresentable(output));
+        let factor = ModesetError::Refused(ModesetRefusal::Supersample(SupersampleError::TooLarge {
+            factor: "8".to_owned(),
+            width: 1920,
+            height: 1080,
+            virtual_width: 15360,
+            virtual_height: 8640,
+            limit: 8192,
+        }));
+        assert_eq!(
+            modeset_error(output, &factor),
+            BackendError::Supersample(output),
+            "a factor the GPU cannot hold is the supersample refusal, not a mode refusal"
+        );
     }
 
     #[test]

@@ -1,6 +1,6 @@
 // `Output.apply`: one request to the compositor's output engine and the answer that comes back a frame later.
 
-import { outputRequest } from "gnoblin/display";
+import { outputRequest, supersampleNotice } from "gnoblin/display";
 import type { OutputConfig } from "gnoblin/display";
 import { GnoblinError } from "gnoblin/errors";
 import { host } from "gnoblin/host/bridge";
@@ -39,6 +39,12 @@ export function applyOutput(
     const { mirrorOf, ...rest } = options;
     const source = isOutput(mirrorOf) ? mirrorOf.connector : mirrorOf;
     const request = outputRequest(mirrorOf === undefined ? rest : { ...rest, mirrorOf: source }, target);
+    // A factor that is not 1, 2 or 4 is accepted, with one diagnostic the owner can see: `say` repeats nothing, so the
+    // same factor asked for again (a profile re-applied after a hotplug, say) is not reported twice.
+    const notice = rest.supersample === undefined ? null : supersampleNotice(rest.supersample);
+    if (notice !== null) {
+        say(notice);
+    }
     const token = host.outputs.apply(stateOf(output).node, request);
     if (token === undefined) {
         throw new GnoblinError("not_found", target, "the output is gone");

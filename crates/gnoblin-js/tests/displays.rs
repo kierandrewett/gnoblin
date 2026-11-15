@@ -625,3 +625,162 @@ fn a_transition_may_assign_a_display_its_workspace_and_camera_and_a_failed_one_p
         "and the camera"
     );
 }
+
+/// What the script's diagnostics say about a supersample factor, by the text the compositor logs too.
+const NOT_RECOMMENDED_3: &str = "supersample 3 is not recommended: use 1, 2 or 4";
+
+#[test]
+fn a_supersample_is_a_request_and_the_derived_sizes_are_read_from_the_output() {
+    let mut rig = world(false, "");
+    rig.comp.external_set(A, "mode", text("1000x800@60"));
+    rig.comp.external_set(A, "output_scale", MirrorValue::Double(1.5));
+    rig.comp.external_set(A, "supersample", MirrorValue::Double(2.0));
+    settle(&mut rig);
+    assert_eq!(
+        rig.eval("String(gnoblin.outputs.find((o) => o.connector === 'DP-1').supersample)"),
+        "2"
+    );
+    assert_eq!(
+        rig.eval("JSON.stringify(gnoblin.outputs.find((o) => o.connector === 'DP-1').virtualSize)"),
+        r#"{"width":2000,"height":1600}"#,
+        "the virtual size is the mode times the factor"
+    );
+    assert_eq!(
+        rig.eval("String(gnoblin.outputs.find((o) => o.connector === 'DP-1').effectiveScale)"),
+        "3",
+        "the scale clients are told is the user's scale times the factor"
+    );
+    assert_eq!(
+        rig.eval("String(gnoblin.outputs.find((o) => o.connector === 'DP-1').scale)"),
+        "1.5",
+        "and `scale` stays the user's"
+    );
+
+    exec(
+        &mut rig,
+        "gnoblin.outputs.find((o) => o.connector === 'DP-1').apply({ supersample: 4 });",
+    );
+    settle(&mut rig);
+    assert_eq!(requests(&rig, A), vec!["supersample=4"]);
+    exec(
+        &mut rig,
+        "gnoblin.outputs.find((o) => o.connector === 'DP-1').apply({ scale: 2, supersample: 2 });",
+    );
+    settle(&mut rig);
+    assert_eq!(
+        requests(&rig, A),
+        vec!["supersample=4", "scale=2\nsupersample=2"],
+        "the request carries one key per setting, in the order they were written"
+    );
+}
+
+#[test]
+fn a_supersample_that_is_not_a_number_in_range_throws_naming_the_key() {
+    let mut rig = world(false, "");
+    let problem = |rig: &mut Rig, value: &str| {
+        rig.eval(&format!(
+            "try {{ gnoblin.outputs.find((o) => o.connector === 'DP-1').apply({{ supersample: {value} }}); 'ok' }} catch (e) {{ e.constructor.name + ': ' + e.message }}"
+        ))
+    };
+    for bad in ["0", "0.5", "17", "NaN", "Infinity", "'2'", "null"] {
+        let text = problem(&mut rig, bad);
+        assert!(
+            text.starts_with("RangeError: ") && text.contains(".supersample must be a number from 1 to 16"),
+            "{bad}: {text}"
+        );
+    }
+    assert!(requests(&rig, A).is_empty(), "nothing was sent for a bad value");
+    assert_eq!(problem(&mut rig, "2"), "ok");
+}
+
+#[test]
+fn a_factor_that_is_not_recommended_is_accepted_with_one_diagnostic() {
+    let mut rig = world(false, "");
+    exec(
+        &mut rig,
+        "gnoblin.outputs.find((o) => o.connector === 'DP-1').apply({ supersample: 2 });",
+    );
+    exec(
+        &mut rig,
+        "gnoblin.outputs.find((o) => o.connector === 'DP-1').apply({ supersample: 1 });",
+    );
+    exec(
+        &mut rig,
+        "gnoblin.outputs.find((o) => o.connector === 'DP-1').apply({ supersample: 4 });",
+    );
+    let quiet = settle(&mut rig);
+    assert!(
+        quiet.iter().all(|line| !line.contains("not recommended")),
+        "1, 2 and 4 are recommended: {quiet:?}"
+    );
+
+    exec(
+        &mut rig,
+        "gnoblin.outputs.find((o) => o.connector === 'DP-1').apply({ supersample: 3 });",
+    );
+    let first = settle(&mut rig);
+    assert_eq!(
+        first.iter().filter(|line| line.as_str() == NOT_RECOMMENDED_3).count(),
+        1,
+        "{first:?}"
+    );
+    assert_eq!(
+        requests(&rig, A).last().map(String::as_str),
+        Some("supersample=3"),
+        "it is accepted and sent all the same"
+    );
+
+    exec(
+        &mut rig,
+        "gnoblin.outputs.find((o) => o.connector === 'DP-1').apply({ supersample: 3 });",
+    );
+    let again = settle(&mut rig);
+    assert!(
+        again.iter().all(|line| line.as_str() != NOT_RECOMMENDED_3),
+        "the same factor is not reported twice: {again:?}"
+    );
+
+    exec(
+        &mut rig,
+        "gnoblin.outputs.find((o) => o.connector === 'DP-1').apply({ supersample: 1.5 });",
+    );
+    let fractional = settle(&mut rig);
+    assert!(
+        fractional
+            .iter()
+            .any(|line| line == "supersample 1.5 is not recommended: use 1, 2 or 4"),
+        "a fraction is written as a person would: {fractional:?}"
+    );
+}
+
+#[test]
+fn a_profile_with_a_supersample_sends_it_and_reports_a_factor_that_is_not_recommended_once() {
+    let mut rig = world(
+        false,
+        "g.hd = new OutputProfile({ match: { connector: 'DP-1' }, supersample: 3 });\ngnoblin.outputs.profiles.add(g.hd);",
+    );
+    // The profile applies while the file loads, so its notice is among the load diagnostics and not repeated after.
+    let mut diagnostics = rig.load_diagnostics.clone();
+    diagnostics.extend(settle(&mut rig));
+    assert_eq!(requests(&rig, A), vec!["supersample=3"]);
+    assert_eq!(
+        diagnostics
+            .iter()
+            .filter(|line| line.as_str() == NOT_RECOMMENDED_3)
+            .count(),
+        1,
+        "{diagnostics:?}"
+    );
+    assert_eq!(rig.eval("String(g.hd.supersample)"), "3");
+    // A request is not repeated while the compositor has not answered the one before.
+    let mut answered = 0;
+    answer_all(&mut rig, &mut answered);
+    settle(&mut rig);
+    exec(&mut rig, "g.hd.supersample = 2;");
+    settle(&mut rig);
+    assert_eq!(
+        requests(&rig, A).last().map(String::as_str),
+        Some("supersample=2"),
+        "changing the profile applies the new factor"
+    );
+}

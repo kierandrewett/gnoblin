@@ -87,10 +87,11 @@ use smithay::xwayland::xwm::settings::Value as SettingValue;
 use smithay::xwayland::xwm::{Reorder, ResizeEdge, WmWindowProperty, X11Surface, X11Wm, XwmId};
 use smithay::xwayland::{XWayland, XWaylandClientData, XwmHandler};
 
+use gnoblin_backend::x11::scale::{OutputScale, client_scale, with_scale};
 use gnoblin_backend::x11::{
     self, Launch, NodeChange, Opened, Restart, Session, Start, WindowAsk, WindowEvent, WindowMeta, X11Request,
 };
-use gnoblin_types::{Rect, WindowId};
+use gnoblin_types::{Rect, Scale, WindowId};
 
 use crate::fallback::{Open, WindowKind};
 
@@ -144,6 +145,9 @@ pub(crate) struct Running {
     /// The Xwayland client's id, kept after the window manager takes the client, so a stop
     /// can release it.
     client_id: Option<ClientId>,
+    /// A handle on the same client that stays after the window manager takes `client`, so a scale change can still
+    /// reach its data (a `ClientId` cannot be turned back into a client).
+    scale_client: Option<Client>,
     /// The X11 window manager, once the server answered ready.
     wm: Option<X11Wm>,
     /// The second connection that hears the root-window messages `wm` does not decode.
@@ -158,6 +162,14 @@ pub(crate) struct Running {
     stopped: bool,
     /// Whether the instance died and the next turn should account for it.
     dead: bool,
+    /// The scale the configuration fixed for Xwayland's client, or [`None`] to follow the outputs.
+    fixed_scale: Option<Scale>,
+    /// The scale Xwayland's client has now: how many X pixels make one logical pixel. It is what the settings the
+    /// desktop publishes are scaled by, so a toolkit draws that many pixels for each one it is told it has.
+    scale: Scale,
+    /// Whether the property on the X root window holds settings this session published, so a list that became empty
+    /// replaces them instead of leaving them behind.
+    published: bool,
 }
 
 impl Running {
@@ -189,6 +201,7 @@ impl Running {
             process: None,
             client: None,
             client_id: None,
+            scale_client: None,
             wm: None,
             root: None,
             surfaces: std::collections::BTreeMap::new(),
@@ -196,6 +209,9 @@ impl Running {
             deadline: None,
             stopped: false,
             dead: false,
+            fixed_scale: None,
+            scale: Scale::IDENTITY,
+            published: false,
         }
     }
 
@@ -282,17 +298,19 @@ impl Running {
         );
         match result {
             Ok((process, client)) => {
+                // The client scale is what makes a scale mean "this many X11 pixels are one logical pixel" instead
+                // of a stretched surface: the configuration's fixed scale, or the one the outputs call for, times
+                // the supersample factor that keeps a window's logical size while it gets more pixels.
+                self.fixed_scale = launch.scale;
+                self.scale = client_scale(self.fixed_scale, &state.x11_output_scales());
                 if let Some(data) = client.get_data::<XWaylandClientData>() {
-                    // The X11 client scale is what makes a fractional scale mean "one
-                    // X11 pixel is this many logical pixels" instead of a stretched
-                    // surface.
-                    let scale = launch.scale.map_or_else(|| 1.0, gnoblin_types::Scale::as_f64);
-                    data.compositor_state.set_client_scale(scale);
+                    data.compositor_state.set_client_scale(self.scale.as_f64());
                 }
                 let number = process.display_number();
                 log::info!(area = "xwayland", display_number = number, "starting");
                 self.process = Some(process);
                 self.client_id = Some(client.id());
+                self.scale_client = Some(client.clone());
                 self.client = Some(client);
                 self.deadline = Some(now + self.session.startup_deadline());
             }
@@ -339,11 +357,12 @@ impl Running {
 
     /// Hands the XSETTINGS owner's values to the X connection, and reports the answer.
     fn publish_settings(&mut self) {
-        let settings = self.session.settings();
+        let settings = with_scale(self.session.settings(), self.scale);
         let Some(wm) = self.wm.as_mut() else {
             return;
         };
-        if settings.is_empty() {
+        let any = !settings.is_empty();
+        if !any && !self.published {
             return;
         }
         let values = settings.into_iter().map(|(name, value)| {
@@ -359,11 +378,54 @@ impl Running {
             };
             (name, value)
         });
-        let result = wm.set_xsettings(values).map_err(|error| error.to_string());
+        // `set_xsettings` only adds and replaces, so a list that lost a setting (the scale went back to one) would keep
+        // the old values on the root window: what was published before is cleared first.
+        let cleared = if self.published {
+            wm.clear_xsettings().map_err(|error| error.to_string())
+        } else {
+            Ok(())
+        };
+        self.published = any;
+        let result = cleared.and_then(|()| {
+            if any {
+                wm.set_xsettings(values).map_err(|error| error.to_string())
+            } else {
+                Ok(())
+            }
+        });
         if let Err(reason) = &result {
             log::debug!(area = "xwayland", %reason, "XSETTINGS were not published");
         }
         self.session.settings_published(result);
+    }
+
+    /// Gives Xwayland's client the scale the outputs call for now, and tells the toolkits.
+    ///
+    /// Called when an output's scale or supersample factor changes, or when one appears or goes. Nothing happens while
+    /// no server is up (the next start reads the outputs) or when the scale did not change. A window that is already
+    /// open keeps the pixels it has: a client that follows the XSETTINGS it is sent redraws at the new density, and one
+    /// that does not appears at the new size until it is reopened.
+    fn rescale(&mut self, state: &mut State) {
+        let scale = client_scale(self.fixed_scale, &state.x11_output_scales());
+        if scale == self.scale {
+            return;
+        }
+        self.scale = scale;
+        if let Some(data) = self
+            .scale_client
+            .as_ref()
+            .and_then(|client| client.get_data::<XWaylandClientData>())
+        {
+            data.compositor_state.set_client_scale(scale.as_f64());
+        }
+        log::info!(
+            area = "xwayland",
+            scale = scale.as_f64(),
+            "the X11 client scale follows the outputs"
+        );
+        if self.wm.is_some() {
+            self.publish_settings();
+        }
     }
 
     /// Ends the attempt, removes its windows and schedules the next one.
@@ -374,6 +436,7 @@ impl Running {
         self.root = None;
         self.wm = None;
         self.client = None;
+        self.scale_client = None;
         let client = self.client_id.take();
         self.process = None;
         if let Some(client) = client {
@@ -381,6 +444,8 @@ impl Running {
         }
         self.deadline = None;
         self.dead = false;
+        // A new server has no XSETTINGS property, so there is nothing of ours left to replace.
+        self.published = false;
         let gone: Vec<_> = self.surfaces.keys().copied().collect();
         for window in gone {
             state.x11_window_gone(window);
@@ -408,6 +473,26 @@ impl State {
     /// Builds the session state for the configured Xwayland session.
     pub(crate) fn start_xwayland(&mut self, session: XwaylandSession) {
         self.x11 = Some(Running::new(session.session, session.windows));
+    }
+
+    /// What each output contributes to the scale Xwayland's client is given.
+    pub(crate) fn x11_output_scales(&self) -> Vec<OutputScale> {
+        self.outputs
+            .iter()
+            .map(|entry| OutputScale {
+                scale: entry.scale,
+                supersample: entry.supersample,
+            })
+            .collect()
+    }
+
+    /// Follows a change of the outputs: Xwayland's client gets the scale they call for now.
+    pub(crate) fn refresh_x11_scale(&mut self) {
+        let Some(mut running) = self.x11.take() else {
+            return;
+        };
+        running.rescale(self);
+        self.x11 = Some(running);
     }
 
     /// Replaces the X11 session with `session` from the loop: `None` stops the running server.
@@ -757,6 +842,9 @@ impl Meta {
 }
 
 /// An X11 rectangle in the policy's coordinates.
+///
+/// Smithay's window manager already states every geometry in logical pixels: it divides what X says by the client
+/// scale on the way in and multiplies on the way out, so this is a type conversion and not a scale.
 fn rect_of(rectangle: Rectangle<i32, Logical>) -> Rect {
     Rect::new(
         rectangle.loc.x,

@@ -4,6 +4,16 @@
 //! modifiers. Each buffer is exported as a dmabuf, imported into the output's GLES renderer as a
 //! render target, and registered as a KMS framebuffer. [`crate::frame::present`] chooses the
 //! slot; this module draws into it and queues its flip.
+//!
+//! # Supersampling
+//!
+//! An output composed at `mode * s` keeps one persistent virtual target in its renderer, `composed` pixels across,
+//! beside the scan-out buffers, which stay at the mode: a frame's damage is drawn into the virtual target at the
+//! compositing scale, and the whole target is then averaged down into the buffer being flipped
+//! ([`Gles::draw_scanout_downsampled`]). The scan-out buffer is the only thing the kernel sees, so a modeset, a flip
+//! and the plane's format checks are the ones of an output with no supersampling. Client buffers are never scanned out
+//! directly on this backend (there is no overlay or primary-plane path for them: every frame is composed), so there is
+//! no direct scan-out to turn off while a factor is set.
 
 use gnoblin_types::{Scale, Size};
 use smithay::backend::allocator::dmabuf::{AsDmabuf, Dmabuf};
@@ -24,6 +34,7 @@ use crate::modeset::{COMMITTED_SLOT, ModesetKernel, RealModeset};
 use crate::present::SLOTS;
 use gnoblin_backend::{DmabufCopy, DmabufCopyError, DmabufImportError, DmabufSupport};
 use gnoblin_output::DisplayMode;
+use gnoblin_output::supersample::MAX_VIRTUAL_EDGE;
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_render_frame::image::Image;
@@ -89,6 +100,14 @@ impl Device {
             self.probe = Some(Gles::on_display(&self.display, Size::new(1, 1))?);
         }
         self.probe.as_mut().ok_or(RenderError::Unavailable)
+    }
+
+    /// The largest edge a virtual surface of an output can have: the driver's texture limit within the compositor's
+    /// own. A display whose context cannot be made answers the compositor's limit and lets the allocation say why it
+    /// cannot go on.
+    pub(crate) fn max_composed_edge(&mut self) -> u32 {
+        self.probe()
+            .map_or(MAX_VIRTUAL_EDGE, |probe| probe.max_texture_size().min(MAX_VIRTUAL_EDGE))
     }
 
     /// Imports a client's GPU buffer on the device's own display, after the checks that need no driver.
@@ -217,6 +236,8 @@ impl<T> SlotRing<T> {
 pub(crate) struct Buffers {
     gles: Gles,
     size: PhysicalSize<i32, Physical>,
+    /// The size of the virtual surface the output is composed on, which is `size` when there is no supersampling.
+    composed: Size,
     allocator: GbmAllocator<DrmDeviceFd>,
     exporter: GbmFramebufferExporter<DrmDeviceFd>,
     drm: DrmDeviceFd,
@@ -225,13 +246,14 @@ pub(crate) struct Buffers {
 }
 
 impl Buffers {
-    /// Buffers for an output of `size` physical pixels, scanned out in a format of `formats`.
+    /// Buffers for an output of `size` physical pixels, composed on a virtual surface of `composed` pixels, scanned out
+    /// in a format of `formats`.
     ///
     /// # Errors
     ///
     /// [`RenderError::Unavailable`] when the plane offers no XRGB8888 format, or when the GLES
-    /// renderer cannot be made on the device's display.
-    pub(crate) fn new(device: &Device, size: Size, formats: &FormatSet) -> Result<Self, RenderError> {
+    /// renderer cannot be made on the device's display, which includes a virtual surface past its texture limit.
+    pub(crate) fn new(device: &Device, size: Size, composed: Size, formats: &FormatSet) -> Result<Self, RenderError> {
         let modifiers: Vec<Modifier> = formats
             .iter()
             .filter(|format| format.code == Fourcc::Xrgb8888)
@@ -242,7 +264,8 @@ impl Buffers {
             return Err(RenderError::Unavailable);
         }
         Ok(Self {
-            gles: Gles::on_display(&device.display, size)?,
+            gles: Gles::on_display(&device.display, composed)?,
+            composed,
             size: PhysicalSize::from((
                 i32::try_from(size.width).map_err(|_| RenderError::Degenerate {
                     width: size.width,
@@ -261,10 +284,42 @@ impl Buffers {
         })
     }
 
-    /// Whether these buffers were allocated for an output of `size` physical pixels.
+    /// Whether these buffers were allocated for an output of `size` physical pixels composed on `composed`.
     #[must_use]
-    pub(crate) fn fits(&self, size: Size) -> bool {
-        size_fits((self.size.w, self.size.h), size)
+    pub(crate) fn fits(&self, size: Size, composed: Size) -> bool {
+        size_fits((self.size.w, self.size.h), size) && self.composed == composed
+    }
+
+    /// Whether the output is composed on a surface other than the scan-out buffer, so every frame is averaged down.
+    #[must_use]
+    fn averaged(&self) -> bool {
+        !size_fits((self.size.w, self.size.h), self.composed)
+    }
+
+    /// Gives the output a virtual surface of `composed` pixels, keeping the scan-out buffers.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError`] when the renderer cannot make the surface; the one it had is kept.
+    pub(crate) fn recompose(&mut self, composed: Size) -> Result<(), RenderError> {
+        self.gles.resize(composed)?;
+        self.composed = composed;
+        Ok(())
+    }
+
+    /// Draws `frame` into the scan-out buffer of `slot`: straight into it when the output is not supersampled, and
+    /// otherwise into the virtual surface, averaged down into the buffer.
+    fn draw(&mut self, slot: usize, frame: &OutputFrame, scale: Scale) -> Result<(), String> {
+        self.ensure(slot)?;
+        let averaged = self.averaged();
+        let Buffers { gles, slots, .. } = self;
+        let entry = slots.get_mut(slot)?;
+        if averaged {
+            gles.draw_scanout_downsampled(&mut entry.scan, frame, scale)
+        } else {
+            gles.draw_scanout(&mut entry.scan, frame, scale)
+        }
+        .map_err(|error| format!("the frame cannot be drawn: {error}"))
     }
 
     /// Allocates slot `index` if it does not exist yet.
@@ -277,6 +332,7 @@ impl Buffers {
             drm,
             modifiers,
             slots,
+            ..
         } = self;
         slots.ensure_with(index, || allocate(gles, allocator, exporter, drm, *size, modifiers))
     }
@@ -339,7 +395,7 @@ pub(crate) struct Flip<'a> {
     pub(crate) gpu: &'a Gpu,
     /// The CRTC the output is driven on; the flip is queued against it.
     pub(crate) crtc: crtc::Handle,
-    /// The output's scale, applied when the frame is drawn into the buffer.
+    /// The output's compositing scale, applied when the frame is drawn: the scale times the supersample factor.
     pub(crate) scale: Scale,
 }
 
@@ -347,11 +403,7 @@ impl Scanout for Flip<'_> {
     type Frame = OutputFrame;
 
     fn draw(&mut self, slot: usize, frame: &OutputFrame) -> Result<(), String> {
-        self.buffers.ensure(slot)?;
-        let Buffers { gles, slots, .. } = &mut *self.buffers;
-        let entry = slots.get_mut(slot)?;
-        gles.draw_scanout(&mut entry.scan, frame, self.scale)
-            .map_err(|error| format!("the frame cannot be drawn: {error}"))
+        self.buffers.draw(slot, frame, self.scale)
     }
 
     fn flip(&mut self, slot: usize) -> Result<(), String> {
@@ -367,8 +419,8 @@ impl Scanout for Flip<'_> {
 pub(crate) struct LiveModeset<'a> {
     /// The GPU whose surface is committed.
     pub(crate) gpu: &'a Gpu,
-    /// The device the new buffers are allocated on.
-    pub(crate) device: &'a Device,
+    /// The device the new buffers are allocated on, borrowed mutably because its probe context answers the texture limit.
+    pub(crate) device: &'a mut Device,
     /// The output whose mode changes.
     pub(crate) output: OutputId,
     /// The CRTC that scans the output out, which names the plane formats the buffers must suit.
@@ -384,22 +436,30 @@ impl ModesetKernel for LiveModeset<'_> {
         self.real_modeset
     }
 
-    fn allocate(&mut self, size: Size) -> Result<Buffers, RenderError> {
+    fn allocate(&mut self, shown: Size, composed: Size) -> Result<Buffers, RenderError> {
         let formats = self.gpu.plane_formats(self.crtc).ok_or(RenderError::Unavailable)?;
-        let mut buffers = Buffers::new(self.device, size, &formats)?;
+        let mut buffers = Buffers::new(self.device, shown, composed, &formats)?;
         buffers.ensure(COMMITTED_SLOT).map_err(|error| {
             log::warn!(area = "drm", output = %self.output, %error, "the buffer for the new mode could not be made");
             RenderError::Unavailable
         })?;
         // The memory a buffer is made from is not defined. An empty frame is opaque black, so the first thing on the
         // new mode is a black screen and never what the memory held before.
-        let Buffers { gles, slots, .. } = &mut buffers;
-        let entry = slots.get_mut(COMMITTED_SLOT).map_err(|error| {
-            log::warn!(area = "drm", output = %self.output, %error, "the buffer for the new mode is missing");
-            RenderError::Unavailable
-        })?;
-        gles.draw_scanout(&mut entry.scan, &OutputFrame::new(), Scale::integral(1))?;
+        buffers
+            .draw(COMMITTED_SLOT, &OutputFrame::new(), Scale::integral(1))
+            .map_err(|error| {
+                log::warn!(area = "drm", output = %self.output, %error, "the buffer for the new mode could not be cleared");
+                RenderError::Unavailable
+            })?;
         Ok(buffers)
+    }
+
+    fn recompose(&mut self, buffers: &mut Buffers, composed: Size) -> Result<(), RenderError> {
+        buffers.recompose(composed)
+    }
+
+    fn max_composed_edge(&mut self) -> u32 {
+        self.device.max_composed_edge()
     }
 
     fn test(&mut self, mode: DisplayMode, buffers: &Buffers) -> Result<(), String> {

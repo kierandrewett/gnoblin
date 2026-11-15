@@ -45,6 +45,10 @@ pub const BLUR: &str = concat!(
 /// finished output. It has its own uniform block.
 pub const VIEW: &str = include_str!("wgsl/view.wgsl");
 
+/// The whole-output downsample pass of a supersampled output: the virtual surface averaged down to the real mode. It
+/// has its own uniform block.
+pub const DOWNSAMPLE: &str = include_str!("wgsl/downsample.wgsl");
+
 #[cfg(test)]
 mod tests {
     use super::*;

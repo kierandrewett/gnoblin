@@ -152,6 +152,22 @@ impl Image {
 }
 
 impl Image {
+    /// The source pixels that make one target pixel, across and down, when `source` is a whole multiple of `target` on
+    /// both axes, and `None` otherwise.
+    ///
+    /// It is the one rule that says a downsample is an exact box average: the CPU path here and the GPU pass of the
+    /// GLES renderer both ask it, so the two cannot disagree about which ratios are exact.
+    #[must_use]
+    pub fn box_ratio(source: Size, target: Size) -> Option<(u32, u32)> {
+        if source.is_empty() || target.is_empty() || source.width < target.width || source.height < target.height {
+            return None;
+        }
+        (source.width.is_multiple_of(target.width) && source.height.is_multiple_of(target.height))
+            .then(|| (source.width / target.width, source.height / target.height))
+    }
+}
+
+impl Image {
     /// This image shown at `target` pixels: the frame a display receives when the compositor composed at a multiple
     /// of the mode.
     ///
@@ -174,9 +190,8 @@ impl Image {
         let (source_width, source_height) = (self.size.width as usize, self.size.height as usize);
         let (width, height) = (target.width as usize, target.height as usize);
         let mut data = vec![0u8; row_bytes(target.width).saturating_mul(height)];
-        let boxed = source_width % width == 0 && source_height % height == 0;
-        if boxed {
-            let (across, down) = (source_width / width, source_height / height);
+        if let Some((across, down)) = Self::box_ratio(self.size, target) {
+            let (across, down) = (across as usize, down as usize);
             let count = (across * down) as u32;
             for y in 0..height {
                 for x in 0..width {
@@ -356,5 +371,24 @@ mod tests {
         let first = shown.colour_at(0, 0).expect("a pixel")[0];
         let second = shown.colour_at(1, 0).expect("a pixel")[0];
         assert!(first < second && second <= 200, "{first} {second}");
+    }
+
+    #[test]
+    fn the_box_ratio_is_the_whole_multiple_on_both_axes_and_nothing_else() {
+        let ratio = |source: (u32, u32), target: (u32, u32)| {
+            Image::box_ratio(Size::new(source.0, source.1), Size::new(target.0, target.1))
+        };
+        assert_eq!(ratio((3840, 2160), (1920, 1080)), Some((2, 2)));
+        assert_eq!(ratio((7680, 4320), (1920, 1080)), Some((4, 4)));
+        assert_eq!(ratio((1920, 1080), (1920, 1080)), Some((1, 1)));
+        assert_eq!(
+            ratio((3, 2), (2, 1)),
+            None,
+            "a width that is not a multiple is bilinear"
+        );
+        assert_eq!(ratio((4, 3), (2, 2)), None, "so is a height that is not");
+        assert_eq!(ratio((1, 1), (2, 2)), None, "a larger target is never a box average");
+        assert_eq!(ratio((0, 4), (2, 2)), None);
+        assert_eq!(ratio((4, 4), (0, 2)), None);
     }
 }

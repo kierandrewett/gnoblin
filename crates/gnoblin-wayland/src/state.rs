@@ -1378,6 +1378,8 @@ impl State {
         for shadow in self.shadow_outputs() {
             self.publish_shadow_screen(shadow);
         }
+        // Xwayland has one scale for all its clients, and the outputs decide it.
+        self.refresh_x11_scale();
         // The lock hears the whole layout once, after every change landed: it restarts
         // its presentation barrier from this set, so a hotplugged output is covered
         // before it shows anything.

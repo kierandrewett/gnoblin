@@ -42,6 +42,12 @@
 //! 5. **A release from a replaced pool frees a slot of the new one.** Every pool has a
 //!    generation and a release carries it, so `NestedTarget::release` ignores a
 //!    generation that is not the current one.
+//! 6. **A supersampled output writes its hi-res frame into the parent's buffer.** The
+//!    renderer composes at `mode * s`; the shared-memory buffer stays at the mode the
+//!    parent's window has, and [`Image::downsample`] averages the one into the other
+//!    before the slot is written. A factor the buffer cannot honour (the parent has no
+//!    viewport and rounded a fractional scale, so the buffer is not the mode) is refused
+//!    by [`NestedTarget::check_supersample`] before the renderer is touched.
 
 use std::fs::{File, OpenOptions};
 use std::io;
@@ -50,6 +56,8 @@ use std::os::unix::fs::{FileExt, OpenOptionsExt};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use gnoblin_output::DisplayMode;
+use gnoblin_output::supersample::virtual_size;
 use gnoblin_types::{Rect, Scale, Size};
 use wayland_client::protocol::wl_buffer;
 use wayland_client::protocol::{wl_shm, wl_shm_pool, wl_surface};
@@ -87,7 +95,7 @@ const SLOT_ALIGNMENT: usize = 4096;
 /// A parent can state any configure size, and creating a pool for a nonsense one would
 /// be a multi-gigabyte allocation before anything is drawn. It is deliberately far
 /// above any monitor and well below anything that would exhaust a session's memory.
-const MAX_EXTENT: u32 = 16384;
+pub(super) const MAX_EXTENT: u32 = 16384;
 
 /// A counter for the pool files this process creates, so two sessions in one process
 /// never pick the same name.
@@ -405,7 +413,11 @@ impl NestedTarget {
         if planned.physical.width > MAX_EXTENT || planned.physical.height > MAX_EXTENT {
             return Err(NestedError::NoFormat);
         }
-        let software = Software::new(planned.physical).map_err(NestedError::Render)?;
+        let composed = composed_size(planned.physical, output.supersample);
+        if composed.width > MAX_EXTENT || composed.height > MAX_EXTENT {
+            return Err(NestedError::NoFormat);
+        }
+        let software = Software::new(composed).map_err(NestedError::Render)?;
         let pool = Pool::new(shm, qh, index, 1, planned.physical, format)?;
         let mut target = Self {
             output,
@@ -468,7 +480,7 @@ impl NestedTarget {
             CaptureRequest {
                 display: self.display.as_ref(),
                 bounds,
-                scale: self.output.scale,
+                scale: self.output.effective_scale(),
                 with_cursor,
                 treatment,
             },
@@ -499,8 +511,13 @@ impl NestedTarget {
             self.viewport.is_some(),
             self.surface.version() >= 3,
         );
-        if planned.physical.width > MAX_EXTENT || planned.physical.height > MAX_EXTENT {
+        let composed = composed_size(planned.physical, output.supersample);
+        if composed.width > MAX_EXTENT || composed.height > MAX_EXTENT {
             return Err(NestedError::NoFormat);
+        }
+        // A configure that moves the buffer off the mode (the parent lost its viewport) cannot keep a factor.
+        if !output.supersample.is_identity() {
+            Self::check_composition(&output, planned.physical, output.supersample)?;
         }
         // The pool is created first and the renderer resized second: whichever step
         // fails, the target is left exactly as it was.
@@ -512,7 +529,7 @@ impl NestedTarget {
             planned.physical,
             self.format,
         )?;
-        if let Err(error) = self.software.resize(planned.physical) {
+        if let Err(error) = self.software.resize(composed) {
             pool.destroy();
             return Err(NestedError::Render(error));
         }
@@ -523,6 +540,59 @@ impl NestedTarget {
         // The buffer scale is a property of the surface rather than of a buffer, and it
         // may have changed with the configure, so the next present states it again.
         self.buffer_scale = BufferScaleState::Unstated;
+        self.damage_whole();
+        Ok(())
+    }
+
+    /// Whether the output can be composed at `supersample` times its mode, changing nothing.
+    ///
+    /// The shared-memory buffer is `buffer` pixels and the display shows the mode, so the factor needs the two to be
+    /// the same size (a parent that cannot state a viewport and rounded a fractional scale has a buffer that is not
+    /// the mode), the virtual size to be whole, and the virtual size to be within what this backend allocates.
+    ///
+    /// # Errors
+    ///
+    /// [`NestedError::Supersample`] naming which of the three failed.
+    pub(crate) fn check_supersample(&self, supersample: Scale) -> Result<(), NestedError> {
+        let planned = plan(
+            self.output.logical_size(),
+            self.output.scale,
+            self.viewport.is_some(),
+            self.surface.version() >= 3,
+        );
+        Self::check_composition(&self.output, planned.physical, supersample)
+    }
+
+    /// The rule of [`Self::check_supersample`] for an output and the buffer a parent's configure planned for it.
+    fn check_composition(output: &Output, buffer: Size, supersample: Scale) -> Result<(), NestedError> {
+        if supersample.is_identity() {
+            return Ok(());
+        }
+        if buffer != Size::new(output.mode.width, output.mode.height) {
+            return Err(NestedError::Supersample(format!(
+                "the parent's {}x{} buffer is not the {}x{} mode, so the output cannot be composed at a multiple of it",
+                buffer.width, buffer.height, output.mode.width, output.mode.height
+            )));
+        }
+        virtual_size(output.mode, supersample, MAX_EXTENT)
+            .map(|_| ())
+            .map_err(|error| NestedError::Supersample(error.to_string()))
+    }
+
+    /// Composes the output at `supersample` times its mode from now on, damaging the whole output.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::check_supersample`], and [`NestedError::Render`] when the renderer cannot make the larger surface.
+    /// The renderer keeps the one it had on failure.
+    pub(crate) fn set_supersample(&mut self, supersample: Scale) -> Result<(), NestedError> {
+        if supersample == self.output.supersample {
+            return Ok(());
+        }
+        self.check_supersample(supersample)?;
+        let composed = composed_size(Size::new(self.pool.width, self.pool.height), supersample);
+        self.software.resize(composed).map_err(NestedError::Render)?;
+        self.output.supersample = supersample;
         self.damage_whole();
         Ok(())
     }
@@ -587,11 +657,11 @@ impl Target for NestedTarget {
     }
 
     fn scale(&self) -> Scale {
-        self.output.scale
+        self.output.effective_scale()
     }
 
     fn draw(&mut self, frame: &OutputFrame) -> Result<(), RenderError> {
-        self.software.draw(frame, self.output.scale)?;
+        self.software.draw(frame, self.output.effective_scale())?;
         self.display = frame.has_secure().then(|| frame.clone());
         Ok(())
     }
@@ -613,8 +683,11 @@ impl Target for NestedTarget {
             return Present::Nothing;
         };
         let released = u8::try_from(slot).unwrap_or(0);
+        let shown = Size::new(self.pool.width, self.pool.height);
         let image = match self.software.capture(true) {
-            Ok(image) => image,
+            Ok(image) if image.size() == shown => image,
+            // The renderer composed at the factor; the parent's buffer is the mode.
+            Ok(image) => image.downsample(shown),
             Err(error) => {
                 log::warn!(area = "nested", ?error, "the frame could not be read back");
                 self.ring.release(released);
@@ -678,6 +751,11 @@ impl Target for NestedTarget {
         self.presents = self.presents.saturating_add(1);
         Present::Rendered
     }
+}
+
+/// The pixels the renderer composes `buffer` on: the buffer times the supersample factor.
+fn composed_size(buffer: Size, supersample: Scale) -> Size {
+    Output::virtual_extent(DisplayMode::new(buffer.width, buffer.height, 0), supersample)
 }
 
 /// One logical rectangle in the buffer's pixels.

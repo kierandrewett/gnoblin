@@ -34,8 +34,9 @@ use std::time::{Duration, Instant};
 use gnoblin_backend::headless::Headless;
 use gnoblin_backend::nested::{Nested, NestedConfig};
 use gnoblin_backend::{Backend, BackendEvent, Host, InputEvent, Output, Present};
-use gnoblin_render_frame::frame::OutputFrame;
-use gnoblin_types::{Color, DeviceId, OutputId, Point, Rect, Size};
+use gnoblin_output::DisplayMode;
+use gnoblin_render_frame::frame::{Layer, OutputFrame, Solid};
+use gnoblin_types::{Color, DeviceId, OutputId, Point, Rect, Scale, Size};
 use gnoblin_wayland::{Config, ControlHandle, LoopError, ObservedWindow, Server, SessionSnapshot};
 
 /// How long a test waits for a state before failing.
@@ -64,6 +65,8 @@ const BTN_LEFT: u32 = 0x110;
 struct Probe {
     inputs: Vec<InputEvent>,
     colour: Option<Color>,
+    /// A rectangle drawn over the colour, for a test that needs an edge.
+    shape: Option<Solid>,
 }
 
 impl Probe {
@@ -72,6 +75,15 @@ impl Probe {
         Self {
             inputs: Vec::new(),
             colour: Some(colour),
+            shape: None,
+        }
+    }
+
+    /// A session that draws `shape` over a black background: an edge the host can be asked about.
+    fn drawing_shape(shape: Solid) -> Self {
+        Self {
+            shape: Some(shape),
+            ..Self::drawing(Color::BLACK)
         }
     }
 
@@ -101,6 +113,9 @@ impl Host for Probe {
         // The renderer clips this to the output, so the probe does not have to know how
         // big the session's output is.
         frame.push_damage(Rect::new(0, 0, 4096, 4096));
+        if let Some(shape) = &self.shape {
+            frame.push_layer(Layer::Solid(shape.clone()));
+        }
         true
     }
 
@@ -251,6 +266,24 @@ fn draw(nested: &mut Nested, probe: &mut Probe) {
     let outputs: Vec<OutputId> = session_outputs(nested).iter().map(|output| output.id).collect();
     for output in outputs {
         let _ = nested.render(probe, output);
+    }
+    nested.roundtrip().expect("the host answers a round trip");
+}
+
+/// Draws a frame on every output, waiting for the host's frame callback of the one before, so the frame is really drawn.
+fn draw_rendered(nested: &mut Nested, probe: &mut Probe) {
+    let outputs: Vec<OutputId> = session_outputs(nested).iter().map(|output| output.id).collect();
+    for output in outputs {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            nested.roundtrip().expect("the host answers a round trip");
+            let _ = nested.dispatch(probe);
+            if nested.render(probe, output).expect("a frame") == Present::Rendered {
+                break;
+            }
+            assert!(Instant::now() < deadline, "the host never asked for another frame");
+            thread::sleep(Duration::from_millis(5));
+        }
     }
     nested.roundtrip().expect("the host answers a round trip");
 }
@@ -570,6 +603,141 @@ fn killing_the_host_reports_a_disconnect_without_panicking() {
         assert!(
             nested.roundtrip().is_err(),
             "and every later round trip says the same thing"
+        );
+    });
+}
+
+/// The nested output is composed at twice its mode when asked: the logical size and the host's window stay as they
+/// were, a capture is the hi-res frame, and what the host shows is the frame averaged down to the mode.
+#[test]
+fn a_nested_output_can_be_supersampled() {
+    let session = Session::start();
+    session.run(|host| {
+        let mut nested = Nested::connect(&NestedConfig::new(host.socket())).expect("the session connects");
+        // A rounded red rectangle on black: its curved edge is where a box average differs from a copy.
+        let shape = Solid {
+            corner_radius: 40.0,
+            ..Solid::new(Rect::new(100, 100, 200, 120), RED)
+        };
+        let mut probe = Probe::drawing_shape(shape);
+        draw_rendered(&mut nested, &mut probe);
+        let observation = host.wait_for(|observation| observation.only().is_some_and(|window| window.mapped));
+        let window = observation.only().expect("one mapped window").clone();
+        host.control
+            .move_window(window.id, Rect::new(window.geometry.x, window.geometry.y, 640, 480));
+        let deadline = Instant::now() + TIMEOUT;
+        while only_output(&nested).logical_size() != Size::new(640, 480) {
+            assert!(
+                Instant::now() < deadline,
+                "the session never followed the host's resize"
+            );
+            nested.roundtrip().expect("the host answers a round trip");
+            let _ = nested.dispatch(&mut probe);
+        }
+        let output = only_output(&nested);
+        let window = host
+            .wait_for(|observation| observation.only().is_some_and(|window| window.geometry.width == 640))
+            .only()
+            .expect("the window")
+            .clone();
+        let host_output = window_owner(host);
+
+        // A change the parent's window owns is refused, a factor that is not whole is refused, and nothing changed.
+        let mode_change = DisplayMode::new(800, 600, output.mode.refresh_mhz);
+        assert_eq!(
+            Backend::<Probe>::configure_output(&mut nested, output.id, mode_change, output.scale, Scale::IDENTITY),
+            Err(gnoblin_backend::BackendError::Unsupported(output.id)),
+            "the parent's window is the mode"
+        );
+        assert_eq!(
+            Backend::<Probe>::test_output(
+                &mut nested,
+                output.id,
+                output.mode,
+                output.scale,
+                Scale::new(1001, 1000)
+            ),
+            Err(gnoblin_backend::BackendError::Supersample(output.id)),
+            "1.001 of 640 is not a whole width"
+        );
+        assert_eq!(only_output(&nested).supersample, Scale::IDENTITY);
+
+        draw_rendered(&mut nested, &mut probe);
+        let plain = Backend::<Probe>::capture(&mut nested, output.id, false).expect("a readback");
+        assert_eq!(
+            plain.size(),
+            Size::new(640, 480),
+            "without a factor a capture is the mode"
+        );
+
+        Backend::<Probe>::configure_output(&mut nested, output.id, output.mode, output.scale, Scale::integral(2))
+            .expect("a factor of two on a window of 640x480 is a whole 1280x960");
+        let events = nested.dispatch(&mut probe);
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                BackendEvent::OutputResized { supersample, .. } if *supersample == Scale::integral(2)
+            )),
+            "the change is reported: {events:?}"
+        );
+        let supersampled = only_output(&nested);
+        assert_eq!(supersampled.supersample, Scale::integral(2));
+        assert_eq!(
+            supersampled.logical_size(),
+            Size::new(640, 480),
+            "the logical size does not change"
+        );
+        assert_eq!(
+            supersampled.mode, output.mode,
+            "and neither does the mode the host's window has"
+        );
+        draw_rendered(&mut nested, &mut probe);
+
+        let hires = Backend::<Probe>::capture(&mut nested, output.id, false).expect("a readback");
+        assert_eq!(
+            hires.size(),
+            Size::new(1280, 960),
+            "a capture is the frame the compositor composed"
+        );
+        let shown = Backend::<Probe>::capture_display(&mut nested, output.id, false).expect("the displayed frame");
+        assert_eq!(shown.size(), Size::new(640, 480), "the display shows the mode");
+        assert_eq!(
+            shown.data(),
+            hires.downsample(Size::new(640, 480)).data(),
+            "the displayed frame is the exact box average of the hi-res one"
+        );
+
+        // On the curve of the rectangle's corner there are pixels the average gives a colour in between: the host's
+        // own screenshot must show those, which proves the averaged frame is what reached the parent's buffer.
+        let mut partial = Vec::new();
+        for y in 100..140 {
+            for x in 100..140 {
+                let pixel = shown.colour_at(x, y).expect("a pixel");
+                if pixel[0] != 0 && pixel[0] != 255 {
+                    partial.push((x, y, pixel));
+                }
+            }
+        }
+        assert!(
+            partial.len() >= 8,
+            "the corner has edge pixels, found {}",
+            partial.len()
+        );
+        for (x, y, pixel) in partial.into_iter().step_by(3).take(4) {
+            host.wait_for_colour(
+                host_output,
+                Point::new(window.geometry.x + x, window.geometry.y + y),
+                pixel,
+            );
+        }
+
+        Backend::<Probe>::configure_output(&mut nested, output.id, output.mode, output.scale, Scale::IDENTITY)
+            .expect("back to no factor");
+        draw_rendered(&mut nested, &mut probe);
+        assert_eq!(
+            Backend::<Probe>::capture(&mut nested, output.id, false).map(|image| image.size()),
+            Some(Size::new(640, 480)),
+            "a capture is the mode again"
         );
     });
 }

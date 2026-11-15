@@ -61,6 +61,7 @@
 
 use std::collections::BTreeMap;
 
+use gnoblin_output::supersample::{SupersampleError, virtual_size};
 use gnoblin_output::{DisplayMode, Edid, Layout, OutputDescriptor, VrrSupport};
 use gnoblin_types::{Orientation, OutputId, Scale};
 
@@ -87,8 +88,11 @@ pub enum Power {
 pub struct OutputState {
     /// The mode being driven.
     pub mode: DisplayMode,
-    /// The scale the session composes at.
+    /// The scale the session composes at, before supersampling.
     pub scale: Scale,
+    /// The supersample factor: the output is composed at this multiple of its mode and averaged down to it. It asks
+    /// nothing of the kernel, which only ever sees the mode, so [`ops`] does not read it.
+    pub supersample: Scale,
     /// The orientation the plane presents the mode at.
     pub orientation: Orientation,
     /// Whether the connector is following the content's frame rate.
@@ -106,6 +110,7 @@ impl OutputState {
         Self {
             mode,
             scale,
+            supersample: Scale::IDENTITY,
             orientation,
             vrr: false,
             power: Power::On,
@@ -383,6 +388,7 @@ pub fn plan(
                 OutputState {
                     mode,
                     scale: monitor.scale,
+                    supersample: Scale::IDENTITY,
                     orientation: monitor.orientation,
                     // A panel without variable refresh is not an error: the layout records
                     // the downgrade, and the state says what the hardware will do.
@@ -404,6 +410,7 @@ pub fn plan(
                 OutputState {
                     power: Power::Off,
                     kelvin: None,
+                    supersample: previous.map_or(Scale::IDENTITY, |state| state.supersample),
                     ..OutputState::lit(mode, scale, orientation)
                 }
             }
@@ -464,13 +471,14 @@ pub fn ops(
     Ok(ops)
 }
 
-/// What a change of one live output's mode or scale needs from the kernel.
+/// What a change of one live output's mode, scale or supersample factor needs from the kernel.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ModesetStep {
-    /// The output already drives that mode at that scale: nothing is asked of the kernel.
+    /// The output already drives that mode, scale and factor: nothing is asked of the kernel.
     Unchanged,
-    /// Only the scale changes. The CRTC keeps its mode blob, so nothing is committed: the session composes at the
-    /// new scale from the next frame and the output repaints in full. `state` is the output after the change.
+    /// Only the scale or the supersample factor changes. The CRTC keeps its mode blob, so nothing is committed: the
+    /// session composes at the new scale from the next frame and the output repaints in full. A new factor also
+    /// needs a new virtual surface, which is the caller's to make. `state` is the output after the change.
     Scale(OutputState),
     /// The mode changes, which is an atomic modeset: new buffers, a test-only commit, then the real one. `state` is
     /// the output after the change; it carries the previous VRR, orientation and tint, because a modeset changes the
@@ -494,6 +502,8 @@ pub enum ModesetRefusal {
     NotDriven(String),
     /// The output is dark. A modeset would light it, which is a power change and not a mode change.
     Dark(String),
+    /// The supersample factor does not give a whole virtual size within the limit, or one this renderer can hold.
+    Supersample(SupersampleError),
 }
 
 impl std::fmt::Display for ModesetRefusal {
@@ -503,17 +513,20 @@ impl std::fmt::Display for ModesetRefusal {
             Self::UnsupportedMode { connector, mode } => write!(formatter, "{connector} does not list {mode:?}"),
             Self::NotDriven(connector) => write!(formatter, "{connector} has no monitor or CRTC to drive"),
             Self::Dark(connector) => write!(formatter, "{connector} is off, so its mode is not changed"),
+            Self::Supersample(error) => write!(formatter, "{error}"),
         }
     }
 }
 
 impl std::error::Error for ModesetRefusal {}
 
-/// Decides what changing `connector` from `current` to `mode` and `scale` asks of the kernel.
+/// Decides what changing `connector` from `current` to `mode`, `scale` and `supersample` asks of the kernel.
 ///
 /// This is the whole of the decision and it reads no device: a refusal here costs the hardware nothing, which is why
-/// the order is fixed: no pixels, an output that is not driven, an output that is dark, then a mode the connector does
-/// not list.
+/// the order is fixed: no pixels, an output that is not driven, an output that is dark, a mode the connector does not
+/// list, then a factor that does not give a whole virtual size within `limit` pixels on an edge (the renderer's
+/// texture limit, which the caller asks the GPU for). A factor of one needs no virtual surface and is never refused
+/// for a size.
 ///
 /// # Errors
 ///
@@ -523,6 +536,8 @@ pub fn modeset(
     current: &OutputState,
     mode: DisplayMode,
     scale: Scale,
+    supersample: Scale,
+    limit: u32,
 ) -> Result<ModesetStep, ModesetRefusal> {
     if mode.width == 0 || mode.height == 0 {
         return Err(ModesetRefusal::DegenerateMode(mode));
@@ -539,14 +554,18 @@ pub fn modeset(
             mode,
         });
     }
+    if !supersample.is_identity() {
+        virtual_size(mode, supersample, limit).map_err(ModesetRefusal::Supersample)?;
+    }
     let after = OutputState {
         mode,
         scale,
+        supersample,
         ..*current
     };
     Ok(if mode != current.mode {
         ModesetStep::Mode(after)
-    } else if scale != current.scale {
+    } else if scale != current.scale || supersample != current.supersample {
         ModesetStep::Scale(after)
     } else {
         ModesetStep::Unchanged
@@ -664,6 +683,9 @@ mod tests {
     use super::*;
     use gnoblin_output::{LogicalMonitor, OutputConfig, Placement};
     use gnoblin_types::{Rect, Size};
+
+    /// The largest virtual edge a test renderer holds.
+    const LIMIT: u32 = 8192;
 
     const FULL_HD: DisplayMode = DisplayMode::new(1920, 1080, 60_000);
     const FOUR_K: DisplayMode = DisplayMode::new(3840, 2160, 60_000);
@@ -1011,7 +1033,15 @@ mod tests {
     #[test]
     fn a_mode_the_connector_lists_is_a_modeset() {
         let connector = connector("DP-1", 1, &[FULL_HD, FOUR_K]);
-        let step = modeset(&connector, &lit_full_hd(), FOUR_K, Scale::integral(1)).expect("listed");
+        let step = modeset(
+            &connector,
+            &lit_full_hd(),
+            FOUR_K,
+            Scale::integral(1),
+            Scale::IDENTITY,
+            LIMIT,
+        )
+        .expect("listed");
         let ModesetStep::Mode(after) = step else {
             panic!("a new mode is a modeset: {step:?}");
         };
@@ -1021,7 +1051,15 @@ mod tests {
     #[test]
     fn a_mode_the_connector_does_not_list_is_refused_before_the_kernel() {
         let connector = connector("DP-1", 1, &[FULL_HD]);
-        let refusal = modeset(&connector, &lit_full_hd(), FOUR_K, Scale::integral(1)).expect_err("not listed");
+        let refusal = modeset(
+            &connector,
+            &lit_full_hd(),
+            FOUR_K,
+            Scale::integral(1),
+            Scale::IDENTITY,
+            LIMIT,
+        )
+        .expect_err("not listed");
         assert_eq!(
             refusal,
             ModesetRefusal::UnsupportedMode {
@@ -1036,7 +1074,14 @@ mod tests {
         let connector = connector("DP-1", 1, &[FULL_HD]);
         let none = DisplayMode::new(0, 1080, 60_000);
         assert_eq!(
-            modeset(&connector, &lit_full_hd(), none, Scale::integral(1)),
+            modeset(
+                &connector,
+                &lit_full_hd(),
+                none,
+                Scale::integral(1),
+                Scale::IDENTITY,
+                LIMIT
+            ),
             Err(ModesetRefusal::DegenerateMode(none))
         );
     }
@@ -1044,7 +1089,15 @@ mod tests {
     #[test]
     fn a_scale_alone_is_not_a_modeset() {
         let connector = connector("DP-1", 1, &[FULL_HD, FOUR_K]);
-        let step = modeset(&connector, &lit_full_hd(), FULL_HD, Scale::integral(2)).expect("scale");
+        let step = modeset(
+            &connector,
+            &lit_full_hd(),
+            FULL_HD,
+            Scale::integral(2),
+            Scale::IDENTITY,
+            LIMIT,
+        )
+        .expect("scale");
         let ModesetStep::Scale(after) = step else {
             panic!("a scale-only change commits no mode: {step:?}");
         };
@@ -1055,7 +1108,14 @@ mod tests {
     fn the_current_mode_and_scale_ask_nothing_of_the_kernel() {
         let connector = connector("DP-1", 1, &[FULL_HD]);
         assert_eq!(
-            modeset(&connector, &lit_full_hd(), FULL_HD, Scale::integral(1)),
+            modeset(
+                &connector,
+                &lit_full_hd(),
+                FULL_HD,
+                Scale::integral(1),
+                Scale::IDENTITY,
+                LIMIT
+            ),
             Ok(ModesetStep::Unchanged)
         );
     }
@@ -1065,13 +1125,20 @@ mod tests {
         let driven = connector("DP-1", 1, &[FULL_HD, FOUR_K]);
         let dark = OutputState::dark(FULL_HD, Scale::integral(1), Orientation::Normal);
         assert_eq!(
-            modeset(&driven, &dark, FOUR_K, Scale::integral(1)),
+            modeset(&driven, &dark, FOUR_K, Scale::integral(1), Scale::IDENTITY, LIMIT),
             Err(ModesetRefusal::Dark("DP-1".to_owned()))
         );
         let mut undriven = connector("DP-2", 2, &[FULL_HD, FOUR_K]);
         undriven.connected = false;
         assert_eq!(
-            modeset(&undriven, &lit_full_hd(), FOUR_K, Scale::integral(1)),
+            modeset(
+                &undriven,
+                &lit_full_hd(),
+                FOUR_K,
+                Scale::integral(1),
+                Scale::IDENTITY,
+                LIMIT
+            ),
             Err(ModesetRefusal::NotDriven("DP-2".to_owned()))
         );
     }
@@ -1084,12 +1151,135 @@ mod tests {
             kelvin: Some(3400),
             ..lit_full_hd()
         };
-        let ModesetStep::Mode(after) = modeset(&connector, &before, FOUR_K, Scale::integral(2)).expect("listed") else {
+        let ModesetStep::Mode(after) =
+            modeset(&connector, &before, FOUR_K, Scale::integral(2), Scale::IDENTITY, LIMIT).expect("listed")
+        else {
             panic!("a new mode is a modeset");
         };
         assert!(after.vrr, "variable refresh survives a mode change");
         assert_eq!(after.kelvin, Some(3400), "the tint survives a mode change");
         assert_eq!(after.orientation, Orientation::Normal);
         assert_eq!(after.scale, Scale::integral(2));
+    }
+
+    #[test]
+    fn a_supersample_factor_alone_is_a_scale_step_that_asks_nothing_of_the_kernel() {
+        let connector = connector("DP-1", 1, &[FULL_HD, FOUR_K]);
+        let step = modeset(
+            &connector,
+            &lit_full_hd(),
+            FULL_HD,
+            Scale::integral(1),
+            Scale::integral(2),
+            LIMIT,
+        )
+        .expect("2x on full HD is 3840x2160, which is within the limit");
+        let ModesetStep::Scale(after) = step else {
+            panic!("a factor commits no mode: {step:?}");
+        };
+        assert_eq!((after.mode, after.supersample), (FULL_HD, Scale::integral(2)));
+        let same = OutputState {
+            supersample: Scale::integral(2),
+            ..lit_full_hd()
+        };
+        assert_eq!(
+            modeset(
+                &connector,
+                &same,
+                FULL_HD,
+                Scale::integral(1),
+                Scale::integral(2),
+                LIMIT
+            ),
+            Ok(ModesetStep::Unchanged),
+            "the factor the output already has asks for nothing"
+        );
+        let back = modeset(&connector, &same, FULL_HD, Scale::integral(1), Scale::IDENTITY, LIMIT);
+        assert!(matches!(back, Ok(ModesetStep::Scale(state)) if state.supersample.is_identity()));
+    }
+
+    #[test]
+    fn a_factor_that_does_not_fit_the_limit_or_the_mode_is_refused_naming_the_numbers() {
+        let odd = DisplayMode::new(1367, 768, 60_000);
+        let odd_connector = connector("DP-1", 1, &[odd]);
+        let connector = connector("DP-1", 1, &[FULL_HD, FOUR_K]);
+        let refusal = modeset(
+            &connector,
+            &lit_full_hd(),
+            FULL_HD,
+            Scale::integral(1),
+            Scale::integral(8),
+            8192,
+        )
+        .expect_err("8x on full HD is 15360 wide");
+        let text = refusal.to_string();
+        assert!(
+            text.contains("15360") && text.contains("8192") && text.contains("1920x1080"),
+            "{text}"
+        );
+        let small = modeset(
+            &connector,
+            &lit_full_hd(),
+            FULL_HD,
+            Scale::integral(1),
+            Scale::integral(2),
+            2048,
+        )
+        .expect_err("a renderer limited to 2048 cannot hold 3840");
+        assert!(matches!(
+            small,
+            ModesetRefusal::Supersample(SupersampleError::TooLarge { limit: 2048, .. })
+        ));
+        let fractional = modeset(
+            &odd_connector,
+            &OutputState::lit(odd, Scale::integral(1), Orientation::Normal),
+            odd,
+            Scale::integral(1),
+            Scale::new(3, 2),
+            LIMIT,
+        )
+        .expect_err("1.5 on 1367 is not a whole width");
+        assert!(matches!(
+            fractional,
+            ModesetRefusal::Supersample(SupersampleError::NotWhole { axis: "width", .. })
+        ));
+    }
+
+    #[test]
+    fn a_mode_change_with_a_factor_is_checked_against_the_new_mode() {
+        let connector = connector("DP-1", 1, &[FULL_HD, FOUR_K]);
+        let refusal = modeset(
+            &connector,
+            &lit_full_hd(),
+            FOUR_K,
+            Scale::integral(1),
+            Scale::integral(4),
+            8192,
+        )
+        .expect_err("4x on 4K is 15360 wide");
+        assert!(matches!(
+            refusal,
+            ModesetRefusal::Supersample(SupersampleError::TooLarge {
+                virtual_width: 15360,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn a_factor_of_one_is_never_refused_for_a_size() {
+        let connector = connector("DP-1", 1, &[FULL_HD, FOUR_K]);
+        assert!(
+            modeset(
+                &connector,
+                &lit_full_hd(),
+                FOUR_K,
+                Scale::integral(1),
+                Scale::IDENTITY,
+                1024
+            )
+            .is_ok(),
+            "no virtual surface is made at 1, so the limit is not asked"
+        );
     }
 }

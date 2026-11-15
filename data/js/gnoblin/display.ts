@@ -52,6 +52,17 @@ const MAX_OUTPUT_SCALE = 4;
 const MIN_SUPERSAMPLE = 1;
 const MAX_SUPERSAMPLE = 16;
 
+/** The factors the compositor recommends: whole powers of two give an exact box average. */
+const RECOMMENDED_SUPERSAMPLE: readonly number[] = [1, 2, 4];
+
+/**
+ * The notice a supersample factor earns when it is not a recommended one, or null. The text is the compositor's own
+ * (`gnoblin_output::supersample::notice`), so the log line and the script's diagnostic say the same thing.
+ */
+export function supersampleNotice(factor: number): string | null {
+    return RECOMMENDED_SUPERSAMPLE.includes(factor) ? null : `supersample ${factor} is not recommended: use 1, 2 or 4`;
+}
+
 /** The same names as `OutputTransform`, as a list, to check a value at run time. */
 const TRANSFORMS: readonly string[] = [
     "normal",

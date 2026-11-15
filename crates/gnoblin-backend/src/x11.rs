@@ -46,6 +46,12 @@
 //! 6. **A scale below the rule is applied.** [`Launch::scale`] is a
 //!    [`gnoblin_types::Scale`], which cannot be zero or below `0.5`: the range is
 //!    checked before a launch exists.
+//! 7. **A supersampled output leaves X11 clients blurry or the wrong size.** [`scale`] decides the
+//!    scale Xwayland's client is given from the outputs' scales and factors, and the XSETTINGS a toolkit
+//!    reads to draw that many pixels per logical one; its tests name each rule.
+
+/// The client scale the outputs call for and the XSETTINGS that go with it.
+pub mod scale;
 
 use std::time::{Duration, Instant};
 

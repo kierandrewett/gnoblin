@@ -31,8 +31,9 @@ use x11rb::protocol::xproto::{
 use x11rb::rust_connection::{DefaultStream, RustConnection};
 use x11rb::wrapper::ConnectionExt as _;
 
-use gnoblin_backend::headless::Headless;
+use gnoblin_backend::headless::{DEFAULT_MODE, Headless};
 use gnoblin_render::transaction::{TreeChange, TreeValue};
+use gnoblin_types::{OutputId, Scale};
 use gnoblin_wayland::{
     Config, ControlHandle, FrameTreeEvent, LoopError, ObservedWindow, Server, SessionSnapshot, TreeBatch,
     TreeFrameInput, TreeHooks,
@@ -168,7 +169,13 @@ impl Session {
     }
 
     /// A session whose tree publishes through `tree`, as a shell's connection would hear it.
-    fn start_with_tree(mut settings: Settings, path: Option<std::ffi::OsString>, tree: TreeHooks) -> Self {
+    fn start_with_tree(settings: Settings, path: Option<std::ffi::OsString>, tree: TreeHooks) -> Self {
+        Self::start_on(Headless::new(), settings, path, tree)
+    }
+
+    /// A session on `backend`, which a test has set up (an output composed at a multiple of its mode, say) before the
+    /// server owns it.
+    fn start_on(backend: Headless, mut settings: Settings, path: Option<std::ffi::OsString>, tree: TreeHooks) -> Self {
         use std::os::unix::fs::PermissionsExt as _;
 
         let directory = tempfile::tempdir().expect("a temporary directory");
@@ -189,7 +196,7 @@ impl Session {
         let handle = xwayland.handle();
         let (session, windows) = xwayland.parts();
         let server = Server::with_xwayland(
-            Box::new(Headless::new()),
+            Box::new(backend),
             config,
             gnoblin_wayland::XwaylandSession::new(Box::new(session), Box::new(windows)),
         )
@@ -1155,5 +1162,207 @@ fn an_x11_client_can_move_and_resize_itself_and_ask_for_its_frame() {
         client.root_message(window, "_NET_MOVERESIZE_WINDOW", [1 << 10 | 1 << 11, 0, 0, 500, 350]);
         client.wait_for_size(window, (500, 350));
         assert_eq!(client.position(window), (120, 90), "an unflagged field is not asked");
+    });
+}
+
+/// The integer settings an XSETTINGS property holds, by name.
+///
+/// The property is the format of the XSETTINGS specification: a byte-order mark, a serial, a count, and each setting
+/// as a type, a name padded to four bytes, a change serial and a value. Strings and colours are skipped over, so an
+/// integer after them is still found.
+fn xsettings_integers(property: &[u8]) -> Vec<(String, i32)> {
+    let little = property.first() == Some(&0);
+    let word = |at: usize| -> Option<u32> {
+        let bytes: [u8; 4] = property.get(at..at + 4)?.try_into().ok()?;
+        Some(if little {
+            u32::from_le_bytes(bytes)
+        } else {
+            u32::from_be_bytes(bytes)
+        })
+    };
+    let half = |at: usize| -> Option<u16> {
+        let bytes: [u8; 2] = property.get(at..at + 2)?.try_into().ok()?;
+        Some(if little {
+            u16::from_le_bytes(bytes)
+        } else {
+            u16::from_be_bytes(bytes)
+        })
+    };
+    let pad = |length: usize| (length + 3) & !3;
+    let mut found = Vec::new();
+    let Some(count) = word(8) else {
+        return found;
+    };
+    let mut at = 12;
+    for _ in 0..count {
+        let (Some(kind), Some(length)) = (property.get(at).copied(), half(at + 2)) else {
+            break;
+        };
+        let length = usize::from(length);
+        let Some(name) = property.get(at + 4..at + 4 + length) else {
+            break;
+        };
+        let name = String::from_utf8_lossy(name).into_owned();
+        // Past the name, the change serial, then the value.
+        let value = at + 4 + pad(length) + 4;
+        match kind {
+            0 => {
+                let Some(raw) = word(value) else {
+                    break;
+                };
+                found.push((name, i32::from_ne_bytes(raw.to_ne_bytes())));
+                at = value + 4;
+            }
+            1 => {
+                let Some(text) = word(value) else {
+                    break;
+                };
+                at = value + 4 + pad(text as usize);
+            }
+            _ => at = value + 8,
+        }
+    }
+    found
+}
+
+impl XClient {
+    /// The integer XSETTINGS the display publishes now, or none while nothing owns `_XSETTINGS_S0`.
+    fn xsettings(&self) -> Vec<(String, i32)> {
+        let atom = |name: &str| {
+            self.connection
+                .intern_atom(false, name.as_bytes())
+                .ok()
+                .and_then(|cookie| cookie.reply().ok())
+                .map(|reply| reply.atom)
+        };
+        let (Some(selection), Some(settings)) = (atom("_XSETTINGS_S0"), atom("_XSETTINGS_SETTINGS")) else {
+            return Vec::new();
+        };
+        let owner = self
+            .connection
+            .get_selection_owner(selection)
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+            .map_or(0, |reply| reply.owner);
+        if owner == 0 {
+            return Vec::new();
+        }
+        self.connection
+            .get_property(false, owner, settings, settings, 0, 4096)
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+            .map(|reply| xsettings_integers(&reply.value))
+            .unwrap_or_default()
+    }
+
+    /// Waits until the published integer `name` has `wanted` as its value, and returns every integer then.
+    fn wait_for_setting(&self, name: &str, wanted: i32) -> Vec<(String, i32)> {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            let settings = self.xsettings();
+            if settings
+                .iter()
+                .any(|(setting, value)| setting == name && *value == wanted)
+            {
+                return settings;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the display never published {name} = {wanted}; it publishes {settings:?}"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+
+/// A session on an output composed at twice its mode: Xwayland's client is given a scale of two, so an X11 window of
+/// 300x200 pixels is 150x100 logical pixels, the client is configured in its own pixels, and the settings every
+/// toolkit reads say to draw twice the pixels.
+#[test]
+fn an_output_composed_at_twice_its_mode_scales_the_x11_client() {
+    let Some(path) = display_path() else {
+        return;
+    };
+    let mut backend = Headless::new();
+    backend
+        .resize_supersampled(OutputId::new(0), DEFAULT_MODE, Scale::IDENTITY, Scale::integral(2))
+        .expect("the default output takes a factor of two");
+    let session = Session::start_on(backend, real_settings(), Some(path), TreeHooks::default());
+    let xwayland = session.handle.xwayland.clone();
+    session.run(move |handle| {
+        let display = wait_ready(&xwayland);
+        let client = XClient::connect(display);
+        let settings = client.wait_for_setting("Gdk/WindowScalingFactor", 2);
+        assert!(
+            settings.contains(&("Xft/DPI".to_owned(), 192 * 1024)),
+            "the DPI is the 96 a toolkit assumes times the scale: {settings:?}"
+        );
+        assert!(
+            settings.contains(&("Gdk/UnscaledDPI".to_owned(), 96 * 1024)),
+            "{settings:?}"
+        );
+
+        let window = client.create_window("supersampled", "Supersampled", false);
+        client.map(window);
+        let managed = handle.wait_for_title("supersampled");
+        assert_eq!(
+            (managed.geometry.width, managed.geometry.height),
+            (150, 100),
+            "300x200 X pixels at two per logical pixel are 150x100 logical pixels"
+        );
+        let configure = client.configured(window).expect("the client is configured");
+        assert_eq!(
+            (i32::from(configure.width), i32::from(configure.height)),
+            (300, 200),
+            "the client is configured in its own pixels"
+        );
+        assert_eq!(
+            (i32::from(configure.x), i32::from(configure.y)),
+            (managed.geometry.x * 2, managed.geometry.y * 2),
+            "and told where it is in them"
+        );
+    });
+}
+
+/// Xwayland's client follows the outputs while the session runs: an output that appears at a scale of two raises the
+/// settings, and one that goes takes them away again instead of leaving the old values on the root window.
+#[test]
+fn the_x11_client_scale_follows_the_outputs_while_the_session_runs() {
+    let Some(path) = display_path() else {
+        return;
+    };
+    let backend = Headless::new();
+    let outputs = backend.handle();
+    let session = Session::start_on(backend, real_settings(), Some(path), TreeHooks::default());
+    let xwayland = session.handle.xwayland.clone();
+    session.run(move |handle| {
+        let display = wait_ready(&xwayland);
+        let client = XClient::connect(display);
+        // One output at a scale of one asks nothing of X11 clients, so nothing is published.
+        assert!(client.xsettings().is_empty(), "no scale, no settings");
+
+        outputs
+            .connect_output("HEADLESS-2", DEFAULT_MODE, Scale::integral(2))
+            .expect("a second output");
+        client.wait_for_setting("Gdk/WindowScalingFactor", 2);
+
+        // The output goes; the property is replaced by an empty list, not left holding the scale it had.
+        let second = handle
+            .wait_for(|snapshot| snapshot.outputs().len() == 2)
+            .outputs()
+            .iter()
+            .copied()
+            .find(|id| *id != OutputId::new(0))
+            .expect("the second output");
+        outputs.disconnect_output(second);
+        let deadline = Instant::now() + TIMEOUT;
+        while !client.xsettings().is_empty() {
+            assert!(
+                Instant::now() < deadline,
+                "the scale was never taken back; the display publishes {:?}",
+                client.xsettings()
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
     });
 }

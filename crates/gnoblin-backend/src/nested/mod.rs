@@ -74,6 +74,13 @@
 //!    refuses while a frame callback is outstanding, and
 //!    [`crate::Backend::render`] does not even describe a frame:
 //!    `gnoblin-wayland`'s `tests/nested.rs::a_frame_waits_for_the_hosts_frame_callback`.
+//! 9. **A supersample factor the parent's window cannot honour.** The parent decides the mode and the
+//!    scale, so a nested output is configured with a factor and nothing else; [`Backend::configure_output`]
+//!    refuses another mode or scale. The renderer composes at the factor and the frame is averaged down
+//!    into the `wl_shm` buffer, which stays the size of the parent's window; a parent that rounded a
+//!    fractional scale (no viewport) has a buffer that is not the mode, and the factor is refused for it
+//!    by name (`surface::NestedTarget::check_supersample`). A configure from the parent keeps the factor.
+//!    From the host's side: `gnoblin-wayland`'s `tests/nested.rs::a_nested_output_can_be_supersampled`.
 
 /// The parent-facing protocol handler: state and event dispatch.
 mod handler;
@@ -236,6 +243,8 @@ pub enum NestedError {
     Buffer(io::Error),
     /// A renderer could not be created.
     Render(RenderError),
+    /// The output cannot be composed at that supersample factor, and the message says why.
+    Supersample(String),
     /// The connection to the parent is gone.
     Disconnected,
 }
@@ -252,6 +261,7 @@ impl std::fmt::Display for NestedError {
             ),
             Self::Buffer(error) => write!(formatter, "a buffer pool could not be created: {error}"),
             Self::Render(error) => write!(formatter, "the renderer could not be created: {error}"),
+            Self::Supersample(reason) => write!(formatter, "{reason}"),
             Self::Disconnected => write!(formatter, "the connection to the parent compositor ended"),
         }
     }
@@ -543,7 +553,13 @@ impl Nested {
             physical_extent(size.height, scale),
             refresh,
         );
-        let output = Output::new(id, connector, mode, scale);
+        // The parent decides the mode and the scale and never says anything about supersampling, so a configure keeps
+        // the factor the output has.
+        let supersample = match self.targets.get(index) {
+            Some(Some(target)) => target.output().supersample,
+            _ => Scale::IDENTITY,
+        };
+        let output = Output::new(id, connector, mode, scale).with_supersample(supersample);
         let existing = match self.targets.get_mut(index) {
             Some(Some(target)) => Some(target.resize(output.clone())),
             _ => None,
@@ -643,6 +659,32 @@ impl Nested {
             .collect();
     }
 
+    /// Whether `output` can be driven at `mode`, `scale` and `supersample`, changing nothing.
+    ///
+    /// The parent's window is the mode and the scale, so nothing here can move them: only the factor is a choice.
+    fn check_composition(
+        &self,
+        output: OutputId,
+        mode: DisplayMode,
+        scale: Scale,
+        supersample: Scale,
+    ) -> Result<(), BackendError> {
+        let index = self.index(output).ok_or(BackendError::UnknownOutput(output))?;
+        let target = self
+            .targets
+            .get(index)
+            .and_then(Option::as_ref)
+            .ok_or(BackendError::UnknownOutput(output))?;
+        let now = target.output();
+        if now.mode != mode || now.scale != scale {
+            return Err(BackendError::Unsupported(output));
+        }
+        target.check_supersample(supersample).map_err(|error| {
+            log::warn!(area = "nested", %error, "a supersample factor cannot be used");
+            BackendError::Supersample(output)
+        })
+    }
+
     /// The index of an output in the target table.
     fn index(&self, output: OutputId) -> Option<usize> {
         self.targets
@@ -730,6 +772,56 @@ impl<S: Host + 'static> Backend<S> for Nested {
             .as_mut()?
             .capture(with_cursor, treatment)
             .ok()
+    }
+
+    fn output_controls(&self) -> crate::OutputControls {
+        // The parent's window decides the mode and the scale, so the only thing a nested output is configured with
+        // is its supersample factor: `configure_output` refuses a different mode or scale.
+        crate::OutputControls {
+            configure: true,
+            ..crate::OutputControls::default()
+        }
+    }
+
+    fn configure_output(
+        &mut self,
+        output: OutputId,
+        mode: DisplayMode,
+        scale: Scale,
+        supersample: Scale,
+    ) -> Result<(), BackendError> {
+        self.check_composition(output, mode, scale, supersample)?;
+        let index = self.index(output).ok_or(BackendError::UnknownOutput(output))?;
+        let target = self
+            .targets
+            .get_mut(index)
+            .and_then(Option::as_mut)
+            .ok_or(BackendError::UnknownOutput(output))?;
+        if let Err(error) = target.set_supersample(supersample) {
+            log::warn!(area = "nested", %error, "a supersample factor was refused");
+            return Err(match error {
+                NestedError::Render(error) => BackendError::Render(error),
+                _ => BackendError::Supersample(output),
+            });
+        }
+        let changed = target.output().clone();
+        self.push_resize(changed);
+        self.rebuild_outputs();
+        Ok(())
+    }
+
+    fn test_output(
+        &mut self,
+        output: OutputId,
+        mode: DisplayMode,
+        scale: Scale,
+        supersample: Scale,
+    ) -> Result<(), BackendError> {
+        self.check_composition(output, mode, scale, supersample)
+    }
+
+    fn max_virtual_edge(&mut self, _output: OutputId) -> u32 {
+        surface::MAX_EXTENT.min(gnoblin_output::supersample::MAX_VIRTUAL_EDGE)
     }
 
     fn dispatch(&mut self, host: &mut S) -> Vec<BackendEvent> {

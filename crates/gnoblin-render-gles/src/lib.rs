@@ -50,6 +50,7 @@
 //! | surface | [`shaders::SURFACE`]   | a client buffer, tinted and corner-clipped    |
 //! | shadow  | [`shaders::SHADOW`]    | a [`Pass::Shadow`], behind its layer          |
 //! | blur    | [`shaders::BLUR`]      | one axis of a Gaussian over the backdrop      |
+//! | downsample | [`shaders::DOWNSAMPLE`] | a supersampled target, averaged to the mode |
 //!
 //! # Where the pixels go
 //!
@@ -90,6 +91,14 @@
 //!    `tests::damage_limits_what_is_repainted`.
 //! 7. **A resize keeps the old target.** [`Gles::resize`] replaces the target and the new one
 //!    holds no pixels: `tests::a_resize_replaces_the_target`.
+//! 8. **A supersampled output shows an unpainted or half-averaged target.** The downsample pass
+//!    ([`shaders::DOWNSAMPLE`]) reads the whole virtual target on every flip, so a target that was
+//!    just made is painted whole before it is averaged ([`Gles::draw_scanout_downsampled`]), and the
+//!    scan-out buffer is written whole because it holds an old frame:
+//!    `downsample_tests::a_supersampled_frame_is_averaged_into_the_scan_out_buffer`.
+//! 9. **A target is asked for past the driver's texture limit.** The size is checked against
+//!    `GL_MAX_TEXTURE_SIZE` before any object is made, and a refused resize keeps the old target:
+//!    `downsample_tests::a_target_past_the_drivers_limit_is_refused_and_the_old_one_stays`.
 
 gnoblin_log::logger!(log = "render");
 
@@ -148,6 +157,13 @@ pub struct Gles {
     filtered: bool,
     /// The textures of the Views this renderer draws on the GPU.
     subtrees: subtree::Subtrees,
+    /// Whether the target holds no frame yet: it was just made, so it is not damage that is missing from it but all
+    /// of its pixels. A supersampled output averages the whole target down on every flip, so it must not average a
+    /// target nobody painted; the first such frame repaints it whole.
+    stale: bool,
+    /// The target [`Gles::downsampled`] averages into and reads back, made on first use and replaced when the size
+    /// asked for changes.
+    shown: Option<Framebuffer>,
 }
 
 impl std::fmt::Debug for Gles {
@@ -169,6 +185,8 @@ struct Passes {
     blur: Program,
     /// The whole-output view pass, run only when the frame has a view or a matrix.
     view: Program,
+    /// The whole-output downsample pass of a supersampled output.
+    downsample: Program,
 }
 
 /// One scan-out buffer of an output: the dmabuf imported as a GL texture and the framebuffer
@@ -207,6 +225,7 @@ impl Gles {
             });
         }
         let mut device = GlContext::on(renderer)?;
+        Self::check_limit(&mut device, physical)?;
         let target = device.target(physical)?;
         let passes = Passes::new(&mut device)?;
         Ok(Self {
@@ -221,6 +240,8 @@ impl Gles {
             cursor_under_rect: None,
             filtered: false,
             subtrees: subtree::Subtrees::default(),
+            stale: true,
+            shown: None,
         })
     }
 
@@ -289,12 +310,40 @@ impl Gles {
         if physical == self.physical {
             return Ok(());
         }
+        Self::check_limit(&mut self.device, physical)?;
         let target = self.device.target(physical)?;
-        self.target = target;
+        // The old target's GL objects are given back now: an output that changes its supersample factor replaces a
+        // target of hundreds of megabytes, and the context would otherwise keep every one it ever had.
+        let old = std::mem::replace(&mut self.target, target);
+        self.device.release(old);
         self.physical = physical;
+        self.stale = true;
         // The scratch targets are as big as the output they copy, so a resize invalidates
         // them; they are rebuilt on the first blur of the new size.
-        self.scratch = None;
+        for scratch in self.scratch.take().into_iter().flatten() {
+            self.device.release(scratch);
+        }
+        Ok(())
+    }
+
+    /// Refuses a target past the driver's texture limit, naming the numbers.
+    ///
+    /// The driver would refuse it too, but only as an incomplete framebuffer, which says nothing about a size. A
+    /// supersampled output is where this matters: its target is the mode times the factor.
+    fn check_limit(device: &mut GlContext, physical: Size) -> Result<(), RenderError> {
+        let limit = device.max_texture_size();
+        if physical.width > limit || physical.height > limit {
+            log::warn!(
+                area = "render",
+                width = physical.width,
+                height = physical.height,
+                limit,
+                "a {}x{} target is above the {limit}x{limit} the driver's textures allow",
+                physical.width,
+                physical.height
+            );
+            return Err(RenderError::Unavailable);
+        }
         Ok(())
     }
 
@@ -309,7 +358,12 @@ impl Gles {
     /// cannot be imported is not an error: a client may destroy it at any time, and the rest
     /// of the frame still has to appear.
     pub fn draw(&mut self, frame: &OutputFrame, scale: Scale) -> Result<(), RenderError> {
-        if frame.is_empty() {
+        self.compose(frame, scale, false)
+    }
+
+    /// Draws `frame` into the target, all of it when `whole` and only what the frame damaged otherwise.
+    fn compose(&mut self, frame: &OutputFrame, scale: Scale, whole: bool) -> Result<(), RenderError> {
+        if frame.is_empty() && !whole {
             return Ok(());
         }
         let bounds = Rectangle::new(
@@ -328,7 +382,7 @@ impl Gles {
                 ));
             }
         }
-        if damage.is_empty() {
+        if damage.is_empty() && !whole {
             // Everything the frame wanted to redraw is outside the output.
             self.damage = damage;
             return Ok(());
@@ -338,15 +392,20 @@ impl Gles {
         // behind after a filter was turned off would stay wrong. So whenever the filter is on now
         // or was on last frame, repaint the whole output.
         let filtering = view::is_active(frame.view(), frame.colour_matrix());
-        if filtering || self.filtered {
+        if filtering || self.filtered || whole {
             damage.clear();
             damage.push(Rect::new(0, 0, self.physical.width, self.physical.height));
         }
         self.prepare_subtrees(frame);
         let outcome = self.paint(frame, scale, &damage, None);
+        // A target is defined again once a frame has painted all of it, and not before.
+        let covered = damage == [Rect::new(0, 0, self.physical.width, self.physical.height)];
         self.damage = damage;
         self.filtered = filtering;
         outcome?;
+        if covered {
+            self.stale = false;
+        }
         self.draws = self.draws.saturating_add(1);
         Ok(())
     }
@@ -396,6 +455,84 @@ impl Gles {
         outcome?;
         self.draws = self.draws.saturating_add(1);
         Ok(())
+    }
+
+    /// Draws `frame` into the target, which is `mode * s` pixels, and averages the target down into a scan-out buffer
+    /// of the mode: the frame of a supersampled output.
+    ///
+    /// The target persists between frames, so only the frame's damage is repainted into it, exactly as [`Gles::draw`]
+    /// does; a target nobody has painted yet is painted whole first. The scan-out buffer holds the picture of an
+    /// earlier flip, so the average is written over all of it. `scale` is the compositing scale, which includes the
+    /// factor.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Failed`] when the driver refuses an operation.
+    pub fn draw_scanout_downsampled(
+        &mut self,
+        buffer: &mut ScanBuffer,
+        frame: &OutputFrame,
+        scale: Scale,
+    ) -> Result<(), RenderError> {
+        let whole = self.stale;
+        self.compose(frame, scale, whole)?;
+        self.downsample_into(&buffer.framebuffer)
+    }
+
+    /// The target as the display shows it at `shown` pixels: [`Gles::capture`] averaged down on the GPU, with the
+    /// cursor, which is part of the picture a display shows.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Degenerate`] for a size with no pixels, [`RenderError::Unavailable`] when the averaged target
+    /// cannot be made, and [`RenderError::Failed`] when the driver refuses the pass or the read.
+    pub fn downsampled(&mut self, shown: Size) -> Result<Image, RenderError> {
+        if shown.is_empty() {
+            return Err(RenderError::Degenerate {
+                width: shown.width,
+                height: shown.height,
+            });
+        }
+        let framebuffer = match self.shown.take() {
+            Some(framebuffer) if framebuffer.size() == shown => framebuffer,
+            old => {
+                if let Some(old) = old {
+                    self.device.release(old);
+                }
+                self.device.target(shown)?
+            }
+        };
+        let outcome = self.downsample_into(&framebuffer).and_then(|()| {
+            let mut bytes = self.device.read(&framebuffer)?;
+            let stride = shown.width as usize * 4;
+            bytes.truncate(stride.saturating_mul(shown.height as usize));
+            flip_rows(&mut bytes, stride);
+            Image::new(shown, stride, bytes).ok_or(RenderError::Failed)
+        });
+        self.shown = Some(framebuffer);
+        outcome
+    }
+
+    /// Runs the downsample pass: the target is read whole and written over all of `destination`.
+    fn downsample_into(&mut self, destination: &Framebuffer) -> Result<(), RenderError> {
+        let Self {
+            device, target, passes, ..
+        } = self;
+        let shown = destination.size();
+        let bytes = downsample::DownsampleUniforms::new(target.size(), shown).bytes();
+        device.begin(destination)?;
+        device.scissor(None);
+        device.blend_replace()?;
+        let drawn = device.draw(
+            &passes.downsample,
+            &bytes,
+            Rect::new(0, 0, shown.width, shown.height),
+            Some(target.texture()),
+            QuadPlacement::FLAT,
+        );
+        device.blend_premultiplied()?;
+        device.end()?;
+        drawn
     }
 
     /// Reads the target back as an [`Image`].
@@ -1188,6 +1325,7 @@ impl Passes {
             border: program::link(device, shaders::VERTEX, shaders::BORDER)?,
             blur: program::link(device, shaders::VERTEX, shaders::BLUR)?,
             view: program::link(device, shaders::VERTEX, shaders::VIEW)?,
+            downsample: program::link(device, shaders::VERTEX, shaders::DOWNSAMPLE)?,
         })
     }
 }
@@ -1360,9 +1498,12 @@ fn flip_rows(bytes: &mut [u8], stride: usize) {
 
 mod capture;
 mod dmabuf;
+mod downsample;
 mod subtree;
 mod view;
 
+#[cfg(test)]
+mod downsample_tests;
 #[cfg(test)]
 mod golden;
 #[cfg(test)]
