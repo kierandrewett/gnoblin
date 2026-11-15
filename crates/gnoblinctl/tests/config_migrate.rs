@@ -1,8 +1,10 @@
 //! `gnoblinctl config migrate`, driven through the real parse, the real command and the real exit codes on temporary
-//! directories. The converted file is loaded with the shell's own stock `defineConfig`, and its plan is compared with
-//! the document and the bindings the Lua starter makes. Nothing here runs Lua: the Lua starter's document is listed by
-//! hand from `data/default-config`, which is the file the converter was written against.
+//! directories. The converted file is run in the shell's dry-run host (the shell over an inert tree: a root and a
+//! seat), and the world it builds (workspaces, bindings, what each binding does, the started services) is compared
+//! with the world the stock starter builds and with what the Lua said. Nothing here runs Lua: the Lua starter is the
+//! fixture of `gnoblin-config-migrate`, which is `data/default-config` as it shipped.
 
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,7 +12,10 @@ use std::time::Duration;
 
 use gnoblin_client::Client;
 use gnoblin_client::unix::UnixTransport;
-use gnoblin_js::{JsConfig, JsGeneration, stock_modules};
+use gnoblin_js::{JsShell, JsShellConfig, STARTER_CONFIG};
+use gnoblin_tree_client::tree_mirror::{
+    Attached, LinkError, MirrorValue, SnapshotNode, TreeIncoming, TreeLink, TreeTx,
+};
 use gnoblinctl::{ConnectFailure, Connection};
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -64,21 +69,27 @@ fn write(dir: &Path, name: &str, text: &str) -> PathBuf {
     path
 }
 
+/// A file that builds the stock default by calling the library, as `starter_parity.rs` of `gnoblin-js` does.
+const INSTALL_DEFAULTS: &str = "import { installDefaults } from \"gnoblin/starter\";\ninstallDefaults(gnoblin);\n";
+
 /// The Lua starter as the converter's own tests keep it.
 fn starter_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../gnoblin-config-migrate/tests/fixtures/starter")
 }
 
+/// The files of the Lua starter.
+const STARTER_FILES: [&str; 5] = [
+    "init.lua",
+    "config/10-windows.lua",
+    "config/20-input.lua",
+    "config/30-session.lua",
+    "config/40-shortcuts.lua",
+];
+
 /// A copy of the Lua starter in a directory of its own.
 fn copied_starter() -> (TempDir, PathBuf) {
     let dir = TempDir::new().expect("a temp dir");
-    for name in [
-        "init.lua",
-        "config/10-windows.lua",
-        "config/20-input.lua",
-        "config/30-session.lua",
-        "config/40-shortcuts.lua",
-    ] {
+    for name in STARTER_FILES {
         let text = fs::read_to_string(starter_dir().join(name)).expect("a starter file");
         write(dir.path(), name, &text);
     }
@@ -86,210 +97,266 @@ fn copied_starter() -> (TempDir, PathBuf) {
     (dir, init)
 }
 
-// --- Loading the converted file ---------------------------------------------------------------------------------
+/// A config with nothing the converter has to leave out: two workspaces and a shortcut.
+const CLEAN: &str = "gnoblin.configure({\n    workspaces = { { id = \"a\", name = \"A\" }, { id = \"b\", name = \"B\" } },\n    shortcuts = { term = { binding = \"<Super>Return\", command = { \"foot\" } } },\n})\n";
 
-/// Evaluates `init.ts` in `dir` with the stock library and a host that registers nothing, and returns what `probe`
-/// leaves in `globalThis.out` as JSON. `defineConfig` runs every check it runs in a session, so a file that loads is
-/// a file the shell accepts.
-fn evaluate(dir: &Path, probe: &str) -> Value {
-    let root = fs::canonicalize(dir).expect("the directory exists");
-    fs::write(
-        root.join("probe.ts"),
-        format!(
-            "import \"harness\";\nimport config from \"./init.ts\";\nimport {{ desugarConfig, mergeConfig, defaultConfig }} from \"gnoblin\";\n\
-             const replacer = (_key: string, value: unknown) => value instanceof RegExp ? String(value) : value;\n{probe}\n"
-        ),
-    )
-    .expect("write the probe");
-    let mut jsconfig = JsConfig::new(&root).embed("harness", "globalThis.gnoblin = { __register() {} };");
-    for (name, source) in stock_modules() {
-        jsconfig = jsconfig.embed(name, source);
+/// A directory holding `CLEAN` as `init.lua`.
+fn clean_dir() -> (TempDir, PathBuf) {
+    let dir = TempDir::new().expect("a temp dir");
+    let init = write(dir.path(), "init.lua", CLEAN);
+    (dir, init)
+}
+
+/// Every file under `dir` and its text, so a test can say nothing was touched.
+fn tree(dir: &Path) -> BTreeMap<String, String> {
+    fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<String, String>) {
+        for entry in fs::read_dir(dir).expect("a readable directory") {
+            let path = entry.expect("an entry").path();
+            if path.is_dir() {
+                walk(root, &path, out);
+            } else {
+                let name = path.strip_prefix(root).expect("under the root").display().to_string();
+                out.insert(name, fs::read_to_string(&path).unwrap_or_default());
+            }
+        }
     }
-    let generation = JsGeneration::new(&jsconfig, 1).expect("a generation");
-    generation
-        .eval_module(Path::new("probe.ts"))
-        .unwrap_or_else(|error| panic!("the converted file does not load: {error:?}"));
-    let text = generation
-        .call_budgeted(Duration::from_secs(5), |ctx| ctx.globals().get::<_, String>("out"))
+    let mut out = BTreeMap::new();
+    walk(dir, dir, &mut out);
+    out
+}
+
+// --- The dry-run host --------------------------------------------------------------------------------------------
+
+/// The root of an inert tree, and its one seat.
+const ROOT: u64 = 1;
+const SEAT: u64 = 2;
+
+/// A compositor with nothing in it: the root node and a seat, as `gnoblin_js::evaluate_document` boots the shell.
+#[derive(Default)]
+struct InertTree {
+    queue: Vec<TreeIncoming>,
+}
+
+impl TreeLink for InertTree {
+    fn attach(&mut self, _version: u64) -> Result<(), LinkError> {
+        self.queue.push(TreeIncoming::Attached(Attached {
+            epoch: 1,
+            root: ROOT,
+            serial: 0,
+        }));
+        self.queue.push(TreeIncoming::Snapshot {
+            serial: 0,
+            chunk: 0,
+            last: true,
+            nodes: vec![
+                SnapshotNode {
+                    id: ROOT,
+                    parent: 0,
+                    index: 0,
+                    class: "node".to_owned(),
+                    title: String::new(),
+                    app_id: String::new(),
+                    props: Vec::new(),
+                },
+                SnapshotNode {
+                    id: SEAT,
+                    parent: ROOT,
+                    index: 0,
+                    class: "seat".to_owned(),
+                    title: String::new(),
+                    app_id: String::new(),
+                    props: vec![("name".to_owned(), MirrorValue::Text("seat0".to_owned()))],
+                },
+            ],
+        });
+        Ok(())
+    }
+
+    fn transact(&mut self, _tx: &TreeTx) -> Result<(), LinkError> {
+        Ok(())
+    }
+
+    fn poll(&mut self) -> Result<Vec<TreeIncoming>, LinkError> {
+        Ok(std::mem::take(&mut self.queue))
+    }
+}
+
+/// Runs before the config: it records every key the config binds, every listener it attaches and every program it
+/// asks to start, so the probe can press the keys and say what each did.
+const PRE: &str = r#"const g = globalThis as any;
+g.bound = [];
+g.spawned = [];
+g.listeners = [];
+const input = gnoblin.input.primary;
+const realBind = input.bind.bind(input);
+(input as any).bind = (trigger: string, action: unknown) => {
+    g.bound.push({ trigger, action });
+    return realBind(trigger, action as never);
+};
+const clients: any = gnoblin.clients;
+const realAdd = clients.addListener.bind(clients);
+clients.addListener = (listener: unknown) => {
+    g.listeners.push(listener);
+    return realAdd(listener);
+};
+(gnoblin as any).spawn = (argv: string[]) => {
+    g.spawned.push(argv);
+    return undefined;
+};
+"#;
+
+/// Runs after the config: the world it built, as JSON in `globalThis.out`. `EXTRA` is a block of statements that may
+/// add to `result`.
+fn probe(extra: &str) -> String {
+    format!(
+        r#"import {{ windowMenu, notRespondingAlerts }} from "gnoblin";
+const g = globalThis as any;
+const input = gnoblin.input.primary;
+const workspaces = gnoblin.workspaces.map((w: any) => ({{ id: w.id, name: w.name, layout: w.layout.constructor.name }}));
+const seat = [...input.bindings].map((b: any) => `${{b.constructor.name}}:${{b.trigger}}`).sort();
+const bindings = g.bound.map(({{ trigger, action }}: any) => {{
+    g.spawned.length = 0;
+    let error: string | null = null;
+    if (typeof action === "function") {{
+        try {{
+            action({{}});
+        }} catch (e) {{
+            error = String(e);
+        }}
+    }}
+    return {{
+        trigger,
+        action: typeof action === "function" ? "function" : action.constructor.name,
+        spawned: [...g.spawned],
+        error,
+    }};
+}});
+bindings.sort((a: any, b: any) => (a.trigger < b.trigger ? -1 : 1));
+const result: any = {{ workspaces, seat, menu: windowMenu.started, alert: notRespondingAlerts.started, bindings }};
+{extra}
+g.out = JSON.stringify(result);
+"#
+    )
+}
+
+/// The world a config builds in the dry-run host: its workspaces, the keys it binds and what each key does when it is
+/// pressed (the programs it starts), the claimed bindings, and whether the window menu and the alert are started.
+/// `init` is the text of `init.ts`.
+fn world(init: &str, extra: &str) -> Value {
+    let dir = TempDir::new().expect("a temp dir");
+    let root = fs::canonicalize(dir.path()).expect("the directory exists");
+    fs::write(root.join("pre.ts"), PRE).expect("pre.ts is written");
+    fs::write(root.join("probe.ts"), probe(extra)).expect("probe.ts is written");
+    let mut config = JsShellConfig::new(root.clone());
+    config.js.stage_budget = Duration::from_secs(10);
+    config.entry_budget = Duration::from_secs(10);
+    config.frame_budget = Duration::from_secs(10);
+    let mut shell = JsShell::new(Box::<InertTree>::default(), config).expect("the shell boots");
+    fs::write(root.join("init.ts"), init).expect("init.ts is written");
+    // One entry that runs the three in order: a second entry would be a second load, and a load that declares no
+    // workspace gets the one floating `desktop` the shell keeps a script from being without.
+    fs::write(
+        root.join("entry.ts"),
+        "import \"./pre.ts\";\nimport \"./init.ts\";\nimport \"./probe.ts\";\n",
+    )
+    .expect("entry.ts is written");
+    let diagnostics = shell.load_entry(Path::new("entry.ts")).expect("the config loads");
+    assert!(
+        diagnostics.is_empty(),
+        "the config loaded with diagnostics: {diagnostics:?}"
+    );
+    let text = shell
+        .eval("globalThis.out")
+        .expect("the probe is read")
         .expect("the probe set out");
     serde_json::from_str(&text).expect("the probe wrote JSON")
 }
 
-/// The plan of the config on its own: the document patch, the workspaces, the bindings, the rules, autostart.
-fn plan(dir: &Path) -> Value {
-    evaluate(
-        dir,
-        "const plan = desugarConfig(config);\n\
-         globalThis.out = JSON.stringify({\n\
-             document: plan.document,\n\
-             workspaces: plan.workspaces.map((w) => ({ id: w.id, name: w.name })),\n\
-             bindings: plan.bindings.map((b) => ({ trigger: b.trigger, action: b.action })),\n\
-             rules: plan.rules,\n\
-             autostart: plan.autostart,\n\
-             alerts: plan.alerts,\n\
-             workspaceSets: plan.workspaceSets,\n\
-         }, replacer);",
-    )
+/// The binding of `trigger` in a world.
+fn binding<'a>(world: &'a Value, trigger: &str) -> &'a Value {
+    world["bindings"]
+        .as_array()
+        .expect("bindings")
+        .iter()
+        .find(|binding| binding["trigger"] == trigger)
+        .unwrap_or_else(|| panic!("{trigger} is not bound in {world:#}"))
 }
 
-/// The effective bindings and workspaces: the config laid over the stock config, as the shell runs it.
-fn effective(dir: &Path) -> Value {
-    evaluate(
-        dir,
-        "const plan = desugarConfig(mergeConfig(defaultConfig, config));\n\
-         const bindings = plan.bindings.map((b) => ({ trigger: b.trigger, action: b.action }));\n\
-         bindings.sort((a, b) => a.trigger < b.trigger ? -1 : 1);\n\
-         globalThis.out = JSON.stringify({\n\
-             bindings,\n\
-             workspaces: plan.workspaces.map((w) => ({ id: w.id, name: w.name })),\n\
-         }, replacer);",
-    )
-}
-
-/// The document the Lua starter makes: `data/default-config/config/{10,20,30}-*.lua` listed by hand, sections as the
-/// document names them.
-fn lua_starter_document() -> Value {
-    json!({
-        "window-management": {
-            "focus-mode": "click",
-            "focus-new-windows": "allow",
-            "raise-on-click": true,
-            "auto-raise": false,
-            "auto-raise-delay": 500,
-            "check-alive-timeout": 5000,
-            "focus-change-on-pointer-rest": false,
-            "edge-tiling": true,
-            "attach-modal-dialogs": true,
-            "constrain-drag-to-work-area": true,
-            "action-double-click-titlebar": "toggle-maximize",
-            "action-middle-click-titlebar": "none",
-            "action-right-click-titlebar": "menu",
-        },
-        "cursor": {},
-        "input": {
-            "mouse": {},
-            "touchpad": {},
-            "trackball": {},
-            "pointing-stick": {},
-            "keyboard": {},
-        },
-        "compositor": {
-            "locate-pointer": false,
-            "locate-pointer-key": "Control_L",
-            "visual-bell": false,
-            "audible-bell": true,
-            "visual-bell-type": "fullscreen-flash",
-        },
-        "protocols": {},
-        "layer-shell": {
-            "preserve-active-window": true,
-        },
-    })
-}
-
-/// The seven shortcuts of `40-shortcuts.lua`: binding and command, in the converted spelling of the binding.
-fn lua_starter_shortcuts() -> Vec<(&'static str, Vec<&'static str>)> {
-    vec![
-        (
-            "XF86AudioRaiseVolume",
-            vec!["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"],
-        ),
-        (
-            "XF86AudioLowerVolume",
-            vec!["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"],
-        ),
-        (
-            "XF86AudioMute",
-            vec!["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"],
-        ),
-        (
-            "XF86AudioMicMute",
-            vec!["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"],
-        ),
-        ("XF86AudioPlay", vec!["playerctl", "play-pause"]),
-        ("XF86AudioNext", vec!["playerctl", "next"]),
-        ("XF86AudioPrev", vec!["playerctl", "previous"]),
-    ]
+/// The ids of the workspaces of a world, in order.
+fn workspace_ids(world: &Value) -> Vec<&str> {
+    world["workspaces"]
+        .as_array()
+        .expect("workspaces")
+        .iter()
+        .map(|workspace| workspace["id"].as_str().expect("an id"))
+        .collect()
 }
 
 // --- The shipped starter ----------------------------------------------------------------------------------------
 
 #[test]
-fn the_starter_converts_to_a_config_that_loads_and_makes_the_lua_starters_document_and_bindings() {
+fn the_starter_converts_to_a_file_that_loads_and_reports_each_setting_it_has_no_home_for() {
     let (dir, init) = copied_starter();
+    let before = tree(dir.path());
     let (code, out, err) = migrate(&init, &[]);
-    assert_eq!(code, 0, "stdout: {out}\nstderr: {err}");
+    // The Lua starter's `window-management`, `compositor` and `layer-shell` hold 19 settings the specification has no
+    // home for, so the file is written and the exit code says it is not complete.
+    assert_eq!(code, 1, "stdout: {out}\nstderr: {err}");
+    assert!(out.contains("Left out (19)"), "{out}");
     let ts = dir.path().join("init.ts");
     assert!(ts.is_file(), "init.ts is written beside init.lua");
+    let text = fs::read_to_string(&ts).expect("init.ts");
+    assert_eq!(
+        text.lines().next(),
+        Some("// INCOMPLETE: 19 unmapped settings, see comments")
+    );
 
-    // (a) the in-process check the command line has: the module graph, and `defineConfig`'s own validation.
+    // The source is never modified: the Lua files read back exactly as they were, and only init.ts and the editor
+    // files are new.
+    let after = tree(dir.path());
+    for (name, original) in &before {
+        assert_eq!(after.get(name), Some(original), "{name} was changed");
+    }
+    let new: Vec<&String> = after.keys().filter(|name| !before.contains_key(*name)).collect();
+    assert_eq!(new, ["gnoblin.d.ts", "init.ts", "tsconfig.json"]);
+
+    // The file loads in the dry-run host, which is what `check` runs.
     let (check_code, check_out, check_err) = run(&["check", ts.to_str().expect("UTF-8")]);
     assert_eq!(check_code, 0, "{check_out}{check_err}");
     let (types_code, types_out, types_err) = run(&["check", ts.to_str().expect("UTF-8"), "--types"]);
     assert_eq!(types_code, 0, "{types_out}{types_err}");
-
-    // (b) the plan is the Lua starter's: its document, its four workspaces and its seven shortcuts.
-    let planned = plan(dir.path());
-    assert_eq!(planned["document"], lua_starter_document());
-    let workspaces: Vec<(String, String)> = planned["workspaces"]
-        .as_array()
-        .expect("workspaces")
-        .iter()
-        .map(|w| {
-            (
-                w["id"].as_str().unwrap_or_default().to_owned(),
-                w["name"].as_str().unwrap_or_default().to_owned(),
-            )
-        })
-        .collect();
-    let expected: Vec<(String, String)> = (1..=4).map(|n| (n.to_string(), format!("Workspace {n}"))).collect();
-    assert_eq!(workspaces, expected);
-    let mut bindings: Vec<(String, Vec<String>)> = planned["bindings"]
-        .as_array()
-        .expect("bindings")
-        .iter()
-        .map(|b| {
-            assert_eq!(b["action"]["kind"], "spawn", "{b}");
-            let argv = b["action"]["argv"]
-                .as_array()
-                .expect("argv")
-                .iter()
-                .map(|a| a.as_str().unwrap_or_default().to_owned())
-                .collect();
-            (b["trigger"].as_str().unwrap_or_default().to_owned(), argv)
-        })
-        .collect();
-    bindings.sort();
-    let mut shortcuts: Vec<(String, Vec<String>)> = lua_starter_shortcuts()
-        .into_iter()
-        .map(|(trigger, argv)| (trigger.to_owned(), argv.into_iter().map(str::to_owned).collect()))
-        .collect();
-    shortcuts.sort();
-    assert_eq!(bindings, shortcuts);
-    assert_eq!(planned["rules"], json!([]));
-    assert_eq!(planned["autostart"], json!([]));
 }
 
 #[test]
-fn the_converted_starter_runs_the_same_bindings_and_workspaces_as_the_stock_default() {
+fn the_converted_starter_builds_the_world_the_stock_starter_builds() {
     let (dir, init) = copied_starter();
-    assert_eq!(migrate(&init, &[]).0, 0);
-    let stock = TempDir::new().expect("a temp dir");
-    // The TypeScript starter is imperative code now and no longer a plan, so the stock default is what an empty
-    // `defineConfig` lays over it: the same bindings and workspaces the default builds
-    // (`crates/gnoblin-js/tests/starter_parity.rs` holds the starter to them).
-    write(
-        stock.path(),
-        "init.ts",
-        "import { defineConfig } from \"gnoblin\";\nexport default defineConfig({});\n",
+    assert_eq!(migrate(&init, &[]).0, 1);
+    let converted = fs::read_to_string(dir.path().join("init.ts")).expect("init.ts");
+
+    let starter = world(STARTER_CONFIG, "");
+    let called = world(INSTALL_DEFAULTS, "");
+    let migrated = world(&converted, "");
+
+    // The stock world is real: four floating workspaces, the window menu and the alert, and twenty keys that each
+    // did something when pressed (the media keys start their program).
+    assert_eq!(workspace_ids(&starter), ["1", "2", "3", "4"], "{starter:#}");
+    assert_eq!(starter["menu"], true);
+    assert_eq!(starter["alert"], true);
+    assert_eq!(starter["bindings"].as_array().map(Vec::len), Some(20), "{starter:#}");
+    assert_eq!(
+        binding(&starter, "XF86AudioMute")["spawned"],
+        json!([["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]])
     );
-    assert_eq!(effective(dir.path()), effective(stock.path()));
+
+    // The same worlds: the starter file, a file that calls `installDefaults`, and the converted Lua starter.
+    assert_eq!(called, starter, "installDefaults is the starter");
+    assert_eq!(migrated, starter, "the converted Lua starter is the starter");
 }
 
 #[test]
 fn the_converted_starter_is_the_converters_golden() {
     let (dir, init) = copied_starter();
-    assert_eq!(migrate(&init, &[]).0, 0);
+    assert_eq!(migrate(&init, &[]).0, 1);
     let golden = fs::read_to_string(
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../gnoblin-config-migrate/tests/fixtures/starter/init.ts.golden"),
     )
@@ -300,98 +367,118 @@ fn the_converted_starter_is_the_converters_golden() {
 // --- Everything that converts -----------------------------------------------------------------------------------
 
 const EVERYTHING: &str = r#"
-gnoblin.configure {
-    ["window-management"] = { ["focus-mode"] = "hover", ["auto-raise-delay"] = 5 * 100 },
-    cursor = { size = 28 },
-    protocols = { ["wlr-screencopy"] = false },
-    workspaces = { { id = "web", name = "Web" }, { id = "dev", name = "Development" } },
-    autostart = {
-        bar = { command = { "waybar" } },
-        agent = { command = { "foot", "--server" }, when = "on_login" },
-        off = { command = { "never" }, enable = false },
+gnoblin.configure({
+    workspaces = {
+        { id = "web", name = "Web" },
+        { id = "dev", name = "Development" },
     },
     shortcuts = {
         terminal = { binding = "<Super>Return", command = { "foot" } },
         browser = { binding = "<Super><Shift>b", command = "firefox" },
         mute = { binding = "XF86AudioMute", command = { "wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle" } },
     },
-    ["touchpad-gestures"] = {
-        { name = "term", gesture = "swipe", fingers = 3, path = { { x = 0, y = 0 }, { x = 1, y = 0 } }, command = { "foot" } },
-    },
-}
+})
 "#;
 
 const EVERYTHING_SHELL: &str = r#"
 seat.data.window_rules = {
     { match = { app_id = "^org%.example%.Editor$" }, workspace = { id = "dev" }, maximised = true },
-    { match = { title = "Picture.in.Picture" }, secure = true },
-    { match = { app_id = "^org%.x%.(%w+)$", focused = false }, opacity = 0.9 },
+    { match = { title = "Picture.in.Picture" }, fullscreen = true },
+    { match = { app_id = "^pavucontrol$" }, opacity = 0.9 },
+    { match = { app_id = "^org%.x%.(%w+)$" }, workspace = "web", maximised = false },
 }
 seat.data.alerts = false
-seat.edge_tiling = true
-seat.drag_constraint = "minimum_strip"
-seat.data.workspace_sets = { { name = "work", entries = { { workspace = "web" }, { workspace = "dev", output = "DP-1" } } } }
+"#;
+
+/// Presses nothing: it hands a window-shaped object to each listener the config attached and records what the listener
+/// wrote to it and where it moved it, for five windows.
+const RULES_PROBE: &str = r#"const moved: any[] = [];
+(gnoblin.workspaces as any).get = (id: string) => ({
+    clients: {
+        add: (client: any) => {
+            moved.push([id, client.appId]);
+        },
+    },
+});
+const cases = [
+    ["org.example.Editor", ""],
+    ["foot", "one Picture in Picture"],
+    ["org.x.abc", ""],
+    ["org.x.abc.d", ""],
+    ["other", ""],
+];
+result.rules = cases.map(([appId, title]) => {
+    const log: string[] = [];
+    moved.length = 0;
+    const client: any = {
+        appId,
+        title,
+        style: {},
+        set maximised(value: boolean) {
+            log.push(`maximised=${value}`);
+        },
+        set fullscreen(value: boolean) {
+            log.push(`fullscreen=${value}`);
+        },
+    };
+    for (const listener of g.listeners) {
+        listener.onAdded?.(client, gnoblin.clients);
+    }
+    return { appId, title, log, moved: [...moved], opacity: client.style.opacity ?? null };
+});
 "#;
 
 #[test]
-fn a_config_of_every_construct_loads_with_defineconfig_and_means_what_the_lua_said() {
+fn a_config_of_every_construct_loads_and_means_what_the_lua_said() {
     let dir = TempDir::new().expect("a temp dir");
     let init = write(dir.path(), "init.lua", EVERYTHING);
     write(dir.path(), "shell.lua", EVERYTHING_SHELL);
     let (code, out, err) = migrate(&init, &[]);
     assert_eq!(code, 0, "stdout: {out}\nstderr: {err}");
-    let planned = plan(dir.path());
+    let ts = fs::read_to_string(dir.path().join("init.ts")).expect("init.ts");
+    assert!(!ts.contains("INCOMPLETE"), "{ts}");
+    let (check_code, check_out, check_err) = run(&["check", dir.path().join("init.ts").to_str().expect("UTF-8")]);
+    assert_eq!(check_code, 0, "{check_out}{check_err}");
 
-    assert_eq!(
-        planned["document"]["window-management"],
-        json!({ "focus-mode": "hover", "auto-raise-delay": 500 })
-    );
-    assert_eq!(planned["document"]["cursor"], json!({ "size": 28 }));
-    assert_eq!(planned["document"]["protocols"], json!({ "wlr-screencopy": false }));
-    assert_eq!(planned["document"]["touchpad-gestures"][0]["name"], "term");
-    assert_eq!(
-        planned["document"]["touchpad-gestures"][0]["path"],
-        json!([{ "x": 0, "y": 0 }, { "x": 1, "y": 0 }])
-    );
-    assert_eq!(
-        planned["workspaces"],
-        json!([{ "id": "web", "name": "Web" }, { "id": "dev", "name": "Development" }])
-    );
-    assert_eq!(planned["autostart"], json!([["foot", "--server"], ["waybar"]]));
-    assert_eq!(planned["alerts"], json!(false));
+    let world = world(&ts, RULES_PROBE);
+    // The declared workspaces replace the stock four, and the alert is off as `seat.data.alerts = false` said.
+    assert_eq!(workspace_ids(&world), ["web", "dev"], "{world:#}");
+    assert_eq!(world["workspaces"][1]["name"], "Development");
+    assert_eq!(world["workspaces"][0]["layout"], "FloatingLayout");
+    assert_eq!(world["menu"], true);
+    assert_eq!(world["alert"], false);
 
-    let triggers: Vec<(&str, Value)> = planned["bindings"]
+    // Each shortcut is a key that starts its program; the stock mute key gave way to the config's.
+    assert_eq!(binding(&world, "Super+Return")["spawned"], json!([["foot"]]));
+    assert_eq!(binding(&world, "Super+Shift+b")["spawned"], json!([["firefox"]]));
+    assert_eq!(
+        binding(&world, "XF86AudioMute")["spawned"],
+        json!([["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]])
+    );
+    let mutes = world["bindings"]
         .as_array()
         .expect("bindings")
         .iter()
-        .map(|b| (b["trigger"].as_str().unwrap_or_default(), b["action"]["argv"].clone()))
-        .collect();
-    assert_eq!(
-        triggers,
-        [
-            ("Super+Return", json!(["foot"])),
-            ("Super+Shift+b", json!(["firefox"])),
-            (
-                "XF86AudioMute",
-                json!(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
-            ),
-        ]
-    );
+        .filter(|binding| binding["trigger"] == "XF86AudioMute")
+        .count();
+    assert_eq!(mutes, 1, "{world:#}");
 
-    let rules = planned["rules"].as_array().expect("rules");
-    assert_eq!(rules.len(), 3);
+    // The rules run on a window as it is added: the listener moves and maximises the editor, makes the picture in
+    // picture window fullscreen, moves a match of the pattern, and leaves the rest alone. The opacity rule is the
+    // style of a selection, so no window is written to.
+    let rules = world["rules"].as_array().expect("rules");
     assert_eq!(
         rules[0],
-        json!({ "appId": "org.example.Editor", "workspace": "dev", "maximised": true })
+        json!({ "appId": "org.example.Editor", "title": "", "log": ["maximised=true"], "moved": [["dev", "org.example.Editor"]], "opacity": null })
     );
-    assert_eq!(rules[1], json!({ "title": "/Picture.in.Picture/s", "secure": true }));
-    assert_eq!(rules[2]["appId"], "/^org\\.x\\.[A-Za-z0-9]+$/");
-    assert_eq!(rules[2]["focused"], false);
-    assert_eq!(rules[2]["style"], json!({ "opacity": 0.9 }));
-    assert_eq!(
-        planned["workspaceSets"],
-        json!([{ "name": "work", "entries": [{ "workspace": "web" }, { "workspace": "dev", "output": "DP-1" }] }])
-    );
+    assert_eq!(rules[1]["log"], json!(["fullscreen=true"]));
+    assert_eq!(rules[1]["moved"], json!([]));
+    assert_eq!(rules[2]["log"], json!(["maximised=false"]));
+    assert_eq!(rules[2]["moved"], json!([["web", "org.x.abc"]]));
+    assert_eq!(rules[3]["log"], json!([]), "the pattern is anchored: {rules:#?}");
+    assert_eq!(rules[3]["moved"], json!([]));
+    assert_eq!(rules[4]["log"], json!([]));
+    assert_eq!(rules[4]["opacity"], Value::Null);
 }
 
 // --- What it cannot convert -------------------------------------------------------------------------------------
@@ -423,12 +510,14 @@ fn unmapped_constructs_exit_1_are_listed_with_their_lines_and_the_output_still_l
     for needle in [
         "ok  init.ts written",
         "Converted",
-        "Left out (5)",
+        "Left out (6)",
+        "init.lua:2  size = 24",
         "init.lua:2  theme = compute_theme()",
         "init.lua:4  gnoblin.on(\"gnoblin.window.created\", function(w) ...",
         "init.lua:10  b = { binding = \"<Super>Return\", command = {",
         "init.lua:11  binding = \"<Super>a\"",
         "init.lua:14  for i = 1, 3 do ...",
+        "docs/migrating-from-lua.md#settings-with-no-typescript-home-yet",
         "docs/migrating-from-lua.md#what-the-converter-cannot-do",
         "docs/migrating-from-lua.md#what-each-construct-becomes",
         "Next:",
@@ -439,26 +528,42 @@ fn unmapped_constructs_exit_1_are_listed_with_their_lines_and_the_output_still_l
         assert!(out.contains(needle), "{needle}\n{out}");
     }
     let ts = fs::read_to_string(dir.path().join("init.ts")).expect("init.ts");
+    assert_eq!(
+        ts.lines().next(),
+        Some("// INCOMPLETE: 6 unmapped settings, see comments")
+    );
     assert!(
         ts.contains("// UNMAPPED (init.lua:4): gnoblin.on(\"gnoblin.window.created\", function(w)"),
         "{ts}"
     );
     assert!(ts.contains("// UNMAPPED (init.lua:14): for i = 1, 3 do"), "{ts}");
     // Nothing of the left-out code is in the file as code.
-    assert!(!ts.contains("\nfor ") && !ts.contains("\nfunction"), "{ts}");
-    // The file still loads with defineConfig and keeps what could convert.
-    let planned = plan(dir.path());
-    assert_eq!(planned["document"]["cursor"], json!({ "size": 24 }));
-    assert_eq!(planned["bindings"].as_array().map(Vec::len), Some(1));
+    for line in ts.lines().filter(|line| !line.trim_start().starts_with("//")) {
+        for lua in ["function(w)", "compute_theme", "w:maximise", "end)"] {
+            assert!(!line.contains(lua), "{line:?} carries Lua outside a comment");
+        }
+    }
+    // The file still loads and keeps what could convert: the one shortcut, over the stock desktop.
     let (check_code, check_out, check_err) = run(&["check", dir.path().join("init.ts").to_str().expect("UTF-8")]);
     assert_eq!(check_code, 0, "{check_out}{check_err}");
+    let world = world(&ts, "");
+    assert_eq!(binding(&world, "Super+a")["spawned"], json!([["foot"]]));
+    assert!(
+        !world["bindings"]
+            .as_array()
+            .expect("bindings")
+            .iter()
+            .any(|binding| binding["trigger"] == "Super+Return"),
+        "a shortcut on key release is not a key: {world:#}"
+    );
+    assert_eq!(workspace_ids(&world), ["1", "2", "3", "4"]);
 }
 
 // --- The command ------------------------------------------------------------------------------------------------
 
 #[test]
 fn it_writes_the_editor_files_and_prints_three_next_steps() {
-    let (dir, init) = copied_starter();
+    let (dir, init) = clean_dir();
     let (code, out, _) = migrate(&init, &[]);
     assert_eq!(code, 0, "{out}");
     assert!(dir.path().join("gnoblin.d.ts").is_file(), "types init ran");
@@ -479,15 +584,16 @@ fn it_writes_the_editor_files_and_prints_three_next_steps() {
         steps[2].contains("3. Log out and back in") && steps[2].contains("init.lua"),
         "{out}"
     );
+    // The counts are printed: two workspaces and one key.
     assert!(
-        out.contains("settings") && out.contains("19"),
+        out.contains("workspaces") && out.contains("keys"),
         "the counts are printed: {out}"
     );
 }
 
 #[test]
-fn it_refuses_to_overwrite_unless_forced() {
-    let (dir, init) = copied_starter();
+fn it_refuses_to_overwrite_unless_forced_and_force_touches_only_init_ts() {
+    let (dir, init) = clean_dir();
     assert_eq!(migrate(&init, &[]).0, 0);
     let ts = dir.path().join("init.ts");
     fs::write(&ts, "// mine\n").expect("edit init.ts");
@@ -500,14 +606,21 @@ fn it_refuses_to_overwrite_unless_forced() {
         "// mine\n",
         "nothing was written"
     );
+    let lua = fs::read_to_string(&init).expect("init.lua");
     let (forced, out, err) = migrate(&init, &["--force"]);
     assert_eq!(forced, 0, "{out}{err}");
-    assert!(fs::read_to_string(&ts).expect("init.ts").contains("defineConfig"));
+    let written = fs::read_to_string(&ts).expect("init.ts");
+    assert!(written.contains("gnoblin.workspaces.add(new Workspace("), "{written}");
+    assert_eq!(
+        fs::read_to_string(&init).expect("init.lua"),
+        lua,
+        "the source is never modified"
+    );
 }
 
 #[test]
 fn it_does_not_write_an_init_ts_beside_an_init_js() {
-    let (dir, init) = copied_starter();
+    let (dir, init) = clean_dir();
     write(dir.path(), "init.js", "export default {};\n");
     let (code, _, err) = migrate(&init, &[]);
     assert_eq!(code, 2, "{err}");
@@ -518,7 +631,7 @@ fn it_does_not_write_an_init_ts_beside_an_init_js() {
 
 #[test]
 fn output_goes_where_dash_o_says() {
-    let (dir, init) = copied_starter();
+    let (dir, init) = clean_dir();
     let target = dir.path().join("out/new.ts");
     let (code, out, err) = migrate(&init, &["-o", target.to_str().expect("UTF-8")]);
     assert_eq!(code, 0, "{out}{err}");
@@ -532,11 +645,16 @@ fn output_goes_where_dash_o_says() {
 
 #[test]
 fn dry_run_prints_typescript_and_writes_nothing() {
-    let (dir, init) = copied_starter();
+    let (dir, init) = clean_dir();
     let (code, out, err) = migrate(&init, &["--dry-run"]);
     assert_eq!(code, 0, "{err}");
     assert!(out.starts_with("// init.lua converted to TypeScript"), "{out}");
-    assert!(out.contains("export default defineConfig({"), "{out}");
+    assert!(
+        out.contains(
+            "gnoblin.workspaces.add(new Workspace({ id: \"a\", name: \"A\", layout: new FloatingLayout() }));"
+        ),
+        "{out}"
+    );
     assert!(
         !out.contains("Converted"),
         "standard output is the TypeScript alone: {out}"
@@ -553,13 +671,17 @@ fn dry_run_prints_typescript_and_writes_nothing() {
 }
 
 #[test]
-fn dry_run_with_unmapped_items_exits_1() {
+fn dry_run_with_unmapped_items_exits_1_and_the_file_says_it_is_incomplete() {
     let dir = TempDir::new().expect("a temp dir");
     let init = write(dir.path(), "init.lua", UNMAPPED_INIT);
     let (code, out, err) = migrate(&init, &["--dry-run"]);
     assert_eq!(code, 1, "{err}");
+    assert!(
+        out.starts_with("// INCOMPLETE: 6 unmapped settings, see comments\n"),
+        "{out}"
+    );
     assert!(out.contains("UNMAPPED (init.lua:14)"), "{out}");
-    assert!(err.contains("Left out (5)"), "{err}");
+    assert!(err.contains("Left out (6)"), "{err}");
 }
 
 #[test]
@@ -599,7 +721,7 @@ fn json_output_carries_the_report_and_the_three_steps() {
     let document: Value = serde_json::from_str(&out).expect("--json prints JSON");
     assert_eq!(document["written"], true);
     assert_eq!(document["init"], dir.path().join("init.ts").to_str().expect("UTF-8"));
-    assert_eq!(document["unmapped"].as_array().map(Vec::len), Some(5));
+    assert_eq!(document["unmapped"].as_array().map(Vec::len), Some(6));
     assert_eq!(document["unmapped"][0]["file"], "init.lua");
     assert_eq!(document["unmapped"][0]["line"], 2);
     assert!(
@@ -607,6 +729,12 @@ fn json_output_carries_the_report_and_the_three_steps() {
             .as_str()
             .expect("pointer")
             .starts_with("docs/migrating-from-lua.md#")
+    );
+    assert!(
+        document["unmapped"][0]["reason"]
+            .as_str()
+            .expect("reason")
+            .contains("no TypeScript home yet")
     );
     assert_eq!(document["converted"]["keys"], 1);
     assert_eq!(document["next"].as_array().map(Vec::len), Some(3));
@@ -620,17 +748,17 @@ fn a_glob_load_is_sorted_and_relative_to_the_file_that_makes_it() {
     write(
         dir.path(),
         "conf.d/20-b.lua",
-        "gnoblin.configure { cursor = { size = 20 } }\ngnoblin.load(\"deeper/x.lua\")\n",
+        "gnoblin.configure { workspaces = { { id = \"b\", name = \"B\" } } }\ngnoblin.load(\"deeper/x.lua\")\n",
     );
     write(
         dir.path(),
         "conf.d/10-a.lua",
-        "gnoblin.configure { cursor = { size = 10, theme = \"a\" } }\n",
+        "gnoblin.configure { workspaces = { { id = \"a\", name = \"A\" } } }\n",
     );
     write(
         dir.path(),
         "conf.d/deeper/x.lua",
-        "gnoblin.configure { cursor = { theme = \"deep\" } }\n",
+        "gnoblin.configure { workspaces = { { id = \"deep\", name = \"Deep\" } } }\n",
     );
     write(dir.path(), "conf.d/readme.md", "not lua\n");
     let (code, out, err) = migrate(&init, &["--json"]);
@@ -640,9 +768,8 @@ fn a_glob_load_is_sorted_and_relative_to_the_file_that_makes_it() {
         document["sources"],
         json!(["init.lua", "conf.d/10-a.lua", "conf.d/20-b.lua", "conf.d/deeper/x.lua"])
     );
-    // Load order decides: 20-b sets the size after 10-a, and the file it loads sets the theme last.
-    assert_eq!(
-        plan(dir.path())["document"]["cursor"],
-        json!({ "size": 20, "theme": "deep" })
-    );
+    // Load order decides: each file declares the workspaces again and the last list stands, so the file the second
+    // file loads wins.
+    let ts = fs::read_to_string(dir.path().join("init.ts")).expect("init.ts");
+    assert_eq!(workspace_ids(&world(&ts, "")), ["deep"]);
 }

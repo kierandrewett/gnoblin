@@ -49,6 +49,9 @@ gnoblin-schema = { path = "../gnoblin-schema" }
 gnoblin-testkit = { path = "../gnoblin-testkit" }
 # The console tests listen on a socket in a directory of their own.
 tempfile = "3.23.0"
+# `config_migrate.rs` boots the shell over an inert tree to compare the world a converted config builds with the
+# starter's.
+gnoblin-tree-client.workspace = true
 
 [lints]
 workspace = true

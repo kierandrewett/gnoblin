@@ -1,13 +1,14 @@
 //! `config migrate`: an `init.lua` becomes an `init.ts`.
 //!
 //! The conversion is `gnoblin-config-migrate`, a pure function of the Lua text. This module is the I/O around it: it
-//! finds the file, reads it and the files it loads, refuses to overwrite, writes `init.ts` and the editor files, loads
-//! the result once with the runtime's own `defineConfig` so a file that would not load is said so, and prints the
-//! report. It links no Lua host: the converter reads Lua as text and never runs it, so the command keeps working when
-//! the Lua shell is gone.
+//! finds the file, reads it and the files it loads, refuses to overwrite, writes `init.ts` and the editor files, runs
+//! the result once in the dry-run host (the evaluation `check` makes) so a file that would not load is said so, and
+//! prints the report. It links no Lua host: the converter reads Lua as text and never runs it, so the command keeps
+//! working when the Lua shell is gone.
 //!
-//! Exit codes: 0 when everything converted, 1 when the file was written but something was left out (or the converted
-//! file does not load), 2 when nothing was written because the command line or the files were wrong.
+//! Exit codes: 0 when everything converted, 1 when the file was written but something was left out (the file then
+//! starts with `// INCOMPLETE: N unmapped settings, see comments`) or the converted file does not load, 2 when nothing
+//! was written because the command line or the files were wrong.
 
 use std::fs;
 use std::io::{self, IsTerminal, Write};
@@ -222,8 +223,8 @@ pub(crate) fn run(request: &MigrateRequest, out: &mut dyn Write, err: &mut dyn W
             );
         }
     };
-    // The converted text is loaded once with the runtime's own `defineConfig`, before it is written.
-    let load_problem = js::validate_define_config(&output.typescript).err();
+    // The converted text is run once in the dry-run host, before it is written.
+    let load_problem = js::validate_config(&output.typescript).err();
 
     if request.dry_run {
         return report_dry_run(request, &output, load_problem.as_deref(), out, err);
@@ -315,12 +316,9 @@ fn next_steps(target: &Path, lua: &Path) -> Vec<String> {
 fn converted_pairs(output: &MigrationOutput) -> Vec<(&'static str, usize)> {
     let counts = &output.report.converted;
     [
-        ("settings", counts.settings),
         ("workspaces", counts.workspaces),
         ("keys", counts.keys),
-        ("autostart", counts.autostart),
         ("rules", counts.rules),
-        ("workspace sets", counts.workspace_sets),
         ("options", counts.options),
     ]
     .into_iter()
@@ -335,7 +333,7 @@ fn report_text(output: &MigrationOutput, load_problem: Option<&str>, theme: &Out
     text.push_str(&section(theme, "Converted"));
     text.push('\n');
     if pairs.is_empty() {
-        text.push_str("nothing: the files hold no setting, shortcut, workspace, autostart entry or rule\n");
+        text.push_str("nothing: the files hold no workspace, shortcut or window rule\n");
     } else {
         let owned: Vec<(String, String)> = pairs
             .iter()
@@ -384,12 +382,9 @@ fn json_report(output: &MigrationOutput, load_problem: Option<&str>) -> serde_js
     json!({
         "sources": output.report.sources,
         "converted": {
-            "settings": counts.settings,
             "workspaces": counts.workspaces,
             "keys": counts.keys,
-            "autostart": counts.autostart,
             "rules": counts.rules,
-            "workspace_sets": counts.workspace_sets,
             "options": counts.options,
         },
         "unmapped": output.report.unmapped.iter().map(|item| json!({

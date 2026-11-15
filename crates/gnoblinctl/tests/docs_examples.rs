@@ -382,9 +382,9 @@ fn is_whole_file(sample: &str) -> bool {
     first.starts_with("import ") || first.starts_with("export ")
 }
 
-/// Every complete `ts` sample of the config docs is a file `gnoblinctl check` accepts and whose `defineConfig` the
-/// shell's own library accepts. A sample whose first line is `// name.ts` is a file that the next complete sample of
-/// the page imports.
+/// Every complete `ts` sample of the config docs is a file `gnoblinctl check` accepts: it runs in the dry-run host, the
+/// shell's own library over an inert tree, so a name the shell does not export, a refused value and a throw are all
+/// failures. A sample whose first line is `// name.ts` is a file that the next complete sample of the page imports.
 #[test]
 fn every_complete_typescript_sample_in_the_config_docs_checks() {
     let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../"));
@@ -422,10 +422,6 @@ fn every_complete_typescript_sample_in_the_config_docs_checks() {
             let (code, out, err) = run_without_session(&["check", &path]);
             if code != 0 {
                 failures.push(format!("{name}:{line}: `gnoblinctl check` exits {code}\n{out}{err}"));
-                continue;
-            }
-            if let Err(error) = gnoblin_js::evaluate_document(&entry) {
-                failures.push(format!("{name}:{line}: the config is refused: {error}"));
             }
         }
     }

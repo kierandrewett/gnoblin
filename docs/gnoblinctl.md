@@ -234,7 +234,11 @@ request reloads the document alone.
 `gnoblinctl config init` writes a short, commented `init.ts` into the config directory. That is `$XDG_CONFIG_HOME/gnoblin`
 or `~/.config/gnoblin`, and `DIR` names another.
 
-It also runs `gnoblinctl types init`, so an editor completes the keys. Then it prints three steps: open the file, check
+The file is the stock desktop written as statements against the shell's objects: four floating workspaces added with
+`gnoblin.workspaces.add`, the titlebar, window menu and alert, and the stock keys bound with `input.bind`. It is the
+statements the shell runs when there is no `init.ts`, so deleting one removes that part of the desktop.
+
+It also runs `gnoblinctl types init`, so an editor completes the names. Then it prints three steps: open the file, check
 it, and save it to reload.
 
 ```sh
@@ -265,11 +269,18 @@ With `--json` it prints `init`, `replaced`, `types`, `tsconfig`, `tsconfig_creat
 never runs it, so it needs no session.
 
 The `shell.lua` beside an `init.lua`, and every file a `gnoblin.load` names, are read too and become one `init.ts`, with
-a comment for each file. See [the converter](migrating-from-lua.md#the-converter) for what it converts and what it
-leaves out.
+a comment for each file. The output is statements against the shell's objects, not a config object:
 
-It runs `gnoblinctl types init` on the directory it wrote to, loads the converted file once with the shell's own
-`defineConfig` before it writes, and prints what converted, what was left out and three steps.
+- Workspaces are `gnoblin.workspaces.add(new Workspace(...))` and shortcuts are `input.bind(...)`.
+- A window rule is a style on a selection or a listener.
+- The stock desktop is written out too, because an `init.ts` replaces the stock default.
+
+See [the converter](migrating-from-lua.md#the-converter) for what it converts, and
+[the settings with no TypeScript home yet](migrating-from-lua.md#settings-with-no-typescript-home-yet) for what it
+leaves out and why.
+
+It runs `gnoblinctl types init` on the directory it wrote to, runs the converted file once in the dry-run shell (the
+evaluation `gnoblinctl check` makes) before it writes, and prints what converted, what was left out and three steps.
 
 ```sh
 gnoblinctl config migrate
@@ -282,15 +293,17 @@ ok  tsconfig.json created: /home/me/.config/gnoblin/tsconfig.json
 
 Converted
 ---------
-settings    19
 workspaces  4
 keys        7
 
-Left out (1)
+Left out (2)
 ------------
 warn  init.lua:31  gnoblin.on("gnoblin.window.created", function(w) ...
-      an event handler runs code: write `on: { clientAdded(client) {} }` or a `ClientListener`
+      an event handler runs code: write a `ClientListener` and attach it with `gnoblin.clients.addListener`
       see docs/migrating-from-lua.md#what-the-converter-cannot-do
+warn  config/10-windows.lua:5  ["focus-mode"] = "click"
+      `window-management.focus-mode` has no TypeScript home yet: the specification has no focus policy on the seat; the runtime keeps click focus, new windows focused and raise on click
+      see docs/migrating-from-lua.md#settings-with-no-typescript-home-yet
 
 Next:
   1. Review /home/me/.config/gnoblin/init.ts: each UNMAPPED comment is something to port by hand.
@@ -301,10 +314,11 @@ Next:
 The exit code says how it went:
 
 - 0: everything converted.
-- 1: the file was written and something was left out, or the converted file did not load.
+- 1: the file was written and something was left out, or the converted file did not load. A file with something left out
+  starts with `// INCOMPLETE: N unmapped settings, see comments`, and each setting is an `UNMAPPED` comment.
 - 2: nothing was written. The command line was wrong, a file could not be read, the Lua does not parse, or a file is in
   the way. The command stops instead of replacing an existing `OUT`, and instead of writing an `init.ts` beside an
-  `init.js`, unless you add `--force`.
+  `init.js`, unless you add `--force`. `--force` replaces that file and nothing else: the Lua files are only read.
 
 Three options change what it does:
 
@@ -320,7 +334,7 @@ Three options change what it does:
 `gnoblinctl check FILE` checks a configuration file without a session. The
 extension decides what it does:
 
-- A `.ts`, `.mts`, `.js` or `.mjs` file is loaded through the shell runtime's
+- A `.ts`, `.mts`, `.js` or `.mjs` file is run in the [dry-run shell](#the-dry-run-shell), through the shell runtime's
   own module loader.
 - Any other file is checked as `gnoblinctl config validate FILE` checks it.
 
@@ -332,16 +346,17 @@ gnoblinctl check init.ts
 ```
 
 ```text
-ok  init.ts  module graph loads (2 files)
+ok  init.ts  loads in the dry-run shell
 ```
 
 ### What a module check finds
 
-The module loads in a throwaway runtime with a one second budget. It reports:
+The module runs in a throwaway shell with a one second budget. It reports:
 
 - a syntax error
-- an import that does not resolve
+- an import that does not resolve, or a name the `gnoblin` module does not export
 - an import cycle that fails
+- a value, trigger or object the shell refuses
 - a throw at the top level
 
 Each is `file:line:column` in the `.ts` text you wrote, in an error block on
@@ -363,12 +378,35 @@ hint:  import `./` or `../` paths under the config directory, or `gnoblin`
 ```
 
 An import that nothing in the file uses is dropped when types are stripped, as
-TypeScript drops it, so the check never loads it.
+TypeScript drops it, so the check never loads it. `--types` does check it.
 
-The throwaway runtime has no compositor. The `gnoblin` imports and the global
-`gnoblin` are bound to an inert value that accepts any use. The check covers
-your own code and not the names you take from the shell. A wrong name from
-`gnoblin` is for `--types` to find.
+A name the `gnoblin` module does not export, and a value or a trigger the shell
+refuses, are reported the way a session reports them:
+
+```text
+error: gnoblin/bindings:316:110: binding "bind-2:Super+k" conflicts with
+       "bind-1:Super+k": both match Super+k at priority 0; give one a different
+       priority or trigger
+hint:  the module threw while loading, before any handler could run
+```
+
+### The dry-run shell
+
+`check` runs the file in the dry-run shell: the same evaluation the services
+role makes of an `init.ts` before the runtime has committed anything. It is the
+shell's own library and objects over a tree with a root and one seat, and no
+windows, outputs or devices.
+
+A file that builds workspaces, binds keys and attaches listeners loads as
+written. Nothing starts: no program is spawned and no key is claimed.
+
+A file that reads live state sees that empty world. Counting windows, walking
+`gnoblin.clients` and asking for the focused window all work, and answer that
+there is none.
+
+A file that assumes a window or an output is there, and reads a property of it,
+throws, as it does in a session with none. The `gnoblin` module is the real one
+and not a stand-in, so the names you import from it must exist.
 
 ### Type checking
 

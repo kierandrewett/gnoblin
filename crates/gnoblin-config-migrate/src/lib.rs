@@ -5,24 +5,29 @@
 //! fetched through a [`ConfigSourceLoader`], which the command implements over the directory and a test implements
 //! over a map.
 //!
-//! # What is converted
+//! # What the output is
 //!
-//! The data a config holds, exactly: `gnoblin.configure` tables (nested tables, strings, numbers, booleans, lists,
-//! values bound to a `local`, the arithmetic of numbers, the concatenation of strings), the `shortcuts` and
-//! `keybindings` sections as `keys`, `autostart`, `workspaces`, `touchpad-gestures`, the files `gnoblin.load` names,
-//! and in a shell file the `seat.data` assignments that have a `defineConfig` key: `window_rules` as `rules`,
-//! `workspace_sets`, `alerts`, and the seat's `edge_tiling` and `drag_constraint`. Section and setting names become
-//! camelCase when `defineConfig` reads the new spelling back as the old one. A Lua pattern in a rule becomes a glob or
-//! a RegExp when it has an exact equivalent ([`translate_lua_pattern`]); a chord becomes a trigger
-//! ([`translate_chord`]).
+//! Statements against the specification's objects, in the style of the owner's reference `init.js`, not a config
+//! object: `new Workspace({ id, name, layout })` and `gnoblin.workspaces.add` for the `workspaces`,
+//! `gnoblin.input.primary.bind(trigger, () => gnoblin.spawn([...]))` for the `shortcuts` and `keybindings`, and for a
+//! window rule of a shell file a `gnoblin.clients.where({ appId }).style` (opacity on an exact match) or a
+//! `CollectionListener` (workspace, maximised, fullscreen and opacity, on an app id or a title). A Lua pattern in a rule
+//! becomes a comparison or a RegExp when it has an exact equivalent ([`translate_lua_pattern`]); a chord becomes a
+//! trigger ([`translate_chord`]). The seat's `alerts` switch decides whether the not-responding alert is started.
+//!
+//! An `init.ts` replaces the stock default instead of layering over it, so the output also writes the stock desktop
+//! out, minus the keys and workspaces the Lua config set itself.
 //!
 //! # What is reported
 //!
-//! Everything else. A statement the converter cannot evaluate is left out of the TypeScript and written there as an
-//! `UNMAPPED (file:line)` comment with its source text, and is listed in the [`MigrationReport`] with its line, why
-//! and where the migration page says what to do. The same goes for one field of a table that cannot be evaluated: the
-//! fields around it still convert. A thing that converts to something `defineConfig` would refuse (a duplicate
-//! trigger, a rule for a workspace the config does not declare) is left out the same way, so the output loads.
+//! Everything else. A statement the converter cannot evaluate, and every setting of a section the specification has no
+//! home for (`autostart`, `touchpad-gestures`, `workspace_sets`, the `edge_tiling` and `drag_constraint` of the seat,
+//! and the settings of the document's other sections), is left out of the TypeScript and written there as an
+//! `UNMAPPED (file:line)` comment with its source text, and is listed in the [`MigrationReport`] with its line, why and
+//! where the migration page says what to do. A setting with no home says what a home would need. The first line of the
+//! output is `// INCOMPLETE: N unmapped settings, see comments` whenever N is not zero. A thing that converts to
+//! something the shell would refuse (a duplicate trigger, a rule for a workspace the config does not declare) is left
+//! out the same way, so the output loads.
 //!
 //! # Failure modes first
 //!
@@ -31,21 +36,20 @@
 //!    `every_unmapped_construct_is_in_the_output_and_the_report` counts both.
 //! 2. **A rule matches more than the author wrote.** A match key or pattern with no exact equivalent leaves the whole
 //!    rule out; it is never loosened (`a_rule_with_a_pattern_that_has_no_equivalent_is_left_out_whole`).
-//! 3. **A setting changes name.** A key is camelCased only when `defineConfig` turns it back into the same key
-//!    (`names::camel_case`).
-//! 4. **The output does not load.** A duplicate trigger, a duplicate autostart command, a rule or a set that names a
-//!    workspace the config does not declare, and a rule with no query or no action are each left out and reported;
-//!    the `gnoblinctl` tests load the converted starter and a config of every construct with the runtime's own
-//!    `defineConfig`.
+//! 3. **A key is bound twice.** `input.bind` refuses a second binding of one trigger, so the stock keys the config
+//!    rebinds are not written, and a trigger the config binds twice is left out and reported.
+//! 4. **The output does not load.** A duplicate trigger, a rule that names a workspace the config does not declare,
+//!    and a rule with no query or no action are each left out and reported; the `gnoblinctl` tests load the converted
+//!    starter and a config of every construct in the shell's dry-run host.
 //! 5. **A glob loads files the Lua host would not.** The command expands `gnoblin.load` against the directory of the
 //!    file that wrote it, sorted, as the Lua host did ([`resolve_load_path`], [`glob_matches`]).
 
 mod chord;
+mod emit;
 mod engine;
 mod lua;
 mod names;
 mod pattern;
-mod value;
 
 pub use chord::{ChordTranslation, translate_chord};
 pub use pattern::{PatternTranslation, translate_lua_pattern};
@@ -70,19 +74,13 @@ pub trait ConfigSourceLoader {
 /// How much of the config was converted.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ConvertedCounts {
-    /// Settings of the compositor's sections and touchpad gestures.
-    pub settings: usize,
-    /// Workspaces.
+    /// Workspaces, now `gnoblin.workspaces.add` statements.
     pub workspaces: usize,
-    /// Shortcuts, now entries of `keys`.
+    /// Shortcuts, now `input.bind` statements.
     pub keys: usize,
-    /// Autostart commands.
-    pub autostart: usize,
-    /// Window rules.
+    /// Window rules that became a style or a listener.
     pub rules: usize,
-    /// Workspace sets.
-    pub workspace_sets: usize,
-    /// `alerts`, `edgeTiling` and `dragConstraint`.
+    /// The seat's `alerts` switch, which decides whether the not-responding alert is started.
     pub options: usize,
 }
 

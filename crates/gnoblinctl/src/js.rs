@@ -1,49 +1,31 @@
 //! `check` for a TypeScript or JavaScript module, and `types init`.
 //!
-//! `check FILE` loads the module graph with the runtime's own resolver, loader and TypeScript
-//! stripper in a throwaway generation, so a syntax error, an import that does not resolve, a
-//! cycle that fails and a top-level throw are reported at the line the author wrote, in `.ts`
-//! coordinates. It needs no session and no Node. `--types` then runs an external type
-//! checker when one is installed; none is embedded (design/js-research/ts-in-quickjs.md,
+//! `check FILE` runs the module in the dry-run host, the evaluation `gnoblin_js::evaluate_document` makes for the
+//! services role: the shell's own library and objects over an inert tree (the root and one seat, no windows, no
+//! outputs). A spec-style `init.ts` that builds workspaces, binds keys and attaches listeners loads as written, and
+//! what a session refuses is refused here: a syntax error, an import that does not resolve, a name the `gnoblin`
+//! module does not export, a bad trigger, a refused value and a top-level throw, all at the line the author wrote, in
+//! `.ts` coordinates. It needs no session and no Node. A file that reads live state sees an empty world. `--types` then
+//! runs an external type checker when one is installed; none is embedded (design/js-research/ts-in-quickjs.md,
 //! section 6), and a machine without one skips that step with a plain line and exit 0.
-//!
-//! The throwaway generation has no host: the compositor's objects do not exist while checking.
-//! A module that imports `gnoblin` or `gnoblin/<module>`, or reads the global `gnoblin`, would
-//! fail on that alone, so those names are bound to an inert stub that accepts any use. That keeps
-//! the check to the author's own code. What the stub cannot catch (a wrong member of `gnoblin`)
-//! is what `--types` is for.
 
-use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
 
 use gnoblin_cli_style::{
     ColorChoice, ErrorReport, LineOutcome, OutputEnvironment, OutputTheme, error_block, status_line,
 };
 use gnoblin_config::SearchPaths;
-use gnoblin_js::rquickjs::Value;
-use gnoblin_js::{JsConfig, JsError, JsErrorKind, JsGeneration, STARTER_CONFIG};
+use gnoblin_js::{JsError, JsErrorKind, STARTER_CONFIG};
 use gnoblin_js_types::{TSCONFIG_FILE, TYPES_FILE, ensure_user_files};
 use serde_json::{Value as Json, json};
 
 /// The extensions the shell runtime loads as modules, and so the ones `check` sends down the
 /// JavaScript path. Anything else keeps the configuration check.
 const MODULE_EXTENSIONS: &[&str] = &["ts", "mts", "js", "mjs"];
-
-/// The wall-clock budget for one evaluation. A configuration's top level only declares things, so
-/// a second is far more than it needs, and a loop that never ends is reported quickly.
-const CHECK_BUDGET: Duration = Duration::from_secs(1);
-
-/// The heap limit for a check, in bytes. Smaller than the runtime's: nothing here is a real session.
-const CHECK_MEMORY: usize = 32 << 20;
-
-/// How many host names one check will stub before it gives up. Each round learns one name, so this
-/// bounds a module that imports a very long list from `gnoblin`.
-const MAX_STUB_ROUNDS: usize = 512;
 
 /// The tools `--types` looks for on `PATH`, best first.
 const TSC_NAMES: &[&str] = &["tsc", "tsc6", "tsgo"];
@@ -52,16 +34,6 @@ const TSC_NAMES: &[&str] = &["tsc", "tsc6", "tsgo"];
 const NO_TSC: &str =
     "type check skipped: no TypeScript compiler found; install one with `npm i -g typescript` or set GNOBLIN_TSC";
 
-/// An inert value that accepts any property read, call or construction and returns itself, so the
-/// author's top-level code can use `gnoblin` without a host. `then` reads as undefined so awaiting it
-/// does not hang, `Symbol.iterator` is an empty sequence so `for (const device of gnoblin.input.devices)` runs no
-/// iteration, and other symbols read as undefined.
-const STUB: &str = "const stub = new Proxy(function () {}, {\n\
-    get: (_, key) => key === 'then' ? undefined : key === Symbol.toPrimitive ? () => '' : key === Symbol.iterator ? () => [][Symbol.iterator]() : typeof key === 'symbol' ? undefined : stub,\n\
-    apply: () => stub,\n\
-    construct: () => stub,\n\
-});\n";
-
 /// Whether `check` runs `path` through the JavaScript runtime rather than the configuration check.
 pub(crate) fn is_module(path: &Path) -> bool {
     path.extension()
@@ -69,20 +41,20 @@ pub(crate) fn is_module(path: &Path) -> bool {
         .is_some_and(|extension| MODULE_EXTENSIONS.contains(&extension))
 }
 
-/// `check FILE` for a module: the module graph, then the types when asked.
+/// `check FILE` for a module: the dry-run host, then the types when asked.
 pub(crate) fn check(file: &Path, types: bool, json: bool, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let theme = theme(io::stderr().is_terminal());
-    let graph = load_graph(file);
+    let loaded = evaluate(file);
     let checked = if types {
         Some(type_check(file, &TscSearch::from_environment(file)))
     } else {
         None
     };
-    let code = u8::from(graph.is_err() || checked.as_ref().is_some_and(|checked| !checked.passed()));
+    let code = u8::from(loaded.is_err() || checked.as_ref().is_some_and(|checked| !checked.passed()));
     let written = if json {
-        write_json(file, &graph, checked.as_ref(), out)
+        write_json(file, &loaded, checked.as_ref(), out)
     } else {
-        write_text(file, &graph, checked.as_ref(), out, err, &theme)
+        write_text(file, &loaded, checked.as_ref(), out, err, &theme)
     };
     if written.is_err() {
         return 1;
@@ -95,121 +67,25 @@ pub(crate) fn theme(is_terminal: bool) -> OutputTheme {
     OutputTheme::resolve(ColorChoice::Auto, &OutputEnvironment::detect(is_terminal))
 }
 
-/// Load `file` and everything it imports in a throwaway generation. Returns how many files the graph
-/// holds, or the first problem.
-fn load_graph(file: &Path) -> Result<usize, JsError> {
-    let unreadable = |reason: String| JsError {
-        kind: JsErrorKind::Load,
-        message: format!("cannot read {}: {reason}", file.display()),
-        location: None,
-        stack: None,
-    };
-    let entry = std::fs::canonicalize(file).map_err(|error| unreadable(error.to_string()))?;
-    let root = entry
-        .parent()
-        .ok_or_else(|| unreadable("it has no directory".to_owned()))?;
-    // Names the author imports from the host, learned one round at a time: see `host_gap`.
-    let mut stubs: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    for _ in 0..MAX_STUB_ROUNDS {
-        let mut config = JsConfig::new(root);
-        config.stage_budget = CHECK_BUDGET;
-        config.memory_limit = CHECK_MEMORY;
-        for (module, names) in &stubs {
-            config = config.embed(module.as_str(), stub_module(names));
-        }
-        let generation = JsGeneration::new(&config, 1)?;
-        generation.call_budgeted(CHECK_BUDGET, |ctx| {
-            ctx.eval::<Value<'_>, _>(format!("{STUB}globalThis.gnoblin = stub;"))
-                .map(drop)
-        })?;
-        match generation.eval_module(&entry) {
-            Ok(()) => return Ok(generation.module_paths().len()),
-            Err(error) => match host_gap(&error) {
-                Some(HostGap::Module(module)) => {
-                    stubs.entry(module).or_default();
-                }
-                Some(HostGap::Export { module, name }) => {
-                    stubs.entry(module).or_default().insert(name);
-                }
-                None => return Err(error),
-            },
-        }
-    }
-    Err(JsError {
-        kind: JsErrorKind::Load,
-        message: format!(
-            "{} imports more than {MAX_STUB_ROUNDS} names from the shell modules",
-            file.display()
-        ),
-        location: None,
-        stack: None,
-    })
+/// Runs `file` in the dry-run host: `gnoblin_js::evaluate_document`, the same evaluation the services role makes of an
+/// `init.ts` before the runtime has committed anything. The shell's own library and objects run over an inert tree (the
+/// root and one seat, no windows, no outputs), so a spec-style file loads as written and every check a session makes
+/// is made here: a syntax error, an import that does not resolve, a name the `gnoblin` module does not export, a bad
+/// trigger, a refused value, a throw. Nothing starts and nothing is bound.
+///
+/// A file that decides something from live state sees an empty world, as it does at first boot. Reading a count or
+/// walking a collection is fine; dereferencing the first window is a throw, as it is in a session with no windows.
+fn evaluate(file: &Path) -> Result<(), JsError> {
+    gnoblin_js::evaluate_document(file).map(drop)
 }
 
-/// Loads `source` as an `init.ts` in the dry-run host (`gnoblin_js::evaluate_document`: the shell's own stock library
-/// and objects over an inert tree), so every check a session runs runs here: an unknown key, a bad trigger, a refused
-/// document setting. `check` cannot do this, because it stubs the `gnoblin` module out to stay tolerant of configs that
-/// read live state. Returns the first problem as `file:line:column: message`.
-pub(crate) fn validate_define_config(source: &str) -> Result<(), String> {
+/// Loads `source` as an `init.ts` in the dry-run host before a command writes it, so a file that would not load is said
+/// so and not found at the next login. Returns the first problem as `file:line:column: message`.
+pub(crate) fn validate_config(source: &str) -> Result<(), String> {
     let scratch = Scratch::new().map_err(|error| format!("cannot make a scratch directory: {error}"))?;
     let entry = scratch.0.join(INIT_FILE);
     std::fs::write(&entry, source).map_err(|error| format!("cannot write {}: {error}", entry.display()))?;
-    gnoblin_js::evaluate_document(&entry)
-        .map(drop)
-        .map_err(|error| describe(&error))
-}
-
-/// The source of an inert host module exporting `names` and a default.
-fn stub_module(names: &BTreeSet<String>) -> String {
-    let exports: String = names
-        .iter()
-        .map(|name| format!("export const {name} = stub;\n"))
-        .collect();
-    format!("{STUB}export default stub;\n{exports}")
-}
-
-/// Something the host would have provided that the check has not stubbed yet.
-#[derive(Debug, PartialEq, Eq)]
-enum HostGap {
-    /// A `gnoblin` or `gnoblin/<module>` import with no module behind it.
-    Module(String),
-    /// A named import the stub for `module` does not export yet.
-    Export { module: String, name: String },
-}
-
-/// What `error` says about a host module the check has not stubbed, if it is that and not a fault in the
-/// author's code.
-///
-/// The runtime reports both cases as text: its own wording for a module no host registered, and the
-/// engine's for a named import the module does not export. Only the `gnoblin` family and an
-/// identifier name are taken, so an import of a missing export from the author's own file is reported.
-fn host_gap(error: &JsError) -> Option<HostGap> {
-    let message = error.message.as_str();
-    let host = |module: &str| module == "gnoblin" || module.starts_with("gnoblin/");
-    if error.kind == JsErrorKind::Load {
-        let module = between(message, "no embedded module named `", "`")?;
-        return host(module).then(|| HostGap::Module(module.to_owned()));
-    }
-    // The engine capitalises its message; ASCII lowercasing keeps every byte offset.
-    let lower = message.to_ascii_lowercase();
-    let start = lower.find("could not find export '")? + "could not find export '".len();
-    let name = between(&message[start - 1..], "'", "'")?;
-    let after = &message[start + name.len()..];
-    let module = between(after, "in module '", "'")?;
-    let identifier = !name.is_empty()
-        && !name.starts_with(|c: char| c.is_ascii_digit())
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
-    (host(module) && identifier).then(|| HostGap::Export {
-        module: module.to_owned(),
-        name: name.to_owned(),
-    })
-}
-
-/// The text of `text` between the first `open` and the next `close` after it.
-fn between<'a>(text: &'a str, open: &str, close: &str) -> Option<&'a str> {
-    let from = text.find(open)? + open.len();
-    let length = text[from..].find(close)?;
-    Some(&text[from..from + length])
+    evaluate(&entry).map_err(|error| describe(&error))
 }
 
 /// A path as the user would type it: relative to the working directory when it is under it.
@@ -259,19 +135,18 @@ fn kind_word(kind: JsErrorKind) -> &'static str {
 /// the type checker's own words wherever it wrote them.
 fn write_text(
     file: &Path,
-    graph: &Result<usize, JsError>,
+    loaded: &Result<(), JsError>,
     types: Option<&TypeCheck>,
     out: &mut dyn Write,
     err: &mut dyn Write,
     theme: &OutputTheme,
 ) -> io::Result<()> {
-    match graph {
-        Ok(files) => {
-            let noun = if *files == 1 { "file" } else { "files" };
+    match loaded {
+        Ok(()) => {
             let line = status_line(
                 &self::theme(io::stdout().is_terminal()),
                 LineOutcome::Ok,
-                &format!("{}  module graph loads ({files} {noun})", shown(file)),
+                &format!("{}  loads in the dry-run shell", shown(file)),
             );
             writeln!(out, "{line}")?;
         }
@@ -306,12 +181,12 @@ fn write_text(
 /// Print the result as one JSON document. The type checker's output is carried as text.
 fn write_json(
     file: &Path,
-    graph: &Result<usize, JsError>,
+    loaded: &Result<(), JsError>,
     types: Option<&TypeCheck>,
     out: &mut dyn Write,
 ) -> io::Result<()> {
-    let mut document = match graph {
-        Ok(files) => json!({"ok": true, "file": file, "files": files, "problems": []}),
+    let mut document = match loaded {
+        Ok(()) => json!({"ok": true, "file": file, "problems": []}),
         Err(error) => json!({
             "ok": false,
             "file": file,
@@ -326,7 +201,7 @@ fn write_json(
     };
     if let Some(types) = types {
         document["types"] = types.json();
-        document["ok"] = Json::Bool(graph.is_ok() && types.passed());
+        document["ok"] = Json::Bool(loaded.is_ok() && types.passed());
     }
     writeln!(out, "{document}")
 }
@@ -737,15 +612,6 @@ pub(crate) fn config_init(dir: Option<&Path>, force: bool, json: bool, out: &mut
 mod tests {
     use super::*;
 
-    fn error(kind: JsErrorKind, message: &str) -> JsError {
-        JsError {
-            kind,
-            message: message.to_owned(),
-            location: None,
-            stack: None,
-        }
-    }
-
     #[test]
     fn only_module_extensions_take_the_javascript_path() {
         for name in ["init.ts", "a/b.mjs", "x.js", "y.mts"] {
@@ -754,46 +620,6 @@ mod tests {
         for name in ["init.lua", "config.json", "init", "init.tsx.bak"] {
             assert!(!is_module(Path::new(name)), "{name}");
         }
-    }
-
-    #[test]
-    fn an_unregistered_host_module_is_a_gap_and_another_bare_import_is_not() {
-        let gap = host_gap(&error(JsErrorKind::Load, "no embedded module named `gnoblin/layouts`"));
-        assert_eq!(gap, Some(HostGap::Module("gnoblin/layouts".to_owned())));
-        let other = error(
-            JsErrorKind::Load,
-            "cannot resolve `lodash`: only `./` and `../` paths and embedded modules such as `gnoblin` can be imported",
-        );
-        assert_eq!(host_gap(&other), None);
-    }
-
-    #[test]
-    fn a_missing_host_export_is_a_gap_and_a_missing_local_export_is_not() {
-        let host = error(
-            JsErrorKind::Exception,
-            "Could not find export 'defineConfig' in module 'gnoblin'",
-        );
-        assert_eq!(
-            host_gap(&host),
-            Some(HostGap::Export {
-                module: "gnoblin".to_owned(),
-                name: "defineConfig".to_owned()
-            })
-        );
-        let local = error(
-            JsErrorKind::Exception,
-            "Could not find export 'x' in module '/tmp/c/x.ts'",
-        );
-        assert_eq!(host_gap(&local), None);
-    }
-
-    #[test]
-    fn the_stub_exports_a_default_and_each_name() {
-        let names: BTreeSet<String> = ["a", "b"].iter().map(|name| (*name).to_owned()).collect();
-        let source = stub_module(&names);
-        assert!(source.contains("export default stub;"), "{source}");
-        assert!(source.contains("export const a = stub;"), "{source}");
-        assert!(source.contains("export const b = stub;"), "{source}");
     }
 
     #[test]

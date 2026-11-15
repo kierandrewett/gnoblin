@@ -1,10 +1,13 @@
-//! Lua key chords to `keys` triggers.
+//! Lua key chords to `input.bind` triggers.
 //!
 //! A Lua shortcut wrote its chord with the modifiers in angle brackets before the key, `<Super><Shift>q`, and a
-//! `defineConfig` key writes them joined by plus, `Super+Shift+q`. Only a chord that has an exact trigger is
-//! translated. A chord on a pointer button, a hardware key code or `Above_Tab` has none, and an upper-case letter is
-//! a different key from the lower-case one in a Lua chord but the same trigger in `defineConfig`, so each of those is
-//! reported with the reason and left for the author.
+//! trigger writes them joined by plus, `Super+Shift+q`. Only a chord that has an exact trigger is translated. A chord
+//! on a pointer button, a hardware key code or `Above_Tab` has none, and an upper-case letter is a different key from
+//! the lower-case one in a Lua chord but the same trigger in `input.bind`, so each of those is reported with the
+//! reason and left for the author.
+
+/// The modifiers in the order a trigger is compared, so `Shift+Super+q` and `Super+Shift+q` are one trigger.
+const MODIFIER_ORDER: &[&str] = &["Shift", "Ctrl", "Alt", "Meta", "Super", "Hyper"];
 
 /// What a Lua chord becomes.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -56,7 +59,7 @@ const XF86_KEYS: &[&str] = &[
     "WWW",
 ];
 
-/// Words that `defineConfig` reads as something other than a key when they stand alone in a trigger.
+/// Words that a trigger reads as something other than a key when they stand alone in it.
 const RESERVED: &[&str] = &[
     "shift",
     "ctrl",
@@ -145,7 +148,7 @@ fn translate(chord: &str) -> Result<String, String> {
     Ok(trigger)
 }
 
-/// The key of a chord as `defineConfig` spells it.
+/// The key of a chord as a trigger spells it.
 fn key_name(name: &str) -> Result<String, String> {
     if let Some(digits) = name.strip_prefix("Button")
         && !digits.is_empty()
@@ -169,7 +172,7 @@ fn key_name(name: &str) -> Result<String, String> {
         && only.is_ascii_uppercase()
     {
         return Err(format!(
-            "the upper-case key {only} is a different key from {} in a chord, and one trigger in defineConfig; write Shift+ and the lower-case letter",
+            "the upper-case key {only} is a different key from {} in a chord, and one trigger in `input.bind`; write Shift+ and the lower-case letter",
             only.to_ascii_lowercase()
         ));
     }
@@ -183,6 +186,21 @@ fn key_name(name: &str) -> Result<String, String> {
         return Ok(format!("XF86{name}"));
     }
     Ok(name.to_owned())
+}
+
+/// A trigger in the form two spellings of one trigger share: the modifiers in a fixed order, a one-letter key in lower
+/// case. `input.bind` refuses a second binding of one trigger, so two keys that canonicalise alike cannot both stand.
+pub(crate) fn canonical_trigger(trigger: &str) -> String {
+    let mut parts: Vec<&str> = trigger.split('+').collect();
+    let key = parts.pop().unwrap_or_default();
+    parts.sort_by_key(|modifier| MODIFIER_ORDER.iter().position(|ordered| ordered == modifier));
+    let key = if key.chars().count() == 1 {
+        key.to_ascii_lowercase()
+    } else {
+        key.to_owned()
+    };
+    parts.push(&key);
+    parts.join("+")
 }
 
 #[cfg(test)]
@@ -229,6 +247,13 @@ mod tests {
         assert_eq!(trigger("F9"), "F9");
         assert_eq!(trigger("Super"), "Super");
         assert_eq!(trigger("<Super>1"), "Super+1");
+    }
+
+    #[test]
+    fn two_spellings_of_one_trigger_share_a_canonical_form() {
+        assert_eq!(canonical_trigger("Shift+Super+Q"), canonical_trigger("Super+Shift+q"));
+        assert_eq!(canonical_trigger("Super+Left"), "Super+Left");
+        assert_ne!(canonical_trigger("Super+Left"), canonical_trigger("Super+left"));
     }
 
     #[test]

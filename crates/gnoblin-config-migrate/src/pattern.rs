@@ -1,9 +1,9 @@
 //! Lua patterns to window-rule patterns.
 //!
-//! A Lua rule matched `app_id` and `title` with a Lua pattern searched anywhere in the text; a `defineConfig` rule
-//! takes a glob (the whole text, `*` and `?`) or a RegExp (searched anywhere). This translates the subset of Lua
-//! patterns that has an exact equivalent and refuses the rest with the reason. A pattern is never approximated: a
-//! rule that matched too much would act on windows the author never named.
+//! A Lua rule matched `app_id` and `title` with a Lua pattern searched anywhere in the text; the converted rule
+//! compares the property with a string (a glob: the whole text, `*` at an end) or a RegExp (searched anywhere). This
+//! translates the subset of Lua patterns that has an exact equivalent and refuses the rest with the reason. A pattern
+//! is never approximated: a rule that matched too much would act on windows the author never named.
 //!
 //! The subset: the anchors `^` and `$`, `.`, a `%` escape of a punctuation character, the classes `%a %d %s %w %l %u
 //! %x` and their upper-case complements (outside a set), the quantifiers `*`, `+`, `-` and `?` on a single item,

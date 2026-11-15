@@ -1,60 +1,126 @@
+// INCOMPLETE: 19 unmapped settings, see comments
 // init.lua converted to TypeScript by `gnoblinctl config migrate`.
-// Review it before you rely on it: the converter copies data and nothing else.
+// Review it before you rely on it: the converter writes what has a TypeScript equivalent and marks the rest.
 // Sources, in load order: init.lua, config/10-windows.lua, config/20-input.lua, config/30-session.lua, config/40-shortcuts.lua.
-import { defineConfig, spawn } from "gnoblin";
+// Each setting it could not carry over is a comment that starts with UNMAPPED, where the Lua put it. The command
+// lists them with a pointer into docs/migrating-from-lua.md, which says what each one needs.
 
-export default defineConfig({
-    // From config/10-windows.lua.
-    windowManagement: {
-        focusMode: "click",
-        focusNewWindows: "allow",
-        raiseOnClick: true,
-        autoRaise: false,
-        autoRaiseDelay: 500,
-        checkAliveTimeout: 5000,
-        focusChangeOnPointerRest: false,
-        edgeTiling: true,
-        attachModalDialogs: true,
-        constrainDragToWorkArea: true,
-        actionDoubleClickTitlebar: "toggle-maximize",
-        actionMiddleClickTitlebar: "none",
-        actionRightClickTitlebar: "menu",
-    },
-    workspaces: [
-        { id: "1", name: "Workspace 1" },
-        { id: "2", name: "Workspace 2" },
-        { id: "3", name: "Workspace 3" },
-        { id: "4", name: "Workspace 4" },
-    ],
-    // From config/20-input.lua.
-    cursor: {},
-    input: {
-        mouse: {},
-        touchpad: {},
-        trackball: {},
-        pointingStick: {},
-        keyboard: {},
-    },
-    // From config/30-session.lua.
-    compositor: {
-        locatePointer: false,
-        locatePointerKey: "Control_L",
-        visualBell: false,
-        audibleBell: true,
-        visualBellType: "fullscreen-flash",
-    },
-    protocols: {},
-    layerShell: {
-        preserveActiveWindow: true,
-    },
-    // From config/40-shortcuts.lua.
-    keys: {
-        XF86AudioRaiseVolume: spawn("wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"),
-        XF86AudioLowerVolume: spawn("wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"),
-        XF86AudioMute: spawn("wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"),
-        XF86AudioMicMute: spawn("wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"),
-        XF86AudioPlay: spawn("playerctl", "play-pause"),
-        XF86AudioNext: spawn("playerctl", "next"),
-        XF86AudioPrev: spawn("playerctl", "previous"),
-    },
+import {
+    FloatingLayout,
+    StripLayout,
+    Workspace,
+    WorkspaceSlideBinding,
+    openLauncher,
+    startDecorations,
+    startNotRespondingAlert,
+    startWindowMenu,
+} from "gnoblin";
+
+const input = gnoblin.input.primary;
+
+// The stock desktop. An init.ts replaces the stock default instead of layering over it, so what the Lua shell
+// kept on its own is written out here. Delete a statement and that part of the desktop is gone.
+
+// A titlebar on every window, the menu the compositor asks for, and the dialog for a window that stops answering.
+startDecorations();
+startWindowMenu();
+startNotRespondingAlert();
+
+// Super+1 .. Super+9 show the workspace at that position on the display the pointer is on. A key past the last
+// workspace does nothing.
+for (let position = 1; position <= 9; position++) {
+    input.bind(`Super+${position}`, () => {
+        const target = gnoblin.workspaces.at(position - 1);
+        if (target !== undefined) {
+            gnoblin.workspaces.show(target, { duration: 0.25 });
+        }
+    });
+}
+
+// Super+Left and Super+Right move the focus between the columns of a StripLayout, and do nothing on other layouts.
+const moveColumn = (side: "focusLeft" | "focusRight") => {
+    const shown = (input.activeDisplay as { viewport: { content: Workspace | null } } | null)?.viewport.content;
+    if (shown?.layout instanceof StripLayout) {
+        shown.layout[side](shown);
+    }
+};
+input.bind("Super+Left", () => moveColumn("focusLeft"));
+input.bind("Super+Right", () => moveColumn("focusRight"));
+
+// Three fingers sliding sideways slide between workspaces.
+input.bind("Swipe3", new WorkspaceSlideBinding());
+
+// Super+space opens the launcher: a command entry in the middle of the screen.
+input.bind("Super+space", () => {
+    openLauncher();
+});
+
+// From config/10-windows.lua.
+// UNMAPPED (config/10-windows.lua:5): ["focus-mode"] = "click"
+// -> `window-management.focus-mode` has no TypeScript home yet: the specification has no focus policy on the seat; the runtime keeps click focus, new windows focused and raise on click
+// UNMAPPED (config/10-windows.lua:6): ["focus-new-windows"] = "allow"
+// -> `window-management.focus-new-windows` has no TypeScript home yet: the specification has no focus policy on the seat; the runtime keeps click focus, new windows focused and raise on click
+// UNMAPPED (config/10-windows.lua:7): ["raise-on-click"] = true
+// -> `window-management.raise-on-click` has no TypeScript home yet: the specification has no focus policy on the seat; the runtime keeps click focus, new windows focused and raise on click
+// UNMAPPED (config/10-windows.lua:8): ["auto-raise"] = false
+// -> `window-management.auto-raise` has no TypeScript home yet: the specification has no focus policy on the seat; the runtime keeps click focus, new windows focused and raise on click
+// UNMAPPED (config/10-windows.lua:9): ["auto-raise-delay"] = 500
+// -> `window-management.auto-raise-delay` has no TypeScript home yet: the specification has no focus policy on the seat; the runtime keeps click focus, new windows focused and raise on click
+// UNMAPPED (config/10-windows.lua:10): ["check-alive-timeout"] = 5000
+// -> `window-management.check-alive-timeout` has no TypeScript home yet: the specification has no compositor-wide settings object, and only the device settings of `input` reach the document
+// UNMAPPED (config/10-windows.lua:11): ["focus-change-on-pointer-rest"] = false
+// -> `window-management.focus-change-on-pointer-rest` has no TypeScript home yet: the specification has no focus policy on the seat; the runtime keeps click focus, new windows focused and raise on click
+// UNMAPPED (config/10-windows.lua:12): ["edge-tiling"] = true
+// -> `window-management.edge-tiling` has no TypeScript home yet: the specification has no snapping policy on the seat or the layout; the runtime keeps edge snapping on
+// UNMAPPED (config/10-windows.lua:13): ["attach-modal-dialogs"] = true
+// -> `window-management.attach-modal-dialogs` has no TypeScript home yet: the specification has no compositor-wide settings object, and only the device settings of `input` reach the document
+// UNMAPPED (config/10-windows.lua:14): ["constrain-drag-to-work-area"] = true
+// -> `window-management.constrain-drag-to-work-area` has no TypeScript home yet: the specification has no snapping policy on the seat or the layout; the runtime keeps edge snapping on
+// UNMAPPED (config/10-windows.lua:16): ["action-double-click-titlebar"] = "toggle-maximize"
+// -> `window-management.action-double-click-titlebar` has no TypeScript home yet: the specification has no compositor-wide settings object, and only the device settings of `input` reach the document
+// UNMAPPED (config/10-windows.lua:17): ["action-middle-click-titlebar"] = "none"
+// -> `window-management.action-middle-click-titlebar` has no TypeScript home yet: the specification has no compositor-wide settings object, and only the device settings of `input` reach the document
+// UNMAPPED (config/10-windows.lua:18): ["action-right-click-titlebar"] = "menu"
+// -> `window-management.action-right-click-titlebar` has no TypeScript home yet: the specification has no compositor-wide settings object, and only the device settings of `input` reach the document
+
+gnoblin.workspaces.add(new Workspace({ id: "1", name: "Workspace 1", layout: new FloatingLayout() }));
+gnoblin.workspaces.add(new Workspace({ id: "2", name: "Workspace 2", layout: new FloatingLayout() }));
+gnoblin.workspaces.add(new Workspace({ id: "3", name: "Workspace 3", layout: new FloatingLayout() }));
+gnoblin.workspaces.add(new Workspace({ id: "4", name: "Workspace 4", layout: new FloatingLayout() }));
+
+// From config/30-session.lua.
+// UNMAPPED (config/30-session.lua:4): ["locate-pointer"] = false
+// -> `compositor.locate-pointer` has no TypeScript home yet: the specification has no compositor-wide settings object, and only the device settings of `input` reach the document
+// UNMAPPED (config/30-session.lua:5): ["locate-pointer-key"] = "Control_L"
+// -> `compositor.locate-pointer-key` has no TypeScript home yet: the specification has no compositor-wide settings object, and only the device settings of `input` reach the document
+// UNMAPPED (config/30-session.lua:6): ["visual-bell"] = false
+// -> `compositor.visual-bell` has no TypeScript home yet: the specification has no compositor-wide settings object, and only the device settings of `input` reach the document
+// UNMAPPED (config/30-session.lua:7): ["audible-bell"] = true
+// -> `compositor.audible-bell` has no TypeScript home yet: the specification has no compositor-wide settings object, and only the device settings of `input` reach the document
+// UNMAPPED (config/30-session.lua:8): ["visual-bell-type"] = "fullscreen-flash"
+// -> `compositor.visual-bell-type` has no TypeScript home yet: the specification has no compositor-wide settings object, and only the device settings of `input` reach the document
+// UNMAPPED (config/30-session.lua:14): ["preserve-active-window"] = true
+// -> `layer-shell.preserve-active-window` has no TypeScript home yet: the specification has no compositor-wide settings object, and only the device settings of `input` reach the document
+
+// From config/40-shortcuts.lua.
+input.bind("XF86AudioRaiseVolume", () => {
+    gnoblin.spawn(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"]);
+});
+input.bind("XF86AudioLowerVolume", () => {
+    gnoblin.spawn(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"]);
+});
+input.bind("XF86AudioMute", () => {
+    gnoblin.spawn(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]);
+});
+input.bind("XF86AudioMicMute", () => {
+    gnoblin.spawn(["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"]);
+});
+input.bind("XF86AudioPlay", () => {
+    gnoblin.spawn(["playerctl", "play-pause"]);
+});
+input.bind("XF86AudioNext", () => {
+    gnoblin.spawn(["playerctl", "next"]);
+});
+input.bind("XF86AudioPrev", () => {
+    gnoblin.spawn(["playerctl", "previous"]);
 });

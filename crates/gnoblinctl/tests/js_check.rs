@@ -89,7 +89,7 @@ fn a_clean_init_with_an_enum_and_a_relative_import_checks_ok() {
     );
     let (code, out, err) = check(&init, &[]);
     assert_eq!(code, 0, "stdout: {out}\nstderr: {err}");
-    assert!(out.contains("2 files"), "{out}");
+    assert!(out.contains("loads in the dry-run shell"), "{out}");
     assert!(err.is_empty(), "{err}");
 }
 
@@ -158,14 +158,29 @@ fn an_endless_top_level_loop_is_stopped_by_the_budget() {
 }
 
 #[test]
-fn the_shell_modules_and_the_global_do_not_need_a_host() {
+fn a_spec_style_init_loads_in_the_dry_run_host() {
     let dir = Dir::new();
     let init = dir.write(
         "init.ts",
-        "import { defineConfig, FloatingLayout } from 'gnoblin';\nimport { grid } from 'gnoblin/layouts';\ngnoblin.on('start', () => {});\nclass Mine extends FloatingLayout {}\nexport default defineConfig({ layout: new Mine(), grid });\n",
+        "import { FloatingLayout, MasterStackLayout, Workspace } from 'gnoblin';\n\nconst input = gnoblin.input.primary;\ngnoblin.workspaces.add(new Workspace({ id: 'web', name: 'Web', layout: new MasterStackLayout() }));\ngnoblin.workspaces.add(new Workspace({ id: 'main', layout: new FloatingLayout() }));\ngnoblin.clients.style.cornerRadius = 12;\ninput.bind('Super+Return', () => {\n    gnoblin.spawn(['foot']);\n});\n",
     );
     let (code, out, err) = check(&init, &[]);
     assert_eq!(code, 0, "stdout: {out}\nstderr: {err}");
+    assert!(out.contains("loads in the dry-run shell"), "{out}");
+    assert!(err.is_empty(), "{err}");
+}
+
+#[test]
+fn a_binding_the_shell_would_refuse_is_refused_here() {
+    // The stub host accepted anything; the dry-run host runs the shell's own checks.
+    let dir = Dir::new();
+    let init = dir.write(
+        "init.ts",
+        "gnoblin.input.primary.bind('Super+k', () => {});\ngnoblin.input.primary.bind('Super+k', () => {});\n",
+    );
+    let (code, _, err) = check(&init, &[]);
+    assert_eq!(code, 1, "{err}");
+    assert!(err.contains("conflicts with") && err.contains("Super+k"), "{err}");
 }
 
 #[test]
@@ -175,6 +190,31 @@ fn an_import_the_shell_does_not_provide_is_still_refused() {
     let (code, _, err) = check(&init, &[]);
     assert_eq!(code, 1, "{err}");
     assert!(err.contains("lodash"), "{err}");
+}
+
+#[test]
+fn a_name_the_gnoblin_module_does_not_export_is_refused_with_the_name() {
+    let dir = Dir::new();
+    let init = dir.write(
+        "init.ts",
+        "import { Workspace, NoSuchLayout } from 'gnoblin';\nexport const w = [Workspace, NoSuchLayout];\n",
+    );
+    let (code, _, err) = check(&init, &[]);
+    assert_eq!(code, 1, "{err}");
+    assert!(err.contains("NoSuchLayout"), "{err}");
+}
+
+#[test]
+fn a_file_that_reads_live_state_sees_an_empty_world_and_loads() {
+    // The dry-run host has a root and a seat and nothing else, as the shell has at first boot: counting windows,
+    // walking a collection and asking for the focused window all work, and answer that there is none.
+    let dir = Dir::new();
+    let init = dir.write(
+        "init.ts",
+        "const seen: string[] = [];\nfor (const client of gnoblin.clients) {\n    seen.push(client.title);\n}\nconst focused = gnoblin.input.primary.focusedClient;\nif (focused === null && gnoblin.clients.length === 0 && seen.length === 0) {\n    gnoblin.input.primary.bind('Super+k', () => {\n        gnoblin.spawn(['foot']);\n    });\n}\n",
+    );
+    let (code, out, err) = check(&init, &[]);
+    assert_eq!(code, 0, "stdout: {out}\nstderr: {err}");
 }
 
 #[test]
@@ -482,21 +522,18 @@ fn the_starter_passes_check_as_written_and_with_every_example_switched_on() {
 }
 
 #[test]
-fn a_wrong_key_or_a_wrong_value_is_a_type_error_when_a_compiler_is_installed() {
+fn a_wrong_property_or_a_wrong_value_is_a_type_error_when_a_compiler_is_installed() {
     let dir = Dir::new();
-    let wrong_key = dir.write(
-        "key/init.ts",
-        "import { defineConfig } from \"gnoblin\";\nexport default defineConfig({ autostrt: [\"waybar\"] });\n",
-    );
+    let wrong_key = dir.write("key/init.ts", "gnoblin.clients.style.cornerRadus = 12;\n");
     let wrong_value = dir.write(
         "value/init.ts",
-        "import { defineConfig } from \"gnoblin\";\nexport default defineConfig({ autostart: [5] });\n",
+        "import { Workspace } from \"gnoblin\";\ngnoblin.workspaces.add(new Workspace({ id: \"a\", layout: \"grid\" }));\n",
     );
-    for (file, named) in [(&wrong_key, "autostrt"), (&wrong_value, "CommandLine")] {
+    for (file, named) in [(&wrong_key, "cornerRadus"), (&wrong_value, "Layout")] {
         let (code, out, err) = check(file, &["--types"]);
         let text = format!("{out}{err}");
         if text.contains("type check skipped") {
-            // No compiler here: the declarations cannot be asked, and the load-time errors are tested in gnoblin-js.
+            // No compiler here: the declarations cannot be asked, and the load-time errors are tested above.
             eprintln!(
                 "no TypeScript compiler on this machine: {} was not type-checked",
                 file.display()

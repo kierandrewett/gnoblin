@@ -22,9 +22,15 @@ gnoblinctl config init [DIR] [--force]
 gnoblinctl config migrate [FILE] [-o OUT] [--force] [--dry-run]
 ```
 
-`config validate`, `config init` and `config migrate` need no running session. `config init` writes a starter `init.ts`.
-`config migrate` converts an `init.lua` to an `init.ts`, and exits 0 when everything converted, 1 when something was left
-out and 2 when nothing was written. See [Convert an init.lua](../gnoblinctl.md#convert-an-initlua).
+`config validate`, `config init` and `config migrate` need no running session. `config init` writes a starter `init.ts`:
+the stock desktop as statements against the shell's objects.
+
+`config migrate` converts an `init.lua` to an `init.ts` in the same style:
+
+- It exits 0 when everything converted, 1 when something was left out and 2 when nothing was written.
+- A file with something left out starts with `// INCOMPLETE: N unmapped settings, see comments`.
+
+See [Convert an init.lua](../gnoblinctl.md#convert-an-initlua).
 
 `config reload` also reloads the `init.ts` of the [TypeScript shell](../typescript-shell.md), and exits 1 with
 `file:line:column` when that file fails to load.
@@ -37,8 +43,8 @@ gnoblinctl check init.ts --types
 gnoblinctl types init [DIR]
 ```
 
-- `check` loads the module graph and reports a syntax error, a missing import
-  or a top-level throw at its `.ts` line.
+- `check` runs the file in the dry-run shell, the shell's own library over an empty tree, and reports a syntax error, a
+  missing import or export, a refused value or trigger and a top-level throw at its `.ts` line.
 - `check --types` also runs an installed TypeScript compiler.
 - `types init` writes `gnoblin.d.ts` and `tsconfig.json` for your editor.
 

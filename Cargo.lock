@@ -2037,6 +2037,7 @@ dependencies = [
  "gnoblin-proto",
  "gnoblin-schema",
  "gnoblin-testkit",
+ "gnoblin-tree-client",
  "prost",
  "serde_json",
  "tempfile",
