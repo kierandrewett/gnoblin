@@ -6110,6 +6110,61 @@ fn a_stock_shell_over_the_real_links_does_no_work_when_nothing_happens() {
     assert_eq!(role.next_wake(), None, "nothing is due");
 }
 
+/// The same rest with the memory publication at its production period. The other tests of this file turn it off (a
+/// publication is a change, and a change is work for the shell, which a test that counts the frames of a quiet shell
+/// cannot allow at a time it does not choose); this one proves what that costs in production: the numbers are
+/// announced when a value differs, and a session that does nothing holds the same numbers, so after the first
+/// publication a quiet shell runs no frame and the tree's serial stands still.
+#[test]
+fn a_stock_shell_at_the_production_memory_period_does_no_work_when_nothing_happens() {
+    let production = gnoblin_wayland::Config::default().gpu_memory_period;
+    assert!(
+        production >= Duration::from_secs(1),
+        "the production period is a second or more: {production:?}"
+    );
+    let session = Session::start_with(|config| config.wayland.gpu_memory_period = production);
+    let mut mapper = Mapper::connect(&session.wayland());
+    for number in 0..5 {
+        mapper.map_window(&format!("org.example.window{number}"), &format!("Window {number}"));
+    }
+    let config = tempfile::tempdir().expect("a config directory");
+    let mut role = role_over(&session, config.path());
+    // Past the first publication (a period after the loop starts) and the frames it asks for.
+    let started = Instant::now();
+    while started.elapsed() < production * 3 {
+        role.tick().expect("the shell runs");
+        std::thread::sleep(turn_wait(&role));
+    }
+    tick_until_quiet(&mut role, REST);
+    let published = support::snapshot(&session.ipc())
+        .into_iter()
+        .filter(|node| node.class == "screen")
+        .any(|node| {
+            node.props
+                .iter()
+                .any(|prop| prop.key == "gpu_memory_target_bytes" && prop.value_double > 0.0)
+        });
+    assert!(published, "the first publication reached the screen node");
+    let (frames, serial) = (role.shell_mut().frame_stats(), support::tree_serial(&session.ipc()));
+    // Four periods of turns as the loop takes them: no value may differ, so nothing may be published or run.
+    let watched = Instant::now();
+    while watched.elapsed() < production * 4 {
+        role.tick().expect("the shell runs");
+        std::thread::sleep(turn_wait(&role));
+    }
+    let after = role.shell_mut().frame_stats();
+    assert_eq!(
+        after.run, frames.run,
+        "frames ran while nothing happened: before {frames:?}, after {after:?}"
+    );
+    assert_eq!(
+        support::tree_serial(&session.ipc()),
+        serial,
+        "the tree changed while nothing happened"
+    );
+    assert!(after.idle > frames.idle, "the turns were taken, and found quiet");
+}
+
 #[test]
 fn a_quiet_turn_over_the_real_links_does_not_wait_for_bytes() {
     // Each link used to wait up to a millisecond for bytes on every turn, so a turn that found everything quiet took

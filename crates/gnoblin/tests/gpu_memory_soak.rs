@@ -15,8 +15,12 @@
 //! ```
 //!
 //! What it does not prove: a real GPU's memory (this crate counts what it asked the driver for, and a headless
-//! software driver does not report video memory at all), the DRM scan-out path, and the session lock, which needs a
-//! password prompt and is covered by `js_lock.rs`.
+//! software driver does not report video memory at all) and the DRM scan-out path.
+//!
+//! Two things are held in the churn on purpose. A capture session (`capture.rs`) stays open on the first output for
+//! the whole run and is fed a frame whenever the last one ended. The session lock is taken and released every
+//! `GNOBLIN_SOAK_LOCK_EVERY` cycles (25 by default; 0 for never) through the same tree call and the same keystrokes
+//! as `js_lock.rs`, so the cover the lock draws and the lock screen the stock shell paints come and go too.
 
 use std::fs;
 use std::io::Write as _;
@@ -28,9 +32,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use gnoblin_backend::InputEvent;
 use gnoblin_client::Client;
 use gnoblin_client::unix::UnixTransport;
-use gnoblin_compositor::{Compositor, OutputTap, SessionConfig, StopHandle};
+use gnoblin_compositor::{Compositor, InputTap, OutputTap, SessionConfig, StopHandle};
 use gnoblin_config::RendererChoice;
 use gnoblin_js::{JsRole, JsRoleConfig};
 use gnoblin_proto::Version;
@@ -38,6 +43,20 @@ use serde_json::json;
 
 mod support;
 use support::{Mapper, scene, snapshot};
+
+#[path = "gpu_memory_soak/capture.rs"]
+mod capture;
+use capture::Capture;
+
+/// The only user the scripted password check knows, and the password it accepts.
+const USER: &str = "kieran";
+const PASSWORD_KEYS: [u32; 2] = [KEY_H, KEY_I];
+const KEY_H: u32 = 35;
+const KEY_I: u32 = 23;
+const KEY_ENTER: u32 = 28;
+
+/// The keyboard `support::plug_keyboard` announces.
+const KEYBOARD: gnoblin_types::DeviceId = gnoblin_types::DeviceId::new(7);
 
 /// How long the session may take to start listening.
 const PATIENCE: Duration = Duration::from_secs(60);
@@ -78,6 +97,7 @@ struct Session {
     directory: tempfile::TempDir,
     stop: StopHandle,
     outputs: OutputTap,
+    input: InputTap,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -87,14 +107,22 @@ impl Session {
         fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).expect("the directory mode");
         let stop = StopHandle::new();
         let outputs = OutputTap::default();
+        let input = InputTap::new();
         let mut config = SessionConfig {
             ipc_socket: Some(directory.path().join("ipc.sock")),
             stop: Some(stop.clone()),
             output_tap: Some(outputs.clone()),
+            input_tap: Some(input.clone()),
             renderer: Some(renderer),
             ..SessionConfig::default()
         };
         config.wayland.socket_path = Some(directory.path().join("wayland.sock"));
+        config.wayland.privileged_socket_path = Some(directory.path().join("wayland-privileged.sock"));
+        // The password check is scripted, as in `js_lock.rs`: PAM is not what a memory soak is about.
+        config.wayland.lock_check = Some(gnoblin_wayland::LockCheck {
+            authenticator: Arc::new(gnoblin_lock_auth::FakeAuthenticator::new().accept(USER, "hi")),
+            user: Some(USER.to_owned()),
+        });
         // A pause of the loop under load is not a hung application, so the liveness pings stay off.
         config.wayland.check_alive_timeout = Duration::ZERO;
         let thread = std::thread::Builder::new()
@@ -107,6 +135,7 @@ impl Session {
             directory,
             stop,
             outputs,
+            input,
             thread: Some(thread),
         };
         let deadline = Instant::now() + PATIENCE;
@@ -114,6 +143,7 @@ impl Session {
             assert!(Instant::now() < deadline, "the compositor never listened");
             std::thread::sleep(Duration::from_millis(5));
         }
+        support::plug_keyboard(&session.input, &session.ipc());
         session
     }
 
@@ -123,6 +153,21 @@ impl Session {
 
     fn wayland(&self) -> PathBuf {
         self.directory.path().join("wayland.sock")
+    }
+
+    fn privileged(&self) -> PathBuf {
+        self.directory.path().join("wayland-privileged.sock")
+    }
+
+    /// One key, pressed and released, on the keyboard the seat lists.
+    fn key(&self, code: u32) {
+        for pressed in [true, false] {
+            assert!(self.input.inject(InputEvent::Key {
+                device: KEYBOARD,
+                keycode: code,
+                pressed,
+            }));
+        }
     }
 }
 
@@ -215,6 +260,50 @@ fn supersample(ipc: &Path, output: u64, factor: &str) -> bool {
     code == 0
 }
 
+/// The lock's state as the tree names it: `locked`, `not-locked` and the states between.
+fn lock_state(ipc: &Path) -> String {
+    snapshot(ipc)
+        .into_iter()
+        .find(|node| node.class == "lock")
+        .and_then(|node| {
+            node.props
+                .iter()
+                .find(|prop| prop.key == "state")
+                .map(|prop| prop.value_text.clone())
+        })
+        .unwrap_or_else(|| "not-locked".to_owned())
+}
+
+/// Locks the session the way the screensaver service does and unlocks it with the password typed at the keyboard,
+/// asserting both happen: a soak that carries on with a stuck lock measures nothing.
+fn lock_and_unlock(session: &Session, capture: &mut Option<Capture>) {
+    let ipc = session.ipc();
+    support::take_lock(&ipc);
+    let deadline = Instant::now() + PATIENCE;
+    while lock_state(&ipc) != "locked" {
+        assert!(Instant::now() < deadline, "the session never locked");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    // Held long enough for the cover and the lock screen to be drawn a few frames, with the recorder still asking.
+    for _ in 0..10 {
+        if let Some(capture) = capture {
+            capture.step();
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    loop {
+        for code in PASSWORD_KEYS.into_iter().chain([KEY_ENTER]) {
+            session.key(code);
+        }
+        std::thread::sleep(Duration::from_millis(300));
+        let state = lock_state(&ipc);
+        if state == "not-locked" {
+            return;
+        }
+        assert!(Instant::now() < deadline, "the session never unlocked: {state}");
+    }
+}
+
 /// A numeric field of `/proc/self/status`: kilobytes for the `Vm*` ones, a count for `Threads`.
 fn status_field(name: &str) -> u64 {
     let status = fs::read_to_string("/proc/self/status").unwrap_or_default();
@@ -276,6 +365,9 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
     let out_path = setting("GNOBLIN_SOAK_OUT", "gpu-memory-soak.jsonl");
     let mut out = fs::File::create(&out_path).expect("the series file");
     let renderer_name = setting("GNOBLIN_SOAK_RENDERER", "software");
+    let lock_every: u64 = setting("GNOBLIN_SOAK_LOCK_EVERY", "25")
+        .parse()
+        .expect("GNOBLIN_SOAK_LOCK_EVERY is a number");
 
     let session = Session::start(renderer());
     let config = tempfile::tempdir().expect("a config directory");
@@ -296,13 +388,24 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
     let mut next_sample = started;
     let mut cycle: u64 = 0;
     let mut mapper = Mapper::connect(&session.wayland());
+    // The recorder is opened once, before the churn, and kept: the run is about what an open session costs over time.
+    let mut capture = Capture::open(&session.privileged());
+    assert!(capture.is_some(), "the privileged socket offered no capture session");
+    let mut locks = 0u64;
     let mut windows = 0usize;
     let mut extra: Option<u64> = None;
     let mut screenshots = 0u64;
     let mut refused_screenshots = 0u64;
     let mut factor = "1";
-    let mut sample = |cycle: u64, windows: usize, factor: &str, screenshots: u64, refused: u64| {
+    let mut sample = |cycle: u64,
+                      windows: usize,
+                      factor: &str,
+                      screenshots: u64,
+                      refused: u64,
+                      locks: u64,
+                      capture: &Option<Capture>| {
         let screens = screens(&ipc);
+        let (frames, frames_failed, capture_sessions) = capture.as_ref().map_or((0, 0, 0), Capture::counts);
         let line = json!({
             "t": started.elapsed().as_secs_f64(),
             "renderer": renderer_name,
@@ -312,6 +415,10 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
             "supersample": factor,
             "screenshots": screenshots,
             "screenshots_refused": refused,
+            "lock_cycles": locks,
+            "capture_frames": frames,
+            "capture_frames_failed": frames_failed,
+            "capture_sessions": capture_sessions,
             "rss": status_field("VmRSS") * 1024,
             "threads": status_field("Threads"),
             "fds": entries("/proc/self/fd"),
@@ -324,7 +431,15 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
         out.flush().expect("a flushed series");
         println!("{line}");
     };
-    sample(cycle, windows, factor, screenshots, refused_screenshots);
+    sample(
+        cycle,
+        windows,
+        factor,
+        screenshots,
+        refused_screenshots,
+        locks,
+        &capture,
+    );
 
     while started.elapsed() < Duration::from_secs(seconds) {
         cycle += 1;
@@ -346,6 +461,9 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
             let mut short = Mapper::connect(&session.wayland());
             short.map_window_sized("org.example.short", "short", 400, 300);
         }
+        if let Some(capture) = &mut capture {
+            capture.step();
+        }
         // Screenshots through the control socket: both the composed frame and the one the display shows.
         let mut control = owner(&ipc);
         let shot = if cycle.is_multiple_of(2) {
@@ -364,6 +482,11 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
                 factor = next;
             }
         }
+        // The lock, with the windows still mapped and the recorder still open.
+        if lock_every > 0 && cycle.is_multiple_of(lock_every) {
+            lock_and_unlock(&session, &mut capture);
+            locks += 1;
+        }
         // A second output plugged for three cycles of every seven.
         match (cycle % 7, extra) {
             (1, None) => {
@@ -379,7 +502,15 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
             _ => {}
         }
         if Instant::now() >= next_sample {
-            sample(cycle, windows, factor, screenshots, refused_screenshots);
+            sample(
+                cycle,
+                windows,
+                factor,
+                screenshots,
+                refused_screenshots,
+                locks,
+                &capture,
+            );
             next_sample += Duration::from_secs(sample_every);
         }
         std::thread::sleep(Duration::from_millis(40));
@@ -388,7 +519,7 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
     drop(mapper);
     let _ = supersample(&ipc, output, "1");
     std::thread::sleep(Duration::from_secs(3));
-    sample(cycle, 0, "1", screenshots, refused_screenshots);
+    sample(cycle, 0, "1", screenshots, refused_screenshots, locks, &capture);
 }
 
 /// The backend id of the output on `connector`: the screen node is named `output-N` after it.

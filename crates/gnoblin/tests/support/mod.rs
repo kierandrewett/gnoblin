@@ -100,6 +100,12 @@ pub fn snapshot(ipc: &Path) -> Vec<snapshot_node::Properties> {
     attach_observer(ipc).1
 }
 
+/// The serial the tree is at, read through a fresh observer connection. It advances with every change batch the
+/// compositor publishes, so two reads that agree saw a tree that did not change.
+pub fn tree_serial(ipc: &Path) -> u64 {
+    observe_at(ipc).2
+}
+
 /// Whether the seat's device list holds a device whose name contains `name`.
 pub fn seat_has_device(ipc: &Path, name: &str) -> bool {
     snapshot(ipc).iter().any(|node| {
