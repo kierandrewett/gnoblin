@@ -226,3 +226,44 @@ fn an_answer_to_a_finished_helper_is_an_error() {
     until_done(&mut session);
     assert!(session.respond(&SecretText::new("late")).is_err());
 }
+
+/// Run by `a_production_build_ignores_the_helper_environment_variable` in a child process that has the variable
+/// set: it cannot be set in this one (`set_var` is unsafe, and the workspace forbids unsafe).
+#[test]
+#[ignore = "run only as the child of a_production_build_ignores_the_helper_environment_variable"]
+fn report_the_located_helper() {
+    match gnoblin_polkit_auth::locate_helper() {
+        Ok(path) => println!("located={}", path.display()),
+        Err(error) => println!("unlocated={error}"),
+    }
+}
+
+#[test]
+fn a_production_build_ignores_the_helper_environment_variable() {
+    // The library under an integration test is built the way a production binary links it, without `cfg(test)`.
+    // A variable that picked the program run with polkit's authority would let anyone who sets it substitute their
+    // own "helper" for PAM, so it must change nothing here.
+    let scratch = Scratch::new("env-ignored");
+    let helper = scratch.script("exit 0");
+    let output = std::process::Command::new(std::env::current_exe().expect("the test knows its own path"))
+        .args([
+            "--exact",
+            "report_the_located_helper",
+            "--ignored",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env("GNOBLIN_POLKIT_HELPER", &helper)
+        .output()
+        .expect("the child test process runs");
+    assert!(output.status.success(), "{output:?}");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("located=") || stdout.contains("unlocated="),
+        "the child reported nothing: {stdout}"
+    );
+    assert!(
+        !stdout.contains(helper.to_str().expect("the scratch path is UTF-8")),
+        "the environment variable chose the helper: {stdout}"
+    );
+}

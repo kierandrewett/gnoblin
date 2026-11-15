@@ -68,9 +68,10 @@ Sources, all at polkit commit `a1a78d7a` (master, read 2026-11-14), under
   polkitd see "not authorized". There is no `allow` and no password access.
 - **Cancel ends everything.** `CancelAuthentication` makes the agent withdraw the request, which closes the dialog and
   kills the helper; so do Escape, the request deadline, a departed agent and a session lock.
-- The helper is `GNOBLIN_POLKIT_HELPER`, else the first of `/run/wrappers/bin`, `/usr/lib/polkit-1`,
-  `/usr/libexec/polkit-1`, `/usr/lib/policykit-1` (polkit compiles its libexec in and does not report it). A missing helper
-  is shown in the dialog and the request fails closed.
+- The helper is the first of `/run/wrappers/bin`, `/usr/lib/polkit-1`, `/usr/libexec/polkit-1`,
+  `/usr/lib/policykit-1` (polkit compiles its libexec in and does not report it). No environment variable overrides it:
+  the helper runs PAM, so only a test, through the compositor's `polkit_helper` configuration, names another. A missing
+  helper is shown in the dialog and the request fails closed.
 
 ## 4. Proven, and not
 

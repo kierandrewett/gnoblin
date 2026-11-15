@@ -34,13 +34,13 @@ use gnoblin_secret::SecretText;
 
 use crate::log;
 
-/// The environment variable that names the helper to run, for tests and for a distribution that keeps it
-/// somewhere unusual. When it is set and names nothing runnable, no other helper is tried.
-pub const HELPER_ENV: &str = "GNOBLIN_POLKIT_HELPER";
-
 /// Where distributions install the helper, in the order they are tried. polkit compiles its libexec directory in
 /// and does not report it, so these are the known places: the NixOS setuid wrapper, then `/usr/lib` (Arch, Fedora,
 /// openSUSE, current Debian), `/usr/libexec` and the older Debian name.
+///
+/// Nothing in the environment adds to this list. The program found here runs PAM for the user, so a variable that
+/// could name another one would let whoever sets it stand in for the authentication. A test hands the path in
+/// through the compositor's configuration instead.
 pub const HELPER_CANDIDATES: [&str; 4] = [
     "/run/wrappers/bin/polkit-agent-helper-1",
     "/usr/lib/polkit-1/polkit-agent-helper-1",
@@ -54,8 +54,8 @@ const MAX_LINE: u64 = 64 * 1024;
 /// Why the helper could not be started or written to.
 #[derive(Debug, thiserror::Error)]
 pub enum HelperError {
-    /// No helper is installed where it is known to live, or the override names nothing.
-    #[error("polkit-agent-helper-1 was not found ({looked}); install polkit or set GNOBLIN_POLKIT_HELPER")]
+    /// No helper is installed where it is known to live.
+    #[error("polkit-agent-helper-1 was not found ({looked}); install polkit")]
     NotFound {
         /// What was looked at, for the message.
         looked: String,
@@ -94,27 +94,16 @@ pub enum HelperEvent {
     Failure,
 }
 
-/// The helper to run: `HELPER_ENV` when set, else the first of [`HELPER_CANDIDATES`] that exists.
+/// The first of [`HELPER_CANDIDATES`] that exists.
 ///
 /// # Errors
 ///
 /// [`HelperError::NotFound`] when there is none.
 pub fn locate_helper() -> Result<PathBuf, HelperError> {
-    locate_in(std::env::var_os(HELPER_ENV).map(PathBuf::from), &HELPER_CANDIDATES)
+    locate_in(&HELPER_CANDIDATES)
 }
 
-fn locate_in(over: Option<PathBuf>, candidates: &[&str]) -> Result<PathBuf, HelperError> {
-    if let Some(path) = over.filter(|path| !path.as_os_str().is_empty()) {
-        // An override that names nothing must not fall back to the real helper: a test that points at a fake
-        // one should fail, not authenticate against the machine's PAM.
-        return if path.is_file() {
-            Ok(path)
-        } else {
-            Err(HelperError::NotFound {
-                looked: format!("{HELPER_ENV} is {}", path.display()),
-            })
-        };
-    }
+fn locate_in(candidates: &[&str]) -> Result<PathBuf, HelperError> {
     candidates
         .iter()
         .map(Path::new)
@@ -400,13 +389,12 @@ mod tests {
     }
 
     #[test]
-    fn an_override_that_names_nothing_does_not_fall_back() {
-        let error = locate_in(Some(PathBuf::from("/nonexistent/helper")), &["/bin/sh"]).expect_err("nothing there");
-        assert!(error.to_string().contains("/nonexistent/helper"), "{error}");
+    fn the_first_candidate_that_exists_is_the_helper() {
         assert_eq!(
-            locate_in(None, &["/nonexistent/helper", "/bin/sh"]).expect("the second candidate exists"),
+            locate_in(&["/nonexistent/helper", "/bin/sh"]).expect("the second candidate exists"),
             PathBuf::from("/bin/sh")
         );
-        assert!(locate_in(None, &["/nonexistent/helper"]).is_err());
+        let error = locate_in(&["/nonexistent/helper"]).expect_err("nothing there");
+        assert!(error.to_string().contains("/nonexistent/helper"), "{error}");
     }
 }

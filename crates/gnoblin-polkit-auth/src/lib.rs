@@ -13,7 +13,7 @@
 //!   [`HelperEvent`]s and feeds it the answers as [`SecretText`](gnoblin_secret::SecretText), which is wiped when
 //!   it drops. Only [`HelperEvent::Success`], which is the helper's own `SUCCESS` line, ever means the user
 //!   authenticated.
-//! - [`locate_helper`] finds the helper, with an environment override for tests.
+//! - [`locate_helper`] finds the helper in the places distributions install it. No environment variable names one.
 //!
 //! Nothing here knows a script, a slot or a dialog. A password is never formatted, logged or kept: the only
 //! place it is read is the write to the helper's standard input.
@@ -25,7 +25,7 @@ mod request;
 mod user;
 
 pub use gnoblin_secret::SecretText;
-pub use helper::{HELPER_CANDIDATES, HELPER_ENV, HelperError, HelperEvent, HelperSession, locate_helper, parse_line};
+pub use helper::{HELPER_CANDIDATES, HelperError, HelperEvent, HelperSession, locate_helper, parse_line};
 pub use request::{AuthIdentity, AuthRequest, MAX_PAYLOAD, ObservedAuth, PayloadError};
 pub use user::{current_uid, name_of, parse_passwd};
 

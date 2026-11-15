@@ -78,8 +78,9 @@ The compositor stops the helper in each case.
 
 ## The helper
 
-Gnoblin looks for `polkit-agent-helper-1` in the places distributions install it. Set `GNOBLIN_POLKIT_HELPER` to the
-helper's path to use another one. A missing helper is shown in the dialog, and the request fails closed.
+Gnoblin looks for `polkit-agent-helper-1` in the places distributions install it. No setting or environment
+variable names another one, because the helper is the program that runs PAM for the user. A missing helper is shown
+in the dialog, and the request fails closed.
 
 Polkit allows one agent per session. If another polkit agent is running, it remains the agent and Gnoblin's dialog does not
 open.
