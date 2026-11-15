@@ -535,6 +535,40 @@ fn a_buffer_scale_two_client_is_not_resampled_and_a_one_pixel_line_is_its_covera
 }
 
 #[test]
+fn a_factor_that_would_pass_the_memory_budget_is_refused_and_a_smaller_one_still_applies() {
+    // The output's target is 3 MiB and the frame capture keeps 3 MiB. A factor of 4 composes at 4096x3072, which is 48
+    // MiB and the copy it is shown from: 54 MiB more than the 40 MiB budget holds with nothing left to give back.
+    // A factor of 2 is 12 MiB more and fits.
+    let (shell, hooks) = Shell::new();
+    let (session, _outputs) = Session::start_shelled_limited(
+        hooks,
+        gnoblin_wayland::Limits {
+            budget_bytes: 40 << 20,
+            client_bytes: 0,
+            client_surfaces: 0,
+        },
+    );
+    session.run(move |handle| {
+        shell.attach();
+        let node = node_of(&shell, DEFAULT_CONNECTOR);
+        let refused = shell
+            .apply(node, "supersample=4")
+            .expect_err("a factor the budget cannot hold");
+        assert!(refused.starts_with("memory: "), "{refused}");
+        assert!(refused.contains("41943040"), "the message names the budget: {refused}");
+        assert_eq!(
+            shell.published(node, "supersample"),
+            Some(TreeValue::Double(1.0)),
+            "the output keeps the factor it had"
+        );
+        assert_eq!(handle.ledger.snapshot().refused, 1);
+
+        shell.apply(node, "supersample=2").expect("a factor that fits applies");
+        shell.wait_published(node, "supersample", &TreeValue::Double(2.0));
+    });
+}
+
+#[test]
 fn a_factor_that_cannot_be_composed_is_refused_by_name_and_changes_nothing() {
     let (session, outputs, shell) = start();
     session.run(move |handle| {

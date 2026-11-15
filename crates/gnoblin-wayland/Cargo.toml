@@ -42,6 +42,8 @@ x11rb = "0.14.0"
 gnoblin-types.workspace = true
 # The kill of a window's process goes through a pidfd (`process.rs`), which `rustix` wraps without `unsafe`.
 rustix = { workspace = true, features = ["process"] }
+# The memory budget's refusals (`gpu_memory/ledger.rs`) are an error type, not a string.
+thiserror.workspace = true
 # Window state transitions go through the pure policy state machine: this crate
 # translates protocols into `Wm::apply` events and turns the effects back into
 # configures, focus changes and stacking.

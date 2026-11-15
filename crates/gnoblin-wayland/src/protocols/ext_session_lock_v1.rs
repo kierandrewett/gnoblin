@@ -365,6 +365,12 @@ impl State {
         self.lock.state() == LockState::Locked && self.lock.locker().is_some()
     }
 
+    /// Whether any lock is up or on its way up, whoever holds it: what the memory budget reads to keep every View of a
+    /// locked session in place.
+    pub(crate) fn lock_is_up(&self) -> bool {
+        self.lock.state() != LockState::Unlocked
+    }
+
     /// Starts the password checks the shell asked for this frame. A refused check is answered at
     /// once; an accepted-to-run one answers when its worker finishes (see [`Self::finish_authentication`]).
     pub(crate) fn begin_authentications(&mut self, calls: Vec<TreeCall>) {

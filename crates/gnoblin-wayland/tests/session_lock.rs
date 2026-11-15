@@ -23,7 +23,7 @@ use gnoblin_lock::State as LockState;
 use gnoblin_render_frame::frame::Overlay;
 use gnoblin_render_frame::image::Image;
 use gnoblin_types::{DeviceId, OutputId, Point, Rect, Size};
-use gnoblin_wayland::{Config, ControlHandle, LoopError, Modal, Server, SessionSnapshot};
+use gnoblin_wayland::{Config, ControlHandle, Ledger, Limits, LoopError, Modal, Server, SessionSnapshot};
 use wayland_client::backend::ObjectId;
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
@@ -52,6 +52,8 @@ struct Handle {
     control: ControlHandle,
     observation: Arc<Mutex<SessionSnapshot>>,
     backend: HeadlessHandle,
+    /// What each client holds, for the test of the memory budget under a lock.
+    ledger: Arc<Ledger>,
 }
 
 impl Handle {
@@ -180,12 +182,18 @@ struct Session {
 impl Session {
     /// Creates a session on a socket of its own, with a handle to its backend.
     fn start() -> Self {
+        Self::start_limited(Limits::default())
+    }
+
+    /// Like `start`, with the memory bounds a test chose.
+    fn start_limited(limits: Limits) -> Self {
         let backend = Headless::new();
         let backend_handle = backend.handle();
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let config = Config {
             socket_path: Some(socket.clone()),
+            gpu_limits: limits,
             ..Config::default()
         };
         let server = Server::new(Box::new(backend), config).expect("the session starts");
@@ -194,6 +202,7 @@ impl Session {
             control: server.control(),
             observation: server.observation(),
             backend: backend_handle,
+            ledger: server.gpu_ledger(),
         };
         Self {
             directory,
@@ -1181,6 +1190,66 @@ fn settle_for(client: &mut Client, span: Duration) {
         client.roundtrip();
         thread::sleep(Duration::from_millis(5));
     }
+}
+
+#[test]
+fn budget_pressure_does_not_blank_a_lock_surface() {
+    const MIB: u64 = 1 << 20;
+    // The output is 3 MiB of target and keeps 3 MiB of capture frame, and the lock surface and the cover add to what the
+    // renderer holds. The two windows of 16 MiB are some 4 MiB past 44 MiB, which is room the caches give back: that is
+    // the pressure, with a lock up and its surface drawn.
+    let session = Session::start_limited(Limits {
+        budget_bytes: 44 * MIB,
+        client_bytes: 0,
+        client_surfaces: 0,
+    });
+    session.run(|session| {
+        let output = first_output(session);
+        let mut locker = Client::locker(session.socket());
+        locker.lock();
+        session.wait_for_lock(LockState::Locked);
+        locker.wait_for_locked();
+        let _surface = locker.lock_surface_with_pixel(0, 0xffff_ffff);
+        session.wait_for_corner(output, MASK, "the lock surface replaces the cover");
+        let deadline = Instant::now() + TIMEOUT;
+        while session.ledger.snapshot().renderer_bytes == 0 {
+            assert!(Instant::now() < deadline, "the loop never measured a frame");
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        let mut apps = [Client::app(session.socket()), Client::app(session.socket())];
+        let windows: Vec<_> = apps
+            .iter_mut()
+            .map(|app| {
+                let window = app.create_window("org.example.big", "big");
+                app.attach_buffer(&window.surface, 2048, 2048);
+                window
+            })
+            .collect();
+        while session.ledger.snapshot().evicted == 0 {
+            assert!(
+                Instant::now() < deadline,
+                "the pressure never made the budget give caches back"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        // Whatever was given back, the lock is still up and its surface is still what the output shows.
+        assert_eq!(session.snapshot().lock_state(), LockState::Locked);
+        assert_eq!(session.corner_rgb(output), MASK, "the lock surface is still drawn");
+        settle_for(&mut locker, Duration::from_millis(200));
+        assert_eq!(
+            session.corner_rgb(output),
+            MASK,
+            "and stays drawn once the frames after the eviction are out"
+        );
+        assert_eq!(
+            session.ledger.snapshot().refused,
+            0,
+            "the clients were served, not refused"
+        );
+        drop(windows);
+    });
 }
 
 #[test]

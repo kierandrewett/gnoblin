@@ -391,5 +391,7 @@ fn create_screencopy_frame(
         resource.buffer_done();
     }
     state.capture.screencopy_frames.push(resource);
+    // A cache the memory budget gave back is made again, so the frame this client copies next exists.
+    state.resume_capture_cache();
     state.flush();
 }

@@ -53,6 +53,11 @@ array.
 | `connected`, `alive`        | `false` once the display is gone.                                                                                                          |
 | `addListener(listener)`     | Attaches an `OutputListener`.                                                                                                              |
 
+`gpuMemory` also carries four numbers about the whole session, the same on every output: `clients` (the bytes of every
+client's live buffers), `budget` (the memory budget in bytes, 0 when it is off), `refused` (the requests refused for
+passing a bound, a count) and `evicted` (the bytes given back from caches to make room). They are in
+[GPU memory](../gpu-memory#the-budget).
+
 A script reads these properties and writes none. It changes a display with `apply` and `mirror`, below, or keeps a
 setting for a monitor with an [`OutputProfile`](#hardware-profiles) in `gnoblin.outputs.profiles`.
 

@@ -592,6 +592,14 @@ declare module "gnoblin/schema/tree" {
         readonly gpuMemoryCaptureBytes: number;
         /** Schema name `gpu_memory_bytes`. Default `0`. */
         readonly gpuMemoryBytes: number;
+        /** Schema name `gpu_memory_clients_bytes`. Default `0`. */
+        readonly gpuMemoryClientsBytes: number;
+        /** Schema name `gpu_memory_budget_bytes`. Default `0`. */
+        readonly gpuMemoryBudgetBytes: number;
+        /** Schema name `gpu_memory_refused_total`. Default `0`. */
+        readonly gpuMemoryRefusedTotal: number;
+        /** Schema name `gpu_memory_evicted_total`. Default `0`. */
+        readonly gpuMemoryEvictedTotal: number;
         apply(text: string): Reply;
         /** Signal `mode_changed`. */
         onModeChanged(handler: (target: this) => void): Unsubscribe;

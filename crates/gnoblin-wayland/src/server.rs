@@ -203,6 +203,9 @@ pub struct Config {
     /// comes one period after the session starts. Zero never publishes them, which is what a test needs that reads the
     /// tree's serial: a publication is a change batch, so it advances the serial at a time the test does not choose.
     pub gpu_memory_period: Duration,
+    /// The bounds on what clients and the session may hold (`gpu_memory::Limits`): per-client buffer bytes and
+    /// surfaces, and the session's aggregate budget. A zero value turns that bound off.
+    pub gpu_limits: crate::gpu_memory::Limits,
     /// The source of the session clock. The loop reads it once per turn and advances the
     /// session clock by the time elapsed since the previous turn, so idle and a rest focus
     /// fire without a caller advancing it. A test that must not depend on wall time passes a
@@ -295,6 +298,7 @@ impl Default for Config {
             wm: WmOptions::default(),
             check_alive_timeout: Duration::from_secs(5),
             gpu_memory_period: crate::gpu_memory::DEFAULT_PERIOD,
+            gpu_limits: crate::gpu_memory::Limits::default(),
             clock: Arc::new(SystemClock),
             observer: None,
             tree: crate::tree_frame::TreeHooks::default(),
@@ -471,6 +475,7 @@ impl Server {
         state.composer.set_gpu_views(backend.gpu_views());
         state.liveness = crate::liveness::Liveness::new(config.check_alive_timeout);
         state.gpu_memory = crate::gpu_memory::Publisher::new(config.gpu_memory_period);
+        state.gpu_ledger = Arc::new(crate::gpu_memory::Ledger::new(config.gpu_limits));
         state.window_process_override = config.window_process_override;
         let clock = config.clock.clone();
         // A worker's answer lands here, so the lock settles on the loop that owns the state.
@@ -741,6 +746,12 @@ impl Server {
         self.state.observation()
     }
 
+    /// What each client holds and the bounds on it, which a test or a diagnostics reader reads while the loop runs.
+    #[must_use]
+    pub fn gpu_ledger(&self) -> Arc<crate::gpu_memory::Ledger> {
+        Arc::clone(&self.state.gpu_ledger)
+    }
+
     /// The compositor state, for a caller that wants to read it before running.
     #[must_use]
     pub fn state(&self) -> &State {
@@ -873,6 +884,11 @@ impl Server {
                 state.run_output_applies(backend.as_mut());
                 sync_output_manager(state, backend.as_mut(), outputs_changed);
                 state.apply_output_controls(&mut crate::output_control::BackendControl(backend.as_mut()));
+                // The shared-memory buffers admitted this turn on the strength of caches that may be given back are
+                // given back now, before anything is drawn or imported. A turn that needs nothing pays one check.
+                if state.gpu_ledger.needs_room() {
+                    state.settle_gpu_memory(backend.as_mut());
+                }
                 state.apply_dmabuf_imports(backend.as_mut());
                 // What a capture may be written into on the GPU is learnt as outputs appear, so a session made in
                 // the next turn offers `dma_buf` exactly when the backend can fill one.

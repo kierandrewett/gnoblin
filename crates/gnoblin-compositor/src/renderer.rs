@@ -1,4 +1,5 @@
-//! The renderer a session draws with, from the `compositor.renderer` configuration setting.
+//! The renderer a session draws with, from the `compositor.renderer` configuration setting, and the memory bounds
+//! (`compositor.gpu-memory-budget-mib`, `compositor.client-memory-limit-mib`, `compositor.client-surface-limit`).
 //!
 //! A document that does not state the setting keeps `auto`, which is the renderer the selected
 //! backend draws with today. A value the schema does not accept is refused there, naming the
@@ -8,16 +9,38 @@
 
 use std::path::Path;
 
-use gnoblin_config::{RendererChoice, SearchPaths, Store};
+use gnoblin_config::{Compositor, RendererChoice, SearchPaths, Store};
+use gnoblin_wayland::Limits;
 
 use crate::SessionConfig;
 
 use crate::log;
 
+/// The memory bounds a `compositor` section sets: a key it leaves out keeps the built-in default, and a stated zero turns
+/// that bound off. The values are mebibytes in the document and bytes in the session.
+pub(crate) fn limits_of(section: &Compositor) -> Limits {
+    const MIB: u64 = 1 << 20;
+    let defaults = Limits::default();
+    let mebibytes = |stated: Option<i64>, default: u64| {
+        stated
+            .and_then(|mib| u64::try_from(mib).ok())
+            .map_or(default, |mib| mib.saturating_mul(MIB))
+    };
+    Limits {
+        budget_bytes: mebibytes(section.gpu_memory_budget_mib, defaults.budget_bytes),
+        client_bytes: mebibytes(section.client_memory_limit_mib, defaults.client_bytes),
+        client_surfaces: section
+            .client_surface_limit
+            .and_then(|count| u32::try_from(count).ok())
+            .unwrap_or(defaults.client_surfaces),
+    }
+}
+
 /// Sets the renderer and the capture treatment from the last accepted configuration in `store`, read from `source`.
 pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &Path) {
     match store.load(source) {
         Ok(stored) => {
+            config.wayland.gpu_limits = limits_of(&stored.config.compositor.clone().unwrap_or_default());
             apply(
                 config,
                 stored.config.compositor.as_ref().and_then(|section| section.renderer),
@@ -76,6 +99,26 @@ mod tests {
         };
         apply(&mut config, section.renderer, None);
         config.renderer
+    }
+
+    #[test]
+    fn the_memory_bounds_are_the_defaults_until_the_section_states_them() {
+        assert_eq!(limits_of(&Compositor::default()), Limits::default());
+        let stated = Compositor {
+            gpu_memory_budget_mib: Some(512),
+            client_memory_limit_mib: Some(0),
+            client_surface_limit: Some(10),
+            ..Compositor::default()
+        };
+        assert_eq!(
+            limits_of(&stated),
+            Limits {
+                budget_bytes: 512 << 20,
+                client_bytes: 0,
+                client_surfaces: 10,
+            },
+            "mebibytes become bytes and a stated zero turns the bound off"
+        );
     }
 
     #[test]

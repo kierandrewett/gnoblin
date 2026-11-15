@@ -69,6 +69,7 @@
 //! [`SurfaceSource::Dmabuf`]: gnoblin_render_frame::frame::SurfaceSource::Dmabuf
 
 use gnoblin_backend::{Backend, DmabufSupport};
+use smithay::backend::allocator::Buffer;
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::reexports::calloop::Interest;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -81,6 +82,7 @@ use smithay::wayland::dmabuf::{
 };
 
 use crate::State;
+use crate::gpu_memory::Admission;
 use crate::log;
 
 /// The dmabuf global and the buffers waiting for the loop's answer.
@@ -182,10 +184,34 @@ impl State {
     /// away meanwhile is not an error: its notifier answers nothing.
     pub(crate) fn apply_dmabuf_imports(&mut self, backend: &mut dyn Backend<State>) {
         for (dmabuf, notifier) in std::mem::take(&mut self.dmabuf.pending) {
+            // The import is where a GPU buffer first costs the compositor anything, and where the backend is held, so
+            // it is where the memory budget is asked: the client's own limit and the session's, with the caches given
+            // back first when the buffer fits only that way. A client that is gone is not asked.
+            let client = notifier.client();
+            let bytes = dmabuf_bytes(&dmabuf);
+            if let Some(client) = &client {
+                match self.gpu_ledger.admit_buffer(&client.id(), bytes) {
+                    Ok(Admission::Fits) => {}
+                    Ok(Admission::Evict { .. }) => self.settle_gpu_memory(backend),
+                    Err(refusal) => {
+                        self.refuse_client(client, refusal);
+                        notifier.failed();
+                        continue;
+                    }
+                }
+            }
             match backend.import_dmabuf(&dmabuf) {
                 Ok(()) => {
                     // A client that disconnected has no buffer to hand the answer to.
-                    let _ = notifier.successful::<State>();
+                    if let Ok(buffer) = notifier.successful::<State>()
+                        && let Some(client) = client
+                        // A client that destroyed the buffer in the same turn it created it has nothing to count; its
+                        // destruction was already seen, so recording now would never be given back.
+                        && buffer.is_alive()
+                    {
+                        self.gpu_ledger
+                            .record_buffer(&client.id(), buffer.id().protocol_id(), bytes);
+                    }
                 }
                 Err(error) => {
                     log::warn!(area = "dmabuf", %error, "a client's GPU buffer is refused");
@@ -194,6 +220,18 @@ impl State {
             }
         }
     }
+}
+
+/// What a GPU buffer is counted as holding: its width times height times the bytes per pixel of its format, which is
+/// an estimate (a tiled or padded buffer holds more, a multi-planar one reports its average), and four bytes a pixel
+/// for a format the table does not know.
+fn dmabuf_bytes(dmabuf: &Dmabuf) -> u64 {
+    let size = dmabuf.size();
+    let pixels = u64::try_from(size.w)
+        .unwrap_or(0)
+        .saturating_mul(u64::try_from(size.h).unwrap_or(0));
+    let bits = smithay::backend::allocator::format::get_bpp(dmabuf.format().code).unwrap_or(32);
+    pixels.saturating_mul(u64::try_from(bits).unwrap_or(32)) / 8
 }
 
 /// Holds a surface's commit until the dmabuf it attaches is ready to be read.

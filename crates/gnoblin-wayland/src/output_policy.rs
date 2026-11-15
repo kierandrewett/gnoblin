@@ -36,6 +36,7 @@ use gnoblin_render_frame::frame::{Layer, OutputFrame, Overlay};
 use gnoblin_render_frame::image::Image;
 use gnoblin_types::{Orientation, OutputId, Rect, Size};
 
+use crate::gpu_memory::Admission;
 use crate::output_config::{OutputChange, apply_in_order};
 use crate::{State, log};
 
@@ -247,6 +248,20 @@ fn wanted(
     }
 }
 
+/// The bytes an output's targets are estimated to hold at `mode` and `supersample`: the target at the virtual size and, when
+/// it is composed larger than it is shown, the copy it is averaged down into at the mode's size, at four bytes a pixel.
+/// A factor that is not a whole size has been refused already and counts as one.
+fn target_bytes(mode: DisplayMode, supersample: gnoblin_types::Scale) -> u64 {
+    let colour = gnoblin_render_frame::footprint::COLOUR_BYTES_PER_PIXEL;
+    let shown = u64::from(mode.width) * u64::from(mode.height) * colour;
+    if supersample.is_identity() {
+        return shown;
+    }
+    let virtual_bytes = gnoblin_output::supersample::virtual_size(mode, supersample, u32::MAX)
+        .map_or(shown, |size| gnoblin_render_frame::footprint::image_bytes(size, colour));
+    virtual_bytes.saturating_add(shown)
+}
+
 impl State {
     /// Takes the shell's `apply` calls on screen nodes, to be run by the loop once it holds the backend.
     pub(crate) fn queue_output_applies(&mut self, calls: Vec<TreeCall>) {
@@ -398,6 +413,24 @@ impl State {
             let limit = backend.max_virtual_edge(candidate_output.id);
             if let Err(error) = gnoblin_output::supersample::virtual_size(mode, supersample, limit) {
                 return Err(format!("supersample: {}: {error}", candidate_output.connector));
+            }
+        }
+
+        // The targets the candidate would drive have to fit the memory budget, which a mode or a factor that grows a
+        // target can pass without any client asking for anything. What the renderer holds now is taken off what it
+        // would hold, and caches are given back for the rest before the change is refused.
+        let mut growth: u64 = 0;
+        for candidate_output in &outputs {
+            let (mode, _, supersample) = wanted(candidate_output, candidate.find(sighting(candidate_output)));
+            let held = backend.footprint(candidate_output.id).target;
+            growth = growth.saturating_add(target_bytes(mode, supersample).saturating_sub(held));
+        }
+        if growth > 0 {
+            match self.gpu_ledger.admit_growth(growth) {
+                Ok(Admission::Fits) => {}
+                Ok(Admission::Evict { .. }) if test_only => {}
+                Ok(Admission::Evict { .. }) => self.settle_gpu_memory(backend),
+                Err(refusal) => return Err(format!("memory: the output would hold {growth} bytes more: {refusal}")),
             }
         }
 

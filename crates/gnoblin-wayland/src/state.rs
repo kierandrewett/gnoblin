@@ -604,6 +604,10 @@ pub struct State {
     /// When the per-output memory numbers were last published (`gpu_memory.rs`).
     pub(crate) gpu_memory: crate::gpu_memory::Publisher,
 
+    /// What each client holds and the bounds on it (`gpu_memory/ledger.rs`). Shared, so the request screen reads it
+    /// through `&State` and an embedder reads it from outside the loop.
+    pub(crate) gpu_ledger: Arc<crate::gpu_memory::Ledger>,
+
     /// The hosted sessions, their protection covers and their requests, which is
     /// `gnoblin_session_host_v1` (`protocols::gnoblin_session_host_v1`).
     pub(crate) session_host: GnoblinSessionHostV1Tables,
@@ -901,6 +905,7 @@ impl State {
             lock_auth,
             capture,
             gpu_memory: crate::gpu_memory::Publisher::new(crate::gpu_memory::DEFAULT_PERIOD),
+            gpu_ledger: Arc::new(crate::gpu_memory::Ledger::new(crate::gpu_memory::Limits::default())),
             session_host,
             observation: Arc::new(Mutex::new(SessionSnapshot::default())),
             observer,

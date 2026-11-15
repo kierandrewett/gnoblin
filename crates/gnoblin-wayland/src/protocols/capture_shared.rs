@@ -206,6 +206,10 @@ pub(crate) struct CaptureTables {
     pub(crate) table: Table,
     /// The last frame each output drew, replaced once per frame while a session is open.
     pub(super) pixels: BTreeMap<OutputId, Cached>,
+    /// The bytes of frame cache the memory budget gave back, or zero when it did not. While it is not zero the loop
+    /// does not read presented frames back, and the first session or screencopy frame that needs one clears it and
+    /// repaints, so the cache is made again by the frame that follows.
+    pub(super) cache_suspended: u64,
     /// The tick the loop is on, so a stream is paced by iterations rather than by a
     /// clock nothing else in this crate reads.
     pub(super) tick: Tick,
@@ -283,6 +287,7 @@ impl CaptureTables {
         Self {
             table: Table::new(),
             pixels: BTreeMap::new(),
+            cache_suspended: 0,
             tick: Tick::ZERO,
             sources: BTreeMap::new(),
             views: BTreeMap::new(),
@@ -684,6 +689,7 @@ impl State {
         let origin = Point::new(layout.x, layout.y);
         let owner = self.capture.portal_owner(client);
         let session = self.capture.table.open(owner, target, CaptureStream::Granted, format);
+        self.resume_capture_cache();
         match self.capture.pipewire.start(&self.capture.table, session, owner) {
             Ok(node) => {
                 log::info!(area = "capture", %target, node, "a screen cast started");
@@ -810,6 +816,13 @@ impl State {
     /// software buffer; the renderer lane can drop it by lending capture the software
     /// buffer instead of a copy of it.
     pub(crate) fn capture_frame(&mut self, backend: &mut dyn gnoblin_backend::Backend<State>, output: OutputId) {
+        // The budget gave the cache back and nothing reads it: a frame read back now would only make it again.
+        if self.capture.cache_suspended > 0 {
+            if !self.capture_in_use() {
+                return;
+            }
+            self.capture.cache_suspended = 0;
+        }
         let Some(image) = backend.capture(output, false) else {
             return;
         };
@@ -827,6 +840,50 @@ impl State {
     /// The bytes capture keeps of `output`'s last presented frame: zero for an output that has not presented.
     pub(crate) fn capture_cache_bytes(&self, output: OutputId) -> u64 {
         self.capture.pixels.get(&output).map_or(0, Cached::bytes)
+    }
+
+    /// Whether anything reads the frame cache now or may before the next frame: an open session (a stream, a portal
+    /// cast) or a screencopy frame that has not been answered.
+    fn capture_in_use(&self) -> bool {
+        !self.capture.table.is_empty() || !self.capture.screencopy_frames.is_empty()
+    }
+
+    /// The bytes capture keeps that the budget may take back: the whole cache while nothing reads it, none while
+    /// something does.
+    pub(crate) fn capture_cache_reclaimable(&self) -> u64 {
+        if self.capture_in_use() {
+            return 0;
+        }
+        self.capture
+            .pixels
+            .values()
+            .map(Cached::bytes)
+            .fold(0, u64::saturating_add)
+    }
+
+    /// Gives the frame cache back to the budget when nothing reads it, and returns the bytes freed. The cache is made
+    /// again once a session or screencopy frame needs it ([`State::resume_capture_cache`]) or the budget has room for it.
+    pub(crate) fn evict_capture_cache(&mut self) -> u64 {
+        let freed = self.capture_cache_reclaimable();
+        if freed > 0 {
+            self.capture.pixels.clear();
+            self.capture.cache_suspended = freed;
+        }
+        freed
+    }
+
+    /// The bytes of frame cache the budget took back and nothing has made again, or zero.
+    pub(crate) fn capture_cache_suspended(&self) -> u64 {
+        self.capture.cache_suspended
+    }
+
+    /// Makes the frame cache again after the budget gave it back: the next frame that is presented is read back. Every
+    /// output is repainted, because an output nothing changes would never present one.
+    pub(crate) fn resume_capture_cache(&mut self) {
+        if self.capture.cache_suspended > 0 {
+            self.capture.cache_suspended = 0;
+            self.damage_outputs();
+        }
     }
 
     /// How many outputs capture holds a frame for, which is the number of outputs the session has unless an entry

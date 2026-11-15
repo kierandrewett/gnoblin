@@ -131,3 +131,41 @@ fn idle_iteration_cost() {
         println!("{windows:7} | {per:10.1}");
     }
 }
+
+#[test]
+fn memory_numbers_that_did_not_change_publish_nothing() {
+    // The budget's numbers (`gpu_memory_budget_bytes`, `gpu_memory_refused_total` and the rest) are published on every
+    // screen node once a period; a quiet session must not make the tree advance because of them.
+    let mut composer = Composer::new();
+    let output = OutputId::new(0);
+    composer.set_output(output, OUTPUT_RECT);
+    drop(composer.take_tree_changes());
+    let footprint = Footprint {
+        target: 100,
+        ..Footprint::default()
+    };
+    let session = SessionMemory {
+        clients: 1,
+        budget: 2,
+        refused: 3,
+        evicted: 4,
+    };
+    composer.set_output_memory(output, &footprint, 5, &session);
+    assert!(
+        !composer.take_tree_changes().is_empty(),
+        "the first numbers are published"
+    );
+
+    composer.set_output_memory(output, &footprint, 5, &session);
+    assert!(
+        composer.take_tree_changes().is_empty(),
+        "the same numbers published again change nothing"
+    );
+
+    composer.set_output_memory(output, &footprint, 5, &SessionMemory { refused: 4, ..session });
+    assert_eq!(
+        composer.take_tree_changes().len(),
+        1,
+        "one number that changed is one change, and nothing else is republished"
+    );
+}

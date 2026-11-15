@@ -31,7 +31,9 @@ use gnoblin_config::Protocols;
 use gnoblin_lock::State as LockState;
 use gnoblin_render::transaction::{ClassInfo, Code, PropertyInfo, TreeOp, TreeTransaction, TreeValue, ValueType};
 use gnoblin_types::NodeId;
-use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot, TreeHooks, TreeQueue};
+use gnoblin_wayland::{
+    Config, ControlHandle, Ledger, Limits, LoopError, Server, SessionSnapshot, TreeHooks, TreeQueue,
+};
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
     wl_buffer, wl_callback, wl_compositor, wl_output, wl_registry, wl_shm, wl_shm_pool, wl_subcompositor,
@@ -77,6 +79,8 @@ struct Handle {
     /// The shell's side of the tree: the queue it writes a window node's `secure` through.
     tree: TreeQueue,
     observation: Arc<Mutex<SessionSnapshot>>,
+    /// What each client holds, for the tests of the memory budget and the frame cache.
+    ledger: Arc<Ledger>,
 }
 
 impl Handle {
@@ -316,6 +320,11 @@ impl Session {
         Self::start_on(protocols, gnoblin_backend::headless::Headless::new())
     }
 
+    /// Creates a session that enforces the memory bounds a test chose.
+    fn start_limited(limits: Limits) -> Self {
+        Self::start_configured(Protocols::default(), gnoblin_backend::headless::Headless::new(), limits)
+    }
+
     /// Creates a session drawn by the GLES renderer, which draws a View on the GPU, or `None` (with the reason
     /// printed) on a machine that has no surfaceless EGL context.
     fn start_gles() -> Option<Self> {
@@ -331,6 +340,11 @@ impl Session {
 
     /// Creates a session on `backend`, on sockets of its own.
     fn start_on(protocols: Protocols, backend: gnoblin_backend::headless::Headless) -> Self {
+        Self::start_configured(protocols, backend, Limits::default())
+    }
+
+    /// Creates a session on `backend` with the memory bounds a test chose.
+    fn start_configured(protocols: Protocols, backend: gnoblin_backend::headless::Headless, limits: Limits) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let privileged_socket = directory.path().join("wayland-0-privileged.sock");
@@ -344,6 +358,7 @@ impl Session {
             socket_path: Some(socket.clone()),
             privileged_socket_path: Some(privileged_socket.clone()),
             protocols,
+            gpu_limits: limits,
             ..Config::default()
         };
         let server = Server::new(Box::new(backend), config).expect("the session starts");
@@ -353,6 +368,7 @@ impl Session {
             control: server.control(),
             tree,
             observation: server.observation(),
+            ledger: server.gpu_ledger(),
         };
         // Capture tests read the pixels a window has once it has landed, not the fade it
         // starts with; motion runs on real elapsed time, so the fade is off for them. The
@@ -847,6 +863,137 @@ fn a_screencopy_of_the_output_returns_the_window_pixels() {
         assert_eq!(inside, RED, "the capture returned the window's own pixels");
         let outside = shm.pixel(width - 5, height - 5);
         assert_eq!(outside, BLACK, "and the background where the window is not");
+    });
+}
+
+/// Asks for a frame of the output into `shm` until one is ready, which is what a client does with a copy that failed:
+/// the answer to a copy made while the compositor has no frame to give is `failed`, and the next one is served.
+fn screencopy_until_ready(capture: &mut Client, shm: &Shm) {
+    let deadline = Instant::now() + TIMEOUT;
+    loop {
+        let (ready, failed) = (capture.state.screencopy_ready, capture.state.screencopy_failed);
+        let frame = capture.screencopy(0);
+        frame.copy(&shm.buffer);
+        capture.wait_until(
+            |state| state.screencopy_ready > ready || state.screencopy_failed > failed,
+            "the screencopy frame's answer",
+        );
+        if capture.state.screencopy_ready > ready {
+            return;
+        }
+        assert!(Instant::now() < deadline, "no copy of the output was ever served");
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// The memory budget for these tests. The output is 3 MiB of target and keeps 3 MiB of frame for capture, the window
+/// is 0.1 MiB and the capture client's own buffer 3 MiB, so 9.2 MiB are held before the two clients of 16 MiB. They make
+/// 41.2 MiB, which is 1.2 MiB past the budget: room the frame cache gives back when nothing reads it, and a refusal when
+/// something does.
+fn tight_budget() -> Limits {
+    Limits {
+        budget_bytes: 40 << 20,
+        client_bytes: 0,
+        client_surfaces: 0,
+    }
+}
+
+/// Starts the session of the two tests below with a red window, a capture client that already holds the 3 MiB buffer it
+/// will copy into, and the frame cache kept; returns what they need.
+fn capturer_with_a_buffer(session: &Handle) -> (Client, Shm, gnoblin_types::Rect, Client) {
+    let mut app = Client::app(session.socket());
+    app.map_window("org.gnoblin.Red", "Red", 200, 150, RED);
+    let geometry = session.only_window();
+    let mut capture = Client::capturer(session.privileged_socket());
+    let frame = capture.screencopy(0);
+    let (width, height, _stride, _format) = capture.screencopy_geometry();
+    let shm = Shm::new(&capture, width, height, 0);
+    // The frame is asked for and never copied: it only told the client the buffer's size.
+    frame.destroy();
+    capture.roundtrip();
+    let deadline = Instant::now() + TIMEOUT;
+    while session.ledger.snapshot().capture_bytes == 0 {
+        assert!(Instant::now() < deadline, "the loop never kept a frame for capture");
+        thread::sleep(Duration::from_millis(5));
+    }
+    (capture, shm, geometry, app)
+}
+
+#[test]
+fn a_frame_cache_nobody_reads_is_given_back_and_made_again_for_the_next_capture() {
+    let session = Session::start_limited(tight_budget());
+    session.run(|session| {
+        let (mut capture, shm, geometry, _app) = capturer_with_a_buffer(session);
+
+        // Two clients of 16 MiB make the budget give the cache back, because no session reads it.
+        let mut clients = [Client::app(session.socket()), Client::app(session.socket())];
+        let held: Vec<_> = clients
+            .iter_mut()
+            .map(|client| {
+                let shm = Shm::new(client, 2048, 2048, 0);
+                client.roundtrip();
+                shm
+            })
+            .collect();
+        let deadline = Instant::now() + TIMEOUT;
+        while session.ledger.snapshot().capture_bytes != 0 {
+            assert!(Instant::now() < deadline, "the cache was never given back");
+            thread::sleep(Duration::from_millis(5));
+        }
+        let snapshot = session.ledger.snapshot();
+        assert!(snapshot.evicted > 0 && snapshot.refused == 0, "{snapshot:#?}");
+
+        // The next capture is asked for after the eviction: the compositor repaints, and the frame it serves is the
+        // window's own pixels, not a stale or an empty one. The cache is made again even though that is over the budget:
+        // a capture that has its buffer is never refused for the cache it needs.
+        screencopy_until_ready(&mut capture, &shm);
+        assert_eq!(
+            shm.pixel(geometry.x as u32 + 5, geometry.y as u32 + 5),
+            RED,
+            "the capture after the eviction is the window's pixels"
+        );
+        drop(held);
+    });
+}
+
+#[test]
+fn a_frame_cache_a_capture_is_reading_is_not_given_back() {
+    let session = Session::start_limited(tight_budget());
+    session.run(|session| {
+        let (mut capture, shm, geometry, _app) = capturer_with_a_buffer(session);
+
+        // A screencopy frame that has been asked for and not yet copied is a reader of the cache.
+        let frame = capture.screencopy(0);
+
+        // The budget cannot take the cache back, so the second 16 MiB client is the one that is refused.
+        let mut first = Client::app(session.socket());
+        let _a = Shm::new(&first, 2048, 2048, 0);
+        first.roundtrip();
+        let mut second = Client::app(session.socket());
+        let _b = Shm::new(&second, 2048, 2048, 0);
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            match second.queue.roundtrip(&mut second.state) {
+                Ok(_) => {
+                    assert!(Instant::now() < deadline, "the second client was never refused");
+                    thread::sleep(Duration::from_millis(5));
+                }
+                Err(wayland_client::DispatchError::Backend(wayland_client::backend::WaylandError::Protocol(error))) => {
+                    assert_eq!((error.object_interface.as_str(), error.code), ("wl_display", 2));
+                    break;
+                }
+                Err(other) => panic!("the round trip failed for another reason: {other}"),
+            }
+        }
+        let snapshot = session.ledger.snapshot();
+        assert_eq!(snapshot.evicted, 0, "a cache a capture reads is never given back");
+        assert_eq!(snapshot.refused, 1);
+        assert!(snapshot.capture_bytes > 0);
+
+        // The capture the cache was kept for is served from it.
+        frame.copy(&shm.buffer);
+        capture.wait_until(|state| state.screencopy_ready >= 1, "the screencopy frame ready");
+        assert_eq!(shm.pixel(geometry.x as u32 + 5, geometry.y as u32 + 5), RED);
     });
 }
 

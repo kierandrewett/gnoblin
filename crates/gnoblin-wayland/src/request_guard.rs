@@ -32,6 +32,13 @@
 //!    more than 16384 pixels on an edge or 2^27 pixels is refused at the request, before anything is mapped or imported:
 //!    `wl_shm.invalid_stride` for a pool, `zwp_linux_buffer_params_v1.invalid_dimensions` for a dmabuf.
 //!    Tests: `tests/gpu_memory.rs` and `tests/dmabuf.rs`.
+//! 6. **A client that holds more than its share.** `wl_compositor.create_surface` and `wl_shm_pool.create_buffer` are
+//!    asked of the memory ledger ([`crate::gpu_memory::Ledger`]) first: a client past its surface or buffer-byte
+//!    limit, or a buffer the session's budget cannot hold even after its caches are given back, is ended with
+//!    `wl_display.error.no_memory` and the request goes no further. What is admitted is recorded once Smithay has made
+//!    the object ([`Charge`]), so a request Smithay rejects leaves no entry behind, and is given back when the object
+//!    is destroyed (`crate::dispatch`). A GPU buffer is admitted where the loop imports it, which is where the backend is.
+//!    Tests: `tests/gpu_memory_budget.rs`.
 
 use std::any::Any;
 use std::sync::{Mutex, PoisonError};
@@ -41,6 +48,8 @@ use smithay::reexports::wayland_protocols::wp::linux_dmabuf::zv1::server::zwp_li
     self, ZwpLinuxBufferParamsV1,
 };
 use smithay::reexports::wayland_protocols::xdg::shell::server::{xdg_surface, xdg_wm_base};
+use smithay::reexports::wayland_server::backend::ClientId;
+use smithay::reexports::wayland_server::protocol::wl_compositor::{self, WlCompositor};
 use smithay::reexports::wayland_server::protocol::wl_shm;
 use smithay::reexports::wayland_server::protocol::wl_shm_pool::{self, WlShmPool};
 use smithay::reexports::wayland_server::protocol::wl_subsurface::{self, WlSubsurface};
@@ -63,6 +72,50 @@ pub(crate) enum Screened {
     Consumed,
     /// Smithay's handler handles it, and the object it creates is recorded afterwards.
     ForwardThenTrack(NewXdgSurface),
+    /// Smithay's handler handles it, and the memory the object it creates holds is recorded afterwards.
+    ForwardThenCharge(Charge),
+}
+
+/// What a request that was admitted to the memory ledger holds once Smithay has made its object.
+pub(crate) enum Charge {
+    /// A `wl_buffer` of `bytes`, by its protocol id.
+    Buffer { client: ClientId, id: u32, bytes: u64 },
+    /// A `wl_surface`, by its protocol id.
+    Surface { client: ClientId, id: u32 },
+}
+
+impl Charge {
+    /// Records the charge, if the object exists. A request Smithay rejected made no object and costs nothing.
+    pub(crate) fn record(self, state: &State, client: &Client, handle: &DisplayHandle) {
+        match self {
+            Self::Buffer {
+                client: id,
+                id: object,
+                bytes,
+            } => {
+                if client.object_from_protocol_id::<WlBuffer>(handle, object).is_ok() {
+                    state.gpu_ledger.record_buffer(&id, object, bytes);
+                }
+            }
+            Self::Surface { client: id, id: object } => {
+                if client.object_from_protocol_id::<WlSurface>(handle, object).is_ok() {
+                    state.gpu_ledger.record_surface(&id, object);
+                }
+            }
+        }
+    }
+}
+
+/// The protocol id of the object a `New<...>` request argument creates, read from its `Debug` form: the type hands
+/// out nothing else. `None` when the form is not the one expected, in which case the caller does not record the
+/// object and says so.
+fn new_object_id(id: &dyn std::fmt::Debug, interface: &str) -> Option<u32> {
+    let shown = format!("{id:?}");
+    let digits = shown.split_once(&format!("{interface}@"))?.1;
+    let end = digits
+        .find(|character: char| !character.is_ascii_digit())
+        .unwrap_or(digits.len());
+    digits[..end].parse().ok()
 }
 
 /// A `get_xdg_surface` request that Smithay is about to handle.
@@ -82,10 +135,7 @@ impl NewXdgSurface {
     /// The id is in the request as a `New<XdgSurface>`, which hands out nothing but its `Debug` form, and Smithay keeps
     /// the object it makes in private state, so the object is found from its protocol id once Smithay has made it.
     fn new(surface: &WlSurface, id: &dyn std::fmt::Debug) -> Option<Self> {
-        let shown = format!("{id:?}");
-        let digits = shown.split_once("xdg_surface@")?.1;
-        let end = digits.find(|character: char| !character.is_ascii_digit())?;
-        let protocol_id = digits[..end].parse().ok()?;
+        let protocol_id = new_object_id(id, "xdg_surface")?;
         Some(Self {
             surface: surface.clone(),
             protocol_id,
@@ -142,6 +192,30 @@ where
             }
         };
     }
+    if let Some(request) = request.downcast_ref::<wl_compositor::Request>() {
+        let (Some(_), wl_compositor::Request::CreateSurface { id }) =
+            (resource.downcast_ref::<WlCompositor>(), request)
+        else {
+            return Screened::Forward;
+        };
+        if let Err(refusal) = state.gpu_ledger.admit_surface(&client.id()) {
+            state.refuse_client(client, refusal);
+            return Screened::Consumed;
+        }
+        return match new_object_id(id, "wl_surface") {
+            Some(object) => Screened::ForwardThenCharge(Charge::Surface {
+                client: client.id(),
+                id: object,
+            }),
+            None => {
+                log::warn!(
+                    area = "memory",
+                    "the id of a new wl_surface could not be read, so it is not counted"
+                );
+                Screened::Forward
+            }
+        };
+    }
     if let Some(request) = request.downcast_ref::<wl_surface::Request>() {
         return match (resource.downcast_ref::<WlSurface>(), request) {
             (Some(surface), wl_surface::Request::Attach { buffer: Some(_), .. })
@@ -172,16 +246,52 @@ where
         };
     }
     if let Some(request) = request.downcast_ref::<wl_shm_pool::Request>() {
-        if let (Some(pool), wl_shm_pool::Request::CreateBuffer { width, height, .. }) =
-            (resource.downcast_ref::<WlShmPool>(), request)
-            && let Some(message) = oversized(*width, *height)
-        {
+        let (
+            Some(pool),
+            wl_shm_pool::Request::CreateBuffer {
+                id,
+                width,
+                height,
+                stride,
+                ..
+            },
+        ) = (resource.downcast_ref::<WlShmPool>(), request)
+        else {
+            return Screened::Forward;
+        };
+        if let Some(message) = oversized(*width, *height) {
             // The protocol has no error for a buffer that is too large; `invalid_stride` is the one `wl_shm` names for
             // a width, height or stride the pool cannot describe, and the message says which limit was passed.
             pool.post_error(wl_shm::Error::InvalidStride, message);
             return Screened::Consumed;
         }
-        return Screened::Forward;
+        // A size or stride the pool cannot describe is Smithay's to refuse with the error the protocol names; it
+        // holds nothing, so it is not asked of the ledger.
+        let (Ok(rows), Ok(stride)) = (u64::try_from(*height), u64::try_from(*stride)) else {
+            return Screened::Forward;
+        };
+        let bytes = rows.saturating_mul(stride);
+        if bytes == 0 {
+            return Screened::Forward;
+        }
+        if let Err(refusal) = state.gpu_ledger.admit_buffer(&client.id(), bytes) {
+            state.refuse_client(client, refusal);
+            return Screened::Consumed;
+        }
+        return match new_object_id(id, "wl_buffer") {
+            Some(object) => Screened::ForwardThenCharge(Charge::Buffer {
+                client: client.id(),
+                id: object,
+                bytes,
+            }),
+            None => {
+                log::warn!(
+                    area = "memory",
+                    "the id of a new wl_buffer could not be read, so it is not counted"
+                );
+                Screened::Forward
+            }
+        };
     }
     if let Some(request) = request.downcast_ref::<zwp_linux_buffer_params_v1::Request>() {
         let (width, height) = match request {

@@ -167,7 +167,17 @@ export class Output extends NativeObject {
         return this.scale * this.supersample;
     }
 
-    /** The compositor's requested GPU memory, in bytes; client-owned buffers are not counted. */
+    /**
+     * The compositor's requested GPU memory, in bytes; client-owned buffers are not counted. `target` is the
+     * output-sized target (and the copy a supersampled output averages down into), `scratch` the effect scratch
+     * targets, `staging` the host-visible buffers a renderer keeps between frames, `views` the pictures of the Views
+     * drawn on the GPU, `capture` the last presented frame the capture protocols copy from, and `total` their sum.
+     *
+     * The last four are the memory budget's numbers for the whole session, the same on every output: `clients` is
+     * the bytes of every client's live buffers, `budget` the budget the compositor holds the clients, the renderers
+     * and capture to (zero when it is off), `refused` the requests refused for passing a bound since the session
+     * began, and `evicted` the bytes given back from caches to make room for a client's buffer.
+     */
     get gpuMemory(): {
         readonly target: number;
         readonly scratch: number;
@@ -175,6 +185,10 @@ export class Output extends NativeObject {
         readonly views: number;
         readonly capture: number;
         readonly total: number;
+        readonly clients: number;
+        readonly budget: number;
+        readonly refused: number;
+        readonly evicted: number;
     } {
         return {
             target: read<number>(this, "gpu_memory_target_bytes"),
@@ -183,6 +197,10 @@ export class Output extends NativeObject {
             views: read<number>(this, "gpu_memory_views_bytes"),
             capture: read<number>(this, "gpu_memory_capture_bytes"),
             total: read<number>(this, "gpu_memory_bytes"),
+            clients: read<number>(this, "gpu_memory_clients_bytes"),
+            budget: read<number>(this, "gpu_memory_budget_bytes"),
+            refused: read<number>(this, "gpu_memory_refused_total"),
+            evicted: read<number>(this, "gpu_memory_evicted_total"),
         };
     }
 

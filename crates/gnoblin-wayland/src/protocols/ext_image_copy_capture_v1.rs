@@ -78,6 +78,7 @@ impl State {
             .client()
             .map_or_else(ClientId::default, |client| self.capture.owner(&client.id()));
         let id = self.capture.table.open(owner, target, CaptureStream::Requested, format);
+        self.resume_capture_cache();
         session.user_data().insert_if_missing(|| SessionKey(id));
         self.capture.sessions.push(session);
         log::debug!(area = "capture", %target, session = %id, "session opened");

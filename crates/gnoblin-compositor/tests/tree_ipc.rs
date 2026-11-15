@@ -233,10 +233,12 @@ fn a_transaction_is_applied_and_its_changes_are_published_at_the_next_serial() {
     session.stop().expect("the session stops cleanly");
 }
 
-#[test]
-fn a_screens_memory_reaches_the_shell_as_a_change_once_the_period_passes() {
-    // The other tests of this file run with the publication off (`support`), because a publication is a change batch
-    // that advances the serial when the test does not expect it. This one turns it on, with a short period.
+/// Starts a session with the memory publication on (a short period) and waits until the shell hears the screen's `key`
+/// with a value `wanted` accepts, as a change or in the snapshot it attached with.
+///
+/// The other tests of this file run with the publication off (`support`), because a publication is a change batch that
+/// advances the serial when the test does not expect it. These turn it on.
+fn the_screen_publishes(key: &str, wanted: impl Fn(f64) -> bool) {
     let (session, _) = Session::start_privileged_configured(&[], |config| {
         config.wayland.gpu_memory_period = Duration::from_millis(50);
     });
@@ -247,11 +249,11 @@ fn a_screens_memory_reaches_the_shell_as_a_change_once_the_period_passes() {
         .find(|node| node.class == "screen")
         .expect("the session has a screen node")
         .id;
-    let held = |change: &change::Properties| change.key == "gpu_memory_target_bytes" && change.value_double > 0.0;
-    let mut published = prop_of(&nodes, screen, "gpu_memory_target_bytes").is_some_and(held);
+    let held = |change: &change::Properties| change.key == key && wanted(change.value_double);
+    let mut published = prop_of(&nodes, screen, key).is_some_and(held);
     let deadline = Instant::now() + Duration::from_secs(20);
     while !published {
-        assert!(Instant::now() < deadline, "the screen's memory was never published");
+        assert!(Instant::now() < deadline, "the screen's {key} was never published");
         let envelope = wire.receive().expect("a frame");
         if envelope.member != "changes" {
             continue;
@@ -263,6 +265,19 @@ fn a_screens_memory_reaches_the_shell_as_a_change_once_the_period_passes() {
             .any(|change| change.kind == "set" && change.node == screen && held(change));
     }
     session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_screens_memory_reaches_the_shell_as_a_change_once_the_period_passes() {
+    the_screen_publishes("gpu_memory_target_bytes", |bytes| bytes > 0.0);
+}
+
+#[test]
+fn the_memory_budget_reaches_the_shell_on_the_screen_node() {
+    // The default budget is in force when no bound is set, and it is what the screen says.
+    the_screen_publishes("gpu_memory_budget_bytes", |bytes| {
+        (bytes - gnoblin_wayland::DEFAULT_BUDGET_BYTES as f64).abs() < 1.0
+    });
 }
 
 #[test]

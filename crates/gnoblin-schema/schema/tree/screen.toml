@@ -137,6 +137,14 @@ readonly = true
 # cursor. `gpu_memory_staging_bytes` is the host-visible upload and readback buffers a renderer keeps between frames.
 # `gpu_memory_views_bytes` is the pictures of the Views drawn on the GPU. `gpu_memory_capture_bytes` is the last
 # presented frame capture keeps for the screencopy and screen-cast protocols. `gpu_memory_bytes` is their sum.
+#
+# The next four are the memory budget's numbers for the whole session (design/gpu-memory.md, section 6), the same on every
+# output's node because the tree has no node for the session. `gpu_memory_clients_bytes` is the bytes of every client's
+# live buffers (shared-memory buffers by their size, GPU buffers by an estimate of width times height times the pixel
+# size). `gpu_memory_budget_bytes` is the budget the compositor holds the clients, the renderers and capture to, zero
+# when it is off. `gpu_memory_refused_total` is the requests refused since the session began, and
+# `gpu_memory_evicted_total` is the bytes given back from caches (the capture frame, View pictures, blur scratch) to
+# make room for a client's buffer.
 [[object.property]]
 name = "gpu_memory_target_bytes"
 type = "double"
@@ -174,6 +182,34 @@ readonly = true
 
 [[object.property]]
 name = "gpu_memory_bytes"
+type = "double"
+since = "0.2.0"
+default = 0.0
+readonly = true
+
+[[object.property]]
+name = "gpu_memory_clients_bytes"
+type = "double"
+since = "0.2.0"
+default = 0.0
+readonly = true
+
+[[object.property]]
+name = "gpu_memory_budget_bytes"
+type = "double"
+since = "0.2.0"
+default = 0.0
+readonly = true
+
+[[object.property]]
+name = "gpu_memory_refused_total"
+type = "double"
+since = "0.2.0"
+default = 0.0
+readonly = true
+
+[[object.property]]
+name = "gpu_memory_evicted_total"
 type = "double"
 since = "0.2.0"
 default = 0.0

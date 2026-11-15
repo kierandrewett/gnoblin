@@ -50,10 +50,11 @@ where
     ) {
         // A rule Smithay's handler does not enforce is checked first; a request it refuses has had its
         // protocol error posted and goes no further.
-        let created = match crate::request_guard::screen(state, client, resource, &request) {
+        let (created, charged) = match crate::request_guard::screen(state, client, resource, &request) {
             Screened::Consumed => return,
-            Screened::Forward => None,
-            Screened::ForwardThenTrack(created) => Some(created),
+            Screened::Forward => (None, None),
+            Screened::ForwardThenTrack(created) => (Some(created), None),
+            Screened::ForwardThenCharge(charge) => (None, Some(charge)),
         };
         // What the compositor must see of a request Smithay keeps out of reach is taken after the screen, so a refused
         // request is never recorded, and before Smithay sees it; what an input method that just bound is owed is given
@@ -66,9 +67,15 @@ where
         if let Some(created) = created {
             created.track(client, dhandle);
         }
+        if let Some(charge) = charged {
+            charge.record(state, client, dhandle);
+        }
     }
 
     fn destroyed(state: &mut Self, client: ClientId, resource: &I, data: &UserData) {
+        // Whatever the object cost the memory ledger is given back, whether the client destroyed it or went away
+        // (every object of a gone client is destroyed, so nothing a dead client held stays counted).
+        crate::gpu_memory::release(&*state, &client, resource);
         data.destroyed(state, client, resource);
     }
 }

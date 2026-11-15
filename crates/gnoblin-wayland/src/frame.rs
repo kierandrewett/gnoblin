@@ -386,6 +386,10 @@ pub fn render(
     // The captures into a client's GPU buffer are answered from the frames just drawn: a copy is made where the
     // renderer is, which a protocol handler is not.
     state.apply_dmabuf_captures(backend);
+    // What the renderers and capture hold is measured after the frame, which is when the next turn's admissions read
+    // it, and the frame cache the budget gave back is made again once the clients' buffers leave room for it.
+    state.measure_gpu_memory(&*backend);
+    state.resume_capture_cache_when_roomy();
     // What each output holds is published to its screen node here, before the turn's tree changes are taken, so a
     // shell that watches it hears a change on the iteration that made it.
     state.publish_gpu_memory(backend);

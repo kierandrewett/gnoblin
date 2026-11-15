@@ -25,7 +25,7 @@ use gnoblin_backend::InputEvent;
 use gnoblin_backend::headless::Headless;
 use gnoblin_config::Protocols;
 use gnoblin_types::{DeviceId, Point};
-use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot, TreeHooks};
+use gnoblin_wayland::{Config, ControlHandle, Ledger, Limits, LoopError, Server, SessionSnapshot, TreeHooks};
 use gnoblin_wayland::{NewWindowFocus, WmOptions};
 use wayland_client::backend::WaylandError;
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
@@ -70,6 +70,8 @@ pub struct Handle {
     privileged_socket: PathBuf,
     pub control: ControlHandle,
     observation: Arc<Mutex<SessionSnapshot>>,
+    /// What each client holds and the bounds on it: the memory budget's ledger.
+    pub ledger: Arc<Ledger>,
 }
 
 impl Handle {
@@ -204,6 +206,17 @@ impl Session {
         Self::create(Box::new(Headless::new()), protocols, WmOptions::default())
     }
 
+    /// Creates a session that enforces `limits` on what its clients and the session may hold.
+    pub fn start_limited(limits: Limits) -> Self {
+        Self::create_configured(
+            Box::new(Headless::new()),
+            Protocols::default(),
+            WmOptions::default(),
+            TreeHooks::default(),
+            limits,
+        )
+    }
+
     /// Creates a session with a shell's tree attached: the hooks' queue is the shell's way in and its publish hook
     /// the shell's eyes, as the compositor wires them for a connected shell.
     pub fn start_shelled(tree: TreeHooks) -> Self {
@@ -212,6 +225,22 @@ impl Session {
             Protocols::default(),
             WmOptions::default(),
             tree,
+        )
+    }
+
+    /// [`Session::start_shelled_detached`] with the memory bounds a test chose.
+    pub fn start_shelled_limited(tree: TreeHooks, limits: Limits) -> (Self, gnoblin_backend::headless::HeadlessHandle) {
+        let backend = Headless::new();
+        let outputs = backend.handle();
+        (
+            Self::create_configured(
+                Box::new(backend),
+                Protocols::default(),
+                WmOptions::default(),
+                tree,
+                limits,
+            ),
+            outputs,
         )
     }
 
@@ -241,6 +270,17 @@ impl Session {
         wm: WmOptions,
         tree: TreeHooks,
     ) -> Self {
+        Self::create_configured(backend, protocols, wm, tree, Limits::default())
+    }
+
+    /// Builds the session with the tree hooks a shell uses and the memory bounds a test chose.
+    fn create_configured(
+        backend: Box<dyn gnoblin_backend::Backend<gnoblin_wayland::State>>,
+        protocols: Protocols,
+        wm: WmOptions,
+        tree: TreeHooks,
+        limits: Limits,
+    ) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let privileged_socket = directory.path().join("wayland-0-privileged.sock");
@@ -250,6 +290,7 @@ impl Session {
             protocols,
             wm,
             tree,
+            gpu_limits: limits,
             ..Config::default()
         };
         let server = Server::new(backend, config).expect("the session starts");
@@ -258,6 +299,7 @@ impl Session {
             privileged_socket,
             control: server.control(),
             observation: server.observation(),
+            ledger: server.gpu_ledger(),
         };
         Self {
             directory,

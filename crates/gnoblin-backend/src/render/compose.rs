@@ -499,6 +499,21 @@ pub struct ScreenInfo {
     pub enabled: bool,
 }
 
+/// What the memory budget says about the whole session: the bytes of every client's live buffers, the budget, the
+/// requests refused since the session began and the bytes evicted from caches since then. They are published on every
+/// output's screen node (`gpu_memory_*`), the same value on each, because the tree has no node for the session.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SessionMemory {
+    /// The bytes of every client's live buffers.
+    pub clients: u64,
+    /// The budget, or zero when it is off.
+    pub budget: u64,
+    /// The requests refused since the session began.
+    pub refused: u64,
+    /// The bytes evicted from caches since the session began.
+    pub evicted: u64,
+}
+
 /// The session's scene and the windows it draws.
 #[derive(Debug)]
 pub struct Composer {
@@ -821,8 +836,17 @@ impl Composer {
 
     /// Publishes the bytes an output's renderer holds, and the bytes capture keeps of its last frame, to its screen
     /// node: `gpu_memory_*` in bytes, each announced as a `set` only when it differs from what the node holds, so a
-    /// steady session publishes nothing. An output with no screen node yet publishes nothing.
-    pub fn set_output_memory(&mut self, output: OutputId, footprint: &Footprint, capture_cache: u64) {
+    /// steady session publishes nothing. `session` is the memory budget's view of the whole session
+    /// (`gpu_memory_clients_bytes`, `gpu_memory_budget_bytes`, `gpu_memory_refused_total`,
+    /// `gpu_memory_evicted_total`), the same on every output's node. An output with no screen node yet publishes
+    /// nothing.
+    pub fn set_output_memory(
+        &mut self,
+        output: OutputId,
+        footprint: &Footprint,
+        capture_cache: u64,
+        session: &SessionMemory,
+    ) {
         let Some(node) = self.screens.get(&output).copied() else {
             return;
         };
@@ -834,6 +858,10 @@ impl Composer {
             ("gpu_memory_views_bytes", footprint.views),
             ("gpu_memory_capture_bytes", capture_cache),
             ("gpu_memory_bytes", total),
+            ("gpu_memory_clients_bytes", session.clients),
+            ("gpu_memory_budget_bytes", session.budget),
+            ("gpu_memory_refused_total", session.refused),
+            ("gpu_memory_evicted_total", session.evicted),
         ];
         for (key, bytes) in values {
             // Bytes are published as doubles like every other number on the tree; a count below 2^53 is exact.
