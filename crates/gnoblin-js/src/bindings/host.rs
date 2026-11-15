@@ -484,6 +484,20 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
         })?,
     )?;
 
+    // The nodes whose writes the shell gave up on since the last call, each once, as script numbers.
+    let shared = state.clone();
+    host.set(
+        "lostWrites",
+        Function::new(ctx.clone(), move || -> Vec<f64> {
+            let mut guard = shared.borrow_mut();
+            let state = &mut *guard;
+            let mut lost = std::mem::take(&mut state.lost_writes);
+            lost.sort_unstable();
+            lost.dedup();
+            lost.into_iter().map(|node| state.handles.to_script(node)).collect()
+        })?,
+    )?;
+
     let shared = state.clone();
     host.set(
         "screens",

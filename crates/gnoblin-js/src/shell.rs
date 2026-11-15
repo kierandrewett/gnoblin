@@ -8,7 +8,10 @@
 //! The protocol rules are the ones `the retired retired host`'s `ShellVm` keeps, because they belong to the tree
 //! protocol and not to the language: one transaction in flight (a second one built on the same base is
 //! refused as stale), a refusal matched to its transaction by position, a `stale-base` or `unknown-node`
-//! refusal sent again ahead of the next frame's writes, at most [`STALE_RETRIES`] times in a row.
+//! refusal sent again ahead of the next frame's writes, at most [`STALE_RETRIES`] times in a row. A refusal
+//! applies nothing, so what is sent again is the whole transaction, every kind of op, and a refusal that names no
+//! op (the base is older than the compositor's history) sends the whole frame again. What cannot be sent again
+//! (a call whose text is a secret) is answered as failed, and a write given up on is handed back to the layout.
 //!
 //! The boot order is: attach and drain the snapshot; load the `gnoblin` module; evaluate the entry
 //! ([`JsShell::load_entry`]); announce `ready` for the snapshot's nodes, parents first, on the first
@@ -81,10 +84,6 @@ const BOOT_POLL: Duration = Duration::from_millis(5);
 /// are compiled in that call, and a budget chosen to bound a user's entry must not starve them.
 const HOST_INSTALL_BUDGET: Duration = Duration::from_secs(5);
 
-/// Calls whose text is content and not a secret, so a retry may send it again. The same list the the retired shell
-/// shell keeps; no JavaScript call carries text yet, so this only holds the rule in place.
-const PLAIN_TEXT_CALLS: &[&str] = &["measure", "claim", "claim_gesture", "claim_device", "capture"];
-
 /// What a shell is built from.
 #[derive(Debug, Clone)]
 pub struct JsShellConfig {
@@ -148,9 +147,18 @@ pub struct JsFrame {
     pub diagnostics: Vec<String>,
 }
 
-/// The sent-log entry of one transaction: its serial and each op, or `None` for a call whose text is not
-/// kept.
-type Sent = (u64, Vec<Option<TxOp>>);
+/// What the sent log keeps of one op: enough to send it again, or to tell its caller that it was lost.
+enum SentOp {
+    /// An op that goes again as it is. A transaction the compositor refuses applies none of its ops (it applies
+    /// whole or not at all), so no op of it, a call included, has run: sending it again runs it once.
+    Keep(TxOp),
+    /// A call whose text the schema marks secret. The text is wiped once the transaction is sent and is held nowhere
+    /// else, so the call cannot go again; the token is kept to answer whoever waits for it.
+    Secret { method: String, token: u64 },
+}
+
+/// The sent-log entry of one transaction: its serial and each op.
+type Sent = (u64, Vec<SentOp>);
 
 /// What a reload needs from a running shell to stage its next generation: the config the shell's own
 /// generation was built from, and the hook that gives a staged generation the shell's host objects.
@@ -778,10 +786,7 @@ impl JsShell {
                     }
                 }
                 TreeIncoming::Answer { token, result, error } => {
-                    let state = &mut *self.state.borrow_mut();
-                    if !state.ui.accept_answer(token, &result, &error) && !state.outputs.accept_answer(token, &error) {
-                        state.lock.accept_answer(token, &result, &error);
-                    }
+                    route_answer(&mut self.state.borrow_mut(), token, &result, &error);
                 }
                 TreeIncoming::TrackEnded {
                     node,
@@ -1097,50 +1102,16 @@ impl JsShell {
         if reply.applied {
             self.stale_refusals = 0;
         }
-        let resend = matches!(reply.code.as_str(), "stale-base" | "unknown-node");
-        if !reply.applied && resend && reply.failed_op >= 0 {
-            // A published batch changed a node this transaction writes (stale-base), or destroyed it
-            // (unknown-node). The refused transaction applied nothing, so its ops are sent again on the
-            // next base, ahead of what the next frame writes, so the script's newest write lands last. The
-            // gate stays shut until the mirror reaches this serial, which that batch does.
-            //
-            // The failed op is sent again too under stale-base: the node still exists and the op is the
-            // script's intent, which nothing else writes again. It is sent again `STALE_RETRIES` times in a
-            // row; after that, and always under unknown-node (its node is gone), it is dropped.
-            let failed = usize::try_from(reply.failed_op).ok();
-            let retry_failed = reply.code == "stale-base" && self.stale_refusals < STALE_RETRIES;
-            self.stale_refusals = self.stale_refusals.saturating_add(1);
-            let mut kept: Vec<TxOp> = Vec::new();
-            for (index, op) in ops.into_iter().enumerate() {
-                if Some(index) == failed && !retry_failed {
-                    // A node that is gone has nothing to report; a write refused again and again is the script's
-                    // intent lost, and the script is told which.
-                    if reply.code == "stale-base" {
-                        diagnostics.push(format!(
-                            "transaction {} stale at op {index}: dropped after {STALE_RETRIES} resends",
-                            reply.serial
-                        ));
-                    }
-                    continue;
-                }
-                match op {
-                    Some(op) => kept.push(op),
-                    // Its text was not kept, so it is not sent again; the diagnostic says which call.
-                    None => diagnostics.push(format!(
-                        "transaction {} stale at op {}: text call {index} was dropped and not sent again",
-                        reply.serial, reply.failed_op
-                    )),
-                }
-            }
-            log::debug!(
-                area = "shell",
-                "transaction {} stale at op {}; {} ops sent again",
-                reply.serial,
-                reply.failed_op,
-                kept.len()
-            );
-            kept.append(&mut self.retry);
-            self.retry = kept;
+        // `stale-base` names the first op on a node a published batch changed, or no op (`failed_op` -1) when the base
+        // itself is too old for the compositor to check. `unknown-node` names the op on a node the compositor
+        // destroyed. A newer base cures both; any other code is a mistake of the script's and is reported below.
+        let cured_by_a_newer_base = match reply.code.as_str() {
+            "stale-base" => true,
+            "unknown-node" => reply.failed_op >= 0,
+            _ => false,
+        };
+        if !reply.applied && cured_by_a_newer_base {
+            self.send_again(reply, ops, diagnostics);
             return;
         }
         if reply.applied {
@@ -1169,8 +1140,8 @@ impl JsShell {
                 .ok()
                 .and_then(|i| {
                     ops.get(i).map(|op| match op {
-                        Some(op) => describe_op(i, op, &state.mirror),
-                        None => format!("op {i}: call (text not kept)"),
+                        SentOp::Keep(op) => describe_op(i, op, &state.mirror),
+                        SentOp::Secret { method, .. } => format!("op {i}: call {method} (secret text not kept)"),
                     })
                 })
                 .unwrap_or_else(|| "op not recorded".to_owned());
@@ -1179,6 +1150,88 @@ impl JsShell {
                 reply.serial, reply.failed_op, reply.code, op
             ));
         }
+    }
+
+    /// Keeps the ops of a transaction refused for an out-of-date base, to be sent again on the next base ahead of the
+    /// next frame's writes, so the script's newest write lands last. The gate stays shut until the mirror reaches the
+    /// refused serial, which the batch that made the base stale does.
+    ///
+    /// Which ops go again: a refused transaction applied nothing, so every op of it is intact and goes again, in
+    /// order, whatever its kind. The one exception is a call whose text is a secret (a password check): its text is
+    /// wiped once sent, so its caller is answered `failed` and the diagnostic names it. The op the compositor names is
+    /// sent again for [`STALE_RETRIES`] refusals in a row, and then given up, because a node the compositor changes
+    /// before every landing would refuse the whole transaction for ever; under `unknown-node` it is given up at
+    /// once, its node being gone. A refusal that names no op blames the base: the whole frame goes again, and is given
+    /// up whole only when the base stayed too old for every resend.
+    ///
+    /// An op that is given up is not silently gone: a call is answered `failed`, and a property write is handed to the
+    /// layout driver (`lost_writes`) and forgotten by the builder, so the script reads what the compositor holds and
+    /// the layout writes the place again.
+    fn send_again(&mut self, reply: &TxReply, ops: Vec<SentOp>, diagnostics: &mut Vec<String>) {
+        let named = usize::try_from(reply.failed_op).ok();
+        let stale = reply.code == "stale-base";
+        let spent = self.stale_refusals >= STALE_RETRIES;
+        self.stale_refusals = self.stale_refusals.saturating_add(1);
+        let mut state = self.state.borrow_mut();
+        let mut kept: Vec<TxOp> = Vec::new();
+        let mut given_up: Vec<TxOp> = Vec::new();
+        for (index, op) in ops.into_iter().enumerate() {
+            let give_up = match named {
+                Some(failed) => failed == index && (!stale || spent),
+                None => spent,
+            };
+            match op {
+                SentOp::Keep(op) if give_up => given_up.push(op),
+                SentOp::Keep(op) => kept.push(op),
+                SentOp::Secret { method, token } => {
+                    fail_call(&mut state, token, &reply.code);
+                    diagnostics.push(format!(
+                        "transaction {} {}: the {method} call carries a secret, was not sent again and failed",
+                        reply.serial, reply.code
+                    ));
+                }
+            }
+        }
+        if stale && !given_up.is_empty() {
+            diagnostics.push(match named {
+                Some(index) => format!(
+                    "transaction {} stale at op {index}: dropped after {STALE_RETRIES} resends",
+                    reply.serial
+                ),
+                None => format!(
+                    "transaction {} stale with no op named: the frame was dropped after {STALE_RETRIES} resends",
+                    reply.serial
+                ),
+            });
+        }
+        for op in &given_up {
+            match op {
+                TxOp::Set { node, key, .. } if stale => {
+                    state.lost_writes.push(*node);
+                    // A newer write of the same property still to go keeps the value the script reads.
+                    let again = kept
+                        .iter()
+                        .chain(&self.retry)
+                        .any(|op| matches!(op, TxOp::Set { node: n, key: k, .. } if n == node && k == key));
+                    if !again {
+                        state.tick.forget_write(*node, key);
+                    }
+                }
+                TxOp::Call { token, .. } => fail_call(&mut state, *token, &reply.code),
+                _ => {}
+            }
+        }
+        log::debug!(
+            area = "shell",
+            "transaction {} refused {} at op {}; {} ops sent again, {} given up",
+            reply.serial,
+            reply.code,
+            reply.failed_op,
+            kept.len(),
+            given_up.len()
+        );
+        kept.append(&mut self.retry);
+        self.retry = kept;
     }
 
     /// Sends this frame's writes as one transaction, once the one in flight has landed.
@@ -1200,23 +1253,33 @@ impl JsShell {
             let mut tx = tick.into_transaction(&state.mirror, serial + 1);
             if !self.retry.is_empty() {
                 // Ops refused stale-base go first, on this base. An op on a node the tree has lost since is
-                // moot, and sending it would refuse the whole transaction again.
+                // moot, and sending it would refuse the whole transaction again; a call among them is answered
+                // `failed`, as its caller waits for its answer.
                 let mirror = &state.mirror;
-                let mut ops = std::mem::take(&mut self.retry);
                 let mut made: Vec<NodeId> = Vec::new();
-                ops.retain(|op| match op {
-                    TxOp::New { id, .. } => {
-                        made.push(*id);
-                        true
+                let mut ops: Vec<TxOp> = Vec::new();
+                let mut lost_calls: Vec<u64> = Vec::new();
+                for op in std::mem::take(&mut self.retry) {
+                    let present = |id: &NodeId, made: &[NodeId]| made.contains(id) || mirror.node(*id).is_some();
+                    let alive = match &op {
+                        TxOp::New { id, .. } => {
+                            made.push(*id);
+                            true
+                        }
+                        TxOp::Set { node, .. } | TxOp::Destroy { node } | TxOp::Call { node, .. } => {
+                            present(node, &made)
+                        }
+                        TxOp::Insert { node, parent, .. } => present(node, &made) && present(parent, &made),
+                    };
+                    match op {
+                        TxOp::Call { token, .. } if !alive => lost_calls.push(token),
+                        op if alive => ops.push(op),
+                        _ => {}
                     }
-                    TxOp::Set { node, .. } | TxOp::Destroy { node } | TxOp::Call { node, .. } => {
-                        made.contains(node) || mirror.node(*node).is_some()
-                    }
-                    TxOp::Insert { node, parent, .. } => {
-                        (made.contains(node) || mirror.node(*node).is_some())
-                            && (made.contains(parent) || mirror.node(*parent).is_some())
-                    }
-                });
+                }
+                for token in lost_calls {
+                    fail_call(state, token, "unknown-node");
+                }
                 ops.append(&mut tx.ops);
                 tx.ops = ops;
             }
@@ -1225,8 +1288,8 @@ impl JsShell {
             tx
         };
         if !tx.ops.is_empty() {
-            self.sent
-                .push_back((tx.serial, tx.ops.iter().map(retained_op).collect()));
+            let kept = sent_ops(&tx.ops, &self.state.borrow().mirror);
+            self.sent.push_back((tx.serial, kept));
             self.in_flight = Some(tx.serial);
             self.link.transact(&tx).map_err(|e| JsShellError::Link(e.0))?;
         }
@@ -1247,13 +1310,53 @@ fn location_text(at: &crate::error::JsLocation) -> String {
     format!("{}:{}:{}", at.file.display(), at.line, at.column)
 }
 
-/// What the sent-log keeps of one op for a stale-base retry. A call that carries a secret is not kept: its
-/// text is not held past the send, so a retry cannot send it again.
-fn retained_op(op: &TxOp) -> Option<TxOp> {
-    match op {
-        TxOp::Call { method, text, .. } if !text.is_empty() && !PLAIN_TEXT_CALLS.contains(&method.as_str()) => None,
-        other => Some(other.clone()),
+/// Hands an answer to the module that asked: a toolkit measurement, an output `apply` or a lock password check.
+fn route_answer(state: &mut HostState, token: u64, result: &[u8], error: &str) {
+    if !state.ui.accept_answer(token, result, error) && !state.outputs.accept_answer(token, error) {
+        state.lock.accept_answer(token, result, error);
     }
+}
+
+/// Answers a call that is lost for good (refused, and not to be sent again) with the failure the compositor would have
+/// given, so whoever waits for its answer is not left waiting. A token nobody asked under is ignored.
+fn fail_call(state: &mut HostState, token: u64, code: &str) {
+    let error = format!("failed: the transaction was refused {code} and the call was not sent again");
+    route_answer(state, token, b"", &error);
+}
+
+/// What the sent log keeps of each op of a transaction about to be sent. A call is secret when the schema says so
+/// for its node's class (`gnoblin_proto::tree_call_is_secret`); the class of a node the transaction makes is read
+/// from its `new`. A call on a node of no known class is secret when it carries text: what cannot be placed is not
+/// kept.
+fn sent_ops(ops: &[TxOp], mirror: &TreeMirror) -> Vec<SentOp> {
+    let class_of = |node: NodeId| {
+        mirror.node(node).map(|record| record.class.as_str()).or_else(|| {
+            ops.iter().find_map(|op| match op {
+                TxOp::New { id, class } if *id == node => Some(class.as_str()),
+                _ => None,
+            })
+        })
+    };
+    ops.iter()
+        .map(|op| match op {
+            TxOp::Call {
+                node,
+                method,
+                token,
+                text,
+                ..
+            } if class_of(*node).map_or(!text.is_empty(), |class| {
+                gnoblin_proto::tree_call_is_secret(class, method)
+            }) =>
+            {
+                SentOp::Secret {
+                    method: method.clone(),
+                    token: *token,
+                }
+            }
+            other => SentOp::Keep(other.clone()),
+        })
+        .collect()
 }
 
 /// Names one op for a refusal: its index, class, property and value kind, so a refused write is traceable

@@ -3,7 +3,7 @@
 #![allow(dead_code)]
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -53,6 +53,25 @@ pub struct Claim {
     pub second: i64,
 }
 
+/// How the fake answers a transaction instead of applying it, in the words of the real compositor
+/// (`gnoblin_render::tree_revision`, `gnoblin_render::transaction`). Faults are queued with
+/// [`FakeCompositor::fault`] and each one takes the next transaction the shell sends, in order; once the queue is empty
+/// every transaction applies again.
+#[derive(Clone, Debug)]
+pub enum Fault {
+    /// `stale-base`: a batch the shell had not read changed a node the transaction names. `racing` is that batch: the
+    /// compositor publishes it (the serial moves, the node's change is announced) and then refuses, applying nothing.
+    /// `failed_op` is the index of the first op on a node `racing` changed when it is `None`, as the real check names
+    /// it; `Some(-1)` is the refusal of a base older than the history the compositor keeps, which names no op.
+    StaleBase {
+        failed_op: Option<i64>,
+        racing: Vec<MirrorChange>,
+    },
+    /// `unknown-node` at `failed_op`: the compositor destroyed a node the transaction writes, and the transaction was
+    /// built before the shell read that. The destroy is published first, as it is in the real order.
+    UnknownNode { failed_op: i64, destroyed: u64 },
+}
+
 pub struct Compositor {
     pub nodes: BTreeMap<u64, Node>,
     /// The claims made and not given up, in the order they were made.
@@ -62,6 +81,10 @@ pub struct Compositor {
     pub sent: Vec<Vec<TxOp>>,
     pub measures: Vec<Measure>,
     pub queue: Vec<TreeIncoming>,
+    /// The faults the next transactions meet, oldest first.
+    pub faults: VecDeque<Fault>,
+    /// How many transactions were refused.
+    pub refused: usize,
 }
 
 #[derive(Clone)]
@@ -107,6 +130,8 @@ impl Compositor {
             sent: Vec::new(),
             measures: Vec::new(),
             queue: Vec::new(),
+            faults: VecDeque::new(),
+            refused: 0,
         }
     }
 
@@ -222,9 +247,109 @@ impl FakeCompositor {
         Self(Rc::new(RefCell::new(Compositor::new())))
     }
 
+    /// Queues `fault` for the next transaction that has none yet. See [`Fault`].
+    pub fn fault(&self, fault: Fault) {
+        self.0.borrow_mut().faults.push_back(fault);
+    }
+
+    /// Queues `count` stale-base refusals at `failed_op`, each after a racing batch that writes `node`'s `key`, as the
+    /// compositor's own writes to a window do.
+    pub fn stale(&self, count: usize, failed_op: Option<i64>, node: u64, key: &str) {
+        for round in 0..count {
+            self.fault(Fault::StaleBase {
+                failed_op,
+                racing: vec![set_change(node, key, text(&format!("race{round}")))],
+            });
+        }
+    }
+
+    /// How many transactions the fake refused.
+    pub fn refused(&self) -> usize {
+        self.0.borrow().refused
+    }
+
     pub fn land(&self, tx: &TreeTx) {
         let mut c = self.0.borrow_mut();
         c.sent.push(tx.ops.clone());
+        match c.faults.pop_front() {
+            Some(Fault::StaleBase { failed_op, racing }) => {
+                let failed_op = failed_op.unwrap_or_else(|| {
+                    let changed: Vec<u64> = racing.iter().map(|change| change.node).collect();
+                    tx.ops
+                        .iter()
+                        .position(|op| match op {
+                            TxOp::Set { node, .. } | TxOp::Destroy { node } | TxOp::Call { node, .. } => {
+                                changed.contains(node)
+                            }
+                            TxOp::Insert { node, parent, .. } => changed.contains(node) || changed.contains(parent),
+                            TxOp::New { .. } => false,
+                        })
+                        .map_or(-1, |at| at as i64)
+                });
+                // The racing batch is published before the refusal and the refusal carries the serial it leaves, as
+                // the real frame answers after it publishes.
+                for change in &racing {
+                    if let Some(value) = change.value.clone()
+                        && let Some(entry) = c.nodes.get_mut(&change.node)
+                    {
+                        entry.props.insert(change.key.clone(), value);
+                    }
+                }
+                c.serial += 1;
+                let serial = c.serial;
+                c.queue.push(TreeIncoming::Changes {
+                    serial,
+                    changes: racing,
+                });
+                c.refused += 1;
+                c.queue.push(TreeIncoming::Reply(TxReply {
+                    serial,
+                    applied: false,
+                    failed_op,
+                    code: "stale-base".to_owned(),
+                    removed: Vec::new(),
+                }));
+                return;
+            }
+            Some(Fault::UnknownNode { failed_op, destroyed }) => {
+                let removed = c.subtree(destroyed);
+                c.detach(destroyed);
+                for id in &removed {
+                    c.nodes.remove(id);
+                }
+                c.serial += 1;
+                let serial = c.serial;
+                c.queue.push(TreeIncoming::Changes {
+                    serial,
+                    changes: vec![MirrorChange {
+                        removed,
+                        ..change(MirrorChangeKind::Destroyed, destroyed)
+                    }],
+                });
+                c.refused += 1;
+                c.queue.push(TreeIncoming::Reply(TxReply {
+                    serial,
+                    applied: false,
+                    failed_op,
+                    code: "unknown-node".to_owned(),
+                    removed: Vec::new(),
+                }));
+                return;
+            }
+            None => {}
+        }
+        Self::apply_whole(&mut c, tx);
+        c.queue.push(TreeIncoming::Reply(TxReply {
+            serial: tx.serial,
+            applied: true,
+            failed_op: -1,
+            code: String::new(),
+            removed: Vec::new(),
+        }));
+    }
+
+    /// Applies every op of `tx`, advances the serial to it and queues the change batch, when there is one.
+    fn apply_whole(c: &mut Compositor, tx: &TreeTx) {
         let mut changes = Vec::new();
         for op in &tx.ops {
             if let Some(applied) = c.apply(op) {
@@ -239,13 +364,6 @@ impl FakeCompositor {
                 changes,
             });
         }
-        c.queue.push(TreeIncoming::Reply(TxReply {
-            serial: tx.serial,
-            applied: true,
-            failed_op: -1,
-            code: String::new(),
-            removed: Vec::new(),
-        }));
     }
 
     /// Publishes `changes` as a batch of the compositor's own.
@@ -419,6 +537,39 @@ impl FakeCompositor {
 
     pub fn sent_count(&self) -> usize {
         self.0.borrow().sent.len()
+    }
+
+    /// The transactions the shell sent after the first `mark`, each as its ops, refused ones included: `mark` is a
+    /// `sent_count` taken before.
+    pub fn sent_since(&self, mark: usize) -> Vec<Vec<TxOp>> {
+        self.0.borrow().sent.iter().skip(mark).cloned().collect()
+    }
+
+    /// The token of every `authenticate` call the shell sent, refused attempts included, in order.
+    pub fn checks(&self) -> Vec<u64> {
+        self.0
+            .borrow()
+            .sent
+            .iter()
+            .flatten()
+            .filter_map(|op| match op {
+                TxOp::Call { method, token, .. } if method == "authenticate" => Some(*token),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Whether any property of any node holds `needle` as text, or inside paint bytes.
+    pub fn holds(&self, needle: &str) -> bool {
+        let c = self.0.borrow();
+        c.nodes
+            .values()
+            .flat_map(|entry| entry.props.values())
+            .any(|value| match value {
+                MirrorValue::Text(held) => held.contains(needle),
+                MirrorValue::Bytes(bytes) => bytes.windows(needle.len()).any(|window| window == needle.as_bytes()),
+                _ => false,
+            })
     }
 
     /// The ops of the transactions the shell sent after the first `mark`, in order: `mark` is a `sent_count` taken before.

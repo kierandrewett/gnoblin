@@ -54,6 +54,17 @@ pub use handshake::{HANDSHAKE_LEN, Handshake, HandshakeKind, MAGIC};
 pub use transport::Transport;
 pub use version::{Mismatch, accepts, check};
 
+/// Whether the schema marks the call `method` on a node of `class` secret: a call whose text is a password, which the
+/// holder wipes once it is sent and so can never send again.
+///
+/// The schema is the one place that decides it (`secret = true` on a method or one of its parameters, see
+/// `schema/tree/lock.toml`), so a client that must choose which calls it may keep for a resend asks here and carries no
+/// list of names of its own. `class` is the wire name (`lock`) or the shell's (`Lock`); case does not matter.
+#[must_use]
+pub fn tree_call_is_secret(class: &str, method: &str) -> bool {
+    generated::sensitive::is_sensitive("tree", &format!("{}.{method}", class.to_ascii_lowercase()))
+}
+
 /// The version type the wire, the schema and every generated surface share.
 ///
 /// Re-exported so a client crate needs one import for the version it was built
@@ -98,4 +109,32 @@ const fn parse_version(text: &str) -> (u32, u32, u32) {
         parts = [0; 3];
     }
     (parts[0], parts[1], parts[2])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tree_call_is_secret;
+
+    #[test]
+    fn only_the_calls_the_schema_marks_secret_are_secret() {
+        assert!(tree_call_is_secret("lock", "authenticate"), "a password check");
+        assert!(
+            tree_call_is_secret("Lock", "authenticate"),
+            "the shell's spelling of the class"
+        );
+        for (class, method) in [
+            ("screen", "apply"),
+            ("seat", "claim"),
+            ("seat", "claim_gesture"),
+            ("seat", "claim_device"),
+            ("canvas", "measure"),
+            ("view", "capture"),
+            ("lock", "lock"),
+        ] {
+            assert!(
+                !tree_call_is_secret(class, method),
+                "{class}.{method} carries content, not a secret"
+            );
+        }
+    }
 }

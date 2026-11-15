@@ -326,6 +326,27 @@ fn what_a_sent_transaction_wrote_is_read_by_the_next_builder_until_the_mirror_sa
     assert_eq!(next.get(&moved, 2, "opacity"), None);
 }
 
+#[test]
+fn a_write_that_was_refused_and_forgotten_reads_as_the_mirror_holds_it() {
+    let mirror = base_mirror();
+    let mut tx = TxBuilder::new();
+    tx.set(&mirror, 2, "opacity", MirrorValue::Double(0.25), None, None)
+        .expect("2 exists");
+    tx.set(&mirror, 2, "x", MirrorValue::Double(9.0), None, None)
+        .expect("2 exists");
+    let mut next = TxBuilder::seeded(tx.sent(&mirror));
+    assert_eq!(next.get(&mirror, 2, "opacity"), Some(&MirrorValue::Double(0.25)));
+
+    // The compositor refused the transaction and the shell will not send `opacity` again: it reads as the mirror has
+    // it, and the write that is still to be sent is still read as written.
+    next.forget_write(2, "opacity");
+    next.refresh(&mirror);
+    assert_eq!(next.get(&mirror, 2, "opacity"), None);
+    assert_eq!(next.get(&mirror, 2, "x"), Some(&MirrorValue::Double(9.0)));
+    next.forget_write(2, "x");
+    assert_eq!(next.get(&mirror, 2, "x"), None);
+}
+
 /// A transaction that cannot be sent (the one before it is in flight) leaves its writes pending in the builder, and the
 /// copies of the nodes they touch with them. The compositor writes properties of its own on those nodes in the
 /// meantime, and the next tick's read of one is the compositor's word, not the copy's: a shell that read the copy's

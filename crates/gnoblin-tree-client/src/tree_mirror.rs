@@ -893,6 +893,18 @@ impl TxBuilder {
         }
     }
 
+    /// Forgets that a transaction in flight wrote `key` on `node`: the write was refused and will not be sent again, so
+    /// a read must show what the mirror holds and not a value the compositor never took. The next
+    /// [`refresh`](Self::refresh) brings a carried copy of the node back to the mirror's value too.
+    pub fn forget_write(&mut self, node: NodeId, key: &str) {
+        if let Some(props) = self.in_flight.get_mut(&node) {
+            props.remove(key);
+            if props.is_empty() {
+                self.in_flight.remove(&node);
+            }
+        }
+    }
+
     /// Every transaction sent has been answered and none waits to be sent again: the mirror says what is so. The
     /// in-flight properties go, and so do the carried nodes: the mirror holds what came, and what did not (a
     /// refused transaction) never will. A node this tick has pending ops on stays, with what those ops wrote.

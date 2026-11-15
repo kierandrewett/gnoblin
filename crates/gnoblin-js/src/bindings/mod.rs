@@ -53,6 +53,10 @@ pub(crate) struct HostState {
     pub lock: crate::lock::JsLockState,
     /// The `apply` calls the outputs module sent and the compositor's answers to them.
     pub outputs: crate::output_apply::JsOutputApplies,
+    /// The nodes whose property writes the shell gave up on (the compositor refused them `stale-base` more often than
+    /// the shell sends a write again). The layout driver takes them, so a placement that was lost is computed and
+    /// written again instead of being waited for.
+    pub lost_writes: Vec<NodeId>,
 }
 
 pub(crate) type SharedState = Rc<RefCell<HostState>>;
@@ -79,6 +83,7 @@ impl HostState {
             api: crate::host_api::JsHostApi::default(),
             lock: crate::lock::JsLockState::default(),
             outputs: crate::output_apply::JsOutputApplies::default(),
+            lost_writes: Vec::new(),
         }
     }
 }

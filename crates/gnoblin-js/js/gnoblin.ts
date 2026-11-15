@@ -242,6 +242,8 @@ interface Host {
     /** Queues the moves that put a window under the others. */
     lower(node: NodeId): string | undefined;
     windows(): NodeId[];
+    /** The nodes whose writes the shell gave up on since the last call, each once. */
+    lostWrites(): NodeId[];
     screens(): NodeId[];
     /** The screen the main seat's pointer is on, or undefined while the seat names none. */
     pointerScreen(): NodeId | undefined;
@@ -3367,11 +3369,31 @@ function applyStyles(): void {
 function layout(): number {
     // Bindings first, so what they write is laid out in the same frame.
     guard("gnoblin.properties", flushBindings);
+    guard("gnoblin.lostWrites", relayLostWrites);
     laying = true;
     try {
         return layoutWorkspaces();
     } finally {
         laying = false;
+    }
+}
+
+/**
+ * Takes the windows whose writes the shell gave up on (the compositor refused them `stale-base` more often than the
+ * shell sends a write again) and lays their workspaces out again. A placement is computed only when its workspace is
+ * dirty, and the pass cleared that before the write went out, so without this a lost placement would stay lost until
+ * something else happened to the workspace. What this module last wrote to the window (its visibility) is forgotten
+ * too, as the next pass writes only what differs from it.
+ */
+function relayLostWrites(): void {
+    for (const node of host.lostWrites()) {
+        const client = clientsByNode.get(node);
+        const workspace = client === undefined ? undefined : membership.get(client);
+        if (client === undefined || workspace === undefined) {
+            continue;
+        }
+        writtenVisible.delete(client);
+        wsState(workspace).dirty = true;
     }
 }
 
