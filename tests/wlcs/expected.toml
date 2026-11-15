@@ -462,14 +462,20 @@ passing = [
     "XdgPopupTest.when_parent_surface_is_moved_a_reactive_popup_is_moved",
     "XdgShellStableSubsurfaces/SubsurfaceMultilevelTest.by_default_subsurface_is_sync/0",
     "XdgShellStableSubsurfaces/SubsurfaceMultilevelTest.subsurface_can_be_set_to_sync/0",
+    "XdgShellStableSubsurfaces/SubsurfaceMultilevelTest.subsurface_does_not_move_when_grandparent_commit_is_before_sync_parent_commit/0",
     "XdgShellStableSubsurfaces/SubsurfaceMultilevelTest.subsurface_moves_after_both_sync_parent_and_grandparent_commit/0",
     "XdgShellStableSubsurfaces/SubsurfaceMultilevelTest.subsurface_with_desync_parent_does_not_move_when_only_grandparent_committed/0",
     "XdgShellStableSubsurfaces/SubsurfaceMultilevelTest.subsurface_with_desync_parent_moves_when_only_parent_committed/0",
+    "XdgShellStableSubsurfaces/SubsurfaceMultilevelTest.subsurface_with_sync_parent_does_not_move_when_only_grandparent_committed/0",
     "XdgShellStableSubsurfaces/SubsurfaceMultilevelTest.subsurface_with_sync_parent_does_not_move_when_only_parent_committed/0",
+    "XdgShellStableSubsurfaces/SubsurfaceTest.desync_subsurface_moves_when_only_parent_committed/0",
     "XdgShellStableSubsurfaces/SubsurfaceTest.gets_input_over_surface_with_empty_region/0",
     "XdgShellStableSubsurfaces/SubsurfaceTest.input_falls_through_empty_subsurface_input_region/0",
     "XdgShellStableSubsurfaces/SubsurfaceTest.one_subsurface_to_another_fallthrough/0",
+    "XdgShellStableSubsurfaces/SubsurfaceTest.place_above_simple/0",
+    "XdgShellStableSubsurfaces/SubsurfaceTest.place_below_simple/0",
     "XdgShellStableSubsurfaces/SubsurfaceTest.pointer_input_correctly_offset_for_subsurface/0",
+    "XdgShellStableSubsurfaces/SubsurfaceTest.subsurface_does_not_move_when_parent_not_committed/0",
     "XdgShellStableSubsurfaces/SubsurfaceTest.subsurface_extends_parent_input_region/0",
     "XdgShellStableSubsurfaces/SubsurfaceTest.subsurface_gets_pointer_input/0",
     "XdgShellStableSubsurfaces/SubsurfaceTest.subsurface_has_correct_parent/0",
@@ -478,6 +484,7 @@ passing = [
     "XdgShellStableSubsurfaces/SubsurfaceTest.subsurface_moves_under_input_device_twice/0",
     "XdgShellStableSubsurfaces/SubsurfaceTest.subsurface_of_a_subsurface_handled/0",
     "XdgShellStableSubsurfaces/SubsurfaceTest.sync_subsurface_moves_when_only_parent_committed/0",
+    "XdgSurfaceStableTest.attaching_buffer_to_unconfigured_xdg_surface_is_an_error",
     "XdgSurfaceStableTest.creating_xdg_surface_from_wl_surface_with_attached_buffer_is_an_error",
     "XdgSurfaceStableTest.creating_xdg_surface_from_wl_surface_with_committed_buffer_is_an_error",
     "XdgSurfaceStableTest.creating_xdg_surface_from_wl_surface_with_existing_role_is_an_error",
@@ -542,13 +549,3 @@ issue = "gnoblin-of0d"
 pattern = "FractionalScaleV1Test.*"
 reason = "phase 3 protocol"
 issue = "gnoblin-of0d"
-
-[[known_failure]]
-pattern = "XdgSurfaceStableTest.attaching_buffer_to_unconfigured_xdg_surface_is_an_error"
-reason = "the suite expects xdg_surface.unconfigured_buffer when a buffer is attached, with no commit; Smithay raises it at commit. Raising it at attach needs the xdg_surface object, which is created inside Smithay's get_xdg_surface handler and kept in private state: the guard in request_guard.rs sees the request before it and has no way to a resource it makes"
-issue = "gnoblin-ve4a"
-
-[[known_failure]]
-pattern = "XdgShellStableSubsurfaces/*"
-reason = "a subsurface position is applied at the subsurface own commit, not with the parent state; place_above and place_below are applied at once"
-issue = "gnoblin-v3hw"

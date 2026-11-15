@@ -19,7 +19,7 @@ It prints a pass/fail/skip/crash table per suite and exits 1 on a regression, a 
 - Build recipe on Debian or Ubuntu: `apt-get install git cmake g++ pkg-config libwayland-dev libgtest-dev libgmock-dev libboost-dev python3`.
 - wlcs is pinned at `v1.8.1` (`WLCS_REF`).
 - The script edits wlcs's own build files: it builds with `-Werror`, and CMake before 3.26 mangles `-DNAME=value` in `COMPILE_DEFINITIONS`.
-- It applies the patches in `tests/wlcs/patches/`, which fix wlcs attaching a buffer before the initial configure is acknowledged. A compositor that enforces `xdg_surface.unconfigured_buffer` (Smithay does) closed the connection in about 320 tests before they tested anything.
+- It applies the patches in `tests/wlcs/patches/`. Most fix wlcs attaching a buffer before the initial configure is acknowledged: a compositor that enforces `xdg_surface.unconfigured_buffer` (Smithay does) closed the connection in about 320 tests before they tested anything. `0005` fixes the second assertion of `place_above_simple` and `place_below_simple`, which demanded that a subsurface that is on top is not the pointer focus (the same failure is reported on Mir, canonical/wlcs#396).
 
 ## How the library runs the compositor
 
@@ -53,18 +53,22 @@ Each has a test in `crates/gnoblin-wayland` or `crates/gnoblin-wlcs`.
 
 ## Result
 
-Core subset: 702 tests, 474 pass, 8 fail and 220 skipped (the `wl_shell` and `zxdg_shell_v6` variants, which the compositor does not serve). Every failure has a known-failure entry in `tests/wlcs/expected.toml` with a reason and the Beads issue that owns it:
+Core subset: 702 tests, 481 pass, 1 fails and 220 skipped (the `wl_shell` and `zxdg_shell_v6` variants, which the compositor does not serve). Every failure has a known-failure entry in `tests/wlcs/expected.toml` with a reason and the Beads issue that owns it:
 
 - `gnoblin-wrns`: Smithay's zero-size positioner anchor rectangle.
-- `gnoblin-ve4a`: `XdgSurfaceStableTest.attaching_buffer_to_unconfigured_xdg_surface_is_an_error`. The suite expects `xdg_surface.unconfigured_buffer` when a buffer is attached with no commit; Smithay raises it at commit, which is what the xdg-shell text and every other client-visible case need. Raising it at attach means posting on the `xdg_surface`, an object that Smithay's `get_xdg_surface` handler creates and keeps in private state, so the request guard (`crates/gnoblin-wayland/src/request_guard.rs`) that sees the request before Smithay has no way to the object it makes. It needs a change in Smithay, or a replacement of its xdg_wm_base handler.
-- `gnoblin-v3hw`: subsurface timing. Smithay applies `wl_subsurface.set_position` at the subsurface's own commit and `place_above` and `place_below` at once; the protocol applies both with the parent's state.
 - `gnoblin-of0d`: later-phase protocols.
 
-`gnoblin-ve4a` is resolved but for that test. Seven tests pass that did not, with no change to Smithay:
+`gnoblin-ve4a` and `gnoblin-v3hw` are resolved, with no change to Smithay. Seven of their tests passed earlier:
 
 - `xdg_wm_base.get_xdg_surface` is checked before Smithay handles it (`request_guard.rs`, applied by `dispatch.rs` to every request): a `wl_surface` with a role other than an xdg one is `role`, and one with a buffer attached or committed is `invalid_surface_state`. Three `XdgSurfaceStableTest` tests.
 - `wp_viewporter` is the compositor's own (`protocols/wp_viewporter.rs`). Smithay's raises `viewport_exists` on the `wl_surface`, installs its `bad_size` hook only for a surface that has no viewport data (a surface that has already committed a buffer has it, so the hook was never installed for the surfaces that matter) and checks `out_of_buffer` only when a commit brings a new buffer. The viewport state is still Smithay's `ViewportCachedState`, so the renderer is unchanged. Three `WpViewporterTest` tests.
 - A `wl_shm` pool the client shrank under a buffer is `wl_shm.invalid_fd` on the buffer at the commit that attaches it (`wl_compositor.rs`, `gnoblin_render_frame::shm::probe`, one byte read inside Smithay's SIGBUS guard). The suite test did nothing in any build of ours: it wrote its `ftruncate()` inside an `assert()`, and `scripts/wlcs.sh` builds Release, which compiles the assert away. `tests/wlcs/patches/0004-bad-buffer-test-truncates-outside-the-assert.patch` runs the call. `BadBufferTest.test_truncated_shm_file`.
+
+Seven more pass now:
+
+- A buffer attached to an `xdg_surface` before its first configure is acknowledged is `xdg_surface.unconfigured_buffer` at the attach (`request_guard.rs`). Smithay raises it at the commit, so a client that attaches and does not commit was never told. The error has to be posted on the `xdg_surface`, which Smithay creates inside its `get_xdg_surface` handler and keeps in private state: the guard reads the new object's protocol id from the request (the only thing `New<XdgSurface>` gives out is its `Debug` form), lets Smithay's handler make the object, and finds it by that id afterwards (`Screened::ForwardThenTrack`). It keeps a weak reference on the `wl_surface` and asks the role's `last_acked` at each attach with a buffer. If the id cannot be read, the check falls back to Smithay's commit-time one and logs a warning. `XdgSurfaceStableTest.attaching_buffer_to_unconfigured_xdg_surface_is_an_error`; `crates/gnoblin-wayland/tests/xdg_surface_state.rs`.
+- `wl_subsurface.set_position` is the parent's state and lands when the commit that applies the parent is applied (`crates/gnoblin-wayland/src/subsurface_position.rs`). Smithay keeps it in the subsurface's own cached state, so a desynchronized subsurface moved with its own commit, and a subsurface of a synchronized subsurface moved when only the grandparent committed, because Smithay's commit of a tree snapshots the pending state of every synchronized surface below it, committed by its client or not. The request is answered by `request_guard.rs` and never reaches Smithay; the parent's pre-commit hook moves it into a cached state of the parent, and the commit handler writes it into the subsurface when the parent's state is applied. Four `SubsurfaceTest` and `SubsurfaceMultilevelTest` tests; `crates/gnoblin-wayland/tests/surface_tree.rs` (`a_desynchronized_subsurface_moves_when_its_parent_commits_and_not_when_it_does`, `a_synchronized_subsurface_moves_with_the_parent_commit_alone`, `a_grandchild_moves_only_when_the_commits_above_it_apply_in_order`, `a_subsurface_that_is_made_again_starts_at_its_parents_origin`).
+- `place_above_simple` and `place_below_simple` pass with `tests/wlcs/patches/0005-subsurface-restack-tests-expect-the-top-subsurface-focused.patch`. The restack was never the failure: the first assertion of each test, which checks it, passed. `place_above` and `place_below` still reorder at once, where the protocol applies the order with the parent's commit; Smithay has no public call to reorder later and no test of the suite looks at it.
 
 `gnoblin-f3cp`, `gnoblin-y3yk` and `gnoblin-jpbf` are resolved:
 
@@ -80,7 +84,7 @@ Core subset: 702 tests, 474 pass, 8 fail and 220 skipped (the `wl_shell` and `zx
 
 The popup tests (`XdgPopupPositionerTest`, `XdgPopupStable`, `XdgPopupTest`) pass but for one; 88 more are skipped because the suite's popup of a layer surface and of a `zxdg_shell_v6` surface need globals the compositor does not serve.
 
-The core subset therefore does not pass yet: the gate in `design/rust-compositor.md` stays open until the issues above are closed or their entries become ledger decisions. What is in place is the runner, the regression gate over the 474 passing tests, and the list of what is left.
+The core subset therefore does not pass yet: the gate in `design/rust-compositor.md` stays open until the issues above are closed or their entries become ledger decisions. What is in place is the runner, the regression gate over the 481 passing tests, and the list of what is left.
 
 ## CI
 

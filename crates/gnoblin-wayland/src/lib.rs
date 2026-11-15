@@ -225,6 +225,7 @@ mod request_guard;
 mod selection_bridge;
 mod server;
 mod state;
+mod subsurface_position;
 mod surface_tree;
 mod touchpad;
 mod tree_frame;

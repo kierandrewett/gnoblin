@@ -109,6 +109,9 @@ impl CompositorHandler for State {
     }
 
     fn commit(&mut self, surface: &WlSurface) {
+        // Positions the surface's parents asked for land with the state that has just been applied, ahead of
+        // everything below that reads where a subsurface is.
+        crate::subsurface_position::applied(surface);
         on_commit_buffer_handler::<Self>(surface);
         // A buffer whose pool the client shrank is the client's error; so is a viewport source that reaches
         // past the buffer the commit left attached.

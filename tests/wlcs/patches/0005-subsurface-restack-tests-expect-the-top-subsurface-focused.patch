@@ -1,0 +1,37 @@
+wlcs v1.8.1: place_above_simple and place_below_simple assert that nothing takes the pointer focus.
+
+Both tests put two overlapping subsurfaces under the pointer, restack them with `wl_subsurface.place_above` or
+`place_below`, and then check the surface under the pointer. The first assertion (the surface that was moved down, or
+the one that was covered, is not the focus) is the check that the restack happened. The second then demands that the
+other subsurface is not the focus either, which no compositor that sends pointer focus to a subsurface can satisfy,
+and every other test in the file (`subsurface_gets_pointer_input`, `pointer_input_correctly_offset_for_subsurface`,
+`subsurface_moves_under_input_device_*`) demands that it does. The tests fail the same way on Mir
+(canonical/wlcs#396). The second assertion is turned round: the surface that is on top after the restack is the focus.
+
+Applied by scripts/wlcs.sh with `git apply`; drop it when wlcs fixes the assertion upstream.
+
+diff --git a/tests/subsurfaces.cpp b/tests/subsurfaces.cpp
+index 2343e11..a112b7e 100644
+--- a/tests/subsurfaces.cpp
++++ b/tests/subsurfaces.cpp
+@@ -395,7 +395,9 @@ TEST_P(SubsurfaceTest, place_below_simple)
+     ASSERT_THAT(input_device->focused_window(), Ne((wl_surface*)subsurface_moving_down))
+         << "subsurface.place_below() did not have an effect";
+ 
+-    ASSERT_THAT(input_device->focused_window(), Ne((wl_surface*)subsurface))
++    // The sibling that was not moved is now the topmost surface under the pointer, and pointer focus goes to the
++    // surface under the pointer, a subsurface included, as every other test in this file expects.
++    ASSERT_THAT(input_device->focused_window(), Eq((wl_surface*)subsurface))
+         << "wrong surface/subsurface on top";
+ }
+ 
+@@ -413,7 +415,8 @@ TEST_P(SubsurfaceTest, place_above_simple)
+     ASSERT_THAT(input_device->focused_window(), Ne((wl_surface*)subsurface_being_covered))
+         << "subsurface.place_above() did not have an effect";
+ 
+-    ASSERT_THAT(input_device->focused_window(), Ne((wl_surface*)subsurface))
++    // The surface that was placed above its sibling is the topmost one under the pointer and takes the focus.
++    ASSERT_THAT(input_device->focused_window(), Eq((wl_surface*)subsurface))
+         << "wrong surface/subsurface on top";
+ }
+ 

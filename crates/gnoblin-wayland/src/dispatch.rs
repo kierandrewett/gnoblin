@@ -31,6 +31,7 @@ use smithay::wayland::{Dispatch2, GlobalDispatch2};
 
 use crate::State;
 use crate::protocols::wl_compositor::WlCompositorClientState;
+use crate::request_guard::Screened;
 
 impl<I, UserData> Dispatch<I, UserData> for State
 where
@@ -49,10 +50,15 @@ where
     ) {
         // A rule Smithay's handler does not enforce is checked first; a request it refuses has had its
         // protocol error posted and goes no further.
-        if !crate::request_guard::admits(resource, &request) {
-            return;
-        }
+        let created = match crate::request_guard::screen(state, client, resource, &request) {
+            Screened::Consumed => return,
+            Screened::Forward => None,
+            Screened::ForwardThenTrack(created) => Some(created),
+        };
         data.request(state, client, resource, request, dhandle, data_init);
+        if let Some(created) = created {
+            created.track(client, dhandle);
+        }
     }
 
     fn destroyed(state: &mut Self, client: ClientId, resource: &I, data: &UserData) {

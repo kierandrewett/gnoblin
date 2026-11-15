@@ -593,6 +593,136 @@ fn a_synchronized_subsurface_shows_nothing_until_its_parent_commits() {
 }
 
 #[test]
+fn a_desynchronized_subsurface_moves_when_its_parent_commits_and_not_when_it_does() {
+    for_each_renderer(|backend| {
+        let session = Session::start(backend);
+        session.run(|session| {
+            let mut client = Client::connect(session.socket());
+            let (window, x, y) = place_window(session, &mut client, 100);
+            let video = client.map_subsurface(&window.surface, (120, 0), (40, 40), BLUE);
+            video.subsurface.set_desync();
+            window.surface.commit();
+            client.roundtrip();
+
+            // The position is the parent's state: the subsurface's own commit, which a desynchronized one applies at
+            // once, takes its new pixels and leaves it where it was.
+            video.subsurface.set_position(120, 60);
+            client.paint(&video.surface, 40, 40, GREEN);
+            session.expect(
+                x + 140,
+                y + 20,
+                GREEN,
+                "a desynchronized subsurface draws its own commit",
+            );
+            assert_eq!(session.probe(x + 140, y + 80), BACKGROUND, "but has not moved");
+
+            // The parent's commit moves it, and the subsurface does not commit.
+            window.surface.commit();
+            client.roundtrip();
+            session.expect(x + 140, y + 80, GREEN, "the parent's commit applies the position");
+            session.expect(x + 140, y + 20, BACKGROUND, "and the old place is empty");
+        });
+    });
+}
+
+#[test]
+fn a_synchronized_subsurface_moves_with_the_parent_commit_alone() {
+    let session = Session::start(Headless::new());
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let (window, x, y) = place_window(session, &mut client, 100);
+        let video = client.map_subsurface(&window.surface, (120, 0), (40, 40), BLUE);
+
+        video.subsurface.set_position(120, 60);
+        client.roundtrip();
+        session.expect_steadily(x + 140, y + 20, BLUE, "nothing moves until the parent commits");
+        window.surface.commit();
+        client.roundtrip();
+        session.expect(
+            x + 140,
+            y + 80,
+            BLUE,
+            "the parent's commit moves a subsurface that never committed",
+        );
+        session.expect(x + 140, y + 20, BACKGROUND, "and leaves its old place");
+    });
+}
+
+#[test]
+fn a_grandchild_moves_only_when_the_commits_above_it_apply_in_order() {
+    let session = Session::start(Headless::new());
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let (window, x, y) = place_window(session, &mut client, 100);
+        let child = client.map_subsurface(&window.surface, (120, 0), (40, 40), BLUE);
+        // The child is synchronized, so committing it as the grandchild's parent only caches its state.
+        let grandchild = client.map_subsurface(&child.surface, (0, 50), (40, 40), GREEN);
+        window.surface.commit();
+        client.roundtrip();
+        session.expect(x + 140, y + 70, GREEN, "the grandchild is drawn where it was put");
+
+        // The grandchild's position is its parent's state, so the grandparent's commit does not move it, and a
+        // commit of the child that comes after the grandparent's has not been applied by anything yet.
+        grandchild.subsurface.set_position(0, 100);
+        window.surface.commit();
+        client.roundtrip();
+        child.surface.commit();
+        client.roundtrip();
+        session.expect_steadily(
+            x + 140,
+            y + 70,
+            GREEN,
+            "the grandparent first and the child after moves nothing",
+        );
+        window.surface.commit();
+        client.roundtrip();
+        session.expect(
+            x + 140,
+            y + 120,
+            GREEN,
+            "the grandparent's commit after the child's applies it",
+        );
+        session.expect(x + 140, y + 70, BACKGROUND, "and the old place is empty");
+
+        // The child's commit alone is cached by the synchronized child, and the grandparent's alone moves nothing.
+        grandchild.subsurface.set_position(0, 20);
+        child.surface.commit();
+        client.roundtrip();
+        session.expect_steadily(
+            x + 140,
+            y + 120,
+            GREEN,
+            "a synchronized parent's commit alone moves nothing",
+        );
+        window.surface.commit();
+        client.roundtrip();
+        session.expect(x + 140, y + 40, GREEN, "both commits, in order, move it");
+    });
+}
+
+#[test]
+fn a_subsurface_that_is_made_again_starts_at_its_parents_origin() {
+    let session = Session::start(Headless::new());
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let (window, x, y) = place_window(session, &mut client, 100);
+        let video = client.map_subsurface(&window.surface, (120, 0), (40, 40), BLUE);
+        session.expect(x + 140, y + 20, BLUE, "drawn where it was put");
+
+        video.subsurface.destroy();
+        client.roundtrip();
+        let _again = client
+            .subcompositor
+            .get_subsurface(&video.surface, &window.surface, &client.qh, ());
+        client.paint(&video.surface, 40, 40, GREEN);
+        window.surface.commit();
+        client.roundtrip();
+        session.expect(x + 10, y + 10, GREEN, "a new wl_subsurface has the default position");
+        session.expect(x + 140, y + 20, BACKGROUND, "and not its predecessor's");
+    });
+}
+
+#[test]
 fn a_subsurface_without_a_buffer_hides_what_hangs_from_it() {
     let session = Session::start(Headless::new());
     session.run(|session| {
