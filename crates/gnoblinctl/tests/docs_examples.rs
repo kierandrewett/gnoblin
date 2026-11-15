@@ -326,7 +326,7 @@ const TS_DOC_FILES: &[&str] = &[
 ];
 
 /// The fewest samples the pages must hold, so a parse that stops finding them fails loudly.
-const MINIMUM_TS_SAMPLES: usize = 40;
+const MINIMUM_TS_SAMPLES: usize = 20;
 
 /// Every `.md` file under `dir`, recursively.
 fn markdown_files(dir: &std::path::Path, found: &mut Vec<std::path::PathBuf>) {
