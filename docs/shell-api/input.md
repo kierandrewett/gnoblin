@@ -180,7 +180,9 @@ import { gnoblin, InputContext } from "gnoblin";
 
 const other = new InputContext({ name: "secondary" });
 gnoblin.input.contexts.add(other);
-other.bind("Super+Return", () => gnoblin.spawn("foot"));
+other.bind("Super+Return", () => {
+    gnoblin.spawn("foot");
+});
 
 const keyboard = gnoblin.input.devices.find((device) => device.name === "USB Keyboard");
 if (keyboard) {

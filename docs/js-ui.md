@@ -122,8 +122,9 @@ Its look is plain data, `TitlebarStyle`:
 
 ```ts
 import { Titlebar, defaultTitlebarStyle } from "gnoblin";
+import type { TitlebarStyle } from "gnoblin";
 
-const style = { ...defaultTitlebarStyle, height: 36, buttons: ["close"], focusedFill: "#223344" };
+const style: TitlebarStyle = { ...defaultTitlebarStyle, height: 36, buttons: ["close"], focusedFill: "#223344" };
 const bar = new Titlebar(client, style);
 bar.mount(windowNode);
 ```

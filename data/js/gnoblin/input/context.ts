@@ -22,6 +22,8 @@ import { InputDevice, classOf } from "gnoblin/devices";
 import type { DeviceHome } from "gnoblin/devices";
 import { errorCodeOfRefusal } from "gnoblin/errors";
 import { NativeObject } from "gnoblin/native_object";
+import type { Client } from "gnoblin/host/client";
+import type { Display } from "gnoblin/display/display";
 import { BindingCollection } from "gnoblin/bindings/binding";
 import { bindIn, checkDeviceName, splitDevice } from "gnoblin/input/bind";
 import { ClaimTable } from "gnoblin/input/claims";
@@ -166,9 +168,15 @@ export class InputContext extends NativeObject implements DeviceHome {
         return this.#virtual ? [...this.#owned.keys()] : [...this.#roster.values()].filter((d) => this.#owned.has(d));
     }
 
-    /** The client with keyboard focus, or null. Read through to the seat on every call. */
-    get focusedClient(): BindingClient | null {
-        return this.#state === "live" ? (this.#world.clientOf(this.#host.focus(this.#seat)) ?? null) : null;
+    /**
+     * The client with keyboard focus, or null. Read through to the seat on every call. The world is the shell's, so the
+     * client is its own `Client` (`close()`, `moveToWorkspace(...)`), though the stock bindings ask only for a
+     * `BindingClient` of it.
+     */
+    get focusedClient(): Client | null {
+        return this.#state === "live"
+            ? ((this.#world.clientOf(this.#host.focus(this.#seat)) as Client | undefined) ?? null)
+            : null;
     }
 
     /** The window management settings the seat publishes. */
@@ -193,8 +201,8 @@ export class InputContext extends NativeObject implements DeviceHome {
      * The display under this context's pointer (the primary output's when the pointer is outside every output), or null
      * while no display has an output. Assigning `viewport.content` of it switches that monitor's workspace.
      */
-    get activeDisplay(): unknown {
-        return this.#world.displayAt(this.pointer);
+    get activeDisplay(): Display | null {
+        return this.#world.displayAt(this.pointer) as Display | null;
     }
 
     /** The pointer in the compositor's logical space. */

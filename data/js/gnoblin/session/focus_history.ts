@@ -21,13 +21,16 @@ const HISTORY_LIMIT = 256;
 
 const HISTORY_DEFAULT = 50;
 
-/** `gnoblin.focus`: the windows in the order they were last focused. */
-export class FocusHistory {
-    #windows: () => HistoryClient[];
-    #focused: () => HistoryClient | null;
-    #order: HistoryClient[] = [];
+/**
+ * `gnoblin.focus`: the windows in the order they were last focused. The shell builds it over its own `Client`s, and
+ * `gnoblin.focus` is typed as `FocusHistory<Client>`; the history itself reads only a `HistoryClient` of each.
+ */
+export class FocusHistory<C extends HistoryClient = HistoryClient> {
+    #windows: () => C[];
+    #focused: () => C | null;
+    #order: C[] = [];
 
-    constructor(windows: () => HistoryClient[], focused: () => HistoryClient | null) {
+    constructor(windows: () => C[], focused: () => C | null) {
         this.#windows = windows;
         this.#focused = focused;
     }
@@ -46,7 +49,7 @@ export class FocusHistory {
      * lists them. Minimised windows are included and a window that closed is gone. At startup only the focused window
      * seeds the order.
      */
-    history(filter?: FocusHistoryFilter | Record<string, unknown>): HistoryClient[] {
+    history(filter?: FocusHistoryFilter | Record<string, unknown>): C[] {
         const given = filter ?? {};
         if (typeof given !== "object" || given === null) {
             throw new TypeError("gnoblin.focus.history: the filter is an object");

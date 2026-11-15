@@ -30,9 +30,10 @@ export class BindingConflictError extends Error {
 const owners = new WeakMap<Binding, BindingCollection>();
 
 /**
- * The base of every binding: an id, a trigger and an enabled flag. A subclass decides what a matched input does.
+ * The base of every binding: an id, a trigger and an enabled flag. A subclass decides what a matched input does. A
+ * drag or gesture binding names the type of the state object its `onStart` returns, which each later hook receives.
  */
-export class Binding {
+export class Binding<State extends object = object> {
     readonly id: string;
     enabled: boolean;
     priority: number;
@@ -88,15 +89,15 @@ export class Binding {
     }
 
     /** Returns the state object for this gesture, or false to decline it. */
-    onStart(_event: DragEvent): object | false {
+    onStart(_event: DragEvent): State | false {
         return false;
     }
 
-    onUpdate(_event: DragEvent, _state: object): void {}
+    onUpdate(_event: DragEvent, _state: State): void {}
 
-    onEnd(_event: DragEvent, _state: object): void {}
+    onEnd(_event: DragEvent, _state: State): void {}
 
-    onCancel(_event: DragEvent, _state: object): void {}
+    onCancel(_event: DragEvent, _state: State): void {}
 
     /**
      * A key press or a mouse click of the trigger. Return `false` to decline, which lets the next binding of
@@ -143,7 +144,7 @@ export interface PointerDragBindingOptions extends BindingOptions {
  * returned. Abstract: extend `PointerDragBinding` for a pointer drag, `GestureBinding` for a touchpad gesture, or
  * this class for a source the library does not know.
  */
-export class DragBinding extends Binding {
+export class DragBinding<State extends object = object> extends Binding<State> {
     constructor(options: BindingOptions) {
         if (new.target === DragBinding) {
             throw new TypeError("DragBinding is abstract: extend it, or PointerDragBinding");
@@ -153,7 +154,7 @@ export class DragBinding extends Binding {
 }
 
 /** The base of the pointer drag behaviours: the host calls `onStart`, `onUpdate` and `onEnd` or `onCancel`. */
-export class PointerDragBinding extends DragBinding {
+export class PointerDragBinding<State extends object = object> extends DragBinding<State> {
     threshold: number;
 
     constructor(options: PointerDragBindingOptions) {
@@ -167,7 +168,7 @@ export class PointerDragBinding extends DragBinding {
 }
 
 /** A touchpad gesture the host follows from its begin to its end: same hooks and per-gesture state as a drag. */
-export class GestureBinding extends Binding {}
+export class GestureBinding<State extends object = object> extends Binding<State> {}
 
 /** A watcher of a collection. The input context registers claims through one. */
 export interface BindingWatcher {

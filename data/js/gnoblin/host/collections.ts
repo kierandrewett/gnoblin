@@ -9,7 +9,7 @@ import type { CollectionState, Member, Mutation } from "gnoblin/host/collection_
 import { ctx } from "gnoblin/host/context";
 import { handlerOf, run } from "gnoblin/host/dispatch";
 import { assertListener } from "gnoblin/host/listeners";
-import type { ClientListener, CollectionListener } from "gnoblin/host/listeners";
+import type { ClientListener, CollectionListener, OutputListener } from "gnoblin/host/listeners";
 import { focusedAmong } from "gnoblin/host/seat";
 import { scopeStyle } from "gnoblin/host/style_scopes";
 import { noteSignal } from "gnoblin/properties";
@@ -113,10 +113,11 @@ export class Collection<T extends Member> implements Iterable<T> {
     /**
      * Subscribes `listener` to this collection. A `CollectionListener` is told of every member now, as if
      * each had just been added (replay on attach, so a config that reloads sees the clients that are
-     * already there), and of every later addition and removal. A `ClientListener` is attached to every
-     * current and future member and detaches from a member that leaves. `removeListener` undoes both.
+     * already there), and of every later addition and removal. A `ClientListener` or an `OutputListener` is attached
+     * to every current and future member (the one that fits what the collection holds) and detaches from a member
+     * that leaves. `removeListener` undoes both.
      */
-    addListener(listener: ClientListener | CollectionListener): void {
+    addListener(listener: ClientListener | OutputListener | CollectionListener): void {
         assertListener(listener, "Collection.addListener");
         const state = collectionState(this);
         if (state.listeners.includes(listener)) {
@@ -134,7 +135,7 @@ export class Collection<T extends Member> implements Iterable<T> {
         }
     }
 
-    removeListener(listener: ClientListener | CollectionListener): void {
+    removeListener(listener: ClientListener | OutputListener | CollectionListener): void {
         const state = collectionState(this);
         const at = state.listeners.indexOf(listener);
         if (at < 0) {

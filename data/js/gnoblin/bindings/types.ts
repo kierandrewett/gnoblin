@@ -2,6 +2,7 @@
 // drag in progress. Types only, so a layout or a test can name them without the binding classes.
 
 import type { FrameInset } from "gnoblin/frame/inset";
+import type { Client } from "gnoblin/host/client";
 
 /** What the host passes to a hook. The fields are the host's; the library only reads the ones a hook names. */
 export interface BindingEvent {
@@ -58,7 +59,11 @@ export interface BindingClient {
 export interface DragEvent extends BindingEvent {
     readonly context: unknown;
     readonly device: unknown;
-    readonly client?: BindingClient;
+    /**
+     * The window under the pointer. The shell builds the event with its own `Client`, so a hook calls `close()` or
+     * reads `title` as it would on any client; the stock bindings read the `BindingClient` part of it.
+     */
+    readonly client?: Client;
     readonly layout?: unknown;
     readonly position?: Point;
     readonly localPosition?: Point;

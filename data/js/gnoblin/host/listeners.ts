@@ -40,10 +40,13 @@ export class ClientListener {
     onRequest?(client: Client, request: ClientRequest<Client>): void;
 }
 
-/** Observes membership: an object joining or leaving a collection. */
-export class CollectionListener {
-    onAdded?(member: Client | Workspace | Output, collection: Collection<Client | Workspace | Output>): void;
-    onRemoved?(member: Client | Workspace | Output, collection: Collection<Client | Workspace | Output>): void;
+/**
+ * Observes membership: an object joining or leaving a collection. Name the member type to hear one kind:
+ * `class Count extends CollectionListener<Client>`.
+ */
+export class CollectionListener<Member extends Client | Workspace | Output = Client | Workspace | Output> {
+    onAdded?(member: Member, collection: Collection<Member>): void;
+    onRemoved?(member: Member, collection: Collection<Member>): void;
 }
 
 /**

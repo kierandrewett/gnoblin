@@ -11,6 +11,9 @@ export interface XRClient {
     readonly alive: boolean;
     readonly secure: boolean;
     readonly minimised: boolean;
+    /** The application the window belongs to: what an `accept` function chooses a window by. */
+    readonly appId: string;
+    readonly title: string;
     width: number;
     height: number;
 }

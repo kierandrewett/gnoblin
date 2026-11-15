@@ -4,7 +4,7 @@ import type { ControllerTriggerParts } from "gnoblin/bindings/trigger_types";
 import type { XRController } from "gnoblin/xr/controller";
 import { SpatialLayout } from "gnoblin/xr/layout";
 import type { XRRuntime } from "gnoblin/xr/runtime";
-import type { XRExtension, XROptions } from "gnoblin/xr/session";
+import type { XRExtension, XRListener, XROptions } from "gnoblin/xr/session";
 
 /** Whether `controller` holds exactly the buttons of `trigger`, on its hand. */
 export function matches(trigger: ControllerTriggerParts, controller: XRController): boolean {
@@ -57,11 +57,11 @@ export class Extensions {
     }
 
     /** Hears `onSessionStarted(session)` and `onSessionEnded(session)` of the XR extension. */
-    addListener(listener: object): void {
+    addListener(listener: Partial<XRListener>): void {
         this.#runtime.addListener(listener);
     }
 
-    removeListener(listener: object): void {
+    removeListener(listener: Partial<XRListener>): void {
         this.#runtime.removeListener(listener);
     }
 

@@ -7,14 +7,19 @@ import type { DisplayCollection, OutputCollection, WorkspaceCollection } from "g
 import { motion } from "gnoblin/host/seat";
 import { showWorkspace } from "gnoblin/host/show";
 import type { ShowOptions } from "gnoblin/host/show";
+import type { Output } from "gnoblin/host/output";
 import type { Workspace } from "gnoblin/host/workspace";
 import type { Subscription } from "gnoblin/operation";
 import type { Process, SpawnOptions } from "gnoblin/process";
 import { sceneOf } from "gnoblin/scene/scene";
+import type { FocusHistory } from "gnoblin/session/focus_history";
 import type { SignalEvent, Version } from "gnoblin/session/types";
 import type { Transition } from "gnoblin/transition/transition";
 import type { TransitionOptions } from "gnoblin/transition/types";
 import { Extensions } from "gnoblin/xr/extensions";
+
+/** What `find` takes: a table of field values, or a predicate that keeps an object when it returns a truthy value. */
+type FindFilter<T> = Record<string, string | number | boolean> | ((object: T) => unknown);
 
 /** The public `gnoblin` object exposed to configuration code and the console. */
 export class Gnoblin {
@@ -48,7 +53,7 @@ export class Gnoblin {
     /** What a script asks of the process that runs it: `reloadConfig`. */
     readonly runtime = ctx.hostApi.runtime;
     /** The windows in the order they were last focused. */
-    readonly focus = ctx.hostApi.focus;
+    readonly focus = ctx.hostApi.focus as FocusHistory<Client>;
     /** The touchpad gesture actions (`workspace.next` and four more) and `onSwipe`, `onPinch` and `direction`. */
     readonly gestures = ctx.gestureTools;
 
@@ -89,7 +94,11 @@ export class Gnoblin {
      * The live objects of one kind (`Window`, `Workspace`, and `Output` where the shell has outputs) that match a
      * table of field values or a predicate, in list order. An unknown kind or field throws and names what works.
      */
-    find(kind: string, filter?: Record<string, string | number | boolean> | ((object: never) => unknown)): object[] {
+    find(kind: "Window", filter?: FindFilter<Client>): Client[];
+    find(kind: "Workspace", filter?: FindFilter<Workspace>): Workspace[];
+    find(kind: "Output", filter?: FindFilter<Output>): Output[];
+    find(kind: string, filter?: FindFilter<never>): object[];
+    find(kind: string, filter?: FindFilter<never>): object[] {
         return ctx.hostApi.find(kind, filter);
     }
 
