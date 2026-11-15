@@ -227,3 +227,46 @@ fn a_selection_does_not_outlive_its_owner() {
         }
     });
 }
+
+/// A client that does not have the keyboard cannot replace the clipboard. Mutter has refused it since 3.34, and the
+/// reason is the one that matters here: a background program that could set the clipboard could swap what the user
+/// is about to paste. A clipboard manager is a privileged client and uses data-control instead. The wlcs tests that set
+/// a selection from a client that never had the keyboard after another took it (`CopyCutPaste` and `PrimarySelection`)
+/// fail on this rule, and `tests/wlcs/expected.toml` says so.
+#[test]
+fn a_selection_from_a_client_without_the_keyboard_is_ignored() {
+    let session = Session::start_allowing_focus();
+    session.run(|session| {
+        let mut copier = Client::connect(session.socket());
+        let manager = data_device(&mut copier);
+        let _window = copier.map_window("org.gnoblin.Copier", "Copier");
+        session.wait_for(|observation| observation.only().is_some_and(|window| window.focused));
+
+        // The paster's window takes the keyboard from the copier's.
+        let mut paster = Client::connect(session.socket());
+        let _device = paste_device(&mut paster);
+        let _other = paster.map_window("org.gnoblin.Paster", "Paster");
+        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Paster"));
+
+        let _source = copy(&mut copier, &manager);
+        paster.roundtrip();
+        assert!(
+            session.windows().selection().is_none(),
+            "the session served a selection a client without the keyboard set"
+        );
+        assert!(
+            paster.state.selection.is_none(),
+            "the focused client was offered a selection that its owner had no right to set: {:?}",
+            paster.state.selection
+        );
+
+        // The same call from the client that has the keyboard is served, so the silence above is the rule and not a
+        // broken path.
+        let paster_manager = data_device(&mut paster);
+        let _own = copy(&mut paster, &paster_manager);
+        assert!(
+            session.windows().selection().is_some(),
+            "the client that has the keyboard could not set the selection"
+        );
+    });
+}
