@@ -5,7 +5,7 @@ objects with hooks that run as the input starts, moves and ends. The stock shell
 workspaces and acts on gestures with these.
 
 ```ts
-import { PointerDragBinding, binding, defineConfig } from "gnoblin";
+import { PointerDragBinding } from "gnoblin";
 import type { Client, DragEvent } from "gnoblin";
 
 interface Grab {
@@ -25,11 +25,7 @@ class Nudge extends PointerDragBinding<Grab> {
     }
 }
 
-defineConfig({
-    keys: {
-        "Alt+MouseMiddle+Drag": binding(() => new Nudge({ id: "nudge", trigger: "Alt+MouseMiddle+Drag" })),
-    },
-});
+gnoblin.input.primary.bind("Alt+MouseMiddle+Drag", new Nudge({ id: "nudge", trigger: "Alt+MouseMiddle+Drag" }));
 ```
 
 Put the file in `~/.config/gnoblin/init.ts`. Hold `Alt`, press the middle button on a window and drag: the window follows
@@ -75,8 +71,8 @@ The stock drags are classes you can reuse or extend:
 | `ClientSwapBinding`   | `Super+MouseLeft+Drag`      | In a tiling layout, drop the tile you hold on another one and the two trade places when you let go.                                     |
 | `SplitResizeBinding`  | `Super+MouseRight+Drag`     | In a tiling layout, the divider nearest the press follows the pointer, and the tiles on both sides follow it.                           |
 
-`dragConstraint` is `work_area`, which keeps a window inside the work area, or `minimum_strip`, which lets a window leave
-until a strip of 75 pixels stays visible. Set it in `defineConfig`.
+A move keeps the window inside the work area. The older `dragConstraint` setting, which let a window leave until a strip of
+75 pixels stayed visible, has no object in the API (see [Settings with no object](/js-settings)).
 
 ### Tiling drags
 
@@ -90,19 +86,17 @@ Each layout takes a `triggers` option, as `FloatingLayout` does. A string replac
 out.
 
 ```ts
-import { MasterStackLayout, defineConfig } from "gnoblin";
+import { MasterStackLayout, Workspace } from "gnoblin";
 
-defineConfig({
-    workspaces: [
-        {
-            id: "dev",
-            layout: new MasterStackLayout({
-                ratio: 0.6,
-                triggers: { swap: "Alt+MouseLeft+Drag", resize: null },
-            }),
-        },
-    ],
-});
+gnoblin.workspaces.add(
+    new Workspace({
+        id: "dev",
+        layout: new MasterStackLayout({
+            ratio: 0.6,
+            triggers: { swap: "Alt+MouseLeft+Drag", resize: null },
+        }),
+    }),
+);
 ```
 
 `ClientSwapBinding` changes nothing while the pointer is down. When you let go over another tiled window, the two trade
@@ -207,7 +201,7 @@ or `Pinch2In`. A gesture event adds these fields:
 commits when the fingers lift past `commit`, a fraction from 0 to 1 that defaults to 0.25. Its `travel` is the distance in
 touchpad units that equals a full slide, and `seconds` the length of the slide that finishes it.
 
-To run a function when a gesture ends, name the gesture in `gestureActions` or bind a function to it. The named actions and
+To run a function when a gesture ends, bind a function to the gesture with `input.bind`, or `gnoblin.gestures.onSwipe` for one function a direction. The named actions and
 `gnoblin.gestures` are in [Window policy](/js-window-policy#gesture-actions).
 
 ## Add a binding at run time

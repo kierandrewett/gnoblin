@@ -4,15 +4,11 @@
 panel, lock the screen or suspend the machine after a pause. It returns an `IdleWatch`.
 
 ```ts
-import { defineConfig, toast } from "gnoblin";
+import { toast } from "gnoblin";
 
-defineConfig({
-    setup: (gnoblin) => {
-        gnoblin.idle.watch(300_000, {
-            onIdle: () => gnoblin.session.lock(),
-            onResume: () => toast("Welcome back"),
-        });
-    },
+gnoblin.idle.watch(300_000, {
+    onIdle: () => gnoblin.session.lock(),
+    onResume: () => toast("Welcome back"),
 });
 ```
 

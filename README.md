@@ -31,9 +31,8 @@ Gnoblin is built on Mutter. It does not ship a desktop shell UI.
 - **Compositor effects.** Configure [blur, opacity, rounded corners, borders,
   shadows and layer animations](docs/guides/window_effects.md) with
   window rules.
-- **Live configuration.** Edit [one TypeScript file](docs/config.md) for window rules, shortcuts,
-  autostart, protocol gates and animation behavior. Reload applies the settings
-  supported by the runtime; startup-only changes need a new session.
+- **Live configuration.** Edit [one TypeScript file](docs/config.md) for workspaces, shortcuts,
+  window style and monitors, written as the statements of a program. Saving the file reloads it.
 - **Window control and scripting.** [`gnoblinctl`](docs/cli/index.md) exposes windows, workspaces,
   monitors and input sources. TypeScript listeners and the user-private compositor
   bridge expose supported runtime state and actions.
@@ -41,8 +40,7 @@ Gnoblin is built on Mutter. It does not ship a desktop shell UI.
   bars, docks, launchers, notifications and other visible controls.
 - **Input methods.** Gnoblin includes an IBus input method, so GTK4 and Qt apps on
   Wayland get composed text from engines such as Russian transliteration or
-  Japanese. It needs a running `ibus-daemon` and an installed engine. See
-  [type with an input method](docs/config/configure/input_sources.md#type-with-an-input-method).
+  Japanese. It needs a running `ibus-daemon` and an installed engine.
 - **Keyring and polkit prompts.** Gnoblin acts as the polkit agent and draws its
   own password dialogs for polkit and the keyring's unlock prompt. For polkit it
   checks the password with polkit's own helper, and no script can answer. A shell

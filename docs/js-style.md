@@ -1,18 +1,15 @@
 # JavaScript window style
 
-A window's look is a style: plain objects you set from `defineConfig`, from a `setup` function or from any listener.
+A window's look is a style: plain objects you set from `init.ts` or from any listener.
 Import the classes from `gnoblin`:
 
 ```ts
-import { ClientStyle, Shadow, defineConfig } from "gnoblin";
+import { ClientStyle, Shadow } from "gnoblin";
 
-defineConfig({
-    style: { opacity: 0.95, shadows: [{ y: 8, blur: 24, color: "#00000066" }] },
-    setup: (gnoblin) => {
-        gnoblin.clients.where({ appId: "firefox" }).style.shadows = [];
-        gnoblin.clients.get("42").style.opacity = 0.8;
-    },
-});
+gnoblin.clients.style.opacity = 0.95;
+gnoblin.clients.style.shadows = [{ y: 8, blur: 24, color: "#00000066" }];
+gnoblin.clients.where({ appId: "firefox" }).style.shadows = [];
+gnoblin.clients.get("42").style.opacity = 0.8;
 ```
 
 ## Scopes
@@ -36,8 +33,7 @@ A `where()` selection takes a second argument, `{ priority }`:
 - Selections of equal priority rank by the order their `style` was first used, and the later one wins.
 - A client that stops matching a selection loses that selection's values at once and keeps its own.
 
-`defineConfig({ style })` sets `gnoblin.clients.style`. A window rule's `style` (`opacity`, `cornerRadius`, `shadows`)
-sets the matched client's own style, so it beats every scope above it.
+A style a listener sets on one client with `client.style` is that client's own, so it beats every scope above it.
 
 A scope's style holds only what was set on it. Reading a property that was not set gives `undefined`, and
 `computedStyle` gives the resolved value:
@@ -197,13 +193,9 @@ reported once per reload as `not applied: style.<property>: <reason>`.
 A window holds at most 16 effects (at most 8 shadows and 8 borders, and the blur).
 
 ```ts
-defineConfig({
-    style: {
-        cornerRadius: 12,
-        borders: [{ width: 1, color: "#ffffff33", inset: true }],
-        shadows: [{ y: 8, blur: 24, color: "#00000066" }],
-    },
-});
+gnoblin.clients.style.cornerRadius = 12;
+gnoblin.clients.style.borders = [{ width: 1, color: "#ffffff33", inset: true }];
+gnoblin.clients.style.shadows = [{ y: 8, blur: 24, color: "#00000066" }];
 ```
 
 ## Reload

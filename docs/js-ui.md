@@ -3,7 +3,7 @@
 The JavaScript shell draws its own interface with a small toolkit. Import it from `gnoblin`:
 
 ```ts
-import { Box, Text, defineConfig } from "gnoblin";
+import { Box, Text } from "gnoblin";
 ```
 
 Every widget is an ordinary class with ordinary fields. Change a field and the next frame paints it. There is nothing to
@@ -95,8 +95,8 @@ A key goes to the canvas that holds the keyboard focus, then up through its pare
 
 ## Titlebar
 
-With `defineConfig({ decorations: true })` a window that takes the shell's frame gets a `Titlebar`, a canvas under the
-window's node. The stock `defaultConfig` turns it on. A config without the key has no titlebars. A window that draws its
+After `startDecorations()` a window that takes the shell's frame gets a `Titlebar`, a canvas under the
+window's node. The starter calls it. A file that does not call it has no titlebars. A window that draws its
 own title bar gets none (see "Who draws the frame" below).
 
 The bar is a `Box` row: a drag area that holds the title, then the minimise, maximise and close buttons. It follows its
@@ -150,13 +150,13 @@ anything else. A `client` window never shows a second bar over its own.
 
 The shell declares that it draws decorations by writing the seat's `decorations_available`:
 
-- It is true while `decorations` is on, and cleared when the shell retires.
+- It is true while `startDecorations()` has run, and cleared when the shell retires.
 - The compositor also clears it when the shell's connection drops.
 - A client that asks for server-side is told so only while it is true and a shell holds the tree.
-- With no shell, or with `decorations` off, every client is told client-side, so a window is never left with no title bar
+- With no shell, or without `startDecorations()`, every client is told client-side, so a window is never left with no title bar
   and nothing to move it by.
-- A change reaches the windows that already exist. A reload that turns decorations off gives each window that asked for
-  the shell's bar its own back, and a reload that turns them on gives the bar again.
+- A change reaches the windows that already exist. A reload whose file does not call `startDecorations()` gives each window that asked for
+  the shell's bar its own back, and a reload whose file calls it gives the bar again.
 
 ### The room above the client
 
@@ -179,7 +179,7 @@ The stock library gives a server-decorated window's bar room of its own instead 
       layout.
     - The rectangles a window returns to follow. A fullscreen window is left alone and fitted when it leaves.
 
-To have no bar on any window, leave `decorations` off.
+To have no bar on any window, leave `startDecorations()` out of your file.
 
 ## Entry, Clock and Bar
 
@@ -208,15 +208,15 @@ its room from them:
 
 ## The stock shell UI
 
-Each of these is on in the stock config and has a switch.
+Each of these is started by the starter and has a function that starts it.
 
 ### Window menu
 
-Switch: `defineConfig({ menus: false })`. The module is `gnoblin/menus`.
+Start it with `startWindowMenu()`. The module is `gnoblin/menus`.
 
 - The compositor asks for a window's menu as a `menu` request on the window's node: a client's `show_window_menu`, the
   window-menu key (Alt+Space) and a program's `request_menu`. The titlebar's right click asks too.
-- The shell answers every request with `windowMenu.show(client, x, y)`. With `menus: false` the requests are left
+- The shell answers every request with `windowMenu.show(client, x, y)`. Without `startWindowMenu()` the requests are left
   unanswered: nothing opens, and the compositor waits for nothing.
 - Entries: Restore or Maximise, Minimise, Move, Resize, Always on top, Move to workspace and Close. Move and Resize are
   the keyboard modes, which are not ported: they are off unless the client has `moveWithKeys` and `resizeWithKeys`.
@@ -228,7 +228,7 @@ Switch: `defineConfig({ menus: false })`. The module is `gnoblin/menus`.
 
 ### Not-responding alert
 
-Switch: `defineConfig({ alerts: false })`. The module is `gnoblin/alerts`.
+Start it with `startNotRespondingAlert()`. The module is `gnoblin/alerts`.
 
 - A window the compositor marks `unresponsive` gets a card with Wait (the default, and Escape) and Force quit.
 - Force quit calls `client.kill()` and does nothing for the first 0.5 s. The compositor refuses its own process, init

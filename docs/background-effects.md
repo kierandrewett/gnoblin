@@ -43,17 +43,8 @@ fade-out without help from the client.
 
 ## Disable the protocol
 
-In `init.ts`:
-
-```ts
-import { defineConfig } from "gnoblin";
-
-export default defineConfig({
-    protocols: { extBackgroundEffectV1: false },
-});
-```
-
-Log out and back in. This setting controls the global in the Gnoblin session.
+Which Wayland protocols the compositor advertises is not something `init.ts` can set: no object of the shell API carries
+that choice (see [Settings with no object](/js-settings)).
 
 ## Rendering
 

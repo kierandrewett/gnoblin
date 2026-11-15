@@ -3,18 +3,19 @@
 The stock shell places, focuses and arranges windows, draws the titlebars and the window menu, and binds the keys. It is
 TypeScript, and it is the same library you import.
 
-Your `init.ts` is laid over it: a key you leave out keeps the stock
-behaviour, and code you add runs beside it. This page shows how to grow an `init.ts` from a few settings into your own shell.
+Your `init.ts` replaces the default: it is the whole configuration, and what it does not say the shell does not do. Run
+`gnoblinctl config init` to start from the full default as code you can read and cut down. This page shows how to grow an
+`init.ts` from a few lines into your own shell.
 
 New to the file? Start with the [TypeScript shell](typescript-shell.md), which writes a first `init.ts`.
 
 ## Run your own code
 
-`defineConfig` takes declarative keys, and a `setup` function for everything they cannot say. `setup` runs when the config
-loads, with the `gnoblin` object as its argument.
+The file is a program, and it runs when the shell loads it. The `gnoblin` object is a global, and every statement reads or
+changes a live object.
 
 ```ts
-import { ClientListener, defineConfig } from "gnoblin";
+import { ClientListener } from "gnoblin";
 import type { Client } from "gnoblin";
 
 class FocusLog extends ClientListener {
@@ -25,9 +26,7 @@ class FocusLog extends ClientListener {
     }
 }
 
-defineConfig({
-    setup: (gnoblin) => gnoblin.clients.addListener(new FocusLog()),
-});
+gnoblin.clients.addListener(new FocusLog());
 ```
 
 Save it as `~/.config/gnoblin/init.ts`. Focus a window, then read the line with `journalctl --user -t focus -n 1`.
@@ -55,12 +54,9 @@ export class FocusLog extends ClientListener {
 
 ```ts
 // ~/.config/gnoblin/init.ts
-import { defineConfig } from "gnoblin";
 import { FocusLog } from "./focus-log.ts";
 
-defineConfig({
-    setup: (gnoblin) => gnoblin.clients.addListener(new FocusLog()),
-});
+gnoblin.clients.addListener(new FocusLog());
 ```
 
 - An import is a relative path (`./x.ts`, `../x.ts`, or `./x` with no extension) or `"gnoblin"`. There are no packages to
@@ -122,9 +118,8 @@ compositor keeps running whatever your code does.
 
 | To change                                          | Go to                                                                                                |
 | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Where windows open, by app or title                | [Window rules](/config/window_rule), the `rules` key.                                                |
+| Where windows open, by app or title                | [Window policy](/js-window-policy), a listener on `gnoblin.clients`.                                 |
 | How windows are arranged                           | [Workspaces](/shell-api/workspaces#layouts), the `layout` of each workspace.                         |
-| Groups of workspaces shown together                | [Workspace sets](/shell-api/workspaces#workspace-sets).                                              |
 | Keys, pointer drags and gestures                   | [Keyboard shortcuts](/shell-api/keyboard-shortcuts) and [Input handlers](/shell-api/input-handlers). |
 | The window menu and the not-responding alert       | [Window menu and alerts](/guides/stock-window-menu).                                                 |
 | The consent, passphrase and authentication dialogs | [Requests and dialogs](/shell-api/requests).                                                         |

@@ -5,20 +5,14 @@ the devices that drive them. Use it to read the pointer, list devices, make a de
 device.
 
 ```ts
-import { defineConfig } from "gnoblin";
-
-defineConfig({
-    setup: (gnoblin) => {
-        const pad = gnoblin.input.devices.find((device) => device.name === "Elgato Stream Deck");
-        pad?.bind(
-            "F13",
-            () => {
-                gnoblin.spawn("foot");
-            },
-            { only: true },
-        );
+const pad = gnoblin.input.devices.find((device) => device.name === "Elgato Stream Deck");
+pad?.bind(
+    "F13",
+    () => {
+        gnoblin.spawn("foot");
     },
-});
+    { only: true },
+);
 ```
 
 Put the file in `~/.config/gnoblin/init.ts`, and use the name your device reports. Its key `F13` starts a terminal, and
@@ -53,8 +47,7 @@ An `InputContext` is one seat:
 | `isBindingOnly(name)`      | Whether those devices are binding-only.                                       |
 | `id`, `alive`              | The name, and whether the context is still in `gnoblin.input.contexts`.       |
 
-`settings` holds the values the compositor publishes for the seat, with the config's `edgeTiling` and `dragConstraint` laid
-over them:
+`settings` holds the values the compositor publishes for the seat. A file reads them and cannot change them:
 
 | Field                       | Values                           | Meaning                                        |
 | --------------------------- | -------------------------------- | ---------------------------------------------- |

@@ -4,15 +4,9 @@ A window is a `Client`, one object per managed window. `gnoblin.clients` is the 
 window by writing its properties or calling its methods, and attach a listener to hear what happens to it.
 
 ```ts
-import { defineConfig } from "gnoblin";
-
-defineConfig({
-    keys: {
-        "Super+t": ({ gnoblin }) => {
-            const terminal = gnoblin.clients.find((client) => client.appId === "foot");
-            terminal?.focus();
-        },
-    },
+gnoblin.input.primary.bind("Super+t", () => {
+    const terminal = gnoblin.clients.find((client) => client.appId === "foot");
+    terminal?.focus();
 });
 ```
 

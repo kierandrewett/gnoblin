@@ -1,28 +1,24 @@
 # Keyboard shortcuts
 
-A shortcut is a binding: a trigger, such as `Super+Return`, and an action. Declare bindings in the `keys` key of
-`defineConfig`, or make one from a script with `gnoblin.input.primary.bind`. The compositor withholds a claimed chord from
+A shortcut is a binding: a trigger, such as `Super+Return`, and an action. Make one with `gnoblin.input.primary.bind(trigger, fn)`. The compositor withholds a claimed chord from
 applications and tells the shell, so a shortcut never types into the focused window.
 
 ```ts
-import { defineConfig, spawn } from "gnoblin";
-
-defineConfig({
-    keys: {
-        "Super+Return": spawn("foot"),
-        "Super+Shift+q": "close",
-    },
-    setup: (gnoblin) => {
-        gnoblin.input.primary.bind("Super+x", () => {
-            gnoblin.spawn(["notify-send", "x"]);
-        });
-    },
+const input = gnoblin.input.primary;
+input.bind("Super+Return", () => {
+    gnoblin.spawn(["foot"]);
+});
+input.bind("Super+Shift+q", () => {
+    input.focusedClient?.close();
+});
+input.bind("Super+x", () => {
+    gnoblin.spawn(["notify-send", "x"]);
 });
 ```
 
 Put the file in `~/.config/gnoblin/init.ts`. `Super+Return` starts a terminal, `Super+Shift+q` closes the focused window and
-`Super+x` shows a notification. The actions `keys` accepts, and how a config's keys combine with the stock ones, are in the
-[defineConfig reference](/typescript-config#keys).
+`Super+x` shows a notification. A trigger that is already bound at the same priority is refused, so a file that starts from the
+starter deletes the line it replaces.
 
 ## Triggers
 
@@ -88,7 +84,7 @@ Several bindings may name one trigger. A press goes to the highest-ranked one th
 
 1. Bindings made for one device, with `device.bind`.
 2. The bindings of the layout that owns the window the press is for.
-3. The context's own bindings, from `keys` and `gnoblin.input.primary.bind`.
+3. The context's own bindings, from `gnoblin.input.primary.bind`.
 
 Inside a tier the binding with the higher `priority` goes first. `context.describeBindings()` lists every binding with its
 `owner`, its `priority` and its `rank`: rank 1 is the one a press reaches first.

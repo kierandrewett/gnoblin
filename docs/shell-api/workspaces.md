@@ -1,30 +1,25 @@
 # Workspaces
 
 A workspace is a `Workspace` object that holds windows and lays them out. `gnoblin.workspaces` is the collection of them.
-Declare workspaces in `defineConfig`, then read them, show one and change their windows from a script.
+Add workspaces with `gnoblin.workspaces.add`, then read them, show one and change their windows from a script.
 
 ```ts
-import { defineConfig } from "gnoblin";
+import { GridLayout, MasterStackLayout, Workspace } from "gnoblin";
 
-defineConfig({
-    workspaces: [
-        { id: "web", layout: "master-stack" },
-        { id: "chat", layout: "grid" },
-    ],
-    keys: {
-        "Super+Tab": ({ gnoblin }) => {
-            const current = gnoblin.workspaces.find((workspace) => workspace.active);
-            const next = gnoblin.workspaces.at((current?.index ?? -1) + 1) ?? gnoblin.workspaces.at(0);
-            if (next) {
-                gnoblin.show(next, { duration: 0.25 });
-            }
-        },
-    },
+gnoblin.workspaces.add(new Workspace({ id: "web", layout: new MasterStackLayout() }));
+gnoblin.workspaces.add(new Workspace({ id: "chat", layout: new GridLayout() }));
+
+gnoblin.input.primary.bind("Super+Tab", () => {
+    const current = gnoblin.workspaces.find((workspace) => workspace.active);
+    const next = gnoblin.workspaces.at((current?.index ?? -1) + 1) ?? gnoblin.workspaces.at(0);
+    if (next) {
+        gnoblin.show(next, { duration: 0.25 });
+    }
 });
 ```
 
 Put the file in `~/.config/gnoblin/init.ts`. `Super+Tab` slides to the next workspace, and back to the first after the
-last. The [defineConfig reference](/typescript-config#workspaces) lists every key of a declared workspace.
+last. A `Workspace` takes `id`, `name`, `layout` and `gaps`.
 
 ## Read workspaces
 
@@ -39,8 +34,6 @@ workspaces by their fields, use [`gnoblin.find("Workspace", filter)`](find).
 | `clear()`                  | Removes every workspace. Add one afterwards: windows need a workspace.           |
 | `show(workspace, options)` | Shows a workspace. The same as `gnoblin.show`.                                   |
 | `area`                     | The area windows are laid out in on the primary output, or `null`.               |
-| `sets`                     | Named groups of workspaces. See [Workspace sets](#workspace-sets).               |
-| `activateSet(name)`        | Makes a set live. Returns `false` for an unknown set.                            |
 
 Removing a workspace moves its windows to the workspace before it (the one after, for the first) and shows that
 workspace where the removed one was. No window closes.
@@ -79,15 +72,23 @@ A slide takes no time while the seat asks for reduced motion. See [Tweens and ea
 
 ## Layouts
 
-`workspace.layout` decides where the windows of a workspace go. Give a stock layout by name in `defineConfig`, or a layout
-object when you need its options. The names and options of the stock layouts are in the
-[defineConfig reference](/typescript-config#workspaces).
+`workspace.layout` decides where the windows of a workspace go. Give it a layout object, and its options in the
+constructor:
+
+| Layout              | Places windows                                                  | Options                                                               |
+| ------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `FloatingLayout`    | Where they are put.                                             | `placement` (`smart`, `center`, `cascade`), `cascadeStep`, `triggers` |
+| `MasterStackLayout` | A master column and a stack.                                    | `masterCount`, `ratio`, `gap`, `orientation`, `triggers`              |
+| `GridLayout`        | In equal cells.                                                 | `columns` (a number or `"auto"`), `gap`, `triggers`                   |
+| `MonocleLayout`     | One at a time, filling the area. `KioskLayout` places the same. | none                                                                  |
+| `DwindleLayout`     | By halving the space of the last window for each new one.       | `split`, `ratio`, `gap`                                               |
+| `StripLayout`       | In a scrolling strip of columns, the view following the focus.  | `column`                                                              |
 
 To place windows your own way, extend `Layout` and return one placement for each window from `compute`. It runs when the
 workspace changes, not on every frame, and a throw leaves the last placement in place.
 
 ```ts
-import { Layout, defineConfig } from "gnoblin";
+import { Layout, Workspace } from "gnoblin";
 import type { LayoutContext, Placement } from "gnoblin";
 
 class Columns extends Layout {
@@ -107,7 +108,7 @@ class Columns extends Layout {
     }
 }
 
-defineConfig({ workspaces: [{ id: "columns", layout: new Columns() }] });
+gnoblin.workspaces.add(new Workspace({ id: "columns", layout: new Columns() }));
 ```
 
 `context` has these fields:
@@ -139,47 +140,6 @@ A layout may also define these hooks:
 
 A layout's `bindings` collection holds the bindings that act on the windows of its workspace, such as the drag that moves a
 floating window or swaps two tiles: see [Input handlers](input-handlers).
-
-## Workspace sets
-
-A workspace set is a named group of workspaces that are shown together, each on its own output. Declare them in
-`defineConfig` and make one live with `activateSet`.
-
-```ts
-import { defineConfig } from "gnoblin";
-
-defineConfig({
-    workspaces: [{ id: "1" }, { id: "2" }, { id: "3" }],
-    workspaceSets: [
-        {
-            name: "work",
-            entries: [
-                { workspace: "2", output: "DP-1" },
-                { workspace: "3", output: "HDMI-1" },
-            ],
-        },
-    ],
-    keys: {
-        "Super+w": ({ gnoblin }) => {
-            gnoblin.workspaces.activateSet("work");
-        },
-    },
-});
-```
-
-Each entry shows its workspace on its output. An entry with no `output`, or whose output is not connected, shows on the
-primary output, and the shell reports the fallback. A list that does not check refuses the configuration: an empty or
-repeated name, a set with no entries, a workspace that is not declared, or two entries for one output.
-
-| Call                                     | Does                                                                     |
-| ---------------------------------------- | ------------------------------------------------------------------------ |
-| `gnoblin.workspaces.activateSet(name)`   | Makes the set live. Returns `false`, and reports, for an unknown set.    |
-| `gnoblin.workspaces.sets.activate(name)` | The same, but throws a `WorkspaceSetError` instead of returning `false`. |
-| `gnoblin.workspaces.sets.define(list)`   | Replaces the sets from a script. Validated as in `defineConfig`.         |
-| `gnoblin.workspaces.sets.list`           | The defined sets.                                                        |
-| `gnoblin.workspaces.sets.active`         | The name of the live set, or `null`.                                     |
-
-Making the live set live again changes nothing.
 
 ## Workspace events
 

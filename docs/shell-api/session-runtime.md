@@ -4,17 +4,12 @@
 shell to reload its configuration. `gnoblin.version()` names the build.
 
 ```ts
-import { defineConfig } from "gnoblin";
-
-defineConfig({
-    keys: {
-        "Super+l": ({ gnoblin }) => {
-            gnoblin.session.lock();
-        },
-        "Super+Shift+r": ({ gnoblin }) => {
-            gnoblin.runtime.reloadConfig();
-        },
-    },
+const input = gnoblin.input.primary;
+input.bind("Super+l", () => {
+    gnoblin.session.lock();
+});
+input.bind("Super+Shift+r", () => {
+    gnoblin.runtime.reloadConfig();
 });
 ```
 

@@ -4,27 +4,22 @@ The runtime API is what a TypeScript shell sees: the `gnoblin` global and the cl
 to read compositor state, place and style windows, handle input and events, and ask the session for things.
 
 ```ts
-import { defineConfig } from "gnoblin";
-
-defineConfig({
-    setup: (gnoblin) => {
-        for (const client of gnoblin.clients) {
-            gnoblin.spawn(["notify-send", `${client.appId} is open`]);
-        }
-    },
-});
+for (const client of gnoblin.clients) {
+    gnoblin.spawn(["notify-send", `${client.appId} is open`]);
+}
 ```
 
-Put the file in `~/.config/gnoblin/init.ts`. `setup` runs when the configuration loads, with the `gnoblin` object as its
-argument. The same object is a global, so a listener or a key handler may use it too. To write your first config, start
-with the [TypeScript shell](/typescript-shell). The [defineConfig reference](/typescript-config) lists the declarative keys.
+Put the file in `~/.config/gnoblin/init.ts`. It runs when the shell loads it, top to bottom, and the `gnoblin` object is a
+global, so a listener or a key handler may use it too. To write your first config, start with the
+[TypeScript shell](/typescript-shell). Settings the API has no object for are listed in
+[Settings with no object](/js-settings).
 
 ## The `gnoblin` object
 
 | Member                            | What it is                                                                  | Page                                      |
 | --------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------- |
 | `clients`                         | The live collection of windows.                                             | [Windows](windows)                        |
-| `workspaces`                      | The workspaces, and the sets that show several at once.                     | [Workspaces](workspaces)                  |
+| `workspaces`                      | The workspaces.                                                             | [Workspaces](workspaces)                  |
 | `outputs`                         | The connected displays.                                                     | [Outputs](outputs)                        |
 | `find(kind, filter?)`             | Selects windows, workspaces or outputs.                                     | [Find objects](find)                      |
 | `focus`                           | The windows in the order they were focused.                                 | [Focus and activation](focus-activation)  |

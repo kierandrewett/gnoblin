@@ -4,7 +4,7 @@
 start an application, run a helper and read its output, or hear when something ends. `gnoblin.spawn` is the same call.
 
 ```ts
-import { ProcessListener, defineConfig } from "gnoblin";
+import { ProcessListener } from "gnoblin";
 import type { Process } from "gnoblin";
 
 class Notify extends ProcessListener {
@@ -16,14 +16,10 @@ class Notify extends ProcessListener {
     }
 }
 
-defineConfig({
-    setup: (gnoblin) => gnoblin.process.addListener(new Notify()),
-    keys: {
-        "Super+d": ({ gnoblin }) => {
-            const date = gnoblin.process.spawn(["date", "+%H:%M"], { stdout: "capture" });
-            date.wait().onComplete((exit) => gnoblin.spawn(["notify-send", exit?.stdout ?? ""]));
-        },
-    },
+gnoblin.process.addListener(new Notify());
+gnoblin.input.primary.bind("Super+d", () => {
+    const date = gnoblin.process.spawn(["date", "+%H:%M"], { stdout: "capture" });
+    date.wait().onComplete((exit) => gnoblin.spawn(["notify-send", exit?.stdout ?? ""]));
 });
 ```
 

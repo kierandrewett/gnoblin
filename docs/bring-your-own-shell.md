@@ -20,25 +20,24 @@ Install [Waybar](https://github.com/Alexays/Waybar),
 Add this to `~/.config/gnoblin/init.ts`:
 
 ```ts
-import { defineConfig, spawn } from "gnoblin";
+gnoblin.spawn(["waybar"]);
+gnoblin.spawn(["mako"]);
 
-export default defineConfig({
-    autostart: ["waybar", "mako"],
-    keys: {
-        "Super+d": spawn("fuzzel"),
-    },
+gnoblin.input.primary.bind("Super+d", () => {
+    gnoblin.spawn(["fuzzel"]);
 });
 ```
 
-Save the file. The shell reloads it, starts Waybar and Mako, and `Super+d` opens Fuzzel.
+Save the file. The shell reloads it, starts Waybar and Mako, and `Super+d` opens Fuzzel. The file runs again on every
+reload, so a reload starts a second copy of each program that does not refuse one: start it from your session's own
+autostart if you reload often.
 
 Configure Waybar's clock, tray and system modules as usual. Its Sway and
 Hyprland modules need those compositors' own interfaces and do not work in Gnoblin.
 Run one notification daemon; leave Gnoblin's native notifications disabled when
 using Mako.
 
-Configure each tool in its own files. Gnoblin's [autostart](/guides/autostart) and
-[shortcuts](/guides/shortcuts) only control how you launch it.
+Configure each tool in its own files. Gnoblin's [shortcuts](/guides/shortcuts) only control how you launch it.
 
 ![Firefox showing GNOME Help below Waybar in an independent Gnoblin session](images/gnoblin-waybar-firefox.png)
 

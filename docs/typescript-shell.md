@@ -7,12 +7,38 @@ The session runs this shell. Nothing selects it: `gnoblin` starts it unless you 
 
 ## Write your first config
 
-Run this once. It writes a short, commented `init.ts` to `~/.config/gnoblin` (`$XDG_CONFIG_HOME/gnoblin` when that is set)
-and the files your editor needs for completion:
+An `init.ts` is a program. It runs top to bottom, and each line reads or changes an object of the shell. This one is
+short:
+
+```ts
+import { MasterStackLayout, Workspace, startDecorations } from "gnoblin";
+
+startDecorations();
+
+const code = new Workspace({ id: "code", name: "Code", layout: new MasterStackLayout({ ratio: 0.6, gap: 12 }) });
+gnoblin.workspaces.add(code);
+
+gnoblin.clients.style.cornerRadius = 12;
+gnoblin.clients.where({ appId: "firefox" }).style.cornerRadius = 18;
+
+const input = gnoblin.input.primary;
+input.bind("Super+Return", () => {
+    gnoblin.spawn(["foot"]);
+});
+input.bind("Super+q", () => {
+    input.focusedClient?.close();
+});
+```
+
+The file you write is the whole configuration. Nothing is layered under it, so a file with only the lines above has one
+workspace, no volume keys and no launcher. Run this once to start from the full default instead:
 
 ```sh
 gnoblinctl config init
 ```
+
+It writes a commented `init.ts` to `~/.config/gnoblin` (`$XDG_CONFIG_HOME/gnoblin` when that is set) and the files your
+editor needs for completion:
 
 ```text
 ok  init.ts written: /home/me/.config/gnoblin/init.ts
@@ -28,24 +54,19 @@ Next:
 `config init` never replaces a config. If `init.ts` or `init.js` is already there it stops and says so. Add `--force`
 to write the starter over it. An `init.lua` does not stop it: the new `init.ts` takes precedence over it.
 
-Open the file. As written it is the config the shell runs when there is no `init.ts` at all, so nothing changes until you
+Open the file. As written it does exactly what the shell does when there is no `init.ts`, so nothing changes until you
 edit it. The lines that start with `// ` are examples. Remove the `// ` to switch one on:
 
 ```ts
-workspaces: [
-    { id: "1", name: "Workspace 1", layout: "floating" },
-    { id: "2", name: "Workspace 2", layout: "floating" },
-    { id: "3", name: "Workspace 3", layout: "floating" },
-    { id: "4", name: "Workspace 4", layout: "floating" },
-    { id: "work", layout: "master-stack" },
-],
-keys: {
-    "Super+Return": spawn("foot"),
-},
+gnoblin.workspaces.add(new Workspace({ id: "work", name: "Work", layout: new MasterStackLayout() }));
+input.bind("Super+Return", () => {
+    gnoblin.spawn(["foot"]);
+});
 ```
 
 Save the file. The shell reloads it after a short pause, and the windows you have open stay where they are. Press
-`Super+2` and you are on the new workspace.
+`Super+2` and you are on the next workspace. `gnoblinctl check --types init.ts` checks the file before you save it, and
+`gnoblinctl console` opens a live prompt where you can try any line first.
 
 ## Where the config lives
 
@@ -64,16 +85,12 @@ When two exist, the first wins and the log says which others it ignored, for exa
 - Its extension says the language: `.ts`, `.mts`, `.js` or `.mjs`.
 - A `.lua` file is refused with the migrate command.
 
-The shell loads the file, validates the whole document `defineConfig` makes and commits it to the compositor as one
-revision. Every start and every reload commits the document the file describes and nothing else. A setting you delete
-from `init.ts` is gone after the next reload or restart.
+The shell runs the file from top to bottom against the live objects. What the file does not say, the session does not
+do: an `init.ts` replaces the starter entirely. A statement you delete from `init.ts` is gone after the next reload or
+restart.
 
-Your `autostart` commands are part of that document:
-
-- The session starts each in a process group of its own.
-- A command that is still running is left alone when you reload or the shell restarts.
-- A command a reload drops from the list is stopped.
-- A command that exits is not started again.
+Programs you start with `gnoblin.spawn` start again on every reload, because the file runs again. To start something
+once per session, use your session's own autostart.
 
 A save reloads the file. So does `gnoblinctl config reload`, which prints the revision it committed or the error it
 refused, with the file, line and column. `GNOBLIN_JS_WATCH=0` turns the reload on save off, and then only the command
@@ -116,39 +133,40 @@ of the wrong type. Without a compiler it says so and exits 0. See [Check and typ
 An editor that understands TypeScript then completes every key and underlines a wrong one. Run `gnoblinctl types init`
 again after an upgrade to refresh `gnoblin.d.ts`. It never replaces a `tsconfig.json` you have.
 
-## What the keys are
+## What the file can do
 
-Every key of `defineConfig`, with its accepted values, its default and an example, is in the
-[defineConfig reference](typescript-config.md). The ones the starter shows are these:
+Everything is an object in the [shell API](/shell-api/). The ones the starter uses are these:
 
-- `gaps`, `decorations` and `workspaces` shape the desktop.
-- `keys` binds keys, and `rules` places windows.
-- `autostart` starts programs once per session.
-- `setup` is a function for anything else, with the whole object API.
+- `gnoblin.workspaces` holds the workspaces, and each `Workspace` has a layout.
+- `gnoblin.input.primary.bind(trigger, fn)` binds a key, a gesture or a pointer chord.
+- `gnoblin.clients` is every window, and `gnoblin.clients.style` is how they all look.
+- `gnoblin.outputs.profiles` holds the settings of your monitors.
+- `startDecorations()`, `startWindowMenu()` and `startNotRespondingAlert()` start the parts of the stock desktop that
+  you may want to leave out.
 
-A mistake in a key name fails the reload, and the message suggests the key you meant:
+A name that does not exist is a type error under `gnoblinctl check --types`, and a throw at load. A reload that throws
+leaves the running file in place.
 
-```text
-config has no "autostrt" (did you mean "autostart"?); expected one of gaps, style, outputs, ...
-```
+Some settings of the older configuration have no object in the API, so a file cannot set them. [Settings with no
+object](js-settings.md) lists them.
 
 ## With no `init.ts`
 
-A session with no `init.ts` is not a bare shell. It runs the stock config:
+A session with no `init.ts` is not a bare shell. It runs the starter, the same statements `gnoblinctl config init`
+writes:
 
-- four floating workspaces, `1` to `4` (named `Workspace 1` to `Workspace 4`), the same four the Lua-era stock config had;
+- four floating workspaces, `1` to `4` (named `Workspace 1` to `Workspace 4`);
 - `Super+1` to `Super+9` show the workspace at that position, sliding over a quarter of a second, and do nothing when
   there is none, so `Super+1` to `Super+4` work until you declare more;
-- `Super+Left` and `Super+Right` move focus between the columns of a `strip` workspace;
+- `Super+Left` and `Super+Right` move focus between the columns of a `StripLayout` workspace;
 - a three-finger swipe slides between workspaces, and the windows follow the fingers;
 - the volume, microphone and media keys run `wpctl` and `playerctl`;
-- `Super` with a left drag moves a window, and `Super` with a right drag resizes it;
 - a titlebar on every window, with a window menu on a right click;
 - an alert with Wait and Force quit for a window that stops answering;
 - `Super+space` opens a launcher entry that starts what you type.
 
 Creating `init.ts` later loads it at once. An `init.ts` that fails to load when the shell starts is reported in the log,
-and the stock config runs until the file is fixed.
+and the starter runs until the file is fixed.
 
 ## What it looks like
 
@@ -157,16 +175,14 @@ and no bar.
 
 ![A terminal under the shell's titlebar on an empty screen](images/js-shell/default-desktop.png)
 
-A workspace with a layout tiles its windows. This config tiles three terminals with a master on the left and a gap of 12
-pixels. It sets `decorations: true` because a `defineConfig` that leaves the key out draws no titlebars:
+A workspace with a layout tiles its windows. This file tiles three terminals with a master on the left and a gap of 12
+pixels. It calls `startDecorations()` because a file that leaves it out draws no titlebars:
 
 ```ts
-import { MasterStackLayout, defineConfig } from "gnoblin";
+import { MasterStackLayout, Workspace, startDecorations } from "gnoblin";
 
-export default defineConfig({
-    decorations: true,
-    workspaces: [{ id: "dev", layout: new MasterStackLayout({ ratio: 0.6, gap: 12 }) }],
-});
+startDecorations();
+gnoblin.workspaces.add(new Workspace({ id: "dev", layout: new MasterStackLayout({ ratio: 0.6, gap: 12 }) }));
 ```
 
 ![Three terminals tiled with a master on the left and a gap of 12 pixels](images/js-shell/master-stack.png)
@@ -332,8 +348,8 @@ See [Session and runtime](/shell-api/session-runtime), [Processes](/shell-api/pr
 
 ## Console and inspector
 
-`gnoblinctl console` opens a live prompt into the running shell, and `inspect.clients()`, `inspect.workspaces()`,
-`inspect.bindings()` and `inspect.config()` return what the shell holds as plain data. See
+`gnoblinctl console` opens a live prompt into the running shell, and `inspect.clients()`, `inspect.workspaces()`
+and `inspect.bindings()` return what the shell holds as plain data. See
 [Console and inspector](/js-console).
 
 ## Idle, authentication and launches
@@ -359,4 +375,4 @@ With no shell holding the tree:
 - windows the shell had moved go back to the places the compositor gave them.
 
 The session restarts the shell. It attaches again, learns of every window and applies the config again. No window changes
-its identity, and programs listed in `autostart` are started again.
+its identity, and the file runs again, so what it starts, such as a `gnoblin.spawn` call, starts again.

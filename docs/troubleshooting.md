@@ -113,17 +113,12 @@ Edit `~/.config/gnoblin/init.ts` and read the reload error. Then check:
 - Does this setting restart a child service, and does that affect its clients?
   See [reload behavior](/guides/files_and_load_order#reload).
 - Did an `import` in `init.ts` name a file that is not there?
-- Did a later list replace your rules or shortcuts?
+- Did the file bind a trigger twice? A second binding of one trigger at one priority is refused.
 
-## My component's shortcuts or rules disappeared
+## My component's shortcuts disappeared
 
-A list in your `init.ts` (`rules`, `autostart`) replaces the stock list as a whole. Copy the entries you still want into
-yours; see [how your config combines with the stock one](/typescript-config#how-your-config-combines-with-the-stock-one).
-
-## A window rule does not match
-
-Every matcher must match. A text matcher is a string, which must equal the
-value, or a JavaScript `RegExp`. Check anchors, escaping (`\.` matches a literal dot), and the raw app ID. See [window rules](/guides/window_rules).
+An `init.ts` replaces the default entirely, so the keys, workspaces and titlebars the default made are gone unless your
+file makes them. Run `gnoblinctl config init` to write the default as code, then keep the lines you want.
 
 ## A shortcut fails
 
@@ -268,55 +263,23 @@ Check the value an X11 app sees:
 xrdb -query | rg Xft.dpi
 ```
 
-To draw X11 apps at their normal size, set the X11 scale to 1:
-
-```ts
-xwayland: { scalingFactor: 1 },
-```
-
-Reload the config. Xwayland does not restart, and X11 apps then report
-`Xft.dpi: 96`.
-
-Use `0` to return to the automatic value. The accepted values are listed in the
-[xwayland reference](/config/configure/xwayland).
+The X11 scale is the `xwayland` section of the compositor's configuration, and `init.ts` cannot set it: no object of the
+shell API carries it. See [Settings with no object](/js-settings).
 
 ## A window opens behind the focused window
 
 A window from an app that is not the focused app can open behind the focused
-window.
+window, and the compositor sets an attention flag on it. The flag does not
+produce a notification by itself.
 
-With `focus: { newWindows: "prevent" }` set, the focused window stays in front
-and Mutter sets an attention flag on the new window. The flag does not produce
-a notification by itself.
-
-A modal dialog from a background app, such as a portal prompt, is one of these windows. To let it take focus and
-stay in front, set `focus: { newWindows: "allow" }`.
-
-Other windows from background apps stay behind the focused window. Check them
-with `gnoblinctl window list --json`; a hidden window has `"focused": false`.
-
-Keyring password dialogs are the common case. With `prevent` they open on top
-but without focus, so typing does nothing until you click the dialog. Remove the
-`prevent` setting to use the default, `allow`.
-
-The starter config uses `allow`, which lets an app take focus when it opens a
-window. A background app can then interrupt your typing. To keep focus where it
-is, set `prevent`:
-
-```ts
-focus: { newWindows: "prevent" },
-```
-
-See [focus options](/typescript-config#focus).
+The focus policy that decides this is not something `init.ts` can set: no object of the shell API carries it (see
+[Settings with no object](/js-settings)). Check the windows with `gnoblinctl window list --json`; a hidden window has
+`"focused": false`. To bring one forward from a script, call `client.focus()` and `client.raise()` on it.
 
 ### `wl-copy` does not return
 
-With `focus: { newWindows: "prevent" }`, `wl-copy` from `wl-clipboard` can
-block until you stop it. It opens a small window and waits for keyboard focus
-before it sets the clipboard, and `prevent` does not give that window focus. With
-`allow` it exits at once.
-
-To use `wl-copy`, set `focus.newWindows` to `allow`.
+When a new window does not take the keyboard focus, `wl-copy` from `wl-clipboard` can block until you stop it. It opens a
+small window and waits for keyboard focus before it sets the clipboard. Click the window to give it the focus.
 
 ## An app cannot take a screenshot
 

@@ -5,7 +5,7 @@ authentication. The compositor draws the dialog itself, so it works with no shel
 `gnoblin.dialogs` lets your config watch these requests and refuse one before its dialog opens.
 
 ```ts
-import { DialogListener, defineConfig } from "gnoblin";
+import { DialogListener } from "gnoblin";
 import type { ConsentRequest } from "gnoblin";
 
 class NoScreenCasts extends DialogListener {
@@ -16,7 +16,7 @@ class NoScreenCasts extends DialogListener {
     }
 }
 
-defineConfig({ setup: (gnoblin) => gnoblin.dialogs.addListener(new NoScreenCasts()) });
+gnoblin.dialogs.addListener(new NoScreenCasts());
 ```
 
 Put the file in `~/.config/gnoblin/init.ts`. A program that asks for a screen cast is refused, and the dialog never opens.

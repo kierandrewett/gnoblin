@@ -20,10 +20,8 @@ installed, run its command (for example, `hyprlock`) in your Gnoblin session.
 Your shell or idle daemon decides when to run that command; Gnoblin does not
 set a timeout or launch a locker for you.
 
-The protocol is enabled by default in Gnoblin. To hide its global, set
-`ext_session_lock = false` under `gnoblin.configure.protocols`, then log out and
-back in; protocol globals are registered at compositor startup. See the
-[protocol setting reference](/config/configure/protocols).
+The protocol is enabled by default in Gnoblin, and `init.ts` cannot turn it off: see
+[Settings with no object](/js-settings).
 
 ## Request a lock
 
@@ -74,14 +72,8 @@ idle service restarts, read `GetActive` again for its initial value.
 To lock with a key of your choice, bind a key in `init.ts`:
 
 ```ts
-import { defineConfig } from "gnoblin";
-
-export default defineConfig({
-    keys: {
-        "Super+l": ({ gnoblin }) => {
-            gnoblin.session.lock();
-        },
-    },
+gnoblin.input.primary.bind("Super+l", () => {
+    gnoblin.session.lock();
 });
 ```
 

@@ -6,7 +6,7 @@ system settings changes. The compositor draws the password dialog itself and che
 `gnoblin.authentication` lets your config watch the requests and refuse one.
 
 ```ts
-import { AuthenticationListener, defineConfig } from "gnoblin";
+import { AuthenticationListener } from "gnoblin";
 import type { AuthenticationRequest } from "gnoblin";
 
 class NoRoot extends AuthenticationListener {
@@ -17,7 +17,7 @@ class NoRoot extends AuthenticationListener {
     }
 }
 
-defineConfig({ setup: (gnoblin) => gnoblin.authentication.addListener(new NoRoot()) });
+gnoblin.authentication.addListener(new NoRoot());
 ```
 
 Put the file in `~/.config/gnoblin/init.ts`. Run `pkexec true` to see the dialog open. A request for root from any other

@@ -1,28 +1,24 @@
 # Window snapping
 
 Snapping tiles a window to an edge of the work area. Dropping a dragged window on an edge snaps it, and the stock move
-binding does that when `edgeTiling` is on. A script can snap a window by itself with the helpers `gnoblin` exports.
+binding does that. A script can snap a window by itself with the helpers `gnoblin` exports.
 
 ```ts
-import { defineConfig, snapClient, unsnapClient } from "gnoblin";
+import { snapClient, unsnapClient } from "gnoblin";
 
-defineConfig({
-    edgeTiling: true,
-    keys: {
-        "Super+Shift+Left": ({ gnoblin }) => {
-            const client = gnoblin.clients.focused;
-            const area = gnoblin.workspaces.area;
-            if (client && area) {
-                snapClient(client, "left", { edgeTiling: true, area });
-            }
-        },
-        "Super+Shift+Down": ({ gnoblin }) => {
-            const client = gnoblin.clients.focused;
-            if (client) {
-                unsnapClient(client);
-            }
-        },
-    },
+const input = gnoblin.input.primary;
+input.bind("Super+Shift+Left", () => {
+    const client = gnoblin.clients.focused;
+    const area = gnoblin.workspaces.area;
+    if (client && area) {
+        snapClient(client, "left", { edgeTiling: true, area });
+    }
+});
+input.bind("Super+Shift+Down", () => {
+    const client = gnoblin.clients.focused;
+    if (client) {
+        unsnapClient(client);
+    }
 });
 ```
 
@@ -41,7 +37,7 @@ A snap zone is the part of the work area a window tiles to:
 
 A corner counts as the left or right edge before the top. The halves are whole pixels.
 
-Edge tiling is off unless `edgeTiling` is `true` in `defineConfig`, or the seat's setting says so.
+Edge tiling is on. The older `edgeTiling` and `dragConstraint` settings have no object in the API, so a file cannot turn them off (see [Settings with no object](/js-settings)).
 
 The stock move drag, `ClientMoveBinding`, snaps a window dropped within `snap` pixels of an edge. The default is 4, and
 `snap: false` never snaps.

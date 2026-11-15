@@ -132,7 +132,6 @@ without holding a native object.
 | `inspect.clients()`    | Every client: `id`, `appId`, `title`, `focused`, `fullscreen`, `floating`, geometry, `workspace` |
 | `inspect.workspaces()` | Every workspace: `id`, `name`, `index`, `active`, `layout` (class name), `clients` (ids)         |
 | `inspect.bindings()`   | Every binding registered on a seat: see below                                                    |
-| `inspect.config()`     | The effective config: your `defineConfig` laid over the stock one; `null` with no `defineConfig` |
 
 `gnoblin.clients.focused` is the client that holds the keyboard focus, or `null`.
 
@@ -149,8 +148,6 @@ gnoblin> inspect.bindings().filter((b) => b.trigger === "Super+MouseLeft")
 - `rank` orders the bindings of one trigger the way a press does: a device's binding before a layout's before the
   context's, then the higher `priority`, then the one registered first. Rank 1 runs first; a binding that declines hands
   the press to rank 2.
-
-`inspect.config()` shows a function (a key's handler, `setup`) as `[Function name]`.
 
 ## Who can connect
 

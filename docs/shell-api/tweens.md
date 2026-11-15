@@ -4,15 +4,9 @@
 its render loop, so each frame follows the display and the script does not run per frame.
 
 ```ts
-import { defineConfig } from "gnoblin";
-
-defineConfig({
-    keys: {
-        "Super+o": ({ gnoblin }) => {
-            const client = gnoblin.clients.focused;
-            client?.animate({ opacity: client.opacity < 1 ? 1 : 0.5 }, { duration: 0.3 });
-        },
-    },
+gnoblin.input.primary.bind("Super+o", () => {
+    const client = gnoblin.clients.focused;
+    client?.animate({ opacity: client.opacity < 1 ? 1 : 0.5 }, { duration: 0.3 });
 });
 ```
 

@@ -36,7 +36,7 @@ leaves the running config in place and reports the error.
   Use it for windows, workspaces and outputs: [Window, workspace and output events](/events/desktop-state).
 - `gnoblin.on(name, handler)` hears the compositor's other signals, such as a reload or the bell:
   [Events](/events/).
-- A key action in `keys` runs when a trigger is pressed: [Keyboard shortcuts](/shell-api/keyboard-shortcuts).
+- A function bound with `gnoblin.input.primary.bind` runs when a trigger is pressed: [Keyboard shortcuts](/shell-api/keyboard-shortcuts).
 - `gnoblin.timers.after(ms, fn)` runs a function later: [Operations, errors and timers](/shell-api/errors#timers).
 
 ## What a handler can do
@@ -46,7 +46,7 @@ session to lock or log out. It cannot read arbitrary files, open network connect
 program, call `gnoblin.spawn`.
 
 Panels, launchers, notifications and other visible interface belong either in the shell's
-own [UI toolkit](/js-ui) or in separate Wayland clients that you start with `autostart`.
+own [UI toolkit](/js-ui) or in separate Wayland clients that you start with `gnoblin.spawn`.
 
 Keep a handler short. Each call has a time budget, and a call that runs past it is stopped and reported: see
 [Write your own shell](/user-shell#time-and-memory-limits).

@@ -752,7 +752,7 @@ declare module "gnoblin" {
         readonly make: string;
         /** The model name as the display reports it. */
         readonly model: string;
-        /** The connector the display is plugged into (`DP-1`): what `defineConfig({ outputs })` and `mirrorOf` name. */
+        /** The connector the display is plugged into (`DP-1`): what an `OutputProfile`'s `match` and `mirrorOf` name. */
         readonly connector: string;
         /** The monitor's EDID identity (`MAN:product:serial`), empty for a display that reports none. */
         readonly identity: string;
@@ -1794,7 +1794,7 @@ declare module "gnoblin" {
         setOpacity(client: C, value: number): void;
         setStyle(client: C, field: "cornerRadius" | "shadows", value: number | readonly unknown[] | undefined): void;
     }
-    /** Applies rules to the windows of a collection it is attached to; `defineConfig` attaches one. */
+    /** Applies rules to the windows of a collection it is attached to. */
     export class RuleEngine<C extends object> {
         constructor(rules: readonly CompiledRule[], host: RuleHost<C>);
         skipsFocus(client: C): boolean;
@@ -1943,7 +1943,7 @@ declare module "gnoblin" {
     export function forgetSnap(client: object): void;
 
     /**
-     * What an output is configured to do, by connector name in `defineConfig({ outputs })` and as the argument of
+     * What an output is configured to do, by an `OutputProfile` and as the argument of
      * `Output.apply`. A key left out keeps the output's value.
      */
     export interface OutputSetting {

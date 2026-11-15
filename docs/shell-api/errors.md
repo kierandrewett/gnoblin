@@ -4,18 +4,12 @@ A call that finishes later returns an `Operation`. A call that cannot be made at
 shell, whether a listener, a handler or a timer, runs under a time budget and may fail without stopping the others.
 
 ```ts
-import { defineConfig } from "gnoblin";
-
-defineConfig({
-    keys: {
-        "Super+Shift+q": ({ gnoblin }) => {
-            gnoblin.session.logout().onComplete((value, error) => {
-                if (error) {
-                    gnoblin.spawn(["notify-send", `Logout refused: ${error.code}`]);
-                }
-            });
-        },
-    },
+gnoblin.input.primary.bind("Super+Shift+q", () => {
+    gnoblin.session.logout().onComplete((value, error) => {
+        if (error) {
+            gnoblin.spawn(["notify-send", `Logout refused: ${error.code}`]);
+        }
+    });
 });
 ```
 

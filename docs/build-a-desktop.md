@@ -30,15 +30,15 @@ of them with a component you prefer. Put this in a **new**
 `~/.config/gnoblin/init.ts`:
 
 ```ts
-import { defineConfig, spawn } from "gnoblin";
+gnoblin.spawn(["waybar"]);
+gnoblin.spawn(["mako"]);
 
-export default defineConfig({
-    cursor: { theme: "default", size: 28 },
-    autostart: ["waybar", "mako"],
-    keys: {
-        "Super+d": spawn("fuzzel"),
-        "Super+Return": spawn("foot"),
-    },
+const input = gnoblin.input.primary;
+input.bind("Super+d", () => {
+    gnoblin.spawn(["fuzzel"]);
+});
+input.bind("Super+Return", () => {
+    gnoblin.spawn(["foot"]);
 });
 ```
 
@@ -46,20 +46,18 @@ export default defineConfig({
 
 _A settings app beneath Waybar._
 
-The cursor uses your system's default theme. See the [cursor guide](/guides/cursors)
-to choose another installed theme.
+The cursor uses your system's default theme.
 
 Capture this example from the checkout with
 `scripts/capture-doc-examples.sh waybar-settings`. It uses a disposable config and
 profile; see the [capture script](devkit.md#documentation-captures) for setup.
 
 A shell or package ships its settings as a TypeScript module that your `init.ts` imports; there are no system
-drop-in directories. [Load order and merging](/guides/files_and_load_order) explain why the order matters.
+drop-in directories.
 
 Log in to Gnoblin. The active file is `~/.config/gnoblin/init.ts`. Run
 `gnoblinctl config reload` to apply edits; Gnoblin reports any
-configuration errors. See the [autostart guide](/guides/autostart) for launch
-timing and named entries.
+configuration errors.
 
 Waybar's Sway and Hyprland modules expect those compositors' own IPC and do
 not gain that IPC merely by running under Gnoblin. Configure supported generic
@@ -67,10 +65,9 @@ modules or write a module using [window data](bridge/session-and-windows.md#read
 
 ## Give each visible function an owner
 
-Start one notification daemon from your shell or the session's
-[autostart configuration](/config/configure/autostart). Configure window
+Start one notification daemon from your shell or the session. Configure window
 switchers and keyboard-layout popups in your shell. Gnoblin's input API selects
-the active input source; see [input-source settings](/config/configure/input_sources).
+the active input source.
 Use [shortcut guidance](/guides/shortcuts#avoid-conflicts) to resolve binding
 conflicts.
 
@@ -88,8 +85,8 @@ several languages.
 | Maintain a live switcher or dock     | Compositor bridge `windows` subscription                         |
 | Place a bar or dock                  | `zwlr_layer_shell_v1`                                            |
 | Capture output with a native client  | `zwlr_screencopy_manager_v1`, subject to its protocol gate       |
-| Apply per-app styling                | `rules` in [`init.ts`](/typescript-config#rules)                 |
-| React to a window or workspace event | `on` listener in `init.ts` (see [event handlers](/user-scripts)) |
+| Apply per-app styling                | `gnoblin.clients.where({ ... }).style` in [`init.ts`](/js-style) |
+| React to a window or workspace event | A listener in `init.ts` (see [event handlers](/user-scripts))    |
 
 The desktop portal backend decides what each app may do. Disabling a Wayland
 protocol does not change what a portal backend allows for screen sharing or

@@ -14,8 +14,7 @@ Without `xdg-desktop-portal-gnoblin`, Gnoblin uses another portal backend that i
 
 ## Other software your shell may need
 
-- **Input methods:** install `ibus` and an engine such as `ibus-m17n`. See
-  [Type with an input method](/config/configure/input_sources#type-with-an-input-method).
+- **Input methods:** install `ibus` and an engine such as `ibus-m17n`.
 
 ::: details GNOME applications
 

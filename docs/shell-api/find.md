@@ -4,15 +4,9 @@ Two calls select windows, workspaces and outputs. `gnoblin.find` returns an arra
 `where` on a collection returns a live selection that follows the objects as they change.
 
 ```ts
-import { defineConfig } from "gnoblin";
-
-defineConfig({
-    keys: {
-        "Super+f": ({ gnoblin }) => {
-            const [notes] = gnoblin.find("Window", { appId: "org.gnome.Notes" });
-            notes?.focus();
-        },
-    },
+gnoblin.input.primary.bind("Super+f", () => {
+    const [notes] = gnoblin.find("Window", { appId: "org.gnome.Notes" });
+    notes?.focus();
 });
 ```
 

@@ -1,7 +1,7 @@
 # Window policy in TypeScript
 
 The window policy of the TypeScript shell: moving and resizing with the keyboard, touchpad
-gesture actions, reduced motion, binding-only devices, focus hand-off, workspace removal and workspace sets. Each section
+gesture actions, reduced motion, binding-only devices, focus hand-off, workspace removal and gesture bindings. Each section
 names the test that proves it (`crates/gnoblin-js/tests/{reposition,window_policy,input}.rs`).
 
 ## Move and resize with the keyboard
@@ -25,12 +25,12 @@ The window menu's Move and Resize start these.
 ## Gesture actions
 
 ```ts
-defineConfig({
-    gestureActions: {
-        Swipe4: { up: "window.toggle-maximise", left: "workspace.next", right: "workspace.previous" },
-        Pinch3: { in: "window.minimise", out: (event) => console.log(event.scale) },
-    },
-});
+const input = gnoblin.input.primary;
+input.bind(
+    "Swipe4",
+    gnoblin.gestures.onSwipe({ up: "window.toggle-maximise", left: "workspace.next", right: "workspace.previous" }),
+);
+input.bind("Pinch3", gnoblin.gestures.onPinch({ in: "window.minimise", out: (event) => console.log(event.scale) }));
 ```
 
 A gesture is `Swipe` or `Pinch` and a finger count. An action runs once, when the fingers lift, for the direction the
@@ -41,7 +41,8 @@ gesture went; a cancelled gesture runs nothing.
 - `gnoblin.gestures.actions` holds them as functions.
 - `onSwipe(map, threshold?)`, `onPinch(map, threshold?)` and `direction(event, threshold?)` of `gnoblin.gestures` build
   bindings for `gnoblin.input.primary.bind`.
-- A gesture here replaces the stock three-finger slide when it has the same trigger.
+- A gesture bound on `Swipe3` is refused while the stock three-finger slide holds that trigger, so delete the starter's
+  `Swipe3` line first.
 - A gesture event carries the raw `dx`, `dy`, `scale` and `rotation` beside `progress`.
 
 ## Reduced motion
@@ -71,21 +72,6 @@ the trigger and does nothing with it; a function that returns `false` declines a
 
 ## Workspace sets
 
-```ts
-defineConfig({
-    workspaceSets: [
-        {
-            name: "work",
-            entries: [
-                { workspace: "2", output: "DP-1" },
-                { workspace: "3", output: "HDMI-1" },
-            ],
-        },
-    ],
-});
-gnoblin.workspaces.activateSet("work");
-```
-
-Each entry shows its workspace on its output; one with no output, or whose output is not connected (reported), shows on the
-primary output. A list that does not check refuses the config. `activateSet` returns `false` and reports for an unknown
-set; `gnoblin.workspaces.sets.activate` throws instead.
+Workspace sets are not part of the shell's API: there is no way to declare a named group of workspaces or to activate
+one. Each display chooses its own workspace: set `display.viewport.content = workspace` for each display you want to
+place. See [Settings with no object](js-settings.md).

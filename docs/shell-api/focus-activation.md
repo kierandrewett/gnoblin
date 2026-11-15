@@ -1,47 +1,11 @@
 # Focus and activation
 
-Focus policy decides which window gets the keyboard, and when it rises above the others. Set it in the `focus` key of
-`defineConfig`; read the order windows were focused with `gnoblin.focus.history()`.
+Focus policy decides which window gets the keyboard, and when it rises above the others. The shell keeps click to
+focus, focuses a window that opens, and raises a window when you click it.
 
-```ts
-import { defineConfig } from "gnoblin";
-
-defineConfig({
-    focus: { mode: "sloppy", autoRaise: true, autoRaiseDelay: 300 },
-});
-```
-
-Put the file in `~/.config/gnoblin/init.ts`. A window gets the focus when the pointer enters it, and rises 300 ms later.
-
-## Focus settings
-
-Every key is optional. A key you leave out is the compositor's own value for that setting.
-
-| Key                   | Values                            | Default   | Effect                                                   |
-| --------------------- | --------------------------------- | --------- | -------------------------------------------------------- |
-| `mode`                | `click`, `sloppy`, `follow-mouse` | `click`   | How pointer movement changes the focus.                  |
-| `newWindows`          | `allow`, `prevent`                | `prevent` | Whether a window that opens from a launcher takes focus. |
-| `raiseOnClick`        | boolean                           | `true`    | A click on a window raises it.                           |
-| `autoRaise`           | boolean                           | `false`   | The focused window rises by itself.                      |
-| `autoRaiseDelay`      | milliseconds, 0 or more           | `500`     | How long after focus an auto raise waits.                |
-| `changeOnPointerRest` | boolean                           | `false`   | Focus follows the pointer only once it stops moving.     |
-
-The three modes:
-
-- `click` focuses a window when you click it.
-- `sloppy` focuses the window under the pointer as the pointer enters it, and keeps the focus when the pointer moves onto
-  the desktop.
-- `follow-mouse` is `sloppy`, and also clears the focus when the pointer leaves the focused window.
-
-`newWindows` applies to a window that opened on an activation token a launcher minted (`client.fromLauncher`). A program
-started with `gnoblin.spawn` is not marked, because the shell's spawner mints no token. With `prevent`, a new window opens
-without taking the focus; with `allow` it takes it.
-
-The settings are part of the config document, so a change takes effect on the next reload. [defineConfig reference](/typescript-config#focus)
-lists how they combine with the stock config. The seat's current values are `gnoblin.input.primary.settings`.
-
-There `focusMode` uses the compositor's own names: `click`, `hover` and `hover-strict`.
-They stand for `click`, `sloppy` and `follow-mouse`.
+A file cannot change that policy. Focus mode, auto raise and the rest of the older `focus` settings have no object in the
+API: see [Settings with no object](/js-settings). Read the order windows were focused with `gnoblin.focus.history()`, and the seat's current values with
+`gnoblin.input.primary.settings`.
 
 ## Give a window the focus
 
@@ -83,8 +47,6 @@ A shell that runs as a separate Wayland client can start an application from a p
 Request the token from the connection that received the input, with that surface, seat and initiating press serial. Commit
 the request before you dismiss or destroy the source surface, then pass the returned token to the application.
 
-With `newWindows: "prevent"`, the compositor keeps a verified launch gesture after the source closes. Releasing its key or
+With the compositor's default activation policy, it keeps a verified launch gesture after the source closes. Releasing its key or
 mouse button does not revoke it. A later press, touch start, scroll or session lock does, and unlocking does not restore it.
 The token expires 15 seconds after the initiating event and can authorize focus only once.
-
-`newWindows: "allow"` keeps its permissive activation policy.

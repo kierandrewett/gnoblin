@@ -4,19 +4,13 @@
 a spinner while the program starts.
 
 ```ts
-import { defineConfig } from "gnoblin";
-
-defineConfig({
-    keys: {
-        "Super+e": ({ gnoblin }) => {
-            gnoblin.launches.begin("terminal-1", "foot", {
-                timeoutMs: 5000,
-                onStarted: () => gnoblin.spawn(["notify-send", "The terminal is open"]),
-                onTimedOut: () => gnoblin.spawn(["notify-send", "The terminal did not open"]),
-            });
-            gnoblin.spawn("foot");
-        },
-    },
+gnoblin.input.primary.bind("Super+e", () => {
+    gnoblin.launches.begin("terminal-1", "foot", {
+        timeoutMs: 5000,
+        onStarted: () => gnoblin.spawn(["notify-send", "The terminal is open"]),
+        onTimedOut: () => gnoblin.spawn(["notify-send", "The terminal did not open"]),
+    });
+    gnoblin.spawn("foot");
 });
 ```
 
