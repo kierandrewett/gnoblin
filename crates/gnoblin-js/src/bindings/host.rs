@@ -119,7 +119,10 @@ fn convert(def: &JsPropDef, value: &JsScriptValue, handles: &NodeHandles) -> Opt
     }
 }
 
-/// The curve of an animated write: the seconds it takes, and samples of progress from 0 to 1 it follows.
+/// What a millisecond is of the seconds the tree's wire counts in.
+const MILLIS_PER_SECOND: f64 = 1000.0;
+
+/// The curve of an animated write as the tree takes it: the seconds it takes, and samples of progress from 0 to 1 it follows.
 pub(crate) type JsCurve<'a> = (f64, &'a [f64]);
 
 /// A curve the tree accepts: a finite, non-negative duration and at least two samples in `[0, 1]`.
@@ -401,8 +404,9 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
         )?,
     )?;
 
-    // `animate(node, key, value, seconds, samples, delay?, tween?)`: the same write, carried out over `seconds` along
-    // `samples`, after `delay` seconds, and driven by the `tween` node when one is named (0 is none).
+    // `animate(node, key, value, duration, samples, delay?, tween?)`: the same write, carried out over `duration`
+    // milliseconds along `samples`, after `delay` milliseconds, and driven by the `tween` node when one is named (0 is
+    // none). The script API counts milliseconds everywhere; the tree's wire counts seconds, so the conversion is here.
     let shared = state.clone();
     host.set(
         "animate",
@@ -411,7 +415,7 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
             move |node: f64,
                   key: String,
                   value: Value<'js>,
-                  seconds: f64,
+                  duration: f64,
                   samples: Vec<f64>,
                   delay: Opt<f64>,
                   tween: Opt<f64>|
@@ -432,8 +436,8 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
                     node,
                     &key,
                     &script_value(&value),
-                    Some((seconds, &samples[..])),
-                    delay.0.unwrap_or(0.0),
+                    Some((duration / MILLIS_PER_SECOND, &samples[..])),
+                    delay.0.unwrap_or(0.0) / MILLIS_PER_SECOND,
                     tween,
                 )
             },

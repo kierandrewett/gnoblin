@@ -248,8 +248,8 @@ shell file becomes a list of what to port.
 | `seat.data.window_rules = { { match = { app_id = "^x$" }, ... } }`    | A listener or a `where(...).style`. See [window rules](#window-rules).                                                   |
 | `seat:bind({ ["<Super>x"] = fn })`, `Swipe3`                          | `input.bind("Super+x", () => ...)`, and `input.bind("Swipe3", ...)` for gestures.                                        |
 | `seat.data.prompts = false`, `seat.data.alerts = false`               | `alerts = false` leaves `startNotRespondingAlert()` out. Prompts are drawn by the compositor and have no switch.         |
-| `gnoblin.timers.after`, `gnoblin.process.spawn`                       | `gnoblin.after`, `gnoblin.spawn`.                                                                                        |
-| Reactive properties, `go`, `await`, `every`, `Node:extend`, selectors | None. Rewrite them as listeners and `gnoblin.after`.                                                                     |
+| `gnoblin.timers.after`, `gnoblin.process.spawn`                       | `gnoblin.timers.after`, `gnoblin.spawn`.                                                                                 |
+| Reactive properties, `go`, `await`, `every`, `Node:extend`, selectors | None. Rewrite them as listeners and `gnoblin.timers.after`.                                                              |
 
 Each page of the [shell API](shell-api/index.md) shows the objects these statements use, and the
 [settings page](js-settings.md) shows the settings that have one.

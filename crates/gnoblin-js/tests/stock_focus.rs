@@ -40,7 +40,7 @@ export const thrown = (fn) => {
 const IMPORTS: &str = r#"
 import { emit, thrown } from "harness";
 import {
-    focusSettings, seatFocusSettings, opensFocused, hoverFocus, autoRaiseSeconds, REST_SECONDS, restFocus,
+    focusSettings, seatFocusSettings, opensFocused, hoverFocus, REST_DELAY, restFocus,
     leaveClears, focusDecision, edgeTilingEnabled, edgeZone, tileRect,
     ClientResizeBinding, ClientMoveBinding,
 } from "gnoblin";
@@ -158,12 +158,15 @@ fn the_focus_modes_decide_what_the_pointer_over_a_window_does() {
 }
 
 #[test]
-fn the_auto_raise_delay_is_in_seconds_for_the_frame_clock() {
-    // Before: "auto_raise_delay converts to seconds for the frame clock".
+fn the_auto_raise_delay_reaches_the_decision_in_milliseconds_as_the_setting_gives_it() {
+    // Before: "auto_raise_delay converts to seconds for the frame clock"; every time is milliseconds now, so there is
+    // nothing to convert.
     let got = run(r#"
-        emit([autoRaiseSeconds(focusSettings({})), autoRaiseSeconds(focusSettings({ autoRaiseDelay: 1500 }))].join(","));
+        const enter = { kind: "enter", held: false };
+        const after = (user: any) => focusDecision(focusSettings({ mode: "sloppy", autoRaise: true, ...user }), enter).raiseAfter;
+        emit([after({}), after({ autoRaiseDelay: 1500 })].join(","));
     "#);
-    assert_eq!(got, "0.5,1.5");
+    assert_eq!(got, "500,1500");
 }
 
 #[test]
@@ -171,14 +174,14 @@ fn a_pointer_rest_focuses_only_in_the_hover_modes_and_only_when_asked() {
     // Before: "a pointer rest focuses only in the hover modes, and only when focus_change_on_pointer_rest is on".
     let got = run(r#"
         emit([
-            REST_SECONDS,
+            REST_DELAY,
             restFocus(focusSettings({ changeOnPointerRest: true })),
             restFocus(focusSettings({ mode: "sloppy", changeOnPointerRest: true })),
             restFocus(focusSettings({ mode: "follow-mouse", changeOnPointerRest: true })),
             restFocus(focusSettings({ mode: "sloppy" })),
         ].join(","));
     "#);
-    assert_eq!(got, "0.2,false,true,true,false");
+    assert_eq!(got, "200,false,true,true,false");
 }
 
 #[test]
@@ -268,9 +271,9 @@ fn the_focus_decision_is_a_pure_function_of_the_settings_and_one_event() {
             "sloppy motion true/false/false/null/null",
             "follow motion false/false/false/null/null",
             "sloppy enter, button held false/false/false/null/null",
-            "sloppy enter, auto raise true/false/false/null/0.5",
+            "sloppy enter, auto raise true/false/false/null/500",
             "sloppy motion, auto raise true/false/false/null/null",
-            "sloppy enter, rest false/false/false/0.2/null",
+            "sloppy enter, rest false/false/false/200/null",
             "follow leave false/true/false/null/null",
             "follow leave, not focused false/false/false/null/null",
             "follow leave, pressed here false/false/false/null/null",

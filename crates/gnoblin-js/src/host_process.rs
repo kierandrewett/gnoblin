@@ -34,8 +34,8 @@ const MAX_STDIN: usize = 1024 * 1024;
 const MAX_OUTPUT_LIMIT: u64 = 4 * 1024 * 1024;
 /// Bytes kept from a captured stream when `outputLimit` is not given.
 const DEFAULT_OUTPUT_LIMIT: u64 = 64 * 1024;
-/// The longest `timeout`, in seconds.
-const MAX_TIMEOUT_SECONDS: f64 = 86_400.0;
+/// The longest `timeout`, in milliseconds: a day. The script API counts milliseconds everywhere.
+const MAX_TIMEOUT_MS: f64 = 86_400_000.0;
 /// Processes that may run at once. A config past this is looping, so the spawn is refused.
 const MAX_RUNNING: usize = 64;
 /// How long a timed-out process has after SIGTERM before SIGKILL.
@@ -140,6 +140,7 @@ pub struct JsSpawnOptions {
     #[serde(default)]
     stderr: JsStream,
     output_limit: Option<u64>,
+    /// Milliseconds before the group is terminated.
     timeout: Option<f64>,
 }
 
@@ -235,11 +236,11 @@ fn checked(argv: &[String], options: &JsSpawnOptions) -> Result<(), JsProcessErr
     if options.output_limit.is_some_and(|limit| limit > MAX_OUTPUT_LIMIT) {
         return invalid(format!("outputLimit is at most {MAX_OUTPUT_LIMIT}"));
     }
-    if let Some(seconds) = options.timeout
-        && !(seconds > 0.0 && seconds <= MAX_TIMEOUT_SECONDS)
+    if let Some(ms) = options.timeout
+        && !(ms > 0.0 && ms <= MAX_TIMEOUT_MS)
     {
         return invalid(format!(
-            "timeout is more than 0 and at most {MAX_TIMEOUT_SECONDS} seconds"
+            "timeout is more than 0 and at most {MAX_TIMEOUT_MS} milliseconds"
         ));
     }
     Ok(())
@@ -406,7 +407,7 @@ impl JsProcesses {
         let reaped = Arc::new(Mutex::new(false));
         let waiter_reaped = Arc::clone(&reaped);
         let sender = self.sender.clone();
-        let timeout = options.timeout.map(Duration::from_secs_f64);
+        let timeout = options.timeout.map(|ms| Duration::from_secs_f64(ms / 1000.0));
         std::thread::Builder::new()
             .name(format!("js-process-{id}"))
             .spawn(move || {
@@ -564,7 +565,7 @@ mod tests {
     fn a_timeout_terminates_the_program() {
         let mut processes = JsProcesses::default();
         let started = processes
-            .spawn(&argv(&["sleep", "60"]), &options(r#"{"timeout":0.05}"#))
+            .spawn(&argv(&["sleep", "60"]), &options(r#"{"timeout":50}"#))
             .expect("sleep starts");
         let exit = end_of(&mut processes, started.id);
         assert!(exit.timed_out);

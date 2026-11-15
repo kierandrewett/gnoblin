@@ -2,7 +2,7 @@
 // The compositor pings every client. A window that misses pings for longer than `window-management.check-alive-timeout`
 // (5000 ms by default; 0 turns pings off) is marked `unresponsive`, and this module offers the user Wait or Force quit.
 // Force quit kills the window's process with `Client.kill()`; the compositor refuses to kill init and its own process.
-// Force quit ignores presses for `armSeconds` after the alert opens, so input already in flight cannot press it.
+// Force quit ignores presses for `armMs` milliseconds after the alert opens, so input already in flight cannot press it.
 // `AlertTracker` is the state machine on its own. A script starts the alert with `startNotRespondingAlert()`.
 
 import { Box, Text, onUiFrame, uiFocus, uiFocused, uiLocked, uiNow, uiScreen } from "gnoblin/ui";
@@ -155,7 +155,7 @@ class AlertButton extends Box {
 
 /**
  * The alert: what is wrong, and Wait and Force quit. `onChosen` is called once with the answer. Force quit is off
- * until `arm()`, which the controller calls `armSeconds` after the alert opened.
+ * until `arm()`, which the controller calls `armMs` milliseconds after the alert opened.
  */
 export class NotRespondingDialog extends Box {
     readonly choices: AlertButton[];
@@ -258,10 +258,10 @@ export interface AlertWorld {
     closeMenu?(): void;
 }
 
-/** Options for the alert controller. Times are in seconds. */
+/** Options for the alert controller. Times are in milliseconds. */
 export interface AlertOptions {
-    /** Seconds Force quit ignores a press after the alert opens. Default 0.5. */
-    armSeconds?: number;
+    /** Milliseconds Force quit ignores a press after the alert opens. Default 500. */
+    armMs?: number;
     /** Milliseconds between looks at the windows. Default 250: the property is read, not signalled. */
     intervalMs?: number;
 }
@@ -279,7 +279,7 @@ interface Card {
  * so the alert reads it: it does not wait for a signal there is none of.
  */
 export class NotRespondingAlerts {
-    armSeconds = 0.5;
+    armMs = 500;
     intervalMs = 250;
     readonly tracker = new AlertTracker<AlertClient>();
     readonly #cards = new Map<AlertClient, Card>();
@@ -297,7 +297,7 @@ export class NotRespondingAlerts {
 
     start(world: AlertWorld, options: AlertOptions = {}): void {
         this.#world = world;
-        if (options.armSeconds !== undefined) this.armSeconds = options.armSeconds;
+        if (options.armMs !== undefined) this.armMs = options.armMs;
         if (options.intervalMs !== undefined) this.intervalMs = options.intervalMs;
         onUiFrame(() => this.#frame());
     }
@@ -339,7 +339,7 @@ export class NotRespondingAlerts {
     #show(client: AlertClient, screen: { width: number; height: number }): void {
         this.#world?.closeMenu?.();
         const dialog = new NotRespondingDialog(cleanTitle(client.title), client.secure === true, screen);
-        const card: Card = { dialog, before: uiFocused(), armAt: uiNow() + this.armSeconds * 1000 };
+        const card: Card = { dialog, before: uiFocused(), armAt: uiNow() + this.armMs };
         this.#cards.set(client, card);
         dialog.onChosen = (answer) => this.#finish(client, answer);
         dialog.mountTop();

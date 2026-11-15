@@ -21,21 +21,21 @@ refuses.
 An `Operation` settles once, with a value or with a typed error. Its callbacks run as queued calls under the same time
 budget as every listener: one that throws is reported, and the next callback still runs.
 
-| Member             | Meaning                                                                                                  |
-| ------------------ | -------------------------------------------------------------------------------------------------------- |
-| `id`, `method`     | The operation's number and the name of the call that made it.                                            |
-| `status`           | `pending`, `succeeded` or `failed`.                                                                      |
-| `value`            | The result of a success. `undefined` otherwise.                                                          |
-| `error`            | `{ code, message }` of a failure. `undefined` otherwise.                                                 |
-| `onComplete(fn)`   | Calls `fn(value, error)` once, when the operation settles. Returns a subscription.                       |
-| `map(fn)`          | A new operation with `fn(value)` as its value. A throw in `fn` fails it `internal`.                      |
-| `timeout(seconds)` | A new operation that fails `timed_out` if this one has not settled in time. It does not cancel this one. |
-| `cancel()`         | Fails the operation with `cancelled`. Returns `false` when it had already settled.                       |
+| Member           | Meaning                                                                                                               |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `id`, `method`   | The operation's number and the name of the call that made it.                                                         |
+| `status`         | `pending`, `succeeded` or `failed`.                                                                                   |
+| `value`          | The result of a success. `undefined` otherwise.                                                                       |
+| `error`          | `{ code, message }` of a failure. `undefined` otherwise.                                                              |
+| `onComplete(fn)` | Calls `fn(value, error)` once, when the operation settles. Returns a subscription.                                    |
+| `map(fn)`        | A new operation with `fn(value)` as its value. A throw in `fn` fails it `internal`.                                   |
+| `timeout(ms)`    | A new operation that fails `timed_out` if this one has not settled in `ms` milliseconds. It does not cancel this one. |
+| `cancel()`       | Fails the operation with `cancelled`. Returns `false` when it had already settled.                                    |
 
 `onComplete` returns a subscription with `unsubscribe()`, which stops the callback before it runs.
 
 ```ts
-const done = gnoblin.process.spawn(["sleep", "30"]).wait().timeout(5);
+const done = gnoblin.process.spawn(["sleep", "30"]).wait().timeout(5000);
 done.onComplete((exit, error) => {
     if (error?.code === "timed_out") {
         gnoblin.spawn(["notify-send", "sleep took too long"]);
@@ -76,8 +76,6 @@ A bad argument is not an operation failure: the call throws a `TypeError` or a `
 - At most 1024 timers wait at once.
 - A timer that throws is reported, and the next one still runs.
 - A reload cancels the timers of the old configuration, and they do not delay it.
-
-`gnoblin.after(seconds, fn)` is the same call in seconds and returns the same `Timer`.
 
 ```ts
 const timer = gnoblin.timers.after(2000, () => gnoblin.show("2"));

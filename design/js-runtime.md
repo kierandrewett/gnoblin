@@ -147,23 +147,24 @@ The remaining stock layouts, workspace sets, the slide gesture and the launcher 
   written. The ring's depth fade is not applied (opacity belongs to the rules, as in Lua).
 - **The layout driver writes more.** `Client` gains `tiled`, `visible`, `opacity`, `z`, `rotation` and `scale`
   (the host table in `bindings/props.rs`, which now has defaults per property and a list kind) and `animate(values,
-{ duration, easing })`, a write that carries `seconds` and 33 samples of `ease.out`, `out-cubic`, `in-cubic`,
-  `in-out` or `linear`, as the Lua `node:to` sends them (`host.animate`). After each compute the driver writes `tiled`
+{ duration, easing })`, a write that carries a duration and 33 samples of the CSS easing `linear`, `ease`, `ease-in`,
+  `ease-out` or `ease-in-out`, as the Lua `node:to` sent its curves (`host.animate`, in milliseconds; the tree's wire counts
+  seconds, and the binding converts). After each compute the driver writes `tiled`
   (a client the layout gave no placement is untiled), the depth properties (reset when a layout stops using them) and
   the layout's `visible`; the shown workspace's windows are drawn and the others hidden (`syncVisibility`), which is
   what the Lua shell got from hiding the workspace node. A change of the focused client now recomputes the active
   workspace, so `MonocleLayout`, `KioskLayout`, `StripLayout` and `Carousel3dLayout` follow focus.
 - **`show` and slides.** `gnoblin.workspaces.show(ws, options)` and `gnoblin.show` take `{ duration, progress }`: with
   a duration the new workspace's windows start a screen's width away and animate to where the layout put them (`x`,
-  out-cubic), the old workspace's windows leave the other way and stay drawn until the slide ends, then return to
-  their rest place hidden (`gnoblin.after(seconds, fn)` runs at the first layout pass after the time). `progress`
-  carries on a slide a gesture has already made. The stock keys slide for `SLIDE_SECONDS` (0.25, as `Desk:show`);
+  `ease-out`), the old workspace's windows leave the other way and stay drawn until the slide ends, then return to
+  their rest place hidden (`gnoblin.timers.after(ms, fn)` runs at the first frame after the time). `progress`
+  carries on a slide a gesture has already made. The stock keys slide for `SLIDE_DURATION` (250 ms, as `Desk:show`);
   `show(ws)` with no options switches at once. A window is moved by its own `x`, so a floating window's rest place is
   its `x` when the slide starts.
 - **The slide gesture.** `WorkspaceSlideBinding` (`gnoblin/gestures`, a `GestureBinding` on `Swipe3`) is
   `Gestures.workspace_slide`: windows follow the fingers (`travel` 400 units for a screen), fingers moving right bring
   in the previous workspace and left the next, lifting after `commit` (0.25) with the motion more horizontal than
-  vertical finishes with `0.25 * (1 - progress)` seconds left, anything else slides back over 0.2 s (`out-cubic`) and
+  vertical finishes with `250 * (1 - progress)` ms left, anything else slides back over 200 ms (`ease-out`) and
   hides the incoming workspace, a change of direction resets, a workspace switched under the fingers ends the slide.
   The stock default binds it with `input.bind("Swipe3", new WorkspaceSlideBinding())`. The Lua shell claimed the
   undirected `Swipe3`, so one binding covers both directions.
@@ -846,7 +847,7 @@ link) and one real-compositor test in `crates/gnoblin/tests/js_shell.rs`. The us
   published: there is no script override (the `focus`, `edgeTiling` and `dragConstraint` keys were dropped, design/js-spec-native.md
   3.11). The focus modes are `click`, `sloppy` (the seat's `hover`) and `follow-mouse` (`hover-strict`: acts on entry only
   and clears focus when the pointer leaves the focused window).
-- **Pure core.** `focusSettings`, `opensFocused`, `hoverFocus`, `autoRaiseSeconds`, `restFocus`, `leaveClears` are the
+- **Pure core.** `focusSettings`, `opensFocused`, `hoverFocus`, `restFocus`, `leaveClears` are the
   Lua functions; `focusDecision(settings, event)` composes them into one decision per event (`added`, `enter`, `motion`,
   `leave`, `press`), a plain object: focus, clear, raise, and the delays of a rest focus and an auto raise. `edgeZone`,
   `tileRect` and `edgeTilingEnabled` are `snap.lua`'s, with rectangles written `x, y, width, height`.
@@ -1356,8 +1357,12 @@ same `prepare` that a queued write goes through), the staging block at the top o
 - **Failure.** The staged writes are dropped, and `snapshotScriptState` puts back each workspace's layout, gaps, name and
   dirty flag, the own fields of the layout it had, and every style (`snapshotStyles`). A layout object the callback
   assigned keeps field changes made to it; an array edited in place is not seen (`fieldsChanged` is shallow).
-- **Decisions.** Durations are milliseconds, as the spec says (`Client.animate` keeps seconds). Easing names are those of
-  `Client.animate` plus `ease-out`, `ease-in-out` and `ease-in`. The nested call, an async callback and a side effect
+- **Decisions.** Every duration, delay and timeout of the script API is in milliseconds, as the spec says, including `Client.animate`,
+  `gnoblin.show`, `gnoblin.motion`, `Operation.timeout`, the `timeout` of a spawned process and the options of the stock
+  modules (the one exception is a drag event's `deltaTime`, which the spec gives in seconds). Easing names are the CSS
+  names `linear`, `ease`, `ease-in`, `ease-out` and `ease-in-out` for `Client.animate` and `requestTransition` alike;
+  `crates/gnoblin-js/tests/time_units.rs` fails when an exported time is documented in another unit. `gnoblin.after` is
+  gone: `gnoblin.timers.after(ms, fn)` is the one timer. The nested call, an async callback and a side effect
   (`call`, `raise`, `lower`, spawn, kill, a session verb) are errors. `set(props)` without options is atomic and immediate.
   `finished` is a promise that never rejects and `onFinished` a queued callback, both with `{ cancelled }`. The end is the
   compositor's `track_ended`, not the shell's clock.

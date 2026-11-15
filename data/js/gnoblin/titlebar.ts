@@ -72,7 +72,7 @@ export interface TitlebarClient {
      */
     animate?(
         values: { opacity?: number; scale?: [number, number, number] },
-        options: { duration: number; easing?: string },
+        options: { duration: number; easing?: "ease-in" | "ease-out" },
     ): void;
 }
 
@@ -91,8 +91,8 @@ export interface TitlebarHooks {
      * Minimises the window as the shell does it: the keyboard focus goes to another window. Else the flag is written.
      */
     minimise?(client: TitlebarClient): void;
-    /** The seconds an animation takes: 0 while the seat asks for reduced motion. Absent, the seconds it was given. */
-    motion?(seconds: number): number;
+    /** The milliseconds an animation takes: 0 while the seat asks for reduced motion. Absent, the time it was given. */
+    motion?(duration: number): number;
     /**
      * A button went down on the bar itself, not on one of its buttons: the window is pressed and takes the focus.
      */
@@ -116,7 +116,8 @@ export const CLOSE_FADE_MS = 180;
  * not left faded out.
  */
 export const CLOSE_RESTORE_MS = 1500;
-const RESTORE_SECONDS = 0.12;
+/** The fade back in of a window that stayed open after it was asked to close, in milliseconds. */
+const RESTORE_DURATION_MS = 120;
 
 /** What the seat's property says each click does when the tree has no seat to ask: its schema default. */
 const DEFAULT_ACTIONS = { double_click: "toggle-maximize", middle_click: "lower", right_click: "menu" } as const;
@@ -214,15 +215,15 @@ export class Titlebar extends Box {
             client.close();
             return;
         }
-        const fade = this.hooks.motion?.(CLOSE_FADE_MS / 1000) ?? CLOSE_FADE_MS / 1000;
-        client.animate({ opacity: 0, scale: [0.92, 0.92, 1] }, { duration: fade, easing: "in-cubic" });
+        const fade = this.hooks.motion?.(CLOSE_FADE_MS) ?? CLOSE_FADE_MS;
+        client.animate({ opacity: 0, scale: [0.92, 0.92, 1] }, { duration: fade, easing: "ease-in" });
         if (fade === 0) {
             // Reduced motion: nothing to wait for, so the window is asked to close now. It comes back if it stays.
             this.#closing = { closeAt: null, restoreAt: this.now() + CLOSE_RESTORE_MS };
             client.close();
             return;
         }
-        this.#closing = { closeAt: this.now() + fade * 1000, restoreAt: null };
+        this.#closing = { closeAt: this.now() + fade, restoreAt: null };
     }
 
     #advanceClose(): void {
@@ -242,7 +243,7 @@ export class Titlebar extends Box {
             client.close();
         } else if (closing.restoreAt !== null && now >= closing.restoreAt) {
             this.#closing = null;
-            client.animate?.({ opacity: 1, scale: [1, 1, 1] }, { duration: RESTORE_SECONDS, easing: "out" });
+            client.animate?.({ opacity: 1, scale: [1, 1, 1] }, { duration: RESTORE_DURATION_MS, easing: "ease-out" });
         }
     }
 

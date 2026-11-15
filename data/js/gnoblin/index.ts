@@ -36,7 +36,7 @@ export * from "gnoblin/window_state";
 export * from "gnoblin/reposition";
 // `gnoblin.requestTransition` and what it returns. The engine and the staging stay with the host.
 export { Transition } from "gnoblin/transition";
-export type { TransitionEasing, TransitionOptions, TransitionResult, TransitionSubscription } from "gnoblin/transition";
+export type { Easing, TransitionOptions, TransitionResult, TransitionSubscription } from "gnoblin/transition";
 // The host API of `gnoblin.session`, `gnoblin.process`, `gnoblin.timers` and `gnoblin.on`: the classes a script holds
 // and the shapes it reads. The module that builds them (`HostApi`) stays with the host.
 export { Operation, Timer } from "gnoblin/operation";

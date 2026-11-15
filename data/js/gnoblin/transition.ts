@@ -15,17 +15,81 @@
 // Plain TypeScript over a small host (`TransitionHost`), so the staging and the ownership rules run without a
 // compositor. What the native tween player cannot do is not faked here (`docs/js-transitions.md`, "Not built").
 
-/** How an animation moves from its start to its end, as the Lua shell's `ease` table named them. */
-export type ClientEasing = "linear" | "out" | "out-cubic" | "in-cubic" | "in-out";
+/**
+ * How an animation moves from its start to its end: the CSS names the specification uses. Each is the CSS timing
+ * function of that name (`ease-out` is `cubic-bezier(0, 0, 0.58, 1)`), so a script that knows CSS knows the curve.
+ */
+export type Easing = "linear" | "ease" | "ease-in" | "ease-out" | "ease-in-out";
 
-/** The curve for each `ClientEasing`: it maps progress from 0 to 1 onto an eased value that also runs from 0 to 1. */
-export const EASINGS: Readonly<Record<ClientEasing, (t: number) => number>> = {
-    linear: (t) => t,
-    out: (t) => 1 - (1 - t) ** 2,
-    "out-cubic": (t) => 1 - (1 - t) ** 3,
-    "in-cubic": (t) => t ** 3,
-    "in-out": (t) => (t < 0.5 ? 2 * t * t : 1 - (2 - 2 * t) ** 2 / 2),
+/** The control points `(x1, y1, x2, y2)` of the CSS cubic Bezier each named easing is. */
+const BEZIER_POINTS: Readonly<Record<Exclude<Easing, "linear">, readonly [number, number, number, number]>> = {
+    ease: [0.25, 0.1, 0.25, 1],
+    "ease-in": [0.42, 0, 1, 1],
+    "ease-out": [0, 0, 0.58, 1],
+    "ease-in-out": [0.42, 0, 0.58, 1],
 };
+
+/** The CSS timing function of a Bezier through (0, 0) and (1, 1): progress in time onto progress in value. */
+function cubicBezier(x1: number, y1: number, x2: number, y2: number): (t: number) => number {
+    // The curve is parametric: x(s) and y(s) are cubics in s. Solving x(s) = t gives s, and y(s) is the value.
+    const coordinate = (a: number, b: number, s: number): number =>
+        3 * a * (1 - s) ** 2 * s + 3 * b * (1 - s) * s ** 2 + s ** 3;
+    const slope = (a: number, b: number, s: number): number =>
+        3 * a * (1 - s) ** 2 + 6 * (b - a) * (1 - s) * s + 3 * (1 - b) * s ** 2;
+    return (t) => {
+        if (t <= 0) {
+            return 0;
+        }
+        if (t >= 1) {
+            return 1;
+        }
+        // Newton's method converges in a few steps on these monotonic curves; bisection backs it up where the
+        // slope is nearly flat.
+        let s = t;
+        for (let i = 0; i < 8; i += 1) {
+            const error = coordinate(x1, x2, s) - t;
+            if (Math.abs(error) < 1e-7) {
+                return coordinate(y1, y2, s);
+            }
+            const d = slope(x1, x2, s);
+            if (Math.abs(d) < 1e-6) {
+                break;
+            }
+            s -= error / d;
+        }
+        let low = 0;
+        let high = 1;
+        s = t;
+        for (let i = 0; i < 40; i += 1) {
+            const x = coordinate(x1, x2, s);
+            if (Math.abs(x - t) < 1e-7) {
+                break;
+            }
+            if (x < t) {
+                low = s;
+            } else {
+                high = s;
+            }
+            s = (low + high) / 2;
+        }
+        return coordinate(y1, y2, s);
+    };
+}
+
+/** The curve for each `Easing`: it maps progress from 0 to 1 onto an eased value that also runs from 0 to 1. */
+export const EASINGS: Readonly<Record<Easing, (t: number) => number>> = {
+    linear: (t) => t,
+    ease: cubicBezier(...BEZIER_POINTS.ease),
+    "ease-in": cubicBezier(...BEZIER_POINTS["ease-in"]),
+    "ease-out": cubicBezier(...BEZIER_POINTS["ease-out"]),
+    "ease-in-out": cubicBezier(...BEZIER_POINTS["ease-in-out"]),
+};
+
+/** The names of the easings, for an error message. */
+export const EASING_NAMES = Object.keys(EASINGS).join(", ");
+
+/** The easing an animation has when none is given. */
+export const DEFAULT_EASING: Easing = "ease-out";
 
 /** The curve is sent as this many steps plus the start: 33 samples, as the Lua shell's `node:to` sends. */
 export const CURVE_STEPS = 32;
@@ -35,15 +99,10 @@ export function curveSamples(curve: (t: number) => number): number[] {
     return Array.from({ length: CURVE_STEPS + 1 }, (_, i) => curve(i / CURVE_STEPS));
 }
 
-/** The CSS names of the spec, each the curve of `ClientEasing` nearest to it. */
-const EASING_ALIASES: Readonly<Record<string, ClientEasing>> = {
-    "ease-out": "out",
-    "ease-in-out": "in-out",
-    "ease-in": "in-cubic",
-};
-
-/** An easing a transition takes: a `ClientEasing`, or a CSS name of the spec. */
-export type TransitionEasing = ClientEasing | "ease-out" | "ease-in-out" | "ease-in";
+/** The curve of an easing name, or undefined for a name that is not one of `Easing`. */
+export function easingCurve(name: unknown): ((t: number) => number) | undefined {
+    return typeof name === "string" && Object.hasOwn(EASINGS, name) ? EASINGS[name as Easing] : undefined;
+}
 
 /** The milliseconds a transition takes when `duration` is not given. */
 export const DEFAULT_DURATION_MS = 250;
@@ -52,8 +111,8 @@ export const DEFAULT_DURATION_MS = 250;
 export interface TransitionOptions {
     /** Milliseconds, 0 or more. Default 250. Zero commits the change at once (still as one transaction). */
     duration?: number;
-    /** Default `"out"`, as `Client.animate`'s. */
-    easing?: TransitionEasing;
+    /** One of the CSS names of `Easing`. Default `"ease-out"`, as `Client.animate`'s. */
+    easing?: Easing;
     /** Milliseconds, 0 or more, the compositor holds the start state before the animation begins. Default 0. */
     delay?: number;
     /**
@@ -81,10 +140,10 @@ type Value = unknown;
 
 /**
  * The timed write a staged value is sent as, when it has a curve of its own (`Client.animate` inside a callback). A
- * transition adds the `delay` in seconds before it starts and the `tween` node whose play state drives it.
+ * transition adds the `delay` in milliseconds before it starts and the `tween` node whose play state drives it.
  */
 interface Curve {
-    seconds: number;
+    duration: number;
     samples: number[];
     delay?: number;
     tween?: number;
@@ -104,12 +163,12 @@ interface Staged {
 export interface StageBackend {
     get(node: number, key: string): Value;
     set(node: number, key: string, value: Value): string | undefined;
-    /** A timed write: `delay` seconds before it starts (0 for none), joining the `tween` node (0 for none). */
+    /** A timed write: `delay` milliseconds before it starts (0 for none), joining the `tween` node (0 for none). */
     animate(
         node: number,
         key: string,
         value: Value,
-        seconds: number,
+        duration: number,
         samples: number[],
         delay?: number,
         tween?: number,
@@ -184,14 +243,14 @@ export class Staging {
         return code;
     }
 
-    animate(node: number, key: string, value: Value, seconds: number, samples: number[]): string | undefined {
+    animate(node: number, key: string, value: Value, duration: number, samples: number[]): string | undefined {
         if (this.#entries === null) {
             this.onWrite?.(node, key);
-            return this.#backend.animate(node, key, value, seconds, samples);
+            return this.#backend.animate(node, key, value, duration, samples);
         }
         const code = this.#backend.check(node, key, value, true);
         if (code === undefined || code === null) {
-            this.#keep({ node, key, value: copy(value), curve: { seconds, samples } });
+            this.#keep({ node, key, value: copy(value), curve: { duration, samples } });
             return undefined;
         }
         return code;
@@ -201,7 +260,15 @@ export class Staging {
     land(node: number, key: string, value: Value, curve: Curve | null): string | undefined {
         return curve === null
             ? this.#backend.set(node, key, value)
-            : this.#backend.animate(node, key, value, curve.seconds, curve.samples, curve.delay ?? 0, curve.tween ?? 0);
+            : this.#backend.animate(
+                  node,
+                  key,
+                  value,
+                  curve.duration,
+                  curve.samples,
+                  curve.delay ?? 0,
+                  curve.tween ?? 0,
+              );
     }
 
     /** Throws for a call that has a side effect, while a callback is staging. Otherwise does nothing. */
@@ -223,8 +290,8 @@ export class Staging {
 /** What an engine needs of the shell. */
 export interface TransitionHost {
     staging: Staging;
-    /** The seconds an animation of `seconds` takes: 0 while the seat asks for reduced motion. */
-    motion(seconds: number): number;
+    /** The milliseconds an animation of `duration` takes: 0 while the seat asks for reduced motion. */
+    motion(duration: number): number;
     /** Whether the tree takes a timed write of `key`. */
     animated(key: string): boolean;
     /** Whether a node has a place that is drawn: a size, and not hidden. A node that has none just appears. */
@@ -495,27 +562,22 @@ interface Active {
     reversed: boolean;
 }
 
-/** The checked options: the seconds of the animation, its delay, the samples of its easing and whether it plays. */
+/** The checked options: the milliseconds of the animation, its delay, the samples of its easing and whether it plays. */
 interface Timing {
-    ms: number;
-    delayMs: number;
+    duration: number;
+    delay: number;
     samples: number[];
     autoplay: boolean;
 }
 
-function easingOf(name: unknown): ((t: number) => number) | undefined {
-    if (typeof name !== "string") {
-        return undefined;
-    }
-    if (Object.hasOwn(EASINGS, name)) {
-        return EASINGS[name as ClientEasing];
-    }
-    return Object.hasOwn(EASING_ALIASES, name) ? EASINGS[EASING_ALIASES[name]] : undefined;
-}
-
 function checkOptions(options: TransitionOptions | undefined, site: string): Timing {
     if (options === undefined) {
-        return { ms: DEFAULT_DURATION_MS, delayMs: 0, samples: curveSamples(EASINGS.out), autoplay: true };
+        return {
+            duration: DEFAULT_DURATION_MS,
+            delay: 0,
+            samples: curveSamples(EASINGS[DEFAULT_EASING]),
+            autoplay: true,
+        };
     }
     if (options === null || typeof options !== "object") {
         throw new TypeError(`${site}: options must be an object`);
@@ -538,12 +600,11 @@ function checkOptions(options: TransitionOptions | undefined, site: string): Tim
     if (typeof autoplay !== "boolean") {
         throw new TypeError(`${site}: autoplay must be true or false`);
     }
-    const easing = easingOf(options.easing ?? "out");
+    const easing = easingCurve(options.easing ?? DEFAULT_EASING);
     if (easing === undefined) {
-        const names = [...Object.keys(EASINGS), ...Object.keys(EASING_ALIASES)];
-        throw new TypeError(`${site}: easing must be one of ${names.join(", ")}`);
+        throw new TypeError(`${site}: easing must be one of ${EASING_NAMES}`);
     }
-    return { ms: duration, delayMs: delay, samples: curveSamples(easing), autoplay };
+    return { duration, delay, samples: curveSamples(easing), autoplay };
 }
 
 function isThenable(value: unknown): boolean {
@@ -646,13 +707,13 @@ export class TransitionEngine {
 
     #commit(entries: Staged[], timing: Timing): Transition {
         const host = this.#host;
-        const seconds = host.motion(timing.ms / 1000);
+        const duration = host.motion(timing.duration);
         // Under reduced motion nothing waits either.
-        const delay = seconds > 0 ? timing.delayMs / 1000 : 0;
+        const delay = duration > 0 ? timing.delay : 0;
         // A node that was not drawn (no size, or hidden) has no place to tween from: its place is written at once.
         const appears = new Map<number, boolean>();
         const plan = entries.map((entry) => {
-            const curve = entry.curve ?? (seconds > 0 ? { seconds, samples: timing.samples } : null);
+            const curve = entry.curve ?? (duration > 0 ? { duration, samples: timing.samples } : null);
             let appearing = appears.get(entry.node);
             if (appearing === undefined) {
                 appearing = !host.placed(entry.node);
@@ -660,7 +721,7 @@ export class TransitionEngine {
             }
             const timed =
                 curve !== null &&
-                curve.seconds > 0 &&
+                curve.duration > 0 &&
                 host.animated(entry.key) &&
                 !(appearing && PLACE_KEYS.includes(entry.key));
             return { entry, curve: timed ? curve : null };
@@ -692,7 +753,7 @@ export class TransitionEngine {
                       },
                       cancel: () => this.#cancel(active),
                   };
-        const transition = new Transition(host, seconds * 1000, timing.autoplay, control);
+        const transition = new Transition(host, duration, timing.autoplay, control);
         if (active !== null && tween !== null) {
             active.transition = transition;
             if (!timing.autoplay) {

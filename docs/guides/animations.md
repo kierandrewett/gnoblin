@@ -25,12 +25,12 @@ config can read the setting, as `gnoblin.input.primary.settings.reducedMotion`, 
 
 ## Animate a window yourself
 
-`client.animate(values, options)` moves properties to `values` over `options.duration` seconds along a named curve.
+`client.animate(values, options)` moves properties to `values` over `options.duration` milliseconds along a named curve.
 
 - The properties are `x`, `y`, `width`, `height`, `opacity` and `z`.
-- The curves are `linear`, `out` (the default), `out-cubic`, `in-cubic` and `in-out`.
+- The curves are the CSS names `linear`, `ease`, `ease-in`, `ease-out` (the default) and `ease-in-out`.
 - A duration of `0` writes at once.
-- `gnoblin.motion(seconds)` returns `0` while reduced motion is on, so a script that passes its duration through it
+- `gnoblin.motion(duration)` returns `0` while reduced motion is on, so a script that passes its duration through it
   respects the setting.
 
 This fades each Text Editor window in when it opens:
@@ -44,7 +44,7 @@ gnoblin.clients.addListener(
         onAdded(client: Client) {
             if (client.appId === "org.gnome.TextEditor") {
                 client.opacity = 0;
-                client.animate({ opacity: 1 }, { duration: 0.3, easing: "out-cubic" });
+                client.animate({ opacity: 1 }, { duration: 300, easing: "ease-out" });
             }
         }
     })(),

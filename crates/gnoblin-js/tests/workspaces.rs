@@ -1153,9 +1153,9 @@ fn showing_a_workspace_hides_the_windows_of_the_one_it_replaces() {
 }
 
 #[test]
-fn a_slide_animates_both_workspaces_with_the_retired_curve_and_hides_the_old_one_when_it_ends() {
+fn a_slide_animates_both_workspaces_along_ease_out_and_hides_the_old_one_when_it_ends() {
     // Desk:show: the new workspace comes in from a screen's width away and the old one leaves the other way, over
-    // 0.25 seconds on `ease.out_cubic` sampled 33 times; the old one is hidden when that is over.
+    // 250 milliseconds on the CSS `ease-out` curve sampled 33 times; the old one is hidden when that is over.
     let comp = compositor(false);
     let link = FakeLink(comp.clone());
     let mut rig = rig(
@@ -1173,7 +1173,7 @@ fn a_slide_animates_both_workspaces_with_the_retired_curve_and_hides_the_old_one
     rig.settle();
     let (rest_a, rest_b) = (prop(&comp, 10, "x"), prop(&comp, 11, "x"));
     let before = sent(&comp).len();
-    rig.eval("gnoblin.workspaces.show('b', { duration: 0.3 })");
+    rig.eval("gnoblin.workspaces.show('b', { duration: 300 })");
     rig.settle();
     let animated: Vec<(u64, f64, f64, usize, f64, f64)> = sent(&comp)[before..]
         .iter()
@@ -1216,7 +1216,7 @@ fn a_slide_animates_both_workspaces_with_the_retired_curve_and_hides_the_old_one
     );
     assert_eq!(prop(&comp, 10, "x"), rest_a, "back at its rest place");
     assert!(flag(&comp, 11, "visible").unwrap_or(true));
-    // The curve is `1 - (1 - t)^3`: the middle sample is 0.875.
+    // The curve is `cubic-bezier(0, 0, 0.58, 1)`: the middle sample is 0.68464.
     let middle = sent(&comp)[before..]
         .iter()
         .flatten()
@@ -1227,7 +1227,7 @@ fn a_slide_animates_both_workspaces_with_the_retired_curve_and_hides_the_old_one
             _ => None,
         })
         .expect("an animated write");
-    assert!((middle - 0.875).abs() < 1e-12, "{middle}");
+    assert!((middle - 0.684_643).abs() < 1e-5, "{middle}");
 }
 
 #[test]
@@ -1244,14 +1244,14 @@ fn animate_checks_its_arguments_and_writes_nothing_when_one_is_wrong() {
     let c = "gnoblin.clients.get('3')";
     assert_eq!(
         thrown(&mut rig, &format!("{c}.animate({{ x: 1 }}, {{ duration: -1 }})")),
-        "TypeError: Client#3.animate(): duration must be a finite number of seconds of at least 0"
+        "TypeError: Client#3.animate(): duration must be a finite number of milliseconds of at least 0"
     );
     assert_eq!(
         thrown(
             &mut rig,
             &format!("{c}.animate({{ x: 1 }}, {{ duration: 1, easing: 'bouncy' }})")
         ),
-        "TypeError: Client#3.animate(): easing must be one of linear, out, out-cubic, in-cubic, in-out"
+        "TypeError: Client#3.animate(): easing must be one of linear, ease, ease-in, ease-out, ease-in-out"
     );
     assert_eq!(
         thrown(
@@ -1288,9 +1288,12 @@ fn animate_checks_its_arguments_and_writes_nothing_when_one_is_wrong() {
 }
 
 #[test]
-fn after_runs_its_function_once_at_the_first_frame_past_the_time() {
+fn timers_after_runs_its_function_once_at_the_first_frame_past_the_time() {
     let comp = compositor(false);
-    let mut rig = rig(&comp, &init("g.ran = 0;\ngnoblin.after(0.2, () => { g.ran += 1; });\n"));
+    let mut rig = rig(
+        &comp,
+        &init("g.ran = 0;\ngnoblin.timers.after(200, () => { g.ran += 1; });\n"),
+    );
     rig.settle();
     assert_eq!(rig.eval("g.ran"), "0", "not before its time");
     rig.advance(300);
@@ -1299,7 +1302,7 @@ fn after_runs_its_function_once_at_the_first_frame_past_the_time() {
     rig.settle();
     assert_eq!(rig.eval("g.ran"), "1", "once");
     assert_eq!(
-        rig.eval("try { gnoblin.after(-1, () => {}); 'no' } catch (e) { e.message }"),
-        "gnoblin.after: seconds must be a finite number of at least 0"
+        rig.eval("try { gnoblin.timers.after(-1, () => {}); 'no' } catch (e) { e.message }"),
+        "gnoblin.timers.after: ms must be a finite number from 0 to 86400000"
     );
 }

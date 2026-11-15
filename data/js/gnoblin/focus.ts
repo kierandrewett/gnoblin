@@ -161,13 +161,8 @@ export function hoverFocus(settings: FocusSettings, hovering: boolean, entered: 
     return true;
 }
 
-/** The auto raise delay in seconds, for the frame clock. */
-export function autoRaiseSeconds(settings: FocusSettings): number {
-    return settings.autoRaiseDelay / 1000;
-}
-
-/** How long the pointer must rest over a window before `changeOnPointerRest` focuses it, in seconds. */
-export const REST_SECONDS = 0.2;
+/** How long the pointer must rest over a window before `changeOnPointerRest` focuses it, in milliseconds. */
+export const REST_DELAY = 200;
 
 /** Whether a pointer rest focuses the window: a hover mode with `changeOnPointerRest` on. */
 export function restFocus(settings: FocusSettings): boolean {
@@ -190,7 +185,7 @@ export type FocusEvent =
     | { readonly kind: "leave"; readonly focused: boolean; readonly heldHere: boolean }
     | { readonly kind: "press" };
 
-/** What to do about it. A `...After` is a delay in seconds that a leave or a new rest cancels. */
+/** What to do about it. A `...After` is a delay in milliseconds that a leave or a new rest cancels. */
 export interface FocusDecision {
     readonly focus: boolean;
     readonly clear: boolean;
@@ -229,9 +224,9 @@ export function focusDecision(settings: FocusSettings, event: FocusEvent): Focus
             return {
                 ...NOTHING,
                 focus: !rests && hoverFocus(settings, true, entered),
-                focusAfter: rests ? REST_SECONDS : null,
+                focusAfter: rests ? REST_DELAY : null,
                 // Auto raise starts on entry; motion inside the window leaves a pending raise alone.
-                raiseAfter: entered && settings.autoRaise ? autoRaiseSeconds(settings) : null,
+                raiseAfter: entered && settings.autoRaise ? settings.autoRaiseDelay : null,
             };
         }
         case "leave":
@@ -367,8 +362,8 @@ export class FocusPolicy<C extends object> {
             const before = this.#pending.get(client);
             // A rest that starts again moves the focus time; a raise that was waiting keeps its own.
             this.#pending.set(client, {
-                focusAt: decision.focusAfter === null ? (before?.focusAt ?? null) : now + decision.focusAfter * 1000,
-                raiseAt: decision.raiseAfter === null ? (before?.raiseAt ?? null) : now + decision.raiseAfter * 1000,
+                focusAt: decision.focusAfter === null ? (before?.focusAt ?? null) : now + decision.focusAfter,
+                raiseAt: decision.raiseAfter === null ? (before?.raiseAt ?? null) : now + decision.raiseAfter,
             });
         }
     }

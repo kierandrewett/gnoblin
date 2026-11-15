@@ -589,9 +589,11 @@ function world(extra = {}) {
             },
             [Symbol.iterator]: () => spaces[Symbol.iterator](),
         },
-        after(seconds, run) {
-            log.push(`after ${seconds}`);
-            timers.push(run);
+        timers: {
+            after(ms, run) {
+                log.push(`after ${ms}`);
+                timers.push(run);
+            },
         },
         ...extra,
     };
@@ -609,7 +611,7 @@ fn slide(body: &str) -> String {
 fn a_swipe_left_follows_the_fingers_and_lifting_past_a_quarter_slides_on_to_the_next_workspace() {
     // the retired shell (the retired the retired shell-rig test): "a three-finger swipe on the input path slides the stock shell to the next workspace": the
     // workspace the fingers bring in is showing before they lift, and lifting after more than a quarter of the
-    // travel finishes the slide: `desk:show(to, progress)` with 0.25 * (1 - progress) seconds.
+    // travel finishes the slide: `desk:show(to, progress)` with 250 * (1 - progress) milliseconds.
     let got = slide(
         r#"
         const w = world();
@@ -627,7 +629,7 @@ fn a_swipe_left_follows_the_fingers_and_lifting_past_a_quarter_slides_on_to_the_
             "-650+ 350+ 100-",
             // back at rest for the shell's own slide to start from
             "100+ 100+ 100-",
-            "show 2 0.0625 0.75",
+            "show 2 62.5 0.75",
         ])
     );
 }
@@ -635,7 +637,7 @@ fn a_swipe_left_follows_the_fingers_and_lifting_past_a_quarter_slides_on_to_the_
 #[test]
 fn a_swipe_short_of_the_commit_slides_back_and_the_incoming_workspace_is_hidden_after() {
     // the retired shell (the retired the retired shell-rig test): "a swipe that is short of the commit slides back": 50 of 400 units is 0.125, under 0.25.
-    // The shown workspace slides back to rest and the other one out the way it came, over 0.2 seconds, and is hidden
+    // The shown workspace slides back to rest and the other one out the way it came, over 200 milliseconds, and is hidden
     // when that ends.
     let got = slide(
         r#"
@@ -653,7 +655,7 @@ fn a_swipe_short_of_the_commit_slides_back_and_the_incoming_workspace_is_hidden_
         got,
         lines(&[
             "-25+ 975+ 100-",
-            "w1 animate x=100 0.2 out-cubic; w2 animate x=1100 0.2 out-cubic; after 0.2",
+            "w1 animate x=100 200 ease-out; w2 animate x=1100 200 ease-out; after 200",
             "100+ 100- 100-",
             "true,false,false",
         ])
@@ -679,8 +681,8 @@ fn a_cancel_slides_back_and_an_end_that_is_more_vertical_than_horizontal_does_to
     assert_eq!(
         got,
         lines(&[
-            "w1 animate x=100 0.2 out-cubic; w2 animate x=1100 0.2 out-cubic; after 0.2",
-            "w1 animate x=100 0.2 out-cubic; w2 animate x=1100 0.2 out-cubic; after 0.2",
+            "w1 animate x=100 200 ease-out; w2 animate x=1100 200 ease-out; after 200",
+            "w1 animate x=100 200 ease-out; w2 animate x=1100 200 ease-out; after 200",
         ])
     );
 }
@@ -721,7 +723,7 @@ fn a_swipe_right_from_the_second_workspace_brings_the_previous_one_in_from_the_l
         emit([pulled, w.log.join("; ")].join("\n"));
     "#,
     );
-    assert_eq!(got, lines(&["-400+ 600+ 100-", "show 1 0.125 0.5"]));
+    assert_eq!(got, lines(&["-400+ 600+ 100-", "show 1 125 0.5"]));
 }
 
 #[test]
@@ -774,7 +776,7 @@ fn the_slide_binding_has_the_retired_travel_and_commit_and_refuses_a_start_witho
         const none = world();
         for (const s of none.spaces) s.active = false;
         emit([
-            [b.id, b.trigger, b.travel, b.commit, b.seconds].join(","),
+            [b.id, b.trigger, b.travel, b.commit, b.duration].join(","),
             noScreen.binding.onStart({} as any),
             none.binding.onStart({} as any),
             thrown(() => new WorkspaceSlideBinding({ travel: 0 })),
@@ -786,7 +788,7 @@ fn the_slide_binding_has_the_retired_travel_and_commit_and_refuses_a_start_witho
     assert_eq!(
         got,
         lines(&[
-            "workspace-slide,Swipe3,400,0.25,0.25",
+            "workspace-slide,Swipe3,400,0.25,250",
             "false",
             "false",
             "RangeError: WorkspaceSlideBinding travel must be a finite number above 0",

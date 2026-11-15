@@ -409,9 +409,9 @@ fn map_transforms_the_value_and_a_throw_in_it_fails_the_new_operation_internal()
 #[test]
 fn timeout_fails_timed_out_after_its_deadline_and_is_cleared_when_the_source_finishes() {
     // Before: `an_operation_timeout_fails_after_its_deadline`, `an_operation_timeout_is_cleared_when_its_source_finishes`.
-    let (mut rig, session) = rig("g.slow = gnoblin.session.lock().timeout(0.05);
+    let (mut rig, session) = rig("g.slow = gnoblin.session.lock().timeout(50);
          g.quick = gnoblin.session.lock();
-         g.limited = g.quick.timeout(0.05);");
+         g.limited = g.quick.timeout(50);");
     session.finish(2, Ok(serde_json::json!({ "dispatched": true })));
     rig.settle();
     assert_eq!(rig.ts("g.slow.status"), "pending", "its deadline has not come");
@@ -478,19 +478,15 @@ fn a_timer_runs_once_at_the_first_frame_past_its_time_and_never_after_cancel() {
 }
 
 #[test]
-fn timers_now_is_monotonic_milliseconds_and_gnoblin_after_is_the_seconds_spelling() {
+fn timers_now_is_monotonic_milliseconds_and_timers_after_returns_a_timer() {
     let (mut rig, _session) =
-        rig("g.t0 = gnoblin.timers.now(); g.alias = gnoblin.after(0.02, () => g.log.push('after'));");
+        rig("g.t0 = gnoblin.timers.now(); g.alias = gnoblin.timers.after(20, () => g.log.push('after'));");
     assert_eq!(
         rig.ts("Math.round(gnoblin.timers.now() - g.t0)"),
         "0",
         "the shell's clock moves only when the test moves it, however long the frames before took"
     );
-    assert_eq!(
-        rig.ts("g.alias.constructor.name"),
-        "Timer",
-        "the alias returns the timer"
-    );
+    assert_eq!(rig.ts("g.alias.constructor.name"), "Timer", "after returns the timer");
     rig.advance(10);
     rig.settle();
     assert_eq!(rig.ts("g.log.join()"), "", "not before its time");
@@ -843,7 +839,7 @@ fn list_holds_the_running_processes_oldest_first_and_by_id_finds_them_again() {
 #[test]
 fn a_timeout_ends_the_process_and_reports_it() {
     // Before: `a_timeout_ends_the_process_and_reports_it_as_timed_out`.
-    let (mut rig, _session) = rig("g.job = gnoblin.process.spawn(['sleep', '60'], { timeout: 0.05 });");
+    let (mut rig, _session) = rig("g.job = gnoblin.process.spawn(['sleep', '60'], { timeout: 50 });");
     until(&mut rig, "the timeout ended it", |rig| rig.ts("g.job.alive") == "false");
     assert_eq!(rig.ts("[g.job.timedOut, g.job.signal].join()"), "true,term");
 }

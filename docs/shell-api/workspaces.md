@@ -13,7 +13,7 @@ gnoblin.input.primary.bind("Super+Tab", () => {
     const current = gnoblin.workspaces.find((workspace) => workspace.active);
     const next = gnoblin.workspaces.at((current?.index ?? -1) + 1) ?? gnoblin.workspaces.at(0);
     if (next) {
-        gnoblin.show(next, { duration: 0.25 });
+        gnoblin.show(next, { duration: 250 });
     }
 });
 ```
@@ -62,11 +62,11 @@ A workspace is the script's own object: it stays usable after it leaves the coll
 pointer, or the primary output when no pointer says. `Workspace.show`, `Output.show` and `gnoblin.workspaces.show` are the
 same call with a different target: see [Outputs](outputs#one-workspace-on-one-output).
 
-| Option     | Values             | Default                      | Meaning                                                  |
-| ---------- | ------------------ | ---------------------------- | -------------------------------------------------------- |
-| `duration` | seconds, 0 or more | 0, an instant switch         | How long the windows take to slide to the new workspace. |
-| `progress` | 0 to 1             | 0                            | How much of the slide a touchpad gesture already made.   |
-| `output`   | an `Output`        | the output under the pointer | The output to show the workspace on.                     |
+| Option     | Values                  | Default                      | Meaning                                                  |
+| ---------- | ----------------------- | ---------------------------- | -------------------------------------------------------- |
+| `duration` | milliseconds, 0 or more | 0, an instant switch         | How long the windows take to slide to the new workspace. |
+| `progress` | 0 to 1                  | 0                            | How much of the slide a touchpad gesture already made.   |
+| `output`   | an `Output`             | the output under the pointer | The output to show the workspace on.                     |
 
 A slide takes no time while the seat asks for reduced motion. See [Tweens and easing](tweens#reduced-motion).
 

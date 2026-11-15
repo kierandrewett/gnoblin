@@ -551,7 +551,7 @@ fn a_shell_that_does_not_start_the_menu_leaves_the_request_unanswered_and_one_wi
 // ---- the alert: the cases of retired corpus alerts ------------------------------------------------------------------------
 
 const FAST_ALERTS: &str = "startDecorations(); startWindowMenu(); startNotRespondingAlert(); \
-     notRespondingAlerts.armSeconds = 1; notRespondingAlerts.intervalMs = 0;";
+     notRespondingAlerts.armMs = 1000; notRespondingAlerts.intervalMs = 0;";
 
 fn stuck(rig: &mut Rig, node: u64, on: bool) {
     rig.comp.external_set(node, "unresponsive", MirrorValue::Bool(on));
@@ -863,7 +863,7 @@ fn a_toast_adds_one_card_to_the_screen_fades_in_and_removes_itself() {
     let before = number(&mut rig, "uiCanvasCount()");
     exec(
         &mut rig,
-        "globalThis.t = toast('saved', { fadeIn: 0.01, hold: 0.05, fadeOut: 0.01 })",
+        "globalThis.t = toast('saved', { fadeIn: 10, hold: 50, fadeOut: 10 })",
     );
     rig.settle();
     assert_eq!(

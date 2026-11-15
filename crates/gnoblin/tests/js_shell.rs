@@ -2152,12 +2152,12 @@ class Rows extends Layout {
 const g = globalThis as any;
 g.log = [];
 gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new DwindleLayout() }));
-gnoblin.after(1, () => {
+gnoblin.timers.after(1000, () => {
     g.t = gnoblin.requestTransition(
         () => {
             gnoblin.workspaces.get("desk").layout = new Rows();
         },
-        { duration: 500, easing: "out-cubic" },
+        { duration: 500, easing: "ease-out" },
     );
     g.t.onFinished((result) => g.log.push("finished:" + result.cancelled));
     g.log.push("started");
@@ -2282,7 +2282,7 @@ const steps = [
     () => { g.t.progress = 1; g.log.push("p1"); },
     () => { g.t.play(); g.log.push("play"); },
 ];
-steps.forEach((step, i) => gnoblin.after(1 + i, step));
+steps.forEach((step, i) => gnoblin.timers.after(1000 + i * 1000, step));
 g.probe = () => JSON.stringify({ now: gnoblin.timers.now(), running: g.t === undefined ? null : g.t.running, log: g.log });
 "#;
 

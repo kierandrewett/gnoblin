@@ -132,14 +132,12 @@ export class Operation<T> {
     }
 
     /**
-     * A new operation that fails `timed_out` if this one has not settled in `seconds`, and settles as this one does
+     * A new operation that fails `timed_out` if this one has not settled in `ms` milliseconds, and settles as this one does
      * if it is first. It does not cancel this operation.
      */
-    timeout(seconds: number): Operation<T> {
+    timeout(ms: number): Operation<T> {
         const limited = new Operation<T>(this.#host, this.id, `${this.method}.timeout`);
-        const timer = this.#host.after(seconds * 1000, () =>
-            limited.fail("timed_out", `${this.method} took over ${seconds} s`),
-        );
+        const timer = this.#host.after(ms, () => limited.fail("timed_out", `${this.method} took over ${ms} ms`));
         this.onComplete((value, error) => {
             timer.cancel();
             if (error !== undefined) {

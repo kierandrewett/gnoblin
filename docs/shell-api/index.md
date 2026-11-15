@@ -30,8 +30,8 @@ global, so a listener or a key handler may use it too. To write your first confi
 | `session`, `runtime`, `version()` | The session, reloads and the build.                                         | [Session and runtime](session-runtime)    |
 | `dialogs`                         | The compositor's consent and passphrase dialogs.                            | [Requests and dialogs](requests)          |
 | `authentication`                  | Polkit authentication requests.                                             | [Authentication prompts](authentication)  |
-| `timers`, `after`                 | Calls that run later, and the monotonic clock.                              | [Operations, errors and timers](errors)   |
-| `motion(seconds)`, `gestures`     | Animation durations that obey reduced motion, and touchpad gesture helpers. | [Tweens and easing](tweens)               |
+| `timers`                          | Calls that run later, and the monotonic clock.                              | [Operations, errors and timers](errors)   |
+| `motion(duration)`, `gestures`    | Animation durations that obey reduced motion, and touchpad gesture helpers. | [Tweens and easing](tweens)               |
 | `on`, `once`, `off`               | Compositor signals.                                                         | [Events](/events/)                        |
 | `show(workspace, options?)`       | Shows a workspace.                                                          | [Workspaces](workspaces#show-a-workspace) |
 | `extensions`                      | Optional extensions, such as XR.                                            | [XR mode](/xr#scripting-xr-in-typescript) |
@@ -52,8 +52,8 @@ global, so a listener or a key handler may use it too. To write your first confi
   result.
 - A call that finishes later returns an `Operation`. A call with a bad argument throws at once. See
   [Operations, errors and timers](errors).
-- Times are in the unit the name says: `timers.after` takes milliseconds and `after` takes seconds. Animation durations are
-  seconds.
+- Every time is in milliseconds: durations, delays, timeouts and the clocks. The one exception is a drag event's
+  `deltaTime`, which is in seconds because the specification gives it that way. Easings are the CSS names.
 - Your code runs on the shell's single thread, between frames, under a time budget per call. Keep a handler short.
 - Listeners and handlers that a configuration attached end with it, so a reload starts from your file again.
 

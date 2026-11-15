@@ -19,7 +19,7 @@ export interface SlideClient {
     x: number;
     visible: boolean;
     readonly alive: boolean;
-    animate(values: { x: number }, options: { duration: number; easing: "out-cubic" }): void;
+    animate(values: { x: number }, options: { duration: number; easing: "ease-out" }): void;
 }
 
 /** What it needs of a workspace. */
@@ -39,9 +39,12 @@ export interface SlideHost {
         show(workspace: SlideWorkspace, options: { duration: number; progress: number }): void;
         [Symbol.iterator](): Iterator<SlideWorkspace>;
     };
-    after(seconds: number, run: () => void): void;
-    /** The seconds an animation takes: 0 while the seat asks for reduced motion. Absent, the seconds it was given. */
-    motion?(seconds: number): number;
+    readonly timers: {
+        /** Runs `run` once, `ms` milliseconds from now. */
+        after(ms: number, run: () => void): unknown;
+    };
+    /** The milliseconds an animation takes: 0 while the seat asks for reduced motion. Absent, the time it was given. */
+    motion?(duration: number): number;
 }
 
 /**
@@ -52,14 +55,14 @@ export interface WorkspaceSlideOptions extends Partial<BindingOptions> {
     travel?: number;
     /** The share of a slide at which lifting the fingers finishes it, from 0 to 1. Default 0.25. */
     commit?: number;
-    /** Seconds a whole slide takes, which a slide finished part way scales by what is left. Default 0.25. */
-    seconds?: number;
+    /** Milliseconds a whole slide takes, which a slide finished part way scales by what is left. Default 250. */
+    duration?: number;
     /** The shell to slide in. Default the `gnoblin` global. */
     host?: SlideHost;
 }
 
-/** The seconds the slide back takes, whatever `seconds` is. It is a fixed 0.2 against the forward slide's 0.25. */
-const SETTLE_BACK_SECONDS = 0.2;
+/** The milliseconds the slide back takes, whatever `duration` is. It is a fixed 200 against the forward slide's 250. */
+const SETTLE_BACK_DURATION = 200;
 
 /** What one swipe knows between the fingers' first touch and their lift. */
 interface SlideState {
@@ -86,23 +89,25 @@ export class WorkspaceSlideBinding extends GestureBinding {
     travel: number;
     /** The share of a slide at which lifting finishes it. */
     commit: number;
-    /** Seconds a whole slide takes. */
-    seconds: number;
+    /** Milliseconds a whole slide takes. */
+    duration: number;
     readonly #host: SlideHost | undefined;
 
     constructor(options: WorkspaceSlideOptions = {}) {
         super({ ...options, id: options.id ?? "workspace-slide", trigger: options.trigger ?? "Swipe3" });
         this.travel = options.travel ?? 400;
         this.commit = options.commit ?? 0.25;
-        this.seconds = options.seconds ?? 0.25;
+        this.duration = options.duration ?? 250;
         if (!(this.travel > 0) || !Number.isFinite(this.travel)) {
             throw new RangeError("WorkspaceSlideBinding travel must be a finite number above 0");
         }
         if (!(this.commit >= 0 && this.commit <= 1)) {
             throw new RangeError("WorkspaceSlideBinding commit must be a number from 0 to 1");
         }
-        if (!(this.seconds >= 0) || !Number.isFinite(this.seconds)) {
-            throw new RangeError("WorkspaceSlideBinding seconds must be a finite number of at least 0");
+        if (!(this.duration >= 0) || !Number.isFinite(this.duration)) {
+            throw new RangeError(
+                "WorkspaceSlideBinding duration must be a finite number of milliseconds of at least 0",
+            );
         }
         this.#host = options.host;
     }
@@ -194,7 +199,7 @@ export class WorkspaceSlideBinding extends GestureBinding {
             }
         }
         this.#shell().workspaces.show(to, {
-            duration: this.seconds * (1 - slide.progress),
+            duration: this.duration * (1 - slide.progress),
             progress: slide.progress,
         });
     }
@@ -245,8 +250,8 @@ export class WorkspaceSlideBinding extends GestureBinding {
      */
     #settleBack(slide: SlideState, to: SlideWorkspace): void {
         const width = this.#shell().workspaces.area?.width ?? 0;
-        const seconds = this.#shell().motion?.(SETTLE_BACK_SECONDS) ?? SETTLE_BACK_SECONDS;
-        const options = { duration: seconds, easing: "out-cubic" } as const;
+        const duration = this.#shell().motion?.(SETTLE_BACK_DURATION) ?? SETTLE_BACK_DURATION;
+        const options = { duration, easing: "ease-out" } as const;
         const incoming = [...to.clients];
         for (const client of slide.from.clients) {
             client.animate({ x: slide.rest.get(client) ?? client.x }, options);
@@ -254,7 +259,7 @@ export class WorkspaceSlideBinding extends GestureBinding {
         for (const client of incoming) {
             client.animate({ x: (slide.rest.get(client) ?? client.x) - slide.sign * width }, options);
         }
-        this.#shell().after(seconds, () => {
+        this.#shell().timers.after(duration, () => {
             if (this.#active() === to) {
                 return; // the workspace came in for good meanwhile
             }

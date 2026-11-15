@@ -272,7 +272,7 @@ declare module "gnoblin" {
         /** The window's place in depth; negative is in front of the camera. */
         z: number;
         /**
-         * Moves properties to `values` over `options.duration` seconds along the easing curve; reading one back at once
+         * Moves properties to `values` over `options.duration` milliseconds along the easing curve; reading one back at once
          * gives the end value. A duration of 0 writes at once.
          */
         animate(values: ClientAnimation, options: AnimateOptions): void;
@@ -309,8 +309,11 @@ declare module "gnoblin" {
     /** Rotation about each axis in radians, or the scale along each axis: three numbers. */
     export type Vector3 = readonly [number, number, number];
 
-    /** The easing curves `Client.animate` accepts. */
-    export type ClientEasing = "linear" | "out" | "out-cubic" | "in-cubic" | "in-out";
+    /**
+     * The easings of `Client.animate` and `requestTransition`: the CSS names, each the CSS timing function of that name
+     * (`ease-out` is `cubic-bezier(0, 0, 0.58, 1)`).
+     */
+    export type Easing = "linear" | "ease" | "ease-in" | "ease-out" | "ease-in-out";
 
     /** The properties `Client.animate` can tween. A property left out stays where it is. */
     export interface ClientAnimation {
@@ -325,21 +328,18 @@ declare module "gnoblin" {
     }
 
     export interface AnimateOptions {
-        /** Seconds. Zero is an instant write. */
+        /** Milliseconds. Zero is an instant write. */
         duration: number;
-        /** Default `"out"`. */
-        easing?: ClientEasing;
+        /** Default `"ease-out"`. */
+        easing?: Easing;
     }
-
-    /** The easings of a transition: the ones of `Client.animate`, and the CSS names of the spec (`ease-out` is `out`, `ease-in-out` is `in-out`, `ease-in` is `in-cubic`). */
-    export type TransitionEasing = ClientEasing | "ease-out" | "ease-in-out" | "ease-in";
 
     /** Options for a `set` or `requestTransition`. */
     export interface TransitionOptions {
         /** Milliseconds, 0 or more. Default 250. Zero commits the change at once, still as one transaction. */
         duration?: number;
-        /** Default `"out"`. */
-        easing?: TransitionEasing;
+        /** Default `"ease-out"`. */
+        easing?: Easing;
     }
 
     /** What a transition ends with: `cancelled` is true when `cancel()` or a newer transition took every property it animated. */
@@ -1104,7 +1104,7 @@ declare module "gnoblin" {
         readonly position?: Vec2;
         /** Coordinates relative to the hit client's origin. */
         readonly localPosition?: Vec2;
-        /** Seconds since the previous event of this gesture, at most 0.1. */
+        /** Seconds since the previous event of this gesture, at most 0.1: the one time value in seconds, which the specification gives so a simulation can integrate it. */
         readonly deltaTime: number;
         readonly modifiers: ReadonlySet<string>;
         /** The canonical trigger of the binding. */
@@ -1665,10 +1665,8 @@ declare module "gnoblin" {
     export function opensFocused(settings: FocusSettings, fromLauncher: boolean): boolean;
     /** Whether hovering a window should focus it, given whether the pointer just entered. */
     export function hoverFocus(settings: FocusSettings, hovering: boolean, entered: boolean): boolean;
-    /** The auto-raise delay in seconds, from the millisecond setting. */
-    export function autoRaiseSeconds(settings: FocusSettings): number;
-    /** Seconds the pointer must rest before a rest-focus change applies. */
-    export const REST_SECONDS: number;
+    /** Milliseconds the pointer must rest before a rest-focus change applies. */
+    export const REST_DELAY: number;
     export function restFocus(settings: FocusSettings): boolean;
     /** Whether leaving a window clears focus under these settings. */
     export function leaveClears(settings: FocusSettings): boolean;
@@ -1682,8 +1680,9 @@ declare module "gnoblin" {
         readonly focus: boolean;
         readonly clear: boolean;
         readonly raise: boolean;
-        /** Seconds, or null. */
+        /** Milliseconds, or null. */
         readonly focusAfter: number | null;
+        /** Milliseconds, or null. */
         readonly raiseAfter: number | null;
     }
     /** What to do about one event under `settings`. Pure. */
@@ -1996,8 +1995,8 @@ declare module "gnoblin" {
         readonly scene: Scene;
         /** The touchpad gesture actions (`workspace.next` and four more) and `onSwipe`, `onPinch` and `direction`. */
         readonly gestures: GestureTools;
-        /** The duration the shell gives an animation: `seconds`, or 0 while the seat asks for reduced motion. */
-        motion(seconds: number): number;
+        /** The milliseconds the shell gives an animation of `duration`: 0 while the seat asks for reduced motion. */
+        motion(duration: number): number;
         /**
          * Runs `callback` once, now, with every property write staged, and draws the change as one animation: each written
          * property moves from where it is drawn to the staged value over `options.duration` milliseconds, and a layout change
@@ -2012,8 +2011,6 @@ declare module "gnoblin" {
         spawn(command: string | readonly string[], options?: SpawnOptions): Process;
         /** Shows `workspace` on an output: the one given, else the one under the pointer, else the primary one. */
         show(workspace: Workspace | string, options?: ShowOptions): void;
-        /** Runs `run` once, `seconds` from now: at the first frame after that time. */
-        after(seconds: number, run: () => void): Timer;
         /** The build identity. A field the build does not know is `"unknown"`; remote credentials are removed. */
         version(): Version;
         /**
@@ -2085,8 +2082,8 @@ declare module "gnoblin" {
         onComplete(fn: (value: T | undefined, error: OperationError | undefined) => void): Subscription;
         /** A new operation that succeeds with `fn(value)`, or fails with the same error. */
         map<U>(fn: (value: T) => U): Operation<U>;
-        /** A new operation that fails `timed_out` if this one has not settled in `seconds`. Does not cancel this one. */
-        timeout(seconds: number): Operation<T>;
+        /** A new operation that fails `timed_out` if this one has not settled in `ms` milliseconds. Does not cancel this one. */
+        timeout(ms: number): Operation<T>;
         /** Stops waiting: the operation fails `cancelled`. False when it had already settled. */
         cancel(): boolean;
     }
@@ -2195,7 +2192,7 @@ declare module "gnoblin" {
         stdout?: StreamMode;
         stderr?: StreamMode;
         outputLimit?: number;
-        /** Seconds before the group gets SIGTERM, and SIGKILL two seconds later. */
+        /** Milliseconds before the group gets SIGTERM, and SIGKILL 2000 ms later. */
         timeout?: number;
     }
 
@@ -2241,7 +2238,7 @@ declare module "gnoblin" {
     }
 
     export interface ShowOptions {
-        /** Seconds the slide between the two workspaces takes. Zero or absent switches at once. */
+        /** Milliseconds the slide between the two workspaces takes. Zero or absent switches at once. */
         duration?: number;
         /** How much of the slide a touchpad gesture has made already, 0 to 1. */
         progress?: number;
@@ -2249,8 +2246,8 @@ declare module "gnoblin" {
         output?: Output;
     }
 
-    /** The default duration of a workspace slide, in seconds. */
-    export const SLIDE_SECONDS: number;
+    /** The default duration of a workspace slide, in milliseconds. */
+    export const SLIDE_DURATION: number;
 
     export interface WorkspaceCollection extends MutableCollection<Workspace> {
         /** The area windows are laid out in on the primary output; null while there is none. */
@@ -2265,7 +2262,7 @@ declare module "gnoblin" {
         x: number;
         visible: boolean;
         readonly alive: boolean;
-        animate(values: { x: number }, options: { duration: number; easing: "out-cubic" }): void;
+        animate(values: { x: number }, options: { duration: number; easing: "ease-out" }): void;
     }
     /** A workspace the slide moves between: whether it is active, its index and its windows. */
     export interface SlideWorkspace {
@@ -2281,22 +2278,25 @@ declare module "gnoblin" {
             show(workspace: SlideWorkspace, options: { duration: number; progress: number }): void;
             [Symbol.iterator](): Iterator<SlideWorkspace>;
         };
-        after(seconds: number, run: () => void): void;
-        /** The seconds an animation takes: 0 while the seat asks for reduced motion. */
-        motion?(seconds: number): number;
+        readonly timers: {
+            after(ms: number, run: () => void): unknown;
+        };
+        /** The milliseconds an animation takes: 0 while the seat asks for reduced motion. */
+        motion?(duration: number): number;
     }
-    /** Options for the three-finger slide: `travel` and `commit` are in touchpad units, `seconds` is the slide length. */
+    /** Options for the three-finger slide: `travel` and `commit` are in touchpad units, `duration` is the slide length in milliseconds. */
     export interface WorkspaceSlideOptions extends Partial<BindingOptions> {
         travel?: number;
         commit?: number;
-        seconds?: number;
+        duration?: number;
         host?: SlideHost;
     }
     /** Slides between workspaces as a binding; `travel` and `commit` are touchpad units. */
     export class WorkspaceSlideBinding extends GestureBinding {
         travel: number;
         commit: number;
-        seconds: number;
+        /** Milliseconds a whole slide takes. */
+        duration: number;
         constructor(options?: WorkspaceSlideOptions);
     }
 
@@ -2558,8 +2558,8 @@ declare module "gnoblin" {
         lower?(client: unknown): void;
         maximise?(client: unknown, on: boolean): void;
         minimise?(client: unknown): void;
-        /** The seconds an animation takes: 0 while the seat asks for reduced motion. */
-        motion?(seconds: number): number;
+        /** The milliseconds an animation takes: 0 while the seat asks for reduced motion. */
+        motion?(duration: number): number;
         /** A button went down on the bar itself: the window is pressed, so it takes the focus. */
         press?(client: unknown, event: { x: number; y: number; button: number }): void;
         release?(client: unknown, event: { x: number; y: number; button: number }): void;
@@ -2925,11 +2925,12 @@ declare module "gnoblin" {
         activate(index: number): void;
     }
     export interface AlertOptions {
-        armSeconds?: number;
+        /** Milliseconds Force quit ignores a press after the alert opens. */
+        armMs?: number;
         intervalMs?: number;
     }
     export class NotRespondingAlerts {
-        armSeconds: number;
+        armMs: number;
         intervalMs: number;
         readonly started: boolean;
         cardOf(client: AlertClient): NotRespondingDialog | undefined;
@@ -2965,8 +2966,11 @@ declare module "gnoblin" {
     export const overview: Overview;
 
     export interface ToastOptions {
+        /** Milliseconds to fade in. */
         fadeIn?: number;
+        /** Milliseconds at full strength. */
         hold?: number;
+        /** Milliseconds to fade out. */
         fadeOut?: number;
         now?: () => number;
     }

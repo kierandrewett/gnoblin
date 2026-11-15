@@ -29,7 +29,7 @@ export interface SpawnOptions {
     stderr?: StreamMode;
     /** Bytes kept from each captured stream, 0 to 4194304. 65536 by default. */
     outputLimit?: number;
-    /** Seconds before the group gets SIGTERM, and SIGKILL two seconds later. More than 0, at most 86400. */
+    /** Milliseconds before the group gets SIGTERM, and SIGKILL 2000 ms later. More than 0, at most 86400000. */
     timeout?: number;
 }
 

@@ -447,6 +447,10 @@ export interface DragEvent extends BindingEvent {
     readonly dragConstraint?: string;
     /** The seat's `edge_tiling`: whether a drop on a screen edge tiles the window. */
     readonly edgeTiling?: boolean;
+    /**
+     * Seconds since the previous event of this drag, at most 0.1. The one time value in seconds: the specification
+     * gives `deltaTime` in seconds so a simulation can integrate it without a conversion.
+     */
     readonly deltaTime: number;
     readonly modifiers: ReadonlySet<string>;
     readonly trigger: string;

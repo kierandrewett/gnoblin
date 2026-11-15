@@ -128,7 +128,7 @@ fn the_callback_runs_once_and_its_writes_are_one_transaction_of_timed_writes_wit
     exec(
         &mut rig,
         "g.t = gnoblin.requestTransition(() => { g.calls += 1; g.a.opacity = 0.5; g.b.opacity = 0.25; g.a.x = 70; }, \
-         { duration: 200, easing: 'out-cubic' });",
+         { duration: 200, easing: 'ease-out' });",
     );
     assert_eq!(rig.eval("String(g.calls)"), "1", "the callback ran in the call");
     assert_eq!(rig.comp.sent_count(), mark, "nothing is sent before the frame ends");
@@ -164,19 +164,10 @@ fn the_callback_runs_once_and_its_writes_are_one_transaction_of_timed_writes_wit
 }
 
 #[test]
-fn an_easing_name_is_the_clients_or_a_css_alias_and_anything_else_is_refused_before_the_callback_runs() {
+fn an_easing_name_is_a_css_name_and_anything_else_is_refused_before_the_callback_runs() {
     let mut rig = two("new Layout()");
     let mark = rig.comp.sent_count();
-    for easing in [
-        "linear",
-        "out",
-        "out-cubic",
-        "in-cubic",
-        "in-out",
-        "ease-out",
-        "ease-in-out",
-        "ease-in",
-    ] {
+    for easing in ["linear", "ease", "ease-in", "ease-out", "ease-in-out"] {
         exec(
             &mut rig,
             &format!(
@@ -192,7 +183,7 @@ fn an_easing_name_is_the_clients_or_a_css_alias_and_anything_else_is_refused_bef
             &mut rig,
             "gnoblin.requestTransition(() => { g.calls += 1; }, { easing: 'bouncy' })"
         ),
-        "TypeError: gnoblin.requestTransition: easing must be one of linear, out, out-cubic, in-cubic, in-out, ease-out, ease-in-out, ease-in"
+        "TypeError: gnoblin.requestTransition: easing must be one of linear, ease, ease-in, ease-out, ease-in-out"
     );
     assert_eq!(
         thrown(
@@ -258,7 +249,7 @@ fn a_layout_change_in_the_callback_computes_once_and_tweens_every_windows_bounds
     let mark = rig.comp.sent_count();
     exec(
         &mut rig,
-        "g.t = gnoblin.requestTransition(() => { g.ws.layout = new g.Half(); }, { duration: 300, easing: 'out-cubic' });",
+        "g.t = gnoblin.requestTransition(() => { g.ws.layout = new g.Half(); }, { duration: 300, easing: 'ease-out' });",
     );
     assert_eq!(
         rig.eval("String(g.computes)"),
@@ -738,7 +729,7 @@ fn autoplay_false_holds_the_tracks_and_progress_play_and_reverse_write_the_tween
     exec(
         &mut rig,
         "g.log = []; g.calls = 0; \
-         g.t = gnoblin.requestTransition(() => { g.a.x = x0 + 50; }, { duration: 800, easing: 'in-out', autoplay: false }); \
+         g.t = gnoblin.requestTransition(() => { g.a.x = x0 + 50; }, { duration: 800, easing: 'ease-in-out', autoplay: false }); \
          g.t.finished.then((r) => g.log.push('done:' + r.cancelled));"
             .replace("x0", &x0.to_string())
             .as_str(),

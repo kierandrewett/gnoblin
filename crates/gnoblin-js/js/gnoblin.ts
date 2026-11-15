@@ -57,8 +57,16 @@ import { notRespondingAlerts } from "gnoblin/alerts";
 import { barInsets, barsGiveWayTo, barsOnOutputs } from "gnoblin/widgets";
 import { windowState } from "gnoblin/window_state";
 import type { ClientRequest } from "gnoblin/window_state";
-import { EASINGS, Staging, TransitionEngine, curveSamples, setProperties } from "gnoblin/transition";
-import type { ClientEasing, Transition, TransitionOptions } from "gnoblin/transition";
+import {
+    DEFAULT_EASING,
+    EASING_NAMES,
+    Staging,
+    TransitionEngine,
+    curveSamples,
+    easingCurve,
+    setProperties,
+} from "gnoblin/transition";
+import type { Easing, Transition, TransitionOptions } from "gnoblin/transition";
 import { snapshotStyles } from "gnoblin/style";
 import { gestureDirection, onPinch, onSwipe } from "gnoblin/gesture_actions";
 import type { GestureActions, GestureTools } from "gnoblin/gesture_actions";
@@ -108,7 +116,7 @@ import { Extensions, XRRuntime } from "gnoblin/xr";
 import type { XRWorld } from "gnoblin/xr";
 import { HostApi } from "gnoblin/session";
 import type { SignalEvent, Version } from "gnoblin/session";
-import type { Subscription, Timer } from "gnoblin/operation";
+import type { Subscription } from "gnoblin/operation";
 import type { Process, SpawnOptions } from "gnoblin/process";
 import { VirtualOutput } from "gnoblin/virtual_output";
 
@@ -219,14 +227,14 @@ interface Host {
     /** What `set` would answer, without queuing the write; `timed` also refuses a property the tree cannot animate. */
     check(node: NodeId, key: string, value: HostValue, timed: boolean): string | undefined;
     /**
-     * The same write, carried out over `seconds` along `samples` (progress from 0 to 1), after `delay` seconds when
-     * given, and driven by the `tween` node when one is named (0 is none).
+     * The same write, carried out over `duration` milliseconds along `samples` (progress from 0 to 1), after `delay`
+     * milliseconds when given, and driven by the `tween` node when one is named (0 is none).
      */
     animate(
         node: NodeId,
         key: string,
         value: HostValue,
-        seconds: number,
+        duration: number,
         samples: number[],
         delay?: number,
         tween?: number,
@@ -336,7 +344,7 @@ host.set = (node, key, value) => {
     }
     return refused;
 };
-host.animate = (node, key, value, seconds, samples) => staging.animate(node, key, value, seconds, samples);
+host.animate = (node, key, value, duration, samples) => staging.animate(node, key, value, duration, samples);
 host.call = (node, method) => {
     staging.forbid(`${nodeName(node)}.${method}()`);
     return nativeCall(node, method);
@@ -709,7 +717,7 @@ function writeVector(client: Client, key: string, value: unknown): void {
     }
 }
 
-export type { ClientEasing } from "gnoblin/transition";
+export type { Easing } from "gnoblin/transition";
 
 /** The properties of a client `animate` can move, and the kind of value each takes. */
 const ANIMATED_KEYS: Readonly<Record<string, "number" | "vector">> = {
@@ -735,13 +743,13 @@ export interface ClientAnimation {
     scale?: Vector3;
 }
 
-/** Duration and easing options for a client animation; duration is measured in seconds. */
+/** Duration and easing options for a client animation. */
 
 export interface AnimateOptions {
-    /** Seconds. Zero is an instant write. */
+    /** Milliseconds. Zero is an instant write. */
     duration: number;
-    /** Default `"out"`, as the retired shell's. */
-    easing?: ClientEasing;
+    /** One of the CSS names of `Easing`. Default `"ease-out"`. */
+    easing?: Easing;
 }
 
 /** Calls a native client method. Throws for a dead client or host refusal. */
@@ -1162,7 +1170,7 @@ export class Client extends NativeObject {
     }
 
     /**
-     * Moves properties to `values` over `options.duration` seconds along the easing curve. Reading a property back
+     * Moves properties to `values` over `options.duration` milliseconds along the easing curve. Reading a property back
      * at once gives the end value; the compositor draws the way there. A duration of 0 writes at once.
      */
     animate(values: ClientAnimation, options: AnimateOptions): void {
@@ -1173,11 +1181,11 @@ export class Client extends NativeObject {
         }
         const duration = options?.duration;
         if (typeof duration !== "number" || !Number.isFinite(duration) || duration < 0) {
-            throw new TypeError(`${target}: duration must be a finite number of seconds of at least 0`);
+            throw new TypeError(`${target}: duration must be a finite number of milliseconds of at least 0`);
         }
-        const curve = EASINGS[options.easing ?? "out"];
+        const curve = easingCurve(options.easing ?? DEFAULT_EASING);
         if (curve === undefined) {
-            throw new TypeError(`${target}: easing must be one of ${Object.keys(EASINGS).join(", ")}`);
+            throw new TypeError(`${target}: easing must be one of ${EASING_NAMES}`);
         }
         const entries = Object.entries(values).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
         for (const [key, value] of entries) {
@@ -1199,11 +1207,13 @@ export class Client extends NativeObject {
         }
         const samples = curveSamples(curve);
         // Reduced motion lands the value at once, as the compositor's own safety net would.
-        const seconds = motion(duration);
+        const effective = motion(duration);
         for (const [key, value] of entries) {
             const sent = Array.isArray(value) ? [value[0], value[1], value[2]] : (value as number);
             const code =
-                seconds === 0 ? host.set(state.node, key, sent) : host.animate(state.node, key, sent, seconds, samples);
+                effective === 0
+                    ? host.set(state.node, key, sent)
+                    : host.animate(state.node, key, sent, effective, samples);
             if (code != null) {
                 refuse(code, target, "client");
             }
@@ -2568,12 +2578,12 @@ function setShown(desk: Desk, next: Workspace | null): void {
     }
 }
 
-/** Seconds a workspace slide takes, as the retired shell's `Desk:show`. */
-export const SLIDE_SECONDS = 0.25;
+/** Milliseconds a workspace slide takes, as the retired shell's `Desk:show`. */
+export const SLIDE_DURATION = 250;
 
 /** How `show` moves to a workspace. */
 export interface ShowOptions {
-    /** Seconds the slide between the two workspaces takes. Zero or absent switches at once. */
+    /** Milliseconds the slide between the two workspaces takes. Zero or absent switches at once. */
     duration?: number;
     /** How much of the slide a touchpad gesture has made already, 0 to 1: the slide carries on from there. */
     progress?: number;
@@ -2598,13 +2608,13 @@ const slides: Slide[] = [];
 const holding = new Map<Workspace, number>();
 
 /**
- * The duration the shell gives an animation: `seconds`, or 0 while the seat asks for reduced motion
+ * The duration in milliseconds the shell gives an animation: `duration`, or 0 while the seat asks for reduced motion
  * (`appearance.reduced-motion`, the seat's `reduced_motion`). A 0 makes a slide, a fade or `Client.animate` an instant write.
  * The compositor lands a timed write at once under reduced motion too, so a shell that forgets this still obeys.
  */
-function motion(seconds: number): number {
+function motion(duration: number): number {
     const seat = mainSeat();
-    return seat !== undefined && host.input.settings(seat)?.reducedMotion === true ? 0 : seconds;
+    return seat !== undefined && host.input.settings(seat)?.reducedMotion === true ? 0 : duration;
 }
 
 /** `gnoblin.workspaces.show(workspace, options)`. */
@@ -2619,7 +2629,7 @@ function showWorkspace(workspace: Workspace | string, options: ShowOptions = {})
     const asked = options.duration ?? 0;
     const progress = options.progress ?? 0;
     if (typeof asked !== "number" || !Number.isFinite(asked) || asked < 0) {
-        throw new TypeError(`${target}.show: duration must be a finite number of seconds of at least 0`);
+        throw new TypeError(`${target}.show: duration must be a finite number of milliseconds of at least 0`);
     }
     if (typeof progress !== "number" || !(progress >= 0 && progress <= 1)) {
         throw new TypeError(`${target}.show: progress must be a number from 0 to 1`);
@@ -2653,17 +2663,6 @@ function showWorkspace(workspace: Workspace | string, options: ShowOptions = {})
             progress,
         });
     }
-}
-
-/** Work that waits for a time: the end of a slide, a script's `gnoblin.after`. Queued at the first frame past the time. */
-function after(seconds: number, run: () => void): Timer {
-    if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {
-        throw new TypeError("gnoblin.after: seconds must be a finite number of at least 0");
-    }
-    if (typeof run !== "function") {
-        throw new TypeError("gnoblin.after: needs a function to run");
-    }
-    return hostApi.timers.after(seconds * 1000, run);
 }
 
 /** The workspace a window that has none joins: the one the output under the pointer shows, else the initial rule's. */
@@ -3015,7 +3014,7 @@ function startSlides(): void {
         for (const client of wsState(to).clientsState.list as Client[]) {
             const rest = client.x;
             client.x = rest + travel * (1 - progress);
-            client.animate({ x: rest }, { duration, easing: "out-cubic" });
+            client.animate({ x: rest }, { duration, easing: "ease-out" });
         }
         const resting = new Map<Client, number>();
         for (const client of wsState(from).clientsState.list as Client[]) {
@@ -3024,10 +3023,10 @@ function startSlides(): void {
             if (progress > 0) {
                 client.x = rest - travel * progress;
             }
-            client.animate({ x: rest - travel }, { duration, easing: "out-cubic" });
+            client.animate({ x: rest - travel }, { duration, easing: "ease-out" });
         }
         holding.set(from, (holding.get(from) ?? 0) + 1);
-        after(duration, () => {
+        hostApi.timers.after(duration, () => {
             const left = (holding.get(from) ?? 1) - 1;
             if (left > 0) {
                 holding.set(from, left);
@@ -4365,7 +4364,7 @@ function stepWorkspace(step: number): void {
     }
     const target = workspaceRoot.list[workspaceRoot.list.indexOf(shown) + step];
     if (target !== undefined) {
-        showWorkspace(target as Workspace, { duration: SLIDE_SECONDS });
+        showWorkspace(target as Workspace, { duration: SLIDE_DURATION });
     }
 }
 
@@ -4952,7 +4951,7 @@ class Gnoblin {
 
     /** The programs this shell started: `spawn`, `list`, `byId` and the listeners told when one ends. */
     readonly process = hostApi.process;
-    /** Calls that run later, on the frame loop: `after`, and the monotonic clock `now`. */
+    /** Calls that run later, on the frame loop: `after(ms, fn)`, and the monotonic clock `now()` in milliseconds. */
     readonly timers = hostApi.timers;
     /** The session: its state, and the verbs that log out, suspend, power off or lock it. */
     readonly session = hostApi.session;
@@ -4963,9 +4962,9 @@ class Gnoblin {
     /** The touchpad gesture actions (`workspace.next` and four more) and `onSwipe`, `onPinch` and `direction`. */
     readonly gestures = gestureTools;
 
-    /** The duration the shell gives an animation: `seconds`, or 0 while the seat asks for reduced motion. */
-    motion(seconds: number): number {
-        return motion(seconds);
+    /** The milliseconds the shell gives an animation of `duration`: 0 while the seat asks for reduced motion. */
+    motion(duration: number): number {
+        return motion(duration);
     }
 
     /**
@@ -4989,11 +4988,6 @@ class Gnoblin {
     /** Shows a workspace, given as itself or by id, on the output under the pointer. See `WorkspaceCollection.show`. */
     show(workspace: Workspace | string, options?: ShowOptions): void {
         showWorkspace(workspace, options);
-    }
-
-    /** Runs `run` once, `seconds` from now: at the first frame after that time. `gnoblin.timers.after` takes ms. */
-    after(seconds: number, run: () => void): Timer {
-        return after(seconds, run);
     }
 
     /** The build identity: `gnoblin`, `gnome`, `mutter`, `js`, `api`, `gitRemote`, `gitSha` and `buildId`. */

@@ -43,7 +43,7 @@ export function installDefaults(gnoblin: Host): void {
         input.bind(`Super+${position}`, () => {
             const target = gnoblin.workspaces.at(position - 1);
             if (target !== undefined) {
-                gnoblin.workspaces.show(target, { duration: 0.25 });
+                gnoblin.workspaces.show(target, { duration: 250 });
             }
         });
     }

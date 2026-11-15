@@ -37,15 +37,15 @@ The call throws a `GnoblinError` with the code `spawn-failed` when the program c
 process group of its own, so `kill` and `timeout` reach the programs it starts too. At most 64 run at once, and they end
 with the shell.
 
-| Option        | Accepted values                     | Default   | Meaning                                          |
-| ------------- | ----------------------------------- | --------- | ------------------------------------------------ |
-| `cwd`         | absolute path                       | inherited | The working directory.                           |
-| `env`         | object of strings, at most 128      | none      | Variables added to the session environment.      |
-| `stdin`       | string, at most 1 MiB               | empty     | Written to standard input, which is then closed. |
-| `stdout`      | `inherit`, `discard`, `capture`     | `inherit` | Where standard output goes.                      |
-| `stderr`      | `inherit`, `discard`, `capture`     | `inherit` | Where standard error goes.                       |
-| `outputLimit` | integer from 0 to 4194304           | `65536`   | Bytes kept from each captured stream.            |
-| `timeout`     | seconds, more than 0, at most 86400 | none      | SIGTERM to the group, SIGKILL two seconds later. |
+| Option        | Accepted values                             | Default   | Meaning                                          |
+| ------------- | ------------------------------------------- | --------- | ------------------------------------------------ |
+| `cwd`         | absolute path                               | inherited | The working directory.                           |
+| `env`         | object of strings, at most 128              | none      | Variables added to the session environment.      |
+| `stdin`       | string, at most 1 MiB                       | empty     | Written to standard input, which is then closed. |
+| `stdout`      | `inherit`, `discard`, `capture`             | `inherit` | Where standard output goes.                      |
+| `stderr`      | `inherit`, `discard`, `capture`             | `inherit` | Where standard error goes.                       |
+| `outputLimit` | integer from 0 to 4194304                   | `65536`   | Bytes kept from each captured stream.            |
+| `timeout`     | milliseconds, more than 0, at most 86400000 | none      | SIGTERM to the group, SIGKILL 2000 ms later.     |
 
 The stream modes:
 

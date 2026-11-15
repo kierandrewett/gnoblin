@@ -444,11 +444,11 @@ fn a_short_swipe_with_reduced_motion_goes_back_at_once() {
 
 #[test]
 fn client_animate_lands_at_once_under_reduced_motion_and_takes_its_time_otherwise() {
-    // New: `Client.animate` is where a script's own animation goes; the the retired shell `node:to` took `motion(seconds)`.
+    // New: `Client.animate` is where a script's own animation goes; the the retired shell `node:to` took `motion(seconds)`; the duration is in milliseconds here.
     let mut rig = world(1, false, "new Layout()", "");
     exec(
         &mut rig,
-        "gnoblin.clients.get('3').animate({ opacity: 0.5 }, { duration: 1 })",
+        "gnoblin.clients.get('3').animate({ opacity: 0.5 }, { duration: 1000 })",
     );
     settle(&mut rig);
     assert_eq!(rig.comp.timed_sets(), 1, "a timed write when motion is on");
@@ -456,7 +456,7 @@ fn client_animate_lands_at_once_under_reduced_motion_and_takes_its_time_otherwis
     settle(&mut rig);
     exec(
         &mut rig,
-        "gnoblin.clients.get('3').animate({ opacity: 0.25 }, { duration: 1 })",
+        "gnoblin.clients.get('3').animate({ opacity: 0.25 }, { duration: 1000 })",
     );
     settle(&mut rig);
     assert_eq!(rig.comp.timed_sets(), 1, "no second timed write");

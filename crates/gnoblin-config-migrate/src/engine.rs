@@ -1203,7 +1203,7 @@ fn call_reason(name: &str) -> &'static str {
             "an event handler runs code: write a `ClientListener` and attach it with `gnoblin.clients.addListener`"
         }
         "require" => "a required module is another file: convert it too and `import` it",
-        n if n.starts_with("gnoblin.timers.") => "a timer runs code: use `gnoblin.after`",
+        n if n.starts_with("gnoblin.timers.") => "a timer runs code: use `gnoblin.timers.after`",
         n if n.starts_with("gnoblin.process.") => "a process call runs code: use `gnoblin.spawn`",
         _ => "a call runs code when the config runs: port it by hand",
     }

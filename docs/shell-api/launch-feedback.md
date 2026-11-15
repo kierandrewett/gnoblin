@@ -15,7 +15,7 @@ gnoblin.input.primary.bind("Super+e", () => {
 ```
 
 Put the file in `~/.config/gnoblin/init.ts`. `Super+e` starts the `foot` terminal and tracks the launch: a notification
-says whether its window appeared within five seconds.
+says whether its window appeared within 5000 ms.
 
 ## Begin a launch
 
