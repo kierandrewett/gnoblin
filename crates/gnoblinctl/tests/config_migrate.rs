@@ -391,7 +391,9 @@ seat.data.alerts = false
 "#;
 
 /// Presses nothing: it hands a window-shaped object to each listener the config attached and records what the listener
-/// wrote to it and where it moved it, for five windows.
+/// wrote to it and where it moved it, for five windows. The stock `Decorations` listener (`startDecorations`, which the
+/// starter calls) is not the config's: it frames a window by the node the compositor made for it, and a hand-made object
+/// has none, so it is left out rather than fed an object it rightly refuses.
 const RULES_PROBE: &str = r#"const moved: any[] = [];
 (gnoblin.workspaces as any).get = (id: string) => ({
     clients: {
@@ -421,7 +423,7 @@ result.rules = cases.map(([appId, title]) => {
             log.push(`fullscreen=${value}`);
         },
     };
-    for (const listener of g.listeners) {
+    for (const listener of g.listeners.filter((l: any) => l.constructor.name !== "Decorations")) {
         listener.onAdded?.(client, gnoblin.clients);
     }
     return { appId, title, log, moved: [...moved], opacity: client.style.opacity ?? null };
