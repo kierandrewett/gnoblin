@@ -100,6 +100,38 @@ pub fn snapshot(ipc: &Path) -> Vec<snapshot_node::Properties> {
     attach_observer(ipc).1
 }
 
+/// Whether the seat's device list holds a device whose name contains `name`.
+pub fn seat_has_device(ipc: &Path, name: &str) -> bool {
+    snapshot(ipc).iter().any(|node| {
+        node.class == "seat"
+            && node
+                .props
+                .iter()
+                .any(|prop| prop.key == "device" && prop.value_texts.iter().any(|item| item.contains(name)))
+    })
+}
+
+/// Plugs a keyboard into a headless session and waits until the seat lists it, so that a shell that starts afterwards
+/// finds it in `gnoblin.input.devices`. A headless session has no input device of its own, and a device setting such
+/// as `Keyboard.repeatDelay` is written through one.
+pub fn plug_keyboard(input: &gnoblin_compositor::InputTap, ipc: &Path) {
+    use gnoblin_backend::{DeviceInfo, DeviceKind, InputEvent};
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    while !input.inject(InputEvent::DeviceAdded {
+        device: DeviceInfo::new(gnoblin_types::DeviceId::new(7), "Test keyboard", DeviceKind::Keyboard),
+    }) {
+        assert!(std::time::Instant::now() < deadline, "the session never took input");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    while !seat_has_device(ipc, "Test keyboard") {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the seat never listed the keyboard"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
 /// Takes the session lock the way the screensaver service does: an observer's `lock` call on the lock node.
 pub fn take_lock(ipc: &Path) {
     let (mut stream, nodes, serial) = observe_at(ipc);

@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{Client, ClientError};
-use gnoblin_compositor::{Compositor, Privileged, SessionConfig, StopHandle};
+use gnoblin_compositor::{Compositor, InputTap, Privileged, SessionConfig, StopHandle};
 use gnoblin_config::SearchPaths;
 use gnoblin_js::{JsRoleError, JsRoleRunner, STARTER_CONFIG};
 use gnoblin_proto::report::{self, Line};
@@ -39,6 +39,8 @@ const PATIENCE: Duration = Duration::from_secs(60);
 struct Session {
     directory: tempfile::TempDir,
     stop: StopHandle,
+    /// Where a test sends the input a device would: it plugs the keyboard whose settings the configs write.
+    input: InputTap,
     thread: Option<JoinHandle<()>>,
     /// Dropped before the compositor stops: its control thread reads the guardian's end until it closes.
     guardian: Option<std::os::fd::OwnedFd>,
@@ -63,9 +65,11 @@ impl Session {
         let mut privileged = Privileged::declared();
         privileged.retain(|entry| entry.role == "runtime");
         let stop = StopHandle::new();
+        let input = InputTap::new();
         let mut config = SessionConfig {
             ipc_socket: Some(directory.path().join("ipc.sock")),
             stop: Some(stop.clone()),
+            input_tap: Some(input.clone()),
             privileged,
             guardian: Some(UnixStream::from(compositor_control)),
             ..SessionConfig::default()
@@ -82,6 +86,7 @@ impl Session {
         let session = Self {
             directory,
             stop,
+            input,
             thread: Some(thread),
             guardian: Some(guardian),
             role_end: Some(role_end),
@@ -91,6 +96,8 @@ impl Session {
             assert!(Instant::now() < deadline, "the compositor never listened");
             std::thread::sleep(Duration::from_millis(5));
         }
+        // A headless session has no input device, and a device setting is written through one.
+        support::plug_keyboard(&session.input, &session.ipc());
         session
     }
 
@@ -227,31 +234,42 @@ fn wait_for<T>(what: &str, role: &Role, mut check: impl FnMut() -> Option<T>) ->
     }
 }
 
-/// `cursor.size` of the accepted document, once the revision in force is `revision`.
-fn cursor_at(session: &Session, role: &Role, revision: u64) -> Option<i64> {
+/// `input.keyboard.delay` of the accepted document, once the revision in force is `revision`.
+fn delay_at(session: &Session, role: &Role, revision: u64) -> Option<i64> {
     assert!(!role.ended(), "the role ended while the session was running");
     let (current, document) = session.accepted()?;
     if current != revision {
         return None;
     }
-    document["cursor"]["size"].as_i64()
+    document["input"]["keyboard"]["delay"].as_i64()
 }
 
 fn write(path: &Path, source: &str) {
     std::fs::write(path, source).expect("a config file");
 }
 
-fn config_with_cursor(size: i64) -> String {
+/// An `init.ts` that sets the repeat delay of the seat's keyboard, which the document carries as `input.keyboard.delay`.
+fn config_with_delay(delay: i64) -> String {
     format!(
-        "import {{ defineConfig }} from \"gnoblin\";\nexport default defineConfig({{ cursor: {{ size: {size} }} }});\n"
+        "import {{ Keyboard, gnoblin }} from \"gnoblin\";\n\
+         \n\
+         for (const device of gnoblin.input.devices) {{\n\
+         \x20   if (device instanceof Keyboard) {{\n\
+         \x20       device.repeatDelay = {delay};\n\
+         \x20   }}\n\
+         }}\n"
     )
 }
 
 /// A config that asks for a reload itself, from a listener a real window opening raises, so the request starts inside
 /// the runtime and no `gnoblinctl config reload` is involved.
-const WITH_HANDLER: &str = r#"import { defineConfig, gnoblin } from "gnoblin";
+const WITH_HANDLER: &str = r#"import { Keyboard, gnoblin } from "gnoblin";
 
-defineConfig({ cursor: { size: 24 } });
+for (const device of gnoblin.input.devices) {
+    if (device instanceof Keyboard) {
+        device.repeatDelay = 24;
+    }
+}
 gnoblin.clients.addListener({
     onAdded() {
         gnoblin.runtime.reloadConfig();
@@ -274,9 +292,9 @@ fn start(init: &str) -> (Session, Role, tempfile::TempDir, PathBuf) {
 #[test]
 fn the_role_commits_the_document_then_reports_it_accepted_and_ready_with_the_revision() {
     // The guardian waits for `ready` before it starts anything that reads the document, so the commit comes first.
-    let (session, role, _directory, _init) = start(&config_with_cursor(32));
+    let (session, role, _directory, _init) = start(&config_with_delay(32));
     wait_for("the login configuration to commit", &role, || {
-        (cursor_at(&session, &role, 1) == Some(32)).then_some(())
+        (delay_at(&session, &role, 1) == Some(32)).then_some(())
     });
     let lines = wait_for("the ready report", &role, || {
         let lines = role.lines();
@@ -305,44 +323,12 @@ fn the_role_commits_the_document_then_reports_it_accepted_and_ready_with_the_rev
 }
 
 #[test]
-fn autostart_entries_go_to_the_guardian_before_the_revision_that_enables_them() {
+fn a_config_that_fails_to_load_runs_the_stock_config_and_the_role_still_commits_and_reports_ready() {
+    // A script that throws while it loads leaves the shell with no config of the user's to run. It must not be left
+    // bare: the stock config runs and its document is committed.
     let (session, role, _directory, _init) = start(
-        "import { defineConfig } from \"gnoblin\";\n\
-         export default defineConfig({ autostart: [\"waybar\", [\"foot\", \"--server\"]] });\n",
-    );
-    let lines = wait_for("the revision to be reported", &role, || {
-        let lines = role.lines();
-        lines.contains(&Line::ConfigAccepted { revision: 1 }).then_some(lines)
-    });
-    let entry = |name: &str, command: &[&str]| Line::Autostart {
-        revision: 1,
-        name: name.to_owned(),
-        command: command.iter().map(|part| (*part).to_owned()).collect(),
-    };
-    let accepted = lines
-        .iter()
-        .position(|line| *line == Line::ConfigAccepted { revision: 1 })
-        .expect("accepted");
-    // The entries are the document's, in name order.
-    assert_eq!(
-        &lines[accepted - 2..accepted],
-        [entry("foot", &["foot", "--server"]), entry("waybar", &["waybar"])],
-        "{lines:?}"
-    );
-    let (_, document) = session.accepted().expect("the document is held");
-    assert_eq!(
-        document["autostart"]["foot"]["command"],
-        serde_json::json!(["foot", "--server"])
-    );
-}
-
-#[test]
-fn a_config_the_validator_refuses_runs_the_stock_config_and_the_role_still_commits_and_reports_ready() {
-    // An autostart entry that would start a second keyring is refused while the config loads, so the shell has no
-    // config of the user's to run. It must not be left bare: the stock config runs and its document is committed.
-    let (session, role, _directory, _init) = start(
-        "import { defineConfig } from \"gnoblin\";\n\
-         export default defineConfig({ autostart: [[\"gnome-keyring-daemon\", \"--start\"]] });\n",
+        "import { gnoblin } from \"gnoblin\";\n\
+         throw new Error(\"this config does not load\");\n",
     );
     let lines = wait_for("ready", &role, || {
         let lines = role.lines();
@@ -350,7 +336,7 @@ fn a_config_the_validator_refuses_runs_the_stock_config_and_the_role_still_commi
     });
     assert!(lines.contains(&Line::ConfigAccepted { revision: 1 }), "{lines:?}");
     let (_, document) = session.accepted().expect("the document is held");
-    assert!(document.get("autostart").is_none(), "{document}");
+    assert_eq!(document, serde_json::json!({}), "the stock config sets no document key");
 }
 
 // ---- a script reloads the configuration --------------------------------------------------------------------------
@@ -362,14 +348,14 @@ fn a_script_that_reloads_the_configuration_commits_what_the_file_says_now() {
     // it held at login.
     let (session, role, _directory, init) = start(WITH_HANDLER);
     wait_for("the login configuration to commit", &role, || {
-        (cursor_at(&session, &role, 1) == Some(24)).then_some(())
+        (delay_at(&session, &role, 1) == Some(24)).then_some(())
     });
 
-    write(&init, &config_with_cursor(48));
+    write(&init, &config_with_delay(48));
     let mut client = Mapper::connect(&session.wayland());
     client.map_window("reload.test", "reload");
     wait_for("the script's reload to commit the edited file", &role, || {
-        (cursor_at(&session, &role, 2) == Some(48)).then_some(())
+        (delay_at(&session, &role, 2) == Some(48)).then_some(())
     });
 }
 
@@ -380,13 +366,17 @@ fn a_script_reload_of_a_broken_file_keeps_the_accepted_configuration_and_the_rol
     // from the same role.
     let (session, role, _directory, init) = start(WITH_HANDLER);
     wait_for("the login configuration to commit", &role, || {
-        (cursor_at(&session, &role, 1) == Some(24)).then_some(())
+        (delay_at(&session, &role, 1) == Some(24)).then_some(())
     });
 
     write(
         &init,
-        "import { defineConfig, gnoblin } from \"gnoblin\";\n\
-         defineConfig({ cursor: { size: \"huge\" } });\n\
+        "import { Keyboard, gnoblin } from \"gnoblin\";\n\
+         for (const device of gnoblin.input.devices) {\n\
+         \x20   if (device instanceof Keyboard) {\n\
+         \x20       device.repeatDelay = \"huge\";\n\
+         \x20   }\n\
+         }\n\
          gnoblin.clients.addListener({ onAdded() { gnoblin.runtime.reloadConfig(); } });\n",
     );
     let mut client = Mapper::connect(&session.wayland());
@@ -400,54 +390,16 @@ fn a_script_reload_of_a_broken_file_keeps_the_accepted_configuration_and_the_rol
             .then_some(())
     });
     assert_eq!(
-        cursor_at(&session, &role, 1),
+        delay_at(&session, &role, 1),
         Some(24),
         "the refused edit changed nothing"
     );
     assert!(!role.ended(), "the refused reload ended the role");
 
-    write(&init, &config_with_cursor(48));
+    write(&init, &config_with_delay(48));
     client.map_window("reload.test", "fixed");
     wait_for("the fixed file to commit after the refusal", &role, || {
-        (cursor_at(&session, &role, 2) == Some(48)).then_some(())
-    });
-}
-
-#[test]
-fn a_reload_the_autostart_check_refuses_keeps_the_role_serving_and_the_old_handlers() {
-    // The failure this prevents: a reload that evaluates but is refused before the commit (an autostart entry that
-    // would start a second keyring) ended the runtime role, so one bad edit took down the process that holds the last
-    // good configuration. The refusal must leave revision 1 in force, the role serving and the handler of the accepted
-    // file still answering, so the next reload, with the edit fixed, commits.
-    let (session, role, _directory, init) = start(WITH_HANDLER);
-    wait_for("the login configuration to commit", &role, || {
-        (cursor_at(&session, &role, 1) == Some(24)).then_some(())
-    });
-
-    write(
-        &init,
-        "import { defineConfig } from \"gnoblin\";\n\
-         defineConfig({ autostart: [[\"gnome-keyring-daemon\", \"--start\"]] });\n",
-    );
-    let mut client = Mapper::connect(&session.wayland());
-    client.map_window("reload.test", "refused");
-    wait_for("the refusal to be reported to the guardian", &role, || {
-        role.lines()
-            .iter()
-            .any(|line| matches!(line, Line::ConfigRejected { .. }))
-            .then_some(())
-    });
-    assert!(!role.ended(), "the refused reload ended the runtime role");
-    assert_eq!(
-        cursor_at(&session, &role, 1),
-        Some(24),
-        "the refused edit changed nothing"
-    );
-
-    write(&init, &config_with_cursor(48));
-    client.map_window("reload.test", "fixed");
-    wait_for("the fixed file to commit after the refusal", &role, || {
-        (cursor_at(&session, &role, 2) == Some(48)).then_some(())
+        (delay_at(&session, &role, 2) == Some(48)).then_some(())
     });
 }
 
@@ -455,25 +407,25 @@ fn a_reload_the_autostart_check_refuses_keeps_the_role_serving_and_the_old_handl
 
 #[test]
 fn config_reload_commits_the_file_and_answers_with_the_revision() {
-    let (session, role, _directory, init) = start(&config_with_cursor(32));
+    let (session, role, _directory, init) = start(&config_with_delay(32));
     wait_for("the login configuration to commit", &role, || {
-        (cursor_at(&session, &role, 1) == Some(32)).then_some(())
+        (delay_at(&session, &role, 1) == Some(32)).then_some(())
     });
-    write(&init, &config_with_cursor(40));
+    write(&init, &config_with_delay(40));
     let committed = session
         .owner()
         .reload_config()
         .expect("the reload is answered with its revision");
     assert_eq!(committed.revision, 2);
-    assert_eq!(cursor_at(&session, &role, 2), Some(40));
+    assert_eq!(delay_at(&session, &role, 2), Some(40));
     assert!(role.lines().contains(&Line::ConfigAccepted { revision: 2 }));
 }
 
 #[test]
 fn config_reload_of_a_removed_file_is_refused_with_why_and_the_accepted_document_stays() {
-    let (session, role, _directory, init) = start(&config_with_cursor(32));
+    let (session, role, _directory, init) = start(&config_with_delay(32));
     wait_for("the login configuration to commit", &role, || {
-        (cursor_at(&session, &role, 1) == Some(32)).then_some(())
+        (delay_at(&session, &role, 1) == Some(32)).then_some(())
     });
     std::fs::remove_file(&init).expect("the file is removed");
     let error = session
@@ -485,15 +437,15 @@ fn config_reload_of_a_removed_file_is_refused_with_why_and_the_accepted_document
     };
     assert_eq!(code, "config-rejected");
     assert!(message.contains("stays in force"), "{message}");
-    assert_eq!(cursor_at(&session, &role, 1), Some(32), "revision 1 is still in force");
+    assert_eq!(delay_at(&session, &role, 1), Some(32), "revision 1 is still in force");
     assert!(!role.ended());
 }
 
 #[test]
 fn the_role_ends_cleanly_when_the_compositor_goes_away() {
-    let (mut session, role, _directory, _init) = start(&config_with_cursor(32));
+    let (mut session, role, _directory, _init) = start(&config_with_delay(32));
     wait_for("the login configuration to commit", &role, || {
-        (cursor_at(&session, &role, 1) == Some(32)).then_some(())
+        (delay_at(&session, &role, 1) == Some(32)).then_some(())
     });
     drop(session.guardian.take());
     session.stop.request();

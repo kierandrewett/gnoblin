@@ -89,7 +89,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# start_session [INIT_TS_SOURCE]: boots the guardian over a fresh profile. With no source the config directory
+# seed_renderer RENDERER: names the renderer the compositor starts with. The compositor reads `compositor.renderer` from
+# the last accepted document when it starts, and no object of an init.ts carries that setting (design/js-spec-native.md,
+# 3.11), so the session's state directory is given the document a first run would have kept, tagged with the init.ts
+# it belongs to. The runtime then commits its own document over it, and the compositor keeps the renderer it started with.
+seed_renderer() {
+    local state="$session_home/state/gnoblin"
+    mkdir -p "$state"
+    chmod 700 "$state"
+    printf '{"format":1,"source":"%s","document":{"compositor":{"renderer":"%s"}}}\n' "$config_dir/init.ts" "$1" \
+        >"$state/last-good-config.json"
+    chmod 600 "$state/last-good-config.json"
+}
+
+# start_session [INIT_TS_SOURCE [RENDERER]]: boots the guardian over a fresh profile. With no source the config directory
 # is empty, which is the zero-config session.
 start_session() {
     work="${work:-$(mktemp -d)}"
@@ -102,6 +115,9 @@ start_session() {
     chmod 700 "$run_dir"
     if [ $# -gt 0 ]; then
         printf '%s\n' "$1" >"$config_dir/init.ts"
+    fi
+    if [ $# -gt 1 ]; then
+        seed_renderer "$2"
     fi
     dbus-daemon --session --nofork --print-address >"$session_home/bus-address" 2>"$session_home/bus.log" &
     bus_pid=$!
@@ -132,14 +148,6 @@ boot_guardian() {
             exit 1
         fi
     done
-}
-
-# restart_session: ends the guardian and everything it started, then boots it again over the same directories. A
-# setting the compositor reads only when it starts (compositor.renderer) takes effect from the config the first run
-# committed.
-restart_session() {
-    kill_session
-    boot_guardian
 }
 
 ctl() {
@@ -229,21 +237,19 @@ scenario_cascade() {
     stop_session
 }
 
-# tiled NAME DECORATIONS LAYOUT: three windows, then a reload to one workspace with LAYOUT. DECORATIONS is `true`,
-# `false` or empty, which leaves the key out as the owner's example does.
+# tiled NAME DECORATIONS LAYOUT: three windows, then a reload to one workspace with LAYOUT. DECORATIONS is `true`, which
+# starts the shell's titlebars, or empty, which leaves them out as the owner's example does.
 tiled() {
     local decorations=""
-    if [ -n "$2" ]; then
-        decorations="decorations: $2,"
+    if [ "$2" = true ]; then
+        decorations="startDecorations();"
     fi
     start_session
     three
-    set_config "import { DwindleLayout, MasterStackLayout, defineConfig } from \"gnoblin\";
+    set_config "import { DwindleLayout, MasterStackLayout, Workspace, gnoblin, startDecorations } from \"gnoblin\";
 
-export default defineConfig({
-    $decorations
-    workspaces: [{ id: \"dev\", layout: new $3 }],
-});"
+$decorations
+gnoblin.workspaces.add(new Workspace({ id: \"dev\", layout: new $3 }));"
     shoot "$1"
     stop_session
 }
@@ -264,17 +270,13 @@ scenario_dwindle_decorated() {
     tiled dwindle-decorated true "DwindleLayout({ gap: 12 })"
 }
 
-# shadows NAME RENDERER: the stock config with a style that gives every window a shadow, on the named renderer. The
-# renderer is chosen when the session starts, so the config is there from the first frame.
+# shadows NAME RENDERER: the stock default with a style that gives every window a shadow, on the named renderer.
 shadows() {
-    start_session "import { defaultConfig, defineConfig } from \"gnoblin\";
+    start_session "import { gnoblin } from \"gnoblin\";
+import { installDefaults } from \"gnoblin/starter\";
 
-export default defineConfig({
-    ...defaultConfig,
-    compositor: { renderer: \"$2\" },
-    style: { shadows: [{ x: 0, y: 12, blur: 32, color: \"#000000cc\" }] },
-});"
-    restart_session
+installDefaults(gnoblin);
+gnoblin.clients.style.shadows = [{ x: 0, y: 12, blur: 32, color: \"#000000cc\" }];" "$2"
     plain_window org.example.status "gnoblinctl status" "#1e3a5f" "gnoblinctl status"
     wait_windows 1
     plain_window org.example.windows "gnoblinctl window list" "#5f1e3a" "gnoblinctl window list"
@@ -306,9 +308,9 @@ scenario_csd_double() {
 # picture shows foot's one bar and none of the shell's: a window is never left with no bar.
 scenario_csd_own() {
     start_session
-    set_config "import { defineConfig } from \"gnoblin\";
+    set_config "import { FloatingLayout, Workspace, gnoblin } from \"gnoblin\";
 
-export default defineConfig({ decorations: false });"
+gnoblin.workspaces.add(new Workspace({ id: \"1\", layout: new FloatingLayout() }));"
     window org.example.status "gnoblinctl status" "#1e3a5f" "gnoblinctl status"
     wait_windows 1
     shoot csd-own
@@ -318,12 +320,10 @@ export default defineConfig({ decorations: false });"
 # csd-tiled: the same client in a tiled workspace with the shell's titlebars: one bar on each tile.
 scenario_csd_tiled() {
     start_session
-    set_config "import { DwindleLayout, defineConfig } from \"gnoblin\";
+    set_config "import { DwindleLayout, Workspace, gnoblin, startDecorations } from \"gnoblin\";
 
-export default defineConfig({
-    decorations: true,
-    workspaces: [{ id: \"dev\", layout: new DwindleLayout({ gap: 12 }) }],
-});"
+startDecorations();
+gnoblin.workspaces.add(new Workspace({ id: \"dev\", layout: new DwindleLayout({ gap: 12 }) }));"
     window org.example.status "gnoblinctl status" "#1e3a5f" "gnoblinctl status"
     wait_windows 1
     shoot csd-tiled
@@ -369,12 +369,10 @@ scenario_lock() {
 scenario_reload_tiled() {
     start_session
     three
-    set_config "import { MasterStackLayout, defineConfig } from \"gnoblin\";
+    set_config "import { MasterStackLayout, Workspace, gnoblin, startDecorations } from \"gnoblin\";
 
-export default defineConfig({
-    decorations: true,
-    workspaces: [{ id: \"dev\", layout: new MasterStackLayout({ ratio: 0.6, gap: 12 }) }],
-});"
+startDecorations();
+gnoblin.workspaces.add(new Workspace({ id: \"dev\", layout: new MasterStackLayout({ ratio: 0.6, gap: 12 }) }));"
     shoot reload-before
     ctl config reload
     sleep 2
@@ -405,19 +403,13 @@ scenario_transition_mid() {
 # second window overlaps the first, so the first's shadow falls on a colour and not on the black the stock shell leaves
 # behind the windows, and the corners of both show what is behind them.
 scenario_rounded() {
-    start_session "import { defaultConfig, defineConfig } from \"gnoblin\";
+    start_session "import { gnoblin } from \"gnoblin\";
+import { installDefaults } from \"gnoblin/starter\";
 
-export default defineConfig({
-    ...defaultConfig,
-    decorations: true,
-    compositor: { renderer: \"gles\" },
-    style: {
-        cornerRadius: 12,
-        borders: [{ width: 2, color: \"#7c3aed\", inset: true }],
-        shadows: [{ x: 0, y: 12, blur: 32, color: \"#000000cc\" }],
-    },
-});"
-    restart_session
+installDefaults(gnoblin);
+gnoblin.clients.style.cornerRadius = 12;
+gnoblin.clients.style.borders = [{ width: 2, color: \"#7c3aed\", inset: true }];
+gnoblin.clients.style.shadows = [{ x: 0, y: 12, blur: 32, color: \"#000000cc\" }];" gles
     plain_window org.example.status "gnoblinctl status" "#1e3a5f" "gnoblinctl status"
     wait_windows 1
     plain_window org.example.windows "gnoblinctl window list" "#5f1e3a" "gnoblinctl window list"

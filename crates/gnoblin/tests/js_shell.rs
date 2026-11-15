@@ -484,6 +484,28 @@ fn save(path: &Path, text: &str) {
     fs::rename(&staged, path).expect("the file replaced");
 }
 
+/// A listener that puts a window of each listed app at its place and size when the shell learns of it: how a script
+/// places an app's windows. `places` is `(app id, x, y, width, height)`. The text goes into an `init.ts` after its
+/// imports.
+fn placing_listener(places: &[(&str, i32, i32, i32, i32)]) -> String {
+    let table: Vec<String> = places
+        .iter()
+        .map(|(app, x, y, width, height)| format!("    \"{app}\": [{x}, {y}, {width}, {height}],"))
+        .collect();
+    format!(
+        "const places: Record<string, [number, number, number, number]> = {{\n{}\n}};\n\
+         gnoblin.clients.addListener({{\n\
+         \x20   onAdded(client: {{ appId: string; x: number; y: number; width: number; height: number }}): void {{\n\
+         \x20       const place = places[client.appId];\n\
+         \x20       if (place !== undefined) {{\n\
+         \x20           [client.x, client.y, client.width, client.height] = place;\n\
+         \x20       }}\n\
+         \x20   }},\n\
+         }});\n",
+        table.join("\n")
+    )
+}
+
 /// The `init.ts` of the tests: a typed listener over the places `slots.ts` holds.
 const PLACING_INIT: &str = r#"import { Layout, Workspace, gnoblin } from "gnoblin";
 import { places } from "./slots.ts";
@@ -856,19 +878,28 @@ fn bound_keys(view: &str) -> Vec<&str> {
         .collect()
 }
 
-const LAYERED_CONFIG: &str = r#"import { defineConfig, spawn } from "gnoblin";
+/// A user file that declares its own workspaces and one key, and nothing else: it has no stock key and no stock workspace.
+const REPLACING_CONFIG: &str = r#"import { GridLayout, MasterStackLayout, Workspace, gnoblin } from "gnoblin";
 
-export default defineConfig({
-    workspaces: [
-        { id: "a", layout: "master-stack" },
-        { id: "b", layout: "grid" },
-    ],
-    keys: { "super+Return": spawn("true"), XF86AudioMute: spawn("true") },
+gnoblin.workspaces.add(new Workspace({ id: "a", layout: new MasterStackLayout() }));
+gnoblin.workspaces.add(new Workspace({ id: "b", layout: new GridLayout() }));
+gnoblin.input.primary.bind("Super+Return", () => {
+    gnoblin.spawn(["true"]);
+});
+"#;
+
+/// A user file that keeps the stock default by calling it, then adds a key of its own.
+const KEEPING_CONFIG: &str = r#"import { gnoblin } from "gnoblin";
+import { installDefaults } from "gnoblin/starter";
+
+installDefaults(gnoblin);
+gnoblin.input.primary.bind("Super+Return", () => {
+    gnoblin.spawn(["true"]);
 });
 "#;
 
 #[test]
-fn a_shell_with_no_init_file_runs_the_stock_config_and_a_defined_config_layers_over_it() {
+fn a_shell_with_no_init_file_runs_the_stock_config_and_a_user_file_replaces_it_whole() {
     let session = Session::start();
     let mut mapper = Mapper::connect(&session.wayland());
     mapper.map_window("org.example.first", "First");
@@ -890,32 +921,38 @@ fn a_shell_with_no_init_file_runs_the_stock_config_and_a_defined_config_layers_o
     let stock = shell.generation();
     let window = ids(&scene(&ipc));
 
-    // A user `defineConfig` replaces the workspaces whole and merges the keys by trigger: its `Super+Return` is
-    // added, its `XF86AudioMute` replaces the stock one, and the other stock keys stay, `Super+1` included: it shows
-    // the workspace at position 1, so it still names something.
-    save(&config.path().join("init.ts"), LAYERED_CONFIG);
-    wait_for("the layered config runs", &session, &mut mapper, &shell, || {
+    // A user file replaces the default whole: nothing is merged under it, so it has its own two workspaces, its own
+    // key and not one of the stock keys.
+    save(&config.path().join("init.ts"), REPLACING_CONFIG);
+    wait_for("the replacing config runs", &session, &mut mapper, &shell, || {
         section(&shell.view(), "workspaces [") == "a:MasterStackLayout,b:GridLayout"
     });
     assert!(shell.generation() > stock, "the file is a reload");
     let view = shell.view();
-    let keys = bound_keys(&view);
-    assert!(keys.contains(&"super+Return"), "the user's key: {keys:?}");
     assert_eq!(
-        keys.iter().filter(|key| **key == "XF86AudioMute").count(),
-        1,
-        "{keys:?}"
-    );
-    assert!(
-        keys.contains(&"XF86AudioPlay"),
-        "a stock key the user left alone: {keys:?}"
-    );
-    assert!(
-        keys.contains(&"Super+1") && keys.contains(&"Swipe3"),
-        "the stock keys that show by position and the slide gesture stay: {keys:?}"
+        bound_keys(&view),
+        ["Super+Return"],
+        "only the user's key is bound: {view}"
     );
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
     assert_eq!(ids(&scene(&ipc)), window, "the window kept its id through the reload");
+
+    // The way to keep the stock default is to call it: its workspaces and keys are back, with the user's key beside them.
+    save(&config.path().join("init.ts"), KEEPING_CONFIG);
+    wait_for(
+        "the stock default is called again",
+        &session,
+        &mut mapper,
+        &shell,
+        || section(&shell.view(), "workspaces [") == STOCK_WORKSPACES,
+    );
+    let view = shell.view();
+    let keys = bound_keys(&view);
+    assert!(
+        keys.contains(&"Super+Return") && keys.contains(&"Super+1") && keys.contains(&"XF86AudioMute"),
+        "the user's key beside the stock ones: {keys:?}"
+    );
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 
     // And an imperative `init.ts` is still a reload that places the window.
     write_config(config.path(), r#"{ "org.example.first": [21, 22] }"#);
@@ -1075,9 +1112,9 @@ fn a_script_draws_a_box_and_a_titlebar_and_the_compositor_holds_what_it_painted(
     let config = tempfile::tempdir().expect("a config directory");
     fs::write(
         config.path().join("init.ts"),
-        r##"import { Box, defineConfig, gnoblin } from "gnoblin";
+        r##"import { Box, gnoblin, startDecorations } from "gnoblin";
 
-defineConfig({ decorations: true });
+startDecorations();
 
 // The compositor gives a window no size until the shell does, and a titlebar is as wide as its window.
 gnoblin.clients.addListener({
@@ -2339,33 +2376,32 @@ fn a_held_transition_is_scrubbed_through_the_compositors_tween_node_and_ends_on_
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 }
 
-/// A config directory whose `init.ts` declares one workspace that places nothing and one window rule: a window of
-/// `org.example.placed` goes to (321, 123) and is 222 by 111. No listener of the script touches a window.
-fn write_rules_config(dir: &Path) {
+/// A config directory whose `init.ts` declares one workspace that places nothing and one listener that places a window of
+/// `org.example.placed` at (321, 123) and makes it 222 by 111.
+fn write_placing_config(dir: &Path) {
+    let listener = placing_listener(&[("org.example.placed", 321, 123, 222, 111)]);
     fs::write(
         dir.join("init.ts"),
-        r#"import { Layout, defineConfig } from "gnoblin";
-
-defineConfig({
-    workspaces: [{ id: "desk", layout: new Layout() }],
-    rules: [
-        { appId: "org.example.placed", position: { x: 321, y: 123 }, size: { width: 222, height: 111 } },
-    ],
-});
-"#,
+        format!(
+            "import {{ Layout, Workspace, gnoblin }} from \"gnoblin\";\n\
+             \n\
+             gnoblin.workspaces.add(new Workspace({{ id: \"desk\", layout: new Layout() }}));\n\
+             \n\
+             {listener}"
+        ),
     )
     .expect("init.ts");
 }
 
 #[test]
-fn a_window_rule_places_a_newly_mapped_window_of_its_app_and_leaves_another_alone() {
+fn a_listener_places_a_newly_mapped_window_of_its_app_and_leaves_another_alone() {
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
-    write_rules_config(config.path());
+    write_placing_config(config.path());
     let shell = Shell::start(&session, config.path(), |_| {});
     let mut mapper = Mapper::connect(&session.wayland());
     let ipc = session.ipc();
-    // A window the shell found at boot is not the rules' to place, so the windows map once the config is running.
+    // A window the shell found at boot is not the listener's to place, so the windows map once the config is running.
     wait_for("the shell runs the config", &session, &mut mapper, &shell, || {
         shell.generation() > 0 && shell.view().contains(", 1 workspaces")
     });
@@ -2377,11 +2413,11 @@ fn a_window_rule_places_a_newly_mapped_window_of_its_app_and_leaves_another_alon
     });
     let untouched = rect_of(&ipc, other).expect("the other window is in the scene");
     mapper.map_window(placed, "Placed");
-    wait_for("the rule places its window", &session, &mut mapper, &shell, || {
+    wait_for("the listener places its window", &session, &mut mapper, &shell, || {
         rect_of(&ipc, placed) == Some((321.0, 123.0, 222.0, 111.0))
     });
     // The shell handled the other window before this one mapped and handles what the compositor tells it in order, so
-    // when this window is where its rule puts it, the rule has been run against both.
+    // when this window is where the listener puts it, the listener has been run against both.
     mapper.roundtrip();
     assert_eq!(
         rect_of(&ipc, other),
@@ -2392,34 +2428,34 @@ fn a_window_rule_places_a_newly_mapped_window_of_its_app_and_leaves_another_alon
     assert_ne!(
         (untouched.0, untouched.1),
         (321.0, 123.0),
-        "the other window did not happen to start at the rule's place"
+        "the other window did not happen to start at the listener's place"
     );
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
     shell.finish();
 }
 
-/// A config directory whose rules put `org.example.under` at (300, 200) and `org.example.over` at (400, 260), both
-/// 200 by 150 so they overlap, and whose listener moves a window one pixel to the right whenever a press lands on it.
+/// A config directory whose listener puts `org.example.under` at (300, 200) and `org.example.over` at (400, 260), both
+/// 200 by 150 so they overlap, and moves a window one pixel to the right whenever a press lands on it.
 fn write_click_config(dir: &Path) {
+    let listener = placing_listener(&[
+        ("org.example.under", 300, 200, 200, 150),
+        ("org.example.over", 400, 260, 200, 150),
+    ]);
     fs::write(
         dir.join("init.ts"),
-        r#"import { Layout, defineConfig, gnoblin } from "gnoblin";
-
-defineConfig({
-    workspaces: [{ id: "desk", layout: new Layout() }],
-    rules: [
-        { appId: "org.example.under", position: { x: 300, y: 200 }, size: { width: 200, height: 150 } },
-        { appId: "org.example.over", position: { x: 400, y: 260 }, size: { width: 200, height: 150 } },
-    ],
-});
-
-// The press is the proof of which window the compositor picked: a window that heard it moves one pixel.
-gnoblin.clients.addListener({
-    onPointerPress(client: { x: number }): void {
-        client.x = client.x + 1;
-    },
-});
-"#,
+        format!(
+            "import {{ Layout, Workspace, gnoblin }} from \"gnoblin\";\n\
+             \n\
+             gnoblin.workspaces.add(new Workspace({{ id: \"desk\", layout: new Layout() }}));\n\
+             \n\
+             {listener}\n\
+             // The press is the proof of which window the compositor picked: a window that heard it moves one pixel.\n\
+             gnoblin.clients.addListener({{\n\
+             \x20   onPointerPress(client: {{ x: number }}): void {{\n\
+             \x20       client.x = client.x + 1;\n\
+             \x20   }},\n\
+             }});\n"
+        ),
     )
     .expect("init.ts");
 }
@@ -2507,30 +2543,30 @@ fn a_click_focuses_and_raises_a_real_window_so_the_compositor_picks_it_over_the_
 
 // ---- a client's requests of its window: fullscreen, minimise, activate -------------------------------------------
 
-/// A config directory whose floating workspace places nothing itself; rules put `first` at (100, 100), `second` at
-/// (400, 300) and `third` at (250, 200), all 200 by 150, so `first` and `third` overlap. A press that lands on a window
-/// moves it one pixel to the right, which is how a test reads which window the compositor picked.
+/// A config directory whose floating workspace places nothing itself; a listener puts `first` at (100, 100), `second`
+/// at (400, 300) and `third` at (250, 200), all 200 by 150, so `first` and `third` overlap. A press that lands on a
+/// window moves it one pixel to the right, which is how a test reads which window the compositor picked. No titlebar is
+/// started.
 fn write_requests_config(dir: &Path) {
+    let listener = placing_listener(&[
+        ("org.example.first", 100, 100, 200, 150),
+        ("org.example.second", 400, 300, 200, 150),
+        ("org.example.third", 250, 200, 200, 150),
+    ]);
     fs::write(
         dir.join("init.ts"),
-        r#"import { Layout, defineConfig, gnoblin } from "gnoblin";
-
-defineConfig({
-    workspaces: [{ id: "desk", layout: new Layout() }],
-    decorations: false,
-    rules: [
-        { appId: "org.example.first", position: { x: 100, y: 100 }, size: { width: 200, height: 150 } },
-        { appId: "org.example.second", position: { x: 400, y: 300 }, size: { width: 200, height: 150 } },
-        { appId: "org.example.third", position: { x: 250, y: 200 }, size: { width: 200, height: 150 } },
-    ],
-});
-
-gnoblin.clients.addListener({
-    onPointerPress(client: { x: number }): void {
-        client.x = client.x + 1;
-    },
-});
-"#,
+        format!(
+            "import {{ Layout, Workspace, gnoblin }} from \"gnoblin\";\n\
+             \n\
+             gnoblin.workspaces.add(new Workspace({{ id: \"desk\", layout: new Layout() }}));\n\
+             \n\
+             {listener}\n\
+             gnoblin.clients.addListener({{\n\
+             \x20   onPointerPress(client: {{ x: number }}): void {{\n\
+             \x20       client.x = client.x + 1;\n\
+             \x20   }},\n\
+             }});\n"
+        ),
     )
     .expect("init.ts");
 }
@@ -2704,57 +2740,68 @@ fn document(ipc: &Path) -> Option<serde_json::Value> {
     Some(serde_json::from_slice(&bytes).expect("the document is JSON"))
 }
 
-fn radius(ipc: &Path) -> Option<i64> {
-    document(ipc)?.pointer("/dialogs/style/radius")?.as_i64()
+/// The `input.keyboard.delay` of the compositor's document: what `Keyboard.repeatDelay` wrote.
+fn repeat_delay(ipc: &Path) -> Option<i64> {
+    document(ipc)?.pointer("/input/keyboard/delay")?.as_i64()
+}
+
+/// An `init.ts` that runs `settings` once for each keyboard of the seat, with the keyboard as `device`.
+fn keyboard_init(settings: &str) -> String {
+    format!(
+        "import {{ Keyboard, gnoblin }} from \"gnoblin\";\n\
+         \n\
+         for (const device of gnoblin.input.devices) {{\n\
+         \x20   if (device instanceof Keyboard) {{\n\
+         \x20       {settings}\n\
+         \x20   }}\n\
+         }}\n"
+    )
 }
 
 #[test]
-fn defined_config_settings_reach_the_compositors_document_a_refused_value_is_reported_and_a_reload_takes_them_back() {
+fn device_settings_reach_the_compositors_document_a_refused_value_is_reported_and_a_reload_takes_them_back() {
     let session = Session::start();
+    support::plug_keyboard(&session.input, &session.ipc());
     let mut mapper = Mapper::connect(&session.wayland());
     let dir = tempfile::tempdir().expect("a config directory");
     let init = dir.path().join("init.ts");
-    let write = |settings: &str| {
-        save(
-            &init,
-            &format!("import {{ defineConfig }} from \"gnoblin\";\ndefineConfig({{ {settings} }});\n"),
-        );
-    };
-    write("dialogs: { style: { radius: 12, buttonLayout: 'stretch' } }");
+    let write = |settings: &str| save(&init, &keyboard_init(settings));
+    write("device.repeatRate = 40; device.repeatDelay = 250;");
     let shell = Shell::start(&session, dir.path(), |_| {});
 
-    wait_for("the document carries the radius", &session, &mut mapper, &shell, || {
-        radius(&session.ipc()) == Some(12)
+    wait_for("the document carries the delay", &session, &mut mapper, &shell, || {
+        repeat_delay(&session.ipc()) == Some(250)
     });
     assert_eq!(
-        document(&session.ipc()).and_then(|document| document.pointer("/dialogs/style/button-layout").cloned()),
-        Some(serde_json::json!("stretch")),
-        "a camelCase key is the document's kebab-case one"
+        document(&session.ipc()).and_then(|document| document.pointer("/input/keyboard/repeat-interval").cloned()),
+        Some(serde_json::json!(25)),
+        "a repeat rate is the document's interval in milliseconds"
     );
 
-    // The compositor's own validation refuses 5000, and the reload is reported with the key path.
+    // The setter refuses 20000 where it is written, so the file fails and the reload is reported with the property.
     wait_for("the first generation runs", &session, &mut mapper, &shell, || {
         shell.generation() > 0
     });
     let generation = shell.generation();
-    write("dialogs: { style: { radius: 5000 } }");
+    write("device.repeatDelay = 20000;");
     wait_for("the refusal is reported", &session, &mut mapper, &shell, || {
-        shell
-            .diagnostics()
-            .iter()
-            .any(|text| text.contains("dialogs.style.radius"))
+        shell.diagnostics().iter().any(|text| text.contains("repeatDelay"))
     });
-    assert_eq!(radius(&session.ipc()), Some(12), "the document in force is untouched");
+    assert_eq!(
+        repeat_delay(&session.ipc()),
+        Some(250),
+        "the document in force is untouched"
+    );
     assert_eq!(shell.generation(), generation, "the running generation stays");
 
-    // A reload that no longer sets the key puts it back to its default: it is gone from the document.
+    // A reload that no longer sets the setting puts it back to its default: it is gone from the document.
     write("");
     wait_for(
         "the setting is back at its default",
         &session,
         &mut mapper,
         &shell,
-        || document(&session.ipc()).is_some_and(|document| document.pointer("/dialogs").is_none()),
+        || document(&session.ipc()).is_some_and(|document| document.pointer("/input").is_none()),
     );
     wait_for(
         "the reload swapped the generation in",
@@ -2868,7 +2915,7 @@ fn refused_once_observing(session: &Session, mapper: &mut Mapper, shell: &Shell,
     });
 }
 
-const POLICY: &str = r#"import { DialogListener, defineConfig } from "gnoblin";
+const POLICY: &str = r#"import { DialogListener, gnoblin } from "gnoblin";
 
 class Policy extends DialogListener {
     onConsentRequest(request: { subject: string; appId: string; decline(reason?: string): void }): void {
@@ -2878,11 +2925,7 @@ class Policy extends DialogListener {
     }
 }
 
-defineConfig({
-    setup(gnoblin: { dialogs: { addListener(listener: DialogListener): void } }): void {
-        gnoblin.dialogs.addListener(new Policy());
-    },
-});
+gnoblin.dialogs.addListener(new Policy());
 "#;
 
 #[test]
@@ -2909,7 +2952,7 @@ fn a_dialog_listener_that_runs_out_its_budget_is_skipped_and_the_built_in_dialog
     let dir = tempfile::tempdir().expect("a config directory");
     fs::write(
         dir.path().join("init.ts"),
-        r#"import { DialogListener, defineConfig } from "gnoblin";
+        r#"import { DialogListener, gnoblin } from "gnoblin";
 
 class Policy extends DialogListener {
     onConsentRequest(request: { appId: string; decline(reason?: string): void }): void {
@@ -2920,11 +2963,7 @@ class Policy extends DialogListener {
     }
 }
 
-defineConfig({
-    setup(gnoblin: { dialogs: { addListener(listener: DialogListener): void } }): void {
-        gnoblin.dialogs.addListener(new Policy());
-    },
-});
+gnoblin.dialogs.addListener(new Policy());
 "#,
     )
     .expect("init.ts");
@@ -2997,12 +3036,22 @@ fn decorations_declared(ipc: &Path) -> bool {
     })
 }
 
+/// An `init.ts` that frames every window and answers the compositor's window menu, with the one floating workspace
+/// the shell gives a script that declares none.
+const UI_INIT: &str = r#"import { startDecorations, startWindowMenu } from "gnoblin";
+
+startDecorations();
+startWindowMenu();
+"#;
+
+/// An `init.ts` that starts none of the stock UI: nothing frames a window.
+const BARE_INIT: &str = r#"import { FloatingLayout, Workspace, gnoblin } from "gnoblin";
+
+gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new FloatingLayout() }));
+"#;
+
 fn write_ui_config(dir: &Path) {
-    fs::write(
-        dir.join("init.ts"),
-        "import { defineConfig } from \"gnoblin\";\ndefineConfig({ decorations: true });\n",
-    )
-    .expect("init.ts");
+    fs::write(dir.join("init.ts"), UI_INIT).expect("init.ts");
 }
 
 /// A mapped window with decorations on has its content below the bar and the bar above it, and does not overlap it. A right
@@ -3162,12 +3211,9 @@ fn a_window_that_draws_its_own_title_bar_gets_no_second_one_and_a_server_side_wi
         "no decoration object, nothing was said"
     );
 
-    // A reload with decorations off: the shell takes its declaration back and the asking window draws its own again.
+    // A reload that starts no decorations: the shell takes its declaration back and the asking window draws its own again.
     let generation = shell.generation();
-    save(
-        &init,
-        "import { defineConfig } from \"gnoblin\";\ndefineConfig({ decorations: false });\n",
-    );
+    save(&init, BARE_INIT);
     wait_for("the reload took the bar away", &session, &mut asks, &shell, || {
         shell.generation() > generation && bars_under(&ipc, "org.example.asks") == 0
     });
@@ -3180,12 +3226,9 @@ fn a_window_that_draws_its_own_title_bar_gets_no_second_one_and_a_server_side_wi
         "the window that asked for the shell's bar is told to draw its own: it is never left with none"
     );
 
-    // And a reload with them on: the compositor sends server-side again and the bar returns.
+    // And a reload that starts them: the compositor sends server-side again and the bar returns.
     let generation = shell.generation();
-    save(
-        &init,
-        "import { defineConfig } from \"gnoblin\";\ndefineConfig({ decorations: true });\n",
-    );
+    save(&init, UI_INIT);
     wait_for(
         "the decorations-on reload committed",
         &session,
@@ -3237,9 +3280,9 @@ fn a_window_mapped_before_the_shell_declared_decorations_ends_with_its_bar_on_sc
     // The compositor gives a window no size until the shell does, and a titlebar is as wide as its window.
     fs::write(
         config.path().join("init.ts"),
-        r#"import { defineConfig, gnoblin } from "gnoblin";
+        r#"import { gnoblin, startDecorations } from "gnoblin";
 
-defineConfig({ decorations: true });
+startDecorations();
 gnoblin.clients.addListener({
     onAdded(client: { width: number; height: number }): void {
         client.width = 300;
@@ -3279,9 +3322,10 @@ gnoblin.clients.addListener({
 fn write_alert_config(dir: &Path) {
     fs::write(
         dir.join("init.ts"),
-        r#"import { defineConfig, gnoblin, notRespondingAlerts } from "gnoblin";
+        r#"import { gnoblin, notRespondingAlerts, startDecorations, startNotRespondingAlert } from "gnoblin";
 
-defineConfig({ decorations: true });
+startDecorations();
+startNotRespondingAlert();
 
 (globalThis as { probe?: () => string }).probe = () =>
     gnoblin.clients
@@ -3721,72 +3765,6 @@ fn the_starter_is_the_stock_config_as_written_and_its_examples_work_switched_on(
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 }
 
-#[test]
-fn protocols_and_touchpad_gestures_reach_the_compositors_document_and_a_reload_takes_them_back() {
-    let session = Session::start();
-    let mut mapper = Mapper::connect(&session.wayland());
-    let dir = tempfile::tempdir().expect("a config directory");
-    let init = dir.path().join("init.ts");
-    let write = |settings: &str| {
-        save(
-            &init,
-            &format!("import {{ defineConfig }} from \"gnoblin\";\ndefineConfig({{ {settings} }});\n"),
-        );
-    };
-    let gesture = |fingers: u8| {
-        format!(
-            "touchpadGestures: [{{ name: 'launcher', gesture: 'pinch', fingers: {fingers}, direction: 'out', \
-             command: ['true'] }}]"
-        )
-    };
-    let held = |pointer: &str, ipc: &Path| document(ipc).and_then(|document| document.pointer(pointer).cloned());
-
-    // Added: a camelCase protocol is the document's kebab-case one, and the gesture list is one value.
-    write(&format!("protocols: {{ wlrScreencopy: false }}, {}", gesture(4)));
-    let shell = Shell::start(&session, dir.path(), |_| {});
-    // The generation the first config runs under, which `Shell::start` waited for the first frame of.
-    let first = shell.generation();
-    let ipc = session.ipc();
-    wait_for("the document carries both", &session, &mut mapper, &shell, || {
-        held("/protocols/wlr-screencopy", &ipc) == Some(serde_json::json!(false))
-            && held("/touchpad-gestures/0/fingers", &ipc) == Some(serde_json::json!(4))
-    });
-    assert_eq!(
-        held("/touchpad-gestures/0/name", &ipc),
-        Some(serde_json::json!("launcher"))
-    );
-
-    // Changed.
-    write(&format!("protocols: {{ wlrScreencopy: true }}, {}", gesture(3)));
-    wait_for("the document carries the change", &session, &mut mapper, &shell, || {
-        held("/protocols/wlr-screencopy", &ipc) == Some(serde_json::json!(true))
-            && held("/touchpad-gestures/0/fingers", &ipc) == Some(serde_json::json!(3))
-    });
-
-    // Refused: nine fingers is not a gesture. The reload names the key path and the document is untouched. The
-    // generation that took the change in is waited for: the document changes while the frame that swapped it in is
-    // still running, and the generation is what the shell publishes when that frame is over.
-    wait_for("the change was swapped in", &session, &mut mapper, &shell, || {
-        shell.generation() > first
-    });
-    let generation = shell.generation();
-    write(&gesture(9));
-    wait_for("the refusal is reported", &session, &mut mapper, &shell, || {
-        shell
-            .diagnostics()
-            .iter()
-            .any(|text| text.contains("touchpad-gestures") && text.contains("fingers"))
-    });
-    assert_eq!(held("/touchpad-gestures/0/fingers", &ipc), Some(serde_json::json!(3)));
-    assert_eq!(shell.generation(), generation, "the running generation stays");
-
-    // Removed: both are gone from the document, which is their default.
-    write("");
-    wait_for("both are back at their defaults", &session, &mut mapper, &shell, || {
-        held("/protocols", &ipc).is_none() && held("/touchpad-gestures", &ipc).is_none()
-    });
-}
-
 /// One effect as the style tests compare it: `(kind, offset_y, blur_radius, colour)`.
 type EffectRow = (String, f64, f64, String);
 
@@ -3821,16 +3799,14 @@ fn a_global_style_becomes_the_effect_list_and_opacity_of_a_mapped_windows_node_a
     let config = tempfile::tempdir().expect("a config directory");
     fs::write(
         config.path().join("init.ts"),
-        r##"import { Layout, defineConfig } from "gnoblin";
+        r##"import { Layout, Workspace, gnoblin } from "gnoblin";
 
-defineConfig({
-    workspaces: [{ id: "desk", layout: new Layout() }],
-    style: { opacity: 0.8, shadows: [{ x: 0, y: 8, blur: 24, color: "#00000066" }] },
-    rules: [{ appId: "org.example.dim", style: { opacity: 0.5 } }],
-    setup: (gnoblin) => {
-        gnoblin.clients.where({ appId: "org.example.glow" }).style.shadows = [{ blur: 30, color: "#38bdf855" }];
-    },
-});
+gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new Layout() }));
+
+gnoblin.clients.style.opacity = 0.8;
+gnoblin.clients.style.shadows = [{ x: 0, y: 8, blur: 24, color: "#00000066" }];
+gnoblin.clients.where({ appId: "org.example.dim" }).style.opacity = 0.5;
+gnoblin.clients.where({ appId: "org.example.glow" }).style.shadows = [{ blur: 30, color: "#38bdf855" }];
 "##,
     )
     .expect("init.ts");
@@ -3858,9 +3834,9 @@ defineConfig({
     let generation = shell.generation();
     save(
         &config.path().join("init.ts"),
-        r#"import { Layout, defineConfig } from "gnoblin";
+        r#"import { Layout, Workspace, gnoblin } from "gnoblin";
 
-defineConfig({ workspaces: [{ id: "desk", layout: new Layout() }] });
+gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new Layout() }));
 "#,
     );
     wait_for("the reload clears the style", &session, &mut mapper, &shell, || {
@@ -3908,14 +3884,17 @@ fn a_corner_radius_a_border_and_a_shadow_reach_a_mapped_and_a_decorated_windows_
     let session = Session::start();
     let mut mapper = Mapper::connect(&session.wayland()).requesting_server_side();
     let config = tempfile::tempdir().expect("a config directory");
-    let style = r##"style: {
-        cornerRadius: 12,
-        borders: [{ width: 2, color: "#7c3aed", inset: true }],
-        shadows: [{ y: 8, blur: 24, color: "#00000066" }],
-    },"##;
+    let style = r##"gnoblin.clients.style.cornerRadius = 12;
+gnoblin.clients.style.borders = [{ width: 2, color: "#7c3aed", inset: true }];
+gnoblin.clients.style.shadows = [{ y: 8, blur: 24, color: "#00000066" }];"##;
     let init = |decorations: bool, style: &str| {
+        let start = if decorations { "startDecorations();" } else { "" };
         format!(
-            "import {{ Layout, defineConfig }} from \"gnoblin\";\n\ndefineConfig({{\n    workspaces: [{{ id: \"desk\", layout: new Layout() }}],\n    decorations: {decorations},\n    {style}\n}});\n"
+            "import {{ Layout, Workspace, gnoblin, startDecorations }} from \"gnoblin\";\n\
+             \n\
+             gnoblin.workspaces.add(new Workspace({{ id: \"desk\", layout: new Layout() }}));\n\
+             {start}\n\
+             {style}\n"
         )
     };
     fs::write(config.path().join("init.ts"), init(false, style)).expect("init.ts");
@@ -4166,17 +4145,13 @@ fn room_of(ipc: &Path) -> Option<gnoblin_proto::tree::snapshot_node::Properties>
 fn the_xr_programs_seat_makes_the_stock_shell_build_a_room_with_a_view_per_window_and_its_going_takes_it_down() {
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
-    fs::write(
-        config.path().join("init.ts"),
-        "import { defineConfig } from \"gnoblin\";\ndefineConfig({});\n",
-    )
-    .expect("init.ts");
+    // No `init.ts`: the stock default is what runs.
     let shell = Shell::start(&session, config.path(), |_| {});
     let mut mapper = Mapper::connect(&session.wayland());
     let ipc = session.ipc();
-    // `defineConfig({})` declares no workspace, so the stock four are the ones the shell has.
+    // The stock default declares four workspaces, so those are the ones the shell has.
     wait_for("the shell runs the config", &session, &mut mapper, &shell, || {
-        shell.generation() > 0 && shell.view().contains(", 4 workspaces")
+        shell.view().contains(", 4 workspaces")
     });
     let (one, two) = ("org.example.one", "org.example.two");
     mapper.map_window(one, "One");
@@ -4282,16 +4257,12 @@ fn claims_of(ipc: &Path, controller: u64) -> Vec<String> {
 fn the_stock_grab_claims_the_grip_on_the_real_controller_and_the_claim_goes_with_the_drag_and_with_the_shell() {
     let session = Session::start();
     let config = tempfile::tempdir().expect("a config directory");
-    fs::write(
-        config.path().join("init.ts"),
-        "import { defineConfig } from \"gnoblin\";\ndefineConfig({});\n",
-    )
-    .expect("init.ts");
+    // No `init.ts`: the stock default is what runs.
     let shell = Shell::start(&session, config.path(), |_| {});
     let mut mapper = Mapper::connect(&session.wayland());
     let ipc = session.ipc();
     wait_for("the shell runs the config", &session, &mut mapper, &shell, || {
-        shell.generation() > 0 && shell.view().contains(", 4 workspaces")
+        shell.view().contains(", 4 workspaces")
     });
     let app = "org.example.one";
     mapper.map_window(app, "One");
@@ -4367,12 +4338,12 @@ fn the_stock_grab_claims_the_grip_on_the_real_controller_and_the_claim_goes_with
 
 // ---- outputs -----------------------------------------------------------------------------------------------------
 
-/// An `init.ts` whose two workspaces fill the output that shows them, and whose rule sends the windows of
+/// An `init.ts` whose two workspaces fill the output that shows them, and whose listener sends the windows of
 /// `org.example.second` to the second workspace.
 fn write_outputs_config(dir: &Path) {
     fs::write(
         dir.join("init.ts"),
-        r#"import { Layout, defineConfig } from "gnoblin";
+        r#"import { Layout, Workspace, gnoblin } from "gnoblin";
 
 class Fill extends Layout {
     compute(context: any) {
@@ -4380,10 +4351,17 @@ class Fill extends Layout {
     }
 }
 
-defineConfig({
-    workspaces: [{ id: "1", layout: new Fill() }, { id: "2", layout: new Fill() }],
-    decorations: false,
-    rules: [{ appId: "org.example.second", workspace: "2" }],
+const one = new Workspace({ id: "1", layout: new Fill() });
+const two = new Workspace({ id: "2", layout: new Fill() });
+gnoblin.workspaces.add(one);
+gnoblin.workspaces.add(two);
+
+gnoblin.clients.addListener({
+    onAdded(client: { appId: string }): void {
+        if (client.appId === "org.example.second") {
+            two.clients.add(client as never);
+        }
+    },
 });
 "#,
     )
@@ -4438,7 +4416,7 @@ fn hidden(ipc: &Path, app: &str) -> bool {
 fn a_window_on_a_second_virtual_output_follows_to_the_first_when_it_is_unplugged_and_parked_windows_return_with_the_next_output()
  {
     // The headless backend takes outputs at runtime through the session's `OutputTap`. Two workspaces fill the output
-    // that shows them; the rule sends `org.example.second`'s window to the second workspace, which the second output
+    // that shows them; the listener sends `org.example.second`'s window to the second workspace, which the second output
     // shows. Unplugging the second output moves that window to the workspace the first shows; unplugging the first too
     // parks both windows hidden, and they keep their nodes (the shell hides them, and remembers their workspaces); the
     // next output shows the workspace again and they fill it.
@@ -5245,23 +5223,22 @@ const MOVE_HINT: &str = "Move: arrow keys, Return to keep it, Escape to cancel";
 const RESIZE_HINT: &str = "Resize: arrow keys, Return to keep it, Escape to cancel";
 
 fn write_reposition_config(dir: &Path) {
+    let listener = placing_listener(&[("org.example.keys", 300, 200, 200, 150)]);
     fs::write(
         dir.join("init.ts"),
-        r#"import { Layout, defineConfig, gnoblin } from "gnoblin";
-
-defineConfig({
-    workspaces: [{ id: "desk", layout: new Layout() }],
-    rules: [{ appId: "org.example.keys", position: { x: 300, y: 200 }, size: { width: 200, height: 150 } }],
-    keys: {
-        F11: () => {
-            gnoblin.clients.at(0)?.moveWithKeys();
-        },
-        F12: () => {
-            gnoblin.clients.at(0)?.resizeWithKeys();
-        },
-    },
-});
-"#,
+        format!(
+            "import {{ Layout, Workspace, gnoblin }} from \"gnoblin\";\n\
+             \n\
+             gnoblin.workspaces.add(new Workspace({{ id: \"desk\", layout: new Layout() }}));\n\
+             \n\
+             {listener}\n\
+             gnoblin.input.primary.bind(\"F11\", () => {{\n\
+             \x20   gnoblin.clients.at(0)?.moveWithKeys();\n\
+             }});\n\
+             gnoblin.input.primary.bind(\"F12\", () => {{\n\
+             \x20   gnoblin.clients.at(0)?.resizeWithKeys();\n\
+             }});\n"
+        ),
     )
     .expect("init.ts");
 }
@@ -5496,12 +5473,13 @@ fn swipe(session: &Session, fingers: u8) {
     }
 }
 
-/// The `init.ts` of the claim test. An empty `defineConfig` is the stock config, and the user's keys go over it. The
-/// prelude replaces every binding's action with a count, by trigger, and `probe()` reports the counts of the running
+/// The `init.ts` of the claim test. It calls the stock default, as the starter does, and binds the user's keys after it.
+/// The prelude replaces every binding's action with a count, by trigger, and `probe()` reports the counts of the running
 /// generation. The actions themselves do not run: the media keys would start `wpctl` and `playerctl`, `Super+space` the
 /// launcher, and the workspace keys and the slide would move the window the test drags, so a binding that was reached is
 /// the proof, and what it would have done is the stock library's own tests'.
-const COUNTING_CONFIG: &str = r#"import { defineConfig, gnoblin } from "gnoblin";
+const COUNTING_CONFIG: &str = r#"import { gnoblin } from "gnoblin";
+import { installDefaults } from "gnoblin/starter";
 
 const fired: Record<string, number> = {};
 (globalThis as { probe?: () => string }).probe = () => JSON.stringify(fired);
@@ -5549,10 +5527,8 @@ gnoblin.clients.addListener({
     },
 });
 
-defineConfig({
-    keys: {
-KEYS    },
-});
+installDefaults(gnoblin);
+KEYS
 "#;
 
 /// The user's keys of round `round`: `Super+t` throughout, `Super+y` until the last round takes it away, and
@@ -5569,7 +5545,7 @@ fn round_chords(round: u32, last: u32) -> Vec<Chord> {
 fn counting_config(user: &[Chord]) -> String {
     let keys: String = user
         .iter()
-        .map(|chord| format!("        \"{}\": () => undefined,\n", chord.trigger))
+        .map(|chord| format!("gnoblin.input.primary.bind(\"{}\", () => undefined);\n", chord.trigger))
         .collect();
     COUNTING_CONFIG.replace("KEYS", &keys)
 }
@@ -5796,14 +5772,10 @@ fn view_modes(ipc: &Path) -> Vec<String> {
 /// A second View with no content, at (50, 500), is the test's last word. The script is sent what the compositor
 /// decides in the order the compositor decides it, so a script that has heard the pointer reach this View has heard
 /// every edge the click before it was going to cost it, and a test can say that the script heard no more.
-const CAPTURE_VIEW_INIT: &str = r#"import { Layout, View, defineConfig, gnoblin } from "gnoblin";
+const CAPTURE_VIEW_INIT: &str = r#"import { Layout, View, Workspace, gnoblin } from "gnoblin";
 import type { Client, NodePointerEvent } from "gnoblin";
 
-defineConfig({
-    workspaces: [{ id: "desk", layout: new Layout() }],
-    decorations: false,
-    rules: [{ appId: "org.example.shown", position: { x: 100, y: 100 }, size: { width: 200, height: 150 } }],
-});
+gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new Layout() }));
 
 const heard: string[] = [];
 let panel: View | null = null;
@@ -5820,6 +5792,10 @@ gnoblin.clients.addListener({
         if (client.appId !== "org.example.shown") {
             return;
         }
+        client.x = 100;
+        client.y = 100;
+        client.width = 200;
+        client.height = 150;
         const made = new View({ content: client, size: { width: 200, height: 150 }, input: "capture" });
         made.x = 600;
         made.y = 300;

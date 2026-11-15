@@ -375,15 +375,34 @@ fn wait_for_revision(session: &Session, revision: u64) -> serde_json::Value {
     committed(session).1
 }
 
-const CURSOR_32: &str =
-    "import { defineConfig } from \"gnoblin\";\nexport default defineConfig({ cursor: { size: 32 } });\n";
+/// An `init.ts` that runs `setting` against a keyboard, whose settings the document carries in its `input.keyboard`
+/// section. The session is headless and has no input device, so the script makes the keyboard it writes the setting
+/// through: a keyboard setting is the kind's and not the device's.
+fn init_with(setting: &str) -> String {
+    format!(
+        "import {{ Keyboard, gnoblin }} from \"gnoblin\";\n\
+         \n\
+         const keyboard = new (Keyboard as any)(gnoblin.input.primary, \"test\", \"Test keyboard\", [\"keyboard\"]);\n\
+         {setting}\n"
+    )
+}
+
+/// An `init.ts` whose document is `input.keyboard.delay = delay`.
+fn init_with_delay(delay: i64) -> String {
+    init_with(&format!("keyboard.repeatDelay = {delay};"))
+}
+
+/// The `input.keyboard.delay` of a committed document.
+fn delay_of(document: &serde_json::Value) -> &serde_json::Value {
+    &document["input"]["keyboard"]["delay"]
+}
 
 #[test]
 fn the_default_session_runs_the_javascript_role_and_commits_init_ts() {
     // The JavaScript role read `init.ts`, validated the document and committed it.
-    let session = Session::start_with(&[("init.ts", CURSOR_32)], &[("GNOBLIN_JS_WATCH", "0")]);
+    let session = Session::start_with(&[("init.ts", &init_with_delay(32))], &[("GNOBLIN_JS_WATCH", "0")]);
     let document = wait_for_revision(&session, 1);
-    assert_eq!(document["cursor"]["size"], serde_json::json!(32), "{document}");
+    assert_eq!(delay_of(&document), &serde_json::json!(32), "{document}");
     let log = session.log();
     assert!(log.contains("runtime role: JavaScript"), "{log}");
     assert!(!log.contains("gnoblinctl config migrate"), "{log}");
@@ -401,99 +420,59 @@ fn a_session_with_no_config_commits_the_stock_config_and_reports_ready() {
 
 #[test]
 fn config_reload_commits_the_new_document_and_a_refused_file_leaves_the_accepted_one() {
-    let session = Session::start(CURSOR_32);
+    let session = Session::start(&init_with_delay(32));
     let document = wait_for_revision(&session, 1);
-    assert_eq!(document["cursor"]["size"], serde_json::json!(32));
+    assert_eq!(delay_of(&document), &serde_json::json!(32));
 
-    write_init(
-        &session.config_dir(),
-        "import { defineConfig } from \"gnoblin\";\nexport default defineConfig({ cursor: { size: 48 } });\n",
-    );
+    write_init(&session.config_dir(), &init_with_delay(48));
     let (code, out, err) = session.ctl(&["config", "reload"]);
     assert_eq!((code, err.as_str()), (0, ""), "stdout: {out}");
     assert!(out.starts_with("reloaded: revision 2"), "{out}");
-    assert_eq!(committed(&session).1["cursor"]["size"], serde_json::json!(48));
+    assert_eq!(delay_of(&committed(&session).1), &serde_json::json!(48));
 
-    // A value the validator refuses fails the reload with the key path, and revision 2 stays in force.
-    write_init(
-        &session.config_dir(),
-        "import { defineConfig } from \"gnoblin\";\nexport default defineConfig({ cursor: { size: \"huge\" } });\n",
-    );
+    // A value the setter refuses fails the reload with the property named, and revision 2 stays in force.
+    write_init(&session.config_dir(), &init_with("keyboard.repeatDelay = \"huge\";"));
     let (code, _, err) = session.ctl(&["config", "reload"]);
     assert_eq!(code, 1, "{err}");
-    assert!(err.contains("cursor"), "the refusal names the key: {err}");
+    assert!(err.contains("repeatDelay"), "the refusal names the property: {err}");
     let (revision, document) = committed(&session);
     assert_eq!(revision, 2, "nothing new was committed");
-    assert_eq!(document["cursor"]["size"], serde_json::json!(48));
+    assert_eq!(delay_of(&document), &serde_json::json!(48));
 
     // The role kept serving: the fixed file commits as revision 3 from the same process.
-    write_init(&session.config_dir(), CURSOR_32);
+    write_init(&session.config_dir(), &init_with_delay(32));
     let (code, out, err) = session.ctl(&["config", "reload"]);
     assert_eq!((code, err.as_str()), (0, ""), "stdout: {out}");
     assert!(out.starts_with("reloaded: revision 3"), "{out}");
-    assert_eq!(committed(&session).1["cursor"]["size"], serde_json::json!(32));
+    assert_eq!(delay_of(&committed(&session).1), &serde_json::json!(32));
 }
 
 #[test]
 fn saving_init_ts_reloads_it_with_the_watcher_on_and_commits_a_new_revision() {
     // The watcher is on (the default): nothing asks for the reload, a save is the request.
-    let session = Session::start_with(&[("init.ts", CURSOR_32)], &[]);
+    let session = Session::start_with(&[("init.ts", &init_with_delay(32))], &[]);
     wait_for_revision(&session, 1);
-    write_init(
-        &session.config_dir(),
-        "import { defineConfig } from \"gnoblin\";\nexport default defineConfig({ cursor: { size: 40 } });\n",
-    );
+    write_init(&session.config_dir(), &init_with_delay(40));
     let document = wait_for_revision(&session, 2);
-    assert_eq!(document["cursor"]["size"], serde_json::json!(40), "{document}");
+    assert_eq!(delay_of(&document), &serde_json::json!(40), "{document}");
 }
 
 #[test]
 fn a_restarted_runtime_commits_what_the_file_says_and_not_what_its_predecessor_left() {
     // The compositor keeps the last accepted document across a runtime restart. A role that laid its settings over
     // it would carry a key the user has since deleted from `init.ts` into the new session.
-    let session = Session::start(CURSOR_32);
+    let session = Session::start(&init_with_delay(32));
     let document = wait_for_revision(&session, 1);
-    assert_eq!(document["cursor"]["size"], serde_json::json!(32));
-    write_init(
-        &session.config_dir(),
-        "import { defineConfig } from \"gnoblin\";\nexport default defineConfig({ keyring: { enabled: true } });\n",
-    );
+    assert_eq!(delay_of(&document), &serde_json::json!(32));
+    write_init(&session.config_dir(), &init_with("keyboard.repeatRate = 10;"));
     let pid = runtime_pid(&session.log());
     rustix::process::kill_process(Pid::from_raw(pid).expect("a pid"), Signal::KILL).expect("the runtime is killed");
     let document = wait_for_revision(&session, 2);
     assert!(
-        document.get("cursor").is_none(),
-        "the deleted key came back: {document}"
+        document["input"]["keyboard"].get("delay").is_none(),
+        "the deleted setting came back: {document}"
     );
-    assert_eq!(document["keyring"]["enabled"], serde_json::json!(true));
-}
-
-#[test]
-fn autostart_commands_are_handed_to_the_guardian_which_starts_them() {
-    let marker = tempfile::tempdir().expect("a marker directory");
-    let file = marker.path().join("started");
-    let init = format!(
-        "import {{ defineConfig }} from \"gnoblin\";\nexport default defineConfig({{ autostart: [[\"sh\", \"-c\", \"echo started > {}\"]] }});\n",
-        file.display()
-    );
-    let session = Session::start(&init);
-    let document = wait_for_revision(&session, 1);
-    assert_eq!(
-        document["autostart"]["sh"]["command"][0],
-        serde_json::json!("sh"),
-        "the commands are the document's autostart section: {document}"
-    );
-    let deadline = Instant::now() + PATIENCE;
-    while !file.exists() {
-        assert!(
-            Instant::now() < deadline,
-            "the guardian never started the command; it said:\n{}",
-            session.log()
-        );
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    let log = session.log();
-    assert!(log.contains("autostart sh"), "the guardian reports the entry:\n{log}");
+    assert_eq!(document["input"]["keyboard"]["repeat-interval"], serde_json::json!(100));
 }
 
 #[test]
@@ -525,17 +504,13 @@ fn an_init_lua_with_no_init_ts_runs_the_stock_config_and_says_once_how_to_migrat
 fn an_init_ts_beside_an_init_lua_wins_and_the_lua_file_is_named_as_ignored() {
     let session = Session::start_with(
         &[
-            ("init.ts", CURSOR_32),
+            ("init.ts", &init_with_delay(32)),
             ("init.lua", "gnoblin.configure({ cursor = { size = 36 } })\n"),
         ],
         &[("GNOBLIN_JS_WATCH", "0")],
     );
     let document = wait_for_revision(&session, 1);
-    assert_eq!(
-        document["cursor"]["size"],
-        serde_json::json!(32),
-        "init.ts won: {document}"
-    );
+    assert_eq!(delay_of(&document), &serde_json::json!(32), "init.ts won: {document}");
     let log = session.log();
     assert!(log.contains("runtime role: JavaScript"), "{log}");
     assert!(
@@ -549,11 +524,11 @@ fn an_init_ts_beside_an_init_lua_wins_and_the_lua_file_is_named_as_ignored() {
 fn gnoblin_shell_vm_selects_nothing_any_more() {
     // The variable that used to pick the Lua role is not read: a session that still sets it runs the JavaScript role.
     let session = Session::start_with(
-        &[("init.ts", CURSOR_32)],
+        &[("init.ts", &init_with_delay(32))],
         &[("GNOBLIN_SHELL_VM", "lua"), ("GNOBLIN_JS_WATCH", "0")],
     );
     let document = wait_for_revision(&session, 1);
-    assert_eq!(document["cursor"]["size"], serde_json::json!(32), "{document}");
+    assert_eq!(delay_of(&document), &serde_json::json!(32), "{document}");
     let log = session.log();
     assert!(log.contains("runtime role: JavaScript"), "{log}");
 }

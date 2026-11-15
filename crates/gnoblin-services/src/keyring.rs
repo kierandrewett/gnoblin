@@ -617,60 +617,33 @@ mod tests {
         (root, paths)
     }
 
-    const KEYRING_OFF: &str = r#"import { defineConfig } from "gnoblin";
-export default defineConfig({ keyring: { enabled: false } });"#;
-
-    /// The reported bug, now for `init.ts`: `keyring.enabled = false`, no accepted configuration and no last
-    /// accepted file. The config file decides, and it does not wait out the window to do it.
-    #[test]
-    fn first_boot_with_the_keyring_off_in_init_ts_decides_off_with_no_last_accepted_file() {
-        let (_root, paths) = config_with(&[("init.ts", KEYRING_OFF)]);
-        let polls = Cell::new(0);
-        let decision = decide(
-            || {
-                polls.set(polls.get() + 1);
-                Ok(None)
-            },
-            || config_document(&paths),
-            || Ok(None),
-            Duration::from_secs(30),
-            POLL,
-        );
-        assert!(!decision.enabled, "{}", decision.reason);
-        assert_eq!(decision.source, KeyringSource::ConfigFile);
-        assert_eq!(polls.get(), 1, "the decision did not wait for a commit");
-    }
-
-    #[test]
-    fn init_js_decides_too() {
-        let (_root, paths) = config_with(&[(
-            "init.js",
-            r#"import { defineConfig } from "gnoblin";
-defineConfig({ keyring: { enabled: false } });"#,
-        )]);
-        let decision = decide(|| Ok(None), || config_document(&paths), || Ok(None), WAIT, POLL);
-        assert!(!decision.enabled, "{}", decision.reason);
-        assert_eq!(decision.source, KeyringSource::ConfigFile);
-    }
+    /// A config in the owner's style that has nothing to say about the keyring: a workspace and no more. A keyring
+    /// setting has no object in the specification, so no `init.ts` can switch the keyring off.
+    const WORKSPACE_ONLY: &str = r#"import { FloatingLayout, Workspace, gnoblin } from "gnoblin";
+gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new FloatingLayout() }));"#;
 
     #[test]
     fn a_config_that_leaves_the_keyring_alone_decides_on() {
-        let (_root, paths) = config_with(&[(
-            "init.ts",
-            r#"import { defineConfig } from "gnoblin";
-defineConfig({ autostart: ["waybar"] });"#,
-        )]);
+        let (_root, paths) = config_with(&[("init.ts", WORKSPACE_ONLY)]);
         let decision = decide(|| Ok(None), || config_document(&paths), || Ok(Some(false)), WAIT, POLL);
         assert!(decision.enabled, "the config file beats the last accepted file");
         assert_eq!(decision.source, KeyringSource::ConfigFile);
     }
 
     #[test]
+    fn init_js_decides_too() {
+        let (_root, paths) = config_with(&[("init.js", WORKSPACE_ONLY)]);
+        let decision = decide(|| Ok(None), || config_document(&paths), || Ok(Some(false)), WAIT, POLL);
+        assert!(decision.enabled, "{}", decision.reason);
+        assert_eq!(decision.source, KeyringSource::ConfigFile);
+    }
+
+    #[test]
     fn an_accepted_configuration_beats_the_config_file() {
-        let (_root, paths) = config_with(&[("init.ts", KEYRING_OFF)]);
+        // The config file's document says off and the accepted one says on: the accepted one wins.
         let decision = decide(
             || Ok(Some((3, document(true)))),
-            || config_document(&paths),
+            || Ok(Some(document(false))),
             || Ok(None),
             WAIT,
             POLL,
