@@ -1,0 +1,48 @@
+wlcs v1.8.1: the xdg-decoration tests that set a mode expect a decoration configure without the client ever committing.
+
+set_mode_client_results_in_a_configure_event, set_mode_server_results_in_a_configure_event and
+unset_mode_results_in_a_configure_event create a toplevel and its decoration, request a mode and wait for
+zxdg_toplevel_decoration_v1.configure, but the surface is never committed. The decoration mode is part of the toplevel's
+configure sequence ("the configured state should not be applied immediately. Clients must send an ack_configure in
+response to this event"), and xdg-shell sends the first configure as the answer to the client's initial commit; Mir sends
+one at once, which the protocol does not require. Same kind of defect as 0003's wm_capabilities_are_sent: the tests now
+commit before they wait. Their expectation is unchanged: at least one decoration configure.
+
+Applied by scripts/wlcs.sh with `git apply`; drop it when wlcs fixes the tests upstream.
+
+diff --git a/tests/xdg_decoration_v1.cpp b/tests/xdg_decoration_v1.cpp
+index 7e37095..8b64d7d 100644
+--- a/tests/xdg_decoration_v1.cpp
++++ b/tests/xdg_decoration_v1.cpp
+@@ -78,6 +78,10 @@ TEST_F(XdgDecorationV1Test, set_mode_client_results_in_a_configure_event)
+ 
+     EXPECT_CALL(decoration, configure(_)).Times(AtLeast(1));
+ 
++    // The decoration mode travels with the toplevel's configure, and xdg-shell sends the first one as the answer to the
++    // client's initial commit. A client that never commits has asked for no configure (Mir sends one at once, which the
++    // protocol does not require).
++    wl_surface_commit(a_surface);
+     a_client.roundtrip();
+ }
+ 
+@@ -90,6 +94,10 @@ TEST_F(XdgDecorationV1Test, set_mode_server_results_in_a_configure_event)
+ 
+     EXPECT_CALL(decoration, configure(_)).Times(AtLeast(1));
+ 
++    // The decoration mode travels with the toplevel's configure, and xdg-shell sends the first one as the answer to the
++    // client's initial commit. A client that never commits has asked for no configure (Mir sends one at once, which the
++    // protocol does not require).
++    wl_surface_commit(a_surface);
+     a_client.roundtrip();
+ }
+ 
+@@ -102,5 +110,9 @@ TEST_F(XdgDecorationV1Test, unset_mode_results_in_a_configure_event)
+ 
+     EXPECT_CALL(decoration, configure(_)).Times(AtLeast(1));
+ 
++    // The decoration mode travels with the toplevel's configure, and xdg-shell sends the first one as the answer to the
++    // client's initial commit. A client that never commits has asked for no configure (Mir sends one at once, which the
++    // protocol does not require).
++    wl_surface_commit(a_surface);
+     a_client.roundtrip();
+ }

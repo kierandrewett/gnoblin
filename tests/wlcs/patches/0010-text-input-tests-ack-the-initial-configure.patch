@@ -1,0 +1,96 @@
+wlcs v1.8.1: the text-input tests that map a window attach its buffer before the compositor's initial configure is acknowledged.
+
+Same defect as 0001, 0002 and 0003, in tests/text_input_v3_with_input_method_v2.cpp: text_input_does_not_enter_non_grabbing_popup,
+text_input_enters_grabbing_popup and text_input_enters_parent_surface_after_child_destroyed create an xdg_surface and
+its role object and attach a buffer to it (the parent window, the popup or the child toplevel) without the initial
+commit and without acknowledging the configure that answers it. That is xdg_surface.unconfigured_buffer, so a
+compositor that enforces the rule (Smithay does) closed the connection before the test asked the text input anything.
+The tests now commit without a buffer and acknowledge the configure first, as the patches for the popup and toplevel
+fixtures do. Every expectation of the tests is unchanged.
+
+Applied by scripts/wlcs.sh with `git apply`; drop it when wlcs fixes the tests upstream.
+
+diff --git a/tests/text_input_v3_with_input_method_v2.cpp b/tests/text_input_v3_with_input_method_v2.cpp
+index 2142cea..5e6ae04 100644
+--- a/tests/text_input_v3_with_input_method_v2.cpp
++++ b/tests/text_input_v3_with_input_method_v2.cpp
+@@ -34,6 +34,31 @@
+ 
+ using namespace testing;
+ 
++namespace
++{
++// Commits the surface without a buffer and acknowledges the compositor's answer, the initial configure. Only then
++// may a buffer be attached (xdg_surface.unconfigured_buffer).
++void ack_initial_configure(wlcs::Client& client, wlcs::Surface& surface, wlcs::XdgSurfaceStable& xdg_shell_surface)
++{
++    bool configured = false;
++    ON_CALL(xdg_shell_surface, configure)
++        .WillByDefault(
++            [&configured, raw = static_cast<xdg_surface*>(xdg_shell_surface)](uint32_t serial)
++            {
++                xdg_surface_ack_configure(raw, serial);
++                configured = true;
++            });
++    wl_surface_commit(surface);
++    client.dispatch_until([&configured]() { return configured; });
++    ON_CALL(xdg_shell_surface, configure)
++        .WillByDefault(
++            [raw = static_cast<xdg_surface*>(xdg_shell_surface)](uint32_t serial)
++            {
++                xdg_surface_ack_configure(raw, serial);
++            });
++}
++}
++
+ struct TextInputV3WithInputMethodV2Test : wlcs::StartedInProcessServer
+ {
+     TextInputV3WithInputMethodV2Test()
+@@ -221,6 +246,7 @@ TEST_F(TextInputV3WithInputMethodV2Test, text_input_does_not_enter_non_grabbing_
+     EXPECT_CALL(text_input, enter(parent_surface->wl_surface()));
+     auto parent_xdg_surface = std::make_shared<wlcs::XdgSurfaceStable>(app_client, *parent_surface);
+     auto parent_xdg_toplevel = std::make_shared<wlcs::XdgToplevelStable>(*parent_xdg_surface);
++    ack_initial_configure(app_client, *parent_surface, *parent_xdg_surface);
+     parent_surface->attach_visible_buffer(20, 20);
+     app_client.roundtrip();
+     Mock::VerifyAndClearExpectations(&text_input);
+@@ -232,6 +258,7 @@ TEST_F(TextInputV3WithInputMethodV2Test, text_input_does_not_enter_non_grabbing_
+         *child_xdg_surface,
+         parent_xdg_surface.get(),
+         wlcs::XdgPositionerStable{app_client}.setup_default({20, 20}));
++    ack_initial_configure(app_client, *child_surface, *child_xdg_surface);
+     child_surface->attach_visible_buffer(20, 20);
+     app_client.roundtrip();
+ }
+@@ -243,6 +270,7 @@ TEST_F(TextInputV3WithInputMethodV2Test, text_input_enters_grabbing_popup)
+     EXPECT_CALL(text_input, enter(parent_surface->wl_surface()));
+     auto parent_xdg_surface = std::make_shared<wlcs::XdgSurfaceStable>(app_client, *parent_surface);
+     auto parent_xdg_toplevel = std::make_shared<wlcs::XdgToplevelStable>(*parent_xdg_surface);
++    ack_initial_configure(app_client, *parent_surface, *parent_xdg_surface);
+     parent_surface->attach_visible_buffer(20, 20);
+     the_server().move_surface_to(*parent_surface, 0, 0);
+     app_client.roundtrip();
+@@ -263,6 +291,7 @@ TEST_F(TextInputV3WithInputMethodV2Test, text_input_enters_grabbing_popup)
+         parent_xdg_surface.get(),
+         wlcs::XdgPositionerStable{app_client}.setup_default({20, 20}));
+     xdg_popup_grab(*child_xdg_popup, app_client.seat(), app_client.latest_serial().value());
++    ack_initial_configure(app_client, *child_surface, *child_xdg_surface);
+     child_surface->attach_visible_buffer(20, 20);
+     app_client.roundtrip();
+ }
+@@ -275,6 +304,7 @@ TEST_F(TextInputV3WithInputMethodV2Test, text_input_enters_parent_surface_after_
+     EXPECT_CALL(text_input, enter(parent_surface->wl_surface()));
+     auto parent_xdg_surface = std::make_shared<wlcs::XdgSurfaceStable>(app_client, *parent_surface);
+     auto parent_xdg_toplevel = std::make_shared<wlcs::XdgToplevelStable>(*parent_xdg_surface);
++    ack_initial_configure(app_client, *parent_surface, *parent_xdg_surface);
+     parent_surface->attach_visible_buffer(20, 20);
+     app_client.roundtrip();
+     Mock::VerifyAndClearExpectations(&text_input);
+@@ -286,6 +316,7 @@ TEST_F(TextInputV3WithInputMethodV2Test, text_input_enters_parent_surface_after_
+         auto child_xdg_surface = std::make_shared<wlcs::XdgSurfaceStable>(app_client, *child_surface);
+         auto child_xdg_toplevel = std::make_shared<wlcs::XdgToplevelStable>(*child_xdg_surface);
+         xdg_toplevel_set_parent(*child_xdg_toplevel, *parent_xdg_toplevel);
++        ack_initial_configure(app_client, *child_surface, *child_xdg_surface);
+         child_surface->attach_visible_buffer(20, 20);
+         app_client.roundtrip();
+         Mock::VerifyAndClearExpectations(&text_input);

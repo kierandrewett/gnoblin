@@ -1,9 +1,10 @@
 # What wlcs is expected to do against the Rust compositor (design/e2e-wlcs.md).
 #
-# `core` is the Phase 2 subset: the gtest-name globs scripts/wlcs.sh runs by default. `passing` is every test that
-# passes today and is generated (`scripts/wlcs.sh --update`): a test in it that stops passing is a regression, and
-# CI runs exactly this list. Everything else in the subset has to match a `known_failure` pattern, each with the
-# reason and the Beads issue that owns it; a known failure that starts passing must move to `passing`.
+# `core` is the subset scripts/wlcs.sh runs by default: the Phase 2 core and the later-phase protocol suites (pointer
+# constraints, relative pointer, text input, data device, primary selection, xdg-decoration, fractional scale). `passing`
+# is every test that passes today and is generated (`scripts/wlcs.sh --update`): a test in it that stops passing is a
+# regression, and CI runs exactly this list. Everything else in the subset has to match a `known_failure` pattern, each
+# with the reason and the Beads issue that owns it; a known failure that starts passing must move to `passing`.
 
 core = [
     "SelfTest.*",
@@ -24,6 +25,13 @@ core = [
     "AllSurfaceTypes/TouchTest.*",
     "*SurfacePointerMotionTest.*",
     "ClientSurfaceEventsTest.*",
+    "CopyCutPaste.*",
+    "FractionalScaleV1Test.*",
+    "PointerConstraints.*",
+    "PrimarySelection.*",
+    "RelativePointer.*",
+    "TextInputV3WithInputMethodV2Test.*",
+    "XdgDecorationV1Test.*",
 ]
 
 passing = [
@@ -102,6 +110,7 @@ passing = [
     "ConstraintAdjustmentSlide/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/2",
     "ConstraintAdjustmentSlide/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/3",
     "ConstraintAdjustmentSlide/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/4",
+    "CopyCutPaste.given_source_has_offered_when_sink_gets_focus_it_sees_offer",
     "Default/XdgPopupPositionerTest.xdg_shell_stable_popup_placed_correctly/0",
     "DefaultEdges/RegionSurfaceInputCombinations.input_inside_region_seen/10",
     "DefaultEdges/RegionSurfaceInputCombinations.input_inside_region_seen/11",
@@ -167,6 +176,8 @@ passing = [
     "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/7",
     "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/8",
     "DefaultEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/9",
+    "FractionalScaleV1Test.duplicate_fractional_scales_throw_fractional_scale_exists",
+    "FractionalScaleV1Test.fractional_scale_creation_does_not_throw",
     "FrameSubmission.frame_requests_without_buffer_are_called_back_eventually",
     "FrameSubmission.post_one_frame_at_a_time",
     "FrameSubmission.test_buffer_can_be_deleted_after_attached",
@@ -300,6 +311,21 @@ passing = [
     "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/7",
     "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/8",
     "MultiRectEdges/RegionSurfaceInputCombinations.input_not_seen_after_leaving_region/9",
+    "PointerConstraints.can_get_confined_pointer",
+    "PointerConstraints.can_get_locked_pointer",
+    "PointerConstraints.confined_pointer_does_move",
+    "PointerConstraints.confined_pointer_movement_is_constrained",
+    "PointerConstraints.confined_pointer_on_initially_focussed_surface_gets_confined_notification",
+    "PointerConstraints.confined_pointer_on_initially_unfocussed_surface_gets_no_confined_notification",
+    "PointerConstraints.locked_pointer_does_not_move",
+    "PointerConstraints.locked_pointer_on_initially_focussed_surface_gets_locked_notification",
+    "PointerConstraints.locked_pointer_on_initially_unfocussed_surface_gets_no_locked_notification",
+    "PointerConstraints.when_surface_is_reselected_persistent_confined_pointer_gets_notifications",
+    "PointerConstraints.when_surface_is_reselected_persistent_locked_pointer_gets_notifications",
+    "PointerConstraints.when_surface_is_selected_confined_pointer_gets_confined_notification",
+    "PointerConstraints.when_surface_is_selected_locked_pointer_gets_locked_notification",
+    "PointerConstraints.when_surface_is_unselected_confined_pointer_gets_unconfined_notification",
+    "PointerConstraints.when_surface_is_unselected_locked_pointer_gets_unlocked_notification",
     "PointerCrossingSurfaceCorner/SurfacePointerMotionTest.pointer_movement/0",
     "PointerCrossingSurfaceCorner/SurfacePointerMotionTest.pointer_movement/1",
     "PointerCrossingSurfaceCorner/SurfacePointerMotionTest.pointer_movement/2",
@@ -308,6 +334,10 @@ passing = [
     "PointerCrossingSurfaceEdge/SurfacePointerMotionTest.pointer_movement/1",
     "PointerCrossingSurfaceEdge/SurfacePointerMotionTest.pointer_movement/2",
     "PointerCrossingSurfaceEdge/SurfacePointerMotionTest.pointer_movement/3",
+    "PrimarySelection.source_can_offer",
+    "RelativePointer.can_get_relative_pointer",
+    "RelativePointer.default_pointer_still_gets_movement",
+    "RelativePointer.relative_pointer_gets_movement",
     "SelfTest.dispatch_until_times_out_at_the_right_time",
     "SelfTest.dispatch_until_times_out_on_failure",
     "SelfTest.does_not_acquire_version_newer_than_wlcs_supports",
@@ -421,6 +451,15 @@ passing = [
     "SurfaceInputRegions/SurfaceInputCombinations.unmapping_parent_stops_subsurface_getting_input/7",
     "SurfaceInputRegions/SurfaceInputCombinations.unmapping_parent_stops_subsurface_getting_input/8",
     "SurfaceInputRegions/SurfaceInputCombinations.unmapping_parent_stops_subsurface_getting_input/9",
+    "TextInputV3WithInputMethodV2Test.input_method_can_be_disabled",
+    "TextInputV3WithInputMethodV2Test.input_method_can_be_enabled",
+    "TextInputV3WithInputMethodV2Test.input_method_can_send_preedit",
+    "TextInputV3WithInputMethodV2Test.input_method_can_send_text",
+    "TextInputV3WithInputMethodV2Test.input_method_disabled_when_text_input_destroyed",
+    "TextInputV3WithInputMethodV2Test.text_field_state_can_be_set",
+    "TextInputV3WithInputMethodV2Test.text_input_does_not_enter_non_grabbing_popup",
+    "TextInputV3WithInputMethodV2Test.text_input_enters_surface_on_focus",
+    "TextInputV3WithInputMethodV2Test.text_input_leaves_surface_on_unfocus",
     "ToplevelInputRegions/ToplevelInputCombinations.input_falls_through_surface_without_region_after_null_buffer_committed/4",
     "ToplevelInputRegions/ToplevelInputCombinations.input_falls_through_surface_without_region_after_null_buffer_committed/5",
     "WlOutputTest.wl_output_properties_set",
@@ -448,6 +487,12 @@ passing = [
     "WpViewporterTest.when_buffer_is_scaled_source_is_in_scaled_coordinates",
     "WpViewporterTest.when_destination_is_not_set_source_must_have_integer_size",
     "WpViewporterTest.when_source_but_no_destination_set_window_has_src_size",
+    "XdgDecorationV1Test.destroying_toplevel_before_decoration_throws_orphaned",
+    "XdgDecorationV1Test.duplicate_decorations_throw_already_constructed",
+    "XdgDecorationV1Test.happy_path",
+    "XdgDecorationV1Test.set_mode_client_results_in_a_configure_event",
+    "XdgDecorationV1Test.set_mode_server_results_in_a_configure_event",
+    "XdgDecorationV1Test.unset_mode_results_in_a_configure_event",
     "XdgOutputV1Test.xdg_output_properties_set",
     "XdgPopupStable/XdgPopupTest.does_not_get_popup_done_event_before_button_press/0",
     "XdgPopupStable/XdgPopupTest.grabbed_popup_gets_done_event_when_new_toplevel_created/0",
@@ -516,36 +561,26 @@ reason = "the pinned Smithay raises invalid_input for a zero-size xdg_positioner
 issue = "gnoblin-wrns"
 
 [[known_failure]]
-pattern = "PointerConstraints.*"
-reason = "phase 3 protocol"
+pattern = "CopyCutPaste.given_sink_has_focus_when_source_makes_offer_sink_sees_offer"
+reason = "ledger decision, Mutter parity: the suite sets the selection from a client that never has the keyboard (the sink's window took it) with serial 0, and the compositor ignores a selection set by a client without the keyboard, as Mutter has since 3.34, so a background program cannot swap what the user is about to paste; a clipboard manager uses data-control. Pinned by `a_selection_from_a_client_without_the_keyboard_is_ignored` in tests/selection.rs"
 issue = "gnoblin-of0d"
 
 [[known_failure]]
-pattern = "RelativePointer.*"
-reason = "phase 3 protocol"
+pattern = "PrimarySelection.sink_can_*"
+reason = "ledger decision, Mutter parity: the same rule as the clipboard (CopyCutPaste above): the suite sets the primary selection from a client that does not have the keyboard, and Smithay ignores it"
 issue = "gnoblin-of0d"
 
 [[known_failure]]
-pattern = "TextInputV3*"
-reason = "phase 3 protocol"
+pattern = "PrimarySelection.source_*_request"
+reason = "ledger decision, Mutter parity: the same rule as the clipboard (CopyCutPaste above); source_can_offer, which sets nothing from a client without the keyboard, passes"
 issue = "gnoblin-of0d"
 
 [[known_failure]]
-pattern = "CopyCutPaste.*"
-reason = "phase 3 protocol"
+pattern = "TextInputV3WithInputMethodV2Test.text_input_enters_grabbing_popup"
+reason = "the suite creates the xdg_surface configure expectation inside the test's InSequence after text_input.enter(parent), so the configure that answers the initial commit (which wlcs patch 0010 now acknowledges) is an ordering violation; the compositor sends enter when the window is mapped, after that configure"
 issue = "gnoblin-of0d"
 
 [[known_failure]]
-pattern = "PrimarySelection.*"
-reason = "phase 3 protocol"
-issue = "gnoblin-of0d"
-
-[[known_failure]]
-pattern = "XdgDecorationV1Test.*"
-reason = "phase 3 protocol"
-issue = "gnoblin-of0d"
-
-[[known_failure]]
-pattern = "FractionalScaleV1Test.*"
-reason = "phase 3 protocol"
+pattern = "TextInputV3WithInputMethodV2Test.text_input_enters_parent_surface_after_child_destroyed"
+reason = "the same InSequence ordering as text_input_enters_grabbing_popup: the xdg_surface configure expectation is chained after text_input.enter(parent) and the configure comes first"
 issue = "gnoblin-of0d"
