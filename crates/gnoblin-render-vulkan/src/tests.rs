@@ -841,17 +841,79 @@ fn the_readback_buffer_follows_the_target_back_down() {
 }
 
 /// The resident set of this process, in bytes.
-fn resident() -> u64 {
+pub(super) fn resident() -> u64 {
     std::fs::read_to_string("/proc/self/statm")
         .ok()
         .and_then(|statm| statm.split_whitespace().nth(1)?.parse::<u64>().ok())
         .map_or(0, |pages| pages * 4096)
 }
 
+/// What one process measured of its own growth: kilobytes, or why it measured nothing.
+enum Measured {
+    Grew(u64),
+    Skipped(String),
+}
+
+/// Runs [`probe_child`] in a process of its own and reads what it measured.
+///
+/// The resident set belongs to the process, and the other tests of this binary run beside this one and allocate (a
+/// parallel test grew it by 28 MiB while a loop that draws nothing ran), so a measurement of the process's growth is
+/// only meaningful in a process that has nothing else to do.
+fn measured_in_a_child(mode: &str) -> Measured {
+    let output = std::process::Command::new(std::env::current_exe().expect("the test binary"))
+        .args([
+            "--exact",
+            "tests::probe_child",
+            "--ignored",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env("GNOBLIN_PROBE_MODE", mode)
+        .output()
+        .expect("the test binary runs");
+    let text = String::from_utf8_lossy(&output.stdout).into_owned();
+    // The harness prints the test's name on the line the test's own output continues.
+    let line = text
+        .lines()
+        .find_map(|line| line.split_once("PROBE ").map(|(_, rest)| rest))
+        .unwrap_or_else(|| {
+            panic!(
+                "the child printed no measurement: {text}\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            )
+        });
+    line.parse()
+        .map_or_else(|_| Measured::Skipped(line.to_owned()), Measured::Grew)
+}
+
+/// The measuring half of [`measured_in_a_child`]: not a test of its own, it only runs when a test starts it.
 #[test]
-#[ignore = "open (gnoblin-4z5): 200 frames grow the process by about 160 MiB on lavapipe, whatever the frame holds; not yet attributed to the renderer or to lavapipe"]
-fn frames_with_no_upload_do_not_grow_the_process() {
-    let Some(mut vulkan) = renderer(SIZE) else { return };
+#[ignore = "started by the tests that measure the process's growth, in a process of its own"]
+fn probe_child() {
+    use super::driver_probe::{Draw, growth_kib};
+    let mode = std::env::var("GNOBLIN_PROBE_MODE").unwrap_or_default();
+    let draw = match mode.as_str() {
+        "nothing" => Some(Draw::Nothing),
+        "solid" => Some(Draw::Solid),
+        "flat" => Some(Draw::SolidWithoutCorner),
+        _ => None,
+    };
+    if let Some(draw) = draw {
+        match growth_kib(400, draw) {
+            Some(kib) => println!("PROBE {kib}"),
+            None => println!("PROBE there is no Vulkan device on this machine"),
+        }
+        return;
+    }
+    assert_eq!(mode, "renderer", "an unknown probe mode");
+    let Some(mut vulkan) = renderer(SIZE) else {
+        println!("PROBE there is no Vulkan device on this machine");
+        return;
+    };
+    if vulkan.device().kind == GpuKind::Cpu {
+        println!("PROBE {} is a CPU driver", vulkan.device().name);
+        return;
+    }
     let mut plain = frame(Color::BLACK, SIZE);
     solid(&mut plain, Rect::new(0, 0, 16, 16), colour(255, 0, 0, 255));
     for _ in 0..30 {
@@ -861,7 +923,49 @@ fn frames_with_no_upload_do_not_grow_the_process() {
     for _ in 0..200 {
         vulkan.draw(&plain, Scale::IDENTITY).expect("a frame");
     }
-    let grown = resident().saturating_sub(settled);
-    println!("solid only: 200 frames grew the process by {} MiB", grown >> 20);
-    assert!(grown < 64 << 20, "grew by {} MiB", grown >> 20);
+    println!("PROBE {}", resident().saturating_sub(settled) >> 10);
+}
+
+#[test]
+fn frames_with_no_upload_do_not_grow_the_process() {
+    match measured_in_a_child("renderer") {
+        // Mesa's lavapipe leaks about 0.8 MiB for every frame that draws the shared solid pass, and the loop of
+        // `driver_probe.rs`, which has no renderer in it, leaks the same (design/gpu-memory.md, "Vulkan on lavapipe").
+        // A machine with a GPU runs this test; a CPU driver cannot pass it whatever the renderer does.
+        Measured::Skipped(why) => println!("skipping: {why}"),
+        Measured::Grew(kib) => {
+            println!("solid only: 200 frames grew the process by {} MiB", kib >> 10);
+            assert!(kib < 64 << 10, "grew by {} MiB", kib >> 10);
+        }
+    }
+}
+
+#[test]
+fn a_vulkan_loop_without_the_renderer_grows_only_where_the_solid_pass_draws() {
+    let Measured::Grew(nothing) = measured_in_a_child("nothing") else {
+        println!("skipping: there is no Vulkan device on this machine");
+        return;
+    };
+    let solid = measured_in_a_child("solid");
+    let flat = measured_in_a_child("flat");
+    let kib = |measured: &Measured| match measured {
+        Measured::Grew(kib) => *kib,
+        Measured::Skipped(why) => panic!("the same device was not found again: {why}"),
+    };
+    println!(
+        "400 frames outside the renderer: {nothing} KiB with no draw, {} KiB with the solid pass, {} KiB with the solid pass without its corner coverage",
+        kib(&solid),
+        kib(&flat)
+    );
+    // What the loop proves is the two that do not grow; the third is what a driver does, printed and not asserted,
+    // because a fixed driver makes it small and that is not a failure here.
+    assert!(
+        nothing < 4096,
+        "a pass that draws nothing grew the process by {nothing} KiB"
+    );
+    assert!(
+        kib(&flat) < 4096,
+        "the solid pass without its corner coverage grew the process by {} KiB",
+        kib(&flat)
+    );
 }

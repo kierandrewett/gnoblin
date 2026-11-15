@@ -21,6 +21,8 @@
 //! the whole run and is fed a frame whenever the last one ended. The session lock is taken and released every
 //! `GNOBLIN_SOAK_LOCK_EVERY` cycles (25 by default; 0 for never) through the same tree call and the same keystrokes
 //! as `js_lock.rs`, so the cover the lock draws and the lock screen the stock shell paints come and go too.
+//! `GNOBLIN_SOAK_RSS_LIMIT_MIB` (0 by default: none) ends the run, and fails it, when the process grows past it, so
+//! a run that cannot stay bounded leaves its series instead of an OOM kill.
 
 use std::fs;
 use std::io::Write as _;
@@ -365,6 +367,12 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
     let out_path = setting("GNOBLIN_SOAK_OUT", "gpu-memory-soak.jsonl");
     let mut out = fs::File::create(&out_path).expect("the series file");
     let renderer_name = setting("GNOBLIN_SOAK_RENDERER", "software");
+    // A run that grows without bound would end in the kernel's OOM killer, which leaves no series. Past this many
+    // MiB resident (0: no limit) the churn stops, the last sample is written and the test fails, naming the time.
+    let rss_limit_mib: u64 = setting("GNOBLIN_SOAK_RSS_LIMIT_MIB", "0")
+        .parse()
+        .expect("GNOBLIN_SOAK_RSS_LIMIT_MIB is a number");
+    let mut over_limit_at: Option<f64> = None;
     let lock_every: u64 = setting("GNOBLIN_SOAK_LOCK_EVERY", "25")
         .parse()
         .expect("GNOBLIN_SOAK_LOCK_EVERY is a number");
@@ -442,6 +450,10 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
     );
 
     while started.elapsed() < Duration::from_secs(seconds) {
+        if rss_limit_mib > 0 && status_field("VmRSS") / 1024 > rss_limit_mib {
+            over_limit_at = Some(started.elapsed().as_secs_f64());
+            break;
+        }
         cycle += 1;
         let (width, height) = SIZES[(cycle as usize) % SIZES.len()];
         // Windows come and go: the long-lived client opens one per cycle, resizes an older one, and disconnects whole
@@ -520,6 +532,11 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
     let _ = supersample(&ipc, output, "1");
     std::thread::sleep(Duration::from_secs(3));
     sample(cycle, 0, "1", screenshots, refused_screenshots, locks, &capture);
+    assert!(
+        over_limit_at.is_none(),
+        "the process passed {rss_limit_mib} MiB resident after {:.0} s: the series in {out_path} shows what grew",
+        over_limit_at.unwrap_or_default()
+    );
 }
 
 /// The backend id of the output on `connector`: the screen node is named `output-N` after it.

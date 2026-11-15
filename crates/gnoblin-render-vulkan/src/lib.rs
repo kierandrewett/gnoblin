@@ -64,6 +64,8 @@
 //! `argb8888` word are blue, green, red, alpha, which is what `B8G8R8A8_UNORM` reads.
 
 mod context;
+#[cfg(test)]
+mod driver_probe;
 mod error;
 mod frame;
 #[cfg(test)]
