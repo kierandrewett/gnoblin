@@ -4,28 +4,23 @@ This setup makes a held key repeat faster and turns on tap to click and natural 
 is an object in `gnoblin.input.devices`, and a setting is a property you write on it.
 
 ```ts
-import { CollectionListener, Keyboard, Touchpad } from "gnoblin";
-import type { InputDevice } from "gnoblin";
+import { Keyboard, Touchpad } from "gnoblin";
 
-gnoblin.input.devices.addListener(
-    new (class extends CollectionListener<InputDevice> {
-        onAdded(device: InputDevice) {
-            if (device instanceof Keyboard) {
-                device.repeatRate = 40;
-                device.repeatDelay = 250;
-            }
-            if (device instanceof Touchpad) {
-                device.tapToClick = true;
-                device.naturalScroll = true;
-                device.sensitivity = -0.25;
-            }
-        }
-    })(),
-);
+for (const device of gnoblin.input.devices) {
+    if (device instanceof Keyboard) {
+        device.repeatRate = 40;
+        device.repeatDelay = 250;
+    }
+    if (device instanceof Touchpad) {
+        device.tapToClick = true;
+        device.naturalScroll = true;
+        device.sensitivity = -0.25;
+    }
+}
 ```
 
-`onAdded` runs for each device that is present when the file loads and for each one plugged in later, so an external
-keyboard gets the same settings.
+The loop runs over the devices that are present when the file loads. A device plugged in later is not covered until the
+file reloads: save it again after plugging one in.
 
 | Property                 | Type and accepted values               | Effect                                       |
 | ------------------------ | -------------------------------------- | -------------------------------------------- |
