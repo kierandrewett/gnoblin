@@ -972,6 +972,9 @@ pub enum BackendError {
     /// The kernel refused to drive the output at the mode it was asked for, in its test or in the commit. The output
     /// keeps the mode, scale and buffers it had.
     ModesetRefused(OutputId),
+    /// The backend can change the mode of a live output but has that turned off, because a mode change blanks a real
+    /// display and has not been proven on one. The output keeps its mode. The text says how to turn it on.
+    ModesetDisabled(OutputId, &'static str),
 }
 
 impl fmt::Display for BackendError {
@@ -998,6 +1001,12 @@ impl fmt::Display for BackendError {
                 write!(
                     formatter,
                     "the kernel refused to drive output {output} at that mode; it keeps its previous mode"
+                )
+            }
+            Self::ModesetDisabled(output, how_to_enable) => {
+                write!(
+                    formatter,
+                    "changing the mode of output {output} is turned off on this backend ({how_to_enable}); it keeps its mode"
                 )
             }
             Self::InvalidGamma(output) => {

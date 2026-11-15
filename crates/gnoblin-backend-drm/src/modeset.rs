@@ -19,8 +19,18 @@
 //!    scanning them), its swapchain is reset onto the committed slot, and the gamma table the output had is
 //!    written again.
 //!
+//! # Off until asked for
+//!
+//! A mode change blanks a real display, and it has only ever run against a fake kernel. It therefore does nothing
+//! to a real one unless the process opted in with [`MODESET_ENV`] ([`RealModeset`]): [`configure`] and [`check`]
+//! refuse a mode change with [`ModesetError::Disabled`] before anything is allocated, and the output keeps what it
+//! had. A scale-only change commits nothing, so it needs no opt-in. The fake kernels of the tests say they have it,
+//! because what they check is the order and the rollback of a change that is allowed.
+//!
 //! # Failure modes first
 //!
+//! 0. **Real modesetting is off.** The change is refused before the kernel is touched:
+//!    `a_mode_change_is_refused_before_anything_is_allocated_while_real_modesetting_is_off`.
 //! 1. **The kernel refuses the test.** Nothing was committed and nothing was replaced: the new buffers are
 //!    dropped, the old ones, the swapchain and any flip in flight are untouched:
 //!    `a_kernel_refusal_in_the_test_leaves_the_output_exactly_as_it_was`.
@@ -47,10 +57,59 @@ use crate::present::Presenter;
 /// It is the first, because the swapchain's next frame is drawn into the other slot, which is never the one on screen.
 pub(crate) const COMMITTED_SLOT: usize = 0;
 
+/// The environment variable that turns real mode changes on. See [`RealModeset`].
+pub const MODESET_ENV: &str = "GNOBLIN_DRM_MODESET";
+
+/// Whether this process may change the mode of a real display.
+///
+/// Off unless the process says otherwise, so a session that has not been told cannot blank a display on a code
+/// path that has never run against a real kernel. The one place that says so is [`MODESET_ENV`], read by
+/// [`RealModeset::from_process_env`]; nothing in a configuration file or a script can switch it on.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RealModeset {
+    on: bool,
+}
+
+impl RealModeset {
+    /// Real mode changes are refused.
+    pub const OFF: Self = Self { on: false };
+    /// Real mode changes are allowed.
+    pub const ON: Self = Self { on: true };
+
+    /// [`RealModeset::ON`] when `lookup` finds [`MODESET_ENV`] set to `1`, `true`, `yes` or `on` (in any case), and
+    /// [`RealModeset::OFF`] for everything else, an unset variable and a value this does not know included: a typo
+    /// must not turn a display-blanking change on.
+    ///
+    /// The lookup is passed in so a test needs no `set_var`, which is unsafe under this workspace's edition.
+    pub fn from_env(lookup: impl Fn(&str) -> Option<std::ffi::OsString>) -> Self {
+        let on = lookup(MODESET_ENV).is_some_and(|value| {
+            let value = value.to_string_lossy().to_ascii_lowercase();
+            matches!(value.as_str(), "1" | "true" | "yes" | "on")
+        });
+        Self { on }
+    }
+
+    /// [`RealModeset::from_env`] over this process's environment.
+    #[must_use]
+    pub fn from_process_env() -> Self {
+        Self::from_env(|name| std::env::var_os(name))
+    }
+
+    /// Whether mode changes are allowed.
+    #[must_use]
+    pub const fn is_on(self) -> bool {
+        self.on
+    }
+}
+
 /// What a mode change asks of the kernel and the buffer allocator.
 pub(crate) trait ModesetKernel {
     /// The buffers of one output.
     type Buffers;
+
+    /// Whether this kernel may be asked for a mode change. A real kernel says what the process opted in to; a fake
+    /// that stands in for an allowed change says [`RealModeset::ON`].
+    fn real_modeset(&self) -> RealModeset;
 
     /// Allocates buffers for an output of `size` physical pixels, with [`COMMITTED_SLOT`] cleared so the first frame on
     /// the new mode is black and not whatever memory held.
@@ -118,6 +177,8 @@ pub(crate) struct ModesetOutcome {
 pub(crate) enum ModesetError {
     /// The change was refused before the kernel was asked.
     Refused(ModesetRefusal),
+    /// Real mode changes are off ([`RealModeset`]); nothing was allocated or asked of the kernel.
+    Disabled,
     /// The buffers for the new size could not be made.
     Buffers(RenderError),
     /// The kernel refused the test-only commit.
@@ -135,6 +196,10 @@ impl std::fmt::Display for ModesetError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Refused(refusal) => write!(formatter, "{refusal}"),
+            Self::Disabled => write!(
+                formatter,
+                "changing a display's mode is off: it has only been proven against a fake kernel, so set {MODESET_ENV}=1 to turn it on"
+            ),
             Self::Buffers(error) => write!(formatter, "the buffers for the new mode could not be made: {error}"),
             Self::Test(reason) => write!(formatter, "the kernel refused the test commit: {reason}"),
             Self::Commit {
@@ -186,6 +251,9 @@ pub(crate) fn configure<K: ModesetKernel>(
             })
         }
         ModesetStep::Mode(state) => {
+            if !kernel.real_modeset().is_on() {
+                return Err(ModesetError::Disabled);
+            }
             let fresh = kernel
                 .allocate(Size::new(mode.width, mode.height))
                 .map_err(ModesetError::Buffers)?;
@@ -227,6 +295,10 @@ pub(crate) fn check<K: ModesetKernel>(
     match modeset(connector, current, mode, scale).map_err(ModesetError::Refused)? {
         ModesetStep::Unchanged | ModesetStep::Scale(_) => Ok(()),
         ModesetStep::Mode(_) => {
+            // Refused here too, so a configuration is turned down before any output has been driven.
+            if !kernel.real_modeset().is_on() {
+                return Err(ModesetError::Disabled);
+            }
             let fresh = kernel
                 .allocate(Size::new(mode.width, mode.height))
                 .map_err(ModesetError::Buffers)?;
@@ -277,6 +349,8 @@ mod tests {
         refuse_commit: bool,
         refuse_unstage: bool,
         refuse_gamma: bool,
+        /// A fake takes real mode changes unless a test turns them off, as a kernel the opt-in was given to does.
+        real_modeset_off: bool,
     }
 
     impl Fake {
@@ -302,6 +376,14 @@ mod tests {
 
     impl ModesetKernel for Fake {
         type Buffers = Held;
+
+        fn real_modeset(&self) -> RealModeset {
+            if self.real_modeset_off {
+                RealModeset::OFF
+            } else {
+                RealModeset::ON
+            }
+        }
 
         fn allocate(&mut self, size: Size) -> Result<Held, RenderError> {
             self.note(format!("allocate {}x{}", size.width, size.height));
@@ -798,5 +880,96 @@ mod tests {
             check(&mut refusing, &connector(true), &lit(), UNLISTED, Scale::integral(1)),
             Err(ModesetError::Refused(_))
         ));
+    }
+
+    #[test]
+    fn a_mode_change_is_refused_before_anything_is_allocated_while_real_modesetting_is_off() {
+        // The change this guards blanks a real display, and it has only ever run against a fake kernel. Off, it must
+        // not reach the kernel at all: no buffers, no test, no commit, and the output keeps what it had.
+        let mut fake = Fake {
+            real_modeset_off: true,
+            ..Fake::default()
+        };
+        let (mut buffers, mut presenter) = presenting(&fake);
+        let error = configure(
+            &mut fake,
+            &connector(true),
+            &lit(),
+            FOUR_K,
+            Scale::integral(1),
+            &mut buffers,
+            &mut presenter,
+        )
+        .expect_err("real modesetting is off");
+        assert_eq!(error, ModesetError::Disabled);
+        assert!(
+            error.to_string().contains(MODESET_ENV),
+            "the way to turn it on is named: {error}"
+        );
+        assert!(
+            fake.calls().is_empty(),
+            "nothing reached the kernel: {:?}",
+            fake.calls()
+        );
+        assert_eq!(size_of(&buffers), Some((1920, 1080)), "the output keeps its buffers");
+
+        assert_eq!(
+            check(&mut fake, &connector(true), &lit(), FOUR_K, Scale::integral(1)),
+            Err(ModesetError::Disabled),
+            "a configuration is tested before any output is driven, so the refusal comes then"
+        );
+        assert!(fake.calls().is_empty());
+    }
+
+    #[test]
+    fn a_scale_change_and_an_unchanged_mode_need_no_opt_in() {
+        // Neither commits anything, so neither can blank a display.
+        let mut fake = Fake {
+            real_modeset_off: true,
+            ..Fake::default()
+        };
+        let (mut buffers, mut presenter) = presenting(&fake);
+        let scaled = configure(
+            &mut fake,
+            &connector(true),
+            &lit(),
+            FULL_HD,
+            Scale::integral(2),
+            &mut buffers,
+            &mut presenter,
+        )
+        .expect("a scale commits nothing");
+        assert_eq!(scaled.kind, ModesetKind::Scale);
+        let same = configure(
+            &mut fake,
+            &connector(true),
+            &lit(),
+            FULL_HD,
+            Scale::integral(1),
+            &mut buffers,
+            &mut presenter,
+        )
+        .expect("the same mode is nothing to do");
+        assert_eq!(same.kind, ModesetKind::Unchanged);
+        assert!(fake.calls().is_empty());
+        check(&mut fake, &connector(true), &lit(), FULL_HD, Scale::integral(2)).expect("a scale needs no kernel");
+    }
+
+    #[test]
+    fn real_modesetting_is_on_only_when_the_variable_says_so() {
+        let from = |value: Option<&str>| {
+            RealModeset::from_env(|name| {
+                assert_eq!(name, MODESET_ENV, "no other variable is read");
+                value.map(std::ffi::OsString::from)
+            })
+        };
+        assert_eq!(from(None), RealModeset::OFF, "unset is off");
+        assert_eq!(RealModeset::default(), RealModeset::OFF);
+        for off in ["", "0", "false", "no", "off", "banana", "2", " 1"] {
+            assert_eq!(from(Some(off)), RealModeset::OFF, "{off:?} is not an opt-in");
+        }
+        for on in ["1", "true", "yes", "on", "TRUE"] {
+            assert_eq!(from(Some(on)), RealModeset::ON, "{on:?} is an opt-in");
+        }
     }
 }

@@ -55,10 +55,22 @@ With the desktop portal backend installed:
 
 Gnoblin only routes the portal request. The selected backend decides access.
 
-## 7. Return to GNOME
+## 7. Check a mode change
 
-Log out and select GNOME. Confirm its desktop still works.
-For package-release testing, also remove Gnoblin using its documented uninstall
+A mode change on a hardware display is off unless the session starts with `GNOBLIN_DRM_MODESET=1`. See
+[outputs](shell-api/outputs#what-each-backend-applies).
+
+1. With the variable unset, run `gnoblinctl output call <id> apply` with another mode. Confirm it is refused with an
+   error that names the variable, and that the display keeps its mode.
+2. Start the session with `GNOBLIN_DRM_MODESET=1`. On a monitor that lists two modes, switch to the other and back. The
+   screen blanks briefly, then shows the desktop at the new size.
+3. Ask for a mode the monitor does not list. Confirm it is refused.
+
+Record the GPU driver. A driver that refuses a commit its own test passed is a finding.
+
+## 8. Remove Gnoblin
+
+For package-release testing, remove Gnoblin using its documented uninstall
 path and check that the Gnoblin login entry disappears.
 
 Record failures separately from skipped checks. Include the exact commands,

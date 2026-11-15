@@ -147,6 +147,13 @@ applied) and a non-identity `Camera2D` (not applied).
 
 Status: built and proven against a fake kernel; **not proven on hardware**. Lane DrmModeset.
 
+It is **off by default**. A mode change refuses with `BackendError::ModesetDisabled` (and `ModesetError::Disabled` inside
+the crate) before any buffer is allocated, unless the process opted in with `GNOBLIN_DRM_MODESET=1`
+(`RealModeset::from_process_env`, passed to `Drm::open`). The kernel adapter reports the opt-in through
+`ModesetKernel::real_modeset`, so `configure` and `check` refuse a `Mode` step and still allow a `Scale` step, which
+commits nothing; the fake kernels of the tests report it on. Only the environment turns it on, so a config file or a
+script cannot. Lane SmallSafety.
+
 `Backend::configure_output` on `gnoblin-backend-drm` is a mode and scale change of a live output, in the order
 `crates/gnoblin-backend-drm/src/modeset.rs` fixes (kernel behind the `ModesetKernel` trait, so a fake checks it):
 

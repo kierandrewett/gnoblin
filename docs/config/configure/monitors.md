@@ -33,6 +33,9 @@ gnoblin.outputs.profiles.add(side);
 | `enabled`   | `false` switches the output off.                                                                   |
 | `vrr`       | Accepted and reported as not applied: the backends have no variable refresh rate.                  |
 
+A mode change on a hardware (DRM) output is off until the session starts with `GNOBLIN_DRM_MODESET=1`; see
+[what each backend applies](/shell-api/outputs#what-each-backend-applies).
+
 To change a connected output once, without keeping a profile, call `output.apply({ ... })` on it, and to mirror or
 span outputs build a `Display`. Both are in [outputs](/shell-api/outputs#configure-an-output).
 

@@ -122,6 +122,10 @@ window on another desktop, refuses both by name.
 
 On a hardware output:
 
+- **Off until you ask.** A mode change on a hardware output is off. It is refused with an error that names
+  `GNOBLIN_DRM_MODESET`, and the output keeps its mode. Start the session with `GNOBLIN_DRM_MODESET=1` to allow it
+  (`true`, `yes` and `on` also count; anything else, or no variable, leaves it off). A config file or a script cannot
+  turn it on.
 - **Mode.** The mode must be one the monitor lists, with the refresh rate the kernel computes for it (`2560x1440@59.95`
   and `2560x1440@60` are different modes). The screen goes black for the length of the modeset.
 - **Refused.** A mode the monitor does not list, a mode the kernel refuses, and an output that is off are all refused.
@@ -133,8 +137,7 @@ On a hardware output:
   and the other output controls are left as they were.
 - **Not applied.** A transform other than `normal` is refused on every backend: no renderer draws a rotation.
 
-The DRM path is proven against a fake kernel only. Check a mode change on your own display before relying on it, and
-report a driver that refuses it.
+Turn the mode change on, check it on your own display before relying on it, and report a driver that refuses it.
 
 The `wlr-output-management` protocol (`wlr-randr`, `kanshi`) and `gnoblinctl output call <id> apply` go through the same
 engine as `apply`: the same checks, the same test before the first output is driven and the same rollback.

@@ -19,6 +19,13 @@
 //! [`BackendEvent::OutputDisconnected`]. A GPU that disappears is
 //! [`BackendEvent::Disconnected`], because nothing this backend owns survives it.
 //!
+//! # Mode changes are off until asked for
+//!
+//! Changing the mode of a live output blanks a real display, and that code has only run against a fake kernel.
+//! [`Drm::open`] therefore takes a [`RealModeset`], and while it is off a mode change is refused with
+//! [`BackendError::ModesetDisabled`] before the kernel is touched. A scale-only change commits nothing and is not
+//! affected. The process turns it on with the environment variable [`MODESET_ENV`] (`GNOBLIN_DRM_MODESET=1`).
+//!
 //! # Failure modes first
 //!
 //! The pure failures are in [`plan`] and [`gamma`]. These are the ones only a running
@@ -50,6 +57,7 @@ pub mod gpu;
 pub mod libinput;
 /// Changing the mode or scale of a live output: the order of operations and every way it fails.
 pub(crate) mod modeset;
+pub use modeset::{MODESET_ENV, RealModeset};
 /// The pure planning of output state and kernel operations.
 pub mod plan;
 /// The per-output swapchain state machine: which buffer is drawn and when a flip may queue.
@@ -144,6 +152,8 @@ pub struct Drm {
     input: Input,
     /// Whether the seat is ours, which decides whether the device may be used.
     seat: SeatState,
+    /// Whether the process opted in to changing the mode of a real display. Off, a mode change is refused.
+    real_modeset: RealModeset,
 }
 
 /// Why the hardware backend offers no input events.
@@ -218,11 +228,14 @@ impl Drm {
     /// A libinput context that cannot be opened does not fail the session: the backend runs with
     /// no input, and the reason is logged here.
     ///
+    /// `real_modeset` is whether mode changes on the real display are allowed; pass
+    /// [`RealModeset::from_process_env`] so that they are off unless [`MODESET_ENV`] is set.
+    ///
     /// # Errors
     ///
     /// [`DrmError`] naming what could not be opened. A session that gets this error runs the
     /// headless backend instead; it is not a frame error.
-    pub fn open(seat_name: &str) -> Result<Self, DrmError> {
+    pub fn open(seat_name: &str, real_modeset: RealModeset) -> Result<Self, DrmError> {
         let gpu = gpu::Gpu::open(seat_name)?;
         let outputs: Vec<Output> = gpu
             .outputs()
@@ -260,6 +273,7 @@ impl Drm {
             pending: Vec::new(),
             input,
             seat: SeatState::new(),
+            real_modeset,
         })
     }
 
@@ -619,6 +633,7 @@ impl<S: Host + 'static> Backend<S> for Drm {
             device: &self.scanout,
             output,
             crtc,
+            real_modeset: self.real_modeset,
         };
         let result = modeset::configure(
             &mut kernel,
@@ -654,6 +669,7 @@ impl<S: Host + 'static> Backend<S> for Drm {
             device: &self.scanout,
             output,
             crtc,
+            real_modeset: self.real_modeset,
         };
         modeset::check(&mut kernel, &connector, &current, mode, scale).map_err(|error| modeset_error(output, &error))
     }
@@ -709,12 +725,17 @@ fn control_error(output: OutputId, error: gpu::ControlError) -> BackendError {
     }
 }
 
+/// What a refused mode change tells the person to do. It is a constant because the error that carries it is `Copy`;
+/// the test `a_mode_change_the_process_did_not_opt_in_to_names_the_variable` keeps it in step with [`MODESET_ENV`].
+const DISABLED_HINT: &str = "set GNOBLIN_DRM_MODESET=1 to turn it on";
+
 /// The backend error a mode or scale change is reported as, using the vocabulary the headless backend has.
 ///
 /// A mode with no pixels is [`BackendError::DegenerateMode`]; a mode the connector does not list is
 /// [`BackendError::Unsupported`]; an output with no monitor, no CRTC or no light is [`BackendError::Unpresentable`];
 /// buffers that cannot be made are [`BackendError::Render`]; a kernel refusal in the test or the commit is logged with
-/// its reason and reported as [`BackendError::ModesetRefused`]. In every case the output stays as it was.
+/// its reason and reported as [`BackendError::ModesetRefused`]; a mode change the process has not opted in to is
+/// [`BackendError::ModesetDisabled`], with the variable that turns it on. In every case the output stays as it was.
 fn modeset_error(output: OutputId, error: &modeset::ModesetError) -> BackendError {
     match error {
         modeset::ModesetError::Refused(plan::ModesetRefusal::DegenerateMode(mode)) => BackendError::DegenerateMode {
@@ -726,6 +747,10 @@ fn modeset_error(output: OutputId, error: &modeset::ModesetError) -> BackendErro
         }
         modeset::ModesetError::Refused(plan::ModesetRefusal::NotDriven(_) | plan::ModesetRefusal::Dark(_)) => {
             BackendError::Unpresentable(output)
+        }
+        modeset::ModesetError::Disabled => {
+            log::warn!(area = "drm", output = %output, "a mode change was refused: real modesetting is off; set {}=1 to turn it on", MODESET_ENV);
+            BackendError::ModesetDisabled(output, DISABLED_HINT)
         }
         modeset::ModesetError::Buffers(error) => BackendError::Render(*error),
         modeset::ModesetError::Test(_) | modeset::ModesetError::Commit { .. } => {
@@ -778,6 +803,19 @@ mod tests {
         assert_eq!(modeset_error(output, &dark), BackendError::Unpresentable(output));
         let no_crtc = ModesetError::Refused(ModesetRefusal::NotDriven("DP-1".to_owned()));
         assert_eq!(modeset_error(output, &no_crtc), BackendError::Unpresentable(output));
+    }
+
+    #[test]
+    fn a_mode_change_the_process_did_not_opt_in_to_names_the_variable() {
+        let output = OutputId::new(3);
+        let error = modeset_error(output, &ModesetError::Disabled);
+        assert_eq!(error, BackendError::ModesetDisabled(output, super::DISABLED_HINT));
+        let text = error.to_string();
+        assert!(
+            text.contains(crate::MODESET_ENV),
+            "the variable that turns it on is named: {text}"
+        );
+        assert!(super::DISABLED_HINT.contains(crate::MODESET_ENV));
     }
 
     #[test]

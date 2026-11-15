@@ -821,7 +821,8 @@ Open:
 - The native dependency probe on every target image.
 - The `lua-api/*` phases landed or their design frozen.
 - A real-hardware check of the DRM mode and scale change (`Backend::configure_output`
-  in `gnoblin-backend-drm`). It is proven against a fake kernel only: the order
+  in `gnoblin-backend-drm`). It is off unless the session sets `GNOBLIN_DRM_MODESET=1`
+  (`RealModeset`), because it is proven against a fake kernel only: the order
   (allocate, `TEST_ONLY` commit, real commit, replace buffers, gamma again), the
   refusals and the rollback are tested, and nothing has been committed to a real
   CRTC. The check, on a real GPU and a monitor that lists two modes: switch to

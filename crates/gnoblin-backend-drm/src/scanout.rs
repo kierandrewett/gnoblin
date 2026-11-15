@@ -20,7 +20,7 @@ use smithay::utils::{Physical, Size as PhysicalSize};
 
 use crate::frame::Scanout;
 use crate::gpu::Gpu;
-use crate::modeset::{COMMITTED_SLOT, ModesetKernel};
+use crate::modeset::{COMMITTED_SLOT, ModesetKernel, RealModeset};
 use crate::present::SLOTS;
 use gnoblin_backend::{DmabufCopy, DmabufCopyError, DmabufImportError, DmabufSupport};
 use gnoblin_output::DisplayMode;
@@ -373,10 +373,16 @@ pub(crate) struct LiveModeset<'a> {
     pub(crate) output: OutputId,
     /// The CRTC that scans the output out, which names the plane formats the buffers must suit.
     pub(crate) crtc: crtc::Handle,
+    /// What the process opted in to: a mode change on this kernel is refused unless it is on.
+    pub(crate) real_modeset: RealModeset,
 }
 
 impl ModesetKernel for LiveModeset<'_> {
     type Buffers = Buffers;
+
+    fn real_modeset(&self) -> RealModeset {
+        self.real_modeset
+    }
 
     fn allocate(&mut self, size: Size) -> Result<Buffers, RenderError> {
         let formats = self.gpu.plane_formats(self.crtc).ok_or(RenderError::Unavailable)?;
