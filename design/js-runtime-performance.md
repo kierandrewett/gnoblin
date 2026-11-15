@@ -56,22 +56,13 @@ something can have changed what it does:
   turn reads these links and keeps what they said for the frame it then runs.
 - **Script ran outside a frame** (`eval`, the console, a load, a reload, a link handed over).
 - **The script asked** through `entry.wake()` (`data/js/gnoblin/wake.ts`): the part of the library that has a clock to
-  keep registers it where it holds its state. Timers, focus rests, launch deadlines, the not-responding alert, a window
-  drag's limit, a titlebar's close fade, the display manager's dirty flag, queued listener calls, and the sources that
-  draw every frame while they hold (a lock screen that is up, an XR session, a toast).
+  keep registers it, by name, where it holds its state. Timers, focus rests, launch deadlines, a window drag's limit, a
+  titlebar's close fade, a clock widget's minute, the display manager's dirty flag, queued listener calls, a look the
+  not-responding alert skipped, and the sources that draw every frame while they hold (a lock screen that is up, an XR
+  session, a toast). A source that throws is reported and asks for nothing, so one part's failure does not end the shell.
 - **The last frame did work**, so one more looks for what it left for the pass after it.
 
 `JsShell::next_wake` says how long until the next timer, and the role waits no longer than that for the compositor.
-
-`tests/frame_gating.rs` asserts that an idle shell runs no frame at 0, 25 and 100 windows. A table in it asserts that
-each kind of change wakes the very next frame:
-
-- a window moved, a title, a window created or destroyed;
-- an output resized, a pointer edge, the end of an animation;
-- the seat's focus, the lock's state;
-- script outside a frame, a property written from script.
-
-A timer is asserted to wake at its deadline and not before.
 
 | Windows | Idle frame before | Idle frame after | Title change before | Title change after |
 | ------- | ----------------- | ---------------- | ------------------- | ------------------ |
@@ -81,9 +72,65 @@ A timer is asserted to wake at its deadline and not before.
 | 300     | 1213 us           | 0.0 us           | 1200 us             | 1330 us            |
 
 Release, 4-CPU Agent37 instance, `tests/frame_cost.rs`, 120 idle frames and 60 frames with a title change, over the fake
-link. An idle turn also reads the process, session, dialog and idle links (a few non-blocking reads), which the fake
-link does not do.
+link, which answers a poll at once. The compositor side already drew nothing when idle
+(`an_unchanged_scene_draws_nothing`); its whole iteration of a 300-window scene costs 13 us idle (`idle_cost_tests.rs`),
+so it is not gated further. A frame that does work costs what it did, plus one frame after it.
 
-The compositor side already drew nothing when idle (`an_unchanged_scene_draws_nothing`); its whole iteration of a
-300-window scene costs 13 us idle (`idle_cost_tests.rs`), so it is not gated further. A frame that does work costs what
-it did, plus one frame after it.
+#### What proves it
+
+A change that wakes no frame is never drawn. Each way in has a test that lets the shell go quiet, makes one thing
+happen, and asserts that the very next frame ran and that the script heard it in that frame.
+
+- **The tree link** (`tests/frame_gating.rs`): no frame runs at 0, 25 and 100 windows; a table of changes; one message
+  of each kind the link carries, where the match that numbers the kinds has no wildcard, so a new kind stops the build
+  until it has a row; a seeded random order of changes after random rests; a timer wakes at its deadline and not before;
+  a window drag ends on its limit with the pointer still.
+- **The links beside it**, with their fakes. A process that ends or outlives its timeout, a session call, a signal and
+  a lost connection (`host_api.rs`). A dialog offer, the end of a request and a lost slot (`config_slots.rs`). An idle
+  reading, a hold given back and a lost connection (`host_idle.rs`).
+- **The parts that draw every frame**: the lock screen up and down, the lock's state and a password answer (`lock.rs`),
+  and an XR session (`xr.rs`).
+- **What has to register** (`tests/wake_sources.rs`): every field of `HostContext` is classified as state, as a part
+  that wakes, or as driven by a message with the reason. The sources the stock shell registers are the expected ones, in
+  both directions. Every file of the library that reads a clock registers a source or says why it needs none. The stock
+  shell, with titlebars, the window menu and the alert, comes to rest.
+- **The gate's own source** (`gate.rs`): a link handed to the shell that a quiet turn does not read, and a public way
+  into script that does not mark the gate, each fail a unit test.
+- **Real links** (`crates/gnoblin/tests/js_shell.rs`): a role over a real compositor session with five windows and the
+  stock config runs no frame in two seconds of turns at the loop's pace.
+
+#### What the proofs found
+
+- A window drag past `REQUEST_DRAG_LIMIT_MS` recursed without end and reported a stack overflow every frame: the end
+  asked for the last position, which asked the end for the limit again. The limit was also `>` where its wake was at the
+  limit, so a frame woke and did nothing. Fixed in `window_state.ts`.
+- The not-responding alert asked for a frame every 250 ms for ever, which is the polling gating exists to remove. It
+  now asks only for a look that a frame skipped for being too soon after the last, so a burst of activity leaves one
+  trailing frame 250 ms later and then the shell rests.
+- A `Clock` widget redrew only on frames something else caused, so on a quiet desktop it stopped at the minute it was
+  made. It now asks for a frame when its minute ends, or its second for a format that shows seconds.
+- A wake source that threw ended the shell, because the shell asks at the end of every frame. A throw is now a report.
+
+#### What a turn costs over the real links
+
+| Windows | Idle connection | Frames run in 3 s | Turn, wall clock | Turn, thread CPU |
+| ------- | --------------- | ----------------- | ---------------- | ---------------- |
+| 0       | no              | 0                 | 2.17 ms          | 1.72 ms          |
+| 25      | no              | 0                 | 2.19 ms          | 1.77 ms          |
+| 100     | no              | 0                 | 2.19 ms          | 1.76 ms          |
+| 300     | no              | 0                 | 2.18 ms          | 1.69 ms          |
+| 100     | open            | 6                 | 3.28 ms          | 2.66 ms          |
+
+Release, 4-CPU Agent37 instance, `idle_turn_cost_over_the_real_links` (ignored): a real compositor session with the
+stock config, 3 s of turns at the loop's pace to count the frames, then the mean of 2000 back-to-back role ticks. The
+open idle connection is a script's `gnoblin.idle.watch`. The six frames came with it: the same session without the
+watch ran none, and what the watch adds to the shell is the idle readings the connection delivers.
+
+The cost does not depend on the windows, so gating does what it says: no frame runs. What is left is not the shell but
+the reads. The tree link and the slot link each wait up to 1 ms for bytes on every poll (`READ_WAIT` in
+`gnoblin-tree-client/src/tree_link.rs` and `slot_link.rs`), and an open idle connection waits 1 ms more. That is the
+2 ms of wall time, and the third millisecond when an idle watch is open.
+
+The thread-CPU column is an upper bound. Agent37 runs gVisor, which charges the thread for part of a timed read, so the
+CPU a real kernel spends in those waits is not measured here. Replacing the timed reads with one `poll(2)` over the links
+and the loop's own connection would take an idle turn to microseconds. That is not done.

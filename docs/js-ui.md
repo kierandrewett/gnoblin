@@ -200,6 +200,9 @@ drawing: `text`, `caret`, `selection`, `insert`, `backspace`, `delete`, `left`, 
 `Clock` is a `Text` that shows the time as a strftime format, `%H:%M` by default. `formatTime` supports `%H %I %M %S
 %p %d %e %m %y %Y %j %a %A %b %B %T %R %F %%`.
 
+A clock keeps its own time. The shell runs no frame while nothing happens, so a `Clock` asks for one when its text is
+due to change: at the end of the minute, or of the second for a format that shows seconds.
+
 `Bar` is a strip along the `top` or `bottom` of the primary screen, over the windows and as wide as the screen. It takes
 its room from them:
 
