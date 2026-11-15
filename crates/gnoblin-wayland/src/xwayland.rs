@@ -863,6 +863,8 @@ impl State {
     /// Makes an X11 client's selection the Wayland one: a compositor-owned source that
     /// offers `mime_types`. A paste from it is answered by the X11 owner.
     fn offer_x11_selection(&mut self, target: SelectionTarget, mime_types: Vec<String>) {
+        // The host of a nested session is offered an X11 client's copy as it is a Wayland client's.
+        self.announce_to_backend(target, Some(&mime_types));
         match target {
             SelectionTarget::Clipboard => {
                 set_data_device_selection(&self.display_handle, &self.seat, mime_types.clone(), ());
@@ -876,6 +878,7 @@ impl State {
 
     /// Clears the Wayland selection after the X11 owner of its mirror gave it up.
     fn clear_wayland_selection(&mut self, target: SelectionTarget) {
+        self.announce_to_backend(target, None);
         match target {
             SelectionTarget::Clipboard => clear_data_device_selection(&self.display_handle, &self.seat),
             SelectionTarget::Primary => clear_primary_selection(&self.display_handle, &self.seat),

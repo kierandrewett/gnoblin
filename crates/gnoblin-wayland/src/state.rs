@@ -229,7 +229,7 @@ pub(crate) struct OutputEntry {
     /// The global the output created.
     global: GlobalId,
     /// The logical rectangle the layout assigned.
-    rect: Rect,
+    pub(crate) rect: Rect,
 }
 
 /// The compositor state every protocol handler receives.
@@ -339,6 +339,10 @@ pub struct State {
     /// Kept alive so `zwp_pointer_gestures_v1` stays registered.
     #[allow(dead_code)]
     pub(crate) pointer_gestures_state: PointerGesturesState,
+    /// The tablets, their tools and pads, and the `zwp_tablet_manager_v2` global.
+    pub(crate) tablets: crate::protocols::zwp_tablet_v2::TabletTables,
+    /// The `wp_fractional_scale_manager_v1` global, kept so a session can stop offering it ([`State::withdraw_fractional_scale`]).
+    fractional_scale_global: GlobalId,
     /// Kept alive so `zwp_idle_inhibit_manager_v1` stays registered; the handler in
     /// [`crate::protocols::zwp_idle_inhibit_v1`] records the inhibitors.
     #[allow(dead_code)]
@@ -464,6 +468,8 @@ pub struct State {
     pub(crate) selections: WlDataDeviceManagerSelections,
     /// Which side owns each selection while the X11 bridge is running.
     pub(crate) selection_owners: crate::selection_bridge::SelectionOwners,
+    /// What the loop has to tell or ask the backend about the selections after a turn.
+    pub(crate) backend_selection: Vec<crate::protocols::wl_data_device_manager::BackendSelection>,
     /// Sandbox listeners waiting for the event loop to watch them.
     ///
     /// `wp_security_context_v1` hands the compositor a listening socket during a
@@ -750,11 +756,12 @@ impl State {
         // The seat's protocols. Each global is created here and answered by its own
         // module; the argument this list carries is the access policy for the globals
         // that can act on the whole session.
-        crate::protocols::wp_fractional_scale_v1::create_global(&display_handle);
+        let fractional_scale_global = crate::protocols::wp_fractional_scale_v1::create_global(&display_handle);
         let cursor_shape_state = crate::protocols::wp_cursor_shape_v1::global(&display_handle);
         let relative_pointer_state = crate::protocols::zwp_relative_pointer_v1::global(&display_handle);
         let pointer_constraints_state = crate::protocols::zwp_pointer_constraints_v1::global(&display_handle);
         let pointer_gestures_state = crate::protocols::zwp_pointer_gestures_v1::global(&display_handle);
+        let tablets = crate::protocols::zwp_tablet_v2::global(&display_handle);
         let idle_inhibit_state = crate::protocols::zwp_idle_inhibit_v1::global(&display_handle);
         let shortcuts_inhibit_state = crate::protocols::zwp_keyboard_shortcuts_inhibit_v1::global(&display_handle);
         let presentation_state = crate::protocols::wp_presentation_time::global(&display_handle);
@@ -815,6 +822,8 @@ impl State {
             relative_pointer_state,
             pointer_constraints_state,
             pointer_gestures_state,
+            tablets,
+            fractional_scale_global,
             idle_inhibit_state,
             shortcuts_inhibit_state,
             presentation_state,
@@ -857,6 +866,7 @@ impl State {
             seat_name: seat_name.to_owned(),
             selections: WlDataDeviceManagerSelections::default(),
             selection_owners: crate::selection_bridge::SelectionOwners::default(),
+            backend_selection: Vec::new(),
             pending_contexts: Vec::new(),
             turn: Tick::ZERO,
             keyboard_tables: KeyboardTables::default(),
@@ -1456,6 +1466,15 @@ impl State {
             }
             self.apply_decided(effects);
         }
+    }
+
+    /// Stops offering `wp_fractional_scale_manager_v1`: the session then states its scale to clients as the integer scale of
+    /// their `wl_output` only, as a host that has not enabled fractional scaling does. A client that already bound
+    /// the manager keeps it.
+    pub(crate) fn withdraw_fractional_scale(&mut self) {
+        self.display_handle
+            .remove_global::<State>(self.fractional_scale_global.clone());
+        log::debug!(area = "scale", "wp_fractional_scale_manager_v1 is not offered");
     }
 
     /// The Smithay scale for a backend scale: a whole value as an integer, any other
@@ -2828,6 +2847,7 @@ impl State {
             | InputEvent::PointerLeave
             | InputEvent::PointerAxis { .. }
             | InputEvent::Touch { .. }
+            | InputEvent::Tablet(_)
             | InputEvent::Touchpad(_) => {}
             InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => return None,
         }
@@ -3172,7 +3192,7 @@ impl State {
     /// Focuses the window under a point, and raises it when `raise_on_click` asks. A pointer press and a touch down
     /// are the same request. While a shell holds the tree the press is an edge on the window's node instead
     /// (a touch is a left press and release there), and the shell decides.
-    fn activate_at(&mut self, position: SmithayPoint<f64, Logical>) {
+    pub(crate) fn activate_at(&mut self, position: SmithayPoint<f64, Logical>) {
         if self.composer.shell_places() {
             let on_window = self
                 .pointer_target(position)
@@ -4165,7 +4185,23 @@ impl Host for State {
             // it held came before this event.
             InputEvent::DeviceAdded { device } => self.device_added(device),
             InputEvent::DeviceRemoved { id } => self.device_removed(id),
+            // A drawing tablet's tool goes to the client under it and its pad to the client with the keyboard; a tool
+            // moves no pointer.
+            InputEvent::Tablet(event) => self.tablet_input(event),
         }
+    }
+
+    fn host_selection(&mut self, target: gnoblin_backend::SelectionTarget, mime_types: Option<Vec<String>>) {
+        self.host_selection_changed(target, mime_types);
+    }
+
+    fn session_selection_wanted(
+        &mut self,
+        target: gnoblin_backend::SelectionTarget,
+        mime_type: String,
+        fd: std::os::fd::OwnedFd,
+    ) {
+        self.session_selection_read(target, mime_type, fd);
     }
 }
 

@@ -1,5 +1,7 @@
-//! The X11 <-> Wayland selection bridge: which side owns a selection target, and what
-//! the other side is told when it changes.
+//! The selection bridges: which side owns a selection target, and what the other side is told when it changes.
+//!
+//! Two bridges meet here. The X11 one carries a selection between Wayland clients and Xwayland's, and the host one
+//! carries it between the session's clients and the compositor that hosts a nested session (`gnoblin_backend::selection`).
 //!
 //! Smithay moves the bytes. This module decides who may be asked for them. Each target
 //! (clipboard, primary) has one owner at a time:
@@ -8,6 +10,9 @@
 //!   through the window manager, and an X read is answered by asking the Wayland source.
 //! - [`SelectionHolder::X11Owned`]: an X client set the selection. The Wayland side holds a
 //!   compositor-owned source, and a Wayland paste is answered by asking the X client.
+//! - [`SelectionHolder::HostOwned`]: the host compositor of a nested session holds it. The Wayland side holds a
+//!   compositor-owned source, a paste is answered by asking the backend to read the host's selection, and X11 sees it
+//!   as it sees a Wayland copy.
 //! - [`SelectionHolder::Unowned`]: nothing is bridged. Reads and pastes are refused.
 //!
 //! Setting a selection on one side never echoes back. Smithay reports a client-set
@@ -60,6 +65,8 @@ pub(crate) enum SelectionHolder {
     WaylandOwned,
     /// An X11 client set the selection.
     X11Owned,
+    /// The host compositor of a nested session holds the selection.
+    HostOwned,
 }
 
 /// What the X11 side must be told after a Wayland change.
@@ -89,6 +96,8 @@ pub(crate) enum ToWayland {
 pub(crate) enum PasteRoute {
     /// Ask the X11 client that owns the selection.
     X11,
+    /// Ask the backend to read the host compositor's selection.
+    Host,
     /// Refuse: the write end is dropped, so the paste reads nothing.
     Refuse,
 }
@@ -134,7 +143,8 @@ impl SelectionOwners {
             }
             None => {
                 let slot = self.slot(target);
-                if *slot == SelectionHolder::WaylandOwned {
+                // A clear by a client takes the host's offer with it, as it takes any compositor-set source.
+                if matches!(*slot, SelectionHolder::WaylandOwned | SelectionHolder::HostOwned) {
                     *slot = SelectionHolder::Unowned;
                     ToX11::Withdraw
                 } else {
@@ -142,6 +152,37 @@ impl SelectionOwners {
                 }
             }
         }
+    }
+
+    /// The host compositor's selection changed to these mime types (`Some`) or is gone (`None`).
+    ///
+    /// Only a selection the host owned is withdrawn: a copy a client of the session made after the host's stays.
+    pub(crate) fn host_changed(
+        &mut self,
+        target: SelectionTarget,
+        mime_types: Option<&[String]>,
+        allowed: bool,
+    ) -> ToX11 {
+        match mime_types.filter(|types| allowed && !types.is_empty()) {
+            Some(types) => {
+                *self.slot(target) = SelectionHolder::HostOwned;
+                ToX11::Advertise(types.to_vec())
+            }
+            None => {
+                let slot = self.slot(target);
+                if *slot == SelectionHolder::HostOwned {
+                    *slot = SelectionHolder::Unowned;
+                    ToX11::Withdraw
+                } else {
+                    ToX11::Nothing
+                }
+            }
+        }
+    }
+
+    /// Whether the host compositor holds the target.
+    pub(crate) fn host_owns(&self, target: SelectionTarget) -> bool {
+        self.owner(target) == SelectionHolder::HostOwned
     }
 
     /// An X11 client set the selection to these X11 targets.
@@ -179,18 +220,22 @@ impl SelectionOwners {
         }
     }
 
-    /// Whether an X11 client may read the selection: only a Wayland-owned one, and only
-    /// while the session is not locked.
+    /// Whether an X11 client may read the selection: only a Wayland-owned or a host-owned one, and only while the
+    /// session is not locked.
     pub(crate) fn allow_x11_read(&self, target: SelectionTarget, allowed: bool) -> bool {
-        allowed && self.owner(target) == SelectionHolder::WaylandOwned
+        allowed
+            && matches!(
+                self.owner(target),
+                SelectionHolder::WaylandOwned | SelectionHolder::HostOwned
+            )
     }
 
     /// Where a Wayland paste from the compositor's own source is answered.
     pub(crate) fn paste_route(&self, target: SelectionTarget, allowed: bool) -> PasteRoute {
-        if allowed && self.owner(target) == SelectionHolder::X11Owned {
-            PasteRoute::X11
-        } else {
-            PasteRoute::Refuse
+        match self.owner(target) {
+            SelectionHolder::X11Owned if allowed => PasteRoute::X11,
+            SelectionHolder::HostOwned if allowed => PasteRoute::Host,
+            _ => PasteRoute::Refuse,
         }
     }
 }
@@ -226,6 +271,68 @@ mod tests {
 
     fn names(names: &[&str]) -> Vec<String> {
         names.iter().map(|name| (*name).to_owned()).collect()
+    }
+
+    #[test]
+    fn a_host_copy_is_offered_to_x11_and_pasted_from_the_host() {
+        let mut owners = SelectionOwners::default();
+        let types = names(&["text/plain;charset=utf-8"]);
+
+        assert_eq!(
+            owners.host_changed(CLIPBOARD, Some(&types), true),
+            ToX11::Advertise(types.clone())
+        );
+        assert_eq!(owners.owner(CLIPBOARD), SelectionHolder::HostOwned);
+        assert_eq!(owners.paste_route(CLIPBOARD, true), PasteRoute::Host);
+        assert!(
+            owners.allow_x11_read(CLIPBOARD, true),
+            "X11 reads the host's copy as a Wayland copy"
+        );
+        assert_eq!(
+            owners.paste_route(CLIPBOARD, false),
+            PasteRoute::Refuse,
+            "never while locked"
+        );
+        assert_eq!(
+            owners.paste_route(PRIMARY, true),
+            PasteRoute::Refuse,
+            "the other target is not the host's"
+        );
+    }
+
+    #[test]
+    fn a_host_clear_withdraws_only_what_the_host_owned() {
+        let mut owners = SelectionOwners::default();
+        let host = names(&["text/plain"]);
+        owners.host_changed(CLIPBOARD, Some(&host), true);
+        assert_eq!(owners.host_changed(CLIPBOARD, None, true), ToX11::Withdraw);
+        assert_eq!(owners.owner(CLIPBOARD), SelectionHolder::Unowned);
+
+        // A copy a client of the session made stands when the host's goes away.
+        owners.wayland_changed(CLIPBOARD, Some(&host), true);
+        assert_eq!(owners.host_changed(CLIPBOARD, None, true), ToX11::Nothing);
+        assert_eq!(owners.owner(CLIPBOARD), SelectionHolder::WaylandOwned);
+    }
+
+    #[test]
+    fn a_session_copy_replaces_the_hosts() {
+        let mut owners = SelectionOwners::default();
+        let host = names(&["text/plain"]);
+        owners.host_changed(CLIPBOARD, Some(&host), true);
+        assert_eq!(
+            owners.wayland_changed(CLIPBOARD, Some(&host), true),
+            ToX11::Advertise(host.clone())
+        );
+        assert!(!owners.host_owns(CLIPBOARD));
+        assert_eq!(owners.paste_route(CLIPBOARD, true), PasteRoute::Refuse);
+    }
+
+    #[test]
+    fn a_locked_session_takes_nothing_from_the_host() {
+        let mut owners = SelectionOwners::default();
+        let host = names(&["text/plain"]);
+        assert_eq!(owners.host_changed(CLIPBOARD, Some(&host), false), ToX11::Nothing);
+        assert_eq!(owners.owner(CLIPBOARD), SelectionHolder::Unowned);
     }
 
     #[test]

@@ -192,6 +192,10 @@ pub struct Config {
     pub privileged_socket_path: Option<PathBuf>,
     /// The seat name clients see in `wl_seat.name`.
     pub seat_name: String,
+    /// Whether the session offers `wp_fractional_scale_manager_v1`. Off, it is a host that states its scale only as the
+    /// integer scale of `wl_output`, as Mutter does until fractional scaling is enabled, which is what a client of a
+    /// session such as a nested one has to cope with. A test knob: the shipped session always offers it.
+    pub fractional_scale: bool,
     /// The declared workspaces, one `id:name` item each, published on the main seat for the shell to build from.
     pub workspace_names: Vec<String>,
     /// The window management options from the configuration document.
@@ -294,6 +298,7 @@ impl Default for Config {
             socket_path: None,
             privileged_socket_path: None,
             seat_name: "seat0".to_owned(),
+            fractional_scale: true,
             workspace_names: Vec::new(),
             wm: WmOptions::default(),
             check_alive_timeout: Duration::from_secs(5),
@@ -458,6 +463,9 @@ impl Server {
         // The host's per-output controls are learnt before any client connects, so an
         // unsupported control's global is removed before it is ever advertised.
         state.start_output_controls(&mut crate::output_control::BackendControl(backend.as_mut()));
+        if !config.fractional_scale {
+            state.withdraw_fractional_scale();
+        }
         state.loop_handle = Some(event_loop.handle());
         // The renderer's answer to "can you import a client's GPU buffer" decides whether
         // `zwp_linux_dmabuf_v1` exists at all, so it is asked before any client connects.
@@ -868,6 +876,20 @@ impl Server {
                 if constraint != last_constraint {
                     last_constraint = constraint;
                     backend.pointer_constraint(constraint);
+                }
+                // What the session's clients did with the selections this turn is told to the backend, and the host's
+                // selection a client pastes is read for it. A backend with no host ignores both.
+                for change in state.take_backend_selection() {
+                    match change {
+                        crate::protocols::wl_data_device_manager::BackendSelection::Session { target, mime_types } => {
+                            backend.session_selection(target, mime_types);
+                        }
+                        crate::protocols::wl_data_device_manager::BackendSelection::Read { target, mime_type, fd } => {
+                            if let Err(refusal) = backend.read_host_selection(target, &mime_type, fd) {
+                                log::debug!(area = "selection", ?target, %refusal, "a paste of the host's selection was refused");
+                            }
+                        }
+                    }
                 }
                 // The two ways a backend ends a session are different endings. The person closing the last
                 // window of a hosted session is a logout; the device that drives the backend going away is a

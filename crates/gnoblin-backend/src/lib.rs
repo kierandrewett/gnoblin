@@ -157,6 +157,8 @@ mod gpu;
 pub mod headless;
 pub mod nested;
 pub mod render;
+pub mod selection;
+pub mod tablet;
 pub mod x11;
 
 use std::fmt;
@@ -166,6 +168,9 @@ use gnoblin_types::{DeviceId, OutputId, Point, Rect, Scale, Size};
 use smithay::reexports::calloop::LoopHandle;
 
 use gnoblin_output::{DisplayMode, OutputDescriptor};
+
+pub use selection::{SelectionRefusal, SelectionTarget};
+pub use tablet::{PadLayout, Stylus, TabletAxes, TabletEvent, TabletTool, ToolAxes, ToolKind};
 
 pub use dmabuf::{DmabufCopy, DmabufCopyError, DmabufImportError, DmabufProvider, DmabufSource, DmabufSupport};
 
@@ -327,9 +332,8 @@ pub trait Target {
 /// One input event a backend delivered.
 ///
 /// The set is the smallest one a seat can act on: where the pointer is, whether a
-/// button, a key or a scroll axis changed, and whether a touch point did. Tablet and
-/// gesture events arrive with the input slice and extend this enum rather than the
-/// trait.
+/// button, a key or a scroll axis changed, whether a touch point did, and what a drawing tablet's tool and pad did.
+/// Gestures are part of it as raw samples. A new kind of input extends this enum rather than the trait.
 ///
 /// Every event a device produced names that device in `device`: the number its
 /// [`InputEvent::DeviceAdded`] announced, so a binding can name one keyboard and the router can keep
@@ -434,6 +438,9 @@ pub enum InputEvent {
     ///
     /// The seat never applies these; the policy layer routes them to gesture bindings.
     Touchpad(RawTouchpadSample),
+    /// A drawing tablet's tool or pad: proximity, motion with its axes, the tip and buttons, and a pad's buttons,
+    /// rings and strips. See [`tablet`].
+    Tablet(TabletEvent),
 }
 
 /// One touchpad gesture sample, as the device's recogniser reported it.
@@ -610,6 +617,9 @@ pub struct DeviceInfo {
     /// The logical seat the system tagged the device with: libinput's name for it, `default` unless udev says otherwise.
     /// The compositor has one input seat and attaches every device to it, whatever this says (`State::device_added`).
     pub seat: String,
+    /// The buttons, rings and strips of a tablet pad, for a device whose capabilities include
+    /// [`DeviceCaps::TABLET_PAD`]; all zero for any other device.
+    pub pad: PadLayout,
 }
 
 impl DeviceInfo {
@@ -624,6 +634,7 @@ impl DeviceInfo {
             kind,
             caps: kind.default_caps(),
             seat: "seat0".to_owned(),
+            pad: PadLayout::default(),
         }
     }
 
@@ -631,6 +642,15 @@ impl DeviceInfo {
     #[must_use]
     pub const fn with_caps(mut self, caps: DeviceCaps) -> Self {
         self.caps = caps;
+        self
+    }
+
+    /// The same device as a tablet pad with this layout: it has the pad capability and the buttons, rings and strips
+    /// the layout counts.
+    #[must_use]
+    pub const fn with_pad(mut self, pad: PadLayout) -> Self {
+        self.caps = self.caps.union(DeviceCaps::TABLET_PAD);
+        self.pad = pad;
         self
     }
 }
@@ -736,6 +756,17 @@ pub trait Host {
 
     /// Handle one input event the backend delivered.
     fn input(&mut self, event: InputEvent);
+
+    /// The host compositor's selection changed while this session's window has its keyboard: `mime_types` is what
+    /// the host now offers (already narrowed to the types that cross, see [`selection`]), or `None` when it holds
+    /// none or the window lost the keyboard. The default ignores it, so a host with no clipboard of its own, and a
+    /// backend with no host to send one, are unchanged.
+    fn host_selection(&mut self, _target: SelectionTarget, _mime_types: Option<Vec<String>>) {}
+
+    /// The host wants the session's selection as `mime_type`: a client of the session pastes into the host. The host
+    /// writes to `fd` what the client that owns the selection sends, and drops it when there is nothing to send. The
+    /// default drops `fd`, which is an empty paste.
+    fn session_selection_wanted(&mut self, _target: SelectionTarget, _mime_type: String, _fd: std::os::fd::OwnedFd) {}
 }
 
 /// A backend: outputs, a target per output, an input source and the event-loop hook.
@@ -940,6 +971,28 @@ pub trait Backend<S: Host + 'static> {
     /// pointer is another compositor's asks that compositor to hold it too, and reports the relative motion it then
     /// receives as [`InputEvent::PointerMotionRelative`].
     fn pointer_constraint(&mut self, _constraint: PointerConstraint) {}
+
+    /// A client of the session set (`Some`, with the types it offers) or cleared (`None`) a selection. The backend
+    /// offers it to the host where it has one and the window has the host's keyboard; the types are narrowed to those
+    /// that cross ([`selection::bridged_mimes`]) by the caller. The default does nothing: a backend with no host
+    /// has nobody to offer it to.
+    fn session_selection(&mut self, _target: SelectionTarget, _mime_types: Option<Vec<String>>) {}
+
+    /// A client of the session pastes what the host holds: the host's selection of `target` is written as `mime_type`
+    /// into `fd`, at most [`selection::MAX_TRANSFER_BYTES`] of it.
+    ///
+    /// # Errors
+    ///
+    /// [`SelectionRefusal`] when there is nothing to read: no host, no offer, or a type that does not cross. The
+    /// default is [`SelectionRefusal::Unsupported`], and `fd` is dropped, which is an empty paste.
+    fn read_host_selection(
+        &mut self,
+        _target: SelectionTarget,
+        _mime_type: &str,
+        _fd: std::os::fd::OwnedFd,
+    ) -> Result<(), SelectionRefusal> {
+        Err(SelectionRefusal::Unsupported)
+    }
 
     /// What this backend can control on its outputs: gamma tables and power state.
     ///

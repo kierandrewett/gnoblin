@@ -84,6 +84,8 @@ mod input;
 mod records;
 /// Each nested output's surface, pool and frame presentation.
 mod surface;
+/// The parent's tablets, tools and pads, converted into the contract's events.
+mod tablet;
 
 use std::io;
 use std::path::PathBuf;
@@ -94,13 +96,15 @@ use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{Interest, LoopHandle, Mode, PostAction};
 use wayland_client::backend::WaylandError;
 use wayland_client::globals::registry_queue_init;
-use wayland_client::protocol::{wl_compositor, wl_output, wl_seat, wl_shm};
+use wayland_client::protocol::{wl_compositor, wl_data_device_manager, wl_output, wl_seat, wl_shm};
 use wayland_client::{Connection, EventQueue, Proxy};
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_manager_v1;
 use wayland_protocols::wp::keyboard_shortcuts_inhibit::zv1::client::zwp_keyboard_shortcuts_inhibit_manager_v1;
 use wayland_protocols::wp::pointer_constraints::zv1::client::zwp_pointer_constraints_v1;
 use wayland_protocols::wp::pointer_gestures::zv1::client::zwp_pointer_gestures_v1;
+use wayland_protocols::wp::primary_selection::zv1::client::zwp_primary_selection_device_manager_v1;
 use wayland_protocols::wp::relative_pointer::zv1::client::zwp_relative_pointer_manager_v1;
+use wayland_protocols::wp::tablet::zv2::client::zwp_tablet_manager_v2;
 use wayland_protocols::wp::viewporter::client::wp_viewporter;
 use wayland_protocols::xdg::shell::client::xdg_wm_base;
 use wayland_protocols::xdg::toplevel_icon::v1::client::xdg_toplevel_icon_manager_v1;
@@ -401,6 +405,21 @@ impl Nested {
         let constraints_manager = globals
             .bind::<zwp_pointer_constraints_v1::ZwpPointerConstraintsV1, Handler, ()>(&qh, 1..=1, ())
             .ok();
+        // The clipboard, the primary selection and tablets are optional: a parent without one shares nothing of it.
+        let data_manager = globals
+            .bind::<wl_data_device_manager::WlDataDeviceManager, Handler, ()>(&qh, 1..=3, ())
+            .ok();
+        let primary_manager = globals
+            .bind::<zwp_primary_selection_device_manager_v1::ZwpPrimarySelectionDeviceManagerV1, Handler, ()>(
+                &qh,
+                1..=1,
+                (),
+            )
+            .ok();
+        // Version 1 only: the dial a version 2 pad adds has no event in the contract.
+        let tablet_manager = globals
+            .bind::<zwp_tablet_manager_v2::ZwpTabletManagerV2, Handler, ()>(&qh, 1..=1, ())
+            .ok();
         let icon_manager = globals
             .bind::<xdg_toplevel_icon_manager_v1::XdgToplevelIconManagerV1, Handler, ()>(&qh, 1..=1, ())
             .ok();
@@ -433,6 +452,9 @@ impl Nested {
                 icon_manager,
                 relative_manager,
                 constraints_manager,
+                data_manager,
+                primary_manager,
+                tablet_manager,
                 outputs,
             },
             config.app_id.clone(),
@@ -494,10 +516,20 @@ impl Nested {
         self.handler.keymap()
     }
 
+    /// Whether the parent offers `wp_fractional_scale_v1`. Without it the session follows the integer scale of the
+    /// parent's `wl_output`, and a fractional scale the parent holds reaches it rounded up.
+    #[must_use]
+    pub fn fractional_scale_offered(&self) -> bool {
+        self.handler.fractional_scale_offered()
+    }
+
     /// How many input events could not be attributed to an output.
     #[must_use]
     pub fn dropped_input(&self) -> u64 {
-        self.handler.table().dropped()
+        self.handler
+            .table()
+            .dropped()
+            .saturating_add(self.handler.tablets_ignored())
     }
 
     /// Whether the parent granted the request to keep its own shortcuts from `output`'s window, which it does while
@@ -838,6 +870,32 @@ impl Nested {
         })
     }
 
+    /// Tells the host what the parent's selections did since the last dispatch.
+    ///
+    /// A selection the parent offers is narrowed to the types that cross before the host hears of it; a paste the
+    /// parent asks for is a pipe the host's client writes into and [`crate::selection::transfer`] empties into the
+    /// parent's descriptor, within the limits of that module.
+    fn deliver_selections<S: Host + 'static>(&mut self, host: &mut S) {
+        use handler::host_selection::Note;
+        for note in self.handler.take_selection_notes() {
+            match note {
+                Note::HostChanged { target, mime_types } => host.host_selection(target, mime_types),
+                Note::HostWants { target, mime_type, fd } => {
+                    // A type that does not cross is refused here too: the host is another program, and what it asks for
+                    // is its word and not the session's.
+                    if !crate::selection::is_bridged(&mime_type) {
+                        continue;
+                    }
+                    let Ok((read, write)) = rustix::pipe::pipe() else {
+                        continue;
+                    };
+                    host.session_selection_wanted(target, mime_type, write);
+                    drop(crate::selection::transfer(read, fd));
+                }
+            }
+        }
+    }
+
     /// The index of an output in the target table.
     fn index(&self, output: OutputId) -> Option<usize> {
         self.targets
@@ -1059,6 +1117,23 @@ impl<S: Host + 'static> Backend<S> for Nested {
         self.flush();
     }
 
+    fn session_selection(&mut self, target: crate::SelectionTarget, mime_types: Option<Vec<String>>) {
+        let qh = self.queue.handle();
+        self.handler.offer_selection(&qh, target, mime_types);
+        self.flush();
+    }
+
+    fn read_host_selection(
+        &mut self,
+        target: crate::SelectionTarget,
+        mime_type: &str,
+        fd: std::os::fd::OwnedFd,
+    ) -> Result<(), crate::SelectionRefusal> {
+        let outcome = self.handler.read_selection(target, mime_type, fd);
+        self.flush();
+        outcome
+    }
+
     fn output_controls(&self) -> crate::OutputControls {
         // The parent's window decides the mode and the scale, so the only thing a nested output is configured with
         // is its supersample factor: `configure_output` refuses a different mode or scale.
@@ -1124,6 +1199,7 @@ impl<S: Host + 'static> Backend<S> for Nested {
         while let Some(event) = self.handler.table_mut().seat().next_event() {
             host.input(event);
         }
+        self.deliver_selections(host);
         std::mem::take(&mut self.pending)
     }
 }

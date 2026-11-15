@@ -44,12 +44,17 @@
 //!    given: `every_event_names_its_device`.
 //! 10. **One device's removal releases another device's button.** [`Mapper::cancel_device`]
 //!     retires only that device's state: `a_removed_device_does_not_release_anothers_button`.
+//! 11. **A pen is left hovering by an unplugged tablet.** The mapper remembers which tools are in proximity and
+//!     whether their tips are down, so a removal or a pause ends them, tip first:
+//!     `a_removed_tablet_lifts_the_tip_and_takes_the_tool_out`.
+//! 12. **A tool position is not on the output.** A tablet reports a fraction of its own range and the mapper places it
+//!     on the first output, continuous and clamped: `a_tool_position_is_placed_on_the_output`.
 
 use std::collections::BTreeSet;
 
-use gnoblin_types::{DeviceId, OutputId, Point, Size};
+use gnoblin_types::{DeviceId, OutputId, Point, PointF, Size};
 
-use gnoblin_backend::{InputEvent, TouchPhase};
+use gnoblin_backend::{InputEvent, TabletAxes, TabletEvent, TabletTool, TouchPhase};
 
 /// How many millionths of a scroll step make one step.
 ///
@@ -120,6 +125,83 @@ pub enum DeviceEvent {
         /// What happened.
         phase: TouchPhase,
     },
+    /// A drawing tablet's tool or pad did something.
+    Tablet(TabletDeviceEvent),
+}
+
+/// What a tablet's tool or pad did, in the terms libinput reports it: positions are fractions of the tablet's own
+/// range from 0 to 1, and the axes carry only what changed.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum TabletDeviceEvent {
+    /// A tool came into (`inside`) or left proximity of the tablet.
+    ToolProximity {
+        /// The tool.
+        tool: TabletTool,
+        /// Whether it is in proximity now.
+        inside: bool,
+        /// Horizontal position.
+        x: f64,
+        /// Vertical position.
+        y: f64,
+        /// The axes it reports.
+        axes: TabletAxes,
+    },
+    /// A tool moved or one of its axes changed.
+    ToolAxis {
+        /// The tool.
+        tool: TabletTool,
+        /// Horizontal position.
+        x: f64,
+        /// Vertical position.
+        y: f64,
+        /// The axes that changed.
+        axes: TabletAxes,
+    },
+    /// A tool's tip touched down or lifted.
+    ToolTip {
+        /// The tool.
+        tool: TabletTool,
+        /// Whether the tip is down now.
+        down: bool,
+    },
+    /// A tool's button changed; `code` is the evdev button code.
+    ToolButton {
+        /// The tool.
+        tool: TabletTool,
+        /// The button code.
+        code: u32,
+        /// Whether it is held now.
+        pressed: bool,
+    },
+    /// A pad button changed.
+    PadButton {
+        /// The button's number.
+        button: u32,
+        /// Whether it is held now.
+        pressed: bool,
+    },
+    /// A pad ring was touched at an angle in degrees, or the finger lifted.
+    PadRing {
+        /// The ring's number.
+        ring: u32,
+        /// Where the finger is.
+        angle: Option<f64>,
+    },
+    /// A pad strip was touched at a position from 0 to 1, or the finger lifted.
+    PadStrip {
+        /// The strip's number.
+        strip: u32,
+        /// Where the finger is.
+        position: Option<f64>,
+    },
+}
+
+/// A tool the mapper has seen come into proximity and not leave.
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct Hovering {
+    device: DeviceId,
+    tool: TabletTool,
+    tip_down: bool,
 }
 
 /// Turns device events into the events a seat applies.
@@ -146,6 +228,8 @@ pub struct Mapper {
     touches: BTreeSet<(DeviceId, u32)>,
     /// Where the pointer is, when it is on an output.
     pointer: Option<(OutputId, Point)>,
+    /// The tablet tools in proximity, so a removal or a pause can end them.
+    hovering: Vec<Hovering>,
 }
 
 impl Mapper {
@@ -270,6 +354,148 @@ impl Mapper {
                     });
                 }
             }
+            DeviceEvent::Tablet(event) => self.tablet(device, event, &mut events),
+        }
+        events
+    }
+
+    /// Translates one tablet event. A tool event with no output to place it on is dropped, as an absolute point is.
+    fn tablet(&mut self, device: DeviceId, event: TabletDeviceEvent, events: &mut Vec<InputEvent>) {
+        match event {
+            TabletDeviceEvent::ToolProximity {
+                tool,
+                inside: true,
+                x,
+                y,
+                axes,
+            } => {
+                let Some((output, position)) = self.place_f(x, y) else {
+                    return;
+                };
+                self.hovering
+                    .retain(|held| !(held.device == device && held.tool == tool));
+                self.hovering.push(Hovering {
+                    device,
+                    tool,
+                    tip_down: false,
+                });
+                events.push(
+                    TabletEvent::ToolIn {
+                        device,
+                        output,
+                        tool,
+                        position,
+                        axes: axes.limited_to(tool.axes),
+                    }
+                    .into(),
+                );
+            }
+            TabletDeviceEvent::ToolProximity {
+                tool, inside: false, ..
+            } => {
+                events.extend(self.leave(|held| held.device == device && held.tool == tool));
+            }
+            TabletDeviceEvent::ToolAxis { tool, x, y, axes } => {
+                if !self.is_hovering(device, tool) {
+                    return;
+                }
+                let Some((output, position)) = self.place_f(x, y) else {
+                    return;
+                };
+                events.push(
+                    TabletEvent::ToolMotion {
+                        device,
+                        output,
+                        tool,
+                        position,
+                        axes: axes.limited_to(tool.axes),
+                    }
+                    .into(),
+                );
+            }
+            TabletDeviceEvent::ToolTip { tool, down } => {
+                let Some(held) = self
+                    .hovering
+                    .iter_mut()
+                    .find(|held| held.device == device && held.tool == tool)
+                else {
+                    return;
+                };
+                if held.tip_down == down {
+                    return;
+                }
+                held.tip_down = down;
+                events.push(TabletEvent::ToolTip { device, tool, down }.into());
+            }
+            TabletDeviceEvent::ToolButton { tool, code, pressed } => {
+                if self.is_hovering(device, tool) {
+                    events.push(
+                        TabletEvent::ToolButton {
+                            device,
+                            tool,
+                            button: code,
+                            pressed,
+                        }
+                        .into(),
+                    );
+                }
+            }
+            TabletDeviceEvent::PadButton { button, pressed } => {
+                events.push(
+                    TabletEvent::PadButton {
+                        device,
+                        button,
+                        pressed,
+                    }
+                    .into(),
+                );
+            }
+            TabletDeviceEvent::PadRing { ring, angle } => {
+                events.push(TabletEvent::PadRing { device, ring, angle }.into());
+            }
+            TabletDeviceEvent::PadStrip { strip, position } => {
+                events.push(
+                    TabletEvent::PadStrip {
+                        device,
+                        strip,
+                        position,
+                    }
+                    .into(),
+                );
+            }
+        }
+    }
+
+    fn is_hovering(&self, device: DeviceId, tool: TabletTool) -> bool {
+        self.hovering
+            .iter()
+            .any(|held| held.device == device && held.tool == tool)
+    }
+
+    /// Ends every hovering tool `takes` selects: the tip lifts first, then the tool leaves.
+    fn leave(&mut self, takes: impl Fn(&Hovering) -> bool) -> Vec<InputEvent> {
+        let mut events = Vec::new();
+        let (gone, kept): (Vec<Hovering>, Vec<Hovering>) =
+            std::mem::take(&mut self.hovering).into_iter().partition(takes);
+        self.hovering = kept;
+        for held in gone {
+            if held.tip_down {
+                events.push(
+                    TabletEvent::ToolTip {
+                        device: held.device,
+                        tool: held.tool,
+                        down: false,
+                    }
+                    .into(),
+                );
+            }
+            events.push(
+                TabletEvent::ToolOut {
+                    device: held.device,
+                    tool: held.tool,
+                }
+                .into(),
+            );
         }
         events
     }
@@ -281,7 +507,8 @@ impl Mapper {
     /// second time.
     #[must_use]
     pub fn cancel(&mut self) -> Vec<InputEvent> {
-        let events = self.release(|_| true);
+        let mut events = self.release(|_| true);
+        events.extend(self.leave(|_| true));
         self.remainder = (0.0, 0.0);
         self.scroll = (0.0, 0.0);
         events
@@ -294,7 +521,9 @@ impl Mapper {
     /// the second time. Another device's held buttons and touch points are untouched.
     #[must_use]
     pub fn cancel_device(&mut self, device: DeviceId) -> Vec<InputEvent> {
-        self.release(|held| held == device)
+        let mut events = self.release(|held| held == device);
+        events.extend(self.leave(|held| held.device == device));
+        events
     }
 
     /// The releases and cancellations for every held button and touch point whose device `takes`.
@@ -331,6 +560,23 @@ impl Mapper {
             }
         }
         events
+    }
+
+    /// A normalised absolute point as an output and a continuous position in it, for a tablet's tool: a pen resolves
+    /// far below a pixel, so the position is not rounded to one.
+    fn place_f(&self, x: f64, y: f64) -> Option<(OutputId, PointF)> {
+        let screen = match self.absolute {
+            Some(id) => self.screens.iter().find(|screen| screen.id == id).copied(),
+            None => self.screens.first().copied(),
+        }?;
+        if !x.is_finite() || !y.is_finite() {
+            return None;
+        }
+        let position = PointF::new(
+            x.clamp(0.0, 1.0) * f64::from(screen.logical.width),
+            y.clamp(0.0, 1.0) * f64::from(screen.logical.height),
+        );
+        Some((screen.id, position))
     }
 
     /// A normalised absolute point as an output and a position in it.
@@ -381,6 +627,7 @@ mod tests {
     const MOUSE: DeviceId = DeviceId::new(1);
     const KEYBOARD: DeviceId = DeviceId::new(2);
     const SECOND_MOUSE: DeviceId = DeviceId::new(3);
+    const TABLET: DeviceId = DeviceId::new(4);
 
     fn screen(id: u64, width: u32, height: u32) -> Screen {
         Screen {
@@ -391,6 +638,150 @@ mod tests {
 
     fn full_hd() -> Screen {
         screen(1, 1920, 1080)
+    }
+
+    fn pen() -> TabletTool {
+        TabletTool::pen(5)
+    }
+
+    fn hover(mapper: &mut Mapper, device: DeviceId) -> Vec<InputEvent> {
+        mapper.event(
+            device,
+            DeviceEvent::Tablet(TabletDeviceEvent::ToolProximity {
+                tool: pen(),
+                inside: true,
+                x: 0.5,
+                y: 0.25,
+                axes: TabletAxes::default(),
+            }),
+        )
+    }
+
+    #[test]
+    fn a_tool_position_is_placed_on_the_output() {
+        let mut mapper = Mapper::new();
+        mapper.set_screens(vec![full_hd()]);
+        let events = hover(&mut mapper, TABLET);
+        assert_eq!(
+            events,
+            vec![
+                TabletEvent::ToolIn {
+                    device: TABLET,
+                    output: OutputId::new(1),
+                    tool: pen(),
+                    position: PointF::new(960.0, 270.0),
+                    axes: TabletAxes::default(),
+                }
+                .into()
+            ]
+        );
+        let moved = mapper.event(
+            TABLET,
+            DeviceEvent::Tablet(TabletDeviceEvent::ToolAxis {
+                tool: pen(),
+                x: 2.0,
+                y: -1.0,
+                axes: TabletAxes {
+                    pressure: Some(0.5),
+                    ..TabletAxes::default()
+                },
+            }),
+        );
+        let [InputEvent::Tablet(TabletEvent::ToolMotion { position, axes, .. })] = moved.as_slice() else {
+            panic!("one motion: {moved:?}");
+        };
+        assert_eq!(
+            *position,
+            PointF::new(1920.0, 0.0),
+            "a position past the range is clamped to the edge"
+        );
+        assert_eq!(axes.pressure, Some(0.5));
+    }
+
+    #[test]
+    fn a_tool_with_no_output_to_be_on_says_nothing() {
+        let mut mapper = Mapper::new();
+        assert!(hover(&mut mapper, TABLET).is_empty());
+    }
+
+    #[test]
+    fn a_motion_of_a_tool_that_never_arrived_is_dropped() {
+        let mut mapper = Mapper::new();
+        mapper.set_screens(vec![full_hd()]);
+        let moved = mapper.event(
+            TABLET,
+            DeviceEvent::Tablet(TabletDeviceEvent::ToolAxis {
+                tool: pen(),
+                x: 0.1,
+                y: 0.1,
+                axes: TabletAxes::default(),
+            }),
+        );
+        assert!(moved.is_empty());
+    }
+
+    #[test]
+    fn a_removed_tablet_lifts_the_tip_and_takes_the_tool_out() {
+        let mut mapper = Mapper::new();
+        mapper.set_screens(vec![full_hd()]);
+        hover(&mut mapper, TABLET);
+        let _ = mapper.event(
+            TABLET,
+            DeviceEvent::Tablet(TabletDeviceEvent::ToolTip {
+                tool: pen(),
+                down: true,
+            }),
+        );
+        let ended = mapper.cancel_device(TABLET);
+        assert_eq!(
+            ended,
+            vec![
+                TabletEvent::ToolTip {
+                    device: TABLET,
+                    tool: pen(),
+                    down: false
+                }
+                .into(),
+                TabletEvent::ToolOut {
+                    device: TABLET,
+                    tool: pen()
+                }
+                .into(),
+            ]
+        );
+        assert!(mapper.cancel_device(TABLET).is_empty(), "a second removal ends nothing");
+    }
+
+    #[test]
+    fn a_tablet_removal_leaves_another_tablets_tool() {
+        let mut mapper = Mapper::new();
+        mapper.set_screens(vec![full_hd()]);
+        hover(&mut mapper, TABLET);
+        assert!(mapper.cancel_device(SECOND_MOUSE).is_empty());
+        assert_eq!(mapper.cancel().len(), 1, "a pause ends every tool");
+    }
+
+    #[test]
+    fn a_pad_names_the_device_that_pressed_it() {
+        let mut mapper = Mapper::new();
+        let events = mapper.event(
+            TABLET,
+            DeviceEvent::Tablet(TabletDeviceEvent::PadButton {
+                button: 3,
+                pressed: true,
+            }),
+        );
+        assert_eq!(
+            events,
+            vec![
+                TabletEvent::PadButton {
+                    device: TABLET,
+                    button: 3,
+                    pressed: true
+                }
+                .into()
+            ]
+        );
     }
 
     #[test]

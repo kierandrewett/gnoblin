@@ -48,9 +48,10 @@ use std::io;
 use std::rc::Rc;
 
 use smithay::backend::input::{
-    AbsolutePositionEvent, Axis, Event, GestureBeginEvent, GestureEndEvent, GesturePinchUpdateEvent,
+    AbsolutePositionEvent, Axis, ButtonState, Event, GestureBeginEvent, GestureEndEvent, GesturePinchUpdateEvent,
     GestureSwipeUpdateEvent, InputEvent as BackendEvent, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
-    PointerMotionEvent, TouchEvent,
+    PointerMotionEvent, ProximityState, TabletToolButtonEvent, TabletToolCapabilities, TabletToolEvent,
+    TabletToolProximityEvent, TabletToolTipEvent, TabletToolTipState, TabletToolType, TouchEvent,
 };
 use smithay::backend::libinput::{LibinputInputBackend, LibinputSessionInterface};
 use smithay::backend::session::Session as _;
@@ -59,13 +60,13 @@ use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::input as libinput;
 
 use gnoblin_backend::{
-    DeviceCaps, DeviceInfo, DeviceKind, InputEvent, InputSource, RawTouchpadKind, RawTouchpadPhase, RawTouchpadSample,
-    TouchPhase, single_line,
+    DeviceCaps, DeviceInfo, DeviceKind, InputEvent, InputSource, PadLayout, RawTouchpadKind, RawTouchpadPhase,
+    RawTouchpadSample, TabletAxes, TabletTool, ToolAxes, ToolKind, TouchPhase, single_line,
 };
 use gnoblin_types::DeviceId;
 
 pub use devices::{Device, Devices};
-pub use map::{DeviceEvent, Mapper, Screen};
+pub use map::{DeviceEvent, Mapper, Screen, TabletDeviceEvent};
 pub use settings::{Accel, Applier, ButtonMap, Click, DeviceSettings, Scroll, Setting};
 
 use crate::log;
@@ -464,16 +465,62 @@ impl Libinput {
                 let phase = end_phase(event.cancelled());
                 self.gesture(&event.device(), RawTouchpadKind::Hold, phase, GestureStep::REST);
             }
-            // A touch frame is the boundary between two atomic updates, which the seat applies
-            // in order anyway; a tablet tool is read by `gnoblin-input` from the raw channel,
-            // which this increment does not route yet; a switch is a lid or a tablet mode the
-            // session's own policy reads from the device list.
-            BackendEvent::TouchFrame { .. }
-            | BackendEvent::TabletToolAxis { .. }
-            | BackendEvent::TabletToolProximity { .. }
-            | BackendEvent::TabletToolTip { .. }
-            | BackendEvent::TabletToolButton { .. }
-            | BackendEvent::SwitchToggle { .. } => {}
+            // A tablet tool's changes are the mapper's: it places the position on an output and remembers which tools
+            // hover, so a removal ends them. The pad has no event here at all: the toolkit's libinput source drops
+            // a pad's buttons, rings and strips before they reach this queue (see `describe`).
+            BackendEvent::TabletToolAxis { event } => {
+                let device = self.device_id(&event.device());
+                let (x, y) = tablet_position(&event);
+                produced.extend(self.mapper.event(
+                    device,
+                    DeviceEvent::Tablet(TabletDeviceEvent::ToolAxis {
+                        tool: tool_of(&event),
+                        x,
+                        y,
+                        axes: axes_of(&event),
+                    }),
+                ));
+            }
+            BackendEvent::TabletToolProximity { event } => {
+                let device = self.device_id(&event.device());
+                let (x, y) = tablet_position(&event);
+                produced.extend(self.mapper.event(
+                    device,
+                    DeviceEvent::Tablet(TabletDeviceEvent::ToolProximity {
+                        tool: tool_of(&event),
+                        inside: event.state() == ProximityState::In,
+                        x,
+                        y,
+                        axes: axes_of(&event),
+                    }),
+                ));
+            }
+            BackendEvent::TabletToolTip { event } => {
+                let device = self.device_id(&event.device());
+                produced.extend(self.mapper.event(
+                    device,
+                    DeviceEvent::Tablet(TabletDeviceEvent::ToolTip {
+                        tool: tool_of(&event),
+                        down: <_ as TabletToolTipEvent<LibinputInputBackend>>::tip_state(&event)
+                            == TabletToolTipState::Down,
+                    }),
+                ));
+            }
+            BackendEvent::TabletToolButton { event } => {
+                let device = self.device_id(&event.device());
+                produced.extend(self.mapper.event(
+                    device,
+                    DeviceEvent::Tablet(TabletDeviceEvent::ToolButton {
+                        tool: tool_of(&event),
+                        code: <_ as TabletToolButtonEvent<LibinputInputBackend>>::button(&event),
+                        pressed: <_ as TabletToolButtonEvent<LibinputInputBackend>>::button_state(&event)
+                            == ButtonState::Pressed,
+                    }),
+                ));
+            }
+            // A touch frame is the boundary between two atomic updates, which the seat applies in order anyway; a
+            // switch is a lid or a tablet mode the session's own policy reads from the device list.
+            BackendEvent::TouchFrame { .. } | BackendEvent::SwitchToggle { .. } => {}
             other => {
                 log::debug!(area = "input", ?other, "an event this seat does not use");
             }
@@ -509,6 +556,66 @@ fn axis<E: PointerAxisEvent<LibinputInputBackend>>(event: &E) -> (f64, f64) {
     (amount(Axis::Horizontal), amount(Axis::Vertical))
 }
 
+/// The range a tablet position is asked for, so the fraction keeps far more than a pixel's worth of precision.
+const TABLET_RANGE: i32 = 1 << 16;
+
+/// The tablet tool an event is about, named by what it is.
+fn tool_of<E: TabletToolEvent<LibinputInputBackend>>(event: &E) -> TabletTool {
+    let descriptor = event.tool();
+    let kind = match descriptor.tool_type {
+        TabletToolType::Eraser => ToolKind::Eraser,
+        TabletToolType::Brush => ToolKind::Brush,
+        TabletToolType::Pencil => ToolKind::Pencil,
+        TabletToolType::Airbrush => ToolKind::Airbrush,
+        TabletToolType::Mouse => ToolKind::Mouse,
+        TabletToolType::Lens => ToolKind::Lens,
+        // A totem is a rotary device the contract has no kind for; it is carried as a pen, whose axes it names.
+        TabletToolType::Pen | TabletToolType::Totem | TabletToolType::Unknown => ToolKind::Pen,
+    };
+    let mut axes = ToolAxes::NONE;
+    for (capability, axis) in [
+        (TabletToolCapabilities::TILT, ToolAxes::TILT),
+        (TabletToolCapabilities::PRESSURE, ToolAxes::PRESSURE),
+        (TabletToolCapabilities::DISTANCE, ToolAxes::DISTANCE),
+        (TabletToolCapabilities::ROTATION, ToolAxes::ROTATION),
+        (TabletToolCapabilities::SLIDER, ToolAxes::SLIDER),
+        (TabletToolCapabilities::WHEEL, ToolAxes::WHEEL),
+    ] {
+        if descriptor.capabilities.contains(capability) {
+            axes = axes.union(axis);
+        }
+    }
+    TabletTool {
+        kind,
+        serial: descriptor.hardware_serial,
+        hardware_id: descriptor.hardware_id_wacom,
+        axes,
+    }
+}
+
+/// The axes an event changed. libinput says which ones did, so a steady pen sends none.
+fn axes_of<E: TabletToolEvent<LibinputInputBackend>>(event: &E) -> TabletAxes {
+    TabletAxes {
+        pressure: event.pressure_has_changed().then(|| event.pressure()),
+        distance: event.distance_has_changed().then(|| event.distance()),
+        tilt: (event.tilt_x_has_changed() || event.tilt_y_has_changed()).then(|| (event.tilt_x(), event.tilt_y())),
+        rotation: event.rotation_has_changed().then(|| event.rotation()),
+        slider: event.slider_has_changed().then(|| event.slider_position()),
+        wheel: event
+            .wheel_has_changed()
+            .then(|| (event.wheel_delta(), event.wheel_delta_discrete())),
+    }
+}
+
+/// A tool's position as a fraction of the tablet's range on each axis.
+fn tablet_position<E: TabletToolEvent<LibinputInputBackend>>(event: &E) -> (f64, f64) {
+    let range = f64::from(TABLET_RANGE);
+    (
+        event.x_transformed(TABLET_RANGE) / range,
+        event.y_transformed(TABLET_RANGE) / range,
+    )
+}
+
 /// The configuration kind of a device, from the capabilities the driver reports.
 ///
 /// libinput names capabilities rather than kinds, and the configuration's sections are kinds.
@@ -534,6 +641,11 @@ pub fn kind_of(device: &libinput::Device) -> DeviceKind {
 ///
 /// The number is not assigned here: [`Devices::announce`] numbers the draft, so the numbering
 /// rules stay testable without a device.
+///
+/// A tablet pad is not given the pad capability. The toolkit's libinput source drops a pad's buttons, rings and strips
+/// before they reach the queue this module reads, so announcing a pad would offer clients a device that can never
+/// produce an event. The pad is a device with no capability until that source delivers its events; the mapper already
+/// translates them (`TabletDeviceEvent::PadButton`, `PadRing`, `PadStrip`).
 fn describe(device: &libinput::Device) -> DeviceInfo {
     let mut caps = DeviceCaps::NONE;
     for (capability, flag) in [
@@ -542,7 +654,6 @@ fn describe(device: &libinput::Device) -> DeviceInfo {
         (libinput::DeviceCapability::Touch, DeviceCaps::TOUCH),
         (libinput::DeviceCapability::Gesture, DeviceCaps::GESTURE),
         (libinput::DeviceCapability::TabletTool, DeviceCaps::TABLET_TOOL),
-        (libinput::DeviceCapability::TabletPad, DeviceCaps::TABLET_PAD),
         (libinput::DeviceCapability::Switch, DeviceCaps::SWITCH),
     ] {
         if device.has_capability(capability) {
@@ -557,6 +668,7 @@ fn describe(device: &libinput::Device) -> DeviceInfo {
         kind: kind_of(device),
         caps,
         seat: device.seat().logical_name().into_owned(),
+        pad: PadLayout::default(),
     }
 }
 

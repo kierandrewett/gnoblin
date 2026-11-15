@@ -42,11 +42,11 @@ use crate::State;
 const VERSION: u32 = 1;
 
 /// Creates the `wp_fractional_scale_manager_v1` global.
-pub(crate) fn create_global(display: &DisplayHandle) {
-    let _ = display.create_global::<State, wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1, ManagerGlobal>(
+pub(crate) fn create_global(display: &DisplayHandle) -> smithay::reexports::wayland_server::backend::GlobalId {
+    display.create_global::<State, wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1, ManagerGlobal>(
         VERSION,
         ManagerGlobal,
-    );
+    )
 }
 
 /// The data of the `wp_fractional_scale_manager_v1` global.

@@ -14,9 +14,13 @@
 //! 2. **A toplevel destroyed before its decoration goes unanswered.** The tap records which toplevels have a live
 //!    decoration, so the destruction of one is answered with `orphaned`:
 //!    `destroying_a_toplevel_before_its_decoration_is_an_error` in `tests/decoration.rs`.
+//! 3. **A tablet seat never learns of the pads.** Smithay creates the seat object out of reach, so the tap notes the number
+//!    the client chose and finds the object once the request is handled: `a_client_that_binds_late_sees_the_pad` in
+//!    `tests/tablet.rs`.
 
 use std::any::Any;
 
+use smithay::reexports::wayland_protocols::wp::tablet::zv2::server::zwp_tablet_manager_v2::{self, ZwpTabletManagerV2};
 use smithay::reexports::wayland_protocols::wp::text_input::zv3::server::zwp_text_input_v3::{self, ZwpTextInputV3};
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_decoration_manager_v1::{
     self, ZxdgDecorationManagerV1,
@@ -28,7 +32,7 @@ use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::{se
 use smithay::reexports::wayland_server::{DataInit, DisplayHandle, Resource};
 
 use crate::State;
-use crate::protocols::{zwp_text_input_v3 as text_input, zxdg_decoration_v1 as decoration};
+use crate::protocols::{zwp_tablet_v2 as tablet, zwp_text_input_v3 as text_input, zxdg_decoration_v1 as decoration};
 
 /// Moves a value between two names for one type. The tap picks the request type from the resource's, so the two are
 /// the same type and the cast cannot fail.
@@ -74,6 +78,18 @@ where
         {
             decoration::decoration_requested(state, manager, toplevel);
         }
+    } else if let Some(manager) = resource.downcast_ref::<ZwpTabletManagerV2>() {
+        // Smithay makes the tablet seat inside its own handler and keeps it out of reach; the number the client chose
+        // for it is noted here, so the object can be found afterwards and given the pads that exist.
+        if let Some(zwp_tablet_manager_v2::Request::GetTabletSeat { tablet_seat, .. }) =
+            seen.downcast_ref::<zwp_tablet_manager_v2::Request>()
+        {
+            tablet::seat_requested(
+                state,
+                dhandle.get_client(manager.id()).ok(),
+                tablet::protocol_id_of(tablet_seat),
+            );
+        }
     } else if let Some(object) = resource.downcast_ref::<ZxdgToplevelDecorationV1>()
         && matches!(
             seen.downcast_ref::<zxdg_toplevel_decoration_v1::Request>(),
@@ -89,4 +105,5 @@ where
 /// for it can go, and every request is a chance to see it, so the check is the cheap one first.
 pub(crate) fn after(state: &mut State, dhandle: &DisplayHandle, data_init: &mut DataInit<'_, State>) {
     text_input::replay(state, dhandle, data_init);
+    tablet::resolve_new_seats(state, dhandle);
 }

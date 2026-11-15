@@ -438,6 +438,18 @@ pub struct App {
     pub ext_toplevels: BTreeMap<u32, Toplevel>,
     /// Every mode each `zxdg_toplevel_decoration_v1` was told, in order, by the decoration object's id.
     pub decoration_modes: BTreeMap<u32, Vec<zxdg_toplevel_decoration_v1::Mode>>,
+    /// What this client's tablet objects were told, one line per event, in order (`tests/tablet.rs`).
+    pub tablet_log: Vec<String>,
+    /// The mime types of the current primary selection offer, or `None` for no selection (`tests/selection_bridge.rs`).
+    pub primary: Option<Vec<String>>,
+    /// The offer object the current primary selection names.
+    pub primary_offer: Option<
+        wayland_protocols::wp::primary_selection::zv1::client::zwp_primary_selection_offer_v1::ZwpPrimarySelectionOfferV1,
+    >,
+    /// The mime types of every primary selection offer this client was given, by object id.
+    pub primary_offers: BTreeMap<u32, Vec<String>>,
+    /// The mime type each `zwp_primary_selection_source_v1.send` carried.
+    pub primary_sends: Vec<String>,
 }
 
 impl App {

@@ -1126,6 +1126,7 @@ dependencies = [
  "gnoblin-render-software",
  "gnoblin-render-vulkan",
  "gnoblin-types",
+ "rustix 1.1.6",
  "smithay",
  "wayland-client",
  "wayland-protocols",

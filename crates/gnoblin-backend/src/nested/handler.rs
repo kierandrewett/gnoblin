@@ -38,17 +38,24 @@
 //! - **Scale.** The parent's fractional scale is followed per surface; without it, the integer scale of the parent
 //!   outputs a surface is on (`wl_surface.enter`) is, updated when the surface moves or an output's scale changes.
 //!
-//! Relative pointer motion and pointer constraints, tablets, text input and the clipboard are not bridged: each needs
-//! a hook in the [`Backend`](crate::Backend) contract the session's own protocols can call, and `design/backend-parity.md`
-//! lists them as missing on this backend. A parent that offers them sees them unbound.
+//! - **The clipboard and the primary selection.** [`host_selection`]: the parent's selection is offered to the session
+//!   while the window has the keyboard, and the session's is offered back, with the limits in [`crate::selection`].
+//! - **Tablets.** [`host_tablet`]: the parent's tools and pads become [`TabletEvent`](crate::TabletEvent)s.
+//!
+//! Text input is not bridged: it needs a hook in the [`Backend`](crate::Backend) contract the session's own
+//! protocols can call, and `design/backend-parity.md` lists it as missing on this backend. A parent that offers it
+//! sees it unbound.
+
+pub(super) mod host_selection;
+mod host_tablet;
 
 use std::io::Read;
 
 use wayland_client::backend::ObjectId;
 use wayland_client::globals::GlobalListContents;
 use wayland_client::protocol::{
-    wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm,
-    wl_shm_pool, wl_surface, wl_touch,
+    wl_buffer, wl_callback, wl_compositor, wl_data_device_manager, wl_keyboard, wl_output, wl_pointer, wl_registry,
+    wl_seat, wl_shm, wl_shm_pool, wl_surface, wl_touch,
 };
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle, WEnum};
 use wayland_protocols::wp::fractional_scale::v1::client::{wp_fractional_scale_manager_v1, wp_fractional_scale_v1};
@@ -61,7 +68,9 @@ use wayland_protocols::wp::pointer_constraints::zv1::client::{
 use wayland_protocols::wp::pointer_gestures::zv1::client::{
     zwp_pointer_gesture_pinch_v1, zwp_pointer_gesture_swipe_v1, zwp_pointer_gestures_v1,
 };
+use wayland_protocols::wp::primary_selection::zv1::client::zwp_primary_selection_device_manager_v1;
 use wayland_protocols::wp::relative_pointer::zv1::client::{zwp_relative_pointer_manager_v1, zwp_relative_pointer_v1};
+use wayland_protocols::wp::tablet::zv2::client::{zwp_tablet_manager_v2, zwp_tablet_seat_v2};
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 use wayland_protocols::xdg::toplevel_icon::v1::client::{xdg_toplevel_icon_manager_v1, xdg_toplevel_icon_v1};
@@ -169,6 +178,12 @@ pub(crate) struct Bound {
     pub relative_manager: Option<zwp_relative_pointer_manager_v1::ZwpRelativePointerManagerV1>,
     /// The parent's pointer constraints manager, if it offers one.
     pub constraints_manager: Option<zwp_pointer_constraints_v1::ZwpPointerConstraintsV1>,
+    /// The parent's data device manager, which carries the clipboard.
+    pub data_manager: Option<wl_data_device_manager::WlDataDeviceManager>,
+    /// The parent's primary selection manager, if it offers one.
+    pub primary_manager: Option<zwp_primary_selection_device_manager_v1::ZwpPrimarySelectionDeviceManagerV1>,
+    /// The parent's tablet manager, if it offers one.
+    pub tablet_manager: Option<zwp_tablet_manager_v2::ZwpTabletManagerV2>,
     /// Every output the parent has.
     pub outputs: Vec<HostOutput>,
 }
@@ -246,6 +261,14 @@ pub(crate) struct Handler {
     held: Option<(HostConstraint, ObjectId)>,
     /// The size an output takes when the parent's configure leaves the size to the session.
     initial_size: Size,
+    /// The parent's clipboard and primary selection, and what the session offers back.
+    selection: host_selection::Bridge,
+    /// The parent's tablet manager, if it offers one.
+    tablet_manager: Option<zwp_tablet_manager_v2::ZwpTabletManagerV2>,
+    /// The tablet seat asked of the manager, while there is one.
+    tablet_seat: Option<zwp_tablet_seat_v2::ZwpTabletSeatV2>,
+    /// The parent's tablets, tools and pads.
+    tablets: super::tablet::Tablets,
 }
 
 impl Handler {
@@ -279,6 +302,10 @@ impl Handler {
             wanted: PointerConstraint::Free,
             held: None,
             initial_size,
+            selection: host_selection::Bridge::new(bound.data_manager, bound.primary_manager),
+            tablet_manager: bound.tablet_manager,
+            tablet_seat: None,
+            tablets: super::tablet::Tablets::new(),
         }
     }
 
@@ -508,6 +535,41 @@ impl Handler {
         self.keymap.as_deref()
     }
 
+    /// Whether the parent offers `wp_fractional_scale_v1`, so the session can follow a fractional scale exactly.
+    pub fn fractional_scale_offered(&self) -> bool {
+        self.fractional_manager.is_some()
+    }
+
+    /// How many tablet tool events could not be attributed to an output of the session.
+    pub fn tablets_ignored(&self) -> u64 {
+        self.tablets.ignored()
+    }
+
+    /// What the connection learnt that the session's host has to hear.
+    pub fn take_selection_notes(&mut self) -> Vec<host_selection::Note> {
+        self.selection.take_notes()
+    }
+
+    /// A client of the session reads the parent's selection.
+    pub fn read_selection(
+        &mut self,
+        target: crate::SelectionTarget,
+        mime: &str,
+        fd: std::os::fd::OwnedFd,
+    ) -> Result<(), crate::SelectionRefusal> {
+        self.selection.read(target, mime, fd)
+    }
+
+    /// A client of the session set or cleared a selection.
+    pub fn offer_selection(
+        &mut self,
+        qh: &QueueHandle<Self>,
+        target: crate::SelectionTarget,
+        mime_types: Option<Vec<String>>,
+    ) {
+        self.selection.offer(target, mime_types, qh);
+    }
+
     /// The output a surface this backend draws on belongs to.
     ///
     /// Answering [`None`] for a surface that has not been configured is what stops
@@ -562,6 +624,10 @@ impl Handler {
         let keyboard = capabilities.contains(wl_seat::Capability::Keyboard);
         let pointer = capabilities.contains(wl_seat::Capability::Pointer);
         let touch = capabilities.contains(wl_seat::Capability::Touch);
+        // The selection devices and the tablet seat belong to the seat, not to one of its capabilities: a tablet or a
+        // clipboard needs no keyboard to exist, and the selection is only offered while the keyboard is focused.
+        self.selection.bind_devices(&self.seat_global, qh);
+        self.bind_tablets(&self.seat_global.clone(), qh);
         if keyboard {
             if self.keyboard.is_none() {
                 self.keyboard = Some(self.seat_global.get_keyboard(qh, ()));
@@ -900,17 +966,29 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for Handler {
         match event {
             wl_keyboard::Event::Keymap { format, fd, size } => state.note_keymap(&format, fd, size),
             wl_keyboard::Event::Key {
-                key, state: key_state, ..
-            } => match key_state {
-                WEnum::Value(wl_keyboard::KeyState::Pressed) => state.table.seat().key(key, true),
-                WEnum::Value(wl_keyboard::KeyState::Released) => state.table.seat().key(key, false),
-                _ => {}
-            },
+                key,
+                state: key_state,
+                serial,
+                ..
+            } => {
+                state.selection.note_serial(serial);
+                match key_state {
+                    WEnum::Value(wl_keyboard::KeyState::Pressed) => state.table.seat().key(key, true),
+                    WEnum::Value(wl_keyboard::KeyState::Released) => state.table.seat().key(key, false),
+                    _ => {}
+                }
+            }
             // The parent took the keyboard away from the session's window: every key the session saw pressed is
-            // released, or a modifier held while switching windows would stay held in the session for good.
-            wl_keyboard::Event::Leave { .. } => state.table.seat().release_keys(),
+            // released, or a modifier held while switching windows would stay held in the session for good. The
+            // host's selections go with the focus.
+            wl_keyboard::Event::Leave { .. } => {
+                state.table.seat().release_keys();
+                state.selection.focus_out();
+            }
             // Which of the parent's surfaces holds the focus is the parent's own business, and the keys held when
-            // focus arrives belong to the person, not to a press the session saw.
+            // focus arrives belong to the person, not to a press the session saw. What does arrive with it is the
+            // parent's selection, which is offered to the session from here on.
+            wl_keyboard::Event::Enter { serial, .. } => state.selection.focus_in(serial),
             _ => {}
         }
     }
@@ -949,12 +1027,16 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Handler {
             wl_pointer::Event::Button {
                 button,
                 state: button_state,
+                serial,
                 ..
-            } => match button_state {
-                WEnum::Value(wl_pointer::ButtonState::Pressed) => state.table.seat().button(button, true),
-                WEnum::Value(wl_pointer::ButtonState::Released) => state.table.seat().button(button, false),
-                _ => {}
-            },
+            } => {
+                state.selection.note_serial(serial);
+                match button_state {
+                    WEnum::Value(wl_pointer::ButtonState::Pressed) => state.table.seat().button(button, true),
+                    WEnum::Value(wl_pointer::ButtonState::Released) => state.table.seat().button(button, false),
+                    _ => {}
+                }
+            }
             wl_pointer::Event::Axis { axis, value, .. } => {
                 state.table.seat().axis(is_horizontal(&axis), value);
             }

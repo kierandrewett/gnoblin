@@ -31,7 +31,10 @@ use std::time::{Duration, Instant};
 
 use gnoblin_backend::headless::Headless;
 use gnoblin_backend::nested::{Nested, NestedConfig};
-use gnoblin_backend::{Backend, BackendEvent, InputEvent, Present};
+use gnoblin_backend::{
+    Backend, BackendEvent, DeviceCaps, DeviceInfo, DeviceKind, InputEvent, PadLayout, Present, Stylus, TabletAxes,
+    TabletEvent, TabletTool,
+};
 use gnoblin_output::DisplayMode;
 use gnoblin_render_frame::frame::Solid;
 use gnoblin_types::{DeviceId, OutputId, Point, Rect, Scale, Size};
@@ -930,6 +933,374 @@ fn a_lock_in_the_session_locks_the_hosts_pointer_and_its_relative_motion_arrives
                 .any(|event| matches!(event, InputEvent::PointerMotionRelative { .. })),
             "an unlocked pointer's motion is delivered as positions only: {:?}",
             probe.inputs
+        );
+    });
+}
+
+/// Pumps the session for a while, to prove that nothing happened in it.
+fn settle_session(nested: &mut Nested, probe: &mut Probe) -> Vec<BackendEvent> {
+    let mut events = Vec::new();
+    for _ in 0..20 {
+        nested.roundtrip().expect("the host answers a round trip");
+        events.extend(nested.dispatch(probe));
+        thread::sleep(Duration::from_millis(10));
+    }
+    events
+}
+
+#[test]
+fn a_host_that_states_only_an_integer_scale_is_followed_to_it() {
+    let session = Session::start_integer_only();
+    session.run(|host| {
+        let mut nested = Nested::connect(&NestedConfig::new(host.socket())).expect("the session connects");
+        assert!(
+            !nested.fractional_scale_offered(),
+            "this host offers no wp_fractional_scale_v1, so the session has only wl_output's scale to follow"
+        );
+        let mut probe = Probe::drawing(RED);
+        draw(&mut nested, &mut probe);
+        host.wait_for(|observation| observation.only().is_some_and(|window| window.mapped));
+        let _ = nested.dispatch(&mut probe);
+        let before = only_output(&nested);
+        assert_eq!(before.scale, Scale::IDENTITY, "the host starts at scale one");
+        let logical = before.logical_size();
+
+        host.control.set_global_scale(Some(2));
+        collect_until(&mut nested, &mut probe, |events| {
+            events
+                .iter()
+                .any(|event| matches!(event, BackendEvent::OutputResized { scale, .. } if *scale == Scale::integral(2)))
+        });
+        let doubled = only_output(&nested);
+        assert_eq!(
+            doubled.scale,
+            Scale::integral(2),
+            "the session follows the integer scale of the host's output"
+        );
+        assert_eq!(
+            (doubled.mode.width, doubled.mode.height),
+            (logical.width * 2, logical.height * 2),
+            "the window keeps its logical size and gets twice the pixels"
+        );
+        draw_rendered(&mut nested, &mut probe);
+        assert_eq!(
+            session_screenshot(&mut nested, doubled.id).map(|image| image.size()),
+            Some(Size::new(doubled.mode.width, doubled.mode.height)),
+            "the session draws at the new scale"
+        );
+
+        // A fractional change on the host: the host can say only the next whole scale up (1.5 is 2), so the session
+        // stays where it is and nothing is resized or lost.
+        host.control
+            .output_apply(window_owner(host), "scale=1.5")
+            .expect("the host answers")
+            .expect("the host applies a fractional scale");
+        let events = settle_session(&mut nested, &mut probe);
+        let after = only_output(&nested);
+        assert_eq!(
+            after.scale,
+            Scale::integral(2),
+            "a fractional scale reaches a session that cannot be told of it as the whole scale above: {events:?}"
+        );
+        assert_eq!(
+            after.logical_size(),
+            logical,
+            "and the window's logical size is the one it had"
+        );
+
+        // And back down to a whole scale, which the session follows again.
+        host.control
+            .output_apply(window_owner(host), "scale=1")
+            .expect("the host answers")
+            .expect("the host applies a whole scale");
+        collect_until(&mut nested, &mut probe, |events| {
+            events
+                .iter()
+                .any(|event| matches!(event, BackendEvent::OutputResized { scale, .. } if *scale == Scale::IDENTITY))
+        });
+        assert_eq!(only_output(&nested).scale, Scale::IDENTITY);
+        assert_eq!(only_output(&nested).logical_size(), logical);
+    });
+}
+
+#[test]
+fn a_host_fractional_scale_is_followed_exactly() {
+    let session = Session::start();
+    session.run(|host| {
+        let mut nested = Nested::connect(&NestedConfig::new(host.socket())).expect("the session connects");
+        assert!(
+            nested.fractional_scale_offered(),
+            "this host offers wp_fractional_scale_v1"
+        );
+        let mut probe = Probe::drawing(RED);
+        draw(&mut nested, &mut probe);
+        host.wait_for(|observation| observation.only().is_some_and(|window| window.mapped));
+        let _ = nested.dispatch(&mut probe);
+        let logical = only_output(&nested).logical_size();
+
+        host.control
+            .output_apply(window_owner(host), "scale=1.5")
+            .expect("the host answers")
+            .expect("the host applies a fractional scale");
+        collect_until(&mut nested, &mut probe, |events| {
+            events
+                .iter()
+                .any(|event| matches!(event, BackendEvent::OutputResized { scale, .. } if *scale == Scale::new(3, 2)))
+        });
+        let output = only_output(&nested);
+        assert_eq!(
+            output.scale,
+            Scale::new(3, 2),
+            "the session follows the host's fraction exactly"
+        );
+        assert_eq!(output.logical_size(), logical, "the logical size is the window's");
+        assert_eq!(
+            (output.mode.width, output.mode.height),
+            ((logical.width * 3).div_ceil(2), (logical.height * 3).div_ceil(2)),
+            "the mode is the logical size at the fractional scale"
+        );
+    });
+}
+
+/// The tablet the host plugs in for the tablet tests.
+const HOST_TABLET: DeviceId = DeviceId::new(40);
+
+/// The pad the host plugs in for the tablet tests.
+const HOST_PAD: DeviceId = DeviceId::new(41);
+
+fn host_tablet() -> InputEvent {
+    let mut info = DeviceInfo::new(HOST_TABLET, "Host tablet", DeviceKind::Mouse).with_caps(DeviceCaps::TABLET_TOOL);
+    info.vendor = 0x56a;
+    info.product = 0x37;
+    InputEvent::DeviceAdded { device: info }
+}
+
+#[test]
+fn a_hosts_pen_arrives_as_tablet_events() {
+    let session = Session::start();
+    session.run(|host| {
+        let mut nested = Nested::connect(&NestedConfig::new(host.socket())).expect("the session connects");
+        let mut probe = Probe::drawing(RED);
+        draw(&mut nested, &mut probe);
+        let window = mapped_window(host);
+        host.control.inject_input(host_tablet());
+        // The tablet joins the host's seat after the session bound its tablet seat, so the session is told as it joins.
+        pump_until(&mut nested, &mut probe, |probe| {
+            probe.inputs.iter().any(|event| {
+                matches!(event, InputEvent::DeviceAdded { device } if device.caps.contains(DeviceCaps::TABLET_TOOL))
+            })
+        });
+        let name = probe.inputs.iter().find_map(|event| match event {
+            InputEvent::DeviceAdded { device } if device.caps.contains(DeviceCaps::TABLET_TOOL) => {
+                Some((device.name.clone(), device.vendor, device.product))
+            }
+            _ => None,
+        });
+        assert_eq!(
+            name,
+            Some(("Host tablet".to_owned(), 0x56a, 0x37)),
+            "the host's tablet is a device of the session"
+        );
+
+        let centre = centre(&window);
+        let (x, y) = (f64::from(centre.x), f64::from(centre.y));
+        let mut pen = Stylus::new(HOST_TABLET, window_owner(host), TabletTool::pen(77));
+        for event in pen.enter(
+            x,
+            y,
+            TabletAxes {
+                distance: Some(0.25),
+                ..TabletAxes::default()
+            },
+        ) {
+            host.control.inject_input(event);
+        }
+        for event in pen.tip(true) {
+            host.control.inject_input(event);
+        }
+        for event in pen.move_to(
+            x + 8.5,
+            y + 3.25,
+            TabletAxes {
+                pressure: Some(0.5),
+                tilt: Some((10.0, -5.0)),
+                ..TabletAxes::default()
+            },
+        ) {
+            host.control.inject_input(event);
+        }
+        for event in pen.button(0x14b, true) {
+            host.control.inject_input(event);
+        }
+        for event in pen.leave() {
+            host.control.inject_input(event);
+        }
+        pump_until(&mut nested, &mut probe, |probe| {
+            probe
+                .inputs
+                .iter()
+                .any(|event| matches!(event, InputEvent::Tablet(TabletEvent::ToolOut { .. })))
+        });
+        let tablet: Vec<&TabletEvent> = probe
+            .inputs
+            .iter()
+            .filter_map(|event| match event {
+                InputEvent::Tablet(event) => Some(event),
+                _ => None,
+            })
+            .collect();
+        let output = only_output(&nested).id;
+        let TabletEvent::ToolIn {
+            output: entered_on,
+            tool,
+            position: entered_at,
+            ..
+        } = tablet[0]
+        else {
+            panic!("the first tablet event is the proximity: {tablet:#?}");
+        };
+        assert_eq!(*entered_on, output, "the pen is over the session's output");
+        assert_eq!(
+            (tool.kind, tool.serial),
+            (gnoblin_backend::ToolKind::Pen, 77),
+            "the pen is the same pen"
+        );
+        let moved = tablet
+            .iter()
+            .find_map(|event| match event {
+                TabletEvent::ToolMotion { position, axes, .. } => Some((*position, *axes)),
+                _ => None,
+            })
+            .expect("the pen moved");
+        assert!(
+            (moved.0.x - entered_at.x - 8.5).abs() < 0.01 && (moved.0.y - entered_at.y - 3.25).abs() < 0.01,
+            "the pen moved by what the host said, in the session's own coordinates: {entered_at:?} then {:?}",
+            moved.0
+        );
+        assert!(
+            moved.1.pressure.is_some_and(|pressure| (pressure - 0.5).abs() < 0.001),
+            "pressure: {:?}",
+            moved.1
+        );
+        assert_eq!(moved.1.tilt, Some((10.0, -5.0)), "tilt");
+        let names: Vec<&str> = tablet
+            .iter()
+            .map(|event| match event {
+                TabletEvent::ToolIn { .. } => "in",
+                TabletEvent::ToolOut { .. } => "out",
+                TabletEvent::ToolMotion { .. } => "motion",
+                TabletEvent::ToolTip { down: true, .. } => "down",
+                TabletEvent::ToolTip { down: false, .. } => "up",
+                TabletEvent::ToolButton { .. } => "button",
+                _ => "pad",
+            })
+            .collect();
+        let position = |wanted: &str| names.iter().position(|name| *name == wanted);
+        assert!(
+            position("down") < position("motion"),
+            "the tip came down before the pen moved: {names:?}"
+        );
+        assert!(
+            position("up") < position("out"),
+            "the tip lifted before the pen left: {names:?}"
+        );
+        assert!(
+            names.contains(&"button"),
+            "the barrel button reached the session: {names:?}"
+        );
+    });
+}
+
+#[test]
+fn a_hosts_pad_arrives_as_pad_events() {
+    let session = Session::start();
+    session.run(|host| {
+        let mut nested = Nested::connect(&NestedConfig::new(host.socket())).expect("the session connects");
+        let mut probe = Probe::drawing(RED);
+        draw(&mut nested, &mut probe);
+        let window = mapped_window(host);
+        let _ = host.control.focus(window.id);
+        host.wait_for(|observation| observation.focused().is_some_and(|focused| focused.id == window.id));
+        host.control.inject_input(InputEvent::DeviceAdded {
+            device: DeviceInfo::new(HOST_PAD, "Host pad", DeviceKind::Mouse)
+                .with_caps(DeviceCaps::NONE)
+                .with_pad(PadLayout {
+                    buttons: 4,
+                    rings: 1,
+                    strips: 1,
+                }),
+        });
+        pump_until(&mut nested, &mut probe, |probe| {
+            probe
+                .inputs
+                .iter()
+                .any(|event| matches!(event, InputEvent::DeviceAdded { device } if device.caps.contains(DeviceCaps::TABLET_PAD)))
+        });
+        let layout = probe.inputs.iter().find_map(|event| match event {
+            InputEvent::DeviceAdded { device } if device.caps.contains(DeviceCaps::TABLET_PAD) => Some(device.pad),
+            _ => None,
+        });
+        assert_eq!(
+            layout,
+            Some(PadLayout {
+                buttons: 4,
+                rings: 1,
+                strips: 1
+            }),
+            "the pad joins the session's seat with the buttons, ring and strip it has"
+        );
+        host.control.inject_input(
+            TabletEvent::PadButton {
+                device: HOST_PAD,
+                button: 3,
+                pressed: true,
+            }
+            .into(),
+        );
+        host.control.inject_input(
+            TabletEvent::PadRing {
+                device: HOST_PAD,
+                ring: 0,
+                angle: Some(180.0),
+            }
+            .into(),
+        );
+        host.control.inject_input(
+            TabletEvent::PadStrip {
+                device: HOST_PAD,
+                strip: 0,
+                position: Some(0.5),
+            }
+            .into(),
+        );
+        pump_until(&mut nested, &mut probe, |probe| {
+            probe
+                .inputs
+                .iter()
+                .any(|event| matches!(event, InputEvent::Tablet(TabletEvent::PadStrip { .. })))
+        });
+        let pad: Vec<&TabletEvent> = probe
+            .inputs
+            .iter()
+            .filter_map(|event| match event {
+                InputEvent::Tablet(event) => Some(event),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            pad.iter()
+                .any(|event| matches!(event, TabletEvent::PadButton { button: 3, pressed: true, .. })),
+            "{pad:#?}"
+        );
+        assert!(
+            pad.iter()
+                .any(|event| matches!(event, TabletEvent::PadRing { ring: 0, angle: Some(angle), .. } if (*angle - 180.0).abs() < 0.01)),
+            "{pad:#?}"
+        );
+        assert!(
+            pad.iter()
+                .any(|event| matches!(event, TabletEvent::PadStrip { strip: 0, position: Some(position), .. } if (*position - 0.5).abs() < 0.001)),
+            "{pad:#?}"
         );
     });
 }

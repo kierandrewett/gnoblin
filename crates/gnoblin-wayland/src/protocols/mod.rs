@@ -48,6 +48,7 @@
 //! | [`wp_single_pixel_buffer_v1`] | `wp_single_pixel_buffer_manager_v1` | creates the global; the buffer carries its own colour |
 //! | [`zwp_linux_dmabuf_v1`] | `zwp_linux_dmabuf_v1` | GPU buffers from clients, served only when the backend's renderer can import them; each buffer is imported before the client may use it |
 //! | [`wp_tearing_control_v1`] | `wp_tearing_control_v1` | records the presentation hint a surface asks for |
+//! | [`zwp_tablet_v2`] | `zwp_tablet_manager_v2`, `zwp_tablet_seat_v2`, `zwp_tablet_v2`, `zwp_tablet_tool_v2`, `zwp_tablet_pad_v2`, `zwp_tablet_pad_group_v2`, `zwp_tablet_pad_ring_v2`, `zwp_tablet_pad_strip_v2` | drawing tablets: a tool's events go to the client under it (Smithay's objects), a pad's go to the client with the keyboard (this crate's objects) |
 //! | [`zwp_text_input_v3`] | `zwp_text_input_manager_v3`, `zwp_text_input_v3` | the text-input conversation: `enter` and `leave` follow the keyboard focus once each, a field enabled before the input method binds is held and replayed to it |
 //! | [`zwp_input_method_v2`] | `zwp_input_method_manager_v2`, `zwp_input_method_v2` | the privileged input-method half of a text conversation |
 //! | [`zwp_virtual_keyboard_v1`] | `zwp_virtual_keyboard_manager_v1` | the privileged virtual-keyboard half |
@@ -165,6 +166,8 @@ pub mod zwp_pointer_gestures_v1;
 pub mod zwp_primary_selection_v1;
 /// `zwp_relative_pointer_manager_v1`: the vector motion a locked pointer reports.
 pub mod zwp_relative_pointer_v1;
+/// `zwp_tablet_manager_v2`: drawing tablets, their tools and pads.
+pub mod zwp_tablet_v2;
 /// `zwp_text_input_manager_v3`: the text-input conversation.
 pub mod zwp_text_input_v3;
 /// `zwp_virtual_keyboard_manager_v1`: the privileged virtual keyboard.

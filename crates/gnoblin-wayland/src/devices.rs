@@ -243,6 +243,7 @@ impl State {
         log::debug!(area = "input", device = %info.id, name = %info.name, caps = %info.caps, "a device joined the seat");
         self.keyboard_tables.router.device_added(info.id, &info.name);
         self.keyboard_tables.devices.retain(|known| known.id != info.id);
+        self.tablet_device_added(&info);
         self.keyboard_tables.devices.push(info);
         self.publish_devices();
     }
@@ -283,6 +284,7 @@ impl State {
         }
         // A pointer that left while its button was held never sends the release, so its drag is over.
         self.cancel_captures_of(id);
+        self.tablet_device_removed(id);
         self.publish_devices();
     }
 

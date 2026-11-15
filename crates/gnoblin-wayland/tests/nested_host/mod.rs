@@ -177,12 +177,26 @@ pub struct Session {
 impl Session {
     /// Creates a host on a socket of its own.
     pub fn start() -> Self {
+        Self::start_with(|config| config)
+    }
+
+    /// Creates a host that states its scale to clients only as the integer scale of `wl_output`, as Mutter does until
+    /// fractional scaling is enabled: it does not offer `wp_fractional_scale_v1`.
+    pub fn start_integer_only() -> Self {
+        Self::start_with(|config| Config {
+            fractional_scale: false,
+            ..config
+        })
+    }
+
+    /// Creates a host on a socket of its own, with the configuration `adjust` makes of the default one.
+    pub fn start_with(adjust: impl FnOnce(Config) -> Config) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
-        let config = Config {
+        let config = adjust(Config {
             socket_path: Some(socket.clone()),
             ..Config::default()
-        };
+        });
         let server = Server::new(Box::new(Headless::new()), config).expect("the host starts");
         let handle = Handle {
             socket,

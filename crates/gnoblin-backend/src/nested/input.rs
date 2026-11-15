@@ -467,6 +467,11 @@ impl Seat {
         }));
     }
 
+    /// Queues events another translator produced (the parent's tablets), in the order they arrived.
+    pub(super) fn extend(&mut self, events: impl IntoIterator<Item = InputEvent>) {
+        self.queue.extend(events);
+    }
+
     /// How many events could not be attributed to an output.
     ///
     /// It is on the contract's side of the wire so a session can tell "the parent
