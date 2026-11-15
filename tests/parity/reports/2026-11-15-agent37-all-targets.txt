@@ -1,0 +1,48 @@
+# Parity report: the scenarios on the Rust candidate, stock Mutter 51.0 and the legacy Gnoblin
+#
+# Produced:   2026-11-15 on an Agent37 instance (4 cpus, 8192 MiB, gVisor kernel 4.19.0-gvisor, Debian 12 host).
+# Runner:     gnoblin-parity built from the working tree of lane ParityGnoblin on top of origin/rust-compositor 28dd285c8
+#             (the commit that carries this report is the runner's own), run as root, exit 0:
+#               GNOBLIN_PARITY_MUTTER_ROOT=/home/node/fedora-45 GNOBLIN_PARITY_RUNTIME_BASE=/home/node/fedora-45/tmp/parity-rt \
+#               GNOBLIN_PARITY_MUTTER51=scripts/parity-mutter51 GNOBLIN_PARITY_MUTTER_PREFIX=/opt/mutter51 \
+#               GNOBLIN_PARITY_MUTTER_ARGS= GNOBLIN_PARITY_MUTTER_GNOBLIN=scripts/parity-mutter-gnoblin \
+#               GNOBLIN_PARITY_GNOBLIN_PREFIX=/opt/gnoblin GNOBLIN_PARITY_PROC_SHIM=/opt/parity-proc-shim.so \
+#               gnoblin-parity run tests/parity/scenarios
+# mutter51:   Mutter 51.0 built by scripts/parity-reference.sh mutter inside an extracted Fedora 45 root file system.
+# mutter-gnoblin: the legacy Gnoblin 0.1.13 built from main at 5bb523e9c (API 1.93, Mutter 51.0, Lua 5.5, per the `version`
+#             answer in tests/parity/contracts/recorded-session.json) with GNOBLIN_DEVKIT=enabled ./build.sh --without-portal
+#             in the same root file system. The build id says `modified`: the root's checkout had three process
+#             substitutions in scripts/list-tarball-sources.sh rewritten, because the root has no /proc (tests/parity/README.md,
+#             "Run the Gnoblin reference"). The guardian ran with scripts/parity-proc-shim.c preloaded for the same reason.
+# Limits:     headless, one 1280x720 virtual monitor, software rendering, gVisor; not real hardware. One run.
+# Rows:       every `mutter51` and `mutter-gnoblin` row ran (nothing skipped for want of a launcher). The one skip is
+#             `nested-session-ipc`, which no target can run: the legacy tree has no gnoblin_session_host_v1 and the candidate
+#             has no `sessions.list` operation yet.
+# Triage:     the four divergent rows are reviewed in their scenario files. kill-unknown-window and workspace-list are the
+#             candidate's object-model answers against the legacy socket's; focus-toplevels is the candidate's schema default
+#             `focus_new_windows = prevent` against `allow` on both references. No row failed and none is a candidate defect.
+#
+[parity] 20 scenarios: 16 pass, 3 divergent, 0 fail, 1 skip
+  divergent candidate-kill-unknown-window (candidate), 1 observation(s) compared
+       window.kill.unknown: the refusal text is the candidate's object-model error, which names the identity, where the legacy client prints a fixed sentence; the exit status is the same
+  pass candidate-kill-unknown-window (mutter-gnoblin), 1 observation(s) matched
+  pass candidate-window-lifecycle (candidate), 2 observation(s) matched
+  pass candidate-window-lifecycle (mutter-gnoblin), 2 observation(s) matched
+  divergent candidate-workspace-list (candidate), 1 observation(s) compared
+       workspace.list: the candidate answers in the IPC 0.2.0 object model (typed objects with properties) where the legacy socket answers a `workspaces` array, and a fresh candidate declares one workspace where the legacy session starts with four
+  pass candidate-workspace-list (mutter-gnoblin), 1 observation(s) matched
+  divergent focus-toplevels (candidate), 3 observation(s) compared
+       focus.second-toplevel: focus_new_windows defaults to prevent in the candidate's schema; stock Mutter 51 and the legacy Gnoblin session (focus.policy: allow) focus a new window
+  pass focus-toplevels (mutter51), 3 observation(s) matched
+  pass focus-toplevels (mutter-gnoblin), 3 observation(s) matched
+  pass input-eis (candidate), 4 observation(s) matched
+  pass input-eis (mutter51), 4 observation(s) matched
+  pass input-eis (mutter-gnoblin), 4 observation(s) matched
+  skip nested-session-ipc (candidate): no target can run it: the legacy C tree has no gnoblin_session_host_v1 (it is new in the Rust compositor) and the candidate has no `sessions.list` operation or nested-session probe yet (lane HST)
+  pass popup-lifecycle (candidate), 3 observation(s) matched
+  pass popup-lifecycle (mutter51), 3 observation(s) matched
+  pass popup-lifecycle (mutter-gnoblin), 3 observation(s) matched
+  pass popup-placement (candidate), 5 observation(s) matched
+  pass popup-placement (mutter51), 5 observation(s) matched
+  pass popup-placement (mutter-gnoblin), 5 observation(s) matched
+  pass toplevel-configure (command), 2 observation(s) matched

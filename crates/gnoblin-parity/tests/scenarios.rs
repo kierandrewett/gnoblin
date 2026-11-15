@@ -38,12 +38,13 @@ fn find<'report>(report: &'report Report, name: &str) -> &'report ScenarioReport
 #[test]
 fn the_checked_in_scenarios_report_their_verdicts() {
     let report = run();
-    // Without a Mutter launcher in the environment the three `mutter51` reference rows and the `mutter-gnoblin`
-    // scenario are skipped; the candidate rows pass and one diverges on record. The directory is a gate: no failure.
-    assert_eq!(report.scenarios().len(), 11, "unexpected scenario count:\n{report}");
+    // Without a Mutter launcher in the environment the `mutter51` and `mutter-gnoblin` reference rows are skipped, and so
+    // is the nested-session scenario that no target can run yet; the candidate rows pass or diverge on record. The
+    // directory is a gate: no failure.
+    assert_eq!(report.scenarios().len(), 20, "unexpected scenario count:\n{report}");
     assert_eq!(
         (report.passed(), report.divergent(), report.failed(), report.skipped()),
-        (6, 1, 0, 4),
+        (5, 3, 0, 12),
         "unexpected verdicts:\n{report}"
     );
     assert!(
@@ -72,21 +73,46 @@ fn the_command_target_scenario_passes_on_its_expectations() {
 }
 
 #[test]
-fn the_candidate_scenarios_pass_against_the_rust_compositor() {
+fn the_candidate_scenarios_match_the_legacy_session_or_record_why_not() {
     let report = run();
-    for (name, compared) in [
-        ("candidate-workspace-list", 1),
-        ("candidate-window-lifecycle", 2),
-        ("candidate-kill-unknown-window", 1),
+    // The window lifecycle reads the same on the candidate and on the legacy session; the other two have a reviewed
+    // divergence, and what the candidate answers is still compared, step by step.
+    match row(&report, "candidate-window-lifecycle", "candidate").verdict() {
+        Verdict::Pass { compared } => assert_eq!(*compared, 2, "every step of the lifecycle carries an expectation"),
+        other => panic!("the lifecycle must pass against the candidate, got:\n{report}\n{other:?}"),
+    }
+    for (name, compared, reason) in [
+        (
+            "candidate-workspace-list",
+            1,
+            "workspace.list: the candidate answers in the IPC 0.2.0 object model",
+        ),
+        (
+            "candidate-kill-unknown-window",
+            1,
+            "window.kill.unknown: the refusal text is the candidate's",
+        ),
     ] {
-        let scenario = find(&report, name);
-        assert_eq!(scenario.target(), "candidate");
-        match scenario.verdict() {
-            Verdict::Pass { compared: count } => {
+        match row(&report, name, "candidate").verdict() {
+            Verdict::Divergent {
+                compared: count,
+                reasons,
+            } => {
                 assert_eq!(*count, compared, "every step of `{name}` carries an expectation");
+                assert_eq!(reasons.len(), 1, "one step of `{name}` diverges:\n{report}");
+                assert!(reasons[0].starts_with(reason), "{reasons:?}");
             }
-            other => panic!("`{name}` must pass against the candidate, got:\n{report}\n{other:?}"),
+            other => panic!("`{name}` must diverge on record against the candidate, got:\n{report}\n{other:?}"),
         }
+    }
+}
+
+#[test]
+fn the_eis_input_scenario_passes_against_the_rust_compositor() {
+    let report = run();
+    match row(&report, "input-eis", "candidate").verdict() {
+        Verdict::Pass { compared } => assert_eq!(*compared, 4, "key, motion, button and scroll are all compared"),
+        other => panic!("`input-eis` must pass against the candidate, got:\n{report}\n{other:?}"),
     }
 }
 
@@ -129,36 +155,26 @@ fn the_candidate_diverges_from_mutter_on_focus_for_a_recorded_reason() {
 #[test]
 fn the_mutter_reference_rows_skip_and_name_the_launcher_variable_when_none_is_configured() {
     let report = run();
-    for name in ["focus-toplevels", "popup-placement", "popup-lifecycle"] {
+    for name in ["focus-toplevels", "popup-placement", "popup-lifecycle", "input-eis"] {
         match row(&report, name, "mutter51").verdict() {
             Verdict::Skipped { reason } => assert!(reason.contains("GNOBLIN_PARITY_MUTTER51"), "{reason}"),
             other => panic!("`{name}` must skip its reference without a launcher, got:\n{report}\n{other:?}"),
         }
     }
-}
-
-#[test]
-fn the_recorded_scenario_reports_the_stacking_difference() {
-    let report = run_known_failing();
-    let scenario = find(&report, "layer-surface-stacking");
-    assert_eq!(
-        scenario.target(),
-        "recorded:../fixtures/layer-surface-stacking/candidate.json"
-    );
-    let Verdict::Fail { diff } = scenario.verdict() else {
-        panic!("expected a failure, got:\n{report}\n{:?}", scenario.verdict());
-    };
-    let text = diff.to_string();
-    assert!(
-        text.contains("layers.list [0].layer: expected \"overlay\", got \"top\""),
-        "the difference must name the field and both values:\n{text}"
-    );
-    assert!(
-        text.contains(
-            "layers.list [0].name: expected \"gnoblin.surface_layer_shell:osd\", got \"gnoblin.surface_layer_shell:bar\"",
-        ),
-        "the difference must name the surface that moved:\n{text}"
-    );
+    for name in [
+        "focus-toplevels",
+        "popup-placement",
+        "popup-lifecycle",
+        "input-eis",
+        "candidate-workspace-list",
+        "candidate-window-lifecycle",
+        "candidate-kill-unknown-window",
+    ] {
+        match row(&report, name, "mutter-gnoblin").verdict() {
+            Verdict::Skipped { reason } => assert!(reason.contains("GNOBLIN_PARITY_MUTTER_GNOBLIN"), "{reason}"),
+            other => panic!("`{name}` must skip its legacy reference without a launcher, got:\n{report}\n{other:?}"),
+        }
+    }
 }
 
 #[test]
@@ -178,13 +194,16 @@ fn the_recorded_scenarios_volatile_values_are_normalised_away() {
 }
 
 #[test]
-fn the_live_target_scenario_skips_with_its_reason() {
+fn the_nested_session_scenario_is_skipped_for_the_reason_that_no_target_can_run_it() {
     let report = run();
     let scenario = find(&report, "nested-session-ipc");
-    assert_eq!(scenario.target(), "mutter-gnoblin");
+    assert_eq!(scenario.target(), "candidate");
     match scenario.verdict() {
         Verdict::Skipped { reason } => {
-            assert!(reason.contains("lane P2"), "the reason names what is missing: {reason}");
+            assert!(
+                reason.contains("no gnoblin_session_host_v1"),
+                "the reason names the legacy tree's missing protocol: {reason}"
+            );
         }
         other => panic!("expected a skip, got:\n{report}\n{other:?}"),
     }

@@ -59,6 +59,10 @@ ANSWER_SECONDS = 5.0
 EVENT_TAIL_SECONDS = 2.0
 # Samples keep the shape of the answer and not its size: lists are cut to this many elements, strings to this length.
 SAMPLE_LIST = 3
+# The most event names one subscription may name (src/control/gnoblin-control-requests.c).
+SUBSCRIBE_MAX = 64
+# Names in the hello event's list that are streams started by an operation, not names a subscription accepts.
+SNAPSHOT_STREAMS = {"windows", "monitors"}
 SAMPLE_TEXT = 200
 
 
@@ -122,6 +126,27 @@ class Connection:
         except json.JSONDecodeError as error:
             raise RecordError(f"the compositor sent a line that is not JSON: {error}: {raw[:200]!r}") from error
 
+    def subscribe(self, names: list[str], minor: int) -> None:
+        """Subscribe this connection to `names` and require the session to accept it."""
+        self.send(
+            {"op": "events", "id": str(uuid.uuid4()), "api_version": {"major": 1, "minor": minor}, "events": names}
+        )
+        deadline = time.monotonic() + ANSWER_SECONDS
+        while (left := deadline - time.monotonic()) > 0:
+            message = self.line(left)
+            if message is None:
+                break
+            # The session answers a subscription with a `subscribed` event listing the names, and a refusal with an
+            # `error` event that carries no id.
+            if message.get("event") == "error":
+                raise RecordError(f"the session refused the subscription: {message.get('message')}")
+            if message.get("event") == "subscribed":
+                if message.get("events") != names:
+                    raise RecordError("the session subscribed to other names than were asked for")
+                return
+            self.unclaimed.append(message)
+        raise RecordError("the session did not answer the subscription")
+
     def drain(self, seconds: float) -> None:
         """Collect what arrives for `seconds` into `unclaimed`."""
         deadline = time.monotonic() + seconds
@@ -154,11 +179,18 @@ class Connection:
                     descriptor_id = result["request_id"]
                     continue
                 break
-            if descriptor_id is not None and event in ("gnoblin.operation.completed", "gnoblin.api.operation-completed"):
+            if descriptor_id is not None and event in (
+                "gnoblin.operation.completed",
+                "gnoblin.api.operation-completed",
+            ):
                 key = "request_id" if event == "gnoblin.api.operation-completed" else "operation_id"
                 if message.get(key) == descriptor_id:
-                    return {"status": "ok" if message.get("ok") else "error", "reply": reply, "completion": message,
-                            "milliseconds": round((time.monotonic() - started) * 1000)}
+                    return {
+                        "status": "ok" if message.get("ok") else "error",
+                        "reply": reply,
+                        "completion": message,
+                        "milliseconds": round((time.monotonic() - started) * 1000),
+                    }
                 continue
             self.unclaimed.append(message)
         milliseconds = round((time.monotonic() - started) * 1000)
@@ -196,16 +228,30 @@ def record(args: argparse.Namespace) -> int:
             f"the inventory is for {operations['api']['major']}.{api_minor}: record from the matching build"
         )
 
-    # Subscribe before anything is asked, so every event the calls cause arrives.
-    connection.send({
-        "op": "events", "id": str(uuid.uuid4()), "api_version": {"major": 1, "minor": api_minor},
-        "events": hello["events"],
-    })
-    connection.drain(0.5)
+    # Subscribe before anything is asked, so every event the calls cause arrives. A subscription is capped (SUBSCRIBE_MAX
+    # names) and a later one replaces an earlier one on the same connection, so each slice of the offered names has a
+    # connection of its own; the first one is also the connection the operations are asked on.
+    names = [name for name in hello["events"] if name not in SNAPSHOT_STREAMS]
+    slices = [names[start : start + SUBSCRIBE_MAX] for start in range(0, len(names), SUBSCRIBE_MAX)]
+    listeners = [connection]
+    for _ in slices[1:]:
+        extra = Connection(args.socket)
+        if not (extra_hello := extra.line(ANSWER_SECONDS)) or extra_hello.get("event") != "hello":
+            raise RecordError(f"the first line of an extra connection is not a hello event: {extra_hello!r}")
+        listeners.append(extra)
+    for listener, names_for in zip(listeners, slices):
+        listener.subscribe(names_for, api_minor)
+    # The snapshot streams the hello event lists with the events are not subscribed to by name: an operation of the
+    # same name starts them, and the session then sends a snapshot and every change as lines of that name.
+    for stream in SNAPSHOT_STREAMS & set(hello["events"]):
+        connection.send({"op": stream, "id": str(uuid.uuid4()), "api_version": {"major": 1, "minor": api_minor}})
+    for listener in listeners:
+        listener.drain(0.5)
     if args.drive:
         print(f"driving: {args.drive}", flush=True)
         subprocess.run(args.drive, shell=True, check=False, timeout=120)
-    connection.drain(EVENT_TAIL_SECONDS)
+    for listener in listeners:
+        listener.drain(EVENT_TAIL_SECONDS)
 
     recorded = []
     for operation in operations["entries"]:
@@ -222,10 +268,11 @@ def record(args: argparse.Namespace) -> int:
             entry = describe(operation, connection.call(name, minor))
         recorded.append(entry)
         print(f"{entry['status']:>8}  {name}", flush=True)
-    connection.drain(EVENT_TAIL_SECONDS)
+    for listener in listeners:
+        listener.drain(EVENT_TAIL_SECONDS)
 
     seen: dict[str, dict] = {}
-    for message in connection.unclaimed:
+    for message in [message for listener in listeners for message in listener.unclaimed]:
         event = message.get("event")
         if not event or event in ("reply", "error", "hello"):
             continue
@@ -233,7 +280,12 @@ def record(args: argparse.Namespace) -> int:
         slot["count"] += 1
     inventory_events = {entry["name"] for entry in load(EVENTS)["entries"]}
     events = [
-        {"name": name, "count": seen[name]["count"], "in_inventory": name in inventory_events, "sample": seen[name]["sample"]}
+        {
+            "name": name,
+            "count": seen[name]["count"],
+            "in_inventory": name in inventory_events,
+            "sample": seen[name]["sample"],
+        }
         for name in sorted(seen)
     ]
 
@@ -243,7 +295,8 @@ def record(args: argparse.Namespace) -> int:
         "generated_by": "scripts/contract-record.py",
         "api": operations["api"] | {"source": "the session's own hello event"},
         "recorded_at": time.strftime("%Y-%m-%d", time.gmtime()),
-        "hello": trim(hello) | {"methods": hello["methods"], "events": hello["events"], "capabilities": hello["capabilities"]},
+        "hello": trim(hello)
+        | {"methods": hello["methods"], "events": hello["events"], "capabilities": hello["capabilities"]},
         "drive": args.drive or None,
         "operations": recorded,
         "events_seen": events,
@@ -304,8 +357,11 @@ def check(path: Path) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--socket", default=os.environ.get("GNOBLIN_COMPOSITOR_SOCKET"),
-                        help="the control socket of the live session (default: $GNOBLIN_COMPOSITOR_SOCKET)")
+    parser.add_argument(
+        "--socket",
+        default=os.environ.get("GNOBLIN_COMPOSITOR_SOCKET"),
+        help="the control socket of the live session (default: $GNOBLIN_COMPOSITOR_SOCKET)",
+    )
     parser.add_argument("--drive", help="a shell command to run after subscribing, to cause events")
     parser.add_argument("--out", default=str(RECORDED), help="where to write the recording")
     parser.add_argument("--check", action="store_true", help="verify the recorded file against the inventory, offline")

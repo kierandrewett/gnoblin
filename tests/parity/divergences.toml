@@ -1,33 +1,34 @@
-# Divergence ledger: where a scenario has no reference run, and why.
+# Divergence ledger: where a scenario has no stock-Mutter run, and why.
 #
-# A scenario with `references = [{ mutter51 = {} }]` is compared with stock Mutter 51 (tests/parity/README.md, "Run the
-# Mutter reference"), and a step where the candidate differs records the difference and its reason in the scenario
-# file itself (`[steps.divergence.candidate]`), so the report says `divergent` and a divergence that stops being true
-# fails. This file lists only the scenarios that have no Mutter row at all.
+# A scenario with `references = [{ mutter51 = {} }, { mutter-gnoblin = {} }]` is compared with stock Mutter 51 and with the
+# legacy Gnoblin on its patched Mutter (tests/parity/README.md, "Run the Mutter reference" and "Run the Gnoblin
+# reference"), and a step where the candidate differs records the difference and its reason in the scenario file itself
+# (`[steps.divergence.candidate]`), so the report says `divergent` and a divergence that stops being true fails. This
+# file lists only the scenarios that have no `mutter51` row, with the reference that does run them where there is one.
 #
-# A candidate scenario records the candidate's own observation, so it pins the candidate's behaviour. It is not a claim
-# of parity until a reference target has produced the same observation.
+# A scenario whose only reference is `mutter-gnoblin` compares the candidate with what the legacy session answered, so the
+# parity claim is as strong as that reference: legacy Gnoblin, not stock Mutter.
 
 [[entries]]
 scenario = "candidate-workspace-list"
 reference = "mutter51"
 status = "no reference"
-note = "The step reads `gnoblinctl workspace list`, which stock Mutter does not have; the reference answers only the Wayland probes."
+note = "The step reads `gnoblinctl workspace list`, which stock Mutter does not have. The reference for this scenario is `mutter-gnoblin`, which runs it; the candidate's difference is recorded in the scenario file."
 
 [[entries]]
 scenario = "candidate-window-lifecycle"
 reference = "mutter51"
 status = "no reference"
-note = "The step reads `gnoblinctl window list`, which stock Mutter does not have. The core-protocol half, that a mapped toplevel is focused and a closed one hands focus back, is `focus-toplevels`, which runs on both."
+note = "The step reads `gnoblinctl window list`, which stock Mutter does not have. The reference for this scenario is `mutter-gnoblin`, which runs it. The core-protocol half, that a mapped toplevel is focused and a closed one hands focus back, is `focus-toplevels`, which runs on all three."
 
 [[entries]]
 scenario = "candidate-kill-unknown-window"
 reference = "mutter51"
 status = "no reference"
-note = "The refusal text is gnoblinctl's own; Mutter has no equivalent IPC."
+note = "The refusal text is gnoblinctl's own; stock Mutter has no equivalent IPC. The reference for this scenario is `mutter-gnoblin`, which runs it; the candidate's different text is recorded in the scenario file."
 
 [[entries]]
 scenario = "nested-session-ipc"
 reference = "mutter-gnoblin"
 status = "skipped"
-note = "Needs Gnoblin on the patched Mutter with gnoblin_session_host_v1 and a nested session; the `mutter-gnoblin` target is not implemented."
+note = "The legacy C tree has no `gnoblin_session_host_v1` (nothing under `src/` names it; the protocol is new in the Rust compositor), so the `mutter-gnoblin` target has nothing to answer. The scenario targets the candidate and waits for the lane that adds a `sessions.list` operation and a nested-session probe; no stand-in runs it."

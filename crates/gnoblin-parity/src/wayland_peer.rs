@@ -310,8 +310,10 @@ impl WaylandPeer {
 
     /// Binds the seat's keyboard and pointer, which the input probes read. The seat announces what it has after a
     /// round trip, so the devices are made here and not at connect: a probe that needs no input leaves the seat as
-    /// it found it.
-    pub(crate) fn enable_input(&mut self) -> Result<(), TargetError> {
+    /// it found it. `eis_capabilities` are the capability names the EIS server offered the sender
+    /// ([`crate::ei_peer::EiPeer::ready`]): a compositor tells its Wayland clients about a device after it tells the
+    /// EIS client, so the seat is given time to advertise the keyboard and pointer the EIS side has.
+    pub(crate) fn enable_input(&mut self, eis_capabilities: &[String]) -> Result<(), TargetError> {
         if self.state.keyboard.is_some() || self.state.pointer.is_some() {
             return Ok(());
         }
@@ -320,6 +322,20 @@ impl WaylandPeer {
             .clone()
             .ok_or_else(|| self.live("the session does not advertise wl_seat, so no input can arrive"))?;
         self.pump_until(Duration::from_secs(3), |state| state.capabilities.is_some())?;
+        // A compositor that adds a device after the seat's first announcement announces again; the round trip brings
+        // that in, so the keyboard asked for below is one the seat has.
+        self.roundtrip()?;
+        for (name, capability) in [
+            ("keyboard", wl_seat::Capability::Keyboard),
+            ("pointer", wl_seat::Capability::Pointer),
+        ] {
+            if eis_capabilities.iter().any(|offered| offered == name) {
+                // A seat that never advertises it is reported by the probe that needs it, so the wait is soft.
+                self.pump_until(Duration::from_secs(3), |state| {
+                    state.capabilities.is_some_and(|have| have.contains(capability))
+                })?;
+            }
+        }
         let capabilities = self
             .state
             .capabilities

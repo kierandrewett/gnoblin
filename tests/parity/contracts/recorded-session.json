@@ -1,0 +1,2310 @@
+{
+  "format": 1,
+  "kind": "recorded-session",
+  "generated_by": "scripts/contract-record.py",
+  "api": {
+    "major": 1,
+    "minor": 93,
+    "source": "the session's own hello event",
+    "line": 16
+  },
+  "recorded_at": "2026-11-15",
+  "hello": {
+    "event": "hello",
+    "version": 1,
+    "api_major": 1,
+    "api_minor": 93,
+    "state_revision": 1,
+    "revision_scope": "window-workspace-monitor-layer-input-device-source-capability-state",
+    "revision_semantics": "monotonic-per-session",
+    "methods": [
+      "capabilities.list",
+      "focus.history",
+      "focus.policy",
+      "config.path",
+      "config.default",
+      "input.devices",
+      "input.sources",
+      "input.current_source",
+      "input.orientation_lock",
+      "input.select",
+      "input.set_orientation_lock",
+      "input.text_target",
+      "input.insert_text",
+      "launch.status",
+      "launch.begin",
+      "launch.end",
+      "launches.list",
+      "launches.snapshot",
+      "shortcuts.list",
+      "shortcuts.actions",
+      "layer.list",
+      "layers.list",
+      "monitor.list",
+      "monitors.list",
+      "output.list",
+      "outputs.list",
+      "outputs.renderer",
+      "monitors.privacy_screen",
+      "monitors.set_privacy_screen",
+      "settings",
+      "shortcut.actions",
+      "shortcut.bind",
+      "shortcut.capture",
+      "shortcut.list",
+      "shortcut.session.end",
+      "shortcut.unbind",
+      "privacy.state",
+      "privacy.stop_sharing",
+      "privacy.stop_recording",
+      "location.authorize_app",
+      "auth.begin",
+      "auth.respond",
+      "auth.cancel",
+      "prompt.respond",
+      "prompt.cancel",
+      "animation.list",
+      "animation.get",
+      "animation.surfaces",
+      "animation.inspect",
+      "animation.preview",
+      "animation.seek",
+      "animation.step",
+      "animation.play",
+      "animation.pause",
+      "animation.stop",
+      "window.list",
+      "windows.list",
+      "window.match",
+      "window.thumbnail",
+      "window.snap.offer",
+      "window.action",
+      "window.close",
+      "window.kill",
+      "window.raise",
+      "window.lower",
+      "window.minimize",
+      "window.toggle_minimize",
+      "window.unminimize",
+      "window.restore",
+      "window.restore_or_minimize",
+      "window.set_maximized",
+      "window.set_fullscreen",
+      "window.set_above",
+      "window.set_sticky",
+      "window.move",
+      "window.resize",
+      "window.move_to_workspace",
+      "window.move_to_monitor",
+      "window.focus",
+      "window.snap_context",
+      "window.snap",
+      "window.begin_move",
+      "window.begin_resize",
+      "workspace.list",
+      "workspaces.list",
+      "workspace.create",
+      "workspace.rename",
+      "workspace.remove",
+      "workspace.switch",
+      "workspace.next",
+      "workspace.previous",
+      "workspace.move_active",
+      "workspace.move_window",
+      "runtime.reload_config",
+      "config.restore_default",
+      "runtime.status",
+      "session.lock",
+      "session.activity",
+      "session.logout",
+      "session.suspend",
+      "session.hibernate",
+      "session.reboot",
+      "session.poweroff",
+      "session.status",
+      "appearance.color_scheme",
+      "layer.animation_policy",
+      "version"
+    ],
+    "events": [
+      "windows",
+      "gnoblin.layer.created",
+      "gnoblin.layer.changed",
+      "gnoblin.layer.removed",
+      "gnoblin.window.created",
+      "gnoblin.window.changed",
+      "gnoblin.window.focused",
+      "gnoblin.window.unfocused",
+      "gnoblin.window.attention-changed",
+      "gnoblin.window.activation-denied",
+      "gnoblin.window.closed",
+      "gnoblin.window.drag.started",
+      "gnoblin.window.drag.updated",
+      "gnoblin.window.drag.ended",
+      "gnoblin.window.menu-requested",
+      "gnoblin.osd.requested",
+      "gnoblin.pointer.locate-requested",
+      "gnoblin.input.pad-help-requested",
+      "gnoblin.focus.policy-changed",
+      "gnoblin.config.reloaded",
+      "gnoblin.config.reload-failed",
+      "gnoblin.capability.changed",
+      "gnoblin.appearance.color-scheme-changed",
+      "gnoblin.privacy.changed",
+      "gnoblin.location.authorization-requested",
+      "gnoblin.location.authorization-finished",
+      "gnoblin.auth.requested",
+      "gnoblin.auth.prompt",
+      "gnoblin.auth.message",
+      "gnoblin.auth.finished",
+      "gnoblin.prompt.requested",
+      "gnoblin.prompt.finished",
+      "gnoblin.animation.started",
+      "gnoblin.animation.finished",
+      "gnoblin.workspace.created",
+      "gnoblin.workspace.renamed",
+      "gnoblin.workspace.changed",
+      "gnoblin.workspace.removed",
+      "gnoblin.workspace.activated",
+      "gnoblin.workspace.window-moved",
+      "monitors",
+      "gnoblin.monitor.added",
+      "gnoblin.monitor.changed",
+      "gnoblin.monitor.removed",
+      "gnoblin.output.added",
+      "gnoblin.output.changed",
+      "gnoblin.output.removed",
+      "gnoblin.input.device-added",
+      "gnoblin.input.device-removed",
+      "gnoblin.input.sources-changed",
+      "gnoblin.input.source-changed",
+      "gnoblin.input.orientation-lock-changed",
+      "gnoblin.monitor.privacy-screen-changed",
+      "gnoblin.input.gesture",
+      "gnoblin.launch.changed",
+      "gnoblin.session.lock-requested",
+      "gnoblin.session.lock-state-changed",
+      "gnoblin.session.activity-changed",
+      "gnoblin.session.state-changed",
+      "gnoblin.runtime.status-changed",
+      "gnoblin.shortcut.activated",
+      "gnoblin.shortcut.binding-activated",
+      "gnoblin.shortcut.binding-deactivated",
+      "gnoblin.shortcut.session.activated",
+      "gnoblin.shortcut.session.key",
+      "gnoblin.shortcut.session.ended",
+      "gnoblin.api.operation-completed",
+      "gnoblin.operation.completed"
+    ],
+    "capabilities": [
+      "layer-list",
+      "layer-lifecycle-events",
+      "monitor-list",
+      "window-list",
+      "window-actions",
+      "typed-window-operations",
+      "window-interactive-grabs",
+      "window-thumbnails",
+      "window-drag-snap-offers",
+      "session-activity",
+      "workspace-management",
+      "window-change-events",
+      "window-lifecycle-events",
+      "shell-request-events",
+      "workspace-lifecycle-events",
+      "monitor-lifecycle-events",
+      "input-device-list",
+      "input-device-lifecycle-events",
+      "input-source-list",
+      "input-source-selection",
+      "input-source-lifecycle-events",
+      "launch-feedback",
+      "shortcut-capture",
+      "generic-event-subscriptions",
+      "input-gesture-events",
+      "shortcut-focus-contexts",
+      "dynamic-shortcuts",
+      "animation-preview",
+      "microphone-monitor",
+      "camera-monitor",
+      "location-agent",
+      "auth-agent",
+      "prompt-broker",
+      "ui-sessions"
+    ],
+    "features": []
+  },
+  "drive": "/home/node/target/debug/gnoblin-parity hold-window /home/node/fedora-45/tmp/rt/parity-0 6",
+  "operations": [
+    {
+      "name": "animation.",
+      "status": "error",
+      "milliseconds": 1,
+      "error": {
+        "message": "unknown Gnoblin API method 'animation.parity-probe'"
+      },
+      "family": true
+    },
+    {
+      "name": "animation.get",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "animation requires a nonempty 'name' string"
+      }
+    },
+    {
+      "name": "animation.inspect",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "animation requires a nonempty 'name' string"
+      }
+    },
+    {
+      "name": "animation.list",
+      "status": "ok",
+      "milliseconds": 1,
+      "result": {
+        "animations": [
+          {
+            "name": "gnome-minimize",
+            "enable": true,
+            "event": "minimize",
+            "duration": 400,
+            "ease": "ease-out-expo",
+            "builtin": true,
+            "previewable": true,
+            "from": {},
+            "to": {},
+            "origin": "center",
+            "target": "none",
+            "revision": 1
+          },
+          {
+            "name": "gnome-restore",
+            "enable": true,
+            "event": "restore",
+            "duration": 400,
+            "ease": "ease-out-expo",
+            "builtin": true,
+            "previewable": true,
+            "from": {},
+            "to": {},
+            "origin": "center",
+            "target": "none",
+            "revision": 1
+          },
+          {
+            "name": "gnome-open",
+            "enable": true,
+            "event": "open",
+            "duration": 150,
+            "ease": "ease-out-expo",
+            "builtin": true,
+            "previewable": true,
+            "from": {},
+            "to": {},
+            "origin": "center",
+            "target": "none",
+            "revision": 1
+          },
+          "... 13 more"
+        ]
+      }
+    },
+    {
+      "name": "animation.pause",
+      "status": "ok",
+      "milliseconds": 5001,
+      "result": {
+        "request_id": 1,
+        "method": "animation.pause",
+        "arguments": {}
+      }
+    },
+    {
+      "name": "animation.play",
+      "status": "ok",
+      "milliseconds": 5001,
+      "result": {
+        "request_id": 2,
+        "method": "animation.play",
+        "arguments": {}
+      }
+    },
+    {
+      "name": "animation.preview",
+      "status": "ok",
+      "milliseconds": 5001,
+      "result": {
+        "request_id": 3,
+        "method": "animation.preview",
+        "arguments": {}
+      }
+    },
+    {
+      "name": "animation.seek",
+      "status": "ok",
+      "milliseconds": 5001,
+      "result": {
+        "request_id": 4,
+        "method": "animation.seek",
+        "arguments": {}
+      }
+    },
+    {
+      "name": "animation.step",
+      "status": "ok",
+      "milliseconds": 5001,
+      "result": {
+        "request_id": 5,
+        "method": "animation.step",
+        "arguments": {}
+      }
+    },
+    {
+      "name": "animation.stop",
+      "status": "ok",
+      "milliseconds": 5001,
+      "result": {
+        "request_id": 6,
+        "method": "animation.stop",
+        "arguments": {}
+      }
+    },
+    {
+      "name": "animation.surfaces",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": {
+        "surfaces": []
+      }
+    },
+    {
+      "name": "appearance.color_scheme",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": {
+        "available": true,
+        "color_scheme": "default"
+      }
+    },
+    {
+      "name": "auth.",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "unknown Gnoblin API method 'auth.parity-probe'"
+      },
+      "family": true
+    },
+    {
+      "name": "auth.begin",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'auth.begin' failed: auth.begin accepts only a table with request_id and identity"
+      }
+    },
+    {
+      "name": "auth.cancel",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'auth.cancel' failed: auth.cancel accepts only a table with request_id"
+      }
+    },
+    {
+      "name": "auth.respond",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'auth.respond' failed: auth.respond accepts only a table with request_id and response"
+      }
+    },
+    {
+      "name": "capabilities.list",
+      "status": "ok",
+      "milliseconds": 1,
+      "result": [
+        {
+          "available": true,
+          "description": "List layer-shell surfaces and their placement.",
+          "id": "layer-list",
+          "revision": 5
+        },
+        {
+          "available": true,
+          "description": "Receive layer-surface creation, state-change, and removal events.",
+          "id": "layer-lifecycle-events",
+          "revision": 5
+        },
+        {
+          "available": true,
+          "description": "List active logical monitors and their geometry.",
+          "id": "monitor-list",
+          "revision": 5
+        },
+        "... 31 more"
+      ]
+    },
+    {
+      "name": "config.default",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": "-- Gnoblin's minimal default config, embedded in the binary.\n-- Edit these files after gnoblinctl init; no files are created during login.\ngnoblin.load(\"config/*.lua\")\n"
+    },
+    {
+      "name": "config.path",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": "/tmp/rt/config/gnoblin/init.lua"
+    },
+    {
+      "name": "config.restore_default",
+      "status": "skipped",
+      "reason": "replaces the user's configuration"
+    },
+    {
+      "name": "console.toggle",
+      "status": "ok",
+      "milliseconds": 5001,
+      "result": {
+        "request_id": 7,
+        "method": "console.toggle",
+        "arguments": {}
+      }
+    },
+    {
+      "name": "focus.history",
+      "status": "ok",
+      "milliseconds": 1,
+      "result": []
+    },
+    {
+      "name": "focus.policy",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": {
+        "auto_raise": false,
+        "auto_raise_delay": 500,
+        "focus_change_on_pointer_rest": false,
+        "focus_mode": "click",
+        "focus_new_windows": "allow",
+        "raise_on_click": true,
+        "revision": 1
+      }
+    },
+    {
+      "name": "idle.cancel",
+      "status": "ok",
+      "milliseconds": 5001,
+      "result": {
+        "request_id": 8,
+        "method": "idle.cancel",
+        "arguments": {}
+      }
+    },
+    {
+      "name": "idle.watch",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "unknown Gnoblin API method 'idle.watch'"
+      }
+    },
+    {
+      "name": "input.current_source",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": {
+        "available": false,
+        "revision": 5
+      }
+    },
+    {
+      "name": "input.devices",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": {
+        "devices": [],
+        "revision": 5
+      }
+    },
+    {
+      "name": "input.grab",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "unknown Gnoblin API method 'input.grab'"
+      }
+    },
+    {
+      "name": "input.grab.release",
+      "status": "error",
+      "milliseconds": 0,
+      "result": {
+        "request_id": 9,
+        "method": "input.grab.release",
+        "arguments": {}
+      },
+      "completion": {
+        "operation_id": 9,
+        "method": "input.grab.release",
+        "ok": false,
+        "error": {
+          "code": "invalid_argument",
+          "message": "input.grab.release needs an id"
+        },
+        "revision": 5,
+        "sequence": 27,
+        "time": 3649824865
+      }
+    },
+    {
+      "name": "input.grab.renew",
+      "status": "error",
+      "milliseconds": 0,
+      "result": {
+        "request_id": 10,
+        "method": "input.grab.renew",
+        "arguments": {}
+      },
+      "completion": {
+        "operation_id": 10,
+        "method": "input.grab.renew",
+        "ok": false,
+        "error": {
+          "code": "invalid_argument",
+          "message": "input.grab.renew needs an id"
+        },
+        "revision": 5,
+        "sequence": 29,
+        "time": 3649825340
+      }
+    },
+    {
+      "name": "input.insert_text",
+      "status": "error",
+      "milliseconds": 1,
+      "error": {
+        "message": "input.insert_text requires a target token"
+      }
+    },
+    {
+      "name": "input.orientation_lock",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": {
+        "available": false,
+        "locked": false,
+        "orientation": "undefined",
+        "revision": 1,
+        "source": "system"
+      }
+    },
+    {
+      "name": "input.select",
+      "status": "error",
+      "milliseconds": 1,
+      "result": {
+        "request_id": 11,
+        "method": "input.select",
+        "arguments": {}
+      },
+      "completion": {
+        "operation_id": 11,
+        "method": "input.select",
+        "ok": false,
+        "error": {
+          "code": "invalid_argument",
+          "message": "input source selection requires type and id"
+        },
+        "revision": 5,
+        "sequence": 31,
+        "time": 3649827554
+      }
+    },
+    {
+      "name": "input.select_source",
+      "status": "error",
+      "milliseconds": 1,
+      "error": {
+        "message": "unknown Gnoblin API method 'input.select_source'"
+      }
+    },
+    {
+      "name": "input.set_orientation_lock",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'input.set_orientation_lock' failed: input.set_orientation_lock accepts only value"
+      }
+    },
+    {
+      "name": "input.sources",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": {
+        "sources": [],
+        "revision": 5
+      }
+    },
+    {
+      "name": "input.text_target",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "operation requires a connection-bound focus_context"
+      }
+    },
+    {
+      "name": "launch.",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "unsupported native launch method 'launch.parity-probe'"
+      },
+      "family": true
+    },
+    {
+      "name": "launch.begin",
+      "status": "error",
+      "milliseconds": 0,
+      "result": {
+        "request_id": 12,
+        "method": "launch.begin",
+        "arguments": {}
+      },
+      "completion": {
+        "operation_id": 12,
+        "method": "launch.begin",
+        "ok": false,
+        "error": {
+          "code": "invalid_argument",
+          "message": "launch.begin requires string token and application fields"
+        },
+        "revision": 5,
+        "sequence": 33,
+        "time": 3649829827
+      }
+    },
+    {
+      "name": "launch.end",
+      "status": "error",
+      "milliseconds": 0,
+      "result": {
+        "request_id": 13,
+        "method": "launch.end",
+        "arguments": {}
+      },
+      "completion": {
+        "operation_id": 13,
+        "method": "launch.end",
+        "ok": false,
+        "error": {
+          "code": "invalid_argument",
+          "message": "launch.end requires only a non-empty token of at most 128 characters"
+        },
+        "revision": 5,
+        "sequence": 35,
+        "time": 3649830273
+      }
+    },
+    {
+      "name": "launch.status",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": {
+        "launches": [],
+        "revision": 0
+      }
+    },
+    {
+      "name": "launches.list",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": []
+    },
+    {
+      "name": "launches.snapshot",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": {
+        "launches": [],
+        "revision": 0
+      }
+    },
+    {
+      "name": "layer.animation_policy",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API read 'layer.animation_policy' requires a namespace string"
+      }
+    },
+    {
+      "name": "layer.list",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": {
+        "surfaces": []
+      }
+    },
+    {
+      "name": "layers.list",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": []
+    },
+    {
+      "name": "location.authorize_app",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'location.authorize_app' failed: location.authorize_app requires request_id, allow, and accuracy"
+      }
+    },
+    {
+      "name": "monitor.list",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": {
+        "monitors": [
+          {
+            "id": 0,
+            "x": 0,
+            "y": 0,
+            "width": 1280,
+            "height": 720,
+            "primary": true,
+            "scale": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "monitors.list",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": [
+        {
+          "enabled": true,
+          "height": 720,
+          "id": "Meta-0",
+          "index": 0,
+          "make": "MetaVendor",
+          "model": "MetaVirtualMonitor",
+          "name": "MetaVendor",
+          "primary": true,
+          "refresh_rate": 60.0,
+          "revision": 5,
+          "scale": 1.0,
+          "serial": "0x00",
+          "transform": "normal",
+          "width": 1280,
+          "work_area": {
+            "height": 720,
+            "width": 1280,
+            "x": 0,
+            "y": 0
+          },
+          "x": 0,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "name": "monitors.privacy_screen",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": {
+        "monitors": [
+          {
+            "available": false,
+            "id": "Meta-0"
+          }
+        ],
+        "requested_enabled": false,
+        "revision": 1,
+        "source": "system"
+      }
+    },
+    {
+      "name": "monitors.set_privacy_screen",
+      "status": "error",
+      "milliseconds": 1,
+      "error": {
+        "message": "Lua API method 'monitors.set_privacy_screen' failed: monitors.set_privacy_screen accepts only value"
+      }
+    },
+    {
+      "name": "output.list",
+      "status": "ok",
+      "milliseconds": 1,
+      "result": [
+        {
+          "enabled": true,
+          "height": 720,
+          "id": "Meta-0",
+          "index": 0,
+          "kind": "display",
+          "make": "MetaVendor",
+          "mode": {
+            "height": 720,
+            "refresh_rate": 60.0,
+            "width": 1280
+          },
+          "model": "MetaVirtualMonitor",
+          "monitor_id": "Meta-0",
+          "name": "MetaVendor",
+          "primary": true,
+          "privacy_screen": {
+            "available": false,
+            "requested": false,
+            "source": "system"
+          },
+          "renderer": {
+            "accelerated": false,
+            "api": "gl",
+            "name": "llvmpipe (LLVM 23.1.2, 256 bits)",
+            "vendor": "Mesa"
+          },
+          "revision": 5,
+          "scale": 1.0,
+          "serial": "0x00",
+          "transform": "normal",
+          "width": 1280,
+          "work_area": {
+            "height": 720,
+            "width": 1280,
+            "x": 0,
+            "y": 0
+          },
+          "x": 0,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "name": "outputs.list",
+      "status": "ok",
+      "milliseconds": 1,
+      "result": [
+        {
+          "enabled": true,
+          "height": 720,
+          "id": "Meta-0",
+          "index": 0,
+          "kind": "display",
+          "make": "MetaVendor",
+          "mode": {
+            "height": 720,
+            "refresh_rate": 60.0,
+            "width": 1280
+          },
+          "model": "MetaVirtualMonitor",
+          "monitor_id": "Meta-0",
+          "name": "MetaVendor",
+          "primary": true,
+          "privacy_screen": {
+            "available": false,
+            "requested": false,
+            "source": "system"
+          },
+          "renderer": {
+            "accelerated": false,
+            "api": "gl",
+            "name": "llvmpipe (LLVM 23.1.2, 256 bits)",
+            "vendor": "Mesa"
+          },
+          "revision": 5,
+          "scale": 1.0,
+          "serial": "0x00",
+          "transform": "normal",
+          "width": 1280,
+          "work_area": {
+            "height": 720,
+            "width": 1280,
+            "x": 0,
+            "y": 0
+          },
+          "x": 0,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "name": "outputs.renderer",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": {
+        "accelerated": false,
+        "api": "gl",
+        "name": "llvmpipe (LLVM 23.1.2, 256 bits)",
+        "vendor": "Mesa"
+      }
+    },
+    {
+      "name": "override.revoke",
+      "status": "error",
+      "milliseconds": 0,
+      "result": {
+        "request_id": 14,
+        "method": "override.revoke",
+        "arguments": {}
+      },
+      "completion": {
+        "operation_id": 14,
+        "method": "override.revoke",
+        "ok": false,
+        "error": {
+          "code": "invalid_argument",
+          "message": "override.revoke needs an id"
+        },
+        "revision": 5,
+        "sequence": 37,
+        "time": 3649836705
+      }
+    },
+    {
+      "name": "privacy.state",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": {
+        "available": {
+          "camera_in_use": false,
+          "location_in_use": false,
+          "microphone_in_use": false,
+          "recording": true,
+          "screen_sharing": true
+        },
+        "recording": false,
+        "revision": 1,
+        "screen_sharing": false
+      }
+    },
+    {
+      "name": "privacy.stop_recording",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": {
+        "request_id": 15,
+        "method": "privacy.stop_recording",
+        "arguments": {}
+      },
+      "completion": {
+        "operation_id": 15,
+        "method": "privacy.stop_recording",
+        "ok": true,
+        "value": {
+          "requested": 0
+        },
+        "revision": 5,
+        "sequence": 39,
+        "time": 3649837407
+      }
+    },
+    {
+      "name": "privacy.stop_sharing",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": {
+        "request_id": 16,
+        "method": "privacy.stop_sharing",
+        "arguments": {}
+      },
+      "completion": {
+        "operation_id": 16,
+        "method": "privacy.stop_sharing",
+        "ok": true,
+        "value": {
+          "requested": 0
+        },
+        "revision": 5,
+        "sequence": 41,
+        "time": 3649837830
+      }
+    },
+    {
+      "name": "process.",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "unknown Gnoblin API method 'process.parity-probe'"
+      },
+      "family": true
+    },
+    {
+      "name": "process.kill",
+      "status": "skipped",
+      "reason": "signals a process"
+    },
+    {
+      "name": "process.spawn",
+      "status": "skipped",
+      "reason": "starts a process"
+    },
+    {
+      "name": "prompt.",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "unknown Gnoblin API method 'prompt.parity-probe'"
+      },
+      "family": true
+    },
+    {
+      "name": "prompt.cancel",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'prompt.cancel' failed: prompt.cancel accepts only a table with request_id"
+      }
+    },
+    {
+      "name": "prompt.respond",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'prompt.respond' failed: prompt.respond accepts only a table with request_id, password, confirmed, and choice"
+      }
+    },
+    {
+      "name": "runtime.reload_config",
+      "status": "ok",
+      "milliseconds": 10,
+      "result": {
+        "ok": true,
+        "action": "config reload",
+        "settings_revision": 1,
+        "runtime_generation": 2,
+        "warnings": []
+      }
+    },
+    {
+      "name": "runtime.status",
+      "status": "ok",
+      "milliseconds": 5,
+      "result": {
+        "state": "running",
+        "generation": 2
+      }
+    },
+    {
+      "name": "session.activity",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Gnoblin API read requires a supported method and argument table"
+      }
+    },
+    {
+      "name": "session.hibernate",
+      "status": "skipped",
+      "reason": "hibernates the machine"
+    },
+    {
+      "name": "session.lock",
+      "status": "skipped",
+      "reason": "locks the session, and a headless session has no unlocker"
+    },
+    {
+      "name": "session.logout",
+      "status": "skipped",
+      "reason": "ends the session"
+    },
+    {
+      "name": "session.poweroff",
+      "status": "skipped",
+      "reason": "powers the machine off"
+    },
+    {
+      "name": "session.reboot",
+      "status": "skipped",
+      "reason": "reboots the machine"
+    },
+    {
+      "name": "session.status",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": {
+        "state": "running",
+        "lock_available": true,
+        "revision": 0,
+        "lock_state": "unlocked",
+        "session_state": "running",
+        "session_revision": 2
+      }
+    },
+    {
+      "name": "session.suspend",
+      "status": "skipped",
+      "reason": "suspends the machine"
+    },
+    {
+      "name": "settings",
+      "status": "ok",
+      "milliseconds": 1,
+      "result": {
+        "compositor": {
+          "audible_bell": true,
+          "locate_pointer": false,
+          "locate_pointer_key": "Control_L",
+          "visual_bell": false,
+          "visual_bell_type": "fullscreen-flash"
+        },
+        "cursor": {},
+        "frame_renderers": {},
+        "input": {
+          "keyboard": {},
+          "mouse": {},
+          "pointing_stick": {},
+          "touchpad": {},
+          "trackball": {}
+        },
+        "input_handlers": [
+          {
+            "id": "input-1",
+            "match": {
+              "accelerator": "<Alt>F2",
+              "phase": "press",
+              "type": "key"
+            }
+          },
+          {
+            "id": "input-2",
+            "match": {
+              "accelerator": "<Super>e",
+              "phase": "press",
+              "type": "key"
+            }
+          },
+          {
+            "id": "input-3",
+            "match": {
+              "accelerator": "XF86AudioNext",
+              "phase": "press",
+              "type": "key"
+            }
+          },
+          "... 8 more"
+        ],
+        "keybindings": {
+          "keyboard": {
+            "console": ["<Alt>F2"],
+            "files": ["<Super>e"],
+            "media_next": ["XF86AudioNext"],
+            "media_play_pause": ["XF86AudioPlay"],
+            "media_previous": ["XF86AudioPrev"],
+            "microphone_mute": ["XF86AudioMicMute"],
+            "volume_down": ["XF86AudioLowerVolume"],
+            "volume_mute": ["XF86AudioMute"],
+            "volume_up": ["XF86AudioRaiseVolume"]
+          },
+          "pointer": {
+            "move": ["<Super>Button1"],
+            "resize": ["<Super>Button3"]
+          }
+        },
+        "layer_shell": {
+          "preserve_active_window": true
+        },
+        "protocols": {},
+        "revision": 1,
+        "touchpad_gestures": [
+          {
+            "action": "workspace.previous",
+            "fingers": 3,
+            "gesture": "swipe",
+            "name": "workspace-previous",
+            "path": [
+              {
+                "x": 0,
+                "y": 0
+              },
+              {
+                "x": 1,
+                "y": 0
+              }
+            ],
+            "when": "unlocked"
+          },
+          {
+            "action": "workspace.next",
+            "fingers": 3,
+            "gesture": "swipe",
+            "name": "workspace-next",
+            "path": [
+              {
+                "x": 0,
+                "y": 0
+              },
+              {
+                "x": -1,
+                "y": 0
+              }
+            ],
+            "when": "unlocked"
+          }
+        ],
+        "window_management": {
+          "action_double_click_titlebar": "toggle-maximize",
+          "action_middle_click_titlebar": "none",
+          "action_right_click_titlebar": "menu",
+          "attach_modal_dialogs": true,
+          "auto_raise": false,
+          "auto_raise_delay": 500,
+          "check_alive_timeout": 5000,
+          "constrain_drag_to_work_area": true,
+          "edge_tiling": true,
+          "focus_change_on_pointer_rest": false,
+          "focus_mode": "click",
+          "focus_new_windows": "allow",
+          "new_window_placement": "center",
+          "raise_on_click": true,
+          "workspaces_only_on_primary": true
+        },
+        "window_rules": [
+          {
+            "frame": {
+              "extents": [32, 1, 1, "... 1 more"],
+              "mode": "auto",
+              "renderer": "native"
+            },
+            "match": {
+              "type": "window"
+            }
+          },
+          {
+            "corners": {
+              "keep_maximized": false,
+              "radius": 12,
+              "shadow": {
+                "blur": 32,
+                "opacity": 0.35,
+                "spread": 0,
+                "x": 0,
+                "y": 8
+              },
+              "smoothing": 0
+            },
+            "match": {
+              "type": "window"
+            }
+          }
+        ],
+        "workspaces": [
+          {
+            "id": "1",
+            "name": "Workspace 1"
+          },
+          {
+            "id": "2",
+            "name": "Workspace 2"
+          },
+          {
+            "id": "3",
+            "name": "Workspace 3"
+          },
+          "... 1 more"
+        ]
+      }
+    },
+    {
+      "name": "settings.override",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "unknown Gnoblin API method 'settings.override'"
+      }
+    },
+    {
+      "name": "shortcut.actions",
+      "status": "ok",
+      "milliseconds": 4,
+      "result": [
+        {
+          "default_bindings": ["<Alt>space"],
+          "description": "Activate the window menu",
+          "group": "wm",
+          "id": "wm.activate_window_menu",
+          "key": "activate_window_menu"
+        },
+        {
+          "default_bindings": [],
+          "description": "Toggle window to be always on top",
+          "group": "wm",
+          "id": "wm.always_on_top",
+          "key": "always_on_top"
+        },
+        {
+          "default_bindings": ["<Alt>F7"],
+          "description": "Move window",
+          "group": "wm",
+          "id": "wm.begin_move",
+          "key": "begin_move"
+        },
+        "... 95 more"
+      ]
+    },
+    {
+      "name": "shortcut.bind",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "shortcut.bind id must contain 1 to 64 letters, digits, underscores, or hyphens"
+      }
+    },
+    {
+      "name": "shortcut.capture",
+      "status": "skipped",
+      "reason": "waits for a key press for up to 30 seconds"
+    },
+    {
+      "name": "shortcut.list",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": []
+    },
+    {
+      "name": "shortcut.session.arm",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "unknown Gnoblin API method 'shortcut.session.arm'"
+      }
+    },
+    {
+      "name": "shortcut.session.end",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "shortcut.session.end accepts only id and session_id"
+      }
+    },
+    {
+      "name": "shortcut.unbind",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "shortcut.unbind accepts only id"
+      }
+    },
+    {
+      "name": "shortcuts.actions",
+      "status": "ok",
+      "milliseconds": 3,
+      "result": [
+        {
+          "default_bindings": ["<Alt>space"],
+          "description": "Activate the window menu",
+          "group": "wm",
+          "id": "wm.activate_window_menu",
+          "key": "activate_window_menu"
+        },
+        {
+          "default_bindings": [],
+          "description": "Toggle window to be always on top",
+          "group": "wm",
+          "id": "wm.always_on_top",
+          "key": "always_on_top"
+        },
+        {
+          "default_bindings": ["<Alt>F7"],
+          "description": "Move window",
+          "group": "wm",
+          "id": "wm.begin_move",
+          "key": "begin_move"
+        },
+        "... 95 more"
+      ]
+    },
+    {
+      "name": "shortcuts.list",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": []
+    },
+    {
+      "name": "tween.",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "unknown Gnoblin API method 'tween.parity-probe'"
+      },
+      "family": true
+    },
+    {
+      "name": "tween.kill",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "unknown Gnoblin API method 'tween.kill'"
+      }
+    },
+    {
+      "name": "tween.pause",
+      "status": "error",
+      "milliseconds": 1,
+      "error": {
+        "message": "unknown Gnoblin API method 'tween.pause'"
+      }
+    },
+    {
+      "name": "tween.play",
+      "status": "error",
+      "milliseconds": 1,
+      "error": {
+        "message": "unknown Gnoblin API method 'tween.play'"
+      }
+    },
+    {
+      "name": "tween.resume",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "unknown Gnoblin API method 'tween.resume'"
+      }
+    },
+    {
+      "name": "tween.seek",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "unknown Gnoblin API method 'tween.seek'"
+      }
+    },
+    {
+      "name": "version",
+      "status": "ok",
+      "milliseconds": 1,
+      "result": {
+        "api": "1.93",
+        "build_id": "0.1.13+5bb523e9c84c.modified",
+        "git_remote": "https://github.com/kierandrewett/gnoblin.git",
+        "git_sha": "5bb523e9c84c99002306c7f666b5d55316fea7b2",
+        "gnoblin": "0.1.13",
+        "gnome": "51.0",
+        "lua": "Lua 5.5",
+        "mutter": "51.0"
+      }
+    },
+    {
+      "name": "window.",
+      "status": "error",
+      "milliseconds": 1,
+      "error": {
+        "message": "unknown Gnoblin API method 'window.parity-probe'"
+      },
+      "family": true
+    },
+    {
+      "name": "window.action",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "window.action requires a string action"
+      }
+    },
+    {
+      "name": "window.begin_move",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "interactive window operation requires a connection-bound focus_context"
+      }
+    },
+    {
+      "name": "window.begin_resize",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "interactive window operation requires a connection-bound focus_context"
+      }
+    },
+    {
+      "name": "window.close",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.close' failed: window.close requires an argument table"
+      }
+    },
+    {
+      "name": "window.focus",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "window.focus requires a connection-bound focus_context"
+      }
+    },
+    {
+      "name": "window.kill",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.kill' failed: window.kill requires an argument table"
+      }
+    },
+    {
+      "name": "window.list",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": {
+        "windows": []
+      }
+    },
+    {
+      "name": "window.lower",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.lower' failed: window.lower requires an argument table"
+      }
+    },
+    {
+      "name": "window.match",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "window not found"
+      }
+    },
+    {
+      "name": "window.minimize",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.minimize' failed: window.minimize requires an argument table"
+      }
+    },
+    {
+      "name": "window.move",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.move' failed: window.move requires an argument table"
+      }
+    },
+    {
+      "name": "window.move_to_monitor",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.move_to_monitor' failed: window.move_to_monitor requires an argument table"
+      }
+    },
+    {
+      "name": "window.move_to_workspace",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.move_to_workspace' failed: window.move_to_workspace requires an argument table"
+      }
+    },
+    {
+      "name": "window.present",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.present' failed: window.present requires an argument table"
+      }
+    },
+    {
+      "name": "window.raise",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.raise' failed: window.raise requires an argument table"
+      }
+    },
+    {
+      "name": "window.resize",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.resize' failed: window.resize requires an argument table"
+      }
+    },
+    {
+      "name": "window.restore",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.restore' failed: window.restore requires an argument table"
+      }
+    },
+    {
+      "name": "window.restore_or_minimize",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "window.restore_or_minimize requires only a stable window id"
+      }
+    },
+    {
+      "name": "window.set_above",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.set_above' failed: window.set_above requires an argument table"
+      }
+    },
+    {
+      "name": "window.set_effect",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.set_effect' failed: window.set_effect requires an argument table"
+      }
+    },
+    {
+      "name": "window.set_fullscreen",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.set_fullscreen' failed: window.set_fullscreen requires an argument table"
+      }
+    },
+    {
+      "name": "window.set_maximized",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.set_maximized' failed: window.set_maximized requires an argument table"
+      }
+    },
+    {
+      "name": "window.set_minimized",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.set_minimized' failed: window.set_minimized requires an argument table"
+      }
+    },
+    {
+      "name": "window.set_sticky",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.set_sticky' failed: window.set_sticky requires an argument table"
+      }
+    },
+    {
+      "name": "window.set_visual",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.set_visual' failed: window.set_visual requires an argument table"
+      }
+    },
+    {
+      "name": "window.snap",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "window.snap requires a context token"
+      }
+    },
+    {
+      "name": "window.snap.offer",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "window.snap.offer requires drag_id, drag_token and targets"
+      }
+    },
+    {
+      "name": "window.snap_context",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "operation requires a connection-bound focus_context"
+      }
+    },
+    {
+      "name": "window.thumbnail",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.thumbnail' failed: window.thumbnail requires an argument table"
+      }
+    },
+    {
+      "name": "window.toggle_minimize",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.toggle_minimize' failed: window.toggle_minimize requires an argument table"
+      }
+    },
+    {
+      "name": "window.unminimize",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'window.unminimize' failed: window.unminimize requires an argument table"
+      }
+    },
+    {
+      "name": "windows.list",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": []
+    },
+    {
+      "name": "workspace.",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "unknown Gnoblin API method 'workspace.parity-probe'"
+      },
+      "family": true
+    },
+    {
+      "name": "workspace.create",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'workspace.create' failed: bad argument #1 to '?' (table expected, got no value)"
+      }
+    },
+    {
+      "name": "workspace.list",
+      "status": "ok",
+      "milliseconds": 0,
+      "result": {
+        "workspaces": [
+          {
+            "active": true,
+            "id": "1",
+            "name": "Workspace 1",
+            "number": 1,
+            "persistent": true,
+            "windows": 0
+          },
+          {
+            "active": false,
+            "id": "2",
+            "name": "Workspace 2",
+            "number": 2,
+            "persistent": true,
+            "windows": 0
+          },
+          {
+            "active": false,
+            "id": "3",
+            "name": "Workspace 3",
+            "number": 3,
+            "persistent": true,
+            "windows": 0
+          },
+          "... 1 more"
+        ]
+      }
+    },
+    {
+      "name": "workspace.move_active",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'workspace.move_active' failed: bad argument #1 to '?' (table expected, got no value)"
+      }
+    },
+    {
+      "name": "workspace.move_window",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'workspace.move_window' failed: bad argument #1 to '?' (table expected, got no value)"
+      }
+    },
+    {
+      "name": "workspace.next",
+      "status": "ok",
+      "milliseconds": 1,
+      "result": {
+        "request_id": 17,
+        "method": "workspace.next",
+        "arguments": {}
+      },
+      "completion": {
+        "operation_id": 17,
+        "method": "workspace.next",
+        "ok": true,
+        "value": {
+          "id": "2",
+          "number": 2,
+          "name": "Workspace 2",
+          "active": true,
+          "windows": 0,
+          "persistent": true
+        },
+        "revision": 6,
+        "sequence": 44,
+        "time": 3649881738
+      }
+    },
+    {
+      "name": "workspace.previous",
+      "status": "ok",
+      "milliseconds": 2,
+      "result": {
+        "request_id": 18,
+        "method": "workspace.previous",
+        "arguments": {}
+      },
+      "completion": {
+        "operation_id": 18,
+        "method": "workspace.previous",
+        "ok": true,
+        "value": {
+          "id": "1",
+          "number": 1,
+          "name": "Workspace 1",
+          "active": true,
+          "windows": 0,
+          "persistent": true
+        },
+        "revision": 7,
+        "sequence": 47,
+        "time": 3649883626
+      }
+    },
+    {
+      "name": "workspace.remove",
+      "status": "error",
+      "milliseconds": 1,
+      "error": {
+        "message": "Lua API method 'workspace.remove' failed: bad argument #1 to '?' (table expected, got no value)"
+      }
+    },
+    {
+      "name": "workspace.rename",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'workspace.rename' failed: bad argument #1 to '?' (table expected, got no value)"
+      }
+    },
+    {
+      "name": "workspace.switch",
+      "status": "error",
+      "milliseconds": 0,
+      "error": {
+        "message": "Lua API method 'workspace.switch' failed: bad argument #1 to '?' (table expected, got no value)"
+      }
+    },
+    {
+      "name": "workspaces.list",
+      "status": "ok",
+      "milliseconds": 1,
+      "result": [
+        {
+          "active": true,
+          "id": "1",
+          "name": "Workspace 1",
+          "number": 1,
+          "persistent": true,
+          "revision": 7,
+          "window_count": 0
+        },
+        {
+          "active": false,
+          "id": "2",
+          "name": "Workspace 2",
+          "number": 2,
+          "persistent": true,
+          "revision": 7,
+          "window_count": 0
+        },
+        {
+          "active": false,
+          "id": "3",
+          "name": "Workspace 3",
+          "number": 3,
+          "persistent": true,
+          "revision": 7,
+          "window_count": 0
+        },
+        "... 1 more"
+      ]
+    }
+  ],
+  "events_seen": [
+    {
+      "name": "gnoblin.api.operation-completed",
+      "count": 28,
+      "in_inventory": true,
+      "sample": {
+        "request_id": 9,
+        "method": "input.grab.release",
+        "ok": false,
+        "error": "input.grab.release needs an id",
+        "revision": 5,
+        "sequence": 28,
+        "time": 3649824899,
+        "event": "gnoblin.api.operation-completed"
+      }
+    },
+    {
+      "name": "gnoblin.operation.completed",
+      "count": 18,
+      "in_inventory": true,
+      "sample": {
+        "operation_id": 1,
+        "method": "animation.pause",
+        "ok": false,
+        "error": {
+          "code": "invalid_argument",
+          "message": "animation requires a nonempty 'session' string"
+        },
+        "revision": 5,
+        "sequence": 11,
+        "time": 3609807646,
+        "event": "gnoblin.operation.completed"
+      }
+    },
+    {
+      "name": "gnoblin.runtime.status-changed",
+      "count": 1,
+      "in_inventory": true,
+      "sample": {
+        "sequence": 43,
+        "time": 3649841912,
+        "state": "running",
+        "generation": 2,
+        "event": "gnoblin.runtime.status-changed"
+      }
+    },
+    {
+      "name": "gnoblin.window.changed",
+      "count": 1,
+      "in_inventory": true,
+      "sample": {
+        "revision": 3,
+        "sequence": 7,
+        "time": 3599774289,
+        "window_id": "1",
+        "window": {
+          "id": "1",
+          "title": "parity-hold",
+          "app_id": "org.gnoblin.parity.hold",
+          "gtk_app_id": "",
+          "wm_class": "org.gnoblin.parity.hold",
+          "rule_app_id": "org.gnoblin.parity.hold",
+          "client_type": "wayland",
+          "workspace_id": "1",
+          "workspace_number": 1,
+          "monitor_index": 0,
+          "monitor_id": "Meta-0",
+          "above": false,
+          "sticky": false,
+          "demands_attention": false,
+          "unresponsive": false,
+          "closable": true,
+          "minimizable": true,
+          "maximizable": true,
+          "movable": true,
+          "resizable": true,
+          "type": 0,
+          "maximized": false,
+          "fullscreen": false,
+          "minimized": false,
+          "last_user_time": 3599767,
+          "monitor": {
+            "x": 0,
+            "y": 0
+          },
+          "pid": 54974,
+          "frame": {
+            "x": 540,
+            "y": 285,
+            "width": 200,
+            "height": 150
+          },
+          "opacity": 1.0,
+          "scale": 1.0,
+          "rotation": 0.0,
+          "offset": {
+            "x": 0.0,
+            "y": 0.0
+          },
+          "focused": true,
+          "modal": false,
+          "revision": 3
+        },
+        "changed": ["frame", "geometry"],
+        "event": "gnoblin.window.changed"
+      }
+    },
+    {
+      "name": "gnoblin.window.closed",
+      "count": 1,
+      "in_inventory": true,
+      "sample": {
+        "revision": 5,
+        "sequence": 10,
+        "time": 3605779076,
+        "window_id": "1",
+        "last": {
+          "id": "1",
+          "title": "parity-hold",
+          "app_id": "org.gnoblin.parity.hold",
+          "gtk_app_id": "",
+          "wm_class": "org.gnoblin.parity.hold",
+          "rule_app_id": "org.gnoblin.parity.hold",
+          "client_type": "wayland",
+          "workspace_id": "1",
+          "workspace_number": 1,
+          "monitor_index": 0,
+          "monitor_id": "Meta-0",
+          "above": false,
+          "sticky": false,
+          "demands_attention": false,
+          "unresponsive": false,
+          "closable": true,
+          "minimizable": true,
+          "maximizable": true,
+          "movable": true,
+          "resizable": true,
+          "type": 0,
+          "maximized": false,
+          "fullscreen": false,
+          "minimized": false,
+          "last_user_time": 3599767,
+          "monitor": {
+            "x": 0,
+            "y": 0
+          },
+          "pid": 54974,
+          "frame": {
+            "x": 540,
+            "y": 285,
+            "width": 200,
+            "height": 150
+          },
+          "opacity": 1.0,
+          "scale": 1.0,
+          "rotation": 0.0,
+          "offset": {
+            "x": 0.0,
+            "y": 0.0
+          },
+          "focused": true,
+          "modal": false,
+          "revision": 5
+        },
+        "event": "gnoblin.window.closed"
+      }
+    },
+    {
+      "name": "gnoblin.window.created",
+      "count": 1,
+      "in_inventory": true,
+      "sample": {
+        "revision": 2,
+        "sequence": 6,
+        "time": 3599769461,
+        "window": {
+          "id": "1",
+          "title": "parity-hold",
+          "app_id": "org.gnoblin.parity.hold",
+          "gtk_app_id": "",
+          "wm_class": "org.gnoblin.parity.hold",
+          "rule_app_id": "org.gnoblin.parity.hold",
+          "client_type": "wayland",
+          "workspace_id": "1",
+          "workspace_number": 1,
+          "monitor_index": 0,
+          "monitor_id": "Meta-0",
+          "above": false,
+          "sticky": false,
+          "demands_attention": false,
+          "unresponsive": false,
+          "closable": true,
+          "minimizable": true,
+          "maximizable": true,
+          "movable": true,
+          "resizable": true,
+          "type": 0,
+          "maximized": false,
+          "fullscreen": false,
+          "minimized": false,
+          "last_user_time": 3599767,
+          "monitor": {
+            "x": 0,
+            "y": 0
+          },
+          "pid": 54974,
+          "frame": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          "opacity": 1.0,
+          "scale": 1.0,
+          "rotation": 0.0,
+          "offset": {
+            "x": 0.0,
+            "y": 0.0
+          },
+          "focused": false,
+          "modal": false,
+          "revision": 2
+        },
+        "event": "gnoblin.window.created"
+      }
+    },
+    {
+      "name": "gnoblin.window.focused",
+      "count": 1,
+      "in_inventory": true,
+      "sample": {
+        "revision": 3,
+        "sequence": 8,
+        "time": 3599774641,
+        "window_id": "1",
+        "window": {
+          "id": "1",
+          "title": "parity-hold",
+          "app_id": "org.gnoblin.parity.hold",
+          "gtk_app_id": "",
+          "wm_class": "org.gnoblin.parity.hold",
+          "rule_app_id": "org.gnoblin.parity.hold",
+          "client_type": "wayland",
+          "workspace_id": "1",
+          "workspace_number": 1,
+          "monitor_index": 0,
+          "monitor_id": "Meta-0",
+          "above": false,
+          "sticky": false,
+          "demands_attention": false,
+          "unresponsive": false,
+          "closable": true,
+          "minimizable": true,
+          "maximizable": true,
+          "movable": true,
+          "resizable": true,
+          "type": 0,
+          "maximized": false,
+          "fullscreen": false,
+          "minimized": false,
+          "last_user_time": 3599767,
+          "monitor": {
+            "x": 0,
+            "y": 0
+          },
+          "pid": 54974,
+          "frame": {
+            "x": 540,
+            "y": 285,
+            "width": 200,
+            "height": 150
+          },
+          "opacity": 1.0,
+          "scale": 1.0,
+          "rotation": 0.0,
+          "offset": {
+            "x": 0.0,
+            "y": 0.0
+          },
+          "focused": true,
+          "modal": false,
+          "revision": 3
+        },
+        "event": "gnoblin.window.focused"
+      }
+    },
+    {
+      "name": "gnoblin.workspace.activated",
+      "count": 2,
+      "in_inventory": true,
+      "sample": {
+        "revision": 6,
+        "sequence": 46,
+        "time": 3649882876,
+        "workspace": {
+          "id": "2",
+          "number": 2,
+          "name": "Workspace 2",
+          "active": true,
+          "window_count": 0,
+          "persistent": true,
+          "revision": 6
+        },
+        "previous_id": "1",
+        "event": "gnoblin.workspace.activated"
+      }
+    },
+    {
+      "name": "gnoblin.workspace.changed",
+      "count": 2,
+      "in_inventory": true,
+      "sample": {
+        "revision": 2,
+        "sequence": 5,
+        "time": 3599769311,
+        "workspace": {
+          "id": "1",
+          "number": 1,
+          "name": "Workspace 1",
+          "active": true,
+          "window_count": 1,
+          "persistent": true,
+          "revision": 2
+        },
+        "changed": ["window_count"],
+        "event": "gnoblin.workspace.changed"
+      }
+    },
+    {
+      "name": "monitors",
+      "count": 1,
+      "in_inventory": true,
+      "sample": {
+        "monitors": [
+          {
+            "id": "Meta-0",
+            "index": 0,
+            "x": 0,
+            "y": 0,
+            "width": 1280,
+            "height": 720,
+            "primary": true,
+            "scale": 1.0,
+            "enabled": true,
+            "name": "MetaVendor",
+            "make": "MetaVendor",
+            "model": "MetaVirtualMonitor",
+            "serial": "0x00",
+            "refresh_rate": 60.0,
+            "transform": "normal",
+            "revision": 1,
+            "work_area": {
+              "x": 0,
+              "y": 0,
+              "width": 1280,
+              "height": 720
+            }
+          }
+        ],
+        "revision": 1,
+        "event": "monitors"
+      }
+    },
+    {
+      "name": "windows",
+      "count": 7,
+      "in_inventory": true,
+      "sample": {
+        "windows": [],
+        "event": "windows",
+        "revision": 1
+      }
+    }
+  ]
+}

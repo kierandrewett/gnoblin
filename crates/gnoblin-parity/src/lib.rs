@@ -27,6 +27,7 @@
 pub mod candidate;
 pub mod diff;
 mod ei_peer;
+mod hold;
 mod launcher;
 pub mod mutter;
 pub mod mutter_gnoblin;
@@ -42,6 +43,7 @@ pub mod target;
 mod wayland_peer;
 pub use candidate::CandidateTarget;
 pub use diff::{Diff, DiffLine};
+pub use hold::hold_window;
 pub use mutter::Mutter51Target;
 pub use mutter_gnoblin::{MutterGnoblinLaunch, MutterGnoblinTarget};
 pub use normaliser::Normaliser;

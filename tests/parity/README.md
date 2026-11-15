@@ -15,29 +15,34 @@ From the workspace root:
 
 ```console
 $ cargo run -p gnoblin-parity -- run tests/parity/scenarios
-[parity] 11 scenarios: 6 pass, 1 divergent, 0 fail, 4 skip
-  pass candidate-kill-unknown-window (candidate), 1 observation(s) matched
+[parity] 20 scenarios: 5 pass, 3 divergent, 0 fail, 12 skip
+  divergent candidate-kill-unknown-window (candidate), 1 observation(s) compared
+       window.kill.unknown: the refusal text is the candidate's object-model error, ...
+  skip candidate-kill-unknown-window (mutter-gnoblin): no headless Gnoblin on the patched Mutter is configured: set GNOBLIN_PARITY_MUTTER_GNOBLIN to a launcher ...
   pass candidate-window-lifecycle (candidate), 2 observation(s) matched
-  pass candidate-workspace-list (candidate), 1 observation(s) matched
+  skip candidate-window-lifecycle (mutter-gnoblin): no headless Gnoblin on the patched Mutter is configured: ...
+  divergent candidate-workspace-list (candidate), 1 observation(s) compared
+       workspace.list: the candidate answers in the IPC 0.2.0 object model ...
   divergent focus-toplevels (candidate), 3 observation(s) compared
-       focus.second-toplevel: focus_new_windows defaults to prevent in the candidate, ...
+       focus.second-toplevel: focus_new_windows defaults to prevent in the candidate's schema; ...
   skip focus-toplevels (mutter51): no headless Mutter 51 is configured: set GNOBLIN_PARITY_MUTTER51 to a launcher ...
-  skip nested-session-ipc (mutter-gnoblin): needs a live headless Mutter session with gnoblin_session_host_v1; ...
+  pass input-eis (candidate), 4 observation(s) matched
+  skip nested-session-ipc (candidate): no target can run it: the legacy C tree has no gnoblin_session_host_v1 ...
   pass popup-lifecycle (candidate), 3 observation(s) matched
-  skip popup-lifecycle (mutter51): no headless Mutter 51 is configured: ...
   pass popup-placement (candidate), 5 observation(s) matched
-  skip popup-placement (mutter51): no headless Mutter 51 is configured: ...
   pass toplevel-configure (command), 2 observation(s) matched
 ```
 
-A scenario that names references prints one row per target. Without a Mutter launcher the `mutter51` rows are skips,
-with the variable to set; "Run the Mutter reference" below runs them.
+A scenario that names references prints one row per target. Without a launcher the `mutter51` and `mutter-gnoblin` rows
+are skips, with the variable to set; "Run the Mutter reference" and "Run the Gnoblin reference" below run them. The
+candidate rows of the output above are the ones a plain `cargo` run produces; the full report of all three targets is
+stored in `reports/`.
 
 The binary exits `0` when no scenario failed, `1` when at least one differed, and
 `2` when the request itself was wrong. A skip does not fail the run: the scenario
 carries its reason, and holding CI red for a lane that has not landed would hide
-the differences that matter. `--require mutter51` makes a skipped `mutter51` row fail the run, which is how
-the reference job (`.github/workflows/parity-reference.yml`) refuses to pass without having run Mutter.
+the differences that matter. `--require mutter51` (and `--require mutter-gnoblin`) makes a skipped row of that target fail the run, which is how
+the reference job (`.github/workflows/parity-reference.yml`) refuses to pass without having run the references.
 
 `scenarios/` is a gate and stays green: a scenario that can never pass lives in `known-failing/`, which only the runner's
 own tests run (`layer-surface-stacking`, kept as a refused expectation).
@@ -49,7 +54,9 @@ own tests run (`layer-surface-stacking`, kept as a refused expectation).
 
 `target = { mutter51 = {} }`, or `references = [{ mutter51 = {} }]` beside another target, runs stock Mutter 51 on its
 headless backend, started by a launcher program the environment names. The scenario's steps run on it through the same
-Wayland client the candidate uses, and both targets are compared with one `expect`.
+Wayland client the candidate uses, and the targets are compared with one `expect`. Input reaches it the way it reaches
+every live target, over EIS ("Input"), through `org.gnome.Mutter.RemoteDesktop` on the private session bus the launcher
+starts at `<runtime-dir>/bus`.
 
 | Variable                      | Meaning                                                                                    |
 | ----------------------------- | ------------------------------------------------------------------------------------------ |
@@ -63,8 +70,10 @@ default `--no-x11`; set it empty for a build without Xwayland) and `GNOBLIN_PARI
 system, below).
 
 On a Fedora 45 machine or container the whole sequence is `scripts/parity-reference.sh`: `deps` installs the build
-requirements, `mutter` builds the upstream `51.0` tag into `/opt/mutter51`, and `run REPORT` runs this directory with
-`--require mutter51`. The CI job `parity-reference.yml` runs those three steps and keeps the report as an artifact.
+requirements, `mutter` builds the upstream `51.0` tag into `/opt/mutter51`, `gnoblin` builds the legacy Gnoblin into
+`/opt/gnoblin` ("Run the Gnoblin reference") and `run REPORT` runs this directory with `--require mutter51
+--require mutter-gnoblin`. The CI job `parity-reference.yml` runs those four steps and keeps the report as an artifact.
+That job has not run on a GitHub runner yet; its steps ran on Agent37 as below.
 
 Mutter 51 needs glib 2.81, wayland 1.25, libinput 1.30 and pipewire 1.4.11, so it does not build on Debian 12 (the
 Agent37 image: glib 2.74, wayland 1.21). Agent37 instances cannot run containers or mount, but they can `chroot`
@@ -83,7 +92,117 @@ GNOBLIN_PARITY_RUNTIME_BASE=/home/node/fedora/tmp/parity-rt`. The base must be i
    socket Mutter creates there is the path the runner connects to; the launcher strips the root from the path it passes
    in. Or copy the runner into the tree and run `scripts/parity-reference.sh run` there with `GNOBLIN_PARITY_BIN` set.
 
-The stored reports are in `reports/`. Each says where it was produced and what Mutter it ran.
+The stored reports are in `reports/`. Each says where it was produced and what it ran: `2026-11-15-agent37-all-targets.txt`
+is the full run on the candidate, `mutter51` and `mutter-gnoblin` (20 rows: 16 pass, 3 divergent, 0 fail, 1 skip).
+
+## Run the Gnoblin reference
+
+`target = { mutter-gnoblin = {} }`, or `references = [{ mutter-gnoblin = {} }]`, runs the legacy C Gnoblin on its patched
+Mutter 51.0, headless, for real: the guardian (`gnoblin --devkit --wayland-display <display> --no-xwayland`), the
+patched Mutter on its headless backend with one 1280x720 virtual monitor, the Lua runtime and the control socket
+`<runtime-dir>/compositor-v1.sock`. It is the reference for Gnoblin's own API, which stock Mutter does not have, and it
+answers every probe the other live targets answer (same Wayland client, same EIS door). Nothing stands in for it: a
+scenario with this target is a skip, with the variable to set, when no launcher is configured, and a failure, with the
+compositor's log, when the session does not come up.
+
+| Variable                            | Meaning                                                                                                             |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `GNOBLIN_PARITY_MUTTER_GNOBLIN`     | The session launcher, `<launcher> <runtime-dir> <display>`: `scripts/parity-mutter-gnoblin`. Unset: rows skipped.   |
+| `GNOBLIN_PARITY_MUTTER_GNOBLIN_CTL` | The control client, `<ctl> <runtime-dir> <gnoblinctl arguments>`. Default: `parity-gnoblinctl` beside the launcher. |
+| `GNOBLIN_PARITY_GNOBLIN_PREFIX`     | Install prefix of a Gnoblin built with `GNOBLIN_DEVKIT=enabled`, read by both scripts. Required.                    |
+| `GNOBLIN_PARITY_MUTTER_ROOT`        | Run both scripts in this root file system, as for `mutter51`.                                                       |
+| `GNOBLIN_PARITY_PROC_SHIM`          | A path inside that root to a library built from `scripts/parity-proc-shim.c`, preloaded in the session (below).     |
+
+`scripts/parity-gnoblinctl` runs the legacy `gnoblinctl` against the session's socket (`GNOBLIN_COMPOSITOR_SOCKET`) and the
+runner reads its output; `window kill <id>` and `workspace list` are the commands the API probes use. The launchers share
+`scripts/parity-launcher-lib.sh`, which enters the root file system and starts the private session bus the EIS door uses.
+
+`scripts/parity-reference.sh gnoblin` builds the prefix. The tree it builds must be a legacy one, and the Rust
+compositor's branch is not: on `rust-compositor` the starter configuration lost `data/default-config/config/50-pointer.lua`
+while the patched Mutter's `meson.build` still installs it, so the build stops with "File ... 50-pointer.lua does not exist"
+(observed on `829561ea2`). The reference is built from `main` (observed on `5bb523e9c`, API 1.93, which is the API of the
+contract inventory); the launchers and the runner are this branch's. The CI job checks `main` out beside the branch for
+that reason.
+
+On Agent37 the same Fedora 45 root file system as above builds and runs it, with four differences that are properties of
+that sandbox, not of Gnoblin. None of them changes what the compositor does:
+
+- `build.sh` runs `scripts/list-tarball-sources.sh`, which uses bash process substitution (`< <(...)`). That needs
+  `/dev/fd`, which needs `/proc`, which a chroot there does not have, so the step stops with "/dev/fd/63: No such file or
+  directory". The throwaway checkout in the root had its three `<(...)` uses replaced by a here-string and a temporary
+  file; the repository's script is unchanged.
+- `scripts/install-fedora-build-deps.sh` printed "Transaction failed: Rpm transaction failed" for a systemd trigger
+  (`Failed to import file '/usr/lib/systemd/catalog/dbus-broker-launch.catalog'`), after the packages were installed,
+  except `gstreamer1`, which was missing and made the Mutter link fail with undefined `gst_*` references until it was
+  installed by hand.
+- The guardian finds itself with `readlink("/proc/self/exe")` to start its supervisor and Lua worker. Without `/proc` that
+  fails ("could not locate installed executable"). `scripts/parity-proc-shim.c` is a preload library that answers that one
+  link with the path the process was executed by and passes every other `readlink` through. Build it in the root with
+  `cc -shared -fPIC -O2 -o /opt/parity-proc-shim.so scripts/parity-proc-shim.c -ldl` and set `GNOBLIN_PARITY_PROC_SHIM`.
+- `/dev/null` is an ordinary file in that tree, so something has to keep it empty (`while :; do : > /dev/null; sleep 1;
+done` outside the root).
+
+The recipe on the instance, as root: build the runner outside the root as for `mutter51`, then run it with
+`GNOBLIN_PARITY_MUTTER_ROOT=/home/node/fedora-45 GNOBLIN_PARITY_RUNTIME_BASE=/home/node/fedora-45/tmp/parity-rt
+GNOBLIN_PARITY_GNOBLIN_PREFIX=/opt/gnoblin GNOBLIN_PARITY_PROC_SHIM=/opt/parity-proc-shim.so
+GNOBLIN_PARITY_MUTTER_GNOBLIN=<repo>/scripts/parity-mutter-gnoblin`, with the `mutter51` variables of the section above
+beside them to run both references in one pass. The session log of a run shows the real Mutter 51.0 starting, a
+`Devkit viewer exited; keeping the compositor session alive` line (the devkit's viewer has no display to open on; the
+session outlives it) and warnings about the system bus and colord, which the sandbox does not have.
+
+### Nested sessions have no reference
+
+`nested-session-ipc` needs `gnoblin_session_host_v1`, which the legacy tree does not have: nothing under `src/` names it, and
+`protocols/gnoblin-session-host-v1.xml` is read only by `crates/gnoblin-wayland`. It is new in the Rust compositor
+(design/rust-compositor.md, D4). The candidate serves the protocol, but its control socket has no `sessions.list`
+operation and no probe starts a nested session, so no target can run the scenario and it stays a skip with that reason, on
+the candidate. It is not run against the legacy target: that would compare the candidate with a compositor that cannot
+answer the question.
+
+## Input
+
+Every live target is given input the way a real client would give it: the runner is the EIS sender (`ei_peer.rs`, the
+`reis` crate). Mutter and the legacy Gnoblin hand out an EIS socket from `org.gnome.Mutter.RemoteDesktop`
+(`CreateSession`, `ConnectToEIS`, then `Start`, in `remote_desktop.rs`); the candidate serves `eis.sock`. The sender binds
+every capability the seat advertises and waits until the devices that carry the interfaces the probes send through
+(`ei_pointer`, `ei_keyboard`, `ei_scroll`, `ei_button`) have resumed. Two things a Mutter seat taught the harness, both
+fixed:
+
+- The EIS server chooses the bit of each capability and names its interface in the same event, so the sender keeps
+  the interface names and never reads a mask. Mutter's mask is `0xfc0`, not the bits a libei header suggests, and a
+  sender that decoded it by position stopped waiting at the first device it saw: sometimes the pointer's, so the keyboard
+  device was not there yet: the performance baseline of `mutter51` lost every key in some runs and none in others.
+- A Mutter seat advertises a keyboard only once an input device exists, and the EIS sender is what makes one, so the EI
+  client connects before the Wayland client binds the keyboard and waits for the seat to advertise what EIS offered.
+
+The `input-eis` scenario holds the four probes: a key (`a`), three relative motions of (10, 5), a left button press and
+release, and a vertical scroll. Their expectations are what stock Mutter 51.0 produced; the candidate and the legacy
+session produced the same, so no step records a divergence. The key arrives as evdev code 30 and the button as code 272.
+Motion is compared as the step between two motions (the position depends on where each compositor starts the pointer) and a
+scroll as its axis and direction (a compositor scales a scroll as it likes).
+
+## Performance baseline
+
+`gnoblin-parity perf <candidate|mutter51|mutter-gnoblin> [--json FILE]` measures one target from outside its process:
+frame time of a redrawing window, key latency over EIS (to the client and to the next frame), idle CPU and the largest
+process's RSS at 0, 10 and 50 windows, with the same environment as `run`. The stored baseline is
+`reports/2026-11-15-agent37-perf-baseline.txt`, with its command lines, exit codes, host and limits: headless, software
+rendering, gVisor, one run per target, so it is a baseline for later comparison on the same kind of machine and not a
+hardware measurement. The candidate runs in the runner's process (`serve-candidate`), so its RSS and the Mutter targets'
+are not the same thing, and Mutter paces its frame callbacks at 60 Hz where the candidate's come faster.
+
+## Contract recording
+
+`scripts/contract-inventory.py` reads the contract out of the C sources. `scripts/contract-record.py` is its other half:
+it connects to a running legacy session (API 1.93), asks every operation of the inventory once with an empty argument
+table, subscribes to every event the session offers and writes `contracts/recorded-session.json`. A subscription takes at
+most 64 names and a later one replaces an earlier one, so the recorder uses one connection per slice of 64; `windows` and
+`monitors` in the hello list are streams started by an operation of that name, not subscribable names. `--drive CMD` runs
+a client after the subscription (`gnoblin-parity hold-window <wayland-socket> <seconds>` maps one toplevel and closes it),
+so window events arrive. The stored recording is from `main` at `5bb523e9c`: 136 operations (49 ok, 77 refused for want of
+arguments or a target, 10 not asked because they log out, power off, lock or spawn), and 11 event names seen, including
+`gnoblin.window.created`, `.focused` and `.closed`. `python3 scripts/contract-record.py --check` verifies it offline
+and `tests/contract-record.test.py` runs that check.
 
 ## Record the reference session
 
@@ -129,18 +248,18 @@ behaviour it describes. `divergences.toml` lists the scenarios that have no refe
 
 The fields:
 
-| Field                 | Meaning                                                                                                                                    |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `name`                | Unique scenario name, printed in the report.                                                                                               |
-| `description`         | What the scenario proves, in one sentence.                                                                                                 |
-| `target`              | The target to run, as one of the tables below.                                                                                             |
-| `references`          | Further live targets (`[{ mutter51 = {} }]`) that run the same steps against the same `expect`, one report row each.                       |
-| `skip`                | Why the scenario does not run yet. Present means the report says `skip` and the target is never started.                                   |
-| `steps[].id`          | Observation name, unique in the scenario. A live target treats it as the probe to run; the recorded target treats it as the key to replay. |
-| `steps[].description` | What the stimulus does, for the reader.                                                                                                    |
-| `steps[].expect`      | The reference value, as a plain JSON shape. Absent means record without comparing.                                                         |
-| `steps[].divergence`  | `[steps.divergence.<target>]` with `expect` and `reason`: what one target does instead of `expect`, as a reviewed difference.              |
-| `steps[].command`     | How the `command` target realises the step: `program`, `args`, and `format` (`text`, the default, or `json`).                              |
+| Field                 | Meaning                                                                                                                                       |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                | Unique scenario name, printed in the report.                                                                                                  |
+| `description`         | What the scenario proves, in one sentence.                                                                                                    |
+| `target`              | The target to run, as one of the tables below.                                                                                                |
+| `references`          | Further live targets (`[{ mutter51 = {} }, { mutter-gnoblin = {} }]`) that run the same steps against the same `expect`, one report row each. |
+| `skip`                | Why the scenario does not run yet. Present means the report says `skip` and the target is never started.                                      |
+| `steps[].id`          | Observation name, unique in the scenario. A live target treats it as the probe to run; the recorded target treats it as the key to replay.    |
+| `steps[].description` | What the stimulus does, for the reader.                                                                                                       |
+| `steps[].expect`      | The reference value, as a plain JSON shape. Absent means record without comparing.                                                            |
+| `steps[].divergence`  | `[steps.divergence.<target>]` with `expect` and `reason`: what one target does instead of `expect`, as a reviewed difference.                 |
+| `steps[].command`     | How the `command` target realises the step: `program`, `args`, and `format` (`text`, the default, or `json`).                                 |
 
 A step's `expect` is compared after normalisation:
 
@@ -171,17 +290,22 @@ socket (through the `gnoblinctl` library) and a real Wayland client. Stock Mutte
 (`mutter51`, above) and answers the Wayland probes only. The step ids are a closed set of probes, so
 an unknown id fails the run:
 
-| Probe                                                                                            | Answered by             | What it observes                                                                        |
-| ------------------------------------------------------------------------------------------------ | ----------------------- | --------------------------------------------------------------------------------------- |
-| `workspace.list`, `window.open`, `window.close`, `window.kill.unknown`                           | `candidate`             | `gnoblinctl` output and exit status, and a toplevel a Wayland client maps and destroys. |
-| `focus.first-toplevel`, `focus.second-toplevel`, `focus.close-focused`                           | `candidate`, `mutter51` | The `activated` state of each toplevel's configure: how a client learns it has focus.   |
-| `popup.place.anchor-bottom-right`, `.gravity-top-left`, `.offset`, `.nested`, `popup.reposition` | `candidate`, `mutter51` | The position and size of the `xdg_popup` configure, and the `repositioned` token.       |
-| `popup.map.parent-keeps-focus`, `popup.destroy.parent-keeps-focus`, `popup.grab.without-input`   | `candidate`, `mutter51` | Whether the parent stays activated, and whether the popup is configured or dismissed.   |
+| Probe                                                                                            | Answered by                               | What it observes                                                                        |
+| ------------------------------------------------------------------------------------------------ | ----------------------------------------- | --------------------------------------------------------------------------------------- |
+| `workspace.list`, `window.open`, `window.close`, `window.kill.unknown`                           | `candidate`, `mutter-gnoblin`             | `gnoblinctl` output and exit status, and a toplevel a Wayland client maps and destroys. |
+| `focus.first-toplevel`, `focus.second-toplevel`, `focus.close-focused`                           | `candidate`, `mutter51`, `mutter-gnoblin` | The `activated` state of each toplevel's configure: how a client learns it has focus.   |
+| `popup.place.anchor-bottom-right`, `.gravity-top-left`, `.offset`, `.nested`, `popup.reposition` | `candidate`, `mutter51`, `mutter-gnoblin` | The position and size of the `xdg_popup` configure, and the `repositioned` token.       |
+| `popup.map.parent-keeps-focus`, `popup.destroy.parent-keeps-focus`, `popup.grab.without-input`   | `candidate`, `mutter51`, `mutter-gnoblin` | Whether the parent stays activated, and whether the popup is configured or dismissed.   |
+| `input.key.reaches-focused-toplevel`, `input.pointer.relative-motion`, `.button`, `.scroll`      | `candidate`, `mutter51`, `mutter-gnoblin` | The `wl_keyboard` and `wl_pointer` events a fullscreen client receives for EIS input.   |
 
-`mutter-gnoblin` (Gnoblin on the patched Mutter, the reference for Gnoblin's own API) is named in the plan and not
-implemented. A scenario that names it without a `skip` reason fails loudly with "target `mutter-gnoblin` is not
-implemented". There is no stand-in that pretends to drive a compositor, so a scenario cannot pass on behaviour nothing
-exercised. Candidate scenarios that have no reference run are listed in `divergences.toml`.
+`mutter-gnoblin` (the legacy Gnoblin on the patched Mutter, "Run the Gnoblin reference" above) answers every probe, and it
+is the only target besides the candidate that answers the ones that read Gnoblin's own API. Its observations are what
+the legacy `gnoblinctl` printed, reduced to the keys the candidate's observation has where the two mean the same thing
+(`window.open`, `window.close`) and the legacy command's own JSON where they do not (`workspace.list`, an array against
+the candidate's object model; `window.kill.unknown`, a fixed sentence against an error that names the identity). A
+scenario records each such difference as a divergence of the candidate. There is no stand-in that pretends to drive a
+compositor, so a scenario cannot pass on behaviour nothing exercised. The scenarios with no `mutter51` row are listed in
+`divergences.toml`.
 
 ### Adding a live target
 

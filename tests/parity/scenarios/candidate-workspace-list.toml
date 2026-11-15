@@ -1,15 +1,25 @@
-# A fresh Rust compositor has a workspace list that a client can read over IPC
-# before any client has connected. The reference is stock Mutter 51, which has no
-# headless session in this tree, so the reference run is not run and the
-# divergence ledger in tests/parity/divergences.toml records that.
+# A fresh session has a workspace list that a client can read over IPC before any client has connected. The reference is
+# the legacy Gnoblin on its patched Mutter, which answers `gnoblinctl workspace list` from its own control socket
+# (`mutter-gnoblin`: tests/parity/README.md, "Run the Gnoblin reference"). Stock Mutter has no such IPC, so there is no
+# `mutter51` row (tests/parity/divergences.toml).
 #
-# The expectation is the candidate's own normalised output, recorded from a run;
-# it is a regression pin for the candidate, not a claim of parity with Mutter.
+# `expect` is what the legacy session answered. The candidate answers in the IPC 0.2.0 object model, which is the
+# reviewed divergence below.
 name = "candidate-workspace-list"
-description = "A fresh candidate session reports its workspace list over IPC before any client connects."
+description = "A fresh session reports its workspace list over IPC before any client connects."
 target = { candidate = {} }
+references = [{ mutter-gnoblin = {} }]
 
 [[steps]]
 id = "workspace.list"
 description = "The workspaces `gnoblinctl workspace list` reports at start."
+expect = { workspaces = [
+    { id = "<id:1>", number = 1, name = "Workspace 1", active = true, persistent = true, revision = 1, windows = 0 },
+    { id = "<id:2>", number = 2, name = "Workspace 2", active = false, persistent = true, revision = 1, windows = 0 },
+    { id = "<id:3>", number = 3, name = "Workspace 3", active = false, persistent = true, revision = 1, windows = 0 },
+    { id = "<id:4>", number = 4, name = "Workspace 4", active = false, persistent = true, revision = 1, windows = 0 },
+] }
+
+[steps.divergence.candidate]
 expect = { objects = [{ id = "<id:1>", type = "gnoblin.workspace", properties = { id = "<id:2>" } }] }
+reason = "the candidate answers in the IPC 0.2.0 object model (typed objects with properties) where the legacy socket answers a `workspaces` array, and a fresh candidate declares one workspace where the legacy session starts with four"

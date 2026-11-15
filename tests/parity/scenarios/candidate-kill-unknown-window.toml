@@ -1,12 +1,19 @@
-# `window call <id> kill` for an id no live window has is refused, and the session
-# keeps running. The refusal is what a script sees: its exit status and the error it
-# printed. The reference is stock Mutter 51, which is not run here; see
-# tests/parity/divergences.toml.
+# `window kill <id>` for an id no live window has is refused, and the session keeps running. The refusal is what a script
+# sees: its exit status and the error it printed. The reference is the legacy Gnoblin on its patched Mutter
+# (`mutter-gnoblin`); stock Mutter has no such IPC, so there is no `mutter51` row (tests/parity/divergences.toml).
+#
+# `expect` is what the legacy `gnoblinctl` printed. The candidate refuses too, with the same status and its own
+# object-model error, which is the reviewed divergence below.
 name = "candidate-kill-unknown-window"
 description = "Killing a window id that no session window has is refused with a non-zero exit and an error."
 target = { candidate = {} }
+references = [{ mutter-gnoblin = {} }]
 
 [[steps]]
 id = "window.kill.unknown"
 description = "The exit status and standard error of killing an unknown window id."
+expect = { exit = 1, stderr = "gnoblinctl: window ID not found; list windows first" }
+
+[steps.divergence.candidate]
 expect = { exit = 1, stderr = "gnoblinctl: object-unknown: no live object has identity 9999999" }
+reason = "the refusal text is the candidate's object-model error, which names the identity, where the legacy client prints a fixed sentence; the exit status is the same"

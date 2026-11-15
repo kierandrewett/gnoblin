@@ -15,6 +15,7 @@ use gnoblin_parity::perf;
 const USAGE: &str = "\
 usage: gnoblin-parity run <scenario-directory> [--require <target>]...
        gnoblin-parity perf <candidate|mutter51|mutter-gnoblin> [--json <file>]
+       gnoblin-parity hold-window <wayland-socket> <seconds>
 
   run <dir>           run every *.toml scenario in <dir>, in file-name order. A scenario that names
                       a `mutter51` or `mutter-gnoblin` target or reference runs it when
@@ -25,6 +26,10 @@ usage: gnoblin-parity run <scenario-directory> [--require <target>]...
   perf <target>       measure frame time, key latency, idle CPU and memory with 0, 10 and 50 windows
                       on one target, from outside its process, and print the result; --json also
                       writes it to <file> (tests/parity/README.md, \"Performance baseline\")
+
+  hold-window <socket> <seconds>
+                      map one toplevel on the Wayland socket, keep it for <seconds> and close it, so
+                      scripts/contract-record.py --drive has a client to make window events with
 
 Exit status: 0 when no scenario failed, 1 when one differed or a required target was skipped,
 2 on a usage error.";
@@ -38,6 +43,7 @@ fn main() -> ExitCode {
     match command.to_string_lossy().as_ref() {
         "run" => run(args.map(|arg| arg.to_string_lossy().into_owned()).collect()),
         "perf" => measure(args.collect()),
+        "hold-window" => hold(args.collect()),
         // Internal: the candidate as a process of its own, started by `perf`. Not in the usage text.
         "serve-candidate" => serve_candidate(args.collect()),
         "-h" | "--help" | "help" => {
@@ -81,6 +87,28 @@ fn measure(args: Vec<std::ffi::OsString>) -> ExitCode {
         }
     }
     ExitCode::SUCCESS
+}
+
+/// Map a toplevel on a session and keep it: `hold-window <socket> <seconds>`.
+fn hold(args: Vec<std::ffi::OsString>) -> ExitCode {
+    let [socket, seconds] = args.as_slice() else {
+        eprintln!("[parity] hold-window needs a Wayland socket path and a number of seconds");
+        return ExitCode::from(2);
+    };
+    let Some(seconds) = seconds.to_str().and_then(|text| text.parse::<u64>().ok()) else {
+        eprintln!(
+            "[parity] hold-window: `{}` is not a whole number of seconds",
+            seconds.to_string_lossy()
+        );
+        return ExitCode::from(2);
+    };
+    match gnoblin_parity::hold_window(Path::new(socket), std::time::Duration::from_secs(seconds)) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("[parity] {error}");
+            ExitCode::from(1)
+        }
+    }
 }
 
 /// Serve the candidate until killed: `serve-candidate <runtime-dir> <display>`.

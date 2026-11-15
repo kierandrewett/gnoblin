@@ -1,21 +1,28 @@
 #!/usr/bin/env bash
-# Run the parity scenarios against the Rust candidate and against stock Mutter 51, on a Fedora 45 machine.
+# Run the parity scenarios against the Rust candidate, stock Mutter 51 and the legacy Gnoblin, on a Fedora 45 machine.
 #
-# usage: scripts/parity-reference.sh deps | mutter | run [REPORT]
+# usage: scripts/parity-reference.sh deps | mutter | gnoblin | run [REPORT]
 #
 #   deps     install what the Mutter build and the workspace build need: dnf packages (root) and rustup
 #   mutter   build Mutter 51.0 from the upstream tag into $GNOBLIN_PARITY_MUTTER_PREFIX (default /opt/mutter51); a
 #            prefix that already holds bin/mutter is kept
-#   run      run tests/parity/scenarios with GNOBLIN_PARITY_MUTTER51 set to scripts/parity-mutter51, requiring that
-#            every `mutter51` row ran, and write the report to REPORT (default target/parity-report.txt)
+#   gnoblin  build the legacy C Gnoblin with the devkit (its headless backend) into $GNOBLIN_PARITY_GNOBLIN_PREFIX
+#            (default /opt/gnoblin) from the tree in $GNOBLIN_PARITY_GNOBLIN_SOURCE (default: this checkout, with its
+#            submodules); a prefix that already holds bin/gnoblin is kept. The tree must be a legacy one: the Rust
+#            compositor's branch dropped files the patched Mutter still installs (`data/default-config/config/
+#            50-pointer.lua`), so CI builds `main` here (.github/workflows/parity-reference.yml)
+#   run      run tests/parity/scenarios with GNOBLIN_PARITY_MUTTER51 set to scripts/parity-mutter51 and
+#            GNOBLIN_PARITY_MUTTER_GNOBLIN to scripts/parity-mutter-gnoblin, requiring that every `mutter51` and
+#            `mutter-gnoblin` row ran, and write the report to REPORT (default target/parity-report.txt)
 #
-# The CI job `.github/workflows/parity-reference.yml` runs the three in order in a fedora:45 container. On a host that
-# cannot run containers the same steps run inside an extracted Fedora 45 root file system, with `run` calling the
-# launcher through GNOBLIN_PARITY_MUTTER_ROOT (tests/parity/README.md, "Run the Mutter reference").
+# The CI job `.github/workflows/parity-reference.yml` runs deps, mutter, gnoblin and run in order in a fedora:45
+# container. On a host that cannot run containers the same steps run inside an extracted Fedora 45 root file system, with
+# `run` calling the launchers through GNOBLIN_PARITY_MUTTER_ROOT (tests/parity/README.md, "Run the Mutter reference").
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 prefix="${GNOBLIN_PARITY_MUTTER_PREFIX:-/opt/mutter51}"
+gnoblin_prefix="${GNOBLIN_PARITY_GNOBLIN_PREFIX:-/opt/gnoblin}"
 mutter_ref="${GNOBLIN_PARITY_MUTTER_REF:-51.0}"
 dnf=(dnf -y --setopt=tsflags=nocaps)
 
@@ -49,6 +56,20 @@ cmd_mutter() {
     ninja -C "$source/_build" install
 }
 
+cmd_gnoblin() {
+    if [ -x "$gnoblin_prefix/bin/gnoblin" ]; then
+        echo "parity-reference: keeping the Gnoblin in $gnoblin_prefix"
+        return
+    fi
+    local source="${GNOBLIN_PARITY_GNOBLIN_SOURCE:-$root}"
+    # The legacy tree's own list of build requirements, the one its prefix build and its test jobs install from.
+    "$source/scripts/install-fedora-build-deps.sh" --with-test-tools
+    # The pinned Mutter, the portal backend and imgui are submodules; a checkout that has them already keeps them.
+    git -C "$source" submodule update --init --depth 1 --recommend-shallow
+    # The portal backend is a GTK program of its own and nothing the parity scenarios touch.
+    (cd "$source" && GNOBLIN_DEVKIT=enabled ./build.sh --prefix "$gnoblin_prefix" --jobs "$(nproc)" --without-portal)
+}
+
 cmd_run() {
     local report="${1:-$root/target/parity-report.txt}"
     mkdir -p "$(dirname "$report")"
@@ -61,18 +82,21 @@ cmd_run() {
     GNOBLIN_PARITY_MUTTER51="$root/scripts/parity-mutter51" \
         GNOBLIN_PARITY_MUTTER_PREFIX="$prefix" \
         GNOBLIN_PARITY_MUTTER_ARGS="" \
-        "${runner[@]}" run tests/parity/scenarios --require mutter51 | tee "$report"
+        GNOBLIN_PARITY_MUTTER_GNOBLIN="$root/scripts/parity-mutter-gnoblin" \
+        GNOBLIN_PARITY_GNOBLIN_PREFIX="$gnoblin_prefix" \
+        "${runner[@]}" run tests/parity/scenarios --require mutter51 --require mutter-gnoblin | tee "$report"
 }
 
 case "${1:-}" in
     deps) cmd_deps ;;
     mutter) cmd_mutter ;;
+    gnoblin) cmd_gnoblin ;;
     run)
         shift
         cmd_run "$@"
         ;;
     *)
-        sed -n 2,14p "${BASH_SOURCE[0]}"
+        sed -n 2,20p "${BASH_SOURCE[0]}"
         exit 2
         ;;
 esac

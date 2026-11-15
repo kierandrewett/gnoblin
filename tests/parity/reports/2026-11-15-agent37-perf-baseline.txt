@@ -1,0 +1,61 @@
+# Performance baseline: the Rust candidate, stock Mutter 51.0 and the legacy Gnoblin, headless
+#
+# Produced:   2026-11-15 on an Agent37 instance: 4 cpus, 8192 MiB, gVisor kernel 4.19.0-gvisor. Not real hardware.
+# Command:    gnoblin-parity perf <target> --json <file>, once per target, as root, with the environment of the full parity
+#             run (tests/parity/reports/2026-11-15-agent37-all-targets.txt). Exit code 0 for all three.
+# Method:     frame time = gaps between frame callbacks of one window redrawing for 5 s. Key latency = EIS key press to the
+#             client's wl_keyboard.key (key->client) and to the next frame callback after a redraw (key->frame), 100 keys.
+#             Idle CPU = CPU ticks of every process of the session over 10 s with 0 and with 50 windows mapped. RSS = the
+#             largest process of the session at 0, 10 and 50 windows, read from /proc from outside the process.
+# Reading it: the candidate runs in the runner's own process (`gnoblin-parity serve-candidate`), the Mutter targets run as
+#             separate processes, so the RSS figures measure different things. Mutter paces frame callbacks at its virtual
+#             monitor's 60 Hz (mean 16.7 ms); the candidate's callbacks come at a mean of 3.9 ms, faster than 60 Hz, so its
+#             frame time is not a refresh-paced number [INFERENCE: the candidate's headless pacing was not read in code].
+#             Idle CPU is accounted in whole ticks under gVisor, so values from 0.0 to 1.1 % are noise.
+#             Earlier runs of this baseline on mutter51 and mutter-gnoblin lost every key. That was a harness bug fixed in
+#             the same change (the EIS sender decoded the seat's capability mask by position), not a property of the targets.
+# Limits:     headless: no panel, so the frame callback is the compositor's own presentation signal, not photons; software
+#             rendering; the input is EIS injection, which skips libinput and the kernel's input path; one run per target,
+#             so the figures show the spread inside that run and not between runs.
+
+perf candidate
+  host        4 cpus, 8192 MiB, unknown, kernel 4.19.0-gvisor
+  startup     0.04 s to a served socket
+  processes   gnoblin-parity
+  idle cpu     0 windows  0.00% of one core over 10 s  (busiest none)
+  idle cpu    50 windows  0.50% of one core over 10 s  (busiest gnoblin-parity (62637))
+  memory       0 windows  109.9 MiB rss  (largest gnoblin-parity (62637))
+  memory      10 windows  123.3 MiB rss  (largest gnoblin-parity (62637))
+  memory      50 windows  128.0 MiB rss  (largest gnoblin-parity (62637))
+  frame time  n=1266 min 2.56 mean 3.94 p50 3.39 p95 6.19 p99 7.25 max 9.29 ms
+  key->client n=100 min 0.48 mean 1.04 p50 0.98 p95 1.63 p99 1.94 max 3.51 ms
+  key->frame  n=100 min 4.13 mean 10.44 p50 9.94 p95 15.98 p99 19.76 max 20.41 ms
+  keys lost   0 of 100
+
+perf mutter51
+  host        4 cpus, 8192 MiB, unknown, kernel 4.19.0-gvisor
+  startup     0.29 s to a served socket
+  processes   bash mutter dbus-daemon
+  idle cpu     0 windows  0.00% of one core over 10 s  (busiest none)
+  idle cpu    50 windows  0.00% of one core over 10 s  (busiest none)
+  memory       0 windows  324.2 MiB rss  (largest mutter (62735))
+  memory      10 windows  330.1 MiB rss  (largest mutter (62735))
+  memory      50 windows  342.9 MiB rss  (largest mutter (62735))
+  frame time  n=299 min 3.99 mean 16.66 p50 16.53 p95 17.66 p99 18.19 max 28.89 ms
+  key->client n=100 min 0.27 mean 0.66 p50 0.62 p95 1.00 p99 1.07 max 1.08 ms
+  key->frame  n=100 min 1.99 mean 7.01 p50 6.82 p95 11.86 p99 16.30 max 17.07 ms
+  keys lost   0 of 100
+
+perf mutter-gnoblin
+  host        4 cpus, 8192 MiB, unknown, kernel 4.19.0-gvisor
+  startup     0.39 s to a served socket
+  processes   bash gnoblin dbus-daemon gnoblin
+  idle cpu     0 windows  1.10% of one core over 10 s  (busiest gnoblin (62849))
+  idle cpu    50 windows  0.20% of one core over 10 s  (busiest gnoblin (62849))
+  memory       0 windows  395.8 MiB rss  (largest gnoblin (62858))
+  memory      10 windows  420.3 MiB rss  (largest gnoblin (62858))
+  memory      50 windows  485.1 MiB rss  (largest gnoblin (62858))
+  frame time  n=278 min 0.93 mean 16.80 p50 16.65 p95 17.56 p99 18.12 max 68.07 ms
+  key->client n=100 min 0.61 mean 1.01 p50 0.75 p95 0.94 p99 1.10 max 24.83 ms
+  key->frame  n=100 min 3.75 mean 5.66 p50 5.21 p95 6.65 p99 7.24 max 44.56 ms
+  keys lost   0 of 100

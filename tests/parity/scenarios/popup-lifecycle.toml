@@ -4,7 +4,7 @@
 name = "popup-lifecycle"
 description = "A popup does not take focus from its parent, and a grab that names no input event serial neither dismisses it nor moves focus."
 target = { candidate = {} }
-references = [{ mutter51 = {} }]
+references = [{ mutter51 = {} }, { mutter-gnoblin = {} }]
 
 [[steps]]
 id = "popup.map.parent-keeps-focus"

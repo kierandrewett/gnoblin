@@ -5,7 +5,7 @@
 name = "popup-placement"
 description = "A popup is placed where its positioner says: by anchor and gravity, with an offset, nested, and after a reposition."
 target = { candidate = {} }
-references = [{ mutter51 = {} }]
+references = [{ mutter51 = {} }, { mutter-gnoblin = {} }]
 
 [[steps]]
 id = "popup.place.anchor-bottom-right"

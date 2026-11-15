@@ -267,13 +267,25 @@ pub fn run(target: PerfTarget, environment: &RunEnvironment) -> Result<PerfRepor
     let (frame_gaps, frame_count) = measure_frames(&mut peer, &window)?;
     peer.destroy_toplevel(window)?;
 
-    // Input, through the same EIS door the input scenarios use.
-    peer.enable_input()?;
-    let fullscreen = peer.map_fullscreen("org.gnoblin.parity.perf", "input")?;
-    peer.wait_input(Duration::from_secs(5), |log| log.keyboard_entered)?;
+    // Input, through the same EIS door the input scenarios use. The EI client comes first: a Mutter seat only
+    // advertises a keyboard once an input device exists, and EIS is what makes one.
     let stream = subject.door.open().map_err(|error| subject.session.explain(error))?;
     let mut ei = EiPeer::connect(name, stream)?;
-    ei.ready()?;
+    let eis_capabilities = ei.ready()?;
+    peer.enable_input(&eis_capabilities)?;
+    let fullscreen = peer.map_fullscreen("org.gnoblin.parity.perf", "input")?;
+    if !peer.wait_input(Duration::from_secs(5), |log| log.keyboard_entered)? {
+        return Err(TargetError::Live {
+            target: name.to_owned(),
+            detail: format!(
+                "the keyboard never entered the fullscreen window, so key latency cannot be measured (the window is \
+                 activated: {}; the EIS peer: {}; input seen: {:?})",
+                peer.toplevel_state(&fullscreen).activated,
+                ei.describe(),
+                peer.input()
+            ),
+        });
+    }
     let (to_client, to_frame, lost) = key_latency(&mut peer, &mut ei, &fullscreen)?;
     drop(ei);
     peer.destroy_toplevel(fullscreen)?;

@@ -1,14 +1,19 @@
-# A host Gnoblin starts a nested session through gnoblin_session_host_v1 and lists
-# it over the control socket. The extension and the IPC call are both Rust
-# candidate work, so the scenario waits for the lane that can serve it.
+# A host Gnoblin starts a nested session through gnoblin_session_host_v1 and lists it over the control socket.
 #
-# A skipped scenario still declares its target and its steps: the report names the
-# target it will run against, and the skip reason says what is missing. It is not
-# a stand-in for a run.
+# No target can run this today, and the reason is the protocol, not the harness. The `mutter-gnoblin` target runs the
+# legacy C tree for real (tests/parity/README.md), and that tree has no `gnoblin_session_host_v1`: nothing under `src/`
+# names it, and `protocols/gnoblin-session-host-v1.xml` is read only by `crates/gnoblin-wayland`. The protocol is new in
+# the Rust compositor (design/rust-compositor.md, D4). The candidate serves the protocol, but no `sessions.list`
+# operation exists on its control socket and no runner probe starts a nested session, so there is nothing to compare
+# yet. Running it against the legacy target as a stand-in would pass or fail for the wrong reason, so the scenario
+# stays skipped: it moves to `target = { candidate = {} }` together with the lane that adds the operation (lane HST).
+#
+# A skipped scenario still declares its target and its steps: the report names the target it will run against, and
+# the skip reason says what is missing. It is not a stand-in for a run.
 name = "nested-session-ipc"
 description = "A host Gnoblin reports the nested session it started over the control socket."
-target = { mutter-gnoblin = {} }
-skip = "needs a live headless Mutter session with gnoblin_session_host_v1; the Mutter target arrives with lane P2"
+target = { candidate = {} }
+skip = "no target can run it: the legacy C tree has no gnoblin_session_host_v1 (it is new in the Rust compositor) and the candidate has no `sessions.list` operation or nested-session probe yet (lane HST)"
 
 [[steps]]
 id = "sessions.list"

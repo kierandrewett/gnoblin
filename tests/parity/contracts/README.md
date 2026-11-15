@@ -11,12 +11,13 @@ name the compositor emits, the `gnoblinctl` command surface and the top-level ke
 
 ## Files
 
-| File               | Contents                                                                          |
-| ------------------ | --------------------------------------------------------------------------------- |
-| `operations.json`  | Every row of the wire operation table, one per socket method                      |
-| `events.json`      | Every event name the compositor emits                                             |
-| `cli.json`         | Every `gnoblinctl` command and action, with the help summary                      |
-| `config-keys.json` | Every top-level `gnoblin.configure` key, plus the keys that can change at runtime |
+| File                    | Contents                                                                                                                    |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `operations.json`       | Every row of the wire operation table, one per socket method                                                                |
+| `events.json`           | Every event name the compositor emits                                                                                       |
+| `cli.json`              | Every `gnoblinctl` command and action, with the help summary                                                                |
+| `config-keys.json`      | Every top-level `gnoblin.configure` key, plus the keys that can change at runtime                                           |
+| `recorded-session.json` | What a live legacy session (API 1.93) answered to every operation and which events it sent, by `scripts/contract-record.py` |
 
 Each file is a JSON object:
 
@@ -160,3 +161,10 @@ no text extraction can read reliably.
 Scenarios, fixtures and the runner live beside this directory. A scenario names a method, an event
 or a command, and that name is checked against these files, so a rename in the C sources shows up as
 a diff here rather than as coverage that quietly stops matching anything.
+
+## Recorded session
+
+`recorded-session.json` is the other half of the inventory: it is not read out of the sources but recorded from a running
+legacy session, by `scripts/contract-record.py` (see "Contract recording" in `tests/parity/README.md`). It records, per
+operation, how the session answered a plain call (`ok`, `error` or `skipped` with the reason), a sample of the answer,
+and the events that arrived. `python3 scripts/contract-record.py --check` verifies it against the inventory offline.

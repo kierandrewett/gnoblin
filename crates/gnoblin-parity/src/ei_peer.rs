@@ -77,6 +77,9 @@ pub(crate) struct EiPeer {
     seat: Option<ei::Seat>,
     /// The union of the capability bits the seat advertised.
     capabilities: u64,
+    /// The interface each advertised capability stands for. The server chooses the bit of each one and says which
+    /// interface it is in the same event, so a mask means nothing without this list.
+    advertised: Vec<String>,
     seat_done: bool,
     bound: bool,
     devices: Vec<PeerDevice>,
@@ -85,22 +88,17 @@ pub(crate) struct EiPeer {
     emulating: Vec<ei::Device>,
 }
 
-/// The capability names of a seat mask, in the protocol's bit order.
-fn capability_names(mask: u64) -> Vec<&'static str> {
-    const NAMES: [(u64, &str); 6] = [
-        (1 << 0, "pointer"),
-        (1 << 1, "pointer-absolute"),
-        (1 << 2, "keyboard"),
-        (1 << 3, "touch"),
-        (1 << 4, "scroll"),
-        (1 << 5, "button"),
-    ];
-    NAMES
+/// The capability names the seat advertised, for the report: `ei_pointer_absolute` is `pointer-absolute`.
+fn capability_names(advertised: &[String]) -> Vec<String> {
+    advertised
         .iter()
-        .filter(|(bit, _)| mask & bit != 0)
-        .map(|(_, name)| *name)
+        .map(|interface| interface.trim_start_matches("ei_").replace('_', "-"))
         .collect()
 }
+
+/// The interfaces the probes send through: a pointer sends motion, a keyboard keys, a button button edges and a scroll
+/// axis events. A seat that does not advertise one of them is not waited on for it.
+const SENT_THROUGH: [&str; 4] = ["ei_pointer", "ei_keyboard", "ei_scroll", "ei_button"];
 
 /// The monotonic clock in microseconds, the time base `ei_device.frame` carries.
 fn now_micros() -> u64 {
@@ -128,6 +126,7 @@ impl EiPeer {
             context,
             seat: None,
             capabilities: 0,
+            advertised: Vec::new(),
             seat_done: false,
             bound: false,
             devices: Vec::new(),
@@ -171,13 +170,17 @@ impl EiPeer {
                 // A server that advertises again replaces the seat: what the old one carried no longer counts.
                 self.seat = Some(seat);
                 self.capabilities = 0;
+                self.advertised.clear();
                 self.seat_done = false;
                 self.bound = false;
                 self.devices.clear();
                 self.emulating.clear();
             }
             ei::Event::Connection(_, ei::connection::Event::Ping { ping }) => ping.done(u64::from(self.serial)),
-            ei::Event::Seat(_, ei::seat::Event::Capability { mask, .. }) => self.capabilities |= mask,
+            ei::Event::Seat(_, ei::seat::Event::Capability { mask, interface }) => {
+                self.capabilities |= mask;
+                self.advertised.push(interface);
+            }
             ei::Event::Seat(_, ei::seat::Event::Done) => self.seat_done = true,
             ei::Event::Seat(_, ei::seat::Event::Device { device }) => self.devices.push(PeerDevice {
                 wire: device,
@@ -205,43 +208,76 @@ impl EiPeer {
         }
     }
 
-    /// Pumps until `ready` holds or the wait runs out, naming `what` the peer was waiting for.
-    fn wait_for(&mut self, what: &str, ready: impl Fn(&Self) -> bool) -> Result<(), TargetError> {
+    /// Waits for the seat, binds everything it advertises and waits until every interface the probes send through is on
+    /// a resumed device. Returns the capability names the seat advertised, for the report.
+    ///
+    /// A server may advertise a seat again (a Mutter session does once the remote desktop session starts), and a new
+    /// seat forgets what was bound and the devices of the old one, so the binding is made again for each seat, and the
+    /// wait is over only when the devices of the seat that is current have all resumed. A server may also create its
+    /// devices one after the other, so the first resumed device is not the last.
+    pub(crate) fn ready(&mut self) -> Result<Vec<String>, TargetError> {
         let deadline = Instant::now() + SETTLE;
         loop {
             self.pump()?;
-            if ready(self) {
-                return Ok(());
+            if self.seat.is_some() && self.seat_done && self.capabilities != 0 && !self.bound {
+                let mask = self.capabilities;
+                if let Some(seat) = &self.seat {
+                    seat.bind(mask);
+                }
+                let _ = self.context.flush();
+                self.bound = true;
+            }
+            if self.bound && self.devices_cover_the_seat() {
+                return Ok(capability_names(&self.advertised));
             }
             if Instant::now() >= deadline {
-                return Err(self.live(format!("the EI peer never saw {what}")));
+                let wait = if self.bound {
+                    "a resumed device for every capability the seat advertised"
+                } else {
+                    "a seat with capabilities"
+                };
+                return Err(self.live(format!("the EI peer never saw {wait}")));
             }
             std::thread::sleep(POLL);
         }
     }
 
-    /// Waits for the seat, binds everything it advertises and waits until every device that carries a bound capability
-    /// has resumed. Returns the capability names the seat advertised, for the report.
-    pub(crate) fn ready(&mut self) -> Result<Vec<&'static str>, TargetError> {
-        self.wait_for("a seat with capabilities", |peer| {
-            peer.seat.is_some() && peer.seat_done && peer.capabilities != 0
-        })?;
-        if !self.bound {
-            let mask = self.capabilities;
-            if let Some(seat) = &self.seat {
-                seat.bind(mask);
-            }
-            let _ = self.context.flush();
-            self.bound = true;
-        }
-        self.wait_for("a resumed device", |peer| {
-            !peer.devices.is_empty()
-                && peer
-                    .devices
-                    .iter()
-                    .all(|device| device.done && device.resumed.is_some())
-        })?;
-        Ok(capability_names(self.capabilities))
+    /// The state of the peer in words, for an error: the mask the seat advertised, whether it is bound, and the
+    /// interfaces on each device with whether it resumed.
+    pub(crate) fn describe(&self) -> String {
+        let devices: Vec<String> = self
+            .devices
+            .iter()
+            .map(|device| {
+                let mut names: Vec<&str> = device.interfaces.keys().map(String::as_str).collect();
+                names.sort_unstable();
+                format!("{names:?} done={} resumed={}", device.done, device.resumed.is_some())
+            })
+            .collect();
+        format!(
+            "seat mask {:#x}, bound {}, devices [{}]",
+            self.capabilities,
+            self.bound,
+            devices.join("; ")
+        )
+    }
+
+    /// Whether every device has resumed and every interface the probes send through, for each capability the seat
+    /// advertised, is on one of them.
+    fn devices_cover_the_seat(&self) -> bool {
+        !self.devices.is_empty()
+            && self
+                .devices
+                .iter()
+                .all(|device| device.done && device.resumed.is_some())
+            && SENT_THROUGH
+                .iter()
+                .filter(|name| self.advertised.iter().any(|advertised| advertised == **name))
+                .all(|name| {
+                    self.devices
+                        .iter()
+                        .any(|device| device.resumed.is_some() && device.interfaces.contains_key(*name))
+                })
     }
 
     /// The device that carries interface `T`, the serial it resumed with and the interface.
@@ -250,7 +286,17 @@ impl EiPeer {
             .devices
             .iter()
             .find(|device| device.interfaces.contains_key(T::NAME))
-            .ok_or_else(|| self.live(format!("the seat has no device with {}", T::NAME)))?;
+            .ok_or_else(|| {
+                self.live(format!(
+                    "the seat has no device with {} (the seat advertised {:?}; devices: {:?})",
+                    T::NAME,
+                    capability_names(&self.advertised),
+                    self.devices
+                        .iter()
+                        .map(|device| device.interfaces.keys().cloned().collect::<Vec<_>>())
+                        .collect::<Vec<_>>(),
+                ))
+            })?;
         let serial = device
             .resumed
             .ok_or_else(|| self.live(format!("the {} device never resumed", T::NAME)))?;

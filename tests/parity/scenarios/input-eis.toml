@@ -1,0 +1,31 @@
+# Input injected over EIS reaches the client as the wl_keyboard and wl_pointer events a real device would cause. The runner
+# is the EIS sender: it asks the compositor for an EIS socket (Mutter: `org.gnome.Mutter.RemoteDesktop.ConnectToEIS`; the
+# candidate: its own EIS door), binds a keyboard, a relative pointer, a button and a scroll device, and sends. The shared
+# Wayland client maps a fullscreen window and reports what it receives, so one expectation reads the same on every target.
+#
+# The expectations are what a real Mutter 51.0 session produced (Agent37 run, tests/parity/reports/); the Rust candidate and
+# the legacy Gnoblin on its patched Mutter produced the same, so no step records a divergence.
+name = "input-eis"
+description = "Key, relative motion, button and scroll events sent over EIS reach the focused client."
+target = { candidate = {} }
+references = [{ mutter51 = {} }, { mutter-gnoblin = {} }]
+
+[[steps]]
+id = "input.key.reaches-focused-toplevel"
+description = "Key `a` pressed and released: the keyboard is on the window and both edges arrive."
+expect = { keyboard_entered = true, keys = [{ code = 30, pressed = true }, { code = 30, pressed = false }] }
+
+[[steps]]
+id = "input.pointer.relative-motion"
+description = "Three relative motions of (10, 5): the pointer enters the window and each step moves it by the injected delta."
+expect = { pointer_entered = true, motions = 3, steps = [[10, 5], [10, 5]] }
+
+[[steps]]
+id = "input.pointer.button"
+description = "Left button pressed and released over the window: both edges arrive."
+expect = { buttons = [{ code = 272, pressed = true }, { code = 272, pressed = false }] }
+
+[[steps]]
+id = "input.pointer.scroll"
+description = "A vertical scroll of 15 units: it arrives on the vertical axis only and in the positive direction."
+expect = { axis_events = true, vertical_only = true, positive = true }

@@ -22,7 +22,7 @@ runtime_dir="${1:?usage: parity-mutter51 RUNTIME_DIR DISPLAY}"
 display="${2:?usage: parity-mutter51 RUNTIME_DIR DISPLAY}"
 
 [ -n "${PARITY_LAUNCHER_LIB:-}" ] || source "$(dirname "${BASH_SOURCE[0]}")/parity-launcher-lib.sh"
-parity_enter_root "${BASH_SOURCE[0]}" "$runtime_dir" "$display"
+parity_enter_root "${BASH_SOURCE[0]:-}" "$runtime_dir" "$display"
 
 mutter=mutter
 if [ -n "${GNOBLIN_PARITY_MUTTER_PREFIX:-}" ]; then

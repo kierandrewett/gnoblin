@@ -1,12 +1,14 @@
-# A Wayland client maps an xdg toplevel, the candidate lists it over IPC, and the
-# client destroying the toplevel removes it from the list again. The reference is
-# stock Mutter 51, which is not run here (no Mutter session in this tree); see
-# tests/parity/divergences.toml.
+# A Wayland client maps an xdg toplevel, the session lists it over IPC, and the client destroying the toplevel removes it
+# from the list again. The reference is the legacy Gnoblin on its patched Mutter (`mutter-gnoblin`), whose
+# `gnoblinctl window list` answers the same two questions; stock Mutter has no such IPC, so there is no `mutter51` row
+# (tests/parity/divergences.toml).
 #
-# The expectation is the candidate's own observation, recorded from a run.
+# The observation keeps what both sides mean the same: whether the window is listed, whether its app id is, whether it
+# is focused, and whether the list is empty once it is gone. Both sessions produced it, so no step records a divergence.
 name = "candidate-window-lifecycle"
 description = "A toplevel mapped by a Wayland client is listed over IPC and gone once destroyed."
 target = { candidate = {} }
+references = [{ mutter-gnoblin = {} }]
 
 [[steps]]
 id = "window.open"

@@ -71,6 +71,8 @@ pub(crate) struct Probes {
     door: Option<Box<dyn EisDoor>>,
     /// The EI client, connected by the first input step.
     ei: Option<EiPeer>,
+    /// The capability names the EIS server offered, which tell the Wayland client what the seat should advertise.
+    eis_capabilities: Vec<String>,
 }
 
 impl Probes {
@@ -88,6 +90,7 @@ impl Probes {
             popups: BTreeMap::new(),
             door,
             ei: None,
+            eis_capabilities: Vec::new(),
         })
     }
 
@@ -186,16 +189,11 @@ impl Probes {
         })
     }
 
-    /// Maps the fullscreen window the input steps watch, waits until the keyboard is on it, and connects the EI client,
-    /// once. The seat's devices are bound before the window maps, so the keyboard focus the map causes is seen.
+    /// Connects the EI client, maps the fullscreen window the input steps watch and waits until the keyboard is on it,
+    /// once. The EI client comes first because a Mutter seat only advertises a keyboard once an input device exists, and
+    /// it is EIS that makes one: the Wayland peer must see that capability before it asks for the keyboard, and the seat
+    /// is bound before the window maps, so the keyboard focus the map causes is seen.
     fn ensure_input(&mut self) -> Result<(), TargetError> {
-        self.peer.enable_input()?;
-        if !self.windows.contains_key("input") {
-            let window = self.peer.map_fullscreen("org.gnoblin.parity.input", "input")?;
-            self.windows.insert("input", window);
-        }
-        self.wait_activated("input", true, SETTLE)?;
-        self.peer.wait_input(SETTLE, |log| log.keyboard_entered)?;
         if self.ei.is_none() {
             let target = self.target;
             let door = self.door.as_mut().ok_or_else(|| TargetError::Live {
@@ -204,9 +202,16 @@ impl Probes {
             })?;
             let stream = door.open()?;
             let mut ei = EiPeer::connect(self.target, stream)?;
-            ei.ready()?;
+            self.eis_capabilities = ei.ready()?;
             self.ei = Some(ei);
         }
+        self.peer.enable_input(&self.eis_capabilities)?;
+        if !self.windows.contains_key("input") {
+            let window = self.peer.map_fullscreen("org.gnoblin.parity.input", "input")?;
+            self.windows.insert("input", window);
+        }
+        self.wait_activated("input", true, SETTLE)?;
+        self.peer.wait_input(SETTLE, |log| log.keyboard_entered)?;
         Ok(())
     }
 

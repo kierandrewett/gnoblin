@@ -800,11 +800,20 @@ Landed:
   kit. `mutter51` is a live target: stock Mutter 51 on its headless backend,
   started by a launcher the environment names, driven by the same Wayland client
   as the candidate (`scripts/parity-mutter51`, `scripts/parity-reference.sh`,
-  `.github/workflows/parity-reference.yml`). `mutter-gnoblin` is named and
-  refused, so no scenario passes on a stand-in. A scenario step may record a
+  `.github/workflows/parity-reference.yml`). `mutter-gnoblin` is a live target
+  too: the legacy C Gnoblin on its patched Mutter 51.0, built from `main` and
+  started for real (`scripts/parity-mutter-gnoblin`, `scripts/parity-gnoblinctl`),
+  so no scenario passes on a stand-in. A scenario step may record a
   reviewed divergence for one target, which the report shows as `divergent`.
   The popup and focus scenarios (`popup-placement`, `popup-lifecycle`,
-  `focus-toplevels`) run on both, and `tests/parity/reports/` stores the report.
+  `focus-toplevels`) and the EIS input scenario `input-eis` (key, relative
+  motion, button, scroll) run on all three targets, and `tests/parity/reports/`
+  stores the full report (20 rows: 16 pass, 3 divergent, 0 fail, 1 skip) and the
+  performance baseline of the three targets (headless, software rendering,
+  gVisor, one run each, not hardware).
+- `tests/parity/contracts/recorded-session.json`: a contract recording from a live
+  legacy session at API 1.93 (136 operations, 11 event names seen), made by
+  `scripts/contract-record.py`, with `--check` and `tests/contract-record.test.py`.
 - Failure-mode lists, each entry naming its test, in the crate docs of
   `gnoblin-wm`, `gnoblin-lock`, `gnoblin-authority`, `gnoblin-a11y`,
   `gnoblin-session`, `gnoblin-config`, `gnoblin-model` and `gnoblin-render`, and
@@ -821,9 +830,15 @@ Landed:
 
 Open:
 
-- The `mutter-gnoblin` reference target and the EIS input path, so the scenarios
-  that read Gnoblin's own API can run against a reference and the performance
-  baseline can be recorded.
+- A real run of the `parity-reference` CI job on a GitHub runner, with the new
+  `gnoblin` step (the same steps ran on Agent37 in a Fedora 45 root file system,
+  with the workarounds listed in `tests/parity/README.md`).
+- `nested-session-ipc` has no target that can run it: the legacy C tree has no
+  `gnoblin_session_host_v1` and the candidate has no `sessions.list` operation or
+  nested-session probe yet (lane HST). It stays a skip with that reason.
+- The legacy product no longer builds from the `rust-compositor` branch (the
+  starter lost `50-pointer.lua`, which the patched Mutter still installs), so the
+  `mutter-gnoblin` reference is built from `main`.
 - The MSRV is measured at 1.97.0 (1.96.0 fails on `cranelift-assembler-x64` 0.137.1,
   which needs 1.97.0). `just msrv` and the CI `msrv` job check it.
 - The native dependency probe on six more target images: `el-9`, `opensuse-leap-15.5`,
@@ -845,9 +860,12 @@ Open:
   mode change. Record the GPU driver: a driver that refuses a commit its own test
   passed is a finding.
 
-Gate, partly met: the parity runner runs the core-protocol scenarios against
-`mutter51` and stores a report (CI job `parity-reference`, and a report from an
-Agent37 run in `tests/parity/reports/`). Unmet: the `mutter-gnoblin` target.
+Gate, met by the evidence in `tests/parity/reports/` (an Agent37 run; the CI job
+`parity-reference` is written and has not run on a GitHub runner): the parity
+runner runs the scenarios against the candidate, `mutter51` and `mutter-gnoblin`,
+with no failing row and every divergence reviewed in its scenario file. Not
+covered: `nested-session-ipc` (above), and the performance figures are from a
+headless gVisor instance, not hardware.
 
 ### Phase 1: outside-in ports that ship on Mutter
 
@@ -3345,13 +3363,17 @@ Needs Kieran:
       parse and catalog rules under test.
 - [x] Read the contract inventory out of the C sources into
       `tests/parity/contracts/`, with `scripts/contract-inventory.py --check`.
-- [ ] Record a contract inventory from a reference session at API 1.93.
+- [x] Record a contract inventory from a reference session at API 1.93
+      (`tests/parity/contracts/recorded-session.json`, from the legacy session at
+      `5bb523e9c`; `scripts/contract-record.py --check` is green).
 - [x] Build the parity runner with its normaliser, report, three scenarios and
       the test kit.
 - [x] Add the `mutter51` target and record its observations
       (`tests/parity/reports/`).
-- [ ] Add the `mutter-gnoblin` target and the EIS input path, and record the
-      performance baseline with them.
+- [x] Add the `mutter-gnoblin` target and the EIS input path, and record the
+      performance baseline with them
+      (`tests/parity/reports/2026-11-15-agent37-all-targets.txt` and
+      `2026-11-15-agent37-perf-baseline.txt`).
 - [x] Write the failure-mode lists for lock, authority and focus, input policy
       and the pure crates, each entry naming its test.
 - [x] Write the capture-embargo failure-mode list in the crate docs of

@@ -1,9 +1,11 @@
 name: Parity reference
 
-# The parity scenarios (tests/parity/scenarios) against the Rust candidate and against stock Mutter 51 on its headless
-# backend, with one expectation per step. `rust.yml` runs the same scenarios without the Mutter rows, which it skips
-# for want of a launcher; this job builds Mutter 51 and requires every `mutter51` row to have run, so a difference
-# between the compositors is a red job and the report is kept as an artifact. design/rust-compositor.md, "The parity harness".
+# The parity scenarios (tests/parity/scenarios) against the Rust candidate, against stock Mutter 51 on its headless
+# backend and against the legacy C Gnoblin on its patched Mutter, with one expectation per step. `rust.yml` runs the same
+# scenarios without the reference rows, which it skips for want of a launcher; this job builds both references and
+# requires every `mutter51` and `mutter-gnoblin` row to have run, so a difference between the compositors is a red job
+# and the report is kept as an artifact. The legacy tree is `main`: the Rust branch dropped starter files the patched
+# Mutter still installs, so it cannot build the legacy product. design/rust-compositor.md, "The parity harness".
 
 on:
   push:
@@ -14,6 +16,10 @@ on:
       - "crates/gnoblin-backend/**"
       - "tests/parity/**"
       - "scripts/parity-mutter51"
+      - "scripts/parity-mutter-gnoblin"
+      - "scripts/parity-gnoblinctl"
+      - "scripts/parity-launcher-lib.sh"
+      - "scripts/parity-proc-shim.c"
       - "scripts/parity-reference.sh"
       - "scripts/ci-install-system-libraries.sh"
       - "Cargo.lock"
@@ -26,6 +32,10 @@ on:
       - "crates/gnoblin-backend/**"
       - "tests/parity/**"
       - "scripts/parity-mutter51"
+      - "scripts/parity-mutter-gnoblin"
+      - "scripts/parity-gnoblinctl"
+      - "scripts/parity-launcher-lib.sh"
+      - "scripts/parity-proc-shim.c"
       - "scripts/parity-reference.sh"
       - "scripts/ci-install-system-libraries.sh"
       - "Cargo.lock"
@@ -43,10 +53,10 @@ defaults:
 
 jobs:
   parity:
-    name: Scenarios on the candidate and on Mutter 51
+    name: Scenarios on the candidate, Mutter 51 and the legacy Gnoblin
     runs-on: ubuntu-latest
     container: fedora:45
-    timeout-minutes: 90
+    timeout-minutes: 150
     steps:
       - name: Install checkout and cache tools
         run: dnf -y install git tar zstd gzip
@@ -64,7 +74,25 @@ jobs:
           key: mutter51-${{ hashFiles('scripts/parity-reference.sh') }}
       - name: Build Mutter 51
         run: scripts/parity-reference.sh mutter
-      - name: Run the scenarios against both compositors
+      # The legacy product is built from `main`, with its pinned Mutter and its patch series, as a release of it is.
+      - name: Check out the legacy Gnoblin
+        id: legacy
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: legacy-src
+          submodules: recursive
+          fetch-depth: 1
+      - name: Restore the legacy Gnoblin build
+        uses: actions/cache@v4
+        with:
+          path: /opt/gnoblin
+          key: gnoblin-legacy-${{ steps.legacy.outputs.commit }}-${{ hashFiles('scripts/parity-reference.sh') }}
+      - name: Build the legacy Gnoblin
+        env:
+          GNOBLIN_PARITY_GNOBLIN_SOURCE: ${{ github.workspace }}/legacy-src
+        run: scripts/parity-reference.sh gnoblin
+      - name: Run the scenarios against all three
         run: scripts/parity-reference.sh run parity-report.txt
       - name: Keep the report
         if: always()
