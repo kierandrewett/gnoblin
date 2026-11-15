@@ -246,6 +246,11 @@ impl HeadlessTarget {
         GpuTarget::release_views(self);
     }
 
+    /// Gives back what this target's renderer holds only between frames.
+    pub fn release_scratch(&mut self) {
+        self.renderer.release_scratch();
+    }
+
     /// How many frames the target was asked to present.
     #[must_use]
     pub fn presents(&self) -> u64 {
@@ -991,6 +996,12 @@ impl<S: Host + 'static> Backend<S> for Headless {
     fn release_views(&mut self) {
         for target in &mut self.targets {
             target.release_views();
+        }
+    }
+
+    fn release_scratch(&mut self) {
+        for target in &mut self.targets {
+            target.release_scratch();
         }
     }
 

@@ -24,6 +24,11 @@ pub struct Footprint {
     pub staging: u64,
     /// The pictures of the Views drawn on the GPU.
     pub views: u64,
+    /// The part of `scratch` and `staging` that holds nothing between frames and is made again by the next frame that
+    /// needs it: the blur scratch targets, and the software renderer's snapshot of each layer. It is not in `views`
+    /// (those are given back by their own call, so a locked session can keep them) and never contains the target
+    /// or what a frame in flight reads. It is what a budget may take back without losing a picture.
+    pub releasable: u64,
 }
 
 impl Footprint {
@@ -69,8 +74,13 @@ mod tests {
             scratch: 16,
             staging: 32,
             views: 64,
+            releasable: 24,
         };
-        assert_eq!(footprint.total(), 120);
+        assert_eq!(
+            footprint.total(),
+            120,
+            "the releasable bytes are part of scratch and staging, not extra"
+        );
         assert_eq!(Footprint::default().total(), 0);
     }
 }

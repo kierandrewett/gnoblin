@@ -857,6 +857,12 @@ pub trait Backend<S: Host + 'static> {
     /// afterwards is drawn again from the scene it has then. The default holds none.
     fn release_views(&mut self) {}
 
+    /// Gives back what this backend's renderers hold only between frames, which their footprints report as
+    /// `releasable`: blur scratch targets, per-frame snapshots of client buffers. The next frame that needs them
+    /// makes them again, so no picture is lost. The host calls it when the memory budget needs room. The default
+    /// holds none.
+    fn release_scratch(&mut self) {}
+
     /// What this backend can import of a client's GPU buffers, or `None` when it cannot import
     /// any: the host then never serves `zwp_linux_dmabuf_v1`, and a client shares memory instead.
     ///

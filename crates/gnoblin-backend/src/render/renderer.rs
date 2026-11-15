@@ -335,6 +335,18 @@ impl AnyRenderer {
             gles.retire_views(&[]);
         }
     }
+
+    /// Gives back what the renderer holds only between frames (`Footprint::releasable`): the blur scratch targets of
+    /// the GLES renderer and the software renderer's snapshots of each layer. The next frame makes them again. The
+    /// Vulkan renderer trims its host buffers after each frame already and has nothing more to give.
+    pub fn release_scratch(&mut self) {
+        match self {
+            Self::Gles(gles) => gles.release_scratch(),
+            Self::Software(software) => software.release_scratch(),
+            #[cfg(feature = "vulkan")]
+            Self::Vulkan(_) => {}
+        }
+    }
 }
 
 /// What a redacted capture reads: the frame last drawn, where the capture covers, and how

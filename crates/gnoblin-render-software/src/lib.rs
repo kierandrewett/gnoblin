@@ -179,12 +179,24 @@ impl Software {
                 )
             })
             .fold(0, u64::saturating_add);
+        let scratch = self.scratch.capacity() as u64;
         Footprint {
             target: image_bytes(self.physical, COLOUR_BYTES_PER_PIXEL),
-            scratch: (self.scratch.capacity() as u64).saturating_add(self.cursor_under.capacity() as u64),
+            scratch: scratch.saturating_add(self.cursor_under.capacity() as u64),
             staging: textures,
+            // `prepare` clears and imports every layer again at the start of each draw, so neither the snapshots
+            // nor the tint bytes are read between frames.
+            releasable: textures.saturating_add(scratch),
             ..Footprint::default()
         }
+    }
+
+    /// Gives back what holds nothing between frames: the snapshot of each layer's buffer, the cursor's snapshot and
+    /// the tint bytes. The next draw makes them again, which is what it does every frame.
+    pub fn release_scratch(&mut self) {
+        self.textures = Vec::new();
+        self.cursor = None;
+        self.scratch = Vec::new();
     }
 
     /// Replaces the buffer with one of the given size.

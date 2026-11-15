@@ -272,12 +272,13 @@ impl Gles {
     /// reports: GL has no portable query for that. A client's buffers are Smithay's and are not counted here.
     #[must_use]
     pub fn footprint(&self) -> Footprint {
-        let scratch = self
+        let blur = self
             .scratch
             .iter()
             .flatten()
             .map(Framebuffer::bytes)
-            .fold(self.cursor_under.capacity() as u64, u64::saturating_add);
+            .fold(0, u64::saturating_add);
+        let scratch = blur.saturating_add(self.cursor_under.capacity() as u64);
         Footprint {
             target: self
                 .target
@@ -286,6 +287,16 @@ impl Gles {
             scratch,
             staging: 0,
             views: self.subtree_bytes(),
+            // The blur pair is made on first use and again after a resize (`ensure_scratch`), and holds nothing a
+            // later frame reads.
+            releasable: blur,
+        }
+    }
+
+    /// Gives back the blur scratch targets. The next frame that blurs makes them again.
+    pub fn release_scratch(&mut self) {
+        for scratch in self.scratch.take().into_iter().flatten() {
+            self.device.release(scratch);
         }
     }
 
