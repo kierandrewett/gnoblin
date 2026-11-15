@@ -16,9 +16,10 @@
 //! | [`image_copy_session`] | `ext_image_copy_capture_manager_v1`, `ext_image_copy_capture_session_v1`, `ext_image_copy_capture_frame_v1` | the protocol's own objects, and the check that a client's shared-memory or GPU buffer meets the constraints a session announced |
 //! | [`wl_compositor`] | `wl_compositor`, `wl_subcompositor` | surfaces, subsurfaces and buffer commits |
 //! | [`wl_shm`] | `wl_shm`, `wl_shm_pool` | shared-memory buffer pools |
+//! | [`ext_background_effect_v1`] | `ext_background_effect_manager_v1`, `ext_background_effect_surface_v1` | a client's blur behind its own surface, gated through the access roster |
 //! | [`wp_content_type_v1`] | `wp_content_type_v1` | records whether a surface shows video or a game |
 //! | [`wp_cursor_shape_v1`] | `wp_cursor_shape_manager_v1` | records the cursor a client names |
-//! | [`zxdg_decoration_v1`] | `zxdg_decoration_manager_v1` | answers the client's preference: server-side only while a shell that holds the tree declares decorations, client-side otherwise |
+//! | [`zxdg_decoration_v1`] | `zxdg_decoration_manager_v1`, `zxdg_toplevel_decoration_v1` | answers the client's preference: server-side only while a shell that holds the tree declares decorations, client-side otherwise; raises `orphaned` for a toplevel destroyed before its decoration |
 //! | [`extension`] | none of its own | the seam a compat adapter's redirect registers through, and the operations it may ask the compositor for |
 //! | [`zwlr_foreign_toplevel_management_v1`] | `zwlr_foreign_toplevel_manager_v1` | the window list a taskbar reads, and the requests it may make on each window |
 //! | [`zwlr_gamma_control_v1`] | `zwlr_gamma_control_manager_v1` | per-output gamma ramps; a second client asking for an output another holds is refused |
@@ -26,15 +27,15 @@
 //! | [`zwlr_output_power_management_v1`] | `zwlr_output_power_manager_v1` | per-output power, on or off; reports each change to its holder |
 //! | [`ext_foreign_toplevel_list_v1`] | `ext_foreign_toplevel_list_v1` | the read-only, standardised form of the same list, keyed by a stable identifier |
 //! | [`foreign_toplevel_shared`] | none of its own | the window record both toplevel lists are fed from, and what changed since it was last sent |
-//! | [`wp_fractional_scale_v1`] | `wp_fractional_scale_manager_v1` | tells a surface the scale its output draws it at |
+//! | [`wp_fractional_scale_v1`] | `wp_fractional_scale_manager_v1`, `wp_fractional_scale_v1` | tells a surface the scale its output draws it at; the manager is the compositor's own, so `fractional_scale_exists` is raised on it |
 //! | [`zwp_idle_inhibit_v1`] | `zwp_idle_inhibit_manager_v1` | records the surfaces that keep the session awake |
 //! | [`ext_idle_notify_v1`] | `ext_idle_notifier_v1` | answers `idled`/`resumed` from the session's tick counter |
 //! | [`zwlr_layer_shell_v1`] | `zwlr_layer_shell_v1` | bars and docks: anchors, sizes, exclusive zones and keyboard interactivity |
 //! | [`wl_output`] | `wl_output` | the output globals the layout created |
-//! | [`zwp_pointer_constraints_v1`] | `zwp_pointer_constraints_v1` | activates, confines and releases a client's lock |
+//! | [`zwp_pointer_constraints_v1`] | `zwp_pointer_constraints_v1`, `zwp_locked_pointer_v1`, `zwp_confined_pointer_v1` | activates, confines and releases a client's lock or confinement, for a mouse as for an absolute pointer; a constraint starts when its window has the pointer and the keyboard |
 //! | [`zwp_pointer_gestures_v1`] | `zwp_pointer_gestures_v1` | creates the gesture objects |
 //! | [`wp_presentation_time`] | `wp_presentation` | answers feedback with the frame's present time |
-//! | [`zwp_relative_pointer_v1`] | `zwp_relative_pointer_manager_v1` | the vector motion a locked pointer reports |
+//! | [`zwp_relative_pointer_v1`] | `zwp_relative_pointer_manager_v1`, `zwp_relative_pointer_v1` | the vector motion a pointer reports, locked or not |
 //! | [`zxdg_output_v1`] | `zxdg_output_manager_v1` | the logical size and place of each output, from the layout, so a supersampled output keeps its logical size |
 //! | [`wl_seat`] | `wl_seat` | keyboard and pointer focus over surfaces |
 //! | [`wp_security_context_v1`] | `wp_security_context_v1` | application sandboxes, marked before their first request |
@@ -47,8 +48,8 @@
 //! | [`wp_single_pixel_buffer_v1`] | `wp_single_pixel_buffer_manager_v1` | creates the global; the buffer carries its own colour |
 //! | [`zwp_linux_dmabuf_v1`] | `zwp_linux_dmabuf_v1` | GPU buffers from clients, served only when the backend's renderer can import them; each buffer is imported before the client may use it |
 //! | [`wp_tearing_control_v1`] | `wp_tearing_control_v1` | records the presentation hint a surface asks for |
-//! | [`zwp_text_input_v3`] | `zwp_text_input_manager_v3` | the text-input conversation |
-//! | [`zwp_input_method_v2`] | `zwp_input_method_manager_v2` | the privileged input-method half of a text conversation |
+//! | [`zwp_text_input_v3`] | `zwp_text_input_manager_v3`, `zwp_text_input_v3` | the text-input conversation: `enter` and `leave` follow the keyboard focus once each, a field enabled before the input method binds is held and replayed to it |
+//! | [`zwp_input_method_v2`] | `zwp_input_method_manager_v2`, `zwp_input_method_v2` | the privileged input-method half of a text conversation |
 //! | [`zwp_virtual_keyboard_v1`] | `zwp_virtual_keyboard_manager_v1` | the privileged virtual-keyboard half |
 //! | [`wp_viewporter`] | `wp_viewporter` | a surface's crop and scale, with the three errors Smithay's own handler does not raise (`viewport_exists` on the right object, `bad_size`, `out_of_buffer` on a commit with no new buffer) |
 //! | [`gnoblin_view_source_v1`] | `gnoblin_view_source_manager_v1` | the owner-only capture source of a View node; refused for a node that is not a View |
