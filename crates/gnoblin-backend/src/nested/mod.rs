@@ -20,26 +20,20 @@
 //! [`BackendEvent::Disconnected`], and everything under the pointer an
 //! [`InputEvent`](crate::InputEvent).
 //!
-//! # Why the software path, and what the dmabuf path waits for
+//! # One renderer path with the other backends, presented through shared memory
 //!
-//! The frame this backend commits is a `wl_shm` buffer because the render path of this
-//! slice is Pixman drawing into CPU memory (`gnoblin_render_software::Software`). A dmabuf would be a
-//! second, faster path and it is blocked on three things, in order:
+//! Each output is drawn offscreen by the renderer the session names ([`NestedConfig::renderer`]: software, GLES or
+//! Vulkan, the same [`AnyRenderer`](crate::render::renderer::AnyRenderer) the headless backend draws with). The
+//! frame is read back with the cursor composed in and written into a `wl_shm` slot, so the host receives the same
+//! pixels whichever renderer drew them, and every GPU-facing question of the contract (dmabuf import, Views on the
+//! GPU, effects, the memory footprint, the texture limit) is answered by the renderer through the code the headless
+//! backend shares ([`crate::gpu`]), not by a nested variant of it.
 //!
-//! 1. **A GPU renderer.** D12's GLES target does not exist yet, so there is no
-//!    imported texture to export; exporting a Pixman buffer would be a copy into a GPU
-//!    buffer, which is the copy the dmabuf path exists to avoid.
-//! 2. **`zwp_linux_dmabuf_v1` on both sides.** The parent has to advertise it, and this
-//!    crate would have to speak its client side, including the plane layout of the
-//!    format it picks.
-//! 3. **An unsafe opt-out.** Handing a buffer to `EGL` or `gbm` is FFI, and this crate
-//!    inherits the workspace's `unsafe_code = "forbid"`. The dmabuf path therefore
-//!    arrives in a crate of its own that carries an explicit `#[allow(unsafe_code)]` shim,
-//!    as `gnoblin-render-gles` does, and not before.
-//!
-//! The trait does not change when it does: a GLES target replaces `NestedTarget`'s
-//! renderer and the pool becomes a dmabuf pool, and [`Backend`] sees
-//! the same `draw`-then-`present` sequence.
+//! What is not built is presenting through the host's `zwp_linux_dmabuf_v1`, which would skip the readback (one
+//! `glReadPixels` or its Vulkan equivalent per presented frame). It needs the host's linux-dmabuf client side, a
+//! format and modifier the host and the session's device agree on, and a render-into-host-buffer path in each
+//! renderer. Until then a GPU renderer costs a readback per frame that a DRM session does not pay; the contract does
+//! not change when the path arrives, because [`Backend`] only sees `draw` then `present`.
 //!
 //! # Failure modes first
 //!
@@ -112,6 +106,8 @@ use gnoblin_types::{OutputId, Scale, Size};
 pub use input::AXIS_STEP;
 pub use surface::NestedTarget;
 
+use crate::gpu::DmabufHub;
+use crate::render::renderer::RendererKind;
 use crate::{Backend, BackendError, BackendEvent, Host, InputSource, Output, Present, Target};
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::{OutputFrame, SecureTreatment};
@@ -211,6 +207,8 @@ pub struct NestedConfig {
     pub outputs: Vec<OutputSpec>,
     /// What a capture draws in place of a secure layer.
     pub secure_treatment: SecureTreatment,
+    /// The renderer every output draws with. `auto` is software, as on the headless backend.
+    pub renderer: RendererKind,
 }
 
 impl NestedConfig {
@@ -223,6 +221,7 @@ impl NestedConfig {
             title: "Gnoblin session".to_owned(),
             outputs: vec![OutputSpec::default()],
             secure_treatment: SecureTreatment::default(),
+            renderer: RendererKind::default(),
         }
     }
 }
@@ -299,6 +298,13 @@ pub struct Nested {
     readable: Arc<AtomicBool>,
     /// What a capture draws in place of a secure layer, from the session's configuration.
     secure_treatment: SecureTreatment,
+    /// The renderer every output of this session draws with.
+    renderer: RendererKind,
+    /// What clients were offered of a GPU buffer, kept so each import and copy is checked against it.
+    dmabuf: DmabufHub,
+    /// Why the renderer could not be created for an output, until [`Nested::connect`] reports it: a session whose
+    /// renderer is refused waits for no configure that will ever succeed.
+    render_refused: Option<RenderError>,
 }
 
 impl std::fmt::Debug for Nested {
@@ -393,6 +399,9 @@ impl Nested {
             frame: OutputFrame::new(),
             readable: Arc::new(AtomicBool::new(false)),
             secure_treatment: config.secure_treatment,
+            renderer: config.renderer,
+            dmabuf: DmabufHub::default(),
+            render_refused: None,
         };
         backend.await_first_configures()?;
         log::info!(area = "nested", socket = %config.socket.display(), outputs = backend.outputs.len(), "connected to the parent");
@@ -457,10 +466,16 @@ impl Nested {
     /// Waits for the parent's first configure of every output.
     fn await_first_configures(&mut self) -> Result<(), NestedError> {
         for _ in 0..CONFIGURE_ROUNDTRIPS {
+            if let Some(error) = self.render_refused.take() {
+                return Err(NestedError::Render(error));
+            }
             if self.targets.iter().all(Option::is_some) {
                 return Ok(());
             }
             self.roundtrip()?;
+        }
+        if let Some(error) = self.render_refused.take() {
+            return Err(NestedError::Render(error));
         }
         Err(NestedError::NotConfigured)
     }
@@ -590,7 +605,16 @@ impl Nested {
             return;
         };
         let qh = self.queue.handle();
-        match NestedTarget::new(&qh, &self.handler.shm, format, surface, viewport, index, output.clone()) {
+        match NestedTarget::new(
+            &qh,
+            &self.handler.shm,
+            format,
+            surface,
+            viewport,
+            index,
+            output.clone(),
+            self.renderer,
+        ) {
             Ok(target) => {
                 log::debug!(area = "nested", connector = %output.connector, "an output connected");
                 if let Some(slot) = self.targets.get_mut(index) {
@@ -598,7 +622,12 @@ impl Nested {
                 }
                 self.pending.push(BackendEvent::OutputConnected(output));
             }
-            Err(error) => log::warn!(area = "nested", ?error, "the output could not be created"),
+            Err(error) => {
+                log::warn!(area = "nested", ?error, "the output could not be created");
+                if let NestedError::Render(error) = error {
+                    self.render_refused = Some(error);
+                }
+            }
         }
     }
 
@@ -703,7 +732,96 @@ impl<S: Host + 'static> Backend<S> for Nested {
     }
 
     fn effect_kinds(&self) -> &'static [&'static str] {
-        crate::render::renderer::RendererKind::Software.effect_kinds()
+        self.renderer.effect_kinds()
+    }
+
+    fn gpu_views(&self) -> bool {
+        self.renderer.draws_views()
+    }
+
+    fn footprint(&self, output: OutputId) -> gnoblin_render_frame::footprint::Footprint {
+        self.target_of(output).map(NestedTarget::footprint).unwrap_or_default()
+    }
+
+    fn dmabuf(&mut self) -> Option<crate::DmabufSupport> {
+        let Self { dmabuf, targets, .. } = self;
+        dmabuf.query(targets.iter_mut().flatten().next())
+    }
+
+    fn import_dmabuf(
+        &mut self,
+        buffer: &smithay::backend::allocator::dmabuf::Dmabuf,
+    ) -> Result<(), crate::DmabufImportError> {
+        let Self { dmabuf, targets, .. } = self;
+        dmabuf.import(targets.iter_mut().flatten().next(), buffer)
+    }
+
+    fn dmabuf_capture_support(&mut self, output: OutputId) -> Option<crate::DmabufSupport> {
+        // An output this session does not drive has no frame to export.
+        self.index(output)?;
+        let Self { dmabuf, targets, .. } = self;
+        dmabuf.query_capture(targets.iter_mut().flatten().next())
+    }
+
+    fn dmabuf_picture_support(&mut self) -> Option<crate::DmabufSupport> {
+        let Self { dmabuf, targets, .. } = self;
+        dmabuf.query_capture(targets.iter_mut().flatten().next())
+    }
+
+    fn copy_to_dmabuf(
+        &mut self,
+        source: crate::DmabufSource<'_>,
+        buffer: &smithay::backend::allocator::dmabuf::Dmabuf,
+        copy: crate::DmabufCopy,
+    ) -> Result<(), crate::DmabufCopyError> {
+        let index = match &source {
+            crate::DmabufSource::Frame { output, .. } => self.index(*output),
+            crate::DmabufSource::Picture(_) => None,
+        };
+        let Self {
+            dmabuf,
+            targets,
+            secure_treatment,
+            ..
+        } = self;
+        let target = match index {
+            Some(index) => targets.get_mut(index).and_then(Option::as_mut),
+            None if matches!(source, crate::DmabufSource::Picture(_)) => targets.iter_mut().flatten().next(),
+            None => None,
+        };
+        dmabuf.copy(*secure_treatment, target, source, buffer, copy)
+    }
+
+    fn read_dmabuf(
+        &mut self,
+        buffer: &smithay::backend::allocator::dmabuf::Dmabuf,
+    ) -> Result<Image, crate::DmabufCopyError> {
+        let Self { dmabuf, targets, .. } = self;
+        dmabuf.read(targets.iter_mut().flatten().next(), buffer)
+    }
+
+    fn read_view(
+        &mut self,
+        scene: &gnoblin_render_frame::view_scene::ViewScene,
+        capture: bool,
+        live: &[u64],
+    ) -> Result<Image, RenderError> {
+        crate::gpu::GpuTarget::read_view(
+            self.targets
+                .iter_mut()
+                .flatten()
+                .next()
+                .ok_or(RenderError::Unsupported)?,
+            scene,
+            capture,
+            live,
+        )
+    }
+
+    fn release_views(&mut self) {
+        for target in self.targets.iter_mut().flatten() {
+            crate::gpu::GpuTarget::release_views(target);
+        }
     }
 
     fn outputs(&self) -> &[Output] {
@@ -820,8 +938,16 @@ impl<S: Host + 'static> Backend<S> for Nested {
         self.check_composition(output, mode, scale, supersample)
     }
 
-    fn max_virtual_edge(&mut self, _output: OutputId) -> u32 {
-        surface::MAX_EXTENT.min(gnoblin_output::supersample::MAX_VIRTUAL_EDGE)
+    fn max_virtual_edge(&mut self, output: OutputId) -> u32 {
+        // The texture limit of the renderer that composes the output, within what this backend allocates.
+        let limit = self
+            .index(output)
+            .and_then(|index| self.targets.get_mut(index))
+            .and_then(Option::as_mut)
+            .map_or(gnoblin_output::supersample::MAX_VIRTUAL_EDGE, |target| {
+                crate::gpu::GpuTarget::max_virtual_edge(target)
+            });
+        surface::MAX_EXTENT.min(limit)
     }
 
     fn dispatch(&mut self, host: &mut S) -> Vec<BackendEvent> {

@@ -1,4 +1,4 @@
-//! One nested output's target: a software renderer, a shared-memory pool and the
+//! One nested output's target: a renderer of the session's choice, a shared-memory pool and the
 //! surface the pixels are committed to.
 //!
 //! The presentation rules are the ones the wire has, and each is a value here so it
@@ -67,13 +67,13 @@ use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
 use super::NestedError;
 use super::handler::{Handler, OutputKey, SlotKey};
 use crate::Present;
-use crate::render::renderer::{CaptureRequest, capture_redacted};
+use crate::gpu::{GpuTarget, TargetParts};
+use crate::render::renderer::{AnyRenderer, RendererKind};
 use crate::{Output, Target};
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_render_frame::frame::SecureTreatment;
 use gnoblin_render_frame::image::Image;
-use gnoblin_render_software::Software;
 
 use crate::log;
 
@@ -342,8 +342,9 @@ pub struct NestedTarget {
     /// The output this target presents. Its mode is physical, so its logical size is
     /// the size the parent configured.
     output: Output,
-    /// The software renderer that draws the output's pixels.
-    software: Software,
+    /// The renderer that draws the output's pixels: software, GLES or Vulkan, offscreen. The frame is read back and
+    /// written into the shared-memory slot, so the host receives the pixels the same renderer draws on any backend.
+    renderer: AnyRenderer,
     /// The frame last drawn, kept only when it has a secure layer, so a capture can mask it.
     display: Option<OutputFrame>,
     /// The parent's surface the output is presented on.
@@ -393,7 +394,7 @@ impl NestedTarget {
     ///
     /// [`NestedError::NoFormat`] for a size this backend will not allocate,
     /// [`NestedError::Buffer`] when the pool's file cannot be created, and
-    /// [`NestedError::Render`] when the renderer cannot be created.
+    /// [`NestedError::Render`] when the renderer `kind` names cannot be created on this machine.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         qh: &QueueHandle<Handler>,
@@ -403,6 +404,7 @@ impl NestedTarget {
         viewport: Option<WpViewport>,
         index: usize,
         output: Output,
+        kind: RendererKind,
     ) -> Result<Self, NestedError> {
         let planned = plan(
             output.logical_size(),
@@ -417,11 +419,11 @@ impl NestedTarget {
         if composed.width > MAX_EXTENT || composed.height > MAX_EXTENT {
             return Err(NestedError::NoFormat);
         }
-        let software = Software::new(composed).map_err(NestedError::Render)?;
+        let renderer = AnyRenderer::new(kind, composed).map_err(NestedError::Render)?;
         let pool = Pool::new(shm, qh, index, 1, planned.physical, format)?;
         let mut target = Self {
             output,
-            software,
+            renderer,
             display: None,
             surface,
             viewport,
@@ -474,19 +476,13 @@ impl NestedTarget {
     ///
     /// [`RenderError::Failed`] when pixman cannot copy the buffer out.
     pub fn capture(&mut self, with_cursor: bool, treatment: SecureTreatment) -> Result<Image, RenderError> {
-        let bounds = Rect::new(0, 0, self.size().width, self.size().height);
-        capture_redacted(
-            &mut self.software,
-            CaptureRequest {
-                display: self.display.as_ref(),
-                bounds,
-                scale: self.output.effective_scale(),
-                with_cursor,
-                treatment,
-            },
-            Software::draw,
-            Software::capture,
-        )
+        self.read_back(with_cursor, treatment)
+    }
+
+    /// The bytes this target's renderer holds, by what holds them.
+    #[must_use]
+    pub fn footprint(&self) -> gnoblin_render_frame::footprint::Footprint {
+        self.renderer.footprint()
     }
 
     /// Applies a new configure: the mode the output is in and the scale it composes at.
@@ -529,7 +525,7 @@ impl NestedTarget {
             planned.physical,
             self.format,
         )?;
-        if let Err(error) = self.software.resize(composed) {
+        if let Err(error) = self.renderer.resize(composed) {
             pool.destroy();
             return Err(NestedError::Render(error));
         }
@@ -591,7 +587,7 @@ impl NestedTarget {
         }
         self.check_supersample(supersample)?;
         let composed = composed_size(Size::new(self.pool.width, self.pool.height), supersample);
-        self.software.resize(composed).map_err(NestedError::Render)?;
+        self.renderer.resize(composed).map_err(NestedError::Render)?;
         self.output.supersample = supersample;
         self.damage_whole();
         Ok(())
@@ -651,6 +647,18 @@ impl NestedTarget {
     }
 }
 
+impl GpuTarget for NestedTarget {
+    fn parts(&mut self) -> TargetParts<'_> {
+        let size = self.size();
+        TargetParts {
+            bounds: Rect::new(0, 0, size.width, size.height),
+            scale: self.output.effective_scale(),
+            renderer: &mut self.renderer,
+            display: self.display.as_ref(),
+        }
+    }
+}
+
 impl Target for NestedTarget {
     fn size(&self) -> Size {
         self.output.logical_size()
@@ -661,7 +669,7 @@ impl Target for NestedTarget {
     }
 
     fn draw(&mut self, frame: &OutputFrame) -> Result<(), RenderError> {
-        self.software.draw(frame, self.output.effective_scale())?;
+        self.renderer.draw(frame, self.output.effective_scale())?;
         self.display = frame.has_secure().then(|| frame.clone());
         Ok(())
     }
@@ -684,7 +692,7 @@ impl Target for NestedTarget {
         };
         let released = u8::try_from(slot).unwrap_or(0);
         let shown = Size::new(self.pool.width, self.pool.height);
-        let image = match self.software.capture(true) {
+        let image = match self.renderer.capture(true) {
             Ok(image) if image.size() == shown => image,
             // The renderer composed at the factor; the parent's buffer is the mode.
             Ok(image) => image.downsample(shown),

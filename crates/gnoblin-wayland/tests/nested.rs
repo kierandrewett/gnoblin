@@ -741,3 +741,132 @@ fn a_nested_output_can_be_supersampled() {
         );
     });
 }
+
+/// A nested session that draws with `kind`, or `None` when this machine cannot create that renderer: the same
+/// skip the headless tests make, so a machine with no EGL or no Vulkan loader still runs the rest.
+fn connect_drawing_with(host: &Handle, kind: gnoblin_backend::render::renderer::RendererKind) -> Option<Nested> {
+    let config = NestedConfig {
+        renderer: kind,
+        ..NestedConfig::new(host.socket())
+    };
+    match Nested::connect(&config) {
+        Ok(nested) => Some(nested),
+        Err(gnoblin_backend::nested::NestedError::Render(error)) => {
+            println!("skipping the nested {} test: {error}", kind.name());
+            None
+        }
+        Err(other) => panic!("the session did not connect: {other}"),
+    }
+}
+
+/// The renderer's own answers a nested session must give exactly as the headless backend does for the same renderer:
+/// one trait, one answer, whichever backend carries the renderer.
+fn assert_answers_like_headless(nested: &mut Nested, kind: gnoblin_backend::render::renderer::RendererKind) {
+    use gnoblin_backend::headless::HeadlessConfig;
+    let output = only_output(nested).id;
+    let mut headless = Headless::with_config(HeadlessConfig {
+        renderer: kind,
+        ..HeadlessConfig::default()
+    })
+    .expect("a headless backend with the renderer the nested one made");
+    let reference = Backend::<Probe>::outputs(&headless)[0].id;
+    assert_eq!(
+        Backend::<Probe>::effect_kinds(nested),
+        Backend::<Probe>::effect_kinds(&headless),
+        "the effects the renderer draws"
+    );
+    assert_eq!(
+        Backend::<Probe>::gpu_views(nested),
+        Backend::<Probe>::gpu_views(&headless),
+        "whether a View is drawn on the GPU"
+    );
+    let offers = |backend: &mut dyn Backend<Probe>| {
+        backend.dmabuf().map(|support| {
+            let mut formats: Vec<_> = support
+                .formats
+                .iter()
+                .map(|format| (format.code as u32, u64::from(format.modifier)))
+                .collect();
+            formats.sort_unstable();
+            formats
+        })
+    };
+    assert_eq!(
+        offers(nested),
+        offers(&mut headless),
+        "the dmabuf formats clients are offered"
+    );
+    assert_eq!(
+        Backend::<Probe>::dmabuf_capture_support(nested, output).is_some(),
+        Backend::<Probe>::dmabuf_capture_support(&mut headless, reference).is_some(),
+        "whether a capture can be written into a client's GPU buffer"
+    );
+    assert_eq!(
+        Backend::<Probe>::max_virtual_edge(nested, output).min(16384),
+        Backend::<Probe>::max_virtual_edge(&mut headless, reference).min(16384),
+        "the texture limit of the renderer"
+    );
+}
+
+#[test]
+fn a_gles_nested_session_draws_the_same_frame_and_answers_the_gpu_questions_like_headless() {
+    use gnoblin_backend::render::renderer::RendererKind;
+    let session = Session::start();
+    session.run(|host| {
+        let Some(mut nested) = connect_drawing_with(host, RendererKind::Gles) else {
+            return;
+        };
+        let mut probe = Probe::drawing(RED);
+        let output = only_output(&nested);
+        draw_rendered(&mut nested, &mut probe);
+        let host_output = window_owner(host);
+        let window = host
+            .wait_for(|observation| observation.only().is_some_and(|window| window.mapped))
+            .only()
+            .expect("one mapped window")
+            .clone();
+        host.wait_for_colour(host_output, centre(&window), RED_PIXEL);
+        assert_eq!(
+            session_screenshot(&mut nested, output.id).and_then(|image| image.colour_at(1, 1)),
+            Some(RED_PIXEL),
+            "the GLES readback is the frame the host received"
+        );
+        assert!(
+            Backend::<Probe>::gpu_views(&nested),
+            "GLES draws a View on the GPU, nested as on any backend"
+        );
+        assert_answers_like_headless(&mut nested, RendererKind::Gles);
+        assert_ne!(
+            Backend::<Probe>::footprint(&nested, output.id),
+            gnoblin_render_frame::footprint::Footprint::default(),
+            "a GLES output holds memory the footprint reports"
+        );
+    });
+}
+
+#[test]
+fn a_vulkan_nested_session_draws_the_same_frame_and_answers_the_gpu_questions_like_headless() {
+    use gnoblin_backend::render::renderer::RendererKind;
+    let session = Session::start();
+    session.run(|host| {
+        let Some(mut nested) = connect_drawing_with(host, RendererKind::Vulkan) else {
+            return;
+        };
+        let mut probe = Probe::drawing(RED);
+        let output = only_output(&nested);
+        draw_rendered(&mut nested, &mut probe);
+        let host_output = window_owner(host);
+        let window = host
+            .wait_for(|observation| observation.only().is_some_and(|window| window.mapped))
+            .only()
+            .expect("one mapped window")
+            .clone();
+        host.wait_for_colour(host_output, centre(&window), RED_PIXEL);
+        assert_eq!(
+            session_screenshot(&mut nested, output.id).and_then(|image| image.colour_at(1, 1)),
+            Some(RED_PIXEL),
+            "the Vulkan readback is the frame the host received"
+        );
+        assert_answers_like_headless(&mut nested, RendererKind::Vulkan);
+    });
+}

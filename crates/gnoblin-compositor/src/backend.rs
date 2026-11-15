@@ -19,14 +19,15 @@
 //! 3. **The two halves disagree.** The name a startup log prints is the backend that
 //!    was built: `the_headless_selection_names_the_backend_it_builds`.
 //! 4. **A renderer is named that the backend cannot draw with.** The `compositor.renderer`
-//!    setting is named in the refusal and no other renderer is used in its place: a nested
-//!    session refuses `vulkan` and `gles`, and a headless one refuses a renderer this machine
-//!    cannot create: `a_nested_session_refuses_a_gpu_renderer_naming_the_setting` and
-//!    `a_headless_session_that_cannot_make_the_renderer_is_refused_naming_the_setting`.
+//!    setting is named in the refusal and no other renderer is used in its place: a headless or
+//!    nested session refuses a renderer this machine cannot create:
+//!    `a_headless_session_that_cannot_make_the_renderer_is_refused_naming_the_setting` and
+//!    `a_nested_session_with_a_gpu_renderer_contacts_its_parent_instead_of_refusing_the_renderer`.
 
 use gnoblin_backend::Backend as BackendTrait;
 use gnoblin_backend::headless::{Headless, HeadlessConfig, HeadlessHandle};
-use gnoblin_backend::nested::{Nested, NestedConfig};
+use gnoblin_backend::nested::{Nested, NestedConfig, NestedError};
+use gnoblin_backend::render::renderer::RendererKind;
 use gnoblin_config::RendererChoice;
 use gnoblin_render_frame::frame::SecureTreatment;
 use gnoblin_wayland::State;
@@ -153,15 +154,22 @@ impl Backend {
                 }
             }
             Backend::Nested(config) => {
-                if !matches!(renderer, RendererChoice::Auto | RendererChoice::Software) {
-                    return Err(refused(renderer, "nested", "the nested backend draws in software only"));
-                }
                 let config = NestedConfig {
                     secure_treatment: treatment,
+                    renderer: RendererKind::from_setting(renderer),
                     ..config
                 };
-                let nested = Nested::connect(&config).map_err(Error::Nested)?;
-                Ok(Box::new(nested))
+                match Nested::connect(&config) {
+                    Ok(nested) => Ok(Box::new(nested)),
+                    // The renderer is created for the first output, so a machine that cannot make it is refused
+                    // naming the setting, exactly as a headless session is.
+                    Err(NestedError::Render(_)) => Err(refused(
+                        renderer,
+                        "nested",
+                        "the renderer could not be created on this machine; the log says why",
+                    )),
+                    Err(error) => Err(Error::Nested(error)),
+                }
             }
             Backend::Drm => Err(Error::BackendRefused {
                 backend: "drm",
@@ -242,22 +250,17 @@ mod tests {
     }
 
     #[test]
-    fn a_nested_session_refuses_a_gpu_renderer_naming_the_setting() {
-        // The refusal comes before the parent is contacted, so no socket is needed.
+    fn a_nested_session_with_a_gpu_renderer_contacts_its_parent_instead_of_refusing_the_renderer() {
+        // The nested backend draws with every renderer the headless one does, so a GPU renderer is no longer refused
+        // before the parent is reached: the failure here is the missing parent socket, and the renderer is only
+        // refused (naming the setting) when the machine cannot create it.
         let socket = std::env::temp_dir().join(format!("gnoblin-renderer-{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&socket);
         for choice in [RendererChoice::Vulkan, RendererChoice::Gles] {
             match Backend::Nested(NestedConfig::new(&socket)).build(choice, SecureTreatment::default()) {
-                Err(error @ Error::RendererRefused { leaf, backend, .. }) => {
-                    assert_eq!((leaf, backend), ("compositor.renderer", "nested"));
-                    assert!(
-                        error
-                            .to_string()
-                            .starts_with(&format!("compositor.renderer = {choice}:")),
-                        "the message names the setting and its value: {error}"
-                    );
-                }
-                Err(other) => panic!("{choice} refused with the wrong error: {other}"),
-                Ok(_) => panic!("a nested session draws in software only"),
+                Err(Error::Nested(_)) => {}
+                Err(other) => panic!("{choice} with no parent failed with the wrong error: {other}"),
+                Ok(_) => panic!("a missing parent socket must not start a session"),
             }
         }
     }

@@ -58,7 +58,8 @@ use gnoblin_output::DisplayMode;
 
 use gnoblin_config::RendererChoice;
 
-use crate::render::renderer::{AnyRenderer, CaptureRequest, RendererKind, capture_redacted};
+use crate::gpu::{DmabufHub, GpuTarget, TargetParts};
+use crate::render::renderer::{AnyRenderer, RendererKind};
 use crate::{
     Backend, BackendError, BackendEvent, DmabufCopy, DmabufCopyError, DmabufImportError, DmabufProvider, DmabufSource,
     DmabufSupport, GammaRamp, Host, InputEvent, InputSource, Output, OutputControls, Present, Target,
@@ -240,73 +241,9 @@ impl HeadlessTarget {
         self.renderer.gles_mut()
     }
 
-    /// What this target's renderer imports of a client's GPU buffers; see [`AnyRenderer::dmabuf_support`].
-    fn dmabuf_support(&mut self) -> Option<DmabufSupport> {
-        self.renderer.dmabuf_support()
-    }
-
-    /// Imports a client's GPU buffer into this target's renderer.
-    fn import_dmabuf(&mut self, dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf) -> Result<(), DmabufImportError> {
-        self.renderer.import_dmabuf(dmabuf)
-    }
-
-    /// Copies the frame last drawn into a client's GPU buffer, with each secure layer drawn as `treatment` says.
-    ///
-    /// # Errors
-    ///
-    /// [`RenderError::Unsupported`] when the renderer draws into no client buffer, and the renderer's own error
-    /// otherwise.
-    fn copy_frame_into_dmabuf(
-        &mut self,
-        dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
-        copy: DmabufCopy,
-        with_cursor: bool,
-        treatment: SecureTreatment,
-    ) -> Result<(), RenderError> {
-        let bounds = self.bounds();
-        capture_redacted(
-            &mut self.renderer,
-            CaptureRequest {
-                display: self.display.as_ref(),
-                bounds,
-                scale: self.scale,
-                with_cursor,
-                treatment,
-            },
-            AnyRenderer::draw,
-            |renderer, cursor| renderer.copy_frame_into_dmabuf(dmabuf, copy, cursor),
-        )
-    }
-
-    /// Writes a picture the CPU holds into a client's GPU buffer.
-    fn copy_picture_into_dmabuf(
-        &mut self,
-        dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
-        picture: &Image,
-        copy: DmabufCopy,
-    ) -> Result<(), RenderError> {
-        self.renderer.copy_image_into_dmabuf(dmabuf, picture, copy)
-    }
-
-    /// Reads a client's GPU buffer back as a picture.
-    fn read_dmabuf(&mut self, dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf) -> Result<Image, RenderError> {
-        self.renderer.read_dmabuf(dmabuf)
-    }
-
-    /// Reads a View's picture back through this target's renderer, drawing the scene first when the renderer holds
-    /// none of its current revision.
-    fn read_view(
-        &mut self,
-        scene: &gnoblin_render_frame::view_scene::ViewScene,
-        capture: bool,
-        live: &[u64],
-    ) -> Result<Image, RenderError> {
-        self.renderer.view_pixels(scene, capture, live)
-    }
-
     /// Gives back every View texture this target's renderer holds.
     pub fn release_views(&mut self) {
-        self.renderer.release_views();
+        GpuTarget::release_views(self);
     }
 
     /// How many frames the target was asked to present.
@@ -339,19 +276,7 @@ impl HeadlessTarget {
     ///
     /// [`RenderError::Failed`] when pixman cannot copy the buffer out.
     pub fn capture(&mut self, with_cursor: bool, treatment: SecureTreatment) -> Result<Image, RenderError> {
-        let bounds = self.bounds();
-        capture_redacted(
-            &mut self.renderer,
-            CaptureRequest {
-                display: self.display.as_ref(),
-                bounds,
-                scale: self.scale,
-                with_cursor,
-                treatment,
-            },
-            AnyRenderer::draw,
-            AnyRenderer::capture,
-        )
+        self.read_back(with_cursor, treatment)
     }
 
     /// The target's whole extent as a rectangle, for clipping.
@@ -369,12 +294,16 @@ impl HeadlessTarget {
         self.damage.clear();
         Ok(())
     }
+}
 
-    /// The largest virtual edge this target's renderer can hold, within the compositor's own limit.
-    fn max_virtual_edge(&mut self) -> u32 {
-        self.renderer
-            .max_texture_size()
-            .min(gnoblin_output::supersample::MAX_VIRTUAL_EDGE)
+impl GpuTarget for HeadlessTarget {
+    fn parts(&mut self) -> TargetParts<'_> {
+        TargetParts {
+            bounds: self.bounds(),
+            scale: self.scale,
+            renderer: &mut self.renderer,
+            display: self.display.as_ref(),
+        }
     }
 }
 
@@ -586,14 +515,8 @@ pub struct Headless {
     secure_treatment: SecureTreatment,
     /// The gamma and power state last applied, shared with the handle a test holds.
     control: Arc<Mutex<HeadlessControl>>,
-    /// A stand-in for the renderers' answers to the dmabuf questions; see [`Headless::with_dmabuf_provider`].
-    dmabuf: Option<Box<dyn DmabufProvider>>,
-    /// What [`Backend::dmabuf`] reported, kept so each import checks a buffer against the formats
-    /// clients were told.
-    dmabuf_support: Option<DmabufSupport>,
-    /// What [`Backend::dmabuf_capture_support`] and [`Backend::dmabuf_picture_support`] reported, kept so each copy
-    /// checks a buffer against the formats a capture client was told.
-    dmabuf_capture: Option<DmabufSupport>,
+    /// What clients were offered of a GPU buffer, and the stand-in importer a test may install.
+    dmabuf: DmabufHub,
 }
 
 impl std::fmt::Debug for Headless {
@@ -660,9 +583,7 @@ impl Headless {
             renderer: RendererKind::default(),
             secure_treatment: SecureTreatment::default(),
             control: Arc::new(Mutex::new(HeadlessControl::default())),
-            dmabuf: None,
-            dmabuf_support: None,
-            dmabuf_capture: None,
+            dmabuf: DmabufHub::default(),
         }
     }
 
@@ -673,48 +594,27 @@ impl Headless {
     /// `crates/gnoblin-wayland/tests/dmabuf.rs`.
     #[must_use]
     pub fn with_dmabuf_provider(mut self, provider: Box<dyn DmabufProvider>) -> Self {
-        self.dmabuf = Some(provider);
+        self.dmabuf = DmabufHub::with_provider(provider);
         self
     }
 
     /// What the session can import of a client's GPU buffers: the provider's answer, or the
     /// first output's renderer's. `None` when nothing imports (the software renderer, or no output).
     fn query_dmabuf(&mut self) -> Option<DmabufSupport> {
-        let support = match self.dmabuf.as_mut() {
-            Some(provider) => provider.support(),
-            None => self.targets.first_mut().and_then(HeadlessTarget::dmabuf_support),
-        };
-        self.dmabuf_support.clone_from(&support);
-        support
+        self.dmabuf.query(self.targets.first_mut())
     }
 
     /// Imports `dmabuf` after the checks that need no driver: a format and modifier the clients
     /// were not offered, and a plane count the modifier cannot have.
     fn import(&mut self, dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf) -> Result<(), DmabufImportError> {
-        self.dmabuf_support
-            .as_ref()
-            .ok_or(DmabufImportError::Unsupported)?
-            .check(dmabuf)?;
-        match self.dmabuf.as_mut() {
-            Some(provider) => provider.import(dmabuf),
-            None => self
-                .targets
-                .first_mut()
-                .ok_or(DmabufImportError::Unsupported)?
-                .import_dmabuf(dmabuf),
-        }
+        self.dmabuf.import(self.targets.first_mut(), dmabuf)
     }
 
     /// What a capture may be written into: the provider's answer, or the first output's renderer's. `None` when
     /// nothing can be written into (the software renderer, or no output). Remembered, so each copy checks a
     /// buffer against the formats clients were told.
     fn query_capture(&mut self) -> Option<DmabufSupport> {
-        let support = match self.dmabuf.as_mut() {
-            Some(provider) => provider.capture_support(),
-            None => self.targets.first_mut().and_then(HeadlessTarget::dmabuf_support),
-        };
-        self.dmabuf_capture.clone_from(&support);
-        support
+        self.dmabuf.query_capture(self.targets.first_mut())
     }
 
     /// Copies `source` into `dmabuf`, after the checks that need no driver: a format and modifier a capture did not
@@ -725,36 +625,11 @@ impl Headless {
         dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
         copy: DmabufCopy,
     ) -> Result<(), DmabufCopyError> {
-        self.dmabuf_capture
-            .as_ref()
-            .ok_or(DmabufCopyError::Unsupported)?
-            .check(dmabuf)?;
-        let treatment = self.secure_treatment;
-        match source {
-            DmabufSource::Frame { output, with_cursor } => {
-                let index = self.index(output).ok_or(DmabufCopyError::NoFrame)?;
-                let target = self.targets.get_mut(index).ok_or(DmabufCopyError::NoFrame)?;
-                match self.dmabuf.as_mut() {
-                    // The stand-in has no frame of its own: it is handed the one the output's renderer drew.
-                    Some(provider) => {
-                        let frame = target.capture(with_cursor, treatment).map_err(DmabufCopyError::from)?;
-                        provider.write(dmabuf, &frame, copy)
-                    }
-                    None => target
-                        .copy_frame_into_dmabuf(dmabuf, copy, with_cursor, treatment)
-                        .map_err(DmabufCopyError::from),
-                }
-            }
-            DmabufSource::Picture(picture) => match self.dmabuf.as_mut() {
-                Some(provider) => provider.write(dmabuf, picture, copy),
-                None => self
-                    .targets
-                    .first_mut()
-                    .ok_or(DmabufCopyError::Unsupported)?
-                    .copy_picture_into_dmabuf(dmabuf, picture, copy)
-                    .map_err(DmabufCopyError::from),
-            },
-        }
+        let target = match &source {
+            DmabufSource::Frame { output, .. } => self.index(*output).and_then(|index| self.targets.get_mut(index)),
+            DmabufSource::Picture(_) => self.targets.first_mut(),
+        };
+        self.dmabuf.copy(self.secure_treatment, target, source, dmabuf, copy)
     }
 
     /// Reads a client's GPU buffer back as a picture.
@@ -762,15 +637,7 @@ impl Headless {
         &mut self,
         dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
     ) -> Result<Image, DmabufCopyError> {
-        match self.dmabuf.as_mut() {
-            Some(provider) => provider.read(dmabuf),
-            None => self
-                .targets
-                .first_mut()
-                .ok_or(DmabufCopyError::Unsupported)?
-                .read_dmabuf(dmabuf)
-                .map_err(DmabufCopyError::from),
-        }
+        self.dmabuf.read(self.targets.first_mut(), dmabuf)
     }
 
     /// A handle that can hotplug, unplug and withhold presentation after a session has

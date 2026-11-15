@@ -153,6 +153,7 @@
 //!     rather than about the contract.
 
 pub mod dmabuf;
+mod gpu;
 pub mod headless;
 pub mod nested;
 pub mod render;
