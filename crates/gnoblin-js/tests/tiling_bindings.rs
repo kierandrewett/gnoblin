@@ -1,4 +1,4 @@
-//! The two drag bindings of the tiling layouts, `ClientSwapBinding` and `SplitResizeBinding` (`data/js/gnoblin/bindings.ts`),
+//! The two drag bindings of the tiling layouts, `ClientSwapBinding` and `SplitResizeBinding` (`data/js/gnoblin/bindings/`),
 //! the dividers `MasterStackLayout` and `DwindleLayout` offer them (`Layout.findSplit`) and the order swap they stand on
 //! (`MutableCollection.swap`, `Layout.onClientsSwapped`), over the fake compositor of `tests/common`.
 //!

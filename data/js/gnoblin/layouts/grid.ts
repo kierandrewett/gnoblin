@@ -5,7 +5,8 @@
 // `ClientSwapBinding`) trades the places of two cells. A grid has no divider to drag, so it has no resize binding.
 // `triggers` replaces the trigger, and `null` leaves the binding out.
 
-import { ClientSwapBinding, resolveTriggers } from "gnoblin/bindings";
+import { resolveTriggers } from "gnoblin/bindings/binding";
+import { ClientSwapBinding } from "gnoblin/bindings/tiling";
 import { checkGap, Layout, tile, tilingGeometry } from "gnoblin/layout";
 import type { LayoutContext, Placement } from "gnoblin/layout";
 

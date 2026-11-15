@@ -13,8 +13,8 @@ import type { ClientListener, CollectionListener } from "gnoblin/host/listeners"
 import { focusedAmong } from "gnoblin/host/seat";
 import { scopeStyle } from "gnoblin/host/style_scopes";
 import { noteSignal } from "gnoblin/properties";
-import { replaceStyle } from "gnoblin/style";
-import type { ClientStyle, ClientStyleInit } from "gnoblin/style";
+import { replaceStyle } from "gnoblin/style/style";
+import type { ClientStyle, ClientStyleInit } from "gnoblin/style/style";
 import type { Query } from "gnoblin/types";
 
 /** A live, array-like view of the compositor's objects. Not an Array, and its membership is not writable. */

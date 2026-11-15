@@ -17,8 +17,9 @@ import type { Gaps, Layout } from "gnoblin/layout";
 import { NativeObject } from "gnoblin/native_object";
 import { propertiesOf } from "gnoblin/properties";
 import type { PropertyBinding, PropertyBindings } from "gnoblin/properties";
-import { setProperties } from "gnoblin/transition";
-import type { Transition, TransitionOptions } from "gnoblin/transition";
+import { setProperties } from "gnoblin/transition/engine";
+import type { Transition } from "gnoblin/transition/transition";
+import type { TransitionOptions } from "gnoblin/transition/types";
 import { checkGaps, checkWorkspaceOptions, resolveLayout } from "gnoblin/workspace";
 import type { StockLayoutName, WorkspaceOptions } from "gnoblin/workspace";
 

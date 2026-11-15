@@ -13,7 +13,7 @@
 // `click`, hover is `sloppy` (focus follows the pointer and stays where it was when the pointer goes to the desktop)
 // and hover-strict is `follow-mouse` (focus acts on entry only, and goes when the pointer leaves the focused window).
 
-import type { SeatSettings } from "gnoblin/input";
+import type { SeatSettings } from "gnoblin/input/host";
 import { rejectUnknown } from "gnoblin/workspace";
 
 /** The focus modes: `click` focuses on a click, `sloppy` follows the pointer, `follow-mouse` acts on entry only. */

@@ -18,8 +18,9 @@
 //
 // This module reaches no host: the context it belongs to and the shell hooks are injected.
 
-import { BindingCollection } from "gnoblin/bindings";
-import type { Binding, BindingEvent } from "gnoblin/bindings";
+import { BindingCollection } from "gnoblin/bindings/binding";
+import type { Binding } from "gnoblin/bindings/binding";
+import type { BindingEvent } from "gnoblin/bindings/types";
 import { NativeObject } from "gnoblin/native_object";
 import type { ErrorCode } from "gnoblin/errors";
 

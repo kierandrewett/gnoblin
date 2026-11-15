@@ -6,7 +6,7 @@
 // The host module owns the collections, the events and the desks; it gives this module a `DisplayBackend` and calls
 // `frame()` each layout pass. Nothing here touches the compositor directly.
 
-import { Camera3D } from "gnoblin/scene";
+import { Camera3D } from "gnoblin/scene/camera";
 import { Camera2D, Display, OutputProfile, implicitDisplay, isIdentity } from "gnoblin/display";
 import type { DisplayOutputCollection, OutputAlign, OutputSetting, OutputView, PlacementTarget } from "gnoblin/display";
 import {

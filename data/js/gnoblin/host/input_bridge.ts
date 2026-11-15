@@ -8,7 +8,7 @@ import { ctx } from "gnoblin/host/context";
 import { workAreaOf } from "gnoblin/host/work_area";
 import type { Workspace } from "gnoblin/host/workspace";
 import { wsState } from "gnoblin/host/workspace_state";
-import { InputManager } from "gnoblin/input";
+import { InputManager } from "gnoblin/input/manager";
 import { attachUi } from "gnoblin/ui";
 
 /** Makes the input manager and attaches the device and toolkit backends. */

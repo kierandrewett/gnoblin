@@ -10,10 +10,9 @@ import "gnoblin/xr";
 export {
     Camera3D,
     Node,
+    parseControllerTrigger,
     Plane,
-    RING_DEFAULTS,
     Ray,
-    SpatialLayout,
     Transform3D,
     Vector3,
     View,
@@ -21,38 +20,27 @@ export {
     ViewResizeBinding,
     ViewRotateBinding,
     ViewScaleBinding,
-    XRCamera3D,
-    XRController,
     XRControllerDragBinding,
-    XRExtension,
-    XRList,
-    XRListener,
-    XRRoom,
-    XRSession,
-    XRTrackedPose,
-    XRViewport,
-    arrangeRing,
-    parseControllerTrigger,
-    pickView,
 } from "gnoblin/xr";
+export { XRCamera3D, XRTrackedPose } from "gnoblin/xr/camera";
+export { XRController, XRList } from "gnoblin/xr/controller";
+export { SpatialLayout } from "gnoblin/xr/layout";
+export { arrangeRing, RING_DEFAULTS } from "gnoblin/xr/ring";
+export { XRRoom } from "gnoblin/xr/room";
+export { XRExtension, XRListener, XRSession } from "gnoblin/xr/session";
+export { pickView, XRViewport } from "gnoblin/xr/viewport";
 export type {
-    HeadPanelOptions,
     ResizeEdges,
-    RingPose,
-    RingResult,
-    RingView,
-    SpatialLayoutOptions,
     ViewMoveOptions,
     ViewResizeOptions,
     ViewScaleOptions,
     XRBindingOptions,
-    XRCamera3DOptions,
-    XRClient,
-    XRComposition,
     XRDragEvent,
-    XRHit,
-    XROptions,
-    XRRingParams,
-    XRRoomOptions,
-    XRViewportOptions,
 } from "gnoblin/xr";
+export type { XRCamera3DOptions } from "gnoblin/xr/camera";
+export type { SpatialLayoutOptions } from "gnoblin/xr/layout";
+export type { RingPose, RingResult, RingView, XRRingParams } from "gnoblin/xr/ring";
+export type { HeadPanelOptions, XRRoomOptions } from "gnoblin/xr/room";
+export type { XROptions } from "gnoblin/xr/session";
+export type { XRClient } from "gnoblin/xr/types";
+export type { XRComposition, XRHit, XRViewportOptions } from "gnoblin/xr/viewport";

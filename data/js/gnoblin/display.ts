@@ -5,8 +5,9 @@
 //
 // The state of each object is kept in a WeakMap, not in `#` fields, because the manager sits in another module.
 
-import { Camera3D, Node } from "gnoblin/scene";
-import type { NodeOptions } from "gnoblin/scene";
+import { Camera3D } from "gnoblin/scene/camera";
+import { Node } from "gnoblin/scene/node";
+import type { NodeOptions } from "gnoblin/scene/node";
 import type { ErrorCode } from "gnoblin/errors";
 
 /** The transforms an output takes: the compositor's names for a rotation and a flip. */

@@ -7,7 +7,7 @@ import { GnoblinError } from "gnoblin/errors";
 import { host, nodeName } from "gnoblin/host/bridge";
 import { ctx } from "gnoblin/host/context";
 import { noteHostRead, noteHostWrite } from "gnoblin/properties";
-import { Staging } from "gnoblin/transition";
+import { Staging } from "gnoblin/transition/staging";
 import type { HostValue } from "gnoblin/types";
 
 /** Puts the staging layer in front of the host's reads, writes and calls. Called once, before anything uses `host`. */

@@ -12,7 +12,7 @@ import { reconcileWorkspaces, snapshotWorkspaces } from "gnoblin/host/snapshot";
 import { ensureDefaultWorkspace } from "gnoblin/host/workspaces";
 import { inspect } from "gnoblin/inspect";
 import { lockRelease, runLockFrame } from "gnoblin/lock";
-import { sceneReleaseAll } from "gnoblin/scene";
+import { sceneReleaseAll } from "gnoblin/scene/registry";
 import { installDefaults } from "gnoblin/starter";
 import { uiReleaseAll } from "gnoblin/ui";
 

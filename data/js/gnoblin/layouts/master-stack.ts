@@ -5,8 +5,10 @@
 // tiles' places, and `resize` (Super+MouseRight+Drag, `SplitResizeBinding`) drags the divider between master and
 // stack. `triggers` replaces a trigger, and `null` leaves that binding out.
 
-import { ClientSwapBinding, resolveTriggers, SplitResizeBinding } from "gnoblin/bindings";
-import type { LayoutSplit, Point } from "gnoblin/bindings";
+import { resolveTriggers } from "gnoblin/bindings/binding";
+import { ClientSwapBinding, SplitResizeBinding } from "gnoblin/bindings/tiling";
+import type { LayoutSplit } from "gnoblin/bindings/tiling";
+import type { Point } from "gnoblin/bindings/types";
 import { checkGap, clamp, Layout, tile, tilingGeometry } from "gnoblin/layout";
 import type { LayoutContext, LayoutNode, Placement } from "gnoblin/layout";
 

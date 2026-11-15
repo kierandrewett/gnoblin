@@ -311,8 +311,8 @@ Structure of the object model (was one `gnoblin.ts` of 5,186 lines with 279 top-
   `generation`, `reload`, `console`, `host_process` and `bindings/host` modules are directories, none over 600 lines
   (`shell.rs` 1433 became `shell/mod.rs` 571 plus `frame`, `txgate`, `links` and `document`; `input.rs` 984 became
   `input/mod.rs` 226 plus `claims`, `seats` and `install`; the inline tests of each are in `tests.rs`).
-- **Not yet split** (still over 600 lines): `input.ts`, `xr.ts`, `style.ts`, `bindings.ts`, `ui.ts`, `scene.ts`,
-  `display.ts`, `transition.ts`, `menus.ts`, `session.ts`, `display_manager.ts`.
+- **Not yet split** (still over 600 lines): `ui.ts`, `display.ts`, `display_manager.ts`. `input`, `xr`, `style`,
+  `bindings`, `scene`, `transition`, `menus` and `session` are directories now; the largest file is `input/context` (537).
 
 - **Boot order.** `JsShell::new` attaches, drains the snapshot and loads `gnoblin/host`, so `gnoblin.clients` exists
   for the entry. `load_entry` evaluates `init.ts`. The first `frame()` announces `ready` for the snapshot's nodes,
@@ -372,8 +372,8 @@ collection)` at once for each member already in the collection, in collection or
 
 ## P3c status
 
-Key bindings, touchpad gestures and pointer drag bindings: `data/js/gnoblin/bindings.ts` (the grammar and the binding
-classes), `data/js/gnoblin/input.ts` (`gnoblin.input` and the matcher) and `crates/gnoblin-js/src/input.rs` (the host
+Key bindings, touchpad gestures and pointer drag bindings: `data/js/gnoblin/bindings/` (the grammar and the binding
+classes), `data/js/gnoblin/input/` (`gnoblin.input` and the matchers) and `crates/gnoblin-js/src/input.rs` (the host
 functions: seat claims and the seat's published state). The tests are `crates/gnoblin-js/tests/input.rs`, over a fake
 tree link that records claims and plays back chords, gestures, pointer positions and window deaths.
 
@@ -522,7 +522,7 @@ signal, in order:
   drag.
 - Everything is per pointer and button: two buttons held together are two drags, each with its own `start` place.
 
-**What the JS side does with it** (`crates/gnoblin-js/src/input.rs`, `data/js/gnoblin/input.ts`). `JsShell::frame`
+**What the JS side does with it** (`crates/gnoblin-js/src/input.rs`, `data/js/gnoblin/input/`). `JsShell::frame`
 parks each `TreeIncoming::PointerChord` in `JsInput::inbox` beside `Chord` and `Gesture`, and hands the frame's batch
 to the input module as `{ kind: "pointer", claim, phase, x, y, dx, dy, button, modifiers }`. `start` is the press, each
 `update` a drag sample, `end` the release and `cancel` the `onCancel` ("Drags" in "P3c status"). The pointer's place
@@ -997,7 +997,7 @@ snapshot, `JsKeptWindow`), and workspace sets (removed later with the spec's lac
 ## Tiling bindings status
 
 Lane JsTilingBindings (`docs/shell-api/input-handlers.md`, "Tiling drags"). Done: `ClientSwapBinding` (id `swap`,
-`Super+MouseLeft+Drag`) and `SplitResizeBinding` (id `resize`, `Super+MouseRight+Drag`) in `data/js/gnoblin/bindings.ts`,
+`Super+MouseLeft+Drag`) and `SplitResizeBinding` (id `resize`, `Super+MouseRight+Drag`) in `data/js/gnoblin/bindings/tiling.ts`,
 registered by `MasterStackLayout` and `DwindleLayout` (both) and `GridLayout` (swap only) with the `triggers` option
 `FloatingLayout` has (`null` leaves one out, `layout.bindings.remove("swap")` removes it). `MonocleLayout` has none. Tests:
 `crates/gnoblin-js/tests/tiling_bindings.rs` over the fake link, and the real-compositor test in `js_shell.rs`.
@@ -1234,7 +1234,7 @@ strokeWidth }`, `line`, `text`, `icon`, `pushClip`, `popClip`, `pushOpacity`, `p
 
 ## Stock shell UI status
 
-Lane JsStockShellUi: `Entry`, `Clock` and `Bar` (`data/js/gnoblin/widgets.ts`), the window menu (`menus.ts`), the
+Lane JsStockShellUi: `Entry`, `Clock` and `Bar` (`data/js/gnoblin/widgets.ts`), the window menu (`menus/`), the
 not-responding alert (`alerts.ts`), `toast` (`panel.ts`), the overview (`overview.ts`), the launcher (`launcher.ts`), and
 the titlebar's gestures, fade and reserved room. User page: `docs/js-ui.md`.
 
@@ -1274,7 +1274,7 @@ the titlebar's gestures, fade and reserved room. User page: `docs/js-ui.md`.
 ## P8a style status
 
 Lane JsStyle. The style model of owner-spec section 6 (`design/js-research/owner-spec.md`) over the existing node
-`effects` and `opacity`, with no renderer feature added. Code: `data/js/gnoblin/style.ts` (the classes, the cascade, the
+`effects` and `opacity`, with no renderer feature added. Code: `data/js/gnoblin/style/` (the classes, the cascade, the
 mapping to effects; no host import), the style section of `data/js/gnoblin/host.ts` (scopes, `Client.style`,
 the frame pass), `effects` and `skipped` in `crates/gnoblin-js/src/bindings/props.rs`. Tests:
 `crates/gnoblin-js/tests/style.rs` over fakes, `a_global_style_becomes_the_effect_list_...` in
@@ -1367,11 +1367,11 @@ the frame pass), `effects` and `skipped` in `crates/gnoblin-js/src/bindings/prop
 ## Transitions status
 
 Lane JsTransitions. `gnoblin.requestTransition(callback, options)` of owner-spec section 14 over the existing tween player,
-with no native change. Code: `data/js/gnoblin/transition.ts` (the staging, the engine, `Transition`; no host import),
+with no native change. Code: `data/js/gnoblin/transition/` (the staging, the engine, `Transition`; no host import),
 `crates/gnoblin-js/src/transition.rs` (`__gnoblinHost.check`, the tree's validation of a write without queuing it, the
 same `prepare` that a queued write goes through), the staging block at the top of `data/js/gnoblin/host.ts`
 (replaces `host.get/set/animate/call/raise/lower` and the spawn, kill and session verbs of `host.api`), `snapshotStyles` in
-`style.ts`. Tests: `crates/gnoblin-js/tests/transition.rs` over the fake link, `a_layout_change_in_a_transition_...` in
+`style/snapshot.ts`. Tests: `crates/gnoblin-js/tests/transition.rs` over the fake link, `a_layout_change_in_a_transition_...` in
 `crates/gnoblin/tests/js_shell.rs` against the real compositor. User page: `docs/js-transitions.md`.
 
 - **Staging.** While the callback runs every node write is checked at once (so the setter that made it throws and names its
@@ -1557,12 +1557,12 @@ limit, the call site and the log), `crates/gnoblin-js/tests/script_console.rs`. 
 Design: `design/js-xr.md` (which spec class is a tree node, a JS class or new native work). User docs: `docs/xr.md`,
 "Scripting XR in TypeScript". No headset, OpenXR runtime or `gnoblin-xr` binary was used; the program was not run.
 
-- **Scene classes.** `data/js/gnoblin/scene.ts` has `Node`, `Camera3D` and `View` over the tree (`__gnoblinHost.xr`,
+- **Scene classes.** `data/js/gnoblin/scene/` has `Node`, `Camera3D` and `View` over the tree (`__gnoblinHost.xr`,
   `crates/gnoblin-js/src/xr.rs`: make, insert, destroy and find nodes of those three classes; ids come from the UI
   toolkit's count; `bindings/props.rs` gains the `node`, `view`, `camera` and `controller` property tables). A write of
   what a node already holds is left out, because the tree sends every write it is given. `Vector3`, `Transform3D`, `Ray`
   and `Plane` are the pose arithmetic; a rotation is the program's, Euler about X, then Y, then Z.
-- **The module.** `data/js/gnoblin/xr.ts` is the port of `xr.lua` (`arrangeRing` with the Lua golden numbers, `XRRoom`,
+- **The module.** `data/js/gnoblin/xr/` (`xr.ts` is the import path of its public names) is the port of `xr.lua` (`arrangeRing` with the Lua golden numbers, `XRRoom`,
   `SpatialLayout`, panels for clients, none for dialogs or secure clients, head-locked panels) and the spec's classes
   (`XRCamera3D`, `XRViewport`, `XRSession`, `XRExtension`, `XRController`, `ViewMoveBinding`, `ViewResizeBinding`). It
   runs once a frame from the host's UI entry and costs one `seats()` call while no program has a session.
@@ -2031,7 +2031,7 @@ on the screen at the top-left corner, and `csd-own.windows.json` and `csd-own.cl
 
 Lane SpecInput (design/js-spec-native.md 2.6; docs/shell-api/input.md). `data/js/gnoblin/devices.ts` holds `InputDevice` and
 the `Keyboard`, `Mouse`, `Touchpad`, `Touchscreen` and `Tablet` classes with the settings ledger that
-`gnoblin.ts` merges into the entry's `document()`; `input.ts` holds `InputContext` (public constructor, `attach`, device
+`gnoblin.ts` merges into the entry's `document()`; `input/context.ts` holds `InputContext` (public constructor, `attach`, device
 ownership and per-device claims) and `InputManager` (`contexts` and `devices` are live lists from `input_list.ts`);
 `native_object.ts` is the `NativeObject` base. `JsShell::frame` commits the document again when `documentRevision` moved. Tests:
 `crates/gnoblin-js/tests/input_devices.rs`. Not native: a second `wl_seat` with its own focus, per-device (rather than
@@ -2061,7 +2061,7 @@ the one the host already spoke and `docs/shell-api/errors.md` documented.
   exception is a drag event's `deltaTime`, which the specification gives in seconds.
 - **Easings.** Two vocabularies (`out`, `out-cubic`, `in-cubic`, `in-out`, and the CSS aliases `ease-out`, `ease-in-out`,
   `ease-in`) became one: `Easing` is `linear`, `ease`, `ease-in`, `ease-out` and `ease-in-out`, each the CSS timing
-  function of that name (a cubic Bezier, `data/js/gnoblin/transition.ts`).
+  function of that name (a cubic Bezier, `data/js/gnoblin/transition/easing.ts`).
 - **Error codes.** Three schemes existed. (1) `GnoblinError.code` held untyped kebab-case strings: `destroyed`,
   `read-only`, `refused`, `detached`, `busy`, `no-output`, `unknown-workspace`, `not-a-member`, `unsupported`,
   `no-seat`, `duplicate`, `spawn-failed`, `forbidden`, `nested`, `output-conflict`. (2) `OperationErrorCode` held

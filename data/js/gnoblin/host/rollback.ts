@@ -10,8 +10,8 @@ import { motion } from "gnoblin/host/seat";
 import { everyStyle } from "gnoblin/host/style_scopes";
 import type { Workspace } from "gnoblin/host/workspace";
 import { wsState } from "gnoblin/host/workspace_state";
-import { snapshotStyles } from "gnoblin/style";
-import { TransitionEngine } from "gnoblin/transition";
+import { snapshotStyles } from "gnoblin/style/snapshot";
+import { TransitionEngine } from "gnoblin/transition/engine";
 import { layoutFields } from "gnoblin/workspace";
 
 /**

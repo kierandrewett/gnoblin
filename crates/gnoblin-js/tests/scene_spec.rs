@@ -1,6 +1,6 @@
 //! The scene API of the owner's specification (sections 8, 14, 15, 16) over the fake compositor of `tests/common`:
 //! script nodes with writable transforms, the `Scene`, a `View` of a client and of a workspace, `ArcLayout` and the
-//! `transform` placements of a layout, and property bindings that follow what they read (`data/js/gnoblin/scene.ts`,
+//! `transform` placements of a layout, and property bindings that follow what they read (`data/js/gnoblin/scene/`,
 //! `properties.ts`, `scene_mirror.ts`, `spatial.ts`, `layouts/arc.ts`).
 
 use gnoblin_tree_client::tree_mirror::MirrorValue;

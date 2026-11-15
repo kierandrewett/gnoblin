@@ -1,0 +1,160 @@
+// The calls to the compositor that answer later: `gnoblin.session` (the verbs that log out, suspend, power off or
+// lock it) and `gnoblin.runtime` (`reloadConfig`). Each returns an `Operation` the shell settles with the answer.
+
+import type { ErrorCode } from "gnoblin/errors";
+import { Operation } from "gnoblin/operation";
+import type { OperationHost } from "gnoblin/operation";
+import type {
+    Accepted,
+    Failure,
+    Host,
+    LockRequest,
+    OperationEvent,
+    ReloadResult,
+    SessionStatus,
+} from "gnoblin/session/types";
+
+/** What `Calls` holds of an operation: the ways to settle it, whatever it will carry. */
+interface Settler {
+    succeed(value: unknown): boolean;
+    fail(code: ErrorCode, message: string): boolean;
+}
+
+/** The calls the shell has made and the compositor has not finished, by ticket. */
+export class Calls {
+    #host: Host;
+    #operations: OperationHost;
+    #pending = new Map<number, Settler>();
+
+    constructor(host: Host, operations: OperationHost) {
+        this.#host = host;
+        this.#operations = operations;
+    }
+
+    /** Starts `verb`. The returned operation settles when the compositor finishes it, or at once when it refuses. */
+    begin<T>(verb: string, method: string): Operation<T> {
+        let ticket = 0;
+        const operation = new Operation<T>(this.#operations, this.#host.operationId(), method, () => {
+            this.#pending.delete(ticket);
+        });
+        const answer = JSON.parse(this.#host.begin(verb)) as { ticket?: number; error?: Failure };
+        if (answer.error !== undefined) {
+            operation.fail(answer.error.code as ErrorCode, answer.error.message);
+            return operation;
+        }
+        ticket = answer.ticket as number;
+        this.#pending.set(ticket, operation as Settler);
+        return operation;
+    }
+
+    finish(event: OperationEvent): void {
+        const call = this.#pending.get(event.ticket);
+        if (call === undefined) {
+            // Another generation's call: the one that asked is gone, so nobody is waiting for the answer.
+            return;
+        }
+        this.#pending.delete(event.ticket);
+        if (event.ok) {
+            call.succeed(event.value);
+        } else {
+            const failure = event.error as Failure;
+            call.fail(failure.code as ErrorCode, failure.message);
+        }
+    }
+
+    /** The connection is gone: nothing more arrives, so every call still waiting fails. */
+    failAll(message: string): void {
+        const waiting = [...this.#pending.values()];
+        this.#pending.clear();
+        for (const call of waiting) {
+            call.fail("unavailable", message);
+        }
+    }
+
+    clear(): void {
+        this.#pending.clear();
+    }
+}
+
+/** `gnoblin.session`: the session's state, and the verbs that end it, suspend it or lock it. */
+export class Session {
+    #host: Host;
+    #calls: Calls;
+
+    constructor(host: Host, calls: Calls) {
+        this.#host = host;
+        this.#calls = calls;
+    }
+
+    /** The session as the compositor last published it. Read on each call. */
+    status(): SessionStatus {
+        const text = this.#host.status();
+        if (text === undefined) {
+            return { state: "unavailable", lockAvailable: false, revision: 0 };
+        }
+        return { state: "running", ...(JSON.parse(text) as Omit<SessionStatus, "state">) };
+    }
+
+    /**
+     * Ends the session. The compositor exits with the logout code, and the session wrapper returns to the login
+     * manager.
+     */
+    logout(): Operation<Accepted> {
+        return this.#calls.begin("logout", "session.logout");
+    }
+
+    /** Powers the machine off. Succeeds once the init system accepts; this call does not prompt. */
+    poweroff(): Operation<Accepted> {
+        return this.#calls.begin("poweroff", "session.poweroff");
+    }
+
+    reboot(): Operation<Accepted> {
+        return this.#calls.begin("reboot", "session.reboot");
+    }
+
+    /**
+     * Suspends to RAM. The session locks first. Fails `denied`, `unsupported`, `busy`, `unavailable` or `timed_out`.
+     */
+    suspend(): Operation<Accepted> {
+        return this.#calls.begin("suspend", "session.suspend");
+    }
+
+    /** Hibernates to disk. Fails `unsupported` when the machine reports it cannot. */
+    hibernate(): Operation<Accepted> {
+        return this.#calls.begin("hibernate", "session.hibernate");
+    }
+
+    /** Asks the compositor to take the session lock. Read `status()` to see it enter a locked state. */
+    lock(): Operation<LockRequest> {
+        return this.#calls.begin("lock", "session.lock");
+    }
+}
+
+/** `gnoblin.runtime`: what a script asks of the process that runs it. */
+export class Runtime {
+    #host: Host;
+    #calls: Calls;
+
+    constructor(host: Host, calls: Calls) {
+        this.#host = host;
+        this.#calls = calls;
+    }
+
+    /**
+     * Asks for the reload `gnoblinctl config reload` asks for: the runtime evaluates the configuration again and
+     * commits it. The operation succeeds once the compositor accepted the revision and fails `config_rejected` with
+     * the reason when the document is refused, in which case the running configuration stays and this generation's
+     * callbacks run. A successful reload replaces the generation that asked, so its callbacks are gone with it:
+     * subscribe to nothing here, read `gnoblin.session` or the `config.reloaded` signal in the new one.
+     *
+     * Throws while the configuration loads, because every reload would ask for another.
+     */
+    reloadConfig(): Operation<ReloadResult> {
+        if (this.#host.loading()) {
+            throw new RangeError(
+                "gnoblin.runtime.reloadConfig: the configuration is loading, and each reload would ask for another",
+            );
+        }
+        return this.#calls.begin("reload-config", "runtime.reloadConfig");
+    }
+}

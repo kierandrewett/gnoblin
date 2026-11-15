@@ -31,8 +31,10 @@
 //     maximised one are not dragged. The request names no edge: a pointer within `RESIZE_CORNER_ZONE` pixels of two
 //     sides of the window resizes that corner, anywhere else the nearest side.
 
-import { ClientMoveBinding, ClientResizeBinding } from "gnoblin/bindings";
-import type { DragEvent, Point, Rect, ResizeCorner } from "gnoblin/bindings";
+import { ClientMoveBinding } from "gnoblin/bindings/move";
+import { ClientResizeBinding } from "gnoblin/bindings/resize";
+import type { ResizeCorner } from "gnoblin/bindings/resize";
+import type { DragEvent, Point, Rect } from "gnoblin/bindings/types";
 import { onUiFrame, onUiRequest, uiPointer } from "gnoblin/ui";
 import type { UiRequest } from "gnoblin/ui";
 

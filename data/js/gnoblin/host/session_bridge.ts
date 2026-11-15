@@ -5,7 +5,7 @@ import { host } from "gnoblin/host/bridge";
 import type { Client } from "gnoblin/host/client";
 import type { Collection } from "gnoblin/host/collections";
 import { ctx } from "gnoblin/host/context";
-import { HostApi } from "gnoblin/session";
+import { HostApi } from "gnoblin/session/host_api";
 
 /** Makes the host API. */
 export function installHostApi(): void {

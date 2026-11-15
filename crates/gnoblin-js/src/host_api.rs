@@ -2,7 +2,7 @@
 //! `gnoblin.runtime`, as `globalThis.__gnoblinHost.api`.
 //!
 //! Every function takes and returns plain strings (JSON) and numbers, so the logic here is testable without an
-//! engine and the script's module (`data/js/gnoblin/session.ts`) owns every typed shape. A function that can fail
+//! engine and the script's module (`data/js/gnoblin/session/`) owns every typed shape. A function that can fail
 //! answers `{"error":{"code":..,"message":..}}`; the module turns it into the error the script sees.
 //!
 //! Nothing here runs a script. What happens outside the script's thread (a process ending, the compositor finishing

@@ -19,13 +19,14 @@ import type { ClientStyleState, ScopeStyle } from "gnoblin/host/style_scopes";
 import type { Workspace } from "gnoblin/host/workspace";
 import type { WorkspaceState } from "gnoblin/host/workspace_state";
 import type { IdleMonitor } from "gnoblin/idle";
-import type { InputManager } from "gnoblin/input";
+import type { InputManager } from "gnoblin/input/manager";
 import type { LaunchFeedback } from "gnoblin/launches";
-import type { HostApi } from "gnoblin/session";
+import type { HostApi } from "gnoblin/session/host_api";
 import type { Decorations } from "gnoblin/titlebar";
-import type { Staging, TransitionEngine } from "gnoblin/transition";
+import type { TransitionEngine } from "gnoblin/transition/engine";
+import type { Staging } from "gnoblin/transition/staging";
 import type { NodeId } from "gnoblin/types";
-import type { XRRuntime } from "gnoblin/xr";
+import type { XRRuntime } from "gnoblin/xr/runtime";
 
 /**
  * Everything the object model keeps between calls. The modules of `gnoblin/host/*` read and write this one object and

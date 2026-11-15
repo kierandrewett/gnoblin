@@ -9,8 +9,8 @@
 // and never imports the host module. Read `gnoblin/bindings` (`GestureBinding`) first. This module does not
 // register itself: a script adds `new WorkspaceSlideBinding()` to the bindings it wants.
 
-import { GestureBinding } from "gnoblin/bindings";
-import type { BindingOptions, DragEvent } from "gnoblin/bindings";
+import { GestureBinding } from "gnoblin/bindings/binding";
+import type { BindingOptions, DragEvent } from "gnoblin/bindings/types";
 
 // ---- What the slide needs of the shell ----
 

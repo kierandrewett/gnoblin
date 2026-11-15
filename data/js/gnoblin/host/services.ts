@@ -18,7 +18,7 @@ import type { Workspace } from "gnoblin/host/workspace";
 import { IdleMonitor } from "gnoblin/idle";
 import { LaunchFeedback } from "gnoblin/launches";
 import { attachLock } from "gnoblin/lock";
-import { windowMenu } from "gnoblin/menus";
+import { windowMenu } from "gnoblin/menus/windows";
 import { snappedZone, unsnapClient } from "gnoblin/snap";
 import type { SnapClient } from "gnoblin/snap";
 import { Decorations, defaultTitlebarStyle } from "gnoblin/titlebar";

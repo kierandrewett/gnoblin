@@ -3,11 +3,17 @@
 // in `xr.ts`, which imports this module, so this one imports only the types of `xr.ts`.
 // Read `xr.ts` first for the objects and their units.
 
-import { Binding } from "gnoblin/bindings";
-import type { ControllerButton, ControllerTriggerParts, DragEvent } from "gnoblin/bindings";
-import { Transform3D, Vector3 } from "gnoblin/scene";
-import type { Node, Plane, Ray, View } from "gnoblin/scene";
-import type { XRClient, XRController, XRRoom } from "gnoblin/xr";
+import { Binding } from "gnoblin/bindings/binding";
+import type { ControllerButton, ControllerTriggerParts } from "gnoblin/bindings/trigger_types";
+import type { DragEvent } from "gnoblin/bindings/types";
+import { Transform3D } from "gnoblin/scene/transform";
+import { Vector3 } from "gnoblin/scene/vector";
+import type { Node } from "gnoblin/scene/node";
+import type { Plane, Ray } from "gnoblin/scene/vector";
+import type { View } from "gnoblin/scene/view";
+import type { XRController } from "gnoblin/xr/controller";
+import type { XRRoom } from "gnoblin/xr/room";
+import type { XRClient } from "gnoblin/xr/types";
 
 // ---- Triggers -----------------------------------------------------------------------------------------------------
 

@@ -7,8 +7,9 @@
 // smallest real layout.
 
 import type { TransformInit } from "gnoblin/spatial";
-import { BindingCollection } from "gnoblin/bindings";
-import type { LayoutSplit, Point } from "gnoblin/bindings";
+import { BindingCollection } from "gnoblin/bindings/binding";
+import type { LayoutSplit } from "gnoblin/bindings/tiling";
+import type { Point } from "gnoblin/bindings/types";
 
 /** A rectangle in layout pixels: `x` and `y` are the top-left corner, `width` and `height` the size. */
 export interface Rect {

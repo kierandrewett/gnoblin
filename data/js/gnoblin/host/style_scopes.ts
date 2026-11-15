@@ -11,8 +11,10 @@ import { ctx } from "gnoblin/host/context";
 import { stateOf } from "gnoblin/host/node_state";
 import type { Workspace } from "gnoblin/host/workspace";
 import { wsOf, wsState } from "gnoblin/host/workspace_state";
-import { bindStyle, ClientStyle, layeredList, resolveStyle } from "gnoblin/style";
-import type { ComputedStyle, Style, StyleLayer } from "gnoblin/style";
+import { layeredList, resolveStyle } from "gnoblin/style/resolve";
+import { bindStyle, ClientStyle } from "gnoblin/style/style";
+import type { ComputedStyle, StyleLayer } from "gnoblin/style/resolve";
+import type { Style } from "gnoblin/style/style";
 
 /** The style a collection of clients carries, and where it ranks among the selections. */
 export interface ScopeStyle {

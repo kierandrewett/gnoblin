@@ -5,7 +5,8 @@
 import type { DialogEvent } from "gnoblin/dialogs";
 import type { ClientPointerEvent } from "gnoblin/host/listeners";
 import type { IdleCommand, IdleReading } from "gnoblin/idle";
-import type { InputHost, InputMessage } from "gnoblin/input";
+import type { InputHost } from "gnoblin/input/host";
+import type { InputMessage } from "gnoblin/input/messages";
 import type { LockBackend } from "gnoblin/lock";
 import type { HostValue, NodeId } from "gnoblin/types";
 import type { UiBackend } from "gnoblin/ui";

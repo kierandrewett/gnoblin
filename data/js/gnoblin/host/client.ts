@@ -19,12 +19,17 @@ import { noteHostRead, propertiesOf } from "gnoblin/properties";
 import type { PropertyBinding, PropertyBindings } from "gnoblin/properties";
 import { repositioning } from "gnoblin/reposition";
 import type { RepositionClient } from "gnoblin/reposition";
-import { Transform3D, Vector3 as Position } from "gnoblin/scene";
+import { Transform3D } from "gnoblin/scene/transform";
+import { Vector3 as Position } from "gnoblin/scene/vector";
 import { transformFrom, vectorFrom, withAxes } from "gnoblin/spatial";
 import type { AxisTriple, ScaleInit, TransformInit, Triple, Vec3Like } from "gnoblin/spatial";
-import type { ClientStyle, ComputedStyle } from "gnoblin/style";
-import { curveSamples, DEFAULT_EASING, EASING_NAMES, easingCurve, setProperties } from "gnoblin/transition";
-import type { Easing, Transition, TransitionOptions } from "gnoblin/transition";
+import type { ComputedStyle } from "gnoblin/style/resolve";
+import type { ClientStyle } from "gnoblin/style/style";
+import { curveSamples, DEFAULT_EASING, EASING_NAMES, easingCurve } from "gnoblin/transition/easing";
+import { setProperties } from "gnoblin/transition/engine";
+import type { Easing } from "gnoblin/transition/easing";
+import type { Transition } from "gnoblin/transition/transition";
+import type { TransitionOptions } from "gnoblin/transition/types";
 import type { NodeId, Rect } from "gnoblin/types";
 
 /** The host properties frozen when a client leaves, so the object keeps its final readable state. */

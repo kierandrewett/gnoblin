@@ -520,7 +520,7 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, state: &SharedState) -> rquickjs::Res
         })?,
     )?;
 
-    // `gnoblin.spawn` and `gnoblin.process` are the module's own (`data/js/gnoblin/session.ts`) over `host.api`.
+    // `gnoblin.spawn` and `gnoblin.process` are the module's own (`data/js/gnoblin/session/`) over `host.api`.
 
     crate::transition::install(ctx, &host, state)?;
     crate::input::install(ctx, &host, state)?;

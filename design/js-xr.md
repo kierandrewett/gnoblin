@@ -31,8 +31,8 @@ D35, so this document says what each spec class becomes in that model. See `desi
 
 ## Spec class by class
 
-"Provided" means the program or the compositor already publishes it. "JS" is policy in `data/js/gnoblin/xr.ts` and
-`scene.ts`. "New" names the schema addition.
+"Provided" means the program or the compositor already publishes it. "JS" is policy in `data/js/gnoblin/xr/` and
+`scene/`. "New" names the schema addition.
 
 | Spec class or feature                   | Status                             | What it is here                                                                                                                                                                                                                                                |
 | --------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

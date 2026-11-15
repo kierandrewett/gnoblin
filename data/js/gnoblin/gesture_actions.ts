@@ -12,8 +12,8 @@
 // name. The stock default binds one gesture, the three-finger workspace slide: a gesture bound at its trigger replaces
 // it, so use four fingers to keep both.
 
-import { GestureBinding } from "gnoblin/bindings";
-import type { DragEvent } from "gnoblin/bindings";
+import { GestureBinding } from "gnoblin/bindings/binding";
+import type { DragEvent } from "gnoblin/bindings/types";
 
 /** The shortest swipe `onSwipe` acts on, in touchpad units. */
 export const SWIPE_THRESHOLD = 48;

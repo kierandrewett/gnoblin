@@ -10,10 +10,11 @@ import type { ShowOptions } from "gnoblin/host/show";
 import type { Workspace } from "gnoblin/host/workspace";
 import type { Subscription } from "gnoblin/operation";
 import type { Process, SpawnOptions } from "gnoblin/process";
-import { sceneOf } from "gnoblin/scene";
-import type { SignalEvent, Version } from "gnoblin/session";
-import type { Transition, TransitionOptions } from "gnoblin/transition";
-import { Extensions } from "gnoblin/xr";
+import { sceneOf } from "gnoblin/scene/scene";
+import type { SignalEvent, Version } from "gnoblin/session/types";
+import type { Transition } from "gnoblin/transition/transition";
+import type { TransitionOptions } from "gnoblin/transition/types";
+import { Extensions } from "gnoblin/xr/extensions";
 
 /** The public `gnoblin` object exposed to configuration code and the console. */
 export class Gnoblin {

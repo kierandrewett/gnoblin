@@ -1,4 +1,4 @@
-//! The host functions of `gnoblin.requestTransition` (`data/js/gnoblin/transition.ts`): `__gnoblinHost.check` and
+//! The host functions of `gnoblin.requestTransition` (`data/js/gnoblin/transition/`): `__gnoblinHost.check` and
 //! `__gnoblinHost.tween`.
 //!
 //! A transition stages the writes of its callback and sends them all once the callback and the layout after it have

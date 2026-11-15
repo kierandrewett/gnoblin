@@ -8,8 +8,11 @@ import { guard, say } from "gnoblin/host/dispatch";
 import { stateOf } from "gnoblin/host/node_state";
 import { everyStyle, layersOf, styleState } from "gnoblin/host/style_scopes";
 import type { ClientStyleState } from "gnoblin/host/style_scopes";
-import { mapStyle, resolveStyle, styleEpoch, syncStyleLists } from "gnoblin/style";
-import type { StyleLayer } from "gnoblin/style";
+import { syncStyleLists } from "gnoblin/style/lists";
+import { mapStyle } from "gnoblin/style/map";
+import { resolveStyle } from "gnoblin/style/resolve";
+import { styleEpoch } from "gnoblin/style/state";
+import type { StyleLayer } from "gnoblin/style/resolve";
 import type { HostValue } from "gnoblin/types";
 
 /**

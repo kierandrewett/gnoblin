@@ -10,7 +10,7 @@
 // and a snapped one is unsnapped first, as a drag does. One window is repositioned at a time. The cases that cover it
 // are in crates/gnoblin-js/tests/reposition.rs.
 
-import { clampAxis, dragConstraintMode } from "gnoblin/bindings";
+import { clampAxis, dragConstraintMode } from "gnoblin/bindings/drag";
 import type { Rect } from "gnoblin/layout";
 import { restoreSnap, snapRecord, unsnapClient } from "gnoblin/snap";
 import type { SnapClient, SnapRecord } from "gnoblin/snap";

@@ -15,5 +15,5 @@ export { Workspace } from "gnoblin/host/workspace";
 export { SLIDE_DURATION } from "gnoblin/host/show";
 export type { ShowOptions } from "gnoblin/host/show";
 export { startDecorations, startNotRespondingAlert, startWindowMenu } from "gnoblin/host/services";
-export type { Easing } from "gnoblin/transition";
+export type { Easing } from "gnoblin/transition/easing";
 export type { Query } from "gnoblin/types";

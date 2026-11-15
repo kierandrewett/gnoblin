@@ -7,7 +7,9 @@
 // (Super+MouseRight+Drag), written in gnoblin/bindings. `triggers` replaces a trigger, and `null` leaves that
 // binding out; the bindings go live when an input context attaches the layout (`attachLayout`).
 
-import { ClientMoveBinding, ClientResizeBinding, resolveTriggers } from "gnoblin/bindings";
+import { resolveTriggers } from "gnoblin/bindings/binding";
+import { ClientMoveBinding } from "gnoblin/bindings/move";
+import { ClientResizeBinding } from "gnoblin/bindings/resize";
 import { Layout } from "gnoblin/layout";
 import type { LayoutContext, Rect } from "gnoblin/layout";
 
