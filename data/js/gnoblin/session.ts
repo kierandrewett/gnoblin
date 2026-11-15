@@ -7,7 +7,8 @@
 // refused returns an `Operation` that fails with an `OperationError`; its `code` is one of `docs/shell-api/errors.md`.
 
 import { Operation, Timers } from "gnoblin/operation";
-import type { ClockHost, OperationErrorCode, OperationHost, Subscription } from "gnoblin/operation";
+import type { ErrorCode } from "gnoblin/errors";
+import type { ClockHost, OperationHost, Subscription } from "gnoblin/operation";
 import { ProcessTable } from "gnoblin/process";
 import type { ExitEvent } from "gnoblin/process";
 import type { TrackEndedEvent } from "gnoblin/transition";
@@ -82,7 +83,7 @@ export interface ApiHost extends ClockHost {
     /** A fresh operation id. */
     operationId(): number;
     /** The error a failed call throws: `code` says why, `target` names the call. */
-    error(code: string, target: string, message: string): Error;
+    error(code: ErrorCode, target: string, message: string): Error;
     /** Starts a session verb and answers `{ticket}` or `{error}` as JSON. */
     begin(verb: string): string;
     /** The session's published state as JSON, or undefined when the shell has no session connection. */
@@ -294,7 +295,7 @@ export class EventBus {
 /** What `Calls` holds of an operation: the ways to settle it, whatever it will carry. */
 interface Settler {
     succeed(value: unknown): boolean;
-    fail(code: OperationErrorCode, message: string): boolean;
+    fail(code: ErrorCode, message: string): boolean;
 }
 
 /** The calls the shell has made and the compositor has not finished, by ticket. */
@@ -316,7 +317,7 @@ class Calls {
         });
         const answer = JSON.parse(this.#host.begin(verb)) as { ticket?: number; error?: Failure };
         if (answer.error !== undefined) {
-            operation.fail(answer.error.code as OperationErrorCode, answer.error.message);
+            operation.fail(answer.error.code as ErrorCode, answer.error.message);
             return operation;
         }
         ticket = answer.ticket as number;
@@ -335,7 +336,7 @@ class Calls {
             call.succeed(event.value);
         } else {
             const failure = event.error as Failure;
-            call.fail(failure.code as OperationErrorCode, failure.message);
+            call.fail(failure.code as ErrorCode, failure.message);
         }
     }
 

@@ -75,9 +75,9 @@ the result. Coordinates are logical pixels in the compositor's space, and an out
 A value of the wrong type throws a `TypeError` that names the property. Any other failure throws a `GnoblinError` whose
 `code` is one of these:
 
-- `destroyed`: the window is gone.
-- `read-only`: the property cannot be written.
-- `refused`: the compositor refused the change.
+- `not_found`: the window is gone.
+- `read_only`: the property cannot be written.
+- `denied`: the compositor refused the change.
 
 ## Window geometry and capture
 

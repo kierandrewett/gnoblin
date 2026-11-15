@@ -15,6 +15,8 @@
 // Plain TypeScript over a small host (`TransitionHost`), so the staging and the ownership rules run without a
 // compositor. What the native tween player cannot do is not faked here (`docs/js-transitions.md`, "Not built").
 
+import type { ErrorCode } from "gnoblin/errors";
+
 /**
  * How an animation moves from its start to its end: the CSS names the specification uses. Each is the CSS timing
  * function of that name (`ease-out` is `cubic-bezier(0, 0, 0.58, 1)`), so a script that knows CSS knows the curve.
@@ -184,7 +186,7 @@ export interface StageBackend {
  * Makes the error a failed transition throws: `code` says why, `target` names the member or call, `message` the
  * reason.
  */
-export type MakeError = (code: string, target: string, message: string) => Error;
+export type MakeError = (code: ErrorCode, target: string, message: string) => Error;
 
 const copy = (value: Value): Value => (Array.isArray(value) ? [...value] : value);
 
@@ -275,7 +277,7 @@ export class Staging {
     forbid(target: string): void {
         if (this.#entries !== null) {
             throw this.#error(
-                "forbidden",
+                "invalid_state",
                 target,
                 "is not valid inside a requestTransition callback: it has a side effect, and a callback only stages property writes",
             );
@@ -657,7 +659,7 @@ export class TransitionEngine {
         const host = this.#host;
         if (host.staging.active) {
             throw host.error(
-                "nested",
+                "busy",
                 site,
                 "was called inside a requestTransition callback; stage every change in the outer callback instead",
             );
@@ -782,7 +784,7 @@ export class TransitionEngine {
             if (active !== null) {
                 this.#forget(active);
             }
-            throw host.error("refused", "gnoblin.requestTransition", `the host refused ${refused.join(", ")}`);
+            throw host.error("denied", "gnoblin.requestTransition", `the host refused ${refused.join(", ")}`);
         }
         if (active === null) {
             host.schedule(`Transition#${transition.id}`, () => transition.settle(false));

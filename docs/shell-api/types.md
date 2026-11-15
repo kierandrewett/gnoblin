@@ -42,7 +42,8 @@ Besides `length`, `at`, `get`, `find`, `filter` and `map`, which [Windows](windo
 
 ## Errors
 
-A native failure is a `GnoblinError`. Its `code` is `destroyed`, `read-only`, `refused` or `spawn-failed`, and its `target`
+A native failure is a `GnoblinError`. Its `code` is one of the [error codes](errors#error-codes), such as `not_found`,
+`read_only` or `denied`, and its `target`
 names the object and member, such as `Client#7.x`.
 
 A value of the wrong type is a `TypeError`, and a value out of range a `RangeError`. An operation that fails carries `{ code, message }` instead: see

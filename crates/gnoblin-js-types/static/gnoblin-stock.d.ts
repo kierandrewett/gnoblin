@@ -102,14 +102,31 @@ declare module "gnoblin" {
         removeListener(listener: object): void;
     }
 
+    /** Why a call failed: the one set of codes of `docs/shell-api/errors.md`, for an `Operation` and for a `GnoblinError`. */
+    export type ErrorCode =
+        | "invalid_argument"
+        | "not_found"
+        | "already_exists"
+        | "invalid_state"
+        | "read_only"
+        | "unsupported"
+        | "denied"
+        | "busy"
+        | "cancelled"
+        | "timed_out"
+        | "unavailable"
+        | "internal"
+        | "config_rejected";
+
     /**
-     * What a failed operation on a native object throws. `code` says why (`destroyed`, `read-only`, `refused`,
-     * `spawn-failed`) and `target` names the object and member, as in `Client#7.x`.
+     * What a failed operation on a native object throws. `code` says why (`not_found` for an object that is gone,
+     * `read_only` for a property that cannot be written, `denied` for a refusal) and `target` names the object and
+     * member, as in `Client#7.x`.
      */
     export class GnoblinError extends Error {
-        readonly code: string;
+        readonly code: ErrorCode;
         readonly target: string;
-        constructor(code: string, target: string, message: string);
+        constructor(code: ErrorCode, target: string, message: string);
     }
 
     /** Initial values of a node made with `new Node`. */
@@ -1043,11 +1060,15 @@ declare module "gnoblin" {
     export function parseTrigger(trigger: string, what?: string): ParsedTrigger;
     /** Thrown when a trigger string is not valid. `token` is the bad part and `trigger` the whole string. */
     export class TriggerError extends TypeError {
+        /** Always `invalid_argument`. */
+        readonly code: ErrorCode;
         readonly token: string;
         readonly trigger: string;
     }
     /** Thrown when two bindings in one collection match the same trigger at the same priority. `ids` names them. */
     export class BindingConflictError extends Error {
+        /** Always `already_exists`. */
+        readonly code: ErrorCode;
         readonly trigger: string;
         readonly ids: readonly [string, string];
     }
@@ -1241,7 +1262,7 @@ declare module "gnoblin" {
      * the one device: the compositor reads them from the configuration document's `input` section, so a write on one
      * `Mouse` is the setting of every mouse. A setting reads `undefined` until a script writes it, and `undefined`
      * written back gives it up to the system's. A write the document refuses throws a `RangeError` (a value outside
-     * the setting's range) or a `GnoblinError` (`refused`, the document's own reason); the shell commits the document
+     * the setting's range) or a `GnoblinError` (`config_rejected`, the document's own reason); the shell commits the document
      * with what a script wrote on load and again on the frame after a later write.
      */
     export class InputDevice extends NativeObject {
@@ -1258,9 +1279,9 @@ declare module "gnoblin" {
         /**
          * The context that holds the device. Assigning another moves it: the old context's bindings stop matching its
          * events (a drag in flight is cancelled, so no button stays held) and the new one's start. Throws a
-         * `GnoblinError` for a context that is not in `gnoblin.input.contexts` (`refused`), for one on another seat
+         * `GnoblinError` for a context that is not in `gnoblin.input.contexts` (`invalid_argument`), for one on another seat
          * (`unsupported`: the compositor attaches every device to one seat) and for a device that was unplugged
-         * (`destroyed`).
+         * (`not_found`).
          */
         context: InputContext;
         /** Bindings that match only this device's events. They run before a layout's and the context's. */
@@ -1349,7 +1370,7 @@ declare module "gnoblin" {
      * it (`device.context = context`), and its bindings match only the events of those devices. Pointer and keyboard
      * focus stay the seat's (`focusedClient` reads the same client as the primary's), and a chord only the primary
      * binds still fires for a device of another context. A context that is not added holds no device and claims
-     * nothing; `pointer`, `clearFocus`, `makeBindingOnly` and `attachLayout` throw a `GnoblinError` (`detached`).
+     * nothing; `pointer`, `clearFocus`, `makeBindingOnly` and `attachLayout` throw a `GnoblinError` (`invalid_state`).
      */
     export class InputContext extends NativeObject {
         constructor(options: InputContextOptions);
@@ -1441,10 +1462,10 @@ declare module "gnoblin" {
     export interface InputManager {
         /**
          * One context per seat the compositor reports, then the ones a script added. `add(context)` takes a context made
-         * with `new InputContext({ name })`: it throws a `GnoblinError` (`duplicate`) for a name that is taken,
-         * (`no-seat`) when the compositor reports no seat and (`destroyed`) for a context that was removed; a name that
+         * with `new InputContext({ name })`: it throws a `GnoblinError` (`already_exists`) for a name that is taken,
+         * (`unavailable`) when the compositor reports no seat and (`not_found`) for a context that was removed; a name that
          * is not one non-empty line is a `TypeError`. Adding one that is already there changes nothing. `remove(context)`
-         * hands the context's devices back to their seat's and stops its bindings; it throws (`refused`) for a seat's own
+         * hands the context's devices back to their seat's and stops its bindings; it throws (`denied`) for a seat's own
          * context and returns false for one that is not there.
          */
         readonly contexts: MutableInputList<InputContext>;
@@ -2051,21 +2072,8 @@ declare module "gnoblin" {
         unsubscribe(): void;
     }
 
-    /** The codes of `docs/shell-api/errors.md`, and the reload's own. */
-    export type OperationErrorCode =
-        | "invalid_argument"
-        | "not_found"
-        | "unsupported"
-        | "denied"
-        | "busy"
-        | "cancelled"
-        | "timed_out"
-        | "unavailable"
-        | "internal"
-        | "config_rejected";
-
     export interface OperationError {
-        readonly code: OperationErrorCode;
+        readonly code: ErrorCode;
         readonly message: string;
     }
 

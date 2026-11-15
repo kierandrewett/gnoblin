@@ -16,6 +16,7 @@
 // A key is a keysym name, never a character that depends on the layout: `Super+1` and `Super+Shift+1` are two
 // triggers, and `Super+!` is refused (write `Super+Shift+1` or `Super+exclam`). A literal plus is `plus`.
 
+import type { ErrorCode } from "gnoblin/errors";
 import { SNAP_MARGIN, edgeZone, forgetSnap, snapClient } from "gnoblin/snap";
 import type { SnapClient } from "gnoblin/snap";
 
@@ -106,6 +107,8 @@ export type ParsedTrigger =
 
 /** A trigger spelling the grammar refuses. `token` is the part that is wrong. */
 export class TriggerError extends TypeError {
+    /** A spelling the grammar refuses is a bad argument. */
+    readonly code: ErrorCode = "invalid_argument";
     readonly token: string;
     readonly trigger: string;
 
@@ -475,6 +478,8 @@ export interface BindingOptions {
 
 /** Two bindings of one collection match one input at one priority: the matcher could not choose. */
 export class BindingConflictError extends Error {
+    /** The trigger is taken at that priority. */
+    readonly code: ErrorCode = "already_exists";
     readonly trigger: string;
     readonly ids: readonly [string, string];
 

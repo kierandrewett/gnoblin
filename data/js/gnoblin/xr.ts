@@ -5,6 +5,7 @@
 // Read `scene.ts` first for node and transform semantics, then this module for room behavior.
 
 import { BindingCollection } from "gnoblin/bindings";
+import { errorCodeOfRefusal } from "gnoblin/errors";
 import type { ControllerButton, ControllerTriggerParts } from "gnoblin/bindings";
 import { Viewport } from "gnoblin/display";
 import { Camera3D, Node, Plane, Ray, SceneError, Transform3D, Vector3, View, mountOnRoot } from "gnoblin/scene";
@@ -363,7 +364,7 @@ export class XRController {
             }
         }
         if (!this.alive) {
-            throw new SceneError("destroyed", target, "the controller is gone");
+            throw new SceneError("not_found", target, "the controller is gone");
         }
         const before = this.#claims.get(owner);
         if (inputs.length === 0) {
@@ -397,7 +398,7 @@ export class XRController {
         }
         const code = this.#world.scene.set(this.#node, "claimed", union);
         if (code !== undefined) {
-            throw new SceneError(code, target, `the shell refused the write (${code})`);
+            throw new SceneError(errorCodeOfRefusal(code), target, `the shell refused the write (${code})`);
         }
     }
 

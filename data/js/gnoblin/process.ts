@@ -8,6 +8,7 @@
 
 import { Operation } from "gnoblin/operation";
 import type { OperationHost } from "gnoblin/operation";
+import type { ErrorCode } from "gnoblin/errors";
 
 /** Where one standard stream goes: the session log, nowhere, or into the end event (up to `outputLimit` bytes). */
 export type StreamMode = "inherit" | "discard" | "capture";
@@ -69,7 +70,7 @@ export interface ProcessHost extends OperationHost {
     /** A fresh operation id. */
     operationId(): number;
     /** The error a failed call throws: `code` says why, `target` names the call. */
-    error(code: string, target: string, message: string): Error;
+    error(code: ErrorCode, target: string, message: string): Error;
 }
 
 // The values `StreamMode` and `ProcessSignal` allow, as lists to check a script's argument against.
@@ -245,7 +246,7 @@ export class ProcessTable {
             if (error.code === "invalid_argument") {
                 throw new TypeError(`gnoblin.spawn: ${error.message}`);
             }
-            throw this.#host.error("spawn-failed", "gnoblin.spawn", error.message);
+            throw this.#host.error(error.code as ErrorCode, "gnoblin.spawn", error.message);
         }
         const process = new Process(this, answer.id as number, answer.pid as number, argv);
         this.#running.set(process.id, process);
@@ -316,7 +317,7 @@ export class ProcessTable {
             operation.succeed(null);
         } else {
             const { error } = parse(answer) as { error: { code: string; message: string } };
-            operation.fail(error.code as "not_found", error.message);
+            operation.fail(error.code as ErrorCode, error.message);
         }
         return operation;
     }

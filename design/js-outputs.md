@@ -103,7 +103,7 @@ reported as not applied (the engine's `OutputConfig` has the flag, the request t
 output no script display presents (ids `display-<connector>`), so `gnoblin.displays` and `input.activeDisplay` always
 work; a script display replaces the shell's for its outputs. `new Display({ outputs })` takes profiles (selectors: with
 no matching output the display is parked and its workspace is kept) or connected outputs. `gnoblin.displays.add`
-throws `output-conflict` naming both displays when an output is presented by a script display already (DW6);
+throws `busy` naming both displays when an output is presented by a script display already (DW6);
 `replace(old, new)` removes `old` and every other script display that overlaps `new` in one validated change.
 
 - `single`: the display's output has its desk. `viewport.content = ws` is `showWorkspace(ws, { output })`.

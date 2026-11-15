@@ -605,7 +605,7 @@ fn a_destroyed_window_is_not_alive_keeps_its_values_and_rejects_writes_naming_th
         "(() => { try { kept.x = 5; } catch (e) { return [e.name, e.code, e.target, e.message].join('|'); } })()";
     assert_eq!(
         rig.eval(write),
-        "GnoblinError|destroyed|Client#3.x|Client#3.x: the client is gone"
+        "GnoblinError|not_found|Client#3.x|Client#3.x: the client is gone"
     );
     assert_eq!(
         rig.eval("(() => { try { kept.close(); } catch (e) { return e.target; } })()"),

@@ -47,18 +47,47 @@ A bad argument is not an operation failure: the call throws a `TypeError` or a `
 
 ## Error codes
 
+One set of codes covers every failure of the API, and the codes are snake_case.
+
+- An `Operation` that fails carries `{ code, message }`.
+- A call that cannot be made throws a `GnoblinError` with a code from the same set.
+- Its `target` names the object and member, such as `Client#7.x`, and its message begins with the target.
+
 | Code               | Meaning                                                                    |
 | ------------------ | -------------------------------------------------------------------------- |
 | `invalid_argument` | An argument is invalid.                                                    |
 | `not_found`        | The object or resource does not exist, or has ended.                       |
+| `already_exists`   | The id, name or trigger is taken.                                          |
+| `invalid_state`    | The object is not in a state that allows the call, such as a detached one. |
+| `read_only`        | The property or collection cannot be written.                              |
 | `unsupported`      | The compositor or the machine cannot perform the operation.                |
-| `denied`           | Session policy, logind or polkit rejected the operation.                   |
-| `busy`             | Something exclusive is already running.                                    |
+| `denied`           | Session policy, logind, polkit or the compositor rejected the operation.   |
+| `busy`             | Something exclusive is already running or in use.                          |
 | `cancelled`        | `cancel()` or the caller stopped the operation.                            |
 | `timed_out`        | The operation reached its deadline.                                        |
-| `unavailable`      | The compositor or a session service is not ready.                          |
+| `unavailable`      | The compositor or a session service is not ready, or there is no seat.     |
 | `internal`         | An unexpected error occurred, such as a throw inside `map`.                |
-| `config_rejected`  | A reload was refused. Only `gnoblin.runtime.reloadConfig()` fails with it. |
+| `config_rejected`  | The configuration document refused a value, or a reload was refused.       |
+
+A `TypeError` or a `RangeError` is the script's own mistake in a value, and it has no code. Three classes carry one so
+a script can branch on `error.code`:
+
+- `TriggerError` is a `TypeError` with the code `invalid_argument`.
+- `BindingConflictError` has the code `already_exists`.
+- `SceneError` is a `GnoblinError`.
+
+```ts
+try {
+    gnoblin.workspaces.add(new Workspace({ id: "main" }));
+} catch (error) {
+    if (error instanceof GnoblinError && error.code === "already_exists") {
+        gnoblin.spawn(["notify-send", "There is a workspace with that id already"]);
+    }
+}
+```
+
+Put the file in `~/.config/gnoblin/init.ts`. A second workspace with the id `main` shows a notification instead of
+stopping the file.
 
 ## Timers
 

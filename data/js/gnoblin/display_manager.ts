@@ -17,6 +17,7 @@ import {
     relativeTarget,
     viewportState,
 } from "gnoblin/display";
+import type { ErrorCode } from "gnoblin/errors";
 
 /** A `Collection<Output>` the manager keeps equal to the outputs a display presents. */
 export interface OutputSet {
@@ -50,7 +51,7 @@ export interface DisplayBackend {
     pending(output: OutputView): boolean;
     /** Reports `text` once per generation. */
     say(text: string): void;
-    error(code: string, target: string, message: string): Error;
+    error(code: ErrorCode, target: string, message: string): Error;
     /** A new collection of outputs for one display. */
     outputSet(): OutputSet;
     /** The collections' events: the member joined or left. */
@@ -125,7 +126,7 @@ export class DisplayManager {
 
     // ---- Profiles ----
 
-    /** @throws GnoblinError `duplicate` when a profile with the same id is in the collection */
+    /** @throws GnoblinError `already_exists` when a profile with the same id is in the collection */
     addProfile(profile: OutputProfile): void {
         if (this.#profiles.includes(profile)) {
             return;
@@ -133,7 +134,7 @@ export class DisplayManager {
         const { id } = profileState(profile);
         if (this.#profiles.some((other) => profileState(other).id === id)) {
             throw this.#backend.error(
-                "duplicate",
+                "already_exists",
                 "gnoblin.outputs.profiles.add",
                 `there is already a profile "${id}"; give the profile an id of its own`,
             );
@@ -160,8 +161,8 @@ export class DisplayManager {
     /**
      * Adds a display the script made.
      *
-     * @throws GnoblinError `output-conflict` naming both displays when one of its outputs is presented by another, or
-     *   `duplicate` when a display has its id
+     * @throws GnoblinError `busy` naming both displays when one of its outputs is presented by another, or
+     *   `already_exists` when a display has its id
      */
     addDisplay(display: Display): void {
         if (this.#displays.includes(display)) {
@@ -190,19 +191,23 @@ export class DisplayManager {
      * Swaps `old` for `next` as one validated change: `old` and every other script display that shares an output with
      * `next` leave, then `next` takes `old`'s place. Nothing changes when the check fails.
      *
-     * @throws GnoblinError `not-a-member` when `old` is not in the collection, `duplicate` when `next` is or has an id
+     * @throws GnoblinError `invalid_argument` when `old` is not in the collection, `already_exists` when `next` is or has an id
      *   that stays
      */
     replaceDisplay(old: Display, next: Display): void {
         if (!this.#displays.includes(old) || displayState(old).implicit) {
             throw this.#backend.error(
-                "not-a-member",
+                "invalid_argument",
                 "gnoblin.displays.replace",
                 `${old} is not a display of the script`,
             );
         }
         if (this.#displays.includes(next)) {
-            throw this.#backend.error("duplicate", "gnoblin.displays.replace", `${next} is in the collection already`);
+            throw this.#backend.error(
+                "already_exists",
+                "gnoblin.displays.replace",
+                `${next} is in the collection already`,
+            );
         }
         const leaving = new Set<Display>([old]);
         for (const other of this.#displays) {
@@ -392,12 +397,12 @@ export class DisplayManager {
                 continue;
             }
             if (held.id === state.id) {
-                throw this.#backend.error("duplicate", site, `there is already a display "${state.id}"`);
+                throw this.#backend.error("already_exists", site, `there is already a display "${state.id}"`);
             }
             const shared = this.#overlap(display, other);
             if (shared !== null) {
                 throw this.#backend.error(
-                    "output-conflict",
+                    "busy",
                     site,
                     `display "${state.id}" cannot present ${shared}: display "${held.id}" does already ` +
                         `(use gnoblin.displays.replace("${held.id}", ...) to swap them)`,

@@ -162,7 +162,7 @@ What backs them:
   `undefined`, and assigning `undefined` gives it back to the system's value.
 - The shell commits the document with these writes when the entry loads, and again on the frame after a later write (for
   example from a key handler). A value outside the range throws a `RangeError` at the write; one the document refuses
-  throws a `GnoblinError` with code `refused` and the document's reason.
+  throws a `GnoblinError` with code `config_rejected` and the document's reason.
 - The compositor applies `input.keyboard` (repeat and delay) when the document is committed. It accepts and checks
   `input.mouse` and `input.touchpad` and reports them as not applied: no device reads them yet, see
   [Input settings](/config/configure/input). A `Touchscreen` and a `Tablet` have no setting here.
@@ -200,11 +200,11 @@ Be exact about what is native and what is not. The compositor has one input seat
 - A layout's bindings (move and resize drags) stay with the seat's own context.
 - Moving a device cancels a drag its old bindings run, so no button is left held. A device that is unplugged and plugged in
   again is a new device, back in its seat's context. A context cannot take a device of another seat.
-- `contexts.add` throws a `GnoblinError` with code `duplicate` for a name that is taken, and `no-seat` when the compositor
+- `contexts.add` throws a `GnoblinError` with code `already_exists` for a name that is taken, and `unavailable` when the compositor
   reports no seat.
 - `contexts.remove(context)` hands the devices back to their seat's context and returns `true`. The seats' own contexts
-  cannot be removed (code `refused`).
-- A context that is not in the list throws code `detached` from `pointer`, `clearFocus`, `makeBindingOnly` and
+  cannot be removed (code `denied`).
+- A context that is not in the list throws code `invalid_state` from `pointer`, `clearFocus`, `makeBindingOnly` and
   `attachLayout`.
 
 `gnoblin.input.contexts` and `devices` are live lists: `length`, `at(index)`, `get(id)`, `find`, `filter`, `map`, `flatMap`

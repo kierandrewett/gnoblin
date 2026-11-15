@@ -33,9 +33,11 @@ The first argument is the command:
 - A string is one command line for `/bin/sh`.
 - An array is the program, found on `PATH`, and its arguments. Nothing splits or quotes it.
 
-The call throws a `GnoblinError` with the code `spawn-failed` when the program cannot start. Each program starts in a
-process group of its own, so `kill` and `timeout` reach the programs it starts too. At most 64 run at once, and they end
-with the shell.
+The call throws a `GnoblinError` when the program cannot start. Its code is `not_found` for a program that is not there,
+`busy` when 64 already run and `internal` for another refusal of the system. A bad option is a `TypeError`.
+
+Each program starts in a process group of its own, so `kill` and `timeout` reach the programs it starts too. At most 64
+run at once, and they end with the shell.
 
 | Option        | Accepted values                             | Default   | Meaning                                          |
 | ------------- | ------------------------------------------- | --------- | ------------------------------------------------ |

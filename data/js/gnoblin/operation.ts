@@ -5,22 +5,11 @@
 // runs. A callback added after the operation settled runs once, after the current call returns.
 // Both classes are plain TypeScript over a small host (`OperationHost`), so they run without a compositor.
 
-/** What an operation can fail with. The codes are the ones `docs/shell-api/errors.md` lists, plus the reload's own. */
-export type OperationErrorCode =
-    | "invalid_argument"
-    | "not_found"
-    | "unsupported"
-    | "denied"
-    | "busy"
-    | "cancelled"
-    | "timed_out"
-    | "unavailable"
-    | "internal"
-    | "config_rejected";
+import type { ErrorCode } from "gnoblin/errors";
 
 /** The failure of an operation: a stable `code` to branch on and a `message` for a person. */
 export interface OperationError {
-    readonly code: OperationErrorCode;
+    readonly code: ErrorCode;
     readonly message: string;
 }
 
@@ -173,7 +162,7 @@ export class Operation<T> {
     }
 
     /** Settles the operation with a failure. Host-only. Returns false if it was settled. */
-    fail(code: OperationErrorCode, message: string): boolean {
+    fail(code: ErrorCode, message: string): boolean {
         if (this.#status !== "pending") {
             return false;
         }

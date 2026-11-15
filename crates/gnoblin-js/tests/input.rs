@@ -1877,7 +1877,7 @@ fn a_bad_registration_is_refused_with_a_message_that_says_why() {
         lines(&[
             r#"GnoblinError(unsupported): Binding "bind-1:Super+Wheel": the compositor has no claim for Super+Wheel; wheel triggers cannot be bound yet"#,
             r#"TypeError: InputContext "seatA".bind: "Super+MouseLeft+Drag" is a drag; bind a PointerDragBinding with onStart, onUpdate and onEnd"#,
-            r#"TypeError: InputContext "seatA".bind: is a character, not a key name; write the keysym name (exclam, minus, plus) or Shift with the key (token "!" in "Super+!")"#,
+            r#"TypeError(invalid_argument): InputContext "seatA".bind: is a character, not a key name; write the keysym name (exclam, minus, plus) or Shift with the key (token "!" in "Super+!")"#,
             r#"TypeError: InputContext "seatA".bind: the action must be a function or a Binding"#,
         ])
     );

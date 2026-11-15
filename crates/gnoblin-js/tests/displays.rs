@@ -204,7 +204,7 @@ fn assigning_a_viewports_content_shows_the_workspace_on_that_display_as_show_doe
     );
     assert_eq!(
         rig.eval("try { g.left.viewport.content = new Workspace({ id: 'loose' }); 'set' } catch (e) { e.code }"),
-        "detached",
+        "invalid_state",
         "a workspace that is not in gnoblin.workspaces cannot be shown, as with `show`"
     );
     assert_eq!(
@@ -229,7 +229,7 @@ fn a_script_display_is_listed_and_an_output_is_presented_by_one_display_at_a_tim
         "the display for DP-1 is the script's, which shows the workspace it asked for"
     );
     let error = rig.eval("try { gnoblin.displays.add(g.rival); 'added' } catch (e) { `${e.code}|${e.message}` }");
-    assert!(error.starts_with("output-conflict|"), "{error}");
+    assert!(error.starts_with("busy|"), "{error}");
     assert!(
         error.contains("\"also-left\"") && error.contains("\"left\"") && error.contains("DP-1"),
         "the error names both displays and the output: {error}"
@@ -504,7 +504,7 @@ fn the_profile_collection_and_profile_arguments_are_checked() {
             &mut rig,
             "gnoblin.outputs.profiles.add(new OutputProfile({ match: { connector: 'DP-1' } }))"
         )
-        .starts_with("duplicate: gnoblin.outputs.profiles.add: there is already a profile \"DP-1\"")
+        .starts_with("already_exists: gnoblin.outputs.profiles.add: there is already a profile \"DP-1\"")
     );
     assert_eq!(rig.eval("String(gnoblin.outputs.profiles.remove(g.a))"), "true");
     assert_eq!(rig.eval("String(gnoblin.outputs.profiles.length)"), "0");

@@ -247,7 +247,7 @@ const spanned = new Display({
 gnoblin.displays.add(spanned);
 ```
 
-- **One display per output.** `gnoblin.displays.add` throws `output-conflict`, naming both displays, when one of the
+- **One display per output.** `gnoblin.displays.add` throws a `GnoblinError` with code `busy`, naming both displays, when one of the
   outputs belongs to a display of yours already. `gnoblin.displays.replace(old, new)` swaps them as one change: it
   removes `old` and every other display of yours that shares an output with `new`, then adds `new` in `old`'s place.
 - **Removing.** `gnoblin.displays.remove(display)` ends the mirror or span the display made; each of its outputs gets a

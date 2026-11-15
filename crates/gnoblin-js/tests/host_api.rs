@@ -875,14 +875,14 @@ fn spawn_options_reach_the_program_and_a_bad_option_is_a_type_error_naming_it() 
 }
 
 #[test]
-fn spawn_throws_the_spawn_failed_error_for_a_program_that_cannot_start_and_a_type_error_for_a_bad_command() {
-    // The behaviour of the old `gnoblin.spawn`, kept: a refusal is a `GnoblinError` with the code `spawn-failed`.
+fn spawn_throws_a_not_found_error_for_a_program_that_cannot_start_and_a_type_error_for_a_bad_command() {
+    // The behaviour of the old `gnoblin.spawn`, kept: a refusal is a `GnoblinError` with the host's code, `not_found` for a program that is not there.
     let (mut rig, _session) = rig("export {};");
     assert_eq!(
         rig.ts("(() => { try { gnoblin.spawn(['/nonexistent/gnoblin-test']); } catch (e) { return [e.name, e.code, e.message].join('|'); } })()")
             .split_once("cannot start")
             .map(|(head, _)| head.to_owned()),
-        Some("GnoblinError|spawn-failed|gnoblin.spawn: ".to_owned())
+        Some("GnoblinError|not_found|gnoblin.spawn: ".to_owned())
     );
     for bad in ["''", "[]", "42", "['a', 1]", "undefined"] {
         let outcome = thrown(&mut rig, &format!("gnoblin.spawn({bad} as any)"));

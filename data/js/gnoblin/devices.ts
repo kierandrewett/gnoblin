@@ -21,6 +21,7 @@
 import { BindingCollection } from "gnoblin/bindings";
 import type { Binding, BindingEvent } from "gnoblin/bindings";
 import { NativeObject } from "gnoblin/native_object";
+import type { ErrorCode } from "gnoblin/errors";
 
 // ---- Settings ledger ----
 
@@ -116,7 +117,7 @@ export interface DeviceSettingsHost {
     /** The validator's problems for a document patch (JSON text), or undefined when the document would be accepted. */
     check(patch: string): string | undefined;
     /** The error a refused operation on a native object throws. */
-    error(code: string, target: string, message: string): Error;
+    error(code: ErrorCode, target: string, message: string): Error;
 }
 
 let shell: DeviceSettingsHost | null = null;
@@ -151,7 +152,7 @@ export function deviceDocument(): Table {
 }
 
 /** Fails as `shell` does when it is attached, else as a plain `Error`. */
-function refuse(code: string, target: string, message: string): Error {
+function refuse(code: ErrorCode, target: string, message: string): Error {
     return shell?.error(code, target, message) ?? new Error(`${target}: ${message}`);
 }
 
@@ -171,7 +172,7 @@ function writeSetting(name: SettingName, value: unknown, target: string): void {
         const probe: Table = { input: { [setting.group]: { [setting.key]: setting.document(value) } } };
         const problem = shell.check(JSON.stringify(probe));
         if (problem !== undefined) {
-            throw refuse("refused", target, `the configuration refused it: ${problem}`);
+            throw refuse("config_rejected", target, `the configuration refused it: ${problem}`);
         }
     }
     if (!ledger.has(name) || ledger.get(name) !== value) {
@@ -270,7 +271,7 @@ export class InputDevice extends NativeObject {
 
     set context(to: DeviceHome) {
         if (!this.#alive) {
-            throw refuse("destroyed", this.path("context"), "the device was unplugged");
+            throw refuse("not_found", this.path("context"), "the device was unplugged");
         }
         if (to === this.#context) {
             return;

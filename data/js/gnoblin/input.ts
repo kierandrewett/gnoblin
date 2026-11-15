@@ -52,6 +52,8 @@ import { InputDevice, classOf } from "gnoblin/devices";
 import type { DeviceHome } from "gnoblin/devices";
 import { NativeObject } from "gnoblin/native_object";
 import { InputList, MutableInputList } from "gnoblin/input_list";
+import { errorCodeOfRefusal } from "gnoblin/errors";
+import type { ErrorCode } from "gnoblin/errors";
 
 /**
  * The window management settings the compositor publishes on a seat, as the host reads them (the schema's names in
@@ -119,7 +121,7 @@ export interface InputWorld {
     /** Runs `run` later, under the call budget. A throw is reported against `site`. */
     schedule(site: string, run: () => void): void;
     report(site: string, error: unknown): void;
-    error(code: string, target: string, message: string): Error;
+    error(code: ErrorCode, target: string, message: string): Error;
 }
 
 /** What a seat the host has no record of reads as: the schema defaults. */
@@ -545,7 +547,11 @@ export class InputContext extends NativeObject implements DeviceHome {
         this.#live("clearFocus");
         const code = this.#host.clearFocus(this.#seat);
         if (code != null) {
-            throw this.#world.error("refused", `InputContext "${this.name}".clearFocus`, `the host refused (${code})`);
+            throw this.#world.error(
+                errorCodeOfRefusal(code),
+                `InputContext "${this.name}".clearFocus`,
+                `the host refused (${code})`,
+            );
         }
     }
 
@@ -593,7 +599,7 @@ export class InputContext extends NativeObject implements DeviceHome {
         const result = this.#host.claimDevice(this.#seat, name);
         if (typeof result === "string") {
             throw this.#world.error(
-                "refused",
+                errorCodeOfRefusal(result),
                 `InputContext "${this.name}".makeBindingOnly`,
                 `the compositor refused to make "${name}" binding-only (${result})`,
             );
@@ -801,7 +807,7 @@ export class InputContext extends NativeObject implements DeviceHome {
     #live(what: string): void {
         if (this.#state !== "live") {
             throw this.#world.error(
-                this.#state === "removed" ? "destroyed" : "detached",
+                this.#state === "removed" ? "not_found" : "invalid_state",
                 `InputContext "${this.name}".${what}`,
                 this.#state === "removed"
                     ? "the context was removed from gnoblin.input.contexts"
@@ -828,7 +834,7 @@ export class InputContext extends NativeObject implements DeviceHome {
     moveDevice(device: InputDevice, to: unknown): void {
         const target = `${device.path("context")}`;
         if (!(to instanceof InputContext) || to.#state !== "live") {
-            throw this.#world.error("refused", target, "assign a context that is in gnoblin.input.contexts");
+            throw this.#world.error("invalid_argument", target, "assign a context that is in gnoblin.input.contexts");
         }
         if (to.#seat !== this.#seat) {
             throw this.#world.error(
@@ -1058,7 +1064,7 @@ export class InputContext extends NativeObject implements DeviceHome {
                 : this.#host.claimGesture(this.#seat, spec.gesture, spec.fingers, device);
         if (typeof result === "string") {
             throw this.#world.error(
-                "refused",
+                errorCodeOfRefusal(result),
                 `InputContext "${this.name}"`,
                 `the compositor refused the claim for ${specKey} (${result})`,
             );
@@ -1558,7 +1564,7 @@ export class InputManager {
         this.sync();
         const first = this.#seats.values().next();
         if (first.done) {
-            throw this.#world.error("no-seat", "gnoblin.input.primary", "the compositor reports no input seat");
+            throw this.#world.error("unavailable", "gnoblin.input.primary", "the compositor reports no input seat");
         }
         return first.value;
     }
@@ -1584,17 +1590,17 @@ export class InputManager {
             return context;
         }
         if (!context.alive) {
-            throw this.#world.error("destroyed", where, `the context "${context.name}" was removed`);
+            throw this.#world.error("not_found", where, `the context "${context.name}" was removed`);
         }
         if (context.name === "" || context.name.includes("\n")) {
             throw new TypeError(`${where}: a context name is one non-empty line, got ${JSON.stringify(context.name)}`);
         }
         if (present.some((other) => other.name === context.name)) {
-            throw this.#world.error("duplicate", where, `a context named "${context.name}" is already there`);
+            throw this.#world.error("already_exists", where, `a context named "${context.name}" is already there`);
         }
         const [seat] = this.#seats.values();
         if (seat === undefined) {
-            throw this.#world.error("no-seat", where, "the compositor reports no input seat to hold the context");
+            throw this.#world.error("unavailable", where, "the compositor reports no input seat to hold the context");
         }
         context.attach(seat.seat, true);
         this.#scripted.push(context);
@@ -1608,7 +1614,7 @@ export class InputManager {
     #remove(context: InputContext): boolean {
         if ([...this.#seats.values()].includes(context)) {
             throw this.#world.error(
-                "refused",
+                "denied",
                 "gnoblin.input.contexts.remove",
                 `"${context.name}" is a seat the compositor reports; only contexts a script added can be removed`,
             );

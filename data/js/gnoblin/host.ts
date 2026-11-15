@@ -116,6 +116,7 @@ import { Extensions, XRRuntime } from "gnoblin/xr";
 import type { XRWorld } from "gnoblin/xr";
 import { HostApi } from "gnoblin/session";
 import type { SignalEvent, Version } from "gnoblin/session";
+import { GnoblinError, errorCodeOfRefusal } from "gnoblin/errors";
 import type { Subscription } from "gnoblin/operation";
 import type { Process, SpawnOptions } from "gnoblin/process";
 import { VirtualOutput } from "gnoblin/virtual_output";
@@ -376,22 +377,7 @@ host.api.begin = (verb) => {
 /** Only this module can make a Client, a Workspace or a Collection: the compositor owns their lifetime. */
 const CREATE = Symbol("gnoblin.create");
 
-/**
- * What a failed operation on a native object throws. `code` says why (`destroyed`, `read-only`,
- * `refused`, `spawn-failed`) and `target` names the object and member, as in `Client#7.x`.
- */
-
-export class GnoblinError extends Error {
-    readonly code: string;
-    readonly target: string;
-
-    constructor(code: string, target: string, message: string) {
-        super(`${target}: ${message}`);
-        this.name = "GnoblinError";
-        this.code = code;
-        this.target = target;
-    }
-}
+export { GnoblinError } from "gnoblin/errors";
 
 /** A pointer edge on a window: where, in the window's own coordinates, and which button (0 for the others). */
 export interface ClientPointerEvent {
@@ -543,13 +529,13 @@ function assertListener(listener: unknown, target: string): asserts listener is 
 function refuse(code: string, target: string, what: string): never {
     switch (code) {
         case "unknown-node":
-            throw new GnoblinError("destroyed", target, `the ${what} is gone`);
+            throw new GnoblinError("not_found", target, `the ${what} is gone`);
         case "read-only":
-            throw new GnoblinError("read-only", target, "this property cannot be written");
+            throw new GnoblinError("read_only", target, "this property cannot be written");
         case "invalid-value":
             throw new TypeError(`${target}: the value has the wrong type for this property`);
         default:
-            throw new GnoblinError("refused", target, `the host refused the write (${code})`);
+            throw new GnoblinError(errorCodeOfRefusal(code), target, `the host refused the write (${code})`);
     }
 }
 
@@ -662,7 +648,7 @@ function writeNumber(client: Client, key: string, value: unknown): void {
     const state = stateOf(client);
     const target = `Client#${host.label(state.node)}.${key}`;
     if (!state.alive) {
-        throw new GnoblinError("destroyed", target, "the client is gone");
+        throw new GnoblinError("not_found", target, "the client is gone");
     }
     if (typeof value !== "number" || !Number.isFinite(value)) {
         throw new TypeError(`${target}: must be a finite number`);
@@ -680,7 +666,7 @@ function writeFlag(client: Client, key: string, value: unknown): void {
     const state = stateOf(client);
     const target = `Client#${host.label(state.node)}.${key}`;
     if (!state.alive) {
-        throw new GnoblinError("destroyed", target, "the client is gone");
+        throw new GnoblinError("not_found", target, "the client is gone");
     }
     if (typeof value !== "boolean") {
         throw new TypeError(`${target}: must be true or false`);
@@ -702,7 +688,7 @@ function writeVector(client: Client, key: string, value: unknown): void {
     const state = stateOf(client);
     const target = `Client#${host.label(state.node)}.${key}`;
     if (!state.alive) {
-        throw new GnoblinError("destroyed", target, "the client is gone");
+        throw new GnoblinError("not_found", target, "the client is gone");
     }
     let parts: Triple;
     try {
@@ -758,7 +744,7 @@ function callMethod(client: Client, method: string): void {
     const state = stateOf(client);
     const target = `Client#${host.label(state.node)}.${method}()`;
     if (!state.alive) {
-        throw new GnoblinError("destroyed", target, "the client is gone");
+        throw new GnoblinError("not_found", target, "the client is gone");
     }
     const code = host.call(state.node, method);
     if (code != null) {
@@ -1177,7 +1163,7 @@ export class Client extends NativeObject {
         const state = stateOf(this);
         const target = `Client#${host.label(state.node)}.animate()`;
         if (!state.alive) {
-            throw new GnoblinError("destroyed", target, "the client is gone");
+            throw new GnoblinError("not_found", target, "the client is gone");
         }
         const duration = options?.duration;
         if (typeof duration !== "number" || !Number.isFinite(duration) || duration < 0) {
@@ -1246,7 +1232,7 @@ export class Client extends NativeObject {
         const state = stateOf(this);
         const target = `Client#${host.label(state.node)}.raise()`;
         if (!state.alive) {
-            throw new GnoblinError("destroyed", target, "the client is gone");
+            throw new GnoblinError("not_found", target, "the client is gone");
         }
         const code = host.raise(state.node);
         if (code != null) {
@@ -1274,7 +1260,7 @@ export class Client extends NativeObject {
         const state = stateOf(this);
         const target = `Client#${host.label(state.node)}.lower()`;
         if (!state.alive) {
-            throw new GnoblinError("destroyed", target, "the client is gone");
+            throw new GnoblinError("not_found", target, "the client is gone");
         }
         const code = host.lower(state.node);
         if (code != null) {
@@ -1945,7 +1931,7 @@ export class MutableCollection<T extends Member> extends Collection<T> {
     private mutation(what: string): Mutation {
         const { mutation } = collectionState(this);
         if (!mutation) {
-            throw new GnoblinError("read-only", `Collection.${what}`, "this collection's membership cannot be changed");
+            throw new GnoblinError("read_only", `Collection.${what}`, "this collection's membership cannot be changed");
         }
         return mutation;
     }
@@ -1981,7 +1967,7 @@ export class MutableCollection<T extends Member> extends Collection<T> {
         const first = list.indexOf(a);
         const second = list.indexOf(b);
         if (first < 0 || second < 0) {
-            throw new GnoblinError("not-a-member", "Collection.swap", "both members must be in the collection");
+            throw new GnoblinError("invalid_argument", "Collection.swap", "both members must be in the collection");
         }
         if (first === second) {
             return;
@@ -2069,7 +2055,7 @@ const outputRoot = collectionState(
             add: addVirtualOutput,
             remove: () => false,
             clear: () => {
-                throw new GnoblinError("read-only", "Collection.clear", "outputs belong to the compositor");
+                throw new GnoblinError("read_only", "Collection.clear", "outputs belong to the compositor");
             },
         },
     }),
@@ -2538,10 +2524,10 @@ function moveClientTo(client: Client, workspace: Workspace): boolean {
 function transferClient(workspace: Workspace, client: Client): void {
     const target = `${workspace}.clients.add`;
     if (!wsState(workspace).attached) {
-        throw new GnoblinError("detached", target, "add the workspace to gnoblin.workspaces first");
+        throw new GnoblinError("invalid_state", target, "add the workspace to gnoblin.workspaces first");
     }
     if (!(client instanceof Client) || !clientsByNode.has(stateOf(client).node)) {
-        throw new GnoblinError("destroyed", target, "the client is gone or is not a client of the compositor");
+        throw new GnoblinError("not_found", target, "the client is gone or is not a client of the compositor");
     }
     moveClient(client, workspace, true);
 }
@@ -2621,10 +2607,10 @@ function motion(duration: number): number {
 function showWorkspace(workspace: Workspace | string, options: ShowOptions = {}): void {
     const target = typeof workspace === "string" ? workspaceRoot.list.find((w) => w.id === workspace) : workspace;
     if (target === undefined) {
-        throw new GnoblinError("unknown-workspace", "gnoblin.workspaces.show", `there is no workspace "${workspace}"`);
+        throw new GnoblinError("not_found", "gnoblin.workspaces.show", `there is no workspace "${workspace}"`);
     }
     if (!wsState(target).attached) {
-        throw new GnoblinError("detached", `${target}.show`, "add the workspace to gnoblin.workspaces first");
+        throw new GnoblinError("invalid_state", `${target}.show`, "add the workspace to gnoblin.workspaces first");
     }
     const asked = options.duration ?? 0;
     const progress = options.progress ?? 0;
@@ -2638,14 +2624,14 @@ function showWorkspace(workspace: Workspace | string, options: ShowOptions = {})
         throw new TypeError(`${target}.show: output must be an Output`);
     }
     if (options.output !== undefined && !options.output.alive) {
-        throw new GnoblinError("destroyed", `${target}.show`, `${options.output} is gone`);
+        throw new GnoblinError("not_found", `${target}.show`, `${options.output} is gone`);
     }
     const duration = motion(asked);
     ensureDesk();
     const own = options.output === undefined ? currentDesk() : (deskByOutput.get(options.output) ?? null);
     const desk = own === null ? null : effectiveDesk(own);
     if (desk === null) {
-        throw new GnoblinError("no-output", `${target}.show`, "there is no output to show a workspace on");
+        throw new GnoblinError("unavailable", `${target}.show`, "there is no output to show a workspace on");
     }
     const from = desk.shown;
     // A workspace is on one desk: one an other desk shows changes places with the one this desk showed.
@@ -2699,7 +2685,7 @@ function addWorkspace(workspace: Workspace): void {
     }
     if (workspaceRoot.list.some((other) => other.id === state.id)) {
         throw new GnoblinError(
-            "duplicate",
+            "already_exists",
             "gnoblin.workspaces.add",
             `there is already a workspace with id "${state.id}"`,
         );
@@ -3215,7 +3201,7 @@ function clientStyle(client: Client): ClientStyle {
             below: (name) => layeredList(scopeLayers(client), name),
             guard: () => {
                 if (!stateOf(client).alive) {
-                    throw new GnoblinError("destroyed", path(), "the client is gone");
+                    throw new GnoblinError("not_found", path(), "the client is gone");
                 }
             },
         });
@@ -3291,7 +3277,7 @@ function applyClientStyle(client: Client, state: ClientStyleState, layers: Style
         if (code != null && code !== "unknown-node") {
             reports.push({
                 site: label,
-                error: new GnoblinError("refused", label, `the host refused the ${what} (${code})`),
+                error: new GnoblinError(errorCodeOfRefusal(code), label, `the host refused the ${what} (${code})`),
             });
         }
     };
@@ -3968,14 +3954,14 @@ function applyOutput(
     path: string | null = null,
 ): OutputApplication {
     if (!stateOf(output).alive) {
-        throw new GnoblinError("destroyed", target, "the output is gone");
+        throw new GnoblinError("not_found", target, "the output is gone");
     }
     const { mirrorOf, ...rest } = options;
     const source = mirrorOf instanceof Output ? mirrorOf.connector : mirrorOf;
     const request = outputRequest(mirrorOf === undefined ? rest : { ...rest, mirrorOf: source }, target);
     const token = host.outputs.apply(stateOf(output).node, request);
     if (token === undefined) {
-        throw new GnoblinError("destroyed", target, "the output is gone");
+        throw new GnoblinError("not_found", target, "the output is gone");
     }
     const result = { done: false, error: null as string | null };
     applications.set(token, { output, result, path });
@@ -4594,7 +4580,11 @@ function declareDecorations(available: boolean): void {
     if (code != null) {
         reports.push({
             site: "Decorations.declare",
-            error: new GnoblinError("refused", "Seat.decorations_available", `the host refused the write (${code})`),
+            error: new GnoblinError(
+                errorCodeOfRefusal(code),
+                "Seat.decorations_available",
+                `the host refused the write (${code})`,
+            ),
         });
     }
 }
@@ -4903,7 +4893,7 @@ const transitions = new TransitionEngine({
         const made = host.tween.create();
         if (typeof made !== "number") {
             throw new GnoblinError(
-                String(made),
+                errorCodeOfRefusal(String(made)),
                 "gnoblin.requestTransition",
                 "the shell could not make the node that holds the transition's play state",
             );

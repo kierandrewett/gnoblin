@@ -4,6 +4,8 @@
 // `transform`, all of which write the tree's `x`, `y`, `z`, `rotation` and `scale`. Read this file first for tree and
 // transform semantics.
 
+import { GnoblinError, errorCodeOfRefusal } from "gnoblin/errors";
+import type { ErrorCode } from "gnoblin/errors";
 import { disposeBindingsOf, noteSignal, propertiesOf, raiseSignal } from "gnoblin/properties";
 import type { PropertyBinding, PropertyBindings } from "gnoblin/properties";
 import { WorkspaceMirror } from "gnoblin/scene_mirror";
@@ -38,16 +40,11 @@ export interface SceneBackend {
     workspace(content: object): WorkspaceSource | undefined;
 }
 
-/** What a failed operation on a scene node throws. `code` says why. */
-export class SceneError extends Error {
-    readonly code: string;
-    readonly target: string;
-
-    constructor(code: string, target: string, message: string) {
-        super(`${target}: ${message}`);
+/** What a failed operation on a scene node throws: a `GnoblinError` that a script can also catch by its own type. */
+export class SceneError extends GnoblinError {
+    constructor(code: ErrorCode, target: string, message: string) {
+        super(code, target, message);
         this.name = "SceneError";
-        this.code = code;
-        this.target = target;
     }
 }
 
@@ -106,7 +103,11 @@ export function mountOnRoot(node: Node): void {
     }
     const code = host().insert(nodeIdOf(node), host().root(), -1);
     if (code !== undefined) {
-        throw new SceneError(code, `${label(node)}.mount`, `the shell refused to mount the node (${code})`);
+        throw new SceneError(
+            errorCodeOfRefusal(code),
+            `${label(node)}.mount`,
+            `the shell refused to mount the node (${code})`,
+        );
     }
 }
 
@@ -430,7 +431,7 @@ export class Node {
     constructor(options: NodeOptions = {}, cls = "Node") {
         const made = wrapping ?? host().create(cls);
         if (typeof made !== "number") {
-            throw new SceneError(made, cls, `the shell could not make a ${cls} (${made})`);
+            throw new SceneError(errorCodeOfRefusal(made), cls, `the shell could not make a ${cls} (${made})`);
         }
         nodes.set(this, made);
         live.set(made, this);
@@ -483,7 +484,7 @@ export class Node {
 
     protected write(key: string, value: HostValue): void {
         if (gone.has(this)) {
-            throw new SceneError("destroyed", `${label(this)}.${key}`, "the node was destroyed");
+            throw new SceneError("not_found", `${label(this)}.${key}`, "the node was destroyed");
         }
         // The tree sends every write it is given, so a write of what is already there is left out: a drag that
         // writes the pose every frame costs an op only for the parts that moved.
@@ -498,7 +499,11 @@ export class Node {
         }
         const code = host().set(nodeIdOf(this), key, value);
         if (code !== undefined) {
-            throw new SceneError(code, `${label(this)}.${key}`, `the shell refused the write (${code})`);
+            throw new SceneError(
+                errorCodeOfRefusal(code),
+                `${label(this)}.${key}`,
+                `the shell refused the write (${code})`,
+            );
         }
     }
 
@@ -675,11 +680,15 @@ export class Node {
     /** Puts `child` last under this node, or at `index`. A child already in the tree moves. Returns it. */
     add<T extends Node>(child: T, index = -1): T {
         if (gone.has(this) || gone.has(child)) {
-            throw new SceneError("destroyed", `${label(this)}.add`, "the node was destroyed");
+            throw new SceneError("not_found", `${label(this)}.add`, "the node was destroyed");
         }
         const code = host().insert(nodeIdOf(child), nodeIdOf(this), index);
         if (code !== undefined) {
-            throw new SceneError(code, `${label(this)}.add`, `the shell refused to add ${label(child)} (${code})`);
+            throw new SceneError(
+                errorCodeOfRefusal(code),
+                `${label(this)}.add`,
+                `the shell refused to add ${label(child)} (${code})`,
+            );
         }
         return child;
     }
@@ -706,7 +715,7 @@ export class Node {
         }
         const code = host().destroy(id);
         if (code !== undefined) {
-            throw new SceneError(code, `${label(this)}.destroy`, `the shell refused (${code})`);
+            throw new SceneError(errorCodeOfRefusal(code), `${label(this)}.destroy`, `the shell refused (${code})`);
         }
         sceneForget(all);
     }
@@ -983,7 +992,7 @@ function unshow(view: View): void {
 /** The root of the tree the compositor keeps: the node a script mounts its own nodes under. It cannot be destroyed. */
 class SceneRoot extends Node {
     override destroy(): void {
-        throw new SceneError("refused", label(this), "the scene's root is the compositor's and cannot be destroyed");
+        throw new SceneError("denied", label(this), "the scene's root is the compositor's and cannot be destroyed");
     }
 }
 

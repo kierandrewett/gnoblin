@@ -7,6 +7,8 @@
 // The toolkit talks to the tree only through `UiBackend`, which the host hands over with `attachUi`. It never
 // imports the host, so a test can attach a fake. Frames are driven by `runUiFrame`, see its doc.
 
+import { GnoblinError, errorCodeOfRefusal } from "gnoblin/errors";
+
 // ---- The host ----------------------------------------------------------------------------------------------------
 
 /** The functions the shell host provides. Each refusal is a short code (`unknown-node`, `not-owned`, ...). */
@@ -705,7 +707,7 @@ export interface Canvas {
 
 function refuse(code: string | undefined, what: string): void {
     if (code !== undefined) {
-        throw new Error(`Canvas.${what}: the host refused (${code})`);
+        throw new GnoblinError(errorCodeOfRefusal(code), `Canvas.${what}`, `the host refused (${code})`);
     }
 }
 

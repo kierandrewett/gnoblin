@@ -251,7 +251,7 @@ fn a_bad_device_setting_throws_where_it_is_written_and_leaves_the_setting() {
             "RangeError: Keyboard#1.repeatDelay: must be a whole number of milliseconds from 1 to 10000, got 1.5",
             "RangeError: Mouse#2.naturalScroll: must be true or false, got yes",
             "GnoblinError(unsupported): Mouse#2.enabled: the compositor cannot disable one device; make it binding-only to keep its keys from clients",
-            "GnoblinError(refused): Mouse#2.context: assign a context that is in gnoblin.input.contexts",
+            "GnoblinError(invalid_argument): Mouse#2.context: assign a context that is in gnoblin.input.contexts",
         ]
         .join("\n")
     );
@@ -345,13 +345,13 @@ fn contexts_add_and_remove_refuse_what_cannot_work() {
     assert_eq!(
         world.eval("errors.join('\\n')"),
         [
-            r#"GnoblinError(duplicate): gnoblin.input.contexts.add: a context named "one" is already there"#,
+            r#"GnoblinError(already_exists): gnoblin.input.contexts.add: a context named "one" is already there"#,
             r#"TypeError: gnoblin.input.contexts.add: a context name is one non-empty line, got """#,
             "TypeError: gnoblin.input.contexts.add: expects an InputContext made with new InputContext({ name })",
             "TypeError: InputContext: the name must be text, got 7",
-            r#"GnoblinError(refused): gnoblin.input.contexts.remove: "seat0" is a seat the compositor reports; only contexts a script added can be removed"#,
-            r#"GnoblinError(detached): InputContext "loose".pointer: add the context to gnoblin.input.contexts first"#,
-            "GnoblinError(refused): Keyboard#1.context: assign a context that is in gnoblin.input.contexts",
+            r#"GnoblinError(denied): gnoblin.input.contexts.remove: "seat0" is a seat the compositor reports; only contexts a script added can be removed"#,
+            r#"GnoblinError(invalid_state): InputContext "loose".pointer: add the context to gnoblin.input.contexts first"#,
+            "GnoblinError(invalid_argument): Keyboard#1.context: assign a context that is in gnoblin.input.contexts",
         ]
         .join("\n")
     );

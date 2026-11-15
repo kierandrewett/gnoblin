@@ -310,7 +310,7 @@ compositor in `crates/gnoblin-js/tests/shell.rs`, and against the real one by P6
   `fullscreen`, `x`, `y`, `width`, `height`, `bounds`, `workspace`, `alive`, `close()`, `focus()`. Only the four
   geometry numbers are writable; the compositor owns the rest. A write is queued and read back at once, and travels
   at frame end. A destroyed node keeps its last values, is `alive === false`, and every write or call throws a
-  `GnoblinError` (`code` `destroyed`, `target` `Client#3.x`). A value that is not a finite number throws a
+  `GnoblinError` (`code` `not_found`, `target` `Client#3.x`). A value that is not a finite number throws a
   `TypeError` naming the member. A `Client` cannot be constructed by a script.
 - **Collections.** `gnoblin.clients` and `gnoblin.workspaces` are live `Collection`s: `length`, `at`, `get`, `find`,
   `filter` and `map` (snapshots), iteration, `where`, `addListener`, `removeListener`. `gnoblin.clients` has no `add`.
@@ -338,7 +338,7 @@ collection)` at once for each member already in the collection, in collection or
   strike (`JsShell::strikes`); the next call still runs. What to do about strikes is the supervisor's.
 - **`gnoblin.spawn(command)`.** A string is a command line, an array is an argv. The shell does not start
   processes: `JsShell::set_spawner` takes the host's callback (`JsSpawnRequest::Command` or `Argv`), and a refusal
-  or a missing spawner throws `GnoblinError` `spawn-failed`. A top-level `spawn` in `init.ts` runs on every load.
+  or a missing spawner throws `GnoblinError` with the host's code (`not_found`, `busy` or `internal`). A top-level `spawn` in `init.ts` runs on every load.
 - **Not done.** Pointer and key events addressed to nodes and call answers from the compositor are consumed and
   dropped; claimed chords and gestures go to the input module (see "P3c status"). `JsShell` owns its generation:
   `swap_generation` and the staging hook that wire it into `JsHost` staging are "P6 role wiring" (it calls
@@ -512,7 +512,7 @@ Workspaces and the layout driver (`data/js/gnoblin/host.ts`, `data/js/gnoblin/wo
   a member of anything, and the tree has no property that says which workspace a window is on, so membership lives in
   the JS shell. `gnoblin.workspaces` is a `MutableCollection<Workspace>` (`add`, `remove(ws | id)`, `clear`,
   `show(ws | id)`, plus the read API); a second workspace with an id already there throws `GnoblinError`
-  `duplicate`. A workspace has `id`, `name`, `index`, `active`, `layout`, `gaps`, `clients`, `show()`; assigning
+  `already_exists`. A workspace has `id`, `name`, `index`, `active`, `layout`, `gaps`, `clients`, `show()`; assigning
   `layout` or `gaps` marks it dirty.
 - **`ws.clients`** is a live `MutableCollection<Client>` of the same `Client` objects as `gnoblin.clients`. `add(client)`
   transfers primary membership (`client.workspace` updates, the old workspace loses it, `onAdded`/`onRemoved` go to
@@ -1985,6 +1985,41 @@ writable `position`, `rotation` (Euler or quaternion), `scale` and `transform` o
 (`data/js/gnoblin/properties.ts`; `node.bind` and `node.properties.bind`). Tests: `tests/scene_spec.rs` and the fences of
 `tests/spec_conformance.rs`. Not done: a perspective camera on a flat workspace, pixel verification of a workspace View, and
 `contentFit` for a client's picture.
+
+## Time units and error codes status
+
+The owner's specification says "milliseconds (the JS API uses ms consistently)" and names its easings the CSS way
+(`design/js-research/owner-spec.md`, "TransitionOptions"). The specification gives no error codes, so the one scheme is
+the one the host already spoke and `docs/shell-api/errors.md` documented.
+
+- **Times.** Every duration, delay and timeout of the script API is milliseconds. Before the lane, `Client.animate`,
+  `gnoblin.show`, `gnoblin.motion`, `gnoblin.after`, `Operation.timeout`, the `timeout` of a spawned process, the slide
+  binding's `seconds`, the toast's fades, the alert's `armSeconds` and the focus decision's delays were seconds, while
+  `requestTransition`, `Client.set`, `gnoblin.timers.after`, `idle.watch` and the launch deadline were milliseconds.
+  `host.animate` carries milliseconds too, and `bindings/host.rs` converts to the seconds the tree's wire counts. The
+  exception is a drag event's `deltaTime`, which the specification gives in seconds.
+- **Easings.** Two vocabularies (`out`, `out-cubic`, `in-cubic`, `in-out`, and the CSS aliases `ease-out`, `ease-in-out`,
+  `ease-in`) became one: `Easing` is `linear`, `ease`, `ease-in`, `ease-out` and `ease-in-out`, each the CSS timing
+  function of that name (a cubic Bezier, `data/js/gnoblin/transition.ts`).
+- **Error codes.** Three schemes existed. (1) `GnoblinError.code` held untyped kebab-case strings: `destroyed`,
+  `read-only`, `refused`, `detached`, `busy`, `no-output`, `unknown-workspace`, `not-a-member`, `unsupported`,
+  `no-seat`, `duplicate`, `spawn-failed`, `forbidden`, `nested`, `output-conflict`. (2) `OperationErrorCode` held
+  snake_case codes (`invalid_argument`, `not_found`, `timed_out`, ...), and the host's process and session calls speak
+  them. (3) Bespoke classes carried none: `TriggerError`, `BindingConflictError`, `SceneError` (whose `code` was the
+  host's own word). One `ErrorCode` (`data/js/gnoblin/errors.ts`) replaces them: the snake_case set, extended with
+  `already_exists`, `invalid_state` and `read_only` for what the kebab codes said that it could not.
+- **The migration.** `destroyed`, `unknown-workspace` -> `not_found`; `read-only` -> `read_only`; `detached`, `forbidden`
+  -> `invalid_state`; `duplicate` -> `already_exists`; `no-output`, `no-seat` -> `unavailable`; `not-a-member` ->
+  `invalid_argument`; `nested`, `output-conflict` -> `busy`; `refused` -> `denied`, or the code the host's word maps to,
+  and `config_rejected` for the configuration document's refusal; `spawn-failed` -> the process host's own code
+  (`not_found`, `busy` or `internal`). The host's words for a refused write (`unknown-node`, `unknown-property`,
+  `unknown-method`, `read-only`, `invalid-value`, `not-animated`, `no-seat`) stay between the Rust bindings and the
+  library; `errorCodeOfRefusal` is the one place that translates them, and they appear only inside messages.
+  `SceneError` extends `GnoblinError`; `TriggerError` and `BindingConflictError` carry a `code`.
+- **Proof.** `crates/gnoblin-js/tests/time_units.rs` fails when a script-facing time is documented in seconds or an
+  old easing name returns. `crates/gnoblin-js/tests/error_codes.rs` fails when a thrown code is not one of the
+  documented ones, when `docs/shell-api/errors.md` and the declarations list different codes, or when an old kebab-case
+  code comes back.
 
 ## Questions for the owner (the agent has a default for each)
 

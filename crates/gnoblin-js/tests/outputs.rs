@@ -272,7 +272,7 @@ fn each_output_shows_its_own_workspace_and_a_workspace_is_on_one_output() {
     );
     assert_eq!(
         rig.eval("try { gnoblin.outputs.at(0).show('nope'); 'no' } catch (e) { e.code }"),
-        "unknown-workspace"
+        "not_found"
     );
 }
 

@@ -507,7 +507,7 @@ fn a_collection_swap_trades_two_members_and_tells_the_layout() {
         })()",
     );
     assert_eq!(
-        got, "5,4,3|not-a-member|35",
+        got, "5,4,3|invalid_argument|35",
         "the hook heard the one swap, and not a swap with itself"
     );
 }

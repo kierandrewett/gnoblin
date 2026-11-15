@@ -7,6 +7,7 @@
 
 import { Camera3D, Node } from "gnoblin/scene";
 import type { NodeOptions } from "gnoblin/scene";
+import type { ErrorCode } from "gnoblin/errors";
 
 /** The transforms an output takes: the compositor's names for a rotation and a flip. */
 export type OutputTransform =
@@ -243,7 +244,7 @@ export interface DisplayHooks {
     /** Whether `value` is a connected output of the shell. */
     isOutput(value: unknown): boolean;
     /** The error type the shell throws, named by `code`, `target` and `message`. */
-    error(code: string, target: string, message: string): Error;
+    error(code: ErrorCode, target: string, message: string): Error;
     /** What the display's viewport shows now, or undefined when the display has no output to show it on. */
     shown(display: Display): object | null | undefined;
     /** Shows `workspace` on the display, or keeps it until the display has an output. Throws when it cannot be shown. */

@@ -332,7 +332,7 @@ fn workspaces_are_a_mutable_collection_of_objects_a_script_makes() {
     );
     assert_eq!(
         rig.eval("try { gnoblin.workspaces.add(new dev.constructor({ id: 'dev' })); 'no' } catch (e) { e.code }"),
-        "duplicate"
+        "already_exists"
     );
     assert_eq!(
         rig.eval("try { new dev.constructor({ id: '' }); 'no' } catch (e) { e.name + ': ' + e.message }"),
@@ -523,7 +523,7 @@ fn a_new_window_joins_the_shown_workspace_and_show_switches_it() {
     );
     assert_eq!(
         rig.eval("try { gnoblin.workspaces.show('nowhere'); 'no' } catch (e) { e.code }"),
-        "unknown-workspace"
+        "not_found"
     );
 }
 
