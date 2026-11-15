@@ -29,7 +29,7 @@ use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::wire::{PortalRequest, VerifiedCaller};
 use gnoblin_client::{Client, ClientError, PortalOutcome, PortalTicket};
 use gnoblin_compositor::{Compositor, InputTap, OutputTap, SessionConfig, StopHandle};
-use gnoblin_js::{JsHealth, JsManualClock, JsRole, JsRoleConfig};
+use gnoblin_js::{FRAME_WAIT, JsHealth, JsManualClock, JsRole, JsRoleConfig};
 use gnoblin_log::event::capture::logged;
 use gnoblin_model::{Fields, Filter, Provider, RequestCompletion, TypeKey, Value};
 use gnoblin_proto::tree::op;
@@ -5903,4 +5903,130 @@ fn a_script_sets_a_client_view_to_capture_and_sees_its_press_then_sets_forward_a
     );
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
     shell.finish();
+}
+
+// ---- change gating over the real links ------------------------------------------------------------------------------
+//
+// `crates/gnoblin-js/tests/frame_gating.rs` proves the gate over fakes. What a fake cannot say is whether the real
+// compositor, the real owner connections and the real children are quiet when nothing happens, and what an idle turn
+// costs when it reads them. The role is ticked on this thread, as the runtime role's loop ticks it, so what it did can
+// be read between ticks.
+
+/// A role on this thread over the session's real links: the tree socket, the slot, session and configuration connections
+/// and the idle connector that `JsRole::connect` makes.
+fn role_over(session: &Session, dir: &Path) -> JsRole {
+    let socket = session.ipc().to_str().expect("a UTF-8 socket path").to_owned();
+    let env = move |name: &str| (name == gnoblin_client::unix::SOCKET_VARIABLE).then(|| socket.clone());
+    let mut config = JsRoleConfig::new(dir, None);
+    config.shell.entry_budget = HONEST_BUDGET;
+    config.shell.frame_budget = HONEST_BUDGET;
+    config.shell.js.stage_budget = HONEST_BUDGET;
+    JsRole::connect(&env, config).expect("the role connects")
+}
+
+/// How long the runtime role's loop would wait before its next turn: for the shell's next timer, or `FRAME_WAIT`.
+fn turn_wait(role: &JsRole) -> Duration {
+    role.next_wake().map_or(FRAME_WAIT, |due| due.min(FRAME_WAIT))
+}
+
+/// Ticks the role as the loop does until `quiet_for` of real time has passed without a frame that did work. The real
+/// compositor sends what it has to say about the windows over a few turns, and the alert owes one look inside its
+/// interval, so a shell is quiet only after both: `quiet_for` is longer than that interval.
+#[track_caller]
+fn tick_until_quiet(role: &mut JsRole, quiet_for: Duration) {
+    let deadline = Instant::now() + PATIENCE;
+    let mut ran = role.shell_mut().frame_stats().run;
+    let mut since = Instant::now();
+    loop {
+        role.tick().expect("the shell runs");
+        let now = role.shell_mut().frame_stats().run;
+        if now != ran {
+            ran = now;
+            since = Instant::now();
+        } else if since.elapsed() >= quiet_for {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the shell never went quiet over the real links: {:?}, next wake {:?}",
+            role.shell_mut().frame_stats(),
+            role.next_wake()
+        );
+        std::thread::sleep(turn_wait(role));
+    }
+}
+
+/// How long a quiet shell must stay quiet to count as at rest: longer than the alert's interval (250 ms), which is the
+/// longest deadline the stock shell leaves behind after a burst.
+const REST: Duration = Duration::from_millis(600);
+
+#[test]
+fn a_stock_shell_over_the_real_links_does_no_work_when_nothing_happens() {
+    let session = Session::start();
+    let mut mapper = Mapper::connect(&session.wayland());
+    for number in 0..5 {
+        mapper.map_window(&format!("org.example.window{number}"), &format!("Window {number}"));
+    }
+    // No `init.ts`: the stock library and the stock config, with titlebars on every window.
+    let config = tempfile::tempdir().expect("a config directory");
+    let mut role = role_over(&session, config.path());
+    tick_until_quiet(&mut role, REST);
+    let before = role.shell_mut().frame_stats();
+    // Two seconds of turns as the loop takes them: 125 at the loop's pace. Nothing may arrive, run or come due.
+    let watched = Instant::now();
+    while watched.elapsed() < Duration::from_secs(2) {
+        role.tick().expect("the shell runs");
+        std::thread::sleep(turn_wait(&role));
+    }
+    let after = role.shell_mut().frame_stats();
+    assert_eq!(
+        after.run, before.run,
+        "frames ran while nothing happened: before {before:?}, after {after:?}"
+    );
+    assert!(after.idle > before.idle, "the turns were taken, and found quiet");
+    assert_eq!(role.next_wake(), None, "nothing is due");
+}
+
+#[test]
+#[ignore = "a benchmark: run with --ignored --nocapture"]
+fn idle_turn_cost_over_the_real_links() {
+    const TURNS: u32 = 2000;
+    println!("windows | idle connection | frames run in 3 s | idle turn us (mean of {TURNS})");
+    for (windows, watching) in [(0_u32, false), (25, false), (100, false), (300, false), (100, true)] {
+        let session = Session::start();
+        let mut mapper = Mapper::connect(&session.wayland());
+        for number in 0..windows {
+            mapper.map_window(&format!("org.example.window{number}"), &format!("Window {number}"));
+        }
+        let config = tempfile::tempdir().expect("a config directory");
+        if watching {
+            // A watch is what opens the idle connection, and an open one is read on every turn.
+            save(
+                &config.path().join("init.ts"),
+                "import \"gnoblin\";\ngnoblin.idle.watch(3_600_000, { onIdle() {} });\n",
+            );
+        }
+        let mut role = role_over(&session, config.path());
+        // A connection that reports the idle time as it changes keeps the shell awake: run, don't require rest.
+        let settle_until = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < settle_until {
+            role.tick().expect("the shell runs");
+            std::thread::sleep(turn_wait(&role));
+        }
+        let before = role.shell_mut().frame_stats();
+        let watched = Instant::now();
+        while watched.elapsed() < Duration::from_secs(3) {
+            role.tick().expect("the shell runs");
+            std::thread::sleep(turn_wait(&role));
+        }
+        let ran = role.shell_mut().frame_stats().run - before.run;
+        let started = Instant::now();
+        for _ in 0..TURNS {
+            role.tick().expect("the shell runs");
+        }
+        let per_turn = started.elapsed().as_secs_f64() * 1e6 / f64::from(TURNS);
+        println!("{windows:7} | {watching:15} | {ran:17} | {per_turn:10.1}");
+        drop(role);
+        drop(mapper);
+    }
 }
