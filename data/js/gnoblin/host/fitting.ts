@@ -1,7 +1,7 @@
 // Fitting a window to the work area it is in: after a workspace or output change, or when its frame comes
 // or goes, or changes. A maximised window fills the area, a snapped one tiles to its zone again, a floating one shrinks to fit.
 
-import { growRect, insetArea, NO_INSET, sameInset, shrinkRect } from "gnoblin/frame/inset";
+import { growRect, NO_INSET, sameInset, shrinkRect } from "gnoblin/frame/inset";
 import type { FrameInset } from "gnoblin/frame/inset";
 import type { Client } from "gnoblin/host/client";
 import { ctx } from "gnoblin/host/context";
@@ -41,11 +41,6 @@ function fitContent(rect: Rect, inset: FrameInset, area: Rect): Rect {
     return shrinkRect(fitInto(growRect(rect, inset), area), inset);
 }
 
-/** `area` less the room a frame takes: where the content of a window that fills a frame in `area` goes. */
-function insideFrame(client: Client, area: Rect): Rect {
-    return insetArea(area, reservedInset(client));
-}
-
 /** The part of a client the rectangle it floats at is kept in. */
 interface Floater {
     floatingBounds?: Rect | null;
@@ -69,7 +64,7 @@ export function refitClient(client: Client, area: Rect): void {
     if (client.maximised) {
         client.bounds = framed(client, area);
     } else if (zone !== null) {
-        snapClient(client as unknown as SnapClient, zone, { edgeTiling: true, area: insideFrame(client, area) });
+        snapClient(client as unknown as SnapClient, zone, { edgeTiling: true, area, inset });
     } else {
         client.bounds = fitContent(client.bounds, inset, area);
     }
@@ -121,7 +116,7 @@ export function followFrame(client: Client, area: Rect): boolean {
     if (client.maximised) {
         client.bounds = framed(client, area);
     } else if (zone !== null) {
-        snapClient(client as unknown as SnapClient, zone, { edgeTiling: true, area: insideFrame(client, area) });
+        snapClient(client as unknown as SnapClient, zone, { edgeTiling: true, area, inset });
     } else if (!client.tiled || stateOf(client).floating) {
         client.bounds = moved(client.bounds);
     }

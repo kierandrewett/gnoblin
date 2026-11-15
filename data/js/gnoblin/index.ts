@@ -85,7 +85,7 @@ export { EdgeOutlet } from "gnoblin/frame/edge_outlet";
 export type { EdgeZones, Side } from "gnoblin/frame/edge_outlet";
 export { WindowFrame } from "gnoblin/frame/frame";
 export type { ContentOutlet, FrameKind } from "gnoblin/frame/frame";
-export { growRect, insetArea, isNoInset, NO_INSET, sameInset, shrinkRect } from "gnoblin/frame/inset";
+export { growRect, isNoInset, NO_INSET, sameInset, shrinkRect } from "gnoblin/frame/inset";
 export type { FrameInset } from "gnoblin/frame/inset";
 export { LayerOutlet } from "gnoblin/frame/layer_outlet";
 export type { LayerKind } from "gnoblin/frame/layer_outlet";

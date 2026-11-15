@@ -6,6 +6,8 @@
 // a `Client`, and keep what they need to undo a snap off the client, so a library that does not own the object
 // leaves nothing on it.
 
+import { NO_INSET, shrinkRect } from "gnoblin/frame/inset";
+import type { FrameInset } from "gnoblin/frame/inset";
 import type { Rect } from "gnoblin/layout";
 
 /** The part of the work area a window tiles to: the left or right half, or all of it. */
@@ -72,10 +74,16 @@ export interface SnapRecord {
 
 const snapped = new WeakMap<object, SnapRecord>();
 
-/** What `snapClient` needs of the world: whether edge tiling is on, and the area a window tiles in. */
+/**
+ * What `snapClient` needs of the world: whether edge tiling is on, the area a window tiles in, and the room the
+ * window's frame takes round its content. The zone is a part of `area` for the FRAME: the content is the zone less
+ * `inset` on every side, so a window with a frame on its left and right still fills the whole half.
+ */
 export interface SnapOptions {
     edgeTiling: boolean;
     area: Rect;
+    /** The frame's room round the content. Left out, the window has no frame. */
+    inset?: FrameInset;
 }
 
 /**
@@ -101,7 +109,7 @@ export function snapClient(client: SnapClient, zone: string, options: SnapOption
         client.maximised = false;
     }
     snapped.set(client, { zone: zone as SnapZone, floating });
-    client.bounds = rect;
+    client.bounds = shrinkRect(rect, options.inset ?? NO_INSET);
     return true;
 }
 

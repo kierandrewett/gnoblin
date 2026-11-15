@@ -58,7 +58,9 @@ fn content(rig: &Rig, node: u64) -> (f64, f64, f64, f64) {
 
 /// The room the frame of the first window takes, as `top,right,bottom,left`.
 fn inset(rig: &mut Rig) -> String {
-    rig.eval("const i = gnoblin.clients.at(0).frameInset; `${i.top},${i.right},${i.bottom},${i.left}`")
+    rig.eval(
+        "(() => { const i = gnoblin.clients.at(0).frameInset; return `${i.top},${i.right},${i.bottom},${i.left}`; })()",
+    )
 }
 
 fn decorate(rig: &mut Rig, node: u64, decoration: &str) {
@@ -550,8 +552,8 @@ fn resize_handles_lie_round_the_frame_outside_the_window_geometry_and_not_while_
         [
             "-6,-6,14,14",
             "392,-6,14,14",
-            "-6,322,14,14",
-            "392,322,14,14",
+            "-6,320,14,14",
+            "392,320,14,14",
             "8,-6,384,8",
             "8,326,384,8",
             "-6,8,8,312",
@@ -690,7 +692,11 @@ fn a_node_in_an_outlet_follows_the_window_through_a_binding_without_the_script_r
     rig.comp.create_window(3, "term", "foot");
     rig.settle();
     let dot = rig.ids("[globalThis.dot]")[0];
-    assert_eq!(rig.comp.flag(dot, "visible"), Some(true), "the window is not focused");
+    assert_ne!(
+        rig.comp.flag(dot, "visible"),
+        Some(false),
+        "the window is not focused: the dot shows (visible is the default, so it is not written)"
+    );
     rig.comp.external_set(3, "focused", MirrorValue::Bool(true));
     rig.settle();
     assert_eq!(rig.comp.flag(dot, "visible"), Some(false), "it follows the focus");

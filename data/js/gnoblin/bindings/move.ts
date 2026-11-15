@@ -4,7 +4,7 @@ import { PointerDragBinding } from "gnoblin/bindings/binding";
 import type { PointerDragBindingOptions } from "gnoblin/bindings/binding";
 import { constrainRect, dragConstraintMode, draggable, moved } from "gnoblin/bindings/drag";
 import type { BindingClient, DragEvent, Point, Rect } from "gnoblin/bindings/types";
-import { growRect, insetArea, NO_INSET, shrinkRect } from "gnoblin/frame/inset";
+import { growRect, NO_INSET, shrinkRect } from "gnoblin/frame/inset";
 import { edgeZone, forgetSnap, SNAP_MARGIN, snapClient } from "gnoblin/snap";
 import type { SnapClient } from "gnoblin/snap";
 
@@ -82,8 +82,11 @@ export class ClientMoveBinding extends PointerDragBinding {
         }
         const zone = edgeZone(event.position.x, event.position.y, event.workArea, this.snap);
         if (zone !== null) {
-            const area = insetArea(event.workArea, client.frameInset ?? NO_INSET);
-            snapClient(client as SnapClient, zone, { edgeTiling: true, area });
+            snapClient(client as SnapClient, zone, {
+                edgeTiling: true,
+                area: event.workArea,
+                inset: client.frameInset ?? NO_INSET,
+            });
         }
     }
 

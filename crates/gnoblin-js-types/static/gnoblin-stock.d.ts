@@ -1766,10 +1766,11 @@ declare module "gnoblin" {
         maximised?: boolean;
         floatingBounds?: Rect | null;
     }
-    /** The work area and whether edge tiling is on, for one snap. */
+    /** The work area, whether edge tiling is on and the frame's room round the content, for one snap. */
     export interface SnapOptions {
         edgeTiling: boolean;
         area: Rect;
+        inset?: FrameInset;
     }
     /** Tiles a client to a zone; false (and nothing moves) when edge tiling is off or the zone does not tile. */
     export function snapClient(client: SnapClient, zone: string, options: SnapOptions): boolean;
@@ -2656,8 +2657,6 @@ declare module "gnoblin" {
     export function growRect(content: Rect, inset: FrameInset): Rect;
     /** The content rectangle of a frame: `frame` less `inset` on each side. */
     export function shrinkRect(frame: Rect, inset: FrameInset): Rect;
-    /** `area` less `inset`, at least one pixel each way. */
-    export function insetArea(area: Rect, inset: FrameInset): Rect;
     /** The rectangle `start` becomes when the corner or side `corner` of it moves by `delta`. */
     export function resizedRect(
         start: Rect,

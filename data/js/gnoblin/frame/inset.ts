@@ -46,15 +46,6 @@ export function shrinkRect(frame: Rect, inset: FrameInset): Rect {
     };
 }
 
-/**
- * `area` less `inset`, at least one pixel each way: where the content of a window that fills a frame in `area` goes,
- * as a snap zone or a tile is given it.
- */
-export function insetArea(area: Rect, inset: FrameInset): Rect {
-    const content = shrinkRect(area, inset);
-    return { ...content, width: Math.max(1, content.width), height: Math.max(1, content.height) };
-}
-
 /** `inset` read from the four numbers a generation snapshot keeps: top, right, bottom, left. */
 export function insetFromNumbers(numbers: readonly number[] | null | undefined): FrameInset | null {
     if (numbers === null || numbers === undefined || numbers.length !== 4) {

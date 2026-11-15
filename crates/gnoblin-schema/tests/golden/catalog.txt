@@ -373,6 +373,7 @@ object canvas since 0.2.0 secret false
   property effects type list<object:effect> since 0.2.0 secret false
   property skipped type list<string> since 0.2.0 secret false
   property content type bytes since 0.2.0 secret false
+  property placement type string since 0.2.0 secret false
   method measure since 0.2.0 secret false function false
   signal destroyed since 0.2.0 secret false
 object controller since 0.2.0 secret false
@@ -1809,6 +1810,8 @@ message Canvas {
     repeated string skipped = 20;
     // since 0.2.0
     bytes content = 21;
+    // since 0.2.0
+    string placement = 22;
   }
 
   // Method `measure`, since 0.2.0.

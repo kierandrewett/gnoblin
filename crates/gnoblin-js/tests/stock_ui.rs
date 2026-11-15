@@ -697,9 +697,9 @@ fn the_alert_closes_when_the_window_answers_again_or_goes_and_under_a_lock() {
     rig.comp.destroy(4);
     rig.settle();
     assert_eq!(
-        rig.eval("String(uiCanvasCount() === 6)"),
+        rig.eval("String(uiCanvasCount() === 7)"),
         "true",
-        "closed when the window goes: only the other window's titlebar is left"
+        "closed when the window goes: only the other window's frame is left, its top outlet and its titlebar"
     );
     rig.comp.external_set(22, "state", text("locked"));
     rig.settle();
