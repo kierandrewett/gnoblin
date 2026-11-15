@@ -605,9 +605,9 @@ fn a_wrong_property_or_a_wrong_value_is_a_type_error_when_a_compiler_is_installe
     let wrong_key = dir.write("key/init.ts", "gnoblin.clients.style.cornerRadus = 12;\n");
     let wrong_value = dir.write(
         "value/init.ts",
-        "import { Workspace } from \"gnoblin\";\ngnoblin.workspaces.add(new Workspace({ id: \"a\", layout: \"grid\" }));\n",
+        "import { Workspace } from \"gnoblin\";\ngnoblin.workspaces.add(new Workspace({ id: \"a\", layout: \"spiral\" }));\n",
     );
-    for (file, named) in [(&wrong_key, "cornerRadus"), (&wrong_value, "Layout")] {
+    for (file, named) in [(&wrong_key, "cornerRadus"), (&wrong_value, "spiral")] {
         let (code, out, err) = check(file, &["--types"]);
         let text = format!("{out}{err}");
         if text.contains("type check skipped") {
