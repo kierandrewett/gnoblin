@@ -40,6 +40,7 @@ use serde_json::Value as Json;
 use thiserror::Error;
 
 use crate::bindings::{self, HostState, SharedState};
+use crate::budget::{ENTRY_BUDGET, FRAME_BUDGET};
 use crate::config::{JsApplied, JsConfigLink, parse_patch};
 use crate::dialogs::{JsDialogs, events_to_js, verdicts_from_js};
 use crate::error::{JsError, JsErrorKind};
@@ -84,9 +85,9 @@ const HOST_INSTALL_BUDGET: Duration = Duration::from_secs(5);
 pub struct JsShellConfig {
     /// The generation's config: root, memory limit, stack limit and the budget of loading modules.
     pub js: JsConfig,
-    /// What one listener call may use. Default 100 ms.
+    /// What one listener call may use. Default [`ENTRY_BUDGET`].
     pub entry_budget: Duration,
-    /// What one frame's dispatch may use, all listener calls together. Default 500 ms.
+    /// What one frame's dispatch may use, all listener calls together. Default [`FRAME_BUDGET`].
     pub frame_budget: Duration,
     /// A directory to read the stock `gnoblin` modules from instead of the copies compiled in (the layout of
     /// `data/js/gnoblin`). A module missing from it is the compiled-in one. `None` runs the compiled-in library.
@@ -101,12 +102,13 @@ pub struct JsShellConfig {
 }
 
 impl JsShellConfig {
-    /// The defaults of the retired shell: 100 ms per listener call, 500 ms per frame.
+    /// The product budgets of `crate::budget`: a listener call, a frame and a module load each have a limit set well
+    /// above what a loaded machine needs.
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self {
             js: JsConfig::new(root),
-            entry_budget: Duration::from_millis(100),
-            frame_budget: Duration::from_millis(500),
+            entry_budget: ENTRY_BUDGET,
+            frame_budget: FRAME_BUDGET,
             stock_dir: None,
             xr_declared: false,
             clock: Arc::new(JsSystemClock),
@@ -669,7 +671,9 @@ impl JsShell {
     ///
     /// The stock config threw (a bug in the library) or the link failed.
     pub fn load_default_config(&mut self) -> Result<Vec<String>, JsShellError> {
-        self.call_entry(self.entry_budget, |entry| {
+        // A load, like `load_entry`, so it has the stage budget: it evaluates the whole starter, which took as long as
+        // any config under load, and a listener call's budget would interrupt it.
+        self.call_entry(self.js.stage_budget, |entry| {
             entry.get::<_, Function<'_>>("loadDefault")?.call::<_, ()>(())
         })?;
         self.finish_load()?;

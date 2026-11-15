@@ -103,12 +103,12 @@ Your code runs in the shell's own JavaScript engine, not in a browser or Node.
 
 Every call into your code has a time budget, and the first limit reached stops it.
 
-| Entry                                   | Limit     | When it goes past                                    |
-| --------------------------------------- | --------- | ---------------------------------------------------- |
-| Loading the file and its imports        | 5 seconds | The load fails and the old config keeps running.     |
-| One listener, handler, binding or timer | 100 ms    | It is stopped and reported. The frame goes on.       |
-| One frame, all its handlers together    | 500 ms    | The call that passes it is interrupted and reported. |
-| Memory of the config's script engine    | 64 MiB    | The allocation fails and the call is reported.       |
+| Entry                                   | Limit      | When it goes past                                    |
+| --------------------------------------- | ---------- | ---------------------------------------------------- |
+| Loading the file and its imports        | 30 seconds | The load fails and the old config keeps running.     |
+| One listener, handler, binding or timer | 1 second   | It is stopped and reported. The frame goes on.       |
+| One frame, all its handlers together    | 5 seconds  | The call that passes it is interrupted and reported. |
+| Memory of the config's script engine    | 64 MiB     | The allocation fails and the call is reported.       |
 
 A handler that throws is reported once by name and with its line, and the other handlers still run. After several stops in
 a short time the shell stops starting the config again until a cool-down has passed or you reload on purpose. The

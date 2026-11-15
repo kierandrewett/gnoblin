@@ -21,6 +21,7 @@ use rquickjs::context::intrinsic;
 use rquickjs::convert::Coerced;
 use rquickjs::{Context, Ctx, Error, Exception, FromJs, Module, Runtime, Value};
 
+use crate::budget::STAGE_BUDGET;
 use crate::error::{JsError, JsErrorKind, JsLoadError, JsLocation};
 use crate::loader::{JsLoadState, JsLoader, JsResolver};
 use crate::script_console::{JsConsoleLine, JsScriptConsole};
@@ -45,12 +46,12 @@ pub struct JsConfig {
 }
 
 impl JsConfig {
-    /// The defaults of design/js-runtime.md: a 5 s staging budget, a 64 MiB heap and a 512 KiB stack.
+    /// The defaults of design/js-runtime.md: the staging budget of `crate::budget`, a 64 MiB heap and a 512 KiB stack.
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self {
             root: root.into(),
             embedded: Arc::new(HashMap::new()),
-            stage_budget: Duration::from_secs(5),
+            stage_budget: STAGE_BUDGET,
             memory_limit: 64 << 20,
             max_stack_size: 512 << 10,
             clock: Arc::new(JsSystemClock),

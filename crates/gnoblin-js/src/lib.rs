@@ -28,6 +28,7 @@
 //!   dry run of `gnoblinctl check`.
 
 mod bindings;
+mod budget;
 mod config;
 mod console;
 mod dialogs;
@@ -57,6 +58,7 @@ mod watch;
 mod workspaces;
 mod xr;
 
+pub use budget::{ENTRY_BUDGET, FRAME_BUDGET, STAGE_BUDGET};
 pub use config::{JsClientConfigLink, JsCommitLog, JsCommitRecord, JsConfigCommit, JsConfigLink, JsLinkError};
 pub use console::{
     CONSOLE_FILE, CONSOLE_SOCKET, CONSOLE_VARIABLE, DEFAULT_MAX_BYTES, JsConsole, JsConsoleError, JsConsoleSite,

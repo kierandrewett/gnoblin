@@ -331,8 +331,8 @@ collection)` at once for each member already in the collection, in collection or
   frame raise one event with the last value, and the echo of the script's own write raises an event like any
   other change. A window made in a frame is born with its final values and raises no change event. A node that
   was there at boot raises no `onAdded`. Order per client: title, focus, geometry; then membership changes.
-- **Errors and budgets.** A listener runs under its own budget (`entry_budget`, 100 ms), the frame's dispatch under
-  `frame_budget` (500 ms); queued calls that do not fit wait for the next frame. A throw is caught in the module,
+- **Errors and budgets.** A listener runs under its own budget (`entry_budget`, `ENTRY_BUDGET`, 1 s), the frame's dispatch
+  under `frame_budget` (`FRAME_BUDGET`, 5 s); queued calls that do not fit wait for the next frame. A throw is caught in the module,
   returned as a diagnostic with the `.ts` location, and reported once per site (listener class, method and
   position); the next listener still runs. A budget or memory trip stops that one call, is reported, and counts a
   strike (`JsShell::strikes`); the next call still runs. What to do about strikes is the supervisor's.
@@ -584,7 +584,7 @@ compositor stands in only for the unit tests of `swap_generation` (`crates/gnobl
 - **Failure.** A syntax error, a throw, a budget trip while loading or a stage that is rejected keeps the running
   generation and logs one warning, `the running generation stays: <file>:<line>:<column>: <message>`, in the
   author's `.ts` coordinates. The file the error named stays watched, so the edit that fixes it is seen.
-- **Runaway handlers.** A listener call that runs past `entry_budget` (100 ms) is interrupted, reported, and counts a
+- **Runaway handlers.** A listener call that runs past `entry_budget` (1 s) is interrupted, reported, and counts a
   strike on the shell. The role then asks the supervisor: it restages the generation from disk, and three strikes in
   30 s latch `Degraded`, after which the last generation keeps running and a deliberate reload (a save, or
   `JsRole::reload_now`) clears the strikes. The shell is a process of its own, so the compositor never waits for a
@@ -1412,7 +1412,7 @@ introspection tools of owner-spec section 18.
   writes (`gnoblin.clients.at(0).x = 10`) leave in the very next frame's transaction. At most four expressions are
   evaluated per turn, and a connection that has not read its replies is not evaluated for. The cost is the loop's own
   cadence: a request waits for the next turn.
-- **Budget, no strike.** An expression runs under `JsShellConfig::entry_budget` (100 ms), the listeners' budget (not the
+- **Budget, no strike.** An expression runs under `JsShellConfig::entry_budget` (1 s), the listeners' budget (not the
   2 s the research note suggested for a REPL: a console that holds the shell for 2 s is a visible stall). A trip answers
   with a `budget` error and is not counted as a strike (`console_target` does not call `count_strike`): the person at the
   prompt is not a listener the supervisor should restage the generation over, and the restage would drop the session.
@@ -1732,8 +1732,9 @@ busy loops per CPU run beside it passes. Both are the proof a change to these te
   `tests/common` build one (`timed_config`, `Rig::advance`), so a test of a slide or an arming window says how much time
   passed, and no real time does.
 - **An honest script gets `HONEST_BUDGET`, 5 s,** for each call and 10 s for a frame (`honest_config`, and
-  `honest_role_config` for a role). The product's 100 ms per listener call and 500 ms per frame are a limit on a script
-  that hangs the shell, not on a machine that did not schedule the thread for a tenth of a second.
+  `honest_role_config` for a role). The product's budgets (`src/budget.rs`: 1 s per listener call, 5 s per frame, 30 s per module
+  load) are a limit on a script that hangs the shell, and are set above what a loaded machine needs; see "Product
+  budgets" below for the measurements.
 - **A test about a budget runs a script that never ends,** under a short budget (`RUNAWAY_BUDGET`, 500 ms: not shorter,
   because the honest calls the same budget covers must not be able to trip it), and asserts that the script was
   interrupted, never when. A script that must outlast a frame budget outlasts it by a factor of two, and the frame budget
@@ -1744,6 +1745,40 @@ busy loops per CPU run beside it passes. Both are the proof a change to these te
 - **Real time stays only where the code under test reads the real clock:** a file watcher's debounce (one second in the
   tests: the burst is written in microseconds, and a stall longer than the debounce would split it) and a spawned
   process's own timeout. Those tests wait for a state, with a deadline of seconds.
+
+## Product budgets
+
+Lane SmallSafety. The call budgets of `crates/gnoblin-js/src/budget.rs` bound a script that hangs the shell. They are
+wall-clock limits, so a machine that does not schedule the thread trips them as a loop does, and three strikes in 30 s
+stop the generation (`JsStrikePolicy`). The product used to carry 5 s to load a module, 100 ms per listener call and
+500 ms per frame; they are now named constants, `STAGE_BUDGET` (30 s), `ENTRY_BUDGET` (1 s) and `FRAME_BUDGET` (5 s),
+and `JsConfig::new` and `JsShellConfig::new` take their defaults from them.
+
+What they guard was measured by `crates/gnoblin-js/tests/budgets.rs` (ignored; read the numbers, not a pass), release
+build, the stock desktop with 40 windows and 300 frames of title changes and new windows, on a 4-CPU Agent37 instance.
+"2 busy" and "4 busy" are busy-loop threads per CPU, which is a build running beside the desktop.
+
+| Run                     | Library install | Load the starter | Load the stock default | Frame p50 / p99 / max   |
+| ----------------------- | --------------- | ---------------- | ---------------------- | ----------------------- |
+| Idle                    | 0.12 s          | 12 ms            | 14 ms                  | 9 / 44 / 71 ms          |
+| 2 busy, the old budgets | 7.6 s           | 1.7 s            | not measured           | 39 ms / 0.92 s / 1.25 s |
+| 2 busy, the new budgets | 7.2 s           | 2.0 s            | 1.2 s                  | 31 ms / 0.84 s / 1.15 s |
+| 4 busy, the new budgets | 12.7 s          | 2.2 s            | 2.7 s                  | 61 ms / 1.3 s / 1.5 s   |
+
+- **With the old budgets, two busy threads per CPU tripped the frame budget 7 times in 300 frames** (the UI pass was
+  interrupted at 500 ms), which is more than the three strikes in 30 s that stop a generation. A debug build tripped it
+  26 times. Idle, nothing came near a limit: the work of a frame is milliseconds, and only the scheduler stretches it.
+- **Loading the stock default config was under the listener-call budget by mistake.** It evaluates the whole starter,
+  as loading a user's `init.ts` does, and took 1.2 to 2.7 s under load against a 100 ms limit. It now runs under the stage
+  budget (`load_default_config`; `the_stock_default_config_is_a_load_and_runs_under_the_stage_budget`).
+- **The new values leave room.** With them no budget fired at two busy threads per CPU in release or in debug, or at
+  four in release, so no listener call reached 1 s and no frame call reached 5 s. The worst whole frame was 1.5 s at
+  four busy threads per CPU, so 5 s is more than three times that, and 30 s is more than twice the 12.7 s the library
+  took to install at four. The listener-call limit is below the 2 s lease the lock screen holds on the shell
+  (`LOCK_UI_LEASE_MS`), so the shell is not stuck in one listener while the compositor takes the lock screen back.
+- **Not changed.** `HOST_INSTALL_BUDGET` (the 5 s floor on installing the bundled library, which only matters when a
+  test shortens `stage_budget`), `DOCUMENT_BUDGET` (the 1 s of the `gnoblinctl check` dry run, which is a command and not
+  the session; under load a check can run out of it) and the honest-test budgets above.
 
 ## Live verification
 
