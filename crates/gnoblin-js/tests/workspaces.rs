@@ -292,8 +292,8 @@ fn rig(comp: &Comp, init: &str) -> Rig {
     }
 }
 
-const PRELUDE: &str = "import { Workspace, Layout, FloatingLayout, MasterStackLayout, GridLayout, CollectionListener, \
-                       defineConfig } from \"gnoblin\";\n\
+const PRELUDE: &str = "import { Workspace, Layout, FloatingLayout, MasterStackLayout, GridLayout, CollectionListener } \
+                       from \"gnoblin\";\n\
                        const g = globalThis as any;\n\
                        g.g = g;\n\
                        g.computes = 0;\n";
@@ -361,7 +361,7 @@ fn workspaces_are_a_mutable_collection_of_objects_a_script_makes() {
 }
 
 #[test]
-fn a_config_with_no_workspace_gets_one_floating_desktop_and_define_config_makes_real_ones() {
+fn a_config_with_no_workspace_gets_one_floating_desktop_and_declared_workspaces_replace_it() {
     let comp = compositor(false);
     let mut bare = rig(&comp, &init("export {};"));
     assert_eq!(
@@ -370,27 +370,11 @@ fn a_config_with_no_workspace_gets_one_floating_desktop_and_define_config_makes_
     );
     drop(bare);
     comp.borrow_mut().queue.clear();
-    // `defineConfig` layers the stock keys in and binds them on the first seat, so this rig has a seat.
-    comp.borrow_mut().nodes.insert(
-        100,
-        Node {
-            class: "seat".into(),
-            parent: 1,
-            props: BTreeMap::from([
-                ("name".to_owned(), MirrorValue::Text("seat0".into())),
-                ("pointer_x".to_owned(), MirrorValue::Double(0.0)),
-                ("pointer_y".to_owned(), MirrorValue::Double(0.0)),
-                ("device".to_owned(), MirrorValue::Texts(Vec::new())),
-            ]),
-        },
-    );
     let mut declared = rig(
         &comp,
         &init(
-            "export default defineConfig({\n\
-             \x20   gaps: { inner: 4 },\n\
-             \x20   workspaces: [{ id: 'a', layout: 'master-stack' }, { id: 'b', layout: new GridLayout() }],\n\
-             });\n",
+            "gnoblin.workspaces.add(new Workspace({ id: 'a', layout: new MasterStackLayout({ gap: 4 }), gaps: { inner: 4 } }));\n\
+             gnoblin.workspaces.add(new Workspace({ id: 'b', layout: new GridLayout(), gaps: { inner: 4 } }));\n",
         ),
     );
     assert_eq!(

@@ -42,7 +42,7 @@ import { emit, thrown } from "harness";
 import {
     focusSettings, seatFocusSettings, opensFocused, hoverFocus, autoRaiseSeconds, REST_SECONDS, restFocus,
     leaveClears, focusDecision, compileRules, effectsFor, matchingRules, edgeTilingEnabled, edgeZone, tileRect,
-    desugarConfig, ClientResizeBinding, ClientMoveBinding,
+    ClientResizeBinding, ClientMoveBinding,
 } from "gnoblin";
 "#;
 
@@ -447,53 +447,6 @@ fn a_query_can_read_the_focus_and_the_workspace_of_the_window() {
     "#
     ));
     assert_eq!(got, "true,undefined,2,true,undefined,undefined,0.5");
-}
-
-#[test]
-fn desugaring_a_config_checks_the_rules_the_focus_keys_and_the_seat_overrides() {
-    // New: the retired shell read these from the seat and compiled the rules on first use.
-    let got = run(r#"
-        const bad = (config: any) => thrown(() => desugarConfig(config));
-        const plan = desugarConfig({
-            rules: [{ appId: /^org\./, workspace: "dev", reapply: true }],
-            workspaces: [{ id: "dev" }],
-            focus: { mode: "sloppy", autoRaise: undefined },
-            edgeTiling: true,
-            dragConstraint: "minimum_strip",
-        });
-        const bare = desugarConfig({});
-        emit([
-            plan.rules.length,
-            String(plan.rules[0].appId),
-            JSON.stringify(plan.focus),
-            plan.edgeTiling,
-            plan.dragConstraint,
-            JSON.stringify(bare.focus) + " " + bare.edgeTiling + " " + bare.dragConstraint,
-            bad({ workspaces: [{ id: "a" }], rules: [{ appId: "x", workspace: "b" }] }),
-            bad({ focus: { mode: "bogus" } }),
-            bad({ focus: { raiseOnClick: 1 } }),
-            bad({ edgeTiling: "yes" }),
-            bad({ dragConstraint: "loose" }),
-            bad({ rules: [{ appId: "x", style: { opacity: 2 } }] }),
-        ].join("\n"));
-    "#);
-    assert_eq!(
-        got,
-        lines(&[
-            "1",
-            "/^org\\./",
-            "{\"mode\":\"sloppy\"}",
-            "true",
-            "minimum_strip",
-            "{} null null",
-            "Error: rules[0].workspace: moves to workspace \"b\", which the config does not declare",
-            "TypeError: config.focus.mode must be click, sloppy or follow-mouse, got bogus",
-            "TypeError: config.focus.raiseOnClick must be a boolean, got 1",
-            "TypeError: config.edgeTiling: must be true or false",
-            "TypeError: config.dragConstraint must be work_area or minimum_strip, got loose",
-            "TypeError: rules[0].style.opacity: must be a number from 0 to 1, got 2",
-        ])
-    );
 }
 
 // -- edge snapping, pure ------------------------------------------------------------------------------------
@@ -1025,7 +978,7 @@ impl Rig {
 }
 
 const PRELUDE: &str = r#"import {
-    gnoblin, defineConfig, Layout, FloatingLayout, MasterStackLayout, ClientMoveBinding, ClientResizeBinding,
+    gnoblin, Workspace, Layout, FloatingLayout, ClientMoveBinding, ClientResizeBinding,
     snapClient, unsnapClient, snappedZone,
 } from "gnoblin";
 (globalThis as any).lib = { snapClient, unsnapClient, snappedZone };
@@ -1051,11 +1004,16 @@ fn boot(comp: &Comp, init: &str) -> Rig {
     rig
 }
 
-/// One workspace whose layout places nothing, so a window stays wherever a rule or the compositor put it.
-const BASE: &str = "workspaces: [{ id: \"main\", layout: new Layout() }]";
+/// One workspace whose layout places nothing, so a window stays wherever the compositor put it. The shell has no stock
+/// workspaces here: an `init.ts` declares what it wants.
+const BASE: &str = "gnoblin.workspaces.add(new Workspace({ id: \"main\", layout: new Layout() }));\n";
 
-fn config(keys: &str) -> String {
-    format!("defineConfig({{ {BASE}, {keys} }});\n")
+/// One floating workspace: a window can be dragged and snapped on it.
+const FLOATING: &str = "gnoblin.workspaces.add(new Workspace({ id: \"main\", layout: new FloatingLayout() }));\n";
+
+/// The `init.ts` of a case: the one workspace of [`BASE`], then `statements`.
+fn config(statements: &str) -> String {
+    format!("{BASE}{statements}")
 }
 
 fn flag(value: bool) -> MirrorValue {
@@ -1085,17 +1043,6 @@ fn a_new_window_takes_focus_and_a_window_from_before_the_config_does_not() {
 }
 
 #[test]
-fn a_rule_can_keep_a_new_window_from_taking_focus() {
-    // New: `skipFocus`. The rule runs before the focus policy hears of the window.
-    let comp = world(vec![]);
-    let mut rig = boot(&comp, &config("rules: [{ appId: \"pinentry*\", skipFocus: true }]"));
-    comp.new_window(8, "pinentry-gnome3", "passphrase");
-    comp.new_window(9, "kitty", "shell");
-    rig.frame();
-    assert_eq!(comp.ops(), ["set:5.focus=9"]);
-}
-
-#[test]
 fn a_click_focuses_the_window_and_raises_it_when_raise_on_click_is_on() {
     // Before: `Window:on_press` (retired corpus shell covers the wiring there). Window 4 is already on top, so it is focused
     // and not raised; window 3 is raised by being put last under the root.
@@ -1112,27 +1059,14 @@ fn a_click_focuses_the_window_and_raises_it_when_raise_on_click_is_on() {
 }
 
 #[test]
-fn a_click_only_focuses_when_the_seat_says_raise_on_click_is_off_and_the_config_can_override_it() {
+fn a_click_only_focuses_when_the_seat_says_raise_on_click_is_off() {
     let comp = world(vec![("raise_on_click", flag(false))]);
-    let mut rig = boot(&comp, &config(""));
+    let mut rig = boot(&comp, BASE);
     comp.edge(3, "press");
     rig.frame();
     assert_eq!(comp.ops(), ["set:5.focus=3"], "the seat's raise_on_click is false");
     comp.edge(3, "release");
     rig.frame();
-    let comp = world(vec![("raise_on_click", flag(false))]);
-    let mut rig = rig_over(&comp, "focus: { raiseOnClick: true }");
-    comp.edge(3, "press");
-    rig.frame();
-    assert_eq!(
-        comp.ops(),
-        ["set:5.focus=3", "insert:3->1"],
-        "the config's key wins over the seat's"
-    );
-}
-
-fn rig_over(comp: &Comp, keys: &str) -> Rig {
-    boot(comp, &config(keys))
 }
 
 #[test]
@@ -1188,25 +1122,6 @@ fn follow_mouse_focuses_on_entry_only_and_clears_focus_when_the_pointer_leaves_t
         comp.ops(),
         ["set:5.focus=0"],
         "window 4 has the focus and the pointer left it"
-    );
-}
-
-#[test]
-fn the_configs_focus_mode_wins_over_the_seats() {
-    // New: `focus` in the config overrides what the seat publishes, key by key.
-    let comp = world(seat("hover"));
-    let mut rig = boot(&comp, &config("focus: { mode: \"click\" }"));
-    comp.edge(4, "enter");
-    rig.frame();
-    assert!(comp.ops().is_empty(), "the config says click");
-    let comp = world(vec![]);
-    let mut rig = boot(&comp, &config("focus: { mode: \"sloppy\" }"));
-    comp.edge(4, "enter");
-    rig.frame();
-    assert_eq!(
-        comp.ops(),
-        ["set:5.focus=4"],
-        "the seat says click and the config says sloppy"
     );
 }
 
@@ -1273,10 +1188,11 @@ fn auto_raise_is_off_by_default_and_a_window_that_lost_focus_is_not_raised() {
     rig.frame();
     assert!(comp.ops().is_empty(), "auto_raise is false");
     let comp = world(vec![
+        ("focus_mode", text("hover")),
         ("auto_raise", flag(true)),
         ("auto_raise_delay", MirrorValue::Int(40)),
     ]);
-    let mut rig = boot(&comp, &config("focus: { mode: \"sloppy\" }"));
+    let mut rig = boot(&comp, BASE);
     comp.edge(3, "enter");
     rig.frame();
     assert_eq!(comp.ops(), ["set:5.focus=3"]);
@@ -1309,262 +1225,6 @@ fn a_pointer_rest_focuses_after_the_rest_time_and_a_leave_cancels_it() {
     rig.advance(260);
     rig.frame();
     assert!(comp.ops().is_empty(), "the pointer left before it rested");
-}
-
-// -- window rules, through the shell ------------------------------------------------------------------------
-
-#[test]
-fn a_rule_places_a_new_window_of_one_app_and_leaves_another_alone() {
-    let comp = world(vec![]);
-    let mut rig = boot(
-        &comp,
-        &config("rules: [{ appId: \"term*\", position: { x: 300, y: 200 }, size: { width: 400, height: 300 } }]"),
-    );
-    comp.new_window(8, "term-a", "one");
-    comp.new_window(9, "kitty", "two");
-    rig.frame();
-    assert_eq!(comp.rect(8), "300,200,400,300");
-    assert_eq!(
-        comp.rect(9),
-        "0,0,0,0",
-        "the other window is where the compositor put it"
-    );
-    assert_eq!(
-        rig.eval("gnoblin.clients.get('8').floatingBounds.x"),
-        "300",
-        "the layout keeps it there"
-    );
-}
-
-#[test]
-fn a_rule_does_not_touch_a_window_the_shell_found_at_boot() {
-    // New: a reload does not move the windows the user has placed.
-    let comp = world(vec![]);
-    let _rig = boot(
-        &comp,
-        &config("rules: [{ appId: \"foot\", secure: true, position: { x: 1, y: 2 } }]"),
-    );
-    assert!(!comp.flag(3, "secure"));
-    assert_eq!(comp.rect(3), "10,20,300,200");
-}
-
-#[test]
-fn a_workspace_rule_moves_a_new_window_to_the_workspace_it_names() {
-    // Before: "a workspace rule moves the window to the workspace it names".
-    let comp = world(vec![]);
-    let mut rig = boot(
-        &comp,
-        "defineConfig({ workspaces: [{ id: \"a\", layout: new Layout() }, { id: \"b\", layout: new Layout() }],\n\
-         rules: [{ appId: \"term\", workspace: \"b\" }] });\n",
-    );
-    comp.new_window(8, "term", "shell");
-    comp.new_window(9, "other", "shell");
-    rig.frame();
-    assert_eq!(rig.eval("gnoblin.clients.get('8').workspace.id"), "b");
-    assert_eq!(
-        rig.eval("gnoblin.clients.get('9').workspace.id"),
-        "a",
-        "the first workspace is where a window opens"
-    );
-}
-
-#[test]
-fn a_rule_that_names_a_workspace_the_script_removed_is_reported_once_and_leaves_the_window() {
-    // Before: "a rule naming a missing workspace is reported once and the window stays where it is". The config refuses
-    // a workspace it does not declare, so this one is declared and then removed by the script.
-    let comp = world(vec![]);
-    let mut rig = boot(
-        &comp,
-        "defineConfig({ workspaces: [{ id: \"a\", layout: new Layout() }, { id: \"b\", layout: new Layout() }],\n\
-         rules: [{ appId: \"term\", workspace: \"b\" }] });\n\
-         gnoblin.workspaces.remove(\"b\");\n",
-    );
-    comp.new_window(8, "term", "shell");
-    let diagnostics = rig.shell.frame().expect("a frame").diagnostics;
-    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
-    assert!(diagnostics[0].contains("workspace \"b\""), "{}", diagnostics[0]);
-    assert_eq!(rig.eval("gnoblin.clients.get('8').workspace.id"), "a");
-    let diagnostics = rig.shell.frame().expect("a frame").diagnostics;
-    assert!(
-        diagnostics.is_empty(),
-        "a frame with no change does not report again: {diagnostics:?}"
-    );
-}
-
-#[test]
-fn a_rule_follows_the_app_id_and_undoes_itself_when_it_stops_matching() {
-    // Before: "a rule that stops matching clears secure", "an app_id that newly matches a rule applies it".
-    let comp = world(vec![]);
-    let mut rig = boot(&comp, &config("rules: [{ appId: \"bank\", secure: true }]"));
-    comp.new_window(8, "notes", "x");
-    comp.new_window(9, "bank", "x");
-    rig.frame();
-    assert!(!comp.flag(8, "secure"), "no rule matches the first app id");
-    assert!(
-        comp.flag(9, "secure"),
-        "the rule sets secure on a window that opens as the bank"
-    );
-    comp.external(8, "app_id", text("bank"));
-    rig.frame();
-    assert!(comp.flag(8, "secure"), "the new app id matches the rule");
-    comp.external(9, "app_id", text("notes"));
-    rig.frame();
-    assert!(!comp.flag(9, "secure"), "secure must clear once no rule matches");
-    assert_eq!(
-        comp.ops().iter().filter(|op| op.starts_with("set:9.secure")).count(),
-        2,
-        "set, then cleared"
-    );
-}
-
-#[test]
-fn a_rule_follows_the_title() {
-    // Before: "a title change re-evaluates the rules: secure follows the new title".
-    let comp = world(vec![]);
-    let mut rig = boot(&comp, &config("rules: [{ title: \"Secret*\", secure: true }]"));
-    comp.new_window(8, "mail", "Inbox");
-    rig.frame();
-    assert!(!comp.flag(8, "secure"), "no rule matches the first title");
-    comp.external(8, "title", text("Secret plans"));
-    rig.frame();
-    assert!(comp.flag(8, "secure"), "the new title must match the rule");
-}
-
-#[test]
-fn a_rule_reads_the_focus_again_when_it_changes() {
-    // Before: the rules are a binding, so `arrange` runs again when a rule's inputs (title, app id, focus, workspace)
-    // change. Window 8 opens while window 3 holds the focus, so the rule matches; the focus policy then gives 8 the
-    // focus and the rule stops matching; when 3 has it again the rule matches again.
-    let comp = world(vec![]);
-    let mut rig = boot(
-        &comp,
-        &config("rules: [{ appId: \"foo\", focused: false, secure: true }]"),
-    );
-    comp.new_window(8, "foo", "x");
-    rig.frame();
-    comp.external(3, "focused", flag(false));
-    comp.external(8, "focused", flag(true));
-    rig.frame();
-    assert!(
-        !comp.flag(8, "secure"),
-        "a focused window does not match `focused: false`"
-    );
-    comp.external(5, "focus", MirrorValue::Node(3));
-    comp.external(8, "focused", flag(false));
-    comp.external(3, "focused", flag(true));
-    rig.frame();
-    assert!(comp.flag(8, "secure"), "the rule matches again once the focus has gone");
-}
-
-#[test]
-fn a_rule_with_reapply_false_applies_once_when_the_window_appears() {
-    // New: `reapply: false` opts a rule out of what the retired rules always did.
-    let comp = world(vec![]);
-    let mut rig = boot(
-        &comp,
-        &config("rules: [{ title: \"Secret*\", secure: true, reapply: false }]"),
-    );
-    comp.new_window(8, "mail", "Inbox");
-    rig.frame();
-    comp.external(8, "title", text("Secret plans"));
-    rig.frame();
-    assert!(!comp.flag(8, "secure"), "the title changed after the rule was read");
-    comp.new_window(9, "mail", "Secret plans");
-    rig.frame();
-    assert!(comp.flag(9, "secure"), "a window that opens with the title matches");
-}
-
-#[test]
-fn re_applying_rules_that_still_match_writes_nothing() {
-    // Before: "re-applying unchanged rules writes nothing to the core".
-    let comp = world(vec![]);
-    let mut rig = boot(&comp, &config("rules: [{ title: \"Secret*\", secure: true }]"));
-    comp.new_window(8, "mail", "Secret one");
-    rig.frame();
-    rig.frame();
-    comp.ops();
-    comp.external(8, "title", text("Secret two"));
-    rig.frame();
-    rig.frame();
-    let ops = comp.ops();
-    assert!(ops.is_empty(), "the rule matched before and after: {ops:?}");
-}
-
-#[test]
-fn a_rule_can_maximise_fullscreen_and_dim_a_window() {
-    // Before: "a maximised rule fills the work area, not only sets the flag", "an opacity rule sets the window's
-    // opacity", over the 1000 by 800 screen. New: fullscreen goes first and a fullscreen window does not maximise.
-    let comp = world(vec![]);
-    let mut rig = boot(
-        &comp,
-        &config(
-            "rules: [\n\
-               { appId: \"big\", maximised: true },\n\
-               { appId: \"dim\", style: { opacity: 0.5, cornerRadius: 12 } },\n\
-               { appId: \"full\", fullscreen: true, maximised: true },\n\
-             ]",
-        ),
-    );
-    comp.new_window(8, "big", "x");
-    comp.new_window(9, "dim", "x");
-    comp.new_window(10, "full", "x");
-    rig.frame();
-    assert!(comp.flag(8, "maximised"));
-    assert_eq!(comp.rect(8), "0,0,1000,800", "the window fills the work area");
-    assert_eq!(comp.number(9, "opacity"), 0.5);
-    assert!(!comp.flag(9, "maximised"));
-    assert!(comp.flag(10, "fullscreen"));
-    assert!(!comp.flag(10, "maximised"), "a fullscreen window does not maximise");
-    assert_eq!(comp.rect(10), "0,0,1000,800");
-}
-
-#[test]
-fn every_matching_rule_applies_and_the_later_wins_until_a_first_rule_ends_the_list() {
-    // Before: "rules merge in list order: the last matching rule wins for each field, the others are kept".
-    let comp = world(vec![]);
-    let mut rig = boot(
-        &comp,
-        &config(
-            "rules: [\n\
-               { appId: \"foo\", fullscreen: true },\n\
-               { appId: \"foo\", secure: true },\n\
-               { appId: \"foo\", fullscreen: false, first: true },\n\
-               { appId: \"foo\", maximised: true },\n\
-             ]",
-        ),
-    );
-    comp.new_window(8, "foo", "x");
-    rig.frame();
-    assert!(comp.flag(8, "secure"), "secure from the middle rule is kept");
-    assert!(
-        !comp.flag(8, "fullscreen"),
-        "the later rule's fullscreen wins over the earlier true"
-    );
-    assert!(!comp.flag(8, "maximised"), "the rule after the first rule never ran");
-}
-
-#[test]
-fn a_floating_rule_keeps_a_window_out_of_the_tiling() {
-    // New: `floating`. Two windows tile in the master-stack layout; the pinned one keeps its place.
-    let comp = world(vec![]);
-    let mut rig = boot(
-        &comp,
-        "defineConfig({ workspaces: [{ id: \"tiles\", layout: new MasterStackLayout() }],\n\
-         rules: [{ appId: \"pin\", floating: true, position: { x: 700, y: 500 }, size: { width: 200, height: 100 } }] });\n",
-    );
-    assert_eq!(comp.rect(3), "0,0,500,800");
-    assert_eq!(comp.rect(4), "500,0,500,800");
-    comp.new_window(8, "pin", "x");
-    rig.frame();
-    rig.frame();
-    assert_eq!(
-        comp.rect(8),
-        "700,500,200,100",
-        "the layout does not place a floating window"
-    );
-    assert_eq!(comp.rect(3), "0,0,500,800", "the tiles are as they were");
-    assert_eq!(comp.rect(4), "500,0,500,800");
-    assert_eq!(rig.eval("String(gnoblin.clients.get('8').floating)"), "true");
 }
 
 // -- edge snapping, through the shell -----------------------------------------------------------------------
@@ -1659,10 +1319,7 @@ fn dropping_a_dragged_window_on_an_edge_tiles_it_when_the_seat_has_edge_tiling_o
     // Before: `drag` ends with `Snap.edge_zone(s.x, s.y, work_area(), EDGE_MARGIN)` and `w:snap(zone)`; a 1000 by 800
     // work area, the default margin of 4.
     let comp = world(vec![("edge_tiling", flag(true))]);
-    let mut rig = boot(
-        &comp,
-        "defineConfig({ workspaces: [{ id: \"main\", layout: new FloatingLayout() }] });\n",
-    );
+    let mut rig = boot(&comp, FLOATING);
     drag_to(&comp, &mut rig, (2.0, 300.0));
     assert_eq!(comp.rect(3), "0,0,500,800", "the left edge tiles to the left half");
     assert_eq!(rig.eval("lib.snappedZone(gnoblin.clients.get('3'))"), "left");
@@ -1677,10 +1334,7 @@ fn dropping_a_dragged_window_on_an_edge_tiles_it_when_the_seat_has_edge_tiling_o
 fn a_drop_on_an_edge_is_only_a_move_when_edge_tiling_is_off() {
     // Before: "edge tiling is off by default".
     let comp = world(vec![]);
-    let mut rig = boot(
-        &comp,
-        "defineConfig({ workspaces: [{ id: \"main\", layout: new FloatingLayout() }] });\n",
-    );
+    let mut rig = boot(&comp, FLOATING);
     drag_to(&comp, &mut rig, (2.0, 300.0));
     assert_eq!(
         comp.rect(3),
@@ -1690,34 +1344,14 @@ fn a_drop_on_an_edge_is_only_a_move_when_edge_tiling_is_off() {
     assert_eq!(rig.eval("String(lib.snappedZone(gnoblin.clients.get('3')))"), "null");
 }
 
-#[test]
-fn the_configs_edge_tiling_overrides_the_seats() {
-    // New: `defineConfig({ edgeTiling })`.
-    let comp = world(vec![]);
-    let mut rig = boot(
-        &comp,
-        "defineConfig({ edgeTiling: true, workspaces: [{ id: \"main\", layout: new FloatingLayout() }] });\n",
-    );
-    drag_to(&comp, &mut rig, (2.0, 300.0));
-    assert_eq!(comp.rect(3), "0,0,500,800");
-    let comp = world(vec![("edge_tiling", flag(true))]);
-    let mut rig = rig_with_move(&comp, "edgeTiling: false,", "new ClientMoveBinding({ id: \"move\" })");
-    drag_to(&comp, &mut rig, (2.0, 300.0));
-    assert_eq!(
-        comp.rect(3),
-        "0,260,300,200",
-        "the config says off and the seat says on"
-    );
-}
-
 /// A floating workspace whose only binding is `binding`, so a case chooses the move binding's options.
-fn rig_with_move(comp: &Comp, keys: &str, binding: &str) -> Rig {
+fn rig_with_move(comp: &Comp, binding: &str) -> Rig {
     boot(
         comp,
         &format!(
             "const layout = new FloatingLayout({{ triggers: {{ move: null, resize: null }} }});\n\
              layout.bindings.add({binding});\n\
-             defineConfig({{ {keys} workspaces: [{{ id: \"main\", layout }}] }});\n"
+             gnoblin.workspaces.add(new Workspace({{ id: \"main\", layout }}));\n"
         ),
     )
 }
@@ -1726,7 +1360,7 @@ fn rig_with_move(comp: &Comp, keys: &str, binding: &str) -> Rig {
 fn the_move_bindings_snap_option_sets_the_margin_or_turns_snapping_off() {
     // New: `ClientMoveBinding({ snap })`.
     let comp = world(vec![("edge_tiling", flag(true))]);
-    let mut rig = rig_with_move(&comp, "", "new ClientMoveBinding({ id: \"move\" })");
+    let mut rig = rig_with_move(&comp, "new ClientMoveBinding({ id: \"move\" })");
     drag_to(&comp, &mut rig, (10.0, 300.0));
     assert_eq!(
         comp.rect(3),
@@ -1734,11 +1368,11 @@ fn the_move_bindings_snap_option_sets_the_margin_or_turns_snapping_off() {
         "10 pixels from the edge is outside the default margin of 4"
     );
     let comp = world(vec![("edge_tiling", flag(true))]);
-    let mut rig = rig_with_move(&comp, "", "new ClientMoveBinding({ id: \"move\", snap: 12 })");
+    let mut rig = rig_with_move(&comp, "new ClientMoveBinding({ id: \"move\", snap: 12 })");
     drag_to(&comp, &mut rig, (10.0, 300.0));
     assert_eq!(comp.rect(3), "0,0,500,800", "10 pixels is inside a margin of 12");
     let comp = world(vec![("edge_tiling", flag(true))]);
-    let mut rig = rig_with_move(&comp, "", "new ClientMoveBinding({ id: \"move\", snap: false })");
+    let mut rig = rig_with_move(&comp, "new ClientMoveBinding({ id: \"move\", snap: false })");
     drag_to(&comp, &mut rig, (2.0, 300.0));
     assert_eq!(comp.rect(3), "0,260,300,200", "snap: false never tiles");
 }
@@ -1746,10 +1380,7 @@ fn the_move_bindings_snap_option_sets_the_margin_or_turns_snapping_off() {
 #[test]
 fn a_snapped_window_the_user_drags_away_is_no_longer_snapped() {
     let comp = world(vec![("edge_tiling", flag(true))]);
-    let mut rig = boot(
-        &comp,
-        "defineConfig({ workspaces: [{ id: \"main\", layout: new FloatingLayout() }] });\n",
-    );
+    let mut rig = boot(&comp, FLOATING);
     drag_to(&comp, &mut rig, (2.0, 300.0));
     assert_eq!(rig.eval("lib.snappedZone(gnoblin.clients.get('3'))"), "left");
     let id = comp.claim_id("<Super>Button1");
@@ -1774,7 +1405,7 @@ fn rig_with_resize(comp: &Comp, edges: &str) -> Rig {
         &format!(
             "const layout = new FloatingLayout({{ triggers: {{ move: null, resize: null }} }});\n\
              layout.bindings.add(new ClientResizeBinding({{ id: \"resize\", edges: \"{edges}\" }}));\n\
-             defineConfig({{ workspaces: [{{ id: \"main\", layout }}] }});\n"
+             gnoblin.workspaces.add(new Workspace({{ id: \"main\", layout }}));\n"
         ),
     )
 }

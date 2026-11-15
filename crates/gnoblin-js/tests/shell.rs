@@ -382,11 +382,11 @@ fn boot_reads_two_windows_through_gnoblin_clients() {
     let comp = two_windows();
     let mut rig = rig(
         &comp,
-        "import { Client, ClientListener, defineConfig } from \"gnoblin\";\n\
+        "import { Client, ClientListener, FloatingLayout } from \"gnoblin\";\n\
          import * as host from \"gnoblin/host\";\n\
          (globalThis as any).Client = Client;\n\
          (globalThis as any).same = host.Client === Client && host.ClientListener === ClientListener;\n\
-         (globalThis as any).stock = typeof defineConfig;\n",
+         (globalThis as any).stock = typeof FloatingLayout;\n",
     );
     assert_eq!(
         rig.eval("[same, stock].join()"),
@@ -1522,7 +1522,8 @@ fn the_inspector_helpers_return_plain_data() {
     let comp = two_windows();
     let mut rig = rig(
         &comp,
-        "import { defineConfig } from \"gnoblin\";\ndefineConfig({ gaps: { inner: 7 } });\n",
+        "import { Workspace, FloatingLayout } from \"gnoblin\";\n\
+         for (const id of [\"1\", \"2\", \"3\", \"4\"]) gnoblin.workspaces.add(new Workspace({ id, layout: new FloatingLayout() }));\n",
     );
     rig.frame();
     let dir = tempfile::tempdir().expect("a temp dir");
@@ -1555,20 +1556,10 @@ fn the_inspector_helpers_return_plain_data() {
         &json!([]),
         "a tree with no seat binds nothing"
     );
-
-    let config = prompt.ask("inspect.config()", &mut serve);
-    let config = value_of(&config);
-    assert_eq!(config["gaps"]["inner"], json!(7), "the user's value");
-    assert_eq!(
-        config["workspaces"][0]["id"],
-        json!("1"),
-        "the stock workspace the user left alone"
-    );
-    assert_eq!(config["keys"]["XF86AudioMute"]["kind"], json!("spawn"), "a stock key");
 }
 
 #[test]
-fn a_shell_whose_entry_never_called_define_config_has_no_effective_config() {
+fn a_shell_whose_entry_is_spec_style_has_no_effective_config() {
     let comp = two_windows();
     let rig = rig(&comp, "export {};\n");
     let config = evaluate_in(&rig.shell, "inspect.config()", 65536).expect("it renders");

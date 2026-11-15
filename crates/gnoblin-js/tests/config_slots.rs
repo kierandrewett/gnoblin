@@ -1,4 +1,5 @@
-//! `defineConfig` document settings, `on` and `setup`, and `gnoblin.dialogs`, over a fake compositor.
+//! The document settings a script's device objects write, `ClientListener`s on `gnoblin.clients`, and `gnoblin.dialogs`,
+//! over a fake compositor.
 //!
 //! The tree is a trimmed copy of the fake of `tests/workspaces.rs`. The configuration document and the slot
 //! connection are fakes too: `FakeDoc` keeps the document the compositor would hold and every commit it was sent,
@@ -12,10 +13,7 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 
-use gnoblin_js::{
-    JsConfigCommit, JsConfigLink, JsLinkError, JsRole, JsRoleLinks, JsShell, JsShellConfig, JsSpawnError,
-    JsSpawnRequest,
-};
+use gnoblin_js::{JsConfigCommit, JsConfigLink, JsLinkError, JsRole, JsRoleLinks, JsShell, JsShellConfig};
 use gnoblin_tree_client::slot_link::{SlotEvent, SlotLink};
 use gnoblin_tree_client::tree_mirror::{
     Attached, LinkError, MirrorChange, MirrorChangeKind, MirrorValue, SnapshotNode, TreeIncoming, TreeLink, TreeTx,
@@ -202,6 +200,23 @@ fn compositor() -> Comp {
                 ("width".to_owned(), MirrorValue::Double(1000.0)),
                 ("height".to_owned(), MirrorValue::Double(800.0)),
                 ("primary".to_owned(), MirrorValue::Bool(true)),
+            ]),
+        },
+    );
+    c.nodes.insert(
+        9,
+        Node {
+            class: "seat".into(),
+            parent: 1,
+            props: BTreeMap::from([
+                ("name".to_owned(), MirrorValue::Text("seat0".into())),
+                (
+                    "device".to_owned(),
+                    MirrorValue::Texts(vec![
+                        "1:USB Keyboard:keyboard".to_owned(),
+                        "2:Logitech MX Master:pointer".to_owned(),
+                    ]),
+                ),
             ]),
         },
     );
@@ -415,10 +430,12 @@ fn rig(init: &str) -> Rig {
     rig_with(init, None, |_| {})
 }
 
-const PRELUDE: &str = "import { defineConfig, DialogListener, ClientListener } from \"gnoblin\";\n\
+const PRELUDE: &str = "import { Keyboard, Mouse, Workspace, DialogListener, ClientListener, CollectionListener } from \"gnoblin\";\n\
                        const g = globalThis as any;\n\
                        g.g = g;\n\
-                       g.log = [];\n";
+                       g.log = [];\n\
+                       const mouse = (): any => gnoblin.input.devices.find((device) => device instanceof Mouse);\n\
+                       const keyboard = (): any => gnoblin.input.devices.find((device) => device instanceof Keyboard);\n";
 
 fn init(body: &str) -> String {
     format!("{PRELUDE}{body}\n")
@@ -427,41 +444,35 @@ fn init(body: &str) -> String {
 // --- document settings -----------------------------------------------------------------------------------------
 
 #[test]
-fn a_document_setting_is_laid_over_the_document_in_force_and_committed_whole() {
+fn a_device_setting_is_laid_over_the_document_in_force_and_committed_whole() {
     let rig = rig_with(
-        &init("defineConfig({ dialogs: { style: { radius: 12 } } });"),
+        &init("mouse().sensitivity = 0.5;"),
         Some(r#"{"appearance":{"reduced-motion":true}}"#),
         |_| {},
     );
     assert_eq!(rig.doc.commits(), 1, "one commit");
     assert_eq!(
         rig.doc.current(),
-        json(r#"{"appearance":{"reduced-motion":true},"dialogs":{"style":{"radius":12}}}"#),
+        json(r#"{"appearance":{"reduced-motion":true},"input":{"mouse":{"speed":0.5}}}"#),
         "the document is the one in force with the patch on it, not the patch alone"
     );
 }
 
 #[test]
-fn keys_are_camel_case_in_a_config_and_kebab_case_in_the_document() {
+fn device_settings_are_camel_case_in_a_script_and_kebab_case_in_the_document() {
     let rig = rig(&init(
-        "defineConfig({\n\
-         \x20   dialogs: { style: { buttonLayout: 'stretch', font: { size: 14 } } },\n\
-         \x20   appearance: { colorScheme: 'prefer-dark', reducedMotion: true },\n\
-         });",
+        "mouse().acceleration = 'flat'; mouse().naturalScroll = true; keyboard().repeatDelay = 250;",
     ));
     assert_eq!(
         rig.doc.current(),
-        json(
-            r#"{"dialogs":{"style":{"button-layout":"stretch","font":{"size":14}}},
-                "appearance":{"color-scheme":"prefer-dark","reduced-motion":true}}"#
-        )
+        json(r#"{"input":{"keyboard":{"delay":250},"mouse":{"accel-profile":"flat","natural-scroll":true}}}"#)
     );
 }
 
 #[test]
-fn a_config_with_no_document_setting_commits_nothing() {
+fn a_script_that_writes_no_document_setting_commits_nothing() {
     let rig = rig_with(
-        &init("defineConfig({ workspaces: [{ id: 'dev', layout: 'floating' }] });"),
+        &init("gnoblin.workspaces.add(new Workspace({ id: 'dev' }));"),
         Some(r#"{"appearance":{"reduced-motion":true}}"#),
         |_| {},
     );
@@ -469,14 +480,10 @@ fn a_config_with_no_document_setting_commits_nothing() {
 }
 
 #[test]
-fn a_refused_value_fails_the_config_with_the_key_path_and_commits_nothing() {
+fn a_refused_value_fails_the_entry_with_the_device_and_the_setting_and_commits_nothing() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(
-        root.join("init.ts"),
-        init("defineConfig({ dialogs: { style: { radius: 5000 } } });"),
-    )
-    .expect("init.ts");
+    fs::write(root.join("init.ts"), init("mouse().sensitivity = 5000;")).expect("init.ts");
     let doc = FakeDoc::default();
     let role = JsRole::over_link(
         Box::new(FakeLink(compositor())),
@@ -492,15 +499,12 @@ fn a_refused_value_fails_the_config_with_the_key_path_and_commits_nothing() {
         },
     )
     .expect("a role boots even when its entry is refused");
-    assert_eq!(doc.commits(), 0, "nothing the validator refused was committed");
-    let report = role
-        .diagnostics()
-        .iter()
-        .find(|text| text.contains("dialogs.style.radius"))
-        .cloned();
+    assert_eq!(doc.commits(), 0, "nothing the write refused was committed");
     assert!(
-        report.is_some_and(|text| text.contains("defineConfig")),
-        "the refusal names the key path and where it came from: {:?}",
+        role.diagnostics()
+            .iter()
+            .any(|text| text.contains("Mouse#2.sensitivity")),
+        "the refusal names the device and the setting: {:?}",
         role.diagnostics()
     );
 }
@@ -546,75 +550,70 @@ impl RoleRig {
 }
 
 #[test]
-fn a_reload_with_a_refused_value_is_reported_with_the_key_path_and_the_running_generation_stays() {
-    let mut rig = role_rig(&init("defineConfig({ dialogs: { style: { radius: 12 } } });"), None);
+fn a_reload_with_a_refused_value_is_reported_with_the_setting_and_the_running_generation_stays() {
+    let mut rig = role_rig(&init("mouse().sensitivity = 0.5;"), None);
     let generation = rig.role.generation_id();
     assert_eq!(rig.doc.commits(), 1);
 
-    let report = rig.rewrite(&init("defineConfig({ dialogs: { style: { radius: 5000 } } });"));
-    assert!(!report.ok, "the refused document fails the reload");
+    let report = rig.rewrite(&init("mouse().sensitivity = 5000;"));
+    assert!(!report.ok, "the refused write fails the reload");
     let errors: Vec<String> = report.errors.iter().map(ToString::to_string).collect();
     assert!(
-        errors.iter().any(|error| error.contains("dialogs.style.radius")),
-        "the report carries the key path: {errors:?}"
+        errors.iter().any(|error| error.contains("Mouse#2.sensitivity")),
+        "the report carries the setting: {errors:?}"
     );
     assert_eq!(rig.role.generation_id(), generation, "the running generation stays");
     assert_eq!(rig.doc.commits(), 1, "nothing was committed for the refused reload");
-    assert_eq!(rig.doc.current(), json(r#"{"dialogs":{"style":{"radius":12}}}"#));
+    assert_eq!(rig.doc.current(), json(r#"{"input":{"mouse":{"speed":0.5}}}"#));
 }
 
 #[test]
-fn a_reload_that_drops_a_key_puts_it_back_to_its_default_and_keeps_the_rest() {
+fn a_reload_that_drops_a_setting_puts_it_back_to_its_default_and_keeps_the_rest() {
     let mut rig = role_rig(
-        &init("defineConfig({ dialogs: { style: { radius: 12, scale: 2 } }, appearance: { reducedMotion: true } });"),
+        &init("mouse().sensitivity = 0.5; keyboard().repeatDelay = 250;"),
         Some(r#"{"cursor":{"size":32}}"#),
     );
     assert_eq!(
         rig.doc.current(),
-        json(
-            r#"{"cursor":{"size":32},"appearance":{"reduced-motion":true},
-                "dialogs":{"style":{"radius":12,"scale":2}}}"#
-        )
+        json(r#"{"cursor":{"size":32},"input":{"keyboard":{"delay":250},"mouse":{"speed":0.5}}}"#)
     );
 
-    let report = rig.rewrite(&init("defineConfig({ dialogs: { style: { scale: 3 } } });"));
+    let report = rig.rewrite(&init("mouse().sensitivity = 0.25;"));
     assert!(report.ok, "{:?}", report.errors);
     assert_eq!(
         rig.doc.current(),
-        json(r#"{"cursor":{"size":32},"dialogs":{"style":{"scale":3}}}"#),
-        "radius and the appearance section are gone, scale moved, the setting the shell never made stays"
+        json(r#"{"cursor":{"size":32},"input":{"mouse":{"speed":0.25}}}"#),
+        "the keyboard delay is gone, the speed moved, the setting the shell never made stays"
     );
 
-    let report = rig.rewrite(&init("defineConfig({});"));
+    let report = rig.rewrite(&init("export {};"));
     assert!(report.ok, "{:?}", report.errors);
     assert_eq!(
         rig.doc.current(),
         json(r#"{"cursor":{"size":32}}"#),
-        "with no setting left the sections are gone, not left empty"
+        "with no setting left the section is gone, not left empty"
     );
     assert_eq!(rig.doc.commits(), 3);
 }
 
 #[test]
 fn a_reload_that_changes_nothing_commits_nothing() {
-    let mut rig = role_rig(&init("defineConfig({ dialogs: { style: { radius: 12 } } });"), None);
+    let mut rig = role_rig(&init("mouse().sensitivity = 0.5;"), None);
     assert_eq!(rig.doc.commits(), 1);
-    let report = rig.rewrite(&init(
-        "defineConfig({ dialogs: { style: { radius: 12 } } });\n// edited",
-    ));
+    let report = rig.rewrite(&init("mouse().sensitivity = 0.5;\n// edited"));
     assert!(report.ok, "{:?}", report.errors);
     assert_eq!(rig.doc.commits(), 1, "the document already says it");
 }
 
 #[test]
 fn settings_return_after_another_commit_of_the_document() {
-    let mut rig = role_rig(&init("defineConfig({ dialogs: { style: { radius: 12 } } });"), None);
+    let mut rig = role_rig(&init("mouse().sensitivity = 0.5;"), None);
     // The retired host's own reload commits a document of its own, which has none of the shell's settings.
     rig.doc.replace(r#"{"cursor":{"size":24}}"#);
     rig.role.config_committed();
     assert_eq!(
         rig.doc.current(),
-        json(r#"{"cursor":{"size":24},"dialogs":{"style":{"radius":12}}}"#),
+        json(r#"{"cursor":{"size":24},"input":{"mouse":{"speed":0.5}}}"#),
         "the settings go back on the document the other party committed, which is otherwise kept"
     );
 }
@@ -624,11 +623,7 @@ fn a_document_the_compositor_refuses_is_a_diagnostic_and_the_shell_keeps_running
     let rig = {
         let dir = tempfile::tempdir().expect("a temp dir");
         let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-        fs::write(
-            root.join("init.ts"),
-            init("defineConfig({ dialogs: { style: { radius: 12 } } });"),
-        )
-        .expect("init");
+        fs::write(root.join("init.ts"), init("mouse().sensitivity = 0.5;")).expect("init");
         let doc = FakeDoc::default();
         doc.0.borrow_mut().refuse = Some("config-rejected: no".to_owned());
         let mut config = honest_role_config(&root);
@@ -660,11 +655,7 @@ fn a_document_the_compositor_refuses_is_a_diagnostic_and_the_shell_keeps_running
 fn compositor_notices_are_reported_as_not_applied() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(
-        root.join("init.ts"),
-        init("defineConfig({ dialogs: { style: { radius: 12 } } });"),
-    )
-    .expect("init");
+    fs::write(root.join("init.ts"), init("mouse().sensitivity = 0.5;")).expect("init");
     let doc = FakeDoc::default();
     doc.0.borrow_mut().notices = vec!["compositor.renderer: restart required".to_owned()];
     let mut shell = JsShell::new(Box::new(FakeLink(compositor())), shell_config(&root)).expect("the shell boots");
@@ -680,11 +671,7 @@ fn compositor_notices_are_reported_as_not_applied() {
 fn without_a_configuration_connection_document_settings_are_reported_not_committed() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(
-        root.join("init.ts"),
-        init("defineConfig({ dialogs: { style: { radius: 12 } } });"),
-    )
-    .expect("init");
+    fs::write(root.join("init.ts"), init("mouse().sensitivity = 0.5;")).expect("init");
     let mut shell = JsShell::new(Box::new(FakeLink(compositor())), shell_config(&root)).expect("the shell boots");
     let diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
     assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
@@ -694,18 +681,21 @@ fn without_a_configuration_connection_document_settings_are_reported_not_committ
     );
 }
 
-// --- on and setup ----------------------------------------------------------------------------------------------
+// --- clients ---------------------------------------------------------------------------------------------------
+
+/// A listener on the clients that logs the four things the retired `on` table heard.
+const LOG_CLIENTS: &str = "const members = new CollectionListener();\n\
+    members.onAdded = (client: any) => { g.log.push('added:' + client.title); };\n\
+    members.onRemoved = (client: any) => { g.log.push('removed:' + client.title); };\n\
+    gnoblin.clients.addListener(members);\n\
+    const clients = new ClientListener();\n\
+    clients.onTitleChanged = (client: any, title: string) => { g.log.push('title:' + title); };\n\
+    clients.onFocusChanged = (client: any, focused: boolean) => { g.log.push('focus:' + focused); };\n\
+    gnoblin.clients.addListener(clients);\n";
 
 #[test]
-fn on_handlers_are_listeners_of_the_clients() {
-    let mut rig = rig(&init(
-        "defineConfig({ on: {\n\
-         \x20   clientAdded(client: any) { g.log.push('added:' + client.title); },\n\
-         \x20   clientRemoved(client: any) { g.log.push('removed:' + client.title); },\n\
-         \x20   titleChanged(client: any, title: string) { g.log.push('title:' + title); },\n\
-         \x20   focusChanged(client: any, focused: boolean) { g.log.push('focus:' + focused); },\n\
-         } });",
-    ));
+fn listeners_on_the_clients_hear_a_window_come_change_and_go() {
+    let mut rig = rig(&init(LOG_CLIENTS));
     rig.link.create_window(3, "term");
     assert!(rig.settle().is_empty());
     assert_eq!(rig.eval("g.log.join(',')"), "added:term");
@@ -723,12 +713,14 @@ fn on_handlers_are_listeners_of_the_clients() {
 }
 
 #[test]
-fn an_on_handler_that_throws_is_reported_once_and_the_next_still_runs() {
+fn a_client_listener_that_throws_is_reported_once_and_the_next_still_runs() {
     let mut rig = rig(&init(
-        "defineConfig({ on: {\n\
-         \x20   titleChanged() { throw new Error('boom'); },\n\
-         \x20   focusChanged(client: any, focused: boolean) { g.log.push('focus:' + focused); },\n\
-         } });",
+        "const breaks = new ClientListener();\n\
+         breaks.onTitleChanged = () => { throw new Error('boom'); };\n\
+         gnoblin.clients.addListener(breaks);\n\
+         const logs = new ClientListener();\n\
+         logs.onFocusChanged = (client: any, focused: boolean) => { g.log.push('focus:' + focused); };\n\
+         gnoblin.clients.addListener(logs);",
     ));
     rig.link.create_window(3, "term");
     rig.settle();
@@ -747,35 +739,12 @@ fn an_on_handler_that_throws_is_reported_once_and_the_next_still_runs() {
 }
 
 #[test]
-fn setup_runs_once_after_the_declarative_part_with_the_object_api() {
-    let mut rig = rig(&init(
-        "defineConfig({\n\
-         \x20   workspaces: [{ id: 'dev', layout: 'floating' }],\n\
-         \x20   setup(gnoblin: any) {\n\
-         \x20       g.log.push('setup:' + gnoblin.workspaces.length + ':' + (gnoblin === (globalThis as any).gnoblin));\n\
-         \x20   },\n\
-         });",
-    ));
-    assert_eq!(
-        rig.eval("g.log.join(',')"),
-        "setup:1:true",
-        "setup saw the workspace the declarative part made, and ran once"
-    );
-    rig.settle();
-    assert_eq!(rig.eval("g.log.length"), "1");
-}
-
-#[test]
-fn a_setup_that_throws_fails_the_config_like_any_init_error() {
+fn an_entry_that_throws_fails_the_load_naming_the_file() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(
-        root.join("init.ts"),
-        init("defineConfig({ setup() { throw new Error('nope'); } });"),
-    )
-    .expect("init");
+    fs::write(root.join("init.ts"), init("throw new Error('nope');")).expect("init");
     let mut shell = JsShell::new(Box::new(FakeLink(compositor())), shell_config(&root)).expect("the shell boots");
-    let error = shell.load_entry(Path::new("init.ts")).expect_err("setup threw");
+    let error = shell.load_entry(Path::new("init.ts")).expect_err("the entry threw");
     assert!(error.to_string().contains("nope"), "{error}");
     assert!(error.to_string().contains("init.ts"), "{error}");
 }
@@ -1044,291 +1013,6 @@ fn without_a_slot_connection_a_listener_is_reported_once() {
     assert_eq!(first.len(), 1, "{first:?}");
     assert!(first[0].contains("no slot connection"), "{first:?}");
     assert!(second.is_empty());
-}
-
-// --- the list and map keys -------------------------------------------------------------------------------------
-
-/// The errors of a reload, one text each.
-fn errors_of(report: &gnoblin_js::ReloadReport) -> Vec<String> {
-    report.errors.iter().map(ToString::to_string).collect()
-}
-
-#[test]
-fn protocols_are_added_changed_and_put_back_to_their_default_by_a_reload() {
-    let mut rig = role_rig(
-        &init("defineConfig({ protocols: { wlrLayerShell: false } });"),
-        Some(r#"{"cursor":{"size":32}}"#),
-    );
-    assert_eq!(
-        rig.doc.current(),
-        json(r#"{"cursor":{"size":32},"protocols":{"wlr-layer-shell":false}}"#),
-        "added: the kebab-case table of the document, on top of what was there"
-    );
-
-    let report = rig.rewrite(&init(
-        "defineConfig({ protocols: { extIdleNotify: false, extBackgroundEffectV1: true } });",
-    ));
-    assert!(report.ok, "{:?}", report.errors);
-    assert_eq!(
-        rig.doc.current(),
-        json(r#"{"cursor":{"size":32},"protocols":{"ext-idle-notify":false,"ext-background-effect-v1":true}}"#),
-        "changed: the protocol the new config leaves out is back to on"
-    );
-
-    let report = rig.rewrite(&init("defineConfig({});"));
-    assert!(report.ok, "{:?}", report.errors);
-    assert_eq!(
-        rig.doc.current(),
-        json(r#"{"cursor":{"size":32}}"#),
-        "removed: the section goes and every protocol is advertised again"
-    );
-}
-
-#[test]
-fn a_protocol_value_or_name_the_validator_refuses_fails_the_reload_with_the_key_path() {
-    let mut rig = role_rig(&init("defineConfig({ protocols: { wlrLayerShell: false } });"), None);
-    let generation = rig.role.generation_id();
-    let commits = rig.doc.commits();
-
-    let report = rig.rewrite(&init("defineConfig({ protocols: { wlrLayerShell: 'off' } });"));
-    assert!(!report.ok);
-    assert!(
-        errors_of(&report)
-            .iter()
-            .any(|error| error.contains("protocols.wlr-layer-shell")),
-        "{:?}",
-        errors_of(&report)
-    );
-
-    let report = rig.rewrite(&init("defineConfig({ protocols: { wlrLayerShel: false } });"));
-    assert!(!report.ok);
-    assert!(
-        errors_of(&report).iter().any(|error| error.contains("wlr-layer-shel")),
-        "{:?}",
-        errors_of(&report)
-    );
-    assert_eq!(rig.role.generation_id(), generation, "the running generation stays");
-    assert_eq!(rig.doc.commits(), commits, "nothing was committed for a refused reload");
-    assert_eq!(rig.doc.current(), json(r#"{"protocols":{"wlr-layer-shell":false}}"#));
-}
-
-const GESTURE: &str = "{ name: 'launcher', gesture: 'pinch', fingers: 4, direction: 'out', command: ['fuzzel'] }";
-
-#[test]
-fn touchpad_gestures_are_added_changed_and_put_back_to_their_default_by_a_reload() {
-    let mut rig = role_rig(
-        &init(&format!("defineConfig({{ touchpadGestures: [{GESTURE}] }});")),
-        Some(r#"{"cursor":{"size":32}}"#),
-    );
-    assert_eq!(
-        rig.doc.current(),
-        json(
-            r#"{"cursor":{"size":32},"touchpad-gestures":[
-                {"name":"launcher","gesture":"pinch","fingers":4,"direction":"out","command":["fuzzel"]}]}"#
-        ),
-        "added: the list is one value of the document"
-    );
-
-    let changed = GESTURE.replace("fingers: 4", "fingers: 3");
-    let report = rig.rewrite(&init(&format!("defineConfig({{ touchpadGestures: [{changed}] }});")));
-    assert!(report.ok, "{:?}", report.errors);
-    assert_eq!(
-        rig.doc.current()["touchpad-gestures"][0]["fingers"],
-        json("3"),
-        "changed: a new list replaces the old one whole"
-    );
-
-    let report = rig.rewrite(&init("defineConfig({});"));
-    assert!(report.ok, "{:?}", report.errors);
-    assert_eq!(
-        rig.doc.current(),
-        json(r#"{"cursor":{"size":32}}"#),
-        "removed: no gesture is left"
-    );
-}
-
-#[test]
-fn a_gesture_the_validator_refuses_fails_the_reload_with_the_key_path() {
-    let mut rig = role_rig(
-        &init(&format!("defineConfig({{ touchpadGestures: [{GESTURE}] }});")),
-        None,
-    );
-    let commits = rig.doc.commits();
-    let report = rig.rewrite(&init(&format!(
-        "defineConfig({{ touchpadGestures: [{}] }});",
-        GESTURE.replace("fingers: 4", "fingers: 9")
-    )));
-    assert!(!report.ok);
-    let errors = errors_of(&report);
-    assert!(
-        errors
-            .iter()
-            .any(|error| error.contains("touchpad-gestures") && error.contains("fingers")),
-        "{errors:?}"
-    );
-    assert_eq!(rig.doc.commits(), commits);
-}
-
-/// The commands a shell started, as `program arg ...`, and the programs it is to refuse.
-#[derive(Clone, Default)]
-struct Launches {
-    started: Rc<RefCell<Vec<String>>>,
-    refuse: Rc<RefCell<Vec<String>>>,
-}
-
-impl Launches {
-    fn attach(&self, role: &mut JsRole) {
-        let (started, refuse) = (Rc::clone(&self.started), Rc::clone(&self.refuse));
-        role.shell_mut().set_spawner(Box::new(move |request| {
-            let JsSpawnRequest::Argv(argv) = request;
-            if refuse.borrow().contains(&argv[0]) {
-                return Err(JsSpawnError(format!("cannot start {}: not found", argv[0])));
-            }
-            started.borrow_mut().push(argv.join(" "));
-            Ok(())
-        }));
-    }
-
-    fn started(&self) -> Vec<String> {
-        self.started.borrow().clone()
-    }
-}
-
-#[test]
-fn autostart_commands_start_once_and_a_reload_starts_only_the_ones_it_adds() {
-    let mut rig = role_rig(&init("defineConfig({});"), None);
-    let launches = Launches::default();
-    launches.attach(&mut rig.role);
-
-    let report = rig.rewrite(&init("defineConfig({ autostart: ['waybar', ['foot', '--server']] });"));
-    assert!(report.ok, "{:?}", report.errors);
-    assert_eq!(
-        launches.started(),
-        ["waybar", "foot --server"],
-        "added: each starts, in order"
-    );
-
-    let report = rig.rewrite(&init(
-        "defineConfig({ autostart: ['waybar', ['foot', '--server']] });\n// edited",
-    ));
-    assert!(report.ok, "{:?}", report.errors);
-    assert_eq!(launches.started().len(), 2, "a reload does not start a command again");
-
-    let report = rig.rewrite(&init(
-        "defineConfig({ autostart: ['waybar', ['foot', '--server'], 'nm-applet'] });",
-    ));
-    assert!(report.ok, "{:?}", report.errors);
-    assert_eq!(
-        launches.started(),
-        ["waybar", "foot --server", "nm-applet"],
-        "changed: only the entry the reload adds starts"
-    );
-
-    let report = rig.rewrite(&init("defineConfig({});"));
-    assert!(report.ok, "{:?}", report.errors);
-    assert_eq!(
-        launches.started().len(),
-        3,
-        "removed: nothing starts and nothing is stopped"
-    );
-
-    let report = rig.rewrite(&init("defineConfig({ autostart: ['waybar'] });"));
-    assert!(report.ok, "{:?}", report.errors);
-    assert_eq!(
-        launches.started().len(),
-        3,
-        "a command that was started this session is not started again when it is listed again"
-    );
-}
-
-#[test]
-fn a_command_is_known_by_its_arguments_not_only_its_program() {
-    let mut rig = role_rig(&init("defineConfig({ autostart: [] });"), None);
-    let launches = Launches::default();
-    launches.attach(&mut rig.role);
-    rig.rewrite(&init("defineConfig({ autostart: [['foot', '--server']] });"));
-    rig.rewrite(&init("defineConfig({ autostart: [['foot', '--server'], 'foot'] });"));
-    assert_eq!(launches.started(), ["foot --server", "foot"]);
-}
-
-#[test]
-fn a_config_that_fails_to_load_starts_nothing() {
-    let mut rig = role_rig(&init("defineConfig({});"), None);
-    let launches = Launches::default();
-    launches.attach(&mut rig.role);
-    let report = rig.rewrite(&init(
-        "defineConfig({ autostart: ['waybar'] });\nthrow new Error('after the config');",
-    ));
-    assert!(!report.ok);
-    assert!(
-        launches.started().is_empty(),
-        "the generation never ran, so its commands did not start"
-    );
-
-    let report = rig.rewrite(&init("defineConfig({ autostart: [5] });"));
-    assert!(!report.ok);
-    assert!(
-        errors_of(&report)
-            .iter()
-            .any(|error| error.contains("config.autostart[0] must be a command line or an argv array of strings")),
-        "{:?}",
-        errors_of(&report)
-    );
-    assert!(launches.started().is_empty());
-}
-
-#[test]
-fn a_command_that_cannot_be_started_is_reported_and_tried_again_at_the_next_reload() {
-    let mut rig = role_rig(&init("defineConfig({});"), None);
-    let launches = Launches::default();
-    launches.attach(&mut rig.role);
-    launches.refuse.borrow_mut().push("nope".to_owned());
-
-    let report = rig.rewrite(&init("defineConfig({ autostart: ['nope --flag', 'waybar'] });"));
-    assert!(
-        report.ok,
-        "a missing program does not fail the config: {:?}",
-        report.errors
-    );
-    assert_eq!(launches.started(), ["waybar"], "the others still start");
-    assert!(
-        rig.role
-            .diagnostics()
-            .iter()
-            .any(|text| text.contains("autostart nope --flag") && text.contains("not found")),
-        "{:?}",
-        rig.role.diagnostics()
-    );
-
-    launches.refuse.borrow_mut().clear();
-    let report = rig.rewrite(&init(
-        "defineConfig({ autostart: ['nope --flag', 'waybar'] });\n// installed it",
-    ));
-    assert!(report.ok, "{:?}", report.errors);
-    assert_eq!(
-        launches.started(),
-        ["waybar", "nope --flag"],
-        "the one that failed starts now; waybar does not repeat"
-    );
-}
-
-#[test]
-fn a_session_that_starts_with_an_entry_starts_its_autostart_commands_at_load() {
-    // The first load is not a reload: the role loads the entry and the commands start with it. Nothing can be
-    // swapped in before the spawner exists, so the first command goes to the role's own spawner (a real process);
-    // the test names a program that does not exist and reads the refusal, which is the proof it was tried.
-    let rig = role_rig(
-        &init("defineConfig({ autostart: ['/nonexistent/gnoblin-test-autostart'] });"),
-        None,
-    );
-    assert!(
-        rig.role
-            .diagnostics()
-            .iter()
-            .any(|text| text.contains("autostart /nonexistent/gnoblin-test-autostart")),
-        "{:?}",
-        rig.role.diagnostics()
-    );
 }
 
 #[test]

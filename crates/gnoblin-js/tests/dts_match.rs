@@ -309,11 +309,11 @@ fn the_runtime_exports_what_the_module_declares_and_declares_what_it_exports() {
     let declared = declared_exports(gnoblin_module(&dts));
     let runtime = runtime_exports();
     assert!(
-        declared.contains("Client") && declared.contains("defineConfig") && declared.contains("RULE_DEFAULTS"),
+        declared.contains("Client") && declared.contains("startDecorations") && declared.contains("FOCUS_DEFAULTS"),
         "the d.ts parse found a class, a function and a const: {declared:?}"
     );
     assert!(
-        runtime.contains("Client") && runtime.contains("defineConfig"),
+        runtime.contains("Client") && runtime.contains("startDecorations"),
         "the runtime's namespace listing found them: {runtime:?}"
     );
     let problems = export_problems(&declared, &runtime, DECLARED_NOT_IN_RUNTIME, RUNTIME_NOT_DECLARED);

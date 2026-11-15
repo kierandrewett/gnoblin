@@ -140,17 +140,7 @@ mod tests {
     }
 
     #[test]
-    fn the_keyring_setting_of_a_config_is_in_its_document() {
-        let document = document(
-            r#"import { defineConfig } from "gnoblin";
-            export default defineConfig({ keyring: { enabled: false } });"#,
-        )
-        .expect("the config evaluates");
-        assert_eq!(document["keyring"]["enabled"], serde_json::json!(false));
-    }
-
-    #[test]
-    fn a_config_that_never_calls_define_config_has_an_empty_document() {
+    fn a_config_that_writes_nothing_to_the_document_has_an_empty_document() {
         assert_eq!(
             document("export const x = 1;").expect("it loads"),
             serde_json::json!({})
@@ -158,50 +148,19 @@ mod tests {
     }
 
     #[test]
-    fn a_camel_case_key_is_the_documents_spelling() {
-        let document = document(
-            r#"import { defineConfig } from "gnoblin";
-            defineConfig({ windowManagement: { focusMode: "click" } });"#,
-        )
-        .expect("the config evaluates");
-        assert!(document.get("window-management").is_some(), "{document}");
-    }
-
-    #[test]
-    fn autostart_commands_become_the_documents_autostart_section() {
-        let document = document(
-            r#"import { defineConfig } from "gnoblin";
-            defineConfig({ autostart: ["waybar", ["foot", "--server"]] });"#,
-        )
-        .expect("the config evaluates");
-        assert_eq!(
-            document["autostart"]["waybar"]["command"],
-            serde_json::json!(["waybar"])
-        );
-        assert_eq!(
-            document["autostart"]["foot"]["command"],
-            serde_json::json!(["foot", "--server"])
-        );
-    }
-
-    #[test]
     fn a_relative_import_resolves_under_the_entrys_directory() {
         let dir = tempfile::tempdir().expect("a temp dir");
-        std::fs::write(
-            dir.path().join("keys.ts"),
-            "export const keyring = { enabled: false };\n",
-        )
-        .expect("keys.ts");
+        std::fs::write(dir.path().join("keys.ts"), "export const radius = 8;\n").expect("keys.ts");
         std::fs::write(
             dir.path().join("init.ts"),
-            r#"import { defineConfig } from "gnoblin";
-            import { keyring } from "./keys.ts";
-            defineConfig({ keyring });"#,
+            r#"import { radius } from "./keys.ts";
+            if (radius !== 8) throw new Error("the import did not run");
+            gnoblin.clients.style.cornerRadius = radius;"#,
         )
         .expect("init.ts");
         let bytes = evaluate_document(&dir.path().join("init.ts")).expect("the config evaluates");
         let document: serde_json::Value = serde_json::from_slice(&bytes).expect("JSON");
-        assert_eq!(document["keyring"]["enabled"], serde_json::json!(false));
+        assert_eq!(document, serde_json::json!({}));
     }
 
     #[test]

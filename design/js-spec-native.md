@@ -790,6 +790,30 @@ home is a question for the specification, so the last column says what the setti
 
 <!-- prettier-ignore-end -->
 
+**Tests removed with their keys (lane RmTestsB).** A test whose behaviour could only be reached through a dropped key was
+deleted, and is listed here under that key. The document commit tests of `config_slots.rs` (laid over the document in
+force, kebab-case, refused value, reload retraction, a foreign commit, a refusing compositor, notices, no connection) now
+run over the device objects (`mouse.sensitivity`, `keyboard.repeatDelay`), the one writer of the document left.
+
+<!-- prettier-ignore-start -->
+
+| Key | Tests deleted |
+| --- | --- |
+| `rules` | `stock_focus.rs`: `a_rule_can_keep_a_new_window_from_taking_focus`, `a_rule_places_a_new_window_of_one_app_and_leaves_another_alone`, `a_rule_does_not_touch_a_window_the_shell_found_at_boot`, `a_workspace_rule_moves_a_new_window_to_the_workspace_it_names`, `a_rule_that_names_a_workspace_the_script_removed_is_reported_once_and_leaves_the_window`, `a_rule_follows_the_app_id_and_undoes_itself_when_it_stops_matching`, `a_rule_follows_the_title`, `a_rule_reads_the_focus_again_when_it_changes`, `a_rule_with_reapply_false_applies_once_when_the_window_appears`, `re_applying_rules_that_still_match_writes_nothing`, `a_rule_can_maximise_fullscreen_and_dim_a_window`, `every_matching_rule_applies_and_the_later_wins_until_a_first_rule_ends_the_list`, `a_floating_rule_keeps_a_window_out_of_the_tiling`. The tests of the pure `compileRules`, `matchingRules` and `effectsFor` functions stay until `rules.ts` is deleted |
+| `focus` | `stock_focus.rs`: `the_configs_focus_mode_wins_over_the_seats`, and the config half of `a_click_only_focuses_when_the_seat_says_raise_on_click_is_off`. The focus modes themselves stay tested, driven by the seat's published `focus_mode`, `raise_on_click`, `auto_raise` and `focus_change_on_pointer_rest` |
+| `rules`, `focus`, `edgeTiling`, `dragConstraint` | `stock_focus.rs`: `desugaring_a_config_checks_the_rules_the_focus_keys_and_the_seat_overrides` |
+| `edgeTiling` | `stock_focus.rs`: `the_configs_edge_tiling_overrides_the_seats`. Edge snapping stays tested through the seat's `edge_tiling` |
+| `workspaceSets` | `window_policy.rs`: `a_config_whose_sets_do_not_check_is_refused_with_the_key_path_and_the_cause` (the key-path messages and the coercion of a number to a workspace id). The set tests that remain call `gnoblin.workspaces.sets.define` and go with `sets.ts` |
+| `protocols` | `config_slots.rs`: `protocols_are_added_changed_and_put_back_to_their_default_by_a_reload`, `a_protocol_value_or_name_the_validator_refuses_fails_the_reload_with_the_key_path`; `config_keys.rs`: `protocols_become_the_documents_kebab_case_table` |
+| `touchpadGestures` | `config_slots.rs`: `touchpad_gestures_are_added_changed_and_put_back_to_their_default_by_a_reload`, `a_gesture_the_validator_refuses_fails_the_reload_with_the_key_path`; `config_keys.rs`: `touchpad_gestures_become_one_list_of_the_document` |
+| `autostart` | `config_slots.rs`: `autostart_commands_start_once_and_a_reload_starts_only_the_ones_it_adds`, `a_command_is_known_by_its_arguments_not_only_its_program`, `a_config_that_fails_to_load_starts_nothing`, `a_command_that_cannot_be_started_is_reported_and_tried_again_at_the_next_reload`, `a_session_that_starts_with_an_entry_starts_its_autostart_commands_at_load`; `config_keys.rs`: `autostart_commands_become_argv_lists_in_the_order_written`; `document.rs`: `autostart_commands_become_the_documents_autostart_section` |
+| `keyring`, `windowManagement` | `document.rs`: `the_keyring_setting_of_a_config_is_in_its_document`, `a_camel_case_key_is_the_documents_spelling` |
+| `dialogs.style` | its use as the document fixture of `config_slots.rs`; the tests now write device settings |
+| `setup` | `config_slots.rs`: `setup_runs_once_after_the_declarative_part_with_the_object_api` (the body of the file is the setup); the throwing case stays as `an_entry_that_throws_fails_the_load_naming_the_file` |
+| the key set as a whole | all of `config_keys.rs` (`every_section_of_the_config_document_is_a_key_or_a_recorded_non_key`, `a_list_key_a_config_gives_replaces_the_stock_one_whole`, the suggestions for a misspelled key, the retired-era section hints, `a_wrong_value_names_the_path_and_the_expected_type`, `the_config_interface_and_the_list_of_keys_agree`): they test `desugarConfig`, `mergeConfig` and `CONFIG_KEYS` |
+
+<!-- prettier-ignore-end -->
+
 ## Appendix: docs pages that mention the identifiers
 
 The count is mentions of `defineConfig`, `desugarConfig`, `mergeConfig` or `defaultConfig` per page.

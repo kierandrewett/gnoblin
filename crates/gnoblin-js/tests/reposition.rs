@@ -14,7 +14,7 @@ use common::*;
 const STEP: f64 = 16.0;
 
 fn start(windows: u64) -> Rig {
-    world(windows, false, "new Layout()", "")
+    world(windows, false, "new Layout()", "startWindowMenu();")
 }
 
 /// The node that holds the keyboard while the mode runs, or 0.

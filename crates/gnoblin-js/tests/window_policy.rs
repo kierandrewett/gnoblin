@@ -11,6 +11,9 @@ mod common;
 use common::policy::*;
 use common::*;
 
+/// The stock three-finger workspace slide, which the shell binds by default and a bare `init.ts` has to ask for.
+const SLIDE: &str = "gnoblin.input.primary.bind('Swipe3', new WorkspaceSlideBinding());";
+
 fn active(rig: &mut Rig) -> String {
     rig.eval("gnoblin.workspaces.where({ active: true }).at(0)?.id ?? 'none'")
 }
@@ -238,15 +241,15 @@ fn a_swipe_bound_through_input_runs_a_named_action_when_it_ends_and_a_cancel_run
 }
 
 #[test]
-fn gesture_actions_in_the_config_bind_swipes_and_pinches_and_replace_the_stock_slide() {
-    // New: the retired configuration named these five actions; `gestureActions` is the TypeScript spelling of that.
-    let config = "gestureActions: { \
-                      Swipe4: { up: 'window.toggle-maximise', left: 'workspace.next' }, \
-                      Swipe3: { right: 'window.close' }, \
-                      Pinch2: { in: 'window.minimize', out: (event) => globalThis.pinched = event.scale } },";
+fn swipes_and_pinches_bound_to_actions_run_the_action_of_the_way_the_gesture_went() {
+    // New: the retired configuration named these five actions; `onSwipe` and `onPinch` are the spelling of that.
+    let config = "const input = gnoblin.input.primary;\n\
+                  input.bind('Swipe4', onSwipe({ up: 'window.toggle-maximise', left: 'workspace.next' }));\n\
+                  input.bind('Swipe3', onSwipe({ right: 'window.close' }));\n\
+                  input.bind('Pinch2', onPinch({ in: 'window.minimize', out: (event) => globalThis.pinched = event.scale }));";
     let mut rig = world(2, false, "new Layout()", config);
     give_focus(&mut rig, 3);
-    // The stock three-finger slide is replaced by the config's own Swipe3, and its claim is the one that is held.
+    // One binding holds the three-finger swipe, and its claim is the one that is held.
     assert_eq!(
         rig.eval("gnoblin.input.primary.describeBindings().filter((b) => b.trigger === 'Swipe3').length"),
         "1"
@@ -279,23 +282,20 @@ fn gesture_actions_in_the_config_bind_swipes_and_pinches_and_replace_the_stock_s
 }
 
 #[test]
-fn a_config_that_gives_one_gesture_to_keys_and_to_gesture_actions_is_refused_with_both_names() {
+fn a_gesture_bound_twice_is_refused_and_a_way_the_gesture_cannot_go_is_reported() {
     // New: two bindings of one gesture could not both be claimed.
-    let both = "try { defineConfig({ keys: { Swipe4: binding(() => new WorkspaceSlideBinding({ trigger: 'Swipe4' })) }, \
-                gestureActions: { Swipe4: { up: 'window.close' } } }); (globalThis as any).out = 'accepted'; } \
-                catch (e: any) { (globalThis as any).out = e.message; }\n";
-    let mut rig = rig_with(IMPORTS, both);
-    assert_eq!(
-        rig.eval("String(globalThis.out)"),
-        "gestureActions[\"Swipe4\"]: config.keys binds Swipe4 too; give the gesture to one of them"
-    );
-    let sideways = "try { defineConfig({ gestureActions: { Swipe4: { sideways: 'window.close' } } }); \
+    let both = "gnoblin.input.primary.bind('Swipe4', new WorkspaceSlideBinding({ trigger: 'Swipe4' }));\n\
+                try { gnoblin.input.primary.bind('Swipe4', onSwipe({ up: 'window.close' })); (globalThis as any).out = 'accepted'; } \
+                catch (e: any) { (globalThis as any).out = e.constructor.name; }\n";
+    let mut rig = world(0, false, "new Layout()", both);
+    assert_eq!(rig.eval("String(globalThis.out)"), "BindingConflictError");
+    let sideways = "try { onSwipe({ sideways: 'window.close' }); \
                     (globalThis as any).out = 'accepted'; } catch (e: any) { (globalThis as any).out = e.message; }\n";
-    let mut rig = rig_with(IMPORTS, sideways);
+    let mut rig = world(0, false, "new Layout()", sideways);
     assert_eq!(
         rig.eval("String(globalThis.out)"),
         "onSwipe: \"sideways\" is not a way for this gesture to go; use left, right, up, down",
-        "a way the gesture cannot go is reported when the config is checked"
+        "a way the gesture cannot go is reported when the binding is made"
     );
 }
 
@@ -395,7 +395,7 @@ fn a_workspace_show_slides_unless_the_seat_asks_for_reduced_motion() {
 #[test]
 fn a_committed_swipe_with_reduced_motion_writes_no_tween_and_ends_in_place() {
     // Before: "with reduced motion on, a committed swipe writes no tween and still ends in place".
-    let mut rig = world(2, false, "new Layout()", "");
+    let mut rig = world(2, false, "new Layout()", SLIDE);
     exec(
         &mut rig,
         "gnoblin.clients.get('4').moveToWorkspace(gnoblin.workspaces.get('2'))",
@@ -420,7 +420,7 @@ fn a_committed_swipe_with_reduced_motion_writes_no_tween_and_ends_in_place() {
 #[test]
 fn a_short_swipe_with_reduced_motion_goes_back_at_once() {
     // New: the slide back of the retired shell used `motion(0.2)` too.
-    let mut rig = world(2, false, "new Layout()", "");
+    let mut rig = world(2, false, "new Layout()", SLIDE);
     exec(
         &mut rig,
         "gnoblin.clients.get('4').moveToWorkspace(gnoblin.workspaces.get('2'))",
@@ -470,12 +470,12 @@ fn the_titlebar_close_fades_the_window_out_unless_the_seat_asks_for_reduced_moti
         let bar = rig.comp.children(3)[0];
         *rig.comp.children(bar).last().expect("the bar has buttons")
     };
-    let mut rig = world(1, false, "new Layout()", "decorations: true,");
+    let mut rig = world(1, false, "new Layout()", "startDecorations();");
     rig.comp.pointer(close_button(&rig), "press", 4.0, 4.0, LEFT);
     settle(&mut rig);
     assert!(rig.comp.timed_sets() > 0, "the fade is a timed write");
 
-    let mut rig = world(1, false, "new Layout()", "decorations: true,");
+    let mut rig = world(1, false, "new Layout()", "startDecorations();");
     rig.comp.external_set(SEAT, "reduced_motion", MirrorValue::Bool(true));
     settle(&mut rig);
     rig.comp.pointer(close_button(&rig), "press", 4.0, 4.0, LEFT);
@@ -496,11 +496,11 @@ fn closing_the_focused_window_hands_the_keyboard_to_its_neighbour_in_every_layou
     // Before: "closing the focused column moves focus to its neighbour, not to the closed one" (strip.retired shell:110), for all layouts.
     for layout in [
         "new Layout()",
-        "'master-stack'",
-        "'monocle'",
-        "'grid'",
-        "'dwindle'",
-        "'floating'",
+        "new MasterStackLayout()",
+        "new MonocleLayout()",
+        "new GridLayout()",
+        "new DwindleLayout()",
+        "new FloatingLayout()",
     ] {
         let mut rig = world(3, false, layout, "");
         give_focus(&mut rig, 4);
@@ -717,7 +717,7 @@ fn the_last_workspace_cannot_be_removed() {
 fn a_press_on_a_titlebar_focuses_and_raises_its_window() {
     // The audit row of decorations.retired shell:74-92: the stock policy of a press on a window (`seat.focus = w`, then `raise`) holds
     // for the press on its bar too.
-    let mut rig = world(2, false, "new Layout()", "decorations: true,");
+    let mut rig = world(2, false, "new Layout()", "startDecorations();");
     give_focus(&mut rig, 4);
     let bar = rig.comp.children(3)[0];
     assert_eq!(
@@ -737,12 +737,9 @@ fn a_press_on_a_titlebar_focuses_and_raises_its_window() {
     settle(&mut rig);
 
     // The same press on a window whose seat keeps the stacking (raise_on_click off) focuses and does not raise.
-    let mut rig = world(
-        2,
-        false,
-        "new Layout()",
-        "decorations: true, focus: { raiseOnClick: false },",
-    );
+    let mut rig = world(2, false, "new Layout()", "startDecorations();");
+    rig.comp.external_set(SEAT, "raise_on_click", MirrorValue::Bool(false));
+    settle(&mut rig);
     give_focus(&mut rig, 4);
     let bar = rig.comp.children(3)[0];
     rig.comp.pointer(bar, "press", 5.0, 5.0, LEFT);
@@ -886,11 +883,11 @@ fn shown(rig: &mut Rig) -> String {
     rig.eval("gnoblin.outputs.map((o) => `${o.name}=${o.workspace?.id}`).join(' ')")
 }
 
-const SETS: &str = "workspaceSets: [ \
+const SETS: &str = "gnoblin.workspaces.sets.define([ \
         { name: 'work', entries: [{ workspace: '2', output: 'output-0' }, { workspace: '3', output: 'output-1' }] }, \
-        { name: 'solo', entries: [{ workspace: 3 }] }, \
+        { name: 'solo', entries: [{ workspace: '3' }] }, \
         { name: 'away', entries: [{ workspace: '2', output: 'GONE-1' }] }, \
-    ],";
+    ]);";
 
 #[test]
 fn a_set_from_the_config_shows_each_named_workspace_on_its_own_output() {
@@ -967,7 +964,7 @@ fn an_output_that_is_not_connected_shows_its_workspace_on_the_primary_output_wit
 }
 
 #[test]
-fn a_set_entry_without_an_output_shows_on_the_primary_output_and_a_number_names_a_workspace() {
+fn a_set_entry_without_an_output_shows_on_the_primary_output() {
     // Before: `set_entries` reads each workspace "as text, whatever the user wrote".
     let mut rig = world(0, true, "new Layout()", SETS);
     exec(&mut rig, "gnoblin.workspaces.activateSet('solo')");
@@ -976,53 +973,6 @@ fn a_set_entry_without_an_output_shows_on_the_primary_output_and_a_number_names_
         shown(&mut rig),
         "output-0=3 output-1=2",
         "workspace 3 on the primary output, written as a number"
-    );
-}
-
-#[test]
-fn a_config_whose_sets_do_not_check_is_refused_with_the_key_path_and_the_cause() {
-    // Before: "a list naming a workspace no desk has is refused whole at start and nothing activates"; here the config fails.
-    let thrown = |sets: &str| {
-        let init = format!(
-            "try {{ defineConfig({{ workspaces: [{{ id: '1' }}, {{ id: '2' }}], workspaceSets: {sets} }}); (globalThis as any).out = 'accepted'; }} \
-             catch (e: any) {{ (globalThis as any).out = e.message; }}\n"
-        );
-        let mut rig = rig_with(IMPORTS, &init);
-        rig.eval("String(globalThis.out)")
-    };
-    assert_eq!(
-        thrown("[{ name: 'bad', entries: [{ workspace: '99' }] }]"),
-        "config.workspaceSets: set \"bad\" names workspace \"99\", which no workspace has"
-    );
-    assert_eq!(
-        thrown("[{ name: 'empty', entries: [] }]"),
-        "config.workspaceSets: set \"empty\" has no entries"
-    );
-    assert_eq!(
-        thrown("[{ name: 'a', entries: [{ workspace: '1' }] }, { name: 'a', entries: [{ workspace: '2' }] }]"),
-        "config.workspaceSets: two sets are named \"a\""
-    );
-    assert_eq!(
-        thrown("[{ name: '', entries: [{ workspace: '1' }] }]"),
-        "config.workspaceSets: a set has an empty name"
-    );
-    assert_eq!(
-        thrown(
-            "[{ name: 'clash', entries: [{ workspace: '1', output: 'DP-1' }, { workspace: '2', output: 'DP-1' }] }]"
-        ),
-        "config.workspaceSets: set \"clash\" has two entries for output \"DP-1\""
-    );
-    assert_eq!(
-        thrown("[{ name: 'x', entries: [{ workspace: '1', outpt: 'DP-1' }] }]"),
-        "config.workspaceSets[0].entries[0] has no \"outpt\" (did you mean \"output\"?); expected one of workspace, output"
-    );
-    assert_eq!(
-        thrown("{ work: [] }"),
-        "config.workspaceSets must be a list of workspace sets, got object"
-    );
-    assert_eq!(
-        thrown("[{ name: 'ok', entries: [{ workspace: '2', output: 'DP-1' }] }]"),
-        "accepted"
     );
 }
 

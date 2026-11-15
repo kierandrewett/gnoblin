@@ -2013,48 +2013,50 @@ fn with_no_entry_the_stock_config_runs_four_floating_workspaces_and_claims_the_s
 }
 
 #[test]
-fn a_defined_config_is_layered_over_the_stock_one_and_its_keys_are_claimed() {
+fn a_user_init_replaces_the_stock_default_and_claims_only_its_own_keys() {
     let comp = world(false);
     let mut rig = rig(
         &comp,
-        "import { defineConfig, spawn } from \"gnoblin\";\n\
-         export default defineConfig({\n\
-         \x20   workspaces: [{ id: \"a\", layout: \"monocle\" }, { id: \"b\", layout: \"monocle\" }],\n\
-         \x20   keys: { \"Super+Return\": spawn(\"true\"), \"XF86AudioMute\": spawn(\"true\") },\n\
-         });\n",
+        "import { gnoblin, Workspace, MonocleLayout } from \"gnoblin\";\n\
+         gnoblin.workspaces.add(new Workspace({ id: \"a\", layout: new MonocleLayout() }));\n\
+         gnoblin.workspaces.add(new Workspace({ id: \"b\", layout: new MonocleLayout() }));\n\
+         gnoblin.input.primary.bind(\"Super+Return\", () => gnoblin.spawn([\"true\"]));\n\
+         gnoblin.input.primary.bind(\"XF86AudioMute\", () => gnoblin.spawn([\"true\"]));\n",
     );
     assert_eq!(
         rig.eval("gnoblin.workspaces.map((w) => w.id).join()"),
         "a,b",
-        "the user's workspaces replace the stock one"
+        "the user's workspaces are the only ones"
     );
     let claimed = rig.comp.claimed();
     assert!(
         claimed.iter().any(|held| held.contains("<Super>Return")),
         "the user's key is claimed: {claimed:?}"
     );
-    assert!(
-        claimed.iter().any(|held| held.contains("XF86AudioPlay")),
-        "a stock key the user did not mention survives: {claimed:?}"
-    );
-    assert!(
-        claimed.iter().any(|held| held.contains("<Super>1")),
-        "the stock Super+1 shows the workspace at position 1, whatever the user called it: {claimed:?}"
-    );
     assert_eq!(
         claimed.iter().filter(|held| held.contains("XF86AudioMute")).count(),
         1,
-        "a key the user redefined is claimed once: {claimed:?}"
+        "a key the user binds is claimed once: {claimed:?}"
+    );
+    assert!(
+        !claimed.iter().any(|held| held.contains("XF86AudioPlay")),
+        "a stock key the user did not bind is not there: {claimed:?}"
+    );
+    assert!(
+        !claimed.iter().any(|held| held.contains("<Super>1")),
+        "nor is the stock Super+1: {claimed:?}"
     );
 }
 
-/// Three floating workspaces `a`, `b` and `c` on a 1000 by 800 screen; window 3 is on `a` and window 4 on `b`.
+/// Three floating workspaces `a`, `b` and `c` on a 1000 by 800 screen with the stock three-finger slide bound; window 3
+/// is on `a` and window 4 on `b`.
 fn slide_rig(comp: &Comp) -> Rig {
     add_screen(comp, 1000.0, 800.0);
     let mut rig = rig(
         comp,
-        "import { defineConfig } from \"gnoblin\";\n\
-         export default defineConfig({ workspaces: [{ id: \"a\" }, { id: \"b\" }, { id: \"c\" }] });\n",
+        "import { gnoblin, Workspace, WorkspaceSlideBinding } from \"gnoblin\";\n\
+         for (const id of [\"a\", \"b\", \"c\"]) gnoblin.workspaces.add(new Workspace({ id }));\n\
+         gnoblin.input.primary.bind(\"Swipe3\", new WorkspaceSlideBinding());\n",
     );
     rig.eval("gnoblin.workspaces.get('b').clients.add(gnoblin.clients.at(1))");
     for _ in 0..3 {

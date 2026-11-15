@@ -15,10 +15,11 @@ pub const FILL: &str = "class Fill extends Layout {\n\
 }\n";
 
 /// A shell over the screens, a seat, a lock and `n` windows (ids 3 on). `layout` is the TypeScript expression of every
-/// workspace's layout; `config` is more keys of the `defineConfig` object.
+/// workspace's layout; `config` is more statements of the `init.ts`, run after the three workspaces `1` to `3` are
+/// added. There are no titlebars, menus, keys or other stock parts unless `config` starts them.
 pub fn world(n: u64, second: bool, layout: &str, config: &str) -> Rig {
     let init = format!(
-        "{FILL}defineConfig({{ workspaces: [{{ id: \"1\", layout: {layout} }}, {{ id: \"2\", layout: {layout} }}, {{ id: \"3\", layout: {layout} }}], decorations: false, {config} }});\n"
+        "{FILL}for (const id of [\"1\", \"2\", \"3\"]) gnoblin.workspaces.add(new Workspace({{ id, layout: {layout} }}));\n{config}\n"
     );
     let mut rig = rig_setup(IMPORTS, &init, move |comp| {
         comp.add_screen(20, "output-0", (0.0, 0.0, 1000.0, 800.0), true);
@@ -138,13 +139,13 @@ pub fn close_window(rig: &mut Rig, node: u64) {
     settle(rig);
 }
 
-/// A second shell on the compositor of `rig`, as a reload starts one, with `config` (the keys of a `defineConfig` object)
-/// over the same three workspaces. The caller `reconcile`s it against the first one's snapshot.
+/// A second shell on the compositor of `rig`, as a reload starts one, whose `init.ts` adds the same three workspaces and
+/// then runs `config`. The caller `reconcile`s it against the first one's snapshot.
 pub fn next_generation(rig: &Rig, config: &str) -> Rig {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = std::fs::canonicalize(dir.path()).expect("the temp dir exists");
     let init = format!(
-        "{IMPORTS}defineConfig({{ workspaces: [{{ id: \"1\" }}, {{ id: \"2\" }}, {{ id: \"3\" }}], decorations: false, {config} }});\n"
+        "{IMPORTS}for (const id of [\"1\", \"2\", \"3\"]) gnoblin.workspaces.add(new Workspace({{ id }}));\n{config}\n"
     );
     std::fs::write(root.join("init.ts"), init).expect("init.ts is written");
     let (config, clock) = timed_config(&root);
