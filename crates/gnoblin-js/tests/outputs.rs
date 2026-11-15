@@ -28,10 +28,10 @@ const FILL: &str = "class Fill extends Layout {\n\
 
 /// A shell over one screen `A` (1000 by 800, primary) and, when `second`, a screen `B` of 600 by 400 at x 1000, a seat,
 /// and `n` windows (ids 3 on, 300 by 200 at 10 n, 20 n), on the workspaces `1` to `3`, whose layouts place nothing
-/// unless `layout` says so. `config` is more keys of the config object.
-fn world(n: u64, second: bool, layout: &str, config: &str) -> Rig {
+/// unless `layout` says so.
+fn world(n: u64, second: bool, layout: &str) -> Rig {
     let init = format!(
-        "{FILL}defineConfig({{ workspaces: [{{ id: \"1\", layout: {layout} }}, {{ id: \"2\", layout: {layout} }}, {{ id: \"3\", layout: {layout} }}], decorations: false, {config} }});\n"
+        "{FILL}for (const id of [\"1\", \"2\", \"3\"]) gnoblin.workspaces.add(new Workspace({{ id, layout: {layout} }}));\n"
     );
     let mut rig = rig_setup(IMPORTS, &init, move |comp| {
         comp.add_screen(A, "output-0", (0.0, 0.0, 1000.0, 800.0), true);
@@ -128,7 +128,7 @@ fn unplug(rig: &mut Rig, id: u64) {
 #[test]
 fn outputs_are_a_live_collection_of_the_compositors_screens_with_their_properties() {
     // New: the d.ts declared `gnoblin.outputs` and the runtime had none.
-    let mut rig = world(0, true, "new Layout()", "");
+    let mut rig = world(0, true, "new Layout()");
     assert_eq!(rig.eval("String(gnoblin.outputs.length)"), "2");
     assert_eq!(
         rig.eval("gnoblin.outputs.map((o) => `${o.name}:${o.x},${o.y},${o.width}x${o.height}:${o.primary}`).join(' ')"),
@@ -169,7 +169,7 @@ fn outputs_are_a_live_collection_of_the_compositors_screens_with_their_propertie
 #[test]
 fn a_published_make_model_mode_and_scale_are_what_an_output_reads() {
     // New: the compositor publishes them on the screen node; the output reads them.
-    let mut rig = world(0, false, "new Layout()", "");
+    let mut rig = world(0, false, "new Layout()");
     rig.comp.external_set(A, "make", text("Gnoblin"));
     rig.comp.external_set(A, "model", text("HEADLESS-1"));
     rig.comp.external_set(A, "mode", text("1000x800@60"));
@@ -185,7 +185,7 @@ fn a_published_make_model_mode_and_scale_are_what_an_output_reads() {
 fn a_hotplugged_output_is_announced_and_an_unplugged_one_is_removed_with_its_last_values_readable() {
     // New: `OutputListener.onConnected` and `onDisconnected`, and `CollectionListener` membership, over the the retired shell
     // `Screen:on_ready` and `Screen:on_destroyed` that made and dropped a `Desk`.
-    let mut rig = world(0, false, "new Layout()", "");
+    let mut rig = world(0, false, "new Layout()");
     exec(
         &mut rig,
         "g.log = [];\n\
@@ -244,7 +244,7 @@ fn a_hotplugged_output_is_announced_and_an_unplugged_one_is_removed_with_its_las
 fn each_output_shows_its_own_workspace_and_a_workspace_is_on_one_output() {
     // Before: "Desk builds" (one desk per screen, each with a workspace showing). Derived: a TypeScript workspace is on
     // one output, so the second output starts on the first workspace no output shows.
-    let mut rig = world(0, true, "new Layout()", "");
+    let mut rig = world(0, true, "new Layout()");
     assert_eq!(shown(&mut rig), "output-0=1 output-1=2");
     assert_eq!(
         rig.eval("gnoblin.workspaces.map((w) => `${w.id}:${w.active}:${w.output?.name ?? '-'}`).join(' ')"),
@@ -279,7 +279,7 @@ fn each_output_shows_its_own_workspace_and_a_workspace_is_on_one_output() {
 #[test]
 fn a_plain_show_acts_on_the_output_under_the_pointer_and_the_primary_one_when_no_pointer_says() {
     // Before: `desk()` is the desk under the pointer (`seat.screen`). Derived: with no pointer screen the primary output.
-    let mut rig = world(0, true, "new Layout()", "");
+    let mut rig = world(0, true, "new Layout()");
     exec(&mut rig, "gnoblin.show('3')");
     settle(&mut rig);
     assert_eq!(
@@ -301,7 +301,7 @@ fn a_plain_show_acts_on_the_output_under_the_pointer_and_the_primary_one_when_no
 #[test]
 fn a_new_window_joins_the_workspace_shown_on_the_output_under_the_pointer() {
     // Before: `Window:on_ready` adds the window to `desk().active`.
-    let mut rig = world(0, true, "new Layout()", "");
+    let mut rig = world(0, true, "new Layout()");
     rig.comp.external_set(SEAT, "screen", MirrorValue::Node(B));
     settle(&mut rig);
     rig.comp.create_window(30, "second", "foot");
@@ -318,7 +318,7 @@ fn a_new_window_joins_the_workspace_shown_on_the_output_under_the_pointer() {
 fn a_layout_tiles_in_the_area_of_the_output_that_shows_its_workspace() {
     // Before: `Desk:arrange` gives each desk's workspaces the desk's own size. Derived: the area is in the compositor's
     // coordinates, so the second output's starts at its own x.
-    let mut rig = world(0, true, "new Fill()", "");
+    let mut rig = world(0, true, "new Fill()");
     rig.comp.create_window(30, "one", "foot");
     settle(&mut rig);
     assert_eq!(
@@ -343,7 +343,7 @@ fn a_layout_tiles_in_the_area_of_the_output_that_shows_its_workspace() {
 #[test]
 fn bars_reserve_room_on_their_own_output_and_give_way_to_a_fullscreen_window_there() {
     // Before: bars are children of a `Desk` (`Desk:arrange` stacks them on that desk's edges). New: `Bar` takes an output.
-    let mut rig = world(0, true, "new Fill()", "");
+    let mut rig = world(0, true, "new Fill()");
     exec(
         &mut rig,
         "g.main = new Bar({ edge: 'top', height: 32 });\n\
@@ -383,7 +383,7 @@ fn bars_reserve_room_on_their_own_output_and_give_way_to_a_fullscreen_window_the
 #[test]
 fn unplugging_one_of_two_outputs_moves_its_windows_to_the_other_output() {
     // Before: "unplugging one of two outputs moves its windows to the other output".
-    let mut rig = world(0, true, "new Layout()", "");
+    let mut rig = world(0, true, "new Layout()");
     rig.comp.external_set(SEAT, "screen", MirrorValue::Node(B));
     settle(&mut rig);
     rig.comp.create_window(31, "two", "foot");
@@ -407,7 +407,7 @@ fn unplugging_one_of_two_outputs_moves_its_windows_to_the_other_output() {
 fn windows_moved_off_an_unplugged_output_are_fitted_to_the_output_that_remains() {
     // Before: `Window:move_to` refits (`fit_into`) what it moves; the unplug uses the same. The second output was 600 by
     // 400 at x 1000; the window moves to the first (1000 by 800 at the origin).
-    let mut rig = world(0, true, "new Layout()", "");
+    let mut rig = world(0, true, "new Layout()");
     rig.comp.external_set(SEAT, "screen", MirrorValue::Node(B));
     settle(&mut rig);
     rig.comp.create_window(30, "far", "foot");
@@ -428,7 +428,7 @@ fn windows_moved_off_an_unplugged_output_are_fitted_to_the_output_that_remains()
 #[test]
 fn unplugging_the_last_output_keeps_its_windows_hidden_and_drops_focus() {
     // Before: "unplugging the last output keeps its windows hidden and drops focus".
-    let mut rig = world(1, false, "new Layout()", "");
+    let mut rig = world(1, false, "new Layout()");
     give_focus(&mut rig, 3);
     assert_eq!(focus(&rig), 3);
     unplug(&mut rig, A);
@@ -446,7 +446,7 @@ fn unplugging_the_last_output_keeps_its_windows_hidden_and_drops_focus() {
 #[test]
 fn reconnecting_an_output_adopts_the_parked_windows_and_focuses_one() {
     // Before: "reconnecting an output adopts the parked windows and focuses one".
-    let mut rig = world(1, false, "new Layout()", "");
+    let mut rig = world(1, false, "new Layout()");
     give_focus(&mut rig, 3);
     unplug(&mut rig, A);
     rig.comp.create_screen(A, "output-0", (0.0, 0.0, 1000.0, 800.0), true);
@@ -465,7 +465,7 @@ fn reconnecting_an_output_adopts_the_parked_windows_and_focuses_one() {
 fn a_window_on_a_second_output_goes_to_the_first_when_it_is_unplugged_and_comes_back_with_the_next_output() {
     // New: the acceptance case. The second output's window follows to the first when the second is removed; a
     // reconnected output starts on the first free workspace, and the window moves back when asked.
-    let mut rig = world(0, true, "new Fill()", "");
+    let mut rig = world(0, true, "new Fill()");
     rig.comp.external_set(SEAT, "screen", MirrorValue::Node(B));
     settle(&mut rig);
     rig.comp.create_window(30, "second", "foot");
@@ -498,7 +498,7 @@ fn a_window_on_a_second_output_goes_to_the_first_when_it_is_unplugged_and_comes_
 #[test]
 fn moving_a_window_to_an_output_that_is_gone_is_rejected() {
     // Before: "moving a window to an output that is not a screen is rejected".
-    let mut rig = world(1, true, "new Layout()", "");
+    let mut rig = world(1, true, "new Layout()");
     exec(&mut rig, "g.second = gnoblin.outputs.at(1);");
     unplug(&mut rig, B);
     assert_eq!(
@@ -515,7 +515,7 @@ fn moving_a_window_to_an_output_that_is_gone_is_rejected() {
 #[test]
 fn moving_a_window_to_another_output_reshapes_it_into_that_outputs_work_area() {
     // Before: "moving a window to another output reshapes it into that output's work area".
-    let mut rig = world(1, true, "new Layout()", "");
+    let mut rig = world(1, true, "new Layout()");
     exec(
         &mut rig,
         "gnoblin.clients.get('3').bounds = { x: 100, y: 100, width: 900, height: 700 };",
@@ -545,7 +545,7 @@ fn moving_a_window_to_another_output_reshapes_it_into_that_outputs_work_area() {
 #[test]
 fn a_maximised_window_fills_the_new_output_when_it_moves() {
     // Before: "a maximised window fills the new output when it moves".
-    let mut rig = world(1, true, "new Layout()", "");
+    let mut rig = world(1, true, "new Layout()");
     exec(&mut rig, "windowState.maximise(gnoblin.clients.get('3'));");
     settle(&mut rig);
     assert_eq!(rect(&rig, 3), "0,0,1000,800");
@@ -561,7 +561,7 @@ fn a_maximised_window_fills_the_new_output_when_it_moves() {
 #[test]
 fn a_fullscreen_window_does_not_move_to_another_workspace_or_output() {
     // Before: "a fullscreen window does not move to another workspace" and "... another output".
-    let mut rig = world(1, true, "new Layout()", "");
+    let mut rig = world(1, true, "new Layout()");
     exec(&mut rig, "gnoblin.clients.get('3').fullscreen = true");
     settle(&mut rig);
     assert_eq!(
@@ -588,7 +588,7 @@ fn a_fullscreen_window_does_not_move_to_another_workspace_or_output() {
 #[test]
 fn a_moved_window_that_held_the_focus_hands_it_to_a_window_that_stays() {
     // Before: "moving the focused window off the active workspace gives focus to a window that stays".
-    let mut rig = world(2, false, "new Layout()", "");
+    let mut rig = world(2, false, "new Layout()");
     give_focus(&mut rig, 3);
     assert_eq!(
         rig.eval("String(gnoblin.clients.get('3').moveToWorkspace(gnoblin.workspaces.get('2')))"),
@@ -611,7 +611,7 @@ fn a_moved_window_that_held_the_focus_hands_it_to_a_window_that_stays() {
 #[test]
 fn moving_the_only_focused_window_off_the_screen_leaves_nobody_focused() {
     // New: with no window left to take the focus, the seat holds none.
-    let mut rig = world(1, false, "new Layout()", "");
+    let mut rig = world(1, false, "new Layout()");
     give_focus(&mut rig, 3);
     exec(
         &mut rig,
@@ -652,7 +652,7 @@ fn create_dialog(rig: &mut Rig, id: u64, parent: u64) {
 #[test]
 fn a_dialog_is_centred_in_its_parent_and_joins_its_workspace() {
     // Before: `Window:on_ready` adds a dialog to its parent and centres it: `(p.width - self.width) // 2`.
-    let mut rig = world(1, false, "new Layout()", "");
+    let mut rig = world(1, false, "new Layout()");
     exec(
         &mut rig,
         "gnoblin.clients.get('3').bounds = { x: 200, y: 100, width: 400, height: 300 };",
@@ -674,7 +674,7 @@ fn a_dialog_is_centred_in_its_parent_and_joins_its_workspace() {
 #[test]
 fn a_dialog_whose_parent_is_on_another_workspace_goes_with_its_parent() {
     // Before: "a dialog whose parent is on another workspace goes with its parent".
-    let mut rig = world(1, false, "new Layout()", "");
+    let mut rig = world(1, false, "new Layout()");
     exec(
         &mut rig,
         "gnoblin.workspaces.get('2').clients.add(gnoblin.clients.get('3'))",
@@ -697,7 +697,7 @@ fn a_dialog_whose_parent_is_on_another_workspace_goes_with_its_parent() {
 #[test]
 fn a_dialog_whose_parent_is_closed_has_no_parent_and_is_placed_as_a_normal_window() {
     // Before: "a dialog whose parent is closed has no parent_window and is placed as a normal window".
-    let mut rig = world(1, false, "new Layout()", "");
+    let mut rig = world(1, false, "new Layout()");
     rig.comp.destroy(3);
     settle(&mut rig);
     create_dialog(&mut rig, 30, 3);
@@ -712,7 +712,7 @@ fn a_dialog_whose_parent_is_closed_has_no_parent_and_is_placed_as_a_normal_windo
 #[test]
 fn a_dialog_does_not_move_to_another_workspace_on_its_own_but_goes_with_its_parent() {
     // Before: "a dialog does not move to another workspace on its own" and "moving a parent window takes its dialog with it".
-    let mut rig = world(1, false, "new Layout()", "");
+    let mut rig = world(1, false, "new Layout()");
     create_dialog(&mut rig, 30, 3);
     assert_eq!(
         rig.eval("String(gnoblin.clients.get('30').moveToWorkspace(gnoblin.workspaces.get('2')))"),
@@ -731,7 +731,7 @@ fn a_dialog_does_not_move_to_another_workspace_on_its_own_but_goes_with_its_pare
 #[test]
 fn a_dialog_follows_its_parent_to_another_output_and_keeps_its_place_in_it() {
     // Before: "a dialog follows its parent to another output".
-    let mut rig = world(1, true, "new Layout()", "");
+    let mut rig = world(1, true, "new Layout()");
     exec(
         &mut rig,
         "gnoblin.clients.get('3').bounds = { x: 100, y: 100, width: 300, height: 200 };",
@@ -758,7 +758,7 @@ fn a_dialog_follows_its_parent_to_another_output_and_keeps_its_place_in_it() {
 #[test]
 fn a_dialog_moves_with_its_parent_and_a_tiling_layout_leaves_it_alone() {
     // Before: a dialog is a child node of its parent, so it moves with it and the workspace's layout never places it.
-    let mut rig = world(1, false, "new Fill()", "");
+    let mut rig = world(1, false, "new Fill()");
     create_dialog(&mut rig, 30, 3);
     assert_eq!(rect(&rig, 3), "0,0,1000,800", "the layout filled the parent");
     assert_eq!(rect(&rig, 30), "450,370,100,60", "the dialog is centred, not tiled");
@@ -776,7 +776,7 @@ fn a_dialog_moves_with_its_parent_and_a_tiling_layout_leaves_it_alone() {
 fn a_workspace_set_shows_each_workspace_on_its_own_output() {
     // Before: "retired corpus sets" and `workspace_sets` in init.retired shell: each entry shows `d:show(ws)` on the desk of its output.
     // The TypeScript shell used to report an entry for a non-primary output and not show it.
-    let mut rig = world(0, true, "new Layout()", "");
+    let mut rig = world(0, true, "new Layout()");
     exec(
         &mut rig,
         "gnoblin.workspaces.sets.define([\n\
@@ -833,11 +833,11 @@ fn create_launched(rig: &mut Rig, id: u64) {
 }
 
 #[test]
-fn a_launched_window_does_not_take_focus_unless_new_windows_are_allowed_to() {
+fn a_launched_window_does_not_take_focus_but_a_window_nobody_launched_does() {
     // Before: `Focus.opens_focused(focus_settings(), self.from_launcher)`: a window from a launcher takes focus only when
     // `focus_new_windows` is `allow`. The the retired shell `from_launcher` was a field of the fake core only; here it is the real
-    // node's property.
-    let mut rig = world(1, false, "new Layout()", "");
+    // node's property. The `allow` half went with the `focus` key (design/js-spec-native.md, 3.11).
+    let mut rig = world(1, false, "new Layout()");
     give_focus(&mut rig, 3);
     create_launched(&mut rig, 30);
     assert_eq!(rig.eval("String(gnoblin.clients.get('30').fromLauncher)"), "true");
@@ -845,11 +845,6 @@ fn a_launched_window_does_not_take_focus_unless_new_windows_are_allowed_to() {
     rig.comp.create_window(31, "own", "foot");
     settle(&mut rig);
     assert_eq!(focus(&rig), 31, "a window nobody launched takes focus");
-
-    let mut allowing = world(1, false, "new Layout()", "focus: { newWindows: 'allow' },");
-    give_focus(&mut allowing, 3);
-    create_launched(&mut allowing, 30);
-    assert_eq!(focus(&allowing), 30, "`allow` lets a launched window take focus");
 }
 
 // ---- a reload ------------------------------------------------------------------------------------------------------
@@ -857,7 +852,7 @@ fn a_launched_window_does_not_take_focus_unless_new_windows_are_allowed_to() {
 #[test]
 fn a_reload_puts_each_output_back_on_the_workspace_it_showed() {
     // New: the snapshot a reload carries holds what each output showed, by the output's name.
-    let mut rig = world(0, true, "new Layout()", "");
+    let mut rig = world(0, true, "new Layout()");
     exec(&mut rig, "gnoblin.outputs.at(1).show('3')");
     settle(&mut rig);
     let snapshot = rig.shell.workspace_snapshot().expect("a snapshot");
@@ -874,9 +869,8 @@ fn a_reload_puts_each_output_back_on_the_workspace_it_showed() {
     // The next generation starts on the same compositor and is told what the last one showed.
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = std::fs::canonicalize(dir.path()).expect("the temp dir exists");
-    let init = format!(
-        "{IMPORTS}defineConfig({{ workspaces: [{{ id: \"1\" }}, {{ id: \"2\" }}, {{ id: \"3\" }}], decorations: false }});\n"
-    );
+    let init =
+        format!("{IMPORTS}for (const id of [\"1\", \"2\", \"3\"]) gnoblin.workspaces.add(new Workspace({{ id }}));\n");
     std::fs::write(root.join("init.ts"), init).expect("init.ts is written");
     let mut second =
         gnoblin_js::JsShell::new(Box::new(rig.comp.clone()), honest_config(&root)).expect("the shell boots");
@@ -894,11 +888,12 @@ fn a_reload_puts_each_output_back_on_the_workspace_it_showed() {
     assert_eq!(shown, "output-0=1 output-1=3");
 }
 
-// ---- Output.apply, Output.mirror, defineConfig({ outputs }) ------------------------------------------------------------
+// ---- Output.apply, Output.mirror, OutputProfile -------------------------------------------------------------------------
 
-/// A shell over two screens that name their connectors: `A` is `DP-1` (1000 by 800) and `B` is `HDMI-1` (600 by 400).
-fn world_with_connectors(config: &str) -> Rig {
-    let init = format!("defineConfig({{ decorations: false, {config} }});\n");
+/// A shell over two screens that name their connectors: `A` is `DP-1` (1000 by 800) and `B` is `HDMI-1` (600 by 400). Its
+/// `init.ts` is `body`.
+fn world_with_connectors(body: &str) -> Rig {
+    let init = format!("{body}\n");
     let mut rig = rig_setup(IMPORTS, &init, |comp| {
         for (id, name, connector, rect, primary) in [
             (A, "output-0", "DP-1", (0.0, 0.0, 1000.0, 800.0), true),
@@ -1009,9 +1004,11 @@ fn mirror_names_the_source_by_connector_and_null_stops_it() {
 }
 
 #[test]
-fn the_outputs_table_of_the_config_is_applied_by_connector_and_a_refusal_names_the_key_path() {
-    let mut rig =
-        world_with_connectors("outputs: { 'HDMI-1': { scale: 1.25, position: [0, 800] }, 'DP-9': { scale: 2 } }");
+fn the_profiles_of_the_config_are_applied_by_connector_and_a_refusal_names_the_key_path() {
+    let mut rig = world_with_connectors(
+        "gnoblin.outputs.profiles.add(new OutputProfile({ match: { connector: 'HDMI-1' }, scale: 1.25, position: { x: 0, y: 800 } }));\n\
+         gnoblin.outputs.profiles.add(new OutputProfile({ match: { connector: 'DP-9' }, scale: 2 }));",
+    );
     let sent = rig.comp.applies();
     assert_eq!(
         sent.len(),
@@ -1026,7 +1023,7 @@ fn the_outputs_table_of_the_config_is_applied_by_connector_and_a_refusal_names_t
     assert!(
         diagnostics
             .iter()
-            .any(|line| line == "outputs.HDMI-1.position: HDMI-1 and DP-1 would overlap"),
+            .any(|line| line == "outputs.profiles.HDMI-1.position: HDMI-1 and DP-1 would overlap"),
         "the notice carries the key path: {diagnostics:?}"
     );
 
@@ -1043,8 +1040,8 @@ fn the_outputs_table_of_the_config_is_applied_by_connector_and_a_refusal_names_t
 }
 
 #[test]
-fn a_config_output_entry_that_does_not_check_fails_the_config_naming_the_path() {
-    let init = "defineConfig({ outputs: { 'DP-1': { scale: 9 } } });\n";
+fn a_profile_that_does_not_check_fails_the_config_naming_the_profile() {
+    let init = "gnoblin.outputs.profiles.add(new OutputProfile({ match: { connector: 'DP-1' }, scale: 9 }));\n";
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = std::fs::canonicalize(dir.path()).expect("the temp dir exists");
     std::fs::write(root.join("init.ts"), format!("{IMPORTS}{init}")).expect("init.ts is written");
@@ -1053,12 +1050,12 @@ fn a_config_output_entry_that_does_not_check_fails_the_config_naming_the_path() 
     let error = shell
         .load_entry(std::path::Path::new("init.ts"))
         .expect_err("the config does not check");
-    assert!(error.to_string().contains("config.outputs.DP-1.scale"), "{error}");
+    assert!(error.to_string().contains("OutputProfile \"DP-1\".scale"), "{error}");
 }
 
 #[test]
 fn a_mirrored_or_disabled_output_has_no_desk_and_gets_one_back_when_it_is_ordinary_again() {
-    let mut rig = world_with_connectors("workspaces: [{ id: '1' }, { id: '2' }]");
+    let mut rig = world_with_connectors("for (const id of ['1', '2']) gnoblin.workspaces.add(new Workspace({ id }));");
     assert_eq!(shown(&mut rig), "output-0=1 output-1=2");
 
     // The compositor publishes the mirror: the output keeps its screen node and loses its desk.

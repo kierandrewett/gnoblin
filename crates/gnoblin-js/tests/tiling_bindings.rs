@@ -29,7 +29,7 @@ fn world(n: u64, layout: &str) -> Rig {
              layout.compute = (context) => {{ globalThis.computes += 1; return compute(context); }};\n\
              return layout;\n\
          }};\n\
-         defineConfig({{ workspaces: [{{ id: \"main\", layout: {layout} }}], decorations: false }});\n"
+         gnoblin.workspaces.add(new Workspace({{ id: \"main\", layout: {layout} }}));\n"
     );
     let mut rig = rig_setup(IMPORTS, &init, move |comp| {
         comp.add_node(

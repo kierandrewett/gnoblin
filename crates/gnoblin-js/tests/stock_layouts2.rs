@@ -1,6 +1,5 @@
 //! The second set of stock TypeScript layouts (`data/js/gnoblin/`): Dwindle, Kiosk, Strip and Carousel3d, the
-//! workspace slide gesture, workspace sets and the launcher and workspace keys of the stock config, run in a real
-//! generation against a fake `gnoblin` global.
+//! workspace slide gesture and workspace sets, run in a real generation with no host.
 //!
 //! The cases are the retired shell's: `the retired retired corpus` (Dwindle, Kiosk),
 //! `the retired retired corpus` (Strip, Carousel3d, the ring), `retired corpus sets` (the pure set cases)
@@ -15,14 +14,9 @@ use std::time::Duration;
 
 use gnoblin_js::{JsConfig, JsGeneration, stock_modules};
 
-/// The fake host and the helpers every case shares. Plain JavaScript: embedded modules are not stripped.
+/// The helpers every case shares. There is no `gnoblin` host: the cases call the library only. Plain JavaScript: embedded
+/// modules are not stripped.
 const HARNESS: &str = r##"
-globalThis.__registered = [];
-globalThis.gnoblin = {
-    __register(config) {
-        globalThis.__registered.push(config);
-    },
-};
 export const area = (width = 1000, height = 800) => ({ x: 0, y: 0, width, height });
 export const nodes = (n) => Array.from({ length: n }, (_, i) => ({ name: `w${i + 1}` }));
 const num = (v) => String(Math.round(v * 1000) / 1000);
@@ -84,7 +78,6 @@ import { area, nodes, focusables, tiled, lay, named, thrown, rect, emit } from "
 import {
     DwindleLayout, KioskLayout, StripLayout, Carousel3dLayout, ring, clampColumn,
     WorkspaceSlideBinding, defineSets, activateSet, WorkspaceSets, WorkspaceSetError,
-    defineConfig, desugarConfig, defaultConfig, mergeConfig, spawn, show, focusColumn, binding, parseTrigger,
 } from "gnoblin";
 "#;
 
@@ -916,109 +909,6 @@ fn workspace_sets_show_the_named_workspaces_and_keep_the_sets_in_force_when_a_li
             "WorkspaceSetError: set \"away\" names workspace \"3\", which no workspace has true",
             "split",
             "2@DP-1,3@DP-1,1@DP-1,2@HDMI-1",
-        ])
-    );
-}
-
-// -- the stock keys -----------------------------------------------------------------------------------------------
-
-#[test]
-fn the_stock_config_binds_the_retired_shells_workspace_strip_and_gesture_keys() {
-    // The retired default shell binds `<Super>1` to `<Super>9` (each shows the workspace at that position), `<Super>Left` and
-    // `<Super>Right` (focus between a Strip's columns, nothing on another layout) and the `Swipe3` slide; the launcher
-    // is `<Super>space`, which this config leaves unbound until a command is configured.
-    let got = run(r#"
-        const plan = desugarConfig(defaultConfig);
-        const by = (trigger: string) => plan.bindings.find((b) => b.trigger === trigger) as any;
-        emit([
-            plan.bindings.map((b) => b.trigger).join(" "),
-            JSON.stringify(by("Super+1").action),
-            JSON.stringify(by("Super+9").action),
-            JSON.stringify(by("Super+Left").action),
-            JSON.stringify(by("Super+Right").action),
-            by("Swipe3").action.kind + ":" + by("Swipe3").action.create().constructor.name + ":" + by("Swipe3").action.create().trigger,
-            plan.bindings.some((b) => b.trigger === "Super+space"),
-        ].join("\n"));
-    "#);
-    assert_eq!(
-        got,
-        lines(&[
-            "Super+1 Super+2 Super+3 Super+4 Super+5 Super+6 Super+7 Super+8 Super+9 Super+Left Super+Right Swipe3 XF86AudioRaiseVolume XF86AudioLowerVolume XF86AudioMute XF86AudioMicMute XF86AudioPlay XF86AudioNext XF86AudioPrev",
-            r#"{"kind":"show-position","position":1}"#,
-            r#"{"kind":"show-position","position":9}"#,
-            r#"{"kind":"focus-column","direction":"left"}"#,
-            r#"{"kind":"focus-column","direction":"right"}"#,
-            "binding:WorkspaceSlideBinding:Swipe3",
-            "false",
-        ])
-    );
-}
-
-#[test]
-fn the_launcher_command_is_bound_to_super_space_through_spawn_unless_keys_binds_it() {
-    // The retired launcher spawned the text typed into its entry on Return. The in-shell entry is not ported; a configured
-    // command (a command line or an argv) is run by `<Super>space` through `spawn`.
-    let got = run(r#"
-        const action = (config: any) => JSON.stringify(desugarConfig(config).bindings.map((b) => `${b.trigger} ${JSON.stringify(b.action)}`));
-        emit([
-            action({ launcher: "wofi --show drun" }),
-            action({ launcher: ["rofi", "-show", "drun"] }),
-            action({ launcher: "wofi", keys: { "super+space": spawn("fuzzel") } }),
-            action({}),
-            thrown(() => desugarConfig({ launcher: 3 as any })),
-            thrown(() => desugarConfig({ launcher: "   " })),
-            thrown(() => desugarConfig({ launcher: [] })),
-            JSON.stringify((mergeConfig(defaultConfig, { launcher: "wofi" }) as any).launcher),
-            JSON.stringify((mergeConfig({ ...defaultConfig, launcher: "base" } as any, {}) as any).launcher),
-            JSON.stringify((mergeConfig({ ...defaultConfig, launcher: "base" } as any, { launcher: "mine" }) as any).launcher),
-        ].join("\n"));
-    "#);
-    assert_eq!(
-        got,
-        lines(&[
-            r#"["Super+space {\"kind\":\"spawn\",\"argv\":[\"wofi\",\"--show\",\"drun\"]}"]"#,
-            r#"["Super+space {\"kind\":\"spawn\",\"argv\":[\"rofi\",\"-show\",\"drun\"]}"]"#,
-            r#"["super+space {\"kind\":\"spawn\",\"argv\":[\"fuzzel\"]}"]"#,
-            "[]",
-            "TypeError: config.launcher must be a command line or an argv array",
-            "TypeError: config.launcher must be a non-empty command line or an argv of strings",
-            "TypeError: config.launcher must be a non-empty command line or an argv of strings",
-            r#""wofi""#,
-            r#""base""#,
-            r#""mine""#,
-        ])
-    );
-}
-
-#[test]
-fn the_new_key_actions_check_their_arguments() {
-    let got = run(r#"
-        emit([
-            JSON.stringify(show.position(3)),
-            JSON.stringify(focusColumn("right")),
-            binding(() => new WorkspaceSlideBinding()).kind,
-            thrown(() => show.position(0)),
-            thrown(() => show.position(10)),
-            thrown(() => show.position(1.5)),
-            thrown(() => show.positions("Super")),
-            thrown(() => focusColumn("up" as any)),
-            thrown(() => binding(3 as any)),
-            thrown(() => desugarConfig({ keys: { "Super+X": { kind: "focus-column", direction: "up" } as any } })),
-        ].join("\n"));
-    "#);
-    assert_eq!(
-        got,
-        lines(&[
-            r#"{"kind":"show-position","position":3}"#,
-            r#"{"kind":"focus-column","direction":"right"}"#,
-            "binding",
-            "RangeError: show.position needs a whole number from 1 to 9, got 0",
-            "RangeError: show.position needs a whole number from 1 to 9, got 10",
-            "RangeError: show.position needs a whole number from 1 to 9, got 1.5",
-            "TypeError: show.positions needs a template with {n}, such as \"Super+{n}\"",
-            "TypeError: focusColumn needs \"left\" or \"right\", got up",
-            "TypeError: binding needs a function that makes the Binding",
-            "TypeError: keys[\"Super+X\"] must be spawn(...), show(...), show.position(...), focusColumn(...), binding(...), \"close\" or a function",
         ])
     );
 }

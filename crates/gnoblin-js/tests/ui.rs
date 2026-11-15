@@ -20,7 +20,7 @@ mod common;
 use common::*;
 
 /// What every init file imports.
-const IMPORTS: &str = "import { Box, Canvas, Grid, Icon, Text, Titlebar, defaultTitlebarStyle, defineConfig, \
+const IMPORTS: &str = "import { Box, Canvas, Grid, Icon, Text, Titlebar, Workspace, defaultTitlebarStyle, startDecorations, \
                        uiCanvasCount } from \"gnoblin\";\n\
                        (globalThis as any).uiCanvasCount = uiCanvasCount;\n";
 
@@ -626,7 +626,7 @@ fn the_buttons_and_the_bar_answer_a_press() {
 
 #[test]
 fn a_window_gets_one_titlebar_and_loses_it_when_the_window_closes() {
-    let mut rig = rig("defineConfig({ decorations: true });");
+    let mut rig = rig("startDecorations();");
     assert!(rig.load_diagnostics.is_empty(), "{:?}", rig.load_diagnostics);
     rig.settle();
     assert!(rig.comp.canvases().is_empty(), "no window, no titlebar");
@@ -679,11 +679,7 @@ fn every_window_has_a_titlebar_of_its_own_including_the_ones_there_at_boot() {
     comp.add_window(4, "two", "b");
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
-    fs::write(
-        root.join("init.ts"),
-        format!("{IMPORTS}defineConfig({{ decorations: true }});\n"),
-    )
-    .expect("init.ts");
+    fs::write(root.join("init.ts"), format!("{IMPORTS}startDecorations();\n")).expect("init.ts");
     let mut shell = JsShell::new(Box::new(comp.clone()), honest_config(&root)).expect("the shell boots");
     shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
     for _ in 0..6 {
@@ -697,11 +693,7 @@ fn every_window_has_a_titlebar_of_its_own_including_the_ones_there_at_boot() {
 
 #[test]
 fn a_window_has_no_titlebar_unless_the_config_asks_for_one() {
-    for init in [
-        "export {};",
-        "defineConfig({});",
-        "defineConfig({ decorations: false });",
-    ] {
+    for init in ["export {};", "gnoblin.workspaces.add(new Workspace({ id: 'desk' }));"] {
         let mut rig = rig(init);
         rig.settle();
         rig.comp.create_window(3, "term", "foot");
@@ -713,7 +705,7 @@ fn a_window_has_no_titlebar_unless_the_config_asks_for_one() {
 
 #[test]
 fn the_close_button_of_a_decorated_window_closes_that_window() {
-    let mut rig = rig("defineConfig({ decorations: true });");
+    let mut rig = rig("startDecorations();");
     rig.comp.create_window(3, "term", "foot");
     rig.settle();
     let bar = rig.comp.children(3)[0];
@@ -731,7 +723,7 @@ fn the_close_button_of_a_decorated_window_closes_that_window() {
 
 #[test]
 fn retiring_a_generation_takes_its_titlebars_away() {
-    let mut rig = rig("defineConfig({ decorations: true });");
+    let mut rig = rig("startDecorations();");
     rig.comp.create_window(3, "term", "foot");
     rig.settle();
     let bar = rig.comp.children(3)[0];

@@ -1,7 +1,7 @@
 //! Logical displays (owner-spec sections 8 and 9): `OutputProfile`, `Display`, `Viewport`, `Camera2D` and `Camera3D` on a
 //! viewport, `gnoblin.displays` and `input.activeDisplay`, over the fake compositor of `tests/common`.
 //!
-//! The scripts are written the way the specification writes them (no `defineConfig`). What the real compositor does with
+//! The scripts are written the way the specification writes them. What the real compositor does with
 //! the output requests, the mirror and the span is `crates/gnoblin/tests/js_shell.rs`.
 
 use gnoblin_tree_client::tree_mirror::MirrorValue;

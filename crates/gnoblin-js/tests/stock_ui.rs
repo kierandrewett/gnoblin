@@ -16,6 +16,12 @@ const MIDDLE: u64 = 274;
 
 const IMPORTS: &str = "import * as g from \"gnoblin\";\nconst { gnoblin: _runtime, ...exported } = g;\nObject.assign(globalThis, exported);\n";
 
+/// Titlebars on every window: what a config that wants decorations writes.
+const DECORATED: &str = "startDecorations();";
+
+/// Titlebars and the window menu the compositor's menu requests are answered by.
+const MENU: &str = "startDecorations(); startWindowMenu();";
+
 /// A shell over a screen of 1000 by 800, one seat, one lock and `windows` windows (ids 3 on, titled `win1`...), whose
 /// `init.ts` is `body`.
 fn world(windows: u64, body: &str) -> Rig {
@@ -89,7 +95,7 @@ fn calls_of(rig: &Rig, method: &str) -> usize {
 
 #[test]
 fn a_menu_request_opens_the_window_menu_with_its_corner_at_the_anchor_and_the_keys_going_to_it() {
-    let mut rig = world(1, "defineConfig({ decorations: true });");
+    let mut rig = world(1, MENU);
     ask(&mut rig, 3, 300.0, 200.0);
     assert!(menu_open(&mut rig), "a menu request must open the menu");
     assert_eq!(
@@ -114,7 +120,7 @@ fn a_menu_request_opens_the_window_menu_with_its_corner_at_the_anchor_and_the_ke
 
 #[test]
 fn a_menu_near_the_screens_edge_is_moved_back_inside_it_and_is_as_wide_as_its_longest_label() {
-    let mut rig = world(1, "defineConfig({ decorations: true });");
+    let mut rig = world(1, MENU);
     ask(&mut rig, 3, 990.0, 790.0);
     let fits = rig.eval(
         "(() => { const p = windowMenu.current.panel; \
@@ -140,7 +146,7 @@ fn a_menu_near_the_screens_edge_is_moved_back_inside_it_and_is_as_wide_as_its_lo
 
 #[test]
 fn down_and_return_run_maximise_the_window_maximises_the_menu_closes_and_the_keyboard_goes_back() {
-    let mut rig = world(1, "defineConfig({ decorations: true });");
+    let mut rig = world(1, MENU);
     ask(&mut rig, 3, 50.0, 50.0);
     press_key(&mut rig, "Down");
     assert_eq!(
@@ -192,7 +198,7 @@ fn up_home_end_tab_and_a_letter_move_the_selection_as_the_retired_menu_does() {
 
 #[test]
 fn escape_closes_the_menu_a_release_does_nothing_and_a_key_it_does_not_use_does_not_leave_it() {
-    let mut rig = world(1, "defineConfig({ decorations: true });");
+    let mut rig = world(1, MENU);
     ask(&mut rig, 3, 50.0, 50.0);
     let at = layer(&mut rig);
     rig.comp.key(at, "Escape", "", false);
@@ -207,7 +213,7 @@ fn escape_closes_the_menu_a_release_does_nothing_and_a_key_it_does_not_use_does_
 
 #[test]
 fn a_press_outside_the_card_closes_the_menu_a_press_on_its_padding_does_not_and_a_left_press_on_an_entry_runs_it() {
-    let mut rig = world(1, "defineConfig({ decorations: true });");
+    let mut rig = world(1, MENU);
     ask(&mut rig, 3, 50.0, 50.0);
     let (at, panel) = (
         layer(&mut rig),
@@ -245,7 +251,7 @@ fn a_press_outside_the_card_closes_the_menu_a_press_on_its_padding_does_not_and_
 
 #[test]
 fn the_pointer_selects_an_entry_and_a_disabled_entry_cannot_be_selected_or_run_and_the_keyboard_skips_it() {
-    let mut rig = world(1, "defineConfig({ decorations: true });");
+    let mut rig = world(1, MENU);
     rig.comp.external_set(3, "maximised", MirrorValue::Bool(true));
     rig.settle();
     ask(&mut rig, 3, 50.0, 50.0);
@@ -281,7 +287,7 @@ fn the_pointer_selects_an_entry_and_a_disabled_entry_cannot_be_selected_or_run_a
 
 #[test]
 fn restore_minimise_and_close_do_what_they_say() {
-    let mut rig = world(1, "defineConfig({ decorations: true });");
+    let mut rig = world(1, MENU);
     rig.comp.external_set(3, "maximised", MirrorValue::Bool(true));
     rig.settle();
     ask(&mut rig, 3, 50.0, 50.0);
@@ -304,7 +310,7 @@ fn restore_minimise_and_close_do_what_they_say() {
 
 #[test]
 fn always_on_top_pins_the_window_and_the_entry_shows_the_tick() {
-    let mut rig = world(2, "defineConfig({ decorations: true });");
+    let mut rig = world(2, MENU);
     ask(&mut rig, 3, 50.0, 50.0);
     assert_eq!(
         rig.eval("String(windowMenu.current.panel.rows[4].checked)"),
@@ -336,7 +342,8 @@ fn always_on_top_pins_the_window_and_the_entry_shows_the_tick() {
 fn move_to_workspace_opens_a_submenu_right_opens_it_return_moves_the_window_and_left_and_escape_go_back() {
     let mut rig = world(
         1,
-        "defineConfig({ workspaces: [{ id: '1' }, { id: '2' }, { id: '3' }] });",
+        "startDecorations(); startWindowMenu(); \
+         for (const id of ['1', '2', '3']) gnoblin.workspaces.add(new Workspace({ id }));",
     );
     ask(&mut rig, 3, 50.0, 50.0);
     press_key(&mut rig, "End");
@@ -385,7 +392,7 @@ fn move_to_workspace_opens_a_submenu_right_opens_it_return_moves_the_window_and_
 
 #[test]
 fn move_to_workspace_is_off_for_a_fullscreen_window() {
-    let mut rig = world(1, "defineConfig({ decorations: true });");
+    let mut rig = world(1, MENU);
     rig.comp.external_set(3, "fullscreen", MirrorValue::Bool(true));
     rig.settle();
     ask(&mut rig, 3, 50.0, 50.0);
@@ -397,7 +404,7 @@ fn move_to_workspace_is_off_for_a_fullscreen_window() {
 
 #[test]
 fn two_menus_never_stack_and_the_menu_closes_with_its_window() {
-    let mut rig = world(2, "defineConfig({ decorations: true });");
+    let mut rig = world(2, MENU);
     ask(&mut rig, 3, 50.0, 50.0);
     ask(&mut rig, 4, 400.0, 300.0);
     assert_eq!(
@@ -427,7 +434,7 @@ fn two_menus_never_stack_and_the_menu_closes_with_its_window() {
 
 #[test]
 fn a_menu_for_a_secure_window_is_secure_its_layer_is_not_and_none_opens_for_a_minimised_or_locked_one() {
-    let mut rig = world(2, "defineConfig({ decorations: true });");
+    let mut rig = world(2, MENU);
     rig.comp.external_set(3, "secure", MirrorValue::Bool(true));
     rig.settle();
     ask(&mut rig, 3, 50.0, 50.0);
@@ -456,7 +463,7 @@ fn a_menu_for_a_secure_window_is_secure_its_layer_is_not_and_none_opens_for_a_mi
 
 #[test]
 fn the_titlebars_right_click_opens_the_menu_at_the_pointer_and_its_middle_click_does_not() {
-    let mut rig = world(1, "defineConfig({ decorations: true });");
+    let mut rig = world(1, MENU);
     rig.comp.external_set(21, "pointer_x", MirrorValue::Double(120.0));
     rig.comp.external_set(21, "pointer_y", MirrorValue::Double(90.0));
     rig.settle();
@@ -484,7 +491,7 @@ fn the_titlebars_right_click_opens_the_menu_at_the_pointer_and_its_middle_click_
 fn a_script_that_replaces_items_changes_the_menu_and_one_that_replaces_show_draws_its_own() {
     let mut rig = world(
         1,
-        "defineConfig({ decorations: true }); globalThis.ran = []; \
+        "startDecorations(); startWindowMenu(); globalThis.ran = []; \
          windowMenu.items = () => [{ label: 'Only', run: (w) => globalThis.ran.push(w.title) }, { separator: true }, { label: 'Off', enabled: false }];",
     );
     ask(&mut rig, 3, 50.0, 50.0);
@@ -505,7 +512,7 @@ fn a_script_that_replaces_items_changes_the_menu_and_one_that_replaces_show_draw
 fn a_menu_entry_that_throws_is_reported_and_the_menu_is_already_closed() {
     let mut rig = world(
         1,
-        "defineConfig({ decorations: true }); windowMenu.items = () => [{ label: 'Boom', run: () => { throw new Error('boom'); } }];",
+        "startDecorations(); startWindowMenu(); windowMenu.items = () => [{ label: 'Boom', run: () => { throw new Error('boom'); } }];",
     );
     ask(&mut rig, 3, 50.0, 50.0);
     press_key(&mut rig, "Down");
@@ -520,8 +527,8 @@ fn a_menu_entry_that_throws_is_reported_and_the_menu_is_already_closed() {
 }
 
 #[test]
-fn menus_false_leaves_the_request_unanswered_and_a_request_with_no_anchor_opens_at_the_pointer() {
-    let mut rig = world(1, "defineConfig({ menus: false });");
+fn a_shell_that_does_not_start_the_menu_leaves_the_request_unanswered_and_one_with_no_anchor_opens_at_the_pointer() {
+    let mut rig = world(1, DECORATED);
     ask(&mut rig, 3, 50.0, 50.0);
     assert_eq!(
         rig.eval("String(windowMenu.started)"),
@@ -529,7 +536,7 @@ fn menus_false_leaves_the_request_unanswered_and_a_request_with_no_anchor_opens_
         "the stock menu never started"
     );
     assert!(!menu_open(&mut rig));
-    let mut rig = world(1, "defineConfig({ decorations: true });");
+    let mut rig = world(1, MENU);
     rig.comp.external_set(21, "pointer_x", MirrorValue::Double(220.0));
     rig.comp.external_set(21, "pointer_y", MirrorValue::Double(140.0));
     rig.settle();
@@ -543,8 +550,8 @@ fn menus_false_leaves_the_request_unanswered_and_a_request_with_no_anchor_opens_
 
 // ---- the alert: the cases of retired corpus alerts ------------------------------------------------------------------------
 
-const FAST_ALERTS: &str =
-    "defineConfig({ decorations: true }); notRespondingAlerts.armSeconds = 1; notRespondingAlerts.intervalMs = 0;";
+const FAST_ALERTS: &str = "startDecorations(); startWindowMenu(); startNotRespondingAlert(); \
+     notRespondingAlerts.armSeconds = 1; notRespondingAlerts.intervalMs = 0;";
 
 fn stuck(rig: &mut Rig, node: u64, on: bool) {
     rig.comp.external_set(node, "unresponsive", MirrorValue::Bool(on));
@@ -707,8 +714,8 @@ fn the_alert_closes_when_the_window_answers_again_or_goes_and_under_a_lock() {
 }
 
 #[test]
-fn alerts_false_turns_the_alert_off_and_an_alert_closes_an_open_window_menu() {
-    let mut rig = world(1, "defineConfig({ alerts: false });");
+fn a_shell_that_does_not_start_the_alert_has_none_and_an_alert_closes_an_open_window_menu() {
+    let mut rig = world(1, MENU);
     stuck(&mut rig, 3, true);
     assert_eq!(rig.eval("String(notRespondingAlerts.started)"), "false");
     let mut rig = world(1, FAST_ALERTS);
@@ -824,7 +831,7 @@ fn the_clock_formats_the_time_and_follows_it() {
 
 #[test]
 fn a_bar_takes_its_room_from_the_windows_and_gives_it_back_when_it_goes() {
-    let mut rig = world(1, "defineConfig({ decorations: true });");
+    let mut rig = world(1, "export {};");
     assert_eq!(
         rig.eval("JSON.stringify(gnoblin.workspaces.area)"),
         r#"{"x":0,"y":0,"width":1000,"height":800}"#
@@ -873,7 +880,10 @@ fn a_toast_adds_one_card_to_the_screen_fades_in_and_removes_itself() {
 
 #[test]
 fn the_overview_keeps_every_workspace_at_full_strength_while_it_is_on_and_dims_the_others_when_it_is_off() {
-    let mut rig = world(2, "defineConfig({ workspaces: [{ id: 'a' }, { id: 'b' }] });");
+    let mut rig = world(
+        2,
+        "for (const id of ['a', 'b']) gnoblin.workspaces.add(new Workspace({ id }));",
+    );
     exec(
         &mut rig,
         "gnoblin.workspaces.at(gnoblin.workspaces.length - 1).clients.add(gnoblin.clients.at(gnoblin.clients.length - 1))",
@@ -923,17 +933,14 @@ fn the_launcher_opens_on_the_screen_returns_spawns_the_command_and_escape_closes
 }
 
 #[test]
-fn super_space_opens_the_stock_launcher_unless_a_launcher_command_or_a_key_takes_it() {
-    let mut rig = world(1, "defineConfig({ decorations: true });");
+fn super_space_opens_the_stock_launcher_in_the_stock_default() {
+    let mut rig = world(
+        1,
+        "import { installDefaults } from \"gnoblin/starter\"; installDefaults(gnoblin);",
+    );
     assert_eq!(
         rig.eval("[...gnoblin.input.primary.bindings].some((b) => b.trigger === 'Super+space') ? 'bound' : 'free'"),
         "bound"
-    );
-    let mut rig = world(1, "defineConfig({ launcher: 'wofi' });");
-    assert_eq!(
-        rig.eval("String([...gnoblin.input.primary.bindings].filter((b) => b.trigger === 'Super+space').length)"),
-        "1",
-        "a command takes the key and the entry is not bound as well"
     );
 }
 
@@ -941,7 +948,7 @@ fn super_space_opens_the_stock_launcher_unless_a_launcher_command_or_a_key_takes
 
 #[test]
 fn a_decorated_window_is_placed_with_its_content_below_its_bar() {
-    let mut rig = world(0, "defineConfig({ decorations: true });");
+    let mut rig = world(0, DECORATED);
     rig.comp.create_window(3, "term", "foot");
     rig.settle();
     assert_eq!(rig.eval("String(gnoblin.clients.at(0).frameInset)"), "28");
@@ -977,7 +984,7 @@ fn a_decorated_window_is_placed_with_its_content_below_its_bar() {
 
 #[test]
 fn a_window_that_draws_its_own_title_bar_gets_no_titlebar_and_no_room_for_one() {
-    let mut rig = world(0, "defineConfig({ decorations: true });");
+    let mut rig = world(0, DECORATED);
     rig.comp.create_window_decorated(3, "term", "foot", "client");
     rig.settle();
     assert_eq!(rig.eval("gnoblin.clients.at(0).decoration"), "client");
@@ -1007,7 +1014,7 @@ fn a_window_that_draws_its_own_title_bar_gets_no_titlebar_and_no_room_for_one() 
 
 #[test]
 fn a_window_gains_its_bar_when_the_compositor_makes_it_server_decorated_and_loses_it_when_it_does_not() {
-    let mut rig = world(0, "defineConfig({ decorations: true });");
+    let mut rig = world(0, DECORATED);
     rig.comp.create_window_decorated(3, "term", "foot", "client");
     rig.settle();
     assert!(rig.comp.children(3).is_empty());
@@ -1060,7 +1067,7 @@ fn request(rig: &mut Rig, node: u64, name: &str) {
 
 #[test]
 fn a_floating_window_placed_before_its_bar_arrived_keeps_its_frame_in_place_and_is_never_above_the_screen() {
-    let mut rig = world(0, "defineConfig({ decorations: true });");
+    let mut rig = world(0, DECORATED);
     rig.comp.create_window_decorated(3, "term", "foot", "client");
     rig.settle();
     let placed = content(&rig, 3);
@@ -1094,7 +1101,7 @@ fn a_floating_window_placed_before_its_bar_arrived_keeps_its_frame_in_place_and_
 
 #[test]
 fn a_window_the_user_moved_keeps_its_frame_where_it_was_left_and_the_content_follows_the_bar() {
-    let mut rig = world(0, "defineConfig({ decorations: true });");
+    let mut rig = world(0, DECORATED);
     rig.comp.create_window_decorated(3, "term", "foot", "client");
     rig.settle();
     exec(
@@ -1121,7 +1128,7 @@ fn a_window_the_user_moved_keeps_its_frame_where_it_was_left_and_the_content_fol
 
 #[test]
 fn a_bar_that_comes_to_a_window_at_the_bottom_of_the_area_keeps_the_whole_frame_inside_it() {
-    let mut rig = world(0, "defineConfig({ decorations: true });");
+    let mut rig = world(0, DECORATED);
     rig.comp.create_window_decorated(3, "term", "foot", "client");
     rig.settle();
     exec(
@@ -1142,7 +1149,7 @@ fn a_bar_that_comes_to_a_window_at_the_bottom_of_the_area_keeps_the_whole_frame_
 
 #[test]
 fn a_maximised_window_fills_the_area_again_when_its_bar_comes_or_goes_and_unmaximises_to_the_moved_rectangle() {
-    let mut rig = world(0, "defineConfig({ decorations: true });");
+    let mut rig = world(0, DECORATED);
     rig.comp.create_window_decorated(3, "term", "foot", "server");
     rig.settle();
     let floating = content(&rig, 3);
@@ -1173,7 +1180,7 @@ fn a_maximised_window_fills_the_area_again_when_its_bar_comes_or_goes_and_unmaxi
 
 #[test]
 fn a_fullscreen_window_covers_the_output_through_a_bar_change_and_returns_with_its_frame_in_place() {
-    let mut rig = world(0, "defineConfig({ decorations: true });");
+    let mut rig = world(0, DECORATED);
     rig.comp.create_window_decorated(3, "term", "foot", "server");
     rig.settle();
     let windowed = content(&rig, 3);
@@ -1197,7 +1204,7 @@ fn a_fullscreen_window_covers_the_output_through_a_bar_change_and_returns_with_i
 
 #[test]
 fn a_snapped_window_tiles_to_its_zone_again_when_its_bar_comes_or_goes() {
-    let mut rig = world(0, "defineConfig({ decorations: true });");
+    let mut rig = world(0, DECORATED);
     rig.comp.create_window_decorated(3, "term", "foot", "client");
     rig.settle();
     exec(
@@ -1221,7 +1228,7 @@ fn a_snapped_window_tiles_to_its_zone_again_when_its_bar_comes_or_goes() {
 fn a_tiled_window_is_placed_again_by_its_layout_when_its_bar_comes_or_goes() {
     let mut rig = world(
         0,
-        "defineConfig({ decorations: true, workspaces: [{ id: '1', layout: new MasterStackLayout() }] });",
+        "startDecorations(); gnoblin.workspaces.add(new Workspace({ id: '1', layout: new MasterStackLayout() }));",
     );
     rig.comp.create_window_decorated(3, "term", "foot", "client");
     rig.settle();
@@ -1239,7 +1246,7 @@ fn a_tiled_window_is_placed_again_by_its_layout_when_its_bar_comes_or_goes() {
 
 #[test]
 fn the_shell_declares_that_it_draws_decorations_on_the_seat_and_takes_it_back_when_it_retires() {
-    let mut rig = world(0, "defineConfig({ decorations: true });");
+    let mut rig = world(0, DECORATED);
     assert!(declared(&rig), "the seat's decorations_available is written at boot");
     rig.shell.retire().expect("the shell retires");
     assert!(
@@ -1250,7 +1257,7 @@ fn the_shell_declares_that_it_draws_decorations_on_the_seat_and_takes_it_back_wh
 
 #[test]
 fn a_shell_with_decorations_off_never_declares_them() {
-    let mut rig = world(0, "defineConfig({ decorations: false });");
+    let mut rig = world(0, "export {};");
     assert!(!declared(&rig), "with decorations off a client is told client-side");
     rig.shell.retire().expect("the shell retires");
     assert!(!declared(&rig));
@@ -1266,7 +1273,7 @@ fn declared(rig: &Rig) -> bool {
 
 #[test]
 fn the_titlebar_does_what_the_seat_says_a_double_a_middle_and_a_right_click_do() {
-    let mut rig = world(1, "defineConfig({ decorations: true });");
+    let mut rig = world(1, DECORATED);
     let bar = rig.comp.children(3)[0];
     rig.comp.pointer(bar, "press", 5.0, 5.0, LEFT);
     rig.comp.pointer(bar, "press", 5.0, 5.0, LEFT);

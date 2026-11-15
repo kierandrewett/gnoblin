@@ -1,4 +1,4 @@
-//! The stock TypeScript library (`data/js/gnoblin/`) run in a real generation against a fake `gnoblin` global.
+//! The stock TypeScript library (`data/js/gnoblin/`) run in a real generation with no host.
 //!
 //! The geometry cases are the retired shell's: `the retired retired corpus` for the tiled layouts
 //! and `tests/shell/placement_cases.toml` for floating placement. A case taken from the retired corpus says so; a
@@ -12,14 +12,9 @@ use std::time::Duration;
 
 use gnoblin_js::{JsConfig, JsGeneration, stock_modules};
 
-/// The fake host and the helpers every case shares. Plain JavaScript: embedded modules are not stripped.
+/// The helpers every case shares. There is no `gnoblin` host: the cases call the library only. Plain JavaScript: embedded
+/// modules are not stripped.
 const HARNESS: &str = r##"
-globalThis.__registered = [];
-globalThis.gnoblin = {
-    __register(config) {
-        globalThis.__registered.push(config);
-    },
-};
 export const area = (width = 1000, height = 800) => ({ x: 0, y: 0, width, height });
 export const nodes = (n) => Array.from({ length: n }, (_, i) => ({ name: `w${i + 1}` }));
 const rectText = (r) => [r.x, r.y, r.width, r.height].join(",");
@@ -60,7 +55,6 @@ import { area, nodes, fmt, lay, thrown, rect, emit } from "harness";
 import {
     Binding, BindingCollection, DragBinding, PointerDragBinding, resolveTriggers, Layout, insetRect,
     FloatingLayout, MasterStackLayout, GridLayout, MonocleLayout,
-    defineConfig, desugarConfig, defaultConfig, mergeConfig, spawn, show,
 } from "gnoblin";
 "#;
 
@@ -599,275 +593,37 @@ fn the_layout_base_class_places_nothing_and_hooks_stay_on_the_prototype() {
 }
 
 #[test]
-fn define_config_returns_its_argument_and_registers_it_with_the_host() {
+fn a_workspaces_options_are_checked_and_its_layout_is_a_stock_name_or_an_instance() {
     let got = run(r#"
-        const registered = (globalThis as any).__registered;
-        const config = { gaps: { inner: 12 } };
-        const returned = defineConfig(config);
-        const afterOne = registered.length;
-        const same = registered[0] === config && returned === config;
-        const failed = thrown(() => defineConfig({ gaps: { inner: -1 } }));
-        const afterFailure = registered.length;
-        // No host object, and a host with no __register hook, are both fine.
-        const g = globalThis as any;
-        const host = g.gnoblin;
-        delete g.gnoblin;
-        defineConfig({});
-        g.gnoblin = {};
-        defineConfig({});
-        g.gnoblin = host;
-        emit([afterOne, same, failed, afterFailure].join("\n"));
-    "#);
-    assert_eq!(
-        got,
-        lines(&[
-            "1",
-            "true",
-            "RangeError: gaps.inner must be a finite number of at least 0, got -1",
-            "1",
-        ])
-    );
-}
-
-#[test]
-fn desugaring_a_config_gives_the_plan_of_the_spec_review_table() {
-    let got = run(r##"
+        import { checkWorkspaceOptions } from "gnoblin/workspace";
         const dev = new MasterStackLayout({ ratio: 0.65 });
-        const handler = () => {};
-        const setup = () => {};
-        const plan = desugarConfig(defineConfig({
-            gaps: { inner: 12, outer: 8 },
-            style: { cornerRadius: 12, shadows: [{ y: 8, blur: 24, color: "#00000066" }] },
-            outputs: { "DP-1": { mode: "3440x1440@144", scale: 1.25 } },
-            workspaces: [{ id: "desktop", layout: "floating" }, { id: "dev", layout: dev }, { id: "tiles", layout: "grid" }],
-            keys: {
-                "Super+Return": spawn("ghostty"),
-                "Super+Q": "close",
-                "Super+Tab": handler,
-                ...show.numbered("Super+{n}", ["desktop", "dev"]),
-            },
-            rules: [{ appId: "firefox", workspace: "dev", style: { cornerRadius: 18 } }],
-            on: { clientAdded: handler },
-            setup,
-        }));
+        const bad = (options: any) => thrown(() => checkWorkspaceOptions(options));
+        const checked = checkWorkspaceOptions({ id: "dev", layout: dev, gaps: { inner: 12 } });
+        const plain = checkWorkspaceOptions({ id: "desktop" });
         emit([
-            JSON.stringify(plan.gaps),
-            plan.style.cornerRadius,
-            JSON.stringify(plan.outputs),
-            plan.workspaces.map((w) => w.id + ":" + w.layout.constructor.name).join(" "),
-            plan.workspaces[1].layout === dev,
-            JSON.stringify(plan.workspaces.map((w) => w.gaps)[2]),
-            plan.bindings.map((b) => b.trigger + "=" + b.action.kind).join(" "),
-            JSON.stringify(plan.bindings[0].action),
-            JSON.stringify(plan.bindings[4].action),
-            (plan.bindings[2].action as any).handler === handler,
-            JSON.stringify(plan.rules),
-            plan.listeners.map((l) => l.event + ":" + (l.handler === handler)).join(" "),
-            plan.setup === setup,
-        ].join("\n"));
-    "##);
-    assert_eq!(
-        got,
-        lines(&[
-            r#"{"inner":12,"outer":8}"#,
-            "12",
-            r#"{"DP-1":{"mode":"3440x1440@144","scale":1.25}}"#,
-            "desktop:FloatingLayout dev:MasterStackLayout tiles:GridLayout",
-            "true",
-            r#"{"inner":12,"outer":8}"#,
-            "Super+Return=spawn Super+Q=close Super+Tab=call Super+1=show Super+2=show",
-            r#"{"kind":"spawn","argv":["ghostty"]}"#,
-            r#"{"kind":"show","workspace":"dev"}"#,
-            "true",
-            r#"[{"appId":"firefox","workspace":"dev","style":{"cornerRadius":18}}]"#,
-            "clientAdded:true",
-            "true",
-        ])
-    );
-}
-
-#[test]
-fn a_missing_key_adds_nothing_except_that_no_workspace_means_the_stock_four() {
-    let got = run(r#"
-        const plan = desugarConfig({});
-        emit([
-            JSON.stringify(plan.gaps),
-            JSON.stringify(plan.style),
-            plan.workspaces.map((w) => w.id + ":" + w.layout.constructor.name).join(" "),
-            plan.bindings.length,
-            plan.rules.length,
-            plan.listeners.length,
-            plan.setup === undefined,
-            desugarConfig({ workspaces: [] }).workspaces.length,
-            desugarConfig({ workspaces: [{ id: "a" }] }).workspaces[0].layout.constructor.name,
-        ].join("\n"));
-    "#);
-    assert_eq!(
-        got,
-        lines(&[
-            r#"{"inner":0,"outer":0}"#,
-            "{}",
-            "1:FloatingLayout 2:FloatingLayout 3:FloatingLayout 4:FloatingLayout",
-            "0",
-            "0",
-            "0",
-            "true",
-            "4",
-            "FloatingLayout",
-        ])
-    );
-}
-
-#[test]
-fn a_config_that_is_not_in_the_closed_set_is_refused_naming_the_key() {
-    let got = run(r#"
-        const bad = (config: any) => thrown(() => desugarConfig(config));
-        emit([
-            bad({ colour: 1 }),
-            bad({ keys: { "Super+1": show("nowhere") } }),
-            bad({ keys: { "Super+X": 5 } }),
-            bad({ keys: { "Super+": "close" } }),
-            bad({ keys: { "Super+X": { kind: "run" } } }),
-            bad({ workspaces: [{ id: "a" }, { id: "a" }] }),
-            bad({ workspaces: [{ id: "a", layout: "spiral" }] }),
-            bad({ workspaces: [{ id: "a", tiled: true }] }),
-            bad({ rules: [{ workspace: "desktop" }] }),
-            bad({ rules: [{ appId: "x", workspace: "elsewhere" }] }),
-            bad({ rules: [{ appId: "x", match: "y" }] }),
-            bad({ gaps: { inner: -1 } }),
-            bad({ gaps: { middle: 1 } }),
-            bad({ on: { clientMoved() {} } }),
-            bad({ on: { clientAdded: 3 } }),
-            bad({ setup: "later" }),
-            thrown(() => show.numbered("Super", ["a"])),
-            thrown(() => show.numbered("Super+{n}", Array.from({ length: 10 }, (_, i) => "w" + i))),
-            thrown(() => spawn([])),
-            thrown(() => spawn("")),
-        ].join("\n"));
-    "#);
-    assert_eq!(
-        got,
-        lines(&[
-            "TypeError: config has no \"colour\"; expected one of gaps, style, outputs, workspaces, keys, launcher, autostart, rules, on, setup, decorations, menus, alerts, focus, edgeTiling, dragConstraint, gestureActions, workspaceSets, compositor, windowManagement, cursor, appearance, dialogs, input, inputSources, accessibility, layerShell, keyring, auth, location, compat, capture, monitors, xwayland, logging, protocols, touchpadGestures",
-            "Error: keys[\"Super+1\"] shows workspace \"nowhere\", which the config does not declare",
-            "TypeError: keys[\"Super+X\"] must be spawn(...), show(...), show.position(...), focusColumn(...), binding(...), \"close\" or a function",
-            "TypeError: a key: an empty part after \"Super\"; write a literal plus as \"plus\" (token \"\" in \"Super+\")",
-            "TypeError: keys[\"Super+X\"] must be spawn(...), show(...), show.position(...), focusColumn(...), binding(...), \"close\" or a function",
-            "Error: workspaces[1]: a workspace with id \"a\" is already declared",
-            "TypeError: workspaces[0].layout must be a Layout or one of floating, master-stack, grid, monocle, dwindle, kiosk, strip, carousel-3d, got spiral",
-            "TypeError: workspaces[0] has no \"tiled\"; expected one of id, name, layout",
-            "TypeError: rules[0]: needs a query: appId, title, focused or onWorkspace",
-            "Error: rules[0].workspace: moves to workspace \"elsewhere\", which the config does not declare",
-            "TypeError: rules[0] has no \"match\"; expected one of appId, title, role, focused, onWorkspace, workspace, floating, size, position, style, fullscreen, maximised, secure, skipFocus, first, reapply",
-            "RangeError: gaps.inner must be a finite number of at least 0, got -1",
-            "TypeError: gaps has no \"middle\"; expected one of inner, outer",
-            "TypeError: on has no \"clientMoved\" (did you mean \"clientRemoved\"?); expected one of clientAdded, clientRemoved, titleChanged, focusChanged",
-            "TypeError: on.clientAdded must be a function",
-            "TypeError: setup must be a function",
-            "TypeError: show.numbered needs a template with {n}, such as \"Super+{n}\"",
-            "RangeError: show.numbered binds at most 9 workspaces, got 10",
-            "TypeError: spawn needs a command name and string arguments",
-            "TypeError: spawn needs a command name and string arguments",
-        ])
-    );
-}
-
-#[test]
-fn the_default_config_is_four_floating_workspaces_with_the_stock_keys() {
-    let got = run(r#"
-        const plan = desugarConfig(defaultConfig);
-        emit([
-            plan.workspaces.map((w) => w.id + ":" + w.layout.constructor.name).join(" "),
-            plan.bindings.map((b) => b.trigger).join(" "),
-            JSON.stringify(plan.bindings[0].action),
-            JSON.stringify(plan.bindings[12].action),
-            Object.isFrozen(defaultConfig) && Object.isFrozen(defaultConfig.keys) && Object.isFrozen(defaultConfig.workspaces),
-            (globalThis as any).__registered.length,
-        ].join("\n"));
-    "#);
-    assert_eq!(
-        got,
-        lines(&[
-            "1:FloatingLayout 2:FloatingLayout 3:FloatingLayout 4:FloatingLayout",
-            "Super+1 Super+2 Super+3 Super+4 Super+5 Super+6 Super+7 Super+8 Super+9 Super+Left Super+Right Swipe3 XF86AudioRaiseVolume XF86AudioLowerVolume XF86AudioMute XF86AudioMicMute XF86AudioPlay XF86AudioNext XF86AudioPrev",
-            r#"{"kind":"show-position","position":1}"#,
-            r#"{"kind":"spawn","argv":["wpctl","set-volume","@DEFAULT_AUDIO_SINK@","5%+"]}"#,
-            "true",
-            "0",
-        ])
-    );
-}
-
-#[test]
-fn decorations_are_on_in_the_default_config_and_off_in_one_that_does_not_ask() {
-    let got = run(r#"
-        emit([
-            desugarConfig(defaultConfig).decorations,
-            desugarConfig({}).decorations,
-            desugarConfig({ decorations: true }).decorations,
-            desugarConfig({ decorations: false }).decorations,
-            thrown(() => desugarConfig({ decorations: "yes" } as any)),
+            checked.layout === dev,
+            JSON.stringify(checked.gaps),
+            plain.name + ":" + plain.layout.constructor.name + ":" + JSON.stringify(plain.gaps),
+            checkWorkspaceOptions({ id: "tiles", layout: "grid" }).layout.constructor.name,
+            bad({ id: "a", layout: "spiral" }),
+            bad({ id: "a", tiled: true }),
+            bad({ id: "" }),
+            bad({ id: "a", gaps: { inner: -1 } }),
+            bad({ id: "a", gaps: { middle: 1 } }),
         ].join("\n"));
     "#);
     assert_eq!(
         got,
         lines(&[
             "true",
-            "false",
-            "true",
-            "false",
-            "TypeError: config.decorations: must be true or false",
-        ])
-    );
-}
-
-#[test]
-fn a_user_config_layers_over_the_default_keys_merge_by_trigger_and_workspaces_replace_whole() {
-    let got = run(r#"
-        const keys = (c: any) => Object.keys(c.keys ?? {}).join(" ");
-        const ids = (c: any) => (c.workspaces ?? []).map((w: any) => w.id).join(" ");
-        const before = JSON.stringify(defaultConfig);
-        const nothing = mergeConfig(defaultConfig, {});
-        const own = mergeConfig(defaultConfig, { keys: { "super+1": spawn("one"), "Super+Return": spawn("term") } });
-        const other = mergeConfig(defaultConfig, { workspaces: [{ id: "a" }, { id: "b", layout: "grid" }] });
-        const same = mergeConfig(defaultConfig, { workspaces: [{ id: "desktop", layout: "grid" }] });
-        const gaps = mergeConfig({ gaps: { inner: 2 } }, { gaps: { outer: 4 } });
-        const on = mergeConfig({ on: { clientAdded() {} } }, { on: { titleChanged() {} } });
-        emit([
-            ids(nothing) + " | " + keys(nothing),
-            ids(own) + " | " + keys(own),
-            JSON.stringify(own.keys!["super+1"]),
-            ids(other) + " | " + keys(other),
-            ids(same) + " | " + (same.keys!["Super+1"] as any).kind,
-            (same.workspaces![0] as any).layout,
-            JSON.stringify(gaps.gaps),
-            Object.keys(on.on!).join(" "),
-            JSON.stringify(defaultConfig) === before,
-            thrown(() => mergeConfig(defaultConfig, { kyes: {} } as any)),
-            thrown(() => mergeConfig(defaultConfig, { keys: { "Super+!": "close" } })).startsWith("TypeError: a key: "),
-            desugarConfig(other).bindings.map((b) => b.trigger).join(" "),
-        ].join("\n"));
-    "#);
-    let media = "XF86AudioRaiseVolume XF86AudioLowerVolume XF86AudioMute XF86AudioMicMute XF86AudioPlay XF86AudioNext XF86AudioPrev";
-    // The retired shell's keys: Super+1 to Super+9 show the workspace at that position, so they name something whichever
-    // workspaces the config declares and survive a config that drops the stock four.
-    let others = "Super+2 Super+3 Super+4 Super+5 Super+6 Super+7 Super+8 Super+9 Super+Left Super+Right Swipe3";
-    let stock = format!("Super+1 {others}");
-    assert_eq!(
-        got,
-        lines(&[
-            &format!("1 2 3 4 | {stock} {media}"),
-            &format!("1 2 3 4 | {others} {media} super+1 Super+Return"),
-            r#"{"kind":"spawn","argv":["one"]}"#,
-            &format!("a b | {stock} {media}"),
-            "desktop | show-position",
-            "grid",
-            r#"{"inner":2,"outer":4}"#,
-            "clientAdded titleChanged",
-            "true",
-            "TypeError: config has no \"kyes\" (did you mean \"keys\"?); expected one of gaps, style, outputs, workspaces, keys, launcher, autostart, rules, on, setup, decorations, menus, alerts, focus, edgeTiling, dragConstraint, gestureActions, workspaceSets, compositor, windowManagement, cursor, appearance, dialogs, input, inputSources, accessibility, layerShell, keyring, auth, location, compat, capture, monitors, xwayland, logging, protocols, touchpadGestures",
-            "true",
-            &format!("{stock} {media}"),
+            r#"{"inner":12,"outer":0}"#,
+            r#"desktop:FloatingLayout:{"inner":0,"outer":0}"#,
+            "GridLayout",
+            "TypeError: Workspace options.layout must be a Layout or one of floating, master-stack, grid, monocle, dwindle, kiosk, strip, carousel-3d, got spiral",
+            "TypeError: Workspace options has no \"tiled\"; expected one of id, name, layout, gaps",
+            "TypeError: Workspace options.id must be a non-empty string",
+            "RangeError: Workspace options.gaps.inner must be a finite number of at least 0, got -1",
+            "TypeError: Workspace options.gaps has no \"middle\"; expected one of inner, outer",
         ])
     );
 }

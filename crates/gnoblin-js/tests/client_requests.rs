@@ -20,12 +20,11 @@ const SCREEN: u64 = 20;
 const SEAT: u64 = 21;
 
 /// A shell over a screen of 1000 by 800, one seat and `n` windows (ids 3 on, 300 by 200 at 10 n, 20 n), on the
-/// workspaces `main` and `other`, whose layouts place nothing, with `keys` after them in the config.
-fn world_with(n: u64, keys: &str) -> Rig {
-    let init = format!(
-        "defineConfig({{ workspaces: [{{ id: \"main\", layout: new Layout() }}, {{ id: \"other\", layout: new Layout() }}], decorations: false, {keys} }});\n"
-    );
-    let mut rig = rig_setup(IMPORTS, &init, move |comp| {
+/// workspaces `main` and `other`, whose layouts place nothing.
+fn world(n: u64) -> Rig {
+    let init = "gnoblin.workspaces.add(new Workspace({ id: \"main\", layout: new Layout() }));\n\
+                gnoblin.workspaces.add(new Workspace({ id: \"other\", layout: new Layout() }));\n";
+    let mut rig = rig_setup(IMPORTS, init, move |comp| {
         comp.add_node(
             SCREEN,
             ROOT,
@@ -70,10 +69,6 @@ fn world_with(n: u64, keys: &str) -> Rig {
 /// Runs a statement in the script. `Rig::eval` wants a value back; a statement has none.
 fn exec(rig: &mut Rig, source: &str) {
     rig.shell.eval(source).expect("the script runs");
-}
-
-fn world(n: u64) -> Rig {
-    world_with(n, "")
 }
 
 /// The client's request for window `node`, and the frames the shell takes to answer it.
@@ -453,7 +448,7 @@ gnoblin.clients.addListener(new Watch());
 #[test]
 fn a_listener_that_handles_a_request_keeps_the_built_in_policy_from_running_and_later_listeners_from_hearing_it() {
     // New: `ClientListener.onRequest`. The first listener that calls `request.handle()` wins; the rest are not asked.
-    let mut rig = world_with(1, "setup: () => {}");
+    let mut rig = world(1);
     exec(&mut rig, LISTENERS);
     request(&mut rig, 3, "fullscreen");
     assert!(
@@ -466,7 +461,7 @@ fn a_listener_that_handles_a_request_keeps_the_built_in_policy_from_running_and_
 #[test]
 fn a_request_no_listener_handles_reaches_the_built_in_policy_after_every_listener_heard_it() {
     // New: letting the request through is just returning.
-    let mut rig = world_with(1, "setup: () => {}");
+    let mut rig = world(1);
     exec(&mut rig, LISTENERS);
     request(&mut rig, 3, "maximize");
     assert!(flag(&rig, 3, "maximised"));
@@ -479,7 +474,7 @@ fn a_request_no_listener_handles_reaches_the_built_in_policy_after_every_listene
 #[test]
 fn a_listener_on_one_client_hears_the_requests_of_that_client_before_the_collections_listeners() {
     // New: the client's own listeners go first, then those of the collections that hold it, each in the order attached.
-    let mut rig = world_with(2, "setup: () => {}");
+    let mut rig = world(2);
     exec(
         &mut rig,
         r#"
@@ -505,7 +500,7 @@ fn a_listener_on_one_client_hears_the_requests_of_that_client_before_the_collect
 #[test]
 fn a_listener_that_throws_is_reported_and_the_built_in_policy_still_runs() {
     // New: a throw is the listener's failure, not the request's.
-    let mut rig = world_with(1, "setup: () => {}");
+    let mut rig = world(1);
     exec(
         &mut rig,
         r#"
@@ -527,7 +522,7 @@ fn a_listener_that_throws_is_reported_and_the_built_in_policy_still_runs() {
 #[test]
 fn a_script_that_handles_a_request_can_run_the_stock_answer_for_another_kind() {
     // New: `windowState` is the policy the built-in answer calls, so a listener can answer a maximise as a fullscreen.
-    let mut rig = world_with(1, "setup: () => {}");
+    let mut rig = world(1);
     exec(
         &mut rig,
         r#"
@@ -621,7 +616,7 @@ fn a_resize_request_by_an_edge_moves_that_edge_alone() {
 #[test]
 fn a_move_request_is_ignored_for_a_window_a_layout_tiles() {
     // New: a tiled window is not dragged; the layout places it.
-    let mut rig = world_with(1, "setup: () => {}");
+    let mut rig = world(1);
     exec(&mut rig, "gnoblin.workspaces.at(0).layout = new MasterStackLayout()");
     rig.settle();
     let tiled = rect(&rig, 3);
@@ -660,7 +655,7 @@ fn a_drag_the_request_started_ends_when_its_window_goes() {
 #[test]
 fn a_tiling_layout_leaves_a_fullscreen_window_alone_and_places_it_again_when_it_leaves() {
     // New: the layout would otherwise re-place a fullscreen window on its next pass.
-    let mut rig = world_with(2, "setup: () => {}");
+    let mut rig = world(2);
     exec(&mut rig, "gnoblin.workspaces.at(0).layout = new MasterStackLayout()");
     rig.settle();
     let tiled = rect(&rig, 3);

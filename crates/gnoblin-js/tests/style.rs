@@ -1,6 +1,6 @@
 //! The style model and its cascade (`data/js/gnoblin/style.ts` and the host half in `js/gnoblin.ts`), over the fake
 //! compositor of `tests/common`: the cases ST1 to ST7 of design/js-research/spec-review.md section 5, what a resolved
-//! style becomes on a window node, `defineConfig({ style })` and a window rule's `style`.
+//! style becomes on a window node, `gnoblin.clients.style` as the global default and a selection's `style`.
 //!
 //! Nothing here proves what the real compositor does with the node's `effects`: that is
 //! `crates/gnoblin/tests/js_shell.rs`.
@@ -620,9 +620,11 @@ fn the_compositors_skipped_effects_are_the_clients_style_warnings() {
 }
 
 #[test]
-fn define_config_style_is_the_global_default_and_a_bad_value_names_config_style() {
+fn gnoblin_clients_style_is_the_global_default_and_a_bad_value_names_its_path() {
     let mut rig = world(
-        r##"defineConfig({ style: { cornerRadius: 12, opacity: 0.9, shadows: [{ y: 8, blur: 24, color: "#00000066" }] } });"##,
+        r##"gnoblin.clients.style.cornerRadius = 12;
+gnoblin.clients.style.opacity = 0.9;
+gnoblin.clients.style.shadows = [{ y: 8, blur: 24, color: "#00000066" }];"##,
     );
     for node in [3, 4] {
         assert_eq!(rig.comp.number(node, "opacity"), 0.9);
@@ -640,32 +642,36 @@ fn define_config_style_is_the_global_default_and_a_bad_value_names_config_style(
     assert_eq!(out, r#"[12,"global","global"]"#);
     let out = js(
         &mut rig,
-        "return caught(() => desugarConfig({ style: { opacity: 3 } })) + '|' + caught(() => desugarConfig({ style: { shadows: [{ blur: -1 }] } })) + '|' + caught(() => desugarConfig({ style: { glow: 1 } }));",
+        "return caught(() => { gnoblin.clients.style.opacity = 3; }) + '|' + caught(() => { gnoblin.clients.style.shadows = [{ blur: -1 }]; });",
     );
     assert_eq!(
         out,
-        "config.style.opacity: must be finite and between 0 and 1|config.style.shadows[0].blur: must be finite and between 0 and 100|config.style: no field \"glow\" (known: opacity, filter, backdropFilter, cornerRadius, borders, shadows, background)"
+        "gnoblin.clients.style.opacity: must be finite and between 0 and 1|gnoblin.clients.style.shadows[0].blur: must be finite and between 0 and 100"
     );
 }
 
 #[test]
-fn a_rules_style_is_the_clients_own_style_and_a_bad_shadow_is_refused_when_the_rule_compiles() {
+fn a_selections_style_is_its_clients_own_style_and_beats_the_global_default() {
     let mut rig = world(
-        r##"defineConfig({ style: { opacity: 0.9 }, rules: [{ appId: "dim", style: { opacity: 0.5, shadows: [{ blur: 3 }] } }] });"##,
+        r##"gnoblin.clients.style.opacity = 0.9;
+const dim = gnoblin.clients.where({ appId: "dim" });
+dim.style.opacity = 0.5;
+dim.style.shadows = [{ blur: 3 }];"##,
     );
     rig.comp.create_window(9, "dimmed", "dim");
     rig.comp.create_window(10, "plain", "other");
     rig.settle();
-    assert_eq!(rig.comp.number(9, "opacity"), 0.5, "the rule beats the global default");
+    assert_eq!(
+        rig.comp.number(9, "opacity"),
+        0.5,
+        "the selection beats the global default"
+    );
     assert_eq!(rig.comp.number(10, "opacity"), 0.9);
     assert_eq!(effects(&rig, 9).len(), 1);
     assert!(effects(&rig, 10).is_empty());
     let out = js(
         &mut rig,
-        "return JSON.stringify(gnoblin.clients.get('9').computedStyle.origin.opacity) + caught(() => compileRules([{ appId: 'x', style: { shadows: [{ blur: -1 }] } }]));",
+        "return String(gnoblin.clients.get('9').computedStyle.origin.opacity).startsWith('where(') + '|' + gnoblin.clients.get('10').computedStyle.origin.opacity;",
     );
-    assert_eq!(
-        out,
-        "\"client\"rules[0].style.shadows[0].blur: must be finite and between 0 and 100"
-    );
+    assert_eq!(out, "true|global");
 }
