@@ -12,3 +12,7 @@ reason = "the stderr report of a failed log write: it names the failure once per
 [[allow]]
 path = "crates/gnoblin-wlcs"
 reason = "gnoblin-wlcs is a plugin the wlcs executable loads: its stderr is the only channel to the person running the suite, and it reports a session that did not start or a window it could not place, which no log sink is configured to show inside that process"
+
+[[allow]]
+path = "crates/gnoblin-testkit/src/backend_status.rs"
+reason = "a test-support helper: a conformance row that cannot be measured on this machine (no GPU renderer) says so on the test's own stdout, which the test runner shows, so a skip is loud and never silent"

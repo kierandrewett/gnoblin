@@ -105,6 +105,8 @@ gnoblin-model = { path = "../gnoblin-model" }
 gnoblin-pipewire-export = { path = "../gnoblin-pipewire-export" }
 
 [dev-dependencies]
+# The backend conformance test reads the committed status table and measures headless and nested against it.
+gnoblin-testkit = { path = "../gnoblin-testkit" }
 # The private PipeWire daemon and the consumer of a stream that the View cast tests read frames with.
 gnoblin-pipewire-export = { path = "../gnoblin-pipewire-export", features = ["testing"] }
 # The lock's tests read the events a failed password check logs.

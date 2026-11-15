@@ -98,9 +98,12 @@ use wayland_client::protocol::{wl_compositor, wl_output, wl_seat, wl_shm};
 use wayland_client::{Connection, EventQueue, Proxy};
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_manager_v1;
 use wayland_protocols::wp::keyboard_shortcuts_inhibit::zv1::client::zwp_keyboard_shortcuts_inhibit_manager_v1;
+use wayland_protocols::wp::pointer_constraints::zv1::client::zwp_pointer_constraints_v1;
 use wayland_protocols::wp::pointer_gestures::zv1::client::zwp_pointer_gestures_v1;
+use wayland_protocols::wp::relative_pointer::zv1::client::zwp_relative_pointer_manager_v1;
 use wayland_protocols::wp::viewporter::client::wp_viewporter;
 use wayland_protocols::xdg::shell::client::xdg_wm_base;
+use wayland_protocols::xdg::toplevel_icon::v1::client::xdg_toplevel_icon_manager_v1;
 
 use gnoblin_output::DisplayMode;
 use gnoblin_types::{OutputId, Scale, Size};
@@ -199,6 +202,9 @@ pub struct NestedConfig {
     pub socket: PathBuf,
     /// The application id the session's toplevels carry.
     pub app_id: String,
+    /// The icon name the session's toplevels carry (`xdg_toplevel_icon_v1`), looked up in the host's icon theme.
+    /// A host that does not offer the protocol shows its own default icon.
+    pub icon: Option<String>,
     /// The title the parent's window list shows, one per output with its connector
     /// name appended.
     pub title: String,
@@ -223,6 +229,7 @@ impl NestedConfig {
         Self {
             socket: socket.into(),
             app_id: DEFAULT_APP_ID.to_owned(),
+            icon: Some(DEFAULT_APP_ID.to_owned()),
             title: "Gnoblin session".to_owned(),
             outputs: vec![OutputSpec::default()],
             secure_treatment: SecureTreatment::default(),
@@ -386,6 +393,17 @@ impl Nested {
         let gestures_manager = globals
             .bind::<zwp_pointer_gestures_v1::ZwpPointerGesturesV1, Handler, ()>(&qh, 1..=1, ())
             .ok();
+        // Relative motion and pointer constraints are optional: without them a lock in the session holds the
+        // session's pointer and not the host's.
+        let relative_manager = globals
+            .bind::<zwp_relative_pointer_manager_v1::ZwpRelativePointerManagerV1, Handler, ()>(&qh, 1..=1, ())
+            .ok();
+        let constraints_manager = globals
+            .bind::<zwp_pointer_constraints_v1::ZwpPointerConstraintsV1, Handler, ()>(&qh, 1..=1, ())
+            .ok();
+        let icon_manager = globals
+            .bind::<xdg_toplevel_icon_manager_v1::XdgToplevelIconManagerV1, Handler, ()>(&qh, 1..=1, ())
+            .ok();
         // Every output of the parent is bound, for the scale and the refresh rate of the one a surface is on.
         let parent_outputs: Vec<(u32, u32)> = globals.contents().with_list(|list| {
             list.iter()
@@ -412,9 +430,13 @@ impl Nested {
                 viewporter,
                 shortcuts_manager,
                 gestures_manager,
+                icon_manager,
+                relative_manager,
+                constraints_manager,
                 outputs,
             },
             config.app_id.clone(),
+            config.icon.clone(),
             config.initial_size,
         );
         let count = config.outputs.len().max(1);
@@ -1029,6 +1051,12 @@ impl<S: Host + 'static> Backend<S> for Nested {
             .as_mut()?
             .capture(with_cursor, treatment)
             .ok()
+    }
+
+    fn pointer_constraint(&mut self, constraint: crate::PointerConstraint) {
+        let qh = self.queue.handle();
+        self.handler.pointer_constraint(&qh, constraint);
+        self.flush();
     }
 
     fn output_controls(&self) -> crate::OutputControls {

@@ -813,6 +813,8 @@ impl Server {
             // session can be ticked from the loop's own timeout.
             let handle = event_loop.handle();
             let mut last_turn: Option<std::time::Instant> = None;
+            // What the backend was last told the session's clients hold the pointer to.
+            let mut last_constraint = gnoblin_backend::PointerConstraint::Free;
             event_loop.run(Duration::from_millis(100), &mut state, move |state| {
                 // The session clock follows the loop's real time, so idle fires without a
                 // caller having to advance it; a caller that advances it as well is jumping
@@ -860,6 +862,13 @@ impl Server {
                     }
                 }
                 let events = backend.dispatch(state);
+                // A client that locks or confines the pointer holds the host's pointer too, when the host is
+                // another compositor: the backend is told once per change.
+                let constraint = state.backend_pointer_constraint();
+                if constraint != last_constraint {
+                    last_constraint = constraint;
+                    backend.pointer_constraint(constraint);
+                }
                 // The two ways a backend ends a session are different endings. The person closing the last
                 // window of a hosted session is a logout; the device that drives the backend going away is a
                 // failure no output survives, and a loop that kept running would serve nothing for ever.

@@ -36,3 +36,7 @@ gnoblin-log = { path = "../gnoblin-log" }
 # the compositor receives. This direction is the only one allowed: the contract never names
 # a hardware backend.
 gnoblin-backend = { path = "../gnoblin-backend" }
+
+[dev-dependencies]
+# The conformance test reads the committed status table and measures this backend's column against it.
+gnoblin-testkit = { path = "../gnoblin-testkit" }

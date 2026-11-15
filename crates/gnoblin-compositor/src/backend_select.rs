@@ -85,7 +85,7 @@ pub enum SelectError {
 
 /// What the `compositor` section says about the backend, with the defaults of an unset leaf.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Settings {
+pub struct BackendSettings {
     /// `compositor.backend`.
     pub choice: BackendChoice,
     /// `compositor.nested-display`.
@@ -96,7 +96,7 @@ pub struct Settings {
     pub nested_size: Size,
 }
 
-impl Default for Settings {
+impl Default for BackendSettings {
     fn default() -> Self {
         Self {
             choice: BackendChoice::Auto,
@@ -107,7 +107,7 @@ impl Default for Settings {
     }
 }
 
-impl Settings {
+impl BackendSettings {
     /// The settings a `compositor` section states; a leaf it leaves out keeps its default. The schema bounds the
     /// numbers, so a value outside them cannot arrive; the conversions only guard a hand-built section.
     #[must_use]
@@ -129,7 +129,7 @@ impl Settings {
 
 /// What this process's environment offers, so the rule reads no environment itself.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Host {
+pub struct HostView {
     /// `WAYLAND_DISPLAY`: a name in the runtime directory or an absolute path.
     pub wayland_display: Option<OsString>,
     /// `XDG_RUNTIME_DIR`.
@@ -140,7 +140,7 @@ pub struct Host {
     pub drm_node: bool,
 }
 
-impl Host {
+impl HostView {
     /// The host as this process sees it.
     #[must_use]
     pub fn from_process() -> Self {
@@ -189,7 +189,7 @@ pub fn requested_from(value: Option<&str>) -> Result<Option<BackendChoice>, Sele
 }
 
 /// The host socket the nested backend connects to: the setting, else `WAYLAND_DISPLAY`.
-fn host_socket(settings: &Settings, host: &Host) -> Result<PathBuf, SelectError> {
+fn host_socket(settings: &BackendSettings, host: &HostView) -> Result<PathBuf, SelectError> {
     let display = match (&settings.nested_display, &host.wayland_display) {
         (Some(name), _) => OsString::from(name),
         (None, Some(name)) => name.clone(),
@@ -208,7 +208,7 @@ fn host_socket(settings: &Settings, host: &Host) -> Result<PathBuf, SelectError>
 }
 
 /// The nested backend that connects to `socket`, with the settings' outputs and starting size.
-fn nested(settings: &Settings, socket: PathBuf) -> Backend {
+fn nested(settings: &BackendSettings, socket: PathBuf) -> Backend {
     let mut config = NestedConfig::new(socket);
     config.outputs = (1..=settings.nested_outputs.max(1))
         .map(|index| OutputSpec::new(format!("NESTED-{index}")))
@@ -224,9 +224,9 @@ fn nested(settings: &Settings, socket: PathBuf) -> Backend {
 ///
 /// [`SelectError`] when `nested` is chosen with no reachable host.
 pub fn select(
-    settings: &Settings,
+    settings: &BackendSettings,
     requested: Option<BackendChoice>,
-    host: &Host,
+    host: &HostView,
     exists: impl Fn(&Path) -> bool,
 ) -> Result<Selection, SelectError> {
     let (choice, asked) = match requested {
@@ -294,22 +294,22 @@ pub fn configure_from_store(
     store: &Store,
     source: &Path,
     requested: Option<&str>,
-    host: &Host,
+    host: &HostView,
 ) -> Result<(), SelectError> {
     let settings = match store.load(source) {
         Ok(stored) => stored
             .config
             .compositor
             .as_ref()
-            .map(Settings::from_section)
+            .map(BackendSettings::from_section)
             .unwrap_or_default(),
         Err(error) if error.is_absent() => {
             log::debug!(area = "backend", %error, "no configuration file; the defaults are used");
-            Settings::default()
+            BackendSettings::default()
         }
         Err(error) => {
             log::warn!(area = "backend", %error, "configuration not readable; the defaults are used");
-            Settings::default()
+            BackendSettings::default()
         }
     };
     apply(config, &settings, requested, host)
@@ -324,16 +324,16 @@ pub fn configure_from_store(
 /// The same refusals as [`configure_from_store`].
 pub fn configure_from_environment(config: &mut SessionConfig) -> Result<(), SelectError> {
     let requested = std::env::var(ENV).ok();
-    let host = Host::from_process();
+    let host = HostView::from_process();
     let Some(store) = Store::from_env() else {
         log::debug!(area = "backend", "no state directory is set; the defaults are used");
-        return apply(config, &Settings::default(), requested.as_deref(), &host);
+        return apply(config, &BackendSettings::default(), requested.as_deref(), &host);
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path(), requested.as_deref(), &host),
         Err(error) => {
             log::debug!(area = "backend", %error, "no configuration file; the defaults are used");
-            apply(config, &Settings::default(), requested.as_deref(), &host)
+            apply(config, &BackendSettings::default(), requested.as_deref(), &host)
         }
     }
 }
@@ -341,9 +341,9 @@ pub fn configure_from_environment(config: &mut SessionConfig) -> Result<(), Sele
 /// Selects with the real socket test and stores the result in `config`.
 fn apply(
     config: &mut SessionConfig,
-    settings: &Settings,
+    settings: &BackendSettings,
     requested: Option<&str>,
-    host: &Host,
+    host: &HostView,
 ) -> Result<(), SelectError> {
     let requested = requested_from(requested)?;
     let selection = select(settings, requested, host, is_socket)?;
@@ -361,8 +361,8 @@ fn apply(
 mod tests {
     use super::*;
 
-    fn host(wayland: Option<&str>, seat: bool, drm_node: bool) -> Host {
-        Host {
+    fn host(wayland: Option<&str>, seat: bool, drm_node: bool) -> HostView {
+        HostView {
             wayland_display: wayland.map(OsString::from),
             runtime_dir: Some(PathBuf::from("/run/user/1000")),
             seat,
@@ -386,13 +386,13 @@ mod tests {
     fn a_host_compositor_beats_a_seat() {
         // A desktop session has a seat too, and DRM would fail on it: the host display is what decides.
         let host = host(Some("wayland-0"), true, true);
-        assert_eq!(name(select(&Settings::default(), None, &host, always)), "nested");
+        assert_eq!(name(select(&BackendSettings::default(), None, &host, always)), "nested");
     }
 
     #[test]
     fn a_login_session_with_a_seat_and_a_node_is_drm() {
         let host = host(None, true, true);
-        assert_eq!(name(select(&Settings::default(), None, &host, always)), "drm");
+        assert_eq!(name(select(&BackendSettings::default(), None, &host, always)), "drm");
     }
 
     #[test]
@@ -402,7 +402,10 @@ mod tests {
             host(None, false, true),
             host(None, false, false),
         ] {
-            assert_eq!(name(select(&Settings::default(), None, &host, always)), "headless");
+            assert_eq!(
+                name(select(&BackendSettings::default(), None, &host, always)),
+                "headless"
+            );
         }
     }
 
@@ -410,25 +413,33 @@ mod tests {
     fn a_stale_host_display_is_not_a_host() {
         // WAYLAND_DISPLAY left over in an environment names a socket nobody serves.
         let host = host(Some("wayland-9"), true, true);
-        assert_eq!(name(select(&Settings::default(), None, &host, never)), "drm");
+        assert_eq!(name(select(&BackendSettings::default(), None, &host, never)), "drm");
         let host = self::host(Some("wayland-9"), false, false);
-        assert_eq!(name(select(&Settings::default(), None, &host, never)), "headless");
+        assert_eq!(
+            name(select(&BackendSettings::default(), None, &host, never)),
+            "headless"
+        );
     }
 
     #[test]
     fn display_alone_selects_nothing() {
         // The nested backend is a Wayland client; an X11 server cannot host it. DISPLAY is not even read.
         assert_eq!(
-            name(select(&Settings::default(), None, &host(None, false, false), always)),
+            name(select(
+                &BackendSettings::default(),
+                None,
+                &host(None, false, false),
+                always
+            )),
             "headless"
         );
     }
 
     #[test]
     fn the_environment_beats_the_document() {
-        let settings = Settings {
+        let settings = BackendSettings {
             choice: BackendChoice::Drm,
-            ..Settings::default()
+            ..BackendSettings::default()
         };
         let host = host(Some("wayland-0"), true, true);
         assert_eq!(
@@ -441,14 +452,14 @@ mod tests {
     #[test]
     fn an_explicit_choice_is_not_second_guessed() {
         // `drm` on a machine with no seat is still drm: the start refuses it with the reason.
-        let settings = Settings {
+        let settings = BackendSettings {
             choice: BackendChoice::Drm,
-            ..Settings::default()
+            ..BackendSettings::default()
         };
         assert_eq!(name(select(&settings, None, &host(None, false, false), always)), "drm");
-        let settings = Settings {
+        let settings = BackendSettings {
             choice: BackendChoice::Headless,
-            ..Settings::default()
+            ..BackendSettings::default()
         };
         assert_eq!(
             name(select(&settings, None, &host(Some("wayland-0"), true, true), always)),
@@ -458,9 +469,9 @@ mod tests {
 
     #[test]
     fn nested_without_a_host_display_is_refused_naming_both_sources() {
-        let settings = Settings {
+        let settings = BackendSettings {
             choice: BackendChoice::Nested,
-            ..Settings::default()
+            ..BackendSettings::default()
         };
         let error = select(&settings, None, &host(None, false, false), always).expect_err("no host");
         assert_eq!(error, SelectError::NoHostDisplay);
@@ -473,9 +484,9 @@ mod tests {
 
     #[test]
     fn nested_with_a_display_nobody_serves_names_the_socket() {
-        let settings = Settings {
+        let settings = BackendSettings {
             choice: BackendChoice::Nested,
-            ..Settings::default()
+            ..BackendSettings::default()
         };
         let error = select(&settings, None, &host(Some("wayland-9"), false, false), never).expect_err("unreachable");
         assert_eq!(
@@ -488,7 +499,7 @@ mod tests {
 
     #[test]
     fn the_setting_names_the_host_before_the_environment_does() {
-        let settings = Settings {
+        let settings = BackendSettings {
             choice: BackendChoice::Nested,
             nested_display: Some("/tmp/host.sock".to_owned()),
             nested_outputs: 2,
@@ -512,13 +523,13 @@ mod tests {
 
     #[test]
     fn a_relative_display_with_no_runtime_directory_is_refused() {
-        let settings = Settings {
+        let settings = BackendSettings {
             choice: BackendChoice::Nested,
-            ..Settings::default()
+            ..BackendSettings::default()
         };
-        let host = Host {
+        let host = HostView {
             wayland_display: Some(OsString::from("wayland-0")),
-            ..Host::default()
+            ..HostView::default()
         };
         assert_eq!(
             select(&settings, None, &host, always).expect_err("no runtime dir"),
@@ -553,7 +564,10 @@ mod tests {
 
     #[test]
     fn a_section_states_the_settings_and_an_empty_one_keeps_the_defaults() {
-        assert_eq!(Settings::from_section(&Compositor::default()), Settings::default());
+        assert_eq!(
+            BackendSettings::from_section(&Compositor::default()),
+            BackendSettings::default()
+        );
         let section = Compositor {
             backend: Some(BackendChoice::Nested),
             nested_outputs: Some(3),
@@ -562,7 +576,7 @@ mod tests {
             nested_display: Some("wayland-1".to_owned()),
             ..Compositor::default()
         };
-        let settings = Settings::from_section(&section);
+        let settings = BackendSettings::from_section(&section);
         assert_eq!(settings.choice, BackendChoice::Nested);
         assert_eq!(settings.nested_outputs, 3);
         assert_eq!(settings.nested_size, Size::new(1920, 1080));
@@ -585,13 +599,19 @@ mod tests {
         let mut config = SessionConfig::default();
         apply(
             &mut config,
-            &Settings::default(),
+            &BackendSettings::default(),
             Some("headless"),
             &host(Some("wayland-0"), true, true),
         )
         .expect("headless");
         assert_eq!(config.backend, Backend::Headless);
-        let error = apply(&mut config, &Settings::default(), Some("bogus"), &Host::default()).expect_err("refused");
+        let error = apply(
+            &mut config,
+            &BackendSettings::default(),
+            Some("bogus"),
+            &HostView::default(),
+        )
+        .expect_err("refused");
         assert!(matches!(error, SelectError::UnknownValue { .. }));
     }
 }

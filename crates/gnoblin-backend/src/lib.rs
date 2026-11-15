@@ -933,6 +933,14 @@ pub trait Backend<S: Host + 'static> {
         Err(DmabufCopyError::Unsupported)
     }
 
+    /// A client of the session locked or confined the pointer, or let it go ([`PointerConstraint`]). The host calls
+    /// this when the constraint that holds the pointer changes, once per change.
+    ///
+    /// The default does nothing, because a backend that owns the pointer needs no leave to hold it. A backend whose
+    /// pointer is another compositor's asks that compositor to hold it too, and reports the relative motion it then
+    /// receives as [`InputEvent::PointerMotionRelative`].
+    fn pointer_constraint(&mut self, _constraint: PointerConstraint) {}
+
     /// What this backend can control on its outputs: gamma tables and power state.
     ///
     /// The default is nothing, so a backend that does not implement the controls is
@@ -1018,6 +1026,25 @@ pub trait Backend<S: Host + 'static> {
     fn output_modes(&self, output: OutputId) -> Vec<DisplayMode> {
         self.output(output).map(|known| vec![known.mode]).unwrap_or_default()
     }
+}
+
+/// What the session's clients ask of the pointer, as a backend whose pointer belongs to another compositor has to
+/// pass on.
+///
+/// A client that locks the pointer (a game, a remote desktop, a 3D editor) wants the person's pointer held in place
+/// while its relative motion keeps arriving; one that confines it wants it kept inside a surface. Headless and the
+/// hardware backend own the pointer, so the compositor holds it itself and needs nobody's leave. A nested session's
+/// pointer is the host's, so the host has to be asked, or the lock would hold nothing and the pointer would run out
+/// of the window.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum PointerConstraint {
+    /// No client holds the pointer.
+    #[default]
+    Free,
+    /// A client holds the pointer in place and reads its relative motion.
+    Locked,
+    /// A client keeps the pointer inside its surface.
+    Confined,
 }
 
 /// Which per-output controls a backend can honour.

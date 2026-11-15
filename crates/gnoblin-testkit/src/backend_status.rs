@@ -5,7 +5,7 @@
 //! optional colon and a note: `supported`, `refused: the host owns the window size`, `n/a: no window`. The
 //! conformance tests measure the same capability on each backend and compare the status word with the cell, so the
 //! table cannot say something the backend does not do, and a capability nobody measures cannot sit in it. The user
-//! page repeats the table in consumer words; [`Table::parse`] reads either, and a test compares them.
+//! page repeats the table in consumer words; [`StatusTable::parse`] reads either, and a test compares them.
 //!
 //! The grammar is small on purpose: a table between two marker comments, cells split on `|`, no escapes. A note that
 //! needs a bar is reworded.
@@ -18,7 +18,7 @@ pub const BACKENDS: [&str; 3] = ["headless", "nested", "drm"];
 
 /// What a backend does with a capability.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Status {
+pub enum CellStatus {
     /// The backend does it.
     Supported,
     /// The backend refuses it on purpose, with the same typed answer on every backend that refuses.
@@ -27,25 +27,25 @@ pub enum Status {
     NotApplicable,
 }
 
-impl Status {
+impl CellStatus {
     /// The word a cell starts with.
     #[must_use]
     pub const fn word(self) -> &'static str {
         match self {
-            Status::Supported => "supported",
-            Status::Refused => "refused",
-            Status::NotApplicable => "n/a",
+            CellStatus::Supported => "supported",
+            CellStatus::Refused => "refused",
+            CellStatus::NotApplicable => "n/a",
         }
     }
 
-    fn of(word: &str) -> Option<Status> {
-        [Status::Supported, Status::Refused, Status::NotApplicable]
+    fn of(word: &str) -> Option<CellStatus> {
+        [CellStatus::Supported, CellStatus::Refused, CellStatus::NotApplicable]
             .into_iter()
             .find(|status| status.word() == word)
     }
 }
 
-impl fmt::Display for Status {
+impl fmt::Display for CellStatus {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.word())
     }
@@ -55,7 +55,7 @@ impl fmt::Display for Status {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Cell {
     /// The status word.
-    pub status: Status,
+    pub status: CellStatus,
     /// The text after the colon; empty when the cell has none. A refusal and a not-applicable cell must have one.
     pub note: String,
 }
@@ -89,7 +89,7 @@ impl Row {
 
 /// The table: its rows in document order.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Table {
+pub struct StatusTable {
     /// Every row.
     pub rows: Vec<Row>,
 }
@@ -127,9 +127,9 @@ fn parse_cell(text: &str) -> Result<Cell, String> {
         Some((word, note)) => (word.trim(), note.trim()),
         None => (text.trim(), ""),
     };
-    let status = Status::of(&word.to_lowercase())
+    let status = CellStatus::of(&word.to_lowercase())
         .ok_or_else(|| format!("`{text}` does not start with supported, refused or n/a"))?;
-    if status != Status::Supported && note.is_empty() {
+    if status != CellStatus::Supported && note.is_empty() {
         return Err(format!("`{text}`: a {status} cell says why"));
     }
     Ok(Cell {
@@ -138,14 +138,14 @@ fn parse_cell(text: &str) -> Result<Cell, String> {
     })
 }
 
-impl Table {
+impl StatusTable {
     /// Reads the table between the status markers of `markdown`. Two layouts are accepted: the design's, with an
     /// `Id` column before the capability, and the user page's, without one (its rows get the capability as id).
     ///
     /// # Errors
     ///
     /// A message naming the line that is not a row, a cell that is not a status, or a missing marker.
-    pub fn parse(markdown: &str) -> Result<Table, String> {
+    pub fn parse(markdown: &str) -> Result<StatusTable, String> {
         let body = between(markdown)?;
         let mut rows = Vec::new();
         let mut header: Option<Vec<String>> = None;
@@ -194,7 +194,7 @@ impl Table {
                 ));
             }
         }
-        Ok(Table { rows })
+        Ok(StatusTable { rows })
     }
 
     /// The row with `id`.
@@ -219,20 +219,20 @@ impl Table {
 
 /// Records what a test measured per backend, and checks it against the table.
 #[derive(Debug)]
-pub struct Measured<'a> {
-    table: &'a Table,
+pub struct ColumnCheck<'a> {
+    table: &'a StatusTable,
     backend: &'static str,
-    seen: BTreeMap<String, Status>,
+    seen: BTreeMap<String, CellStatus>,
 }
 
-impl<'a> Measured<'a> {
+impl<'a> ColumnCheck<'a> {
     /// A recorder for one backend's column.
     ///
     /// # Panics
     ///
     /// For a name that is not in [`BACKENDS`].
     #[must_use]
-    pub fn new(table: &'a Table, backend: &'static str) -> Self {
+    pub fn new(table: &'a StatusTable, backend: &'static str) -> Self {
         assert!(BACKENDS.contains(&backend), "`{backend}` is not a backend");
         Self {
             table,
@@ -246,7 +246,7 @@ impl<'a> Measured<'a> {
     /// # Panics
     ///
     /// When the cell's status differs from what was measured, or the row is missing.
-    pub fn is(&mut self, id: &str, status: Status) {
+    pub fn is(&mut self, id: &str, status: CellStatus) {
         let cell = self.table.row(id).cell(self.backend);
         assert_eq!(
             cell.status, status,
@@ -254,6 +254,46 @@ impl<'a> Measured<'a> {
             cell.status, self.backend
         );
         self.seen.insert(id.to_owned(), status);
+    }
+
+    /// The backend this recorder measures.
+    #[must_use]
+    pub fn backend(&self) -> &'static str {
+        self.backend
+    }
+
+    /// Records that `id` is `status` on this backend because the test `test` in `source` (the text of the test file)
+    /// proves it. The test must still exist, so a rename or a deletion fails here instead of leaving the table
+    /// vouching for nothing.
+    ///
+    /// # Panics
+    ///
+    /// When `source` has no test of that name, or the table disagrees.
+    pub fn covered(&mut self, id: &str, status: CellStatus, test: &str, source: &str) {
+        assert!(
+            source.contains(&format!("fn {test}(")),
+            "`{id}` on {} is covered by `{test}`, which no longer exists",
+            self.backend
+        );
+        self.is(id, status);
+    }
+
+    /// Records that `id` could not be measured on this machine for `why` (no GPU renderer, say), loudly, so a machine
+    /// that lacks a driver still runs the rest of the table. The table's cell is not compared.
+    pub fn skipped(&mut self, id: &str, why: &str) {
+        println!("skipping `{id}` on {}: {why}", self.backend);
+        let status = self.table.row(id).cell(self.backend).status;
+        self.seen.insert(id.to_owned(), status);
+    }
+
+    /// [`ColumnCheck::skipped`] for each of `ids` that nothing measured, for a machine that lacks what measuring them
+    /// needs.
+    pub fn skip_unseen(&mut self, ids: &[&str], why: &str) {
+        for id in ids {
+            if !self.seen.contains_key(*id) {
+                self.skipped(id, why);
+            }
+        }
     }
 
     /// Records a capability this crate cannot measure and the table marks with `marker` in its note (for example
@@ -300,10 +340,10 @@ mod tests {
 
     #[test]
     fn a_table_is_read_with_its_statuses_and_notes() {
-        let table = Table::parse(TABLE).expect("a table");
+        let table = StatusTable::parse(TABLE).expect("a table");
         assert_eq!(table.ids().collect::<Vec<_>>(), ["a.b", "a.c"]);
         let cell = table.row("a.b").cell("nested");
-        assert_eq!(cell.status, Status::Refused);
+        assert_eq!(cell.status, CellStatus::Refused);
         assert_eq!(cell.note, "the host decides");
         assert_eq!(table.row("a.c").cell("drm").note, "fake kernel");
     }
@@ -311,36 +351,36 @@ mod tests {
     #[test]
     fn a_refusal_without_a_reason_is_not_a_cell() {
         let text = TABLE.replace("refused: the host decides", "refused");
-        assert!(Table::parse(&text).expect_err("no reason").contains("says why"));
+        assert!(StatusTable::parse(&text).expect_err("no reason").contains("says why"));
     }
 
     #[test]
     fn a_word_that_is_no_status_is_named() {
         let text = TABLE.replace("supported: virtual", "maybe");
-        assert!(Table::parse(&text).expect_err("no status").contains("maybe"));
+        assert!(StatusTable::parse(&text).expect_err("no status").contains("maybe"));
     }
 
     #[test]
     fn a_missing_marker_is_an_error_and_so_is_an_empty_table() {
-        assert!(Table::parse("nothing").is_err());
-        assert!(Table::parse("<!-- backend-status:start -->\n<!-- backend-status:end -->").is_err());
+        assert!(StatusTable::parse("nothing").is_err());
+        assert!(StatusTable::parse("<!-- backend-status:start -->\n<!-- backend-status:end -->").is_err());
     }
 
     #[test]
     fn a_measurement_that_disagrees_with_the_table_fails() {
-        let table = Table::parse(TABLE).expect("a table");
+        let table = StatusTable::parse(TABLE).expect("a table");
         let outcome = std::panic::catch_unwind(|| {
-            let mut measured = Measured::new(&table, "nested");
-            measured.is("a.b", Status::Supported);
+            let mut measured = ColumnCheck::new(&table, "nested");
+            measured.is("a.b", CellStatus::Supported);
         });
         assert!(outcome.is_err());
     }
 
     #[test]
     fn a_row_nobody_measured_fails_the_finish() {
-        let table = Table::parse(TABLE).expect("a table");
-        let mut measured = Measured::new(&table, "headless");
-        measured.is("a.b", Status::Supported);
+        let table = StatusTable::parse(TABLE).expect("a table");
+        let mut measured = ColumnCheck::new(&table, "headless");
+        measured.is("a.b", CellStatus::Supported);
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| measured.finish()));
         assert!(outcome.is_err(), "`a.c` was never measured");
     }

@@ -1213,6 +1213,11 @@ failure-mode list that must be complete before isolated tests or code.
   the `bsm-host` bridge in bsm's hosted mode.
 - **Failure modes first:** a mode set fails half way; a VT switch during a
   frame; a GPU is removed; the parent compositor of a nested session disappears.
+- **Status (BackendParity):** the shipped binary selects its backend (`compositor.backend`, `GNOBLIN_BACKEND`, `auto` by
+  host and seat) and publishes it as the `session` object's `backend`; `Backend::Drm` is built through `Drm::open` and
+  refused with the failing step and a hint where it cannot start. A status table in `design/backend-parity.md` is held to
+  the code by a conformance suite for headless and nested, and to a fake kernel for DRM. Hardware is unproven: see that
+  document and `docs/real-hardware-verification.md`.
 
 ### Renderer: `gnoblin-render`, `gnoblin-capture`, `gnoblin-diag`
 

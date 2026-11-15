@@ -13,7 +13,42 @@ Choose **Gnoblin** at the login screen.
 
 Record the build you installed, distribution, GPU, displays and scale factors.
 
-## 2. Check your shell
+## 2. Check the hardware backend
+
+A login from a display manager has a seat and a GPU and no host compositor, so Gnoblin picks the `drm` backend by
+itself. See [backends](backends.md) for the rule.
+
+1. Ask the session which backend it runs on:
+
+    ```sh
+    gnoblinctl session list
+    gnoblinctl session get ID backend
+    ```
+
+    It prints `"drm"`. The compositor's log names the reason: `backend selected ... reason="auto: a login session with a
+seat and a DRM node"`. A `"headless"` or `"nested"` here is a finding: record the environment (`WAYLAND_DISPLAY`,
+    `XDG_SEAT`, `ls /dev/dri`).
+
+2. Check every display lights, the pointer follows the mouse, and the keyboard and any touchscreen work.
+3. Switch to another virtual terminal (Ctrl+Alt+F3) and back. The desktop repaints, no key or button stays held, and
+   the session does not freeze.
+4. Unplug a monitor and plug it back in. Its output goes and returns, and the windows that were on it move to a
+   display that is left.
+5. Use night light, or whatever sets a colour temperature, and switch a display off and on. The tint changes and the
+   screen blanks: the gamma and power writes have only been tested without hardware.
+6. From a terminal inside the session, start a second compositor on the same seat:
+
+    ```sh
+    GNOBLIN_BACKEND=drm gnoblin --role compositor
+    ```
+
+    It must stop with `the drm backend cannot start`, the step that failed and what to do, and the running session must
+    be untouched.
+
+Record the GPU driver and whether the GLES context came up. A GPU that cannot give one is refused by name, and the
+`nested` and `headless` backends are the way out on that machine.
+
+## 3. Check your shell
 
 Verify the bar, dock, launcher and notifications appear and respond to input.
 Open and close menus near each screen edge. Test every display.
@@ -21,7 +56,7 @@ Open and close menus near each screen edge. Test every display.
 If the shell fails, confirm desktop right-click opens a terminal and the recovery
 panel appears. Check the shell's log before restarting it.
 
-## 3. Check windows and keys
+## 4. Check windows and keys
 
 Test focus, typing, minimise/restore, maximise, fullscreen, drag and resize.
 Check app switching, launcher shortcuts and any custom bindings.
@@ -29,7 +64,7 @@ Check app switching, launcher shortcuts and any custom bindings.
 For SSD windows, check all buttons, titlebar drag and edge resize.
 A correct screenshot alone does not prove input works.
 
-## 4. Reload
+## 5. Reload
 
 Change one visible config setting, then:
 
@@ -39,12 +74,12 @@ gnoblinctl config reload
 
 Confirm the setting changed and existing windows survived.
 
-## 5. Lock and unlock
+## 6. Lock and unlock
 
 Confirm the lock screen receives input, desktop controls are unavailable while
 locked, and the shell recovers after unlock.
 
-## 6. Screen sharing and remote input
+## 7. Screen sharing and remote input
 
 With the desktop portal backend installed:
 
@@ -55,7 +90,11 @@ With the desktop portal backend installed:
 
 Gnoblin only routes the portal request. The selected backend decides access.
 
-## 7. Check a mode change
+On the hardware backend a screenshot or a screen share has nothing to read: it draws straight to the display and keeps
+no frame to read back, so the request is refused. That is expected today and is listed in [backends](backends.md); it
+is not a finding.
+
+## 8. Check a mode change
 
 A mode change on a hardware display is off unless the session starts with `GNOBLIN_DRM_MODESET=1`. See
 [outputs](shell-api/outputs#what-each-backend-applies).
@@ -68,7 +107,7 @@ A mode change on a hardware display is off unless the session starts with `GNOBL
 
 Record the GPU driver. A driver that refuses a commit its own test passed is a finding.
 
-## 8. Return to GNOME
+## 9. Return to GNOME
 
 ::: details Check the GNOME session
 
@@ -76,7 +115,7 @@ Log out and select GNOME. Confirm its desktop still works.
 
 :::
 
-## 9. Remove Gnoblin
+## 10. Remove Gnoblin
 
 For package-release testing, remove Gnoblin using its documented uninstall
 path and check that the Gnoblin login entry disappears.

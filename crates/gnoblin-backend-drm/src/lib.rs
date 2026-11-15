@@ -47,6 +47,9 @@
 //! 5. **A gamma table does not fit.** [`gamma::GammaRamp::matches`] refuses it before the
 //!    ioctl and the refusal is logged, so the display keeps the table it had.
 
+/// The DRM column of the backend status table, measured against a fake kernel.
+#[cfg(test)]
+mod conformance;
 /// The render-then-flip step of one output; see the module docs.
 pub mod frame;
 /// The gamma lookup table and its length check; see the module docs.

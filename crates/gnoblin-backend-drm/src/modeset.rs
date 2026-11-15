@@ -421,6 +421,14 @@ pub(crate) mod tests {
     }
 
     impl Fake {
+        /// A kernel the process never opted in to real mode changes for.
+        pub(crate) fn without_modeset() -> Self {
+            Self {
+                real_modeset_off: true,
+                ..Self::default()
+            }
+        }
+
         fn note(&self, line: String) {
             self.log.borrow_mut().push(line);
         }

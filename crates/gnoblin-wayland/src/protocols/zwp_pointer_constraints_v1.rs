@@ -145,6 +145,22 @@ impl State {
         (self.active_constraint_of(&focus) == Some(ZwpPointerConstraintsV1Kind::Locked)).then_some(focus)
     }
 
+    /// What the session's clients hold the pointer to now, for a backend whose pointer is another compositor's.
+    ///
+    /// It is read per turn from the same record [`State::locked_surface`] reads, so a constraint the client destroyed,
+    /// or one that has not started because its window lacks the keyboard, is not asked of the host.
+    #[must_use]
+    pub(crate) fn backend_pointer_constraint(&self) -> gnoblin_backend::PointerConstraint {
+        let Some(focus) = self.pointer.current_focus() else {
+            return gnoblin_backend::PointerConstraint::Free;
+        };
+        match self.active_constraint_of(&focus) {
+            Some(ZwpPointerConstraintsV1Kind::Locked) => gnoblin_backend::PointerConstraint::Locked,
+            Some(ZwpPointerConstraintsV1Kind::Confined) => gnoblin_backend::PointerConstraint::Confined,
+            None => gnoblin_backend::PointerConstraint::Free,
+        }
+    }
+
     /// Holds a position inside the region of the surface that holds the pointer, if that
     /// surface's client confined it.
     ///

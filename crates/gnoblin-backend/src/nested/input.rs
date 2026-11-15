@@ -17,9 +17,11 @@
 //! 2. **A scroll arrives twice.** `wl_pointer.axis` and `wl_pointer.axis_value120`
 //!    describe the same movement, so a frame that carries both is delivered once,
 //!    from the exact value: `a_frame_with_both_axis_events_scrolls_once`.
-//! 3. **A Wayland key code is used as a scan code.** Wayland states evdev codes
-//!    offset by eight, so a key the parent sends is delivered as the evdev code the
-//!    seat translates: `a_wayland_key_is_delivered_as_an_evdev_code`.
+//! 3. **A key code is shifted on the way through.** `wl_keyboard.key` is the evdev
+//!    scan code itself (a client adds eight to get the XKB keycode, the wire does
+//!    not), so a key the parent sends is delivered unchanged. An earlier version
+//!    subtracted eight and typed the wrong key for every press on a real host:
+//!    `a_wayland_key_is_delivered_as_the_evdev_code_it_is`.
 //! 4. **A touch that lifts is forgotten before its position is known.** The slot
 //!    remembers the output and the last position, so `Up` carries both:
 //!    `a_touch_up_keeps_its_output_and_position`.
@@ -45,14 +47,6 @@ const TOUCH: DeviceId = DeviceId::new(3);
 /// The unit is `REL_WHEEL_HI_RES`'s: one wheel notch is 120, so a high-resolution
 /// touchpad scroll is the same unit at a fraction of a step.
 pub const AXIS_STEP: i32 = 120;
-
-/// The offset between a Wayland key code and an evdev scan code.
-///
-/// Wayland's `wl_keyboard.key` is the Linux input event code plus eight, because
-/// the protocol reserved the low eight codes for buttons it never uses. The seat
-/// below the backend translates evdev scan codes, so the offset is removed here and
-/// nowhere else.
-const KEY_OFFSET: u32 = 8;
 
 /// The surface units a wheel notch counts as on the wire.
 ///
@@ -104,6 +98,10 @@ pub struct Seat {
     buttons: Vec<u32>,
     /// The gesture in progress.
     gesture: Option<OpenGesture>,
+    /// Whether the parent holds the pointer locked for the session, so its relative motion is the session's motion.
+    locked: bool,
+    /// The part of the parent's relative motion not yet delivered, because the session counts whole pixels.
+    relative_remainder: (f64, f64),
 }
 
 impl Default for Seat {
@@ -129,6 +127,8 @@ impl Seat {
             keys: Vec::new(),
             buttons: Vec::new(),
             gesture: None,
+            locked: false,
+            relative_remainder: (0.0, 0.0),
         }
     }
 
@@ -202,6 +202,45 @@ impl Seat {
         }
     }
 
+    /// The output the pointer is over, [`None`] while it is over none of the session's windows.
+    #[must_use]
+    pub fn pointer_output(&self) -> Option<OutputId> {
+        self.pointer
+    }
+
+    /// The parent now holds the pointer locked for the session, or no longer does.
+    ///
+    /// While it does, the parent's relative motion is delivered as [`InputEvent::PointerMotionRelative`]. While it
+    /// does not, that motion is the same movement the absolute positions already state, and delivering both would
+    /// move the pointer twice.
+    pub fn set_locked(&mut self, locked: bool) {
+        self.locked = locked;
+        self.relative_remainder = (0.0, 0.0);
+    }
+
+    /// The parent's pointer moved by `dx`, `dy` surface-local units. Only a locked pointer delivers it.
+    ///
+    /// The session counts whole logical pixels, so the fraction a slow hand leaves is kept for the next event and
+    /// added to it, the way the hardware backend does: dropping it would make a slow pointer stand still.
+    pub fn relative_motion(&mut self, dx: f64, dy: f64) {
+        // A non-finite delta would poison the remainder for every later event.
+        if !self.locked || !dx.is_finite() || !dy.is_finite() {
+            return;
+        }
+        let total = (self.relative_remainder.0 + dx, self.relative_remainder.1 + dy);
+        let (whole_x, whole_y) = (total.0.trunc(), total.1.trunc());
+        self.relative_remainder = (total.0 - whole_x, total.1 - whole_y);
+        // The conversion saturates, so a hostile or absurd delta cannot wrap.
+        let (dx, dy) = (whole_x as i32, whole_y as i32);
+        if dx != 0 || dy != 0 {
+            self.queue.push_back(InputEvent::PointerMotionRelative {
+                device: self.pointer_device,
+                dx,
+                dy,
+            });
+        }
+    }
+
     /// The pointer moved to `position` on the output it is over.
     ///
     /// A motion with no output is dropped: before the parent has said which surface
@@ -236,7 +275,7 @@ impl Seat {
 
     /// A key changed state; `key` is the code the parent sent.
     pub fn key(&mut self, key: u32, pressed: bool) {
-        let keycode = scan_code(key);
+        let keycode = key;
         if pressed {
             if !self.keys.contains(&keycode) {
                 self.keys.push(keycode);
@@ -451,11 +490,6 @@ impl InputSource for Seat {
     }
 }
 
-/// An evdev scan code for a Wayland key code.
-fn scan_code(key: u32) -> u32 {
-    key.saturating_sub(KEY_OFFSET)
-}
-
 /// A surface-local Wayland coordinate as the integer point the contract states.
 ///
 /// A non-finite coordinate becomes zero rather than saturating to the smallest
@@ -535,10 +569,10 @@ mod tests {
     }
 
     #[test]
-    fn a_wayland_key_is_delivered_as_an_evdev_code() {
+    fn a_wayland_key_is_delivered_as_the_evdev_code_it_is() {
         let mut seat = Seat::new();
-        // `KEY_ENTER` is evdev 28, so the parent sends 36.
-        seat.key(36, true);
+        // `KEY_ENTER` is evdev 28, and `wl_keyboard.key` states 28.
+        seat.key(28, true);
         assert_eq!(
             seat.next_event(),
             Some(InputEvent::Key {
@@ -547,13 +581,13 @@ mod tests {
                 pressed: true,
             })
         );
-        // A code below the offset has no scan code rather than a wrapped one.
+        // Nothing is added or taken away: a low code stays the low code it was sent as.
         seat.key(3, true);
         assert_eq!(
             seat.next_event(),
             Some(InputEvent::Key {
                 device: DeviceId::VIRTUAL,
-                keycode: 0,
+                keycode: 3,
                 pressed: true,
             })
         );
@@ -640,7 +674,7 @@ mod tests {
             seat.is_empty(),
             "a capability the seat already has is not announced again"
         );
-        seat.key(30 + KEY_OFFSET, true);
+        seat.key(30, true);
         assert_eq!(
             seat.next_event(),
             Some(InputEvent::Key {
@@ -667,9 +701,9 @@ mod tests {
         let mut seat = Seat::new();
         seat.set_capabilities(true, false, false, false);
         drained(&mut seat);
-        seat.key(29 + KEY_OFFSET, true);
-        seat.key(30 + KEY_OFFSET, true);
-        seat.key(30 + KEY_OFFSET, false);
+        seat.key(29, true);
+        seat.key(30, true);
+        seat.key(30, false);
         drained(&mut seat);
         seat.release_keys();
         assert_eq!(
@@ -690,7 +724,7 @@ mod tests {
         let mut seat = Seat::new();
         seat.set_capabilities(true, true, true, false);
         drained(&mut seat);
-        seat.key(29 + KEY_OFFSET, true);
+        seat.key(29, true);
         seat.button(0x110, true);
         seat.touch_down(1, Some(OUTPUT), Point::new(4, 5));
         drained(&mut seat);
@@ -885,5 +919,63 @@ mod tests {
     fn a_non_finite_position_is_the_origin() {
         assert_eq!(position(f64::NAN, f64::INFINITY), Point::new(0, 0));
         assert_eq!(position(-0.4, 2.6), Point::new(0, 3));
+    }
+
+    #[test]
+    fn relative_motion_is_delivered_only_while_the_parent_holds_the_pointer_locked() {
+        let mut seat = Seat::new();
+        seat.relative_motion(5.0, 3.0);
+        assert!(
+            seat.next_event().is_none(),
+            "an unlocked pointer's motion is the absolute positions' business"
+        );
+        seat.set_locked(true);
+        seat.relative_motion(5.0, 3.0);
+        assert_eq!(
+            seat.next_event(),
+            Some(InputEvent::PointerMotionRelative {
+                device: DeviceId::VIRTUAL,
+                dx: 5,
+                dy: 3
+            })
+        );
+        seat.set_locked(false);
+        seat.relative_motion(5.0, 3.0);
+        assert!(seat.next_event().is_none(), "an unlock ends the delivery");
+    }
+
+    #[test]
+    fn a_slow_locked_pointer_still_moves() {
+        let mut seat = Seat::new();
+        seat.set_locked(true);
+        for _ in 0..3 {
+            seat.relative_motion(0.4, -0.4);
+        }
+        // 0.4 + 0.4 + 0.4 is one whole pixel and 0.2 left over, each way.
+        assert_eq!(
+            seat.next_event(),
+            Some(InputEvent::PointerMotionRelative {
+                device: DeviceId::VIRTUAL,
+                dx: 1,
+                dy: -1
+            })
+        );
+        assert!(seat.next_event().is_none());
+    }
+
+    #[test]
+    fn an_absurd_delta_saturates_instead_of_wrapping() {
+        let mut seat = Seat::new();
+        seat.set_locked(true);
+        seat.relative_motion(f64::NAN, 1.0);
+        assert!(
+            seat.next_event().is_none(),
+            "a delta that is not a number is dropped, not remembered"
+        );
+        seat.relative_motion(1.0e300, 0.0);
+        match seat.next_event() {
+            Some(InputEvent::PointerMotionRelative { dx, dy, .. }) => assert_eq!((dx, dy), (i32::MAX, 0)),
+            other => panic!("expected a saturated motion, got {other:?}"),
+        }
     }
 }

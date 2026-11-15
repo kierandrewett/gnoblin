@@ -55,15 +55,20 @@ use wayland_protocols::wp::fractional_scale::v1::client::{wp_fractional_scale_ma
 use wayland_protocols::wp::keyboard_shortcuts_inhibit::zv1::client::{
     zwp_keyboard_shortcuts_inhibit_manager_v1, zwp_keyboard_shortcuts_inhibitor_v1,
 };
+use wayland_protocols::wp::pointer_constraints::zv1::client::{
+    zwp_confined_pointer_v1, zwp_locked_pointer_v1, zwp_pointer_constraints_v1,
+};
 use wayland_protocols::wp::pointer_gestures::zv1::client::{
     zwp_pointer_gesture_pinch_v1, zwp_pointer_gesture_swipe_v1, zwp_pointer_gestures_v1,
 };
+use wayland_protocols::wp::relative_pointer::zv1::client::{zwp_relative_pointer_manager_v1, zwp_relative_pointer_v1};
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
+use wayland_protocols::xdg::toplevel_icon::v1::client::{xdg_toplevel_icon_manager_v1, xdg_toplevel_icon_v1};
 
 use gnoblin_types::{OutputId, Size};
 
-use crate::RawTouchpadKind;
+use crate::{PointerConstraint, RawTouchpadKind};
 
 use super::input::position;
 use super::records::Table;
@@ -158,8 +163,31 @@ pub(crate) struct Bound {
     pub shortcuts_manager: Option<zwp_keyboard_shortcuts_inhibit_manager_v1::ZwpKeyboardShortcutsInhibitManagerV1>,
     /// The parent's pointer gestures global, if it offers one.
     pub gestures_manager: Option<zwp_pointer_gestures_v1::ZwpPointerGesturesV1>,
+    /// The parent's toplevel icon manager, if it offers one.
+    pub icon_manager: Option<xdg_toplevel_icon_manager_v1::XdgToplevelIconManagerV1>,
+    /// The parent's relative pointer manager, if it offers one.
+    pub relative_manager: Option<zwp_relative_pointer_manager_v1::ZwpRelativePointerManagerV1>,
+    /// The parent's pointer constraints manager, if it offers one.
+    pub constraints_manager: Option<zwp_pointer_constraints_v1::ZwpPointerConstraintsV1>,
     /// Every output the parent has.
     pub outputs: Vec<HostOutput>,
+}
+
+/// A constraint asked of the parent on one surface.
+enum HostConstraint {
+    /// The parent holds the pointer in place.
+    Lock(zwp_locked_pointer_v1::ZwpLockedPointerV1),
+    /// The parent keeps the pointer inside the surface.
+    Confinement(zwp_confined_pointer_v1::ZwpConfinedPointerV1),
+}
+
+impl HostConstraint {
+    fn destroy(self) {
+        match self {
+            Self::Lock(lock) => lock.destroy(),
+            Self::Confinement(confinement) => confinement.destroy(),
+        }
+    }
 }
 
 /// The state every event on the parent connection is dispatched into.
@@ -202,13 +230,27 @@ pub(crate) struct Handler {
     pinch: Option<zwp_pointer_gesture_pinch_v1::ZwpPointerGesturePinchV1>,
     /// The app id set on every toplevel.
     app_id: String,
+    /// The parent's toplevel icon manager, if it offers one.
+    icon_manager: Option<xdg_toplevel_icon_manager_v1::XdgToplevelIconManagerV1>,
+    /// The icon name set on every toplevel when the parent offers a manager.
+    icon_name: Option<String>,
+    /// The parent's relative pointer manager, if it offers one.
+    relative_manager: Option<zwp_relative_pointer_manager_v1::ZwpRelativePointerManagerV1>,
+    /// The parent's pointer constraints manager, if it offers one.
+    constraints_manager: Option<zwp_pointer_constraints_v1::ZwpPointerConstraintsV1>,
+    /// The relative pointer of the seat's pointer, while the parent offers one.
+    relative: Option<zwp_relative_pointer_v1::ZwpRelativePointerV1>,
+    /// What the session's clients hold the pointer to, as the host last told this backend.
+    wanted: PointerConstraint,
+    /// The constraint asked of the parent now, and the surface it is on.
+    held: Option<(HostConstraint, ObjectId)>,
     /// The size an output takes when the parent's configure leaves the size to the session.
     initial_size: Size,
 }
 
 impl Handler {
     /// A handler for a connection whose globals have been bound.
-    pub fn new(bound: Bound, app_id: String, initial_size: Size) -> Self {
+    pub fn new(bound: Bound, app_id: String, icon_name: Option<String>, initial_size: Size) -> Self {
         Self {
             table: Table::new(),
             objects: Vec::new(),
@@ -229,6 +271,13 @@ impl Handler {
             swipe: None,
             pinch: None,
             app_id,
+            icon_manager: bound.icon_manager,
+            icon_name,
+            relative_manager: bound.relative_manager,
+            constraints_manager: bound.constraints_manager,
+            relative: None,
+            wanted: PointerConstraint::Free,
+            held: None,
             initial_size,
         }
     }
@@ -248,6 +297,14 @@ impl Handler {
         let toplevel = xdg_surface.get_toplevel(qh, OutputKey(index));
         toplevel.set_app_id(self.app_id.clone());
         toplevel.set_title(title.to_owned());
+        // The icon is advisory: a parent without the manager shows its own default, and a name its theme does not
+        // have shows the same.
+        if let (Some(manager), Some(name)) = (&self.icon_manager, &self.icon_name) {
+            let icon = manager.create_icon(qh, ());
+            icon.set_name(name.clone());
+            manager.set_icon(&toplevel, Some(&icon));
+            icon.destroy();
+        }
         if fullscreen {
             // A session that fills the parent's output is what the host expects.
             // A parent that does not implement fullscreen answers with a configure
@@ -281,9 +338,74 @@ impl Handler {
         self.table.add(output, connector)
     }
 
+    /// The session's clients now hold the pointer to `wanted`: ask the parent to hold it the same way.
+    pub fn pointer_constraint(&mut self, qh: &QueueHandle<Self>, wanted: PointerConstraint) {
+        self.wanted = wanted;
+        self.apply_constraint(qh);
+    }
+
+    /// Gives back the constraint asked of the parent, if one is held. The parent's relative motion stops being the
+    /// session's.
+    fn release_constraint(&mut self) {
+        if let Some((held, _)) = self.held.take() {
+            held.destroy();
+        }
+        self.table.seat().set_locked(false);
+    }
+
+    /// Brings the parent's constraint in line with what the session's clients hold, on the surface the pointer is
+    /// over. A constraint already on that surface of the right kind is left alone, so a pointer that moves inside a
+    /// window does not unlock and lock the parent's pointer.
+    fn apply_constraint(&mut self, qh: &QueueHandle<Self>) {
+        let surface = self
+            .table
+            .seat()
+            .pointer_output()
+            .and_then(|output| self.surface_of_output(output));
+        let wanted = self.wanted;
+        let already = matches!(
+            (&self.held, surface.as_ref()),
+            (Some((held, on)), Some(surface))
+                if *on == surface.id()
+                    && matches!(
+                        (held, wanted),
+                        (HostConstraint::Lock(_), PointerConstraint::Locked) | (HostConstraint::Confinement(_), PointerConstraint::Confined)
+                    )
+        );
+        if already {
+            return;
+        }
+        self.release_constraint();
+        let (Some(manager), Some(pointer), Some(surface)) = (&self.constraints_manager, &self.pointer, surface) else {
+            return;
+        };
+        // Persistent: the parent releases the pointer when the window loses the focus and holds it again when the
+        // focus returns, which is what a game's lock is meant to survive.
+        let lifetime = zwp_pointer_constraints_v1::Lifetime::Persistent;
+        let held = match wanted {
+            PointerConstraint::Free => return,
+            PointerConstraint::Locked => {
+                HostConstraint::Lock(manager.lock_pointer(&surface, pointer, None, lifetime, qh, ()))
+            }
+            PointerConstraint::Confined => {
+                HostConstraint::Confinement(manager.confine_pointer(&surface, pointer, None, lifetime, qh, ()))
+            }
+        };
+        self.held = Some((held, surface.id()));
+    }
+
+    /// The surface an output is drawn on.
+    fn surface_of_output(&self, output: OutputId) -> Option<wl_surface::WlSurface> {
+        let index = (0..self.objects.len()).find(|index| self.table.output(*index) == Some(output))?;
+        self.objects(index).map(|objects| objects.surface.clone())
+    }
+
     /// Destroys one output's objects, after the parent asked for it to close.
     pub fn destroy_output(&mut self, index: usize) {
         if let Some(objects) = self.objects.get_mut(index).and_then(Option::take) {
+            if self.held.as_ref().is_some_and(|(_, on)| *on == objects.surface.id()) {
+                self.release_constraint();
+            }
             if let Some(inhibitor) = objects.inhibitor {
                 inhibitor.proxy.destroy();
             }
@@ -455,9 +577,16 @@ impl Handler {
                     self.swipe = Some(manager.get_swipe_gesture(&proxy, qh, ()));
                     self.pinch = Some(manager.get_pinch_gesture(&proxy, qh, ()));
                 }
+                if let Some(manager) = &self.relative_manager {
+                    self.relative = Some(manager.get_relative_pointer(&proxy, qh, ()));
+                }
                 self.pointer = Some(proxy);
             }
         } else if let Some(pointer) = self.pointer.take() {
+            self.release_constraint();
+            if let Some(relative) = self.relative.take() {
+                relative.destroy();
+            }
             if let Some(swipe) = self.swipe.take() {
                 swipe.destroy();
             }
@@ -501,6 +630,45 @@ wayland_client::delegate_noop!(Handler: ignore zwp_pointer_gestures_v1::ZwpPoint
 wayland_client::delegate_noop!(Handler: ignore wl_shm_pool::WlShmPool);
 wayland_client::delegate_noop!(Handler: ignore wp_viewporter::WpViewporter);
 wayland_client::delegate_noop!(Handler: ignore wp_viewport::WpViewport);
+wayland_client::delegate_noop!(Handler: ignore xdg_toplevel_icon_manager_v1::XdgToplevelIconManagerV1);
+wayland_client::delegate_noop!(Handler: ignore xdg_toplevel_icon_v1::XdgToplevelIconV1);
+wayland_client::delegate_noop!(Handler: ignore zwp_relative_pointer_manager_v1::ZwpRelativePointerManagerV1);
+wayland_client::delegate_noop!(Handler: ignore zwp_pointer_constraints_v1::ZwpPointerConstraintsV1);
+wayland_client::delegate_noop!(Handler: ignore zwp_confined_pointer_v1::ZwpConfinedPointerV1);
+
+impl Dispatch<zwp_locked_pointer_v1::ZwpLockedPointerV1, ()> for Handler {
+    fn event(
+        state: &mut Self,
+        _: &zwp_locked_pointer_v1::ZwpLockedPointerV1,
+        event: <zwp_locked_pointer_v1::ZwpLockedPointerV1 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // The parent says when the lock is held: the window may not have the focus yet, and loses the lock when it
+        // loses it, so the session's relative motion follows these two events and not the request.
+        match event {
+            zwp_locked_pointer_v1::Event::Locked => state.table.seat().set_locked(true),
+            zwp_locked_pointer_v1::Event::Unlocked => state.table.seat().set_locked(false),
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<zwp_relative_pointer_v1::ZwpRelativePointerV1, ()> for Handler {
+    fn event(
+        state: &mut Self,
+        _: &zwp_relative_pointer_v1::ZwpRelativePointerV1,
+        event: <zwp_relative_pointer_v1::ZwpRelativePointerV1 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zwp_relative_pointer_v1::Event::RelativeMotion { dx, dy, .. } = event {
+            state.table.seat().relative_motion(dx, dy);
+        }
+    }
+}
 wayland_client::delegate_noop!(Handler: ignore wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1);
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for Handler {
@@ -755,7 +923,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Handler {
         event: <wl_pointer::WlPointer as Proxy>::Event,
         _: &(),
         _: &Connection,
-        _: &QueueHandle<Self>,
+        qh: &QueueHandle<Self>,
     ) {
         match event {
             wl_pointer::Event::Enter {
@@ -768,6 +936,8 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Handler {
                 pointer.set_cursor(serial, None, 0, 0);
                 if let Some(output) = state.output_of(&surface) {
                     state.table.seat().enter(output, position(surface_x, surface_y));
+                    // The pointer is on this window now: a constraint the session's clients hold follows it.
+                    state.apply_constraint(qh);
                 }
             }
             wl_pointer::Event::Leave { .. } => state.table.seat().leave(),

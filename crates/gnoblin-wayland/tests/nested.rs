@@ -740,3 +740,196 @@ fn the_nested_window_asks_the_host_to_keep_its_shortcuts_while_it_has_the_keyboa
         }
     });
 }
+
+/// The host's view of the nested session's one window once the icon the session set is committed.
+fn mapped_window(host: &Handle) -> gnoblin_wayland::ObservedWindow {
+    host.wait_for(|observation| observation.only().is_some_and(|window| window.mapped))
+        .only()
+        .expect("one mapped window")
+        .clone()
+}
+
+#[test]
+fn the_host_shows_the_nested_window_with_its_title_app_id_and_icon() {
+    let session = Session::start();
+    session.run(|host| {
+        let config = NestedConfig {
+            icon: Some("preferences-desktop-display".to_owned()),
+            title: "A hosted session".to_owned(),
+            app_id: "org.example.Hosted".to_owned(),
+            ..NestedConfig::new(host.socket())
+        };
+        let mut nested = Nested::connect(&config).expect("the session connects");
+        let mut probe = Probe::drawing(RED);
+        draw(&mut nested, &mut probe);
+        let window = mapped_window(host);
+        assert_eq!(window.app_id, "org.example.Hosted");
+        assert_eq!(
+            window.title,
+            format!("A hosted session ({})", gnoblin_backend::nested::DEFAULT_CONNECTOR)
+        );
+        assert_eq!(
+            window.icon_name.as_deref(),
+            Some("preferences-desktop-display"),
+            "the icon name reaches the host through xdg_toplevel_icon_v1"
+        );
+    });
+}
+
+#[test]
+fn a_session_with_no_icon_asks_the_host_for_none() {
+    let session = Session::start();
+    session.run(|host| {
+        let config = NestedConfig {
+            icon: None,
+            ..NestedConfig::new(host.socket())
+        };
+        let mut nested = Nested::connect(&config).expect("the session connects");
+        let mut probe = Probe::drawing(RED);
+        draw(&mut nested, &mut probe);
+        assert_eq!(mapped_window(host).icon_name, None);
+    });
+}
+
+#[test]
+fn a_key_held_when_the_host_moves_the_keyboard_focus_is_released() {
+    // The host's keyboard focus moves from one of the session's windows to the other: a real focus change on a real
+    // host, delivered as `wl_keyboard.leave`. The host never sends a key release, so the release the session sees
+    // is the backend's own, and the key does not stay held in the session's seat.
+    const KEY_A: u32 = 30;
+    let session = Session::start();
+    session.run(|host| {
+        let config = NestedConfig {
+            outputs: vec![
+                gnoblin_backend::nested::OutputSpec::new("NESTED-1"),
+                gnoblin_backend::nested::OutputSpec::new("NESTED-2"),
+            ],
+            ..NestedConfig::new(host.socket())
+        };
+        let mut nested = Nested::connect(&config).expect("the session connects");
+        let mut probe = Probe::drawing(RED);
+        draw(&mut nested, &mut probe);
+        host.wait_for(|observation| observation.windows().filter(|window| window.mapped).count() == 2);
+        let window_of = |connector: &str| {
+            host.windows()
+                .windows()
+                .find(|window| window.title.contains(connector))
+                .map(|window| window.id)
+                .expect("the window of the connector")
+        };
+        host.control.focus(window_of("NESTED-1")).expect("the host answers");
+        host.control.inject_input(InputEvent::Key {
+            device: DeviceId::VIRTUAL,
+            keycode: KEY_A,
+            pressed: true,
+        });
+        let _ = pump_until(&mut nested, &mut probe, |probe| {
+            probe.inputs.iter().any(|event| {
+                matches!(
+                    event,
+                    InputEvent::Key {
+                        keycode: KEY_A,
+                        pressed: true,
+                        ..
+                    }
+                )
+            })
+        });
+        assert!(
+            !probe.inputs.iter().any(|event| matches!(
+                event,
+                InputEvent::Key {
+                    keycode: KEY_A,
+                    pressed: false,
+                    ..
+                }
+            )),
+            "the key is still held before the focus moves: {:?}",
+            probe.inputs
+        );
+
+        host.control.focus(window_of("NESTED-2")).expect("the host answers");
+        let _ = pump_until(&mut nested, &mut probe, |probe| {
+            probe.inputs.iter().any(|event| {
+                matches!(
+                    event,
+                    InputEvent::Key {
+                        keycode: KEY_A,
+                        pressed: false,
+                        ..
+                    }
+                )
+            })
+        });
+    });
+}
+
+#[test]
+fn a_lock_in_the_session_locks_the_hosts_pointer_and_its_relative_motion_arrives() {
+    // A client of the session locks the pointer: the session asks the host to lock its own, and the host's relative
+    // motion becomes the session's `PointerMotionRelative`. Once the lock is let go the same motion is the absolute
+    // positions' business, and delivering it twice would move the pointer twice.
+    use gnoblin_backend::PointerConstraint;
+    let session = Session::start();
+    session.run(|host| {
+        let mut nested = Nested::connect(&NestedConfig::new(host.socket())).expect("the session connects");
+        let mut probe = Probe::drawing(RED);
+        draw(&mut nested, &mut probe);
+        let window = mapped_window(host);
+        let _ = host.control.focus(window.id);
+        host.control.inject_input(InputEvent::PointerMotion {
+            device: DeviceId::VIRTUAL,
+            output: window_owner(host),
+            position: centre(&window),
+        });
+        let _ = pump_until(&mut nested, &mut probe, |probe| !probe.motions().is_empty());
+
+        Backend::<Probe>::pointer_constraint(&mut nested, PointerConstraint::Locked);
+        let relative = |probe: &Probe| {
+            probe
+                .inputs
+                .iter()
+                .any(|event| matches!(event, InputEvent::PointerMotionRelative { dx: 5, dy: 3, .. }))
+        };
+        // The host starts the lock when it has decided, so the motion is sent until it is the session's.
+        let deadline = Instant::now() + TIMEOUT;
+        while !relative(&probe) {
+            assert!(
+                Instant::now() < deadline,
+                "the host never held the lock: {:?}",
+                probe.inputs
+            );
+            host.control.inject_input(InputEvent::PointerMotionRelative {
+                device: DeviceId::VIRTUAL,
+                dx: 5,
+                dy: 3,
+            });
+            nested.roundtrip().expect("the host answers a round trip");
+            let _ = nested.dispatch(&mut probe);
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        Backend::<Probe>::pointer_constraint(&mut nested, PointerConstraint::Free);
+        nested.roundtrip().expect("the host answers a round trip");
+        let _ = nested.dispatch(&mut probe);
+        probe.inputs.clear();
+        for _ in 0..10 {
+            host.control.inject_input(InputEvent::PointerMotionRelative {
+                device: DeviceId::VIRTUAL,
+                dx: 1,
+                dy: 1,
+            });
+            nested.roundtrip().expect("the host answers a round trip");
+            let _ = nested.dispatch(&mut probe);
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(
+            !probe
+                .inputs
+                .iter()
+                .any(|event| matches!(event, InputEvent::PointerMotionRelative { .. })),
+            "an unlocked pointer's motion is delivered as positions only: {:?}",
+            probe.inputs
+        );
+    });
+}

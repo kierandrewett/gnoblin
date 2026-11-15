@@ -1141,6 +1141,7 @@ dependencies = [
  "gnoblin-output",
  "gnoblin-render-frame",
  "gnoblin-render-gles",
+ "gnoblin-testkit",
  "gnoblin-types",
  "smithay",
 ]
@@ -1987,6 +1988,7 @@ dependencies = [
  "gnoblin-render",
  "gnoblin-render-frame",
  "gnoblin-secret",
+ "gnoblin-testkit",
  "gnoblin-types",
  "png",
  "rustix 1.1.6",
