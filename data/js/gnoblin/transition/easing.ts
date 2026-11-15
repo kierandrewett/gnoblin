@@ -1,9 +1,9 @@
-// The named easings of `gnoblin.requestTransition` and the samples of their curves. Each is the CSS timing function
-// of that name, so a script that knows CSS knows the curve.
+// Named easing curves used by `gnoblin.requestTransition`. Each curve matches the CSS timing function
+// with the same name.
 
 /**
- * How an animation moves from its start to its end: the CSS names the specification uses. Each is the CSS timing
- * function of that name (`ease-out` is `cubic-bezier(0, 0, 0.58, 1)`), so a script that knows CSS knows the curve.
+ * How an animation moves from its start to its end. Each name uses the CSS timing function with the same name; for
+ * example, `ease-out` is `cubic-bezier(0, 0, 0.58, 1)`.
  */
 export type Easing = "linear" | "ease" | "ease-in" | "ease-out" | "ease-in-out";
 

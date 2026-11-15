@@ -23,9 +23,13 @@ export interface ResizeHandlesOptions {
  * everywhere but on a handle.
  */
 export class ResizeHandles extends Box {
+    /** Distance each handle reaches outside the frame, in logical pixels. */
     thickness: number;
+    /** Distance each handle reaches inside the frame, in logical pixels. */
     inside: number;
+    /** Length of each corner handle and the edge-handle gap, in logical pixels. */
     corner: number;
+    /** Each resize handle, keyed by its edge or corner. */
     readonly handles = new Map<ResizeSide, ResizeHandle>();
 
     constructor(context: FrameContext, options: ResizeHandlesOptions = {}) {
@@ -51,6 +55,7 @@ export class ResizeHandles extends Box {
         }
     }
 
+    /** Sizes this node to its parent layer. */
     override refresh(): void {
         // The layer this is in is as large as the frame; this node is as large as the layer.
         const { parent } = this;
@@ -62,6 +67,7 @@ export class ResizeHandles extends Box {
         }
     }
 
+    /** Places each edge and corner handle using this node's size. */
     override arrange(): void {
         const { thickness: t, inside, corner } = this;
         const reach = t + inside;
@@ -83,6 +89,7 @@ export class ResizeHandles extends Box {
         place("right", width - inside, run, reach, height - 2 * run);
     }
 
+    /** Returns no paint operations; the handles have no visible drawing. */
     override draw(): [] {
         return [];
     }

@@ -1,6 +1,4 @@
-// Which script object is which tree node: the object of each node id, the ids scripts gave their nodes, the nodes the
-// compositor destroyed under us, and the pointer edges a node's handler hears. A node reached by id is the same
-// object as the one that made it.
+// Tracks scene objects by tree node id and handles pointer events and nodes destroyed by the compositor.
 
 import { errorCodeOfRefusal } from "gnoblin/errors";
 import { disposeBindingsOf } from "gnoblin/properties";
@@ -8,7 +6,7 @@ import { host, SceneError } from "gnoblin/scene/backend";
 import type { NodeId } from "gnoblin/scene/backend";
 import type { Node } from "gnoblin/scene/node";
 
-/** Puts `node` last under the tree's root, which is where the XR program looks for the room. A node in the tree stays. */
+/** Adds a node to the scene root if it has no parent. */
 export function mountOnRoot(node: Node): void {
     if (host().parent(nodeIdOf(node)) !== undefined) {
         return;
@@ -24,8 +22,7 @@ export function mountOnRoot(node: Node): void {
 }
 
 /**
- * Puts `node` last under `parent`, a node of the tree that is not a scene node of this module (a canvas of the UI
- * toolkit, say). A node already in the tree moves. This is how a `View` goes into an outlet of a window frame.
+ * Adds `node` under a host-managed parent, such as a UI canvas. A node already in the tree moves to the new parent.
  */
 export function mountUnder(node: Node, parent: NodeId): void {
     const code = host().insert(nodeIdOf(node), parent, -1);
@@ -38,22 +35,22 @@ export function mountUnder(node: Node, parent: NodeId): void {
     }
 }
 
-/** The node a script object stands for, for the objects of this module. */
+/** Maps each scene object to its host node id. */
 export const nodes = new WeakMap<object, NodeId>();
 
-/** Every live scene object by node id, so a tree node reached by id is the same object as the one that made it. */
+/** Maps live host node ids to their scene objects. */
 export const live = new Map<NodeId, Node>();
 
-/** The scene objects whose tree node is gone, so a stale handle answers `alive` false. */
+/** Tracks scene objects whose host nodes have been destroyed. */
 export const gone = new WeakSet<object>();
 
-/** The ids scripts gave their nodes (`new Node({ id })`): `node.id` answers with them. */
+/** Stores the stable ids supplied when script-created nodes are constructed. */
 export const givenIds = new WeakMap<object, string>();
 
-/** Metres in one unit of a node's space, kept by the script because ordinary nodes have no tree property for it. */
+/** Stores metres per unit for nodes whose host tree has no such property. */
 export const metresPerUnit = new WeakMap<object, number>();
 
-/** The tree node of a scene object. */
+/** Returns the host node id for a scene object, or throws for an unknown object. */
 export function nodeIdOf(object: Node): NodeId {
     const id = nodes.get(object);
     if (id === undefined) {
@@ -62,12 +59,12 @@ export function nodeIdOf(object: Node): NodeId {
     return id;
 }
 
-/** The scene object for node `id`, or undefined when this module did not make it. */
+/** Returns the scene object for a host node id, if this module created it. */
 export function sceneNode(id: NodeId): Node | undefined {
     return live.get(id);
 }
 
-/** The handler member of a node that hears each pointer edge. */
+/** Node member called for each supported pointer edge. */
 type PointerHandler = "onPointerEnter" | "onPointerMotion" | "onPointerLeave" | "onPointerPress" | "onPointerRelease";
 
 const POINTER_HANDLERS: Readonly<Record<string, PointerHandler>> = {
@@ -79,8 +76,8 @@ const POINTER_HANDLERS: Readonly<Record<string, PointerHandler>> = {
 };
 
 /**
- * The call that tells a node's handler of a pointer edge, or undefined when this module did not make the node or it
- * has no handler for the edge. The shell queues it beside the listeners' calls so a throw is reported, not raised.
+ * Returns a deferred call to a node's pointer handler, or undefined if the node or handler is unavailable. The shell
+ * queues the call with listener calls so handler errors are reported rather than thrown immediately.
  */
 export function sceneNodePointer(
     id: NodeId,
@@ -96,7 +93,7 @@ export function sceneNodePointer(
     return () => handler.call(node, { node, x: point.x, y: point.y, button: point.button });
 }
 
-/** Tells the module nodes were destroyed by someone else (the compositor, a destroyed ancestor). */
+/** Records nodes destroyed outside this module and disposes their property bindings. */
 export function sceneForget(ids: readonly NodeId[]): void {
     for (const id of ids) {
         const object = live.get(id);
@@ -109,8 +106,8 @@ export function sceneForget(ids: readonly NodeId[]): void {
 }
 
 /**
- * Destroys every node this generation made that has no scene parent of its own, with their subtrees. The host calls
- * it when the generation ends, so a reload does not leave the old generation's room and Views behind.
+ * Destroys nodes created in the current generation that have no scene parent of their own, including their subtrees.
+ * The host calls this when the generation ends.
  */
 export function sceneReleaseAll(): void {
     for (const [id, object] of [...live]) {
@@ -125,7 +122,7 @@ export function sceneReleaseAll(): void {
     }
 }
 
-/** How an error names a node: its class and tree id. */
+/** Formats a node's class and host id for error messages. */
 export function label(object: Node): string {
     return `${object.constructor.name}#${nodes.get(object) ?? "?"}`;
 }

@@ -12,8 +12,11 @@ import { Camera3D } from "gnoblin/scene/camera";
 export interface ViewportState {
     /** The workspace last assigned or last seen shown. */
     content: object | null;
+    /** Camera applied to the content, or null until one is requested. */
     camera: Camera2D | Camera3D | null;
+    /** Background colour retained by the viewport. */
     clearColor: string;
+    /** Display that presents this viewport, or null while unassigned. */
     display: Display | null;
 }
 
@@ -33,10 +36,9 @@ function isCamera(value: unknown): value is Camera2D | Camera3D {
 }
 
 /**
- * What a display shows and how it looks at it: a workspace (`content`) seen through a camera. Assigning `content` to
- * the viewport of a display shows that workspace on the display, as `gnoblin.workspaces.show` does, and reading it
- * gives what the display shows now (a workspace is on one display at a time). A `Camera3D` is accepted and kept, and
- * the shell reports once per reload that it draws a flat workspace only.
+ * A workspace shown through a camera. Assigning `content` on the viewport of a display shows that workspace there;
+ * reading it gives the workspace shown now. A workspace can be shown on one display at a time. `Camera3D` values are
+ * accepted and retained, but the shell reports that it draws flat workspaces only.
  */
 export class Viewport {
     /**
@@ -54,7 +56,7 @@ export class Viewport {
         if (clearColor !== undefined) this.clearColor = clearColor;
     }
 
-    /** The workspace the viewport shows. Null for a viewport that was made without one and has no display to ask. */
+    /** The workspace this viewport shows, or null if it has none. */
     get content(): object | null {
         const state = viewportState(this);
         if (state.display === null) {
@@ -63,6 +65,7 @@ export class Viewport {
         const shown = shell().shown(state.display);
         return shown === undefined ? state.content : shown;
     }
+    /** Shows `value` on the assigned display and stores it as the viewport content. */
     set content(value: object) {
         if (!shell().isWorkspace(value)) {
             throw new TypeError("Viewport.content: must be a Workspace");
@@ -82,6 +85,7 @@ export class Viewport {
         }
         return state.camera;
     }
+    /** Uses `value` to view this viewport's content. */
     set camera(value: Camera2D | Camera3D) {
         if (!isCamera(value)) {
             throw new TypeError("Viewport.camera: must be a Camera2D or a Camera3D");
@@ -93,6 +97,7 @@ export class Viewport {
     get clearColor(): string {
         return viewportState(this).clearColor;
     }
+    /** Sets the background colour retained by the viewport. */
     set clearColor(value: string) {
         if (typeof value !== "string" || value === "") {
             throw new TypeError("Viewport.clearColor: must be a colour such as #101820");
@@ -101,6 +106,7 @@ export class Viewport {
         shell().changed();
     }
 
+    /** Returns the fixed name `Viewport`. */
     toString(): string {
         return "Viewport";
     }

@@ -1,7 +1,8 @@
 // `DisplayManager`: what displays and profiles do to the shell. It reconciles the `OutputProfile`s and `Display`s a
 // script declared with the connected outputs: it applies a profile when its monitor is connected (and again when the
-// monitor returns), gives every output one display (the shell makes a `single` one where no script display presents it),
-// asks the backend to mirror or span the outputs of a display, and shows a viewport's workspace on the display's desk.
+// monitor returns), gives every output one display (the shell makes a `single` one where no script display
+// presents it), asks the backend to mirror or span the outputs of a display, and shows a viewport's workspace on the
+// display's desk.
 //
 // The host module owns the collections, the events and the desks; it gives this module a `DisplayBackend` and calls
 // `frame()` each layout pass. Nothing here touches the compositor directly.
@@ -28,7 +29,7 @@ const CAMERA3D_NOTICE = "not applied: camera3d (needs a projected workspace)";
 const CAMERA2D_NOTICE =
     "not applied: camera2d zoom, position and rotation (windows sit under the tree root: there is no per-display root to transform)";
 
-/** Reconciles profiles and displays with the connected outputs. */
+/** Coordinates the shell's profiles, displays and outputs. */
 export class DisplayManager {
     readonly #backend: DisplayBackend;
     readonly #profiles: OutputProfile[];
@@ -40,7 +41,7 @@ export class DisplayManager {
     readonly #implicit = new Map<OutputView, Display>();
     readonly #sent = new WeakMap<OutputView, Map<OutputProfile, Sent>>();
 
-    /** `profiles` and `displays` are the lists behind `gnoblin.outputs.profiles` and `gnoblin.displays`. */
+    /** Creates a manager for the host's profile and display collections. */
     constructor(backend: DisplayBackend, profiles: OutputProfile[], displays: Display[]) {
         this.#backend = backend;
         this.#profiles = profiles;
@@ -118,11 +119,11 @@ export class DisplayManager {
     }
 
     /**
-     * Swaps `old` for `next` as one validated change: `old` and every other script display that shares an output with
-     * `next` leave, then `next` takes `old`'s place. Nothing changes when the check fails.
+     * Replaces `old` with `next` as one validated change. Displays that share an output with `next` leave, and `next`
+     * takes `old`'s place. Nothing changes if validation fails.
      *
-     * @throws GnoblinError `invalid_argument` when `old` is not in the collection, `already_exists` when `next` is or has an id
-     *   that stays
+     * @throws GnoblinError `invalid_argument` when `old` is not in the collection, or `already_exists` when `next` is
+     *   present or has an id that remains in use
      */
     replaceDisplay(old: Display, next: Display): void {
         if (!this.#displays.includes(old) || displayState(old).implicit) {
@@ -167,7 +168,10 @@ export class DisplayManager {
         this.reflow();
     }
 
-    /** The display under `point` in the compositor's space, else the primary output's; null when no display has an output. */
+    /**
+     * The display under `point` in the compositor's space, else the primary output's; null when no display has an
+     * output.
+     */
     displayAt(point: { x: number; y: number }): Display | null {
         if (this.#dirty) {
             this.reflow();
@@ -248,7 +252,9 @@ export class DisplayManager {
         };
     }
 
-    /** Called each layout pass: reconciles when something changed, then reports what the cameras ask of the renderer. */
+    /**
+     * Called each layout pass: reconciles when something changed, then reports what the cameras ask of the renderer.
+     */
     frame(): void {
         if (this.#dirty) {
             this.reflow();
@@ -475,7 +481,9 @@ export class DisplayManager {
         }
     }
 
-    /** Shows the workspace a viewport waits to show, and remembers what the desk shows for when the display is parked. */
+    /**
+     * Shows the workspace a viewport waits to show, and remembers what the desk shows for when the display is parked.
+     */
     #settleContent(display: Display, lead: OutputView): void {
         const state = displayState(display);
         if (!this.#backend.hasDesk(lead)) {

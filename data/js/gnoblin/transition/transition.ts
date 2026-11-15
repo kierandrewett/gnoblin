@@ -1,18 +1,20 @@
-// `Transition`: what `gnoblin.requestTransition` returns, a handle on the tracks the compositor runs (`progress`,
-// `play`, `pause`, `reverse`, `cancel`) and the promise of how they ended.
+// The handle returned by `gnoblin.requestTransition`: controls its tracks and reports how they ended.
 
 import type { TransitionHost, TransitionResult, TransitionSubscription } from "gnoblin/transition/types";
 
 let counter = 0;
 
 /**
- * What a transition asks of the compositor's tracks: the engine's side of `progress`, `play`, `pause`, `reverse` and
- * `cancel`.
+ * The controls the transition engine uses to operate the compositor tracks.
  */
 export interface TransitionControl {
+    /** Sets the tracks to a fraction of their duration, from 0 to 1. */
     seek(progress: number): void;
+    /** Holds or resumes the tracks. */
     pause(paused: boolean): void;
+    /** Sets whether the tracks run towards the start or target. */
     reverse(reverse: boolean): void;
+    /** Ends every owned track at its target value. */
     cancel(): void;
 }
 
@@ -28,8 +30,9 @@ export interface TransitionControl {
  * back and settles `{ cancelled: true }`.
  */
 export class Transition {
+    /** A unique identifier for this transition. */
     readonly id: number;
-    /** The milliseconds the animation takes: the duration asked for, or 0 under reduced motion. */
+    /** The duration in milliseconds, or 0 when reduced motion is active. */
     readonly duration: number;
     #host: TransitionHost;
     #state: "running" | "finished" | "cancelled" = "running";
@@ -79,6 +82,7 @@ export class Transition {
         return this.#progress;
     }
 
+    /** Sets the track position from 0 (start) to 1 (target), without playing or pausing. */
     set progress(value: number) {
         if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
             throw new RangeError(`Transition.progress: expects a number from 0 to 1, not ${String(value)}`);
@@ -150,7 +154,7 @@ export class Transition {
         return promise;
     }
 
-    /** Calls `fn({ cancelled })` once, when the transition ends. The returned subscription stops it before it runs. */
+    /** Calls `fn` once when the transition ends; unsubscribe to skip a callback that has not run yet. */
     onFinished(fn: (result: TransitionResult) => void): TransitionSubscription {
         if (typeof fn !== "function") {
             throw new TypeError("Transition.onFinished: expects a function");
@@ -203,6 +207,7 @@ export class Transition {
         });
     }
 
+    /** Returns this transition's diagnostic label. */
     toString(): string {
         return `Transition#${this.id}`;
     }

@@ -1,5 +1,4 @@
-// `XRViewport`, the viewport that shows the room in the headset, and `pickView`, the ray test that finds the panel a
-// controller points at.
+// The headset viewport and ray-based panel picking.
 
 import { Viewport } from "gnoblin/display/viewport";
 import { Camera3D } from "gnoblin/scene/camera";
@@ -16,7 +15,9 @@ export type XRComposition = "auto" | "layers" | "projection";
 export interface XRViewportOptions {
     /** The room: the node the XR program reads. */
     content: Node;
+    /** Camera through which the room is viewed. */
     camera: Camera3D;
+    /** Panel rendering mode. Defaults to `auto`. */
     composition?: XRComposition;
 }
 
@@ -28,10 +29,11 @@ export interface XRViewportOptions {
  */
 export class XRViewport extends Viewport {
     readonly #room: Node;
+    /** How the headset draws panels in the room. */
     composition: XRComposition;
 
     /**
-     * @throws TypeError when `content` is not a node, `camera` is not a `Camera3D` or `composition` is not one of the three
+     * @throws TypeError when `content` is not a node, `camera` is not a `Camera3D` or `composition` is invalid.
      */
     constructor(options: XRViewportOptions) {
         if (!(options?.content instanceof Node)) {
@@ -57,6 +59,7 @@ export class XRViewport extends Viewport {
         return this.#room;
     }
 
+    /** The room cannot be changed after the viewport is created. */
     override set content(_value: object) {
         throw new TypeError("XRViewport.content: the room is fixed when the viewport is made");
     }
@@ -97,6 +100,7 @@ export class XRViewport extends Viewport {
 
 /** Where a ray struck a panel. */
 export interface XRHit {
+    /** Panel struck by the ray. */
     readonly view: View;
     /** In the room's frame. */
     readonly point: Vector3;

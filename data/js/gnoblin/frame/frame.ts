@@ -1,7 +1,6 @@
-// `WindowFrame`: the surface round one window's content, with outlets a script fills with its own nodes.
-// `Decorations` makes one per window and hands it to the script's `frame` callback. The frame makes an outlet's node when
-// the script first reads the outlet, places every outlet from the window's size and the frame's inset, and reports the
-// inset to the layout driver. design/window-frame.md.
+// `WindowFrame`: the surface around one window's content, with outlets for script-provided nodes.
+// `Decorations` creates one per window and calls the script's `frame` callback to fill it. The frame places outlets
+// from the window's size and inset, and reports the inset to the layout driver.
 
 import { WindowActions } from "gnoblin/frame/actions";
 import type { FrameClient, FrameContext, FrameHooks } from "gnoblin/frame/client";
@@ -49,18 +48,22 @@ type StackName = (typeof STACKING)[number];
 
 /**
  * The frame of one window. Its outlets are `top`, `bottom`, `left` and `right` (edges that take room), `topLeft`,
- * `topRight`, `bottomLeft` and `bottomRight` (corners that take none), `underlay` and `overlay` (layers that take none),
- * `start`, `center` and `end` (the zones of the top edge), and `content` (not fillable). Reading an outlet of a frame of
- * a window that draws its own frame (`kind` `layers`) throws, except the layers: a second title bar over the client's own
- * is the double title bar.
+ * `topRight`, `bottomLeft` and `bottomRight` (corners that take none), `underlay` and `overlay` (layers that take
+ * none), `start`, `center` and `end` (the top edge's zones), and `content` (not fillable). Reading an outlet of a
+ * client-drawn frame (`kind` `layers`) throws, except for the layers: a second title bar over the client's own is a
+ * double title bar.
  *
- * `inset` is what the layout driver leaves round the window's content, and it is all zero while the window is fullscreen;
- * `reserved` is the same without that, the room the window keeps while fullscreen hides the frame.
+ * `inset` is the space left around content, and is all zero while the window is fullscreen; `reserved` is the same
+ * without that, the room the window keeps while fullscreen hides the frame.
  */
 export class WindowFrame implements FrameContext, OutletOwner {
+    /** The window this frame surrounds. */
     readonly client: FrameClient;
+    /** Shell operations used for window actions. */
     readonly hooks: FrameHooks;
+    /** Shared actions that frame parts use to operate on the window. */
     readonly actions: WindowActions;
+    /** Whether the frame uses shell-drawn edges and reserves an inset. */
     readonly kind: FrameKind;
     readonly #node: number;
     readonly #outlets = new Map<StackName | "underlay", Outlet>();
@@ -98,7 +101,7 @@ export class WindowFrame implements FrameContext, OutletOwner {
         return { width: this.client.width, height: this.client.height ?? 0, inset: this.inset };
     }
 
-    /** The room the frame takes round the content now: nothing while the window is fullscreen or has no server frame. */
+    /** Room reserved around the content, or zero when fullscreen or without a server frame. */
     get inset(): FrameInset {
         return this.#insetOf((edge) => edge.thickness);
     }
@@ -125,34 +128,42 @@ export class WindowFrame implements FrameContext, OutletOwner {
         return { rect: { x: 0, y: 0, width, height }, inset };
     }
 
+    /** The top edge outlet. */
     get top(): EdgeOutlet {
         return this.#edge("top");
     }
 
+    /** The bottom edge outlet. */
     get bottom(): EdgeOutlet {
         return this.#edge("bottom");
     }
 
+    /** The left edge outlet. */
     get left(): EdgeOutlet {
         return this.#edge("left");
     }
 
+    /** The right edge outlet. */
     get right(): EdgeOutlet {
         return this.#edge("right");
     }
 
+    /** The top-left corner outlet. */
     get topLeft(): CornerOutlet {
         return this.#corner("top-left");
     }
 
+    /** The top-right corner outlet. */
     get topRight(): CornerOutlet {
         return this.#corner("top-right");
     }
 
+    /** The bottom-left corner outlet. */
     get bottomLeft(): CornerOutlet {
         return this.#corner("bottom-left");
     }
 
+    /** The bottom-right corner outlet. */
     get bottomRight(): CornerOutlet {
         return this.#corner("bottom-right");
     }
@@ -177,14 +188,17 @@ export class WindowFrame implements FrameContext, OutletOwner {
         return this.#layer("under");
     }
 
-    /** The layer in front of the window: a focus ring, a badge, resize handles. It takes no room and, by default, no pointer. */
+    /**
+     * Layer in front of the window for a focus ring, badge or resize handles. It takes no room and, by default, no
+     * pointer.
+     */
     get overlay(): LayerOutlet {
         return this.#layer("over");
     }
 
     /**
-     * Puts the eight resize handles round the frame, `thickness` pixels reaching outside it, and returns them. The stock
-     * titlebar has none: a window is resized with `Super+MouseRight+Drag` unless its frame has handles.
+     * Puts the eight resize handles round the frame, with `thickness` pixels reaching outside it, and returns them.
+     * The stock titlebar has none: resize with `Super+MouseRight+Drag` unless the frame has handles.
      */
     resizeHandles(thickness = 6, options: Omit<ResizeHandlesOptions, "thickness"> = {}): ResizeHandles {
         const handles = new ResizeHandles(this, { thickness, ...options });
@@ -215,8 +229,8 @@ export class WindowFrame implements FrameContext, OutletOwner {
     }
 
     /**
-     * Makes an outlet's node the first time it is read, and keeps the window's children in stacking order. The map holds
-     * each name's outlet of the one class its getter asks for, so `found` is a `T`.
+     * Makes an outlet node on first read and keeps the window's children in stacking order. The map holds each outlet
+     * by name and requested class, so `found` is a `T`.
      */
     #make<T extends Outlet>(name: StackName | "underlay", build: () => T): T {
         const found = this.#outlets.get(name) as T | undefined;

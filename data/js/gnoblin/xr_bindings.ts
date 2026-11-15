@@ -1,7 +1,5 @@
-// XR controller bindings: the trigger grammar, the drag-binding base and the stock panel manipulations.
-// They read a controller's pose and ray and write a View's placement; the drag loop that calls them is `XRRuntime`
-// in `xr.ts`, which imports this module, so this one imports only the types of `xr.ts`.
-// Read `xr.ts` first for the objects and their units.
+// XR controller bindings parse triggers and implement panel dragging, resizing, rotating and scaling.
+// `XRRuntime` in `xr.ts` runs the drag loop; this module imports its shared types only.
 
 import { Binding } from "gnoblin/bindings/binding";
 import type { ControllerButton, ControllerTriggerParts } from "gnoblin/bindings/trigger_types";
@@ -86,13 +84,17 @@ export function parseControllerTrigger(trigger: unknown, what = "trigger"): Cont
 export interface XRDragEvent extends DragEvent {
     /** The session's input context, which is the `xr` seat. */
     readonly context: object | null;
+    /** Controller that started the drag. */
     readonly controller: XRController;
     /** The panel under the ray when the drag started. It does not change for the drag. */
     readonly view?: View;
+    /** Controller ray in the room's coordinate space. */
     readonly ray: Ray;
     /** Where the ray struck the panel's plane when the drag started, in the room's frame. */
     readonly hit?: Vector3;
+    /** Controller hand name, such as `left` or `right`. */
     readonly hand: string;
+    /** XR room containing the panel. */
     readonly room: XRRoom;
     /** Metres per room unit. */
     readonly unit: number;
@@ -100,9 +102,13 @@ export interface XRDragEvent extends DragEvent {
 
 /** Identity, trigger and enablement for a controller drag binding. */
 export interface XRBindingOptions {
+    /** Stable binding id. */
     id: string;
+    /** Controller button chord ending in `+Drag`. */
     trigger: string;
+    /** Whether the binding responds to its trigger; defaults to true. */
     enabled?: boolean;
+    /** Order used to resolve competing bindings. */
     priority?: number;
 }
 
@@ -115,6 +121,7 @@ export interface XRBindingOptions {
  * cancelled drag gives it back to the ring unless it was pinned before, so `onCancel` only has to restore its pose.
  */
 export class XRControllerDragBinding extends Binding {
+    /** Parses a trigger string and returns its controller buttons and hand. */
     static override readTrigger(trigger: unknown, what: string): ControllerTriggerParts {
         return parseControllerTrigger(trigger, what);
     }
@@ -128,14 +135,18 @@ export class XRControllerDragBinding extends Binding {
         return super.parsed as ControllerTriggerParts;
     }
 
+    /** Called when the trigger starts; return false to decline the drag. */
     override onStart(_event: XRDragEvent): object | false {
         return false;
     }
 
+    /** Called on each update while the controller drag is active. */
     override onUpdate(_event: XRDragEvent, _state: object): void {}
 
+    /** Called when the controller drag ends. */
     override onEnd(_event: XRDragEvent, _state: object): void {}
 
+    /** Called when the controller drag is cancelled. */
     override onCancel(_event: XRDragEvent, _state: object): void {}
 
     /**
@@ -196,11 +207,13 @@ interface MoveState extends Grab {
 }
 
 /**
- * The 6-DoF grab (spec snippet 067): the panel keeps its place in the hand it was grabbed in. It writes the View's
- * placement and nothing else, so the client's own rectangle on the desktop does not change.
+ * Moves a panel with the controller or ray while preserving its desktop window size. The default is a 6-DoF grab
+ * that keeps the panel in the hand's relative position.
  */
 export class ViewMoveBinding extends XRControllerDragBinding {
+    /** Movement tracking mode, defaulting to `controller`. */
     tracking: "controller" | "ray";
+    /** Whether the panel follows hand rotation; defaults to `follow`. */
     rotation: "follow" | "keep";
 
     constructor(options: ViewMoveOptions = {}) {
@@ -218,6 +231,7 @@ export class ViewMoveBinding extends XRControllerDragBinding {
         }
     }
 
+    /** Starts the move when the ray hits a tracked controller's panel. */
     override onStart(event: XRDragEvent): MoveState | false {
         const view = event.view;
         if (view === undefined || event.hit === undefined || !event.controller.tracked) {
@@ -235,6 +249,7 @@ export class ViewMoveBinding extends XRControllerDragBinding {
         };
     }
 
+    /** Updates the panel pose from the controller pose or ray. */
     override onUpdate(event: XRDragEvent, state: object): void {
         const s = state as MoveState;
         let target: Transform3D;
@@ -252,6 +267,7 @@ export class ViewMoveBinding extends XRControllerDragBinding {
         setWorld(s.view, target);
     }
 
+    /** Restores the panel's starting pose after cancellation. */
     override onCancel(_event: XRDragEvent, state: object): void {
         const s = state as MoveState;
         s.view.transform = s.startLocal;
@@ -271,6 +287,7 @@ export interface ViewResizeOptions extends Partial<XRBindingOptions> {
     pixelsPerMetre?: number;
     /** The smallest the panel may be made, in metres. */
     minWidth?: number;
+    /** Minimum panel height in metres. */
     minHeight?: number;
     /** The corner a drag pulls: `quadrant` is the one nearest the ray where the drag started. Default `quadrant`. */
     edges?: ResizeEdges;
@@ -296,7 +313,10 @@ interface ResizeState extends Grab {
     corner: { x: number; y: number };
     /** The opposite corner, in the panel's own pixels at the start. It stays where it is. */
     anchor: { x: number; y: number };
-    /** Where the ray struck, in the panel's pixels at the start: the drag grows the panel by how far from the anchor it is. */
+    /**
+     * Where the ray struck, in the panel's pixels at the start: the drag grows the panel by how far from the anchor
+     * it is.
+     */
     first: { x: number; y: number };
     /** The panel's pixel size at the start. */
     width: number;
@@ -306,16 +326,18 @@ interface ResizeState extends Grab {
 }
 
 /**
- * The resize of a panel by its corner (spec snippet 069). During the drag it writes the View's own size, the uniform
- * `scale` the program reads, and the position that keeps the opposite corner still, on every update. It writes
- * nothing to the client, so the client gets no configure while the hand moves. On release, if the size asked for
- * changes the aspect by more than 2% or the client's picture would be under 85% of the pixels the new size shows,
- * it asks the client for one new size, in one transaction.
+ * Resizes a panel by dragging a corner. During the drag it updates the View's size, uniform scale and position while
+ * keeping the opposite corner still. It does not resize the client during movement. On release, it requests one new
+ * client size if the aspect ratio changes by more than 2% or the picture would use under 85% of the available pixels.
  */
 export class ViewResizeBinding extends XRControllerDragBinding {
+    /** Client pixels per metre of panel size requested at the end of a resize. */
     pixelsPerMetre: number;
+    /** Minimum panel width in metres. */
     minWidth: number;
+    /** Minimum panel height in metres. */
     minHeight: number;
+    /** Corner selected for the resize. */
     edges: ResizeEdges;
 
     constructor(options: ViewResizeOptions = {}) {
@@ -340,6 +362,7 @@ export class ViewResizeBinding extends XRControllerDragBinding {
         }
     }
 
+    /** Starts resizing when the ray hits the panel. */
     override onStart(event: XRDragEvent): ResizeState | false {
         const view = event.view;
         if (view === undefined || event.hit === undefined) {
@@ -366,6 +389,7 @@ export class ViewResizeBinding extends XRControllerDragBinding {
         };
     }
 
+    /** Updates the panel size while keeping the opposite corner fixed. */
     override onUpdate(event: XRDragEvent, state: object): void {
         const s = state as ResizeState;
         const point = s.plane.intersect(event.ray);
@@ -391,6 +415,7 @@ export class ViewResizeBinding extends XRControllerDragBinding {
         setWorld(s.view, target);
     }
 
+    /** Requests a client resize when the final picture needs more pixels. */
     override onEnd(event: XRDragEvent, state: object): void {
         const s = state as ResizeState;
         const client = s.view.content as XRClient | null;
@@ -420,6 +445,7 @@ export class ViewResizeBinding extends XRControllerDragBinding {
         setWorld(s.view, target);
     }
 
+    /** Restores the starting pose after a cancelled resize. */
     override onCancel(_event: XRDragEvent, state: object): void {
         const s = state as ResizeState;
         s.view.transform = s.startLocal;
@@ -433,15 +459,13 @@ interface RotateState extends Grab {
     startController: Transform3D;
 }
 
-/**
- * The turn of a panel by the hand (spec snippet 070): the panel turns about its own centre by what the hand has turned
- * since the drag began. It writes the View's rotation and nothing else.
- */
+/** Rotates a panel about its centre by the controller's rotation since the drag began. */
 export class ViewRotateBinding extends XRControllerDragBinding {
     constructor(options: Partial<XRBindingOptions> = {}) {
         super({ id: options.id ?? "rotate", trigger: options.trigger ?? "Trigger+Thumbstick+Drag", ...pick(options) });
     }
 
+    /** Starts rotating when the ray hits a tracked panel. */
     override onStart(event: XRDragEvent): RotateState | false {
         const grabbed = grab(event);
         if (grabbed === null || !event.controller.tracked) {
@@ -450,6 +474,7 @@ export class ViewRotateBinding extends XRControllerDragBinding {
         return { ...grabbed, startController: event.controller.pose };
     }
 
+    /** Rotates the panel by the controller's change in rotation. */
     override onUpdate(event: XRDragEvent, state: object): void {
         const s = state as RotateState;
         const hand = turnOf(event.controller.pose.multiply(s.startController.inverse()));
@@ -458,6 +483,7 @@ export class ViewRotateBinding extends XRControllerDragBinding {
         setWorld(s.view, target);
     }
 
+    /** Restores the starting pose after a cancelled rotation. */
     override onCancel(_event: XRDragEvent, state: object): void {
         const s = state as RotateState;
         s.view.transform = s.startLocal;
@@ -479,12 +505,13 @@ interface ScaleState extends Grab {
 }
 
 /**
- * The scaling of a panel by the hand (spec snippet 070). The panel's scale becomes its scale at the start plus the
- * metres the hand has moved along the direction it pointed in when the drag began: pushing away grows the panel,
- * pulling back shrinks it, and the result stays between `minScale` and `maxScale`. It writes the View's scale only.
+ * Scales a panel based on hand movement along the initial pointing direction. Pushing away grows the panel; pulling
+ * back shrinks it. The result stays between `minScale` and `maxScale`.
  */
 export class ViewScaleBinding extends XRControllerDragBinding {
+    /** Minimum allowed panel scale. */
     minScale: number;
+    /** Maximum allowed panel scale. */
     maxScale: number;
 
     constructor(options: ViewScaleOptions = {}) {
@@ -504,6 +531,7 @@ export class ViewScaleBinding extends XRControllerDragBinding {
         }
     }
 
+    /** Starts scaling when the ray hits a tracked panel. */
     override onStart(event: XRDragEvent): ScaleState | false {
         const grabbed = grab(event);
         if (grabbed === null || !event.controller.tracked) {
@@ -512,6 +540,7 @@ export class ViewScaleBinding extends XRControllerDragBinding {
         return { ...grabbed, start: event.controller.pose.position, aim: event.ray.direction.normalize() };
     }
 
+    /** Changes scale based on hand movement along the starting aim. */
     override onUpdate(event: XRDragEvent, state: object): void {
         const s = state as ScaleState;
         const metres = event.controller.pose.position.subtract(s.start).dot(s.aim) * event.unit;
@@ -520,6 +549,7 @@ export class ViewScaleBinding extends XRControllerDragBinding {
         setWorld(s.view, target);
     }
 
+    /** Restores the starting pose after a cancelled scale. */
     override onCancel(_event: XRDragEvent, state: object): void {
         const s = state as ScaleState;
         s.view.transform = s.startLocal;

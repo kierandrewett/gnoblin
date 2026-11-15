@@ -11,7 +11,9 @@ import type { BoxOptions } from "gnoblin/ui/box";
  * buttons in one, or give a custom bar the behaviour by making the bar a `DragArea`.
  */
 export class DragArea extends Box {
+    /** Window and shell operations this area delegates to. */
     readonly context: FrameContext;
+    /** Window, shell hooks and actions used by this drag area. */
     readonly drag: WindowDrag;
 
     constructor(context: FrameContext, options: BoxOptions = {}) {

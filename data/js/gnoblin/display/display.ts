@@ -8,11 +8,15 @@ import { Viewport, viewportState } from "gnoblin/display/viewport";
 
 // ---- Display ------------------------------------------------------------------------------------------------------
 
-/** The state of one display, read and written by the manager. */
+/** The manager's checked state for one display. */
 export interface DisplayState {
+    /** Stable identifier used in collection errors and `toString()`. */
     id: string;
+    /** Presentation mode: one output, mirrored outputs, or a shared span. */
     mode: DisplayModeName;
+    /** Profile or output selectors, in the order resolved by the manager. */
     selectors: readonly (OutputProfile | OutputView)[];
+    /** Viewport associated with this display. */
     viewport: Viewport;
     /** A display the shell made for an output nobody else presents. It is in `gnoblin.displays` until one is. */
     implicit: boolean;
@@ -108,29 +112,36 @@ export class Display {
         viewportState(own).display = this;
     }
 
+    /** Stable display name. */
     get id(): string {
         return displayState(this).id;
     }
 
-    /** `single`, `mirror` or `span`. */
+    /** The display mode; changing it takes effect on the next reconciliation. */
     get mode(): DisplayModeName {
         return displayState(this).mode;
     }
+    /** Sets the mode used on the next reconciliation. */
     set mode(value: DisplayModeName) {
         const state = displayState(this);
         state.mode = checkMode(value, state.selectors.length, `Display "${state.id}"`);
         shell().changed();
     }
 
-    /** The connected outputs the display presents now: a live `Collection<Output>`, empty while the display is parked. */
+    /**
+     * The connected outputs the display presents now: a live `Collection<Output>`, empty while the display is
+     * parked.
+     */
     get outputs(): DisplayOutputCollection {
         return shell().outputs(this);
     }
 
+    /** The viewport shown by this display. */
     get viewport(): Viewport {
         return displayState(this).viewport;
     }
 
+    /** Formats the display as `Display#id`. */
     toString(): string {
         return `Display#${displayState(this).id}`;
     }

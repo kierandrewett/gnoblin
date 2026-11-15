@@ -1,5 +1,4 @@
-// The controllers: `XRController`, which turns the XR program's button and pose messages into the chords the input
-// bindings listen for, and `XRList`, the live list of them.
+// Controller state, input claims and the live list of controllers in an XR session.
 
 import type { ControllerButton } from "gnoblin/bindings/trigger_types";
 import { errorCodeOfRefusal } from "gnoblin/errors";
@@ -40,10 +39,12 @@ export class XRController {
         this.#hand = (world.scene.get(node, "hand") as string | undefined) ?? "";
     }
 
+    /** The controller node number as a string. */
     get id(): string {
         return String(this.#node);
     }
 
+    /** Whether the controller node still exists. */
     get alive(): boolean {
         return this.#world.kind(this.#node) === "controller";
     }
@@ -57,7 +58,7 @@ export class XRController {
         return this.#hand;
     }
 
-    /** Whether the runtime tracks the controller now. An untracked controller starts no drag and ends the one it has. */
+    /** Whether the controller is tracked. Untracked controllers cannot start a drag and end any active drag. */
     get tracked(): boolean {
         return (this.#world.scene.get(this.#node, "tracked") as boolean | undefined) === true;
     }
@@ -85,6 +86,7 @@ export class XRController {
         return this.#number("grip");
     }
 
+    /** The current thumbstick position, with each axis from -1 to 1. */
     get thumbstick(): { x: number; y: number } {
         return { x: this.#number("thumbstick_x"), y: this.#number("thumbstick_y") };
     }
@@ -94,17 +96,15 @@ export class XRController {
         return this.#down;
     }
 
-    /** The inputs the shell withholds from the window under the ray now: the union of every claim, in the order of `CLAIMABLE_INPUTS`. */
+    /** Inputs the shell withholds from the window under the ray, in `CLAIMABLE_INPUTS` order. */
     get claimed(): readonly string[] {
         return (this.#world.scene.get(this.#node, "claimed") as string[] | undefined) ?? [];
     }
 
     /**
-     * Claims `inputs` (any of `trigger`, `grip`, `thumbstick`, `primary`, `secondary`, lowercase) for `owner`, so the XR
-     * program does not pass them to the window under the ray while the claim stands. A claim replaces the same owner's
-     * earlier one; the claims of other owners stay, and the node says the union of them all. It throws a `TypeError`
-     * naming `Controller#id.claimed` for a list that is not one of those names, and a `SceneError` when the controller
-     * is gone or the shell refuses the write (the owner then holds nothing).
+     * Claims `inputs` for `owner`. Claimed inputs stop reaching the window under the ray. A new claim replaces that
+     * owner's previous claim; other claims remain. Invalid names throw `TypeError`; a missing controller or refused
+     * scene write throws `SceneError`.
      */
     claim(owner: object, inputs: readonly string[]): void {
         const target = `Controller#${this.id}.claimed`;
@@ -145,7 +145,7 @@ export class XRController {
         }
     }
 
-    /** Drops `owner`'s claim. The claims of other owners stand. A controller that is gone holds none, so it is not an error. */
+    /** Drops `owner`'s claim. Other claims remain. */
     release(owner: object): void {
         if (!this.#claims.delete(owner) || !this.alive) {
             return;
@@ -203,14 +203,17 @@ export class XRList<T extends { readonly id: string }> implements Iterable<T> {
         this.#report = report;
     }
 
+    /** Number of items in the list. */
     get size(): number {
         return this.#items.length;
     }
 
+    /** Finds an item by id, or returns undefined. */
     get(id: string): T | undefined {
         return this.#items.find((item) => item.id === id);
     }
 
+    /** Returns the item at a zero-based index, or undefined. */
     at(index: number): T | undefined {
         return this.#items[index];
     }
@@ -223,6 +226,7 @@ export class XRList<T extends { readonly id: string }> implements Iterable<T> {
         this.#listeners.push(listener);
     }
 
+    /** Stops notifications to this listener. */
     removeListener(listener: object): void {
         const at = this.#listeners.indexOf(listener);
         if (at >= 0) this.#listeners.splice(at, 1);
@@ -256,6 +260,7 @@ export class XRList<T extends { readonly id: string }> implements Iterable<T> {
         }
     }
 
+    /** Iterates over a snapshot of the current items. */
     [Symbol.iterator](): Iterator<T> {
         return [...this.#items][Symbol.iterator]();
     }

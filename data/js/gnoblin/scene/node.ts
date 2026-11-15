@@ -1,7 +1,5 @@
-// `Node`: a script-created node of the compositor's scene tree, with its transform, its children, its pointer
-// handlers and the property bindings that follow what they read. A node is placed with `position`, `rotation` (Euler
-// radians, or a quaternion on write), `scale` and `transform`, all of which write the tree's `x`, `y`, `z`, `rotation`
-// and `scale`.
+// A node in the compositor's scene tree, with its placement, children, pointer handlers and reactive properties.
+// Position, rotation, scale and transform update the corresponding tree properties.
 
 import { errorCodeOfRefusal } from "gnoblin/errors";
 import { propertiesOf } from "gnoblin/properties";
@@ -14,28 +12,34 @@ import { finite, Vector3 } from "gnoblin/scene/vector";
 import { rotationFrom, scaleFrom, transformFrom, vectorFrom, withAxes } from "gnoblin/spatial";
 import type { AxisTriple, RotationInit, ScaleInit, TransformInit, Triple, Vec3Like } from "gnoblin/spatial";
 
-/** What a pointer that hits a node does: goes on into its content (`forward`), stops at it for the shell (`capture`) or misses it (`none`). */
+/** How a pointer that hits a node is handled: forwarded to its content, captured by the node, or ignored. */
 export type InputMode = "forward" | "capture" | "none";
 
-/** A pointer edge on a node of the scene the shell is sent: the point is in the node's own plane, in its units. */
+/** A pointer edge sent to a node handler. The point uses the node's own plane and units. */
 export interface NodePointerEvent {
     /** The node the pointer is on. */
     readonly node: Node;
-    /** The point in the node's own plane. */
+    /** X coordinate in the node's plane. */
     readonly x: number;
+    /** Y coordinate in the node's plane. */
     readonly y: number;
-    /** The button of a `press` or `release`, as the kernel numbers it (272 is the left one); 0 for the other edges. */
+    /** The button number from the kernel on press and release; 272 is the left button. Other edges use 0. */
     readonly button: number;
 }
 
-/** Initial node values; position units depend on the parent, and rotation is in radians. */
+/** Initial node values. Position uses the parent's units; rotation uses radians. */
 export interface NodeOptions {
-    /** The node's stable name, as `new Node({ id: "xr-room" })` in the specification. It is also `node.id` and `name`. */
+    /** A stable name for the node, also returned by `node.id` and `node.name`. */
     id?: string;
+    /** Optional display name, defaulting to the id when one is given. */
     name?: string;
+    /** X position in the parent's units. */
     x?: number;
+    /** Y position in the parent's units. */
     y?: number;
+    /** Z position in the parent's units. */
     z?: number;
+    /** Position in the parent's units. */
     position?: Triple | Vec3Like;
     /** Angles about X, Y and Z in radians as a list or `{ x, y, z }`, or a quaternion. */
     rotation?: RotationInit;
@@ -43,12 +47,15 @@ export interface NodeOptions {
     scale?: ScaleInit;
     /** Written after `position`, `rotation` and `scale`; a part it leaves out is not written. */
     transform?: TransformInit;
+    /** Whether the node is visible. */
     visible?: boolean;
+    /** Opacity from 0 (transparent) to 1 (opaque). */
     opacity?: number;
+    /** Pointer handling mode, or a boolean shorthand. */
     input?: boolean | InputMode;
 }
 
-/** A plain node of the scene: the XR room is one. Children are added with `add` and go with it when it is destroyed. */
+/** A node in the scene tree. Add children with `add`; destroying a node also destroys its children. */
 export class Node {
     constructor(options: NodeOptions = {}, cls = "Node") {
         const made = sceneState.wrapping ?? host().create(cls);
@@ -108,8 +115,7 @@ export class Node {
         if (gone.has(this)) {
             throw new SceneError("not_found", `${label(this)}.${key}`, "the node was destroyed");
         }
-        // The tree sends every write it is given, so a write of what is already there is left out: a drag that
-        // writes the pose every frame costs an op only for the parts that moved.
+        // Skip unchanged values so repeated writes, such as a drag updating its pose, do not send extra operations.
         const current = host().get(nodeIdOf(this), key);
         const same = Array.isArray(value)
             ? Array.isArray(current) &&
@@ -129,29 +135,37 @@ export class Node {
         }
     }
 
+    /** Returns the node's display name. */
     get name(): string {
         return this.read<string>("name");
     }
+    /** Sets the display name. */
     set name(value: string) {
         if (typeof value !== "string") throw new TypeError(`${label(this)}.name: must be a string`);
         this.write("name", value);
     }
 
+    /** X position in the parent's units. */
     get x(): number {
         return this.read<number>("x");
     }
+    /** Sets the X position in the parent's units. */
     set x(value: number) {
         this.write("x", finite(`${label(this)}.x`, value));
     }
+    /** Y position in the parent's units. */
     get y(): number {
         return this.read<number>("y");
     }
+    /** Sets the Y position in the parent's units. */
     set y(value: number) {
         this.write("y", finite(`${label(this)}.y`, value));
     }
+    /** Z position in the parent's units. */
     get z(): number {
         return this.read<number>("z");
     }
+    /** Sets the Z position in the parent's units. */
     set z(value: number) {
         this.write("z", finite(`${label(this)}.z`, value));
     }
@@ -163,29 +177,35 @@ export class Node {
     get rotation(): AxisTriple {
         return withAxes(this.read<number[]>("rotation"));
     }
+    /** Sets rotation from angles in radians or a quaternion. */
     set rotation(value: RotationInit) {
         this.write("rotation", rotationFrom(`${label(this)}.rotation`, value));
     }
 
-    /** The scale along each axis; the list also answers to `x`, `y` and `z`. A write takes one number for every axis. */
+    /** The scale along each axis; the list also answers to `x`, `y` and `z`. A write takes one number for all axes. */
     get scale(): AxisTriple {
         return withAxes(this.read<number[]>("scale"));
     }
+    /** Sets the scale along each axis. */
     set scale(value: ScaleInit) {
         this.write("scale", scaleFrom(`${label(this)}.scale`, value));
     }
 
+    /** Whether the node is visible. */
     get visible(): boolean {
         return this.read<boolean>("visible");
     }
+    /** Sets whether the node is visible. */
     set visible(value: boolean) {
         if (typeof value !== "boolean") throw new TypeError(`${label(this)}.visible: must be a boolean`);
         this.write("visible", value);
     }
 
+    /** Opacity from 0 (transparent) to 1 (opaque). */
     get opacity(): number {
         return this.read<number>("opacity");
     }
+    /** Sets opacity from 0 (transparent) to 1 (opaque). */
     set opacity(value: number) {
         this.write("opacity", finite(`${label(this)}.opacity`, value));
     }
@@ -195,8 +215,8 @@ export class Node {
         return new Transform3D(this.position, this.rotation, this.scale[0]);
     }
     /**
-     * Places the node: `{ position, rotation, scale }` or a `Transform3D`. A part left out stays as it is. The parts are
-     * checked together before any is written, and the writes go out in the frame's one transaction.
+     * Places the node: `{ position, rotation, scale }` or a `Transform3D`. A part left out stays as it is. The parts
+     * are checked together before any is written, and the writes go out in the frame's one transaction.
      */
     set transform(value: Transform3D | TransformInit) {
         const parts = transformFrom(`${label(this)}.transform`, value);
@@ -209,6 +229,7 @@ export class Node {
     get position(): Vector3 {
         return new Vector3(this.x, this.y, this.z);
     }
+    /** Sets position from a vector or three coordinates in the parent's units. */
     set position(value: Triple | Vec3Like) {
         const [x, y, z] = vectorFrom(`${label(this)}.position`, value);
         this.x = x;
@@ -237,6 +258,7 @@ export class Node {
         }
         return this.read<string>("input_mode") === "capture" ? "capture" : "forward";
     }
+    /** Sets pointer handling to `forward`, `capture` or `none`. */
     set input(value: boolean | InputMode) {
         const mode = value === true ? "forward" : value === false ? "none" : value;
         if (mode !== "forward" && mode !== "capture" && mode !== "none") {
@@ -260,12 +282,13 @@ export class Node {
     onPointerRelease?: (event: NodePointerEvent) => void;
 
     /**
-     * Metres in one unit of this node's space; 1 until set, as the specification's default is logical units. The
-     * script keeps it: the tree has no such property for a plain node (a camera's own is `metres`).
+     * Metres in one unit of this node's space. Defaults to 1 and stays in the script because a plain node has no such
+     * tree property; a camera has its own `metres` value.
      */
     get metresPerUnit(): number {
         return metresPerUnit.get(this) ?? 1;
     }
+    /** Sets metres per unit; the value must be greater than zero. */
     set metresPerUnit(value: number) {
         if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
             throw new TypeError(`${label(this)}.metresPerUnit: must be a finite number above 0`);
@@ -342,6 +365,7 @@ export class Node {
         sceneForget(all);
     }
 
+    /** Returns the node's class and host id. */
     toString(): string {
         return label(this);
     }

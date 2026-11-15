@@ -1,7 +1,5 @@
-// `Decorations`: the collection listener that gives every window a `WindowFrame`.
-// Attach it to `gnoblin.clients` (`startDecorations` does) and it frames each client that is there and each that arrives,
-// calls the script's `frame` callback to fill the frame, rebuilds the frame when the window's `decoration` changes, and
-// takes it away when the window leaves. design/window-frame.md, decision 1.
+// `Decorations`: creates and fills a `WindowFrame` for each window in the client collection.
+// It updates frames when a window's decoration changes and removes them when windows leave.
 
 import type { FrameClient, FrameHooks } from "gnoblin/frame/client";
 import { WindowFrame } from "gnoblin/frame/frame";
@@ -22,23 +20,26 @@ export interface DecoratedClient extends FrameClient {
 
 /**
  * Fills a frame. It runs once for each window when its frame is made, and again when the window's `decoration` changes,
- * with the window and its frame: read the outlets you want and put nodes in them. It returns `false` to give this window
- * no frame at all. A frame of a window that draws its own frame (`frame.server` false) has the underlay and the overlay only.
+ * with the window and its frame: read the outlets you want and put nodes in them. It returns `false` to give this
+ * window no frame at all. A client-drawn frame (`frame.server` false) has only the underlay and overlay.
  */
 export type FrameFill = (client: DecoratedClient, frame: WindowFrame) => false | void;
 
-/** Picks a fill for the windows it matches: the first rule that matches a window decides. `frame: false` frames none. */
+/** Applies the first matching rule to a window; `frame: false` leaves it without a frame. */
 export interface FrameRule {
     /** The application id, or an expression it must match. */
     appId?: string | RegExp;
     /** The title the window has when its frame is made, or an expression it must match. */
     title?: string | RegExp;
+    /** Fills the matching window, or returns `false` to leave it unframed. */
     frame: FrameFill | false;
 }
 
-/** What the shell host supplies `Decorations` so a script does not have to: where a window's node is, and what its buttons do. */
+/** Host operations `Decorations` uses to locate a window's node and run its buttons. */
 export interface FrameHost {
+    /** Returns the compositor node id for this window. */
     nodeOf(client: DecoratedClient): number;
+    /** Shell operations used by each frame. */
     hooks: FrameHooks;
 }
 
@@ -59,7 +60,9 @@ export interface DecorationsOptions {
     style?: TitlebarStyle;
     /** Puts resize handles this many pixels outside the frame of every server window. Left out, there are none. */
     resizeHandles?: number;
+    /** Returns the compositor node for a window. */
     nodeOf?: (client: DecoratedClient) => number;
+    /** Shell hooks to use instead of the attached host's hooks. */
     hooks?: FrameHooks;
 }
 
@@ -72,13 +75,16 @@ function matches(wanted: string | RegExp | undefined, actual: string): boolean {
  * frame with edges and an inset; any other window gets a `layers` frame, which has the underlay and the overlay and no
  * inset: a client that draws its own title bar (a GTK or Qt window, foot) never gets a second bar over it.
  * The compositor tells a client that asks for server-side that the server draws only while this shell has declared
- * decorations (`Seat.decorations_available`), so a window that asked for a frame the shell does not draw is told to draw its own.
+ * decorations (`Seat.decorations_available`), so a window requesting a frame the shell does not draw is told to
+ * draw its own.
  *
  * `insetOf(client)` is how much room the client's frame takes round its content: 0 on every side for a client with no
- * frame. The layout driver leaves that much free round every window it places, so the frame and the content never overlap.
+ * frame. The layout driver leaves that much free around each window it places, keeping frame and content apart.
  */
 export class Decorations {
+    /** The stock titlebar style used by the default fill. */
     readonly style: TitlebarStyle;
+    /** Shell hooks used by the frames. */
     readonly hooks: FrameHooks;
     readonly #nodeOf: (client: DecoratedClient) => number;
     readonly #fill: FrameFill;
@@ -127,6 +133,7 @@ export class Decorations {
         this.#build(client);
     }
 
+    /** Ensures the window has a frame when it enters the collection. */
     onAdded(client: DecoratedClient): void {
         this.#follow(client);
     }
@@ -136,6 +143,7 @@ export class Decorations {
         this.#follow(client);
     }
 
+    /** Removes the frame and its outlets when the window leaves the collection. */
     onRemoved(client: DecoratedClient): void {
         this.#drop(client);
     }
@@ -167,7 +175,7 @@ export class Decorations {
         return rule === undefined ? this.#fill : rule.frame;
     }
 
-    /** Fills a new frame. A fill that throws or returns `false` leaves no frame behind, so no half-built one takes room. */
+    /** Fills a new frame. A thrown error or `false` result leaves no frame behind. */
     #build(client: DecoratedClient): void {
         const fill = this.#fillFor(client);
         if (fill === false) {

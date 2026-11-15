@@ -1,4 +1,5 @@
-// `FrameGlow`: a soft halo round the window's frame, painted behind it. The paint list has no blur, so the halo is a stack
+// `FrameGlow` paints a soft halo behind the window's frame. The paint list has no blur, so the halo uses growing,
+// fading rounded rectangles drawn into the underlay's `bleed`.
 // of rounded rectangles that grow outwards and fade, drawn into the underlay's `bleed`.
 
 import { LayerOutlet } from "gnoblin/frame/layer_outlet";
@@ -26,13 +27,18 @@ function alphaByte(alpha: number): string {
 }
 
 /**
- * A glow as far out as the underlay's `bleed`: set `frame.underlay.bleed` to how far the halo reaches. It is as large as
+ * A glow as far out as the underlay's `bleed`: set `frame.underlay.bleed` to its reach. It fills the layer, so the
+ * rings grow from the frame's edge out to the layer's.
  * the layer, so the rings grow from the frame's edge out to the layer's.
  */
 export class FrameGlow extends Canvas {
+    /** Hex colour used for the glow. */
     color: string;
+    /** Halo strength applied across the rings, from 0 to 1. */
     strength: number;
+    /** Corner radius the glow follows, in logical pixels. */
     radius: number;
+    /** Number of rings used to draw the glow. */
     steps: number;
 
     constructor(options: FrameGlowOptions = {}) {
@@ -43,6 +49,7 @@ export class FrameGlow extends Canvas {
         this.steps = options.steps ?? 8;
     }
 
+    /** Fits the glow to its parent layer. */
     override refresh(): void {
         const { parent } = this;
         if (parent !== null) {
@@ -53,6 +60,7 @@ export class FrameGlow extends Canvas {
         }
     }
 
+    /** Draws the glow rings within the layer's bleed. */
     override draw(): PaintOp[] {
         const { parent } = this;
         const reach = parent instanceof LayerOutlet ? parent.bleed : 0;

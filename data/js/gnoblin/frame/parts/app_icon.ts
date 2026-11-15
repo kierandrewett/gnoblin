@@ -1,4 +1,5 @@
-// `AppIcon`: a tile for the window's application. The painter has no icon theme to draw the application's own icon from,
+// `AppIcon` is a tile for a window's application. The painter has no icon theme, so the tile shows the application's
+// first letter on a colour derived from its id: the same application gets the same tile in every window and session.
 // so the tile carries the first letter of its application id on a colour taken from the id: the same application is
 // the same tile, in every window and every session.
 
@@ -31,8 +32,11 @@ export function appTile(appId: string): { letter: string; colour: string } {
 
 /** A rounded square with the application's initial, `size` pixels a side. */
 export class AppIcon extends Box {
+    /** The window whose application id determines the tile. */
     readonly context: FrameContext;
+    /** The square's side in logical pixels. */
     size: number;
+    /** Colour used for the initial letters. */
     color: string;
     #appId = "";
 
@@ -51,11 +55,13 @@ export class AppIcon extends Box {
         return this.size;
     }
 
+    /** Updates the letter and tile colour from the window's current application id. */
     override refresh(): void {
         this.#appId = this.context.client.appId ?? "";
         this.fill = appTile(this.#appId).colour;
     }
 
+    /** Draws the tile and its application initial. */
     override draw(): PaintOp[] {
         const side = Math.min(this.width, this.height);
         const size = Math.floor(side * 0.62);

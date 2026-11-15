@@ -1,5 +1,4 @@
-// `View`: a node that shows a client or a workspace, either as the client's own surface in the tree or as a mirror of
-// the workspace's windows.
+// A View draws a client or a workspace in the scene tree without moving the content it shows.
 
 import { noteSignal, raiseSignal } from "gnoblin/properties";
 import { host } from "gnoblin/scene/backend";
@@ -11,13 +10,15 @@ import { finite } from "gnoblin/scene/vector";
 import { WorkspaceMirror } from "gnoblin/scene_mirror";
 import type { ContentFit } from "gnoblin/scene_mirror";
 
-/** A width and a height in the View's units. */
+/** The width and height of a rectangle in a View's units. */
 export interface Size2D {
+    /** Width in the View's coordinate units. */
     width: number;
+    /** Height in the View's coordinate units. */
     height: number;
 }
 
-/** Initial content and size for a view; width and height are in client pixels. */
+/** Initial content and dimensions for a view. Width and height are in client pixels. */
 export interface ViewOptions extends NodeOptions {
     /** The client or workspace the View shows. */
     content?: object | null;
@@ -25,12 +26,15 @@ export interface ViewOptions extends NodeOptions {
     camera?: Camera3D | null;
     /** The View's own rectangle: the size its picture is drawn at. Written before `width` and `height`. */
     size?: Size2D;
+    /** Fitting rule used for workspace content; defaults to `stretch`. */
     contentFit?: ContentFit;
+    /** Picture width in client pixels. */
     width?: number;
+    /** Picture height in client pixels. */
     height?: number;
 }
 
-/** The workspace a View shows, and the mirror that draws it. */
+/** Content and mirror used when a View shows a workspace. */
 interface Shown {
     content: object;
     mirror: WorkspaceMirror;
@@ -41,11 +45,9 @@ const shown = new WeakMap<object, Shown>();
 const fits = new WeakMap<object, ContentFit>();
 
 /**
- * A node that draws another node as a picture. `content` is a client or a workspace and is not reparented or moved:
- * a View is a second, separate way to see it. A client is the picture of its node. A workspace is not a tree node, so
- * the View keeps a picture made of one child View per client on it (`gnoblin/scene_mirror`), fitted to `size` by
- * `contentFit`; the children are not in `children`. The picture of a client is stretched to `size` by the compositor:
- * `contentFit` is kept and read back but only a workspace is fitted by it.
+ * A node that draws a client or workspace as a picture without moving it. A client is shown directly. A workspace is
+ * shown through a mirror made of child Views, fitted to `size` by `contentFit`; those mirror children are not in
+ * `children`. The compositor stretches a client's picture to `size`; `contentFit` only affects workspace pictures.
  */
 export class View extends Node {
     constructor(options: ViewOptions = {}, cls = "View") {
@@ -71,6 +73,7 @@ export class View extends Node {
         const id = this.read<number>("source");
         return id ? (host().contentOf(id) ?? null) : null;
     }
+    /** Replaces the displayed client or workspace; null clears the picture. */
     set content(value: object | null) {
         if (value === null) {
             unshow(this);
@@ -100,39 +103,45 @@ export class View extends Node {
         shown.set(this, { content: value, mirror });
     }
 
-    /** Whether the View's client is gone: the tree clears `source` when its node is destroyed. A workspace is never gone. */
+    /** Whether the client content is gone; workspace content is not reported as orphaned. */
     get orphaned(): boolean {
         return !shown.has(this) && this.read<number>("source") === 0;
     }
 
+    /** Camera used to render the content, or null for flat rendering. */
     get camera(): Camera3D | null {
         const id = this.read<number>("camera");
         const found = id ? live.get(id) : undefined;
         return found instanceof Camera3D ? found : null;
     }
+    /** Sets the camera used to render this View. */
     set camera(value: Camera3D | null) {
         this.write("camera", value === null ? 0 : nodeIdOf(value));
     }
 
-    /** The width of the View's picture in pixels. */
+    /** Width of the View's picture in client pixels. */
     get width(): number {
         return this.read<number>("width");
     }
+    /** Sets picture width in client pixels. */
     set width(value: number) {
         this.write("width", finite(`${label(this)}.width`, value));
     }
 
+    /** Picture height in client pixels. */
     get height(): number {
         return this.read<number>("height");
     }
+    /** Sets picture height in client pixels. */
     set height(value: number) {
         this.write("height", finite(`${label(this)}.height`, value));
     }
 
-    /** The View's rectangle as the specification names it: `{ width, height }`, the same numbers as `width` and `height`. */
+    /** The View's picture dimensions as `{ width, height }`. */
     get size(): Size2D {
         return { width: this.width, height: this.height };
     }
+    /** Sets the picture dimensions in client pixels. */
     set size(value: Size2D) {
         if (typeof value !== "object" || value === null) {
             throw new TypeError(`${label(this)}.size: must be { width, height }`);
@@ -143,11 +152,12 @@ export class View extends Node {
         this.height = height;
     }
 
-    /** How a picture is fitted to `size`: `contain`, `cover` or `stretch` (the default, which is what the compositor draws). */
+    /** How a workspace picture fits its size: `contain`, `cover` or `stretch` (the default). */
     get contentFit(): ContentFit {
         noteSignal(this, "fit");
         return fits.get(this) ?? "stretch";
     }
+    /** Sets how workspace content is fitted to the View's size. */
     set contentFit(value: ContentFit) {
         if (value !== "contain" && value !== "cover" && value !== "stretch") {
             throw new TypeError(`${label(this)}.contentFit: must be "contain", "cover" or "stretch"`);
@@ -156,13 +166,14 @@ export class View extends Node {
         raiseSignal(this, "fit");
     }
 
+    /** Stops workspace mirroring before destroying this View. */
     override destroy(): void {
         unshow(this);
         super.destroy();
     }
 }
 
-/** Stops the mirror of a View that shows a workspace and removes its nodes. A function, not a method: a constructor option calls it before the class's private members exist. */
+/** Stops a workspace mirror and removes its nodes before the View is destroyed or its content changes. */
 function unshow(view: View): void {
     shown.get(view)?.mirror.stop();
     shown.delete(view);

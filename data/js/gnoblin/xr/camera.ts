@@ -1,4 +1,4 @@
-// `XRCamera3D`, the camera the XR program renders the room from, and `XRTrackedPose`, the pose that follows the head.
+// The head camera and pose exposed by the XR session.
 
 import { Camera3D } from "gnoblin/scene/camera";
 import type { Camera3DOptions } from "gnoblin/scene/camera";
@@ -12,14 +12,17 @@ export interface XRCamera3DOptions extends Omit<Camera3DOptions, "near" | "far">
     tracking?: XRTrackedPose;
     /** Only `local` is tracked: the program runs one OpenXR local space. */
     referenceSpace?: "local";
-    /** In metres, as the spec's `new XRCamera3D({ near: 0.05, far: 100 })`. */
+    /** Near and far clipping distances, in metres. */
     near?: number;
+    /** Far clipping distance, in metres. */
     far?: number;
 }
 
 /** The stereo camera that follows the headset: the camera named `head`, which the XR program writes. */
 export class XRCamera3D extends Camera3D {
+    /** Head-pose tracking source, or null when none was supplied. */
     readonly tracking: XRTrackedPose | null;
+    /** The tracking reference space. */
     readonly referenceSpace = "local";
 
     constructor(options: XRCamera3DOptions = {}) {

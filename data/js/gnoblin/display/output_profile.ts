@@ -27,14 +27,23 @@ const ALIGN_ALONG: Record<(typeof SIDES)[number], readonly OutputAlign[]> = {
 
 /** The state of one profile. Not exported to scripts: the manager reads it. */
 export interface ProfileState {
+    /** Stable profile identifier used in collection paths. */
     id: string;
+    /** Hardware fields that must match a connected output. */
     match: Readonly<OutputMatch>;
+    /** Requested output mode, if set. */
     mode: OutputProfileMode | undefined;
+    /** Requested scale, from 0.5 to 4, if set. */
     scale: number | undefined;
+    /** Composition supersampling factor, from 1 to 16, if set. */
     supersample: number | undefined;
+    /** Requested output rotation and flip, if set. */
     transform: OutputTransform | undefined;
+    /** Whether variable refresh rate is requested. */
     vrr: boolean | undefined;
+    /** Requested pixel position or relative placement, if set. */
     position: OutputProfilePosition | undefined;
+    /** Whether the output is enabled, if set. */
     enabled: boolean | undefined;
 }
 
@@ -134,13 +143,12 @@ function checkPosition(position: unknown, where: string): OutputProfilePosition 
 }
 
 /**
- * The persistent hardware settings for one monitor: the mode, scale, transform and place it should have, and which
- * monitor that is. A profile is inert while no matching output is connected, and applies when one is (also after a
- * hotplug). It is put in `gnoblin.outputs.profiles`; the compositor applies it as a transaction (an overlap, a gap or a
- * mode the backend refuses leaves the last good arrangement, and the refusal is reported).
+ * A persistent set of settings for a monitor, selected by its hardware details. It is inactive while no matching
+ * output is connected and applies when one connects, including after a hotplug. The compositor applies settings as a
+ * transaction: if a mode or layout is refused, the last good arrangement remains and the refusal is reported.
  *
- * Properties other than `match` may be changed later; the change applies on the next frame. The compositor keeps the
- * last arrangement it applied after a profile is removed.
+ * Properties other than `match` can be changed later; changes apply on the next frame. Removing a profile leaves the
+ * last arrangement in place.
  */
 export class OutputProfile {
     /**
@@ -190,30 +198,38 @@ export class OutputProfile {
         return profileState(this).match;
     }
 
+    /** The requested display mode, if set. */
     get mode(): OutputProfileMode | undefined {
         return profileState(this).mode;
     }
+    /** Sets the display mode requested by this profile. */
     set mode(value: OutputProfileMode) {
         this.#change("mode", value, { mode: modeText(value, `OutputProfile "${this.id}"`) });
     }
 
+    /** The requested output scale, from 0.5 to 4, if set. */
     get scale(): number | undefined {
         return profileState(this).scale;
     }
+    /** Sets the output scale from 0.5 to 4. */
     set scale(value: number) {
         this.#change("scale", value, { scale: value });
     }
 
+    /** The composition supersampling factor, from 1 to 16, if set. */
     get supersample(): number | undefined {
         return profileState(this).supersample;
     }
+    /** Sets the composition supersampling factor from 1 to 16. */
     set supersample(value: number) {
         this.#change("supersample", value, { supersample: value });
     }
 
+    /** The requested output transform, if set. */
     get transform(): OutputTransform | undefined {
         return profileState(this).transform;
     }
+    /** Sets the output transform. */
     set transform(value: OutputTransform) {
         this.#change("transform", value, { transform: value });
     }
@@ -222,6 +238,7 @@ export class OutputProfile {
     get vrr(): boolean | undefined {
         return profileState(this).vrr;
     }
+    /** Requests whether variable refresh rate is enabled. */
     set vrr(value: boolean) {
         if (typeof value !== "boolean") {
             throw new TypeError(`OutputProfile "${this.id}".vrr: must be true or false`);
@@ -230,9 +247,11 @@ export class OutputProfile {
         shell().changed();
     }
 
+    /** The output position, in logical pixels, or a relative placement. */
     get position(): OutputProfilePosition | undefined {
         return profileState(this).position;
     }
+    /** Sets an absolute or relative position in logical pixels. */
     set position(value: OutputProfilePosition) {
         const checked = checkPosition(value, `OutputProfile "${this.id}"`);
         const state = profileState(this);
@@ -247,9 +266,11 @@ export class OutputProfile {
         shell().changed();
     }
 
+    /** Whether the output is enabled, if set. */
     get enabled(): boolean | undefined {
         return profileState(this).enabled;
     }
+    /** Sets whether the output is enabled. */
     set enabled(value: boolean) {
         this.#change("enabled", value, { enabled: value });
     }
@@ -265,6 +286,7 @@ export class OutputProfile {
         shell().changed();
     }
 
+    /** Formats the profile as `OutputProfile#id`. */
     toString(): string {
         return `OutputProfile#${this.id}`;
     }

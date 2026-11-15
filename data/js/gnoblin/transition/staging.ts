@@ -1,6 +1,5 @@
-// Staging: while a transition's callback runs, every write to a node (the host's `set`) is held here, not queued. A
-// read gives the staged value, and nothing reaches the tree until the callback and the passes after it have finished
-// without an error.
+// Holds writes while a transition callback runs. Reads see staged values; writes reach the tree only after the callback
+// and follow-up passes finish without an error.
 
 import type { ErrorCode } from "gnoblin/errors";
 
@@ -18,20 +17,23 @@ interface Curve {
     tween?: number;
 }
 
-/** One write held while a transition callback runs. */
+/** A property write held until the transition callback completes. */
 export interface Staged {
+    /** Scene node number receiving the write. */
     node: number;
+    /** Property key on the node. */
     key: string;
+    /** Value to write. */
     value: Value;
+    /** Optional timed animation for this write. */
     curve: Curve | null;
 }
 
-/**
- * The host functions staging stands in front of. Codes are the tree's: `unknown-node`, `read-only`, `invalid-value`
- * ...
- */
+/** The host operations used to read, validate and apply tree writes. */
 export interface StageBackend {
+    /** Reads a property value. */
     get(node: number, key: string): Value;
+    /** Writes a property and returns an error code if the write is refused. */
     set(node: number, key: string, value: Value): string | undefined;
     /** A timed write: `delay` milliseconds before it starts (0 for none), joining the `tween` node (0 for none). */
     animate(
@@ -76,10 +78,12 @@ export class Staging {
         this.#error = error;
     }
 
+    /** Whether property reads and writes are currently staged. */
     get active(): boolean {
         return this.#entries !== null;
     }
 
+    /** Starts collecting property writes. */
     begin(): void {
         this.#entries = new Map();
     }
@@ -96,11 +100,13 @@ export class Staging {
         this.#entries = null;
     }
 
+    /** Reads a staged value first, otherwise reads from the host. */
     get(node: number, key: string): Value {
         const staged = this.#entries?.get(`${node}:${key}`);
         return staged === undefined ? this.#backend.get(node, key) : copy(staged.value);
     }
 
+    /** Writes immediately or stages the value until the callback completes. */
     set(node: number, key: string, value: Value): string | undefined {
         if (this.#entries === null) {
             this.onWrite?.(node, key);
@@ -114,6 +120,7 @@ export class Staging {
         return code;
     }
 
+    /** Animates a property immediately or stages the timed write. */
     animate(node: number, key: string, value: Value, duration: number, samples: number[]): string | undefined {
         if (this.#entries === null) {
             this.onWrite?.(node, key);

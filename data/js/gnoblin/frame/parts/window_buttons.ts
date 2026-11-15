@@ -8,6 +8,7 @@ import type { BoxOptions } from "gnoblin/ui/box";
 
 /** Options of `WindowButtons`. `buttons` are the buttons left to right. */
 export interface WindowButtonsOptions extends BoxOptions {
+    /** Buttons to create, in left-to-right order. */
     buttons?: readonly WindowButtonName[];
     /** What each button is made with: its size, colour and icon, and the maximise button's `restoreIcon`. */
     button?: WindowButtonOptions;
@@ -20,6 +21,7 @@ export interface WindowButtonsOptions extends BoxOptions {
  * right or both, and give it a `gap`.
  */
 export class WindowButtons extends Box {
+    /** The created buttons, keyed by their action name. */
     readonly buttons = new Map<WindowButtonName, WindowButton>();
 
     constructor(context: FrameContext, options: WindowButtonsOptions = {}) {

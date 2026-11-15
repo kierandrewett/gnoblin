@@ -1,25 +1,32 @@
-// What a window frame needs of a window and of the shell around it: `FrameClient`, `FrameHooks` and `FrameContext`.
-// The frame never names the host's `Client`; a `Client` satisfies `FrameClient`, and a plain object does for a test.
-// design/window-frame.md, decisions 9 and 10.
+// The window, shell hooks and shared actions a frame uses.
+// A host `Client` satisfies `FrameClient`; a plain object can provide the same interface in a test.
 
 import type { WindowActions } from "gnoblin/frame/actions";
 import type { Rect } from "gnoblin/types";
 
 /** What a frame and its parts read and write of the window they frame. A `Client` of the host module is one. */
 export interface FrameClient {
+    /** The title shown by the window. */
     readonly title: string;
+    /** Whether the window currently has keyboard focus. */
     readonly focused: boolean;
+    /** Whether the window currently fills the output. */
     readonly fullscreen: boolean;
     /** The content's size: the frame is the content with its inset around it. */
     readonly width: number;
+    /** The content height in logical pixels, when known. */
     readonly height?: number;
     /** The window's application id, which `AppIcon` and a rule read. A client that does not say has none. */
     readonly appId?: string;
     /** False once the compositor has destroyed the window. A client that does not say is alive. */
     readonly alive?: boolean;
+    /** The content's x coordinate in logical pixels. */
     x: number;
+    /** The content's y coordinate in logical pixels. */
     y: number;
+    /** Whether the window is maximised. */
     maximised: boolean;
+    /** Whether the window is minimised. */
     minimised: boolean;
     /** The content's rectangle, which a `ResizeHandle` writes. A client that has none cannot be resized by a handle. */
     bounds?: Rect;
@@ -27,6 +34,7 @@ export interface FrameClient {
     minSize?: { width: number; height: number };
     /** The most a handle resizes the window to. Absent means no limit. */
     maxSize?: { width: number; height: number };
+    /** Asks the client to close the window. */
     close(): void;
     /**
      * Moves `opacity` and `scale` over time: the fade of a closing window. Without it the window just closes.
@@ -64,7 +72,10 @@ export interface FrameHooks {
 
 /** What a part is made for: the window, the shell's hooks and the actions every part of the window shares. */
 export interface FrameContext {
+    /** The window being framed. */
     readonly client: FrameClient;
+    /** Shell operations used by frame parts. */
     readonly hooks: FrameHooks;
+    /** Shared actions available to frame parts. */
     readonly actions: WindowActions;
 }

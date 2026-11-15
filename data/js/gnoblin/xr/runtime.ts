@@ -1,5 +1,4 @@
-// `XRRuntime`: the drag loop and the message handling of the XR seat. It owns the controllers, the room and the
-// drags a controller binding runs, over the world the host hands it.
+// Tracks the XR seat, room and controller drags for the shell.
 
 import type { Vector3 } from "gnoblin/scene/vector";
 import type { View } from "gnoblin/scene/view";
@@ -41,6 +40,7 @@ export class XRRuntime {
     #extension: XRExtension | null = null;
     #session: XRSession | null = null;
     #stock: XRRoom | null = null;
+    /** Options for the stock room and its client filter. */
     options: XROptions = {};
 
     constructor(world: XRWorld) {
@@ -50,10 +50,12 @@ export class XRRuntime {
         onWake("xr session", () => (this.#session === null ? NEVER : NOW));
     }
 
+    /** The live XR extension, or null when no session exists. */
     get extension(): XRExtension | null {
         return this.#extension;
     }
 
+    /** Receives session start and end notifications. */
     addListener(listener: object): void {
         if (typeof listener !== "object" || listener === null) {
             throw new TypeError("addListener: the listener must be an object");
@@ -61,6 +63,7 @@ export class XRRuntime {
         this.#listeners.push(listener);
     }
 
+    /** Stops receiving session lifecycle notifications. */
     removeListener(listener: object): void {
         const at = this.#listeners.indexOf(listener);
         if (at >= 0) this.#listeners.splice(at, 1);
@@ -249,7 +252,9 @@ export class XRRuntime {
         }
     }
 
-    /** Cancels every drag in flight (once each) and ends the session's hold. The shell calls it when a generation ends. */
+    /**
+     * Cancels each active drag once and ends the session's hold. The shell calls this when a generation ends.
+     */
     release(): void {
         this.#cancelRuns();
     }

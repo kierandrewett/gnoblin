@@ -1,7 +1,4 @@
-// `gnoblin/display`, logical displays (owner-spec section 9, cameras in section 8): `OutputProfile`, `Display`,
-// `Viewport` and `Camera2D`. The code is in `gnoblin/display/*` (one concept each; `gnoblin/display/state` owns the
-// shell's side); this module is the one import path they share. What a display does to the hardware and to the desks is
-// `DisplayManager` (`gnoblin/display_manager`), which reads the state kept here through the `*State` accessors.
+// Logical displays, cameras and viewports. This module re-exports their shared public API.
 
 export { supersampleNotice, outputRequest } from "gnoblin/display/output_config";
 export type { OutputTransform, OutputConfig, OutputSetting } from "gnoblin/display/output_config";

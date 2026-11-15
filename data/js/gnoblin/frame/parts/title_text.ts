@@ -10,6 +10,7 @@ import type { TextOptions } from "gnoblin/ui/text";
  * size, colour and font unless the options say otherwise.
  */
 export class TitleText extends Text {
+    /** Window context that supplies the title. */
     readonly context: FrameContext;
 
     constructor(context: FrameContext, options: TextOptions = {}) {
@@ -17,6 +18,7 @@ export class TitleText extends Text {
         this.context = context;
     }
 
+    /** Updates the text from the window's current title. */
     override refresh(): void {
         this.text = this.context.client.title;
     }

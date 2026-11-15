@@ -1,5 +1,4 @@
-// `XRRoom`: the nodes the stock shell builds when the XR seat arrives: a panel for each client, the head panel, and
-// the ring that places them.
+// The room node, its client panels, head panel and ring layout.
 
 import type { Camera3D } from "gnoblin/scene/camera";
 import { Node } from "gnoblin/scene/node";
@@ -12,6 +11,7 @@ import type { XRClient } from "gnoblin/xr/types";
 
 /** Initial layout and client filter for an XR room. */
 export interface XRRoomOptions extends NodeOptions {
+    /** The room layout, or null to leave panels unarranged. */
     layout?: SpatialLayout | null;
     /** Whether a client gets a panel. Secure clients never do. Default: every client. */
     accept?: (client: XRClient) => boolean;
@@ -21,25 +21,28 @@ export interface XRRoomOptions extends NodeOptions {
 export interface HeadPanelOptions {
     /** Metres right of, above and in front of the head. Default `0, 0, -1.2`. */
     x?: number;
+    /** Height above the head, in metres. */
     y?: number;
+    /** Distance in front of the head, in metres; negative z is forward. */
     z?: number;
     /** Millimetres of panel for one pixel of window. Default the ring's. */
     scale?: number;
 }
 
 /**
- * The node the XR program reads, with the head camera under it and one `View` for each client, placed by `layout`.
- * Panels follow the clients: a client that maps gets one, one that closes or turns secure loses it, a minimised
- * client's panel is hidden. A panel the user moved or resized is pinned: the layout leaves its place alone until
+ * The room node contains the head camera and one `View` for each accepted client. Panels follow clients: closed or
+ * secure clients lose their panels, and minimised clients are hidden. A moved or resized panel stays pinned until
  * `unpin`. The room never changes a client.
  */
 export class XRRoom extends Node {
     /** The camera the program writes the head pose onto: the one named `head`. */
     head: Camera3D;
+    /** Ring arrangement, or null to leave the room's panel positions unchanged. */
     layout: SpatialLayout | null;
+    /** Selects clients to show; secure clients are excluded regardless of this predicate. */
     accept: (client: XRClient) => boolean;
     readonly #views = new Map<XRClient, View>();
-    /** The clients in the order they gained a View: the ring's order. */
+    /** Clients in the order they gained a ring panel. */
     readonly #order: XRClient[] = [];
     readonly #pinned = new WeakSet<View>();
     readonly #headPanels = new Map<View, XRClient>();
@@ -69,14 +72,17 @@ export class XRRoom extends Node {
         return this.#order.flatMap((client) => this.#views.get(client) ?? []);
     }
 
+    /** Keeps a panel at its current position during layout updates. */
     pin(view: View): void {
         this.#pinned.add(view);
     }
 
+    /** Lets layout updates place the panel again. */
     unpin(view: View): void {
         this.#pinned.delete(view);
     }
 
+    /** Whether layout updates leave this panel at its current position. */
     isPinned(view: View): boolean {
         return this.#pinned.has(view);
     }

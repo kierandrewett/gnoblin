@@ -11,6 +11,7 @@ export class FrameBackdrop extends Box {
         super({ fill: "#1e1e2e", ...options });
     }
 
+    /** Fits the box to its frame layer, excluding any bleed. */
     override refresh(): void {
         const { parent } = this;
         if (parent !== null) {

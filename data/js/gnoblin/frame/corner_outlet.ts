@@ -1,5 +1,5 @@
-// `CornerOutlet`: a square at a corner of a window frame, over the edges that meet there. It takes no room. A script
-// puts a resize handle, a rounded cap or a badge in it. design/window-frame.md, decision 6.
+// `CornerOutlet`: a square at a window frame's corner, over the edges that meet there. It takes no room and can hold a
+// resize handle, rounded cap or badge.
 
 import type { FrameGeometry, OutletOwner } from "gnoblin/frame/outlet";
 import { Outlet } from "gnoblin/frame/outlet";
@@ -14,6 +14,7 @@ export type Corner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
  * no room: an inset comes from the edges alone.
  */
 export class CornerOutlet extends Outlet {
+    /** The corner this outlet occupies. */
     readonly corner: Corner;
     /** The side of the square in pixels, or `null` for the thicker of the two edges that meet at the corner. */
     size: number | null = null;

@@ -1,10 +1,10 @@
-// `Scene`: the one object `gnoblin.scene` is, and the root of the tree the compositor keeps.
+// The single scene object exposed as `gnoblin.scene` and the root of its scene tree.
 
 import { host, SceneError, sceneState } from "gnoblin/scene/backend";
 import { Node } from "gnoblin/scene/node";
 import { label } from "gnoblin/scene/registry";
 
-/** The root of the tree the compositor keeps: the node a script mounts its own nodes under. It cannot be destroyed. */
+/** The scene root cannot be destroyed by scripts. */
 class SceneRoot extends Node {
     override destroy(): void {
         throw new SceneError("denied", label(this), "the scene's root is the compositor's and cannot be destroyed");
@@ -20,9 +20,8 @@ let theScene: Scene | null = null;
 let sceneMetres = 1;
 
 /**
- * The scene the shell draws: its `root` holds the nodes a script makes (`Node`, `View`, `Camera3D`). There is one,
- * `gnoblin.scene`. Clients and workspaces are the compositor's and a workspace is not a tree node, so they are
- * reached through `gnoblin.clients` and `gnoblin.workspaces`, and `root.children` lists script-made nodes only.
+ * The scene drawn by the shell. Its root holds script-created nodes such as `Node`, `View` and `Camera3D`. Clients and
+ * workspaces are available through `gnoblin.clients` and `gnoblin.workspaces`; they are not scene-tree nodes.
  */
 export class Scene {
     constructor(token: symbol) {
@@ -55,12 +54,13 @@ export class Scene {
     }
 
     /**
-     * Metres in one scene unit: 1 until set, which is the specification's default of logical units. The script keeps
-     * it; a scene that is read by the XR program carries its unit on its camera (`Camera3D.metres`).
+     * Metres in one scene unit. Defaults to 1; a camera that renders the scene carries its own unit in
+     * `Camera3D.metres`.
      */
     get metresPerUnit(): number {
         return sceneMetres;
     }
+    /** Sets metres per scene unit; the value must be greater than zero. */
     set metresPerUnit(value: number) {
         if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
             throw new TypeError("Scene.metresPerUnit: must be a finite number above 0");

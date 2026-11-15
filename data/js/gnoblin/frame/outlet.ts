@@ -1,7 +1,5 @@
-// `Outlet`: a named place in a window frame that a script fills with its own nodes.
-// An outlet is a `Box`, so it has a fill, padding, a gap and pointer handlers, and it holds any canvas or scene node.
-// The frame makes it the first time a script reads it and places it from the window's size and the frame's inset.
-// design/window-frame.md, decision 2.
+// `Outlet`: a named place in a window frame for script-provided nodes.
+// It is a `Box`, made when first read and placed from the window's size and frame inset.
 
 import type { FrameClient } from "gnoblin/frame/client";
 import type { FrameInset } from "gnoblin/frame/inset";
@@ -14,13 +12,17 @@ import type { Rect } from "gnoblin/types";
 
 /** The window's content size and the room its frame takes around it: what an outlet is placed from. */
 export interface FrameGeometry {
+    /** The window content width in logical pixels. */
     readonly width: number;
+    /** The window content height in logical pixels. */
     readonly height: number;
+    /** The room the frame takes around the content, in logical pixels. */
     readonly inset: FrameInset;
 }
 
 /** What an outlet asks of the frame that made it. */
 export interface OutletOwner {
+    /** The window whose frame owns the outlet. */
     readonly client: FrameClient;
     /** The content's size and the inset now, which a placed outlet takes its rectangle from. */
     geometry(): FrameGeometry;
@@ -40,6 +42,7 @@ export interface OutletOwner {
 export class Outlet extends Box {
     /** The outlet's name in its frame: `top`, `top.start`, `overlay`. */
     readonly name: string;
+    /** The frame that created this outlet. */
     readonly owner: OutletOwner;
     /** Hides the outlet and takes back its room while true. */
     hidden = false;
@@ -109,6 +112,7 @@ export class Outlet extends Box {
         return total + 2 * this.padding;
     }
 
+    /** Updates the outlet's placement, visibility and refresh callback. */
     override refresh(): void {
         const place = this.place();
         if (place !== null) {

@@ -1,26 +1,24 @@
-// What the scene classes need of the host: the `SceneBackend` the shell's Rust host implements, the error a failed
-// operation throws, and the one table that holds the backend once `attachScene` has given it. The scene objects do not
-// reach the host any other way, so they run under a fake in tests.
+// The interface between scene objects and the shell host, plus the shared backend state and scene error type.
 
 import { GnoblinError } from "gnoblin/errors";
 import type { ErrorCode } from "gnoblin/errors";
 import type { WorkspaceSource } from "gnoblin/scene_mirror";
 
-/** What the scene classes share with the host: its backend, and the tree node a constructor must wrap instead of make. */
+/** Provides the backend and constructor state shared by scene objects. */
 export const sceneState: {
     /** The host the module runs on, given once by `attachScene`. */
     backend: SceneBackend | null;
-    /** Set while the scene root is being wrapped: the node already exists in the tree, so the constructor does not make one. */
+    /** Set while the scene root is wrapped: the node already exists in the tree, so the constructor makes none. */
     wrapping: NodeId | null;
 } = { backend: null, wrapping: null };
 
-/** A node of the compositor tree, by its number. */
+/** A node of the compositor tree, identified by its number. */
 export type NodeId = number;
 
-/** A value a node property holds that is one thing. */
+/** A node property value represented by one string, number or boolean. */
 export type Scalar = string | number | boolean;
 
-/** What the host reads and writes for a node property. */
+/** A node property value that the host can read or write. */
 export type HostValue = Scalar | number[] | string[];
 
 /** What the scene classes need of the host. The shell's Rust host implements it. */
@@ -29,18 +27,23 @@ export interface SceneBackend {
     create(cls: string): NodeId | string;
     /** Puts `node` under `parent` at `index` (negative is last); a node already in the tree moves. */
     insert(node: NodeId, parent: NodeId, index: number): string | undefined;
+    /** Destroys a node and its descendants. Returns a refusal message when destruction fails. */
     destroy(node: NodeId): string | undefined;
+    /** Returns child node ids in tree order. */
     children(node: NodeId): NodeId[];
+    /** Returns the parent node id, or undefined for a root node. */
     parent(node: NodeId): NodeId | undefined;
-    /** The root of the tree: where a room is mounted. */
+    /** The root node where scene content is mounted. */
     root(): NodeId;
+    /** Reads a node property, or returns undefined when it has no value. */
     get(node: NodeId, key: string): HostValue | undefined;
+    /** Writes a node property and returns a refusal message on failure. */
     set(node: NodeId, key: string, value: HostValue): string | undefined;
-    /** The node a client is, or undefined for an object that is not one. */
+    /** The node id for a client object, or undefined when it is not a client. */
     nodeOf(content: object): NodeId | undefined;
-    /** The client a node is, or undefined. */
+    /** The client object for a node id, or undefined when it is not a client node. */
     contentOf(node: NodeId): object | undefined;
-    /** The workspace `content` is, as what a View of it reads, or undefined for an object that is not one. */
+    /** Workspace data for a client object, or undefined when it is not a workspace client. */
     workspace(content: object): WorkspaceSource | undefined;
 }
 

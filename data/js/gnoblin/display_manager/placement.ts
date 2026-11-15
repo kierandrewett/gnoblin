@@ -15,7 +15,7 @@ export function placed(
     size: { width: number; height: number },
 ): { x: number; y: number } {
     const horizontal = side === "rightOf" || side === "leftOf";
-    // Along the shared edge: the start by default, as the specification's `align: "top"` example reads.
+    // Default alignment starts at the top or left end of the shared edge.
     const along = (own: number, theirs: number, at: OutputAlign | undefined): number => {
         if (at === "center") return Math.round((theirs - own) / 2);
         if (at === "bottom" || at === "right") return theirs - own;

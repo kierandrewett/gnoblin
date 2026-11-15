@@ -1,4 +1,4 @@
-// `FrameBorder`: a ring round the window's frame, drawn over it. In the overlay it is a focus ring that follows the focus.
+// `FrameBorder` draws a ring over the window's frame. In the overlay it acts as a focus ring that follows focus.
 
 import type { FrameContext } from "gnoblin/frame/client";
 import { LayerOutlet } from "gnoblin/frame/layer_outlet";
@@ -13,20 +13,24 @@ export type FrameColour = string | ((client: FrameContext["client"]) => string);
 export interface FrameBorderOptions extends CanvasOptions {
     /** The line's width in pixels. */
     thickness?: number;
+    /** Ring colour, or a function of the framed window. */
     color?: FrameColour;
     /** The corner radius of the ring: the window's `corner_radius` when it has one. */
     radius?: number;
 }
 
 /**
- * A ring along the edge of the frame, `thickness` pixels wide and inside it. It is as large as the layer or outlet it is
- * in, less the layer's `bleed`. Give `color` a function and it is the colour of the window now, every frame: a focus ring is one line.
+ * A ring along the frame edge, `thickness` pixels wide and inside it. It fills its layer or outlet less the layer's
+ * `bleed`. A `color` function is called each frame, so a focus ring follows the window's colour.
  */
 export class FrameBorder extends Canvas {
+    /** Window context used to resolve a dynamic colour. */
     readonly context: FrameContext;
     /** The line's width in pixels. */
     thickness: number;
+    /** Ring colour, or a function that returns the current colour. */
     color: FrameColour;
+    /** Corner radius of the ring in logical pixels. */
     radius: number;
 
     constructor(context: FrameContext, options: FrameBorderOptions = {}) {
@@ -37,6 +41,7 @@ export class FrameBorder extends Canvas {
         this.radius = options.radius ?? 0;
     }
 
+    /** Fits the ring to its parent, excluding any layer bleed. */
     override refresh(): void {
         const { parent } = this;
         if (parent !== null) {
@@ -49,6 +54,7 @@ export class FrameBorder extends Canvas {
         }
     }
 
+    /** Draws the ring using the current colour and bounds. */
     override draw(): PaintOp[] {
         const line = this.thickness;
         const colour = typeof this.color === "function" ? this.color(this.context.client) : this.color;

@@ -17,12 +17,13 @@ export interface OutputConfig {
     /** From 0.5 to 4. */
     scale?: number;
     /**
-     * Owner-requested addition beyond the display specification. The output is composed at this multiple of its mode
-     * (`mode * supersample` pixels, clients told `scale * supersample`) and shown at its mode, so the desktop keeps its
-     * logical size and looks anti-aliased, and screenshots come out hi-res. A number from 1 to 16; 1, 2 and 4 are the
-     * supported ones, any other is accepted when `mode * supersample` is a whole size, with one notice.
+     * Composes the output at this multiple of its mode (`mode * supersample` pixels, clients told
+     * `scale * supersample`) and shows it at its mode, so the desktop keeps its logical size while screenshots have
+     * higher resolution. Accepted values are from 1 to 16. Values 1, 2 and 4 are recommended; other values are
+     * accepted when `mode * supersample` is a whole size, with a notice.
      */
     supersample?: number;
+    /** Rotation and optional reflection applied to the output. */
     transform?: OutputTransform;
     /** The output's top-left corner in the one desktop coordinate space, `[x, y]`. Left out, it follows the row. */
     position?: readonly [number, number] | { readonly x: number; readonly y: number };

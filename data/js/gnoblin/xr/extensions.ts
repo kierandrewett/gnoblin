@@ -1,4 +1,4 @@
-// `Extensions`: the shell's table of extensions by name, and the error a script gets for one that is not there.
+// Optional native extensions exposed by the shell.
 
 import type { ControllerTriggerParts } from "gnoblin/bindings/trigger_types";
 import type { XRController } from "gnoblin/xr/controller";
@@ -28,6 +28,7 @@ export function missingExtension(name: string): string {
 
 /** What `for (const ext of gnoblin.extensions)` yields: the extension's id and where it is in its lifecycle. */
 export interface ExtensionInfo {
+    /** Extension id, such as `xr`. */
     readonly id: string;
     /** `ready` while the extension serves a session, `unloaded` while it is absent. */
     readonly status: "ready" | "unloaded";
@@ -47,9 +48,8 @@ export class Extensions {
     }
 
     /**
-     * The extensions the shell knows, one `ExtensionInfo` each (owner-spec.md section 17: `for (const ext of
-     * gnoblin.extensions)`). The XR program is out of process, so its presence is its `xr` seat: `ready` while it has
-     * a session (`gnoblin.extensions.xr` is the object), `unloaded` otherwise (`xr` is null).
+     * The extensions the shell knows, one `ExtensionInfo` each. The XR extension is `ready` while it has a session
+     * (`gnoblin.extensions.xr` is the object) and `unloaded` otherwise (`xr` is null).
      */
     [Symbol.iterator](): Iterator<ExtensionInfo> {
         const xr: ExtensionInfo = { id: "xr", status: this.#runtime.extension === null ? "unloaded" : "ready" };
@@ -61,6 +61,7 @@ export class Extensions {
         this.#runtime.addListener(listener);
     }
 
+    /** Stops receiving session lifecycle notifications. */
     removeListener(listener: Partial<XRListener>): void {
         this.#runtime.removeListener(listener);
     }

@@ -10,9 +10,11 @@ import type { Camera3D } from "gnoblin/scene/camera";
 /** The live output collection a display presents. */
 export type DisplayOutputCollection = Iterable<object> & { readonly length: number };
 
-/** A point in a plane, as the specification's `Vec2`. */
+/** A point in the content's flat coordinate plane, measured in logical pixels. */
 export interface DisplayVec2 {
+    /** Horizontal coordinate in logical pixels. */
     x: number;
+    /** Vertical coordinate in logical pixels. */
     y: number;
 }
 
@@ -48,16 +50,27 @@ export type PlacementTarget = OutputProfile | OutputView;
 
 /** What the display classes read of a connected `Output`. The shell's `Output` is one. */
 export interface OutputView {
+    /** Stable identity for this output. */
     readonly id: string;
+    /** Output name used by the shell. */
     readonly name: string;
+    /** Connector name, such as `DP-1`. */
     readonly connector: string;
+    /** Manufacturer reported by the display. */
     readonly make: string;
+    /** Model reported by the display. */
     readonly model: string;
+    /** EDID identity in `MAN:product:serial` form. */
     readonly identity: string;
+    /** Left edge in logical desktop pixels. */
     readonly x: number;
+    /** Top edge in logical desktop pixels. */
     readonly y: number;
+    /** Width in logical desktop pixels. */
     readonly width: number;
+    /** Height in logical desktop pixels. */
     readonly height: number;
+    /** Whether the output is connected now. */
     readonly connected: boolean;
 }
 
@@ -65,15 +78,19 @@ export interface OutputView {
 export interface OutputProfileInit {
     /** Stable name of the profile; default: the `match` written out. */
     id?: string;
+    /** Which hardware must match. */
     match: OutputMatch;
+    /** Mode to request from the matched output. */
     mode?: OutputProfileMode;
     /** From 0.5 to 4. */
     scale?: number;
     /** Composes the output at this multiple of its mode; see `OutputConfig.supersample`. */
     supersample?: number;
+    /** Rotation and reflection to request. */
     transform?: OutputTransform;
     /** Asks for variable refresh rate. Accepted and reported as not applied: the backends have none. */
     vrr?: boolean;
+    /** Pixel position or relative placement to request. */
     position?: OutputProfilePosition;
     /** `false` switches the output off. */
     enabled?: boolean;
@@ -90,6 +107,7 @@ export interface DisplayInit {
     outputs: readonly (OutputProfile | OutputView)[];
     /** `single` (default) presents one output; `mirror` and `span` present several. */
     mode?: DisplayModeName;
+    /** Viewport presented by the display. */
     viewport?: Viewport;
 }
 
@@ -105,6 +123,7 @@ export interface ViewportInit {
 
 /** The arguments of `new Camera2D`. */
 export interface Camera2DInit {
+    /** Optional node name. */
     name?: string;
     /** Where the camera looks, in pixels of the content. Default `{ x: 0, y: 0 }`. */
     position?: DisplayVec2;

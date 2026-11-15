@@ -1,6 +1,5 @@
-// What a window frame does to its window, shared by every part: close with a fade, maximise, minimise, and the actions
-// the seat names for a double, a middle and a right click. A custom node in a frame calls these (`frame.actions.close()`)
-// and so does a stock part, so the window behaves the same wherever the button is.
+// `WindowActions`: shared actions for a window frame, including close, minimise, maximise and seat click gestures.
+// Custom frame nodes and stock parts use the same actions.
 
 import type { FrameClient, FrameHooks } from "gnoblin/frame/client";
 import { uiNow, uiSeatAction } from "gnoblin/ui/session";
@@ -46,11 +45,13 @@ interface Closing {
  * The window's actions. `advance` runs once a frame (a frame does it), which takes a fade on to its next step.
  *
  * `close` fades the window out first (`CLOSE_FADE_MS`) and then closes it; a window that is still there
- * `CLOSE_RESTORE_MS` later is shown again, as a client that asked the user something is. A window the client closes itself
- * is gone from the compositor at once, so there is nothing to fade.
+ * `CLOSE_RESTORE_MS` later is shown again, as a client that asked the user something is. A window the client closes
+ * itself is gone from the compositor at once, so there is nothing to fade.
  */
 export class WindowActions {
+    /** The window acted on by these shared actions. */
     readonly client: FrameClient;
+    /** The shell actions used for operations that need compositor support. */
     readonly hooks: FrameHooks;
     /** The clock the double click and the fade are timed by, in milliseconds. */
     now: () => number = () => uiNow();
@@ -66,7 +67,9 @@ export class WindowActions {
         return this.#closing !== null;
     }
 
-    /** When the window next needs a frame: the end of the close fade, or the time to bring back a window that stayed. */
+    /**
+     * Time of the next frame needed for the close fade or to restore a window that stayed open.
+     */
     wakeAt(): number {
         return this.#closing === null ? NEVER : (this.#closing.closeAt ?? this.#closing.restoreAt ?? NEVER);
     }
@@ -93,7 +96,9 @@ export class WindowActions {
         this.#closing = { closeAt: this.now() + fade, restoreAt: null };
     }
 
-    /** Takes a close on to its next step: asks the window to close when the fade is over, brings it back if it stayed. */
+    /**
+     * Advances a close: closes the window after the fade, or restores it if the client stayed open.
+     */
     advance(): void {
         const closing = this.#closing;
         const { client } = this;

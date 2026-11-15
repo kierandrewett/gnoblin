@@ -1,7 +1,6 @@
-// `arrangeRing`: where a room puts its panels, on a ring around the head. Plain arithmetic in millimetres that keeps
-// the Lua golden numbers of `xr.lua`.
+// Places room panels around the viewer using millimetres and radians.
 
-/** The ring's numbers, in millimetres and radians. `SpatialLayout` states them in metres. */
+/** Dimensions and spacing for a panel ring, in millimetres and radians. */
 export interface XRRingParams {
     /** The distance from the viewer to the centre of a panel. */
     radius: number;
@@ -36,22 +35,29 @@ export const RING_DEFAULTS: Readonly<XRRingParams> = Object.freeze({
     stackStep: 250,
 });
 
-/** What one panel needs of the ring: its pixel size. `id` is anything comparable. */
+/** The id and pixel size used to place one panel on the ring. */
 export interface RingView<I> {
+    /** Identifier compared with `focus`. */
     readonly id: I;
+    /** Window width, in pixels. */
     readonly width: number;
+    /** Window height, in pixels. */
     readonly height: number;
 }
 
-/** One panel's ring position in millimetres, its scale and its stack tier. */
+/** A panel's position, orientation and depth in the room. */
 export interface RingPose {
+    /** Horizontal position in millimetres. */
     x: number;
+    /** Height in millimetres. */
     y: number;
+    /** Depth in millimetres. */
     z: number;
     /** Rotation about each axis in radians; only the turn about y is used. */
     rotation: [number, number, number];
     /** Millimetres per pixel for the panel. */
     scale: number;
+    /** Whether this panel is focused. */
     focused: boolean;
     /** 0 on the ring and the tier (1, 2, ...) of a stacked panel. */
     behind: number;

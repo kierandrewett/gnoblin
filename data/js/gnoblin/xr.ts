@@ -1,7 +1,6 @@
-// `gnoblin/xr`, the XR shell integration as a script imports it: the room, the controllers, the session wrappers and
-// the layout that places panels in the room. The code is in `gnoblin/xr/*` (one concept each) and the drag bindings in
-// `gnoblin/xr_bindings`; this module is the one import path they share. Units are millimetres internally and metres at
-// the script-facing layout boundary. Read `gnoblin/scene` for node and transform semantics.
+// The script-facing XR API: scene objects, controller bindings, room, sessions and spatial layout.
+// Distances are millimetres internally and metres at the script-facing layout boundary.
+// See `gnoblin/scene` for node and transform behaviour.
 
 export { Plane, Ray, Vector3 } from "gnoblin/scene/vector";
 export { Camera3D } from "gnoblin/scene/camera";

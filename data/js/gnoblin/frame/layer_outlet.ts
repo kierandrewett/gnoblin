@@ -1,6 +1,6 @@
 // `LayerOutlet`: the `underlay` behind a window's content and the `overlay` in front of it. A layer covers the whole
-// frame and `bleed` pixels more on every side, takes no room and takes no pointer, and is not part of the frame's shape
-// (the rounded corners, the border and a frame shadow do not grow to meet it). design/window-frame.md, decisions 6 and 7.
+// frame and `bleed` pixels more on every side, takes no room and takes no pointer. The frame's shape does not grow to
+// meet it: rounded corners, borders and shadows follow the frame itself.
 
 import type { OutletOwner } from "gnoblin/frame/outlet";
 import { Outlet } from "gnoblin/frame/outlet";
@@ -21,6 +21,7 @@ export type LayerKind = "under" | "over";
  * that gives. It is painted whole, though a part of a layer outside the window's output is not seen.
  */
 export class LayerOutlet extends Outlet {
+    /** Whether the layer sits behind or in front of the window content. */
     readonly kind: LayerKind;
     /** How many pixels past the frame the layer reaches on every side. */
     bleed = 0;
@@ -32,6 +33,7 @@ export class LayerOutlet extends Outlet {
         this.input = false;
     }
 
+    /** Adds a node and disables pointer input on it. */
     override add(child: Canvas | Node): this {
         super.add(child);
         child.input = false;

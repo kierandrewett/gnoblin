@@ -1,4 +1,5 @@
-// `WindowDrag`: what a press on a part of a frame does to the window: a drag moves it, a double click, a middle click and
+// `WindowDrag` handles presses on frame parts: dragging moves a window, while double, middle and right clicks run the
+// seat's `double_click`, `middle_click` and `right_click` actions. `DragArea` uses it; other canvases can use `attach`.
 // a right click do what the seat's `double_click`, `middle_click` and `right_click` say. `DragArea` is a node that
 // has it; any other canvas can take it with `attach`.
 
@@ -17,11 +18,13 @@ const DOUBLE_CLICK_MS = 500;
 /**
  * The window behaviour of a drag area. A left press takes the window (`hooks.press`: it takes the focus), and a drag
  * moves the client by how far the pointer is from where it pressed, in the node's own coordinates. The node is a child
- * of the window, so those coordinates stand still while the window follows the pointer. A second left press within half a
- * second runs the seat's `double_click` action instead of starting a drag. A right or middle press is left to its action:
+ * of the window, so those coordinates stand still while the window follows the pointer. A second left press within half
+ * a second runs the seat's `double_click` action instead of starting a drag. A right or middle press is left to its
+ * action: the window menu a right click opens holds the keyboard, and the press is heard later.
  * the window menu a right click opens holds the keyboard, and the press is heard later.
  */
 export class WindowDrag {
+    /** Window and shell operations used by this drag behaviour. */
     readonly context: FrameContext;
     #lastPress: number | null = null;
     #from: { x: number; y: number } | null = null;
@@ -37,6 +40,7 @@ export class WindowDrag {
         canvas.onRelease = (event) => this.release(event);
     }
 
+    /** Handles a pointer press and starts a drag or invokes a seat gesture. */
     press(event: UiPointerEvent): void {
         event.stop();
         const { client, hooks, actions } = this.context;
@@ -65,6 +69,7 @@ export class WindowDrag {
         this.#from = { x: event.x, y: event.y };
     }
 
+    /** Moves the window while a left-button drag is active. */
     motion(event: UiPointerEvent): void {
         const from = this.#from;
         if (from === null) {
@@ -75,6 +80,7 @@ export class WindowDrag {
         this.context.client.y += event.y - from.y;
     }
 
+    /** Ends an active drag when the pointer button is released. */
     release(event: UiPointerEvent): void {
         const { client, hooks } = this.context;
         hooks.release?.(client, { x: event.x, y: event.y, button: event.button });

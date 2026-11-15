@@ -1,7 +1,6 @@
-// Optional XR package entry: importing it requires an XR session or an XR-enabled shell.
-// It checks availability, then re-exports the XR scene and binding types; it owns no runtime state.
+// Optional XR package entry point. Importing it requires an XR session or an XR-enabled shell.
+// It checks availability and re-exports XR scene and binding types without owning runtime state.
 // Use `gnoblin.extensions.xr` to guard access when XR may be absent.
-// Read `xr.ts` first for the objects and their units.
 
 import "gnoblin/xr";
 

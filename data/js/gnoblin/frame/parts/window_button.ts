@@ -25,12 +25,14 @@ export interface WindowButtonOptions extends IconOptions {
 }
 
 /**
- * A window button. A left press does what the button says through the window's actions (`frame.actions`): close fades the
- * window out and closes it, maximise toggles it as the shell does, minimise hides it. The press does not reach the
+ * A window button. A left press does what the button says through the window's actions (`frame.actions`): close fades
+ * the window out and closes it, maximise toggles it as the shell does, minimise hides it. The press does not reach the
  * node under the button, so a button in a drag area is not a drag.
  */
 export class WindowButton extends Icon {
+    /** Window operations and action hooks shared by the frame. */
     readonly context: FrameContext;
+    /** Which window action this button invokes. */
     readonly name: WindowButtonName;
     /** The icon shown while the window is maximised, for the maximise button. */
     restoreIcon: string | null;
@@ -46,6 +48,7 @@ export class WindowButton extends Icon {
         this.onPress = (event) => this.#press(event);
     }
 
+    /** Updates the maximise icon when the window's maximised state changes. */
     override refresh(): void {
         if (this.name === "maximise" && this.restoreIcon !== null) {
             this.icon = this.context.client.maximised ? this.restoreIcon : this.#icon;

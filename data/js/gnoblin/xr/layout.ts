@@ -1,4 +1,4 @@
-// `SpatialLayout`: a layout that places the clients of a workspace as panels in the room instead of tiles on a screen.
+// Panel arrangement and default bindings for an XR room.
 
 import { BindingCollection } from "gnoblin/bindings/binding";
 import { arrangeRing, RING_DEFAULTS } from "gnoblin/xr/ring";
@@ -32,12 +32,13 @@ export interface SpatialLayoutOptions {
 const LAYOUT_TRIGGERS = { move: "Grip+Drag", resize: "Grip+Trigger+Drag", rotate: "Trigger+Thumbstick+Drag" } as const;
 
 /**
- * The room's arrangement: panels on a ring round the viewer, and the bindings that move, resize and rotate them. The
- * ring is `arrangeRing`; `bindings` is the layout's collection, so `layout.bindings.remove("move")` turns a binding
- * off and a `layout.bindings.add(new ViewMoveBinding({ tracking: "ray" }))` after it puts another in its place.
+ * Places room panels on a ring around the viewer and provides bindings to move, resize and rotate them. `bindings`
+ * is the layout's collection: remove a binding to turn it off, or add another binding in its place.
  */
 export class SpatialLayout {
+    /** The collection of bindings that move, resize and rotate room panels. */
     readonly bindings = new BindingCollection();
+    /** Ring dimensions used to place panels, in millimetres and radians. */
     readonly ring: XRRingParams;
 
     constructor(options: SpatialLayoutOptions = {}) {
@@ -77,6 +78,7 @@ export class SpatialLayout {
         if (triggers.rotate !== null) this.bindings.add(new ViewRotateBinding({ trigger: triggers.rotate }));
     }
 
+    /** Places views around the ring and returns their poses and drawing order. */
     arrange<I>(views: readonly RingView<I>[], focus: I | null): RingResult {
         return arrangeRing(views, focus, this.ring);
     }

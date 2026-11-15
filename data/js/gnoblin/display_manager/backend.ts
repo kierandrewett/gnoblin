@@ -9,7 +9,9 @@ import type { ErrorCode } from "gnoblin/errors";
 
 /** A `Collection<Output>` the manager keeps equal to the outputs a display presents. */
 export interface OutputSet {
+    /** Live collection of outputs assigned to the display. */
     readonly collection: DisplayOutputCollection;
+    /** Replaces the collection members with `outputs`. */
     set(outputs: readonly OutputView[]): void;
 }
 
@@ -39,10 +41,12 @@ export interface DisplayBackend {
     pending(output: OutputView): boolean;
     /** Reports `text` once per generation. */
     say(text: string): void;
+    /** Creates the error a failed display operation should throw. */
     error(code: ErrorCode, target: string, message: string): Error;
     /** A new collection of outputs for one display. */
     outputSet(): OutputSet;
     /** The collections' events: the member joined or left. */
     listed(member: Display | OutputProfile): void;
+    /** Reports that a display or output profile left its collection. */
     unlisted(member: Display | OutputProfile): void;
 }

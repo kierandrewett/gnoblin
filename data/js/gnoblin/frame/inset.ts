@@ -1,15 +1,17 @@
-// `FrameInset`: the room a window's frame takes on each side of its content, and the arithmetic on it.
-// A frame is the content with its inset around it. The layout driver, floating placement, drags and snaps place frames
-// and write the content rectangle that is left. Pure functions, so the host and the stock layouts share one rule.
-// design/window-frame.md, decision 5.
+// `FrameInset`: the room a window frame takes on each side of its content, and the arithmetic on it.
+// Layouts and window operations use these pure functions to place frames and content consistently.
 
 import type { Rect } from "gnoblin/types";
 
 /** The room a window's frame takes outside its content, in pixels. Every side is 0 or more. */
 export interface FrameInset {
+    /** Space reserved above the content, in logical pixels. */
     readonly top: number;
+    /** Space reserved to the right of the content, in logical pixels. */
     readonly right: number;
+    /** Space reserved below the content, in logical pixels. */
     readonly bottom: number;
+    /** Space reserved to the left of the content, in logical pixels. */
     readonly left: number;
 }
 

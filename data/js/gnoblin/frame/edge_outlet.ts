@@ -1,6 +1,6 @@
-// `EdgeOutlet`: the `top`, `bottom`, `left` or `right` strip of a window frame. Its thickness is room the layout
-// leaves around the window's content, so a node in it never overlaps the client. The strip is a row (top and bottom) or a
-// column (left and right) of its nodes. design/window-frame.md, decisions 3, 5 and 6.
+// `EdgeOutlet` is a strip along one side of a window frame. Its thickness is free space around the content, so nodes in
+// it do not overlap the client. The strip has start, center and end zones.
+// the strip do not overlap the client. The strip has start, center and end zones.
 
 import type { FrameGeometry, OutletOwner } from "gnoblin/frame/outlet";
 import { Outlet } from "gnoblin/frame/outlet";
@@ -45,6 +45,7 @@ function edgeRect(side: Side, { width, height, inset }: FrameGeometry): Rect {
  * buttons: reading one makes all three. Nodes added to the edge itself sit beside them.
  */
 export class EdgeOutlet extends Outlet {
+    /** The side of the window frame this strip follows. */
     readonly side: Side;
     /** The thickness in pixels, or `null` to measure the nodes added. */
     size: number | null = null;

@@ -1,5 +1,4 @@
-// The shapes of `gnoblin.requestTransition`: what a script passes and gets back, and the small host (`TransitionHost`)
-// the engine runs on, so that it works without a compositor.
+// The options and results of `gnoblin.requestTransition`, plus the host interface used by the transition engine.
 
 import type { Easing } from "gnoblin/transition/easing";
 import type { MakeError, Staging } from "gnoblin/transition/staging";
@@ -27,16 +26,19 @@ export interface TransitionOptions {
  * track.
  */
 export interface TransitionResult {
+    /** True when the transition did not reach its target. */
     readonly cancelled: boolean;
 }
 
 /** Stops a callback before it runs. Calling it twice is harmless. */
 export interface TransitionSubscription {
+    /** Stops the callback before it runs. */
     unsubscribe(): void;
 }
 
 /** What an engine needs of the shell. */
 export interface TransitionHost {
+    /** Reads and stages property writes during a transition callback. */
     staging: Staging;
     /** The milliseconds an animation of `duration` takes: 0 while the seat asks for reduced motion. */
     motion(duration: number): number;
@@ -59,6 +61,7 @@ export interface TransitionHost {
     snapshot(): () => void;
     /** Runs the style and layout passes once against the staged state, so their writes are staged too. */
     settle(): void;
+    /** Creates an error with a code, target path and message. */
     error: MakeError;
 }
 

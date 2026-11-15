@@ -1,6 +1,5 @@
-// `TransitionEngine`: runs the callback once, stages its writes, sends them in the shell's one transaction of the
-// frame with the duration and the easing's samples, and owns the rule that a node has one transition at a time. A
-// transition that fails leaves the tree as it was and puts back the script state that `snapshot` covers.
+// Runs transition callbacks, stages their writes, and tracks which transition controls each property.
+// Failed callbacks leave the tree unchanged and restore the script state covered by `snapshot`.
 
 import { curveSamples, DEFAULT_EASING, EASING_NAMES, easingCurve, EASINGS } from "gnoblin/transition/easing";
 import { copy } from "gnoblin/transition/staging";
@@ -41,7 +40,7 @@ interface Active {
     reversed: boolean;
 }
 
-/** The checked options: the milliseconds of the animation, its delay, the samples of its easing and whether it plays. */
+/** The checked duration, delay, easing samples and play state for a transition. */
 interface Timing {
     duration: number;
     delay: number;
@@ -128,6 +127,7 @@ export class TransitionEngine {
         this.#owners.clear();
     }
 
+    /** Runs `callback` once and stages its property writes as a transition. */
     request(callback: () => void, options?: TransitionOptions): Transition {
         const site = "gnoblin.requestTransition";
         if (typeof callback !== "function") {
