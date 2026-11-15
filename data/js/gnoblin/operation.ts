@@ -6,6 +6,7 @@
 // Both classes are plain TypeScript over a small host (`OperationHost`), so they run without a compositor.
 
 import type { ErrorCode } from "gnoblin/errors";
+import { NEVER, onWake } from "gnoblin/wake";
 
 /** The failure of an operation: a stable `code` to branch on and a `message` for a person. */
 export interface OperationError {
@@ -243,6 +244,8 @@ export class Timers {
 
     constructor(host: ClockHost) {
         this.#host = host;
+        // A timer that is due needs a frame at its time, though nothing else happens.
+        onWake(() => this.#pending.reduce((earliest, timer) => Math.min(earliest, timer.at), NEVER));
     }
 
     /** The monotonic clock in milliseconds. */

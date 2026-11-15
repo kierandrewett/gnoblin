@@ -7,6 +7,8 @@
 // removed. A window starts only the oldest pending launch it matches. The registry is plain TypeScript over three
 // functions of the host (`LaunchHost`), so it runs without a compositor.
 
+import { NEVER, onWake } from "gnoblin/wake";
+
 /**
  * The most launches the registry keeps. The oldest finished one is dropped for a new one. With all pending, `begin`
  * refuses.
@@ -193,6 +195,13 @@ export class LaunchFeedback {
 
     constructor(host: LaunchHost) {
         this.#host = host;
+        // A pending launch times out at its deadline.
+        onWake(() =>
+            this.#launches.reduce(
+                (earliest, launch) => (launch.alive ? Math.min(earliest, Launch.deadline(launch)) : earliest),
+                NEVER,
+            ),
+        );
     }
 
     /** The launches the registry keeps, oldest first, pending and finished. */

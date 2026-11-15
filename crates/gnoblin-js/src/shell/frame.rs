@@ -22,13 +22,26 @@ impl JsShell {
     /// Runs one frame: applies what the compositor sent, tells the script's listeners, runs them, and
     /// sends what the script wrote as one transaction.
     pub fn frame(&mut self) -> Result<JsFrame, JsShellError> {
-        let mut diagnostics = Vec::new();
+        let mut incoming = std::mem::take(&mut self.incoming);
+        incoming.extend(self.link.poll().map_err(|e| JsShellError::Link(e.0))?);
+        // A turn on which nothing arrived and nothing is due does no work: see `gate`.
+        if incoming.is_empty() && !self.frame_due() {
+            self.note_quiet_turn();
+            return Ok(JsFrame::default());
+        }
+        let mut backlog = self.take_backlog();
+        let mut diagnostics = std::mem::take(&mut backlog.diagnostics);
+        let worked = self.take_script_ran()
+            || !incoming.is_empty()
+            || !backlog.api.is_empty()
+            || !backlog.dialogs.is_empty()
+            || backlog.idle.reading.is_some()
+            || backlog.idle.lost;
+        let (dispatches_before, sent_before) = (self.dispatches, self.gate.sent);
         let mut touched: Vec<NodeId> = Vec::new();
         let mut created: Vec<NodeId> = Vec::new();
         let mut destroyed: Vec<NodeId> = Vec::new();
 
-        let mut incoming = std::mem::take(&mut self.incoming);
-        incoming.extend(self.link.poll().map_err(|e| JsShellError::Link(e.0))?);
         for message in incoming {
             match message {
                 TreeIncoming::Changes { serial, changes } => {
@@ -130,16 +143,20 @@ impl JsShell {
         let outcome = self.dispatch(&created, &touched, &destroyed, started, &mut diagnostics);
         self.state.borrow_mut().graveyard.clear();
         outcome?;
-        self.run_host_api(&mut diagnostics)?;
+        self.run_host_api(backlog.api, &mut diagnostics)?;
         self.commit_document_changes(&mut diagnostics)?;
         self.run_layouts(&mut diagnostics)?;
         self.run_ui(&mut diagnostics)?;
-        self.run_dialogs(&mut diagnostics)?;
-        self.run_compositor_links(&mut diagnostics)?;
+        self.run_dialogs(backlog.dialogs, &mut diagnostics)?;
+        self.run_compositor_links(backlog.idle, &mut diagnostics)?;
         self.collect_reports(&mut diagnostics)?;
         self.generation.flush_console();
 
         self.send_transaction()?;
+        // What this frame did decides whether the next one looks again: a frame that ran a listener, sent a
+        // transaction or had something to handle may have left something for the pass that comes after it.
+        let worked = worked || self.dispatches != dispatches_before || self.gate.sent != sent_before;
+        self.plan_next_frame(worked)?;
         Ok(JsFrame { diagnostics })
     }
 
@@ -260,6 +277,7 @@ impl JsShell {
             Err(JsShellError::Js(error)) if matches!(error.kind, JsErrorKind::Budget | JsErrorKind::Memory) => {
                 self.count_strike(&error);
                 diagnostics.push(format!("the layout pass was stopped: {error}"));
+                self.gate.deferred = true;
                 Ok(())
             }
             Err(other) => Err(other),
@@ -278,6 +296,7 @@ impl JsShell {
             Err(JsShellError::Js(error)) if matches!(error.kind, JsErrorKind::Budget | JsErrorKind::Memory) => {
                 self.count_strike(&error);
                 diagnostics.push(format!("the UI pass was stopped: {error}"));
+                self.gate.deferred = true;
                 Ok(())
             }
             Err(other) => Err(other),

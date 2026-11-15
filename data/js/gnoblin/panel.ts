@@ -6,6 +6,20 @@
 
 import { Box, Text, uiNow, uiScreen } from "gnoblin/ui";
 
+import { NEVER, NOW, onWake } from "gnoblin/wake";
+
+/** The toasts that have not ended: a card's fade follows its age, so the frame loop runs while one is up. */
+const toasts = new Set<Toast>();
+onWake(() => {
+    for (const toast of toasts) {
+        if (toast.alive) {
+            return NOW;
+        }
+        toasts.delete(toast);
+    }
+    return NEVER;
+});
+
 /** The card's width in pixels. */
 const TOAST_WIDTH = 320;
 /** The card's height in pixels. */
@@ -68,6 +82,7 @@ export class Toast extends Box {
         this.message = new Text({ text, grow: 1 });
         this.add(this.message);
         this.mountTop();
+        toasts.add(this);
     }
 
     // The opacity follows the age of the card, so the frame loop drives the fade and no timer is needed.

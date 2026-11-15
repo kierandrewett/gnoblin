@@ -18,6 +18,7 @@ import {
     viewportState,
 } from "gnoblin/display";
 import type { ErrorCode } from "gnoblin/errors";
+import { NEVER, NOW, onWake } from "gnoblin/wake";
 
 /** A `Collection<Output>` the manager keeps equal to the outputs a display presents. */
 export interface OutputSet {
@@ -117,6 +118,8 @@ export class DisplayManager {
         this.#backend = backend;
         this.#profiles = profiles;
         this.#displays = displays;
+        // A change `reflow` has not looked at yet is looked at on the next frame.
+        onWake(() => (this.#dirty ? NOW : NEVER));
     }
 
     /** Something changed that `reflow` must look at. */

@@ -8900,3 +8900,7 @@ mod surface_tree_tests;
 #[cfg(test)]
 #[path = "view_gpu_tests.rs"]
 mod view_gpu_tests;
+
+#[cfg(test)]
+#[path = "idle_cost_tests.rs"]
+mod idle_cost_tests;

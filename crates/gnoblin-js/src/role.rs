@@ -319,6 +319,12 @@ impl JsRole {
         Ok(role)
     }
 
+    /// How long until the shell needs a frame although nothing arrived (see [`JsShell::next_wake`]): the role waits no
+    /// longer than this for the compositor.
+    pub fn next_wake(&self) -> Option<Duration> {
+        self.shell.next_wake()
+    }
+
     /// Runs one frame: acts on a reload the watcher asked for, applies the compositor's batches and runs the
     /// listeners, sends what they wrote, and restages the generation when a listener ran past its budget.
     ///

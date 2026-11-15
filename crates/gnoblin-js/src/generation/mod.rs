@@ -270,6 +270,12 @@ impl JsGeneration {
         self.runtime.memory_usage().malloc_size
     }
 
+    /// Whether promise jobs are waiting to run. The shell's pump runs a bounded number a frame, so a frame that cut it
+    /// short has work no message will announce.
+    pub fn jobs_pending(&self) -> bool {
+        self.runtime.is_job_pending()
+    }
+
     /// The canonical path of every file module this generation loaded, sorted: the entry and each
     /// module it imported, directly or not. Embedded modules are not files and are not listed.
     ///

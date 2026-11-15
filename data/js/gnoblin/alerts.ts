@@ -6,6 +6,7 @@
 // `AlertTracker` is the state machine on its own. A script starts the alert with `startNotRespondingAlert()`.
 
 import { Box, Text, onUiFrame, uiFocus, uiFocused, uiLocked, uiNow, uiScreen } from "gnoblin/ui";
+import { onWake } from "gnoblin/wake";
 import type { UiKeyEvent, UiPointerEvent } from "gnoblin/ui";
 
 const LEFT = 272;
@@ -300,6 +301,16 @@ export class NotRespondingAlerts {
         if (options.armMs !== undefined) this.armMs = options.armMs;
         if (options.intervalMs !== undefined) this.intervalMs = options.intervalMs;
         onUiFrame(() => this.#frame());
+        // The look at the windows repeats on the clock, and a card arms when its delay is over.
+        onWake(() => {
+            let at = this.#lastLook + this.intervalMs;
+            for (const card of this.#cards.values()) {
+                if (!card.dialog.armed) {
+                    at = Math.min(at, card.armAt);
+                }
+            }
+            return at;
+        });
     }
 
     /** One look at the windows, now. */

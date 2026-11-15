@@ -299,6 +299,7 @@ impl JsShell {
             let kept = sent_ops(&tx.ops, &self.state.borrow().mirror);
             self.sent.push_back((tx.serial, kept));
             self.in_flight = Some(tx.serial);
+            self.gate.sent = self.gate.sent.saturating_add(1);
             self.link.transact(&tx).map_err(|e| JsShellError::Link(e.0))?;
         }
         Ok(())

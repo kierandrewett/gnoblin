@@ -75,6 +75,9 @@ pub const TEST_CRASH_VARIABLE: &str = "GNOBLIN_TEST_RUNTIME_CRASH";
 /// frame at 60 Hz; an idle role wakes that often and does one cheap frame.
 pub const FRAME_WAIT: Duration = Duration::from_millis(16);
 
+/// The shortest wait of a turn: a shell whose frame is due now still lets the compositor's events in first.
+const MIN_WAIT: Duration = Duration::from_millis(1);
+
 /// How many events of the object graph one turn takes before it runs a frame, so a compositor that never goes quiet
 /// cannot starve the shell.
 const EVENT_BATCH: usize = 256;
@@ -208,9 +211,20 @@ impl JsRoleRunner {
         reporter.ready(&[("GNOBLIN_CONFIG_REVISION".to_owned(), revision.to_string())]);
 
         let mut reload_asked = false;
+        let mut waiting = FRAME_WAIT;
         while !stop() {
-            // The wait for the compositor is the turn's clock: it ends at once when something arrives and after
-            // `FRAME_WAIT` when nothing does.
+            // The wait for the compositor is the turn's clock: it ends at once when something arrives, and when
+            // nothing does it ends at the shell's next timer, or after `FRAME_WAIT`, which is how often the tree
+            // link and the links beside it are looked at.
+            let wait = role
+                .next_wake()
+                .map_or(FRAME_WAIT, |due| due.clamp(MIN_WAIT, FRAME_WAIT));
+            if wait != waiting {
+                client
+                    .set_read_timeout(Some(wait))
+                    .map_err(|error| JsRoleError::Serving(format!("cannot set the read deadline: {error}")))?;
+                waiting = wait;
+            }
             for _ in 0..EVENT_BATCH {
                 match client.next_event() {
                     Ok(Event::Model(Observation::Opened { view, .. })) => {

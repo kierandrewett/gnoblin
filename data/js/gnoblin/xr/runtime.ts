@@ -11,6 +11,7 @@ import { XRRoom } from "gnoblin/xr/room";
 import { XRExtension, XRSession } from "gnoblin/xr/session";
 import type { XROptions } from "gnoblin/xr/session";
 import type { NodeNumber, XRWorld } from "gnoblin/xr/types";
+import { NEVER, NOW, onWake } from "gnoblin/wake";
 import { pickView, XRViewport } from "gnoblin/xr/viewport";
 import { XRControllerDragBinding } from "gnoblin/xr_bindings";
 import type { XRDragEvent } from "gnoblin/xr_bindings";
@@ -45,6 +46,8 @@ export class XRRuntime {
     constructor(world: XRWorld) {
         this.#world = world;
         this.#sessions = new XRList<XRSession>(world.report);
+        // A running session follows the room and the drags every frame.
+        onWake(() => (this.#session === null ? NEVER : NOW));
     }
 
     get extension(): XRExtension | null {

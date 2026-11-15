@@ -13,6 +13,7 @@ impl JsShell {
     /// validated against, and committed to, the document that connection reads. Without one a config that sets
     /// document keys is validated against an empty document and nothing is committed, which is reported.
     pub fn set_config_link(&mut self, link: Box<dyn JsConfigLink>) {
+        self.note_script_ran();
         self.state.borrow_mut().config.set_link(link);
     }
 
@@ -24,6 +25,7 @@ impl JsShell {
     ///
     /// The link failed or the generation's entry did.
     pub fn config_committed(&mut self) -> Result<Vec<String>, JsShellError> {
+        self.note_script_ran();
         let mut diagnostics = Vec::new();
         self.apply_document(&mut diagnostics, false)?;
         Ok(diagnostics)

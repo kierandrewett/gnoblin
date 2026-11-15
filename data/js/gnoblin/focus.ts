@@ -14,6 +14,7 @@
 // and hover-strict is `follow-mouse` (focus acts on entry only, and goes when the pointer leaves the focused window).
 
 import type { SeatSettings } from "gnoblin/input/host";
+import { NEVER, onWake } from "gnoblin/wake";
 import { rejectUnknown } from "gnoblin/workspace";
 
 /** The focus modes: `click` focuses on a click, `sloppy` follows the pointer, `follow-mouse` acts on entry only. */
@@ -272,6 +273,14 @@ export class FocusPolicy<C extends object> {
 
     constructor(host: FocusHost<C>) {
         this.#host = host;
+        // A rest that focuses and a delayed raise come due on the clock, whatever the compositor does meanwhile.
+        onWake(() => {
+            let at = NEVER;
+            for (const pending of this.#pending.values()) {
+                at = Math.min(at, pending.focusAt ?? NEVER, pending.raiseAt ?? NEVER);
+            }
+            return at;
+        });
     }
 
     onAdded(client: C): void {

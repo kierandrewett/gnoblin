@@ -6,6 +6,7 @@
 // The Rust fallback lock card is used when no shell holds the lock screen (docs/session-lock.md).
 
 import { Box, Text, runUiFrame, uiFocus, uiFocused } from "gnoblin/ui";
+import { NEVER, NOW, onWake } from "gnoblin/wake";
 import type { PaintOp, UiKeyEvent } from "gnoblin/ui";
 
 /** The compositor's answer to a password check: `result` is `ok`, or the wait in milliseconds under `rate-limited`. */
@@ -213,6 +214,8 @@ export class LockScreen {
     constructor(backend: LockBackend, style: LockStyle = defaultLockStyle) {
         this.#backend = backend;
         this.style = style;
+        // The screen renews the compositor's lease and follows the clock and the password entry every frame it is up.
+        onWake(() => (this.#shown === null || this.#released ? NEVER : NOW));
     }
 
     /** Whether the screen is up. */

@@ -15,11 +15,15 @@ import { lockRelease, runLockFrame } from "gnoblin/lock";
 import { sceneReleaseAll } from "gnoblin/scene/registry";
 import { installDefaults } from "gnoblin/starter";
 import { uiReleaseAll } from "gnoblin/ui";
+import { NEVER, NOW, nextWake, onWake } from "gnoblin/wake";
 
 /** What the shell calls each frame, over the object model of `gnoblin`. */
 export function makeEntry(gnoblin: Gnoblin): Entry {
+    // Listener calls the frame's budget left in the queue wait for the next frame, which nothing else announces.
+    onWake(() => (ctx.queue.length > 0 ? NOW : NEVER));
     return {
         render: (value, maxBytes) => inspect.render(value, { maxBytes }),
+        wake: nextWake,
         ui: () =>
             runLockFrame(
                 (site, error) => ctx.reports.push({ site, error }),

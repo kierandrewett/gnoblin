@@ -37,6 +37,7 @@ import type { ResizeCorner } from "gnoblin/bindings/resize";
 import type { DragEvent, Point, Rect } from "gnoblin/bindings/types";
 import { onUiFrame, onUiRequest, uiPointer } from "gnoblin/ui";
 import type { UiRequest } from "gnoblin/ui";
+import { NEVER, onWake } from "gnoblin/wake";
 
 /** Every request the compositor makes of a window. `menu` is answered by the window menu (`gnoblin/menus`). */
 export type ClientRequestKind =
@@ -221,6 +222,8 @@ export class WindowState {
         this.#world = world as unknown as WindowStateWorld<StateClient>;
         onUiRequest((raw) => this.#hear(raw));
         onUiFrame(() => this.#follow());
+        // A request drag ends when it has run too long, whether or not the pointer moves.
+        onWake(() => (this.#drag === null ? NEVER : this.#drag.started + REQUEST_DRAG_LIMIT_MS));
     }
 
     #need(): WindowStateWorld<StateClient> {

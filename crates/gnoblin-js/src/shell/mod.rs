@@ -24,8 +24,9 @@
 //! strikes (restart the generation) is the supervisor's call.
 //!
 //! The module is split by concern. This file holds the types, the boot and the generation swap; `frame` runs one
-//! frame, `txgate` is the transaction gate (one in flight, a refusal sent again), `links` holds the links beside the
-//! tree (dialogs, idle, session, host API) and `document` the configuration document.
+//! frame, `gate` decides whether a frame has anything to do, `txgate` is the transaction gate (one in flight, a
+//! refusal sent again), `links` holds the links beside the tree (dialogs, idle, session, host API) and `document`
+//! the configuration document.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
@@ -53,8 +54,11 @@ use crate::{bindings, input};
 
 mod document;
 mod frame;
+mod gate;
 mod links;
 mod txgate;
+
+pub use self::gate::JsFrameStats;
 
 gnoblin_log::logger!(log = "js");
 
@@ -210,6 +214,8 @@ pub struct JsShell {
     /// The `documentRevision` the entry reported when the document was last committed. A device setting written
     /// after that moves it, and the next frame commits the document again.
     document_revision: u32,
+    /// What decides whether a frame has anything to do (see `gate`).
+    gate: gate::FrameGate,
 }
 
 impl JsShell {
@@ -267,6 +273,7 @@ impl JsShell {
             dialogs: JsDialogs::new(),
             idle: JsIdle::new(),
             document_revision: 0,
+            gate: gate::FrameGate::default(),
         })
     }
 
@@ -284,6 +291,8 @@ impl JsShell {
     /// The seat claims the staged generation makes are kept apart for the same reason: they are sent only when the
     /// generation takes over, after the old one's have been released.
     pub fn begin_stage(&mut self) {
+        // The staged generation's entry runs against the live tree, so it is script that runs between frames.
+        self.note_script_ran();
         let tick = self.state.borrow().tick.clone();
         self.stage_mark = Some(tick);
         input::begin_staging(&mut self.state.borrow_mut());
@@ -292,6 +301,7 @@ impl JsShell {
     /// Ends a stage that failed: the pending writes go back to what they were at [`begin_stage`](Self::begin_stage),
     /// and the claims it kept are dropped. The running generation was never touched.
     pub fn abandon_stage(&mut self) {
+        self.note_script_ran();
         let mut state = self.state.borrow_mut();
         input::abandon_staging(&mut state);
         if let Some(tick) = self.stage_mark.take() {
@@ -321,6 +331,7 @@ impl JsShell {
     ///
     /// The link failed or the mirror refused a batch; the shell has ended.
     pub fn swap_generation(&mut self, generation: JsGeneration) -> Result<Vec<String>, JsShellError> {
+        self.note_script_ran();
         let mut diagnostics = Vec::new();
         let previous = match self.workspace_snapshot() {
             Ok(snapshot) => Some(snapshot),
@@ -395,6 +406,8 @@ impl JsShell {
     /// The running generation and the budget one call of it has, for the console: a console expression runs in the
     /// shell's own generation under the listeners' budget, and a trip of it is not a strike (see `console`).
     pub(crate) fn console_target(&self) -> (&JsGeneration, Duration) {
+        // A console expression is script that runs between frames: what it queued or wrote is for the next frame.
+        self.note_script_ran();
         (&self.generation, self.entry_budget)
     }
 
@@ -413,6 +426,7 @@ impl JsShell {
     /// calls that ran while it loaded (a replay on `addListener`). An error loading the module is `Err`,
     /// and counts a strike when it is a budget trip.
     pub fn load_entry(&mut self, entry: &Path) -> Result<Vec<String>, JsShellError> {
+        self.note_script_ran();
         if let Err(error) = self.generation.eval_module(entry) {
             self.count_strike(&error);
             return Err(error.into());
@@ -434,6 +448,7 @@ impl JsShell {
     ///
     /// The stock config threw (a bug in the library) or the link failed.
     pub fn load_default_config(&mut self) -> Result<Vec<String>, JsShellError> {
+        self.note_script_ran();
         // A load, like `load_entry`, so it has the stage budget: it evaluates the whole starter, which took as long as
         // any config under load, and a listener call's budget would interrupt it.
         self.call_entry(self.js.stage_budget, |entry| {
@@ -460,6 +475,7 @@ impl JsShell {
     /// moves to the first workspace when it does not. The shown workspace is kept when it still exists.
     /// Windows `previous` did not know join a workspace by the initial-workspace rule on the first frame.
     pub fn reconcile(&mut self, previous: &JsWorkspaceSnapshot) -> Result<(), JsShellError> {
+        self.note_script_ran();
         self.call_entry(self.entry_budget, |entry| {
             let previous = previous.to_js(entry.ctx())?;
             entry.get::<_, Function<'_>>("reconcile")?.call::<_, ()>((previous,))
@@ -469,6 +485,7 @@ impl JsShell {
     /// Evaluates `source` as a script in the generation and returns its value as text, or `None` for
     /// `undefined`. For tests and a console; it runs under the listener budget.
     pub fn eval(&mut self, source: &str) -> Result<Option<String>, JsShellError> {
+        self.note_script_ran();
         let outcome = self.generation.call_budgeted(self.entry_budget, |ctx| {
             let value: Value<'_> = ctx.eval(source)?;
             if value.is_undefined() {
@@ -491,6 +508,7 @@ impl JsShell {
     /// compositor releases a connection's claims by itself when the shell dies, so a crash cannot leave a
     /// chord claimed.
     pub fn retire(&mut self) -> Result<JsFrame, JsShellError> {
+        self.note_script_ran();
         let frame = self.end_generation(false)?;
         self.send_transaction()?;
         Ok(frame)

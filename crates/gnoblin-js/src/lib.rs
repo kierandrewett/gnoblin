@@ -83,7 +83,7 @@ pub use role::{JsRole, JsRoleConfig, JsRoleLinks, RELOAD_DEBOUNCE, config_dir, e
 pub use rquickjs;
 pub use runner::{FRAME_WAIT, JsRoleError, JsRoleRunner, STOCK_DIR_VARIABLE, TEST_CRASH_VARIABLE, WATCH_VARIABLE};
 pub use script_console::{JsConsoleLevel, JsConsoleLine, MAX_LINE_BYTES, MAX_LINES_PER_SECOND};
-pub use shell::{JsFrame, JsShell, JsShellConfig, JsShellError, JsStaging, STALE_RETRIES};
+pub use shell::{JsFrame, JsFrameStats, JsShell, JsShellConfig, JsShellError, JsStaging, STALE_RETRIES};
 pub use stock::{STARTER_CONFIG, stock_modules, stock_modules_in, stock_sources_in};
 pub use supervisor::{
     JsClock, JsFault, JsFaultAction, JsHealth, JsManualClock, JsStrikePolicy, JsSupervisor, JsSystemClock,

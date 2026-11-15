@@ -7,6 +7,21 @@
 
 import { Box, Icon, Text, uiNow, uiSeatAction } from "gnoblin/ui";
 import type { UiPointerEvent } from "gnoblin/ui";
+import { NEVER, onWake } from "gnoblin/wake";
+
+/** The bars whose window is fading out to close, which come due on the clock whatever the compositor does. */
+const closingBars = new Set<Titlebar>();
+onWake(() => {
+    let at = NEVER;
+    for (const bar of closingBars) {
+        const due = bar.wakeAt();
+        if (due === NEVER) {
+            closingBars.delete(bar);
+        }
+        at = Math.min(at, due);
+    }
+    return at;
+});
 
 /** The three window buttons, which a style can order, leave out or give other icons. */
 export type TitlebarButton = "minimise" | "maximise" | "close";
@@ -205,12 +220,18 @@ export class Titlebar extends Box {
         this.#advanceClose();
     }
 
+    /** When this bar next needs a frame: the end of the close fade, or the time to bring a window back that stayed. */
+    wakeAt(): number {
+        return this.#closing === null ? NEVER : (this.#closing.closeAt ?? this.#closing.restoreAt ?? NEVER);
+    }
+
     /** Starts the fade out of a window that is being closed. A second press while it fades does nothing. */
     #startClose(): void {
         if (this.#closing !== null) {
             return;
         }
         const { client } = this;
+        closingBars.add(this);
         if (client.animate === undefined) {
             client.close();
             return;

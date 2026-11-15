@@ -78,6 +78,11 @@ export interface Entry {
     reconcile(previous: WorkspaceSnapshot): void;
     /** The host API's frame: what the host collected since the last one, as JSON; returns how many calls wait. */
     apiFrame(batch: string): number;
+    /**
+     * When the script next needs a frame although nothing arrives: a reading of the shell's clock in milliseconds,
+     * `Infinity` for never, and a reading in the past for now (`gnoblin/wake`).
+     */
+    wake(): number;
 }
 
 /** Native operations and services the Rust shell exposes to this generation. */
