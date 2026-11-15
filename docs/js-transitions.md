@@ -83,8 +83,8 @@ With `autoplay: false` the tracks start held at the start value.
 - Writing `progress` moves every track to that point of its own duration at once. Hit testing follows the pose that is
   drawn.
 - A transition that runs back to its start puts the start values back and settles `{ cancelled: true }`.
-- The tracks join a `tween` node of the compositor (`design/node-core.md`, "Tweens"). A transition makes it when it has
-  tracks and destroys it when it ends.
+- The tracks join a `tween` node of the compositor. A transition makes it when it has tracks and destroys it when it
+  ends.
 
 ## One object: `set`
 
@@ -140,7 +140,7 @@ A style `cornerRadius`, `borders` and `background` are not written to the tree f
 
 ## Not built
 
-These are still missing, in the compositor or the spec's model. The shell does not fake them.
+These are not built yet, in the compositor or in the shell. The shell does not fake them.
 
 - **Effects and corner radius.** A shadow, a blur and a corner radius are not tween tracks. A style change of them lands at
   once.
@@ -150,12 +150,10 @@ These are still missing, in the compositor or the spec's model. The shell does n
   the player's (`TweenPlayer::finish`) and has no tree surface yet: a script cancels, or runs the tracks with `play()` and
   `reverse()`.
 - **Rotation as one orientation.** A rotation tweens per axis, as the node stores it (three angles), so a path through
-  several axes is not the spherical shortest path the spec describes for a quaternion.
+  several axes is not the shortest spherical path that a quaternion would take.
 
 ## Proof
 
 `crates/gnoblin-js/tests/transition.rs` runs the staging, the transaction and the failures over a fake compositor, and
 `crates/gnoblin/tests/js_shell.rs` runs a layout change inside a transition against the real compositor with two mapped
 windows and an injected clock. The compositor's tracks are tested in `crates/gnoblin-wayland/tests/tree_live.rs`.
-`design/js-research/spec-review.md` lists the acceptance rows AN1 to AN8, and `design/js-runtime-log-ui.md`, "Transitions status",
-says which are proven.

@@ -3,9 +3,6 @@
 A window frame is the surface round one window's content. It has named places, called outlets, and you fill each one with
 your own nodes. The stock titlebar is one way to fill it.
 
-The frame is an addition to the owner's specification of the shell API, and it changes none of the specification's names.
-The design is in `design/window-frame.md`.
-
 For short examples see [fill a window frame with your own parts](/recipes/window-frame).
 
 ## Make a frame

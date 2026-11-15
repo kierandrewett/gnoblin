@@ -121,7 +121,7 @@ plugged in: see [Hardware profiles](#hardware-profiles). One the compositor refu
 
 ### Supersampling
 
-`supersample` is an owner-requested addition beyond the display specification, like macOS's scaled resolutions.
+`supersample` renders an output at a multiple of its mode and averages the result down, like macOS's scaled resolutions.
 
 - The compositor composes the output on a virtual surface of `mode * supersample` pixels, tells clients the scale
   `scale * supersample`, and shows the result at the real mode, averaged down.

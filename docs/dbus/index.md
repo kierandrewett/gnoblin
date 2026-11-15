@@ -7,7 +7,7 @@ Availability depends on the standalone session and the relevant service.
 
 The compositor exports this interface at `/org/gnoblin/Compositor`.
 
-Status: not implemented. Whether this interface stays is undecided; the portal provider may own permissions instead. See `design/runtime-surface-plan.md` (S12).
+Status: not implemented. Whether this interface stays is undecided; the portal provider may own permissions instead.
 
 ## `org.gnoblin.SessionIdle`
 

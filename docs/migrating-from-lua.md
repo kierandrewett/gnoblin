@@ -186,7 +186,7 @@ Each setting is an `UNMAPPED` comment in `init.ts` and a line in the report that
 | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `autostart`                                                          | A session-scoped startup list                                                                                        |
 | `touchpad-gestures`                                                  | A path gesture trigger                                                                                               |
-| `workspace_sets` in `shell.lua`                                      | Nothing: the specification has no sets                                                                               |
+| `workspace_sets` in `shell.lua`                                      | Nothing: the shell has no workspace sets                                                                             |
 | `window-management`: `focus-*`, `raise-on-click`, `auto-raise*`      | A focus policy on the seat                                                                                           |
 | `window-management`: `edge-tiling`, `constrain-drag-to-work-area`    | A snapping policy on the seat or the layout                                                                          |
 | `seat.edge_tiling`, `seat.drag_constraint` in `shell.lua`            | The same snapping policy                                                                                             |

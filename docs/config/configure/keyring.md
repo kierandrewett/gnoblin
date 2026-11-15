@@ -57,8 +57,8 @@ Gnoblin never sets `ALLOW_REPLACEMENT` and never takes the name from another own
 
 Known gap: with the keyring off, the Secret portal has no provider. The shipped
 `portals.conf` routes `org.freedesktop.impl.portal.Secret=gnoblin`, and nothing rewrites that
-line from the setting, so Secret portal requests are refused in that mode. Before this lane the
-route was `Secret=gtk;*`, which did reach any installed backend.
+line from the setting, so Secret portal requests are refused in that mode. Earlier builds routed
+`Secret=gtk;*`, which did reach any installed backend.
 
 To get a provider back with the keyring off, add this line under `[preferred]` in your own
 `~/.config/xdg-desktop-portal/portals.conf`:

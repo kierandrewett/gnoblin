@@ -90,8 +90,8 @@ cleanup() {
 trap cleanup EXIT
 
 # seed_renderer RENDERER: names the renderer the compositor starts with. The compositor reads `compositor.renderer` from
-# the last accepted document when it starts, and no object of an init.ts carries that setting (design/js-spec-native.md,
-# 3.11), so the session's state directory is given the document a first run would have kept, tagged with the init.ts
+# the last accepted document when it starts, and no object of an init.ts carries that setting, so the session's state
+# directory is given the document a first run would have kept, tagged with the init.ts
 # it belongs to. The runtime then commits its own document over it, and the compositor keeps the renderer it started with.
 seed_renderer() {
     local state="$session_home/state/gnoblin"

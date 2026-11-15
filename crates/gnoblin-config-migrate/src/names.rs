@@ -42,23 +42,23 @@ pub(crate) const RESHAPED: &[&str] = &[
 ];
 
 /// What a setting of `window-management` that sets the focus policy needs: the first of the two rows 3.11 gives it.
-const FOCUS: &str = "the specification has no focus policy on the seat; the runtime keeps click focus, new windows \
+const FOCUS: &str = "the shell has no focus policy on the seat; the runtime keeps click focus, new windows \
                      focused and raise on click";
 
 /// What a snapping setting needs: a window dragged to an edge, and a drag kept inside the work area.
-pub(crate) const SNAPPING: &str = "the specification has no snapping policy on the seat or the layout; the runtime keeps edge \
+pub(crate) const SNAPPING: &str = "the shell has no snapping policy on the seat or the layout; the runtime keeps edge \
                         snapping on";
 
 /// What `autostart` needs.
-pub(crate) const AUTOSTART: &str = "the specification has no session-scoped startup list, and `gnoblin.spawn` in \
+pub(crate) const AUTOSTART: &str = "the shell has no session-scoped startup list, and `gnoblin.spawn` in \
                                     init.ts runs again on every reload; start the command from your session by hand";
 
 /// What a drawn-path touchpad gesture needs.
-pub(crate) const TOUCHPAD_GESTURES: &str = "the specification has no path gesture trigger; a swipe or pinch with a fixed \
+pub(crate) const TOUCHPAD_GESTURES: &str = "the shell has no path gesture trigger; a swipe or pinch with a fixed \
                                             direction is `input.bind`";
 
 /// What a workspace set needs.
-pub(crate) const WORKSPACE_SETS: &str = "the specification has no workspace sets; a function that shows one workspace \
+pub(crate) const WORKSPACE_SETS: &str = "the shell has no workspace sets; a function that shows one workspace \
                                          on each display does the same";
 
 /// What a rule field that a `Client` cannot be written for needs.
@@ -69,7 +69,7 @@ const INPUT: &str = "the device settings are `Keyboard`, `Mouse` and `Touchpad` 
                      `naturalScroll`), and the converter does not translate the Lua input sections: set them by hand";
 
 /// What every other section needs.
-const GENERIC: &str = "the specification has no compositor-wide settings object, and only the device settings of \
+const GENERIC: &str = "the shell has no compositor-wide settings object, and only the device settings of \
                        `input` reach the document";
 
 /// What a setting of `section` needs before it has a TypeScript home: the sentence after "has no TypeScript home yet".
@@ -83,14 +83,14 @@ pub(crate) fn follow_up(section: &str, setting: &str) -> &'static str {
             FOCUS
         }
         ("dialogs", "style") => {
-            "the specification has no style object on the dialog manager; the `gnoblin.dialogs` listeners are not \
+            "the shell has no style object on the dialog manager; the `gnoblin.dialogs` listeners are not \
              affected"
         }
         ("keyring", _) => {
-            "the specification has no compositor-wide settings object read before the session starts; the keyring \
+            "the shell has no compositor-wide settings object read before the session starts; the keyring \
              keeps its default, enabled"
         }
-        ("protocols", _) => "the specification has no compositor-wide settings object for the protocols",
+        ("protocols", _) => "the shell has no compositor-wide settings object for the protocols",
         ("input" | "input-sources", _) => INPUT,
         _ => GENERIC,
     }

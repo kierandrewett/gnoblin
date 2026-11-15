@@ -112,7 +112,7 @@ Every window gets a `View` under the room when it maps, and loses it when the wi
 A dialog has no View of its own. Its parent's View shows it, because the dialog is a child of the parent window.
 
 A client that is `secure` never gets a View, and one that turns secure loses it. The compositor enforces that on its
-own: it masks a secure node in every View's picture (`design/security-secure-content-in-views.md`).
+own: it masks a secure node in every View's picture.
 
 A script can keep other windows out of the room with an `accept` function. It runs every frame, so a window comes in
 when it starts to say yes:
@@ -276,9 +276,8 @@ comes from the right hand only.
 
 ## Scripting XR in TypeScript
 
-The classes of the spec's `gnoblin/extensions/xr` are in the TypeScript shell. They are objects over the tree's nodes,
-like a `Client`: the XR program is a separate process, and nothing here loads into the shell
-(`design/js-xr.md` says which spec class is which node).
+The classes of `gnoblin/extensions/xr` are in the TypeScript shell. They are objects over the tree's nodes, like a
+`Client`: the XR program is a separate process, and nothing here loads into the shell.
 
 ### Is XR there?
 
@@ -607,4 +606,4 @@ Logs, the tree dump and the pictures are left in `/tmp/xr-smoke`.
 - A panel is flat. There is no depth, and a layout that makes windows intersect is not supported.
 
 See [`extensions/gnoblin-xr`](https://github.com/kierandrewett/gnoblin/tree/main/extensions/gnoblin-xr) for the
-extension and `design/xr-extension.md` for the design.
+extension.

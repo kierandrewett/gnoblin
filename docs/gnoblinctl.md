@@ -307,7 +307,7 @@ warn  init.lua:31  gnoblin.on("gnoblin.window.created", function(w) ...
       an event handler runs code: write a `ClientListener` and attach it with `gnoblin.clients.addListener`
       see docs/migrating-from-lua.md#what-the-converter-cannot-do
 warn  config/10-windows.lua:5  ["focus-mode"] = "click"
-      `window-management.focus-mode` has no TypeScript home yet: the specification has no focus policy on the seat; the runtime keeps click focus, new windows focused and raise on click
+      `window-management.focus-mode` has no TypeScript home yet: the shell has no focus policy on the seat; the runtime keeps click focus, new windows focused and raise on click
       see docs/migrating-from-lua.md#settings-with-no-typescript-home-yet
 
 Next:

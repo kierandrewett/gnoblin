@@ -53,7 +53,7 @@ global, so a listener or a key handler may use it too. To write your first confi
 - A call that finishes later returns an `Operation`. A call with a bad argument throws at once. See
   [Operations, errors and timers](errors).
 - Every time is in milliseconds: durations, delays, timeouts and the clocks. The one exception is a drag event's
-  `deltaTime`, which is in seconds because the specification gives it that way. Easings are the CSS names.
+  `deltaTime`, which is in seconds. Easings are the CSS names.
 - Your code runs on the shell's single thread, between frames, under a time budget per call. Keep a handler short.
 - Listeners and handlers that a configuration attached end with it, so a reload starts from your file again.
 

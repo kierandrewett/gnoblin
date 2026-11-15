@@ -119,8 +119,8 @@ gnoblin.dialogs.addListener(
 
 ## Settings with no TypeScript home yet {#dropped-settings}
 
-No object of the shell carries these settings, so `init.ts` cannot set them. The shell keeps its default for each. The follow-up
-table in section 3.11 of `design/js-spec-native.md` lists what each one did and what a home for it would need.
+No object of the shell carries these settings, so `init.ts` cannot set them. The shell keeps its default for each. The
+table says what stays in each case.
 
 | Setting                                                                                                                                                            | What stays                                       |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
