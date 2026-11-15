@@ -23,6 +23,12 @@
 //! as `js_lock.rs`, so the cover the lock draws and the lock screen the stock shell paints come and go too.
 //! `GNOBLIN_SOAK_RSS_LIMIT_MIB` (0 by default: none) ends the run, and fails it, when the process grows past it, so
 //! a run that cannot stay bounded leaves its series instead of an OOM kill.
+//!
+//! `GNOBLIN_SOAK_BUDGET_MIB` (unset by default: the session's default budget) sets the compositor's memory budget to a
+//! small value, and turns on a client that leans on it: every cycle it asks for one large buffer (`pressure.rs`), is
+//! admitted or ended with `wl_display.error.no_memory`, and lets go at the end of the cycle. The series then carries
+//! what the budget did (`refused_total`, `evicted_total`, `clients_bytes`) beside what the process held, which is how a
+//! refusal that leaks or a session that does not survive one shows.
 
 use std::fs;
 use std::io::Write as _;
@@ -49,6 +55,9 @@ use support::{Mapper, scene, snapshot};
 #[path = "gpu_memory_soak/capture.rs"]
 mod capture;
 use capture::Capture;
+
+#[path = "gpu_memory_soak/pressure.rs"]
+mod pressure;
 
 /// The only user the scripted password check knows, and the password it accepts.
 const USER: &str = "kieran";
@@ -104,7 +113,7 @@ struct Session {
 }
 
 impl Session {
-    fn start(renderer: RendererChoice) -> Self {
+    fn start(renderer: RendererChoice, limits: gnoblin_wayland::Limits) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).expect("the directory mode");
         let stop = StopHandle::new();
@@ -118,6 +127,7 @@ impl Session {
             renderer: Some(renderer),
             ..SessionConfig::default()
         };
+        config.wayland.gpu_limits = limits;
         config.wayland.socket_path = Some(directory.path().join("wayland.sock"));
         config.wayland.privileged_socket_path = Some(directory.path().join("wayland-privileged.sock"));
         // The password check is scripted, as in `js_lock.rs`: PAM is not what a memory soak is about.
@@ -348,6 +358,14 @@ fn screens(ipc: &Path) -> serde_json::Value {
     serde_json::Value::Array(rows)
 }
 
+/// The largest `key` over the screens a sample holds: the session-wide numbers are the same on every screen, and a sum
+/// would count them once for each.
+fn greatest(screens: &serde_json::Value, key: &str) -> f64 {
+    screens.as_array().map_or(0.0, |rows| {
+        rows.iter().filter_map(|row| row[key].as_f64()).fold(0.0, f64::max)
+    })
+}
+
 /// The sum of `key` over the screens a sample holds.
 fn sum(screens: &serde_json::Value, key: &str) -> f64 {
     screens
@@ -377,7 +395,15 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
         .parse()
         .expect("GNOBLIN_SOAK_LOCK_EVERY is a number");
 
-    let session = Session::start(renderer());
+    // A budget the churn leans on: the session's own default when the variable is unset.
+    let budget_mib: u64 = setting("GNOBLIN_SOAK_BUDGET_MIB", "0")
+        .parse()
+        .expect("GNOBLIN_SOAK_BUDGET_MIB is a number");
+    let mut limits = gnoblin_wayland::Limits::default();
+    if budget_mib > 0 {
+        limits.budget_bytes = budget_mib << 20;
+    }
+    let session = Session::start(renderer(), limits);
     let config = tempfile::tempdir().expect("a config directory");
     let _shell = Shell::start(&session.ipc(), config.path());
     let ipc = session.ipc();
@@ -405,6 +431,8 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
     let mut screenshots = 0u64;
     let mut refused_screenshots = 0u64;
     let mut factor = "1";
+    // What the client that leans on the budget was told: buffers admitted and buffers refused.
+    let (admitted, refused_buffers) = (std::cell::Cell::new(0u64), std::cell::Cell::new(0u64));
     let mut sample = |cycle: u64,
                       windows: usize,
                       factor: &str,
@@ -433,6 +461,12 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
             "gpu_memory_bytes": sum(&screens, "gpu_memory_bytes"),
             "gpu_memory_capture_bytes": sum(&screens, "gpu_memory_capture_bytes"),
             "gpu_memory_staging_bytes": sum(&screens, "gpu_memory_staging_bytes"),
+            "budget_bytes": greatest(&screens, "gpu_memory_budget_bytes"),
+            "clients_bytes": greatest(&screens, "gpu_memory_clients_bytes"),
+            "refused_total": greatest(&screens, "gpu_memory_refused_total"),
+            "evicted_total": greatest(&screens, "gpu_memory_evicted_total"),
+            "pressure_admitted": admitted.get(),
+            "pressure_refused": refused_buffers.get(),
             "screens": screens,
         });
         writeln!(out, "{line}").expect("a series line");
@@ -476,6 +510,16 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
         if let Some(capture) = &mut capture {
             capture.step();
         }
+        // The client that leans on a small budget: a buffer of 16 to 48 MiB, kept until the end of the cycle.
+        let held = (budget_mib > 0).then(|| {
+            let (width, height) = [(2048, 2048), (3072, 2048), (4096, 3072)][cycle as usize % 3];
+            let (answer, connection) = pressure::lean(&session.wayland(), width, height);
+            match answer {
+                pressure::Answer::Accepted => admitted.set(admitted.get() + 1),
+                pressure::Answer::Refused => refused_buffers.set(refused_buffers.get() + 1),
+            }
+            connection
+        });
         // Screenshots through the control socket: both the composed frame and the one the display shows.
         let mut control = owner(&ipc);
         let shot = if cycle.is_multiple_of(2) {
@@ -525,6 +569,7 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
             );
             next_sample += Duration::from_secs(sample_every);
         }
+        drop(held);
         std::thread::sleep(Duration::from_millis(40));
     }
     // The end: every client gone, the factor back to one, the second output unplugged, then a settled reading.
@@ -532,6 +577,31 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
     let _ = supersample(&ipc, output, "1");
     std::thread::sleep(Duration::from_secs(3));
     sample(cycle, 0, "1", screenshots, refused_screenshots, locks, &capture);
+    if budget_mib > 0 {
+        // With every client of the churn gone and the recorder closed, nothing may stay counted: a refusal that left a
+        // buffer or a surface in the ledger would show here as bytes no client holds. The budget must also have been
+        // leaned on, or the run proved nothing about it.
+        drop(capture.take());
+        let deadline = Instant::now() + PATIENCE;
+        let mut last;
+        loop {
+            std::thread::sleep(Duration::from_millis(500));
+            last = screens(&ipc);
+            if greatest(&last, "gpu_memory_clients_bytes") == 0.0 || Instant::now() >= deadline {
+                break;
+            }
+        }
+        sample(cycle, 0, "1", screenshots, refused_screenshots, locks, &capture);
+        assert_eq!(
+            greatest(&last, "gpu_memory_clients_bytes"),
+            0.0,
+            "buffers stayed counted after every client was gone"
+        );
+        assert!(
+            greatest(&last, "gpu_memory_refused_total") > 0.0 && refused_buffers.get() > 0,
+            "the budget was never refused anything, so the run proved nothing about refusal: {last}"
+        );
+    }
     assert!(
         over_limit_at.is_none(),
         "the process passed {rss_limit_mib} MiB resident after {:.0} s: the series in {out_path} shows what grew",
