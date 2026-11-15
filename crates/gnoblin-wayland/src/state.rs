@@ -3747,6 +3747,8 @@ impl Host for State {
         }
         let lock_calls = self.tree.take_lock_calls();
         self.run_lock_calls(&lock_calls);
+        let lock_beats = self.tree.take_lock_beats();
+        self.renew_lock_ui_lease(lock_beats);
         self.apply_claims(claims);
         let destroyed = self.tree.take_destroyed();
         self.release_seat_nodes(&destroyed);

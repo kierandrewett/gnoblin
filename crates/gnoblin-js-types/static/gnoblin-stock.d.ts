@@ -2988,6 +2988,7 @@ declare module "gnoblin" {
         screen(): number[] | undefined;
         engage(engaged: boolean): string | undefined;
         authenticate(password: string): number | undefined;
+        heartbeat(): void;
         takeAnswers(): LockAnswer[];
     }
     /** Everything that sets how the lock screen looks and what it says. */

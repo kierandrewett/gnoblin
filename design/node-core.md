@@ -552,7 +552,13 @@ lands last and the compositor ends with the shell's intent, whichever order the 
 shell's write reached the tree in (`a_focus_write_refused_stale_base_is_sent_again_and_is_the_final_focus`). A node
 the compositor changes before every landing would refuse the retry for ever, and the writes beside it with it, so
 after `STALE_RETRIES` (3) refusals in a row the failed op is dropped, the rest of the transaction goes on and the
-published change wins (`a_write_refused_stale_base_every_time_is_dropped_after_its_retries_and_the_others_land`). What
+published change wins (`a_write_refused_stale_base_every_time_is_dropped_after_its_retries_and_the_others_land`). The
+JavaScript shell adds three rules to these. A refusal applies nothing, so every op of the refused transaction goes
+again whatever its kind, a call included, except a call the schema marks secret (its text is wiped once sent), whose
+caller is answered `failed`. A `stale-base` with `failed_op` -1 blames the base, not an op (the base is older than the
+64 batches kept, or ahead of the serial): the whole frame goes again on the refreshed base. A property write given up
+after its resends is forgotten by the builder and reported to the layout driver, which computes the workspace again
+(`crates/gnoblin-js/tests/write_refusals.rs`). What
 a sent transaction wrote stays
 readable to the shell's next ticks until every transaction sent has been answered: the nodes it made, and the values it
 set on nodes the mirror holds (a Desk sizes its workspaces; a window placed the next frame must read that size, not

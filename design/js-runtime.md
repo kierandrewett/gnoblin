@@ -293,7 +293,17 @@ compositor in `crates/gnoblin-js/tests/shell.rs`, and against the real one by P6
   one transaction.
 - **Protocol rules.** Copied from `ShellVm`, not shared: one transaction in flight, replies matched by position,
   `stale-base` and `unknown-node` refusals sent again ahead of the next frame's writes, `STALE_RETRIES` (3) in a
-  row. The tests are the Lua ones ported (hold, stale resend, retry cap, unknown node, refusal report).
+  row. The tests are the Lua ones ported (hold, stale resend, retry cap, unknown node, refusal report). Two rules
+  are the JavaScript shell's own, because the refusals of the real compositor showed what the Lua VM never met: a
+  refusal applies nothing, so **every** op of it goes again whatever its kind (a call too, `Output.apply` among them),
+  except a call the schema marks `secret`, which is asked of `gnoblin_proto::tree_call_is_secret` and not of a list
+  of names; and a `stale-base` that names no op (`failed_op` -1: the base is older than the compositor's 64 batches)
+  sends the **whole frame** again on the refreshed base. What cannot go again is not left waiting: a call is answered
+  `failed`, which reaches its caller by token (the lock screen's check, an `OutputApplication`), and a property write
+  given up after its resends is forgotten by the builder and handed to the layout driver (`lost_writes`), which lays
+  its workspace out again, because a placement is computed only for a workspace that is dirty and the pass cleared
+  that before the write went out. Tests: `crates/gnoblin-js/tests/write_refusals.rs` over the shared fake compositor,
+  which refuses as the real one does (`Fault`), and `crates/gnoblin/tests/js_lock.rs` against the real one.
 - **Objects.** One `Client` per window node for the life of the generation (workspaces are the script's, see P3b),
   so the same node is the same JS object. A client has `id` (the node id as a string), `appId`, `title`, `focused`,
   `fullscreen`, `x`, `y`, `width`, `height`, `bounds`, `workspace`, `alive`, `close()`, `focus()`. Only the four
@@ -1675,10 +1685,19 @@ The session lock screen (lane JsLock; `docs/session-lock.md`, `design/js-researc
 - **Rust side.** The cover now draws, for the compositor's own lock only, the canvases under the `lock` node once the shell
   holds the tree and has engaged the lock (`Composer::compose_lock_ui`; it redraws when the subtree changes). The lock card
   (`LockUi`, `LockCardService`, `lock_card.rs` in `gnoblin-wayland`) is wanted when the lock is the compositor's own and
-  proven and no shell holds the lock screen, with a 1 s grace while a shell is attached. A shell that detaches has its
-  `engaged` released. The card is the last layer of the frame and takes every key while up; a shell may not use the card's
-  reserved check token. `ipc/localtime.rs` reads the time zone (TZif and its POSIX footer) because the compositor links no
-  time library and forbids unsafe code.
+  proven and no shell holds the lock screen, with a 1 s grace while a shell is attached. "Holds" is a **lease**, not the
+  `engaged` flag: the screen renews it with the lock node's `heartbeat` call (at most twice a second, only while it is
+  up and its frame ran to its end), and a lease not renewed for 2 s (`LOCK_UI_LEASE_MS`) lapses, so a shell that
+  engaged and then hung, or whose lock frame throws every frame, loses the password entry to the card after 3 s. A
+  shell that detaches has its `engaged` released. The card is the last layer of the frame and takes every key while up;
+  a shell may not use the card's reserved check token. `ipc/localtime.rs` reads the time zone (TZif and its POSIX
+  footer) because the compositor links no time library and forbids unsafe code.
+- **J8, as built.** Decision J8 says Rust draws the lock password entry. The stock lock screen is TypeScript and
+  collects the password in the script, which departs from it; the compositor holds the line that matters: only its own
+  PAM check unlocks, and the Rust card is the entry whenever the screen is absent, not alive or not answering. A check
+  that is lost is answered `failed` at once (a refused transaction cannot send a password again), and one the
+  compositor never answers is answered `failed` after 30 s (`CHECK_DEADLINE`), so the screen takes another attempt
+  instead of waiting on "Checking...".
 - **Limits, honestly.** A JavaScript string cannot be wiped: the password is in the script engine's heap in the string
   built for the `authenticate` call and in the key events that carried it, until the collector frees them. The entry's own
   buffer is cleared, and the Rust card, which has no script, wipes. A `SecureEntry` node (popups-portals.md, 4.3) would

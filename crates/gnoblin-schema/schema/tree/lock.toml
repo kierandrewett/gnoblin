@@ -48,3 +48,12 @@ name = "text"
 type = "string"
 since = "0.2.0"
 secret = true
+
+# Renew the shell's lease on its lock screen. The shell that set `engaged` sends this while its screen is alive: it paints,
+# and no password check it sent is left unanswered. A lease that is not renewed for two seconds lapses, and after one more
+# second the compositor's own lock card takes the password instead (`docs/session-lock.md`), so a lock screen that stopped
+# answering never leaves the session with nothing to type into. The call has no answer and changes no node. Owner
+# connections only.
+[[object.method]]
+name = "heartbeat"
+since = "0.2.0"

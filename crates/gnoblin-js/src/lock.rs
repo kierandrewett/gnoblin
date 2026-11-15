@@ -7,13 +7,20 @@
 //!
 //! The password is the call's secret text. It crosses from the script as one string argument, goes straight into a
 //! [`SecretText`] that the transaction wipes once it is sent, and is never kept, logged or put in a retry (the
-//! shell's sent-log drops a call that carries text). The copy the script held is the script's to clear, and a
-//! JavaScript string cannot be wiped: `docs/session-lock.md` says what that leaves.
+//! shell's sent log keeps only the token of a call the schema marks secret, and answers it `failed` when its
+//! transaction is refused, so the screen takes another attempt). The copy the script held is the script's to clear,
+//! and a JavaScript string cannot be wiped: `docs/session-lock.md` says what that leaves.
+//!
+//! The screen is alive only while the compositor says so: it renews a lease with the node's `heartbeat` call
+//! ([`heartbeat`]), and a check the compositor does not answer within [`CHECK_DEADLINE`] is answered `failed` here.
+//! Without either, a lock screen that hung or lost a check would hold the lock UI with nothing to type into.
 //!
 //! Like the other host functions, each is a thin closure over a free function on [`HostState`], so the logic is
 //! testable without an engine.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
 
 use gnoblin_secret::SecretText;
 use gnoblin_tree_client::tree_mirror::{MirrorValue, NodeId, class_name};
@@ -23,6 +30,17 @@ use crate::bindings::{HostState, SharedState, parents_first};
 
 /// What `state` reads while the tree has no lock node (a tree that is not the compositor's).
 const NOT_LOCKED: &str = "not-locked";
+
+/// The least time between two `heartbeat` calls. The compositor's lease on the lock screen lasts two seconds
+/// (`LOCK_UI_LEASE_MS` in `gnoblin-wayland`), so twice a second is a margin of three lost beats and costs one
+/// transaction every half second while the session is locked.
+const HEARTBEAT_INTERVAL: Duration = Duration::from_millis(500);
+
+/// How long a password check may go unanswered before the screen is told it failed. The compositor answers every
+/// check it receives, so an answer that has not come by now never will (the check was lost on the way); the screen
+/// then takes another attempt instead of waiting for ever. A PAM check that takes longer than this still unlocks the
+/// session when it ends: only the screen's wait is over.
+const CHECK_DEADLINE: Duration = Duration::from_secs(30);
 
 /// The compositor's answer to an `authenticate` call, as the script reads it.
 #[derive(Clone, Debug, PartialEq)]
@@ -43,17 +61,29 @@ impl<'js> IntoJs<'js> for JsLockAnswer {
 }
 
 /// What the lock screen keeps on the host between frames.
-#[derive(Default)]
 pub(crate) struct JsLockState {
-    /// The tokens of the password checks asked and not yet answered.
-    checks: HashSet<u64>,
+    /// The password checks asked and not yet answered, by token, with when each was asked.
+    checks: HashMap<u64, Duration>,
     answers: Vec<JsLockAnswer>,
+    /// The clock the deadlines and the heartbeat count on: the shell's, or the one a test injected.
+    clock: Arc<dyn crate::supervisor::JsClock>,
+    /// When the last `heartbeat` call was queued.
+    last_beat: Option<Duration>,
 }
 
 impl JsLockState {
+    pub(crate) fn new(clock: Arc<dyn crate::supervisor::JsClock>) -> Self {
+        Self {
+            checks: HashMap::new(),
+            answers: Vec::new(),
+            clock,
+            last_beat: None,
+        }
+    }
+
     /// Keeps the answer to a password check this module asked. Returns false for any other call's answer.
     pub(crate) fn accept_answer(&mut self, token: u64, result: &[u8], error: &str) -> bool {
-        if !self.checks.remove(&token) {
+        if self.checks.remove(&token).is_none() {
             return false;
         }
         self.answers.push(JsLockAnswer {
@@ -62,6 +92,21 @@ impl JsLockState {
             error: error.to_owned(),
         });
         true
+    }
+
+    /// Answers `failed` for every check that has waited longer than [`CHECK_DEADLINE`], and hands over the answers.
+    fn take_answers(&mut self) -> Vec<JsLockAnswer> {
+        let now = self.clock.now();
+        let late: Vec<u64> = self
+            .checks
+            .iter()
+            .filter(|(_, asked)| now.saturating_sub(**asked) >= CHECK_DEADLINE)
+            .map(|(token, _)| *token)
+            .collect();
+        for token in late {
+            self.accept_answer(token, b"", "failed: the compositor did not answer the password check");
+        }
+        std::mem::take(&mut self.answers)
     }
 }
 
@@ -145,8 +190,34 @@ pub(crate) fn authenticate(state: &mut HostState, password: String) -> Option<u6
         SecretText::new(password),
     )
     .ok()?;
-    lock.checks.insert(token);
+    let asked = lock.clock.now();
+    lock.checks.insert(token, asked);
     Some(token)
+}
+
+/// Renews the lease the compositor gives the lock screen, at most once every [`HEARTBEAT_INTERVAL`]: a call on the lock
+/// node that has no answer and changes no node. It is not a secret and may go again, so a refusal that sends it again
+/// does no harm; a lost one is made up for by the next. The compositor's own lock card takes the password when the
+/// beats stop (`docs/session-lock.md`).
+pub(crate) fn heartbeat(state: &mut HostState) {
+    let Some(node) = lock_node(state) else {
+        return;
+    };
+    let now = state.lock.clock.now();
+    if state
+        .lock
+        .last_beat
+        .is_some_and(|at| now.saturating_sub(at) < HEARTBEAT_INTERVAL)
+    {
+        return;
+    }
+    let HostState { mirror, tick, lock, .. } = state;
+    if tick
+        .call(mirror, node, "heartbeat", Vec::new(), 0, SecretText::new(String::new()))
+        .is_ok()
+    {
+        lock.last_beat = Some(now);
+    }
 }
 
 /// Installs `__gnoblinHost.lock`, the functions `gnoblin/lock` runs on.
@@ -194,9 +265,15 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedSta
 
     let shared = state.clone();
     lock.set(
+        "heartbeat",
+        Function::new(ctx.clone(), move || heartbeat(&mut shared.borrow_mut()))?,
+    )?;
+
+    let shared = state.clone();
+    lock.set(
         "takeAnswers",
         Function::new(ctx.clone(), move || -> Vec<JsLockAnswer> {
-            std::mem::take(&mut shared.borrow_mut().lock.answers)
+            shared.borrow_mut().lock.take_answers()
         })?,
     )?;
 
@@ -222,6 +299,10 @@ mod tests {
     }
 
     fn state(lock_state: &str) -> HostState {
+        state_on(lock_state, Arc::new(crate::supervisor::JsSystemClock))
+    }
+
+    fn state_on(lock_state: &str, clock: Arc<dyn crate::supervisor::JsClock>) -> HostState {
         let nodes = [
             node(1, 0, "node", Vec::new()),
             node(
@@ -240,7 +321,7 @@ mod tests {
                 ],
             ),
         ];
-        HostState::new(TreeMirror::from_snapshot(1, 1, 1, &nodes).expect("a mirror"))
+        HostState::with_clock(TreeMirror::from_snapshot(1, 1, 1, &nodes).expect("a mirror"), clock)
     }
 
     #[test]
@@ -308,5 +389,59 @@ mod tests {
         let mut bare = HostState::new(TreeMirror::from_snapshot(1, 1, 1, &nodes).expect("a mirror"));
         assert_eq!(set_engaged(&mut bare, true), Some("no-lock"));
         assert_eq!(authenticate(&mut bare, "x".to_owned()), None);
+    }
+
+    fn beats(state: &HostState) -> usize {
+        state
+            .tick
+            .ops()
+            .iter()
+            .filter(|op| matches!(op, TxOp::Call { node: 2, method, .. } if method == "heartbeat"))
+            .count()
+    }
+
+    #[test]
+    fn a_heartbeat_is_a_call_on_the_lock_node_at_most_twice_a_second() {
+        let clock = crate::supervisor::JsManualClock::default();
+        let mut state = state_on("locked", Arc::new(clock.clone()));
+        heartbeat(&mut state);
+        heartbeat(&mut state);
+        assert_eq!(beats(&state), 1, "two in one instant are one beat");
+        clock.advance(Duration::from_millis(499));
+        heartbeat(&mut state);
+        assert_eq!(beats(&state), 1, "the next waits for the interval");
+        clock.advance(Duration::from_millis(1));
+        heartbeat(&mut state);
+        assert_eq!(beats(&state), 2);
+    }
+
+    #[test]
+    fn a_tree_with_no_lock_has_nothing_to_renew() {
+        let nodes = [node(1, 0, "node", Vec::new())];
+        let mut bare = HostState::new(TreeMirror::from_snapshot(1, 1, 1, &nodes).expect("a mirror"));
+        heartbeat(&mut bare);
+        assert!(bare.tick.ops().is_empty());
+    }
+
+    #[test]
+    fn a_check_nobody_answers_is_answered_failed_once_its_deadline_has_passed() {
+        let clock = crate::supervisor::JsManualClock::default();
+        let mut state = state_on("locked", Arc::new(clock.clone()));
+        let token = authenticate(&mut state, "hunter2".to_owned()).expect("a token");
+        clock.advance(CHECK_DEADLINE - Duration::from_millis(1));
+        assert!(
+            state.lock.take_answers().is_empty(),
+            "the check is still within its time"
+        );
+        clock.advance(Duration::from_millis(1));
+        let answers = state.lock.take_answers();
+        assert_eq!(answers.len(), 1);
+        assert_eq!(answers[0].token, token as f64);
+        assert!(answers[0].error.starts_with("failed: "), "{:?}", answers[0]);
+        assert!(state.lock.take_answers().is_empty(), "the failure is given once");
+        assert!(
+            !state.lock.accept_answer(token, b"ok", ""),
+            "the compositor's late answer finds nothing waiting"
+        );
     }
 }

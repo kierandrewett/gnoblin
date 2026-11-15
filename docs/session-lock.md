@@ -168,10 +168,15 @@ masked password entry over the cover, under the `lock` node:
 
 - It comes up when `state` leaves `not-locked`. A shell that starts while the session is locked finds the state already
   there.
-- It sets the node's `engaged` while it is up, and sends the password with `authenticate`.
+- It sets the node's `engaged` while it is up, sends the password with `authenticate`, and renews its lease on the lock
+  screen with `heartbeat` (see "The lock card").
 - It never decides anything: only an accepted check unlocks.
 - A wrong password clears the entry and says `Wrong password.`, and a rate-limited one says how long to wait.
 - An Enter pressed while a check runs is not a second attempt, and a key typed after the unlock is dropped.
+- A check that is lost is not waited for. When the compositor refuses the transaction that carries it (`stale-base`: the
+  password is wiped once sent, so it cannot go again) the screen is answered `The password could not be checked.` at
+  once, and a check the compositor does not answer within 30 seconds is answered the same, so the next Enter is an
+  attempt.
 
 ### The lock card
 
@@ -183,11 +188,25 @@ The card is wanted when both of these hold:
 
 - The lock is the compositor's own and the cover is proven (`locked`). An `ext-session-lock-v1` client's lock is that
   client's to draw and check, so the card is never drawn over it.
-- No shell holds the lock screen: none holds the tree, or one does and has not set `engaged`.
+- No shell holds the lock screen: none holds the tree, or one does and has not set `engaged`, or one has and its lease
+  has lapsed.
 
-A shell that is attached gets one second to engage before the card is drawn, and the same second after it lets go, so a
-reload does not flash the card. A shell that disconnects releases `engaged`, so the card is back at once, and the next shell
-starts from a lock nobody holds.
+`engaged` alone is a claim. A shell that engaged and then hung, or whose lock frame throws every frame, would hold the
+lock UI with nothing to type into. So holding the lock screen is a lease:
+
+- The shell renews it with the lock node's `heartbeat` call, at most twice a second, while its screen is up and its
+  frame ran to its end.
+- A lease that is not renewed for two seconds lapses.
+- The call has no answer and changes no node, and only the shell that holds the tree may send it.
+- A lock first seen engaged starts the lease, so a shell has two seconds to send its first beat.
+
+A shell that is attached gets one second to engage or renew before the card is drawn, and the same second after it lets
+go, so a reload does not flash the card.
+
+- A shell that disconnects releases `engaged`, so the card is back at once, and the next shell starts from a lock nobody
+  holds.
+- A shell that hangs while holding the lock screen loses it to the card after three seconds.
+- The shell takes the screen back, and the card is dropped, when it renews its lease.
 
 When a shell engages the lock, the card is dropped with anything typed into it, and the shell's screen is drawn from the
 same frame. The session stays locked throughout and the desktop is never drawn.
@@ -208,8 +227,11 @@ file. A zone the card cannot read shows UTC.
 The compositor's card keeps the password in a wiped buffer from the first key, and the check runs on a worker the shell
 never sees.
 
-The shell's screen cannot do as much, because the password passes through the script. The entry keeps what is typed as
-an array of code points, not as a string.
+The shell's screen cannot do as much, because the password passes through the script. Decision J8 says Rust draws the
+lock password entry, and the stock screen departs from it. The compositor's card is the entry whenever the screen is
+absent, not alive or not answering.
+
+The entry keeps what is typed as an array of code points, not as a string.
 
 It overwrites the array when the call is made. The one string the password is built into lives for the call to
 `authenticate`.
@@ -229,13 +251,22 @@ stock screen only with code you trust.
       is answered with the entry cleared;
     - the clock, the focus given back, an Enter during a check and keys after the unlock;
     - the password is in no node of the tree.
-- `crates/gnoblin-compositor/tests/lock_card.rs` runs against the real compositor with a scripted check in place of PAM.
-  With no shell the right password unlocks the session. A wrong one does not, and the card still takes the right one after
-  it. A shell that holds the lock screen keeps the card away, one that dies brings it back, and one that attaches while the
-  card is up takes over.
-- `crates/gnoblin/tests/js_lock.rs` runs the JavaScript shell against the real compositor. It covers no shell and the card,
-  the shell's screen painted under the `lock` node and engaged, a wrong password answered on it, and the right one
-  unlocking and the screen coming down.
+- `crates/gnoblin-js/tests/write_refusals.rs` runs the same screen over the shared fake compositor, which can refuse a
+  transaction as the real one does: a check lost to a `stale-base` refusal is answered `failed` and the next Enter is an
+  attempt, a check nobody answers fails after 30 s, and the screen renews its lease twice a second while it is up and not
+  after it comes down.
+- `crates/gnoblin-compositor/tests/lock_card.rs` runs against the real compositor with a scripted check in place of PAM:
+    - with no shell the right password unlocks the session;
+    - a wrong one does not, and the card still takes the right one after it;
+    - a shell that holds the lock screen keeps the card away, and one that dies brings it back;
+    - a shell that attaches while the card is up takes over;
+    - a shell that stays attached and `engaged` but stops renewing its lease loses the lock UI to the card.
+- `crates/gnoblin/tests/js_lock.rs` runs the JavaScript shell against the real compositor:
+    - no shell and the card, the shell's screen painted under the `lock` node and engaged;
+    - a wrong password answered on it, and the right one unlocking and the screen coming down;
+    - a password check the compositor refused `stale-base` (forged on the way out, because the harness has no other way
+      to make the real compositor's base stale) answered `failed` on the screen, which takes the next attempt;
+    - a shell that stops ticking while engaged losing the lock UI to the card.
 
 No test reads the output's pixels. That the card and the shell's screen are drawn over the cover is shown by the tree's
 paint lists and the compositor's frame path, not by a screenshot.

@@ -9,11 +9,16 @@
 //! - **Only the compositor's own lock.** The card serves a lock taken through the `lock` node (the screensaver service,
 //!   `gnoblin lock`): there the compositor owns the unlock. An `ext-session-lock-v1` client's lock belongs to that
 //!   client, which draws its own screen and checks its own password; the card is never drawn over it.
-//! - **Only when no shell holds the lock screen.** A shell that holds the tree and has `engaged` the lock draws the
-//!   screen and takes the keys. With no shell attached the card is wanted at once. With one attached the card waits
-//!   [`LOCK_UI_GRACE_MS`] for it to engage, and again after it lets go (a reload's generation swap), so a shell that is
-//!   merely slow, or reloading, does not flash the card. A shell that detaches releases `engaged` here, so the next
-//!   shell starts from a lock nobody holds and the card is back the moment the old one is gone.
+//! - **Only when a shell holds the lock screen's lease, and not otherwise.** A shell that holds the tree and has
+//!   `engaged` the lock draws the screen and takes the keys, and renews its lease on it with the lock node's `heartbeat`
+//!   call while the screen is alive (it paints, and no password check it sent is left unanswered). `engaged` alone is
+//!   a claim, and a shell that engaged and then hung, or whose lock frame throws every frame, or whose check was lost,
+//!   would hold the lock UI with nothing to type into; a lease that is not renewed for [`LOCK_UI_LEASE_MS`] lapses and
+//!   the screen counts as not held. With no shell attached the card is wanted at once. With one attached, or one whose
+//!   lease lapsed, the card waits [`LOCK_UI_GRACE_MS`] for it to engage or renew, and again after it lets go (a
+//!   reload's generation swap), so a shell that is merely slow, or reloading, does not flash the card. A shell that
+//!   detaches releases `engaged` here, so the next shell starts from a lock nobody holds and the card is back the
+//!   moment the old one is gone.
 //! - **Not scriptable.** The card is a [`Modal`] only the composition root can set, through [`ControlHandle`] and not
 //!   through the tree. It is drawn after everything else in the frame, so no canvas is drawn over it, and while it is
 //!   up every key and button goes to it and to nothing else: no shell node, no client and no binding hears the password.
@@ -36,6 +41,11 @@ use crate::tree_frame::TreeAnswer;
 
 /// How long the shell has to hold the lock screen before the card is drawn over the cover, in session milliseconds.
 pub const LOCK_UI_GRACE_MS: u64 = 1_000;
+
+/// How long a shell's lease on the lock screen lasts, in session milliseconds: the stock lock screen renews it twice
+/// as often as this at least, so a lease that lapses is a screen that stopped, not one that is between two beats. The
+/// card follows [`LOCK_UI_GRACE_MS`] after the lapse.
+pub const LOCK_UI_LEASE_MS: u64 = 2_000;
 
 /// The token the card's password check runs under. A shell's tokens are its own counter, and the shell's checks
 /// are refused when they name this one, so an answer under it is always the card's.
@@ -90,6 +100,9 @@ pub(crate) struct LockCardTables {
     answers: Vec<LockCardAnswer>,
     /// Since when no shell has held the lock screen while the lock stood.
     absent_since: Option<Tick>,
+    /// The last time the shell renewed its lease on the lock screen, or when the lock was first seen engaged. `None`
+    /// while no shell has engaged it.
+    beat: Option<Tick>,
 }
 
 impl State {
@@ -99,9 +112,23 @@ impl State {
         self.lock.state() == LockState::Locked && self.lock.locker() == Some(internal_locker())
     }
 
-    /// Whether a shell holds the lock screen: it holds the tree and has engaged the lock.
-    fn lock_ui_held(&self) -> bool {
-        self.composer.shell_places() && self.composer.lock_ui_engaged()
+    /// Whether a shell holds the lock screen: it holds the tree, has engaged the lock and its lease on it has not
+    /// lapsed. A lock first seen engaged starts the lease, so the shell has [`LOCK_UI_LEASE_MS`] to renew it.
+    fn lock_ui_held(&mut self) -> bool {
+        if !(self.composer.shell_places() && self.composer.lock_ui_engaged()) {
+            self.lock_card.beat = None;
+            return false;
+        }
+        let beat = *self.lock_card.beat.get_or_insert(self.clock);
+        self.clock.since(beat) < LOCK_UI_LEASE_MS
+    }
+
+    /// Renews the shell's lease on the lock screen, as many times as it called `heartbeat` since the last frame. A
+    /// heartbeat from a shell that has not engaged the lock renews nothing: its lease starts when it engages.
+    pub(crate) fn renew_lock_ui_lease(&mut self, beats: usize) {
+        if beats > 0 && self.composer.shell_places() && self.composer.lock_ui_engaged() {
+            self.lock_card.beat = Some(self.clock);
+        }
     }
 
     /// Whether the card should be on screen now. See the module's rules.
@@ -192,6 +219,7 @@ impl State {
         self.lock_card.events.clear();
         self.lock_card.answers.clear();
         self.lock_card.absent_since = None;
+        self.lock_card.beat = None;
     }
 
     /// A shell that no longer holds the tree no longer holds the lock screen: its `engaged` is released, so the card

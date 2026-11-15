@@ -1154,7 +1154,9 @@ impl JsShell {
 
     /// Keeps the ops of a transaction refused for an out-of-date base, to be sent again on the next base ahead of the
     /// next frame's writes, so the script's newest write lands last. The gate stays shut until the mirror reaches the
-    /// refused serial, which the batch that made the base stale does.
+    /// serial the compositor refused at: every batch up to it came ahead of the reply, so the mirror that has read them
+    /// is the base to send again on. The serial the shell stamped is no guide, because a refusal never advances the
+    /// serial and the batch that made the base stale may be one the shell already read.
     ///
     /// Which ops go again: a refused transaction applied nothing, so every op of it is intact and goes again, in
     /// order, whatever its kind. The one exception is a call whose text is a secret (a password check): its text is
@@ -1232,6 +1234,9 @@ impl JsShell {
         );
         kept.append(&mut self.retry);
         self.retry = kept;
+        if self.in_flight.is_some() {
+            self.in_flight = Some(reply.serial);
+        }
     }
 
     /// Sends this frame's writes as one transaction, once the one in flight has landed.

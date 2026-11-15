@@ -658,6 +658,10 @@ pub struct TreeFrame {
     authentications: Vec<TreeCall>,
     /// `lock` calls the applied transactions made, in op order, for the compositor to run.
     lock_calls: Vec<TreeCall>,
+    /// How many `heartbeat` calls on the lock node the applied transactions made since the compositor last took them:
+    /// the shell renewing its lease on the lock screen (`State::lock_card_wanted`). A heartbeat has nothing to keep
+    /// but its arrival, so the count is all there is.
+    lock_beats: usize,
     /// Window nodes whose `maximised`, `fullscreen`, `minimised`, `tiled`, `width` or `height` the shell wrote, in the order
     /// the writes applied, for the compositor to answer with a configure.
     window_writes: Vec<NodeId>,
@@ -711,6 +715,7 @@ impl TreeFrame {
             claims: Vec::new(),
             authentications: Vec::new(),
             lock_calls: Vec::new(),
+            lock_beats: 0,
             window_writes: Vec::new(),
             window_calls: Vec::new(),
             view_captures: Vec::new(),
@@ -822,6 +827,11 @@ impl TreeFrame {
     /// Take the `lock` calls the applied transactions made, in op order, for the compositor to run.
     pub fn take_lock_calls(&mut self) -> Vec<TreeCall> {
         std::mem::take(&mut self.lock_calls)
+    }
+
+    /// Take the number of `heartbeat` calls the shell made on the lock node since the last take.
+    pub fn take_lock_beats(&mut self) -> usize {
+        std::mem::take(&mut self.lock_beats)
     }
 
     /// Take the window nodes the shell wrote state or size on since the last take, each once, for the
@@ -977,12 +987,13 @@ impl TreeFrame {
             };
             match result {
                 Ok(mut done) => {
-                    // A `lock` call changes no node and is the compositor's alone: no batch carries it, so it must not
-                    // advance the serial either, or every mirror that reads batches in order sees a gap.
-                    let shell_calls = done
-                        .calls
-                        .iter()
-                        .any(|call| !(scene.class(call.node) == Some("lock") && call.method == "lock"));
+                    // A `lock` or a `heartbeat` call changes no node and is the compositor's alone: no batch carries
+                    // it, so it must not advance the serial either, or every mirror that reads batches in order sees a
+                    // gap.
+                    let shell_calls = done.calls.iter().any(|call| {
+                        !(scene.class(call.node) == Some("lock")
+                            && matches!(call.method.as_str(), "lock" | "heartbeat"))
+                    });
                     changed |= !(done.changes.is_empty() && done.motion.is_empty() && !shell_calls);
                     self.inputs.extend(done.inputs.iter().copied());
                     // The calls move into the batch, and the seat claims and password checks move out to
@@ -1003,6 +1014,10 @@ impl TreeFrame {
                     let (locks, calls): (Vec<TreeCall>, Vec<TreeCall>) = calls
                         .into_iter()
                         .partition(|call| scene.class(call.node) == Some("lock") && call.method == "lock");
+                    // A `heartbeat` renews the shell's lease on the lock screen: it has no answer either.
+                    let (beats, calls): (Vec<TreeCall>, Vec<TreeCall>) = calls
+                        .into_iter()
+                        .partition(|call| scene.class(call.node) == Some("lock") && call.method == "heartbeat");
                     // A `measure` is answered on the spot: it reads no scene state, only the fonts.
                     let (measures, calls): (Vec<TreeCall>, Vec<TreeCall>) = calls
                         .into_iter()
@@ -1023,6 +1038,7 @@ impl TreeFrame {
                     self.output_calls.extend(applies);
                     self.authentications.extend(auths);
                     self.lock_calls.extend(locks);
+                    self.lock_beats += beats.len();
                     self.claims.extend(claims);
                     for change in &done.changes {
                         if let TreeChange::Set { node, key, .. } = change

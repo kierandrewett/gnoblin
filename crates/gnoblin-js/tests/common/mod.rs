@@ -289,18 +289,28 @@ impl FakeCompositor {
                 // The racing batch is published before the refusal and the refusal carries the serial it leaves, as
                 // the real frame answers after it publishes.
                 for change in &racing {
-                    if let Some(value) = change.value.clone()
+                    if change.kind == MirrorChangeKind::Destroyed {
+                        c.detach(change.node);
+                        for id in &change.removed {
+                            c.nodes.remove(id);
+                        }
+                    } else if let Some(value) = change.value.clone()
                         && let Some(entry) = c.nodes.get_mut(&change.node)
                     {
                         entry.props.insert(change.key.clone(), value);
                     }
                 }
-                c.serial += 1;
+                // With no racing batch the compositor's serial does not move: the refusal names the serial the shell's
+                // mirror holds already, as a base that is ahead of the compositor's gets.
+                if !racing.is_empty() {
+                    c.serial += 1;
+                    let serial = c.serial;
+                    c.queue.push(TreeIncoming::Changes {
+                        serial,
+                        changes: racing,
+                    });
+                }
                 let serial = c.serial;
-                c.queue.push(TreeIncoming::Changes {
-                    serial,
-                    changes: racing,
-                });
                 c.refused += 1;
                 c.queue.push(TreeIncoming::Reply(TxReply {
                     serial,

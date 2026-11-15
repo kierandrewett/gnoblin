@@ -17,6 +17,8 @@
 //! 2. A wrong password keeps the session locked, and the card still takes the right one after it.
 //! 3. A shell that holds the lock screen keeps the card away, and one that dies while locked brings it up.
 //! 4. A shell that attaches while the card is up takes over: the card is gone, and the shell's own `authenticate` unlocks.
+//! 5. A shell that engaged the lock and then stops renewing its lease (hung, or its screen failing) loses the lock UI:
+//!    the card takes the password although the shell is still attached and still `engaged`.
 
 mod support;
 
@@ -189,6 +191,20 @@ impl Peer {
         )
     }
 
+    /// The shell renews its lease on the lock screen, as the stock lock screen does twice a second. A write the
+    /// compositor made since the shell's last read (the lock's own `state`) makes the call stale, and the stock shell
+    /// sends it again on the new base, so this does too.
+    fn heartbeat(&mut self) {
+        for _ in 0..5 {
+            let reply = self.call("heartbeat", "");
+            if reply.applied {
+                return;
+            }
+            assert_eq!(reply.code, "stale-base", "{reply:?}");
+        }
+        panic!("the compositor kept calling the shell's base stale");
+    }
+
     /// The shell records that its lock screen is up (or down).
     fn engage(&mut self, engaged: bool) {
         let lock = self.lock;
@@ -289,6 +305,7 @@ fn a_shell_that_holds_the_lock_screen_keeps_the_card_away_and_one_that_dies_brin
     // The shell's screen is up: the card is not, so a typed password goes to the shell's (absent) entry and nowhere else.
     let until = Instant::now() + Duration::from_secs(3);
     while Instant::now() < until {
+        holder.heartbeat();
         type_and_enter(&session, &[KEY_H, KEY_I]);
         observer.watch(Duration::from_millis(300));
         assert_eq!(
@@ -317,6 +334,7 @@ fn a_shell_that_attaches_while_the_card_is_up_takes_over_and_unlocks_through_its
     // The card is gone: the right password typed at the keyboard now goes to the shell's (absent) entry, not the card.
     let until = Instant::now() + Duration::from_secs(3);
     while Instant::now() < until {
+        holder.heartbeat();
         type_and_enter(&session, &[KEY_H, KEY_I]);
         observer.watch(Duration::from_millis(300));
         assert_eq!(
@@ -328,5 +346,32 @@ fn a_shell_that_attaches_while_the_card_is_up_takes_over_and_unlocks_through_its
     let reply = holder.call("authenticate", PASSWORD);
     assert!(reply.applied, "the holder asks for the check: {reply:?}");
     observer.wait_for_state("not-locked");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_shell_that_engaged_the_lock_and_stopped_renewing_its_lease_loses_it_to_the_card() {
+    let session = start();
+    let mut holder = attach(&session, "holder");
+    holder.engage(true);
+    let mut observer = lock(&session);
+    // While it renews, the shell's screen is the lock UI and the card stays away.
+    let until = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < until {
+        holder.heartbeat();
+        type_and_enter(&session, &[KEY_H, KEY_I]);
+        observer.watch(Duration::from_millis(300));
+        assert_eq!(
+            observer.state, "locked",
+            "the card must not draw over a shell with a live lease"
+        );
+    }
+    // The shell stays attached and `engaged` and sends nothing more: its lease lapses, and a second later the card
+    // takes the password. A shell that only claims the lock UI holds nothing.
+    assert!(
+        type_right_until_unlocked(&session, &mut observer, Duration::from_secs(20)),
+        "the shell stopped renewing and the card never took the lock UI over: the session has nothing to type into"
+    );
+    drop(holder);
     session.stop().expect("the session stops cleanly");
 }

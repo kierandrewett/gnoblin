@@ -376,6 +376,7 @@ declare module "gnoblin/schema/tree" {
         lock(): Reply;
         /** Secret parameters: `text`. */
         authenticate(text: string): Reply;
+        heartbeat(): Reply;
         /** Signal `requested`. */
         onRequested(handler: (target: this) => void): Unsubscribe;
     }
@@ -3740,6 +3741,7 @@ declare module "gnoblin" {
         screen(): number[] | undefined;
         engage(engaged: boolean): string | undefined;
         authenticate(password: string): number | undefined;
+        heartbeat(): void;
         takeAnswers(): LockAnswer[];
     }
     /** Everything that sets how the lock screen looks and what it says. */

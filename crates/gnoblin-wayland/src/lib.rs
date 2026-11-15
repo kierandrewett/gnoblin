@@ -239,7 +239,7 @@ pub use clock::{Clock, ManualClock, SystemClock};
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
 pub use gnoblin_lock::State as LockState;
 /// The built-in lock card's seam with the session: when it is wanted, and what it takes and is answered.
-pub use lock_card::{LOCK_UI_GRACE_MS, LockCardAnswer, LockCardInput};
+pub use lock_card::{LOCK_UI_GRACE_MS, LOCK_UI_LEASE_MS, LockCardAnswer, LockCardInput};
 /// A modal dialog's state, and the events that change it.
 pub use modal::{Modal, ModalEvent};
 pub use observation::lock_state_name;

@@ -9,7 +9,7 @@
 
 use gnoblin_js::STALE_RETRIES;
 use gnoblin_paint::{PaintOp, decode};
-use gnoblin_tree_client::tree_mirror::{MirrorValue, TxOp};
+use gnoblin_tree_client::tree_mirror::{MirrorChange, MirrorChangeKind, MirrorValue, TxOp};
 
 mod common;
 use common::*;
@@ -109,6 +109,25 @@ fn an_output_apply_on_a_screen_that_is_gone_is_answered_with_a_refusal_and_not_l
         1,
         "a call on a node that is gone is not sent again"
     );
+    assert_eq!(rig.eval("g.app.done"), "true", "the application is settled");
+    assert_ne!(rig.eval("String(g.app.error)"), "null", "and says it failed");
+}
+
+#[test]
+fn an_apply_whose_screen_is_destroyed_while_it_waits_to_go_again_is_answered_failed() {
+    let mut rig = world(0, "new Layout()");
+    // The racing batch that makes the base stale is the screen's destruction: the refusal is `stale-base`, and by the
+    // time the apply could go again its node is gone, so it is dropped on the way out and its caller is told.
+    rig.comp.fault(Fault::StaleBase {
+        failed_op: None,
+        racing: vec![MirrorChange {
+            removed: vec![B],
+            ..change(MirrorChangeKind::Destroyed, B)
+        }],
+    });
+    exec(&mut rig, "g.app = gnoblin.outputs.at(1).apply({ scale: 1.25 });");
+    rig.settle();
+    assert_eq!(rig.comp.applies().len(), 1, "the apply was never sent a second time");
     assert_eq!(rig.eval("g.app.done"), "true", "the application is settled");
     assert_ne!(rig.eval("String(g.app.error)"), "null", "and says it failed");
 }
@@ -251,4 +270,84 @@ fn a_password_check_a_stale_refusal_dropped_is_answered_and_the_screen_takes_ano
     type_and_enter(&mut rig, "hunter2");
     rig.settle();
     assert_eq!(rig.comp.checks().len(), 2, "a second attempt reaches the compositor");
+}
+
+#[test]
+fn a_check_the_compositor_never_answers_fails_once_its_deadline_has_passed_and_the_screen_takes_another() {
+    let mut rig = locked();
+    type_and_enter(&mut rig, "hunter2");
+    rig.settle();
+    assert_eq!(message_of(&rig), "Checking...", "the compositor has not answered");
+    rig.advance(29_000);
+    rig.settle();
+    assert_eq!(message_of(&rig), "Checking...", "the check is still within its time");
+    rig.advance(1_000);
+    rig.settle();
+    assert_eq!(
+        message_of(&rig),
+        "The password could not be checked.",
+        "the screen is told the check failed and is not left waiting"
+    );
+    type_and_enter(&mut rig, "hunter2");
+    rig.settle();
+    assert_eq!(rig.comp.checks().len(), 2, "and Enter is an attempt again");
+}
+
+/// How many `heartbeat` calls the shell has made on the lock node.
+fn beats(rig: &Rig) -> usize {
+    rig.comp
+        .calls()
+        .iter()
+        .filter(|(node, method)| *node == LOCK && method == "heartbeat")
+        .count()
+}
+
+#[test]
+fn the_lock_screen_renews_its_lease_twice_a_second_while_it_is_up_and_not_after_it_comes_down() {
+    let mut rig = locked();
+    let first = beats(&rig);
+    assert!(first >= 1, "a screen that is up renews its lease at once");
+    rig.settle();
+    assert_eq!(beats(&rig), first, "no time has passed: one beat");
+    rig.advance(499);
+    rig.settle();
+    assert_eq!(beats(&rig), first, "a beat every half second, no oftener");
+    rig.advance(1);
+    rig.settle();
+    assert_eq!(beats(&rig), first + 1);
+    rig.advance(5_000);
+    rig.settle();
+    assert_eq!(
+        beats(&rig),
+        first + 2,
+        "a long wait is one beat, not a burst to make up for it"
+    );
+
+    // The session unlocks: the screen comes down, and a screen that is not up has no lease to renew.
+    rig.comp.external_set(LOCK, "state", text("not-locked"));
+    rig.settle();
+    let down = beats(&rig);
+    rig.advance(5_000);
+    rig.settle();
+    assert_eq!(beats(&rig), down, "the screen is down and renews nothing");
+}
+
+#[test]
+fn a_refusal_at_a_serial_the_mirror_has_already_reached_does_not_hold_the_resend_back() {
+    let mut rig = world(1, "new Layout()");
+    // The shell's base is ahead of the compositor's serial: it refuses with no op named and no batch follows, so the
+    // mirror has nothing to catch up on and the gate must not wait for the serial the refused transaction was stamped
+    // with, which the compositor never reaches.
+    rig.comp.fault(Fault::StaleBase {
+        failed_op: Some(-1),
+        racing: Vec::new(),
+    });
+    exec(&mut rig, "gnoblin.clients.get('3').x = 7; 0");
+    let told = rig.settle();
+    assert_eq!(rig.comp.refused(), 1);
+    assert_eq!(
+        rig.comp.number(3, "x"),
+        7.0,
+        "the write went again and landed: {told:?}"
+    );
 }

@@ -453,6 +453,7 @@ object lock since 0.2.0 secret false
   method lock since 0.2.0 secret false function false
   method authenticate since 0.2.0 secret false function false
     param text type string since 0.2.0 secret true
+  method heartbeat since 0.2.0 secret false function false
   signal destroyed since 0.2.0 secret false
   signal requested since 0.2.0 secret false
 object tree since 0.2.0 secret false
@@ -1990,6 +1991,9 @@ message Lock {
     // since 0.2.0; secret: every frame carrying this field is flagged sensitive
     string text = 1;
   }
+
+  // Method `heartbeat`, since 0.2.0.
+  message HeartbeatArgs {}
 
   // Signal `destroyed`, since 0.2.0.
   message DestroyedPayload {}

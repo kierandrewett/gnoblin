@@ -70,6 +70,7 @@ impl HostState {
 
     /// State over `mirror` whose scripts read `clock`.
     pub(crate) fn with_clock(mirror: TreeMirror, clock: Arc<dyn JsClock>) -> Self {
+        let lock = crate::lock::JsLockState::new(Arc::clone(&clock));
         Self {
             mirror,
             tick: TxBuilder::new(),
@@ -81,7 +82,7 @@ impl HostState {
             xr: crate::xr::JsXrState::default(),
             config: crate::config::ConfigState::new(),
             api: crate::host_api::JsHostApi::default(),
-            lock: crate::lock::JsLockState::default(),
+            lock,
             outputs: crate::output_apply::JsOutputApplies::default(),
             lost_writes: Vec::new(),
         }

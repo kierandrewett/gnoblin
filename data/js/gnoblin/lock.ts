@@ -27,6 +27,11 @@ export interface LockBackend {
     engage(engaged: boolean): string | undefined;
     /** Asks the compositor to check the password. Returns the token the answer comes back under. */
     authenticate(password: string): number | undefined;
+    /**
+     * Renews the lease the compositor gives the screen. A screen that stops renewing it (hung, or failing every frame)
+     * loses the password entry to the compositor's own lock card. The host sends it at most twice a second.
+     */
+    heartbeat(): void;
     takeAnswers(): LockAnswer[];
 }
 
@@ -229,6 +234,11 @@ export class LockScreen {
             this.#hide();
         } else if (this.#shown === null && !this.#accepted) {
             this.#show();
+        }
+        // Only a frame that got this far, with the screen up, says the screen is alive: one that threw above renews
+        // nothing, and the compositor's own card takes the password when the lease lapses.
+        if (this.#shown !== null) {
+            this.#backend.heartbeat();
         }
     }
 
