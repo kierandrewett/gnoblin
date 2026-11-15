@@ -23,6 +23,9 @@
 //! - `a_version_4_client_is_told_the_main_device`, `a_version_3_client_gets_formats_and_modifiers`
 //! - the surface life of a dmabuf: `a_dmabuf_window_maps_releases_and_unmaps`
 //! - the fence wait: `a_commit_waits_for_the_buffers_fences`
+//! - the memory budget at the import: `a_gpu_buffer_is_counted_when_it_is_imported_and_given_back_when_it_is_destroyed`,
+//!   `a_refused_import_releases_nothing_it_did_not_take`,
+//!   `a_gpu_buffer_past_the_clients_limit_is_refused_before_the_importer_sees_it`
 
 use std::io::Read;
 use std::os::fd::{AsFd, OwnedFd};
@@ -35,7 +38,7 @@ use std::time::{Duration, Instant};
 use gnoblin_backend::headless::Headless;
 use gnoblin_backend::{DmabufImportError, DmabufProvider, DmabufSupport};
 use gnoblin_render_frame::error::RenderError;
-use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot};
+use gnoblin_wayland::{Config, ControlHandle, Ledger, Limits, LoopError, Server, SessionSnapshot, Snapshot};
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::allocator::{Buffer as _, Format, Fourcc, Modifier};
 use wayland_client::backend::WaylandError;
@@ -111,6 +114,8 @@ struct Handle {
     control: ControlHandle,
     observation: Arc<Mutex<SessionSnapshot>>,
     imports: Arc<Mutex<Imports>>,
+    /// What each client holds, for the tests of the memory budget at the import.
+    ledger: Arc<Ledger>,
 }
 
 impl Handle {
@@ -124,6 +129,23 @@ impl Handle {
             assert!(
                 Instant::now() < deadline,
                 "the session never reached the expected state; last state: {observation:#?}"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    /// Waits until the ledger satisfies `predicate`, which the loop makes true on the turn that imports a buffer or
+    /// ends a client, and returns what it held then.
+    fn wait_for_ledger(&self, predicate: impl Fn(&Snapshot) -> bool) -> Snapshot {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            let snapshot = self.ledger.snapshot();
+            if predicate(&snapshot) {
+                return snapshot;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the ledger never reached the expected state; last state: {snapshot:#?}"
             );
             thread::sleep(Duration::from_millis(5));
         }
@@ -156,24 +178,34 @@ struct Session {
 impl Session {
     /// A session whose backend has no GPU: the software renderer.
     fn software() -> Self {
-        Self::start(Headless::new(), Arc::default())
+        Self::start(Headless::new(), Arc::default(), Limits::default())
     }
 
     /// A session whose importer is the stand-in: `device` is the render node it reports.
     fn with_importer(device: Option<u64>) -> Self {
+        Self::with_importer_limited(device, Limits::default())
+    }
+
+    /// [`Session::with_importer`] under the memory bounds a test chose.
+    fn with_importer_limited(device: Option<u64>, limits: Limits) -> Self {
         let imports = Arc::new(Mutex::new(Imports::default()));
         let provider = Mock {
             device,
             imports: Arc::clone(&imports),
         };
-        Self::start(Headless::new().with_dmabuf_provider(Box::new(provider)), imports)
+        Self::start(
+            Headless::new().with_dmabuf_provider(Box::new(provider)),
+            imports,
+            limits,
+        )
     }
 
-    fn start(backend: Headless, imports: Arc<Mutex<Imports>>) -> Self {
+    fn start(backend: Headless, imports: Arc<Mutex<Imports>>, limits: Limits) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let config = Config {
             socket_path: Some(socket.clone()),
+            gpu_limits: limits,
             ..Config::default()
         };
         let server = Server::new(Box::new(backend), config).expect("the session starts");
@@ -182,6 +214,7 @@ impl Session {
             control: server.control(),
             observation: server.observation(),
             imports,
+            ledger: server.gpu_ledger(),
         };
         Self {
             directory,
@@ -887,5 +920,125 @@ fn a_plane_that_does_not_fit_its_file_is_a_protocol_error() {
         params.create(32, 64, Fourcc::Argb8888 as u32, params::Flags::empty());
         let (_, code) = client.protocol_error();
         assert_eq!(code, params::Error::OutOfBounds as u32);
+    });
+}
+
+/// What a 32 x 32 buffer of a four byte format is counted as holding at the import: width times height times the
+/// format's bytes per pixel. The compositor cannot ask the driver what the buffer really took, so it is an estimate: a
+/// tiled or padded buffer holds more.
+const BUFFER: u64 = 32 * 32 * 4;
+
+#[test]
+fn a_gpu_buffer_is_counted_when_it_is_imported_and_given_back_when_it_is_destroyed() {
+    let session = Session::with_importer(Some(DEVICE));
+    session.run(|handle| {
+        let mut client = Client::connect(&handle.socket);
+        let global = client.dmabuf(4);
+        let buffer = client.immed_buffer(&global, 32, 32);
+        client.roundtrip();
+        let held = handle.wait_for_ledger(|ledger| ledger.client_bytes != 0);
+        assert_eq!(held.client_bytes, BUFFER);
+        assert_eq!(
+            held.summed_client_bytes(),
+            BUFFER,
+            "the aggregate and the client's own count agree"
+        );
+
+        buffer.destroy();
+        client.roundtrip();
+        let gone = handle.wait_for_ledger(|ledger| ledger.client_bytes == 0);
+        assert!(
+            gone.clients.is_empty(),
+            "a client with nothing left has no entry: {gone:#?}"
+        );
+    });
+}
+
+/// A buffer the importer refuses was never counted, so giving it up gives back nothing: another client's bytes and
+/// the client's own earlier buffers stay exactly as they were, and an aggregate that a double release had pulled below
+/// the sum of the clients would show here.
+#[test]
+fn a_refused_import_releases_nothing_it_did_not_take() {
+    let session = Session::with_importer(Some(DEVICE));
+    session.run(|handle| {
+        let mut bystander = Client::connect(&handle.socket);
+        let bystander_global = bystander.dmabuf(4);
+        let _kept = bystander.immed_buffer(&bystander_global, 16, 16);
+        bystander.roundtrip();
+        let mut client = Client::connect(&handle.socket);
+        let global = client.dmabuf(4);
+        let _taken = client.immed_buffer(&global, 32, 32);
+        client.roundtrip();
+        let bystander_bytes = 16 * 16 * 4;
+        handle.wait_for_ledger(|ledger| ledger.client_bytes == bystander_bytes + BUFFER);
+
+        handle.refuse_imports(true);
+
+        // `create` is allowed to fail: the client hears `failed`, and nothing it held or anyone held changes.
+        let params = client.params_with_plane(&global, 32, 16, Modifier::Linear);
+        params.create(32, 16, Fourcc::Argb8888 as u32, params::Flags::empty());
+        client.wait_until(|app| app.failed == 1);
+        let after = handle.ledger.snapshot();
+        assert_eq!(after.client_bytes, bystander_bytes + BUFFER);
+        assert_eq!(after.summed_client_bytes(), after.client_bytes);
+        assert_eq!(
+            after.refused, 0,
+            "the importer's refusal is not a refusal of the budget"
+        );
+
+        // `create_immed` cannot fail, so the client is ended: everything it held is given back once, and what the
+        // bystander held is untouched.
+        let params = client.params_with_plane(&global, 32, 16, Modifier::Linear);
+        let _refused = params.create_immed(32, 16, Fourcc::Argb8888 as u32, params::Flags::empty(), &client.qh, ());
+        let (interface, code) = client.protocol_error();
+        assert_eq!(
+            (interface.as_str(), code),
+            ("zwp_linux_buffer_params_v1", params::Error::InvalidWlBuffer as u32)
+        );
+        // A client the server ended is taken out of the display when its connection closes, which is what a client
+        // that has heard the error does; the objects it held are destroyed then, not before.
+        drop(client);
+        let left = handle.wait_for_ledger(|ledger| ledger.client_bytes == bystander_bytes);
+        assert_eq!(left.clients.len(), 1, "only the bystander remains: {left:#?}");
+        assert_eq!(left.summed_client_bytes(), bystander_bytes);
+    });
+}
+
+#[test]
+fn a_gpu_buffer_past_the_clients_limit_is_refused_before_the_importer_sees_it() {
+    // The limit holds one buffer and a hundred bytes more, so the second is the one that passes it.
+    let session = Session::with_importer_limited(
+        Some(DEVICE),
+        Limits {
+            budget_bytes: 0,
+            client_bytes: BUFFER + 100,
+            client_surfaces: 0,
+        },
+    );
+    session.run(|handle| {
+        let mut client = Client::connect(&handle.socket);
+        let global = client.dmabuf(4);
+        let _first = client.immed_buffer(&global, 32, 32);
+        client.roundtrip();
+        handle.wait_for_ledger(|ledger| ledger.client_bytes == BUFFER);
+
+        let params = client.params_with_plane(&global, 32, 32, Modifier::Linear);
+        params.create(32, 32, Fourcc::Argb8888 as u32, params::Flags::empty());
+        let (interface, code) = client.protocol_error();
+        assert_eq!(
+            (interface.as_str(), code),
+            ("wl_display", 2),
+            "wl_display.error.no_memory"
+        );
+        assert_eq!(
+            handle.seen().len(),
+            1,
+            "the importer was asked about the first buffer only"
+        );
+        drop(client);
+
+        let ended = handle.wait_for_ledger(|ledger| ledger.clients.is_empty());
+        assert_eq!(ended.client_bytes, 0, "the ended client's buffer is given back once");
+        assert_eq!(ended.refused, 1);
     });
 }
