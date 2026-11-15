@@ -2955,8 +2955,8 @@ fn object_argument(arguments: &gnoblin_model::Fields, name: &str) -> Option<gnob
 
 /// The `key=value` text a shell's `screen.apply` takes, from the arguments of `output.apply`.
 ///
-/// The method carries the whole configuration of one output, so every key is written. An empty `mode` keeps the mode
-/// the output has. `primary` is refused by name: the layout derives the primary output, so an `apply` that carried one
+/// The method carries the whole configuration of one output, so every key is written, `supersample` included (1 for
+/// none). An empty `mode` keeps the mode the output has. `primary` is refused by name: the layout derives the primary output, so an `apply` that carried one
 /// would be told it worked while nothing changed. A transform other than `0` (normal) is refused here with the reason,
 /// as the engine refuses it: nothing draws a rotation.
 fn output_apply_text(arguments: &gnoblin_model::Fields) -> Result<String, String> {
@@ -2970,10 +2970,12 @@ fn output_apply_text(arguments: &gnoblin_model::Fields) -> Result<String, String
     let transform = uint_argument(arguments, "transform").ok_or_else(|| missing("transform"))?;
     let enabled = bool_argument(arguments, "enabled").ok_or_else(|| missing("enabled"))?;
     let mode = text_argument(arguments, "mode").ok_or_else(|| missing("mode"))?;
+    let supersample = double_argument(arguments, "supersample").ok_or_else(|| missing("supersample"))?;
     if transform != 0 {
         return Err("transform: this compositor draws only `normal` (0)".to_owned());
     }
-    let mut text = format!("position={x},{y}\nscale={scale}\ntransform=normal\nenabled={enabled}\n");
+    let mut text =
+        format!("position={x},{y}\nscale={scale}\ntransform=normal\nenabled={enabled}\nsupersample={supersample}\n");
     if !mode.is_empty() {
         text.push_str(&format!("mode={mode}\n"));
     }
@@ -2987,6 +2989,7 @@ fn output_refusal_code(reason: &str) -> ErrorCode {
     ErrorCode::from_static(match key {
         "mode" => "mode-refused",
         "scale" => "scale-refused",
+        "supersample" => "supersample-refused",
         "position" => "position-refused",
         "enabled" => "enabled-refused",
         "transform" => "transform-refused",

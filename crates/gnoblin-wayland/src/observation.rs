@@ -149,6 +149,8 @@ pub struct ObservedOutput {
     pub mode: String,
     /// The logical scale the output composes at.
     pub scale: Scale,
+    /// The factor the output is composed above its mode; one is none.
+    pub supersample: Scale,
     /// The rotation and flip, in Mutter's numbering; `0` is normal.
     pub transform: u32,
     /// Whether this output carries the primary logical monitor.

@@ -2289,6 +2289,7 @@ impl State {
                     modes: vec![mode.clone()],
                     mode,
                     scale: entry.scale,
+                    supersample: entry.supersample,
                     transform: 0,
                     primary: entry.primary,
                     enabled: true,

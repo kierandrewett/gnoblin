@@ -164,6 +164,12 @@ impl Vulkan {
         self.physical
     }
 
+    /// The largest edge, in pixels, of an image the device can create: what bounds the target of a supersampled output.
+    #[must_use]
+    pub fn max_image_edge(&self) -> u32 {
+        self.context.limits.max_image_dimension2_d
+    }
+
     /// The device the renderer draws on.
     #[must_use]
     pub fn device(&self) -> &DeviceInfo {

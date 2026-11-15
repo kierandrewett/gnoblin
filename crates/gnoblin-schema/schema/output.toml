@@ -61,6 +61,13 @@ name = "scale"
 type = "double"
 since = "0.2.0"
 
+# The factor the output is composed above its mode: 1 for none, 2 for a surface of twice the mode's pixels in each
+# direction. The logical size does not change with it. See `design/supersample.md`.
+[[object.property]]
+name = "supersample"
+type = "double"
+since = "0.2.0"
+
 # The rotation and flip, in Mutter's own numbering: 0 normal, 1 90 degrees, 2 180,
 # 3 270, 4 flipped, 5 90 flipped, 6 180 flipped, 7 270 flipped. The numbering is
 # the wire's, not an internal enum: a `DisplayConfig` caller sends it back in
@@ -115,7 +122,8 @@ since = "0.2.0"
 # configuration object. The result arrives as property diffs, so a caller learns
 # what the compositor did by reading the object, not from this call's reply. There
 # is no `primary` parameter: the layout derives the primary output, so an `apply` that
-# carries one is refused by name rather than accepted and ignored.
+# carries one is refused by name rather than accepted and ignored. Every parameter is
+# required, as for any method: `supersample` too, with 1 for none.
 [[object.method]]
 name = "apply"
 since = "0.2.0"
@@ -148,6 +156,13 @@ since = "0.2.0"
 [[object.method.param]]
 name = "mode"
 type = "string"
+since = "0.2.0"
+
+# The factor to compose the output above its mode: 1 for none. A value the compositor cannot honour (a fractional
+# virtual size, or one past the renderer's limit) is refused with `supersample-refused` and the output keeps what it had.
+[[object.method.param]]
+name = "supersample"
+type = "double"
 since = "0.2.0"
 
 # The output is gone: it was unplugged or the compositor stopped driving it. A

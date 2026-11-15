@@ -126,38 +126,64 @@ plugged in: see [Hardware profiles](#hardware-profiles). One the compositor refu
   `scale * supersample`, and shows the result at the real mode, averaged down.
 - The logical size (`mode / scale`), window geometry and pointer do not change, so the desktop looks the same,
   anti-aliased and crisp, and screenshots and captures come out hi-res.
-- Wayland clients draw `supersample` times the pixels. X11 clients are not scaled by the factor yet: the compositor
-  upscales them as it does at any scale above one.
-  upscaled by the compositor as they are at any scale above one.
+- Wayland clients draw `supersample` times the pixels. Xwayland's client is given the same factor, so an X11 window keeps
+  its logical size and its toolkit is told to draw `supersample` times the pixels through `Gdk/WindowScalingFactor` and
+  `Xft/DPI`. A window that is already open keeps the pixels it has until its client redraws or is reopened.
 
 - **Supported factors.** 1, 2 and 4. Any other number from 1 to 16 is accepted when `mode * supersample` is a whole size
-  and logs one notice, `supersample N is not recommended: use 1, 2 or 4`; the downsample is then bilinear.
+  and logs one notice, `supersample N is not recommended: use 1, 2 or 4`; the downsample is then bilinear. In a script the
+  notice is the log line `output.apply` writes, and the same factor asked for again is not reported twice.
 - **Refused by name.** A value that is not a number from 1 to 16 throws before anything is sent, naming the key. A factor
-  that gives a fractional size (1.5 on a 1367 pixel wide mode) or a surface above 8192 by 8192 (4 on 3840x2160) is
-  refused by the compositor with the numbers, and the output keeps what it had.
+  that gives a fractional size (1.5 on a 1367 pixel wide mode) or a surface past the renderer's limit (4 on 3840x2160 is
+  15360 pixels wide, over the 8192 limit) is refused by the compositor with the numbers, and the output keeps what it had.
 - **What `wl_output` and `xdg_output` say.** The mode stays the real one, `scale` is the next whole number above
   `scale * supersample`, the preferred fractional scale is exact, and the logical size does not change.
 
 ```ts
 const output = gnoblin.outputs.where({ name: "output-1" }).at(0)!;
-output.apply({ supersample: 1 }); // the default: composed at the mode
+output.apply({ supersample: 1 }); // the default: composed at the mode, nothing averaged
 output.apply({ supersample: 2 }); // 1920x1080 composed at 3840x2160; output.virtualSize is { width: 3840, height: 2160 }
-output.apply({ supersample: 4 }); // composed at 7680x4320; needs a GPU with 8192 texels per edge
+output.apply({ supersample: 4 }); // 1920x1080 composed at 7680x4320: a GPU with 8192 texels per edge is needed
 ```
 
-A screenshot or capture of a supersampled output is the composed frame: 3840x2160 at a factor of 2 on a 1920x1080 mode,
-with the secure-content masks applied before anything is read. `wlr-screencopy`, `ext-image-copy-capture`, the
-PipeWire export and `capture.screen` all advertise that size. `capture.screen` takes the payload `display` for the frame
-as the display shows it, at the mode. `gnoblinctl output call <id> apply 'supersample=2'` takes the same path.
+From a terminal the call carries the whole configuration (every parameter is required, `supersample` included, 1 for
+none, and an empty `mode` keeps the mode the output has):
 
-Applying a factor works on the virtual (headless) backend. The nested backend refuses it by name. The DRM backend refuses
-it until its scan-out downscale pass lands.
+```sh
+gnoblinctl output call <id> apply x=0 y=0 scale=1 transform=0 enabled=true mode= supersample=1  # no supersampling
+gnoblinctl output call <id> apply x=0 y=0 scale=1 transform=0 enabled=true mode= supersample=2  # twice the mode
+gnoblinctl output call <id> apply x=0 y=0 scale=1 transform=0 enabled=true mode= supersample=4  # four times the mode
+gnoblinctl output get <id> supersample                                                         # what it is now
+```
+
+**What a screenshot looks like.** A screenshot or capture of a supersampled output is the composed frame, so it has
+`supersample` times the pixels of the display on each axis, with the secure-content masks applied before anything is read:
+
+| Factor | On a 1920x1080 mode | What it holds                                                                          |
+| ------ | ------------------- | -------------------------------------------------------------------------------------- |
+| 1      | 1920x1080           | The frame the display shows.                                                           |
+| 2      | 3840x2160           | Four rendered pixels for each displayed one: text and edges are crisp.                 |
+| 4      | 7680x4320           | Sixteen rendered pixels for each displayed one; refused where the limit is under 7680. |
+
+`wlr-screencopy`, `ext-image-copy-capture`, the PipeWire export and `capture.screen` all advertise that size. The payload
+of `capture.screen` takes `display` for the frame as the display shows it, at the mode, which is the hi-res frame
+averaged down; use it when a consumer wants the picture the monitor shows rather than the sharpest one.
+
+- **Software and GLES on a virtual output.** The hi-res frame is kept and read back as it is.
+- **Nested.** The frame is averaged into the parent's buffer, which stays the size of the parent's window; a parent that
+  rounded a fractional scale (no viewport) has a buffer that is not the mode, and the factor is refused by name.
+- **Hardware (DRM).** The output composes on a persistent virtual surface and a box-filter pass fills the scan-out buffer.
+  The DRM backend keeps no readable frame of an output, so there is no screenshot or capture of a hardware output at any
+  factor; that limit is older than this setting and unchanged by it.
+- **Vulkan.** The offscreen Vulkan renderer draws at any compositing scale into an image of any size the device allows, so
+  it takes a factor the same way; the device's `maxImageDimension2D` is its limit and a factor past it is refused with
+  the numbers.
 
 ### What each backend applies
 
 The display backend decides what it can drive. Position, mirror and off need no modeset and work on every backend.
 Changing a mode or scale works on the virtual (headless) backend and on a hardware (DRM) output. The nested backend, a
-window on another desktop, refuses both by name.
+window on another desktop, refuses both by name, and takes a supersample factor (see [Supersampling](#supersampling)).
 
 On a hardware output:
 
@@ -183,13 +209,13 @@ engine as `apply`: the same checks, the same test before the first output is dri
 
 `output.apply` takes the whole configuration of one output:
 
-- **Keys.** `x`, `y`, `scale`, `transform`, `enabled` and `mode`.
+- **Keys.** `x`, `y`, `scale`, `transform`, `enabled`, `mode` and `supersample`. All of them are required.
 - **Mode.** An empty `mode` keeps the mode the output has.
 - **Primary.** `primary` is not a key: the layout derives the primary output. A call that carries it is refused with
   an error that names `primary`, and nothing is applied. In a script, `output.apply({ primary: true })` throws a
   `TypeError` that names it.
 - **Refusal.** The call completes with `mode-refused`, `scale-refused`, `position-refused`, `enabled-refused`,
-  `transform-refused` or `refused`.
+  `transform-refused`, `supersample-refused` or `refused`.
 
 ## Hardware profiles
 

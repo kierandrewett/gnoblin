@@ -1558,6 +1558,44 @@ mod tests {
         assert_eq!(target.renderer(), RendererKind::Vulkan);
     }
 
+    /// The Vulkan renderer draws at any compositing scale into an image of any size the device allows, so a supersampled
+    /// output needs nothing special of it: the hi-res capture is the virtual size, the displayed frame is its box
+    /// average, and the device's image limit is what `max_virtual_edge` reports (a factor past it is refused naming the
+    /// output before the image is created).
+    #[cfg(feature = "vulkan")]
+    #[test]
+    fn a_vulkan_headless_output_can_be_supersampled() {
+        let Ok(mut backend) = Headless::with_config(HeadlessConfig::vulkan()) else {
+            println!("skipping the Vulkan supersample test: no Vulkan loader or device on this machine");
+            return;
+        };
+        let output = backend.outputs[0].id;
+        let mode = backend.outputs[0].mode;
+        let scale = backend.outputs[0].scale;
+        let limit = Backend::<Recorder>::max_virtual_edge(&mut backend, output);
+        assert!(limit >= 1024, "the device reports an image limit: {limit}");
+        backend
+            .resize_supersampled(output, mode, scale, Scale::integral(2))
+            .expect("a factor of two is within the device's image limit");
+        let mut host = changing();
+        assert_eq!(backend.render(&mut host, output), Ok(Present::Nothing));
+        let hires = backend.capture(output, false).expect("a hi-res readback");
+        assert_eq!(hires.size(), Size::new(mode.width * 2, mode.height * 2));
+        assert_eq!(
+            hires.colour_at(1, 1),
+            Some([255, 0, 0, 255]),
+            "the frame is drawn at the factor"
+        );
+        let shown = Backend::<Recorder>::capture_display(&mut backend, output, false).expect("the displayed frame");
+        assert_eq!(shown.size(), Size::new(mode.width, mode.height));
+        assert_eq!(shown.data(), hires.downsample(shown.size()).data());
+        assert_eq!(
+            backend.resize_supersampled(output, mode, scale, Scale::integral(1_000_000)),
+            Err(BackendError::Supersample(output)),
+            "a factor past the limit is refused and the output keeps its size"
+        );
+    }
+
     #[test]
     fn a_backend_that_changed_nothing_draws_nothing() {
         let mut backend = Headless::new();

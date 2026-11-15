@@ -54,6 +54,7 @@ object output since 0.2.0 secret false
   property modes type list<string> since 0.2.0 secret false
   property mode type string since 0.2.0 secret false
   property scale type double since 0.2.0 secret false
+  property supersample type double since 0.2.0 secret false
   property transform type uint since 0.2.0 secret false
   property primary type bool since 0.2.0 secret false
   property enabled type bool since 0.2.0 secret false
@@ -68,6 +69,7 @@ object output since 0.2.0 secret false
     param transform type uint since 0.2.0 secret false
     param enabled type bool since 0.2.0 secret false
     param mode type string since 0.2.0 secret false
+    param supersample type double since 0.2.0 secret false
   signal closed since 0.2.0 secret false
   signal added since 0.2.0 secret false
     field output_id type string since 0.2.0 secret false
@@ -989,19 +991,21 @@ message Output {
     // since 0.2.0
     double scale = 6;
     // since 0.2.0
-    uint64 transform = 7;
+    double supersample = 7;
     // since 0.2.0
-    bool primary = 8;
+    uint64 transform = 8;
     // since 0.2.0
-    bool enabled = 9;
+    bool primary = 9;
     // since 0.2.0
-    int64 x = 10;
+    bool enabled = 10;
     // since 0.2.0
-    int64 y = 11;
+    int64 x = 11;
     // since 0.2.0
-    uint64 width = 12;
+    int64 y = 12;
     // since 0.2.0
-    uint64 height = 13;
+    uint64 width = 13;
+    // since 0.2.0
+    uint64 height = 14;
   }
 
   // Method `apply`, since 0.2.0.
@@ -1018,6 +1022,8 @@ message Output {
     bool enabled = 5;
     // since 0.2.0
     string mode = 6;
+    // since 0.2.0
+    double supersample = 7;
   }
 
   // Signal `closed`, since 0.2.0.

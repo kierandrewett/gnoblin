@@ -89,6 +89,7 @@ declare module "gnoblin/schema/gnoblin" {
         modes: string[];
         mode: string;
         scale: number;
+        supersample: number;
         transform: number;
         primary: boolean;
         enabled: boolean;
@@ -96,7 +97,7 @@ declare module "gnoblin/schema/gnoblin" {
         y: number;
         width: number;
         height: number;
-        apply(x: number, y: number, scale: number, transform: number, enabled: boolean, mode: string): Reply;
+        apply(x: number, y: number, scale: number, transform: number, enabled: boolean, mode: string, supersample: number): Reply;
         /** Signal `closed`. */
         onClosed(handler: (target: this) => void): Unsubscribe;
         /** Signal `added`. */
@@ -1534,6 +1535,15 @@ declare module "gnoblin" {
         readonly mode: string;
         /** The factor the output composes at: 2 is a HiDPI panel. */
         readonly scale: number;
+        /**
+         * The factor the output is composed above its mode, 1 for none (owner-requested addition beyond the display
+         * specification). The logical size does not depend on it; see `OutputSetting.supersample`.
+         */
+        readonly supersample: number;
+        /** The size the output is composed at, `mode * supersample`, in pixels: the size of its screenshots. */
+        readonly virtualSize: { readonly width: number; readonly height: number };
+        /** The scale clients are told: `scale * supersample`. */
+        readonly effectiveScale: number;
         /** The rotation and flip the output is driven with. */
         readonly transform: string;
         /** Whether this is the primary output, the one the stock bars and `gnoblin.workspaces.area` are on. */
@@ -1607,6 +1617,8 @@ declare module "gnoblin" {
         mode?: OutputProfileMode;
         /** From 0.5 to 4. */
         scale?: number;
+        /** Composes the output at this multiple of its mode; see `OutputSetting.supersample`. */
+        supersample?: number;
         transform?: OutputSetting["transform"];
         /** Asks for variable refresh rate. Accepted and reported as not applied: the output request has no such key yet. */
         vrr?: boolean;
@@ -1628,6 +1640,7 @@ declare module "gnoblin" {
         readonly match: Readonly<OutputMatch>;
         mode: OutputProfileMode | undefined;
         scale: number | undefined;
+        supersample: number | undefined;
         transform: OutputSetting["transform"] | undefined;
         vrr: boolean | undefined;
         position: OutputProfilePosition | undefined;
@@ -2556,6 +2569,15 @@ declare module "gnoblin" {
         mode?: string;
         /** From 0.5 to 4. */
         scale?: number;
+        /**
+         * Composes the output at this multiple of its mode and shows it at the mode, averaged down, so the desktop keeps
+         * its logical size and looks anti-aliased and screenshots come out hi-res. A number from 1 to 16: 1, 2 and 4 are
+         * the supported factors. Any other is accepted when `mode * supersample` is a whole size, and the script's log
+         * then carries one notice, `supersample N is not recommended: use 1, 2 or 4`; the downsample is bilinear. A value
+         * that is not a number from 1 to 16 throws, naming the key; the compositor refuses a factor whose surface is not a
+         * whole size or is past the renderer's limit, and the output keeps what it had.
+         */
+        supersample?: number;
         /** The compositor draws `normal` only and refuses the others by name. */
         transform?: "normal" | "90" | "180" | "270" | "flipped" | "flipped-90" | "flipped-180" | "flipped-270";
         /** The output's top-left corner in the one desktop coordinate space. Left out, it follows the row. */
