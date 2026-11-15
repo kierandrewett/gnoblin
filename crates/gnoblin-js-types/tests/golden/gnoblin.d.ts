@@ -96,7 +96,7 @@ declare module "gnoblin/schema/gnoblin" {
         y: number;
         width: number;
         height: number;
-        apply(x: number, y: number, scale: number, transform: number, primary: boolean, enabled: boolean, mode: string): Reply;
+        apply(x: number, y: number, scale: number, transform: number, enabled: boolean, mode: string): Reply;
         /** Signal `closed`. */
         onClosed(handler: (target: this) => void): Unsubscribe;
         /** Signal `added`. */

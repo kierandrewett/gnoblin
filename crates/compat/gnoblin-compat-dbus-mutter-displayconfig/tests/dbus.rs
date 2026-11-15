@@ -342,7 +342,11 @@ fn an_allowed_apply_addresses_every_output_object() {
         let applied = &calls[1].1;
         assert_eq!(applied.get("mode"), Some(&Value::Text("1280x720@60.000".to_owned())));
         assert_eq!(applied.get("enabled"), Some(&Value::Bool(true)));
-        assert_eq!(applied.get("primary"), Some(&Value::Bool(true)));
+        assert_eq!(
+            applied.get("primary"),
+            None,
+            "the primary output is derived, so no apply carries one"
+        );
         assert_eq!(
             calls[0].1.get("enabled"),
             Some(&Value::Bool(false)),
@@ -387,6 +391,50 @@ fn an_apply_with_a_stale_serial_is_refused() {
             message.contains("is not the current serial"),
             "the refusal names both serials: {message}"
         );
+        assert!(
+            recorder
+                .calls
+                .lock()
+                .expect("the recorder lock is not poisoned")
+                .is_empty(),
+            "nothing was written"
+        );
+    });
+}
+
+#[test]
+fn an_apply_that_makes_another_monitor_primary_is_refused_by_name() {
+    // The failure mode: the compositor derives the primary output and `output.apply` cannot set it, so a caller that
+    // asks for another primary would be told it worked while nothing changed. It is refused, naming `primary`.
+    let bus = Bus::start();
+    let address = bus.address().to_owned();
+    zbus::block_on(async move {
+        let mut fixture = Fixture::new();
+        let connection = connect(&address).await;
+        let recorder = Arc::new(Recorder::default());
+        let service =
+            DisplayConfigService::new(Box::new(SharedRecorder(Arc::clone(&recorder)))).expect("the matrix loads");
+        service.set_mode(Mode::Unmediated);
+        export(&connection, &service).await.expect("the name is free");
+        fixture.publish(&service).await;
+        let proxy = caller(&connection).await;
+        let (serial, ..) = state(&proxy).await;
+
+        // `eDP-1` is the primary output; this asks for `DP-1` to be.
+        let logical: Vec<LogicalArg> = vec![(
+            0i32,
+            0i32,
+            1.0f64,
+            0u32,
+            true,
+            vec![("DP-1".to_owned(), "1280x720@60.000".to_owned(), Props::new())],
+        )];
+        let error = proxy
+            .call_method("ApplyMonitorsConfig", &(serial, 1u32, logical, Props::new()))
+            .await
+            .expect_err("the primary output cannot be changed by an apply");
+        let message = refusal(error);
+        assert!(message.contains("primary"), "the refusal names the property: {message}");
         assert!(
             recorder
                 .calls

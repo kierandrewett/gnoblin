@@ -15,7 +15,8 @@ export type OutputTransform =
 /**
  * What an output is told to do, as the argument of `Output.apply` and the settings of an `OutputProfile`. A key left
  * out keeps the output's value. The compositor applies it through its transactional engine and keeps it as the
- * output's profile, so the same monitor on the same port gets it back after an unplug.
+ * output's profile, so the same monitor on the same port gets it back after an unplug. `primary` is not a setting: the
+ * layout derives the primary output, and a request that names it throws.
  */
 export interface OutputConfig {
     /** `"3440x1440@144"`, or `"preferred"` to keep what the backend drives. */
@@ -115,6 +116,10 @@ export function outputRequest(
                 }
                 lines.push(`mirror_of=${value ?? ""}`);
                 break;
+            case "primary":
+                // Refused by name instead of left to the generic message: it is an output property, and a script that
+                // wrote it would otherwise read the "unknown key" text as a typo.
+                throw new TypeError(`${where} cannot be set: the layout derives the primary output`);
             default:
                 throw new TypeError(`${where} is not an output setting; expected one of ${OUTPUT_KEYS.join(", ")}`);
         }

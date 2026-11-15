@@ -2935,10 +2935,13 @@ fn object_argument(arguments: &gnoblin_model::Fields, name: &str) -> Option<gnob
 /// The `key=value` text a shell's `screen.apply` takes, from the arguments of `output.apply`.
 ///
 /// The method carries the whole configuration of one output, so every key is written. An empty `mode` keeps the mode
-/// the output has. `primary` is accepted and not applied: the layout derives the primary output, and an `apply` has no
-/// say in it. A transform other than `0` (normal) is refused here with the reason, as the engine refuses it: nothing
-/// draws a rotation.
+/// the output has. `primary` is refused by name: the layout derives the primary output, so an `apply` that carried one
+/// would be told it worked while nothing changed. A transform other than `0` (normal) is refused here with the reason,
+/// as the engine refuses it: nothing draws a rotation.
 fn output_apply_text(arguments: &gnoblin_model::Fields) -> Result<String, String> {
+    if arguments.contains_key("primary") {
+        return Err("primary: `apply` cannot set it, because the layout derives the primary output".to_owned());
+    }
     let missing = |name: &str| format!("`apply` needs its `{name}`");
     let x = int_argument(arguments, "x").ok_or_else(|| missing("x"))?;
     let y = int_argument(arguments, "y").ok_or_else(|| missing("y"))?;

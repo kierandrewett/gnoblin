@@ -944,6 +944,13 @@ fn a_bad_value_throws_naming_the_key_and_sends_nothing() {
     assert!(mode.starts_with("TypeError: ") && mode.contains(".mode"), "{mode}");
     let key = thrown(&mut rig, "{ colour: 'red' }");
     assert!(key.starts_with("TypeError: ") && key.contains(".colour"), "{key}");
+    let primary = thrown(&mut rig, "{ primary: true }");
+    assert!(
+        primary.starts_with("TypeError: ")
+            && primary.contains(".primary")
+            && primary.contains("derives the primary output"),
+        "a primary the layout would ignore is refused with its reason: {primary}"
+    );
     let position = thrown(&mut rig, "{ position: [1.5, 0] }");
     assert!(position.contains(".position"), "{position}");
     let mirror = thrown(&mut rig, "{ mirrorOf: 3 }");

@@ -141,9 +141,11 @@ engine as `apply`: the same checks, the same test before the first output is dri
 
 `output.apply` takes the whole configuration of one output:
 
-- **Keys.** `x`, `y`, `scale`, `transform`, `primary`, `enabled` and `mode`.
-- **Mode and primary.** An empty `mode` keeps the mode the output has. `primary` is accepted and not applied, because
-  the layout derives the primary output.
+- **Keys.** `x`, `y`, `scale`, `transform`, `enabled` and `mode`.
+- **Mode.** An empty `mode` keeps the mode the output has.
+- **Primary.** `primary` is not a key: the layout derives the primary output. A call that carries it is refused with
+  an error that names `primary`, and nothing is applied. In a script, `output.apply({ primary: true })` throws a
+  `TypeError` that names it.
 - **Refusal.** The call completes with `mode-refused`, `scale-refused`, `position-refused`, `enabled-refused`,
   `transform-refused` or `refused`.
 

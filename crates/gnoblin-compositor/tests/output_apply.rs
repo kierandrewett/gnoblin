@@ -42,7 +42,6 @@ fn apply_arguments(id: &str, scale: &str, transform: &str, mode: &str) -> Vec<St
             "y=0",
             &format!("scale={scale}"),
             &format!("transform={transform}"),
-            "primary=true",
             "enabled=true",
             &format!("mode={mode}"),
         ]
@@ -86,6 +85,32 @@ fn a_rotation_is_refused_with_its_reason_and_the_output_is_untouched() {
     assert_ne!(command.code, 0, "no renderer draws a rotation");
     assert!(command.err.contains("normal"), "the reason is given: {}", command.err);
     assert!((number(&session, id, "width") - before).abs() < f64::EPSILON);
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_primary_argument_is_refused_naming_the_property_and_the_output_is_untouched() {
+    // The layout derives the primary output, so an `apply` that carries `primary` would be asking for something it
+    // never gets. It must say so instead of answering success.
+    let session = Session::start();
+    let id = first_output(&session);
+    let text = id.to_string();
+    let before = number(&session, id, "width");
+
+    let mut arguments = apply_arguments(&text, "2", "0", "800x600@60");
+    arguments.retain(|argument| !argument.starts_with("primary="));
+    arguments.push("primary=false".to_owned());
+    let command = session.ctl(&arguments.iter().map(String::as_str).collect::<Vec<_>>());
+    assert_ne!(command.code, 0, "`primary` is not something `apply` sets");
+    assert!(
+        command.err.contains("primary"),
+        "the property is named: {}",
+        command.err
+    );
+    assert!(
+        (number(&session, id, "width") - before).abs() < f64::EPSILON,
+        "nothing was applied"
+    );
     session.stop().expect("the session stops cleanly");
 }
 

@@ -172,7 +172,7 @@ There is no hardware cursor plane in this backend, so there is nothing to reposi
 (`State::apply_output_changes`): a configuration is a set of profile changes, laid over the profiles, resolved as a
 layout, tested and driven with rollback. The heads list every mode `Backend::output_modes` gives. A configuration built
 on an old serial, or queued behind one that changed the layout, is `cancelled`. Position, off and mirror, which that
-protocol used to refuse, are now the engine's. `output.apply` ignores `primary` (the layout derives it).
+protocol used to refuse, are now the engine's. `output.apply` has no `primary` parameter and refuses a call that carries one, naming it (the layout derives the primary output).
 
 Proven: `crates/gnoblin-backend-drm/src/{plan,modeset,present}.rs` (the order, each refusal, the rollback, a flip in
 flight, gamma, scale only); `crates/gnoblin-wayland/tests/output_manager.rs` (a real `wlr-output-management` client on

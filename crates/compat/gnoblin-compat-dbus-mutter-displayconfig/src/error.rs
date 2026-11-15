@@ -64,6 +64,14 @@ pub enum DisplayError {
         /// The connector.
         name: String,
     },
+    /// The configuration makes another output the primary one, and the compositor derives
+    /// that output instead of taking it from a configuration.
+    PrimaryNotSettable {
+        /// The connector the configuration flagged primary.
+        requested: String,
+        /// The connector that is the primary output.
+        current: String,
+    },
     /// The configuration's method is not one of `verify`, `temporary` or
     /// `persistent`.
     UnknownMethod {
@@ -130,6 +138,10 @@ impl fmt::Display for DisplayError {
                     "`{name}` appears in more than one place in the configuration"
                 )
             }
+            DisplayError::PrimaryNotSettable { requested, current } => write!(
+                formatter,
+                "primary: `{requested}` cannot be made the primary output, because the compositor derives it and `{current}` is it"
+            ),
             DisplayError::UnknownMethod { method } => write!(
                 formatter,
                 "{method} is not a configuration method; 0 verifies, 1 is temporary and 2 is persistent"

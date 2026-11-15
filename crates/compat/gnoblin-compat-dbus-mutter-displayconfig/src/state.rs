@@ -280,7 +280,8 @@ impl ApplyPlan {
     /// # Errors
     ///
     /// [`DisplayError::StaleSerial`], [`DisplayError::UnknownConnector`],
-    /// [`DisplayError::UnsupportedMode`] and [`DisplayError::RepeatedConnector`].
+    /// [`DisplayError::UnsupportedMode`], [`DisplayError::RepeatedConnector`] and
+    /// [`DisplayError::PrimaryNotSettable`].
     pub fn validate(&self, state: &DisplayState, serial: u32) -> Result<(), DisplayError> {
         if self.serial != serial {
             return Err(DisplayError::StaleSerial {
@@ -295,6 +296,17 @@ impl ApplyPlan {
                     object: "configuration".to_owned(),
                     property: "transform".to_owned(),
                     reason: format!("{} is not a transform between 0 and 7", logical.transform),
+                });
+            }
+            // The compositor derives the primary output and `output.apply` has no way to set it, so a plan that moves
+            // the flag is refused here instead of being answered with a success that changed nothing.
+            if let Some(requested) = logical.monitors.first().filter(|_| logical.primary)
+                && let Some(current) = state.outputs.iter().find(|output| output.primary)
+                && current.name != requested.connector
+            {
+                return Err(DisplayError::PrimaryNotSettable {
+                    requested: requested.connector.clone(),
+                    current: current.name.clone(),
                 });
             }
             for monitor in &logical.monitors {
@@ -341,7 +353,6 @@ impl ApplyPlan {
                     logical.y,
                     logical.scale,
                     logical.transform,
-                    logical.primary && position == 0,
                     true,
                     &logical.monitors[position].mode,
                 ),
@@ -350,7 +361,6 @@ impl ApplyPlan {
                     output.y,
                     output.scale,
                     output.transform,
-                    false,
                     false,
                     &output.mode.id,
                 ),
@@ -362,13 +372,12 @@ impl ApplyPlan {
 }
 
 /// The arguments one `output.apply` call carries.
-fn apply_fields(x: i32, y: i32, scale: f64, transform: u32, primary: bool, enabled: bool, mode: &str) -> Fields {
+fn apply_fields(x: i32, y: i32, scale: f64, transform: u32, enabled: bool, mode: &str) -> Fields {
     let mut fields = Fields::new();
     fields.insert("x".to_owned(), Value::Int(i64::from(x)));
     fields.insert("y".to_owned(), Value::Int(i64::from(y)));
     fields.insert("scale".to_owned(), Value::Double(scale));
     fields.insert("transform".to_owned(), Value::Uint(u64::from(transform)));
-    fields.insert("primary".to_owned(), Value::Bool(primary));
     fields.insert("enabled".to_owned(), Value::Bool(enabled));
     fields.insert("mode".to_owned(), Value::Text(mode.to_owned()));
     fields

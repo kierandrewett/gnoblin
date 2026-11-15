@@ -66,7 +66,6 @@ object output since 0.2.0 secret false
     param y type int since 0.2.0 secret false
     param scale type double since 0.2.0 secret false
     param transform type uint since 0.2.0 secret false
-    param primary type bool since 0.2.0 secret false
     param enabled type bool since 0.2.0 secret false
     param mode type string since 0.2.0 secret false
   signal closed since 0.2.0 secret false
@@ -1014,11 +1013,9 @@ message Output {
     // since 0.2.0
     uint64 transform = 4;
     // since 0.2.0
-    bool primary = 5;
+    bool enabled = 5;
     // since 0.2.0
-    bool enabled = 6;
-    // since 0.2.0
-    string mode = 7;
+    string mode = 6;
   }
 
   // Signal `closed`, since 0.2.0.

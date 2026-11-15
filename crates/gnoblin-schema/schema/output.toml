@@ -113,7 +113,9 @@ since = "0.2.0"
 # `DisplayConfig` mapping: one logical monitor is one output in this slice, so the
 # position, scale, transform and mode arrive here rather than in a separate
 # configuration object. The result arrives as property diffs, so a caller learns
-# what the compositor did by reading the object, not from this call's reply.
+# what the compositor did by reading the object, not from this call's reply. There
+# is no `primary` parameter: the layout derives the primary output, so an `apply` that
+# carries one is refused by name rather than accepted and ignored.
 [[object.method]]
 name = "apply"
 since = "0.2.0"
@@ -136,11 +138,6 @@ since = "0.2.0"
 [[object.method.param]]
 name = "transform"
 type = "uint"
-since = "0.2.0"
-
-[[object.method.param]]
-name = "primary"
-type = "bool"
 since = "0.2.0"
 
 [[object.method.param]]
