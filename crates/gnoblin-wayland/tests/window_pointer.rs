@@ -211,7 +211,8 @@ fn a_node_of_the_shell_outside_the_window_geometry_takes_the_pointer_and_the_cli
         place(&shell, node);
 
         // A resize handle 6 pixels wide on the window's left, outside its geometry: a child of the window's node at a
-        // negative x. A layer over the whole window that lets the pointer through, as a frame's overlay does.
+        // negative x (a view with no source is a node like a canvas to the pointer). A layer over the whole window that
+        // lets the pointer through, as a frame's overlay does.
         let canvas = |x: f64, y: f64, width: f64, height: f64| {
             [
                 ("x", TreeValue::Double(x)),
@@ -220,20 +221,14 @@ fn a_node_of_the_shell_outside_the_window_geometry_takes_the_pointer_and_the_cli
                 ("height", TreeValue::Double(height)),
             ]
         };
-        shell.create("canvas", HANDLE, Some(node), &canvas(-6.0, 0.0, 6.0, PLACED.3));
+        shell.create("view", HANDLE, Some(node), &canvas(-6.0, 0.0, 6.0, PLACED.3));
         shell.create(
-            "canvas",
+            "view",
             LAYER,
             Some(node),
             &canvas(-6.0, -6.0, PLACED.2 + 12.0, PLACED.3 + 12.0),
         );
-        shell.write(
-            LAYER,
-            &[
-                ("input", TreeValue::Bool(false)),
-                ("placement", TreeValue::Text("over".to_owned())),
-            ],
-        );
+        shell.write(LAYER, &[("input", TreeValue::Bool(false))]);
 
         let on_handle = Point {
             x: PLACED.0 as i32 - 3,
@@ -267,5 +262,89 @@ fn a_node_of_the_shell_outside_the_window_geometry_takes_the_pointer_and_the_cli
             state.pointer_enters >= 1
         });
         assert!(shell.inputs(LAYER).is_empty());
+    });
+}
+
+#[test]
+fn a_press_on_a_shell_node_holds_it_until_the_button_is_released_wherever_the_pointer_goes() {
+    let (shell, hooks) = Shell::new();
+    let session = Session::start_shelled(hooks);
+    session.run(move |session| {
+        shell.attach();
+        let mut client = Client::connect(session.socket());
+        let (_keyboard, pointer) = client.seat_devices();
+        assert!(pointer.is_some(), "the seat offers a pointer");
+        let _window = client.map_window("org.gnoblin.Grab", "Grab");
+        let node = shell.wait_window_node();
+        place(&shell, node);
+        // The same handle: 6 pixels wide, on the window's left and outside its geometry.
+        let (x, y) = (-6.0, 0.0);
+        shell.create(
+            "view",
+            HANDLE,
+            Some(node),
+            &[
+                ("x", TreeValue::Double(x)),
+                ("y", TreeValue::Double(y)),
+                ("width", TreeValue::Double(6.0)),
+                ("height", TreeValue::Double(PLACED.3)),
+            ],
+        );
+        let on_handle = Point {
+            x: PLACED.0 as i32 - 3,
+            y: PLACED.1 as i32 + 50,
+        };
+        let local = |at: Point| (f64::from(at.x) - (PLACED.0 + x), f64::from(at.y) - (PLACED.1 + y));
+
+        motion(session, on_handle);
+        shell.wait_input(HANDLE, "enter", 1);
+        button(session, true);
+        shell.wait_input(HANDLE, "press", 1);
+        // The pointer leaves the handle, over the desktop and then over the window. The handle hears both moves, in its
+        // own space, and neither the window nor its client hears anything while the button is down.
+        motion(session, OUTSIDE);
+        shell.wait_input(HANDLE, "motion", 1);
+        motion(session, INSIDE);
+        shell.wait_input(HANDLE, "motion", 2);
+        client.roundtrip();
+        assert!(
+            shell.inputs(node).is_empty(),
+            "the window hears nothing while the handle holds the pointer: {:?}",
+            shell.inputs(node)
+        );
+        assert_eq!(client.state.pointer_enters, 0, "and neither does its client");
+        button(session, false);
+        shell.wait_input(HANDLE, "release", 1);
+        // The release lets go, and the ray is given what it is over now: the window.
+        shell.wait_input(HANDLE, "leave", 1);
+        shell.wait_input(node, "enter", 1);
+        client.wait_until("the pointer to enter the client's surface", |state| {
+            state.pointer_enters >= 1
+        });
+
+        let inputs = shell.inputs(HANDLE);
+        let (px, py) = local(on_handle);
+        let (ox, oy) = local(OUTSIDE);
+        let (ix, iy) = local(INSIDE);
+        assert_eq!(
+            inputs,
+            [
+                TreeInput::Enter { x: px, y: py },
+                TreeInput::Press {
+                    x: px,
+                    y: py,
+                    button: BTN_LEFT
+                },
+                TreeInput::Motion { x: ox, y: oy },
+                TreeInput::Motion { x: ix, y: iy },
+                TreeInput::Release {
+                    x: ix,
+                    y: iy,
+                    button: BTN_LEFT
+                },
+                TreeInput::Leave,
+            ],
+            "the handle's edges, with the points in its own space"
+        );
     });
 }

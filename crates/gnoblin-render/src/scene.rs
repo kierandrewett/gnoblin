@@ -1667,6 +1667,18 @@ impl Scene {
         Some(world)
     }
 
+    /// The point `point` of the output plane in the local plane of node `id`, wherever it lies, outside the node's
+    /// rectangle as well: a pointer that holds a node through a drag is told where it is relative to the node however
+    /// far it has gone. `None` for a missing node, a point that is not finite and a plane seen edge-on or from behind.
+    #[must_use]
+    pub fn local_point(&self, id: NodeId, point: PointF) -> Option<PointF> {
+        if !point.is_finite() {
+            return None;
+        }
+        let world = self.world_matrix(id)?;
+        locate(&world, point).map(|(local, _)| local)
+    }
+
     /// The matrix that maps `id`'s local plane into `root`'s local plane, where `root`
     /// is the world of its subtree: `root`'s own transform is not applied, but its
     /// content matrix places its children. `None` when `id` is missing or is neither

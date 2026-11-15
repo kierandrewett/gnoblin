@@ -551,6 +551,10 @@ pub struct State {
     /// The shell node the pointer ray is over, when the shell's tree picks one. Its edges are
     /// sent to the shell; no client holds the pointer while it is set.
     shell_hover: Option<NodeId>,
+    /// The shell node a button press landed on and the button that did, until that button is released. While it is
+    /// set the node is sent the pointer's motion and the release wherever the pointer goes, and no client hears the
+    /// pointer.
+    shell_grab: Option<(NodeId, u32)>,
     /// The touch points the seat holds, by device slot: the window each went down on and
     /// where it is now.
     touch_points: HashMap<u32, TouchPoint>,
@@ -872,6 +876,7 @@ impl State {
             pointer_origin: None,
             pointer_placed: false,
             shell_hover: None,
+            shell_grab: None,
             touch_points: HashMap::new(),
             dragged: None,
             composer: Composer::with_painter(tree.painter.clone()),
@@ -1875,6 +1880,14 @@ impl State {
         if self.pointer_captured() {
             self.note_capture_motion(time);
             return;
+        }
+        // A shell node that a press holds hears the motion wherever the pointer goes, and no client hears it.
+        if let Some((node, _)) = self.shell_grab {
+            if let Some(local) = self.grab_local(node) {
+                self.tree.input(node, TreeInput::Motion { x: local.x, y: local.y });
+                return;
+            }
+            self.shell_grab = None;
         }
         self.shell_pointer(self.pointer_target(position));
         let focus = self.surface_under(position);
@@ -3088,6 +3101,27 @@ impl State {
         self.shell_hover = current;
     }
 
+    /// The pointer's position in the local space of the shell node a press holds. `None` once the node has gone, and
+    /// whenever the session is locked or no shell holds the tree: a grab is the shell's and ends with its tree.
+    fn grab_local(&self, node: NodeId) -> Option<PointF> {
+        if self.lock.state() != LockState::Unlocked || !self.composer.shell_places() {
+            return None;
+        }
+        let position = self.pointer_position;
+        self.composer
+            .shell_node_local(node, PointF::new(position.x, position.y))
+    }
+
+    /// Whether a press that picked `node` at `picked` may hold it: a node of the shell's own that the ray reached
+    /// directly. A window is the client's, and a node the ray reached through a View is in the View's picture, where the
+    /// plane the pointer moves in is not the node's.
+    fn is_grabbable(&self, node: NodeId, picked: PointF) -> bool {
+        self.composer.window_of_node(node).is_none()
+            && self
+                .grab_local(node)
+                .is_some_and(|local| (local.x - picked.x).abs() < 0.5 && (local.y - picked.y).abs() < 0.5)
+    }
+
     /// Activates the window under the pointer, as the fallback does for a press when no shell holds the tree.
     fn activate_under_pointer(&mut self) {
         self.activate_at(self.pointer_position);
@@ -3925,7 +3959,21 @@ impl Host for State {
                 // A press or release over a shell node, or over a window while a shell holds the tree, is an
                 // edge the shell reads: its focus and raise policy follows the window's. Without a shell the
                 // fallback focuses the window a press lands on.
-                if let Some((node, local)) = self.pointer_target(self.pointer_position) {
+                //
+                // A press that lands on a node of the shell's own holds it, as an implicit grab does, until that button
+                // is released: the node hears the motion and the release wherever the pointer has gone, so a drag that
+                // starts on a thin resize handle or on a titlebar is not lost when the pointer leaves it.
+                let held = self.shell_grab.map(|(node, _)| node);
+                let target = match held {
+                    Some(node) => self.grab_local(node).map(|local| (node, local)),
+                    None => self.pointer_target(self.pointer_position),
+                };
+                if pressed && held.is_none() {
+                    self.shell_grab = target
+                        .filter(|(node, local)| self.is_grabbable(*node, *local))
+                        .map(|(node, _)| (node, button));
+                }
+                if let Some((node, local)) = target {
                     let (x, y) = (local.x, local.y);
                     let input = if pressed {
                         TreeInput::Press { x, y, button }
@@ -3935,6 +3983,10 @@ impl Host for State {
                     self.tree.input(node, input);
                 } else if pressed {
                     self.activate_under_pointer();
+                }
+                let released_grab = !pressed && self.shell_grab.is_some_and(|(_, started)| started == button);
+                if released_grab {
+                    self.shell_grab = None;
                 }
                 let pointer = self.pointer.clone();
                 let serial = SERIAL_COUNTER.next_serial();
@@ -3956,8 +4008,8 @@ impl Host for State {
                     },
                 );
                 // A move or resize ends with the last button released. The window moved under a pointer that no client
-                // held, so the pointer is given the surface it is over now.
-                if dragging && self.dragged.is_none() {
+                // held, so the pointer is given the surface it is over now. So is a pointer a grab let go of.
+                if (dragging && self.dragged.is_none()) || released_grab {
                     self.move_pointer(self.pointer_position, time);
                 }
                 // A press or release is a group of its own, and a client that bound `wl_pointer` at version 5 or

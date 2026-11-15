@@ -158,6 +158,7 @@ impl Drop for Session {
 /// One canvas as the compositor's tree holds it.
 #[derive(Clone, Debug)]
 struct Canvas {
+    id: u64,
     parent: u64,
     x: f64,
     y: f64,
@@ -186,6 +187,7 @@ fn canvases(ipc: &Path) -> Vec<Canvas> {
         .map(|node| {
             let prop = |key: &str| node.props.iter().find(|prop| prop.key == key);
             Canvas {
+                id: node.id,
                 parent: node.parent,
                 x: prop("x").map_or(0.0, |prop| prop.value_double),
                 y: prop("y").map_or(0.0, |prop| prop.value_double),
@@ -1506,6 +1508,120 @@ fn super_drags_move_and_resize_a_real_window_through_the_pointer_chord_stream() 
         log.iter().all(|message| !message.contains("claim")),
         "the shell logged nothing about a claim: {log:?}"
     );
+}
+
+/// A config directory whose frame has resize handles 6 pixels outside it, over a floating workspace that puts a window at
+/// (300, 200), 200 by 150.
+fn write_handles_config(dir: &Path) {
+    fs::write(
+        dir.join("init.ts"),
+        r#"import { FloatingLayout, Workspace, defaultTitlebarStyle, gnoblin, startDecorations, titlebarFill } from "gnoblin";
+
+const stock = titlebarFill(defaultTitlebarStyle);
+let entered = 0;
+// What the test reads: how often the pointer has entered the left handle.
+(globalThis as { probe?: () => number }).probe = () => entered;
+
+startDecorations({
+    frame(client, frame) {
+        if (stock(client, frame) === false) return false;
+        const left = frame.resizeHandles(6).handles.get("left");
+        if (left) left.onEnter = () => (entered += 1);
+    },
+});
+gnoblin.workspaces.add(new Workspace({ id: "desk", layout: new FloatingLayout() }));
+
+gnoblin.clients.addListener({
+    onAdded(client: { x: number; y: number; width: number; height: number; floatingBounds?: object }): void {
+        client.x = 300;
+        client.y = 200;
+        client.width = 200;
+        client.height = 150;
+        client.floatingBounds = { x: 300, y: 200, width: 200, height: 150 };
+    },
+});
+"#,
+    )
+    .expect("init.ts");
+}
+
+/// A resize handle lies outside the window's geometry. The compositor hit-tests the shell's nodes outside the parent's
+/// rectangle, the pointer goes to the handle and not to the client, and dragging it resizes the real window.
+#[test]
+fn a_resize_handle_outside_the_geometry_of_a_real_window_takes_the_pointer_and_a_drag_resizes_the_window() {
+    let session = Session::start();
+    let config = tempfile::tempdir().expect("a config directory");
+    write_handles_config(config.path());
+    let shell = Shell::start(&session, config.path(), |_| {});
+    let mut mapper = Mapper::connect(&session.wayland()).requesting_server_side();
+    mapper.map_window("org.example.handles", "Handles");
+    let app = "org.example.handles";
+    let ipc = session.ipc();
+    let pointer = mapper.pointer();
+
+    // The left handle is 8 wide from 6 pixels left of the frame: the one canvas of that place and width.
+    wait_for("the frame's resize handles", &session, &mut mapper, &shell, || {
+        canvases(&ipc)
+            .iter()
+            .any(|canvas| canvas.x == -6.0 && canvas.width == 8.0)
+    });
+    // The frame keeps its place when the titlebar comes, so the content settles a bar lower: let it, then read it.
+    let settled = Instant::now() + Duration::from_millis(500);
+    while Instant::now() < settled {
+        mapper.roundtrip();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let (x, y, width, height) = rect_of(&ipc, app).expect("the window");
+    assert_eq!(
+        (x, width, height),
+        (300.0, 200.0, 150.0),
+        "the window is where the script put it"
+    );
+
+    let on_handle = (x as i32 - 3, (y + height / 2.0) as i32);
+    let heard = pointer.presses();
+    motion(&session, on_handle.0, on_handle.1);
+    // The press is the handle's only once the compositor has the pointer over it: the shell's node hears the enter first.
+    wait_for(
+        "the pointer to enter the left handle",
+        &session,
+        &mut mapper,
+        &shell,
+        || shell.probe() == "1",
+    );
+    button(&session, BTN_LEFT, true);
+    motion(&session, on_handle.0 - 20, on_handle.1);
+    wait_for(
+        "the window to grow 20 pixels to the left",
+        &session,
+        &mut mapper,
+        &shell,
+        || rect_of(&ipc, app) == Some((x - 20.0, y, width + 20.0, height)),
+    );
+    button(&session, BTN_LEFT, false);
+    let deadline = Instant::now() + PATIENCE;
+    let grown = (width as i32 + 20, height as i32);
+    while mapper.configured(0) != Some(grown) {
+        assert!(
+            Instant::now() < deadline,
+            "the client was never configured to {grown:?}, it has {:?}",
+            mapper.configured(0)
+        );
+        mapper.roundtrip();
+        std::thread::sleep(POLL);
+    }
+    assert_eq!(
+        pointer.presses(),
+        heard,
+        "the client never heard the press: the handle took it"
+    );
+    assert!(!pointer.over(), "the pointer never entered the client's surface");
+    assert_eq!(
+        rect_of(&ipc, app),
+        Some((x - 20.0, y, width + 20.0, height)),
+        "the window stays where the drag left it, with its top left corner moved and the far side held"
+    );
+    assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 }
 
 /// An `init.ts` with a `MasterStackLayout` workspace whose two default drag bindings count the drags they take, so a test

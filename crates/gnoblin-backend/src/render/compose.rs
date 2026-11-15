@@ -3267,6 +3267,13 @@ impl Composer {
         }
     }
 
+    /// `point` of the output plane in the local space of the shell node `node`, wherever it lies: what a press that
+    /// holds the node is told of the pointer while the button stays down. `None` for a node that has gone.
+    #[must_use]
+    pub fn shell_node_local(&self, node: NodeId, point: PointF) -> Option<PointF> {
+        self.scene.local_point(node, point)
+    }
+
     /// Whether a node the compositor created has not been published in a batch yet.
     fn unpublished(&self, node: NodeId) -> bool {
         self.tree_changes
