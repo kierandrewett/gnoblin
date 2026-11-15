@@ -5,6 +5,9 @@
 //! `idle_frame_cost` prints the table (`cargo test --release -p gnoblin-js --test frame_cost -- --ignored
 //! --nocapture`); it is ignored because a timing is not a pass or fail. What gating promises without a clock is
 //! asserted by `frame_gating.rs` through the shell's frame counters.
+//!
+//! The link here is the fake of `tests/common`, which answers a poll at once. What a turn costs when it reads the real
+//! tree, slot, session and idle links is `idle_turn_cost_over_the_real_links` in `crates/gnoblin/tests/js_shell.rs`.
 
 use std::time::Instant;
 

@@ -5987,11 +5987,20 @@ fn a_stock_shell_over_the_real_links_does_no_work_when_nothing_happens() {
     assert_eq!(role.next_wake(), None, "nothing is due");
 }
 
+/// The CPU time this thread has used: what a turn computes, apart from the time it waits in a read.
+fn thread_cpu() -> Duration {
+    let now = rustix::time::clock_gettime(rustix::time::ClockId::ThreadCPUTime);
+    Duration::new(
+        u64::try_from(now.tv_sec).unwrap_or(0),
+        u32::try_from(now.tv_nsec).unwrap_or(0),
+    )
+}
+
 #[test]
 #[ignore = "a benchmark: run with --ignored --nocapture"]
 fn idle_turn_cost_over_the_real_links() {
     const TURNS: u32 = 2000;
-    println!("windows | idle connection | frames run in 3 s | idle turn us (mean of {TURNS})");
+    println!("windows | idle connection | frames run in 3 s | turn us (wall) | turn us (cpu), mean of {TURNS}");
     for (windows, watching) in [(0_u32, false), (25, false), (100, false), (300, false), (100, true)] {
         let session = Session::start();
         let mut mapper = Mapper::connect(&session.wayland());
@@ -6020,12 +6029,13 @@ fn idle_turn_cost_over_the_real_links() {
             std::thread::sleep(turn_wait(&role));
         }
         let ran = role.shell_mut().frame_stats().run - before.run;
-        let started = Instant::now();
+        let (started, computing) = (Instant::now(), thread_cpu());
         for _ in 0..TURNS {
             role.tick().expect("the shell runs");
         }
         let per_turn = started.elapsed().as_secs_f64() * 1e6 / f64::from(TURNS);
-        println!("{windows:7} | {watching:15} | {ran:17} | {per_turn:10.1}");
+        let cpu = (thread_cpu() - computing).as_secs_f64() * 1e6 / f64::from(TURNS);
+        println!("{windows:7} | {watching:15} | {ran:17} | {per_turn:12.1} | {cpu:11.1}");
         drop(role);
         drop(mapper);
     }
