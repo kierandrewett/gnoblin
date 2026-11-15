@@ -36,12 +36,13 @@ use gnoblin_lock::State as LockState;
 use gnoblin_types::{DeviceId, NodeId, Point};
 use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot};
 use gnoblin_wayland::{NewWindowFocus, WmOptions};
+use wayland_client::backend::WaylandError;
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool,
+    wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_region, wl_registry, wl_seat, wl_shm, wl_shm_pool,
     wl_surface, wl_touch,
 };
-use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
+use wayland_client::{Connection, Dispatch, DispatchError, EventQueue, Proxy, QueueHandle, WEnum};
 use wayland_protocols::ext::idle_notify::v1::client::{ext_idle_notification_v1, ext_idle_notifier_v1};
 use wayland_protocols::ext::session_lock::v1::client::{ext_session_lock_manager_v1, ext_session_lock_v1};
 use wayland_protocols::wp::fractional_scale::v1::client::{wp_fractional_scale_manager_v1, wp_fractional_scale_v1};
@@ -417,6 +418,23 @@ impl Client {
                 self.state
             );
             thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    /// Round-trips until the server closes the connection with a protocol error, and returns the interface of the
+    /// object the error is posted on and its code.
+    fn protocol_error(&mut self) -> (String, u32) {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            match self.queue.roundtrip(&mut self.state) {
+                Ok(_) => {}
+                Err(DispatchError::Backend(WaylandError::Protocol(error))) => {
+                    return (error.object_interface.to_string(), error.code);
+                }
+                Err(other) => panic!("the round trip failed for another reason: {other}"),
+            }
+            assert!(Instant::now() < deadline, "the server never posted a protocol error");
+            thread::sleep(Duration::from_millis(5));
         }
     }
 
@@ -930,6 +948,52 @@ fn a_surface_is_told_the_scale_of_its_output() {
             Some(120),
             "the surface was told the scale of the output it is on"
         );
+    });
+}
+
+#[test]
+fn a_second_fractional_scale_object_is_an_error_on_the_manager() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let manager: wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises wp_fractional_scale_manager_v1");
+        let surface = client.compositor.create_surface(&client.qh, ());
+        let _first = manager.get_fractional_scale(&surface, &client.qh, ());
+        let _second = manager.get_fractional_scale(&surface, &client.qh, ());
+        let (interface, code) = client.protocol_error();
+        assert_eq!(
+            interface, "wp_fractional_scale_manager_v1",
+            "the error belongs to the manager, not to the surface"
+        );
+        assert_eq!(
+            code,
+            wp_fractional_scale_manager_v1::Error::FractionalScaleExists as u32
+        );
+    });
+}
+
+#[test]
+fn a_surface_may_have_a_fractional_scale_object_again_once_the_first_is_gone() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let manager: wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises wp_fractional_scale_manager_v1");
+        let surface = client.compositor.create_surface(&client.qh, ());
+        let first = manager.get_fractional_scale(&surface, &client.qh, ());
+        client.wait_for(|state| state.preferred_scale.is_some());
+        first.destroy();
+        client.state.preferred_scale = None;
+        let _second = manager.get_fractional_scale(&surface, &client.qh, ());
+        // The new object is told the scale like the first was, and the connection is still open: a refusal would
+        // have closed it.
+        let state = client.wait_for(|state| state.preferred_scale.is_some());
+        assert_eq!(state.preferred_scale, Some(120));
     });
 }
 

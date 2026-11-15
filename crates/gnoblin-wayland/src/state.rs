@@ -32,7 +32,6 @@ use smithay::wayland::compositor::{
 use smithay::wayland::content_type::ContentTypeState;
 use smithay::wayland::cursor_shape::CursorShapeManagerState;
 use smithay::wayland::foreign_toplevel_list::ForeignToplevelListState;
-use smithay::wayland::fractional_scale::FractionalScaleManagerState;
 use smithay::wayland::idle_inhibit::IdleInhibitManagerState;
 use smithay::wayland::input_method::{InputMethodManagerState, PopupSurface};
 use smithay::wayland::keyboard_shortcuts_inhibit::{KeyboardShortcutsInhibitState, KeyboardShortcutsInhibitor};
@@ -321,10 +320,6 @@ pub struct State {
     pub(crate) security_context_state: SecurityContextState,
 
     // The seat and its keyboard features. One field per protocol, as above.
-    /// Kept alive so `wp_fractional_scale_manager_v1` stays registered; the handler in
-    /// [`crate::protocols::wp_fractional_scale_v1`] answers its requests.
-    #[allow(dead_code)]
-    pub(crate) fractional_scale_state: FractionalScaleManagerState,
     /// Kept alive so `wp_cursor_shape_manager_v1` stays registered.
     #[allow(dead_code)]
     pub(crate) cursor_shape_state: CursorShapeManagerState,
@@ -737,7 +732,7 @@ impl State {
         // The seat's protocols. Each global is created here and answered by its own
         // module; the argument this list carries is the access policy for the globals
         // that can act on the whole session.
-        let fractional_scale_state = crate::protocols::wp_fractional_scale_v1::global(&display_handle);
+        crate::protocols::wp_fractional_scale_v1::create_global(&display_handle);
         let cursor_shape_state = crate::protocols::wp_cursor_shape_v1::global(&display_handle);
         let relative_pointer_state = crate::protocols::zwp_relative_pointer_v1::global(&display_handle);
         let pointer_constraints_state = crate::protocols::zwp_pointer_constraints_v1::global(&display_handle);
@@ -797,7 +792,6 @@ impl State {
             primary_selection_state,
             ext_data_control_state,
             wlr_data_control_state,
-            fractional_scale_state,
             cursor_shape_state,
             relative_pointer_state,
             pointer_constraints_state,
