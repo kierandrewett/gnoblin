@@ -1,7 +1,5 @@
-// The composition root. Importing this module builds one generation of the object model: it puts the staging layer
-// in front of the host, makes the root collections and the services in the order they depend on each other,
-// makes the `gnoblin` object, adopts the nodes that are already in the tree and hands the shell its entry. Nothing
-// else in `gnoblin/host/*` runs anything when it is imported.
+// Installs the host services and public object model for one generation.
+// It creates root collections, adopts existing nodes, and gives the shell its frame entry.
 
 import { adopt } from "gnoblin/host/adoption";
 import { host } from "gnoblin/host/bridge";

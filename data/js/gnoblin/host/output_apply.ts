@@ -20,9 +20,12 @@ export interface OutputApplication {
 
 /** An output request awaiting its compositor reply and optional config notice path. */
 export interface PendingApplication {
+    /** Output receiving the request. */
     output: Output;
+    /** Mutable result updated when the compositor answers. */
     result: { done: boolean; error: string | null };
-    /** The config path (`outputs.DP-1`) to name in a notice when the compositor refuses; null for a script's own call. */
+    /** The config path (`outputs.DP-1`) to name in a notice when the compositor refuses; null for a script's own
+     * call. */
     path: string | null;
 }
 
@@ -39,8 +42,8 @@ export function applyOutput(
     const { mirrorOf, ...rest } = options;
     const source = isOutput(mirrorOf) ? mirrorOf.connector : mirrorOf;
     const request = outputRequest(mirrorOf === undefined ? rest : { ...rest, mirrorOf: source }, target);
-    // A factor that is not 1, 2 or 4 is accepted, with one diagnostic the owner can see: `say` repeats nothing, so the
-    // same factor asked for again (a profile re-applied after a hotplug, say) is not reported twice.
+    // Unsupported supersample factors are accepted with a diagnostic. Repeating a profile after hotplug does not
+    // repeat it.
     const notice = rest.supersample === undefined ? null : supersampleNotice(rest.supersample);
     if (notice !== null) {
         say(notice);

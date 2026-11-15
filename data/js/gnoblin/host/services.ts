@@ -1,6 +1,5 @@
-// The shell's optional services (titlebars, the window menu, the not-responding alert) and the always-on ones
-// (lock screen, dialog and idle observation, launch feedback). A script starts the optional ones with
-// `startDecorations`, `startWindowMenu` and `startNotRespondingAlert`.
+// Installs shell services, including optional window decorations, menus and not-responding alerts.
+// Lock, dialog, idle, authentication and launch services start with the runtime.
 
 import { notRespondingAlerts } from "gnoblin/alerts";
 import { AuthenticationManager } from "gnoblin/authentication";
@@ -26,7 +25,7 @@ import { snappedZone, unsnapClient } from "gnoblin/snap";
 import type { SnapClient } from "gnoblin/snap";
 import { windowState } from "gnoblin/window_state";
 
-/** What a window's frame can ask of the shell: the menu, the stacking, the maximise and minimise policy, and the focus. */
+/** Provides the menu, stacking, maximise, minimise and focus actions used by window frames. */
 function frameHooks(): FrameHooks {
     return {
         menu: (client) => {
@@ -61,9 +60,9 @@ function frameHooks(): FrameHooks {
 }
 
 /**
- * Gives every window a frame, once: the stock titlebar with its buttons, the drag and the double click, or the frame the
- * options fill. Library code for an `init.ts` that wants frames; a config that does not call it has none. Calling it
- * again changes nothing. It declares to the compositor that this shell draws decorations.
+ * Gives every window a frame, once: the stock titlebar with its buttons, the drag and the double click, or the frame
+ * the options fill. Library code for an `init.ts` that wants frames; a config that does not call it has none. Calling
+ * it again changes nothing. It declares to the compositor that this shell draws decorations.
  */
 export function startDecorations(options: DecorationsOptions = {}): void {
     if (ctx.decorations === null) {
@@ -72,7 +71,8 @@ export function startDecorations(options: DecorationsOptions = {}): void {
     }
 }
 
-/** Tells the compositor whether this shell draws window decorations, so a client that asks for server-side is told so. */
+/** Tells the compositor whether this shell draws window decorations, so a client that asks for server-side is told
+ * so. */
 export function declareDecorations(available: boolean): void {
     const seat = host.input.seats()[0];
     if (seat === undefined) {
@@ -160,7 +160,8 @@ export function startNotRespondingAlert(): void {
 
 /** Attaches the lock screen and makes the dialog, idle, authentication and launch managers. */
 export function installServices(): void {
-    // The stock lock screen is part of the runtime, not of a config: a locked session must always have one to type into.
+    // The stock lock screen is part of the runtime, not of a config: a locked session must always have one to type
+    // into.
     attachLock(host.lock);
 
     // The frames of the windows find a window's node and what their buttons ask of the shell here.

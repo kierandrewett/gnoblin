@@ -1,4 +1,4 @@
-// Adding and removing the script's workspaces, and giving a window that has none the workspace it joins.
+// Adds and removes script workspaces and assigns them to windows.
 
 import { GnoblinError } from "gnoblin/errors";
 import type { Client } from "gnoblin/host/client";
@@ -63,8 +63,8 @@ export function addWorkspace(workspace: Workspace): void {
 }
 
 /**
- * Takes the workspace out of `gnoblin.workspaces`. Its windows move to the neighbour before it (the one after it, for the
- * first), and that neighbour is shown where the removed one was; none is closed.
+ * Takes the workspace out of `gnoblin.workspaces`. Its windows move to the neighbour before it (the one after it,
+ * for the first), and that neighbour is shown where the removed one was; none is closed.
  */
 export function removeWorkspace(workspace: Workspace): void {
     ctx.displayManager.changed();
@@ -87,7 +87,8 @@ export function removeWorkspace(workspace: Workspace): void {
     for (const desk of ctx.desks) {
         if (desk.shown === workspace) {
             desk.shown = null;
-            // The neighbour takes its place, unless another output shows it already: then the first one no output shows.
+            // The neighbour takes its place, unless another output shows it already: then the first workspace that
+            // no output shows.
             const free =
                 neighbour !== undefined && deskShowing(neighbour) === null
                     ? neighbour

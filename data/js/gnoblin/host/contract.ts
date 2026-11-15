@@ -1,6 +1,4 @@
-// The two sides of the bridge, as types: `Host` is what the Rust shell installs as `globalThis.__gnoblinHost`, and
-// `Entry` is what this library hands back for the shell to call each frame. Types only, so the shell's contract
-// reads in one place and nothing here runs.
+// Types for the bridge between the Rust shell and this library: host functions in, frame callbacks out.
 
 import type { DialogEvent } from "gnoblin/dialogs";
 import type { ClientPointerEvent } from "gnoblin/host/listeners";
@@ -11,24 +9,33 @@ import type { LockBackend } from "gnoblin/lock";
 import type { HostValue, NodeId } from "gnoblin/types";
 import type { UiBackend } from "gnoblin/ui/backend";
 
-/** A listener or internal task failure retained until the shell takes frame errors. */
+/** A listener or task failure saved until the shell retrieves frame errors. */
 export interface ErrorReport {
+    /** Callback name or source that raised the failure. */
     site: string;
+    /** Exception thrown by the listener or task. */
     error: unknown;
 }
 
-/** What the frame's dialog listeners decided about one observed request. */
+/** The decision made by dialog listeners for an observed request. */
 export interface Verdict {
+    /** Identifier of the observed request. */
     request: number;
+    /** Whether the request was denied. */
     deny: boolean;
+    /** Reason supplied with the decision. */
     reason: string;
 }
 
-/** The callbacks and state access the shell uses to drive one generation. */
+/** Callbacks and state access the shell uses to drive one runtime generation. */
 export interface Entry {
+    /** Processes created, changed and destroyed host nodes for this frame. */
     plan(created: NodeId[], touched: NodeId[], destroyed: NodeId[]): number;
+    /** Runs the next queued callback and returns the queue length. */
     next(): number;
+    /** Number of callbacks waiting in the queue. */
     pending(): number;
+    /** Marks host nodes whose wrappers are ready and returns pending callback count. */
     ready(nodes: NodeId[]): number;
     /** Tells the clients' listeners of the pointer's edges on windows; returns how many calls wait. */
     pointer(events: WindowPointerEvent[]): number;
@@ -36,6 +43,7 @@ export interface Entry {
     input(messages: InputMessage[]): number;
     /** Cancels what the input matcher has in flight and releases every claim; returns how many calls wait. */
     cancelAll(): number;
+    /** Transfers collected callback failures to the shell. */
     takeErrors(): ErrorReport[];
     /** What the module could not do, said once per generation: a style property no renderer draws. */
     takeNotices(): string[];
@@ -74,7 +82,9 @@ export interface Entry {
     finishLoad(): void;
     /** Runs the stock default (`installDefaults` of `gnoblin/starter`) for a shell that has no user entry to run. */
     loadDefault(): void;
+    /** Captures workspaces, output assignments and retained window geometry. */
     snapshot(): WorkspaceSnapshot;
+    /** Restores runtime state from a previous generation snapshot. */
     reconcile(previous: WorkspaceSnapshot): void;
     /** The host API's frame: what the host collected since the last one, as JSON; returns how many calls wait. */
     apiFrame(batch: string): number;
@@ -85,14 +95,19 @@ export interface Entry {
     wake(): number;
 }
 
-/** Native operations and services the Rust shell exposes to this generation. */
+/** Native operations and services provided by the Rust shell to this generation. */
 export interface Host {
-    /** Checks a document patch (JSON) against the document in force: the validator's problems, or undefined. */
+    /** Validates a JSON config patch against the current document; returns a problem or undefined. */
     config: { check(patch: string): string | undefined };
+    /** Returns the node kind, or undefined when the node is unknown. */
     kind(node: NodeId): string | undefined;
+    /** Reads the current value of a host node property. */
     get(node: NodeId, key: string): HostValue | undefined;
+    /** Reads the last value published by the host for a property. */
     published(node: NodeId, key: string): HostValue | undefined;
+    /** Returns a node's stable label, or undefined when it has none. */
     label(node: NodeId): string | undefined;
+    /** Queues a property write and returns an error code when it is refused. */
     set(node: NodeId, key: string, value: HostValue): string | undefined;
     /** What `set` would answer, without queuing the write; `timed` also refuses a property the tree cannot animate. */
     check(node: NodeId, key: string, value: HostValue, timed: boolean): string | undefined;
@@ -109,19 +124,22 @@ export interface Host {
         delay?: number,
         tween?: number,
     ): string | undefined;
-    /** The `tween` nodes a transition's tracks join (`data/js/gnoblin/transition.ts`). */
+    /** Tween nodes used by tracks in a transition (`data/js/gnoblin/transition.ts`). */
     tween: {
         create(): NodeId | string;
         destroy(node: NodeId): string | undefined;
     };
+    /** Calls a host operation on a node and returns an error code when refused. */
     call(node: NodeId, method: string): string | undefined;
     /** Queues the moves that put a window on top of the others. */
     raise(node: NodeId): string | undefined;
     /** Queues the moves that put a window under the others. */
     lower(node: NodeId): string | undefined;
+    /** Returns the current window node handles. */
     windows(): NodeId[];
     /** The nodes whose writes the shell gave up on since the last call, each once. */
     lostWrites(): NodeId[];
+    /** Returns the connected screen node handles. */
     screens(): NodeId[];
     /** The screen the main seat's pointer is on, or undefined while the seat names none. */
     pointerScreen(): NodeId | undefined;
@@ -134,7 +152,9 @@ export interface Host {
         version(): string;
         signals(): string;
     };
+    /** Input services provided by the shell. */
     input: InputHost;
+    /** UI services provided by the shell, without its clock callback. */
     ui: Omit<UiBackend, "now">;
     /** The scene nodes the XR module makes and finds (`gnoblin/scene`, `gnoblin/xr`). */
     xr: {
@@ -147,25 +167,30 @@ export interface Host {
         root(): NodeId;
         declared(): boolean;
     };
+    /** Lock-screen services provided by the shell. */
     lock: LockBackend;
-    /** `Output.apply`: the request text goes to the compositor, whose answer comes back under the token. */
+    /** `Output.apply` requests and their compositor responses. */
     outputs: {
         apply(node: NodeId, text: string): number | undefined;
         takeAnswers(): { token: number; error: string }[];
     };
+    /** Set by the shell to receive callbacks for this generation. */
     entry?: Entry;
 }
 
-/** A pointer edge as the host hands it over: the node it is on, `enter`, `motion`, `leave`, `press` or `release`. */
+/** A pointer edge from the host: the node and `enter`, `motion`, `leave`, `press` or `release`. */
 export interface WindowPointerEvent extends ClientPointerEvent {
+    /** Window node where the pointer event occurred. */
     node: NodeId;
+    /** Pointer edge kind, such as `enter`, `motion` or `press`. */
     kind: string;
 }
 
-/** Serializable state needed to reconcile workspaces and retained window geometry after reload. */
+/** Serializable state used to restore workspaces and window geometry after reload. */
 export interface WorkspaceSnapshot {
     /** The workspace the primary output showed. */
     active: string | null;
+    /** Workspace identifiers and their retained window nodes. */
     workspaces: { id: string; clients: number[] }[];
     /** The workspace each output showed, by the output's name. */
     outputs: { output: string; workspace: string }[];
@@ -173,8 +198,9 @@ export interface WorkspaceSnapshot {
     kept: KeptWindow[];
 }
 
-/** What one window keeps beyond where it is, each rectangle as `[x, y, width, height]`. */
+/** State retained for a window beyond its current placement; rectangles are `[x, y, width, height]`. */
 export interface KeptWindow {
+    /** Host node handle for the retained window. */
     node: number;
     /** The rectangle a maximised window had before it was maximised. */
     floating: number[] | null;
@@ -184,6 +210,7 @@ export interface KeptWindow {
     leftAt: number[] | null;
     /** The zone a snapped window sits in, and the rectangle unsnapping returns it to. */
     zone: string | null;
+    /** Floating rectangle restored when a snapped window is unsnapped. */
     snapFloating: number[] | null;
     /**
      * The room the window's frame kept when it was last fitted (top, right, bottom, left), so a reload that changes the

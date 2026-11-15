@@ -1,29 +1,32 @@
-// Deferred listener calls and the failures they leave. Listeners never run inside the code that raised the event:
-// the call is queued here and the shell drains the queue frame by frame under a budget for each call, so one
-// failing or slow listener cannot stop the frame. A failure is collected as a report and handed to the shell.
+// Deferred callbacks and their errors. The shell drains queued calls over successive frames so a slow or failing
+// listener cannot stop a frame; failures are collected and returned to the shell.
 
 import { ctx } from "gnoblin/host/context";
 import type { ErrorReport } from "gnoblin/host/contract";
 
-/** A listener source and its attached handlers. */
+/** An object that provides listeners for deferred calls. */
 export interface Source {
+    /** Listeners attached to this source. */
     listeners: object[];
 }
-
-/** A call the module itself queues (an input hook), run beside the listeners' under the same budget. */
+/** An internal call, such as an input hook, run with the same budget as listener calls. */
 export interface Task {
+    /** Name used to identify errors from this task. */
     site: string;
+    /** Callback to run when the task reaches the front of the queue. */
     task(): void;
 }
-
-/** One deferred listener invocation, including its source and call arguments. */
+/** A deferred listener call with its source, method and arguments. */
 export interface Invocation {
+    /** Source that must still contain the listener for the call to run. */
     source: Source;
+    /** Listener whose handler is invoked. */
     listener: object;
+    /** Name of the handler to read when the call runs. */
     method: string;
+    /** Arguments passed to the handler. */
     args: unknown[];
 }
-
 /** Reads the current handler property from a listener. */
 export function handlerOf(listener: object, method: string): unknown {
     return Reflect.get(listener, method);

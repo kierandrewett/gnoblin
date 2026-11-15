@@ -1,4 +1,4 @@
-// The shell's side of `gnoblin/display_manager`: what a `Display` does to the desks and the output requests.
+// Connects logical displays and output profiles to the compositor's connected outputs.
 
 import { Display } from "gnoblin/display/display";
 import { attachDisplays } from "gnoblin/display/state";
@@ -58,7 +58,9 @@ function spanDesks(lead: Output, members: readonly Output[] | null): void {
     fillDesks();
 }
 
-/** Sends an output request on behalf of a profile or display; a request the shell cannot send is reported, not thrown. */
+/** Sends an output request on behalf of a profile or display; a request the shell cannot send is reported, not
+ * thrown.
+ */
 function requestOutput(
     output: Output,
     setting: Omit<OutputConfig, "mirrorOf"> & { mirrorOf?: Output | string | null },

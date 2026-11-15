@@ -1,6 +1,4 @@
-// The private state of a collection and the pure functions over it: which members a view holds, worked out from
-// the objects, and what a `where` query matches. The collection classes are in `collections`; the notifications
-// that keep views current are in `collection_events`.
+// Private collection state and the functions that query its current members.
 
 import type { Display } from "gnoblin/display/display";
 import type { OutputProfile } from "gnoblin/display/output_profile";
@@ -18,9 +16,11 @@ export type Member = Client | Workspace | Output | Display | OutputProfile;
 
 /** Operations that mutate a script-owned collection. */
 export interface Mutation {
+    /** Adds a member to a mutable collection. */
     add(member: Member): void;
     /** False when the collection refuses to let the member go; anything else is taken as done. */
     remove(member: Member): boolean | void;
+    /** Clears all members from a mutable collection. */
     clear(): void;
     /** Told after two members traded places in the order. */
     swapped?(a: Member, b: Member): void;
@@ -28,13 +28,17 @@ export interface Mutation {
 
 /** Private view state for root collections and their filtered selections. */
 export interface CollectionState extends Source {
+    /** Public collection object represented by this state. */
     self: Collection<Member>;
     /** The collection a `where` narrows; null for a root collection, which holds `list`. */
     parent: CollectionState | null;
+    /** Query used by a selection; null for a root collection. */
     query: Query | null;
+    /** Root collection members in order; selections compute their members from the parent and query. */
     list: Member[];
     /** The members a view last told its listeners of, kept only while it has listeners. */
     members: Set<Member> | null;
+    /** Properties available to a selection's query. */
     keys: readonly string[];
     /** Set on a collection scripts may change: what `add`, `remove` and `clear` do. */
     mutation?: Mutation;

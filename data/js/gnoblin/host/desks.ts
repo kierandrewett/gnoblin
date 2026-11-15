@@ -1,6 +1,4 @@
-// Desks: what each output shows. A desk holds the workspace on an output, and outlives the output only while no
-// other is left (it waits `parked`, hidden, for the next one). Workspaces are the script's, not an output's, so
-// one workspace is on one desk; a workspace may span several outputs.
+// Desks represent what outputs show and where workspaces go when outputs change.
 
 import { host } from "gnoblin/host/bridge";
 import type { Client } from "gnoblin/host/client";
@@ -11,16 +9,20 @@ import type { Workspace } from "gnoblin/host/workspace";
 import { wsState } from "gnoblin/host/workspace_state";
 
 /**
- * What one output shows: the workspace on it, and what becomes of its windows when the output is unplugged (the the retired shell
- * shell's `Desk`). A desk outlives its output only while no other output is left: it waits `parked`, hidden, for the
- * next output, whose desk it becomes. A tree with no output at all has one desk with none that is not parked, so a
- * script still has a workspace on show. Workspaces are the script's, not an output's: one workspace is on one desk.
+ * The workspace shown by an output and how its windows are handled when output availability changes. A parked desk
+ * waits hidden for an output to return. With no outputs, one unparked desk keeps a workspace shown. Each workspace is
+ * on one desk and may span several outputs.
  */
 export interface Desk {
+    /** Output using this desk, or null when it has none. */
     output: Output | null;
+    /** Workspace currently shown by this desk, or null when empty. */
     shown: Workspace | null;
+    /** Whether the desk waits hidden for an output to return. */
     parked: boolean;
-    /** The outputs this desk's one workspace is stretched over (this desk's own first), or null for a desk of one output. */
+    /** The outputs this desk's one workspace is stretched over (this desk's own first), or null for a desk of one
+     * output.
+     */
     spans: Output[] | null;
     /** The desk whose workspace covers this desk's output too. Such a desk shows no workspace of its own. */
     spannedBy: Desk | null;

@@ -1,5 +1,4 @@
-// The shared state of the object model: one object that the host modules read and write, in place of the
-// module-level maps, queues and flags that used to tie them into a single file.
+// Shared state used by the host modules for one runtime generation.
 
 import type { AuthenticationManager } from "gnoblin/authentication";
 import type { DialogManager } from "gnoblin/dialogs";
@@ -30,12 +29,11 @@ import type { NodeId } from "gnoblin/types";
 import type { XRRuntime } from "gnoblin/xr/runtime";
 
 /**
- * Everything the object model keeps between calls. The modules of `gnoblin/host/*` read and write this one object and
- * keep no state of their own: an ES module cannot hand a reassignable `let` to another, so state that several modules
- * change has to live in something they share, and what a generation owns is listed in one place.
+ * Shared state for one generation of the host object model. Host modules read and write this instance rather than
+ * keeping module-local state that other modules cannot update.
  *
- * A generation is a fresh runtime that evaluates this module once, so there is one instance, `ctx`, exported below. It
- * is not passed as a parameter because a script makes `new Workspace(...)` itself, and has nothing to pass.
+ * A generation is a fresh runtime that evaluates this module once, creating the single `ctx` instance exported below.
+ * It is not passed as a parameter because scripts construct objects such as `new Workspace(...)` themselves.
  */
 export class HostContext {
     /** Listener calls and internal tasks waiting for the shell pump. */
@@ -44,7 +42,7 @@ export class HostContext {
     /** Failures collected for the shell to take after processing callbacks. */
     reports: ErrorReport[] = [];
 
-    /** The texts `takeNotices` has not handed out yet, and every text already said this generation. */
+    /** Notices waiting to be delivered, plus every notice already emitted this generation. */
     readonly notices: string[] = [];
 
     /** Notice texts already emitted, to avoid repeating the same style warning. */
@@ -71,22 +69,22 @@ export class HostContext {
     /** Maps compositor screen-node handles to their stable output wrappers. */
     readonly outputsByNode = new Map<NodeId, Output>();
 
-    /** The workspace each client is on. A workspace is the script's, so the compositor does not know. */
+    /** The workspace each client belongs to; this is managed by the script, not the compositor. */
     readonly membership = new WeakMap<Client, Workspace>();
 
     /** The clients that were there when the shell booted: a layout does not place them again. */
     readonly preexisting = new WeakSet<Client>();
 
-    /** The clients a layout was offered as arrivals: a dialog never is, so a layout is never told one left. */
+    /** Clients offered to a layout as arrivals; dialogs are excluded and do not later leave it. */
     readonly offered = new WeakSet<Client>();
 
     /** The dialogs already centred in their parent. */
     readonly centred = new WeakSet<Client>();
 
-    /** The views with listeners: the only ones whose membership the plan keeps up to date. */
+    /** Views with listeners, whose membership is kept current. */
     readonly tracked: CollectionState[] = [];
 
-    /** All live desks, with reverse lookup by output for active workspaces. */
+    /** All live desks, with a reverse lookup from each output. */
     readonly desks: Desk[] = [];
 
     /** Reverse index from an output to the desk it displays. */
@@ -95,20 +93,20 @@ export class HostContext {
     /** Slides waiting to start after the next successful layout pass. */
     readonly slides: Slide[] = [];
 
-    /** The workspaces that are not shown but keep their windows drawn until a slide away from them ends. */
+    /** Unshown workspaces whose windows stay drawn until a slide away from them ends. */
     readonly holding = new Map<Workspace, number>();
 
-    /** Whether each client's layout wants it shown, from the last placement it had. Default shown. */
+    /** Whether the last layout placement wants each client shown. Defaults to shown. */
     readonly shownByLayout = new WeakMap<Client, boolean>();
 
     /**
-     * The `visible` the layout driver last decided for each client. A client it never hid is shown. It is what it
-     * compares with, so a window the compositor hid itself (a minimised one) is not shown by a layout that has not
-     * changed its mind.
+     * Visibility last set by the layout driver. A client it has not hidden is shown. Comparing against this value
+     * prevents a client hidden by the compositor (for example, when minimised) from being shown again until the layout
+     * changes its decision.
      */
     readonly writtenVisible = new WeakMap<Client, boolean>();
 
-    /** The room a window's frame kept when it was last fitted, so the next pass knows a frame came, went or changed. */
+    /** The frame inset last used to fit a window, so later passes can detect changes. */
     readonly fittedInset = new WeakMap<Client, FrameInset>();
 
     /** Styles attached to scopes, keyed by the collection state they affect. */
@@ -123,22 +121,24 @@ export class HostContext {
     /** Pending applications indexed by the compositor's request token. */
     readonly applications = new Map<number, PendingApplication>();
 
-    /** The stock focus policy, attached for every config: a plain `init.ts` has click focus and the built-in snapping. */
+    /** The stock focus policy, attached to each config with click focus and built-in snapping. */
     focusPolicy: FocusPolicy<Client> | null = null;
 
     /** Optional decoration manager, created by `startDecorations`. */
     decorations: Decorations | null = null;
 
-    /** The few values that are reassigned, and so cannot be module-level `let`s. */
+    /** Shared values that need reassignment and cannot be module-level `let` bindings. */
     readonly flags = {
         /**
-         * False until the first frame: the entry module is still adding workspaces, and the windows that were
-         * there at boot join one only when it is done, or a reload could not put them back where they were.
+         * False until the first frame: the entry module is still adding workspaces. Existing windows join a workspace
+         * only afterwards, so reloads can restore their previous placement.
          */
         opened: false,
-        /** Whether the layout pass is running, which a transition cannot start inside: its writes are the pass's own. */
+        /** Whether the layout pass is running, which a transition cannot start inside: its writes are the pass's
+         * own.
+         */
         laying: false,
-        /** The window that had the first seat's keyboard focus when the last frame ended: what a closing window is checked against. */
+        /** The first-seat focused window at the end of the last frame, used when checking a closing window. */
         lastFocus: null as Client | null,
         /** Stable tie-break order for style selections created at equal priority. */
         styleOrder: 0,

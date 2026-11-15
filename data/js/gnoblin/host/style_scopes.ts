@@ -1,6 +1,4 @@
-// Which style layers apply to a client: its own overrides, its workspace's, the collections' that hold it, and
-// `where()` selections that style it, with the order they rank in. This is the resolution only (what `Client.style`
-// and `computedStyle` read); `styles` writes the resolved values to the nodes.
+// Resolves the style layers that apply to each client.
 
 import { GnoblinError } from "gnoblin/errors";
 import { host } from "gnoblin/host/bridge";
@@ -18,6 +16,7 @@ import type { Style } from "gnoblin/style/style";
 
 /** The style a collection of clients carries, and where it ranks among the selections. */
 export interface ScopeStyle {
+    /** The scope's mutable style values. */
     style: ClientStyle;
     /** The order the scope's style was first asked for in: the tie-break between selections of equal priority. */
     order: number;
@@ -27,11 +26,15 @@ export interface ScopeStyle {
 export interface ClientStyleState {
     /** The client's own overrides, made the first time a script reads `client.style`. */
     style: ClientStyle | null;
+    /** Whether the style has been written to the host. */
     applied: boolean;
     /** The style epoch and the layers the last application was made for. */
     epoch: number;
+    /** Origins of style layers used by the last application. */
     layers: string;
+    /** The effective style values last computed for the client. */
     computed: ComputedStyle | null;
+    /** Style properties not applied to the host. */
     notes: string[];
     /** The effects last written, as JSON; null before the first write. */
     effects: string | null;

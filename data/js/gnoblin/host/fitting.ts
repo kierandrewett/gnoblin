@@ -1,5 +1,6 @@
 // Fitting a window to the work area it is in: after a workspace or output change, or when its frame comes
-// or goes, or changes. A maximised window fills the area, a snapped one tiles to its zone again, a floating one shrinks to fit.
+// or goes, or changes. A maximised window fills the area, a snapped one tiles to its zone again, a floating one
+// shrinks to fit.
 
 import { growRect, NO_INSET, sameInset, shrinkRect } from "gnoblin/frame/inset";
 import type { FrameInset } from "gnoblin/frame/inset";
@@ -34,8 +35,8 @@ function reservedInset(client: Client): FrameInset {
 }
 
 /**
- * The content rectangle `rect` as a frame inside `area`: the content with `inset` around it, shrunk to fit and moved the
- * least distance that puts all of it inside. A frame is never left across the area's edge.
+ * The content rectangle `rect` as a frame inside `area`: the content with `inset` around it, shrunk to fit and moved
+ * the least distance that puts all of it inside. A frame is never left across the area's edge.
  */
 function fitContent(rect: Rect, inset: FrameInset, area: Rect): Rect {
     return shrinkRect(fitInto(growRect(rect, inset), area), inset);
@@ -48,8 +49,8 @@ interface Floater {
 
 /**
  * Fits a window to the work area it is now in: a maximised window fills it, a snapped one tiles to its zone again, a
- * floating one shrinks to fit and moves inside it (the frame, outlets included, stays inside), and the rectangle it floats
- * at follows. A fullscreen window covers its output.
+ * floating one shrinks to fit and moves inside it (the frame, outlets included, stays inside), and the rectangle it
+ * floats at follows. A fullscreen window covers its output.
  */
 export function refitClient(client: Client, area: Rect): void {
     if (client.fullscreen) {
@@ -75,15 +76,16 @@ export function refitClient(client: Client, area: Rect): void {
 }
 
 /**
- * A frame came, went or changed (the compositor changed who draws the window's frame, a reload toggled decorations, or a
- * script gave an outlet another size): the window's content does not move by itself, so an outlet that appears above a
- * window placed at the top of the area would be drawn off the screen. The rule is that the FRAME keeps its place: the
- * content moves in by what the top and left gained and out by what they lost, and the result is clamped so the frame stays
- * inside the work area. A maximised window fills the area again, a snapped one tiles to its zone again, and a window a
- * tiling layout places is placed again by the layout (the decoration change marks its workspace dirty). The rectangles a
- * window returns to (leaving maximised, unsnapping, the one it floats at) move the same way, so they do not bring the
- * old offset back. A fullscreen window is left alone and fitted when it leaves: the rectangle it returns to is the one the
- * frame was fitted to before. Returns whether the frame changed since the window was last fitted, so a tiling layout
+ * A frame came, went or changed (the compositor changed who draws the window's frame, a reload toggled
+ * decorations, or a script gave an outlet another size): the window's content does not move by itself, so an
+ * outlet that appears above a window placed at the top of the area would be drawn off the screen. The rule is
+ * that the FRAME keeps its place: the content moves in by what the top and left gained and out by what they
+ * lost, and the result is clamped so the frame stays inside the work area. A maximised window fills the area
+ * again, a snapped one tiles to its zone again, and a window a tiling layout places is placed again by the
+ * layout (the decoration change marks its workspace dirty). The rectangles a window returns to (leaving
+ * maximised, unsnapping, the one it floats at) move the same way, so they do not bring the old offset back. A
+ * fullscreen window is left alone and fitted when it leaves: the rectangle it returns to is the one the frame
+ * was fitted to before. Returns whether the frame changed since the window was last fitted, so a tiling layout
  * places its windows again.
  */
 export function followFrame(client: Client, area: Rect): boolean {

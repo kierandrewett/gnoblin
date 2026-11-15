@@ -1,6 +1,4 @@
-// `Collection`: a live, array-like view of the compositor's objects, and `MutableCollection`, one a script may
-// change. The compositor owns which windows and outputs exist, so only the script's own collections (workspaces,
-// a workspace's clients, profiles, displays) are mutable.
+// Live views of compositor objects and mutable collections owned by scripts.
 
 import { GnoblinError } from "gnoblin/errors";
 import { CREATE } from "gnoblin/host/bridge";
@@ -17,7 +15,7 @@ import { replaceStyle } from "gnoblin/style/style";
 import type { ClientStyle, ClientStyleInit } from "gnoblin/style/style";
 import type { Query } from "gnoblin/types";
 
-/** A live, array-like view of the compositor's objects. Not an Array, and its membership is not writable. */
+/** A live, array-like view of compositor objects. It is not an Array and its membership cannot be changed. */
 export class Collection<T extends Member> implements Iterable<T> {
     constructor(token: symbol, state: Omit<CollectionState, "self">) {
         if (token !== CREATE) {
@@ -26,28 +24,32 @@ export class Collection<T extends Member> implements Iterable<T> {
         ctx.collections.set(this, { ...state, self: this as unknown as Collection<Member> });
     }
 
+    /** Current number of members. */
     get length(): number {
         const state = collectionState(this);
         noteSignal(state, "items");
         return state.parent === null ? state.list.length : itemsOf(state).length;
     }
 
+    /** Returns the member at `index`, or undefined when the index is out of range. */
     at(index: number): T | undefined {
         return itemsOf(collectionState(this)).at(index) as T | undefined;
     }
 
     /**
-     * The member that holds the keyboard focus, or null: the first seat's focus, and with no seat the member whose
-     * own `focused` is set. Only clients take the focus, so another collection's is null.
+     * The member with keyboard focus, or null. This is the first seat's focus, or the member whose `focused`
+     * property is set when there is no seat. Only clients can hold focus.
      */
     get focused(): T | null {
         return focusedAmong(itemsOf(collectionState(this))) as T | null;
     }
 
+    /** Returns the first member with this id, or undefined when no member matches. */
     get(id: string): T | undefined {
         return itemsOf(collectionState(this)).find((member) => member.id === id) as T | undefined;
     }
 
+    /** Returns the first member accepted by `predicate`, or undefined when none matches. */
     find(predicate: (item: T) => boolean): T | undefined {
         return (itemsOf(collectionState(this)) as T[]).find((item) => predicate(item));
     }
@@ -63,10 +65,9 @@ export class Collection<T extends Member> implements Iterable<T> {
     }
 
     /**
-     * A live selection: it follows additions, removals and changes of the properties the query names. The
-     * query is data, so the compositor side can evaluate it too: each key is a property and each value is
-     * what it must equal, or an array of values of which one must. `priority` ranks the selection's `style`
-     * among the others a client is in: the higher wins, and among equals the one whose style was made later.
+     * A live selection that tracks members matching the query's properties. Each value must equal the property, or
+     * be one of the values in an array. `priority` ranks this selection's client style: higher values win, then the
+     * style created later wins ties.
      */
     where(query: Query, options: { priority?: number } = {}): Collection<T> {
         const state = collectionState(this);
@@ -98,9 +99,9 @@ export class Collection<T extends Member> implements Iterable<T> {
     }
 
     /**
-     * The defaults this collection of clients gives: `gnoblin.clients.style` to all of them, a workspace's `clients` to
-     * its own, a `where()` selection to the clients in it. Only the properties set here are overridden; see `Client.style`.
-     * Assigning a `ClientStyle` or an object of properties replaces what this scope sets.
+     * The default styles applied to clients in this collection: `gnoblin.clients.style`, a workspace's `clients`, or
+     * a `where()` selection. Only set properties override inherited values; see `Client.style`. Assigning replaces
+     * the properties set by this scope.
      */
     get style(): ClientStyle {
         return scopeStyle(collectionState(this)).style;
@@ -111,11 +112,11 @@ export class Collection<T extends Member> implements Iterable<T> {
     }
 
     /**
-     * Subscribes `listener` to this collection. A `CollectionListener` is told of every member now, as if
-     * each had just been added (replay on attach, so a config that reloads sees the clients that are
-     * already there), and of every later addition and removal. A `ClientListener` or an `OutputListener` is attached
-     * to every current and future member (the one that fits what the collection holds) and detaches from a member
-     * that leaves. `removeListener` undoes both.
+     * Subscribes `listener` to this collection. A `CollectionListener` is told of every member now, as if each had
+     * just been added (replay on attach, so a config that reloads sees the clients that are already there), and of
+     * every later addition and removal. A `ClientListener` or an `OutputListener` (the one that fits what the
+     * collection holds) is attached to every current and future member and detaches from a member that leaves.
+     * `removeListener` undoes both.
      */
     addListener(listener: ClientListener | OutputListener | CollectionListener): void {
         assertListener(listener, "Collection.addListener");
@@ -135,6 +136,7 @@ export class Collection<T extends Member> implements Iterable<T> {
         }
     }
 
+    /** Removes a listener and detaches it from the members it was attached to. */
     removeListener(listener: ClientListener | OutputListener | CollectionListener): void {
         const state = collectionState(this);
         const at = state.listeners.indexOf(listener);
@@ -148,14 +150,15 @@ export class Collection<T extends Member> implements Iterable<T> {
         }
     }
 
+    /** Iterates over a snapshot of the current members. */
     [Symbol.iterator](): Iterator<T> {
         return (itemsOf(collectionState(this)) as T[])[Symbol.iterator]();
     }
 }
 
 /**
- * A collection a script may change. `gnoblin.workspaces` and a workspace's `clients` are these;
- * `gnoblin.clients` is not, because the compositor owns which windows exist.
+ * A collection whose membership scripts can change. Workspace collections are mutable; `gnoblin.clients` is not
+ * because the compositor controls which windows exist.
  */
 export class MutableCollection<T extends Member> extends Collection<T> {
     private mutation(what: string): Mutation {
@@ -166,14 +169,14 @@ export class MutableCollection<T extends Member> extends Collection<T> {
         return mutation;
     }
 
-    /** Adds a member. On a workspace's `clients` this moves the client there from its workspace. */
+    /** Adds a member. On a workspace's `clients`, this moves the client from its current workspace. */
     add(member: T): void {
         this.mutation("add").add(member);
     }
 
     /**
-     * Removes a member, given as itself or by id. A member that is not in the collection is ignored. True when a member was
-     * removed; false when there was none to remove or the collection refused (`gnoblin.workspaces` keeps its last one).
+     * Removes a member by object or id. Members not in the collection are ignored. Returns true when removed, or
+     * false when absent or refused (for example, `gnoblin.workspaces` retains its last workspace).
      */
     remove(member: T | string): boolean {
         const target = typeof member === "string" ? this.get(member) : member;
@@ -183,13 +186,14 @@ export class MutableCollection<T extends Member> extends Collection<T> {
         return this.mutation("remove").remove(target) !== false;
     }
 
+    /** Removes every member when this collection allows mutation. */
     clear(): void {
         this.mutation("clear").clear();
     }
 
     /**
-     * Trades the places of two members in the collection's order. A workspace's `clients` is the order its layout
-     * places by, so two clients of a tiled workspace trade tiles at the next frame. Both must be members.
+     * Swaps two members in the collection order. For a workspace's `clients`, the layout uses this order to place
+     * tiled clients at the next frame. Both members must belong to the collection.
      */
     swap(a: T, b: T): void {
         const mutation = this.mutation("swap");

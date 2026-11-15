@@ -1,4 +1,4 @@
-// Showing a workspace on an output, and the slide the next layout pass starts for it.
+// Shows workspaces on outputs and records the slide for the next layout pass.
 
 import { GnoblinError } from "gnoblin/errors";
 import { ctx } from "gnoblin/host/context";
@@ -9,10 +9,10 @@ import { motion } from "gnoblin/host/seat";
 import type { Workspace } from "gnoblin/host/workspace";
 import { wsState } from "gnoblin/host/workspace_state";
 
-/** Milliseconds a workspace slide takes, as the retired shell's `Desk:show`. */
+/** Default duration, in milliseconds, of a workspace slide. */
 export const SLIDE_DURATION = 250;
 
-/** How `show` moves to a workspace. */
+/** Options for showing a workspace. */
 export interface ShowOptions {
     /** Milliseconds the slide between the two workspaces takes. Zero or absent switches at once. */
     duration?: number;
@@ -22,17 +22,21 @@ export interface ShowOptions {
     output?: Output;
 }
 
-/** A slide the next layout pass starts: the windows of `from` leave and the windows of `to` come in. */
+/** A slide between workspaces that the next layout pass starts. */
 export interface Slide {
+    /** Workspace being left. */
     from: Workspace;
+    /** Workspace being shown. */
     to: Workspace;
     /** 1 when `to` comes after `from`, so the windows move left. */
     direction: 1 | -1;
+    /** Slide duration in milliseconds. */
     duration: number;
+    /** Fraction of the slide already completed, from 0 to 1. */
     progress: number;
 }
 
-/** `gnoblin.workspaces.show(workspace, options)`. */
+/** Shows a workspace by object or id, optionally sliding from the current workspace. */
 export function showWorkspace(workspace: Workspace | string, options: ShowOptions = {}): void {
     const target = typeof workspace === "string" ? ctx.workspaceRoot.list.find((w) => w.id === workspace) : workspace;
     if (target === undefined) {
@@ -63,7 +67,7 @@ export function showWorkspace(workspace: Workspace | string, options: ShowOption
         throw new GnoblinError("unavailable", `${target}.show`, "there is no output to show a workspace on");
     }
     const from = desk.shown;
-    // A workspace is on one desk: one an other desk shows changes places with the one this desk showed.
+    // A workspace can appear on only one desk, so swap the two desks' shown workspaces.
     const other = ctx.desks.find((candidate) => candidate !== desk && candidate.shown === target);
     setShown(desk, target as Workspace);
     if (other !== undefined) {

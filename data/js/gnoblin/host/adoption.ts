@@ -1,5 +1,4 @@
-// Adopting the compositor's nodes: a window becomes a `Client`, a screen an `Output` with a desk of its own, and
-// the reverse when one goes away.
+// Wraps compositor nodes as script objects and releases them when they disappear.
 
 import { CREATE, host } from "gnoblin/host/bridge";
 import { Client } from "gnoblin/host/client";
@@ -22,9 +21,8 @@ import { disposeBindingsOf, raiseSignal } from "gnoblin/properties";
 import type { NodeId } from "gnoblin/types";
 
 /**
- * Wraps a node the first time it is seen. A node that appears while the shell runs is announced: its
- * collections are told it was added and its listeners that it is ready. A node that was there at boot is
- * not an event, because the config attaches after it exists.
+ * Wraps a node the first time it appears. Nodes added after startup are announced to collections and listeners.
+ * Nodes already present at startup are not announced because the config attaches after they exist.
  */
 export function adopt(node: NodeId, announce: boolean): void {
     const kind = host.kind(node);
@@ -42,8 +40,8 @@ export function adopt(node: NodeId, announce: boolean): void {
             recompute(ctx.clientRoot, client);
             stateOf(client).readied = true;
             emitMember(client, holders(ctx.clientRoot, client), "onReady", [client]);
-            // A window that appears joins the workspace the output under the pointer shows; a dialog joins its parent's
-            // and is centred in it.
+            // New windows join the workspace shown under the pointer. Dialogs join their parent's workspace and are
+            // centred.
             if (ctx.flags.opened && !placeDialog(client)) {
                 const target = newWindowWorkspace();
                 if (target !== null) {
@@ -57,9 +55,8 @@ export function adopt(node: NodeId, announce: boolean): void {
 }
 
 /**
- * Wraps a screen node the first time it is seen and gives it a desk: the output-less desk a tree kept (or a parked one
- * that waited for it), else a new one that shows the first workspace no desk shows. A screen that appears while the
- * shell runs is announced; one that was there at boot is not, because the config attaches after it exists.
+ * Wraps a screen node and gives it a desk: one kept without an output, a parked one, or a new one showing the first
+ * workspace not already shown. Screens added after startup are announced; screens already present are not.
  */
 function adoptScreen(node: NodeId, announce: boolean): void {
     ctx.displayManager.changed();
@@ -67,7 +64,7 @@ function adoptScreen(node: NodeId, announce: boolean): void {
     ctx.outputsByNode.set(node, output);
     ctx.outputRoot.list.push(output);
     raiseSignal(ctx.outputRoot, "items");
-    // A mirror and an output that is off have no place in the desktop, so they get no desk: nothing is laid out there.
+    // Mirrors and disabled outputs have no desk, so the layout does not place windows on them.
     const wasParked = (ctx.outputSeen.get(output) as OutputSeen).detached ? false : giveDesk(output);
     if (!announce) {
         return;
@@ -76,7 +73,7 @@ function adoptScreen(node: NodeId, announce: boolean): void {
     recompute(ctx.outputRoot, output);
     emitMember(output, holders(ctx.outputRoot, output), "onConnected", [output]);
     const desk = ctx.deskByOutput.get(output);
-    // The windows that waited hidden come back, and one takes the keyboard when nobody holds it.
+    // Restore windows that waited hidden, then focus one if a seat exists and none has focus.
     if (
         wasParked &&
         desk !== undefined &&
@@ -90,8 +87,8 @@ function adoptScreen(node: NodeId, announce: boolean): void {
 }
 
 /**
- * Gives an output a desk: the output-less desk a tree kept (or a parked one that waited for it), else a new one that
- * shows the first workspace no desk shows. Returns whether the desk was parked.
+ * Gives an output a desk, reusing one without an output or creating one to show an available workspace.
+ * Returns whether the reused desk was parked.
  */
 function giveDesk(output: Output): boolean {
     let desk = ctx.desks.find((candidate) => candidate.output === null);
@@ -111,9 +108,8 @@ function giveDesk(output: Output): boolean {
 }
 
 /**
- * A screen went away. Its windows move to the workspace another output shows (the retired shell's `Screen:on_destroyed`),
- * fitted to that output; with no other output they wait hidden on the parked desk for the next one, and the focus is
- * dropped, because a window with no output cannot hold it.
+ * When a screen disappears, its windows move to another output's workspace and are fitted there. With no other output,
+ * they wait hidden on a parked desk, and focus is cleared because no output can hold it.
  */
 export function releaseScreen(output: Output): void {
     ctx.displayManager.changed();
@@ -125,7 +121,7 @@ export function releaseScreen(output: Output): void {
     }
 }
 
-/** Takes an output's desk away: its windows move to the workspace another output shows, or the desk parks. */
+/** Takes an output's desk away: its windows move to another output's workspace, or the desk parks. */
 function takeDesk(output: Output): void {
     const desk = ctx.deskByOutput.get(output);
     if (desk !== undefined) {
@@ -165,7 +161,7 @@ function takeDesk(output: Output): void {
     ctx.deskByOutput.delete(output);
 }
 
-/** Raises the events one output's changed properties imply, to the listeners that held it. */
+/** Queues events for changes to an output's published properties. */
 export function outputChanged(output: Output): void {
     ctx.displayManager.changed();
     const seen = ctx.outputSeen.get(output) as OutputSeen;
@@ -194,7 +190,7 @@ export function outputChanged(output: Output): void {
     }
 }
 
-/** Removes a destroyed member from its collections, after freezing its last values. */
+/** Removes a destroyed member from its collections after saving its final readable values. */
 export function leave(
     top: CollectionState,
     member: Member,

@@ -1,5 +1,4 @@
-// Window policy and the actions bound to input: window requests answered by the stock rules, workspace stepping
-// by gesture, the keyboard move mode, and the stock focus policy.
+// Installs the stock window-request, gesture, move-mode and focus policies.
 
 import { FocusPolicy } from "gnoblin/focus";
 import { gestureDirection, onPinch, onSwipe } from "gnoblin/gesture_actions";
@@ -25,7 +24,7 @@ import { barsGiveWayTo, barsOnOutputs } from "gnoblin/widgets";
 import { windowState } from "gnoblin/window_state";
 import type { ClientRequest } from "gnoblin/window_state";
 
-/** Whether a fullscreen window is showing on the workspace `output` shows: what makes its bars give way. */
+/** Whether a non-minimised fullscreen window is shown on the workspace for `output`. */
 function fullscreenShowing(output: { alive: boolean } | null): boolean {
     const desk = output === null ? primaryDesk() : (ctx.deskByOutput.get(output as Output) ?? null);
     const shown = desk === null || desk.parked ? null : desk.shown;
@@ -96,7 +95,7 @@ export function installPolicy(): void {
 
     barsOnOutputs(primaryOutput);
 
-    // The five actions a touchpad gesture runs: the retired shell's `Gestures.actions`.
+    // The five actions run by touchpad gestures, also exposed through `gnoblin.gestures`.
     const gestureActions: GestureActions = {
         workspaceNext: () => stepWorkspace(1),
         workspacePrevious: () => stepWorkspace(-1),
@@ -128,7 +127,7 @@ export function installPolicy(): void {
         onPinch: (map, threshold) => onPinch(map, threshold, { actions: gestureActions }),
     };
 
-    // The stock answers to a client's requests of its window, started with the module so no script has to ask.
+    // Attach the stock responses to window requests as soon as the module starts.
     windowState.start<Client>({
         clientOf: (node) => ctx.clientsByNode.get(node),
         siblings: (client) => {
@@ -179,7 +178,7 @@ export function installPolicy(): void {
         },
     });
 
-    // The keyboard move and resize mode: its keys, its hint and its end are the stock library's; the area is the shell's.
+    // Start keyboard move and resize mode with the desktop work area.
     repositioning.start({
         workArea: (client) => workAreaOf(client as unknown as Client),
         dragConstraint: () => {

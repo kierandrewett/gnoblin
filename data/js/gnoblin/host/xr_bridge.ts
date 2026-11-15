@@ -1,4 +1,4 @@
-// The scene and XR modules' view of the host: nodes, seats, clients and input contexts.
+// Connects the host's scene nodes, clients and input contexts to the scene and XR modules.
 
 import { host } from "gnoblin/host/bridge";
 import { Client } from "gnoblin/host/client";

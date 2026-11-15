@@ -1,5 +1,4 @@
-// The frame's tree events: what the shell reports (created, touched and destroyed nodes, pointer edges, the end of
-// boot) becomes object changes and queued listener calls.
+// Processes host tree changes, pointer events and readiness into object updates and queued listener calls.
 
 import { adopt, leave, outputChanged, releaseScreen } from "gnoblin/host/adoption";
 import { host } from "gnoblin/host/bridge";
@@ -26,10 +25,11 @@ import { uiNodeGone } from "gnoblin/ui/frame";
 import { windowState } from "gnoblin/window_state";
 
 /**
- * Hands the keyboard to the neighbour of a focused window that closed, as the retired strip did for its columns and every
- * layout now does: the window after it in the workspace, else the one before; a dialog hands it back to its parent. Nothing
- * moves while the workspace is not shown, a minimised window is skipped, and a window the compositor has already focused
- * is left alone. A layout that has its own `onClientRemoved` (a strip's columns are not in window order) does it itself.
+ * Hands the keyboard to the neighbour of a focused window that closed, as the retired strip did for its columns and
+ * every layout now does: the window after it in the workspace, else the one before; a dialog hands it back to its
+ * parent. Nothing moves while the workspace is not shown, a minimised window is skipped, and a window the compositor
+ * has already focused is left alone. A layout that has its own `onClientRemoved` (a strip's columns are not in window
+ * order) does it itself.
  */
 function handOffFocus(workspace: Workspace, index: number, parent: Client | null): void {
     if (!isShown(workspace) || host.input.seats().length === 0 || focusedClient() !== null) {

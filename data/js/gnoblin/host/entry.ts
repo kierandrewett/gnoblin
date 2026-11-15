@@ -1,4 +1,4 @@
-// The entry the shell calls each frame (`Entry`): each function forwards to the module that does the work.
+// Creates the entry points the shell calls during each frame.
 
 import { deviceDocument, deviceSettingsRevision } from "gnoblin/devices";
 import { ctx } from "gnoblin/host/context";
@@ -19,7 +19,7 @@ import { NEVER, NOW, nextWake, onWake } from "gnoblin/wake";
 
 /** What the shell calls each frame, over the object model of `gnoblin`. */
 export function makeEntry(gnoblin: Gnoblin): Entry {
-    // Listener calls the frame's budget left in the queue wait for the next frame, which nothing else announces.
+    // Wake on the next frame when listeners are waiting in the queue.
     onWake("listener queue", () => (ctx.queue.length > 0 ? NOW : NEVER));
     return {
         render: (value, maxBytes) => inspect.render(value, { maxBytes }),

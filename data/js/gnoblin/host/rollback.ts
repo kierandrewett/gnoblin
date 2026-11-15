@@ -1,5 +1,4 @@
-// What a transition callback can change that is not a tree write, and the engine that stages and animates its
-// writes.
+// Snapshots state outside the compositor tree and installs staged transition handling.
 
 import { errorCodeOfRefusal, GnoblinError } from "gnoblin/errors";
 import { host, nodeName } from "gnoblin/host/bridge";
@@ -72,7 +71,7 @@ function settleStaged(): void {
     }
 }
 
-/** Makes the transition engine. */
+/** Installs the engine that stages transition writes and drives animation tracks. */
 export function installTransitions(): void {
     // Transition engine that stages writes, validates placements, and drives animation tracks.
     ctx.transitions = new TransitionEngine({

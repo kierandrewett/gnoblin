@@ -1,4 +1,4 @@
-// Writing the resolved style of each client to its node, and saying once what no renderer draws.
+// Applies resolved client styles to host nodes and reports effects the compositor cannot draw.
 
 import { errorCodeOfRefusal, GnoblinError } from "gnoblin/errors";
 import { host } from "gnoblin/host/bridge";
@@ -16,15 +16,12 @@ import type { StyleLayer } from "gnoblin/style/resolve";
 import type { HostValue } from "gnoblin/types";
 
 /**
- * The most effects the compositor's tree keeps on one node (`MAX_EFFECTS` in crates/gnoblin-render/src/transaction.rs).
- * A style lists at most `MAX_STYLE_LIST` shadows and as many borders, and one backdrop blur makes the seventeenth.
+ * Maximum effects supported on one node. A style can contain up to this many shadows and borders combined,
+ * with a backdrop blur counting as one effect.
  */
 const MAX_NODE_EFFECTS = 16;
 
-/**
- * Writes what a client's resolved style becomes on its node: the effects list, the opacity and the corner radius,
- * each when it changed.
- */
+/** Writes a client's resolved effects, opacity and corner radius to its node when they change. */
 function applyClientStyle(client: Client, state: ClientStyleState, layers: StyleLayer[]): void {
     const node = stateOf(client).node;
     const label = `Client#${host.label(node)}.style`;
@@ -75,12 +72,7 @@ function applyClientStyle(client: Client, state: ClientStyleState, layers: Style
     state.cornerRadius = mapping.cornerRadius;
 }
 
-/**
- * Once per frame: checks the arrays scripts changed in place, then resolves and writes the style of each client whose
- * style or layers moved. A client is looked at again when any style changed (the epoch) or the scopes it sits under
- * did (a `where()` selection it joined or left, a workspace move); one the pass already did and nothing moved for
- * costs a comparison.
- */
+/** Checks mutable style arrays, then applies resolved styles for clients whose style or inherited layers changed. */
 export function applyStyles(): void {
     for (const style of everyStyle()) {
         for (const error of syncStyleLists(style)) {

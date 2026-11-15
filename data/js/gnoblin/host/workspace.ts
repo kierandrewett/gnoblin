@@ -1,5 +1,4 @@
-// `Workspace`: a place windows are laid out in. The script makes it and adds it to `gnoblin.workspaces`; the
-// compositor does not know it.
+// A workspace is a script-created place for laying out windows; the compositor does not know it.
 
 import { CREATE } from "gnoblin/host/bridge";
 import type { Client } from "gnoblin/host/client";
@@ -60,14 +59,17 @@ export class Workspace extends NativeObject {
         });
     }
 
+    /** Stable workspace id used to find it across reloads. */
     get id(): string {
         return wsState(this).id;
     }
 
+    /** Display name shown by workspace controls. */
     get name(): string {
         return wsState(this).name;
     }
 
+    /** Sets the workspace display name. */
     set name(value: string) {
         if (typeof value !== "string") {
             throw new TypeError(`${this}.name must be a string`);
@@ -96,6 +98,7 @@ export class Workspace extends NativeObject {
         return desk !== null && !desk.parked ? desk.output : null;
     }
 
+    /** The layout instance used to place this workspace's windows. */
     get layout(): Layout {
         return wsState(this).layout;
     }
@@ -108,16 +111,19 @@ export class Workspace extends NativeObject {
         state.dirty = true;
     }
 
+    /** Inner and outer gaps, in logical pixels. */
     get gaps(): Gaps {
         return wsState(this).gaps;
     }
 
+    /** Sets inner and outer gaps, in logical pixels. */
     set gaps(value: { inner?: number; outer?: number }) {
         const state = wsState(this);
         state.gaps = checkGaps(value, `${this}.gaps`);
         state.dirty = true;
     }
 
+    /** Mutable collection of this workspace's windows. */
     get clients(): MutableCollection<Client> {
         return wsState(this).clients;
     }
@@ -146,9 +152,9 @@ export class Workspace extends NativeObject {
     }
 
     /**
-     * Moves the keyboard focus `step` windows along the workspace's windows, in the order they are listed (the retired shell's
-     * `Workspace:walk`): `1` to the next, `-1` to the previous. Nothing moves when no window of the workspace has the focus,
-     * and a step past either end leaves the focus where it is.
+     * Moves the keyboard focus `step` windows along the workspace's windows, in the order they are listed: `1` to
+     * the next, `-1` to the previous. Nothing moves when no window of the workspace has the focus, and a step past
+     * either end leaves the focus where it is.
      */
     walk(step: number): void {
         if (typeof step !== "number" || !Number.isInteger(step)) {
@@ -162,6 +168,7 @@ export class Workspace extends NativeObject {
         }
     }
 
+    /** Returns a label containing the workspace id. */
     toString(): string {
         return `Workspace#${wsState(this).id}`;
     }

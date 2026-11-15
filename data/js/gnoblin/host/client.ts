@@ -1,5 +1,4 @@
-// `Client`: a toplevel window the compositor manages. Every property reads the host mirror (or the frozen copy once
-// the window is gone) and every write is queued as one tree write.
+// Live wrappers for compositor-managed toplevel windows.
 
 import { GnoblinError } from "gnoblin/errors";
 import { NO_INSET } from "gnoblin/frame/inset";
@@ -79,22 +78,27 @@ export class Client extends NativeObject {
         });
     }
 
+    /** Stable compositor identifier for this window. */
     get id(): string {
         return host.label(stateOf(this).node) ?? "?";
     }
 
+    /** Whether the compositor still manages this window. */
     get alive(): boolean {
         return stateOf(this).alive;
     }
 
+    /** Application identifier reported for the window. */
     get appId(): string {
         return read<string>(this, "app_id");
     }
 
+    /** Current window title. */
     get title(): string {
         return read<string>(this, "title");
     }
 
+    /** Whether this window has keyboard focus. */
     get focused(): boolean {
         return read<boolean>(this, "focused");
     }
@@ -104,6 +108,7 @@ export class Client extends NativeObject {
         return read<boolean>(this, "fullscreen");
     }
 
+    /** Requests fullscreen or restores the window. */
     set fullscreen(value: boolean) {
         writeProperty(this, "fullscreen", value, "flag");
     }
@@ -113,26 +118,32 @@ export class Client extends NativeObject {
         return read<boolean>(this, "secure");
     }
 
+    /** Controls whether the window is excluded from screen captures. */
     set secure(value: boolean) {
         writeProperty(this, "secure", value, "flag");
     }
 
-    /** Whether the client has left a liveness ping unanswered too long. The compositor writes it, and clears it on an answer. */
+    /** Whether the client has left a liveness ping unanswered too long. The compositor writes it, and clears it on an
+     * answer.
+     */
     get unresponsive(): boolean {
         return read<boolean>(this, "unresponsive");
     }
 
     /**
-     * Who draws the window's frame, as the compositor negotiated it: `server` when the shell's titlebar does (the client
-     * asked for server-side and this shell declared decorations, or the window is an X11 one), `client` when the client
-     * draws its own title bar (a GTK, Qt or foot window), `none` for a window nobody frames. The compositor writes it.
+     * Who draws the window's frame, as the compositor negotiated it: `server` when the shell's titlebar does (the
+     * client asked for server-side and this shell declared decorations, or the window is an X11 one), `client` when
+     * the client draws its own title bar (a GTK, Qt or foot window), `none` for a window nobody frames. The
+     * compositor writes it.
      * `frameInset` is taken only for a `server` window.
      */
     get decoration(): string {
         return read<string>(this, "decoration");
     }
 
-    /** What the client asked of `xdg-decoration`: `client`, `server`, or `unset` (it asked nothing, or is an X11 window). */
+    /** What the client asked of `xdg-decoration`: `client`, `server`, or `unset` (it asked nothing, or is an X11
+     * window).
+     */
     get decorationWanted(): string {
         return read<string>(this, "decoration_wanted");
     }
@@ -158,8 +169,8 @@ export class Client extends NativeObject {
 
     /**
      * The room the window's frame takes on each side of its content, in pixels: 0 on every side for a window with no
-     * frame or a fullscreen one. `bounds` is the content's rectangle; the frame a layout places is the content with this
-     * much added on each side (see docs/js-window-frame.md).
+     * frame or a fullscreen one. `bounds` is the content's rectangle; the frame a layout places is the content with
+     * this much added on each side (see docs/js-window-frame.md).
      */
     get frameInset(): FrameInset {
         return ctx.decorations?.insetOf(this) ?? NO_INSET;
@@ -173,6 +184,7 @@ export class Client extends NativeObject {
         return stateOf(this).floating;
     }
 
+    /** Marks the client as floating or returns it to layout placement. */
     set floating(value: boolean) {
         if (typeof value !== "boolean") {
             throw new TypeError(`Client#${host.label(stateOf(this).node)}.floating: must be true or false`);
@@ -187,34 +199,42 @@ export class Client extends NativeObject {
         }
     }
 
+    /** Horizontal position in logical pixels. */
     get x(): number {
         return read<number>(this, "x");
     }
 
+    /** Sets the horizontal position in logical pixels. */
     set x(value: number) {
         writeProperty(this, "x", value, "number");
     }
 
+    /** Vertical position in logical pixels. */
     get y(): number {
         return read<number>(this, "y");
     }
 
+    /** Sets the vertical position in logical pixels. */
     set y(value: number) {
         writeProperty(this, "y", value, "number");
     }
 
+    /** Width in logical pixels. */
     get width(): number {
         return read<number>(this, "width");
     }
 
+    /** Sets the width in logical pixels. */
     set width(value: number) {
         writeProperty(this, "width", value, "number");
     }
 
+    /** Height in logical pixels. */
     get height(): number {
         return read<number>(this, "height");
     }
 
+    /** Sets the height in logical pixels. */
     set height(value: number) {
         writeProperty(this, "height", value, "number");
     }
@@ -224,6 +244,7 @@ export class Client extends NativeObject {
         return { x: this.x, y: this.y, width: this.width, height: this.height };
     }
 
+    /** Sets the content rectangle; all four values must be finite numbers. */
     set bounds(rect: Rect) {
         const target = `Client#${host.label(stateOf(this).node)}.bounds`;
         for (const key of ["x", "y", "width", "height"] as const) {
@@ -242,6 +263,7 @@ export class Client extends NativeObject {
         return read<boolean>(this, "maximised");
     }
 
+    /** Requests maximisation or restoration. */
     set maximised(value: boolean) {
         writeProperty(this, "maximised", value, "flag");
     }
@@ -251,6 +273,7 @@ export class Client extends NativeObject {
         return read<boolean>(this, "minimised");
     }
 
+    /** Requests minimisation or restoration. */
     set minimised(value: boolean) {
         writeProperty(this, "minimised", value, "flag");
     }
@@ -260,6 +283,7 @@ export class Client extends NativeObject {
         return read<boolean>(this, "tiled");
     }
 
+    /** Sets whether the client is tiled. */
     set tiled(value: boolean) {
         writeProperty(this, "tiled", value, "flag");
     }
@@ -269,6 +293,7 @@ export class Client extends NativeObject {
         return read<boolean>(this, "visible");
     }
 
+    /** Sets whether the window is drawn and receives input. */
     set visible(value: boolean) {
         writeProperty(this, "visible", value, "flag");
     }
@@ -278,6 +303,7 @@ export class Client extends NativeObject {
         return read<number>(this, "opacity");
     }
 
+    /** Sets opacity from 0 (transparent) to 1 (opaque); the compositor clamps the value. */
     set opacity(value: number) {
         writeProperty(this, "opacity", value, "number");
     }
@@ -287,6 +313,7 @@ export class Client extends NativeObject {
         return read<number>(this, "z");
     }
 
+    /** Sets the window's depth; negative values place it in front of the camera. */
     set z(value: number) {
         writeProperty(this, "z", value, "number");
     }
@@ -299,24 +326,31 @@ export class Client extends NativeObject {
         return withAxes(read<never>(this, "rotation"));
     }
 
+    /** Sets rotation about the x, y and z axes, in radians. */
     set rotation(value: Triple | Vec3Like) {
         writeProperty(this, "rotation", value, "vector");
     }
 
-    /** Scale along each axis; the list also answers to `x`, `y` and `z`. Assigning takes one number for every axis, a list or `{ x, y, z }`. */
+    /** Scale along each axis; the list also answers to `x`, `y` and `z`. Assigning takes one number for every axis,
+     * a list or `{ x, y, z }`.
+     */
     get scale(): AxisTriple {
         return withAxes(read<never>(this, "scale"));
     }
 
+    /** Sets scale along the x, y and z axes. */
     set scale(value: ScaleInit) {
         writeProperty(this, "scale", value, "vector");
     }
 
-    /** Where the window is: `x`, `y` and its depth `z`. Assigning takes a list or `{ x, y, z }` and writes the three. */
+    /** Where the window is: `x`, `y` and its depth `z`. Assigning takes a list or `{ x, y, z }` and writes the
+     * three.
+     */
     get position(): Position {
         return new Position(this.x, this.y, this.z);
     }
 
+    /** Sets position from a list or `{ x, y, z }`, writing all three values. */
     set position(value: Triple | Vec3Like) {
         const [x, y, z] = vectorFrom(`${this}.position`, value);
         this.x = x;
@@ -331,8 +365,8 @@ export class Client extends NativeObject {
 
     /**
      * Places the window: `{ position, rotation, scale }` or a `Transform3D`; a part left out stays as it is. The
-     * parts are checked together, then written as `x`, `y`, `z`, `rotation` and `scale`, which go out in the frame's one
-     * transaction (and, inside `set` or `requestTransition`, as one transition). `position.x` and `.y` are the
+     * parts are checked together, then written as `x`, `y`, `z`, `rotation` and `scale`, which go out in the frame's
+     * one transaction (and, inside `set` or `requestTransition`, as one transition). `position.x` and `.y` are the
      * window's own rectangle, so a layout that places the window will place it again.
      */
     set transform(value: Transform3D | TransformInit) {
@@ -375,9 +409,9 @@ export class Client extends NativeObject {
     }
 
     /**
-     * Whether the window opened on an activation token the session's launcher minted, so `focus.newWindows` treats it as
-     * launched. The compositor sets it when the window redeems such a token; a program started with `gnoblin.spawn` is
-     * not marked, because the shell's spawner mints no token.
+     * Whether the window opened on an activation token the session's launcher minted, so `focus.newWindows` treats
+     * it as launched. The compositor sets it when the window redeems such a token; a program started with
+     * `gnoblin.spawn` is not marked, because the shell's spawner mints no token.
      */
     get fromLauncher(): boolean {
         return read<boolean>(this, "from_launcher");
@@ -409,6 +443,7 @@ export class Client extends NativeObject {
         return shown !== null && moveClientTo(this, shown);
     }
 
+    /** Attaches a listener to this client; adding the same listener twice has no effect. */
     addListener(listener: ClientListener): void {
         assertListener(listener, `Client#${host.label(stateOf(this).node)}.addListener`);
         const { listeners } = stateOf(this);
@@ -417,6 +452,7 @@ export class Client extends NativeObject {
         }
     }
 
+    /** Detaches a listener from this client. */
     removeListener(listener: ClientListener): void {
         const { listeners } = stateOf(this);
         const at = listeners.indexOf(listener);
@@ -501,8 +537,9 @@ export class Client extends NativeObject {
     }
 
     /**
-     * Assigns `props` as one `requestTransition`: the same as `gnoblin.requestTransition(() => { client.opacity = ... })`
-     * for this client. Without `options` the change is atomic and immediate. `options.duration` is in milliseconds.
+     * Assigns `props` as one `requestTransition`: the same as
+     * `gnoblin.requestTransition(() => { client.opacity = ... })` for this client. Without `options` the change is
+     * atomic and immediate. `options.duration` is in milliseconds.
      */
     set(props: Record<string, unknown>, options?: TransitionOptions): Transition {
         return setProperties(ctx.transitions, this, `${this}`, props, options);
@@ -532,7 +569,7 @@ export class Client extends NativeObject {
         if (code != null) {
             refuse(code, target, "client");
         }
-        // A fullscreen sibling keeps the top: the the retired shell `Window:raise` put each back over the window it raised.
+        // A fullscreen sibling keeps the top: raising puts each fullscreen window back over the window it raised.
         if (!this.fullscreen) {
             const own = ctx.membership.get(this) ?? null;
             for (const node of host.windows()) {
@@ -563,14 +600,15 @@ export class Client extends NativeObject {
     }
 
     /**
-     * Kills the process that owns the window with SIGKILL: the not-responding alert's Force quit. The compositor refuses,
-     * and does nothing, when the owner is unknown, has gone, changed since the window mapped, or is the compositor itself
-     * or init.
+     * Kills the process that owns the window with SIGKILL: the not-responding alert's Force quit. The compositor
+     * refuses, and does nothing, when the owner is unknown, has gone, changed since the window mapped, or is the
+     * compositor itself or init.
      */
     kill(): void {
         callMethod(this, "kill");
     }
 
+    /** Returns the compositor identifier in `Client#id` form. */
     toString(): string {
         return `Client#${host.label(stateOf(this).node)}`;
     }

@@ -1,6 +1,5 @@
-// What the shell reads of the first seat: which window holds the keyboard focus, the focus settings it published,
-// and whether it asks for reduced motion. The stock policy reads the seat and not `client.focused`: a shell gives
-// focus by writing the seat's `focus`.
+// Reads focus settings and reduced-motion preferences from the desktop's first seat.
+// The stock focus policy uses the seat's `focus` property, which the shell writes.
 
 import { FOCUS_DEFAULTS, seatFocusSettings } from "gnoblin/focus";
 import type { FocusSettings } from "gnoblin/focus";
@@ -12,8 +11,9 @@ import { isClient } from "gnoblin/host/node_state";
 
 /**
  * The duration in milliseconds the shell gives an animation: `duration`, or 0 while the seat asks for reduced motion
- * (`appearance.reduced-motion`, the seat's `reduced_motion`). A 0 makes a slide, a fade or `Client.animate` an instant write.
- * The compositor lands a timed write at once under reduced motion too, so a shell that forgets this still obeys.
+ * (`appearance.reduced-motion`, the seat's `reduced_motion`). A 0 makes a slide, a fade or `Client.animate` an
+ * instant write. The compositor lands a timed write at once under reduced motion too, so a shell that forgets this
+ * still obeys.
  */
 export function motion(duration: number): number {
     const seat = mainSeat();

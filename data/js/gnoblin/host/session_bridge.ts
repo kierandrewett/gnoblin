@@ -1,4 +1,4 @@
-// The session API (`gnoblin.process`, `timers`, `session`, `runtime`, `focus`, `on`) over the host.
+// Exposes session, process, timer and focus APIs to scripts through the host.
 
 import { GnoblinError } from "gnoblin/errors";
 import { host } from "gnoblin/host/bridge";
@@ -7,7 +7,7 @@ import type { Collection } from "gnoblin/host/collections";
 import { ctx } from "gnoblin/host/context";
 import { HostApi } from "gnoblin/session/host_api";
 
-/** Makes the host API. */
+/** Connects the public session APIs to the host. */
 export function installHostApi(): void {
     // Session-facing process, runtime, timer, bus, and focus APIs.
     ctx.hostApi = new HostApi(

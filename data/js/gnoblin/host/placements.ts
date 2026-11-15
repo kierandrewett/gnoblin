@@ -1,5 +1,4 @@
-// Writing what a layout decided: window rectangles, whether each is tiled and shown, its depth and transform; and
-// the slides that carry windows between workspaces.
+// Applies layout placements and slides by writing window bounds, visibility, depth and transforms.
 
 import type { Client } from "gnoblin/host/client";
 import { growRect } from "gnoblin/frame/inset";
@@ -14,7 +13,7 @@ import type { Triple } from "gnoblin/spatial";
 import type { Rect } from "gnoblin/types";
 import type { CheckedPlacement } from "gnoblin/workspace";
 
-/** Writes the parts of `rect` the client does not have already. */
+/** Writes only the rectangle properties that differ from `client`'s current values. */
 function writeBounds(client: Client, rect: Rect): void {
     for (const key of ["x", "y", "width", "height"] as const) {
         if (client[key] !== rect[key]) {
@@ -23,12 +22,12 @@ function writeBounds(client: Client, rect: Rect): void {
     }
 }
 
-/** Compares all three components of two rotation or scale vectors. */
+/** Checks whether two rotation or scale vectors have the same components. */
 function sameVector(a: Triple, b: Triple): boolean {
     return a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
 }
 
-/** Decides `shown` for `client`, and writes it unless the client already has that value (a reloaded shell's windows). */
+/** Records the intended visibility and writes it only when the value changes. */
 function writeShown(client: Client, shown: boolean): void {
     ctx.writtenVisible.set(client, shown);
     if (client.visible !== shown) {

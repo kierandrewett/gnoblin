@@ -1,4 +1,4 @@
-// The public `gnoblin` object: the root collections, the managers, and the calls a script makes on it.
+// The public object exposed to configuration scripts and the console.
 
 import type { Client } from "gnoblin/host/client";
 import type { Collection } from "gnoblin/host/collections";
@@ -25,7 +25,9 @@ type FindFilter<T> = Record<string, string | number | boolean> | ((object: T) =>
 export class Gnoblin {
     /** The optional extensions: `gnoblin.extensions.xr` is null until the XR program has a session (docs/xr.md). */
     readonly extensions = new Extensions(ctx.xrRuntime);
+    /** Live clients in the order they were adopted. */
     readonly clients = ctx.clientRoot.self as Collection<Client>;
+    /** Workspaces the script has attached, in their display order. */
     readonly workspaces = ctx.workspaceRoot.self as WorkspaceCollection;
     /** The outputs, live across hotplug: an output is added when it is plugged in and removed when it goes. */
     readonly outputs = ctx.outputRoot.self as OutputCollection;
@@ -33,11 +35,15 @@ export class Gnoblin {
     readonly displays = ctx.displayRoot.self as DisplayCollection;
     /** The seats of the compositor as input contexts, with the bindings that run on their chords and drags. */
     readonly input = ctx.input;
-    /** Policy over the compositor's own consent, passphrase and authentication dialogs: listeners that may refuse a request. */
+    /** Policy over the compositor's own consent, passphrase and authentication dialogs: listeners that may refuse a
+     * request.
+     */
     readonly dialogs = ctx.dialogs;
     /** Watches for the session going idle, and holds that keep it awake. */
     readonly idle = ctx.idleMonitor;
-    /** The session's polkit authentications: listeners that watch them and may refuse one. Nothing here can allow one. */
+    /** The session's polkit authentications: listeners that watch them and may refuse one. Nothing here can allow
+     * one.
+     */
     readonly authentication = ctx.authentication;
     /** Launch feedback: the busy state between asking for an application and its window. */
     readonly launches = ctx.launches;

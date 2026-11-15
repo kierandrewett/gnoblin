@@ -1,5 +1,4 @@
-// What the console shows of the host's own objects. A client is the short block of what a person asks about a
-// window; nested inside another value (a collection's member) it is only its id, app and title.
+// Console representations of host objects, including concise client summaries in nested values.
 
 import { Display } from "gnoblin/display/display";
 import { OutputProfile } from "gnoblin/display/output_profile";
@@ -12,9 +11,7 @@ import { inspect } from "gnoblin/inspect";
 
 /** Registers how the console renders each kind of host object. */
 export function registerInspectors(): void {
-    // What the console shows of the host's own objects. A client is the short block of what a person asks about a window;
-    // nested inside another value (a collection's member) it is only its id, app and title.
-    // Concise client fields shown by the console inspector.
+    // Client summaries are concise when nested in another value; collection items include only id, app and title.
     inspect.register(Client, (client) => ({
         name: "Client",
         id: client.id,

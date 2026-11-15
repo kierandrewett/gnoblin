@@ -1,5 +1,4 @@
-// Rectangles: an output's, the area a layout tiles in on it (the output less its bars), and which of those a
-// client is in.
+// Provides output rectangles, layout work areas and the output containing a client's centre.
 
 import { shrinkRect } from "gnoblin/frame/inset";
 import { host } from "gnoblin/host/bridge";

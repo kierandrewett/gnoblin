@@ -1,6 +1,4 @@
-// What a reload keeps: which window was on which workspace, which workspace each output showed, and the rectangles
-// of windows a layout was not placing. `snapshotWorkspaces` writes it when a generation ends and
-// `reconcileWorkspaces` puts it back in the next.
+// Saves workspace membership and window placement across a reload.
 
 import { insetFromNumbers, insetToNumbers } from "gnoblin/frame/inset";
 import type { Client } from "gnoblin/host/client";
@@ -17,15 +15,15 @@ import type { SnapZone } from "gnoblin/snap";
 import type { Rect } from "gnoblin/types";
 import { windowState } from "gnoblin/window_state";
 
-/** Encodes a rectangle as x, y, width, height for a generation snapshot. */
+/** Converts a rectangle to x, y, width and height for a workspace snapshot. */
 const asArray = (rect: Rect | null | undefined): number[] | null =>
     rect ? [rect.x, rect.y, rect.width, rect.height] : null;
 
-/** Restores a four-number rectangle from a generation snapshot. */
+/** Restores a rectangle from four snapshot numbers. */
 const asRect = (numbers: number[] | null | undefined): Rect | null =>
     numbers && numbers.length === 4 ? { x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3] } : null;
 
-/** The rectangles each window with one keeps, and the frame inset it was fitted to, for the next generation. */
+/** Captures each window's saved rectangles and the frame inset used to fit it. */
 function keptWindows(): KeptWindow[] {
     const kept: KeptWindow[] = [];
     for (const client of ctx.clientRoot.list as Client[]) {
@@ -50,7 +48,7 @@ function keptWindows(): KeptWindow[] {
     return kept;
 }
 
-/** Gives the windows of the last generation the rectangles they were keeping. */
+/** Restores saved rectangles and snap state for windows from the previous generation. */
 function restoreKept(kept: readonly KeptWindow[]): void {
     for (const entry of kept) {
         const client = ctx.clientsByNode.get(entry.node);
@@ -73,7 +71,7 @@ function restoreKept(kept: readonly KeptWindow[]): void {
     }
 }
 
-/** Which window is on which workspace, for the next generation to reconcile against. */
+/** Captures workspace membership and the workspace shown on each output. */
 export function snapshotWorkspaces(): WorkspaceSnapshot {
     return {
         active: primaryDesk()?.shown?.id ?? null,
@@ -90,9 +88,8 @@ export function snapshotWorkspaces(): WorkspaceSnapshot {
 }
 
 /**
- * Puts the windows back on the workspaces of the same id. A window whose workspace this generation does not
- * declare moves to the first workspace; one that stays is not offered to the layout as an arrival, so a
- * floating window keeps the place the user gave it.
+ * Restores window membership by workspace id. Unknown workspaces send their windows to the first workspace; windows
+ * that remain on the same workspace are not marked as arrivals, so floating windows keep their positions.
  */
 export function reconcileWorkspaces(previous: WorkspaceSnapshot): void {
     restoreKept(previous.kept ?? []);

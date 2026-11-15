@@ -139,8 +139,7 @@ export class Output extends NativeObject {
     }
 
     /**
-     * The supersample factor (owner-requested addition beyond the display specification): the output is composed at
-     * this multiple of its mode and shown at the mode. 1 is none.
+     * The output is composed at this multiple of its mode and shown at the mode. 1 is none.
      */
     get supersample(): number {
         return read<number>(this, "supersample");
@@ -158,14 +157,7 @@ export class Output extends NativeObject {
         return this.scale * this.supersample;
     }
 
-    /**
-     * The bytes the compositor holds for this output, read-only (owner-requested addition beyond the display
-     * specification). `target` is the output-sized target (and the copy a supersampled output averages down into),
-     * `scratch` the effect scratch targets, `staging` the host-visible upload and readback buffers a renderer keeps
-     * between frames, `views` the pictures of the Views drawn on the GPU, `capture` the last presented frame the
-     * capture protocols copy from, and `total` their sum. They are the sizes the compositor asked the driver for; a
-     * driver that pads or tiles holds at least this much. A client's own buffers are not counted.
-     */
+    /** The compositor's requested GPU memory, in bytes; client-owned buffers are not counted. */
     get gpuMemory(): {
         readonly target: number;
         readonly scratch: number;
@@ -238,7 +230,8 @@ export class Output extends NativeObject {
         return { x: this.x, y: this.y, width: this.width, height: this.height };
     }
 
-    /** What a layout tiles in on this output: the output less the bars on it. Null for a gone output or one with no size. */
+    /** What a layout tiles in on this output: the output less the bars on it. Null for a gone output or one with no
+     * size. */
     get area(): Rect | null {
         return stateOf(this).alive ? areaOf(this) : null;
     }

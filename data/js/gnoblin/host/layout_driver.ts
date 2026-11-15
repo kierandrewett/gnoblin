@@ -1,5 +1,4 @@
-// The layout pass: for each workspace that changed, hand its layout the clients and area, check what it returns,
-// and write the placements. Runs once per frame after the listeners.
+// Recomputes changed workspaces and applies their window placements once per frame, after listeners.
 
 import { host } from "gnoblin/host/bridge";
 import type { Client } from "gnoblin/host/client";
@@ -19,11 +18,9 @@ import { flushBindings } from "gnoblin/properties";
 import { checkPlacements, fieldsChanged, layoutFields, rectsEqual } from "gnoblin/workspace";
 
 /**
- * The layout driver, run once at the end of each frame after every listener. For each workspace it first
- * notices what changed: a layout's own enumerable fields (a snapshot diff, because a field is a plain
- * property the host never sees written), the workspace's gaps, and the area. Then the layout hears of the
- * windows that came and went, and the shown workspace, when it is dirty, computes once and its placements
- * are written. A workspace that is not shown stays dirty until it is.
+ * Runs after listeners. It checks layout fields, workspace gaps and the work area, then notifies layouts about window
+ * membership and shown workspaces. Dirty, shown workspaces are computed once and their placements are applied. Unshown
+ * workspaces remain dirty until shown.
  */
 export function layout(): number {
     // Bindings first, so what they write is laid out in the same frame.
@@ -60,7 +57,7 @@ function relayLostWrites(): void {
 function layoutWorkspaces(): number {
     ctx.displayManager.frame();
     fillDesks();
-    // A workspace no output shows hears its hooks for the primary output's area; one an output shows, for that output's.
+    // An unshown workspace uses the primary output's work area for its hooks.
     const fallback = screenArea();
     let laidOut = 0;
     for (const workspace of ctx.workspaceRoot.list as Workspace[]) {
@@ -110,8 +107,7 @@ function layoutWorkspaces(): number {
                     guard(`${workspace}.layout.onClientAdded`, () => target.onClientAdded?.(client, context));
                 }
             }
-            // A frame that came, went or changed since a window was last fitted moves its content, before the layout places
-            // the windows it owns; a window that has just arrived is placed with the frame it has, so it only records it.
+            // Refit changed frames before placing their windows; new arrivals keep their current frame.
             guard(`${workspace}.followFrame`, () => {
                 for (const client of children) {
                     if (client.alive && followFrame(client, area)) {
@@ -124,9 +120,8 @@ function layoutWorkspaces(): number {
                 state.dirty = false;
                 state.area = { ...area };
                 if (before !== null && !rectsEqual(before, area)) {
-                    // The work area moved under the windows (a bar came, went or grew): a maximised window fills it
-                    // again, a snapped one tiles to its zone again and a floating one is brought back inside, as the the retired shell
-                    // `Desk:arrange` did. The layout places what it owns after this.
+                    // When the work area changes, maximised windows fill it, snapped windows retile and floating
+                    // windows move inside it. The layout then places the windows it owns.
                     guard(`${workspace}.refit`, () => {
                         for (const client of children) {
                             if (client.alive) {
@@ -138,9 +133,8 @@ function layoutWorkspaces(): number {
                 }
                 guard(`${workspace}.layout.compute`, () => {
                     const site = `${workspace}.layout.compute`;
-                    // A client the script floats (a window rule, `client.floating`) keeps its own place, and so does one
-                    // that covers the output (fullscreen) or fills the work area (maximised). A dialog stays with its
-                    // parent, centred in it, and is never tiled.
+                    // Floating, fullscreen and maximised windows keep their own placement. Dialogs stay with their
+                    // parent, are centred in it and are never tiled.
                     const tiled = children.filter(
                         (client) =>
                             !stateOf(client).floating &&
@@ -156,7 +150,7 @@ function layoutWorkspaces(): number {
                 });
                 laidOut += 1;
             }
-            // What the hooks and compute did to the layout's own fields is not a change for the next frame.
+            // Record hook and compute changes so they do not trigger another pass next frame.
             state.fields = layoutFields(state.layout);
         });
     }

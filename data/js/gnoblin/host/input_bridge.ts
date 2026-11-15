@@ -1,4 +1,4 @@
-// The seat input manager and the device settings, wired to the shell's host.
+// Connects seat input, device settings and toolkit state to the compositor host.
 
 import { attachDeviceSettings } from "gnoblin/devices";
 import { GnoblinError } from "gnoblin/errors";

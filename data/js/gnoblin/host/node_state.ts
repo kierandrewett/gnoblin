@@ -27,13 +27,21 @@ export function refuse(code: string, target: string, what: string): never {
 
 /** What listeners were last told about a client, to raise an event only for a real change. */
 export interface Seen {
+    /** Last title reported by the compositor. */
     title: string;
+    /** Last application id reported by the compositor. */
     appId: string;
+    /** Last decoration mode reported by the compositor. */
     decoration: string;
+    /** Whether the window was last reported as focused. */
     focused: boolean;
+    /** Last horizontal position in logical pixels. */
     x: number;
+    /** Last vertical position in logical pixels. */
     y: number;
+    /** Last width in logical pixels. */
     width: number;
+    /** Last height in logical pixels. */
     height: number;
     /** The node of the window this one is a dialog of, 0 for none. */
     parent: number;
@@ -41,14 +49,19 @@ export interface Seen {
 
 /** State shared by native-backed object instances: identity, liveness, events, and last published values. */
 export interface NodeState {
+    /** Native node identity. */
     node: NodeId;
     /** Which kind of object this is the state of. */
     kind: "client" | "output";
+    /** Whether the native object still exists. */
     alive: boolean;
     /** The last values of a destroyed node, which stay readable. */
     frozen: Record<string, HostValue | undefined> | null;
+    /** Objects listening for changes to this native object. */
     listeners: object[];
+    /** Whether the initial ready event has been delivered. */
     readied: boolean;
+    /** Last client values reported to listeners, or null before they are recorded. */
     seen: Seen | null;
     /** The script's own flag: a floating client is left out of its workspace's tiling. */
     floating: boolean;

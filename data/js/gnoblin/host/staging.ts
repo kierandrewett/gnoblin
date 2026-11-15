@@ -1,7 +1,4 @@
-// Staged writes. `gnoblin.requestTransition` runs its callback with the host's writes staged
-// (`gnoblin/transition`). The host functions are replaced here, once, by the staging layer, so every module that
-// reads or writes a node goes through it and none has to know. Outside a callback each call goes straight to the
-// native function.
+// Intercepts host reads, writes and calls while a transition callback is running.
 
 import { GnoblinError } from "gnoblin/errors";
 import { host, nodeName } from "gnoblin/host/bridge";
@@ -10,7 +7,7 @@ import { noteHostRead, noteHostWrite } from "gnoblin/properties";
 import { Staging } from "gnoblin/transition/staging";
 import type { HostValue } from "gnoblin/types";
 
-/** Puts the staging layer in front of the host's reads, writes and calls. Called once, before anything uses `host`. */
+/** Installs transition staging around host reads, writes and calls. Called once, before anything uses `host`. */
 export function installStaging(): void {
     // The natives are captured first: the guards below replace the host's functions and call these when
     // nothing is staged.

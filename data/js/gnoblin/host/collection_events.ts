@@ -1,6 +1,4 @@
-// Telling collections that a member joined, left or changed. A view with listeners is tracked: whenever a member's
-// properties change the plan asks `recompute`, which queues `onAdded` or `onRemoved` for each view whose query
-// now says otherwise.
+// Tracks collection membership and queues events when members join, leave or change.
 
 import type { Client } from "gnoblin/host/client";
 import { contains, rootOf } from "gnoblin/host/collection_state";
@@ -42,7 +40,9 @@ export function emitMember(client: Client | Output, held: CollectionState[], met
     }
 }
 
-/** Every collection that holds `client` now: `gnoblin.clients`, its workspace's `clients`, and their live selections. */
+/** Every collection that holds `client` now: `gnoblin.clients`, its workspace's `clients`, and its live
+ * selections.
+ */
 export function clientHolders(client: Client): CollectionState[] {
     const own = wsOf(client);
     const all = holders(ctx.clientRoot, client);

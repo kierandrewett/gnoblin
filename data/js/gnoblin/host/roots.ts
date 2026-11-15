@@ -35,11 +35,7 @@ export class WorkspaceCollection extends MutableCollection<Workspace> {
     }
 }
 
-/**
- * `gnoblin.outputs.add`: a script describes a `VirtualOutput` and the compositor would create it. The compositor makes
- * outputs only for the displays and test sessions it owns and has no request that creates one (the work is listed in
- * design/js-spec-native.md, "XR extension"), so the only honest answer today is a typed refusal.
- */
+/** Refuses virtual outputs because this backend cannot create them. */
 function addVirtualOutput(member: unknown): void {
     if (!(member instanceof VirtualOutput)) {
         throw new TypeError("gnoblin.outputs.add: expected a VirtualOutput; the compositor makes every other output");
@@ -49,7 +45,8 @@ function addVirtualOutput(member: unknown): void {
 
 /** `gnoblin.outputs`: the connected outputs, and the profiles that say how each is configured. */
 export class OutputCollection extends MutableCollection<Output> {
-    /** The persistent hardware settings: an `OutputProfile` applies when its monitor is connected, also after a hotplug. */
+    /** The persistent hardware settings: an `OutputProfile` applies when its monitor is connected, also after a
+     * hotplug. */
     readonly profiles = ctx.profileRoot.self as MutableCollection<OutputProfile>;
 }
 
@@ -64,7 +61,7 @@ export class DisplayCollection extends MutableCollection<Display> {
     }
 }
 
-/** Makes the root collections of the generation. */
+/** Creates the root collections for the current generation. */
 export function installRoots(): void {
     // All native clients in compositor order.
     ctx.clientRoot = collectionState(new Collection<Client>(CREATE, rootState("Client")));
@@ -105,7 +102,8 @@ export function installRoots(): void {
             ...rootState("Workspace"),
             mutation: {
                 add: (workspace) => addWorkspace(workspace as Workspace),
-                // The last workspace stays: a shell with nowhere to put a window is unusable (Before: `remove_workspace` refuses).
+                // The last workspace stays: a shell with nowhere to put a window is unusable, so `remove` refuses
+                // to drop it.
                 remove: (workspace) => {
                     if (ctx.workspaceRoot.list.length < 2) {
                         return false;

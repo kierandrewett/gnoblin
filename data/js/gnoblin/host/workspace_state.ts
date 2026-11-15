@@ -11,21 +11,29 @@ import type { Rect } from "gnoblin/types";
 
 /** Layout and membership state held privately for each script workspace. */
 export interface WorkspaceState {
+    /** Stable workspace id. */
     id: string;
+    /** Display name. */
     name: string;
+    /** Layout instance used to place the workspace's clients. */
     layout: Layout;
+    /** Inner and outer gaps in logical pixels. */
     gaps: Gaps;
     /** Whether the workspace is in `gnoblin.workspaces`. */
     attached: boolean;
+    /** Clients assigned to this workspace. */
     clients: MutableCollection<Client>;
+    /** Internal membership state for the client collection. */
     clientsState: CollectionState;
-    /** The clients that joined and left since the layout last heard of it, for `onClientAdded` and `onClientRemoved`. */
+    /** The clients that joined since the layout last heard of them, for `onClientAdded`. */
     arrived: Client[];
+    /** Clients that left since the layout last heard of them. */
     departed: Client[];
     /** Whether the layout has to compute again the next time the workspace is shown. */
     dirty: boolean;
     /** The layout's own fields when the workspace was last looked at, to notice a change. */
     fields: Map<PropertyKey, unknown> | null;
+    /** Gap values most recently observed by the layout. */
     gapsSeen: [number, number];
     /** The area the layout last computed for. */
     area: Rect | null;

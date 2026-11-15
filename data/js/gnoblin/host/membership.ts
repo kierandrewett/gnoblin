@@ -1,5 +1,4 @@
-// Which workspace a client is on: linking and unlinking, a dialog following its parent, and the operations behind
-// `Client.moveToWorkspace` and a workspace's `clients.add`, `remove`, `clear` and `swap`.
+// Tracks workspace membership, dialog placement and client transfers.
 
 import { GnoblinError } from "gnoblin/errors";
 import { host } from "gnoblin/host/bridge";
@@ -17,7 +16,9 @@ import { isWorkspace, wsState } from "gnoblin/host/workspace_state";
 import type { WorkspaceState } from "gnoblin/host/workspace_state";
 import { raiseSignal } from "gnoblin/properties";
 
-/** A workspace's clients traded places: its layout computes again, and one with a record of its own trades them there. */
+/** A workspace's clients traded places: its layout computes again, and one with a record of its own trades them
+ * there.
+ */
 export function swapClients(workspace: Workspace, a: Client, b: Client): void {
     const state = wsState(workspace);
     state.dirty = true;
