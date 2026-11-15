@@ -11,6 +11,9 @@ own.
 Every example here is mounted over the fake compositor by `crates/gnoblin-js/tests/window_frame.rs`, which reads the code
 from this page.
 
+The pictures are the shipped shell on the software renderer, taken by `scripts/js-shell-screenshots.sh` from the code on this
+page.
+
 ## A bar with the buttons on the left
 
 The window buttons in the traffic-light order, the title in the middle, and a bar you can drag.
@@ -32,6 +35,8 @@ startDecorations({
     },
 });
 ```
+
+![Two terminals under dark bars with the close, minimise and maximise buttons at the left and the title beside them](../images/js-shell/window-frame-buttons.png)
 
 The top edge is 34 pixels, so the layouts leave 34 pixels above the content of every window. A node in an outlet reads
 the window once a frame, so the title follows a rename and the maximise button follows `maximised`.
@@ -60,6 +65,8 @@ startDecorations({
     },
 });
 ```
+
+![Two terminals with a rounded ring over the edge of each, blue on the focused one, and the soft shadow of the front one falling on the other](../images/js-shell/window-frame-glow.png)
 
 This works for a window that draws its own frame too, because only the two layers are used. Without a titlebar a window
 moves with `Super+MouseLeft+Drag`.
@@ -105,6 +112,8 @@ startDecorations({
     },
 });
 ```
+
+![Two terminals under the stock titlebar, each with a strip below it that names its application and size and a handle at its right](../images/js-shell/window-frame-strip.png)
 
 The bottom and right edges take their room from the window, so a tiled window is smaller by 22 pixels below and 12 on the
 right, and the strip gives its 22 pixels back while the window is maximised.

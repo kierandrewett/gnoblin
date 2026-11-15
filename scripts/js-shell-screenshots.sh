@@ -9,7 +9,7 @@
 # Usage: scripts/js-shell-screenshots.sh [OUT_DIR [SCENARIO...]]
 #
 # SCENARIO is one or more of: one-window cascade master-stack master-stack-decorated dwindle dwindle-decorated
-# shadows-software shadows-gles csd-double csd-own csd-tiled reload-tiled transition-mid window-menu lock rounded. The default is all of them.
+# shadows-software shadows-gles csd-double csd-own csd-tiled reload-tiled transition-mid window-menu lock rounded window-frame-buttons window-frame-glow window-frame-strip. The default is all of them.
 # GNOBLIN_BIN_DIR names where `gnoblin` and `gnoblinctl` are (default: $CARGO_TARGET_DIR/release, else
 # target/release).
 #
@@ -26,7 +26,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bin_dir="${GNOBLIN_BIN_DIR:-${CARGO_TARGET_DIR:-$repo_root/target}/release}"
 out_dir="${1:-$PWD/js-shell-shots}"
 shift || true
-wanted="${*:-one-window cascade master-stack master-stack-decorated dwindle dwindle-decorated shadows-software shadows-gles csd-double csd-own csd-tiled reload-tiled transition-mid window-menu lock rounded}"
+wanted="${*:-one-window cascade master-stack master-stack-decorated dwindle dwindle-decorated shadows-software shadows-gles csd-double csd-own csd-tiled reload-tiled transition-mid window-menu lock rounded window-frame-buttons window-frame-glow window-frame-strip}"
 
 for tool in grim foot dbus-daemon; do
     command -v "$tool" >/dev/null || {
@@ -418,11 +418,48 @@ gnoblin.clients.style.shadows = [{ x: 0, y: 12, blur: 32, color: \"#000000cc\" }
     stop_session
 }
 
+# recipe_source HEADING: the TypeScript block under `## HEADING` in docs/recipes/window-frame.md, which is the file the
+# page shows, so the picture is of the code the reader copies.
+recipe_source() {
+    awk -v heading="## $1" '$0 == heading { found = 1; next } found && /^```ts$/ { inside = 1; next } inside && /^```$/ { exit } inside { print }' \
+        "$repo_root/docs/recipes/window-frame.md"
+}
+
+# window_frame NAME HEADING: two windows under the `init.ts` of one example of the window frame recipe, the second placed
+# over the first so the layers behind the window and the edges round it show.
+window_frame() {
+    local source
+    source="$(recipe_source "$2")"
+    [ -n "$source" ] || {
+        echo "js-shell-screenshots: no example under $2 in docs/recipes/window-frame.md" >&2
+        exit 1
+    }
+    start_session "$source"
+    plain_window org.example.status "gnoblinctl status" "#1e3a5f" "gnoblinctl status"
+    wait_windows 1
+    plain_window org.example.windows "gnoblinctl window list" "#5f1e3a" "gnoblinctl window list"
+    wait_windows 2
+    shoot "$1"
+    stop_session
+}
+
+scenario_window_frame_buttons() {
+    window_frame window-frame-buttons "A bar with the buttons on the left"
+}
+
+scenario_window_frame_glow() {
+    window_frame window-frame-glow "A border and a glow without a titlebar"
+}
+
+scenario_window_frame_strip() {
+    window_frame window-frame-strip "A status strip at the bottom and a dock handle at the side"
+}
+
 main() {
     local scenario
     for scenario in $wanted; do
         case "$scenario" in
-            one-window | cascade | master-stack | master-stack-decorated | dwindle | dwindle-decorated | shadows-software | shadows-gles | csd-double | csd-own | csd-tiled | reload-tiled | transition-mid | window-menu | lock | rounded)
+            one-window | cascade | master-stack | master-stack-decorated | dwindle | dwindle-decorated | shadows-software | shadows-gles | csd-double | csd-own | csd-tiled | reload-tiled | transition-mid | window-menu | lock | rounded | window-frame-buttons | window-frame-glow | window-frame-strip)
                 "scenario_${scenario//-/_}"
                 ;;
             *)

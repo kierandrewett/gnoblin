@@ -53,6 +53,7 @@ Each scenario boots its own session over a fresh directory, so one can be run al
 | `window-menu`                                 | the window menu, opened with `Alt+Space` sent by `wtype`                                                  |
 | `lock`                                        | `gnoblinctl lock`, then a capture, which is refused                                                       |
 | `rounded`                                     | decorated windows with `cornerRadius`, a border and a shadow on GLES                                      |
+| `window-frame-buttons`, `-glow`, `-strip`     | the three examples of `docs/recipes/window-frame.md`, read from that page, on two windows                 |
 
 The pictures (`/home/kieran/dev/lanes/JsLiveVerify-shots/` on the workstation of the lane) are not in the repository except
 four that are clean product states and are in `docs/typescript-shell.md`, "What it looks like": `docs/images/js-shell/`.
