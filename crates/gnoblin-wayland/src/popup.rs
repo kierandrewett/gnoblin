@@ -216,7 +216,7 @@ impl State {
                 grab.ungrab(PopupUngrabStrategy::All);
                 return;
             }
-            keyboard.set_focus(self, grab.current_grab(), serial);
+            self.move_keyboard_focus(grab.current_grab(), serial);
             keyboard.set_grab(self, PopupKeyboardGrab::new(&grab), serial);
         }
         if let Some(pointer) = seat.get_pointer() {
@@ -263,7 +263,7 @@ impl State {
             if keyboard.is_grabbed() && (keyboard.has_grab(held.grab.serial()) || keyboard.has_grab(previous)) {
                 keyboard.unset_grab(self);
                 if held.root.alive() {
-                    keyboard.set_focus(self, Some(held.root.clone()), serial);
+                    self.move_keyboard_focus(Some(held.root.clone()), serial);
                 }
             }
             let pointer = self.pointer.clone();

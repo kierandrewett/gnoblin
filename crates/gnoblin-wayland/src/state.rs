@@ -25,7 +25,9 @@ use smithay::reexports::wayland_server::backend::{GlobalId, ObjectId};
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
-use smithay::utils::{Logical, Point as SmithayPoint, Rectangle, SERIAL_COUNTER, Size as SmithaySize, Transform};
+use smithay::utils::{
+    Logical, Point as SmithayPoint, Rectangle, SERIAL_COUNTER, Serial, Size as SmithaySize, Transform,
+};
 use smithay::wayland::compositor::{
     CompositorState, SurfaceAttributes, TraversalAction, with_states, with_surface_tree_downward,
 };
@@ -1818,6 +1820,42 @@ impl State {
         }
     }
 
+    /// Moves the seat's keyboard focus to `target` and has the text inputs follow it, once each.
+    ///
+    /// Smithay's keyboard focus carries the text input's focus with it, but sends `leave` and `enter` only while an
+    /// input method is bound (or the compositor is one). So that a text input hears of its focus without one, the
+    /// compositor sends them itself in that case, with the text input still on the focus that is leaving; with an
+    /// input method Smithay sends them, and doing it here too would tell the surface that takes the focus `leave`
+    /// and `enter` once more, around the keyboard's own. Every move of the keyboard goes through here, a popup that
+    /// takes it with a grab included: a text input is not told of a focus that moved around this.
+    pub(crate) fn move_keyboard_focus(&mut self, target: Option<WlSurface>, serial: Serial) {
+        use smithay::wayland::input_method::InputMethodSeat;
+        use smithay::wayland::text_input::TextInputSeat;
+        let text_input = self.seat.text_input().clone();
+        let smithay_sends = self.seat.input_method().has_instance() || text_input.compositor_input_method();
+        let before = self.keyboard.current_focus();
+        let left = before != target && !smithay_sends;
+        if left {
+            text_input.leave();
+        }
+        let keyboard = self.keyboard.clone();
+        keyboard.set_focus(self, target.clone(), serial);
+        // A grab on the keyboard may keep the focus where it was, and then the text input that was just left has to be
+        // told again.
+        if left || keyboard.current_focus() != before {
+            // The text inputs of the connection that left were told; the ones of the connection arriving are not,
+            // unless Smithay just did, and either way the sweep must not tell them twice.
+            self.announced_text_inputs.clear();
+            // `leave` resets a text input: nothing it asked while the focus was elsewhere is true any more.
+            self.held_text_inputs.clear();
+            if smithay_sends {
+                crate::protocols::zwp_text_input_v3::record_entered_text_inputs(self);
+            } else if keyboard.current_focus().is_some() {
+                crate::protocols::zwp_text_input_v3::announce_new_text_inputs(self);
+            }
+        }
+    }
+
     /// Installs the keyboard focus target. This is the only place focus is set.
     ///
     /// The clipboard follows the keyboard: `wl_data_device` delivers a selection to the
@@ -1839,25 +1877,9 @@ impl State {
         }
         self.composer.set_main_seat_focus(focused);
         self.remember_layout();
-        {
-            use smithay::wayland::text_input::TextInputSeat;
-            let text_input = self.seat.text_input().clone();
-            text_input.leave();
-            text_input.set_focus(target.clone());
-            // The connection leaving was told; the one arriving has not been, so the
-            // announcement set starts again and the sweep below tells every text input the
-            // new focus owns exactly once.
-            self.announced_text_inputs.clear();
-            // `leave` resets a text input: nothing it asked while the focus was elsewhere is true any more.
-            self.held_text_inputs.clear();
-            if target.is_some() {
-                crate::protocols::zwp_text_input_v3::announce_new_text_inputs(self);
-            }
-        }
         let serial = SERIAL_COUNTER.next_serial();
         let client = target.as_ref().and_then(|surface| surface.client());
-        let keyboard = self.keyboard.clone();
-        keyboard.set_focus(self, target.clone(), serial);
+        self.move_keyboard_focus(target.clone(), serial);
         self.announce_activation(focused);
         let windows: Vec<WindowId> = self.fallback.windows().map(|window| window.id).collect();
         for window in windows {

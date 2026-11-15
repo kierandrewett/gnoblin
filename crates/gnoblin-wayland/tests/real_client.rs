@@ -33,12 +33,15 @@ use gnoblin_wayland::{
     Clock, Config, ControlHandle, LoopError, ManualClock, Modal, ModalEvent, Server, SessionSnapshot, SystemClock,
 };
 use gnoblin_wayland::{FocusMode, NewWindowFocus, WmOptions};
-use wayland_client::globals::{GlobalListContents, registry_queue_init};
+use wayland_client::backend::ObjectId;
+use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
     wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
+use wayland_protocols::wp::text_input::zv3::client::{zwp_text_input_manager_v3, zwp_text_input_v3};
 use wayland_protocols::xdg::shell::client::{xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base};
+use wayland_protocols_misc::zwp_input_method_v2::client::{zwp_input_method_manager_v2, zwp_input_method_v2};
 
 /// How long a test waits for the session to reach a state before failing.
 const TIMEOUT: Duration = Duration::from_secs(10);
@@ -175,9 +178,24 @@ impl Session {
     }
 }
 
+/// An event a test cares to see the order of, with the surface or `xdg_surface` it names.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Seen {
+    /// `xdg_surface.configure` on an `xdg_surface`.
+    Configure(ObjectId),
+    /// `wl_keyboard.enter` on a surface.
+    KeyboardEnter(ObjectId),
+    /// `zwp_text_input_v3.enter` on a surface.
+    TextEnter(ObjectId),
+    /// `zwp_text_input_v3.leave` from a surface.
+    TextLeave(ObjectId),
+}
+
 /// What a test's client records from the events it receives.
 #[derive(Default)]
 struct App {
+    /// The events [`Seen`] names, in the order they arrived.
+    seen: Vec<Seen>,
     /// How many `xdg_surface.configure` events arrived.
     configures: u32,
     /// How many of them the client acknowledged.
@@ -242,6 +260,7 @@ struct Client {
     shm: wl_shm::WlShm,
     wm_base: xdg_wm_base::XdgWmBase,
     seat: wl_seat::WlSeat,
+    globals: GlobalList,
 }
 
 /// What a popup asks its positioner for.
@@ -313,7 +332,27 @@ impl Client {
             shm,
             wm_base,
             seat,
+            globals,
         }
+    }
+
+    /// Gives the seat a text input, which hears `enter` and `leave` as the keyboard focus moves between this client's
+    /// surfaces.
+    fn text_input(&mut self) -> zwp_text_input_v3::ZwpTextInputV3 {
+        let manager: zwp_text_input_manager_v3::ZwpTextInputManagerV3 = self
+            .globals
+            .bind(&self.qh, 1..=1, ())
+            .expect("the session advertises zwp_text_input_manager_v3");
+        manager.get_text_input(&self.seat, &self.qh, ())
+    }
+
+    /// Makes this client the seat's input method, as an on-screen keyboard or an IME is.
+    fn input_method(&mut self) -> zwp_input_method_v2::ZwpInputMethodV2 {
+        let manager: zwp_input_method_manager_v2::ZwpInputMethodManagerV2 = self
+            .globals
+            .bind(&self.qh, 1..=1, ())
+            .expect("the session advertises zwp_input_method_manager_v2");
+        manager.get_input_method(&self.seat, &self.qh, ())
     }
 
     /// Processes every event the server has sent.
@@ -990,6 +1029,9 @@ wayland_client::delegate_noop!(App: ignore wl_shm_pool::WlShmPool);
 wayland_client::delegate_noop!(App: ignore wl_buffer::WlBuffer);
 wayland_client::delegate_noop!(App: ignore wl_output::WlOutput);
 wayland_client::delegate_noop!(App: ignore xdg_positioner::XdgPositioner);
+wayland_client::delegate_noop!(App: ignore zwp_text_input_manager_v3::ZwpTextInputManagerV3);
+wayland_client::delegate_noop!(App: ignore zwp_input_method_manager_v2::ZwpInputMethodManagerV2);
+wayland_client::delegate_noop!(App: ignore zwp_input_method_v2::ZwpInputMethodV2);
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
     fn event(
@@ -1039,6 +1081,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for App {
         match event {
             wl_keyboard::Event::Enter { surface, .. } => {
                 state.keyboard_enters += 1;
+                state.seen.push(Seen::KeyboardEnter(surface.id()));
                 state.keyboard_surface = Some(surface);
             }
             wl_keyboard::Event::Leave { .. } => state.keyboard_surface = None,
@@ -1112,12 +1155,30 @@ impl Dispatch<xdg_surface::XdgSurface, ()> for App {
         _: &QueueHandle<Self>,
     ) {
         if let xdg_surface::Event::Configure { serial } = event {
+            state.seen.push(Seen::Configure(xdg_surface.id()));
             state.configures += 1;
             state.last_serial = serial;
             if !state.no_ack {
                 xdg_surface.ack_configure(serial);
                 state.acks += 1;
             }
+        }
+    }
+}
+
+impl Dispatch<zwp_text_input_v3::ZwpTextInputV3, ()> for App {
+    fn event(
+        state: &mut Self,
+        _: &zwp_text_input_v3::ZwpTextInputV3,
+        event: <zwp_text_input_v3::ZwpTextInputV3 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            zwp_text_input_v3::Event::Enter { surface } => state.seen.push(Seen::TextEnter(surface.id())),
+            zwp_text_input_v3::Event::Leave { surface } => state.seen.push(Seen::TextLeave(surface.id())),
+            _ => {}
         }
     }
 }
@@ -1601,6 +1662,213 @@ fn a_grabbed_popup_takes_the_keyboard_and_a_new_window_ends_the_grab() {
             |menu| menu.state.popup_done,
         );
         assert_eq!(menu.state.popups_done, std::slice::from_ref(&popup.popup));
+    });
+}
+
+/// What a client with a text input has to hear as the keyboard moves between its surfaces, with the seat's input
+/// method bound or not: the compositor tells a text input of its focus itself while none is.
+struct Typing {
+    /// The input method's own connection, kept so the input method stays bound.
+    _method: Option<(Client, zwp_input_method_v2::ZwpInputMethodV2)>,
+    /// The application, with a text input on the seat.
+    app: Client,
+    _input: zwp_text_input_v3::ZwpTextInputV3,
+    window: Window,
+}
+
+impl Typing {
+    /// Creates a text input, binds an input method after it when `with_input_method` says so, as wlcs's fixture does,
+    /// and maps a window of the application that takes the keyboard and has the text input enter it.
+    fn start(session: &Handle, with_input_method: bool) -> Self {
+        let mut app = Client::connect(session.socket());
+        let input = app.text_input();
+        app.roundtrip();
+        let method = with_input_method.then(|| {
+            let mut ime = Client::connect(session.socket());
+            let method = ime.input_method();
+            ime.roundtrip();
+            (ime, method)
+        });
+        let window = place_window(session, &mut app, "org.gnoblin.Editor", "Editor", MENU_WINDOW);
+        app.wait_until("the text input to enter the window", |app| {
+            app.state.seen.contains(&Seen::TextEnter(window.surface.id()))
+        });
+        Self {
+            _method: method,
+            app,
+            _input: input,
+            window,
+        }
+    }
+
+    /// The events `enter` and `leave` of the text input since `mark`, in order.
+    fn text_since(&self, mark: usize) -> Vec<Seen> {
+        self.app.state.seen[mark..]
+            .iter()
+            .filter(|seen| matches!(seen, Seen::TextEnter(_) | Seen::TextLeave(_)))
+            .cloned()
+            .collect()
+    }
+
+    /// How many events the application has seen so far.
+    fn mark(&self) -> usize {
+        self.app.state.seen.len()
+    }
+}
+
+/// Runs `body` against a started [`Typing`] in a session where new windows take the keyboard.
+fn typing(with_input_method: bool, body: impl FnOnce(&Handle, Typing) + Send + 'static) {
+    let session = Session::start_allowing_focus(Headless::new());
+    session.run(move |session| body(session, Typing::start(session, with_input_method)));
+}
+
+/// A child toplevel of the window takes the keyboard when it maps and gives it back when it is destroyed: the case the
+/// wlcs test `text_input_enters_parent_surface_after_child_destroyed` is about.
+fn the_keyboard_changes_windows(with_input_method: bool) {
+    typing(with_input_method, |_, mut typing| {
+        let child = typing.app.create_window("org.gnoblin.Child", "Child");
+        child.toplevel.set_parent(Some(&typing.window.toplevel));
+        typing.app.roundtrip();
+        let mark = typing.mark();
+        typing.app.attach_buffer(&child, 200, 150);
+        typing
+            .app
+            .wait_until("the keyboard to reach the child", |app| app.keyboard_is_on(&child));
+        assert_eq!(
+            typing.text_since(mark),
+            [
+                Seen::TextLeave(typing.window.surface.id()),
+                Seen::TextEnter(child.surface.id())
+            ],
+            "the keyboard moving to the child is one leave of the window and one enter of the child, not a pair more"
+        );
+
+        let mark = typing.mark();
+        let child_surface = child.surface.id();
+        typing.app.destroy(child);
+        typing.app.wait_until("the keyboard to return to the window", |app| {
+            app.keyboard_is_on(&typing.window)
+        });
+        assert_eq!(
+            typing.text_since(mark),
+            [
+                Seen::TextLeave(child_surface),
+                Seen::TextEnter(typing.window.surface.id())
+            ],
+            "the keyboard coming back is one leave of the child and one enter of the window"
+        );
+    });
+}
+
+#[test]
+fn a_text_input_hears_one_leave_and_one_enter_when_the_keyboard_changes_windows() {
+    the_keyboard_changes_windows(true);
+}
+
+#[test]
+fn a_text_input_hears_one_leave_and_one_enter_when_the_keyboard_changes_windows_without_an_input_method() {
+    the_keyboard_changes_windows(false);
+}
+
+/// xdg-shell lets a client map a window only after it acknowledged the initial configure, and the keyboard, which the
+/// text input follows, goes to a window when it maps. The text-input protocol states no order between the configure and
+/// the enter, so this is the compositor's own and is pinned here.
+fn the_text_input_enters_after_the_configure(with_input_method: bool) {
+    typing(with_input_method, |_, mut typing| {
+        let mark = typing.mark();
+        let child = typing.app.create_window("org.gnoblin.Child", "Child");
+        child.toplevel.set_parent(Some(&typing.window.toplevel));
+        typing.app.roundtrip();
+        typing.app.attach_buffer(&child, 200, 150);
+        typing
+            .app
+            .wait_until("the keyboard to reach the child", |app| app.keyboard_is_on(&child));
+        let events = &typing.app.state.seen[mark..];
+        let configured = events
+            .iter()
+            .position(|seen| *seen == Seen::Configure(child.xdg_surface.id()))
+            .expect("the child was configured");
+        let entered = events
+            .iter()
+            .position(|seen| *seen == Seen::TextEnter(child.surface.id()))
+            .expect("the text input entered the child");
+        assert!(
+            configured < entered,
+            "the text input enters the child after the child's initial configure: {events:?}"
+        );
+    });
+}
+
+#[test]
+fn a_text_input_enters_a_window_when_it_maps_after_the_window_was_configured() {
+    the_text_input_enters_after_the_configure(true);
+}
+
+#[test]
+fn a_text_input_enters_a_window_when_it_maps_after_the_window_was_configured_without_an_input_method() {
+    the_text_input_enters_after_the_configure(false);
+}
+
+/// `xdg_popup.grab` is where a popup takes the keyboard, before the commit that asks for its first configure, so the
+/// text input leaves the window and enters the popup first, once each, and the configure follows. Dismissing the popup
+/// gives the keyboard, and the text input, back to the window. A popup took the keyboard around the text input, with no
+/// input method bound, until the grab went through the same path as every other move of the keyboard.
+fn a_grabbed_popup_takes_the_text_input(with_input_method: bool) {
+    typing(with_input_method, |_, mut typing| {
+        let mark = typing.mark();
+        let mut place = Place::at(10, 10, (60, 40));
+        place.grab = true;
+        let popup = typing.app.map_popup(&typing.window.xdg_surface, &place);
+        typing.app.roundtrip();
+        assert_eq!(
+            typing.app.state.seen[mark..],
+            [
+                Seen::TextLeave(typing.window.surface.id()),
+                Seen::KeyboardEnter(popup.surface.id()),
+                Seen::TextEnter(popup.surface.id()),
+                Seen::Configure(popup.xdg_surface.id()),
+            ]
+        );
+
+        let mark = typing.mark();
+        let popup_surface = popup.surface.id();
+        popup.popup.destroy();
+        typing.app.roundtrip();
+        typing.app.wait_until("the keyboard to return to the window", |app| {
+            app.keyboard_is_on(&typing.window)
+        });
+        assert_eq!(
+            typing.text_since(mark),
+            [
+                Seen::TextLeave(popup_surface),
+                Seen::TextEnter(typing.window.surface.id())
+            ]
+        );
+    });
+}
+
+#[test]
+fn a_grabbed_popup_takes_the_text_input_with_the_keyboard_before_it_is_configured() {
+    a_grabbed_popup_takes_the_text_input(true);
+}
+
+#[test]
+fn a_grabbed_popup_takes_the_text_input_with_the_keyboard_without_an_input_method() {
+    a_grabbed_popup_takes_the_text_input(false);
+}
+
+#[test]
+fn a_popup_without_a_grab_leaves_the_text_input_where_it_is() {
+    typing(true, |_, mut typing| {
+        let mark = typing.mark();
+        let place = Place::at(10, 10, (60, 40));
+        let _popup = typing.app.map_popup(&typing.window.xdg_surface, &place);
+        typing.app.roundtrip();
+        assert_eq!(
+            typing.text_since(mark),
+            Vec::<Seen>::new(),
+            "a popup that did not ask for the keyboard does not take the text input"
+        );
     });
 }
 

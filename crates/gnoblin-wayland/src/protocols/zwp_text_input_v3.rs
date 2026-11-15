@@ -7,8 +7,9 @@
 //! conversation through `TextInputHandle`; this module owns the two things a compositor
 //! must decide for it:
 //!
-//! - **Focus.** `enter` and `leave` are sent when the keyboard focus moves, because a text
-//!   input that is not told it has focus never asks to be enabled.
+//! - **Focus.** `enter` and `leave` are sent when the keyboard focus moves, once each, because a text
+//!   input that is not told it has focus never asks to be enabled. Smithay sends them while an input
+//!   method is bound; the compositor sends them itself while none is.
 //! - **The initial `enter`.** A text input created on a surface that already has focus is
 //!   announced by [`announce_new_text_inputs`].
 //! - **An input method that arrives late.** Smithay discards a text input's requests while no
@@ -36,6 +37,16 @@
 //!    `a_text_field_enabled_before_the_input_method_binds_is_not_activated_after_it_lost_focus`.
 //! 5. **The held state grows without bound.** With no input method an application can send its
 //!    surrounding text at every keystroke, so only the newest request of each kind is kept.
+//! 6. **A text input hears `leave` and `enter` twice for one move of the keyboard.** With an input method bound
+//!    Smithay sends both as the keyboard focus moves, and the compositor's own sweep that serves the case with none
+//!    must not add a second pair, whose `leave` would also name the surface that is arriving:
+//!    `a_text_input_hears_one_leave_and_one_enter_when_the_keyboard_changes_windows` in `tests/real_client.rs`.
+//! 7. **The order of `enter` and the window's configure.** The text input enters a window when the keyboard does, which
+//!    is when it maps, after its initial configure (xdg-shell lets a client map only after acknowledging it), and
+//!    a popup that grabs takes the keyboard at `xdg_popup.grab`, before its first configure. The protocol states
+//!    no order between `enter` and a configure; the compositor's is pinned by
+//!    `a_text_input_enters_a_window_when_it_maps_after_the_window_was_configured` and
+//!    `a_grabbed_popup_takes_the_text_input_with_the_keyboard_before_it_is_configured`.
 
 use std::collections::HashSet;
 
@@ -84,6 +95,21 @@ pub(crate) fn announce_new_text_inputs(state: &mut State) {
         input.enter(&surface);
     }
     state.announced_text_inputs = current;
+}
+
+/// Records that the text inputs on the focus have been told it, without telling them.
+///
+/// With an input method bound Smithay sends `enter` itself when the keyboard focus moves, so the sweep of
+/// [`announce_new_text_inputs`] has to know they heard it: a text input that is created afterwards is still its to
+/// announce.
+pub(crate) fn record_entered_text_inputs(state: &mut State) {
+    use smithay::wayland::text_input::{TextInputHandle, TextInputSeat};
+    let handle: TextInputHandle = state.seat.text_input().clone();
+    let mut entered = HashSet::new();
+    handle.with_focused_text_input(|input, _| {
+        entered.insert(input.id());
+    });
+    state.announced_text_inputs = entered;
 }
 
 impl TextInputActivation for State {
