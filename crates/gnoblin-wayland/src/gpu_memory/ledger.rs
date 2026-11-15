@@ -27,7 +27,7 @@ use smithay::reexports::wayland_server::backend::ClientId;
 /// well under that and above what a desktop with a handful of 4K clients holds (a 3840 x 2160 buffer is 32 MiB, a
 /// triple-buffered one 96 MiB, the output targets of three 4K outputs about 100 MiB); it fits a 8 GiB GPU with room
 /// for the clients' own textures. A machine with more memory raises it, one with less lowers it
-/// (`compositor.gpu-memory-budget`).
+/// (`compositor.gpu-memory-budget-mib`).
 pub const DEFAULT_BUDGET_BYTES: u64 = 6 << 30;
 
 /// The default most one client may hold in live buffers, in bytes.
