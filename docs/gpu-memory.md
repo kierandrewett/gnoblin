@@ -46,3 +46,13 @@ On a real GPU, compare the total with the per-process `drm-memory-*` counters of
 - The Vulkan renderer gives back its staging and readback buffers after each frame down to what one steady frame needs.
 - The GLES renderer deletes the textures it imported for a frame when the frame is drawn.
 - The frame capture keeps for an output is released when the output goes.
+- At most 256 windows are managed at once. A window past that is left unmanaged, so a client that opens toplevels in a
+  loop cannot make the compositor keep more; the limit is the session's, not one client's.
+
+## Known limit
+
+On a machine whose only Vulkan device is the software driver (lavapipe, Mesa 22.3.6), the Vulkan renderer makes the
+process grow by about 0.8 MiB a frame. The driver does this, and the numbers above do not show it.
+
+Do not choose the Vulkan renderer there for a long session. A real GPU's driver has not been measured. The measurements are
+in `design/gpu-memory.md`.

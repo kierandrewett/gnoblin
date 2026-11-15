@@ -849,7 +849,7 @@ pub(super) fn resident() -> u64 {
 }
 
 /// What one process measured of its own growth: kilobytes, or why it measured nothing.
-enum Measured {
+enum ChildProbe {
     Grew(u64),
     Skipped(String),
 }
@@ -859,7 +859,7 @@ enum Measured {
 /// The resident set belongs to the process, and the other tests of this binary run beside this one and allocate (a
 /// parallel test grew it by 28 MiB while a loop that draws nothing ran), so a measurement of the process's growth is
 /// only meaningful in a process that has nothing else to do.
-fn measured_in_a_child(mode: &str) -> Measured {
+fn measured_in_a_child(mode: &str) -> ChildProbe {
     let output = std::process::Command::new(std::env::current_exe().expect("the test binary"))
         .args([
             "--exact",
@@ -883,7 +883,7 @@ fn measured_in_a_child(mode: &str) -> Measured {
             )
         });
     line.parse()
-        .map_or_else(|_| Measured::Skipped(line.to_owned()), Measured::Grew)
+        .map_or_else(|_| ChildProbe::Skipped(line.to_owned()), ChildProbe::Grew)
 }
 
 /// The measuring half of [`measured_in_a_child`]: not a test of its own, it only runs when a test starts it.
@@ -932,8 +932,8 @@ fn frames_with_no_upload_do_not_grow_the_process() {
         // Mesa's lavapipe leaks about 0.8 MiB for every frame that draws the shared solid pass, and the loop of
         // `driver_probe.rs`, which has no renderer in it, leaks the same (design/gpu-memory.md, "Vulkan on lavapipe").
         // A machine with a GPU runs this test; a CPU driver cannot pass it whatever the renderer does.
-        Measured::Skipped(why) => println!("skipping: {why}"),
-        Measured::Grew(kib) => {
+        ChildProbe::Skipped(why) => println!("skipping: {why}"),
+        ChildProbe::Grew(kib) => {
             println!("solid only: 200 frames grew the process by {} MiB", kib >> 10);
             assert!(kib < 64 << 10, "grew by {} MiB", kib >> 10);
         }
@@ -942,15 +942,15 @@ fn frames_with_no_upload_do_not_grow_the_process() {
 
 #[test]
 fn a_vulkan_loop_without_the_renderer_grows_only_where_the_solid_pass_draws() {
-    let Measured::Grew(nothing) = measured_in_a_child("nothing") else {
+    let ChildProbe::Grew(nothing) = measured_in_a_child("nothing") else {
         println!("skipping: there is no Vulkan device on this machine");
         return;
     };
     let solid = measured_in_a_child("solid");
     let flat = measured_in_a_child("flat");
-    let kib = |measured: &Measured| match measured {
-        Measured::Grew(kib) => *kib,
-        Measured::Skipped(why) => panic!("the same device was not found again: {why}"),
+    let kib = |measured: &ChildProbe| match measured {
+        ChildProbe::Grew(kib) => *kib,
+        ChildProbe::Skipped(why) => panic!("the same device was not found again: {why}"),
     };
     println!(
         "400 frames outside the renderer: {nothing} KiB with no draw, {} KiB with the solid pass, {} KiB with the solid pass without its corner coverage",

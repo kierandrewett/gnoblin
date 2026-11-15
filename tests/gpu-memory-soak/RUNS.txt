@@ -1,0 +1,15 @@
+## software
+command: GNOBLIN_SOAK_RENDERER=software GNOBLIN_SOAK_SECONDS=1500 GNOBLIN_SOAK_SAMPLE_SECONDS=15 GNOBLIN_SOAK_LOCK_EVERY=25 GNOBLIN_SOAK_RSS_LIMIT_MIB=6144 GNOBLIN_SOAK_OUT=/home/node/soak/software.jsonl /home/node/target/debug/deps/gpu_memory_soak-351a7b02f1c0c1cb --ignored --nocapture
+start: 2026-11-15T14:21:33Z  end: 2026-11-15T14:46:38Z  exit=0
+## gles
+command: GNOBLIN_SOAK_RENDERER=gles GNOBLIN_SOAK_SECONDS=1500 GNOBLIN_SOAK_SAMPLE_SECONDS=15 GNOBLIN_SOAK_LOCK_EVERY=25 GNOBLIN_SOAK_RSS_LIMIT_MIB=6144 GNOBLIN_SOAK_OUT=/home/node/soak/gles.jsonl /home/node/target/debug/deps/gpu_memory_soak-351a7b02f1c0c1cb --ignored --nocapture
+start: 2026-11-15T14:46:38Z  end: 2026-11-15T15:11:44Z  exit=0
+## vulkan
+command: GNOBLIN_SOAK_RENDERER=vulkan GNOBLIN_SOAK_SECONDS=1500 GNOBLIN_SOAK_SAMPLE_SECONDS=15 GNOBLIN_SOAK_LOCK_EVERY=25 GNOBLIN_SOAK_RSS_LIMIT_MIB=6144 GNOBLIN_SOAK_OUT=/home/node/soak/vulkan.jsonl /home/node/target/debug/deps/gpu_memory_soak-351a7b02f1c0c1cb --ignored --nocapture
+start: 2026-11-15T15:11:44Z  end: 2026-11-15T15:14:54Z  exit=101
+## host
+host: Linux 4.19.0-gvisor x86_64; nproc 4; model name	: unknown
+mesa: libegl-mesa0 22.3.6-1+deb12u2;libgl1-mesa-dri 22.3.6-1+deb12u2;mesa-vulkan-drivers 22.3.6-1+deb12u2
+commit: the tree of 51e0fda33 (c3b74c438 before the rebase): the soak code of 2dba37a57 plus the RSS limit
+thread 'the_session_keeps_its_memory_bounded_under_churn' (23086) panicked at crates/gnoblin/tests/gpu_memory_soak.rs:535:5:
+the process passed 6144 MiB resident after 187 s: the series in /home/node/soak/vulkan.jsonl shows what grew
