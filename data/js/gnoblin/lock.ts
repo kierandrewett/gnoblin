@@ -215,7 +215,7 @@ export class LockScreen {
         this.#backend = backend;
         this.style = style;
         // The screen renews the compositor's lease and follows the clock and the password entry every frame it is up.
-        onWake(() => (this.#shown === null || this.#released ? NEVER : NOW));
+        onWake("lock screen", () => (this.#shown === null || this.#released ? NEVER : NOW));
     }
 
     /** Whether the screen is up. */

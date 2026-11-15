@@ -6,7 +6,7 @@
 // `AlertTracker` is the state machine on its own. A script starts the alert with `startNotRespondingAlert()`.
 
 import { Box, Text, onUiFrame, uiFocus, uiFocused, uiLocked, uiNow, uiScreen } from "gnoblin/ui";
-import { onWake } from "gnoblin/wake";
+import { NEVER, onWake } from "gnoblin/wake";
 import type { UiKeyEvent, UiPointerEvent } from "gnoblin/ui";
 
 const LEFT = 272;
@@ -286,6 +286,8 @@ export class NotRespondingAlerts {
     readonly #cards = new Map<AlertClient, Card>();
     #world: AlertWorld | null = null;
     #lastLook = Number.NEGATIVE_INFINITY;
+    /** A frame ran inside the interval and skipped the look, so one is due when the interval has passed. */
+    #lookDeferred = false;
 
     get started(): boolean {
         return this.#world !== null;
@@ -301,9 +303,11 @@ export class NotRespondingAlerts {
         if (options.armMs !== undefined) this.armMs = options.armMs;
         if (options.intervalMs !== undefined) this.intervalMs = options.intervalMs;
         onUiFrame(() => this.#frame());
-        // The look at the windows repeats on the clock, and a card arms when its delay is over.
-        onWake(() => {
-            let at = this.#lastLook + this.intervalMs;
+        // A card arms when its delay is over. A look that a frame skipped for being too soon after the last is made when
+        // the interval has passed: the compositor may have written `unresponsive` in that very frame, and nothing else
+        // would wake a frame to read it. With no look waiting the alert asks for nothing, so an idle shell stays idle.
+        onWake("not-responding alert", () => {
+            let at = this.#lookDeferred ? this.#lastLook + this.intervalMs : NEVER;
             for (const card of this.#cards.values()) {
                 if (!card.dialog.armed) {
                     at = Math.min(at, card.armAt);
@@ -343,7 +347,10 @@ export class NotRespondingAlerts {
         }
         if (now - this.#lastLook >= this.intervalMs) {
             this.#lastLook = now;
+            this.#lookDeferred = false;
             this.check();
+        } else {
+            this.#lookDeferred = true;
         }
     }
 

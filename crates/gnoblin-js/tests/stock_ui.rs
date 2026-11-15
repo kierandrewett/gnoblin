@@ -1303,3 +1303,52 @@ fn the_titlebar_does_what_the_seat_says_a_double_a_middle_and_a_right_click_do()
 fn exec(rig: &mut Rig, code: &str) {
     rig.eval(&format!("{code}; 'ok'"));
 }
+
+// ---- change gating: the alert's look at the windows ----------------------------------------------------------------
+
+#[test]
+fn an_unresponsive_window_gets_its_alert_when_the_look_a_frame_skipped_comes_due() {
+    // The compositor writes `unresponsive` and that wakes a frame, which may come too soon after the last look for the
+    // alert to look again. The alert then asks for a frame when its interval has passed: nothing else would send one.
+    let mut rig = world(
+        1,
+        "startDecorations(); startWindowMenu(); startNotRespondingAlert(); notRespondingAlerts.armMs = 1000;",
+    );
+    rig.quiet();
+    // The boot's frames came inside the first interval, so one look is still owed. It is made, and then none is.
+    let owed = rig.shell.next_wake().expect("a look is owed");
+    assert_eq!(owed, std::time::Duration::from_millis(250));
+    rig.advance(250);
+    assert!(rig.next_frame_runs(), "the owed look woke a frame");
+    rig.quiet();
+    assert_eq!(
+        rig.shell.next_wake(),
+        None,
+        "with no look owed the alert asks for nothing: an idle shell stays idle"
+    );
+    rig.comp.external_set(3, "unresponsive", MirrorValue::Bool(true));
+    assert!(rig.next_frame_runs(), "the property woke a frame");
+    assert!(card(&mut rig).is_none(), "that frame was too soon after the last look");
+    rig.quiet();
+    assert_eq!(
+        rig.shell.next_wake(),
+        Some(std::time::Duration::from_millis(250)),
+        "the look it skipped is due when the interval has passed"
+    );
+    rig.advance(250);
+    assert!(rig.next_frame_runs(), "the deferred look woke a frame");
+    assert!(
+        card(&mut rig).is_some(),
+        "the alert opened without anything else arriving"
+    );
+    // Force quit arms after its delay, which is a deadline too.
+    assert_eq!(rig.shell.next_wake(), Some(std::time::Duration::from_millis(1000)));
+    rig.advance(1000);
+    assert!(rig.next_frame_runs(), "the arming woke a frame");
+    rig.quiet();
+    assert_eq!(
+        rig.shell.next_wake(),
+        None,
+        "an armed alert waits for the user and nothing else"
+    );
+}

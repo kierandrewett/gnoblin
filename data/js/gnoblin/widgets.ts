@@ -6,8 +6,9 @@
 // tested and reused. An `Entry` reads the keys the retired Lua one read: the `key` event of the canvas that holds
 // the keyboard focus, with `key` (the keysym's name) and `text` (what it types).
 
-import { Box, Text, uiScreen } from "gnoblin/ui";
+import { Box, Text, uiNow, uiScreen } from "gnoblin/ui";
 import type { BoxOptions, Color, PaintOp, UiKeyEvent } from "gnoblin/ui";
+import { NEVER, onWake } from "gnoblin/wake";
 
 // ---- EntryModel --------------------------------------------------------------------------------------------------
 
@@ -398,7 +399,25 @@ export interface ClockOptions extends BoxOptions {
     now?: () => Date;
 }
 
-/** A text that shows the time, as `format` says (`%H:%M` by default). It follows the clock a frame at a time. */
+/** The clocks that have not been destroyed: the text of each changes when the time does, with nothing else happening. */
+const clocks = new Set<Clock>();
+onWake("clock widgets", () => {
+    let at = NEVER;
+    for (const clock of clocks) {
+        if (!clock.alive) {
+            clocks.delete(clock);
+            continue;
+        }
+        at = Math.min(at, clock.changesAt());
+    }
+    return at;
+});
+
+/**
+ * A text that shows the time, as `format` says (`%H:%M` by default). It follows the clock a frame at a time, and asks
+ * the shell for a frame when its text is due to change: the next second for a format that shows seconds, the next
+ * minute otherwise.
+ */
 export class Clock extends Text {
     format = "%H:%M";
     now: () => Date = () => new Date();
@@ -408,10 +427,22 @@ export class Clock extends Text {
         if (options.format !== undefined) this.format = options.format;
         if (options.now !== undefined) this.now = options.now;
         this.text = formatTime(this.format, this.now());
+        clocks.add(this);
     }
 
     override refresh(): void {
         this.text = formatTime(this.format, this.now());
+    }
+
+    /**
+     * The reading of the toolkit's clock at which the text next differs. It counts from the system's time and not from
+     * `now`, which is the script's and may throw: a failure in what asks the shell for its next frame must not end it.
+     * A `now` that shows another time zone or a frozen time changes at the same minute boundaries or not at all, and a
+     * frame too many is all that costs.
+     */
+    changesAt(): number {
+        const period = /%[ST]/.test(this.format) ? 1000 : 60_000;
+        return uiNow() + period - (((Date.now() % period) + period) % period);
     }
 }
 

@@ -245,7 +245,7 @@ export class Timers {
     constructor(host: ClockHost) {
         this.#host = host;
         // A timer that is due needs a frame at its time, though nothing else happens.
-        onWake(() => this.#pending.reduce((earliest, timer) => Math.min(earliest, timer.at), NEVER));
+        onWake("timers", () => this.#pending.reduce((earliest, timer) => Math.min(earliest, timer.at), NEVER));
     }
 
     /** The monotonic clock in milliseconds. */

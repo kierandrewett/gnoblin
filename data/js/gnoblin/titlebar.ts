@@ -11,7 +11,7 @@ import { NEVER, onWake } from "gnoblin/wake";
 
 /** The bars whose window is fading out to close, which come due on the clock whatever the compositor does. */
 const closingBars = new Set<Titlebar>();
-onWake(() => {
+onWake("titlebar close fade", () => {
     let at = NEVER;
     for (const bar of closingBars) {
         const due = bar.wakeAt();

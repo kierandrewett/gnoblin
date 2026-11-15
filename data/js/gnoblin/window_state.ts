@@ -223,7 +223,7 @@ export class WindowState {
         onUiRequest((raw) => this.#hear(raw));
         onUiFrame(() => this.#follow());
         // A request drag ends when it has run too long, whether or not the pointer moves.
-        onWake(() => (this.#drag === null ? NEVER : this.#drag.started + REQUEST_DRAG_LIMIT_MS));
+        onWake("window drag limit", () => (this.#drag === null ? NEVER : this.#drag.started + REQUEST_DRAG_LIMIT_MS));
     }
 
     #need(): WindowStateWorld<StateClient> {
@@ -502,8 +502,11 @@ export class WindowState {
         return true;
     }
 
-    /** Takes the drag to where the pointer is now. A drag whose window has gone, or that has run too long, ends. */
-    #follow(): void {
+    /**
+     * Takes the drag to where the pointer is now. A drag whose window has gone, or that has run its limit, ends. `ending`
+     * is the end asking for the last position: it must not ask the end again for the limit it is already ending.
+     */
+    #follow(ending = false): void {
         const drag = this.#drag;
         if (drag === null) {
             return;
@@ -513,7 +516,7 @@ export class WindowState {
             this.#drag = null;
             return;
         }
-        if (world.now() - drag.started > REQUEST_DRAG_LIMIT_MS) {
+        if (!ending && world.now() - drag.started >= REQUEST_DRAG_LIMIT_MS) {
             this.#end();
             return;
         }
@@ -535,7 +538,7 @@ export class WindowState {
         if (drag === null) {
             return;
         }
-        this.#follow();
+        this.#follow(true);
         this.#drag = null;
         if (!drag.client.alive) {
             return;

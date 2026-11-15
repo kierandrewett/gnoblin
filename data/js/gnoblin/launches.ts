@@ -196,7 +196,7 @@ export class LaunchFeedback {
     constructor(host: LaunchHost) {
         this.#host = host;
         // A pending launch times out at its deadline.
-        onWake(() =>
+        onWake("launch deadlines", () =>
             this.#launches.reduce(
                 (earliest, launch) => (launch.alive ? Math.min(earliest, Launch.deadline(launch)) : earliest),
                 NEVER,

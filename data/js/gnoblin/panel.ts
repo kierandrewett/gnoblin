@@ -10,7 +10,7 @@ import { NEVER, NOW, onWake } from "gnoblin/wake";
 
 /** The toasts that have not ended: a card's fade follows its age, so the frame loop runs while one is up. */
 const toasts = new Set<Toast>();
-onWake(() => {
+onWake("toasts", () => {
     for (const toast of toasts) {
         if (toast.alive) {
             return NOW;

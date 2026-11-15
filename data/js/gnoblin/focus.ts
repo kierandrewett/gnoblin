@@ -274,7 +274,7 @@ export class FocusPolicy<C extends object> {
     constructor(host: FocusHost<C>) {
         this.#host = host;
         // A rest that focuses and a delayed raise come due on the clock, whatever the compositor does meanwhile.
-        onWake(() => {
+        onWake("focus rests", () => {
             let at = NEVER;
             for (const pending of this.#pending.values()) {
                 at = Math.min(at, pending.focusAt ?? NEVER, pending.raiseAt ?? NEVER);

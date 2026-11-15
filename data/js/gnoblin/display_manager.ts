@@ -119,7 +119,7 @@ export class DisplayManager {
         this.#profiles = profiles;
         this.#displays = displays;
         // A change `reflow` has not looked at yet is looked at on the next frame.
-        onWake(() => (this.#dirty ? NOW : NEVER));
+        onWake("display manager", () => (this.#dirty ? NOW : NEVER));
     }
 
     /** Something changed that `reflow` must look at. */

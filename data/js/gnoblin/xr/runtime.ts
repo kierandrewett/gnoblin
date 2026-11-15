@@ -47,7 +47,7 @@ export class XRRuntime {
         this.#world = world;
         this.#sessions = new XRList<XRSession>(world.report);
         // A running session follows the room and the drags every frame.
-        onWake(() => (this.#session === null ? NEVER : NOW));
+        onWake("xr session", () => (this.#session === null ? NEVER : NOW));
     }
 
     get extension(): XRExtension | null {
