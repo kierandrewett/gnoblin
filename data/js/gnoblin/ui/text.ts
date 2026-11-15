@@ -1,4 +1,4 @@
-// `Text`, one string whose natural size is what the compositor measures, and the estimate used until it answers.
+// Text canvases use compositor measurements for natural size and an estimate until each answer arrives.
 
 import { Box } from "gnoblin/ui/box";
 import type { BoxOptions } from "gnoblin/ui/box";
@@ -7,17 +7,19 @@ import { DEFAULT_FONT, DEFAULT_TEXT_COLOUR, DEFAULT_TEXT_SIZE } from "gnoblin/ui
 import type { Color, PaintOp } from "gnoblin/ui/paint";
 import { host, measuring, reportError } from "gnoblin/ui/state";
 
-/** How much room a string takes: the width and height of its lines, and the distance down to the first baseline. */
+/** The measured width and height of text, and the distance from the top to its first baseline, in logical pixels. */
 export interface TextMetrics {
+    /** Width in logical pixels. */
     width: number;
+    /** Height in logical pixels. */
     height: number;
+    /** Baseline distance from the top of the first line, in logical pixels. */
     ascent: number;
 }
 
 /**
- * Until the compositor answers a measurement, a text is sized by a guess: a sans glyph averages half the font size, a
- * line box is one and a half sizes tall and the baseline sits a little over one size below its top. The fractions are
- * rough on purpose: the answer replaces them within a frame, so they only need to keep the layout from jumping.
+ * Estimates text metrics until the compositor returns a measurement. The estimate uses half the font size per
+ * character, a line height of one and a half font sizes and a baseline at 1.1 times the font size.
  */
 export function estimateText(text: string, size: number): TextMetrics {
     let widest = 0;
@@ -29,25 +31,34 @@ export function estimateText(text: string, size: number): TextMetrics {
     return { width: widest, height: lines * Math.floor((size * 3) / 2), ascent: Math.floor((size * 11) / 10) };
 }
 
-/** Options for `Text`. Sizes are pixels. */
+/** Options for a `Text`. Sizes are in logical pixels. */
 export interface TextOptions extends BoxOptions {
+    /** Text content; defaults to an empty string. */
     text?: string;
+    /** Font size in logical pixels; defaults to `DEFAULT_TEXT_SIZE`. */
     size?: number;
+    /** Text colour; defaults to `DEFAULT_TEXT_COLOUR`. */
     color?: Color;
+    /** Font name; defaults to `DEFAULT_FONT`. */
     font?: string;
+    /** Whether to shorten text that exceeds the available width; defaults to `false`. */
     ellipsize?: boolean;
 }
 
 /**
- * One string. Its natural size is what the compositor measures for its font, size and text: the answer arrives a
- * frame later, and until then the size is `estimateText`'s. With `ellipsize` a text wider than the room its row gave
- * it is cut to the share that fits and ends in an ellipsis, so a row never has to know how wide a title is.
+ * A text canvas uses the compositor's measurement for its font, size and text. Until the answer arrives, it uses
+ * `estimateText`. When `ellipsize` is true, text wider than the available width is shortened and ends with an ellipsis.
  */
 export class Text extends Box {
+    /** Text content. */
     text = "";
+    /** Font size in logical pixels. */
     size = DEFAULT_TEXT_SIZE;
+    /** Text colour. */
     color: Color = DEFAULT_TEXT_COLOUR;
+    /** Font name. */
     font = DEFAULT_FONT;
+    /** Whether to shorten text that exceeds the available width. */
     ellipsize = false;
     // The answer in use, and the key it was measured under. It stops applying once the key changes.
     #measured: (TextMetrics & { key: string }) | null = null;
@@ -64,12 +75,12 @@ export class Text extends Box {
         if (options.ellipsize !== undefined) this.ellipsize = options.ellipsize;
     }
 
-    /** Pixels from the top of the first line to its baseline: what texts of different sizes are lined up by. */
+    /** The baseline's distance from the top of the first line, in logical pixels. */
     get ascent(): number {
         return this.metrics().ascent;
     }
 
-    /** What the compositor measured for the current font, size and text, or the estimate while it has not yet. */
+    /** Returns the measured metrics for the current font, size and text, or an estimate until the answer arrives. */
     metrics(): TextMetrics {
         // The separator is a control character that does not occur in text, so two different triples do not
         // share a key.
@@ -87,7 +98,7 @@ export class Text extends Box {
         return estimateText(this.text, this.size);
     }
 
-    /** Takes a measurement's answer. An answer to a question the text has since moved on from is ignored. */
+    /** Applies a measurement only if it matches the current text, font and size. */
     answered(key: string, answer: UiAnswer): void {
         if (this.#asked !== key) {
             return;
@@ -115,7 +126,7 @@ export class Text extends Box {
         return this.metrics().height;
     }
 
-    /** The text as drawn: all of it, or with `ellipsize` the part that fits the node's width and an ellipsis. */
+    /** Returns the complete text, or the width-limited text with an ellipsis when `ellipsize` is true. */
     shown(): string {
         const measured = this.metrics();
         const chars = [...this.text];
@@ -128,8 +139,8 @@ export class Text extends Box {
     }
 
     /**
-     * The text block is centred in the node, so a row that squeezes the node shorter than the block (a titlebar)
-     * trims both ends evenly and not just the bottom.
+     * Centres the text block vertically. If the node is shorter than the block, it is clipped equally at the top and
+     * bottom.
      */
     override draw(): PaintOp[] {
         const y = Math.floor((this.height - this.metrics().height) / 2);

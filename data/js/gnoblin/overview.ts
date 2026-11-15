@@ -1,12 +1,11 @@
-// The stock overview: while it is on, every workspace is shown at full strength; while it is off, all but the active
-// workspace are dimmed. A workspace is the script's, so what is dimmed is the opacity of its windows.
-//
-// It owns the on/off flag and the opacity writes. It does not draw thumbnails or move windows. Read
-// `gnoblin/workspace` for what a workspace is.
+// The stock overview dims windows on inactive workspaces when switched off and restores full opacity when switched on.
+// It changes opacity only; it does not draw thumbnails or move windows. Read `gnoblin/workspace` for workspace details.
 
 /** What the overview needs of a workspace. A `Workspace` of the host module is one. */
 export interface OverviewWorkspace {
+    /** Whether this workspace is currently active. */
     readonly active: boolean;
+    /** Windows whose opacity changes when the overview toggles. */
     readonly clients: Iterable<{ opacity: number }>;
 }
 

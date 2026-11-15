@@ -1,10 +1,7 @@
-// The stock launcher: Super+Space opens a command entry on the screen. Return starts the command and closes the
-// entry; Escape closes it. The `Super+Space` binding is the script's: the stock default binds `openLauncher`, and a
-// script can bind the key to any other command.
-//
-// It owns the entry and what happens when it is submitted. It does not own the Super+Space binding (read
-// `gnoblin/bindings`). Read `gnoblin/widgets` first for `Entry`, which does all the typing.
+// The stock launcher opens a command entry with `openLauncher`. Return runs the command and closes the entry;
+// Escape closes it without running anything.
 
+// `gnoblin/bindings` provides the default Super+Space binding. Read `gnoblin/widgets` for the `Entry` used here.
 import { uiScreen } from "gnoblin/ui/session";
 import type { UiKeyEvent } from "gnoblin/ui/events";
 import { Entry } from "gnoblin/widgets";
@@ -57,6 +54,7 @@ export class Launcher extends Entry {
     }
 
     // `Entry` types first and turns Return into its submit. Escape is the launcher's own key.
+    /** Lets `Entry` handle typing and submission, then closes the launcher on Escape. */
     override onKey(event: UiKeyEvent): void {
         super.onKey(event);
         if (event.pressed && event.key === "Escape") {
@@ -71,6 +69,8 @@ let current: Launcher | null = null;
 /**
  * Opens the launcher in the middle of the screen's width, over the windows, and gives it the keyboard. Only one
  * launcher lives at a time: a second call focuses the open one and returns it.
+ *
+ *     openLauncher();
  */
 export function openLauncher(options: LauncherOptions = {}): Launcher {
     if (current !== null && current.alive) {

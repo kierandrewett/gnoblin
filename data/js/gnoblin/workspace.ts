@@ -1,10 +1,6 @@
-// What a workspace needs that does not touch the host: the stock layouts by name, the option checks, the
-// rule that picks the workspace a new window joins, the snapshot diff that notices a change to a layout's
-// own fields, and the check of what `compute` returned. The `Workspace` class itself is in the host module
-// (`gnoblin/host`), because its `clients` collection is one of the host's live collections.
-//
-// This module is not re-exported from `gnoblin`: a script reaches workspaces through `Workspace` and
-// `gnoblin.workspaces`, and the host imports the helpers by name.
+// Workspace helpers for layout selection, option checks, window placement and layout-change detection.
+// The `Workspace` class lives in the host module because its clients are a live host collection.
+// Scripts use `Workspace` and `gnoblin.workspaces`; the host imports these helpers directly.
 
 import { Layout } from "gnoblin/layout";
 import type { Gaps, Placement, Rect } from "gnoblin/layout";
@@ -17,7 +13,7 @@ import { KioskLayout } from "gnoblin/layouts/kiosk";
 import { transformFrom } from "gnoblin/spatial";
 import { Carousel3dLayout, StripLayout } from "gnoblin/layouts/strip";
 
-/** The names `new Workspace({ layout })` takes for a stock layout. */
+/** Stock layout names accepted by `new Workspace({ layout })`. */
 export type StockLayoutName =
     "floating" | "master-stack" | "grid" | "monocle" | "dwindle" | "kiosk" | "strip" | "carousel-3d";
 
@@ -49,7 +45,7 @@ export function resolveLayout(layout: StockLayoutName | Layout | undefined, wher
     );
 }
 
-/** The most edits between a typo and a key for the key to be suggested. */
+/** The maximum edit distance for suggesting a likely key after a typo. */
 const MAX_SUGGESTION_DISTANCE = 2;
 
 /** The Levenshtein distance of two strings: the fewest single-character edits that turn one into the other. */
@@ -130,19 +126,25 @@ export function checkGaps(gaps: { inner?: number; outer?: number } | undefined, 
 
 /** The options `new Workspace(...)` takes. Only `id` is required. */
 export interface WorkspaceOptions {
+    /** Unique workspace identifier. */
     id: string;
     /** Shown to people; defaults to the id. */
     name?: string;
-    /** A stock layout by name, or an instance of any Layout. Default `floating`. */
+    /** A stock layout name or a layout instance. Defaults to `floating`. */
     layout?: StockLayoutName | Layout;
+    /** Inner and outer spacing in logical pixels. Each defaults to zero. */
     gaps?: { inner?: number; outer?: number };
 }
 
 /** `WorkspaceOptions` after `checkWorkspaceOptions`: every field present and valid. */
 export interface CheckedWorkspaceOptions {
+    /** Unique workspace identifier. */
     id: string;
+    /** Display name, defaulting to the identifier. */
     name: string;
+    /** Resolved layout instance. */
     layout: Layout;
+    /** Checked inner and outer spacing in logical pixels. */
     gaps: Gaps;
 }
 
@@ -166,11 +168,7 @@ export function checkWorkspaceOptions(options: WorkspaceOptions): CheckedWorkspa
     };
 }
 
-/**
- * The workspace a window that has none joins: the one the primary display shows. For now that is the first
- * workspace flagged active, and when none is (a collection that has not shown any yet) the first workspace.
- * Every place that needs this answer asks here, so that the rule can change in one place.
- */
+/** Chooses the workspace a new window joins: the active workspace, or the first if none is active. */
 export function initialWorkspace<W extends { readonly active: boolean }>(workspaces: Iterable<W>): W | null {
     let first: W | null = null;
     for (const workspace of workspaces) {
@@ -194,9 +192,8 @@ export function layoutFields(layout: object): Map<PropertyKey, unknown> {
 }
 
 /**
- * Whether two snapshots of a layout's fields differ: a field added, removed or given another value. The
- * comparison is shallow (`Object.is`), so a field edited in place, such as an array's element, is not seen;
- * assign a new array instead.
+ * Reports whether layout fields were added, removed or changed between snapshots. Comparison is shallow (`Object.is`),
+ * so edits inside an existing value such as an array are not detected; assign a new array instead.
  */
 export function fieldsChanged(
     before: ReadonlyMap<PropertyKey, unknown> | null,
@@ -220,15 +217,21 @@ export function rectsEqual(a: Rect | null, b: Rect | null): boolean {
 
 /** A placement after the checks, with every default filled in. */
 export interface CheckedPlacement<N extends object> {
+    /** Layout node receiving this placement. */
     node: N;
     /** `null` leaves the node where it is. */
     bounds: Rect | null;
+    /** Whether the node is visible. Defaults to `true`. */
     visible: boolean;
+    /** Whether the node is managed by the layout. Defaults to `false`. */
     tiled: boolean;
+    /** Stacking depth. Defaults to zero. */
     z: number;
+    /** Rotation in radians around the x, y and z axes. */
     rotation: readonly [number, number, number];
+    /** Scale on the x, y and z axes. */
     scale: readonly [number, number, number];
-    /** How far a `transform` moves the node from the centre of its bounds, in pixels, or null when it gives no position. */
+    /** Offset from the bounds centre in logical pixels, or `null` when the transform gives no position. */
     offset: { x: number; y: number } | null;
 }
 

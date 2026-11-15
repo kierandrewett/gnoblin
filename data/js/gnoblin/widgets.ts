@@ -1,10 +1,6 @@
-// The widgets of the retired Lua shell's `ui` module that the toolkit (`gnoblin/ui`) did not have: `Entry`, a line of
-// text you type into, `Clock`, a text that shows the time, and `Bar`, a strip along the top or bottom of the screen
-// that takes its room from the windows.
-//
-// `EntryModel` is the editing of an `Entry` without any drawing (the text, the caret, the selection), so it can be
-// tested and reused. An `Entry` reads the keys the retired Lua one read: the `key` event of the canvas that holds
-// the keyboard focus, with `key` (the keysym's name) and `text` (what it types).
+// Script-facing widgets that complement the Gnoblin UI toolkit: Entry, Clock and Bar.
+// `EntryModel` keeps text editing separate from drawing, so the editing behaviour can be tested and reused.
+// `Entry` reads key events from the canvas that has keyboard focus.
 
 import { Box } from "gnoblin/ui/box";
 import { uiNow, uiScreen } from "gnoblin/ui/session";
@@ -25,14 +21,15 @@ function typed(text: string): string[] {
 }
 
 /**
- * The text of an entry, the caret and the selection, counted in characters (code points). `caret` is where typing
- * goes; the selection is what lies between `anchor` and `caret`, and is empty while they are the same place.
+ * The text, caret and selection for an entry, measured in characters (Unicode code points). `caret` marks where
+ * typing goes; the selection spans `anchor` and `caret`, and is empty when they match.
  */
 export class EntryModel {
     #chars: string[] = [];
     #caret = 0;
     #anchor = 0;
 
+    /** Current entry text. Setting it moves the caret to the end and clears the selection. */
     get text(): string {
         return this.#chars.join("");
     }
@@ -44,14 +41,17 @@ export class EntryModel {
         this.#anchor = this.#caret;
     }
 
+    /** Number of Unicode code points in the text. */
     get length(): number {
         return this.#chars.length;
     }
 
+    /** Insertion point, counted in Unicode code points from the start of the text. */
     get caret(): number {
         return this.#caret;
     }
 
+    /** Fixed end of an extended selection, in Unicode code points from the start. */
     get anchor(): number {
         return this.#anchor;
     }
@@ -64,6 +64,7 @@ export class EntryModel {
         return { start: Math.min(this.#anchor, this.#caret), end: Math.max(this.#anchor, this.#caret) };
     }
 
+    /** Text in the current selection, or an empty string when no text is selected. */
     get selectedText(): string {
         const range = this.selection;
         return range === null ? "" : this.#chars.slice(range.start, range.end).join("");
@@ -131,14 +132,17 @@ export class EntryModel {
         }
     }
 
+    /** Moves the caret to the start of the text. With `extend`, keeps the selection anchor. */
     home(extend = false): void {
         this.move(0, extend);
     }
 
+    /** Moves the caret to the end of the text. With `extend`, keeps the selection anchor. */
     end(extend = false): void {
         this.move(this.#chars.length, extend);
     }
 
+    /** Selects all text. */
     selectAll(): void {
         this.#anchor = 0;
         this.#caret = this.#chars.length;
@@ -163,13 +167,19 @@ export class EntryModel {
 
 // ---- Entry -------------------------------------------------------------------------------------------------------
 
+/** Options for an entry. Text, colour, font and selection appearance are optional. */
 export interface EntryOptions extends BoxOptions {
+    /** Initial text. */
     text?: string;
     /** Show a `*` for each character: a password. */
     secret?: boolean;
+    /** Text size in logical pixels. */
     size?: number;
+    /** Text colour. */
     color?: Color;
+    /** Text font. */
     font?: string;
+    /** Selection highlight colour. */
     selectionFill?: Color;
 }
 
@@ -186,11 +196,17 @@ const CONTROL = new Set(["Control_L", "Control_R"]);
  * answer arrives a frame later, they are placed by the estimate the toolkit uses for any text.
  */
 export class Entry extends Box {
+    /** Editing state, with text and selection positions counted in Unicode code points. */
     readonly model = new EntryModel();
+    /** Shows a `*` for each character instead of the text. */
     secret = false;
+    /** Text size in logical pixels. */
     size = 14;
+    /** Text colour. */
     color: Color = "#cdd6f4";
+    /** Text font family. */
     font = "sans";
+    /** Selection highlight colour. */
     selectionFill: Color = "#585b70";
     /** Called with the text when Return is pressed. */
     onSubmit?: (text: string) => void;
@@ -218,10 +234,12 @@ export class Entry extends Box {
         if (options.text !== undefined) this.model.text = options.text;
     }
 
+    /** Text being edited. Setting it moves the caret to the end and clears the selection. */
     get text(): string {
         return this.model.text;
     }
 
+    /** Replaces the text and moves the caret to its end. */
     set text(value: string) {
         this.model.text = value;
     }
@@ -231,6 +249,7 @@ export class Entry extends Box {
         return this.secret ? "*".repeat([...text].length) : text;
     }
 
+    /** Updates the hidden measurement texts used to draw the entry. */
     override refresh(): void {
         for (const probe of [this.#line, this.#head, this.#mark]) {
             probe.size = this.size;
@@ -242,6 +261,7 @@ export class Entry extends Box {
         this.#mark.text = this.shown(model.before(model.anchor));
     }
 
+    /** Draws the text, selection highlight and focused caret. */
     override draw(): PaintOp[] {
         const ops = super.draw();
         const pad = this.padding;
@@ -285,6 +305,7 @@ export class Entry extends Box {
         return ops;
     }
 
+    /** Updates the model from a key event and stops keys handled by the entry. */
     override onKey(event: UiKeyEvent): void {
         const { key } = event;
         // A modifier's own events say whether Shift or Control is held for the keys that follow.
@@ -361,9 +382,9 @@ function two(value: number): string {
 }
 
 /**
- * `date` as the strftime-style `format` writes it: `%H` `%M` `%S` (24-hour time), `%I` and `%p` (12-hour), `%d` `%e`
- * `%m` `%y` `%Y` `%j` (the date), `%a` `%A` `%b` `%B` (names), `%T` (`%H:%M:%S`), `%R` (`%H:%M`), `%F` (`%Y-%m-%d`)
- * and `%%`. Any other `%` sequence is left as it is. Local time.
+ * Formats a date using strftime-style fields: `%H` `%M` `%S` (24-hour time), `%I` and `%p` (12-hour), `%d` `%e`
+ * `%m` `%y` `%Y` `%j` (date), `%a` `%A` `%b` `%B` (names), `%T` (`%H:%M:%S`), `%R` (`%H:%M`), `%F` (`%Y-%m-%d`)
+ * and `%%`. Other `%` sequences remain unchanged. Uses local time.
  */
 export function formatTime(format: string, date: Date): string {
     const hours12 = date.getHours() % 12 === 0 ? 12 : date.getHours() % 12;
@@ -395,15 +416,19 @@ export function formatTime(format: string, date: Date): string {
     return String(format).replace(/%(.)/gs, (whole, code: string) => fields[code] ?? whole);
 }
 
+/** Options for a clock widget. */
 export interface ClockOptions extends BoxOptions {
+    /** strftime-style format string. Default `%H:%M`. */
     format?: string;
+    /** Text size in logical pixels. */
     size?: number;
+    /** Text colour. */
     color?: Color;
     /** The time to show: the system clock by default. */
     now?: () => Date;
 }
 
-/** The clocks that have not been destroyed: the text of each changes when the time does, with nothing else happening. */
+/** Clocks that are still alive; each updates when its displayed time changes. */
 const clocks = new Set<Clock>();
 onWake("clock widgets", () => {
     let at = NEVER;
@@ -423,7 +448,9 @@ onWake("clock widgets", () => {
  * 60000 ms otherwise, on the system clock's boundaries.
  */
 export class Clock extends Text {
+    /** Format string used to produce the clock text. Default `%H:%M`. */
     format = "%H:%M";
+    /** Supplies the date to format. Defaults to the system clock. */
     now: () => Date = () => new Date();
 
     constructor(options: ClockOptions = {}) {
@@ -434,6 +461,7 @@ export class Clock extends Text {
         clocks.add(this);
     }
 
+    /** Refreshes the displayed time using `format` and `now`. */
     override refresh(): void {
         this.text = formatTime(this.format, this.now());
     }
@@ -452,14 +480,20 @@ export class Clock extends Text {
 
 // ---- Bar ---------------------------------------------------------------------------------------------------------
 
+/** Screen edge where a bar is placed. */
 export type BarEdge = "top" | "bottom";
 
 /** The output a bar sits on, as far as the bar needs it: its rectangle in the compositor's coordinates. */
 export interface BarOutput {
+    /** Whether the output is still connected. */
     readonly alive: boolean;
+    /** Left edge in logical pixels. */
     readonly x: number;
+    /** Top edge in logical pixels. */
     readonly y: number;
+    /** Output width in logical pixels. */
     readonly width: number;
+    /** Output height in logical pixels. */
     readonly height: number;
 }
 
@@ -468,6 +502,7 @@ export interface BarOutput {
  * window covers it.
  */
 export interface BarOptions extends BoxOptions {
+    /** Screen edge where the bar is placed. Default `top`. */
     edge?: BarEdge;
     /** When this returns true the bar is hidden and takes no room: a fullscreen window covers the screen. */
     hideWhen?: () => boolean;
@@ -503,8 +538,11 @@ export function barsOnOutputs(primary: (() => BarOutput | null) | null): void {
  * made. Make one and it is there; `destroy()` takes it away.
  */
 export class Bar extends Box {
+    /** Screen edge occupied by the bar. */
     edge: BarEdge = "top";
+    /** Returns true to hide the bar and release its space. */
     hideWhen: (() => boolean) | null = null;
+    /** Output used by the bar, or `null` to use the primary output. */
     output: BarOutput | null = null;
 
     constructor(options: BarOptions = {}) {
@@ -533,6 +571,7 @@ export class Bar extends Box {
         return !(this.hideWhen?.() ?? false) && !(coveredBy?.(output) ?? false);
     }
 
+    /** Positions the bar on its output and updates its visibility. */
     override refresh(): void {
         this.visible = this.shown;
         const output = this.onOutput;

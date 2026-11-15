@@ -18,6 +18,7 @@ export type DialogKind = "consent" | "secret" | "auth";
  * `decline` after the window has closed does nothing.
  */
 export interface DialogRequest {
+    /** The kind of dialog request. */
     readonly kind: DialogKind;
     /** The app id the compositor verified for whoever asks. Empty when the request names none. */
     readonly appId: string;
@@ -38,11 +39,13 @@ export interface DialogRequest {
 
 /** A consent dialog: the compositor asks the user to let a portal request through. `subject` is the interface. */
 export interface ConsentRequest extends DialogRequest {
+    /** Identifies this as a portal consent request. */
     readonly kind: "consent";
 }
 
 /** The compositor's passphrase prompt. `subject` is the app's own prompt text. */
 export interface SecretRequest extends DialogRequest {
+    /** Identifies this as a passphrase request. */
     readonly kind: "secret";
 }
 

@@ -5,9 +5,13 @@ export type Color = string;
 
 /** One radius per corner, in pixels. */
 export interface CornerRadii {
+    /** Radius of the top-left corner in logical pixels. */
     topLeft: number;
+    /** Radius of the top-right corner in logical pixels. */
     topRight: number;
+    /** Radius of the bottom-right corner in logical pixels. */
     bottomRight: number;
+    /** Radius of the bottom-left corner in logical pixels. */
     bottomLeft: number;
 }
 

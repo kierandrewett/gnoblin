@@ -1,11 +1,5 @@
-// NativeObject: the base every shell object derives from (owner-spec.md section 4).
-//
-// The specification declares `abstract class NativeObject { id; alive; set(); addListener(); removeListener() }` and
-// makes the compositor-backed classes extend it, so a script can ask `value instanceof NativeObject` and a class it
-// writes itself (a binding, a listener holder) can derive from it. The members a class gets for free are the ones that
-// need no native state: `set`, which writes several properties through the object's own checked setters. `id`, `alive`
-// and the listener methods belong to the objects that have a native identity (a `Client`, a `Workspace`, an
-// `Output`, an `InputContext`), and each declares them itself.
+// Base class for shell objects. Compositor-backed classes supply their identity and listener methods; scripts can
+// also extend it for their own objects.
 
 /**
  * The abstract base of the shell's objects. It cannot be constructed itself; a subclass supplies `id` and `alive`.
@@ -48,7 +42,7 @@ export class NativeObject {
     }
 }
 
-/** Whether assigning `name` on `target` would be accepted: an own or inherited data property, or an accessor with a setter. */
+/** Whether assigning `name` on `target` would work through a data property or an accessor with a setter. */
 function isWritable(target: object, name: string): boolean {
     for (let at: object | null = target; at !== null; at = Object.getPrototypeOf(at)) {
         const descriptor = Object.getOwnPropertyDescriptor(at, name);

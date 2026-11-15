@@ -1,11 +1,7 @@
-// `gnoblin.launches`: launch feedback, the "starting" state between asking for an application and its window.
-// A shell calls `begin(token, application)` when it starts a program and shows a spinner while the launch is `pending`.
-// The launch is `started` when a window of that application appears or takes focus, `timed_out` when the deadline
-// passes first, and `ended` when the shell calls `finish()`. The compositor keeps no launch records: these are the
-// shell's own bookkeeping over the windows it sees, and a window is not linked to the launch it answered.
-// Matching compares the window's `appId` and the launch's `application` lowercased, with a trailing `.desktop`
-// removed. A window starts only the oldest pending launch it matches. The registry is plain TypeScript over three
-// functions of the host (`LaunchHost`), so it runs without a compositor.
+// Launch feedback tracks the time between starting an application and its window appearing. The shell records pending
+// launches, marks one started when a matching window appears or takes focus, and times it out at its deadline.
+// A window starts only the oldest matching pending launch. This registry uses a small host interface and runs without
+// a compositor.
 
 import { NEVER, onWake } from "gnoblin/wake";
 
@@ -26,7 +22,7 @@ export const MAX_LAUNCH_TIMEOUT_MS = 10_000;
 /** Where a launch is. It begins `pending` and leaves it once, for one of the other three. */
 export type LaunchState = "pending" | "started" | "timed_out" | "ended";
 
-/** What a launch tells its owner. Every member is optional. */
+/** Callbacks for launch state changes. Every member is optional. */
 export interface LaunchHandlers {
     /** The deadline of the launch in milliseconds, 100 to 10000. Default 3000. */
     timeoutMs?: number;
@@ -47,6 +43,7 @@ export interface LaunchHandlers {
 export interface LaunchHost {
     /** A monotonic clock in milliseconds. */
     now(): number;
+    /** Queues a handler call. `site` identifies it in reports. */
     schedule(site: string, task: () => void): void;
 }
 
@@ -61,7 +58,9 @@ export function normalizeApplication(name: string): string {
 
 /** One launch. It is the same object for as long as it is in the registry. */
 export class Launch {
+    /** The caller's unique key for matching this launch. */
     readonly token: string;
+    /** Application identifier used to match a window, such as `org.example.App.desktop`. */
     readonly application: string;
     /** The deadline asked for, in milliseconds. */
     readonly timeoutMs: number;
@@ -91,6 +90,7 @@ export class Launch {
         this.#handlers = handlers;
     }
 
+    /** The current state, from `pending` to one terminal state. */
     get state(): LaunchState {
         return this.#state;
     }
@@ -143,6 +143,7 @@ export class Launch {
         return true;
     }
 
+    /** Returns the launch's deadline in monotonic milliseconds. */
     static deadline(launch: Launch): number {
         return launch.#deadline;
     }
@@ -235,6 +236,7 @@ export class LaunchFeedback {
         return launch;
     }
 
+    /** Ends a pending launch as `ended`. */
     leave(launch: Launch, state: "ended"): void {
         Launch.settle(launch, this.#host, state, state);
     }

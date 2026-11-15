@@ -140,7 +140,7 @@ export type {
 } from "gnoblin/session/types";
 // The style classes and their list elements (`gnoblin/style`).
 export * from "gnoblin/style";
-// Logical displays (owner-spec sections 8 and 9). The manager (`gnoblin/display_manager`) stays with the host.
+// Logical displays, cameras and viewports. The manager (`gnoblin/display_manager`) stays with the host.
 export { Camera2D, Display, OutputProfile, Viewport } from "gnoblin/display";
 export { Camera3D } from "gnoblin/scene/camera";
 export { Node } from "gnoblin/scene/node";

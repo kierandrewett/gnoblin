@@ -108,12 +108,17 @@ interface View {
 
 /** What one style object holds. It lives in a WeakMap so that a script cannot reach it through the object. */
 export interface Store {
+    /** Label used to start error paths for an unbound style. */
     label: string;
+    /** Scope that supplies inherited values and checks liveness, or null. */
     scope: StyleScope | null;
+    /** Scalar values explicitly set on this style. */
     scalars: Map<ScalarName, unknown>;
+    /** List values explicitly set on this style. */
     lists: Map<ListName, StyleElement[]>;
     /** The entries each override list had when last checked. */
     seen: Map<ListName, StyleElement[]>;
+    /** Cached copies of inherited lists, keyed by property. */
     views: Map<ListName, View>;
 }
 
@@ -137,8 +142,8 @@ function sameEntries(a: readonly StyleElement[], b: readonly StyleElement[]): bo
 }
 
 /**
- * The array a style list property hands out, with the two mutators the specification's `ObservableCollection` has.
- * Both check and commit at once, where `push` and `splice` are seen only by the frame comparison (`syncStyleLists`).
+ * The array a style list property hands out. `add` and `remove` check and commit at once; `push` and `splice` are
+ * checked once per frame by `syncStyleLists`.
  */
 export interface StyleList<T, L = T> extends Array<T> {
     /**

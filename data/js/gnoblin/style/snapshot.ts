@@ -9,8 +9,8 @@ import type { Style } from "gnoblin/style/style";
 /**
  * Takes the state of the styles `current()` yields (the scalars, the lists and each list element's fields) and returns
  * what puts it back. A style that `current()` yields only later (made after the snapshot) is emptied. A failed
- * `requestTransition` uses it so that the style writes of its callback leave nothing behind. A list handed out before is
- * not the list that comes back: the script reads it again.
+ * `requestTransition` uses this to discard style writes made by a failed callback. A list handed out earlier is not
+ * restored; the script must read it again.
  */
 export function snapshotStyles(current: () => Iterable<Style>): () => void {
     interface Saved {

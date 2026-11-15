@@ -12,6 +12,7 @@ import type { DialogManager, DialogRequest } from "gnoblin/dialogs";
  * longer: `decline` after the window has closed does nothing. It carries nothing the password check needs.
  */
 export interface AuthenticationRequest extends DialogRequest {
+    /** Identifies this request as a polkit authentication. */
     readonly kind: "auth";
     /** The polkit action, for example `org.freedesktop.policykit.exec`. */
     readonly actionId: string;

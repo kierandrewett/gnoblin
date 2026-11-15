@@ -5,25 +5,43 @@ import type { ComputedStyle, FilterValue } from "gnoblin/style/resolve";
 import { MAX_GRADE } from "gnoblin/style/values";
 import type { Color } from "gnoblin/style/values";
 
-/** One `effect` of the tree's node `effects` list, with the schema's property names (effect.toml). */
+/** One `effect` in the node's effects list, using the compositor's `effect.toml` field names. */
 export interface EffectWire {
+    /** Effect kind sent to the compositor. */
     kind: "blur" | "shadow" | "border";
+    /** Sampling scale used by the blur. */
     downscale: number;
+    /** Number of blur passes. */
     passes: number;
+    /** Blur algorithm name. */
     algorithm: string;
+    /** Amount of noise added to the effect. */
     noise: number;
+    /** Brightness multiplier; 1 leaves brightness unchanged. */
     brightness: number;
+    /** Contrast multiplier; 1 leaves contrast unchanged. */
     contrast: number;
+    /** Saturation multiplier; 1 leaves saturation unchanged. */
     saturation: number;
+    /** Tint colour, or an empty string when unused. */
     tint: string;
+    /** Horizontal shadow offset in logical pixels. */
     offset_x: number;
+    /** Vertical shadow offset in logical pixels. */
     offset_y: number;
+    /** Blur radius in logical pixels. */
     blur_radius: number;
+    /** Shadow spread in logical pixels. */
     spread: number;
+    /** Effect colour as a hex string. */
     colour: string;
+    /** Border width in logical pixels. */
     width: number;
+    /** Border offset in logical pixels. */
     offset: number;
+    /** Whether the border is inset. */
     inset: boolean;
+    /** Whether the shadow follows the full window frame. */
     frame: boolean;
 }
 

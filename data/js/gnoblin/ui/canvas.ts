@@ -1,5 +1,4 @@
-// `Canvas`, the node of the compositor's tree whose content is a paint list: its fields, its children, the frame that
-// writes what changed to the host and the delivery of pointer and key events up through its parents.
+// A canvas is a compositor node that paints a list of drawing operations and can contain other canvases.
 
 import { disposeBindingsOf, propertiesOf } from "gnoblin/properties";
 import type { PropertyBindings } from "gnoblin/properties";
@@ -17,22 +16,29 @@ import { host, live, refuse, reportError } from "gnoblin/ui/state";
  */
 export type CanvasPlacement = "frame" | "over" | "under";
 
-/** Options for `Canvas`. Each field given is set before the first frame. Sizes are pixels. */
+/** Options for `Canvas`. Positions and sizes are logical pixels; each field given is set before the first frame. */
 export interface CanvasOptions {
+    /** Horizontal position in logical pixels; defaults to `0`. */
     x?: number;
+    /** Vertical position in logical pixels; defaults to `0`. */
     y?: number;
+    /** Width in logical pixels; defaults to the content's natural width. */
     width?: number;
+    /** Height in logical pixels; defaults to the content's natural height. */
     height?: number;
+    /** Whether the canvas is visible; defaults to `true`. */
     visible?: boolean;
+    /** Opacity from `0` (transparent) to `1` (opaque); defaults to `1`. */
     opacity?: number;
-    /** Never captured by a `View`: the window it belongs to is secure. */
+    /** Masks this canvas in screen captures. Use it for content belonging to a secure window. */
     secure?: boolean;
-    /** Whether the pointer lands on the canvas. A canvas with `input` false lets the pointer through to what is under it. */
+    /** Whether the pointer targets this canvas. When false, it passes through while children remain interactive. */
     input?: boolean;
+    /** Placement relative to a window's content and frame; defaults to `frame`. */
     placement?: CanvasPlacement;
 }
 
-/** The node properties a canvas keeps in step with its fields, and the value the tree starts them at. */
+/** The last node properties written to the compositor, or their initial values. */
 interface Written {
     x: number;
     y: number;
@@ -46,18 +52,24 @@ interface Written {
 }
 
 /**
- * A node that paints what `draw()` returns. Override `draw()` for a custom look; use a `Box` for the common one.
- * A canvas is made with its node, so it exists in the tree from the next transaction; `destroy()` ends it.
+ * A canvas paints the operations returned by `draw()`. Override it for a custom look, or use a `Box` for a background
+ * and common layouts. Its compositor node is created with the canvas and destroyed by `destroy()`.
+ * Construction throws if no host is attached or the shell cannot create a node.
  */
 export class Canvas {
     /** The node's id in the tree. */
     readonly node: number;
     /** The canvas this one is a child of, or `null` for the root of a tree (or one mounted on a window). */
     parent: Canvas | null = null;
+    /** Child canvases in paint and event order. */
     readonly children: Canvas[] = [];
+    /** Horizontal position in logical pixels relative to the parent. */
     x = 0;
+    /** Vertical position in logical pixels relative to the parent. */
     y = 0;
+    /** Whether the canvas is painted and receives pointer input. */
     visible = true;
+    /** Opacity from `0` (transparent) to `1` (opaque). */
     opacity = 1;
     /** Whether a capture of the screen masks this canvas. Set it on what shows a secure window's text. */
     secure = false;
@@ -104,54 +116,58 @@ export class Canvas {
     }
 
     /**
-     * The reactive properties of the canvas: `canvas.properties.bind("visible", () => !client.focused)` sets the field
-     * now and again whenever a client or node property the function read changes, with no script running. The bindings
-     * end with the canvas.
+     * Reactive bindings update canvas fields when the properties they read change. For example,
+     * `canvas.properties.bind("visible", () => !client.focused)` follows the client's focus without polling.
+     * Bindings end when the canvas is destroyed.
      */
     get properties(): PropertyBindings {
         return propertiesOf(this, () => `${this.constructor.name}#${this.node}`);
     }
 
-    /** The width in pixels: what was assigned, else the size the content naturally has. `null` goes back to natural. */
+    /** The width in logical pixels: the assigned width, or the content's natural width. `null` clears it. */
     get width(): number {
         return this.#width ?? this.naturalWidth();
     }
 
+    /** Sets an explicit width in logical pixels, or `null` to use the natural width. */
     set width(value: number | null) {
         this.#width = value;
     }
 
+    /** The height in logical pixels: the assigned height, or the content's natural height. `null` clears it. */
     get height(): number {
         return this.#height ?? this.naturalHeight();
     }
 
+    /** Sets an explicit height in logical pixels, or `null` to use the natural height. */
     set height(value: number | null) {
         this.#height = value;
     }
 
-    /** True until the canvas is destroyed, or the compositor destroyed its node. */
+    /** Whether the canvas still exists in the compositor tree. */
     get alive(): boolean {
         return this.#alive;
     }
 
-    /** The width the canvas has when none was assigned. A subclass whose content has a size answers it. */
+    /** The natural width in logical pixels. Subclasses can override this when their content has a natural size. */
     protected naturalWidth(): number {
         return 0;
     }
 
+    /** The natural height in logical pixels. Subclasses can override this when their content has a natural size. */
     protected naturalHeight(): number {
         return 0;
     }
 
-    /** The ops this canvas paints. Called once a frame, so it may read live state. */
+    /** The operations this canvas paints. Called once per frame and may read live state. */
     draw(): PaintOp[] {
         return [];
     }
 
-    /** Called once a frame before the canvas arranges its children: read live state into fields here. */
+    /** Updates fields from live state before the canvas arranges its children. */
     refresh(): void {}
 
-    /** Places the children. The base class leaves them where they are. */
+    /** Arranges the children. The base implementation leaves their positions unchanged. */
     arrange(): void {}
 
     /** Puts `child` last among this canvas's children. A child that was somewhere else is moved. */
@@ -168,7 +184,7 @@ export class Canvas {
         return this;
     }
 
-    /** Takes `child` out of this canvas and destroys it. */
+    /** Removes and destroys `child`, including its descendants. */
     remove(child: Canvas): void {
         if (child.parent !== this) {
             throw new RangeError("that canvas is not a child of this one");
@@ -176,7 +192,7 @@ export class Canvas {
         child.destroy();
     }
 
-    /** Makes this canvas the last child of a node that is not a canvas (a client's window, say). */
+    /** Mounts this canvas as the last child of a non-canvas node, such as a client's window. */
     mount(parentNode: number): void {
         this.#check("mount");
         this.parent?.children.splice(this.parent.children.indexOf(this), 1);
@@ -185,9 +201,8 @@ export class Canvas {
     }
 
     /**
-     * Makes this canvas the last child of the root, over every window: a menu, a dialog or a bar. The compositor's
-     * windows have no parent until the shell gives them one, so the host parents them to the root first, in the order
-     * they have, and a canvas put there is above them.
+     * Mounts this canvas at the root, above every window, for overlays such as menus, dialogs or bars.
+     * Windows are parented to the root first, so a canvas mounted here appears above them.
      */
     mountTop(): void {
         this.#check("mountTop");
@@ -207,7 +222,7 @@ export class Canvas {
         return this.#alive && host().focused() === this.node;
     }
 
-    /** Whether `other` is this canvas or lies beneath it. */
+    /** Whether `other` is this canvas or one of its descendants. */
     contains(other: Canvas | null): boolean {
         for (let at = other; at !== null; at = at.parent) {
             if (at === this) {
@@ -217,7 +232,7 @@ export class Canvas {
         return false;
     }
 
-    /** Destroys this canvas and every canvas beneath it, in the tree and here. */
+    /** Destroys this canvas and all its descendants. */
     destroy(): void {
         if (!this.#alive) {
             return;
@@ -231,7 +246,7 @@ export class Canvas {
         this.#bury();
     }
 
-    /** The node is gone from the tree (the compositor destroyed it, or its parent's subtree). */
+    /** Marks this canvas gone after the compositor destroys its node or its parent's subtree. */
     markGone(): void {
         if (this.#alive) {
             this.parent?.children.splice(this.parent.children.indexOf(this), 1);
@@ -258,9 +273,8 @@ export class Canvas {
     }
 
     /**
-     * One frame of this canvas and its children: refresh, arrange, update the children, then write what changed. The
-     * order matters: `arrange()` sets the children's geometry before they update, and this canvas's own paint is
-     * written last, once every size is final.
+     * Updates this canvas and its descendants: refreshes fields, arranges children, updates them, then writes changes.
+     * Children are arranged before they update, and this canvas paints after their sizes are final.
      */
     update(): void {
         if (!this.#alive) {
@@ -274,7 +288,7 @@ export class Canvas {
         guard(this, "draw", () => this.#flush());
     }
 
-    /** Writes the node properties that changed, then the paint list if its bytes changed. */
+    /** Writes changed node properties and sends the paint list only when its bytes differ. */
     #flush(): void {
         const written = this.#written;
         const now = {
@@ -364,12 +378,19 @@ export class Canvas {
 
 // Pointer handlers live on the interface, not the class: a class field would define an own `undefined` property in
 // the base constructor and hide the method a subclass declares.
+/** Pointer and keyboard handlers that a canvas may implement. */
 export interface Canvas {
+    /** Handles a pointer press. */
     onPress?(event: UiPointerEvent): void;
+    /** Handles a pointer release. */
     onRelease?(event: UiPointerEvent): void;
+    /** Handles pointer movement. */
     onMotion?(event: UiPointerEvent): void;
+    /** Handles pointer scrolling. */
     onScroll?(event: UiPointerEvent): void;
+    /** Handles the pointer entering the canvas. */
     onEnter?(event: UiPointerEvent): void;
+    /** Handles the pointer leaving the canvas. */
     onLeave?(event: UiPointerEvent): void;
     /** A key, to the canvas that has the keyboard focus. Pressed and released both arrive: see `event.pressed`. */
     onKey?(event: UiKeyEvent): void;

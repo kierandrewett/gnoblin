@@ -1,8 +1,6 @@
-// The stock panel's message: `toast(text)` shows a short message in the top right corner of the screen, fades it in,
-// holds it, fades it out and removes it.
-//
-// It owns the toast card. It does not own the bar: that is `Bar`, in `gnoblin/widgets`. Read `gnoblin/ui` first for
-// `Box`, `Text` and the frame loop that calls `refresh()`.
+// `toast(text)` shows a short message in the screen's top-right corner, fades it in, holds it, then fades it out and
+// removes it. This module owns the toast card; the bar is `Bar` in `gnoblin/widgets`. Read `gnoblin/ui` for `Box`,
+// `Text` and the frame loop that calls `refresh()`.
 
 import { Box } from "gnoblin/ui/box";
 import { uiNow, uiScreen } from "gnoblin/ui/session";
@@ -51,6 +49,7 @@ export interface ToastOptions {
 
 /** A card with one message that fades in, holds, fades out and destroys itself. */
 export class Toast extends Box {
+    /** The text displayed in this toast. */
     readonly message: Text;
     /** Milliseconds to fade in. */
     fadeIn = 120;
@@ -88,6 +87,7 @@ export class Toast extends Box {
     }
 
     // The opacity follows the age of the card, so the frame loop drives the fade and no timer is needed.
+    /** Updates the fade from the toast's age and destroys it after fade-out. */
     override refresh(): void {
         const age = this.now() - this.#start;
         const { fadeIn, hold, fadeOut } = this;

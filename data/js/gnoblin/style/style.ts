@@ -1,8 +1,6 @@
-// The style model of design/js-research/owner-spec.md section 6, over plain ES classes: `Style` and `ClientStyle`.
-// The list elements are in `border_shadow` and `filters`, the cascade that turns the layers a client sits under
-// into one resolved style in `resolve`, and what is written to the node in `map`. Nothing under `style/` touches
-// the compositor: `gnoblin/host` binds the scopes (`gnoblin.clients.style`, a workspace's, a `where()` selection's,
-// one client's) and writes what `mapStyle` returns to the node. Read `docs/js-style.md` first for the user's view.
+// Styles store per-scope overrides that inherit through the client and workspace layers.
+// The resolver combines those layers; the mapper turns the result into node properties and effects.
+// Read `docs/js-style.md` for usage.
 //
 // A scope holds only what was set on it: a property that was never assigned, or was unset, is `undefined` and is
 // inherited. `null` is a value (`background = null`). A list assigned to a scope replaces the inherited list whole.
@@ -31,8 +29,8 @@ const STYLE_FIELDS: readonly string[] = ["opacity", "filter", "backdropFilter"];
 const CLIENT_FIELDS: readonly string[] = [...STYLE_FIELDS, "cornerRadius", "borders", "shadows", "background"];
 
 /**
- * The defaults one scope sets, and the ones it leaves to the scopes below it. `opacity`, `filter` and
- * `backdropFilter` are on every style; `ClientStyle` adds the rest. Assigning `undefined` is the same as `unset`.
+ * A style holds only values set on its scope; unset properties inherit from lower scopes. `undefined` unsets a
+ * property, while `null` is a value for `background`.
  */
 export class Style {
     constructor(init?: object) {
@@ -52,6 +50,7 @@ export class Style {
         return storeOf(this).scalars.get("opacity") as number | undefined;
     }
 
+    /** Sets opacity; `undefined` restores inheritance. */
     set opacity(value: number | undefined) {
         setScalar(this, "opacity", value);
     }
@@ -61,6 +60,7 @@ export class Style {
         return getList(this, "filter") as StyleList<Filter, FilterInit>;
     }
 
+    /** Replaces the content filter chain; `undefined` restores inheritance. */
     set filter(value: FilterInit[] | undefined) {
         setList(this, "filter", value);
     }
@@ -70,6 +70,7 @@ export class Style {
         return getList(this, "backdropFilter") as StyleList<Filter, FilterInit>;
     }
 
+    /** Replaces the backdrop filter chain; `undefined` restores inheritance. */
     set backdropFilter(value: FilterInit[] | undefined) {
         setList(this, "backdropFilter", value);
     }
@@ -113,12 +114,19 @@ export class Style {
 
 /** A `ClientStyle` as a literal: any property may be left out. */
 export interface ClientStyleInit {
+    /** Opacity from 0 (invisible) to 1. */
     opacity?: number;
+    /** One logical-pixel radius for all corners, or one per corner. */
     cornerRadius?: number | CornerRadii;
+    /** Background colour, or `null` for no background. */
     background?: Color | null;
+    /** Replaces the borders list. */
     borders?: BorderLike[];
+    /** Replaces the shadows list. */
     shadows?: ShadowLike[];
+    /** Filters applied to the window's own content. */
     filter?: FilterInit[];
+    /** Filters applied to the area behind the window. */
     backdropFilter?: FilterInit[];
 }
 
@@ -133,6 +141,7 @@ export class ClientStyle extends Style {
         return storeOf(this).scalars.get("cornerRadius") as number | Readonly<CornerRadii> | undefined;
     }
 
+    /** Sets the corner radii; `undefined` restores inheritance. */
     set cornerRadius(value: number | CornerRadii | undefined) {
         setScalar(this, "cornerRadius", value);
     }
@@ -142,6 +151,7 @@ export class ClientStyle extends Style {
         return storeOf(this).scalars.get("background") as Color | null | undefined;
     }
 
+    /** Sets the background colour, or clears it with `null`; `undefined` restores inheritance. */
     set background(value: Color | null | undefined) {
         setScalar(this, "background", value);
     }
@@ -151,6 +161,7 @@ export class ClientStyle extends Style {
         return getList(this, "borders") as StyleList<Border, BorderLike>;
     }
 
+    /** Replaces the border list; `undefined` restores inheritance. */
     set borders(value: BorderLike[] | undefined) {
         setList(this, "borders", value);
     }
@@ -160,17 +171,18 @@ export class ClientStyle extends Style {
         return getList(this, "shadows") as StyleList<Shadow, ShadowLike>;
     }
 
+    /** Replaces the shadow list; `undefined` restores inheritance. */
     set shadows(value: ShadowLike[] | undefined) {
         setList(this, "shadows", value);
     }
 }
 
-/** Ties a style to the scope it belongs to, so its error paths and its inherited lists are the scope's. */
+/** Ties a style to its scope for error paths and inherited lists. */
 export function bindStyle(style: Style, scope: StyleScope): void {
     storeOf(style).scope = scope;
 }
 
-/** A style that checks `init` and is thrown away: the validation of a literal, errors under `label`. */
+/** Validates a style literal under `label` and returns the resulting temporary style. */
 export function checkStyleInit(init: unknown, label: string): ClientStyle {
     const style = new ClientStyle();
     storeOf(style).label = label;
@@ -178,7 +190,7 @@ export function checkStyleInit(init: unknown, label: string): ClientStyle {
     return style;
 }
 
-/** Makes `target` hold what `source` (a style or a literal) sets, and nothing else; on a bad literal changes nothing. */
+/** Replaces `target` with the values set by `source`; invalid literals leave `target` unchanged. */
 export function replaceStyle(target: ClientStyle, source: unknown): void {
     const staged = source instanceof Style ? source : checkStyleInit(source, storeOf(target).scope?.path() ?? "style");
     const from = storeOf(staged);

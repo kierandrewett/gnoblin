@@ -1,17 +1,10 @@
-// Property bindings: `node.properties.bind(name, compute)`, a value that follows what it was computed from.
+// Property bindings: `node.properties.bind(name, compute)` keeps a value in step with the properties and collections
+// read by `compute`.
 //
-//     client.properties.bind("opacity", () => Math.max(0.25, 1 - client.position.distanceTo(camera.position) / 2500));
-//
-// While `compute` runs, every tree property it reads through the host's getters and every collection it reads is
-// recorded. The binding runs again when one of those changes and at no other time: the shell tells this module which
-// nodes the compositor changed (`noteHostTouched`), which tree properties a script wrote (`noteHostWrite`) and which
-// collections gained or lost a member (`raiseSignal`), and a binding whose reads did not change is not looked at. A
-// frame runs each dirty binding once (`flushBindings`); a write one binding makes can make another dirty, so the frame
-// repeats up to `MAX_PASSES` times and stops there, naming what was still changing.
-//
-// This module owns the engine and the handle a script holds. It does not own the host's getters: the shell wraps
-// them and calls the `note*` functions. Plain script fields (`layout.radius`) are not tracked: the specification
-// (section 16) says an untracked value must not be promised.
+// Reads through host getters and collections are recorded while `compute` runs. A binding runs again when a recorded
+// value changes. The shell reports compositor changes, script writes and collection membership changes. Each frame
+// runs dirty bindings up to `MAX_PASSES` times; a write can make another binding dirty. Plain script fields such as
+// `layout.radius` are not tracked.
 
 type NodeId = number;
 
@@ -138,7 +131,10 @@ export function noteHostWrite(node: NodeId, key: string, value: unknown): void {
     }
 }
 
-/** Tells the engine the compositor changed `nodes`: a binding that read one of their properties and sees another value runs again. */
+/**
+ * Tells the engine the compositor changed `nodes`: a binding that read one of their properties and sees another
+ * value runs again.
+ */
 export function noteHostTouched(nodes: readonly NodeId[]): void {
     if (host === null) {
         return;
@@ -330,10 +326,10 @@ export class PropertyBindings {
     }
 
     /**
-     * Makes `property` of the owner follow `compute`: it is set to the result now and again when anything `compute`
-     * read changes (a property of a node, or a collection gaining or losing a member). `compute` must not write, spawn
-     * or wait. A second binding of the same property replaces the first. A failure of `compute` or of the write is
-     * reported once and the binding goes on following its reads.
+     * Makes `property` follow `compute`: it is set to the result now and again when a value `compute` read changes (a
+     * node property or collection membership). `compute` must not write, spawn or wait. A second binding of the same
+     * property replaces the first. A failure of `compute` or the write is reported once; the binding keeps following
+     * its reads.
      */
     bind(property: string, compute: () => unknown): PropertyBinding {
         if (typeof property !== "string" || property === "") {

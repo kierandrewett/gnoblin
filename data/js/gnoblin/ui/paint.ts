@@ -1,10 +1,9 @@
-// The paint list: the drawing ops a canvas returns from `draw()` and their encoding into the bytes of the node's
-// `content`, which `crates/gnoblin-paint/src/list.rs` decodes.
+// Drawing operations for canvases and the byte encoding sent to the compositor.
 
-/** A colour is `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`. */
+/** A colour written as `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`. */
 export type Color = string;
 
-/** One drawing op. Later ops draw over earlier ones. The coordinates are node-local pixels. */
+/** One drawing operation. Later operations paint over earlier ones; coordinates use the node's logical pixels. */
 export type PaintOp =
     | {
           op: "rect";
@@ -25,22 +24,25 @@ export type PaintOp =
     | { op: "pushOpacity"; alpha: number }
     | { op: "popOpacity" };
 
-/** Defaults for ops that leave a field out. Sizes are pixels; colours are `0xRRGGBBAA` words. */
+/** Default opaque colour word used for lines, text and icons. */
 const OPAQUE_WHITE = 0xffffffff;
+/** Default font name used by text operations. */
 export const DEFAULT_FONT = "sans";
+/** Default text size in logical pixels. */
 export const DEFAULT_TEXT_SIZE = 14;
+/** Default icon size in logical pixels. */
 export const DEFAULT_ICON_SIZE = 16;
 const DEFAULT_LINE_WIDTH = 1;
-/** The colour of text when a `Text` names none. Matches the stock menus' text colour. */
+/** The default text colour, matching the stock menus. */
 export const DEFAULT_TEXT_COLOUR = "#cdd6f4";
 
-/** The paint list's format version. `crates/gnoblin-paint/src/list.rs` refuses any other. */
+/** The encoding version accepted by the compositor's paint-list reader. */
 const PAINT_LIST_VERSION = 1;
 
-/** The tag byte of each op kind, as `crates/gnoblin-paint/src/list.rs` reads it. */
+/** Byte tags identifying each operation in the encoded paint list. */
 const TAG = { rect: 1, line: 2, text: 3, icon: 4, pushClip: 5, popClip: 6, pushOpacity: 7, popOpacity: 8 } as const;
 
-/** Little-endian bytes, as the paint list wants them. */
+/** Writes little-endian values to the paint list. */
 class ByteWriter {
     readonly bytes: number[] = [];
     readonly #scratch = new DataView(new ArrayBuffer(8));
@@ -84,7 +86,7 @@ class ByteWriter {
     }
 }
 
-/** The UTF-8 bytes of `text`. A lone surrogate is written as U+FFFD. */
+/** Encodes `text` as UTF-8 bytes. A lone surrogate is replaced with U+FFFD. */
 export function utf8(text: string): number[] {
     const out: number[] = [];
     for (const char of text) {
@@ -111,7 +113,8 @@ export function utf8(text: string): number[] {
 }
 
 /**
- * The `0xRRGGBBAA` word of a colour, or `fallback` when the colour is absent. Throws a `TypeError` for any other form.
+ * Converts a colour to its `0xRRGGBBAA` word, or returns `fallback` when the colour is absent.
+ * Throws `TypeError` for any other colour form.
  */
 function colourWord(value: Color | undefined, fallback: number): number {
     if (value === undefined) {
@@ -132,8 +135,8 @@ function colourWord(value: Color | undefined, fallback: number): number {
 }
 
 /**
- * `value`, or `fallback` when it is absent. Throws on NaN and infinities: the compositor would read them as
- * garbage.
+ * Returns `value` or `fallback` when absent. Throws when `value` is NaN or infinite because the compositor cannot
+ * interpret those values.
  */
 function finite(value: number | undefined, fallback: number): number {
     if (value === undefined) {
@@ -145,7 +148,7 @@ function finite(value: number | undefined, fallback: number): number {
     return value;
 }
 
-/** Writes one op: its tag byte, then its fields in the order `crates/gnoblin-paint/src/list.rs` reads them. */
+/** Writes one operation's tag and fields in the order expected by the compositor. */
 function writeOp(out: ByteWriter, op: PaintOp): void {
     switch (op.op) {
         case "rect":
@@ -209,10 +212,9 @@ function writeOp(out: ByteWriter, op: PaintOp): void {
 }
 
 /**
- * The bytes of a canvas's `content` property for `ops`. The encoding is the one the retired Lua shell wrote
- * (`data/lua/gnoblin/shell/`) and the compositor decodes: `"GNPL"`, a version byte, a `u32` op count, then each op as a
- * tag byte and its fields. An op that cannot be written throws an error that names it (`draw op 2: ...`), and nothing
- * is written.
+ * Encodes drawing operations for a canvas's `content` property. The bytes start with `"GNPL"`, a version byte and a
+ * `u32` operation count, followed by each operation's tag and fields. If an operation cannot be encoded, the error
+ * names its position (for example, `draw op 2: ...`) and no paint list is returned.
  */
 export function encodePaintList(ops: readonly PaintOp[]): number[] {
     const body = new ByteWriter();

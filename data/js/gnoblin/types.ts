@@ -1,6 +1,4 @@
-// Types the host modules share: a node handle, what a property can hold, and a rectangle in the compositor's
-// logical coordinates. A leaf module, so a type is imported from here and not from the module that happened to
-// declare it first (it replaces the copies in `scene`, `properties` and `scene_mirror`).
+// Shared types for host modules: node handles, property values and compositor-coordinate rectangles.
 
 /** The host tree node handle, represented as a JavaScript number by the shell bridge. */
 export type NodeId = number;
@@ -13,9 +11,13 @@ export type HostValue = Scalar | number[] | string[];
 
 /** A rectangle in the compositor's logical coordinates. */
 export interface Rect {
+    /** Horizontal position in logical pixels. */
     x: number;
+    /** Vertical position in logical pixels. */
     y: number;
+    /** Width in logical pixels. */
     width: number;
+    /** Height in logical pixels. */
     height: number;
 }
 

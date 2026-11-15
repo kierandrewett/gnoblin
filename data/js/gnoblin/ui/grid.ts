@@ -1,12 +1,13 @@
-// `Grid`, a box whose children sit in a near-square grid of equal cells.
+// A box layout that places children in a near-square grid of equal cells.
 
 import { Box } from "gnoblin/ui/box";
 
 /**
- * Children in a near-square grid of equal cells, `padding` around and `gap` between. Cells are floored to whole pixels,
- * so the spare pixels collect along the right and bottom edges.
+ * Places children in a near-square grid of equal cells, with `padding` around the grid and `gap` between cells.
+ * Cell sizes are rounded down to whole pixels; spare pixels remain along the right and bottom edges.
  */
 export class Grid extends Box {
+    /** Places children in equal near-square cells, rounding cell sizes down to logical pixels. */
     override arrange(): void {
         const kids = this.children;
         const pad = this.padding;

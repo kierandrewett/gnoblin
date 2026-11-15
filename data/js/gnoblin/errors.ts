@@ -3,8 +3,8 @@
 // A call that fails later settles its `Operation` with `{ code, message }`. A call that cannot be made throws a
 // `GnoblinError` with the same `code` and a `target` naming the object and member. A bad argument throws a plain
 // `TypeError` or `RangeError` instead, because it is the script's mistake and no state is involved. The codes are
-// snake_case and are the ones `docs/shell-api/errors.md` lists; the host's own words for a refused write (`unknown-node`,
-// `read-only`) are translated here and nowhere else, so no script ever sees them as a `code`.
+// snake_case and are the ones `docs/shell-api/errors.md` lists; the host's own words for a refused write
+// (`unknown-node`, `read-only`) are translated here and nowhere else, so no script ever sees them as a `code`.
 
 /** Why a call failed. `docs/shell-api/errors.md` says what each code means. */
 export type ErrorCode =
@@ -27,7 +27,9 @@ export type ErrorCode =
  * `Client#7.x`; the message begins with the target.
  */
 export class GnoblinError extends Error {
+    /** Stable reason code for this failure. */
     readonly code: ErrorCode;
+    /** Object and member named by the failed call. */
     readonly target: string;
 
     constructor(code: ErrorCode, target: string, message: string) {

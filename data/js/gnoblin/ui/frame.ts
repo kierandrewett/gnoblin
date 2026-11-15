@@ -1,15 +1,14 @@
-// The toolkit's frame: what the compositor sent since the last frame is delivered, the frame hooks run and each root
-// canvas updates its tree. Also the listeners for window requests and the release of a generation's canvases.
+// Delivers compositor events, runs frame hooks and updates canvas trees once per frame.
 
 import { UiKeyEvent, UiPointerEvent } from "gnoblin/ui/events";
 import { attached, host, live, measuring, reportError } from "gnoblin/ui/state";
 
-/** The host tells the toolkit a node was destroyed (the compositor closed a window, and its canvases went). */
+/** Marks a compositor node and all canvases in its subtree as gone. */
 export function uiNodeGone(node: number): void {
     live.get(node)?.markGone();
 }
 
-/** Destroys every canvas this generation made. A generation that is replaced calls this, so none is left behind. */
+/** Destroys all canvases made in the current session and clears pending measurements. */
 export function uiReleaseAll(): void {
     for (const canvas of [...live.values()]) {
         if (canvas.parent === null) {
@@ -19,26 +18,28 @@ export function uiReleaseAll(): void {
     measuring.clear();
 }
 
-/** The number of live canvases. For tests and diagnostics. */
+/** Returns the number of live canvases. Intended for tests and diagnostics. */
 export function uiCanvasCount(): number {
     return live.size;
 }
 
-/** A request the compositor made of a window: `request` is `menu` for its window menu, anchored at `x`, `y`. */
+/** A compositor request for a window, such as a menu, with its anchor in logical screen coordinates. */
 export interface UiRequest {
     /** The window's node. */
     readonly node: number;
+    /** The request kind, such as `menu`. */
     readonly request: string;
-    /** Where the menu is anchored, in the compositor's logical coordinates. */
+    /** Horizontal anchor position in logical screen pixels. */
     readonly x: number;
+    /** Vertical anchor position in logical screen pixels. */
     readonly y: number;
 }
 
-/** Listeners for window requests, in the order they were added. `runUiFrame` delivers each request to all of them. */
 const requestHandlers: ((request: UiRequest) => void)[] = [];
+// Frame callbacks run after compositor events and before canvas updates.
 const frameHooks: (() => void)[] = [];
 
-/** Hears every request the compositor makes of a window. Returns the function that stops listening. */
+/** Listens for compositor window requests. Returns a function that removes this listener. */
 export function onUiRequest(handler: (request: UiRequest) => void): () => void {
     requestHandlers.push(handler);
     return () => {
@@ -49,7 +50,7 @@ export function onUiRequest(handler: (request: UiRequest) => void): () => void {
     };
 }
 
-/** Runs `hook` once a frame, after the events are delivered and before the canvases update. Returns the stop. */
+/** Runs `hook` after event delivery and before canvas updates on each frame. Returns a function that removes it. */
 export function onUiFrame(hook: () => void): () => void {
     frameHooks.push(hook);
     return () => {

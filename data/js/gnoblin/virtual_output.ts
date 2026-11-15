@@ -1,7 +1,5 @@
-// VirtualOutput: the description of an output a script asks the compositor to create (spec section 13, head-locked UI).
-// It is plain data checked at construction; `gnoblin.outputs.add` hands it to the compositor, which cannot create one
-// yet (design/js-spec-native.md, "XR extension"), so that call throws a typed error rather than pretending.
-// Read `docs/xr.md` for what a viewer-attached output is for.
+// Virtual output descriptions for scripts that request additional compositor outputs.
+// A viewer-attached output follows the headset; see docs/xr.md for its purpose.
 
 /** Where a virtual output sits. `viewer` keeps it in front of the headset, so it follows the head. */
 export type VirtualOutputAttachment = "viewer";
@@ -12,6 +10,7 @@ export interface VirtualOutputOptions {
     name: string;
     /** The size in pixels. Whole numbers above zero. */
     width: number;
+    /** Output height in whole pixels. */
     height: number;
     /** The scale of the output's pixels. Default 1. */
     scale?: number;
@@ -20,14 +19,19 @@ export interface VirtualOutputOptions {
 }
 
 /**
- * An output with no display behind it. Adding it to `gnoblin.outputs` asks the compositor to create it; while the
- * compositor has no such request the add throws a `GnoblinError` with code `unsupported`.
+ * A description of an output with no display behind it. Adding it to `gnoblin.outputs` currently throws a
+ * `GnoblinError` with code `unsupported`.
  */
 export class VirtualOutput {
+    /** Connector name assigned to the output. */
     readonly name: string;
+    /** Output width in whole pixels. */
     readonly width: number;
+    /** Output height in whole pixels. */
     readonly height: number;
+    /** Pixel scale, defaulting to 1. */
     readonly scale: number;
+    /** Attachment point, or `null` when unattached. */
     readonly attachment: VirtualOutputAttachment | null;
 
     /**

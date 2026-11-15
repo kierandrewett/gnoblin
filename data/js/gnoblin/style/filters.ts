@@ -6,6 +6,7 @@ import { GRADE, RADIUS } from "gnoblin/style/values";
 
 /** A `BlurFilter` as a literal. `radius` is in pixels. */
 export interface BlurFilterInit {
+    /** Blur radius in pixels; defaults to 12. */
     radius?: number;
 }
 
@@ -18,14 +19,17 @@ export class BlurFilter extends StyleElement {
         assignFields(this, init, ["radius"], "BlurFilter");
     }
 
+    /** Returns the blur radius in pixels. */
     get radius(): number {
         return this.#radius;
     }
 
+    /** Sets the blur radius in pixels. */
     set radius(value: number) {
         this.#radius = write(this, "radius", value, RADIUS);
     }
 
+    /** Returns the filter as plain data. */
     toJSON(): { kind: "blur"; radius: number } {
         return { kind: "blur", radius: this.#radius };
     }
@@ -33,6 +37,7 @@ export class BlurFilter extends StyleElement {
 
 /** A `SaturateFilter`, `BrightnessFilter` or `ContrastFilter` as a literal: `amount` is 1 for no change. */
 export interface AmountInit {
+    /** Filter amount; 1 leaves the image unchanged. */
     amount?: number;
 }
 
@@ -45,14 +50,17 @@ export class SaturateFilter extends StyleElement {
         assignFields(this, init, ["amount"], "SaturateFilter");
     }
 
+    /** Saturation amount, from 0 (grey) to 2; defaults to 1. */
     get amount(): number {
         return this.#amount;
     }
 
+    /** Sets saturation from 0 (grey) to 2. */
     set amount(value: number) {
         this.#amount = write(this, "amount", value, GRADE);
     }
 
+    /** Returns the filter as plain data. */
     toJSON(): { kind: "saturate"; amount: number } {
         return { kind: "saturate", amount: this.#amount };
     }
@@ -67,14 +75,17 @@ export class BrightnessFilter extends StyleElement {
         assignFields(this, init, ["amount"], "BrightnessFilter");
     }
 
+    /** Brightness gain, from 0 to 2; defaults to 1. */
     get amount(): number {
         return this.#amount;
     }
 
+    /** Sets the brightness gain from 0 to 2. */
     set amount(value: number) {
         this.#amount = write(this, "amount", value, GRADE);
     }
 
+    /** Returns the filter as plain data. */
     toJSON(): { kind: "brightness"; amount: number } {
         return { kind: "brightness", amount: this.#amount };
     }
@@ -89,14 +100,17 @@ export class ContrastFilter extends StyleElement {
         assignFields(this, init, ["amount"], "ContrastFilter");
     }
 
+    /** Contrast gain about mid grey, from 0 to 2; defaults to 1. */
     get amount(): number {
         return this.#amount;
     }
 
+    /** Sets the contrast gain from 0 to 2. */
     set amount(value: number) {
         this.#amount = write(this, "amount", value, GRADE);
     }
 
+    /** Returns the filter as plain data. */
     toJSON(): { kind: "contrast"; amount: number } {
         return { kind: "contrast", amount: this.#amount };
     }

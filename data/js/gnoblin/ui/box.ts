@@ -1,4 +1,4 @@
-// `Box`, a canvas that fills itself and lays its child boxes out in a row or a column.
+// Canvas containers that paint a background and arrange children in rows or columns.
 
 import { Canvas } from "gnoblin/ui/canvas";
 import type { CanvasOptions } from "gnoblin/ui/canvas";
@@ -9,13 +9,19 @@ export type Direction = "row" | "column" | "none";
 
 /** Options for `Box`. Sizes, gaps and padding are pixels. */
 export interface BoxOptions extends CanvasOptions {
+    /** Layout direction; defaults to `none`. */
     direction?: Direction;
+    /** Logical-pixel space between children; defaults to `0`. */
     gap?: number;
+    /** Logical-pixel space around the children; defaults to `0`. */
     padding?: number;
-    /** A share of the space left in a row or column, among the children that grow. 0 keeps the child's own size. */
+    /** Relative share of remaining main-axis space; `0` keeps the child's own size. */
     grow?: number;
+    /** Background colour; defaults to transparent. */
     fill?: Color;
+    /** Corner radius in logical pixels; defaults to `0`. */
     radius?: number;
+    /** Initial children, added in order. */
     children?: readonly Canvas[];
 }
 
@@ -25,11 +31,17 @@ export interface BoxOptions extends CanvasOptions {
  * every child is stretched across the other axis. Children that are not boxes stay where they are.
  */
 export class Box extends Canvas {
+    /** How this box arranges its child boxes. Defaults to `none`. */
     direction: Direction = "none";
+    /** Logical-pixel space between arranged children. */
     gap = 0;
+    /** Logical-pixel space around arranged children. */
     padding = 0;
+    /** Relative share of remaining main-axis space; zero keeps the child's assigned size. */
     grow = 0;
+    /** Background colour. */
     fill: Color = "#00000000";
+    /** Corner radius in logical pixels. */
     radius = 0;
 
     constructor(options: BoxOptions = {}) {
@@ -45,12 +57,14 @@ export class Box extends Canvas {
         }
     }
 
+    /** Paints the box background as a rectangle. */
     override draw(): PaintOp[] {
         return [
             { op: "rect", x: 0, y: 0, width: this.width, height: this.height, radius: this.radius, fill: this.fill },
         ];
     }
 
+    /** Arranges child boxes along the main axis and stretches them across the other axis. */
     override arrange(): void {
         if (this.direction === "none") {
             return;

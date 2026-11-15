@@ -1,10 +1,6 @@
-// `gnoblin.process`: the programs a script starts, and how each one ends.
-//
-// The shell's host owns the children (nothing else can reap them), so a `Process` is a handle: `alive`, `exitCode`
-// and the rest change as the host reports, once a frame, and the listeners run as queued calls under the usual
-// budget. This module owns the handle, the option checks and the listener list. It is plain TypeScript over the
-// host's functions (`ProcessHost`), so it runs without a shell. Read `gnoblin/operation` first for `Operation`,
-// which `wait()` and `kill()` return.
+// `gnoblin.process` starts programs and tracks their handles until they end. The host owns child processes and reports
+// changes once a frame; listeners run as queued calls under the usual budget. This module checks spawn options and
+// keeps the handles and listeners. Its `ProcessHost` interface lets it run without a shell.
 
 import { Operation } from "gnoblin/operation";
 import type { OperationHost } from "gnoblin/operation";
@@ -79,6 +75,7 @@ const SIGNALS: readonly string[] = ["term", "kill", "int", "hup", "usr1", "usr2"
 
 /** The event the host reports when a process ends. */
 export interface ExitEvent extends ProcessExit {
+    /** Discriminant identifying this as a process-end event. */
     kind: "exit";
     /** The id of the process that ended. */
     id: number;

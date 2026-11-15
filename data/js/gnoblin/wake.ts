@@ -1,9 +1,5 @@
-// When the shell needs a frame without anything arriving.
-//
-// The shell runs a frame when the compositor sent something, a link beside the tree has something, or script ran
-// outside a frame (`crates/gnoblin-js/src/shell/gate.rs`). What is left is the script's own clock and the parts that
-// draw every frame: a timer that comes due, a delay that runs out, a lock screen. Each such part registers one source
-// where it keeps its state, and the shell asks `nextWake()` at the end of every frame.
+// Frame wake sources let timers, animations and other time-based features ask the shell for their next frame.
+// Each source registers its state and the shell calls `nextWake()` at the end of every frame.
 
 /** The reading of the shell's clock, in milliseconds, at which a source next needs a frame; `Infinity` for never. */
 export type WakeSource = () => number;
@@ -17,12 +13,11 @@ export const NEVER = Number.POSITIVE_INFINITY;
 const sources: { readonly owner: string; readonly source: WakeSource }[] = [];
 
 /**
- * Registers a source for the life of the generation, under the name of the part that owns it (`"focus rests"`, `"lock
- * screen"`). A source is called once per frame that ran, so it may look at what it owns, but it must not look at every
- * window: the cost of a frame that ran is what gating exists to avoid on the frames that did not.
+ * Registers a named source for the life of the generation. The shell calls it once per frame to check when its owner
+ * next needs a frame; it should inspect only the state it owns, not every window.
  *
- * The name is for the test that lists what is registered (`crates/gnoblin-js/tests/wake_sources.rs`), which fails
- * when a part that keeps a clock does not register.
+ * The name appears in the test that checks that frame clocks are registered
+ * (`crates/gnoblin-js/tests/wake_sources.rs`).
  */
 export function onWake(owner: string, source: WakeSource): void {
     sources.push({ owner, source });

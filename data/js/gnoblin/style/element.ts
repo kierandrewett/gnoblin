@@ -6,8 +6,11 @@ import type { Checker } from "gnoblin/style/values";
 
 /** Where a list element sits, for its error paths, and what runs before one of its fields is written. */
 export interface Home {
+    /** The list containing this element, or null when it is detached. */
     list: StyleElement[] | null;
+    /** Returns this element's error path. */
     path(element: StyleElement): string;
+    /** Runs before a field write, for liveness checks and copy-on-write. */
     beforeWrite?: () => void;
 }
 
@@ -40,6 +43,7 @@ export function assignFields(target: object, init: unknown, fields: readonly str
 
 /** What every list element shares: it can be copied and written out as plain data. */
 export abstract class StyleElement {
+    /** Returns this element's fields as plain data. */
     abstract toJSON(): Record<string, unknown>;
 }
 

@@ -1,16 +1,16 @@
-// Operations and timers: what an asynchronous call of the host returns, and the clock that runs its deadlines.
-// An `Operation` is the result of a call that finishes later: `gnoblin.session.poweroff()`, `process.kill()`,
-// `gnoblin.runtime.reloadConfig()`. It settles once, with a value or with a typed error. Its callbacks run as queued
-// calls under the same wall-clock budget as every listener: one that throws is reported and the next callback still
-// runs. A callback added after the operation settled runs once, after the current call returns.
-// Both classes are plain TypeScript over a small host (`OperationHost`), so they run without a compositor.
+// Operations represent host calls that finish later, such as `gnoblin.session.poweroff()`, `process.kill()` and
+// `gnoblin.runtime.reloadConfig()`. Each settles once with a value or typed error. Callbacks run in the host's queue;
+// a failing callback is reported without stopping the next one. Callbacks added after settlement run after the
+// current call returns. These classes use a small host interface and run without a compositor.
 
 import type { ErrorCode } from "gnoblin/errors";
 import { NEVER, onWake } from "gnoblin/wake";
 
 /** The failure of an operation: a stable `code` to branch on and a `message` for a person. */
 export interface OperationError {
+    /** Stable reason code for branching on the failure. */
     readonly code: ErrorCode;
+    /** Human-readable failure detail. */
     readonly message: string;
 }
 
@@ -19,6 +19,7 @@ export type OperationStatus = "pending" | "succeeded" | "failed";
 
 /** Stops a callback or a handler before it runs. Calling it twice is harmless. */
 export interface Subscription {
+    /** Prevents the subscribed callback from running. Repeated calls have no effect. */
     unsubscribe(): void;
 }
 
@@ -32,6 +33,7 @@ export interface ClockHost {
 
 /** What operations need of the shell: the queue, and a timer for a deadline. */
 export interface OperationHost extends ClockHost {
+    /** Schedules `fn` after `ms` milliseconds and returns a timer with a `cancel()` method. */
     after(ms: number, fn: () => void): { cancel(): boolean };
 }
 
@@ -67,14 +69,17 @@ export class Operation<T> {
         this.#cancel = cancel;
     }
 
+    /** Current settlement state. */
     get status(): OperationStatus {
         return this.#status;
     }
 
+    /** Result value after success; otherwise `undefined`. */
     get value(): T | undefined {
         return this.#value;
     }
 
+    /** Failure detail after failure; otherwise `undefined`. */
     get error(): OperationError | undefined {
         return this.#error;
     }
@@ -122,8 +127,8 @@ export class Operation<T> {
     }
 
     /**
-     * A new operation that fails `timed_out` if this one has not settled in `ms` milliseconds, and settles as this one does
-     * if it is first. It does not cancel this operation.
+     * A new operation that fails `timed_out` if this one has not settled in `ms` milliseconds, and settles as this
+     * one does if it is first. It does not cancel this operation.
      */
     timeout(ms: number): Operation<T> {
         const limited = new Operation<T>(this.#host, this.id, `${this.method}.timeout`);
@@ -193,6 +198,7 @@ export class Operation<T> {
 
 /** A pending call of a function at a time. */
 export class Timer {
+    /** Unique timer id within its timer collection. */
     readonly id: number;
     /** The time it runs at, in milliseconds on the monotonic clock. */
     readonly at: number;

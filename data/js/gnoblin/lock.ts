@@ -1,9 +1,8 @@
-// The stock lock screen: a clock and a password entry drawn over the cover while the session is locked.
-// The compositor owns the lock and checks the password. This screen only collects the typed keys, reads the `lock`
-// node's `state`, and sends the password with `authenticate`. It is made and destroyed as the state leaves and returns
-// to `not-locked`. A JavaScript string cannot be wiped, so the copy handed to `authenticate` lives on the engine heap
-// until it is collected. `PasswordEntry` overwrites its own characters on submit, and draws one mask character each.
-// The Rust fallback lock card is used when no shell holds the lock screen (docs/session-lock.md).
+// The stock lock screen shows a clock and password entry while the session is locked. It reads the lock node's
+// `state` and sends passwords to the compositor with `authenticate`. A JavaScript string cannot be wiped, so the copy
+// passed to `authenticate` remains on the engine heap until collected. `PasswordEntry` overwrites its own characters
+// on submit and draws one mask character for each. Without a shell lock screen, the Rust fallback card is used
+// (`docs/session-lock.md`).
 
 import { Box } from "gnoblin/ui/box";
 import { runUiFrame } from "gnoblin/ui/frame";
@@ -15,8 +14,11 @@ import type { PaintOp } from "gnoblin/ui/paint";
 
 /** The compositor's answer to a password check: `result` is `ok`, or the wait in milliseconds under `rate-limited`. */
 export interface LockAnswer {
+    /** Identifies the password check that produced this answer. */
     token: number;
+    /** Outcome of the check, for example `ok` or `rate-limited`. */
     result: string;
+    /** Error detail supplied by the compositor, or an empty string. */
     error: string;
 }
 
@@ -37,36 +39,59 @@ export interface LockBackend {
      * loses the password entry to the compositor's own lock card. The host sends it at most twice a second.
      */
     heartbeat(): void;
+    /** Returns and clears answers received since the previous call. */
     takeAnswers(): LockAnswer[];
 }
 
 /** Everything that sets how the screen looks and what it says. */
 export interface LockStyle {
+    /** Colour used behind the lock card. */
     scrimFill: string;
+    /** Card width in logical pixels. */
     cardWidth: number;
+    /** Card height in logical pixels. */
     cardHeight: number;
+    /** Card corner radius in logical pixels. */
     cardRadius: number;
+    /** Space inside the card, in logical pixels. */
     cardPadding: number;
+    /** Space between card contents, in logical pixels. */
     cardGap: number;
+    /** Card background colour. */
     cardFill: string;
     /** The card's distance from the top, as a share of the screen's height. */
     cardTop: number;
+    /** Clock text size in logical pixels. */
     clockSize: number;
+    /** Clock text colour. */
     clockColor: string;
+    /** Password entry height in logical pixels. */
     entryHeight: number;
+    /** Password entry corner radius in logical pixels. */
     entryRadius: number;
+    /** Password entry background colour. */
     entryFill: string;
+    /** Password entry text size in logical pixels. */
     entrySize: number;
+    /** Password entry text colour. */
     entryColor: string;
     /** The most characters the entry takes. The compositor refuses a password over 1024 bytes. */
     entryLimit: number;
+    /** Message text size in logical pixels. */
     messageSize: number;
+    /** Hint text colour. */
     hintColor: string;
+    /** Error text colour. */
     errorColor: string;
+    /** Message shown before a password is submitted. */
     hint: string;
+    /** Message shown while the compositor checks a password. */
     checking: string;
+    /** Message shown when a password is rejected. */
     denied: string;
+    /** Message shown when another password check is still running. */
     busy: string;
+    /** Message shown when the password check fails. */
     failed: string;
     /** The text of the rate-limit message; `{seconds}` is the wait, rounded up. */
     rateLimited: string;
@@ -110,9 +135,13 @@ export class PasswordEntry extends Box {
     #typed: number[] = [];
     /** Whether the entry takes keys. The lock screen turns it off before it comes down. */
     enabled = true;
+    /** Maximum typed code points. */
     limit: number;
+    /** Mask text size in logical pixels. */
     size: number;
+    /** Mask text colour. */
     color: string;
+    /** Receives the password on Enter; the entry clears its characters after the callback returns or throws. */
     onSubmit: ((password: string) => void) | null = null;
 
     constructor(style: LockStyle, width: number) {
@@ -138,6 +167,7 @@ export class PasswordEntry extends Box {
         this.#typed.length = 0;
     }
 
+    /** Handles typed characters, Enter and Backspace while enabled. */
     override onKey(event: UiKeyEvent): void {
         if (!this.enabled || !event.pressed) {
             return;
@@ -167,6 +197,7 @@ export class PasswordEntry extends Box {
         }
     }
 
+    /** Draws the entry and one mask character for each typed code point. */
     override draw(): PaintOp[] {
         const ops = super.draw();
         const mask = "*".repeat(this.#typed.length);
@@ -206,6 +237,7 @@ interface Shown {
  */
 export class LockScreen {
     readonly #backend: LockBackend;
+    /** The style values used to draw this screen. */
     readonly style: LockStyle;
     #shown: Shown | null = null;
     /** The token of the check in flight. A second Enter while it runs is not a second attempt. */
@@ -227,6 +259,7 @@ export class LockScreen {
         return this.#shown !== null;
     }
 
+    /** Updates lock state and handles password answers once per host frame. */
     frame(): void {
         if (this.#released) {
             return;

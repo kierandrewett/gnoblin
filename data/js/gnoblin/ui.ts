@@ -1,6 +1,5 @@
-// `gnoblin/ui`, the shell UI toolkit: `Canvas`, `Box`, `Text`, `Icon` and `Grid`, the classes the stock shell draws
-// with. The code is in `gnoblin/ui/*` (one concept each; `gnoblin/ui/state` owns the shared state); this module is the
-// one import path scripts use. Read `gnoblin/ui/canvas` for how a frame reaches the compositor.
+// The script-facing import path for Gnoblin's UI toolkit: Canvas, Box, Text, Icon and Grid.
+// The toolkit draws shell UI using the canvas and compositor paint operations.
 
 export type { UiBackend, UiAnswer, UiRawEvent } from "gnoblin/ui/backend";
 export { attachUi } from "gnoblin/ui/state";

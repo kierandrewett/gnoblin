@@ -19,7 +19,7 @@ export interface InspectView {
 
 /** What the console gets back for one value. */
 export interface Rendered {
-    /** `undefined`, `null`, `boolean`, `number`, `string`, `array`, `function`, `object`, or a kind's or class's name. */
+    /** `undefined`, `null`, `boolean`, `number`, `string`, `array`, `function`, `object`, or a kind or class name. */
     readonly type: string;
     /** The value as plain JSON data; absent for `undefined`. */
     readonly value?: unknown;
@@ -29,6 +29,7 @@ export interface Rendered {
     readonly truncated: boolean;
 }
 
+/** Limits for a rendered value. */
 export interface RenderOptions {
     /** The most text the rendering may hold before it stops adding to it. Default 65536. */
     readonly maxBytes?: number;
@@ -38,15 +39,25 @@ export interface RenderOptions {
 
 /** A client as plain data. */
 export interface ClientInfo {
+    /** Client identifier. */
     readonly id: string;
+    /** Application id, or an empty string when unavailable. */
     readonly appId: string;
+    /** Window title, or an empty string when unavailable. */
     readonly title: string;
+    /** Whether this client has keyboard focus. */
     readonly focused: boolean;
+    /** Whether this client is fullscreen. */
     readonly fullscreen: boolean;
+    /** Whether this client is floating rather than tiled. */
     readonly floating: boolean;
+    /** Horizontal position in logical pixels. */
     readonly x: number;
+    /** Vertical position in logical pixels. */
     readonly y: number;
+    /** Width in logical pixels. */
     readonly width: number;
+    /** Height in logical pixels. */
     readonly height: number;
     /** The id of the workspace the client is on, or null. */
     readonly workspace: string | null;
@@ -54,12 +65,17 @@ export interface ClientInfo {
 
 /** A workspace as plain data. */
 export interface WorkspaceInfo {
+    /** Workspace identifier. */
     readonly id: string;
+    /** Workspace name. */
     readonly name: string;
+    /** Position in the workspace collection. */
     readonly index: number;
+    /** Whether this workspace is active. */
     readonly active: boolean;
     /** The layout's class name. */
     readonly layout: string;
+    /** Client identifiers in this workspace. */
     readonly clients: readonly string[];
 }
 
@@ -67,6 +83,7 @@ export interface WorkspaceInfo {
 export interface BindingInfo {
     /** The seat's context. */
     readonly context: string;
+    /** Binding identifier. */
     readonly id: string;
     /** The trigger as written. */
     readonly trigger: string;
@@ -78,9 +95,11 @@ export interface BindingInfo {
     readonly layout: string | null;
     /** The device's name for a device's binding. */
     readonly device: string | null;
+    /** Binding priority among bindings with the same trigger. */
     readonly priority: number;
+    /** Whether the binding is enabled. */
     readonly enabled: boolean;
-    /** Who runs first for this trigger: 1 is the binding a press reaches first, 2 the one it falls to when 1 declines. */
+    /** Who runs first for this trigger: 1 is the binding a press reaches first, 2 the one it falls to if 1 declines. */
     readonly rank: number;
 }
 

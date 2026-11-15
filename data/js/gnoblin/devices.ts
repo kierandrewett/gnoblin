@@ -1,12 +1,11 @@
-// Input devices and their settings (owner-spec.md section 10): `InputDevice` and the five classes a seat's devices
-// are, `Keyboard`, `Mouse`, `Touchpad`, `Touchscreen` and `Tablet`.
+// Input devices and their settings: `InputDevice`, `Keyboard`, `Mouse`, `Touchpad`, `Touchscreen` and `Tablet`.
 //
-// A device is a physical thing the seat reports (`id:name:caps`); `classOf` picks the class from its capabilities. It
+// A device is a physical thing the seat reports (`id:name:caps`); `classOf` picks its class from its capabilities. It
 // belongs to one `InputContext` at a time (`context`, reassignable) and holds the bindings that match only its own
-// events. The device settings the specification lists are properties of these classes: `sensitivity`,
-// `acceleration`, `naturalScroll`, `tapToClick` and `repeatRate`, `repeatDelay`.
+// events. Settings include `sensitivity`, `acceleration`, `naturalScroll`, `tapToClick`, `repeatRate` and
+// `repeatDelay`.
 //
-// What backs a setting. The compositor reads device settings from the `input` section of the configuration document
+// The compositor reads device settings from the `input` section of the configuration document
 // (`input.keyboard`, `input.mouse`, `input.touchpad`), once per kind and not per device, so a write on one `Mouse` is
 // the setting of every mouse and a read on another shows it. A write is checked here against the schema's range,
 // then against the document validator when the shell has attached one (`attachDeviceSettings`), and joins the
@@ -94,7 +93,7 @@ const SETTINGS = {
         accept: isBoolean,
         document: identity,
     } satisfies Setting<boolean>,
-    // The document holds the time between repeats in milliseconds; the specification's `repeatRate` is a frequency.
+    // The document stores the interval between repeats in milliseconds.
     repeatRate: {
         group: "keyboard",
         key: "repeat-interval",
@@ -190,6 +189,7 @@ function readSetting<T>(name: SettingName): T | undefined {
 
 /** What a device needs of the context it belongs to. `InputContext` implements it. */
 export interface DeviceHome {
+    /** Name of the context. */
     readonly name: string;
     /** Makes a binding in the device's own collection and returns it. */
     bindDevice(
@@ -198,8 +198,11 @@ export interface DeviceHome {
         action: ((event: BindingEvent) => void | false) | Binding | false,
         options?: DeviceBindOptions,
     ): Binding;
+    /** Whether the named device's events are claimed by bindings only. */
     isBindingOnly(name: string): boolean;
+    /** Keeps the device's events from reaching clients. */
     makeBindingOnly(name: string): void;
+    /** Allows the device's events to reach clients again. */
     releaseBindingOnly(name: string): boolean;
     /** Moves `device` from this context to `to`, which must be a context of the same shell. */
     moveDevice(device: InputDevice, to: unknown): void;
@@ -217,9 +220,13 @@ export interface DeviceBindOptions {
  * assigns another to `context`.
  */
 export class InputDevice extends NativeObject {
+    /** Identifier reported by the seat. */
     readonly id: string;
+    /** Device name reported by the seat. */
     readonly name: string;
+    /** Capability names reported by the seat. */
     readonly capabilities: readonly string[];
+    /** Bindings that respond only to this device's events. */
     readonly bindings = new BindingCollection();
     #context: DeviceHome;
     #alive = true;
@@ -246,6 +253,7 @@ export class InputDevice extends NativeObject {
         return true;
     }
 
+    /** Accepts `true`; assigning `false` throws `GnoblinError` (`unsupported`). */
     set enabled(value: boolean) {
         if (typeof value !== "boolean") {
             throw new TypeError(`${this.path("enabled")} must be true or false, got ${String(value)}`);
@@ -270,6 +278,7 @@ export class InputDevice extends NativeObject {
         return this.#context;
     }
 
+    /** Moves the device to another input context. */
     set context(to: DeviceHome) {
         if (!this.#alive) {
             throw refuse("not_found", this.path("context"), "the device was unplugged");
@@ -320,6 +329,7 @@ export class InputDevice extends NativeObject {
         return this.#context.isBindingOnly(this.name);
     }
 
+    /** Claims or releases the device so its events do not reach clients. */
     set bindingOnly(on: boolean) {
         if (typeof on !== "boolean") {
             throw new TypeError(`InputDevice "${this.name}".bindingOnly must be true or false, got ${String(on)}`);
@@ -347,6 +357,7 @@ export class Keyboard extends InputDevice {
         return readSetting("repeatRate");
     }
 
+    /** Sets the shared key repeat rate in repeats per second. */
     set repeatRate(value: number | undefined) {
         writeSetting("repeatRate", value, this.path("repeatRate"));
     }
@@ -359,6 +370,7 @@ export class Keyboard extends InputDevice {
         return readSetting("repeatDelay");
     }
 
+    /** Sets the shared key repeat delay in milliseconds. */
     set repeatDelay(value: number | undefined) {
         writeSetting("repeatDelay", value, this.path("repeatDelay"));
     }
@@ -374,6 +386,7 @@ export class Mouse extends InputDevice {
         return readSetting("mouseSensitivity");
     }
 
+    /** Sets the shared pointer speed from -1 to 1. */
     set sensitivity(value: number | undefined) {
         writeSetting("mouseSensitivity", value, this.path("sensitivity"));
     }
@@ -386,6 +399,7 @@ export class Mouse extends InputDevice {
         return readSetting("mouseAcceleration");
     }
 
+    /** Sets the shared pointer acceleration profile. */
     set acceleration(value: "default" | "flat" | "adaptive" | undefined) {
         writeSetting("mouseAcceleration", value, this.path("acceleration"));
     }
@@ -395,6 +409,7 @@ export class Mouse extends InputDevice {
         return readSetting("mouseNaturalScroll");
     }
 
+    /** Sets the shared natural scrolling preference. */
     set naturalScroll(value: boolean | undefined) {
         writeSetting("mouseNaturalScroll", value, this.path("naturalScroll"));
     }
@@ -407,6 +422,7 @@ export class Touchpad extends InputDevice {
         return readSetting("touchpadSensitivity");
     }
 
+    /** Sets the shared touchpad pointer speed from -1 to 1. */
     set sensitivity(value: number | undefined) {
         writeSetting("touchpadSensitivity", value, this.path("sensitivity"));
     }
@@ -416,6 +432,7 @@ export class Touchpad extends InputDevice {
         return readSetting("touchpadAcceleration");
     }
 
+    /** Sets the shared touchpad acceleration profile. */
     set acceleration(value: "default" | "flat" | "adaptive" | undefined) {
         writeSetting("touchpadAcceleration", value, this.path("acceleration"));
     }
@@ -425,6 +442,7 @@ export class Touchpad extends InputDevice {
         return readSetting("touchpadNaturalScroll");
     }
 
+    /** Sets the shared natural scrolling preference. */
     set naturalScroll(value: boolean | undefined) {
         writeSetting("touchpadNaturalScroll", value, this.path("naturalScroll"));
     }
@@ -434,6 +452,7 @@ export class Touchpad extends InputDevice {
         return readSetting("tapToClick");
     }
 
+    /** Sets whether a tap acts as a click. */
     set tapToClick(value: boolean | undefined) {
         writeSetting("tapToClick", value, this.path("tapToClick"));
     }
@@ -442,7 +461,10 @@ export class Touchpad extends InputDevice {
 /** A touch screen. The compositor has no setting for one: its calibration belongs to the seat. */
 export class Touchscreen extends InputDevice {}
 
-/** A drawing tablet's tool or pad. Tablet settings are keyed by vendor and product, which a device here does not carry. */
+/**
+ * A drawing tablet's tool or pad. Tablet settings are keyed by vendor and product, which a device here does not
+ * carry.
+ */
 export class Tablet extends InputDevice {}
 
 /**

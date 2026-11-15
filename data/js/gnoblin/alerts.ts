@@ -2,7 +2,8 @@
 // The compositor pings every client. A window that misses pings for longer than `window-management.check-alive-timeout`
 // (5000 ms by default; 0 turns pings off) is marked `unresponsive`, and this module offers the user Wait or Force quit.
 // Force quit kills the window's process with `Client.kill()`; the compositor refuses to kill init and its own process.
-// Force quit ignores presses for `armMs` milliseconds after the alert opens, so input already in flight cannot press it.
+// Force quit ignores presses for `armMs` milliseconds after the alert opens, so input already in flight cannot press
+// it.
 // `AlertTracker` is the state machine on its own. A script starts the alert with `startNotRespondingAlert()`.
 
 import { Box } from "gnoblin/ui/box";
@@ -22,16 +23,22 @@ const BUTTON_H = 44;
 
 /** What an alert needs of a window. A `Client` of the host module is one. */
 export interface AlertClient {
+    /** Whether the client still exists. */
     readonly alive: boolean;
+    /** Whether the compositor currently marks it unresponsive. */
     readonly unresponsive: boolean;
+    /** The client title, which may be empty. */
     readonly title: string;
+    /** Whether the client requires a secure alert surface. */
     readonly secure?: boolean;
+    /** Requests that the client process be terminated. */
     kill(): void;
 }
 
 /** What the user chose, or `recovered` when the alert ended without them. */
 export type AlertAnswer = "wait" | "force" | "recovered";
 
+/** Clients to alert and clients whose alerts should close after a tracker check. */
 export interface AlertChanges<W> {
     /** The windows that have just stopped answering and get an alert. */
     open: W[];
@@ -53,10 +60,12 @@ export class AlertTracker<W extends AlertClient> {
         return this.#open.has(window);
     }
 
+    /** Whether alerts are suppressed until this client answers again. */
     isWaiting(window: W): boolean {
         return this.#waited.has(window);
     }
 
+    /** Checks clients and returns alerts to open and close. */
     check(windows: Iterable<W>, locked: boolean): AlertChanges<W> {
         const changes: AlertChanges<W> = { open: [], close: [] };
         const live = new Set<W>();
@@ -162,9 +171,13 @@ class AlertButton extends Box {
  * until `arm()`, which the controller calls `armMs` milliseconds after the alert opened.
  */
 export class NotRespondingDialog extends Box {
+    /** The Wait and Force quit buttons, in keyboard selection order. */
     readonly choices: AlertButton[];
+    /** The currently selected button index. */
     index = 0;
+    /** Whether Force quit is enabled. */
     armed = false;
+    /** Called when the user chooses Wait or Force quit. */
     onChosen?: (answer: "wait" | "force") => void;
 
     constructor(name: string, secure: boolean, screen: { width: number; height: number }) {
@@ -214,6 +227,7 @@ export class NotRespondingDialog extends Box {
         this.choices[1].enabled = true;
     }
 
+    /** Activates a button by its index, unless Force quit is still disarmed. */
     activate(index: number): void {
         if (index === 1 && !this.armed) {
             return;
@@ -221,11 +235,13 @@ export class NotRespondingDialog extends Box {
         this.onChosen?.(index === 0 ? "wait" : "force");
     }
 
+    /** Keeps pointer presses on the alert from reaching its parent. */
     override onPress(event: UiPointerEvent): void {
         event.stop();
         this.focus();
     }
 
+    /** Handles keyboard selection and activation while the alert has focus. */
     override onKey(event: UiKeyEvent): void {
         if (!event.pressed) {
             return;
@@ -283,8 +299,11 @@ interface Card {
  * so the alert reads it: it does not wait for a signal there is none of.
  */
 export class NotRespondingAlerts {
+    /** Milliseconds after opening before Force quit becomes available. */
     armMs = 500;
+    /** Milliseconds between checks for unresponsive clients. */
     intervalMs = 250;
+    /** Tracks which clients need an alert or are waiting for a response. */
     readonly tracker = new AlertTracker<AlertClient>();
     readonly #cards = new Map<AlertClient, Card>();
     #world: AlertWorld | null = null;
@@ -292,6 +311,7 @@ export class NotRespondingAlerts {
     /** A frame ran inside the interval and skipped the look, so one is due when the interval has passed. */
     #lookDeferred = false;
 
+    /** Whether the alert service has been started. */
     get started(): boolean {
         return this.#world !== null;
     }
@@ -301,14 +321,16 @@ export class NotRespondingAlerts {
         return this.#cards.get(client)?.dialog;
     }
 
+    /** Starts alert checks and frame updates for the shell. */
     start(world: AlertWorld, options: AlertOptions = {}): void {
         this.#world = world;
         if (options.armMs !== undefined) this.armMs = options.armMs;
         if (options.intervalMs !== undefined) this.intervalMs = options.intervalMs;
         onUiFrame(() => this.#frame());
-        // A card arms when its delay is over. A look that a frame skipped for being too soon after the last is made when
-        // the interval has passed: the compositor may have written `unresponsive` in that very frame, and nothing else
-        // would wake a frame to read it. With no look waiting the alert asks for nothing, so an idle shell stays idle.
+        // A card arms when its delay is over. A look that a frame skipped for being too soon after the last is made
+        // when the interval has passed: the compositor may have written `unresponsive` in that very frame, and
+        // nothing else would wake a frame to read it. With no look waiting the alert asks for nothing, so an idle
+        // shell stays idle.
         onWake("not-responding alert", () => {
             let at = this.#lookDeferred ? this.#lastLook + this.intervalMs : NEVER;
             for (const card of this.#cards.values()) {

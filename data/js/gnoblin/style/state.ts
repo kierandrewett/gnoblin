@@ -12,7 +12,7 @@ export const styleState = {
     epoch: 0,
     /** Above zero while elements are built, which are not changes. */
     building: 0,
-    /** The home of each element that sits in a list. An element outside every list has none, and its path is its class. */
+    /** Maps each list element to its list and error path; detached elements have their class name as the path. */
     homes: new WeakMap<StyleElement, Home>(),
     /** What each style object holds. A WeakMap, so that a script cannot reach it through the object. */
     stores: new WeakMap<Style, Store>(),

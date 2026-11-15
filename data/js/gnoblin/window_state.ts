@@ -1,35 +1,6 @@
-// What the shell answers when a client (or a taskbar) asks for a change of its window's state.
-//
-// The compositor sends a `request` event for each of `maximize unmaximize fullscreen unfullscreen minimize unminimize
-// close raise lower activate move resize menu` and changes nothing until the shell answers, by writing the window's
-// `maximised`, `fullscreen`, `minimised`, its size, or by calling `close`. This module is that answer, ported from the
-// Lua shell (`Window:on_request` and its helpers, data/lua/gnoblin/shell/init.lua), with its tests in
-// crates/gnoblin-js/tests/client_requests.rs.
-//
-// Precedence (the contract a script can rely on):
-//   1. Every `ClientListener` that has an `onRequest(client, request)` is called, the listeners attached to the client
-//      itself first, then the listeners of each collection that holds it, each in the order it was attached.
-//   2. The first one to call `request.handle()` has answered: the listeners after it are not called and the built-in
-//      answer does not run. A listener that handles a request is responsible for the window's reply (it may call the
-//      `windowState` methods below, or write the window itself).
-//   3. When no listener handles the request, the built-in answer runs.
-// A listener that throws is reported and skipped; the request goes on to the next listener.
-//
-// The rules the built-in answer follows:
-//   * `maximize` fills the work area (what the bars leave) and keeps the floating rectangle. A snapped window is
-//     unsnapped first. Refused when the window is maximised or fullscreen already.
-//   * `fullscreen` covers the whole output (the bars give way, see `barsGiveWayTo` in gnoblin/widgets), keeps the
-//     windowed rectangle (maximised and snapped windows keep their flags), and goes last among its siblings. Refused
-//     when the window is fullscreen already, so a repeat never overwrites the rectangle that was kept.
-//   * `minimize` hides the window and, when it held the keyboard focus, hands the focus to the topmost sibling still
-//     showing (or to nobody). `unminimize` shows it, and focuses it only when nothing holds the focus.
-//   * `activate` is `present`: on the active workspace only, unminimise, focus and raise; a window on another
-//     workspace is left alone.
-//   * `raise` puts the window last among its siblings, and a fullscreen sibling stays over it (`Client.raise`).
-//   * `move` and `resize` start the same drag as the pointer bindings (`ClientMoveBinding`, `ClientResizeBinding`),
-//     following the seat's pointer until a button is released. A window a layout tiles, a fullscreen window and a
-//     maximised one are not dragged. The request names no edge: a pointer within `RESIZE_CORNER_ZONE` pixels of two
-//     sides of the window resizes that corner, anywhere else the nearest side.
+// Handles window requests from clients and taskbars; the compositor waits for the shell to answer each request.
+// Client listeners run first, followed by collection listeners in attachment order. The first `request.handle()`
+// answers; if none does, the built-in policy runs. A throwing listener is reported and skipped.
 
 import { ClientMoveBinding } from "gnoblin/bindings/move";
 import { ClientResizeBinding } from "gnoblin/bindings/resize";
@@ -88,10 +59,13 @@ export const REQUEST_DRAG_LIMIT_MS = 30_000;
  * of this module); a listener that does not leaves it to the next one and then to the built-in answer.
  */
 export class ClientRequest<C = unknown> {
+    /** Kind of compositor request. */
     readonly kind: ClientRequestKind;
+    /** Window that received the request. */
     readonly client: C;
     /** Where a `menu` request is anchored, in the compositor's logical coordinates; 0 for every other kind. */
     readonly x: number;
+    /** Vertical position of the menu request anchor in logical pixels. */
     readonly y: number;
     #handled = false;
 
@@ -115,28 +89,39 @@ export class ClientRequest<C = unknown> {
 
 /** What the policy reads and writes of a window. The host's `Client` satisfies it. */
 export interface StateClient {
+    /** Whether the window still exists. */
     readonly alive: boolean;
+    /** Whether the window covers its output. */
     fullscreen: boolean;
+    /** Whether the window fills its work area. */
     maximised: boolean;
+    /** Whether the window is hidden. */
     minimised: boolean;
     /** A window a layout tiles is placed by the layout, so a move or resize request leaves it alone. */
     readonly tiled: boolean;
+    /** Window rectangle in logical pixels. */
     bounds: Rect;
     /** The rectangle a snap restores for a maximised window; kept current here so a snap after a maximise is right. */
     floatingBounds?: Rect | null;
+    /** Frame inset, when the window has a frame. */
     readonly frameInset?: FrameInset;
+    /** Minimum content size in pixels, when set. */
     minSize?: { width: number; height: number };
+    /** Maximum content size in pixels, when set. */
     maxSize?: { width: number; height: number };
 }
 
 /** What the policy needs of the shell around the windows. */
 export interface WindowStateWorld<C extends StateClient> {
+    /** Finds a window by its compositor node id. */
     clientOf(node: number): C | undefined;
     /** The windows of the workspace `client` is on, back to front. */
     siblings(client: C): readonly C[];
     /** Puts the window last among its siblings and keeps a fullscreen sibling over it. */
     raise(client: C): void;
+    /** Lowers the window among its siblings. */
     lower(client: C): void;
+    /** Closes the window. */
     close(client: C): void;
     /** The window with the keyboard focus, or null. */
     focused(): C | null;
@@ -148,15 +133,21 @@ export interface WindowStateWorld<C extends StateClient> {
     output(client?: C): Rect | null;
     /** The output `client` is on less what the bars take: what a maximised window fills. */
     workArea(client?: C): Rect | null;
-    /** `frame` is where the window's frame goes; this is the content's rectangle in it (the frame's inset is taken off). */
+    /** Converts a frame rectangle to the content rectangle by applying the frame inset. */
     framed(client: C, frame: Rect): Rect;
+    /** Whether the window has a snap position. */
     snapped(client: C): boolean;
+    /** Removes the window's snap position. */
     unsnap(client: C): void;
     /** Calls the `onRequest` of the client's listeners, in order, until one handles `request`. */
     dispatch(client: C, request: ClientRequest<C>): void;
+    /** Reports an error from a window request. */
     report(site: string, error: unknown): void;
+    /** Returns the shell clock reading in milliseconds. */
     now(): number;
+    /** Returns the current pointer drag constraint, if any. */
     dragConstraint(): string | undefined;
+    /** Whether edge tiling is enabled. */
     edgeTiling(): boolean;
 }
 
@@ -179,11 +170,27 @@ export function isRequestHandled(request: UiRequest): boolean {
 
 /** The rectangles a window goes back to when it stops being maximised or fullscreen. */
 export interface KeptRects {
+    /** Floating rectangle restored when maximising ends, or `null` if none was saved. */
     floating: Rect | null;
+    /** Windowed rectangle restored when fullscreen ends, or `null` if none was saved. */
     windowed: Rect | null;
 }
 
-/** The stock answers to a window's requests, and the drags that `move` and `resize` start. */
+/**
+ * The stock answers to a window's requests, and the drags that `move` and `resize` start.
+ *
+ * - `maximize` fills the work area (the area left by bars) and keeps the floating rectangle. A snapped window is
+ *   unsnapped first. Refused if already maximised or fullscreen.
+ * - `fullscreen` covers the whole output (bars hide through `barsGiveWayTo` in gnoblin/widgets), keeps the windowed
+ *   rectangle and puts the window last among its siblings. Refused if already fullscreen.
+ * - `minimize` hides the window and, if it held focus, focuses the topmost visible sibling or nobody. `unminimize`
+ *   shows it and focuses it only when nothing else has focus.
+ * - `activate` presents a window only on the active workspace: unminimise, focus and raise. Other workspaces are
+ *   unchanged.
+ * - `raise` puts the window last among its siblings, below any fullscreen sibling (`Client.raise`).
+ * - `move` and `resize` start the pointer drags used by `ClientMoveBinding` and `ClientResizeBinding`. Tiled,
+ *   fullscreen and maximised windows are not dragged. The pointer chooses the resize edge or corner.
+ */
 export class WindowState {
     #world: WindowStateWorld<StateClient> | null = null;
     /** The floating rectangle a maximised window had, so un-maximising restores it. */
@@ -408,10 +415,12 @@ export class WindowState {
         return true;
     }
 
+    /** Raises the window among its siblings. */
     raise(client: StateClient): void {
         this.#need().raise(client);
     }
 
+    /** Lowers the window among its siblings. */
     lower(client: StateClient): void {
         this.#need().lower(client);
     }
@@ -505,8 +514,8 @@ export class WindowState {
     }
 
     /**
-     * Takes the drag to where the pointer is now. A drag whose window has gone, or that has run its limit, ends. `ending`
-     * is the end asking for the last position: it must not ask the end again for the limit it is already ending.
+     * Moves the drag to the current pointer position. A missing window or expired limit ends the drag. `ending` marks
+     * the final update, so it does not request another update for the same limit.
      */
     #follow(ending = false): void {
         const drag = this.#drag;

@@ -1,13 +1,8 @@
-// What a `View` of a workspace is made of. A workspace is a script object, not a tree node, so the compositor has no
-// node to name as the View's `source`. The mirror builds the picture from what the tree can already draw: under the
-// View's own node it keeps one holder node, and under the holder one child View for each client on the workspace,
-// each sourcing that client's node and placed where the client sits in the workspace's area. The holder's scale and
-// offset fit that area into the View's size. The clients are not moved or reparented.
+// A workspace `View` shows its clients without moving or reparenting them. A holder node under the View contains one
+// child View per client, positioned in the workspace area; the holder's scale and offset fit the area to the View.
 //
-// The mirror keeps itself current with a `watch`: it runs again when a client joins or leaves, moves or resizes, or
-// when the View's size or fit changes. It owns the nodes it makes and removes them with `stop`. It does not own the
-// View: `gnoblin/scene` makes the node and calls it.
-
+// A tracked `watch` updates the picture when clients join, leave, move or resize, or when the View size or fit changes.
+// The mirror removes the nodes it creates when stopped. `gnoblin/scene` creates the View node and calls this module.
 import { noteSignal, untracked, watch } from "gnoblin/properties";
 import type { PropertyBinding } from "gnoblin/properties";
 
@@ -18,11 +13,17 @@ export type ContentFit = "contain" | "cover" | "stretch";
 
 /** One client of the mirrored workspace: its tree node and its rectangle in the compositor's logical pixels. */
 export interface MirroredClient {
+    /** Scene node id used as the client's source. */
     node: NodeId;
+    /** Client position in workspace logical pixels. */
     x: number;
+    /** Client position in workspace logical pixels. */
     y: number;
+    /** Client width in logical pixels. */
     width: number;
+    /** Client height in logical pixels. */
     height: number;
+    /** Whether the source node is shown. */
     visible: boolean;
 }
 
@@ -36,10 +37,15 @@ export interface WorkspaceSource {
 
 /** The tree operations the mirror needs. The scene's backend provides them. */
 export interface MirrorTree {
+    /** Creates a scene node of class `cls`, or returns a refusal message. */
     create(cls: string): NodeId | string;
+    /** Inserts `node` under `parent` at `index`, or returns a refusal message. */
     insert(node: NodeId, parent: NodeId, index: number): string | undefined;
+    /** Destroys a node, or returns a refusal message. */
     destroy(node: NodeId): string | undefined;
+    /** Reads a node property. */
     get(node: NodeId, key: string): unknown;
+    /** Writes a node property, or returns a refusal message. */
     set(node: NodeId, key: string, value: number | boolean | number[]): string | undefined;
 }
 

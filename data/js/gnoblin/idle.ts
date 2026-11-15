@@ -23,12 +23,15 @@ export interface IdleReading {
 
 /** A request for the shell to send to the compositor, taken once. */
 export interface IdleCommand {
+    /** Whether the compositor should add or remove the hold. */
     kind: "inhibit" | "uninhibit";
+    /** Name identifying the hold. */
     holder: string;
 }
 
 /** What the manager needs of the shell: the call queue. */
 export interface IdleHost {
+    /** Queues a listener callback for the shell to run. */
     schedule(site: string, task: () => void): void;
 }
 
@@ -152,6 +155,7 @@ export class IdleInhibitor {
         this.#manager.releaseInhibitor(this);
     }
 
+    /** Ends an inhibitor and reports whether it was still active. */
     static end(inhibitor: IdleInhibitor): boolean {
         const was = inhibitor.#alive;
         inhibitor.#alive = false;
@@ -226,12 +230,14 @@ export class IdleMonitor {
         return inhibitor;
     }
 
+    /** Cancels a watch and removes it from this monitor. */
     cancelWatch(watch: IdleWatch): void {
         if (IdleWatch.close(watch, this.#host, "cancelled")) {
             this.#watches.splice(this.#watches.indexOf(watch), 1);
         }
     }
 
+    /** Releases an inhibitor and queues its removal from the compositor. */
     releaseInhibitor(inhibitor: IdleInhibitor): void {
         if (IdleInhibitor.end(inhibitor)) {
             this.#inhibitors.delete(inhibitor.holder);

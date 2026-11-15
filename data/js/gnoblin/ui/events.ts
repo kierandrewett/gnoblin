@@ -1,20 +1,28 @@
-// The events the compositor sends to a canvas, as a handler receives them, and the handler each pointer kind runs.
+// Pointer and keyboard events delivered to canvas handlers.
 
 import type { Canvas } from "gnoblin/ui/canvas";
 import type { UiRawEvent } from "gnoblin/ui/backend";
 
 /**
- * A pointer event on a canvas. It goes to the canvas the compositor hit and then up through its parents until a
- * handler calls `stop()`. `x` and `y` are in the coordinates of the canvas whose handler runs.
+ * The compositor sends this event to the canvas it hits, then to its parents until a handler calls `stop()`.
+ * Coordinates are relative to the canvas whose handler is running.
  */
 export class UiPointerEvent {
+    /** Compositor pointer event kind, such as `press` or `motion`. */
     readonly kind: string;
+    /** Horizontal position in the current handler's logical-pixel coordinates. */
     x: number;
+    /** Vertical position in the current handler's logical-pixel coordinates. */
     y: number;
+    /** Button number associated with the event. */
     readonly button: number;
+    /** Horizontal movement or scroll distance in logical pixels. */
     readonly dx: number;
+    /** Vertical movement or scroll distance in logical pixels. */
     readonly dy: number;
+    /** Canvas originally targeted by the compositor. */
     readonly target: Canvas;
+    /** Whether propagation to parent canvases has stopped. */
     stopped = false;
 
     constructor(raw: UiRawEvent, target: Canvas) {
@@ -34,16 +42,21 @@ export class UiPointerEvent {
 }
 
 /**
- * A key sent to the canvas that holds the keyboard focus (`Canvas.focus()`), and from it up through its parents until a
- * handler calls `stop()`. `key` is the xkbcommon name of the keysym (`Return`, `Escape`, `a`), `text` what the key
- * types (empty for a key that types nothing), and `pressed` is false for the release. A key typed into an entry can
- * be a passphrase: nothing here prints it.
+ * The compositor sends this event to the canvas with keyboard focus, then to its parents until a handler calls
+ * `stop()`.
+ * `key` is the xkbcommon keysym name; `text` is the typed text, or empty when the key types nothing. `pressed` is
+ * false on release. Typed text may include a passphrase and is not printed by the toolkit.
  */
 export class UiKeyEvent {
+    /** xkbcommon keysym name, such as `Return`, `Escape` or `a`. */
     readonly key: string;
+    /** Text produced by the key, or an empty string when it produces none. */
     readonly text: string;
+    /** True for a key press and false for its release. */
     readonly pressed: boolean;
+    /** Canvas that held keyboard focus when the event was created. */
     readonly target: Canvas;
+    /** Whether propagation to parent canvases has stopped. */
     stopped = false;
 
     constructor(raw: UiRawEvent, target: Canvas) {
@@ -59,7 +72,7 @@ export class UiKeyEvent {
     }
 }
 
-/** The handler a canvas may define for each pointer event kind the compositor sends. */
+/** Maps each compositor pointer event kind to the corresponding canvas handler name. */
 export const HANDLERS: Readonly<
     Record<string, "onPress" | "onRelease" | "onMotion" | "onScroll" | "onEnter" | "onLeave">
 > = {

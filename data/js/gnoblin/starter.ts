@@ -1,14 +1,7 @@
-// The stock default: what the shell runs when there is no init.ts. It is ordinary imperative code against the objects of
-// the specification, in the style of the owner's reference init.js, so a user can read it, copy it
-// (`gnoblinctl config init` writes the same statements as a file, data/js/starter/init.ts) or call it from their own file
-// to keep the stock workspaces and keys while adding their own:
-//
-//     import { installDefaults } from "gnoblin/starter";
-//     installDefaults(gnoblin);
-//
-// There is no merge: an init.ts that does not call this function has none of it.
-//
-// The statements of `installDefaults` and of data/js/starter/init.ts are one text. A test compares them, so edit both.
+// The stock shell setup used when no `init.ts` is present.
+// Call `installDefaults` from a custom `init.ts` to keep these defaults and add your own settings.
+// An `init.ts` that omits this call uses only the settings it declares.
+// `data/js/starter/init.ts` mirrors these statements; a test checks that they stay in sync.
 
 import type { Gnoblin } from "gnoblin/host/gnoblin";
 import { startDecorations, startNotRespondingAlert, startWindowMenu } from "gnoblin/host/services";
@@ -19,8 +12,13 @@ import { StripLayout } from "gnoblin/layouts/strip";
 import { openLauncher } from "gnoblin/launcher";
 
 /**
- * Declares the stock default on `gnoblin`: four floating workspaces, titlebars, the window menu, the not-responding
- * alert, workspace keys, strip focus keys, the three-finger workspace swipe, the launcher key and the media keys.
+ * Installs the stock workspaces, window decorations, input bindings and launcher on `gnoblin`.
+ *
+ * @example
+ * ```ts
+ * import { installDefaults } from "gnoblin/starter";
+ * installDefaults(gnoblin);
+ * ```
  */
 export function installDefaults(gnoblin: Gnoblin): void {
     // Four floating workspaces. The first is shown until a key shows another.

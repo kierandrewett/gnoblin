@@ -1,10 +1,7 @@
-// The stock titlebar: a `Box` row with a drag area that holds the title and the minimise, maximise and close buttons.
-// It is the easy path onto a window frame and is built from the same parts a script puts in any outlet: `TitleText`,
-// `WindowButton` and the drag behaviour of `DragArea`. `titlebarFill` puts one in the top outlet of a frame, which is
-// what `Decorations` does unless a script fills the frame itself. design/window-frame.md, decision 11.
-// Every look setting is a field of `TitlebarStyle`.
+// The stock titlebar, built from the same `Box`, `TitleText`, `WindowButton` and `DragArea` parts available to scripts.
+// `titlebarFill` adds it to a server frame's top outlet; `Decorations` uses it unless a script fills the frame itself.
 // The bar is a child of the window's node: above it when mounted alone, in the frame's `top` outlet otherwise.
-// docs/js-ui.md, "Titlebar", and docs/js-window-frame.md say why.
+// See docs/js-ui.md, "Titlebar", and docs/js-window-frame.md for usage.
 
 import { WindowActions } from "gnoblin/frame/actions";
 import type { FrameClient, FrameContext, FrameHooks } from "gnoblin/frame/client";
@@ -19,29 +16,37 @@ import { Box } from "gnoblin/ui/box";
 /** The three window buttons, which a style can order, leave out or give other icons. */
 export type TitlebarButton = WindowButtonName;
 
-/** The look of a titlebar. Lengths are pixels. */
+/** The titlebar's appearance and layout. Lengths are logical pixels. */
 export interface TitlebarStyle {
+    /** Bar height in logical pixels. */
     height: number;
     /** Space between the bar's edge and what it holds. */
     padding: number;
     /** Space between the drag area and the buttons, and between the buttons. */
     gap: number;
+    /** Corner radius in logical pixels. */
     radius: number;
     /** The fill while the window has the focus. */
     focusedFill: string;
+    /** Fill when the window is not focused. */
     unfocusedFill: string;
+    /** Title text size in logical pixels. */
     titleSize: number;
+    /** Title text colour. */
     titleColor: string;
+    /** Title font family. */
     titleFont: string;
     /** The buttons, left to right. */
     buttons: readonly TitlebarButton[];
+    /** Button icon size in logical pixels. */
     buttonSize: number;
+    /** Button icon colour. */
     buttonColor: string;
     /** The icon of each button, by name from the icon theme. */
     icons: Readonly<Record<TitlebarButton, string>>;
 }
 
-/** The look of the retired Lua shell's titlebar, with the window buttons beside the close button. */
+/** The default titlebar appearance and button order. */
 export const defaultTitlebarStyle: Readonly<TitlebarStyle> = {
     height: 28,
     padding: 6,
@@ -70,12 +75,17 @@ export const defaultTitlebarStyle: Readonly<TitlebarStyle> = {
  * outlet's room, and the frame's actions are its own (`actions`).
  */
 export class Titlebar extends DragArea {
+    /** Window whose title and state the bar displays. */
     readonly client: FrameClient;
+    /** Mutable appearance applied during `refresh()`. */
     style: TitlebarStyle;
+    /** Hooks used by the frame actions. */
     readonly hooks: FrameHooks;
     /** The part of the bar that holds the title: the bar's room that no button takes. */
     readonly dragArea: Box;
+    /** Title text shown by the bar. */
     readonly title: TitleText;
+    /** Buttons currently present in the bar, keyed by action name. */
     readonly buttons = new Map<TitlebarButton, WindowButton>();
     /** Whether the bar runs the close fade itself: it does unless it was given a frame's shared actions. */
     readonly #ownsActions: boolean;
@@ -117,15 +127,17 @@ export class Titlebar extends DragArea {
         }
     }
 
-    /** The clock the double click and the fade are timed by, in milliseconds. */
+    /** Clock used to time double clicks and close fades, in milliseconds. */
     get now(): () => number {
         return this.context.actions.now;
     }
 
+    /** Sets the clock used to time double clicks and close fades. */
     set now(clock: () => number) {
         this.context.actions.now = clock;
     }
 
+    /** Updates the bar's size, style, title, focus fill and visibility from its window. */
     override refresh(): void {
         const { client, style } = this;
         this.height = style.height;
@@ -157,9 +169,8 @@ export class Titlebar extends DragArea {
 }
 
 /**
- * The frame callback of the stock decoration: a `Titlebar` in the top outlet of a server frame, and nothing for a window
- * that draws its own frame (it returns `false`, so that window has no frame at all). The edge is as thick as the style's
- * `height` is, now.
+ * Adds a `Titlebar` to the top outlet of a server frame. Returns `false` for client-drawn frames, which have no server
+ * frame. The outlet height follows the style.
  */
 export function titlebarFill(style: TitlebarStyle): FrameFill {
     return (_client: FrameClient, frame: WindowFrame): false | void => {
