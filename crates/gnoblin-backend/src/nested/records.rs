@@ -110,14 +110,28 @@ struct Record {
     applied: Option<(Size, Scale)>,
     /// The size of the latest configure the backend has not been told about yet.
     size: Option<Size>,
-    /// The scale the parent last preferred, from `wp_fractional_scale_v1`.
-    scale: Scale,
+    /// The scale the parent last preferred, from `wp_fractional_scale_v1`, when the parent offers the protocol.
+    fractional: Option<Scale>,
+    /// The integer scale of the parent outputs the surface is on, or zero until the parent says which they are.
+    integer: u32,
     /// Where the parent's request to close the output has got to.
     state: OutputState,
     /// Whether the parent has finished a frame for this output that has not been reported yet.
     frame_done: bool,
     /// Buffers the parent released that have not been reported yet, as generation and slot.
     released: Vec<(u32, u8)>,
+}
+
+impl Record {
+    /// The scale the output composes at: the parent's exact fractional scale when it states one, otherwise the integer
+    /// scale of the outputs the surface is on, otherwise one.
+    fn scale(&self) -> Scale {
+        self.fractional.unwrap_or(if self.integer > 0 {
+            Scale::integral(self.integer)
+        } else {
+            Scale::IDENTITY
+        })
+    }
 }
 
 /// The parent-facing state of every nested output, plus the seat.
@@ -148,7 +162,8 @@ impl Table {
             connector: connector.into(),
             applied: None,
             size: None,
-            scale: Scale::IDENTITY,
+            fractional: None,
+            integer: 0,
             state: OutputState::Open,
             frame_done: false,
             released: Vec::new(),
@@ -181,12 +196,22 @@ impl Table {
     }
 
     /// The parent preferred `scale`, which `wp_fractional_scale_v1` states before
-    /// the configure it belongs to.
+    /// the configure it belongs to. It wins over the integer scale of the output the surface is on.
     pub fn prefer_scale(&mut self, index: usize, scale: Scale) {
         if let Some(record) = self.records.get_mut(index)
             && record.state == OutputState::Open
         {
-            record.scale = scale;
+            record.fractional = Some(scale);
+        }
+    }
+
+    /// The parent outputs the surface is on have the integer scale `factor`: the scale a surface composes at when the
+    /// parent states no fractional one. A factor of zero is no information.
+    pub fn prefer_integer_scale(&mut self, index: usize, factor: u32) {
+        if let Some(record) = self.records.get_mut(index)
+            && record.state == OutputState::Open
+        {
+            record.integer = factor;
         }
     }
 
@@ -249,10 +274,11 @@ impl Table {
         for (index, record) in self.records.iter_mut().enumerate() {
             let size = record.size.or_else(|| record.applied.map(|(size, _)| size));
             if let Some(size) = size {
-                let wanted = (size, record.scale);
+                let scale = record.scale();
+                let wanted = (size, scale);
                 if record.applied != Some(wanted) {
                     record.applied = Some(wanted);
-                    changes.configured.push((index, size, record.scale));
+                    changes.configured.push((index, size, scale));
                 }
             }
             if record.state == OutputState::Closing {
@@ -327,6 +353,53 @@ mod tests {
             table.take_changes().configured,
             vec![(index, Size::new(800, 600), Scale::new(3, 2))],
             "a preferred scale with no new size still changes what the output composes at"
+        );
+    }
+
+    #[test]
+    fn a_parent_with_no_fractional_scale_gets_the_integer_scale_of_its_output() {
+        let (mut table, index) = table();
+        table.configure(index, Size::new(800, 600));
+        let _ = table.take_changes();
+        table.prefer_integer_scale(index, 2);
+        assert_eq!(
+            table.take_changes().configured,
+            vec![(index, Size::new(800, 600), Scale::integral(2))],
+            "a surface on a scale-2 output composes at 2 when the parent states no fractional scale"
+        );
+        table.prefer_integer_scale(index, 1);
+        assert_eq!(
+            table.take_changes().configured,
+            vec![(index, Size::new(800, 600), Scale::IDENTITY)],
+            "the scale follows the surface to another output"
+        );
+    }
+
+    #[test]
+    fn a_fractional_scale_wins_over_the_integer_scale_of_the_output() {
+        let (mut table, index) = table();
+        table.configure(index, Size::new(800, 600));
+        table.prefer_integer_scale(index, 2);
+        table.prefer_scale(index, Scale::new(3, 2));
+        assert_eq!(
+            table.take_changes().configured,
+            vec![(index, Size::new(800, 600), Scale::new(3, 2))]
+        );
+        table.prefer_integer_scale(index, 3);
+        assert!(
+            table.take_changes().configured.is_empty(),
+            "the parent's exact scale is not replaced by the rounded one"
+        );
+    }
+
+    #[test]
+    fn no_information_about_the_output_is_the_identity_scale() {
+        let (mut table, index) = table();
+        table.configure(index, Size::new(800, 600));
+        table.prefer_integer_scale(index, 0);
+        assert_eq!(
+            table.take_changes().configured,
+            vec![(index, Size::new(800, 600), Scale::IDENTITY)]
         );
     }
 

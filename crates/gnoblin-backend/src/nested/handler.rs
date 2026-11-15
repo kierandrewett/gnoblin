@@ -25,15 +25,26 @@
 //!   for the caller: the backend's [`InputEvent`](crate::InputEvent) states scan
 //!   codes, so the layout has to be applied by whoever owns the keymap.
 //!
-//! # What is not here
+//! # What is bridged and what is not
 //!
-//! `zwp_relative_pointer_v1`, pointer constraints, tablets and text input are the
-//! input slice's, not this one's: each needs an [`InputEvent`](crate::InputEvent)
-//! variant this backend cannot honestly produce before the seat can act on it. A
-//! parent that offers them simply sees them unbound.
+//! - **The cursor.** The session draws its own cursor into the frame, so the parent's pointer is told to show none
+//!   over the session's surfaces ([`wl_pointer::WlPointer::set_cursor`] with no surface). One cursor is visible, the
+//!   same one a capture shows, instead of the parent's drawn over it.
+//! - **Compositor shortcuts.** Each output asks the parent to inhibit its own shortcuts while the window has the
+//!   keyboard (`zwp_keyboard_shortcuts_inhibit_v1`), so the session's `Super` bindings reach the session. Whether the
+//!   parent granted it is [`Handler::shortcuts_inhibited`].
+//! - **Gestures.** A parent that offers `zwp_pointer_gestures_v1` has its swipe and pinch gestures delivered as the
+//!   same raw touchpad samples a libinput backend produces.
+//! - **Scale.** The parent's fractional scale is followed per surface; without it, the integer scale of the parent
+//!   outputs a surface is on (`wl_surface.enter`) is, updated when the surface moves or an output's scale changes.
+//!
+//! Relative pointer motion and pointer constraints, tablets, text input and the clipboard are not bridged: each needs
+//! a hook in the [`Backend`](crate::Backend) contract the session's own protocols can call, and `design/backend-parity.md`
+//! lists them as missing on this backend. A parent that offers them sees them unbound.
 
 use std::io::Read;
 
+use wayland_client::backend::ObjectId;
 use wayland_client::globals::GlobalListContents;
 use wayland_client::protocol::{
     wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm,
@@ -41,10 +52,18 @@ use wayland_client::protocol::{
 };
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle, WEnum};
 use wayland_protocols::wp::fractional_scale::v1::client::{wp_fractional_scale_manager_v1, wp_fractional_scale_v1};
+use wayland_protocols::wp::keyboard_shortcuts_inhibit::zv1::client::{
+    zwp_keyboard_shortcuts_inhibit_manager_v1, zwp_keyboard_shortcuts_inhibitor_v1,
+};
+use wayland_protocols::wp::pointer_gestures::zv1::client::{
+    zwp_pointer_gesture_pinch_v1, zwp_pointer_gesture_swipe_v1, zwp_pointer_gestures_v1,
+};
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
 use gnoblin_types::{OutputId, Size};
+
+use crate::RawTouchpadKind;
 
 use super::UNCONSTRAINED_SIZE;
 use super::input::position;
@@ -85,6 +104,63 @@ pub(crate) struct Objects {
     toplevel: xdg_toplevel::XdgToplevel,
     /// The fractional scale object, present only when the parent offers the protocol.
     fractional: Option<wp_fractional_scale_v1::WpFractionalScaleV1>,
+    /// The parent outputs the surface is on, by their object ids, from `wl_surface.enter` and `leave`.
+    entered: Vec<ObjectId>,
+    /// The request to keep the parent's shortcuts from this surface, when the parent offers the protocol.
+    inhibitor: Option<Inhibitor>,
+}
+
+/// One output's shortcut inhibitor and whether the parent granted it.
+struct Inhibitor {
+    proxy: zwp_keyboard_shortcuts_inhibitor_v1::ZwpKeyboardShortcutsInhibitorV1,
+    /// Whether the parent last said `active`, which it does while the window holds the keyboard.
+    active: bool,
+}
+
+/// One output of the parent, as far as the session follows it: its integer scale and its refresh rate.
+pub(crate) struct HostOutput {
+    /// The registry name, so a removal names the output it removes.
+    pub name: u32,
+    /// The bound proxy, whose id a surface's `enter` names.
+    pub proxy: wl_output::WlOutput,
+    /// The output's integer scale; one until it says otherwise.
+    scale: i32,
+    /// The current mode's refresh rate in millihertz, or zero when the output has not said.
+    refresh_mhz: u32,
+}
+
+impl HostOutput {
+    /// An output just bound.
+    pub fn new(name: u32, proxy: wl_output::WlOutput) -> Self {
+        Self {
+            name,
+            proxy,
+            scale: 1,
+            refresh_mhz: 0,
+        }
+    }
+}
+
+/// What the connection bound before the first output exists.
+pub(crate) struct Bound {
+    /// The parent's compositor global.
+    pub compositor: wl_compositor::WlCompositor,
+    /// The parent's shared-memory global.
+    pub shm: wl_shm::WlShm,
+    /// The parent's window manager base.
+    pub wm_base: xdg_wm_base::XdgWmBase,
+    /// The parent's seat.
+    pub seat: wl_seat::WlSeat,
+    /// The parent's fractional scale manager, if it offers one.
+    pub fractional_manager: Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
+    /// The parent's viewporter, if it offers one.
+    pub viewporter: Option<wp_viewporter::WpViewporter>,
+    /// The parent's shortcut inhibit manager, if it offers one.
+    pub shortcuts_manager: Option<zwp_keyboard_shortcuts_inhibit_manager_v1::ZwpKeyboardShortcutsInhibitManagerV1>,
+    /// The parent's pointer gestures global, if it offers one.
+    pub gestures_manager: Option<zwp_pointer_gestures_v1::ZwpPointerGesturesV1>,
+    /// Every output the parent has.
+    pub outputs: Vec<HostOutput>,
 }
 
 /// The state every event on the parent connection is dispatched into.
@@ -115,43 +191,42 @@ pub(crate) struct Handler {
     keymap: Option<String>,
     /// The shared-memory pixel format, chosen from the parent's formats with ARGB preferred.
     format: Option<wl_shm::Format>,
-    /// The integer scale of the parent's output, the fallback for a parent that has
-    /// no fractional-scale protocol.
-    integer_scale: i32,
-    /// The parent output's refresh rate in millihertz, or zero when the parent has not said.
-    refresh_mhz: u32,
+    /// Every output of the parent, for the scale and the refresh rate a surface on it has.
+    host_outputs: Vec<HostOutput>,
+    /// The parent's shortcut inhibit manager, if it offers one.
+    shortcuts_manager: Option<zwp_keyboard_shortcuts_inhibit_manager_v1::ZwpKeyboardShortcutsInhibitManagerV1>,
+    /// The parent's pointer gestures global, if it offers one.
+    gestures_manager: Option<zwp_pointer_gestures_v1::ZwpPointerGesturesV1>,
+    /// The swipe gesture object of the seat's pointer.
+    swipe: Option<zwp_pointer_gesture_swipe_v1::ZwpPointerGestureSwipeV1>,
+    /// The pinch gesture object of the seat's pointer.
+    pinch: Option<zwp_pointer_gesture_pinch_v1::ZwpPointerGesturePinchV1>,
     /// The app id set on every toplevel.
     app_id: String,
 }
 
 impl Handler {
     /// A handler for a connection whose globals have been bound.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        compositor: wl_compositor::WlCompositor,
-        shm: wl_shm::WlShm,
-        wm_base: xdg_wm_base::XdgWmBase,
-        seat_global: wl_seat::WlSeat,
-        fractional_manager: Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
-        viewporter: Option<wp_viewporter::WpViewporter>,
-        app_id: String,
-    ) -> Self {
+    pub fn new(bound: Bound, app_id: String) -> Self {
         Self {
             table: Table::new(),
             objects: Vec::new(),
-            compositor,
-            shm,
-            wm_base,
-            seat_global,
-            fractional_manager,
-            viewporter,
+            compositor: bound.compositor,
+            shm: bound.shm,
+            wm_base: bound.wm_base,
+            seat_global: bound.seat,
+            fractional_manager: bound.fractional_manager,
+            viewporter: bound.viewporter,
             pointer: None,
             keyboard: None,
             touch: None,
             keymap: None,
             format: None,
-            integer_scale: 0,
-            refresh_mhz: 0,
+            host_outputs: bound.outputs,
+            shortcuts_manager: bound.shortcuts_manager,
+            gestures_manager: bound.gestures_manager,
+            swipe: None,
+            pinch: None,
             app_id,
         }
     }
@@ -188,12 +263,18 @@ impl Handler {
         // The commit with no buffer is the one that asks for the first configure:
         // xdg-shell states that a surface with no buffer and no configure gets one.
         surface.commit();
+        let inhibitor = self.shortcuts_manager.as_ref().map(|manager| Inhibitor {
+            proxy: manager.inhibit_shortcuts(&surface, &self.seat_global, qh, OutputKey(index)),
+            active: false,
+        });
         self.objects.push(Some(Objects {
             surface,
             viewport,
             xdg_surface,
             toplevel,
             fractional,
+            entered: Vec::new(),
+            inhibitor,
         }));
         self.table.add(output, connector)
     }
@@ -201,6 +282,9 @@ impl Handler {
     /// Destroys one output's objects, after the parent asked for it to close.
     pub fn destroy_output(&mut self, index: usize) {
         if let Some(objects) = self.objects.get_mut(index).and_then(Option::take) {
+            if let Some(inhibitor) = objects.inhibitor {
+                inhibitor.proxy.destroy();
+            }
             if let Some(fractional) = objects.fractional {
                 fractional.destroy();
             }
@@ -233,10 +317,64 @@ impl Handler {
         self.format
     }
 
-    /// The refresh rate the parent's output reports, in millihertz, if it reported
-    /// one.
-    pub fn refresh_mhz(&self) -> u32 {
-        self.refresh_mhz
+    /// The refresh rate of the parent output a surface is on, in millihertz, or of the first output that reports one
+    /// when it is on none yet. Zero when the parent has not said.
+    pub fn refresh_mhz(&self, index: usize) -> u32 {
+        let entered = self
+            .objects
+            .get(index)
+            .and_then(Option::as_ref)
+            .map(|objects| &objects.entered);
+        entered
+            .into_iter()
+            .flatten()
+            .filter_map(|id| self.host_outputs.iter().find(|output| output.proxy.id() == *id))
+            .chain(self.host_outputs.iter())
+            .map(|output| output.refresh_mhz)
+            .find(|refresh| *refresh > 0)
+            .unwrap_or(0)
+    }
+
+    /// Whether the parent granted the shortcut inhibitor of one output: [`None`] when the parent does not offer the
+    /// protocol, so the session's shortcuts are the parent's whenever the parent wants them.
+    pub fn shortcuts_inhibited(&self, index: usize) -> Option<bool> {
+        self.objects
+            .get(index)
+            .and_then(Option::as_ref)
+            .and_then(|objects| objects.inhibitor.as_ref())
+            .map(|inhibitor| inhibitor.active)
+    }
+
+    /// Recomputes the integer scale of one surface from the outputs it is on, and tells the table. A surface that
+    /// is on no output yet keeps the scale it has.
+    fn rescale(&mut self, index: usize) {
+        let Some(objects) = self.objects.get(index).and_then(Option::as_ref) else {
+            return;
+        };
+        let scale = objects
+            .entered
+            .iter()
+            .filter_map(|id| self.host_outputs.iter().find(|output| output.proxy.id() == *id))
+            .map(|output| output.scale.max(1))
+            .max();
+        if let Some(scale) = scale {
+            self.table
+                .prefer_integer_scale(index, u32::try_from(scale).unwrap_or(1));
+        }
+    }
+
+    /// Recomputes the scale of every surface that is on the output `id`.
+    fn rescale_on(&mut self, id: &ObjectId) {
+        let indices: Vec<usize> = self
+            .objects
+            .iter()
+            .enumerate()
+            .filter(|(_, objects)| objects.as_ref().is_some_and(|objects| objects.entered.contains(id)))
+            .map(|(index, _)| index)
+            .collect();
+        for index in indices {
+            self.rescale(index);
+        }
     }
 
     /// The parent's keymap, as the `xkb_v1` text it sent.
@@ -297,7 +435,10 @@ impl Handler {
 
     /// Creates the seat objects the parent says it has.
     fn note_capabilities(&mut self, qh: &QueueHandle<Self>, capabilities: wl_seat::Capability) {
-        if capabilities.contains(wl_seat::Capability::Keyboard) {
+        let keyboard = capabilities.contains(wl_seat::Capability::Keyboard);
+        let pointer = capabilities.contains(wl_seat::Capability::Pointer);
+        let touch = capabilities.contains(wl_seat::Capability::Touch);
+        if keyboard {
             if self.keyboard.is_none() {
                 self.keyboard = Some(self.seat_global.get_keyboard(qh, ()));
             }
@@ -305,20 +446,36 @@ impl Handler {
             keyboard.release();
             self.keymap = None;
         }
-        if capabilities.contains(wl_seat::Capability::Pointer) {
+        if pointer {
             if self.pointer.is_none() {
-                self.pointer = Some(self.seat_global.get_pointer(qh, ()));
+                let proxy = self.seat_global.get_pointer(qh, ());
+                if let Some(manager) = &self.gestures_manager {
+                    self.swipe = Some(manager.get_swipe_gesture(&proxy, qh, ()));
+                    self.pinch = Some(manager.get_pinch_gesture(&proxy, qh, ()));
+                }
+                self.pointer = Some(proxy);
             }
         } else if let Some(pointer) = self.pointer.take() {
+            if let Some(swipe) = self.swipe.take() {
+                swipe.destroy();
+            }
+            if let Some(pinch) = self.pinch.take() {
+                pinch.destroy();
+            }
             pointer.release();
         }
-        if capabilities.contains(wl_seat::Capability::Touch) {
+        if touch {
             if self.touch.is_none() {
                 self.touch = Some(self.seat_global.get_touch(qh, ()));
             }
         } else if let Some(touch) = self.touch.take() {
             touch.release();
         }
+        // The devices the session's seat lists are the ones the parent's seat has: a keyboard, a pointer that does
+        // gestures when the parent offers them, and touch.
+        self.table
+            .seat()
+            .set_capabilities(keyboard, pointer, touch, self.gestures_manager.is_some());
     }
 }
 
@@ -337,7 +494,8 @@ fn is_horizontal(axis: &WEnum<wl_pointer::Axis>) -> bool {
 // The interfaces this backend binds and only ever listens to, or binds and never
 // hears anything from.
 wayland_client::delegate_noop!(Handler: ignore wl_compositor::WlCompositor);
-wayland_client::delegate_noop!(Handler: ignore wl_surface::WlSurface);
+wayland_client::delegate_noop!(Handler: ignore zwp_keyboard_shortcuts_inhibit_manager_v1::ZwpKeyboardShortcutsInhibitManagerV1);
+wayland_client::delegate_noop!(Handler: ignore zwp_pointer_gestures_v1::ZwpPointerGesturesV1);
 wayland_client::delegate_noop!(Handler: ignore wl_shm_pool::WlShmPool);
 wayland_client::delegate_noop!(Handler: ignore wp_viewporter::WpViewporter);
 wayland_client::delegate_noop!(Handler: ignore wp_viewport::WpViewport);
@@ -345,14 +503,150 @@ wayland_client::delegate_noop!(Handler: ignore wp_fractional_scale_manager_v1::W
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for Handler {
     fn event(
-        _: &mut Self,
-        _: &wl_registry::WlRegistry,
-        _: <wl_registry::WlRegistry as Proxy>::Event,
+        state: &mut Self,
+        registry: &wl_registry::WlRegistry,
+        event: <wl_registry::WlRegistry as Proxy>::Event,
         _: &GlobalListContents,
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
+        // `registry_queue_init` keeps the global list in the object's data and consumes the globals that were there
+        // at the start. What reaches here is an output the parent plugged in or removed since.
+        match event {
+            wl_registry::Event::Global {
+                name,
+                interface,
+                version,
+            } if interface == wl_output::WlOutput::interface().name => {
+                let proxy = registry.bind::<wl_output::WlOutput, _, _>(name, version.min(4), qh, ());
+                state.host_outputs.push(HostOutput::new(name, proxy));
+            }
+            wl_registry::Event::GlobalRemove { name } => {
+                let Some(position) = state.host_outputs.iter().position(|output| output.name == name) else {
+                    return;
+                };
+                let gone = state.host_outputs.remove(position);
+                let id = gone.proxy.id();
+                for objects in state.objects.iter_mut().flatten() {
+                    objects.entered.retain(|entered| *entered != id);
+                }
+                if gone.proxy.version() >= 3 {
+                    gone.proxy.release();
+                }
+                for index in 0..state.objects.len() {
+                    state.rescale(index);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<wl_surface::WlSurface, ()> for Handler {
+    fn event(
+        state: &mut Self,
+        surface: &wl_surface::WlSurface,
+        event: <wl_surface::WlSurface as Proxy>::Event,
+        _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        // `registry_queue_init` keeps the global list in the object's data.
+        let id = surface.id();
+        let Some(index) = state
+            .objects
+            .iter()
+            .position(|objects| objects.as_ref().is_some_and(|objects| objects.surface.id() == id))
+        else {
+            return;
+        };
+        match event {
+            wl_surface::Event::Enter { output } => {
+                if let Some(Some(objects)) = state.objects.get_mut(index)
+                    && !objects.entered.contains(&output.id())
+                {
+                    objects.entered.push(output.id());
+                }
+                state.rescale(index);
+            }
+            wl_surface::Event::Leave { output } => {
+                if let Some(Some(objects)) = state.objects.get_mut(index) {
+                    objects.entered.retain(|entered| *entered != output.id());
+                }
+                state.rescale(index);
+            }
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<zwp_keyboard_shortcuts_inhibitor_v1::ZwpKeyboardShortcutsInhibitorV1, OutputKey> for Handler {
+    fn event(
+        state: &mut Self,
+        _: &zwp_keyboard_shortcuts_inhibitor_v1::ZwpKeyboardShortcutsInhibitorV1,
+        event: <zwp_keyboard_shortcuts_inhibitor_v1::ZwpKeyboardShortcutsInhibitorV1 as Proxy>::Event,
+        key: &OutputKey,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let active = match event {
+            zwp_keyboard_shortcuts_inhibitor_v1::Event::Active => true,
+            zwp_keyboard_shortcuts_inhibitor_v1::Event::Inactive => false,
+            _ => return,
+        };
+        if let Some(inhibitor) = state
+            .objects
+            .get_mut(key.0)
+            .and_then(Option::as_mut)
+            .and_then(|objects| objects.inhibitor.as_mut())
+        {
+            inhibitor.active = active;
+        }
+    }
+}
+
+impl Dispatch<zwp_pointer_gesture_swipe_v1::ZwpPointerGestureSwipeV1, ()> for Handler {
+    fn event(
+        state: &mut Self,
+        _: &zwp_pointer_gesture_swipe_v1::ZwpPointerGestureSwipeV1,
+        event: <zwp_pointer_gesture_swipe_v1::ZwpPointerGestureSwipeV1 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use zwp_pointer_gesture_swipe_v1::Event;
+        let seat = state.table.seat();
+        match event {
+            Event::Begin { fingers, .. } => seat.gesture_begin(RawTouchpadKind::Swipe, fingers),
+            Event::Update { dx, dy, .. } => seat.gesture_update(RawTouchpadKind::Swipe, dx, dy, 1.0, 0.0),
+            Event::End { cancelled, .. } => seat.gesture_end(RawTouchpadKind::Swipe, cancelled != 0),
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<zwp_pointer_gesture_pinch_v1::ZwpPointerGesturePinchV1, ()> for Handler {
+    fn event(
+        state: &mut Self,
+        _: &zwp_pointer_gesture_pinch_v1::ZwpPointerGesturePinchV1,
+        event: <zwp_pointer_gesture_pinch_v1::ZwpPointerGesturePinchV1 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use zwp_pointer_gesture_pinch_v1::Event;
+        let seat = state.table.seat();
+        match event {
+            Event::Begin { fingers, .. } => seat.gesture_begin(RawTouchpadKind::Pinch, fingers),
+            Event::Update {
+                dx,
+                dy,
+                scale,
+                rotation,
+                ..
+            } => seat.gesture_update(RawTouchpadKind::Pinch, dx, dy, scale, rotation),
+            Event::End { cancelled, .. } => seat.gesture_end(RawTouchpadKind::Pinch, cancelled != 0),
+            _ => {}
+        }
     }
 }
 
@@ -377,25 +671,29 @@ impl Dispatch<wl_shm::WlShm, ()> for Handler {
 impl Dispatch<wl_output::WlOutput, ()> for Handler {
     fn event(
         state: &mut Self,
-        _: &wl_output::WlOutput,
+        output: &wl_output::WlOutput,
         event: <wl_output::WlOutput as Proxy>::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+        let id = output.id();
         match event {
             wl_output::Event::Scale { factor } => {
-                // The parent's integer scale is the fallback for a surface it has
-                // no fractional scale for. The largest one it reports is the one a
-                // session on that output would compose at.
-                state.integer_scale = state.integer_scale.max(factor.max(1));
+                // A surface on this output composes at its scale, so every surface that is on it is told.
+                if let Some(known) = state.host_outputs.iter_mut().find(|known| known.proxy.id() == id) {
+                    known.scale = factor.max(1);
+                }
+                state.rescale_on(&id);
             }
             wl_output::Event::Mode {
                 flags: WEnum::Value(flags),
                 refresh,
                 ..
             } if flags.contains(wl_output::Mode::Current) => {
-                state.refresh_mhz = u32::try_from(refresh).unwrap_or(0);
+                if let Some(known) = state.host_outputs.iter_mut().find(|known| known.proxy.id() == id) {
+                    known.refresh_mhz = u32::try_from(refresh).unwrap_or(0);
+                }
             }
             _ => {}
         }
@@ -438,8 +736,11 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for Handler {
                 WEnum::Value(wl_keyboard::KeyState::Released) => state.table.seat().key(key, false),
                 _ => {}
             },
-            // Focus is the session's own: the parent says which of *its* surfaces
-            // holds its keyboard focus, which is this session as a whole.
+            // The parent took the keyboard away from the session's window: every key the session saw pressed is
+            // released, or a modifier held while switching windows would stay held in the session for good.
+            wl_keyboard::Event::Leave { .. } => state.table.seat().release_keys(),
+            // Which of the parent's surfaces holds the focus is the parent's own business, and the keys held when
+            // focus arrives belong to the person, not to a press the session saw.
             _ => {}
         }
     }
@@ -448,7 +749,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for Handler {
 impl Dispatch<wl_pointer::WlPointer, ()> for Handler {
     fn event(
         state: &mut Self,
-        _: &wl_pointer::WlPointer,
+        pointer: &wl_pointer::WlPointer,
         event: <wl_pointer::WlPointer as Proxy>::Event,
         _: &(),
         _: &Connection,
@@ -456,11 +757,13 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Handler {
     ) {
         match event {
             wl_pointer::Event::Enter {
+                serial,
                 surface,
                 surface_x,
                 surface_y,
-                ..
             } => {
+                // The session draws its own cursor into the frame, so the parent shows none over it.
+                pointer.set_cursor(serial, None, 0, 0);
                 if let Some(output) = state.output_of(&surface) {
                     state.table.seat().enter(output, position(surface_x, surface_y));
                 }

@@ -87,16 +87,18 @@ mod surface;
 
 use std::io;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{Interest, LoopHandle, Mode, PostAction};
 use wayland_client::backend::WaylandError;
 use wayland_client::globals::registry_queue_init;
 use wayland_client::protocol::{wl_compositor, wl_output, wl_seat, wl_shm};
-use wayland_client::{Connection, EventQueue};
+use wayland_client::{Connection, EventQueue, Proxy};
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_manager_v1;
+use wayland_protocols::wp::keyboard_shortcuts_inhibit::zv1::client::zwp_keyboard_shortcuts_inhibit_manager_v1;
+use wayland_protocols::wp::pointer_gestures::zv1::client::zwp_pointer_gestures_v1;
 use wayland_protocols::wp::viewporter::client::wp_viewporter;
 use wayland_protocols::xdg::shell::client::xdg_wm_base;
 
@@ -113,7 +115,7 @@ use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::{OutputFrame, SecureTreatment};
 use gnoblin_render_frame::image::Image;
 
-use handler::Handler;
+use handler::{Bound, Handler, HostOutput};
 use surface::physical_extent;
 
 use crate::log;
@@ -305,6 +307,12 @@ pub struct Nested {
     /// Why the renderer could not be created for an output, until [`Nested::connect`] reports it: a session whose
     /// renderer is refused waits for no configure that will ever succeed.
     render_refused: Option<RenderError>,
+    /// What a [`NestedHandle`] queued, applied by the next dispatch.
+    requests: Arc<Mutex<HandleRequests>>,
+    /// The identity the next output a handle connects gets. A counter, so an output that was closed is never named again.
+    next_output: u64,
+    /// The title every toplevel's connector is appended to.
+    title: String,
 }
 
 impl std::fmt::Debug for Nested {
@@ -354,7 +362,7 @@ impl Nested {
         let seat_global: wl_seat::WlSeat = globals
             .bind(&qh, 1..=8, ())
             .map_err(|_| NestedError::MissingGlobal("wl_seat"))?;
-        // The scale protocols are optional: without them the parent's integer scale is
+        // The scale protocols are optional: without them the integer scale of the parent outputs a surface is on is
         // the scale the session composes at.
         let fractional_manager = globals
             .bind::<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1, Handler, ()>(&qh, 1..=1, ())
@@ -362,16 +370,46 @@ impl Nested {
         let viewporter = globals
             .bind::<wp_viewporter::WpViewporter, Handler, ()>(&qh, 1..=1, ())
             .ok();
-        // Bound for its scale and its refresh rate, which are the session output's
-        // fallbacks.
-        let _parent_output = globals.bind::<wl_output::WlOutput, Handler, ()>(&qh, 1..=4, ()).ok();
+        // The shortcut inhibitor and the gestures are optional too: a parent without them keeps its shortcuts, and
+        // delivers no swipe or pinch.
+        let shortcuts_manager = globals
+            .bind::<zwp_keyboard_shortcuts_inhibit_manager_v1::ZwpKeyboardShortcutsInhibitManagerV1, Handler, ()>(
+                &qh,
+                1..=1,
+                (),
+            )
+            .ok();
+        let gestures_manager = globals
+            .bind::<zwp_pointer_gestures_v1::ZwpPointerGesturesV1, Handler, ()>(&qh, 1..=1, ())
+            .ok();
+        // Every output of the parent is bound, for the scale and the refresh rate of the one a surface is on.
+        let parent_outputs: Vec<(u32, u32)> = globals.contents().with_list(|list| {
+            list.iter()
+                .filter(|global| global.interface == wl_output::WlOutput::interface().name)
+                .map(|global| (global.name, global.version))
+                .collect()
+        });
+        let outputs = parent_outputs
+            .into_iter()
+            .map(|(name, version)| {
+                let proxy = globals
+                    .registry()
+                    .bind::<wl_output::WlOutput, _, _>(name, version.min(4), &qh, ());
+                HostOutput::new(name, proxy)
+            })
+            .collect();
         let mut handler = Handler::new(
-            compositor,
-            shm,
-            wm_base,
-            seat_global,
-            fractional_manager,
-            viewporter,
+            Bound {
+                compositor,
+                shm,
+                wm_base,
+                seat: seat_global,
+                fractional_manager,
+                viewporter,
+                shortcuts_manager,
+                gestures_manager,
+                outputs,
+            },
             config.app_id.clone(),
         );
         let count = config.outputs.len().max(1);
@@ -402,10 +440,21 @@ impl Nested {
             renderer: config.renderer,
             dmabuf: DmabufHub::default(),
             render_refused: None,
+            requests: Arc::new(Mutex::new(HandleRequests::default())),
+            next_output: count as u64,
+            title: config.title.clone(),
         };
         backend.await_first_configures()?;
         log::info!(area = "nested", socket = %config.socket.display(), outputs = backend.outputs.len(), "connected to the parent");
         Ok(backend)
+    }
+
+    /// A handle that can open and close output windows after a session has taken this backend.
+    #[must_use]
+    pub fn handle(&self) -> NestedHandle {
+        NestedHandle {
+            requests: Arc::clone(&self.requests),
+        }
     }
 
     /// The parent's keymap, as the `xkb_v1` text it sent.
@@ -422,6 +471,16 @@ impl Nested {
     #[must_use]
     pub fn dropped_input(&self) -> u64 {
         self.handler.table().dropped()
+    }
+
+    /// Whether the parent granted the request to keep its own shortcuts from `output`'s window, which it does while
+    /// the window holds the keyboard: the session's `Super` bindings then reach the session. [`None`] when the parent
+    /// does not offer the protocol, or does not know the output, and the parent's shortcuts then win whenever it
+    /// wants them.
+    #[must_use]
+    pub fn shortcuts_inhibited(&self, output: OutputId) -> Option<bool> {
+        let index = self.index(output)?;
+        self.handler.shortcuts_inhibited(index)
     }
 
     /// Waits for the parent to answer everything this session has sent.
@@ -544,8 +603,13 @@ impl Nested {
                 target.release(generation, slot);
             }
         }
+        let mut closed = false;
         for index in changes.closed {
-            self.close_output(index);
+            closed |= self.close_output(index);
+        }
+        // The person closing the last window ends the session; a handle's disconnect and a dead connection do not.
+        if closed && !changes.disconnected && !self.has_window() {
+            self.pending.push(BackendEvent::SessionEnded);
         }
         if changes.disconnected {
             self.report_disconnect();
@@ -559,7 +623,7 @@ impl Nested {
             return;
         };
         let connector = self.handler.table().connector(index).unwrap_or_default().to_owned();
-        let refresh = match self.handler.refresh_mhz() {
+        let refresh = match self.handler.refresh_mhz(index) {
             0 => DEFAULT_REFRESH_MHZ,
             refresh => refresh,
         };
@@ -648,17 +712,50 @@ impl Nested {
         });
     }
 
-    /// Stops driving an output the parent closed.
-    fn close_output(&mut self, index: usize) {
+    /// Stops driving an output, whether the parent closed it or a handle disconnected it. Whether a live output was
+    /// dropped.
+    fn close_output(&mut self, index: usize) -> bool {
         let Some(id) = self.handler.table().output(index) else {
-            return;
+            return false;
         };
         self.handler.destroy_output(index);
         if let Some(slot) = self.targets.get_mut(index)
             && slot.take().is_some()
         {
             self.pending.push(BackendEvent::OutputDisconnected(id));
+            return true;
         }
+        false
+    }
+
+    /// Whether any output still has a window on the parent, configured or waiting for its first configure.
+    fn has_window(&self) -> bool {
+        (0..self.targets.len()).any(|index| self.handler.objects(index).is_some())
+    }
+
+    /// Applies what a [`NestedHandle`] queued: windows to close and windows to open. A window that opens is an output
+    /// once the parent has configured it, as the first ones are.
+    fn apply_requests(&mut self) {
+        let requests = std::mem::take(&mut *self.requests.lock().unwrap_or_else(PoisonError::into_inner));
+        if !self.handler.table().is_connected() {
+            return;
+        }
+        for output in requests.disconnect {
+            // Closing an output twice, or one that is gone, names nothing and reports nothing.
+            if let Some(index) = self.index(output) {
+                self.close_output(index);
+            }
+        }
+        let qh = self.queue.handle();
+        for spec in requests.connect {
+            let id = OutputId::new(self.next_output);
+            self.next_output = self.next_output.saturating_add(1);
+            let title = format!("{} ({})", self.title, spec.connector);
+            self.handler
+                .create_output(&qh, id, &spec.connector, &title, spec.fullscreen);
+            self.targets.push(None);
+        }
+        self.flush();
     }
 
     /// Reports a dead connection: every output is gone and none can come back.
@@ -719,6 +816,43 @@ impl Nested {
         self.targets
             .iter()
             .position(|target| target.as_ref().is_some_and(|target| target.output().id == output))
+    }
+}
+
+/// What a [`NestedHandle`] queued.
+#[derive(Debug, Default)]
+struct HandleRequests {
+    /// Windows to open, one output each.
+    connect: Vec<OutputSpec>,
+    /// Outputs whose windows to close.
+    disconnect: Vec<OutputId>,
+}
+
+/// A caller's control over a nested backend a session already owns.
+///
+/// It is the nested twin of [`HeadlessHandle`](crate::headless::HeadlessHandle): hotplugging an output is a request
+/// the next dispatch applies, so the compositor learns of it as a [`BackendEvent`] and never as a call into the
+/// backend. A nested output is a window of the parent, so connecting one opens a toplevel and disconnecting one
+/// closes it; neither changes a mode, because the parent's window is the mode.
+#[derive(Clone, Debug)]
+pub struct NestedHandle {
+    requests: Arc<Mutex<HandleRequests>>,
+}
+
+impl NestedHandle {
+    /// Opens a window for a new output on the next dispatch. The output appears when the parent configures it.
+    pub fn connect_output(&self, spec: OutputSpec) {
+        self.requests().connect.push(spec);
+    }
+
+    /// Closes the window of `output` on the next dispatch. The session goes on, even when it was the last one: only
+    /// the person closing the last window ends it ([`BackendEvent::SessionEnded`]).
+    pub fn disconnect_output(&self, output: OutputId) {
+        self.requests().disconnect.push(output);
+    }
+
+    fn requests(&self) -> std::sync::MutexGuard<'_, HandleRequests> {
+        self.requests.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
@@ -951,6 +1085,7 @@ impl<S: Host + 'static> Backend<S> for Nested {
     }
 
     fn dispatch(&mut self, host: &mut S) -> Vec<BackendEvent> {
+        self.apply_requests();
         self.pump();
         self.settle();
         while let Some(event) = self.handler.table_mut().seat().next_event() {

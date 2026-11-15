@@ -62,8 +62,9 @@ gnoblin-log = { path = "../gnoblin-log" }
 wayland-client = "0.31.14"
 # The client side of `xdg_shell` and of the scale protocols. `staging` is the
 # feature that carries `wp_fractional_scale_v1`; a parent that does not offer it
-# falls back to the integer scale of its `wl_output`.
-wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+# falls back to the integer scale of the `wl_output` a surface is on. `unstable` carries the
+# keyboard shortcut inhibitor and the pointer gestures a nested session asks its parent for.
+wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
 # The GLES renderer (its EGL bootstrap and every GL call are `unsafe` and confined to that
 # crate). Normal, not optional: the headless backend and the renderer selection name it.
 gnoblin-render-gles = { path = "../gnoblin-render-gles" }

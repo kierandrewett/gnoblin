@@ -494,10 +494,15 @@ fn input_injected_on_the_host_seat_arrives_as_input_events() {
         let expected = Point::new(at.x - window.geometry.x, at.y - window.geometry.y);
         let _ = pump_until(&mut nested, &mut probe, |probe| {
             probe.motions().iter().any(|(_, position)| *position == expected)
-                && probe.inputs.contains(&InputEvent::PointerButton {
-                    device: DeviceId::VIRTUAL,
-                    button: BTN_LEFT,
-                    pressed: true,
+                && probe.inputs.iter().any(|event| {
+                    matches!(
+                        event,
+                        InputEvent::PointerButton {
+                            button: BTN_LEFT,
+                            pressed: true,
+                            ..
+                        }
+                    )
                 })
         });
         let session_output = only_output(&nested).id;
@@ -509,13 +514,26 @@ fn input_injected_on_the_host_seat_arrives_as_input_events() {
             "a host position arrives as a position on the session's output at {expected:?}: {:?}",
             probe.motions()
         );
+        // The host's seat has a pointer, so the session's seat lists one with the capabilities a pointer has, and the
+        // press names that device rather than the virtual one.
+        let pointer = probe
+            .inputs
+            .iter()
+            .find_map(|event| match event {
+                InputEvent::DeviceAdded { device } if device.caps.contains(gnoblin_backend::DeviceCaps::POINTER) => {
+                    Some(device.id)
+                }
+                _ => None,
+            })
+            .expect("the host's pointer is a device of the session's seat");
+        assert_ne!(pointer, DeviceId::VIRTUAL);
         assert!(
             probe.inputs.contains(&InputEvent::PointerButton {
-                device: DeviceId::VIRTUAL,
+                device: pointer,
                 button: BTN_LEFT,
                 pressed: true,
             }),
-            "the press arrived: {:?}",
+            "the press arrived from the pointer device: {:?}",
             probe.inputs
         );
     });
@@ -868,5 +886,211 @@ fn a_vulkan_nested_session_draws_the_same_frame_and_answers_the_gpu_questions_li
             "the Vulkan readback is the frame the host received"
         );
         assert_answers_like_headless(&mut nested, RendererKind::Vulkan);
+    });
+}
+
+/// Asks the host to close the window `which` names, as its close button does.
+fn close_host_window(host: &Handle, which: impl Fn(&ObservedWindow) -> bool) {
+    let windows = host.windows();
+    let window = windows
+        .windows()
+        .find(|window| which(window))
+        .expect("the window to close");
+    host.control
+        .window_control(window.id, gnoblin_wayland::WindowChange::Close)
+        .expect("the host answers")
+        .expect("the host closes the window");
+}
+
+#[test]
+fn closing_the_last_window_ends_the_session_and_closing_one_of_two_does_not() {
+    let session = Session::start();
+    session.run(|host| {
+        let config = NestedConfig {
+            outputs: vec![
+                gnoblin_backend::nested::OutputSpec::new("NESTED-1"),
+                gnoblin_backend::nested::OutputSpec::new("NESTED-2"),
+            ],
+            ..NestedConfig::new(host.socket())
+        };
+        let mut nested = Nested::connect(&config).expect("the session connects");
+        let mut probe = Probe::drawing(RED);
+        assert_eq!(session_outputs(&nested).len(), 2, "one output per window");
+        let first = session_outputs(&nested)[0].id;
+        draw(&mut nested, &mut probe);
+        host.wait_for(|observation| observation.windows().filter(|window| window.mapped).count() == 2);
+        let _ = nested.dispatch(&mut probe);
+
+        // The first window goes: that output is removed, and the session is still one.
+        close_host_window(host, |window| window.title.contains("NESTED-1"));
+        let events = collect_until(&mut nested, &mut probe, |events| {
+            events
+                .iter()
+                .any(|event| matches!(event, BackendEvent::OutputDisconnected(_)))
+        });
+        assert!(
+            events.contains(&BackendEvent::OutputDisconnected(first)),
+            "the closed window's output goes: {events:?}"
+        );
+        assert!(
+            !events.contains(&BackendEvent::SessionEnded),
+            "one window left, so the session goes on: {events:?}"
+        );
+        assert_eq!(session_outputs(&nested).len(), 1);
+
+        // The last window goes: the session ends, once.
+        close_host_window(host, |window| window.title.contains("NESTED-2"));
+        let events = collect_until(&mut nested, &mut probe, |events| {
+            events.contains(&BackendEvent::SessionEnded)
+        });
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, BackendEvent::SessionEnded))
+                .count(),
+            1,
+            "closing the last window is one session end: {events:?}"
+        );
+        assert!(session_outputs(&nested).is_empty());
+        assert!(
+            nested.dispatch(&mut probe).is_empty(),
+            "an ended session reports nothing more"
+        );
+    });
+}
+
+/// Pumps the session until the events it collected satisfy `done`, and returns them.
+fn collect_until(nested: &mut Nested, probe: &mut Probe, done: impl Fn(&[BackendEvent]) -> bool) -> Vec<BackendEvent> {
+    let deadline = Instant::now() + TIMEOUT;
+    let mut events = Vec::new();
+    while !done(&events) {
+        assert!(
+            Instant::now() < deadline,
+            "the session never reported what the test waits for: {events:?}"
+        );
+        nested.roundtrip().expect("the host answers a round trip");
+        events.extend(nested.dispatch(probe));
+        thread::sleep(Duration::from_millis(5));
+    }
+    events
+}
+
+#[test]
+fn a_handle_opens_and_closes_output_windows_and_closing_them_all_is_not_a_session_end() {
+    let session = Session::start();
+    session.run(|host| {
+        let mut nested = Nested::connect(&NestedConfig::new(host.socket())).expect("the session connects");
+        let mut probe = Probe::drawing(RED);
+        let first = only_output(&nested).id;
+        let _ = nested.dispatch(&mut probe);
+        let handle = nested.handle();
+
+        handle.connect_output(gnoblin_backend::nested::OutputSpec::new("NESTED-2"));
+        let mut events = Vec::new();
+        let deadline = Instant::now() + TIMEOUT;
+        while session_outputs(&nested).len() < 2 {
+            assert!(Instant::now() < deadline, "the second window never became an output");
+            nested.roundtrip().expect("the host answers a round trip");
+            events.extend(nested.dispatch(&mut probe));
+        }
+        let second = events
+            .iter()
+            .find_map(|event| match event {
+                BackendEvent::OutputConnected(output) if output.connector == "NESTED-2" => Some(output.id),
+                _ => None,
+            })
+            .expect("the new window is reported as an output");
+        assert_ne!(second, first, "an output never reuses an identity");
+        draw(&mut nested, &mut probe);
+        host.wait_for(|observation| observation.windows().filter(|window| window.mapped).count() == 2);
+
+        handle.disconnect_output(first);
+        handle.disconnect_output(second);
+        let mut events = Vec::new();
+        while !session_outputs(&nested).is_empty() {
+            assert!(Instant::now() < deadline, "the windows never closed");
+            nested.roundtrip().expect("the host answers a round trip");
+            events.extend(nested.dispatch(&mut probe));
+        }
+        assert!(events.contains(&BackendEvent::OutputDisconnected(first)), "{events:?}");
+        assert!(events.contains(&BackendEvent::OutputDisconnected(second)), "{events:?}");
+        assert!(
+            !events.contains(&BackendEvent::SessionEnded),
+            "unplugging windows through a handle is not the person ending the session: {events:?}"
+        );
+        host.wait_for(|observation| observation.windows().next().is_none());
+    });
+}
+
+#[test]
+fn a_host_scale_change_reaches_the_nested_output() {
+    let session = Session::start();
+    session.run(|host| {
+        let mut nested = Nested::connect(&NestedConfig::new(host.socket())).expect("the session connects");
+        let mut probe = Probe::drawing(RED);
+        draw(&mut nested, &mut probe);
+        host.wait_for(|observation| observation.only().is_some_and(|window| window.mapped));
+        let _ = nested.dispatch(&mut probe);
+        assert_eq!(
+            only_output(&nested).scale,
+            Scale::IDENTITY,
+            "the host starts at scale one"
+        );
+
+        host.control.set_global_scale(Some(2));
+        let events = collect_until(&mut nested, &mut probe, |events| {
+            events
+                .iter()
+                .any(|event| matches!(event, BackendEvent::OutputResized { scale, .. } if *scale == Scale::integral(2)))
+        });
+        let output = only_output(&nested);
+        assert_eq!(
+            output.scale,
+            Scale::integral(2),
+            "the session follows the host's scale: {events:?}"
+        );
+        assert_eq!(
+            (output.mode.width, output.mode.height),
+            (output.logical_size().width * 2, output.logical_size().height * 2),
+            "the mode is the window's logical size at the new scale"
+        );
+        draw_rendered(&mut nested, &mut probe);
+        assert_eq!(
+            session_screenshot(&mut nested, output.id).map(|image| image.size()),
+            Some(Size::new(output.mode.width, output.mode.height)),
+            "the session draws at the new scale"
+        );
+    });
+}
+
+#[test]
+fn the_nested_window_asks_the_host_to_keep_its_shortcuts_while_it_has_the_keyboard() {
+    let session = Session::start();
+    session.run(|host| {
+        let mut nested = Nested::connect(&NestedConfig::new(host.socket())).expect("the session connects");
+        let mut probe = Probe::drawing(RED);
+        let output = only_output(&nested).id;
+        assert!(
+            nested.shortcuts_inhibited(output).is_some(),
+            "the host offers the inhibitor, so the session asked for it"
+        );
+        draw(&mut nested, &mut probe);
+        let window = host
+            .wait_for(|observation| observation.only().is_some_and(|window| window.mapped))
+            .only()
+            .expect("one mapped window")
+            .clone();
+        let _ = host.control.focus(window.id);
+        let deadline = Instant::now() + TIMEOUT;
+        while nested.shortcuts_inhibited(output) != Some(true) {
+            assert!(
+                Instant::now() < deadline,
+                "the host never granted the inhibitor: {:?}",
+                nested.shortcuts_inhibited(output)
+            );
+            nested.roundtrip().expect("the host answers a round trip");
+            let _ = nested.dispatch(&mut probe);
+            thread::sleep(Duration::from_millis(5));
+        }
     });
 }

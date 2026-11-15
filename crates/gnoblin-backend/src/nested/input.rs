@@ -28,7 +28,17 @@ use std::collections::VecDeque;
 
 use gnoblin_types::{DeviceId, OutputId, Point};
 
-use crate::{InputEvent, InputSource, TouchPhase};
+use crate::{
+    DeviceCaps, DeviceInfo, DeviceKind, InputEvent, InputSource, RawTouchpadKind, RawTouchpadPhase, RawTouchpadSample,
+    TouchPhase,
+};
+
+/// The identity the seat gives the parent's keyboard once the parent says it has one.
+const KEYBOARD: DeviceId = DeviceId::new(1);
+/// The identity of the parent's pointer.
+const POINTER: DeviceId = DeviceId::new(2);
+/// The identity of the parent's touch device.
+const TOUCH: DeviceId = DeviceId::new(3);
 
 /// A whole scroll step in the 1/120 units [`InputEvent::PointerAxis`] states.
 ///
@@ -52,8 +62,21 @@ const KEY_OFFSET: u32 = 8;
 /// parent that sends the discrete event never takes this path.
 const UNITS_PER_STEP: f64 = 10.0;
 
+/// A gesture the parent has begun and not ended.
+#[derive(Clone, Copy, Debug)]
+struct OpenGesture {
+    kind: RawTouchpadKind,
+    fingers: u8,
+    /// The rotation the parent last stated, in degrees since the begin, so a sample can carry the change.
+    rotation: f64,
+}
+
 /// The parent's seat: where the pointer is and what is waiting to be delivered.
-#[derive(Debug, Default)]
+///
+/// The devices a parent's seat has are announced as the session's own ([`InputEvent::DeviceAdded`]) when the parent
+/// states its capabilities, and every event carries the one that produced it. Until a capability is stated, and
+/// after it goes, an event is the virtual device's.
+#[derive(Debug)]
 pub struct Seat {
     /// The output the pointer is over, which is [`None`] until the parent says the
     /// pointer entered a surface this backend draws on.
@@ -69,20 +92,104 @@ pub struct Seat {
     axis: (i32, i32),
     /// The exact scroll the parent sent for this frame, if it sent one.
     discrete: Option<(i32, i32)>,
+    /// The keyboard's identity while the parent has one.
+    keyboard: DeviceId,
+    /// The pointer's identity while the parent has one.
+    pointer_device: DeviceId,
+    /// The touch device's identity while the parent has one.
+    touch_device: DeviceId,
+    /// The evdev codes of the keys the session saw pressed and not released.
+    keys: Vec<u32>,
+    /// The codes of the buttons the session saw pressed and not released.
+    buttons: Vec<u32>,
+    /// The gesture in progress.
+    gesture: Option<OpenGesture>,
+}
+
+impl Default for Seat {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Seat {
     /// A seat nothing has happened on.
     #[must_use]
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            pointer: None,
+            touches: Vec::new(),
+            queue: VecDeque::new(),
+            dropped: 0,
+            axis: (0, 0),
+            discrete: None,
+            keyboard: DeviceId::VIRTUAL,
+            pointer_device: DeviceId::VIRTUAL,
+            touch_device: DeviceId::VIRTUAL,
+            keys: Vec::new(),
+            buttons: Vec::new(),
+            gesture: None,
+        }
+    }
+
+    /// The parent's seat now has these capabilities: each one that appeared is a device that joins the session's
+    /// seat, and each one that went is a device that leaves it, after everything it held was released.
+    ///
+    /// `gestures` says the parent also delivers swipe and pinch gestures, which the pointer's capabilities then
+    /// include.
+    pub fn set_capabilities(&mut self, keyboard: bool, pointer: bool, touch: bool, gestures: bool) {
+        if keyboard && self.keyboard == DeviceId::VIRTUAL {
+            self.keyboard = KEYBOARD;
+            self.queue.push_back(InputEvent::DeviceAdded {
+                device: DeviceInfo::new(KEYBOARD, "Parent compositor keyboard", DeviceKind::Keyboard),
+            });
+        } else if !keyboard && self.keyboard != DeviceId::VIRTUAL {
+            self.release_keys();
+            self.queue.push_back(InputEvent::DeviceRemoved { id: KEYBOARD });
+            self.keyboard = DeviceId::VIRTUAL;
+        }
+        if pointer && self.pointer_device == DeviceId::VIRTUAL {
+            self.pointer_device = POINTER;
+            let caps = if gestures {
+                DeviceKind::Mouse.default_caps().union(DeviceCaps::GESTURE)
+            } else {
+                DeviceKind::Mouse.default_caps()
+            };
+            self.queue.push_back(InputEvent::DeviceAdded {
+                device: DeviceInfo::new(POINTER, "Parent compositor pointer", DeviceKind::Mouse).with_caps(caps),
+            });
+        } else if !pointer && self.pointer_device != DeviceId::VIRTUAL {
+            for button in std::mem::take(&mut self.buttons) {
+                self.queue.push_back(InputEvent::PointerButton {
+                    device: POINTER,
+                    button,
+                    pressed: false,
+                });
+            }
+            if let Some(gesture) = self.gesture {
+                self.gesture_end(gesture.kind, true);
+            }
+            self.leave();
+            self.queue.push_back(InputEvent::DeviceRemoved { id: POINTER });
+            self.pointer_device = DeviceId::VIRTUAL;
+        }
+        if touch && self.touch_device == DeviceId::VIRTUAL {
+            self.touch_device = TOUCH;
+            self.queue.push_back(InputEvent::DeviceAdded {
+                device: DeviceInfo::new(TOUCH, "Parent compositor touch", DeviceKind::Touch),
+            });
+        } else if !touch && self.touch_device != DeviceId::VIRTUAL {
+            self.touch_cancel();
+            self.queue.push_back(InputEvent::DeviceRemoved { id: TOUCH });
+            self.touch_device = DeviceId::VIRTUAL;
+        }
     }
 
     /// The pointer entered `output` at `position`.
     pub fn enter(&mut self, output: OutputId, position: Point) {
         self.pointer = Some(output);
         self.queue.push_back(InputEvent::PointerMotion {
-            device: DeviceId::VIRTUAL,
+            device: self.pointer_device,
             output,
             position,
         });
@@ -105,7 +212,7 @@ impl Seat {
             return;
         };
         self.queue.push_back(InputEvent::PointerMotion {
-            device: DeviceId::VIRTUAL,
+            device: self.pointer_device,
             output,
             position,
         });
@@ -113,8 +220,15 @@ impl Seat {
 
     /// A pointer button changed state.
     pub fn button(&mut self, button: u32, pressed: bool) {
+        if pressed {
+            if !self.buttons.contains(&button) {
+                self.buttons.push(button);
+            }
+        } else {
+            self.buttons.retain(|held| *held != button);
+        }
         self.queue.push_back(InputEvent::PointerButton {
-            device: DeviceId::VIRTUAL,
+            device: self.pointer_device,
             button,
             pressed,
         });
@@ -122,11 +236,31 @@ impl Seat {
 
     /// A key changed state; `key` is the code the parent sent.
     pub fn key(&mut self, key: u32, pressed: bool) {
+        let keycode = scan_code(key);
+        if pressed {
+            if !self.keys.contains(&keycode) {
+                self.keys.push(keycode);
+            }
+        } else {
+            self.keys.retain(|held| *held != keycode);
+        }
         self.queue.push_back(InputEvent::Key {
-            device: DeviceId::VIRTUAL,
-            keycode: scan_code(key),
+            device: self.keyboard,
+            keycode,
             pressed,
         });
+    }
+
+    /// Releases every key the session saw pressed: the parent took the keyboard away from the window, so the
+    /// releases will never arrive.
+    pub fn release_keys(&mut self) {
+        for keycode in std::mem::take(&mut self.keys) {
+            self.queue.push_back(InputEvent::Key {
+                device: self.keyboard,
+                keycode,
+                pressed: false,
+            });
+        }
     }
 
     /// A smooth scroll for the current frame, in surface units.
@@ -159,7 +293,7 @@ impl Seat {
         self.axis = (0, 0);
         if horizontal != 0 || vertical != 0 {
             self.queue.push_back(InputEvent::PointerAxis {
-                device: DeviceId::VIRTUAL,
+                device: self.pointer_device,
                 horizontal,
                 vertical,
             });
@@ -178,7 +312,7 @@ impl Seat {
         self.touches.retain(|(existing, _, _)| *existing != slot);
         self.touches.push((slot, output, position));
         self.queue.push_back(InputEvent::Touch {
-            device: DeviceId::VIRTUAL,
+            device: self.touch_device,
             output,
             slot,
             position,
@@ -198,7 +332,7 @@ impl Seat {
         entry.2 = position;
         let output = entry.1;
         self.queue.push_back(InputEvent::Touch {
-            device: DeviceId::VIRTUAL,
+            device: self.touch_device,
             output,
             slot,
             position,
@@ -214,7 +348,7 @@ impl Seat {
         };
         let (_, output, position) = self.touches.remove(index);
         self.queue.push_back(InputEvent::Touch {
-            device: DeviceId::VIRTUAL,
+            device: self.touch_device,
             output,
             slot,
             position,
@@ -226,13 +360,72 @@ impl Seat {
     pub fn touch_cancel(&mut self) {
         for (slot, output, position) in std::mem::take(&mut self.touches) {
             self.queue.push_back(InputEvent::Touch {
-                device: DeviceId::VIRTUAL,
+                device: self.touch_device,
                 output,
                 slot,
                 position,
                 phase: TouchPhase::Cancel,
             });
         }
+    }
+
+    /// A swipe or pinch gesture began with `fingers` fingers.
+    pub fn gesture_begin(&mut self, kind: RawTouchpadKind, fingers: u32) {
+        let fingers = u8::try_from(fingers).unwrap_or(u8::MAX);
+        self.gesture = Some(OpenGesture {
+            kind,
+            fingers,
+            rotation: 0.0,
+        });
+        self.touchpad(kind, RawTouchpadPhase::Begin, fingers, (0.0, 0.0), 1.0, 0.0);
+    }
+
+    /// The gesture moved by `(dx, dy)`. `scale` is the cumulative scale since the begin and `rotation` the cumulative
+    /// rotation in degrees, both as the parent states them; the sample carries the rotation since the previous one.
+    /// An update for a gesture that is not in progress is dropped.
+    pub fn gesture_update(&mut self, kind: RawTouchpadKind, dx: f64, dy: f64, scale: f64, rotation: f64) {
+        let Some(gesture) = self.gesture.as_mut().filter(|gesture| gesture.kind == kind) else {
+            return;
+        };
+        let angle = (rotation - gesture.rotation).to_radians();
+        gesture.rotation = rotation;
+        let fingers = gesture.fingers;
+        self.touchpad(kind, RawTouchpadPhase::Update, fingers, (dx, dy), scale, angle);
+    }
+
+    /// The gesture ended, or was cancelled.
+    pub fn gesture_end(&mut self, kind: RawTouchpadKind, cancelled: bool) {
+        let Some(gesture) = self.gesture.take().filter(|gesture| gesture.kind == kind) else {
+            return;
+        };
+        let phase = if cancelled {
+            RawTouchpadPhase::Cancel
+        } else {
+            RawTouchpadPhase::End
+        };
+        self.touchpad(kind, phase, gesture.fingers, (0.0, 0.0), 1.0, 0.0);
+    }
+
+    /// Queues one gesture sample.
+    fn touchpad(
+        &mut self,
+        kind: RawTouchpadKind,
+        phase: RawTouchpadPhase,
+        fingers: u8,
+        (dx, dy): (f64, f64),
+        scale: f64,
+        angle: f64,
+    ) {
+        self.queue.push_back(InputEvent::Touchpad(RawTouchpadSample {
+            device: self.pointer_device,
+            phase,
+            kind,
+            fingers,
+            dx,
+            dy,
+            scale,
+            angle,
+        }));
     }
 
     /// How many events could not be attributed to an output.
@@ -414,6 +607,183 @@ mod tests {
         seat.axis(true, f64::NAN);
         seat.frame();
         assert!(seat.is_empty(), "a non-finite scroll has no direction");
+    }
+
+    /// Everything the seat has queued.
+    fn drained(seat: &mut Seat) -> Vec<InputEvent> {
+        std::iter::from_fn(|| seat.next_event()).collect()
+    }
+
+    #[test]
+    fn the_devices_of_the_parents_seat_join_the_session_with_the_capabilities_it_has() {
+        let mut seat = Seat::new();
+        seat.set_capabilities(true, true, true, true);
+        let events = drained(&mut seat);
+        let added: Vec<_> = events
+            .iter()
+            .filter_map(|event| match event {
+                InputEvent::DeviceAdded { device } => Some((device.kind, device.caps)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            added,
+            vec![
+                (DeviceKind::Keyboard, DeviceCaps::KEYBOARD),
+                (DeviceKind::Mouse, DeviceCaps::POINTER.union(DeviceCaps::GESTURE)),
+                (DeviceKind::Touch, DeviceCaps::TOUCH),
+            ],
+            "one device per capability, the pointer with gestures when the parent delivers them"
+        );
+        seat.set_capabilities(true, true, true, true);
+        assert!(
+            seat.is_empty(),
+            "a capability the seat already has is not announced again"
+        );
+        seat.key(30 + KEY_OFFSET, true);
+        assert_eq!(
+            seat.next_event(),
+            Some(InputEvent::Key {
+                device: KEYBOARD,
+                keycode: 30,
+                pressed: true
+            }),
+            "an event names the device that produced it"
+        );
+    }
+
+    #[test]
+    fn a_parent_with_no_gestures_has_a_pointer_without_the_gesture_capability() {
+        let mut seat = Seat::new();
+        seat.set_capabilities(false, true, false, false);
+        assert!(matches!(
+            seat.next_event(),
+            Some(InputEvent::DeviceAdded { device }) if device.caps == DeviceCaps::POINTER
+        ));
+    }
+
+    #[test]
+    fn losing_the_keyboard_focus_releases_every_key_the_session_saw_pressed() {
+        let mut seat = Seat::new();
+        seat.set_capabilities(true, false, false, false);
+        drained(&mut seat);
+        seat.key(29 + KEY_OFFSET, true);
+        seat.key(30 + KEY_OFFSET, true);
+        seat.key(30 + KEY_OFFSET, false);
+        drained(&mut seat);
+        seat.release_keys();
+        assert_eq!(
+            drained(&mut seat),
+            vec![InputEvent::Key {
+                device: KEYBOARD,
+                keycode: 29,
+                pressed: false
+            }],
+            "only the key still held is released, as the key the parent already released needs nothing"
+        );
+        seat.release_keys();
+        assert!(seat.is_empty(), "a key is released once");
+    }
+
+    #[test]
+    fn a_device_that_goes_releases_what_it_held_before_it_leaves() {
+        let mut seat = Seat::new();
+        seat.set_capabilities(true, true, true, false);
+        drained(&mut seat);
+        seat.key(29 + KEY_OFFSET, true);
+        seat.button(0x110, true);
+        seat.touch_down(1, Some(OUTPUT), Point::new(4, 5));
+        drained(&mut seat);
+        seat.set_capabilities(false, false, false, false);
+        let events = drained(&mut seat);
+        let position_of = |wanted: &InputEvent| events.iter().position(|event| event == wanted);
+        let released_key = position_of(&InputEvent::Key {
+            device: KEYBOARD,
+            keycode: 29,
+            pressed: false,
+        })
+        .expect("the key is released");
+        let gone = position_of(&InputEvent::DeviceRemoved { id: KEYBOARD }).expect("the keyboard leaves");
+        assert!(
+            released_key < gone,
+            "the release comes before the device leaves: {events:?}"
+        );
+        assert!(
+            events.contains(&InputEvent::PointerButton {
+                device: POINTER,
+                button: 0x110,
+                pressed: false
+            }),
+            "the button is released: {events:?}"
+        );
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                InputEvent::Touch {
+                    phase: TouchPhase::Cancel,
+                    ..
+                }
+            )),
+            "the touch point is cancelled: {events:?}"
+        );
+    }
+
+    #[test]
+    fn a_pinch_carries_the_scale_and_the_rotation_since_the_previous_sample() {
+        let mut seat = Seat::new();
+        seat.set_capabilities(false, true, false, true);
+        drained(&mut seat);
+        seat.gesture_begin(RawTouchpadKind::Pinch, 2);
+        seat.gesture_update(RawTouchpadKind::Pinch, 1.0, 2.0, 1.5, 90.0);
+        seat.gesture_update(RawTouchpadKind::Pinch, 0.0, 0.0, 2.0, 180.0);
+        seat.gesture_end(RawTouchpadKind::Pinch, false);
+        let samples: Vec<RawTouchpadSample> = drained(&mut seat)
+            .into_iter()
+            .filter_map(|event| match event {
+                InputEvent::Touchpad(sample) => Some(sample),
+                _ => None,
+            })
+            .collect();
+        let phases: Vec<_> = samples.iter().map(|sample| sample.phase).collect();
+        assert_eq!(
+            phases,
+            vec![
+                RawTouchpadPhase::Begin,
+                RawTouchpadPhase::Update,
+                RawTouchpadPhase::Update,
+                RawTouchpadPhase::End
+            ]
+        );
+        assert!(
+            samples
+                .iter()
+                .all(|sample| sample.fingers == 2 && sample.device == POINTER)
+        );
+        assert_eq!(samples[1].scale, 1.5);
+        assert!(
+            (samples[1].angle - std::f64::consts::FRAC_PI_2).abs() < 1e-9,
+            "a quarter turn"
+        );
+        assert!(
+            (samples[2].angle - std::f64::consts::FRAC_PI_2).abs() < 1e-9,
+            "the second sample carries the turn since the first, not since the begin"
+        );
+    }
+
+    #[test]
+    fn a_gesture_update_with_no_gesture_in_progress_is_dropped() {
+        let mut seat = Seat::new();
+        seat.gesture_update(RawTouchpadKind::Swipe, 1.0, 1.0, 1.0, 0.0);
+        seat.gesture_end(RawTouchpadKind::Swipe, false);
+        assert!(seat.is_empty());
+        seat.gesture_begin(RawTouchpadKind::Swipe, 3);
+        seat.gesture_update(RawTouchpadKind::Pinch, 1.0, 1.0, 1.0, 0.0);
+        seat.gesture_end(RawTouchpadKind::Pinch, true);
+        assert_eq!(
+            drained(&mut seat).len(),
+            1,
+            "only the begin: a pinch is not the swipe in progress"
+        );
     }
 
     #[test]
