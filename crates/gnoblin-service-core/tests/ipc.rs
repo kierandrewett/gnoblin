@@ -77,6 +77,7 @@ fn a_client_learns_who_provides_each_slot() {
     properties.insert("lock_state".to_owned(), Value::Text("unlocked".to_owned()));
     properties.insert("lock_available".to_owned(), Value::Bool(false));
     properties.insert("lock_revision".to_owned(), Value::Uint(0));
+    properties.insert("backend".to_owned(), Value::Text("headless".to_owned()));
     let session = server
         .create(TypeKey::gnoblin("session"), properties)
         .expect("the slot fields are the schema's");

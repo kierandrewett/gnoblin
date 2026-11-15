@@ -557,6 +557,7 @@ fn a_session_signal_carries_its_declared_field() {
     properties.insert("lock_state".to_owned(), Value::Text("unlocked".to_owned()));
     properties.insert("lock_available".to_owned(), Value::Bool(false));
     properties.insert("lock_revision".to_owned(), Value::Uint(0));
+    properties.insert("backend".to_owned(), Value::Text("headless".to_owned()));
     let session = graph
         .create(TypeKey::gnoblin("session"), properties)
         .expect("the session type takes a version string");

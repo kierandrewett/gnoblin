@@ -223,6 +223,7 @@ fn two_windows() -> (Graph, ObjectId, ObjectId) {
     session.insert("lock_state".to_owned(), Value::Text("unlocked".to_owned()));
     session.insert("lock_available".to_owned(), Value::Bool(false));
     session.insert("lock_revision".to_owned(), Value::Uint(0));
+    session.insert("backend".to_owned(), Value::Text("headless".to_owned()));
     graph
         .create(TypeKey::gnoblin("session"), session)
         .expect("session is in the schema");
