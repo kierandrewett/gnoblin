@@ -238,7 +238,7 @@ Design: `design/js-xr.md` (which spec class is a tree node, a JS class or new na
 
 - **The module.**
 
-    `data/js/gnoblin/xr/` (`xr.ts` is the import path of its public names) is the port of `xr.lua` and the spec's classes:
+    `data/js/gnoblin/extensions/xr/` (`exports.ts` has all its public names; `index.ts` is the guarded import path) is the port of `xr.lua` and the spec's classes:
 
     - from `xr.lua`: `arrangeRing` with the Lua golden numbers, `XRRoom`, `SpatialLayout`, panels for clients, none for
       dialogs or secure clients, head-locked panels;
@@ -296,7 +296,7 @@ Design: `design/js-xr.md` (which spec class is a tree node, a JS class or new na
 
 - **The spec's XR surface (lane SpecXr; design/js-spec-native.md, 2.7).**
 
-    `data/js/gnoblin/xr_bindings.ts` holds the trigger grammar, `XRControllerDragBinding` (exposed as
+    `data/js/gnoblin/extensions/xr/bindings.ts` holds the trigger grammar, `XRControllerDragBinding` (exposed as
     `xr.ControllerDragBinding`) and the four stock bindings: `ViewMoveBinding`, `ViewResizeBinding` (now with `edges`),
     the new `ViewRotateBinding` (the layout's `rotate` trigger, `Trigger+Thumbstick+Drag`) and `ViewScaleBinding` (added
     by a script).

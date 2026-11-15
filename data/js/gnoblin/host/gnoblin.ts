@@ -16,7 +16,7 @@ import type { FocusHistory } from "gnoblin/session/focus_history";
 import type { SignalEvent, Version } from "gnoblin/session/types";
 import type { Transition } from "gnoblin/transition/transition";
 import type { TransitionOptions } from "gnoblin/transition/types";
-import { Extensions } from "gnoblin/xr/extensions";
+import { Extensions } from "gnoblin/extensions/xr/availability";
 
 /** What `find` takes: a table of field values, or a predicate that keeps an object when it returns a truthy value. */
 type FindFilter<T> = Record<string, string | number | boolean> | ((object: T) => unknown);

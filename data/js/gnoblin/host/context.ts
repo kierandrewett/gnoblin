@@ -26,7 +26,7 @@ import type { HostApi } from "gnoblin/session/host_api";
 import type { TransitionEngine } from "gnoblin/transition/engine";
 import type { Staging } from "gnoblin/transition/staging";
 import type { NodeId } from "gnoblin/types";
-import type { XRRuntime } from "gnoblin/xr/runtime";
+import type { XRRuntime } from "gnoblin/extensions/xr/runtime";
 
 /**
  * Shared state for one generation of the host object model. Host modules read and write this instance rather than

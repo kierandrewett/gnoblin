@@ -3,7 +3,9 @@
 //!
 //! The files are listed from the directory, not named in `stock.rs`, so a new module reaches the binary without an edit
 //! to a hand-kept array (whose length and entries used to be the thing a lane collided on). The import name is the path
-//! under the directory without its extension, prefixed `gnoblin/`; `index.ts` is the user-facing `gnoblin` itself.
+//! under the directory without its extension, prefixed `gnoblin/`; `index.ts` is the user-facing `gnoblin` itself, and
+//! the `index.ts` of a subdirectory is that directory's import name (`extensions/xr/index.ts` is
+//! `gnoblin/extensions/xr`), the same rule TypeScript applies when it resolves a directory.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -111,6 +113,8 @@ fn import_name(file: &str) -> String {
     let stem = file.strip_suffix(".ts").unwrap_or(file);
     if stem == "index" {
         "gnoblin".to_owned()
+    } else if let Some(directory) = stem.strip_suffix("/index") {
+        format!("gnoblin/{directory}")
     } else {
         format!("gnoblin/{stem}")
     }

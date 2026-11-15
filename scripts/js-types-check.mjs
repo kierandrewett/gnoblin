@@ -104,7 +104,7 @@ for (const [name, tail] of [
     ["gnoblin", "index.ts"],
     ["gnoblin/scene", "scene.ts"],
     ["gnoblin/scene/node", "scene/node.ts"],
-    ["gnoblin/extensions/xr", "extensions/xr.ts"],
+    ["gnoblin/extensions/xr", "extensions/xr/index.ts"],
     ["gnoblin/starter", "starter.ts"],
     ["gnoblin/ui", "ui.ts"],
     ["gnoblin/style", "style.ts"],
@@ -131,7 +131,7 @@ function definitionOf(fixture, word, after = "") {
 for (const [fixture, word, after, tail] of [
     ["scene.ts", "Camera3D", "new Camera3D(", "scene/camera.ts"],
     ["scene.ts", "Node", ": Node = camera", "scene/node.ts"],
-    ["scene.ts", "XRCamera3D", "new XRCamera3D(", "xr/camera.ts"],
+    ["scene.ts", "XRCamera3D", "new XRCamera3D(", "extensions/xr/camera.ts"],
     ["host.ts", "Workspace", "new Workspace(", "host/workspace.ts"],
     ["host.ts", "Client", "(client: Client)", "host/client.ts"],
     ["modules.ts", "Style", "{ Box,", "style/style.ts"],

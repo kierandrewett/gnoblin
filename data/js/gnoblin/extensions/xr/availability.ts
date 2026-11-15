@@ -1,10 +1,10 @@
 // Optional native extensions exposed by the shell.
 
 import type { ControllerTriggerParts } from "gnoblin/bindings/trigger_types";
-import type { XRController } from "gnoblin/xr/controller";
-import { SpatialLayout } from "gnoblin/xr/layout";
-import type { XRRuntime } from "gnoblin/xr/runtime";
-import type { XRExtension, XRListener, XROptions } from "gnoblin/xr/session";
+import type { XRController } from "gnoblin/extensions/xr/controller";
+import { SpatialLayout } from "gnoblin/extensions/xr/layout";
+import type { XRRuntime } from "gnoblin/extensions/xr/runtime";
+import type { XRExtension, XRListener, XROptions } from "gnoblin/extensions/xr/session";
 
 /** Whether `controller` holds exactly the buttons of `trigger`, on its hand. */
 export function matches(trigger: ControllerTriggerParts, controller: XRController): boolean {

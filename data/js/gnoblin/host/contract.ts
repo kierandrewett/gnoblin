@@ -156,7 +156,7 @@ export interface Host {
     input: InputHost;
     /** UI services provided by the shell, without its clock callback. */
     ui: Omit<UiBackend, "now">;
-    /** The scene nodes the XR module makes and finds (`gnoblin/scene`, `gnoblin/xr`). */
+    /** The scene nodes the XR module makes and finds (`gnoblin/scene`, `gnoblin/extensions/xr`). */
     xr: {
         create(cls: string): NodeId | string;
         insert(node: NodeId, parent: NodeId, index: number): string | undefined;

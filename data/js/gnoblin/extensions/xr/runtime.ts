@@ -2,18 +2,18 @@
 
 import type { Vector3 } from "gnoblin/scene/vector";
 import type { View } from "gnoblin/scene/view";
-import { XRList } from "gnoblin/xr/controller";
-import type { XRController } from "gnoblin/xr/controller";
-import { matches } from "gnoblin/xr/extensions";
-import { SpatialLayout } from "gnoblin/xr/layout";
-import { XRRoom } from "gnoblin/xr/room";
-import { XRExtension, XRSession } from "gnoblin/xr/session";
-import type { XROptions } from "gnoblin/xr/session";
-import type { NodeNumber, XRWorld } from "gnoblin/xr/types";
+import { XRList } from "gnoblin/extensions/xr/controller";
+import type { XRController } from "gnoblin/extensions/xr/controller";
+import { matches } from "gnoblin/extensions/xr/availability";
+import { SpatialLayout } from "gnoblin/extensions/xr/layout";
+import { XRRoom } from "gnoblin/extensions/xr/room";
+import { XRExtension, XRSession } from "gnoblin/extensions/xr/session";
+import type { XROptions } from "gnoblin/extensions/xr/session";
+import type { NodeNumber, XRWorld } from "gnoblin/extensions/xr/types";
 import { NEVER, NOW, onWake } from "gnoblin/wake";
-import { pickView, XRViewport } from "gnoblin/xr/viewport";
-import { XRControllerDragBinding } from "gnoblin/xr_bindings";
-import type { XRDragEvent } from "gnoblin/xr_bindings";
+import { pickView, XRViewport } from "gnoblin/extensions/xr/viewport";
+import { XRControllerDragBinding } from "gnoblin/extensions/xr/bindings";
+import type { XRDragEvent } from "gnoblin/extensions/xr/bindings";
 
 interface Run {
     readonly controller: XRController;

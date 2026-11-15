@@ -205,6 +205,12 @@ mod tests {
         for barrel in ["gnoblin/scene", "gnoblin/style", "gnoblin/input", "gnoblin/ui"] {
             assert!(names.contains(&barrel), "{barrel}");
         }
+        // The `index.ts` of a subdirectory is that directory's import name, so the guarded XR entry keeps its path.
+        assert!(names.contains(&"gnoblin/extensions/xr"));
+        assert!(!names.contains(&"gnoblin/extensions/xr/index"));
+        for gone in ["gnoblin/xr", "gnoblin/xr_bindings", "gnoblin/xr/runtime"] {
+            assert!(!names.contains(&gone), "{gone} moved under gnoblin/extensions/xr");
+        }
     }
 
     /// The editor reads the sources the shell embeds: the same files, the same bytes, and for the user-facing module the

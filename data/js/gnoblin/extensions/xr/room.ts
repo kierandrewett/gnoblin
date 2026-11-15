@@ -4,10 +4,10 @@ import type { Camera3D } from "gnoblin/scene/camera";
 import { Node } from "gnoblin/scene/node";
 import type { NodeOptions } from "gnoblin/scene/node";
 import { View } from "gnoblin/scene/view";
-import { XRCamera3D } from "gnoblin/xr/camera";
-import { SpatialLayout } from "gnoblin/xr/layout";
-import { RING_DEFAULTS } from "gnoblin/xr/ring";
-import type { XRClient } from "gnoblin/xr/types";
+import { XRCamera3D } from "gnoblin/extensions/xr/camera";
+import { SpatialLayout } from "gnoblin/extensions/xr/layout";
+import { RING_DEFAULTS } from "gnoblin/extensions/xr/ring";
+import type { XRClient } from "gnoblin/extensions/xr/types";
 
 /** Initial layout and client filter for an XR room. */
 export interface XRRoomOptions extends NodeOptions {

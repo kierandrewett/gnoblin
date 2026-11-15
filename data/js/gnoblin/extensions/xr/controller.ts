@@ -5,7 +5,7 @@ import { errorCodeOfRefusal } from "gnoblin/errors";
 import { SceneError } from "gnoblin/scene/backend";
 import { Transform3D } from "gnoblin/scene/transform";
 import { Ray, Vector3 } from "gnoblin/scene/vector";
-import type { NodeNumber, XRWorld } from "gnoblin/xr/types";
+import type { NodeNumber, XRWorld } from "gnoblin/extensions/xr/types";
 
 /** What a shell may claim on a controller, in the order the node lists it: the names `controller.claimed` accepts. */
 export const CLAIMABLE_INPUTS: readonly string[] = ["trigger", "grip", "thumbstick", "primary", "secondary"];

@@ -1,19 +1,19 @@
 // Session, controller and extension objects exposed to XR scripts.
 
-import { XRCamera3D, XRTrackedPose } from "gnoblin/xr/camera";
-import { MAX_CHORD_SETTLE_MS, XRController, XRList } from "gnoblin/xr/controller";
-import { SpatialLayout } from "gnoblin/xr/layout";
-import type { SpatialLayoutOptions } from "gnoblin/xr/layout";
-import { XRRoom } from "gnoblin/xr/room";
-import type { NodeNumber, XRClient, XRWorld } from "gnoblin/xr/types";
-import { XRViewport } from "gnoblin/xr/viewport";
+import { XRCamera3D, XRTrackedPose } from "gnoblin/extensions/xr/camera";
+import { MAX_CHORD_SETTLE_MS, XRController, XRList } from "gnoblin/extensions/xr/controller";
+import { SpatialLayout } from "gnoblin/extensions/xr/layout";
+import type { SpatialLayoutOptions } from "gnoblin/extensions/xr/layout";
+import { XRRoom } from "gnoblin/extensions/xr/room";
+import type { NodeNumber, XRClient, XRWorld } from "gnoblin/extensions/xr/types";
+import { XRViewport } from "gnoblin/extensions/xr/viewport";
 import {
     ViewMoveBinding,
     ViewResizeBinding,
     ViewRotateBinding,
     ViewScaleBinding,
     XRControllerDragBinding,
-} from "gnoblin/xr_bindings";
+} from "gnoblin/extensions/xr/bindings";
 
 /** The hooks of a listener of the extension. Subclass it and override what you need. */
 export class XRListener {

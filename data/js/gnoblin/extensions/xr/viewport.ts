@@ -6,7 +6,7 @@ import { Node } from "gnoblin/scene/node";
 import { mountOnRoot } from "gnoblin/scene/registry";
 import type { Ray, Vector3 } from "gnoblin/scene/vector";
 import { View } from "gnoblin/scene/view";
-import { XRRoom } from "gnoblin/xr/room";
+import { XRRoom } from "gnoblin/extensions/xr/room";
 
 /** How the XR runtime composes panels: automatically, as layers or through the projection camera. */
 export type XRComposition = "auto" | "layers" | "projection";

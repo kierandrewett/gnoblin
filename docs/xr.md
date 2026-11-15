@@ -82,7 +82,7 @@ Logs are under the `xr` name: `[guardian] started xr (generation N, pid P)` and 
 
 ## What the stock shell does
 
-The stock shell's XR side is `data/js/gnoblin/xr.ts`. It reacts to the seat named `xr`.
+The stock shell's XR side is `data/js/gnoblin/extensions/xr/`. It reacts to the seat named `xr`.
 
 When the seat arrives the shell builds a node named `room` under `root`. The room holds:
 
@@ -127,8 +127,8 @@ A window's `accept` function is the one way to choose which windows appear: ther
 
 ### The ring
 
-The panels sit on a ring round you. The ring is `arrangeRing` in `xr.ts`, a pure function of the windows' sizes and
-the focus, so a window's place never depends on anything but those:
+The panels sit on a ring round you. The ring is `arrangeRing` in `extensions/xr/ring.ts`, a pure function of the
+windows' sizes and the focus, so a window's place never depends on anything but those:
 
 - The ring has a radius of 1.6 m, and the centre of each panel is 1.4 m above the room's floor. The extension reports
   poses in OpenXR's local space, whose origin is where your head starts, and the room's floor is 1.4 m below that
@@ -278,6 +278,12 @@ comes from the right hand only.
 
 The classes of `gnoblin/extensions/xr` are in the TypeScript shell. They are objects over the tree's nodes, like a
 `Client`: the XR program is a separate process, and nothing here loads into the shell.
+
+The library is the directory `data/js/gnoblin/extensions/xr/`, with one file for each part: the camera, controllers,
+layout, ring, room, runtime, session, viewport and bindings.
+
+- `gnoblin/extensions/xr` is the entry a script imports. It is the only module that checks that XR is available.
+- The shell's own XR code imports the files beside it, so it loads when no XR is present.
 
 ### Is XR there?
 

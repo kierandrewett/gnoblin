@@ -4,7 +4,7 @@ import { Camera3D } from "gnoblin/scene/camera";
 import type { Camera3DOptions } from "gnoblin/scene/camera";
 import { Transform3D } from "gnoblin/scene/transform";
 import { Vector3 } from "gnoblin/scene/vector";
-import type { NodeNumber, XRWorld } from "gnoblin/xr/types";
+import type { NodeNumber, XRWorld } from "gnoblin/extensions/xr/types";
 
 /** Initial head-camera tracking and clipping values; near and far are metres. */
 export interface XRCamera3DOptions extends Omit<Camera3DOptions, "near" | "far"> {

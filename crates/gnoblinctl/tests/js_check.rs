@@ -347,7 +347,7 @@ fn types_init_writes_the_real_sources_and_a_second_run_keeps_an_edited_tsconfig(
         "scene/camera.ts",
         "scene.ts",
         "host/workspace.ts",
-        "extensions/xr.ts",
+        "extensions/xr/index.ts",
     ] {
         assert_eq!(
             fs::read_to_string(library.join(file)).expect("the source is written"),

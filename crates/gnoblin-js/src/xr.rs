@@ -1,4 +1,4 @@
-//! `__gnoblinHost.xr`: the scene nodes the XR module (`gnoblin/scene`, `gnoblin/xr`) makes and finds.
+//! `__gnoblinHost.xr`: the scene nodes the XR module (`gnoblin/scene`, `gnoblin/extensions/xr`) makes and finds.
 //!
 //! The XR program reads `View` nodes under a node named `room` (`docs/xr.md`), so the shell has to make plain nodes,
 //! cameras and Views, put them in the tree and take them out. Like the UI toolkit's canvases, a node made here is

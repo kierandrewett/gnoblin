@@ -1,5 +1,5 @@
 // XR controller bindings parse triggers and implement panel dragging, resizing, rotating and scaling.
-// `XRRuntime` in `xr.ts` runs the drag loop; this module imports its shared types only.
+// `XRRuntime` in `runtime.ts` runs the drag loop; this module imports its shared types only.
 
 import { Binding } from "gnoblin/bindings/binding";
 import type { ControllerButton, ControllerTriggerParts } from "gnoblin/bindings/trigger_types";
@@ -9,9 +9,9 @@ import { Vector3 } from "gnoblin/scene/vector";
 import type { Node } from "gnoblin/scene/node";
 import type { Plane, Ray } from "gnoblin/scene/vector";
 import type { View } from "gnoblin/scene/view";
-import type { XRController } from "gnoblin/xr/controller";
-import type { XRRoom } from "gnoblin/xr/room";
-import type { XRClient } from "gnoblin/xr/types";
+import type { XRController } from "gnoblin/extensions/xr/controller";
+import type { XRRoom } from "gnoblin/extensions/xr/room";
+import type { XRClient } from "gnoblin/extensions/xr/types";
 
 // ---- Triggers -----------------------------------------------------------------------------------------------------
 

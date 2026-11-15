@@ -419,7 +419,7 @@ apart. User page: docs/shell-api/scene.md. Tests: crates/gnoblin-js/tests/scene_
   gives the client the press) and `none` (the press reaches the window under the View), and
   `a_script_sets_a_client_view_to_capture_and_sees_its_press_then_sets_forward_and_the_client_gets_it` in
   `crates/gnoblin/tests/js_shell.rs` does it from a script on the real compositor. Callers that read the old boolean
-  were migrated (`pickView`, `pinToHead` in xr.ts, by lane SpecXr).
+  were migrated (`pickView`, `pinToHead` in extensions/xr/room.ts, by lane SpecXr).
 - **`View.size`, `contentFit`.** `size` is `{ width, height }` over the tree's `width` and `height`. `contentFit` is kept
   (default `stretch`, which is what the compositor draws for a client); only a workspace's picture is fitted by it.
 - **A `View` of a workspace (027).** Decision: implemented, not refused. A workspace is a script object and the compositor

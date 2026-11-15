@@ -458,9 +458,9 @@ fn boot(files: &[(&str, String)], probe: Option<&str>, session_first: bool) -> R
     outcome.map_err(|text| text.replace(&root_text, "<root>"))
 }
 
-/// The names `import { .. } from "gnoblin"` can bring in, and those of `gnoblin/xr`.
+/// The names `import { .. } from "gnoblin"` can bring in, and those of `gnoblin/extensions/xr/exports` (the XR names without the availability check).
 fn exports() -> (BTreeSet<String>, BTreeSet<String>) {
-    let entry = "import * as core from \"gnoblin\";\nimport * as xr from \"gnoblin/xr\";\n\
+    let entry = "import * as core from \"gnoblin\";\nimport * as xr from \"gnoblin/extensions/xr/exports\";\n\
                  globalThis.__names = Object.keys(core).join(\",\") + \"\\n\" + Object.keys(xr).join(\",\");\n";
     let text = boot(&[("init.js", entry.to_owned())], Some("globalThis.__names"), false)
         .expect("the library modules load")

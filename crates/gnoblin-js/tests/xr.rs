@@ -22,7 +22,7 @@ const LEFT_HAND: u64 = 61;
 /// The first window's id: windows are 3, 4, 5, ...
 const WIN: u64 = 3;
 
-const IMPORTS: &str = "import * as g from \"gnoblin\";\nimport * as xrm from \"gnoblin/xr\";\nObject.assign(globalThis, { g, ...xrm });\n";
+const IMPORTS: &str = "import * as g from \"gnoblin\";\nimport * as xrm from \"gnoblin/extensions/xr/exports\";\nObject.assign(globalThis, { g, ...xrm });\n";
 
 fn near(got: f64, want: f64, what: &str) {
     assert!(

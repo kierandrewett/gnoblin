@@ -9,8 +9,8 @@ import { Workspace } from "gnoblin/host/workspace";
 import { attachBindings, noteSignal } from "gnoblin/properties";
 import { attachScene } from "gnoblin/scene/backend";
 import type { SceneBackend } from "gnoblin/scene/backend";
-import { XRRuntime } from "gnoblin/xr/runtime";
-import type { XRWorld } from "gnoblin/xr/types";
+import { XRRuntime } from "gnoblin/extensions/xr/runtime";
+import type { XRWorld } from "gnoblin/extensions/xr/types";
 
 /** Attaches the scene and the property bindings, and makes the XR runtime. */
 export function installScene(): void {

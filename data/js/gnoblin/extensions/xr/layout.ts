@@ -1,9 +1,14 @@
 // Panel arrangement and default bindings for an XR room.
 
 import { BindingCollection } from "gnoblin/bindings/binding";
-import { arrangeRing, RING_DEFAULTS } from "gnoblin/xr/ring";
-import type { RingResult, RingView, XRRingParams } from "gnoblin/xr/ring";
-import { parseControllerTrigger, ViewMoveBinding, ViewResizeBinding, ViewRotateBinding } from "gnoblin/xr_bindings";
+import { arrangeRing, RING_DEFAULTS } from "gnoblin/extensions/xr/ring";
+import type { RingResult, RingView, XRRingParams } from "gnoblin/extensions/xr/ring";
+import {
+    parseControllerTrigger,
+    ViewMoveBinding,
+    ViewResizeBinding,
+    ViewRotateBinding,
+} from "gnoblin/extensions/xr/bindings";
 
 /** What `new SpatialLayout` takes; every distance is in metres. */
 export interface SpatialLayoutOptions {

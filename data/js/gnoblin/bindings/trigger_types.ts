@@ -90,7 +90,7 @@ export type ControllerButton = "Trigger" | "Grip" | "Thumbstick" | "Primary" | "
 
 /**
  * A grab with an XR controller: `Grip+Drag`, `Right.Trigger+Grip+Drag`. Only the XR module's bindings read one
- * (`gnoblin/xr`): no seat claims it, and a context ignores a binding that has one.
+ * (`gnoblin/extensions/xr`): no seat claims it, and a context ignores a binding that has one.
  */
 export interface ControllerTriggerParts extends TriggerBase {
     /** Discriminator for an XR controller trigger. */
