@@ -27,10 +27,17 @@ Lane Supersample. This is an owner-requested addition beyond `design/js-spec-nat
     - Capture sizes are `logical rect * Output::current_scale()`; the cursor shape lookup and the fractional-scale
       preferred scale read the same value.
     - So feeding `u*s` as the compositing scale and `mode*s` as the physical size is the whole renderer change.
-- **X11.** The tree sets Smithay's per-client `client_scale` once at Xwayland start from `xwayland.scaling-factor`
-  (automatic = 1.0) and publishes `Xft/DPI` only from the desktop settings. It never followed an output's scale.
+- **X11.**
+    - The tree set Smithay's per-client `client_scale` once at Xwayland start from `xwayland.scaling-factor` (automatic =
+      1.0) and published `Xft/DPI` only from the desktop settings. It never followed an output's scale.
+    - Smithay's window manager already converts every geometry between X pixels and logical pixels with that scale
+      (`xwm/mod.rs`: `to_logical(client_scale)` on the way in, `configure` multiplies on the way out).
+    - So the compositor must not divide or multiply again: a first version did, and the real Xwayland test showed 300 X
+      pixels as 75 logical ones.
 - **DRM.** `Drm::render` draws a frame straight into the GBM scan-out buffer with `Gles::draw_scanout`; there is no
-  client-buffer direct scan-out or overlay plane anywhere in the crate, and `Backend::capture` is `None` there.
+  client-buffer direct scan-out or overlay plane anywhere in the crate. `Backend::capture` is `None` there, before and
+  after this feature: a hardware output has no screenshot at any factor. That is left unsupported on purpose (it is a
+  separate feature: a readback of the scan-out buffer), and `docs/shell-api/outputs.md` says so.
 
 ## The invariant
 
@@ -59,8 +66,8 @@ scale from the two.
    key `supersample`. The layout engine is untouched: logical size does not depend on `s`.
 2. **Backend contract** (`gnoblin-backend`). `Output.supersample`; `Output::virtual_size`, `effective_scale`.
    `Backend::configure_output` / `test_output` take the factor; `BackendEvent::OutputResized` carries it. A target's
-   `scale()` is the effective scale and its buffer is `virtual_size`. Backends that cannot render larger than the display
-   (nested, X11) refuse `s != 1` by name.
+   `scale()` is the effective scale and its buffer is `virtual_size`. The nested backend takes the factor only when
+   its buffer is the mode and refuses it by name otherwise; it refuses a mode or scale change, as it always did.
 3. **Downsample.** `Image::downsample(size)` in `gnoblin-render-frame`: exact box filter (average of s x s texels, rounded
    half up per channel) for an integer ratio, bilinear for any other. `Backend::capture_display` is the downsampled
    readback; `Backend::capture` is the internal hi-res frame, which is what every capture path uses.
@@ -78,7 +85,8 @@ scale from the two.
    `gnoblinctl capture` pass it through. Secure treatment is applied before any resampling.
 7. **X11.** The Xwayland client scale becomes `scaling-factor * s_max` where `s_max` is the largest supersample among
    outputs (a per-client value in Smithay), re-applied live, and XSETTINGS gets `Gdk/WindowScalingFactor = s` and
-   `Xft/DPI * s` so toolkits draw at s times the pixels at the same size.
+   `Xft/DPI * s` so toolkits draw at s times the pixels at the same size. Smithay's `set_xsettings` only adds, so a list
+   that loses a setting (the scale back to one) clears what was published first.
 8. **Limit.** `supersample.max-virtual` is a constant (8192 per edge) in `gnoblin-output`; GLES also checks
    `GL_MAX_TEXTURE_SIZE`. A refusal names the factor, the mode, the virtual size and the limit.
 9. **JS.** `Output.apply({ supersample })`, `OutputProfile({ supersample })`, `output.supersample`,
@@ -97,21 +105,33 @@ scale from the two.
 
 ## Status and where it is proven
 
-Built and proven (software renderer on headless outputs, real `wayland-client` connections; `tests/supersample.rs`):
+Every row was run; "fake" and "real" say what the test stood on. Tests named are the ones to read.
 
-- the model and the `supersample` key (`gnoblin-output`), the backend contract and headless targets;
-- `Image::downsample` (exact box filter, bilinear otherwise) and `Backend::capture_display`;
-- the policy: whole-size and limit checks, rollback, hotplug and mode-change keep the factor, mirrors use the display
-  frame;
-- Smithay scale `u*s`, our own xdg-output, fractional-scale refresh on a live change;
-- hi-res captures on `wlr-screencopy` and `ext-image-copy-capture`, and `capture.screen` with the `display` payload;
-- the `screen.supersample` property, the JS `supersample` setting, `Output.supersample`, `virtualSize` and
-  `effectiveScale`.
+- **Software, headless.** Model, policy, rollback, hotplug, the Smithay scale, our own xdg-output, hi-res captures and the
+  `display` flag. Real `wayland-client` connections (`tests/supersample.rs`). Not proven: a GPU.
+- **GLES on llvmpipe.** The box filter equals the software renderer's (checker, one-pixel line), the scan-out buffer,
+  damage, and the texture-limit refusal (`downsample_tests.rs`). Not proven: a real GPU's filtering.
+- **DRM.** The virtual target and the downscale into the scan-out buffer, and a refused allocation keeping the old
+  buffers. A fake kernel with the modeset opt-in enabled (`modeset.rs`, `plan.rs`). Not proven: any real modeset, flip or
+  display.
+- **Nested.** The factor is accepted, the capture is hi-res, the parent shows the averaged frame, and refusals name the
+  factor. A real host compositor (`tests/nested.rs`). Not proven: a parent that rounds a fractional scale.
+- **Xwayland.** The client scale is `u * s`, the logical geometry is unchanged, the X client is configured in X pixels,
+  and XSETTINGS follows the outputs and goes back when they do. Real Xwayland 22.1.9 (`tests/real_xwayland.rs`). Not
+  proven: pairing through `xwayland-shell-v1`, which needs 23.1 (those tests skip here).
+- **Vulkan.** Draws at `u * s` into `mode * s`, the capture is hi-res, and the displayed frame is its average. Lavapipe
+  (`a_vulkan_headless_output_can_be_supersampled`). Not proven: a real GPU.
+- **IPC.** `output.apply` takes `supersample`, `output.supersample` is published, and a refusal names the setting. The
+  real server and `gnoblinctl` (`tests/output_apply.rs`).
+- **JS.** The setting, the one-time notice and a profile re-applying a changed factor, on the fake compositor
+  (`tests/displays.rs`).
 
-Not built yet (each is refused or absent, never faked):
+Decisions that are not gaps:
 
-- the DRM scan-out downscale pass and the GLES downsample shader (`Drm::configure_output` refuses `s != 1` with
-  `BackendError::Supersample`);
-- the nested backend (refuses by default);
-- X11 client scaling (`client_scale` and XSETTINGS);
-- the GLES-on-llvmpipe pixel tests and the Vulkan statement.
+- **DRM capture.** `Drm::capture` is `None` and stays so: no output is screenshot-able on hardware at any factor, which
+  is older than this feature. Implementing it would be a readback of the scan-out buffer and a separate change.
+- **Vulkan.** The renderer takes any compositing scale and any image the device allows, so there is nothing to refuse. Its
+  `maxImageDimension2D` is reported by `max_texture_size` like GLES's limit, so a factor past it is refused with the numbers
+  before an image is made.
+- **X11 client scale.** Smithay's window manager converts X pixels and logical pixels itself; the compositor only sets
+  `client_scale`. The pairing tests that need Xwayland 23.1 skip on 22.1.9 and are not claimed here.
