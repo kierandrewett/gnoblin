@@ -133,7 +133,7 @@ ext-ci: ext-fmt-check ext-clippy ext-test ext-deny
 # Check the TypeScript shell sources, lint all tracked JS/TS, and format-check every tracked TS declaration/source.
 js-check:
     scripts/js-typecheck.sh
-    git ls-files -z '*.js' '*.mjs' '*.cjs' '*.ts' | xargs -0 npx --yes --package=eslint@10.10.0 --package=typescript-eslint@8.72.2 --package=typescript@7.0.2 --package=@eslint/js@10.0.1 --package=eslint-plugin-svelte@3.23.1 --package=globals@17.13.0 --package=svelte@5.57.3 eslint --no-warn-ignored
+    scripts/js-lint.sh
     git ls-files -z '*.ts' '*.d.ts' | xargs -0 npx --yes prettier@3.9.6 --check
 
 # The root workspace's whole gate, in the order that fails fastest.

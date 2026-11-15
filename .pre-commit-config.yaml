@@ -26,6 +26,8 @@ repos:
         types: [shell]
         additional_dependencies: ["shellcheck-py==0.11.0.1"]
         require_serial: true
+      # typescript-eslint 8.72.2 supports typescript <6.1.0, so eslint gets 6.0.3 while scripts/js-typecheck.sh
+      # type-checks with 7.0.2. The pins must match scripts/js-lint.sh, which refuses to run when they differ.
       - id: eslint
         name: eslint
         entry: eslint --no-warn-ignored
@@ -36,7 +38,7 @@ repos:
             "prettier@3.9.6",
             "eslint@10.10.0",
             "typescript-eslint@8.72.2",
-            "typescript@7.0.2",
+            "typescript@6.0.3",
             "@eslint/js@10.0.1",
             "eslint-plugin-svelte@3.23.1",
             "globals@17.13.0",
