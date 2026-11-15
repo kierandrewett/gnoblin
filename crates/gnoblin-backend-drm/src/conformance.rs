@@ -12,13 +12,13 @@
 //! (`GLES only`, `scan-out only`). The same table is measured for headless and nested in
 //! `gnoblin-wayland/tests/backend_conformance.rs`, so one document is held to all three.
 
-use gnoblin_backend::{BackendError, InputEvent, TouchPhase};
+use gnoblin_backend::{BackendError, InputEvent, TabletAxes, TabletEvent, TabletTool, TouchPhase};
 use gnoblin_testkit::backend_status::{CellStatus, ColumnCheck, StatusTable};
 use gnoblin_types::{DeviceId, OutputId, Point, Scale, Size};
 
 use crate::frame::{Presented, Scanout, present};
 use crate::gamma::GammaRamp;
-use crate::libinput::map::{DeviceEvent, Mapper, Screen};
+use crate::libinput::map::{DeviceEvent, Mapper, Screen, TabletDeviceEvent};
 use crate::modeset::tests::{FOUR_K, FULL_HD, Fake, UNLISTED, ask, connector, lit, presenting};
 use crate::modeset::{self, ModesetError, ModesetKind};
 use crate::plan::{self, Hotplug, Op, OutputState, Power, Seen};
@@ -282,6 +282,72 @@ fn libinput_events_become_every_input_event_a_seat_applies() {
 }
 
 #[test]
+fn a_tablet_stroke_reaches_the_seat_through_the_mapper() {
+    let mut mapper = Mapper::new();
+    mapper.set_screens(vec![Screen {
+        id: OutputId::new(1),
+        logical: Size::new(1920, 1080),
+    }]);
+    let tablet = DeviceId::new(4);
+    let pen = TabletTool::pen(9);
+    let mut events = Vec::new();
+    for event in [
+        TabletDeviceEvent::ToolProximity {
+            tool: pen,
+            inside: true,
+            x: 0.5,
+            y: 0.5,
+            axes: TabletAxes::default(),
+        },
+        TabletDeviceEvent::ToolTip { tool: pen, down: true },
+        TabletDeviceEvent::ToolAxis {
+            tool: pen,
+            x: 0.6,
+            y: 0.5,
+            axes: TabletAxes {
+                pressure: Some(0.4),
+                tilt: Some((5.0, 0.0)),
+                ..TabletAxes::default()
+            },
+        },
+        TabletDeviceEvent::ToolButton {
+            tool: pen,
+            code: 0x14b,
+            pressed: true,
+        },
+        TabletDeviceEvent::ToolTip { tool: pen, down: false },
+        TabletDeviceEvent::ToolProximity {
+            tool: pen,
+            inside: false,
+            x: 0.6,
+            y: 0.5,
+            axes: TabletAxes::default(),
+        },
+    ] {
+        events.extend(mapper.event(tablet, DeviceEvent::Tablet(event)));
+    }
+    let kinds: Vec<&str> = events
+        .iter()
+        .map(|event| match event {
+            InputEvent::Tablet(TabletEvent::ToolIn { .. }) => "in",
+            InputEvent::Tablet(TabletEvent::ToolTip { down: true, .. }) => "down",
+            InputEvent::Tablet(TabletEvent::ToolMotion { .. }) => "motion",
+            InputEvent::Tablet(TabletEvent::ToolButton { .. }) => "button",
+            InputEvent::Tablet(TabletEvent::ToolTip { down: false, .. }) => "up",
+            InputEvent::Tablet(TabletEvent::ToolOut { .. }) => "out",
+            other => panic!("not a tablet event: {other:?}"),
+        })
+        .collect();
+    assert_eq!(kinds, ["in", "down", "motion", "button", "up", "out"]);
+    assert!(
+        events
+            .iter()
+            .all(|event| matches!(event, InputEvent::Tablet(event) if event.device() == tablet)),
+        "every event names the tablet it came from"
+    );
+}
+
+#[test]
 fn a_seat_pause_releases_what_the_session_held() {
     let mut mapper = Mapper::new();
     mapper.set_screens(vec![Screen {
@@ -367,6 +433,7 @@ fn the_status_table_holds_for_the_hardware_backend() {
         "input.keyboard",
         "input.touch",
         "input.devices",
+        "input.tablet_tool",
         "input.focus_loss",
         "control.gamma",
         "control.power",
@@ -390,7 +457,8 @@ fn the_status_table_holds_for_the_hardware_backend() {
     measured.declared("render.software", "GLES only");
     measured.declared("render.vulkan", "GLES only");
     measured.declared("render.readback", "scan-out only");
-    measured.declared("input.tablet", "no input event carries tablet data");
+    // Refused for a reason in the code: the toolkit's libinput source drops a pad's events, so a pad is not announced.
+    measured.declared("input.tablet_pad", "drops pad events");
     // Not applicable by nature: there is no host and no window.
     for id in [
         "outputs.host_scale",

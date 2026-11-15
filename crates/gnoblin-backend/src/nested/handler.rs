@@ -46,6 +46,7 @@
 //! protocols can call, and `design/backend-parity.md` lists it as missing on this backend. A parent that offers it
 //! sees it unbound.
 
+pub(super) mod dmabuf;
 pub(super) mod host_selection;
 mod host_tablet;
 
@@ -62,6 +63,7 @@ use wayland_protocols::wp::fractional_scale::v1::client::{wp_fractional_scale_ma
 use wayland_protocols::wp::keyboard_shortcuts_inhibit::zv1::client::{
     zwp_keyboard_shortcuts_inhibit_manager_v1, zwp_keyboard_shortcuts_inhibitor_v1,
 };
+use wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_dmabuf_v1;
 use wayland_protocols::wp::pointer_constraints::zv1::client::{
     zwp_confined_pointer_v1, zwp_locked_pointer_v1, zwp_pointer_constraints_v1,
 };
@@ -184,6 +186,8 @@ pub(crate) struct Bound {
     pub primary_manager: Option<zwp_primary_selection_device_manager_v1::ZwpPrimarySelectionDeviceManagerV1>,
     /// The parent's tablet manager, if it offers one.
     pub tablet_manager: Option<zwp_tablet_manager_v2::ZwpTabletManagerV2>,
+    /// The parent's dmabuf global, if it offers one.
+    pub dmabuf: Option<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1>,
     /// Every output the parent has.
     pub outputs: Vec<HostOutput>,
 }
@@ -269,6 +273,8 @@ pub(crate) struct Handler {
     tablet_seat: Option<zwp_tablet_seat_v2::ZwpTabletSeatV2>,
     /// The parent's tablets, tools and pads.
     tablets: super::tablet::Tablets,
+    /// The parent's dmabuf global, what it imports, and the buffers it created for this session.
+    dmabuf: dmabuf::Host,
 }
 
 impl Handler {
@@ -306,6 +312,7 @@ impl Handler {
             tablet_manager: bound.tablet_manager,
             tablet_seat: None,
             tablets: super::tablet::Tablets::new(),
+            dmabuf: dmabuf::Host::new(bound.dmabuf),
         }
     }
 
@@ -429,6 +436,7 @@ impl Handler {
 
     /// Destroys one output's objects, after the parent asked for it to close.
     pub fn destroy_output(&mut self, index: usize) {
+        self.forget_dmabuf_buffers_of(index);
         if let Some(objects) = self.objects.get_mut(index).and_then(Option::take) {
             if self.held.as_ref().is_some_and(|(_, on)| *on == objects.surface.id()) {
                 self.release_constraint();

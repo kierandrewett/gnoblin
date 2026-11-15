@@ -29,13 +29,12 @@
 //! GPU, effects, the memory footprint, the texture limit) is answered by the renderer through the code the headless
 //! backend shares ([`crate::gpu`]), not by a nested variant of it.
 //!
-//! What is not built is presenting through the host's `zwp_linux_dmabuf_v1`, which would skip the readback (one
-//! `glReadPixels` or its Vulkan equivalent per presented frame). It needs the host's linux-dmabuf client side, a
-//! format and modifier the host and the session's device agree on, and a render-into-host-buffer path in each
-//! renderer. Until then a GPU renderer costs a readback per frame that a DRM session does not pay; the contract does
-//! not change when the path arrives, because [`Backend`] only sees `draw` then `present`.
+//! Where the host imports GPU buffers (`zwp_linux_dmabuf_v1`) and the session draws with GLES, the frame is instead drawn
+//! into a buffer allocated on the host's device and handed over, which skips the readback ([`present_dmabuf`]). It is
+//! the same `draw` then `present` to [`Backend`], and a buffer the host refuses, a device that cannot be allocated on or a
+//! frame composed larger than the display goes through the readback path, so no frame is lost.
 //!
-//! # Failure modes first
+//! //! # Failure modes first
 //!
 //! 1. **A frame is drawn into a buffer the parent is still reading.** `surface`'s slot
 //!    ring is only released by the parent's `wl_buffer.release`, and a frame with no
@@ -78,8 +77,12 @@
 
 /// The parent-facing protocol handler: state and event dispatch.
 mod handler;
+/// What the parent's dmabuf import accepts.
+mod host_dmabuf;
 /// Translation of the parent's pointer, keyboard and touch events.
 mod input;
+/// Presenting frames as GPU buffers the parent imports.
+mod present_dmabuf;
 /// Per-output records and the table the parent's events update.
 mod records;
 /// Each nested output's surface, pool and frame presentation.
@@ -100,6 +103,7 @@ use wayland_client::protocol::{wl_compositor, wl_data_device_manager, wl_output,
 use wayland_client::{Connection, EventQueue, Proxy};
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_manager_v1;
 use wayland_protocols::wp::keyboard_shortcuts_inhibit::zv1::client::zwp_keyboard_shortcuts_inhibit_manager_v1;
+use wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_dmabuf_v1;
 use wayland_protocols::wp::pointer_constraints::zv1::client::zwp_pointer_constraints_v1;
 use wayland_protocols::wp::pointer_gestures::zv1::client::zwp_pointer_gestures_v1;
 use wayland_protocols::wp::primary_selection::zv1::client::zwp_primary_selection_device_manager_v1;
@@ -113,6 +117,7 @@ use gnoblin_output::DisplayMode;
 use gnoblin_types::{OutputId, Scale, Size};
 
 pub use input::AXIS_STEP;
+pub use present_dmabuf::{DmabufPresenter, GbmPresenter, PresentRefusal};
 pub use surface::NestedTarget;
 
 use crate::gpu::DmabufHub;
@@ -224,6 +229,9 @@ pub struct NestedConfig {
     /// The size an output starts at when the parent leaves the size to the session (xdg-shell's zero by zero
     /// configure). A parent that states a size always wins.
     pub initial_size: Size,
+    /// Whether frames are presented as GPU buffers through the parent's `zwp_linux_dmabuf_v1` where it offers one and the
+    /// session draws with GLES. Off, or without both, every frame is read back into shared memory.
+    pub dmabuf: bool,
 }
 
 impl NestedConfig {
@@ -239,6 +247,7 @@ impl NestedConfig {
             secure_treatment: SecureTreatment::default(),
             renderer: RendererKind::default(),
             initial_size: UNCONSTRAINED_SIZE,
+            dmabuf: true,
         }
     }
 }
@@ -328,6 +337,11 @@ pub struct Nested {
     next_output: u64,
     /// The title every toplevel's connector is appended to.
     title: String,
+    /// What allocates and fills the GPU buffers frames are presented in, when the session presents through the parent's
+    /// dmabuf import.
+    presenter: Option<surface::SharedPresenter>,
+    /// What the parent's dmabuf import last said, which each target is given when it changes.
+    dmabuf_offer: host_dmabuf::HostDmabuf,
 }
 
 impl std::fmt::Debug for Nested {
@@ -420,6 +434,14 @@ impl Nested {
         let tablet_manager = globals
             .bind::<zwp_tablet_manager_v2::ZwpTabletManagerV2, Handler, ()>(&qh, 1..=1, ())
             .ok();
+        // The dmabuf import is optional and asked for only by a session that wants the GPU path.
+        let dmabuf_global = if config.dmabuf {
+            globals
+                .bind::<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1, Handler, ()>(&qh, 1..=4, ())
+                .ok()
+        } else {
+            None
+        };
         let icon_manager = globals
             .bind::<xdg_toplevel_icon_manager_v1::XdgToplevelIconManagerV1, Handler, ()>(&qh, 1..=1, ())
             .ok();
@@ -455,12 +477,14 @@ impl Nested {
                 data_manager,
                 primary_manager,
                 tablet_manager,
+                dmabuf: dmabuf_global,
                 outputs,
             },
             config.app_id.clone(),
             config.icon.clone(),
             config.initial_size,
         );
+        handler.ask_dmabuf_feedback(&qh);
         let count = config.outputs.len().max(1);
         for index in 0..count {
             let spec = config.outputs.get(index).cloned().unwrap_or_default();
@@ -492,10 +516,52 @@ impl Nested {
             requests: Arc::new(Mutex::new(HandleRequests::default())),
             next_output: count as u64,
             title: config.title.clone(),
+            presenter: config.dmabuf.then(|| {
+                std::sync::Arc::new(Mutex::new(Box::new(GbmPresenter::default()) as Box<dyn DmabufPresenter>))
+            }),
+            dmabuf_offer: host_dmabuf::HostDmabuf::default(),
         };
         backend.await_first_configures()?;
         log::info!(area = "nested", socket = %config.socket.display(), outputs = backend.outputs.len(), "connected to the parent");
         Ok(backend)
+    }
+
+    /// Presents through `presenter` instead of GBM and the renderer's own copy.
+    ///
+    /// A machine with no GPU cannot allocate a buffer, so a test installs the stand-in that can; the protocol is the same.
+    #[must_use]
+    pub fn with_dmabuf_presenter(mut self, presenter: Box<dyn DmabufPresenter>) -> Self {
+        let shared: surface::SharedPresenter = std::sync::Arc::new(Mutex::new(presenter));
+        for target in self.targets.iter_mut().flatten() {
+            target.set_presenter(std::sync::Arc::clone(&shared));
+        }
+        self.presenter = Some(shared);
+        self
+    }
+
+    /// How many frames of `output` reached the parent as GPU buffers rather than shared memory.
+    #[must_use]
+    pub fn gpu_presents(&self, output: OutputId) -> u64 {
+        self.target_of(output).map_or(0, NestedTarget::gpu_presents)
+    }
+
+    /// Whether `output` gave the GPU path up: the parent refused a buffer, or the device allocates none.
+    #[must_use]
+    pub fn gpu_retired(&self, output: OutputId) -> bool {
+        self.target_of(output).is_none_or(NestedTarget::gpu_retired)
+    }
+
+    /// What a target is given of the GPU path when it is made: the parent's global, what it imports and the presenter.
+    fn gpu_parts(
+        &self,
+    ) -> Option<(
+        zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1,
+        host_dmabuf::HostDmabuf,
+        surface::SharedPresenter,
+    )> {
+        let global = self.handler.dmabuf_global()?.clone();
+        let presenter = self.presenter.clone()?;
+        Some((global, self.handler.host_dmabuf().clone(), presenter))
     }
 
     /// A handle that can open and close output windows after a session has taken this backend.
@@ -662,6 +728,7 @@ impl Nested {
                 target.release(generation, slot);
             }
         }
+        self.settle_dmabuf();
         let mut closed = false;
         for index in changes.closed {
             closed |= self.close_output(index);
@@ -674,6 +741,36 @@ impl Nested {
             self.report_disconnect();
         }
         self.rebuild_outputs();
+    }
+
+    /// Gives each target what the parent said about its dmabuf import: the list when it changed, and the answers about
+    /// the buffers it asked for.
+    fn settle_dmabuf(&mut self) {
+        use handler::dmabuf::DmabufNote;
+        if *self.handler.host_dmabuf() != self.dmabuf_offer {
+            self.dmabuf_offer.clone_from(self.handler.host_dmabuf());
+            for target in self.targets.iter_mut().flatten() {
+                target.set_host_dmabuf(self.dmabuf_offer.clone());
+            }
+        }
+        for note in self.handler.take_dmabuf_notes() {
+            match note {
+                DmabufNote::Created {
+                    index,
+                    generation,
+                    slot,
+                    buffer,
+                } => match self.targets.get_mut(index) {
+                    Some(Some(target)) => target.gpu_buffer_created(generation, slot, buffer),
+                    _ => buffer.destroy(),
+                },
+                DmabufNote::Failed { index, generation } => {
+                    if let Some(Some(target)) = self.targets.get_mut(index) {
+                        target.gpu_buffer_failed(generation);
+                    }
+                }
+            }
+        }
     }
 
     /// Applies one configure: a new output, or a resize of an existing one.
@@ -737,6 +834,7 @@ impl Nested {
             index,
             output.clone(),
             self.renderer,
+            self.gpu_parts(),
         ) {
             Ok(target) => {
                 log::debug!(area = "nested", connector = %output.connector, "an output connected");

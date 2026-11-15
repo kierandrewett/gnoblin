@@ -28,7 +28,8 @@ use gnoblin_backend::headless::{Headless, HeadlessConfig, HeadlessHandle};
 use gnoblin_backend::nested::{Nested, OutputSpec};
 use gnoblin_backend::render::renderer::RendererKind;
 use gnoblin_backend::{
-    Backend, BackendError, BackendEvent, DeviceInfo, DeviceKind, GammaRamp, InputEvent, Present, TouchPhase,
+    Backend, BackendError, BackendEvent, DeviceInfo, DeviceKind, GammaRamp, InputEvent, Present, Stylus, TabletEvent,
+    TabletTool, TouchPhase,
 };
 use gnoblin_output::DisplayMode;
 use gnoblin_render_frame::frame::Solid;
@@ -46,6 +47,12 @@ const USER_PAGE: &str = include_str!("../../../docs/backends.md");
 
 /// The nested tests, whose names the table's `covered` rows cite.
 const NESTED_TESTS: &str = include_str!("nested.rs");
+
+/// The clipboard tests, which run a real client on each side of a nested session.
+const SELECTION_BRIDGE_TESTS: &str = include_str!("selection_bridge.rs");
+
+/// The tests of presenting through the host's dmabuf.
+const NESTED_DMABUF_TESTS: &str = include_str!("nested_dmabuf.rs");
 
 /// The most a GPU renderer may differ from the software reference at a probe, per channel.
 const GPU_TOLERANCE: i32 = 2;
@@ -254,6 +261,7 @@ fn same_input(got: &InputEvent, expected: &InputEvent) -> bool {
     use InputEvent::*;
     match (got, expected) {
         (PointerMotion { position: a, .. }, PointerMotion { position: b, .. }) => a == b,
+        (Tablet(a), Tablet(b)) => a == b,
         (PointerMotionRelative { dx: ax, dy: ay, .. }, PointerMotionRelative { dx: bx, dy: by, .. }) => {
             (ax, ay) == (bx, by)
         }
@@ -659,6 +667,39 @@ fn the_status_table_holds_for_headless() {
     m.is("input.touchpad", CellStatus::Supported);
     delivered(&mut rig, &mut probe, &InputEvent::PointerLeave);
 
+    // A drawing tablet: the synthetic stylus produces the stream a device would, and every event of it arrives, in order.
+    let output = rig.first().id;
+    let mut pen = Stylus::new(DeviceId::new(9), output, TabletTool::pen(7));
+    let stroke = pen.stroke(&[(20.0, 20.0), (30.0, 25.5), (40.0, 30.0)]);
+    assert!(
+        stroke.len() >= 6,
+        "a stroke has a proximity, a tip, motion and the way out: {stroke:?}"
+    );
+    for event in &stroke {
+        delivered(&mut rig, &mut probe, event);
+    }
+    m.is("input.tablet_tool", CellStatus::Supported);
+    for event in [
+        TabletEvent::PadButton {
+            device: DeviceId::new(10),
+            button: 1,
+            pressed: true,
+        },
+        TabletEvent::PadRing {
+            device: DeviceId::new(10),
+            ring: 0,
+            angle: Some(45.0),
+        },
+        TabletEvent::PadStrip {
+            device: DeviceId::new(10),
+            strip: 0,
+            position: None,
+        },
+    ] {
+        delivered(&mut rig, &mut probe, &event.into());
+    }
+    m.is("input.tablet_pad", CellStatus::Supported);
+
     // The session ending and the device being lost are each reported once.
     rig.handle.end_session();
     let events = rig.pump(&mut probe);
@@ -699,7 +740,6 @@ fn the_status_table_holds_for_headless() {
     ] {
         m.is(id, CellStatus::NotApplicable);
     }
-    m.declared("input.tablet", "no input event carries tablet data");
     m.skip_unseen(
         &["gpu.views", "gpu.footprint", "gpu.dmabuf"],
         "this machine cannot create a GPU renderer",
@@ -797,10 +837,38 @@ fn the_status_table_holds_for_nested() {
             NESTED_TESTS,
         );
         // Declared: the repository's own host sends no gesture to a client, so the gesture path is unit-tested in the
-        // backend; and the bridges below are named as not done in the table.
+        // backend.
         m.declared("input.touchpad", "unit tested");
-        m.declared("input.tablet", "no input event carries tablet data");
-        m.declared("bridge.dmabuf_present", "wl_shm");
+        m.covered(
+            "input.tablet_tool",
+            CellStatus::Supported,
+            "a_hosts_pen_arrives_as_tablet_events",
+            NESTED_TESTS,
+        );
+        m.covered(
+            "input.tablet_pad",
+            CellStatus::Supported,
+            "a_hosts_pad_arrives_as_pad_events",
+            NESTED_TESTS,
+        );
+        m.covered(
+            "bridge.dmabuf_present",
+            CellStatus::Supported,
+            "a_frame_is_presented_through_the_hosts_dmabuf",
+            NESTED_DMABUF_TESTS,
+        );
+        m.covered(
+            "outputs.host_scale",
+            CellStatus::Supported,
+            "a_host_that_states_only_an_integer_scale_is_followed_to_it",
+            NESTED_TESTS,
+        );
+        m.covered(
+            "outputs.host_scale",
+            CellStatus::Supported,
+            "a_host_fractional_scale_is_followed_exactly",
+            NESTED_TESTS,
+        );
         m.covered(
             "input.relative",
             CellStatus::Supported,
@@ -813,7 +881,18 @@ fn the_status_table_holds_for_nested() {
             "a_lock_in_the_session_locks_the_hosts_pointer_and_its_relative_motion_arrives",
             NESTED_TESTS,
         );
-        m.declared("bridge.clipboard", "not bridged");
+        m.covered(
+            "bridge.clipboard",
+            CellStatus::Supported,
+            "a_copy_on_the_host_is_pasted_in_the_session",
+            SELECTION_BRIDGE_TESTS,
+        );
+        m.covered(
+            "bridge.clipboard",
+            CellStatus::Supported,
+            "a_copy_in_the_session_is_pasted_on_the_host",
+            SELECTION_BRIDGE_TESTS,
+        );
 
         m.skip_unseen(
             &["gpu.views", "gpu.footprint", "gpu.dmabuf"],

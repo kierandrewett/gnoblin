@@ -208,6 +208,12 @@ impl Bridge {
 
     /// The parent says `offer` (or nothing) is now its selection.
     fn host_selected(&mut self, target: SelectionTarget, offer: Option<HostOffer>, id: Option<ObjectId>) {
+        // The host sends its selection to the client that has its keyboard focus and to no other, so receiving one is
+        // proof of the focus even from a host with no `wl_keyboard` to say so (a headless Sway has none). Losing the
+        // focus is still `focus_out`, which a host with a keyboard sends.
+        if offer.is_some() {
+            self.focused = true;
+        }
         let mime_types = id.and_then(|id| self.offers.remove(&id)).unwrap_or_default();
         let channel = self.channel(target);
         let echo = std::mem::take(&mut channel.echo);
@@ -381,12 +387,10 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for Handler {
                 bridge.host_selected(SelectionTarget::Clipboard, id.map(HostOffer::Data), key);
             }
             // A drag is not bridged. Its offer is released when it leaves.
-            wl_data_device::Event::Enter { id, .. } => {
-                if let Some(offer) = id {
-                    bridge.offers.remove(&offer.id());
-                    if let Some(old) = bridge.drag.replace(offer) {
-                        old.destroy();
-                    }
+            wl_data_device::Event::Enter { id: Some(offer), .. } => {
+                bridge.offers.remove(&offer.id());
+                if let Some(old) = bridge.drag.replace(offer) {
+                    old.destroy();
                 }
             }
             wl_data_device::Event::Leave => {
@@ -476,10 +480,10 @@ impl Dispatch<zwp_primary_selection_offer_v1::ZwpPrimarySelectionOfferV1, ()> fo
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let zwp_primary_selection_offer_v1::Event::Offer { mime_type } = event {
-            if let Some(types) = state.selection.offers.get_mut(&offer.id()) {
-                types.push(mime_type);
-            }
+        if let zwp_primary_selection_offer_v1::Event::Offer { mime_type } = event
+            && let Some(types) = state.selection.offers.get_mut(&offer.id())
+        {
+            types.push(mime_type);
         }
     }
 }

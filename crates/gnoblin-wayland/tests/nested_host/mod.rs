@@ -45,15 +45,18 @@ pub struct Probe {
     pub colour: Option<Color>,
     /// A rectangle drawn over the colour, for a test that needs an edge.
     pub shape: Option<Solid>,
+    /// Every change of the host's selection the session was told of, in order: the target and the types now offered.
+    pub selections: Vec<(gnoblin_backend::SelectionTarget, Option<Vec<String>>)>,
+    /// What the session answers when the host pastes its selection.
+    pub payload: Vec<u8>,
 }
 
 impl Probe {
     /// A session that draws `colour`.
     pub fn drawing(colour: Color) -> Self {
         Self {
-            inputs: Vec::new(),
             colour: Some(colour),
-            shape: None,
+            ..Self::default()
         }
     }
 
@@ -99,6 +102,20 @@ impl Host for Probe {
 
     fn input(&mut self, event: InputEvent) {
         self.inputs.push(event);
+    }
+
+    fn host_selection(&mut self, target: gnoblin_backend::SelectionTarget, mime_types: Option<Vec<String>>) {
+        self.selections.push((target, mime_types));
+    }
+
+    fn session_selection_wanted(
+        &mut self,
+        _target: gnoblin_backend::SelectionTarget,
+        _mime_type: String,
+        fd: std::os::fd::OwnedFd,
+    ) {
+        let mut file = std::fs::File::from(fd);
+        let _ = std::io::Write::write_all(&mut file, &self.payload);
     }
 }
 
@@ -189,15 +206,26 @@ impl Session {
         })
     }
 
+    /// Creates a host that imports GPU buffers through `provider`, the stand-in of `tests/mock_gpu`: a machine with no GPU
+    /// cannot import a dmabuf, so the part of the host a GPU is answers from the provider and everything above it is real.
+    pub fn start_gpu(provider: Box<dyn gnoblin_backend::DmabufProvider>) -> Self {
+        Self::start_on(Headless::new().with_dmabuf_provider(provider), |config| config)
+    }
+
     /// Creates a host on a socket of its own, with the configuration `adjust` makes of the default one.
     pub fn start_with(adjust: impl FnOnce(Config) -> Config) -> Self {
+        Self::start_on(Headless::new(), adjust)
+    }
+
+    /// Creates a host on `backend`, with the configuration `adjust` makes of the default one.
+    pub fn start_on(backend: Headless, adjust: impl FnOnce(Config) -> Config) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let config = adjust(Config {
             socket_path: Some(socket.clone()),
             ..Config::default()
         });
-        let server = Server::new(Box::new(Headless::new()), config).expect("the host starts");
+        let server = Server::new(Box::new(backend), config).expect("the host starts");
         let handle = Handle {
             socket,
             control: server.control(),

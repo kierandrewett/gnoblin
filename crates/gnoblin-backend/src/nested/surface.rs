@@ -59,13 +59,18 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use gnoblin_output::DisplayMode;
 use gnoblin_output::supersample::virtual_size;
 use gnoblin_types::{Rect, Scale, Size};
+use smithay::backend::allocator::dmabuf::Dmabuf;
+use smithay::backend::allocator::{Buffer as _, Format};
 use wayland_client::protocol::wl_buffer;
 use wayland_client::protocol::{wl_shm, wl_shm_pool, wl_surface};
 use wayland_client::{Proxy, QueueHandle};
+use wayland_protocols::wp::linux_dmabuf::zv1::client::{zwp_linux_buffer_params_v1, zwp_linux_dmabuf_v1};
 use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
 
 use super::NestedError;
 use super::handler::{Handler, OutputKey, SlotKey};
+use super::host_dmabuf::HostDmabuf;
+use super::present_dmabuf::{DmabufPresenter, Slots, presentable};
 use crate::Present;
 use crate::gpu::{GpuTarget, TargetParts};
 use crate::render::renderer::{AnyRenderer, RendererKind};
@@ -337,6 +342,14 @@ enum BufferScaleState {
     Stated(i32),
 }
 
+/// Which kind of buffer a frame was put in.
+enum Taken {
+    /// A slot of the shared-memory pool.
+    Shm,
+    /// A slot of the GPU buffers.
+    Gpu,
+}
+
 /// One nested output: the renderer, the pool and the surface.
 pub struct NestedTarget {
     /// The output this target presents. Its mode is physical, so its logical size is
@@ -373,6 +386,59 @@ pub struct NestedTarget {
     buffer_scale: BufferScaleState,
     /// One row of packed slot pixels, so a frame with damage allocates nothing.
     scratch: Vec<u8>,
+    /// Presentation through the parent's dmabuf import, where the parent offers one.
+    gpu: GpuPath,
+}
+
+/// A shared handle on what allocates the buffers frames are presented in, so every output of a session uses one device.
+pub(crate) type SharedPresenter = std::sync::Arc<std::sync::Mutex<Box<dyn DmabufPresenter>>>;
+
+/// The generations of the GPU buffers carry this bit, so a release is never mistaken for one of the pool's.
+const GPU_GENERATION: u32 = 1 << 31;
+
+/// The buffers of one size a target presents through the parent's dmabuf import.
+struct GpuRing {
+    /// Which of them the parent has.
+    slots: Slots,
+    /// Each buffer's memory, kept alive for as long as the parent may read it, and its `wl_buffer` once the parent has
+    /// created it.
+    buffers: Vec<(Dmabuf, Option<wl_buffer::WlBuffer>)>,
+}
+
+impl GpuRing {
+    /// Tells the parent the buffers are no longer needed.
+    fn destroy(self) {
+        for (_, buffer) in self.buffers {
+            if let Some(buffer) = buffer {
+                buffer.destroy();
+            }
+        }
+    }
+}
+
+/// Whether and how a target presents through the parent's dmabuf import.
+enum Gpu {
+    /// No buffers made yet: the first frame that can use the path makes them.
+    Unbuilt,
+    /// The buffers exist, or are being created by the parent.
+    Ring(GpuRing),
+    /// The path is over for this output: the parent refused a buffer, the device allocates none, or a frame could not be
+    /// drawn into one. Every frame goes through shared memory.
+    Retired,
+}
+
+/// The pieces of the GPU path a target holds.
+struct GpuPath {
+    state: Gpu,
+    /// The parent's dmabuf global and what it said it imports, when the parent offers one and the session asked for the
+    /// path.
+    host: Option<(zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1, HostDmabuf)>,
+    /// What allocates and fills the buffers.
+    presenter: Option<SharedPresenter>,
+    /// The next generation of buffers.
+    next_generation: u32,
+    /// How many frames went to the parent through the GPU path.
+    presents: u64,
 }
 
 impl std::fmt::Debug for NestedTarget {
@@ -405,6 +471,7 @@ impl NestedTarget {
         index: usize,
         output: Output,
         kind: RendererKind,
+        gpu: Option<(zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1, HostDmabuf, SharedPresenter)>,
     ) -> Result<Self, NestedError> {
         let planned = plan(
             output.logical_size(),
@@ -440,6 +507,22 @@ impl NestedTarget {
                 .buffer_scale
                 .map_or(BufferScaleState::Unstated, BufferScaleState::Stated),
             scratch: Vec::new(),
+            gpu: match gpu {
+                Some((global, host, presenter)) => GpuPath {
+                    state: Gpu::Unbuilt,
+                    host: Some((global, host)),
+                    presenter: Some(presenter),
+                    next_generation: 1,
+                    presents: 0,
+                },
+                None => GpuPath {
+                    state: Gpu::Retired,
+                    host: None,
+                    presenter: None,
+                    next_generation: 1,
+                    presents: 0,
+                },
+            },
         };
         target.damage_whole();
         Ok(target)
@@ -533,6 +616,10 @@ impl NestedTarget {
         previous.destroy();
         self.output = output;
         self.ring = Ring::new(SLOTS);
+        // The GPU buffers are the old size; the next frame makes new ones. A path that was retired stays retired.
+        if let Gpu::Ring(ring) = std::mem::replace(&mut self.gpu.state, Gpu::Unbuilt) {
+            ring.destroy();
+        }
         // The buffer scale is a property of the surface rather than of a buffer, and it
         // may have changed with the configure, so the next present states it again.
         self.buffer_scale = BufferScaleState::Unstated;
@@ -597,7 +684,246 @@ impl NestedTarget {
     pub(crate) fn release(&mut self, generation: u32, slot: u8) {
         if generation == self.pool.generation {
             self.ring.release(slot);
+        } else if let Gpu::Ring(ring) = &mut self.gpu.state {
+            ring.slots.release(generation, slot);
         }
+    }
+
+    /// What the parent said about its dmabuf import changed: the next buffers are made against the new list.
+    pub(crate) fn set_host_dmabuf(&mut self, offer: HostDmabuf) {
+        if let Some((_, known)) = self.gpu.host.as_mut() {
+            *known = offer;
+        }
+    }
+
+    /// Installs the presenter every output of the session shares, after the target exists.
+    pub(crate) fn set_presenter(&mut self, presenter: SharedPresenter) {
+        self.gpu.presenter = Some(presenter);
+        // A presenter that was refused before is given a second chance: it is a different one.
+        if matches!(self.gpu.state, Gpu::Retired) && self.gpu.host.is_some() {
+            self.gpu.state = Gpu::Unbuilt;
+        }
+    }
+
+    /// How many frames reached the parent as GPU buffers, as opposed to shared memory.
+    #[must_use]
+    pub fn gpu_presents(&self) -> u64 {
+        self.gpu.presents
+    }
+
+    /// Whether the GPU path was given up for this output.
+    #[must_use]
+    pub fn gpu_retired(&self) -> bool {
+        matches!(self.gpu.state, Gpu::Retired)
+    }
+
+    /// The parent created a GPU buffer.
+    pub(crate) fn gpu_buffer_created(&mut self, generation: u32, slot: u8, buffer: wl_buffer::WlBuffer) {
+        if let Gpu::Ring(ring) = &mut self.gpu.state
+            && ring.slots.generation == generation
+            && let Some(entry) = ring.buffers.get_mut(usize::from(slot))
+        {
+            entry.1 = Some(buffer);
+            ring.slots.created(slot);
+            return;
+        }
+        // A buffer of a generation that was replaced.
+        buffer.destroy();
+    }
+
+    /// The parent refused a GPU buffer: the path is over for this output.
+    pub(crate) fn gpu_buffer_failed(&mut self, generation: u32) {
+        let current = matches!(&self.gpu.state, Gpu::Ring(ring) if ring.slots.generation == generation);
+        if current {
+            if let Gpu::Ring(ring) = &mut self.gpu.state {
+                ring.slots.failed();
+            }
+            log::warn!(
+                area = "nested",
+                "the parent refused a GPU buffer, so this output presents through shared memory from now on"
+            );
+            self.retire_gpu();
+        }
+    }
+
+    /// Gives the GPU path up for this output, destroying what it made.
+    fn retire_gpu(&mut self) {
+        if let Gpu::Ring(ring) = std::mem::replace(&mut self.gpu.state, Gpu::Retired) {
+            ring.destroy();
+        }
+    }
+
+    /// Whether this frame may go through the GPU path: the parent offers it, a presenter is installed, the renderer can
+    /// take part, and the frame is the size of the buffer (a supersampled frame is averaged down on the CPU).
+    fn gpu_usable(&mut self) -> bool {
+        if matches!(self.gpu.state, Gpu::Retired) || !self.output.supersample.is_identity() {
+            return false;
+        }
+        let (Some((_, host)), Some(presenter)) = (self.gpu.host.as_ref(), self.gpu.presenter.as_ref()) else {
+            return false;
+        };
+        if !host.offers_formats() {
+            return false;
+        }
+        let Ok(presenter) = presenter.lock() else {
+            return false;
+        };
+        presenter.can_fill(&mut self.renderer)
+    }
+
+    /// Allocates the GPU buffers and asks the parent to create them, once.
+    fn build_gpu_ring(&mut self) {
+        let (Some((global, host)), Some(presenter)) = (self.gpu.host.clone(), self.gpu.presenter.clone()) else {
+            return;
+        };
+        let size = Size::new(self.pool.width, self.pool.height);
+        let drawable: Option<Vec<Format>> = self.renderer.dmabuf_support().map(|support| {
+            support
+                .formats
+                .iter()
+                .map(|format| Format {
+                    code: format.code,
+                    modifier: format.modifier,
+                })
+                .collect()
+        });
+        let formats = presentable(&host.formats(), drawable.as_deref());
+        if formats.is_empty() {
+            log::debug!(
+                area = "nested",
+                "the parent and the renderer share no format, so frames go through shared memory"
+            );
+            self.gpu.state = Gpu::Retired;
+            return;
+        }
+        let generation = GPU_GENERATION | self.gpu.next_generation;
+        self.gpu.next_generation = (self.gpu.next_generation + 1) & !GPU_GENERATION;
+        let mut buffers = Vec::with_capacity(SLOTS);
+        {
+            let Ok(mut presenter) = presenter.lock() else {
+                self.gpu.state = Gpu::Retired;
+                return;
+            };
+            for _ in 0..SLOTS {
+                match presenter.allocate(host.device(), size, &formats) {
+                    Ok(buffer) => buffers.push((buffer, None)),
+                    Err(error) => {
+                        log::debug!(area = "nested", %error, "no GPU buffer, so frames go through shared memory");
+                        self.gpu.state = Gpu::Retired;
+                        return;
+                    }
+                }
+            }
+        }
+        for (slot, (buffer, _)) in buffers.iter().enumerate() {
+            let params = global.create_params(
+                &self.qh,
+                SlotKey {
+                    index: self.index,
+                    generation,
+                    slot: u8::try_from(slot).unwrap_or(0),
+                },
+            );
+            let format = buffer.format();
+            let modifier = u64::from(format.modifier);
+            for (plane, ((fd, offset), stride)) in
+                buffer.handles().zip(buffer.offsets()).zip(buffer.strides()).enumerate()
+            {
+                params.add(
+                    fd,
+                    u32::try_from(plane).unwrap_or(0),
+                    offset,
+                    stride,
+                    (modifier >> 32) as u32,
+                    modifier as u32,
+                );
+            }
+            params.create(
+                i32::try_from(size.width).unwrap_or(i32::MAX),
+                i32::try_from(size.height).unwrap_or(i32::MAX),
+                format.code as u32,
+                zwp_linux_buffer_params_v1::Flags::empty(),
+            );
+        }
+        self.gpu.state = Gpu::Ring(GpuRing {
+            slots: Slots::new(generation, SLOTS),
+            buffers,
+        });
+    }
+
+    /// The next buffer to present, from the GPU path when it can take the frame and from shared memory otherwise.
+    fn next_buffer(&mut self) -> Option<(wl_buffer::WlBuffer, Taken)> {
+        if let Some(found) = self.next_gpu_buffer() {
+            return Some(found);
+        }
+        self.next_shm_buffer()
+    }
+
+    /// A GPU buffer holding the frame the renderer last drew, if the path is on and every buffer exists.
+    fn next_gpu_buffer(&mut self) -> Option<(wl_buffer::WlBuffer, Taken)> {
+        if !self.gpu_usable() {
+            return None;
+        }
+        if matches!(self.gpu.state, Gpu::Unbuilt) {
+            self.build_gpu_ring();
+        }
+        let Gpu::Ring(ring) = &mut self.gpu.state else {
+            return None;
+        };
+        let slot = ring.slots.take()?;
+        let presenter = self.gpu.presenter.clone()?;
+        let (memory, buffer) = ring.buffers.get(slot)?;
+        let Some(buffer) = buffer.clone() else {
+            ring.slots.give_back(slot);
+            return None;
+        };
+        let filled = match presenter.lock() {
+            Ok(mut presenter) => presenter.fill(&mut self.renderer, memory),
+            Err(_) => Err(super::present_dmabuf::PresentRefusal::NoDevice(
+                "the presenter is poisoned".to_owned(),
+            )),
+        };
+        if let Err(error) = filled {
+            log::warn!(area = "nested", %error, "a frame could not be drawn into a GPU buffer, so this output presents through shared memory from now on");
+            self.retire_gpu();
+            return None;
+        }
+        Some((buffer, Taken::Gpu))
+    }
+
+    /// A shared-memory slot holding the frame, read back from the renderer.
+    fn next_shm_buffer(&mut self) -> Option<(wl_buffer::WlBuffer, Taken)> {
+        let Some(slot) = self.ring.take() else {
+            // Every buffer is still attached; the parent is behind.
+            log::debug!(area = "nested", "every buffer is in flight, so this frame waits");
+            return None;
+        };
+        let released = u8::try_from(slot).unwrap_or(0);
+        let shown = Size::new(self.pool.width, self.pool.height);
+        let image = match self.renderer.capture(true) {
+            Ok(image) if image.size() == shown => image,
+            // The renderer composed at the factor; the parent's buffer is the mode.
+            Ok(image) => image.downsample(shown),
+            Err(error) => {
+                log::warn!(area = "nested", ?error, "the frame could not be read back");
+                self.ring.release(released);
+                return None;
+            }
+        };
+        if let Err(error) = self.write_slot(slot, &image) {
+            log::warn!(
+                area = "nested",
+                ?error,
+                "the frame could not be written into its buffer"
+            );
+            self.ring.release(released);
+            return None;
+        }
+        let Some(buffer) = self.pool.buffers.get(slot).cloned() else {
+            self.ring.release(released);
+            return None;
+        };
+        Some((buffer, Taken::Shm))
     }
 
     /// The parent finished the frame this target presented.
@@ -685,34 +1011,7 @@ impl Target for NestedTarget {
             // not sent and nothing is written.
             return Present::Nothing;
         }
-        let Some(slot) = self.ring.take() else {
-            // Every buffer is still attached; the parent is behind.
-            log::debug!(area = "nested", "every buffer is in flight, so this frame waits");
-            return Present::Nothing;
-        };
-        let released = u8::try_from(slot).unwrap_or(0);
-        let shown = Size::new(self.pool.width, self.pool.height);
-        let image = match self.renderer.capture(true) {
-            Ok(image) if image.size() == shown => image,
-            // The renderer composed at the factor; the parent's buffer is the mode.
-            Ok(image) => image.downsample(shown),
-            Err(error) => {
-                log::warn!(area = "nested", ?error, "the frame could not be read back");
-                self.ring.release(released);
-                return Present::Nothing;
-            }
-        };
-        if let Err(error) = self.write_slot(slot, &image) {
-            log::warn!(
-                area = "nested",
-                ?error,
-                "the frame could not be written into its buffer"
-            );
-            self.ring.release(released);
-            return Present::Nothing;
-        }
-        let Some(buffer) = self.pool.buffers.get(slot).cloned() else {
-            self.ring.release(released);
+        let Some((buffer, taken)) = self.next_buffer() else {
             return Present::Nothing;
         };
         if self.damage.is_empty() {
@@ -757,6 +1056,9 @@ impl Target for NestedTarget {
         self.damage.clear();
         self.frame = FrameWait::Awaiting;
         self.presents = self.presents.saturating_add(1);
+        if matches!(taken, Taken::Gpu) {
+            self.gpu.presents = self.gpu.presents.saturating_add(1);
+        }
         Present::Rendered
     }
 }

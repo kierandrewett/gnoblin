@@ -112,43 +112,44 @@ it.
 
 <!-- backend-status:start -->
 
-| Capability                                                       | Headless                                                  | Nested                                                                                    | DRM                                                                          |
-| ---------------------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Outputs with a mode and a scale at start                         | supported                                                 | supported: one per host window                                                            | supported: one per connected connector                                       |
-| Outputs added and removed while running                          | supported                                                 | supported: host windows opened and closed at run time                                     | supported: monitors plugged and unplugged are followed                       |
-| Modes an output can be driven in, listed                         | supported: the one virtual mode                           | supported: the host window's size is the one mode                                         | supported: the kernel's list                                                 |
-| Changing an output's mode                                        | supported: any mode with pixels                           | refused: the host owns the window size                                                    | supported: listed modes only, and only with GNOBLIN_DRM_MODESET=1            |
-| Choosing an output's scale                                       | supported                                                 | refused: the scale follows the host window                                                | supported                                                                    |
-| Composing larger than the display and averaging down             | supported                                                 | supported: the window needs a whole scale or a host viewport                              | supported                                                                    |
-| Following the host's scale                                       | n/a: there is no host                                     | supported: fractional scale, or the integer scale of the host output                      | n/a: there is no host                                                        |
-| The software renderer                                            | supported                                                 | supported                                                                                 | refused: scan-out draws with GLES only                                       |
-| The OpenGL ES renderer                                           | supported                                                 | supported                                                                                 | supported: needs GBM and EGL on a real GPU                                   |
-| The Vulkan renderer                                              | supported                                                 | supported                                                                                 | refused: scan-out draws with GLES only                                       |
-| One frame drawn and presented                                    | supported                                                 | supported: after the host asks for a frame                                                | supported: one frame in flight at a time                                     |
-| A frame read back as pixels                                      | supported                                                 | supported                                                                                 | refused: scan-out only, the frame is never read back                         |
-| The same scene gives the same pixels                             | supported: the reference                                  | supported: equal to headless within the stated tolerance                                  | n/a: there is no readback to compare                                         |
-| Importing client GPU buffers                                     | supported: GLES and Vulkan; the software renderer refuses | supported: as headless, the same code                                                     | supported: the GPU imports the buffers                                       |
-| Views drawn on the GPU                                           | supported: GLES                                           | supported: GLES                                                                           | supported: GLES                                                              |
-| The renderer memory reported                                     | supported                                                 | supported                                                                                 | supported: the scan-out buffers and the GLES context are counted             |
-| Pointer motion and buttons                                       | supported                                                 | supported                                                                                 | supported                                                                    |
-| Relative pointer motion                                          | supported                                                 | supported: while the session holds a pointer lock                                         | supported                                                                    |
-| Scrolling                                                        | supported                                                 | supported                                                                                 | supported                                                                    |
-| Keys                                                             | supported                                                 | supported                                                                                 | supported                                                                    |
-| Touch                                                            | supported                                                 | supported                                                                                 | supported                                                                    |
-| Devices announced when they join and leave                       | supported                                                 | supported                                                                                 | supported                                                                    |
-| Touchpad swipe and pinch                                         | supported                                                 | supported: when the host offers pointer gestures                                          | supported: gestures come from libinput                                       |
-| Tablets                                                          | refused: no input event carries tablet data               | refused: no input event carries tablet data                                               | refused: no input event carries tablet data                                  |
-| Held keys, buttons and touches released when input is taken away | n/a: nothing takes the input away                         | supported: the host's keyboard leave                                                      | supported: switching away from the session releases held buttons and touches |
-| The host's shortcuts yielded to the session                      | n/a: the session owns the seat                            | supported: while the window has the keyboard and the host offers it                       | n/a: the session owns the seat                                               |
-| Pointer lock and confine for the session's clients               | n/a: there is no host pointer                             | supported: the host is asked to lock or confine its pointer where it offers the protocols | n/a: the compositor itself holds the pointer                                 |
-| Gamma tables                                                     | supported: a virtual table, recorded                      | refused: a host monitor's table is shared by every window                                 | supported: a table of the wrong size is refused                              |
-| Output power                                                     | supported: virtual, recorded                              | refused: a host monitor's power is shared by every window                                 | supported                                                                    |
-| Clipboard and primary selection shared with the host             | n/a: there is no host                                     | refused: a copy in the session does not reach the host                                    | n/a: there is no host                                                        |
-| Window title, app id and icon                                    | n/a: there is no window                                   | supported: title, app id and icon (xdg_toplevel_icon_v1 where the host offers it)         | n/a: there is no window                                                      |
-| Presenting through the host's dmabuf                             | n/a: there is no host                                     | refused: frames reach the host through wl_shm after a readback                            | n/a: there is no host                                                        |
-| The person ending the session through the backend's own surface  | supported: asked for through its control handle           | supported: closing the last window                                                        | n/a: there is no window to close                                             |
-| The device or the host going away is reported once               | supported                                                 | supported                                                                                 | supported: the GPU being removed                                             |
-| Dropping the backend releases what it holds                      | supported                                                 | supported: the host window goes                                                           | supported: the seat is released                                              |
+| Capability                                                                            | Headless                                                  | Nested                                                                                               | DRM                                                                                |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Outputs with a mode and a scale at start                                              | supported                                                 | supported: one per host window                                                                       | supported: one per connected connector                                             |
+| Outputs added and removed while running                                               | supported                                                 | supported: host windows opened and closed at run time                                                | supported: monitors plugged and unplugged are followed                             |
+| Modes an output can be driven in, listed                                              | supported: the one virtual mode                           | supported: the host window's size is the one mode                                                    | supported: the kernel's list                                                       |
+| Changing an output's mode                                                             | supported: any mode with pixels                           | refused: the host owns the window size                                                               | supported: listed modes only, and only with GNOBLIN_DRM_MODESET=1                  |
+| Choosing an output's scale                                                            | supported                                                 | refused: the scale follows the host window                                                           | supported                                                                          |
+| Composing larger than the display and averaging down                                  | supported                                                 | supported: the window needs a whole scale or a host viewport                                         | supported                                                                          |
+| Following the host's scale                                                            | n/a: there is no host                                     | supported: fractional scale, or the integer scale of the host output                                 | n/a: there is no host                                                              |
+| The software renderer                                                                 | supported                                                 | supported                                                                                            | refused: scan-out draws with GLES only                                             |
+| The OpenGL ES renderer                                                                | supported                                                 | supported                                                                                            | supported: needs GBM and EGL on a real GPU                                         |
+| The Vulkan renderer                                                                   | supported                                                 | supported                                                                                            | refused: scan-out draws with GLES only                                             |
+| One frame drawn and presented                                                         | supported                                                 | supported: after the host asks for a frame                                                           | supported: one frame in flight at a time                                           |
+| A frame read back as pixels                                                           | supported                                                 | supported                                                                                            | refused: scan-out only, the frame is never read back                               |
+| The same scene gives the same pixels                                                  | supported: the reference                                  | supported: equal to headless within the stated tolerance                                             | n/a: there is no readback to compare                                               |
+| Importing client GPU buffers                                                          | supported: GLES and Vulkan; the software renderer refuses | supported: as headless, the same code                                                                | supported: the GPU imports the buffers                                             |
+| Views drawn on the GPU                                                                | supported: GLES                                           | supported: GLES                                                                                      | supported: GLES                                                                    |
+| The renderer memory reported                                                          | supported                                                 | supported                                                                                            | supported: the scan-out buffers and the GLES context are counted                   |
+| Pointer motion and buttons                                                            | supported                                                 | supported                                                                                            | supported                                                                          |
+| Relative pointer motion                                                               | supported                                                 | supported: while the session holds a pointer lock                                                    | supported                                                                          |
+| Scrolling                                                                             | supported                                                 | supported                                                                                            | supported                                                                          |
+| Keys                                                                                  | supported                                                 | supported                                                                                            | supported                                                                          |
+| Touch                                                                                 | supported                                                 | supported                                                                                            | supported                                                                          |
+| Devices announced when they join and leave                                            | supported                                                 | supported                                                                                            | supported                                                                          |
+| Touchpad swipe and pinch                                                              | supported                                                 | supported: when the host offers pointer gestures                                                     | supported: gestures come from libinput                                             |
+| Tablet tools: proximity, motion with pressure, tilt and distance, the tip and buttons | supported: a synthetic stylus, injected like any input    | supported: where the host offers zwp_tablet_v2                                                       | supported: libinput's tool events                                                  |
+| Tablet pads: buttons, rings and strips                                                | supported: injected like any input                        | supported: where the host offers zwp_tablet_v2                                                       | refused: the toolkit's libinput source drops pad events, so a pad is not announced |
+| Held keys, buttons and touches released when input is taken away                      | n/a: nothing takes the input away                         | supported: the host's keyboard leave                                                                 | supported: switching away from the session releases held buttons and touches       |
+| The host's shortcuts yielded to the session                                           | n/a: the session owns the seat                            | supported: while the window has the keyboard and the host offers it                                  | n/a: the session owns the seat                                                     |
+| Pointer lock and confine for the session's clients                                    | n/a: there is no host pointer                             | supported: the host is asked to lock or confine its pointer where it offers the protocols            | n/a: the compositor itself holds the pointer                                       |
+| Gamma tables                                                                          | supported: a virtual table, recorded                      | refused: a host monitor's table is shared by every window                                            | supported: a table of the wrong size is refused                                    |
+| Output power                                                                          | supported: virtual, recorded                              | refused: a host monitor's power is shared by every window                                            | supported                                                                          |
+| Clipboard and primary selection shared with the host                                  | n/a: there is no host                                     | supported: while the window has the host's keyboard; text and images, never a secret, 16 MiB a paste | n/a: there is no host                                                              |
+| Window title, app id and icon                                                         | n/a: there is no window                                   | supported: title, app id and icon (xdg_toplevel_icon_v1 where the host offers it)                    | n/a: there is no window                                                            |
+| Presenting through the host's dmabuf                                                  | n/a: there is no host                                     | supported: through the host's dmabuf when the session draws with GLES, shared memory otherwise       | n/a: there is no host                                                              |
+| The person ending the session through the backend's own surface                       | supported: asked for through its control handle           | supported: closing the last window                                                                   | n/a: there is no window to close                                                   |
+| The device or the host going away is reported once                                    | supported                                                 | supported                                                                                            | supported: the GPU being removed                                                   |
+| Dropping the backend releases what it holds                                           | supported                                                 | supported: the host window goes                                                                      | supported: the seat is released                                                    |
 
 <!-- backend-status:end -->
 
@@ -165,15 +166,64 @@ A nested session is a Wayland client of the host, with the host's permissions an
 - **Size and scale.** The window is the output: its size is the mode, and the scale follows the host's, fractional where
   the host offers it and whole otherwise.
 - **Identity.** The window has a title, an application id and an icon, so the host's window list shows the session.
+- **The clipboard and the primary selection.** See [the clipboard](#the-clipboard-and-what-it-can-leak) below.
+- **Tablets.** A drawing tablet the host has is a tablet of the session: the pen's position, pressure, tilt, distance,
+  tip and buttons, and the pad's buttons, rings and strips, where the host offers `zwp_tablet_v2`. A pen moves no pointer.
+- **GPU buffers.** When the session draws with the GLES renderer and the host can import GPU buffers
+  (`zwp_linux_dmabuf_v1`), each frame is drawn into a buffer on the host's device and handed over, with no readback. A
+  frame the GPU path cannot take (a supersampled output, a buffer the host refuses, a machine with no render node) goes
+  through shared memory, so the window never goes blank.
 
 What does not cross, and why:
 
-- **The clipboard and the primary selection.** A copy in the session does not reach the host, and the reverse. Sharing
-  them would hand the host's clipboard to every client of the session.
-- **Tablets.** No backend carries tablet data.
 - **Gamma and power.** Refused: they belong to the host's monitor, not to the window.
-- **Drawing with the host's GPU buffers.** Frames reach the host as shared memory after a readback. A GPU renderer
-  therefore costs one readback per frame that a hardware session does not pay.
+- **Anything the clipboard rules below keep back**: file lists, application types and secrets.
+- **A tablet pad on the hardware backend.** The toolkit's libinput source drops a pad's events, so a pad is not
+  announced there. The pen is.
+- **GPU buffers with the software or Vulkan renderer.** Only GLES draws into a GPU buffer, so those two read each frame
+  back into shared memory.
+
+## The clipboard, and what it can leak
+
+A nested session shares its clipboard and its primary selection with the host, both ways, under these rules. They are
+the answer to one question: a program in the session must not be able to read or change what you copied on the host
+without you having it in front of you.
+
+- **Only while the window has the host's keyboard.** The host offers its clipboard to the window it is typing into, so
+  the session sees it from the moment you click into the window until you leave. Leaving takes it away. A program in the
+  session that sets the clipboard while you are elsewhere does not touch the host's.
+- **Nothing is read until somebody pastes.** The host's clipboard is a list of types until a program asks for one, so a
+  gigabyte copy that nobody pastes costs nothing.
+- **Only these types cross:** `text/plain` (with or without a charset), `UTF8_STRING`, `STRING`, `TEXT`, `text/html`,
+  `image/png` and `image/jpeg`. File lists (`text/uri-list`), application types and anything else stay where they were
+  made, because they carry host paths and identities.
+- **A secret never crosses.** A password manager marks a copy as secret by offering the `x-kde-passwordManagerHint`
+  type. A copy that offers it is not shared at all, in either direction.
+- **At most 16 MiB a paste**, and a paste that goes 10 seconds without a byte ends. The program reading gets what moved
+  before the limit, as it would from any pipe that closed.
+- **Not while the session is locked.**
+
+Every program of the session that can read the clipboard (any program in the focused window, and any clipboard manager
+you run in the session) can read what crosses while the window is focused. Do not copy something you would not paste into
+the session's windows.
+
+## Real hosts
+
+The nested backend is tested against this repository's own compositor, and against Sway 1.7 and Weston 10 running
+headless (`scripts/real-host-conformance.sh sway`, or `weston`). A headless real host can show:
+
+- the window's size and scale, and frame pacing;
+- the title and application id the host's window list shows;
+- the integer scale: Sway states a fractional scale as the whole scale above it, and the session follows that;
+- the clipboard from the host to the session. The other way needs an input device for the serial a copy names, and a
+  headless host has none.
+
+It cannot show tablets, a pointer of yours to lock, or the dmabuf path, which has no GPU here. Those are proven against
+the repository's host only.
+
+Weston's headless backend has no input device and so offers no `wl_seat`. A nested session needs one to take input from,
+and a host without it is refused by name (`the parent does not offer wl_seat`). Against Weston only that refusal is
+checked. Sway's headless backend does offer a seat.
 
 ## What a different host changes
 

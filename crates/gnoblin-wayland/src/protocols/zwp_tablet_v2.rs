@@ -263,10 +263,10 @@ pub(crate) fn resolve_new_seats(state: &mut State, display: &DisplayHandle) {
             .map(|pad| (pad.device, pad.name.clone(), pad.layout))
             .collect();
         for (device, name, layout) in pads {
-            if let Some(instance) = announce_pad(display, &client, &seat, device, &name, layout) {
-                if let Some(pad) = state.tablets.pads.iter_mut().find(|pad| pad.device == device) {
-                    pad.instances.push(instance);
-                }
+            if let Some(instance) = announce_pad(display, &client, &seat, device, &name, layout)
+                && let Some(pad) = state.tablets.pads.iter_mut().find(|pad| pad.device == device)
+            {
+                pad.instances.push(instance);
             }
         }
     }
