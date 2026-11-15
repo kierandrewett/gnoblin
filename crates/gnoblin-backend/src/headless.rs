@@ -327,6 +327,12 @@ impl HeadlessTarget {
         self.physical
     }
 
+    /// The bytes this target's renderer holds, by what holds them.
+    #[must_use]
+    pub fn footprint(&self) -> gnoblin_render_frame::footprint::Footprint {
+        self.renderer.footprint()
+    }
+
     /// Reads the offscreen buffer back, with each secure layer drawn as `treatment` says.
     ///
     /// # Errors
@@ -1017,6 +1023,12 @@ impl<S: Host + 'static> Backend<S> for Headless {
 
     fn capture(&mut self, output: OutputId, with_cursor: bool) -> Option<Image> {
         Self::capture(self, output, with_cursor)
+    }
+
+    fn footprint(&self, output: OutputId) -> gnoblin_render_frame::footprint::Footprint {
+        self.target_of(output)
+            .map(HeadlessTarget::footprint)
+            .unwrap_or_default()
     }
 
     fn dispatch(&mut self, host: &mut S) -> Vec<BackendEvent> {

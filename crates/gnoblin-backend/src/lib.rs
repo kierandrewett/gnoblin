@@ -787,6 +787,15 @@ pub trait Backend<S: Host + 'static> {
         self.capture(output, false)
     }
 
+    /// The bytes this backend's renderer holds for `output`, by what holds them.
+    ///
+    /// It is what attributes a growing process: a number that rises with the session names the allocator. A backend
+    /// with no renderer of its own to count (a recorder, a test double) answers all zeros, which is also what it
+    /// answers for an output it does not drive.
+    fn footprint(&self, _output: OutputId) -> gnoblin_render_frame::footprint::Footprint {
+        gnoblin_render_frame::footprint::Footprint::default()
+    }
+
     /// Deliver queued input to the host and report state changes.
     ///
     /// Input is delivered first so a host that reacts to a mode change sees the

@@ -206,6 +206,7 @@ mod devices;
 mod dispatch;
 mod fallback;
 mod frame;
+mod gpu_memory;
 mod interactive;
 mod keyboard;
 mod liveness;

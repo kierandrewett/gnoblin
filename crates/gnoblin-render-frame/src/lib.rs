@@ -16,6 +16,7 @@
 //! | [`image`]    | the RGBA8 readback a screenshot, capture and the parity probes use      |
 //! | [`error`]    | [`error::RenderError`], the small `Copy` reason a renderer could not draw |
 //! | [`shm`]      | the one writer of a client's `wl_shm` pool                              |
+//! | [`footprint`] | the bytes a renderer holds for one output, by what holds them          |
 //!
 //! Items are named through their module (`gnoblin_render_frame::frame::OutputFrame`): the
 //! crate re-exports nothing, so every caller states where a type lives.
@@ -29,6 +30,8 @@
 
 /// Why a renderer could not draw.
 pub mod error;
+/// The bytes a renderer holds for one output, by what holds them.
+pub mod footprint;
 /// The description of one output's frame that a renderer draws.
 pub mod frame;
 /// The one rule every renderer converts logical rectangles to pixels with.

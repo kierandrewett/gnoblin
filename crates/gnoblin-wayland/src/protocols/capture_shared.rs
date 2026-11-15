@@ -116,6 +116,16 @@ pub(super) struct Cached {
     tick: Tick,
 }
 
+impl Cached {
+    /// The bytes this frame holds: the plain picture and, when the pointer is over the output, the one with the
+    /// cursor composed in.
+    fn bytes(&self) -> u64 {
+        let plain = self.image.data().len() as u64;
+        let cursored = self.cursored.as_ref().map_or(0, |image| image.data().len() as u64);
+        plain.saturating_add(cursored)
+    }
+}
+
 /// Where every capturable target is right now.
 ///
 /// A snapshot rather than a borrow of the compositor: the copy path needs geometry and
@@ -812,6 +822,23 @@ impl State {
         };
         let tick = self.capture.tick;
         self.capture.pixels.insert(output, Cached { image, cursored, tick });
+    }
+
+    /// The bytes capture keeps of `output`'s last presented frame: zero for an output that has not presented.
+    pub(crate) fn capture_cache_bytes(&self, output: OutputId) -> u64 {
+        self.capture.pixels.get(&output).map_or(0, Cached::bytes)
+    }
+
+    /// How many outputs capture holds a frame for, which is the number of outputs the session has unless an entry
+    /// outlived its output.
+    pub(crate) fn capture_cached_outputs(&self) -> usize {
+        self.capture.pixels.len()
+    }
+
+    /// Drops the frame capture kept for an output the session no longer has. The cache is keyed by output id and ids
+    /// are never reused, so an entry left behind would hold a full frame for the rest of the session.
+    pub(crate) fn forget_capture_frame(&mut self, output: OutputId) {
+        self.capture.pixels.remove(&output);
     }
 
     /// Tells capture that part of an output changed, so the next frame reports it.

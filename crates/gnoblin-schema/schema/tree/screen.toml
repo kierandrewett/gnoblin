@@ -129,6 +129,56 @@ since = "0.2.0"
 default = 1.0
 readonly = true
 
+# The bytes the output's renderer and capture hold for it, in bytes, read-only (an owner-requested addition beyond the
+# display specification; see design/gpu-memory.md). They are the sizes of the objects the compositor asked the driver
+# for (colour plus depth or stencil storage), so a driver that pads or tiles holds at least this much. A client's own
+# buffers are not counted. `gpu_memory_target_bytes` is the output-sized target and, for a supersampled output, the
+# copy it is averaged down into. `gpu_memory_scratch_bytes` is the effect scratch targets and the bytes kept under the
+# cursor. `gpu_memory_staging_bytes` is the host-visible upload and readback buffers a renderer keeps between frames.
+# `gpu_memory_views_bytes` is the pictures of the Views drawn on the GPU. `gpu_memory_capture_bytes` is the last
+# presented frame capture keeps for the screencopy and screen-cast protocols. `gpu_memory_bytes` is their sum.
+[[object.property]]
+name = "gpu_memory_target_bytes"
+type = "double"
+since = "0.2.0"
+default = 0.0
+readonly = true
+
+[[object.property]]
+name = "gpu_memory_scratch_bytes"
+type = "double"
+since = "0.2.0"
+default = 0.0
+readonly = true
+
+[[object.property]]
+name = "gpu_memory_staging_bytes"
+type = "double"
+since = "0.2.0"
+default = 0.0
+readonly = true
+
+[[object.property]]
+name = "gpu_memory_views_bytes"
+type = "double"
+since = "0.2.0"
+default = 0.0
+readonly = true
+
+[[object.property]]
+name = "gpu_memory_capture_bytes"
+type = "double"
+since = "0.2.0"
+default = 0.0
+readonly = true
+
+[[object.property]]
+name = "gpu_memory_bytes"
+type = "double"
+since = "0.2.0"
+default = 0.0
+readonly = true
+
 # Apply an output configuration through the transactional engine and keep it as the output's profile. The text is one
 # `key=value` per line: `mode` (`3440x1440@144` or `preferred`), `scale` (`1.25` or `default`), `supersample` (`2`, a
 # number from 1 to 16, or `default`), `transform` (`normal`), `position` (`X,Y` or `auto`), `enabled` (`true` or

@@ -49,6 +49,13 @@ const FRAME_TIMEOUT: u64 = 10_000_000_000;
 /// The alignment of a texture's bytes inside the staging buffer.
 const STAGING_ALIGN: usize = 16;
 
+/// The size of a recorder's staging and readback buffers when it is made, and what a trim leaves.
+const MIN_BUFFER: usize = 4096;
+
+/// How many output-sized uploads the staging buffer keeps room for between frames. A frame of a few full-screen
+/// windows fits; a larger frame grows the buffer for itself and gives it back after the frame.
+const STAGING_SCREENS: usize = 4;
+
 /// What the renderer draws into: an image and the framebuffer over it.
 pub(super) struct RenderTarget {
     context: Rc<VkContext>,
@@ -303,6 +310,42 @@ impl FrameRecorder {
         }
         Ok(())
     }
+
+    /// The host-visible bytes the recorder holds now: the quad, uniform, instance, staging and readback buffers.
+    pub(super) fn bytes(&self) -> u64 {
+        [
+            &self.quad,
+            &self.uniforms,
+            &self.instances,
+            &self.staging,
+            &self.readback,
+        ]
+        .iter()
+        .map(|buffer| buffer.size() as u64)
+        .fold(0, u64::saturating_add)
+    }
+
+    /// Gives back what a past peak left behind: a staging buffer above `staging_retain` bytes and a readback buffer
+    /// above `readback_retain` are replaced by the smallest a recorder starts with, and the next frame that needs
+    /// more grows it again.
+    ///
+    /// [`FrameRecorder::ensure`] only grows, so without this one large frame (a window opened at a huge size, an
+    /// output supersampled and then not) keeps its host-visible memory for the life of the renderer. A buffer that
+    /// cannot be replaced is kept: a trim that fails costs memory, never a frame.
+    pub(super) fn trim(&mut self, staging_retain: usize, readback_retain: usize) {
+        let context = Rc::clone(&self.context);
+        if self.staging.size() > staging_retain
+            && let Ok(buffer) = VkBuffer::new(&context, MIN_BUFFER, vk::BufferUsageFlags::TRANSFER_SRC, false)
+        {
+            // The device is idle between frames, so the old buffer can be dropped at once.
+            self.staging = buffer;
+        }
+        if self.readback.size() > readback_retain
+            && let Ok(buffer) = VkBuffer::new(&context, MIN_BUFFER, vk::BufferUsageFlags::TRANSFER_DST, true)
+        {
+            self.readback = buffer;
+        }
+    }
 }
 
 /// Destroys a command pool and a fence if the recorder could not be completed.
@@ -366,6 +409,24 @@ impl PixelSource<'_> {
 }
 
 impl Vulkan {
+    /// The host-visible bytes the renderer holds: the recorder's buffers and the pixels saved under the cursor.
+    pub(super) fn host_bytes(&self) -> u64 {
+        self.recorder.bytes().saturating_add(
+            self.cursor_under
+                .buffer
+                .as_ref()
+                .map_or(0, |buffer| buffer.size() as u64),
+        )
+    }
+
+    /// Gives back the host-visible memory a past peak left in the recorder, keeping what one steady frame needs: a
+    /// readback of the target, and staging for [`STAGING_SCREENS`] output-sized uploads.
+    pub(super) fn trim(&mut self) {
+        let target = self.physical.width as usize * self.physical.height as usize * 4;
+        let readback = target.next_power_of_two();
+        self.recorder.trim(readback.saturating_mul(STAGING_SCREENS), readback);
+    }
+
     /// Draws `frame` into the target. See [`Vulkan::draw`].
     pub(super) fn paint(&mut self, frame: &OutputFrame, scale: Scale) -> Result<(), vk::Result> {
         if damage_of(frame, scale, self.physical).is_empty() {

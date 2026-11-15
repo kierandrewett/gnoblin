@@ -1433,6 +1433,7 @@ impl State {
                 self.composer.remove_output(entry.backend);
             }
             self.output_controls_removed(entry.backend);
+            self.forget_capture_frame(entry.backend);
             log::debug!(area = "output", connector = %entry.output.name(), "disconnected");
             let mut effects = self.with_seat(|fallback, seat| fallback.output_removed(entry.backend, seat));
             if self.composer.shell_places() {

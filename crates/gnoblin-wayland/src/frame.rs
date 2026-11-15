@@ -49,6 +49,11 @@ use crate::state::State;
 
 use crate::log;
 
+/// How many screenshot requests may wait for the loop at once. Each caller blocks until its own is answered, so this
+/// is the number of callers a stalled loop can hold; past it a request is refused rather than queued behind a loop
+/// that is not answering.
+const MAX_PENDING_SHOTS: usize = 8;
+
 /// How long a screenshot waits for the loop to take it.
 ///
 /// It is generous because the loop's own timeout is 100 ms and a screenshot request
@@ -207,27 +212,63 @@ impl Screenshots {
     /// lock is asked again when the loop reads the pixels, so a lock that engaged after the caller looked still
     /// refuses it. The harness's plain requests are not guarded, because a test reads the cover the lock draws.
     pub fn request_guarded(&self, output: OutputId, display: bool, ping: &Ping) -> Result<Image, ShotRefusal> {
-        self.enqueue(output, display, true, ping)
-            .wait_guarded(SCREENSHOT_TIMEOUT)
+        let slot = self
+            .enqueue(output, display, true, ping)
+            .ok_or(ShotRefusal::Unavailable)?;
+        let image = slot.wait_guarded(SCREENSHOT_TIMEOUT);
+        if image.is_err() {
+            self.withdraw(&slot);
+        }
+        image
     }
 
     fn ask(&self, output: OutputId, display: bool, ping: &Ping) -> Option<Image> {
-        self.enqueue(output, display, false, ping).wait(SCREENSHOT_TIMEOUT)
+        self.ask_within(output, display, ping, SCREENSHOT_TIMEOUT)
     }
 
-    fn enqueue(&self, output: OutputId, display: bool, guarded: bool, ping: &Ping) -> Arc<ShotSlot> {
-        let slot = Arc::new(ShotSlot::default());
+    /// [`Screenshots::ask`] with its own deadline, so a test does not wait the real one out.
+    ///
+    /// A request that gives up withdraws itself: left in the queue it would be served later with a full readback
+    /// nobody waits for.
+    fn ask_within(&self, output: OutputId, display: bool, ping: &Ping, timeout: Duration) -> Option<Image> {
+        let slot = self.enqueue(output, display, false, ping)?;
+        let image = slot.wait(timeout);
+        if image.is_none() {
+            self.withdraw(&slot);
+        }
+        image
+    }
+
+    /// Takes a request back out of the queue, if the loop has not taken it yet.
+    fn withdraw(&self, slot: &Arc<ShotSlot>) {
         self.queue
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .push_back(Shot {
+            .retain(|shot| !Arc::ptr_eq(&shot.slot, slot));
+    }
+
+    /// Queues a request, or refuses it at once ([`None`]) when the queue is too full to take it.
+    fn enqueue(&self, output: OutputId, display: bool, guarded: bool, ping: &Ping) -> Option<Arc<ShotSlot>> {
+        let slot = Arc::new(ShotSlot::default());
+        {
+            let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+            if queue.len() >= MAX_PENDING_SHOTS {
+                log::warn!(
+                    area = "frame",
+                    pending = queue.len(),
+                    "too many screenshot requests wait; refused"
+                );
+                return None;
+            }
+            queue.push_back(Shot {
                 output,
                 display,
                 guarded,
                 slot: Arc::clone(&slot),
             });
+        }
         ping.ping();
-        slot
+        Some(slot)
     }
 
     /// Answers every queued request from the backend's readback. `covered` is the lock's answer now: a guarded
@@ -345,6 +386,9 @@ pub fn render(
     // The captures into a client's GPU buffer are answered from the frames just drawn: a copy is made where the
     // renderer is, which a protocol handler is not.
     state.apply_dmabuf_captures(backend);
+    // What each output holds is published to its screen node here, before the turn's tree changes are taken, so a
+    // shell that watches it hears a change on the iteration that made it.
+    state.publish_gpu_memory(backend);
     state.end_frame();
     // A popup that hangs wholly off every output is drawn nowhere, so its commit damages nothing and no frame
     // follows it; its client is answered all the same, because there is no frame of it to wait for.
@@ -905,5 +949,85 @@ mod tests {
             vec![Rect::new(0, 0, 4, 4)],
             "an idle iteration keeps the last damage"
         );
+    }
+
+    #[test]
+    fn a_screenshot_that_gives_up_leaves_no_request_in_the_queue() {
+        // The loop is stalled: nothing serves the queue, so a caller waits out its deadline. The request it queued must
+        // go with it, or the loop serves a full readback to nobody when it wakes, once per request that ever timed out.
+        let screenshots = Screenshots::default();
+        let (ping, _source) = smithay::reexports::calloop::ping::make_ping().expect("a ping");
+        for _ in 0..4 {
+            let image = screenshots.ask_within(OutputId::new(1), false, &ping, Duration::from_millis(1));
+            assert!(image.is_none(), "nothing answered");
+        }
+        let queued = screenshots.queue.lock().expect("the queue lock").len();
+        assert_eq!(queued, 0, "every request that gave up withdrew itself");
+    }
+
+    #[test]
+    fn a_screenshot_request_past_the_cap_is_refused_at_once() {
+        let screenshots = Screenshots::default();
+        let (ping, _source) = smithay::reexports::calloop::ping::make_ping().expect("a ping");
+        {
+            let mut queue = screenshots.queue.lock().expect("the queue lock");
+            for _ in 0..MAX_PENDING_SHOTS {
+                queue.push_back(Shot {
+                    output: OutputId::new(1),
+                    display: false,
+                    guarded: false,
+                    slot: Arc::new(ShotSlot::default()),
+                });
+            }
+        }
+        let asked = Instant::now();
+        let image = screenshots.ask_within(OutputId::new(1), false, &ping, Duration::from_secs(5));
+        assert!(image.is_none(), "a full queue refuses");
+        assert!(
+            asked.elapsed() < Duration::from_secs(1),
+            "the refusal does not wait the deadline out: {:?}",
+            asked.elapsed()
+        );
+        let queued = screenshots.queue.lock().expect("the queue lock").len();
+        assert_eq!(queued, MAX_PENDING_SHOTS, "the refused request was not queued");
+    }
+
+    #[test]
+    fn an_output_that_goes_away_takes_the_frame_capture_kept_of_it() {
+        let (mut backend, mut state) = session();
+        let handle = backend.handle();
+        let stats = Arc::new(Mutex::new(FrameStats::default()));
+        let screenshots = Screenshots::default();
+        handle
+            .connect_output(
+                "Virtual-2",
+                gnoblin_output::DisplayMode::new(64, 48, 60_000),
+                gnoblin_types::Scale::integral(1),
+            )
+            .expect("a second output is queued");
+        Backend::<State>::dispatch(&mut backend, &mut state);
+        state.sync_outputs(Backend::<State>::outputs(&backend));
+        render(&mut backend, &mut state, &stats, &screenshots);
+        assert_eq!(
+            state.capture_cached_outputs(),
+            2,
+            "each output that presented a frame has one kept for capture"
+        );
+        let second = Backend::<State>::outputs(&backend)[1].id;
+        assert!(
+            state.capture_cache_bytes(second) > 0,
+            "the second output's frame has bytes"
+        );
+
+        handle.disconnect_output(second);
+        Backend::<State>::dispatch(&mut backend, &mut state);
+        state.sync_outputs(Backend::<State>::outputs(&backend));
+        render(&mut backend, &mut state, &stats, &screenshots);
+        assert_eq!(
+            state.capture_cached_outputs(),
+            1,
+            "the frame kept for an output the session no longer has is released with it"
+        );
+        assert_eq!(state.capture_cache_bytes(second), 0);
     }
 }

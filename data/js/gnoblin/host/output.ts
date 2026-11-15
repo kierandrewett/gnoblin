@@ -158,6 +158,32 @@ export class Output extends NativeObject {
         return this.scale * this.supersample;
     }
 
+    /**
+     * The bytes the compositor holds for this output, read-only (owner-requested addition beyond the display
+     * specification). `target` is the output-sized target (and the copy a supersampled output averages down into),
+     * `scratch` the effect scratch targets, `staging` the host-visible upload and readback buffers a renderer keeps
+     * between frames, `views` the pictures of the Views drawn on the GPU, `capture` the last presented frame the
+     * capture protocols copy from, and `total` their sum. They are the sizes the compositor asked the driver for; a
+     * driver that pads or tiles holds at least this much. A client's own buffers are not counted.
+     */
+    get gpuMemory(): {
+        readonly target: number;
+        readonly scratch: number;
+        readonly staging: number;
+        readonly views: number;
+        readonly capture: number;
+        readonly total: number;
+    } {
+        return {
+            target: read<number>(this, "gpu_memory_target_bytes"),
+            scratch: read<number>(this, "gpu_memory_scratch_bytes"),
+            staging: read<number>(this, "gpu_memory_staging_bytes"),
+            views: read<number>(this, "gpu_memory_views_bytes"),
+            capture: read<number>(this, "gpu_memory_capture_bytes"),
+            total: read<number>(this, "gpu_memory_bytes"),
+        };
+    }
+
     get transform(): string {
         return read<string>(this, "transform");
     }

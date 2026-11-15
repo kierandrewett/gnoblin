@@ -95,6 +95,7 @@ use gnoblin_render::{
 };
 use gnoblin_types::{Color, NodeId, OutputId, Point, PointF, Rect, RectF, Scale, Size, TrackId, Vec3, WindowId};
 
+use gnoblin_render_frame::footprint::Footprint;
 use gnoblin_render_frame::frame::{Layer, Model, OutputFrame, SecureTreatment, Solid, Surface, SurfaceSource};
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::shm;
@@ -806,6 +807,37 @@ impl Composer {
             ("mirror_of", TreeValue::Text(info.mirror_of.clone())),
         ];
         for (key, value) in values {
+            if self.scene.value(node, key) == Some(&value) {
+                continue;
+            }
+            let _ = self.scene.set_value(node, key, value.clone());
+            self.tree_changes.push(TreeChange::Set {
+                node,
+                key: key.to_owned(),
+                value,
+            });
+        }
+    }
+
+    /// Publishes the bytes an output's renderer holds, and the bytes capture keeps of its last frame, to its screen
+    /// node: `gpu_memory_*` in bytes, each announced as a `set` only when it differs from what the node holds, so a
+    /// steady session publishes nothing. An output with no screen node yet publishes nothing.
+    pub fn set_output_memory(&mut self, output: OutputId, footprint: &Footprint, capture_cache: u64) {
+        let Some(node) = self.screens.get(&output).copied() else {
+            return;
+        };
+        let total = footprint.total().saturating_add(capture_cache);
+        let values = [
+            ("gpu_memory_target_bytes", footprint.target),
+            ("gpu_memory_scratch_bytes", footprint.scratch),
+            ("gpu_memory_staging_bytes", footprint.staging),
+            ("gpu_memory_views_bytes", footprint.views),
+            ("gpu_memory_capture_bytes", capture_cache),
+            ("gpu_memory_bytes", total),
+        ];
+        for (key, bytes) in values {
+            // Bytes are published as doubles like every other number on the tree; a count below 2^53 is exact.
+            let value = TreeValue::Double(bytes as f64);
             if self.scene.value(node, key) == Some(&value) {
                 continue;
             }

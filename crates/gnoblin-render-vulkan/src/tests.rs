@@ -781,3 +781,61 @@ fn validation_reports_a_driver_misuse() {
     );
     println!("the layer said: {}", messages[0]);
 }
+
+/// What a renderer of [`SIZE`] holds in host-visible buffers before any frame: the most a steady session keeps.
+const STEADY_HOST_BYTES: u64 = 1 << 20;
+
+/// One frame that uploads `edge * edge` pixels through an overlay, which stages every byte of its image.
+fn upload_peak(edge: u32) -> OutputFrame {
+    let mut peak = frame(Color::BLACK, SIZE);
+    let image = bitmap(edge, edge, |_, _| [1, 2, 3, 255]);
+    peak.push_layer(Layer::Overlay(
+        Overlay::new(Rect::new(0, 0, SIZE.width, SIZE.height), &image).expect("an overlay"),
+    ));
+    peak
+}
+
+#[test]
+fn the_staging_buffer_is_given_back_after_a_frame_that_needed_a_lot() {
+    let Some(mut vulkan) = renderer(SIZE) else { return };
+    let before = vulkan.footprint();
+    assert!(
+        before.staging < STEADY_HOST_BYTES,
+        "a fresh renderer is small: {before:?}"
+    );
+    // A client that opens a huge window stages every one of its pixels: 2048 * 2048 * 4 bytes is 16 MiB, far above
+    // the four screens of this 64 * 48 output that a steady session keeps room for.
+    vulkan
+        .draw(&upload_peak(2048), Scale::IDENTITY)
+        .expect("the peak frame");
+    let after = vulkan.footprint();
+    assert!(
+        after.staging < STEADY_HOST_BYTES,
+        "the 16 MiB of one frame must not stay for the life of the renderer: {after:?}"
+    );
+    // The next frame that needs it again grows it again: giving it back never costs a frame.
+    vulkan
+        .draw(&upload_peak(2048), Scale::IDENTITY)
+        .expect("the next peak frame");
+    clean(&vulkan);
+}
+
+#[test]
+fn the_readback_buffer_follows_the_target_back_down() {
+    let Some(mut vulkan) = renderer(SIZE) else { return };
+    // An output supersampled to a large target reads back through a buffer as big as the target...
+    vulkan.resize(Size::new(2048, 2048)).expect("a large target");
+    vulkan.capture(false).expect("a large readback");
+    // ...and when the factor goes back to one the target is small again; the buffer must follow it.
+    vulkan.resize(SIZE).expect("the small target");
+    vulkan
+        .draw(&frame(Color::BLACK, SIZE), Scale::IDENTITY)
+        .expect("a frame");
+    vulkan.capture(false).expect("a small readback");
+    let after = vulkan.footprint();
+    assert!(
+        after.staging < STEADY_HOST_BYTES,
+        "the readback of the old, larger target must not stay: {after:?}"
+    );
+    clean(&vulkan);
+}

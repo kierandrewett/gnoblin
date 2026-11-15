@@ -88,6 +88,7 @@ use frame::{FrameRecorder, RenderTarget, Saved};
 use pipeline::{Compiled, Pipelines, ShaderSources};
 
 use gnoblin_render_frame::error::RenderError;
+use gnoblin_render_frame::footprint::{COLOUR_BYTES_PER_PIXEL, Footprint, image_bytes};
 use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_render_frame::image::Image;
 
@@ -164,6 +165,20 @@ impl Vulkan {
         self.physical
     }
 
+    /// The bytes this renderer holds: the target image, and the host-visible buffers (staging, readback, uniforms,
+    /// instances and the pixels under the cursor) it keeps between frames.
+    ///
+    /// The staging and readback buffers are trimmed after every frame to what one steady frame needs, so a number
+    /// above that is a frame in flight and not a ratchet.
+    #[must_use]
+    pub fn footprint(&self) -> Footprint {
+        Footprint {
+            target: image_bytes(self.physical, COLOUR_BYTES_PER_PIXEL),
+            staging: self.host_bytes(),
+            ..Footprint::default()
+        }
+    }
+
     /// The largest edge, in pixels, of an image the device can create: what bounds the target of a supersampled output.
     #[must_use]
     pub fn max_image_edge(&self) -> u32 {
@@ -213,7 +228,9 @@ impl Vulkan {
         if frame.is_empty() {
             return Ok(());
         }
-        self.paint(frame, scale).map_err(|result| self.fail(result))
+        self.paint(frame, scale)
+            .map(|()| self.trim())
+            .map_err(|result| self.fail(result))
     }
 
     /// Reads the target back as an [`Image`], without the cursor.
@@ -235,7 +252,12 @@ impl Vulkan {
         if self.lost {
             return Err(RenderError::Lost);
         }
-        self.read_target(with_cursor).map_err(|result| self.fail(result))
+        self.read_target(with_cursor)
+            .map(|image| {
+                self.trim();
+                image
+            })
+            .map_err(|result| self.fail(result))
     }
 
     /// Replaces the target with one of `physical` pixels.

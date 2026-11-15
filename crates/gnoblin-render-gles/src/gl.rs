@@ -33,6 +33,7 @@ use smithay::backend::renderer::glow::GlowRenderer;
 use gnoblin_types::{Color, Rect, Size};
 
 use gnoblin_render_frame::error::RenderError;
+use gnoblin_render_frame::footprint::COLOUR_BYTES_PER_PIXEL;
 use gnoblin_render_frame::shader::Stage;
 use gnoblin_render_frame::shader::uniforms::{BLOCK_BYTES, Uniforms};
 
@@ -66,6 +67,12 @@ const TEXTURE_UNIT: u32 = 0;
 /// target's size, then the three columns of the placement's clip matrix, then the placement's
 /// parameters.
 const VERTEX_FLOATS: usize = 24;
+
+/// The bytes per pixel of an output target's `DEPTH_COMPONENT24` buffer (a driver stores 24 bits in four bytes).
+const DEPTH_BYTES_PER_PIXEL: u64 = 4;
+
+/// The bytes per pixel of a View target's `STENCIL_INDEX8` buffer.
+const STENCIL_BYTES_PER_PIXEL: u64 = 1;
 
 /// How a quad takes part in the depth test.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -412,6 +419,7 @@ impl GlContext {
                         size: (width, height),
                     },
                     renderbuffer: depth,
+                    attachment_bytes: DEPTH_BYTES_PER_PIXEL,
                 })
             })
             .map_err(context_lost)?
@@ -508,6 +516,7 @@ impl GlContext {
                         size: (width, height),
                     },
                     renderbuffer: stencil,
+                    attachment_bytes: STENCIL_BYTES_PER_PIXEL,
                 })
             })
             .map_err(context_lost)?
@@ -1202,6 +1211,8 @@ pub(crate) struct Framebuffer {
     texture: Texture,
     /// The depth buffer of an output's target, or the stencil buffer of a View's.
     renderbuffer: glow::Renderbuffer,
+    /// The bytes per pixel the depth or stencil buffer was asked for, so [`Framebuffer::bytes`] counts it.
+    attachment_bytes: u64,
 }
 
 impl Framebuffer {
@@ -1213,5 +1224,14 @@ impl Framebuffer {
     /// The target's size in pixels.
     pub(crate) fn size(&self) -> Size {
         Size::new(self.texture.size.0 as u32, self.texture.size.1 as u32)
+    }
+
+    /// The nominal bytes the target holds: the `RGBA8` colour texture and its depth or stencil buffer. A driver may
+    /// pad or tile storage, so this is what was asked for and not a promise about what the driver holds.
+    pub(crate) fn bytes(&self) -> u64 {
+        let size = self.size();
+        u64::from(size.width)
+            .saturating_mul(u64::from(size.height))
+            .saturating_mul(COLOUR_BYTES_PER_PIXEL.saturating_add(self.attachment_bytes))
     }
 }

@@ -118,6 +118,7 @@ use gnoblin_types::{Color, Rect, RectF, Scale, Size};
 
 use gl::{Depth, Framebuffer, GlContext, Program, QuadPlacement, Texture};
 use gnoblin_render_frame::error::RenderError;
+use gnoblin_render_frame::footprint::Footprint;
 use gnoblin_render_frame::frame::{ColourMatrix, Layer, Model, OutputFrame, Overlay, Surface, SurfaceSource, View};
 use gnoblin_render_frame::geometry::physical_rect;
 use gnoblin_render_frame::image::Image;
@@ -262,6 +263,30 @@ impl Gles {
     #[must_use]
     pub fn size(&self) -> Size {
         self.physical
+    }
+
+    /// The bytes this renderer holds for its output: the target, the blur scratch pair and the downsample target
+    /// when they were made, the pixels kept under the cursor, and the textures of the Views it draws.
+    ///
+    /// The sizes are what was asked of the driver (colour plus the depth or stencil buffer), not what the driver
+    /// reports: GL has no portable query for that. A client's buffers are Smithay's and are not counted here.
+    #[must_use]
+    pub fn footprint(&self) -> Footprint {
+        let scratch = self
+            .scratch
+            .iter()
+            .flatten()
+            .map(Framebuffer::bytes)
+            .fold(self.cursor_under.capacity() as u64, u64::saturating_add);
+        Footprint {
+            target: self
+                .target
+                .bytes()
+                .saturating_add(self.shown.as_ref().map_or(0, Framebuffer::bytes)),
+            scratch,
+            staging: 0,
+            views: self.subtree_bytes(),
+        }
     }
 
     /// How many frames this renderer has drawn.

@@ -10,6 +10,7 @@ use gnoblin_types::{Rect, Scale, Size};
 
 use gnoblin_render_frame::{
     error::RenderError,
+    footprint::Footprint,
     frame::{OutputFrame, SecureTreatment},
     image::Image,
 };
@@ -194,6 +195,12 @@ impl AnyRenderer {
             Self::Vulkan(vulkan) => vulkan.max_image_edge(),
             _ => u32::MAX,
         }
+    }
+
+    /// The bytes the installed renderer holds for its output, by what holds them.
+    #[must_use]
+    pub fn footprint(&self) -> Footprint {
+        on_renderer!(self, renderer => renderer.footprint())
     }
 
     /// Draws a frame, repainting only its damage.

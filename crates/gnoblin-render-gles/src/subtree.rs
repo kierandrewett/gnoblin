@@ -89,6 +89,19 @@ impl Gles {
             .count()
     }
 
+    /// The nominal bytes of the View textures this renderer holds now, with their stencil buffers.
+    #[must_use]
+    pub(crate) fn subtree_bytes(&self) -> u64 {
+        self.subtrees
+            .slots
+            .values()
+            .filter_map(|slot| match slot {
+                Slot::Ready { target, .. } => Some(target.bytes()),
+                Slot::Refused { .. } => None,
+            })
+            .fold(0, u64::saturating_add)
+    }
+
     /// Draws the scenes of `frame` into their textures, and drops the textures of the Views the frame says are gone.
     ///
     /// A failure is logged and leaves the View without a picture for this frame: it never fails the frame.

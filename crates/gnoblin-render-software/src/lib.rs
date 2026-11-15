@@ -72,6 +72,7 @@ use gnoblin_render::Pass;
 use gnoblin_types::{Color, Scale, Size};
 
 use gnoblin_render_frame::error::RenderError;
+use gnoblin_render_frame::footprint::{COLOUR_BYTES_PER_PIXEL, Footprint, image_bytes};
 use gnoblin_render_frame::frame::{ColourMatrix, Layer, OutputFrame, Overlay, Surface, SurfaceSource, View};
 use gnoblin_render_frame::geometry::physical_rect;
 use gnoblin_render_frame::image::Image;
@@ -155,6 +156,20 @@ impl Software {
     #[must_use]
     pub fn size(&self) -> Size {
         self.physical
+    }
+
+    /// The bytes this renderer holds: the output buffer, and the two byte vectors it reuses between frames.
+    ///
+    /// Those vectors only grow (a tinted layer's bytes, the pixels under the cursor), so their capacity is what
+    /// shows the largest layer this output ever drew. The client textures of the frame in flight are Pixman's own
+    /// copies and are not counted: their size is not known to this crate.
+    #[must_use]
+    pub fn footprint(&self) -> Footprint {
+        Footprint {
+            target: image_bytes(self.physical, COLOUR_BYTES_PER_PIXEL),
+            scratch: (self.scratch.capacity() as u64).saturating_add(self.cursor_under.capacity() as u64),
+            ..Footprint::default()
+        }
     }
 
     /// Replaces the buffer with one of the given size.
