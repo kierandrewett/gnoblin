@@ -3,7 +3,7 @@
 // (5000 ms by default; 0 turns pings off) is marked `unresponsive`, and this module offers the user Wait or Force quit.
 // Force quit kills the window's process with `Client.kill()`; the compositor refuses to kill init and its own process.
 // Force quit ignores presses for `armSeconds` after the alert opens, so input already in flight cannot press it.
-// `AlertTracker` is the state machine on its own. Turn the alert off with `defineConfig({ alerts: false })`.
+// `AlertTracker` is the state machine on its own. A script starts the alert with `startNotRespondingAlert()`.
 
 import { Box, Text, onUiFrame, uiFocus, uiFocused, uiLocked, uiNow, uiScreen } from "gnoblin/ui";
 import type { UiKeyEvent, UiPointerEvent } from "gnoblin/ui";
@@ -371,5 +371,5 @@ function cleanTitle(title: string): string {
     return name === "" ? "This application" : name;
 }
 
-/** The stock alert. Started by `defineConfig` unless the config says `alerts: false`. */
+/** The stock alert, started by `startNotRespondingAlert`. */
 export const notRespondingAlerts = new NotRespondingAlerts();

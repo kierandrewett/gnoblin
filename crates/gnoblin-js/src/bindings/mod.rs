@@ -18,28 +18,10 @@ use std::sync::Arc;
 use gnoblin_proto::tree::effect;
 use gnoblin_tree_client::tree_mirror::{MirrorValue, NodeId, NodeRecord, TreeMirror, TxBuilder};
 use rquickjs::{Array, Ctx, IntoJs, Object, Value};
-use thiserror::Error;
 
 use crate::supervisor::JsClock;
 
-pub(crate) use host::{adopt_windows, install, parents_first, prepare, script_value, spawn};
-
-/// What the shell asked the host to start with the session: one of the config's `autostart` commands.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum JsSpawnRequest {
-    /// A program and its arguments, run without a shell.
-    Argv(Vec<String>),
-}
-
-/// A host's refusal to start a program, with the message the script's author sees.
-#[derive(Clone, Debug, PartialEq, Eq, Error)]
-#[error("{0}")]
-pub struct JsSpawnError(pub String);
-
-/// What starts the config's `autostart` commands. `gnoblin.spawn` is not routed through it: a script's programs are
-/// `gnoblin.process`, which the shell owns and reaps. The host owns autostart, so a test can record the requests and
-/// the runtime role can route them through the session's launcher.
-pub type JsSpawner = Box<dyn FnMut(&JsSpawnRequest) -> Result<(), JsSpawnError>>;
+pub(crate) use host::{adopt_windows, install, parents_first, prepare, script_value};
 
 /// Everything the host functions share with the shell's frame loop.
 ///
@@ -53,7 +35,6 @@ pub(crate) struct HostState {
     /// The records of nodes the compositor destroyed in the batches being planned, so the objects that
     /// wrapped them can read their last values once before they freeze.
     pub graveyard: HashMap<NodeId, NodeRecord>,
-    pub spawner: Option<JsSpawner>,
     /// The last call token handed out. The compositor echoes it in an answer, which nothing reads yet.
     pub tokens: u64,
     /// The seat claims this shell holds and the chords and gestures waiting for the frame's dispatch.
@@ -89,7 +70,6 @@ impl HostState {
             mirror,
             tick: TxBuilder::new(),
             graveyard: HashMap::new(),
-            spawner: None,
             tokens: 0,
             input: crate::input::JsInput::new(clock),
             handles: NodeHandles::default(),

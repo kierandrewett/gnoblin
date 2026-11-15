@@ -64,7 +64,7 @@ export interface SecretRequest extends DialogRequest {
  *         }
  *     }
  * }
- * defineConfig({ setup: (gnoblin) => gnoblin.dialogs.addListener(new NoScreenshots()) });
+ * gnoblin.dialogs.addListener(new NoScreenshots());
  */
 export class DialogListener {
     /** A consent dialog is about to open. */

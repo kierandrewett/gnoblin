@@ -770,42 +770,6 @@ fn a_dialog_moves_with_its_parent_and_a_tiling_layout_leaves_it_alone() {
     assert_eq!(rect(&rig, 30), "490,400,100,60", "the dialog went with the parent");
 }
 
-// ---- workspace sets on several outputs -------------------------------------------------------------------------------
-
-#[test]
-fn a_workspace_set_shows_each_workspace_on_its_own_output() {
-    // Before: "retired corpus sets" and `workspace_sets` in init.retired shell: each entry shows `d:show(ws)` on the desk of its output.
-    // The TypeScript shell used to report an entry for a non-primary output and not show it.
-    let mut rig = world(0, true, "new Layout()");
-    exec(
-        &mut rig,
-        "gnoblin.workspaces.sets.define([\n\
-            { name: 'split', entries: [{ workspace: '3', output: 'output-0' }, { workspace: '1', output: 'output-1' }] },\n\
-            { name: 'away', entries: [{ workspace: '2', output: 'GONE-1' }] },\n\
-         ]);\n\
-         gnoblin.workspaces.sets.activate('split');",
-    );
-    settle(&mut rig);
-    assert_eq!(shown(&mut rig), "output-0=3 output-1=1");
-    assert_eq!(rig.eval("String(gnoblin.workspaces.sets.active)"), "split");
-    exec(&mut rig, "gnoblin.workspaces.sets.activate('away');");
-    let reported = rig.settle();
-    assert_eq!(
-        reported.len(),
-        1,
-        "an output that is gone is reported once: {reported:?}"
-    );
-    assert!(
-        reported[0].contains("output \"GONE-1\" is not connected"),
-        "{reported:?}"
-    );
-    assert_eq!(
-        shown(&mut rig),
-        "output-0=2 output-1=1",
-        "an output that is gone shows its workspace on the primary one"
-    );
-}
-
 // ---- a window the launcher started ---------------------------------------------------------------------------------
 
 /// A window the compositor maps with `from_launcher` set, as one that redeemed a launcher's activation token.

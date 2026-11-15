@@ -25,7 +25,6 @@
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -36,7 +35,6 @@ use gnoblin_tree_client::slot_link::{ClientSlotLink, SlotLink};
 use gnoblin_tree_client::tree_link::SocketTreeLink;
 use gnoblin_tree_client::tree_mirror::TreeLink;
 
-use crate::bindings::{JsSpawnError, JsSpawnRequest};
 use crate::config::{JsClientConfigLink, JsCommitLog, JsConfigLink, JsRecordingLink};
 use crate::console::{JsConsole, JsConsoleSite, console_enabled, console_socket_path};
 use crate::generation::JsGeneration;
@@ -125,7 +123,7 @@ impl JsRoleConfig {
 pub struct JsRoleLinks {
     /// For slots: the observation of the compositor's own dialogs.
     pub slots: Option<Box<dyn SlotLink>>,
-    /// For the configuration document: the settings a `defineConfig` sets.
+    /// For the configuration document: the device settings the spec objects write.
     pub config: Option<Box<dyn JsConfigLink>>,
     /// For the session: `gnoblin.session`, `gnoblin.runtime.reloadConfig` and the schema's signals.
     pub session: Option<Box<dyn JsSessionLink>>,
@@ -239,7 +237,6 @@ impl JsRole {
     /// left bare. The diagnostic says why a failing entry was not used.
     pub fn over_link(link: Box<dyn TreeLink>, links: JsRoleLinks, config: JsRoleConfig) -> Result<Self, JsShellError> {
         let mut shell = JsShell::new(link, config.shell.clone())?;
-        shell.set_spawner(Box::new(spawn_detached));
         if let Some(slots) = links.slots {
             shell.set_slot_link(slots);
         }
@@ -482,33 +479,6 @@ impl JsRole {
     pub fn shell_mut(&mut self) -> &mut JsShell {
         &mut self.shell
     }
-}
-
-/// An autostart command: starts the program in a process group of its own with no terminal input or output, and
-/// reaps it when it ends. The program and its arguments are run without a shell.
-fn spawn_detached(request: &JsSpawnRequest) -> Result<(), JsSpawnError> {
-    use std::os::unix::process::CommandExt as _;
-
-    let JsSpawnRequest::Argv(argv) = request;
-    let Some((program, arguments)) = argv.split_first() else {
-        return Err(JsSpawnError("an empty argv names no program".to_owned()));
-    };
-    let mut command = Command::new(program);
-    command.args(arguments);
-    let name = program;
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .process_group(0);
-    let mut child = command
-        .spawn()
-        .map_err(|error| JsSpawnError(format!("cannot start {name}: {error}")))?;
-    // Nothing else waits for the child, and an unreaped one stays a zombie until the role exits.
-    std::thread::spawn(move || {
-        let _ = child.wait();
-    });
-    Ok(())
 }
 
 #[cfg(test)]

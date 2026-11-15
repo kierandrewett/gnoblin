@@ -73,7 +73,7 @@ const RETIRED_KEYS: &[(&str, &str)] = &[
     ),
     (
         "window-rules",
-        "window rules are the `rules` setting of `defineConfig` in init.ts, not a configuration key",
+        "window rules are listeners and `gnoblin.clients.where(...).style` in init.ts, not a configuration key",
     ),
     (
         "frame-renderers",

@@ -535,7 +535,7 @@ export class InputContext extends NativeObject implements DeviceHome {
         return this.#state === "live" ? (this.#world.clientOf(this.#host.focus(this.#seat)) ?? null) : null;
     }
 
-    /** The window management settings the seat publishes, with the shell's overrides from the config on top. */
+    /** The window management settings the seat publishes. */
     get settings(): SeatSettings {
         return this.#host.settings(this.#seat) ?? SEAT_DEFAULTS;
     }

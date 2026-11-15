@@ -9,10 +9,9 @@
 //
 // Settings. The compositor publishes the `window_management` focus keys on the seat (`focus_mode`,
 // `focus_new_windows`, `raise_on_click`, `auto_raise`, `auto_raise_delay`, `focus_change_on_pointer_rest`) and they
-// are read-only there. `defineConfig({ focus })` overrides a key for the shell; a key the config leaves out is the
-// seat's. The seat's words for the modes translate: click is `click`, hover is `sloppy` (focus follows the pointer
-// and stays where it was when the pointer goes to the desktop) and hover-strict is `follow-mouse` (focus acts on
-// entry only, and goes when the pointer leaves the focused window).
+// are read-only there, and the shell uses them as they are. The seat's words for the modes translate: click is
+// `click`, hover is `sloppy` (focus follows the pointer and stays where it was when the pointer goes to the desktop)
+// and hover-strict is `follow-mouse` (focus acts on entry only, and goes when the pointer leaves the focused window).
 
 import type { SeatSettings } from "gnoblin/input";
 import { rejectUnknown } from "gnoblin/workspace";
@@ -22,7 +21,7 @@ export type FocusMode = "click" | "sloppy" | "follow-mouse";
 /** Whether a window started from a launcher takes focus (`allow`) or not (`prevent`). */
 export type NewWindowPolicy = "allow" | "prevent";
 
-/** The `focus` key of a config. Every key is optional: a key left out is the seat's. */
+/** The focus settings, every key optional: a key left out is the documented default. */
 export interface FocusConfig {
     mode?: FocusMode;
     /** Whether a window started from a launcher takes focus. */
@@ -186,7 +185,7 @@ export function leaveClears(settings: FocusSettings): boolean {
  * the keyboard focus.
  */
 export type FocusEvent =
-    | { readonly kind: "added"; readonly fromLauncher?: boolean; readonly skipFocus?: boolean }
+    | { readonly kind: "added"; readonly fromLauncher?: boolean }
     | { readonly kind: "enter" | "motion"; readonly held: boolean }
     | { readonly kind: "leave"; readonly focused: boolean; readonly heldHere: boolean }
     | { readonly kind: "press" };
@@ -216,7 +215,7 @@ export function focusDecision(settings: FocusSettings, event: FocusEvent): Focus
         case "added":
             return {
                 ...NOTHING,
-                focus: opensFocused(settings, event.fromLauncher === true) && event.skipFocus !== true,
+                focus: opensFocused(settings, event.fromLauncher === true),
             };
         case "press":
             return { ...NOTHING, focus: true, raise: settings.raiseOnClick };
@@ -244,7 +243,7 @@ export function focusDecision(settings: FocusSettings, event: FocusEvent): Focus
 
 /** What the policy asks of the shell. `C` is the shell's client object. */
 export interface FocusHost<C extends object> {
-    /** The settings now: the seat's, with the config's on top. Read on every event, so a change applies at once. */
+    /** The settings now: the seat's. Read on every event, so a change applies at once. */
     settings(): FocusSettings;
     /** Whether `client` has the keyboard focus now. */
     focused(client: C): boolean;
@@ -256,8 +255,6 @@ export interface FocusHost<C extends object> {
     now(): number;
     /** Whether `client` is a window that appeared while the shell ran, not one an earlier generation already had. */
     isArrival(client: C): boolean;
-    /** Whether a window rule asked that `client` not take focus when it appears. */
-    skipsFocus(client: C): boolean;
     /** Whether `client` opened on a token the launcher minted (`focus.newWindows` then decides). Absent: no. */
     fromLauncher?(client: C): boolean;
     alive(client: C): boolean;
@@ -286,9 +283,8 @@ export class FocusPolicy<C extends object> {
         if (!this.#host.isArrival(client)) {
             return;
         }
-        const skipFocus = this.#host.skipsFocus(client);
         const fromLauncher = this.#host.fromLauncher?.(client) ?? false;
-        this.#run(client, focusDecision(this.#host.settings(), { kind: "added", skipFocus, fromLauncher }));
+        this.#run(client, focusDecision(this.#host.settings(), { kind: "added", fromLauncher }));
     }
 
     onPointerEnter(client: C): void {

@@ -1,8 +1,8 @@
 // The stock window menu, ported from data/lua/gnoblin/shell/menus.lua. It owns the menu card, its keys and submenus.
 // The compositor sends a `menu` request for a window: a client's `show_window_menu`, the window-menu key, or a
 // titlebar's right click. Each request ends in `windowMenu.show`. Its entries come from `windowMenu.items`; assign
-// either to change it. `crates/gnoblin-js/tests/stock_ui.rs` drives the menu. Turn it off with
-// `defineConfig({ menus: false })`.
+// either to change it. `crates/gnoblin-js/tests/stock_ui.rs` drives the menu. A script starts it with
+// `startWindowMenu()`.
 
 import { Box, Text, onUiFrame, onUiRequest, uiFocus, uiFocused, uiLocked, uiPointer, uiScreen } from "gnoblin/ui";
 import type { PaintOp, UiKeyEvent, UiPointerEvent } from "gnoblin/ui";
@@ -686,7 +686,7 @@ export class WindowMenus {
         return this.#current;
     }
 
-    /** Starts answering menu requests. A shell does this once; `defineConfig({ menus: false })` never does. */
+    /** Starts answering menu requests. A shell does this once, through `startWindowMenu`. */
     start(world: MenuWorld): void {
         this.#world = world;
         onUiRequest((request) => {
@@ -812,5 +812,5 @@ export class WindowMenus {
     }
 }
 
-/** The stock window menu. Started by `defineConfig` unless the config says `menus: false`. */
+/** The stock window menu, started by `startWindowMenu`. */
 export const windowMenu = new WindowMenus();

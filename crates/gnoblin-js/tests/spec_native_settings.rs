@@ -1,10 +1,10 @@
-//! The settings `defineConfig` used to carry that have a home in the owner's specification, set the way the
-//! specification sets them: property writes and method calls on live objects in an `init.ts`, with no config object.
+//! The settings that have a home in the owner's specification, set the way the specification sets them: property
+//! writes and method calls on live objects in an `init.ts`, with no config object.
 //!
-//! One case for each key that has a spec object: workspace gaps and a layout's gap, keys and gestures as `input.bind`,
-//! and the titlebar, window menu and not-responding alert as library helpers. The keys with a spec object whose
-//! tests live elsewhere are named in `design/js-spec-native.md` (part 3.11), and the ones with none are listed there as
-//! dropped. Over the fake compositor of `tests/common`.
+//! One case for each setting that has a spec object: workspace gaps and a layout's gap, keys and gestures as
+//! `input.bind`, and the titlebar, window menu and not-responding alert as library helpers. The settings with a spec
+//! object whose tests live elsewhere are named in `design/js-spec-native.md` (part 3.11), and the ones with none are
+//! listed there as dropped. Over the fake compositor of `tests/common`.
 
 use gnoblin_tree_client::tree_mirror::MirrorValue;
 

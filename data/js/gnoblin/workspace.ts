@@ -3,8 +3,8 @@
 // own fields, and the check of what `compute` returned. The `Workspace` class itself is in the host module
 // (`gnoblin/host`), because its `clients` collection is one of the host's live collections.
 //
-// This module is not re-exported from `gnoblin`: a config reaches workspaces through `Workspace` and
-// `gnoblin.workspaces`, and the host and `defineConfig` import the helpers by name.
+// This module is not re-exported from `gnoblin`: a script reaches workspaces through `Workspace` and
+// `gnoblin.workspaces`, and the host imports the helpers by name.
 
 import { Layout } from "gnoblin/layout";
 import type { Gaps, Placement, Rect } from "gnoblin/layout";

@@ -17,8 +17,8 @@ use common::rig_with;
 /// is deleted by that lane: the test fails once the runtime has the member, so an entry cannot outlive its reason.
 const NOT_YET_IN_RUNTIME: &[&str] = &[];
 
-/// The members the runtime keeps for itself: the hooks `defineConfig` and the inspector call.
-const INTERNAL: &[&str] = &["constructor", "__register", "__effectiveConfig"];
+/// The members the runtime keeps for itself.
+const INTERNAL: &[&str] = &["constructor"];
 
 /// The names `interface Gnoblin { .. }` declares, from the static declarations.
 fn declared_members(dts: &str) -> BTreeSet<String> {
@@ -145,15 +145,6 @@ const RUNTIME_NOT_DECLARED: &[(&str, &str)] = &[
         "normalizeApplication",
         "checks the application a launch names, for `gnoblin.launches`",
     ),
-    // The pipeline `defineConfig` runs, which the host and the tests call.
-    ("CONFIG_KEYS", CONFIG_PIPELINE),
-    ("DOCUMENT_LISTS", CONFIG_PIPELINE),
-    ("DOCUMENT_SECTIONS", CONFIG_PIPELINE),
-    ("defaultConfig", CONFIG_PIPELINE),
-    ("desugarConfig", CONFIG_PIPELINE),
-    ("mergeConfig", CONFIG_PIPELINE),
-    ("outputRequest", CONFIG_PIPELINE),
-    ("planStockLauncher", CONFIG_PIPELINE),
     // Helpers the stock layouts and bindings share.
     ("checkGap", LAYOUT_HELPER),
     ("clamp", LAYOUT_HELPER),
@@ -190,7 +181,6 @@ const RUNTIME_NOT_DECLARED: &[(&str, &str)] = &[
 
 const MANAGER: &str = "the class behind a `gnoblin` member, which the `Gnoblin` interface types as an interface";
 const CONSTANT: &str = "a tuning constant of a stock module, read by its tests";
-const CONFIG_PIPELINE: &str = "part of the pipeline `defineConfig` runs, called by the host and the tests";
 const LAYOUT_HELPER: &str = "a helper the stock layouts share";
 const UI_HOOK: &str = "a hook of the UI toolkit that the host and the stock modules call";
 

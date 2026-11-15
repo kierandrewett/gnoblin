@@ -47,7 +47,7 @@ export interface AuthenticationRequest extends DialogRequest {
  *         }
  *     }
  * }
- * defineConfig({ setup: (gnoblin) => gnoblin.authentication.addListener(new NoRoot()) });
+ * gnoblin.authentication.addListener(new NoRoot());
  */
 export class AuthenticationListener {
     /**

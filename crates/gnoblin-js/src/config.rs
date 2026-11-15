@@ -1,7 +1,7 @@
-//! The configuration document, from the shell's side: what `defineConfig` writes to it and how a reload takes it back.
+//! The configuration document, from the shell's side: what the device objects write to it and how a reload takes it back.
 //!
-//! `defineConfig` keys that are document settings (`dialogs`, `appearance`, `cursor`, ...) are one patch of the
-//! document the compositor holds. The runtime role's retired host commits the document it evaluated; the shell reads
+//! The settings a script writes through the spec objects (`Keyboard.repeatRate`, `Mouse.sensitivity`, ...) are one patch
+//! of the document the compositor holds. The runtime role's retired host commits the document it evaluated; the shell reads
 //! that document back (`config.current`), lays its patch over it and commits the whole result (`config.commit`),
 //! the same two verbs the retired host uses. The compositor holds only the last accepted document, so a commit must
 //! carry everything.
@@ -16,7 +16,7 @@
 //!
 //! **Validation.** The same validator the compositor and the retired host use ([`Config::from_value`]) runs on the
 //! candidate document, so a bad value is refused with its dotted path (`dialogs.style.radius: ...`). The check
-//! runs when `defineConfig` is called, which is while a reload is still staging: a refused value fails the stage,
+//! runs when a device setting is written, which may be while a reload is still staging: a refused value fails the stage,
 //! the running generation stays, and the error is in the reload report. The commit itself happens once the
 //! generation is swapped in.
 
@@ -180,14 +180,9 @@ impl ConfigState {
         }
     }
 
-    /// Makes the shell the owner of the whole document. See [`ConfigState::owns_document`].
+    /// Makes the shell the owner of the whole document.
     pub(crate) fn set_owns_document(&mut self, owns: bool) {
         self.owns_document = owns;
-    }
-
-    /// Whether the shell owns the whole document.
-    pub(crate) fn owns_document(&self) -> bool {
-        self.owns_document
     }
 
     pub(crate) fn set_link(&mut self, link: Box<dyn JsConfigLink>) {
@@ -195,7 +190,7 @@ impl ConfigState {
     }
 
     /// Whether `patch` would be refused. `Err` is the validator's problems, each as `path: reason`, joined; it is
-    /// what `defineConfig` throws, so a reload stage fails with the key path in the report.
+    /// what a setter throws, so a reload stage fails with the key path in the report.
     ///
     /// The candidate is what a commit would send, built from the document in force.
     pub(crate) fn check(&mut self, patch: &Value, retract: bool) -> Result<(), String> {
@@ -295,27 +290,19 @@ pub(crate) fn parse_patch(text: &str) -> Result<Value, String> {
     }
 }
 
-/// Installs `__gnoblinHost.config`: `check(patch, autostart)` answers the validator's problems for a patch laid over
-/// the document in force, or nothing when the document would be accepted. `autostart` is the config's commands as
-/// JSON; a shell that owns the document commits them as its `autostart` section, so they are checked with it.
+/// Installs `__gnoblinHost.config`: `check(patch)` answers the validator's problems for a patch laid over the
+/// document in force, or nothing when the document would be accepted.
 pub(crate) fn install<'js>(ctx: &Ctx<'js>, host: &Object<'js>, state: &SharedState) -> rquickjs::Result<()> {
     let config = Object::new(ctx.clone())?;
     let shared = state.clone();
     config.set(
         "check",
-        Function::new(ctx.clone(), move |patch: String, autostart: String| -> Option<String> {
-            let mut patch = match parse_patch(&patch) {
+        Function::new(ctx.clone(), move |patch: String| -> Option<String> {
+            let patch = match parse_patch(&patch) {
                 Ok(patch) => patch,
                 Err(problem) => return Some(problem),
             };
-            let mut state = shared.borrow_mut();
-            if state.config.owns_document() {
-                match crate::autostart::parse(&autostart) {
-                    Ok(commands) => crate::autostart::lay_over(&mut patch, &commands),
-                    Err(problem) => return Some(problem.to_string()),
-                }
-            }
-            state.config.check(&patch, true).err()
+            shared.borrow_mut().config.check(&patch, true).err()
         })?,
     )?;
     host.set("config", config)

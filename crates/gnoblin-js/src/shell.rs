@@ -36,8 +36,7 @@ use rquickjs::{Array, FromJs, Function, Module, Object, Value};
 use serde_json::Value as Json;
 use thiserror::Error;
 
-use crate::autostart::{self, JsAutostart};
-use crate::bindings::{self, HostState, JsSpawner, SharedState};
+use crate::bindings::{self, HostState, SharedState};
 use crate::config::{JsApplied, JsConfigLink, parse_patch};
 use crate::dialogs::{JsDialogs, events_to_js, verdicts_from_js};
 use crate::error::{JsError, JsErrorKind};
@@ -213,8 +212,6 @@ pub struct JsShell {
     dialogs: JsDialogs,
     /// The shell's connection for the compositor's idle state (`gnoblin.idle`), opened while a script wants it.
     idle: JsIdle,
-    /// The commands `defineConfig({ autostart })` started, so a reload starts only the new ones.
-    autostart: JsAutostart,
     /// The `documentRevision` the entry reported when the document was last committed. A device setting written
     /// after that moves it, and the next frame commits the document again.
     document_revision: u32,
@@ -237,7 +234,7 @@ impl JsShell {
         js.clock = Arc::clone(&config.clock);
         let embedded = Arc::make_mut(&mut js.embedded);
         // The user-facing `gnoblin` module is the stock index plus the host's exports, so one import line
-        // reaches `defineConfig` and `ClientListener` alike. The stock sources stay as they are: their own
+        // reaches `Workspace` and `ClientListener` alike. The stock sources stay as they are: their own
         // tests embed them without a host. A module the caller embedded under a name stays: the caller
         // knows what it wants.
         let mut stock = stock_modules_in(config.stock_dir.as_deref());
@@ -273,7 +270,6 @@ impl JsShell {
             dispatches: 0,
             dialogs: JsDialogs::new(),
             idle: JsIdle::new(),
-            autostart: JsAutostart::default(),
             document_revision: 0,
         })
     }
@@ -382,43 +378,9 @@ impl JsShell {
             }
             Err(other) => return Err(other),
         }
-        self.apply_settings(&mut diagnostics)?;
+        self.apply_document(&mut diagnostics, true)?;
         self.collect_reports(&mut diagnostics)?;
         Ok(diagnostics)
-    }
-
-    /// Applies what the running generation's config set outside the tree: its document settings, which replace
-    /// what the last generation set (`retract`), and then its autostart commands.
-    ///
-    /// A shell that owns the document hands its autostart commands to the guardian through it instead
-    /// ([`own_document`](Self::own_document)), so it starts none itself.
-    fn apply_settings(&mut self, diagnostics: &mut Vec<String>) -> Result<(), JsShellError> {
-        self.apply_document(diagnostics, true)?;
-        if self.state.borrow().config.owns_document() {
-            return Ok(());
-        }
-        self.start_autostart(diagnostics)
-    }
-
-    /// Starts the commands the running generation's `autostart` lists that this shell has not started yet. A
-    /// command that cannot be started is a diagnostic, and is tried again at the next reload.
-    fn start_autostart(&mut self, diagnostics: &mut Vec<String>) -> Result<(), JsShellError> {
-        let text: String = self.call_entry(self.entry_budget, |entry| {
-            entry.get::<_, Function<'_>>("autostart")?.call(())
-        })?;
-        let commands = match autostart::parse(&text) {
-            Ok(commands) => commands,
-            Err(error) => {
-                diagnostics.push(error.to_string());
-                return Ok(());
-            }
-        };
-        let state = &self.state;
-        diagnostics.extend(
-            self.autostart
-                .start(commands, |request| bindings::spawn(&mut state.borrow_mut(), request)),
-        );
-        Ok(())
     }
 
     /// Finishes a loaded entry: a config that declared no workspace gets the stock one now, so
@@ -509,16 +471,13 @@ impl JsShell {
         let text: String = self.call_entry(self.entry_budget, |entry| {
             entry.get::<_, Function<'_>>("document")?.call(())
         })?;
-        let mut patch = match parse_patch(&text) {
+        let patch = match parse_patch(&text) {
             Ok(patch) => patch,
             Err(reason) => {
                 diagnostics.push(format!("the configuration settings were not committed: {reason}"));
                 return Ok(());
             }
         };
-        if self.state.borrow().config.owns_document() {
-            self.add_autostart_section(&mut patch, diagnostics)?;
-        }
         let outcome = self.state.borrow_mut().config.apply(&patch, retract);
         match outcome {
             Ok(JsApplied::Unchanged) => {}
@@ -542,60 +501,32 @@ impl JsShell {
         Ok(())
     }
 
-    /// Adds the running generation's `autostart` commands to `patch` as the document's `autostart` section, which
-    /// is where the guardian reads what to start. A list that is not a list of commands is a diagnostic and no
-    /// section: the rest of the document is still committed.
-    fn add_autostart_section(
-        &mut self,
-        patch: &mut gnoblin_config::Value,
-        diagnostics: &mut Vec<String>,
-    ) -> Result<(), JsShellError> {
-        let text: String = self.call_entry(self.entry_budget, |entry| {
-            entry.get::<_, Function<'_>>("autostart")?.call(())
-        })?;
-        match autostart::parse(&text) {
-            Ok(commands) => autostart::lay_over(patch, &commands),
-            Err(error) => diagnostics.push(error.to_string()),
-        }
-        Ok(())
-    }
-
     /// Makes this shell the owner of the configuration document, as in the JavaScript runtime role: each of its
     /// commits is the generation's settings alone (nothing a retired host wrote, and nothing a previous run left in
-    /// the compositor), it commits on every load so a reload always has an answer, and the generation's
-    /// `autostart` commands go into the document for the guardian to start and supervise instead of being
-    /// started here.
+    /// the compositor), and it commits on every load so a reload always has an answer.
     pub fn own_document(&mut self) {
         self.state.borrow_mut().config.set_owns_document(true);
     }
 
     /// The document the running generation declares, as a tree: what the spec objects wrote to the document (the
-    /// device settings) with the generation's `autostart` commands laid in as the `autostart` section. Nothing is
-    /// committed and nothing is started; a throwaway shell over an inert tree reads a config's document this way
-    /// ([`evaluate_document`](crate::evaluate_document)).
+    /// device settings). Nothing is committed; a throwaway shell over an inert tree reads a config's document this
+    /// way ([`evaluate_document`](crate::evaluate_document)).
     ///
     /// # Errors
     ///
-    /// The entry's `document` or `autostart` could not be read, or either is not what the shell parses.
+    /// The entry's `document` could not be read, or is not what the shell parses.
     pub fn declared_document(&mut self) -> Result<gnoblin_config::Value, JsShellError> {
-        let invalid = |reason: String| {
+        let text: String = self.call_entry(self.entry_budget, |entry| {
+            entry.get::<_, Function<'_>>("document")?.call(())
+        })?;
+        parse_patch(&text).map_err(|reason| {
             JsShellError::Js(JsError {
                 kind: JsErrorKind::Exception,
                 message: format!("the config's document could not be read: {reason}"),
                 location: None,
                 stack: None,
             })
-        };
-        let text: String = self.call_entry(self.entry_budget, |entry| {
-            entry.get::<_, Function<'_>>("document")?.call(())
-        })?;
-        let mut document = parse_patch(&text).map_err(invalid)?;
-        let commands: String = self.call_entry(self.entry_budget, |entry| {
-            entry.get::<_, Function<'_>>("autostart")?.call(())
-        })?;
-        let commands = autostart::parse(&commands).map_err(|error| invalid(error.to_string()))?;
-        autostart::lay_over(&mut document, &commands);
-        Ok(document)
+        })
     }
 
     /// The dialog observation of one frame: what the compositor offered goes to the listeners, which run under the
@@ -701,11 +632,6 @@ impl JsShell {
         (&self.generation, self.entry_budget)
     }
 
-    /// Routes `gnoblin.spawn` to `spawner`. Without one, `spawn` throws a `GnoblinError`.
-    pub fn set_spawner(&mut self, spawner: JsSpawner) {
-        self.state.borrow_mut().spawner = Some(spawner);
-    }
-
     /// How many times a call ran past its wall-clock or memory budget in this generation.
     pub const fn strikes(&self) -> u32 {
         self.strikes
@@ -728,7 +654,7 @@ impl JsShell {
         // The windows that were there at boot join a workspace on the first frame.
         self.finish_load()?;
         let mut diagnostics = Vec::new();
-        self.apply_settings(&mut diagnostics)?;
+        self.apply_document(&mut diagnostics, true)?;
         self.collect_reports(&mut diagnostics)?;
         Ok(diagnostics)
     }
@@ -747,7 +673,7 @@ impl JsShell {
         })?;
         self.finish_load()?;
         let mut diagnostics = Vec::new();
-        self.apply_settings(&mut diagnostics)?;
+        self.apply_document(&mut diagnostics, true)?;
         self.collect_reports(&mut diagnostics)?;
         Ok(diagnostics)
     }

@@ -1,7 +1,6 @@
 // Public `gnoblin` package entry: this module owns only the export surface, not runtime objects.
-// It re-exports configuration, bindings, layouts, helpers and stable data types.
-// Host objects are reached through the `gnoblin` global or `setup(gnoblin)`.
-// Read `config.ts` first for setup and the distinction between public and host APIs.
+// It re-exports bindings, layouts, helpers and stable data types.
+// Host objects are reached through the `gnoblin` global.
 
 export type { Rect } from "gnoblin/layout";
 export type { Rect as BindingRect } from "gnoblin/bindings";
@@ -17,12 +16,9 @@ export * from "gnoblin/layouts/dwindle";
 export * from "gnoblin/layouts/kiosk";
 export * from "gnoblin/layouts/arc";
 export * from "gnoblin/layouts/strip";
-export * from "gnoblin/sets";
 export * from "gnoblin/gestures";
 export * from "gnoblin/gesture_actions";
 export * from "gnoblin/inspect";
-export * from "gnoblin/config";
-export * from "gnoblin/rules";
 export * from "gnoblin/snap";
 export * from "gnoblin/dialogs";
 export * from "gnoblin/authentication";

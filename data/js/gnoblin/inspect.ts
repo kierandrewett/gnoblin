@@ -361,7 +361,7 @@ function typeOf(value: unknown): string {
     return typeof value;
 }
 
-/** The value as plain JSON-able data, for `config()` and for tests: the data half of `render`. */
+/** The value as plain JSON-able data, for tests and the console: the data half of `render`. */
 function plain(value: unknown, options: RenderOptions = {}): unknown {
     const state: Walk = {
         left: options.maxBytes ?? DEFAULT_MAX_BYTES,
@@ -428,8 +428,6 @@ interface LiveGnoblin {
     readonly clients: Iterable<LiveClient> & { readonly focused: LiveClient | null };
     readonly workspaces: Iterable<LiveWorkspace>;
     readonly input: { readonly contexts: readonly LiveContext[] };
-    /** The merged config the last `defineConfig` registered, or null for a shell that has none. */
-    __effectiveConfig?(): unknown;
 }
 
 function live(): LiveGnoblin {
@@ -482,14 +480,5 @@ function bindings(): BindingInfo[] {
         .sort((a, b) => a.context.localeCompare(b.context) || a.trigger.localeCompare(b.trigger) || a.rank - b.rank);
 }
 
-/**
- * The effective config as plain data: the user's config laid over the stock one, as the shell merged it. A function
- * (`setup`, a key's handler) shows as `[Function name]`. `null` when the entry never called `defineConfig`.
- */
-function config(): unknown {
-    const merged = live().__effectiveConfig?.();
-    return merged === undefined || merged === null ? null : plain(merged, { maxBytes: 262144, maxDepth: 10 });
-}
-
 /** The shell inspection API; it returns snapshots rather than live native objects. */
-export const inspect = { clients, workspaces, bindings, config, render, plain, register } as const;
+export const inspect = { clients, workspaces, bindings, render, plain, register } as const;

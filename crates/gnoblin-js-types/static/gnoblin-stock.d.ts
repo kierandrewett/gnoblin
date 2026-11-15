@@ -604,8 +604,6 @@ declare module "gnoblin" {
         /** `default`, `global`, `workspace:<id>`, `where(<query>)` or `client`. */
         readonly origin: Readonly<Record<StyleProperty, string>>;
     }
-    /** The style a config sets for every client: `gnoblin.clients.style`. */
-    export type StyleConfig = ClientStyleInit;
 
     // -- Collections (owner-spec section 5) -----------------------------------
 
@@ -1634,180 +1632,11 @@ declare module "gnoblin" {
         rotate(workspace: NodeSource, steps: number): void;
     }
 
-    // -- The simple tier (spec-review section 4) ------------------------------
-
-    /** What a key can do: a closed set, so bindings stay inspectable and diffable on reload. */
-    export type KeyAction =
-        | "close"
-        | SpawnAction
-        | ShowAction
-        | ShowPositionAction
-        | FocusColumnAction
-        | BindingAction
-        | ((context: { gnoblin: Gnoblin }) => void);
-
-    /** Runs `argv` as a process. The compositor starts it without a shell. */
-    export interface SpawnAction {
-        readonly kind: "spawn";
-        readonly argv: readonly string[];
-    }
-    /** Shows the workspace with the given id. */
-    export interface ShowAction {
-        readonly kind: "show";
-        readonly workspace: string;
-    }
-    /** Show the workspace at a 1-based position, whatever its id; nothing if there is none. */
-    export interface ShowPositionAction {
-        readonly kind: "show-position";
-        readonly position: number;
-    }
-    /** Move focus one column left or right when the shown workspace is a `StripLayout`. */
-    export interface FocusColumnAction {
-        readonly kind: "focus-column";
-        readonly direction: "left" | "right";
-    }
-    /** Bind what `create` makes (a gesture or drag binding) at the key's trigger. */
-    export interface BindingAction {
-        readonly kind: "binding";
-        readonly create: () => Binding;
-    }
-
-    /** Start a process: `spawn("ghostty")`, `spawn("grim", "-g", "...")` or `spawn(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])`. */
-    export function spawn(command: string | readonly string[], ...args: string[]): SpawnAction;
-
-    /** Show a workspace on the display under the pointer. */
-    export function show(workspace: Workspace | string): ShowAction;
-    export namespace show {
-        /** `show.numbered("Super+{n}", ["desktop", "dev"])` binds Super+1 and Super+2. */
-        function numbered(pattern: `${string}{n}${string}`, workspaces: readonly string[]): Record<string, ShowAction>;
-        /** `show.position(3)` shows the third workspace. */
-        function position(index: number): ShowPositionAction;
-        /** `show.positions("Super+{n}")` binds Super+1 to Super+9 to the workspaces at those positions. */
-        function positions(pattern: `${string}{n}${string}`): Record<string, ShowPositionAction>;
-    }
-    export function focusColumn(direction: "left" | "right"): FocusColumnAction;
-    export function binding(create: () => Binding): BindingAction;
-
-    /** A glob (`*` any run, `?` one character) that matches the whole text, or a RegExp tested anywhere in it. */
-    export type Pattern = string | RegExp;
-    /** Style fields a rule can set. Only the listed fields exist; others are not rule keys. */
-    export interface RuleStyle {
-        cornerRadius?: number;
-        /** From 0 to 1. Applied to the window. */
-        opacity?: number;
-        shadows?: readonly unknown[];
-    }
-    /**
-     * A window rule: data, so it can be checked and diffed. The query keys must all hold; every matching rule applies
-     * in list order and the later wins for each field, and a rule with `first: true` ends the search where it matches.
-     * Docs: docs/config/window_rule.md.
-     */
-    export interface RuleConfig {
-        appId?: Pattern;
-        title?: Pattern;
-        /** Refused: the tree publishes no window role. */
-        role?: Pattern;
-        focused?: boolean;
-        /** The id of the workspace the window is on. */
-        onWorkspace?: string;
-        /** The workspace id the window is sent to. */
-        workspace?: string;
-        floating?: boolean;
-        size?: { width: number; height: number };
-        position?: { x: number; y: number };
-        style?: RuleStyle;
-        fullscreen?: boolean;
-        maximised?: boolean;
-        secure?: boolean;
-        /** The window does not take focus when it appears. */
-        skipFocus?: boolean;
-        /** When this rule matches, no later rule is consulted. */
-        first?: boolean;
-        /**
-         * Apply again when appId, title or focus changes, and undo what the rule set when it stops matching. Default
-         * true; `false` applies the rule once, when the window appears.
-         */
-        reapply?: boolean;
-    }
-    /** The effects a rule set on a window, as `effectsFor` merges them. */
-    export interface RuleEffects {
-        workspace?: string;
-        floating?: boolean;
-        size?: { width: number; height: number };
-        position?: { x: number; y: number };
-        opacity?: number;
-        cornerRadius?: number;
-        shadows?: readonly unknown[];
-        fullscreen?: boolean;
-        maximised?: boolean;
-        secure?: boolean;
-        skipFocus?: boolean;
-    }
-    /** A rule after `compileRules` has checked it. */
-    export interface CompiledRule {
-        readonly index: number;
-        readonly effects: Readonly<RuleEffects>;
-        readonly first: boolean;
-        readonly reapply: boolean;
-    }
-    /** The window as a rule reads it. */
-    export interface RuleView {
-        readonly appId: string;
-        readonly title: string;
-        readonly focused: boolean;
-        readonly workspace: string | null;
-    }
-    /** Checks and compiles rules. Throws a `TypeError` naming the rule index and field. */
-    export function compileRules(rules: readonly RuleConfig[], workspaces?: ReadonlySet<string> | null): CompiledRule[];
-    /** Compiles one pattern, a glob string or a RegExp, into the matcher object. `where` names it in errors. */
-    export function compilePattern(value: unknown, where: string): object;
-    /** Whether the pattern matches the text: a glob must match the whole text, a RegExp is tested anywhere in it. */
-    export function matchesPattern(pattern: object, text: string): boolean;
-    /** Whether a compiled rule's query keys all hold for the window view. */
-    export function ruleMatches(rule: CompiledRule, view: RuleView): boolean;
-    /** The rules that apply to a window, in list order: the first match, then on while a rule says `all`. */
-    export function matchingRules(rules: readonly CompiledRule[], view: RuleView): CompiledRule[];
-    /** The effects `rules` sets together: the later rule wins for each field. */
-    export function mergeEffects(rules: readonly CompiledRule[]): RuleEffects;
-    /** The effects the matching rules set on a window. */
-    export function effectsFor(rules: readonly CompiledRule[], view: RuleView): RuleEffects;
-    /** What an undone rule leaves a window with. */
-    export const RULE_DEFAULTS: {
-        readonly secure: false;
-        readonly fullscreen: false;
-        readonly maximised: false;
-        readonly opacity: 1;
-    };
-    /** The shell operations the rule engine calls; each takes the client it is about. */
-    export interface RuleHost<C extends object> {
-        view(client: C): RuleView;
-        alive(client: C): boolean;
-        isArrival(client: C): boolean;
-        moveToWorkspace(client: C, id: string): boolean;
-        setFloating(client: C, on: boolean): void;
-        setSize(client: C, size: { width: number; height: number }): void;
-        setBounds(client: C, rect: Rect): void;
-        bounds(client: C): Rect;
-        setFullscreen(client: C, on: boolean): void;
-        setMaximised(client: C, on: boolean): void;
-        setSecure(client: C, on: boolean): void;
-        setOpacity(client: C, value: number): void;
-        setStyle(client: C, field: "cornerRadius" | "shadows", value: number | readonly unknown[] | undefined): void;
-    }
-    /** Applies rules to the windows of a collection it is attached to. */
-    export class RuleEngine<C extends object> {
-        constructor(rules: readonly CompiledRule[], host: RuleHost<C>);
-        skipsFocus(client: C): boolean;
-        onAdded(client: C): void;
-        onTitleChanged(client: C): void;
-        onAppIdChanged(client: C): void;
-    }
-
     /** Focus policy for pointer and keyboard focus: `click`, `sloppy` or `follow-mouse`. */
     export type FocusMode = "click" | "sloppy" | "follow-mouse";
     /** Whether a new window may take focus (`allow`) or never does (`prevent`). */
     export type NewWindowPolicy = "allow" | "prevent";
-    /** The `focus` key of a config. A key left out is the seat's. */
+    /** The focus settings, every key optional: a key left out is the documented default. */
     export interface FocusConfig {
         mode?: FocusMode;
         newWindows?: NewWindowPolicy;
@@ -1845,7 +1674,7 @@ declare module "gnoblin" {
     export function leaveClears(settings: FocusSettings): boolean;
     /** One input event the focus policy reacts to. */
     export type FocusEvent =
-        | { readonly kind: "added"; readonly fromLauncher?: boolean; readonly skipFocus?: boolean }
+        | { readonly kind: "added"; readonly fromLauncher?: boolean }
         | { readonly kind: "enter" | "motion"; readonly held: boolean }
         | { readonly kind: "leave"; readonly focused: boolean; readonly heldHere: boolean }
         | { readonly kind: "press" };
@@ -1875,8 +1704,6 @@ declare module "gnoblin" {
         now(): number;
         /** Whether the client has just appeared. */
         isArrival(client: C): boolean;
-        /** Whether the client opts out of focus when it appears. */
-        skipsFocus(client: C): boolean;
         /** Whether `client` opened on a token the launcher minted (`focus.newWindows` then decides). Absent: no. */
         fromLauncher?(client: C): boolean;
         /** Whether the client still exists. */
@@ -1959,31 +1786,6 @@ declare module "gnoblin" {
         enabled?: boolean;
         /** The connector this output shows an exact copy of, letterboxed to fit its own panel. */
         mirrorOf?: string;
-    }
-
-    /** A value of the config document. */
-    export type DocumentValue =
-        string | number | boolean | readonly DocumentValue[] | { readonly [key: string]: DocumentValue };
-
-    /** One section of the config document. Keys are camelCase or the document's kebab-case. */
-    export interface DocumentSection {
-        readonly [setting: string]: DocumentValue | undefined;
-    }
-
-    /** The look of the compositor's own dialogs (`dialogs.style` in the document); the compositor clamps it. */
-    export interface DialogStyleConfig {
-        /** The corner radius in points; a dialog is never rounder than 24. */
-        radius?: number;
-        /** A named accent, `#rgb` or `#rrggbb`. */
-        accent?: string;
-        font?: { family?: string; size?: number };
-        buttonLayout?: "start" | "end" | "stretch" | "stacked";
-        /** A number from 0.1 to 100; a dialog is drawn at 1 to 3. */
-        scale?: number;
-    }
-
-    export interface DialogsConfig {
-        style?: DialogStyleConfig;
     }
 
     /** What a request is: a consent dialog for a portal request, the compositor's passphrase prompt, or a polkit authentication. */
@@ -2152,143 +1954,6 @@ declare module "gnoblin" {
          */
         begin(token: string, application: string, options?: LaunchHandlers): Launch;
     }
-
-    /** A command to run: a command line (split on spaces, started with no shell) or the program and its arguments. */
-    export type CommandLine = string | readonly string[];
-
-    /** A workspace of a config: its id and its layout, a stock layout by name or any layout object. */
-    export interface WorkspaceConfig {
-        id: string;
-        /** What the workspace is called where a name is shown. Default: the id. */
-        name?: string;
-        layout?: WorkspaceOptions["layout"];
-    }
-
-    /** The Wayland protocols the compositor advertises; `false` stops advertising one. A protocol left out stays on. */
-    export interface ProtocolsConfig {
-        wlrLayerShell?: boolean;
-        extForeignToplevelList?: boolean;
-        wlrForeignToplevelManagement?: boolean;
-        xdgDecoration?: boolean;
-        kdeServerDecoration?: boolean;
-        wlrScreencopy?: boolean;
-        extImageCopyCapture?: boolean;
-        extBackgroundEffectV1?: boolean;
-        extDataControl?: boolean;
-        extIdleNotify?: boolean;
-        wlrGammaControl?: boolean;
-        wlrOutputPowerManagement?: boolean;
-        wlrOutputManagement?: boolean;
-        extSessionLock?: boolean;
-    }
-
-    /** One point of a swipe path: from -1 to 1, x to the right and y downward, relative to where the swipe starts. */
-    export interface GesturePointConfig {
-        x: number;
-        y: number;
-    }
-
-    /** A touchpad gesture that starts a command when it completes. */
-    export interface GestureConfig {
-        /** Unique, 1 to 64 letters, digits, `_` or `-`; diagnostics use it. */
-        name: string;
-        gesture: "swipe" | "pinch";
-        /** From 2 to 5. */
-        fingers: number;
-        /** A pinch only: `in` (fingers together) or `out` (fingers apart). */
-        direction?: "in" | "out";
-        /** A swipe only: 2 to 16 points, starting at `{ x: 0, y: 0 }`. */
-        path?: readonly GesturePointConfig[];
-        /** The program and its arguments, run with no shell. */
-        command: readonly string[];
-        /** The least movement before the gesture can match: 16 to 240 for a swipe, 0.05 to 0.5 for a pinch. */
-        threshold?: number;
-        /** How closely a swipe must follow its path, from 0.05 to 0.5. */
-        tolerance?: number;
-    }
-
-    /** Stock hooks for the window events of the config, called with the client they are about. */
-    export interface ConfigEvents {
-        clientAdded?(client: Client): void;
-        clientRemoved?(client: Client): void;
-        titleChanged?(client: Client, title: string): void;
-        focusChanged?(client: Client, focused: boolean): void;
-    }
-
-    /** Plain data first: `export default defineConfig({ ... })`. Each key desugars to the object API. */
-    export interface Config {
-        gaps?: Partial<Gaps>;
-        style?: StyleConfig;
-        workspaces?: readonly WorkspaceConfig[];
-        /** Keyed by connector name, for example `"DP-1"`. */
-        outputs?: Record<string, OutputSetting>;
-        keys?: Record<string, KeyAction>;
-        /**
-         * Touchpad gestures that run an action when the fingers lift, by the way they went: `Swipe4: { up:
-         * "window.toggle-maximise" }`, `Pinch3: { in: "window.minimise", out: fn }`. The trigger is the gesture and its
-         * finger count. A gesture here replaces the stock binding of the same trigger (the three-finger workspace slide);
-         * giving one gesture to `keys` as well is an error.
-         */
-        gestureActions?: Record<string, GestureActionConfig>;
-        /**
-         * Named groups of workspaces to show together, each entry on an output. `gnoblin.workspaces.activateSet(name)` makes
-         * one live. A list that does not check (an empty or repeated name, a set with no entries, a workspace that is not
-         * declared, two entries for one output) refuses the config.
-         */
-        workspaceSets?: readonly WorkspaceSetConfig[];
-        /**
-         * The command `Super+space` runs, as a command line or an argv. Absent, `Super+space` opens the stock launcher entry.
-         * A key of `keys` for `Super+space` takes precedence.
-         */
-        launcher?: string | readonly string[];
-        /** A titlebar above every window's content. The stock config turns it on; a config that does not ask has none. */
-        decorations?: boolean;
-        /** Whether the stock window menu answers the compositor's menu requests. On by default. */
-        menus?: boolean;
-        /** Whether the stock not-responding alert opens for a window that stops answering. On by default. */
-        alerts?: boolean;
-        /**
-         * Commands to start once per session, each a command line or an argv. A reload starts only the entries it adds,
-         * never the ones already started this session; removing an entry stops nothing.
-         */
-        autostart?: readonly CommandLine[];
-        rules?: readonly RuleConfig[];
-        /** Focus settings; a key left out is the seat's. */
-        focus?: FocusConfig;
-        /** Whether dropping a dragged window on a screen edge tiles it; left out, the seat's `edge_tiling`. */
-        edgeTiling?: boolean;
-        /** Where a dragged window may go; left out, the seat's `drag_constraint`. */
-        dragConstraint?: DragConstraint;
-        on?: ConfigEvents;
-        /** The escape hatch: runs after the declarative part and may use any class. */
-        setup?(gnoblin: Gnoblin): void | Promise<void>;
-        /** The compositor's own dialogs: committed to the config document (`dialogs.style`). */
-        dialogs?: DialogsConfig;
-        /** Settings of the config document, committed to it. Keys are camelCase: `windowManagement`, `buttonLayout`. */
-        compositor?: DocumentSection;
-        windowManagement?: DocumentSection;
-        cursor?: DocumentSection;
-        appearance?: DocumentSection;
-        input?: DocumentSection;
-        inputSources?: DocumentSection;
-        accessibility?: DocumentSection;
-        layerShell?: DocumentSection;
-        keyring?: DocumentSection;
-        auth?: DocumentSection;
-        location?: DocumentSection;
-        compat?: DocumentSection;
-        capture?: DocumentSection;
-        monitors?: DocumentSection;
-        xwayland?: DocumentSection;
-        logging?: DocumentSection;
-        /** Which Wayland protocols the compositor advertises, by name. Committed to the config document. */
-        protocols?: ProtocolsConfig;
-        /** Touchpad swipes and pinches that start a command. Committed to the config document as a list. */
-        touchpadGestures?: readonly GestureConfig[];
-    }
-
-    /** An identity function with a typed parameter, plus the registration the runtime reads. */
-    export function defineConfig(config: Config): Config;
 
     // -- The global object ----------------------------------------------------
 
@@ -2587,102 +2252,13 @@ declare module "gnoblin" {
     /** The default duration of a workspace slide, in seconds. */
     export const SLIDE_SECONDS: number;
 
-    /** One set of `defineConfig({ workspaceSets })`: its name and the workspaces it shows. */
-    export interface WorkspaceSetConfig {
-        name: string;
-        entries: readonly { readonly workspace: string | number; readonly output?: string }[];
-    }
-
     export interface WorkspaceCollection extends MutableCollection<Workspace> {
-        /** Named groups of workspaces to show together. */
-        readonly sets: WorkspaceSets;
-        /**
-         * Makes the set `name` live: each entry shows its workspace on its output, and one whose output is not connected
-         * shows on the primary output, with a report. The live set again changes nothing. False, with a report, for an
-         * unknown set or a workspace that has gone; `sets.activate` throws instead.
-         */
-        activateSet(name: string): boolean;
         /** The area windows are laid out in on the primary output; null while there is none. */
         readonly area: Rect | null;
         show(workspace: Workspace | string, options?: ShowOptions): void;
     }
 
-    // -- Workspace sets and the slide gesture ---------------------------------
-
-    /** One workspace of a set and the output it shows on, if the set names one. */
-    export interface SetEntry {
-        workspace: string;
-        output?: string;
-    }
-    /** A named group of workspaces to show together. */
-    export interface WorkspaceSet {
-        name: string;
-        entries: SetEntry[];
-    }
-    /** Why a set list or a set name is refused. `kind` says which check failed. */
-    export type SetError =
-        | { kind: "empty_name" }
-        | { kind: "duplicate_name"; name: string }
-        | { kind: "empty_set"; name: string }
-        | { kind: "undeclared_workspace"; set: string; workspace: string }
-        | { kind: "duplicate_output"; set: string; output: string }
-        | { kind: "unknown_set"; name: string };
-    /** A non-fatal note: the set's output is not connected, so the primary output is used. */
-    export type SetWarning = { kind: "output_fallback"; set: string; output: string };
-    /** Where one workspace of a set goes on the output. */
-    export interface SetPlacement {
-        workspace: string;
-        output: string;
-    }
-    /** What activating a set does: where each workspace goes, any warnings, and whether anything changed. */
-    export interface SetPlan {
-        set: string;
-        placements: SetPlacement[];
-        warnings: SetWarning[];
-        changed: boolean;
-    }
-    /** The result of a set check: the value, or the error that refused it. */
-    export type SetResult<T> = { ok: true; value: T } | { ok: false; error: SetError };
-    /** What the set checks and placement need from the live desktop. */
-    export interface ActivateOptions {
-        declared: ReadonlySet<string>;
-        outputs: readonly string[];
-        primary: string;
-        active?: string | null;
-    }
-    /** Validates `incoming` against the declared workspace ids; on success the value is a copy of it. */
-    export function defineSets(
-        incoming: readonly WorkspaceSet[],
-        declared: ReadonlySet<string>,
-    ): SetResult<WorkspaceSet[]>;
-    /** Pure: plans how a named set lays out on the outputs. Returns the plan or the error. */
-    export function activateSet(
-        list: readonly WorkspaceSet[],
-        name: string,
-        options: ActivateOptions,
-    ): SetResult<SetPlan>;
-    /** A sentence for a set error, naming the set or workspace it is about. */
-    export function explainSetError(error: SetError): string;
-    /** Thrown by `WorkspaceSets.activate` when the set cannot be used. `error` says why. */
-    export class WorkspaceSetError extends Error {
-        readonly error: SetError;
-    }
-    /** The live desktop the set code reads and drives. Kept apart so the set logic stays pure. */
-    export interface SetsEnvironment {
-        declared(): ReadonlySet<string>;
-        outputs(): { names: readonly string[]; primary: string };
-        /** Shows `workspace` on the output named `output`; left out, where the shell would show it. */
-        show(workspace: string, output?: string): void;
-        report(message: string): void;
-    }
-    /** The defined sets and the active one. `define` checks a list; `activate` shows a set. */
-    export class WorkspaceSets {
-        constructor(environment: SetsEnvironment);
-        readonly list: WorkspaceSet[];
-        readonly active: string | null;
-        define(list: readonly WorkspaceSet[]): void;
-        activate(name: string): SetPlan;
-    }
+    // -- The slide gesture ----------------------------------------------------
 
     /** A window the slide moves: its x position in pixels and whether it is visible. */
     export interface SlideClient {
@@ -2916,7 +2492,7 @@ declare module "gnoblin" {
         | "window.minimise"
         | "window.minimize"
         | "window.toggle-maximise";
-    /** The action names `defineConfig({ gestureActions })` accepts. */
+    /** The action names `onSwipe` and `onPinch` accept. */
     export const GESTURE_ACTION_NAMES: readonly GestureActionName[];
     /** The five stock actions. Each takes nothing: it acts on the workspace under the pointer or the focused window. */
     export interface GestureActions {
@@ -2936,8 +2512,6 @@ declare module "gnoblin" {
     export type SwipeMap = { [way in SwipeDirection]?: GestureAction };
     /** Direction-specific actions to run when a pinch ends. */
     export type PinchMap = { [way in PinchDirection]?: GestureAction };
-    /** What `defineConfig({ gestureActions })` takes for one gesture: a swipe's four directions or a pinch's two. */
-    export type GestureActionConfig = SwipeMap & PinchMap;
     /** Options for constructing and tuning a swipe or pinch binding. */
     export interface GestureActionOptions {
         id?: string;
@@ -2976,12 +2550,6 @@ declare module "gnoblin" {
         onSwipe(map: SwipeMap, threshold?: number): SwipeActionBinding;
         onPinch(map: PinchMap, threshold?: number): PinchActionBinding;
     }
-    /** Builds a binding that recognizes a gesture trigger and dispatches its configured direction action. */
-    export function gestureActionBinding(
-        trigger: string,
-        map: GestureActionConfig,
-        gesture: "swipe" | "pinch",
-    ): GestureBinding;
     /** The stock titlebar values. */
     export const defaultTitlebarStyle: Readonly<TitlebarStyle>;
     /** Hooks for the titlebar's built-in buttons and pointer interaction. */
@@ -3553,8 +3121,6 @@ declare module "gnoblin" {
         workspaces(): WorkspaceInfo[];
         /** The bindings registered on every input context; a shell with no seat has none. */
         bindings(): BindingInfo[];
-        /** The effective config as plain data: the user's over the stock one; null when `defineConfig` never ran. */
-        config(): unknown;
         /** The value as the console shows it: JSON text of `{ type, value?, text, truncated }`. */
         render(value: unknown, options?: RenderOptions): string;
         /** The value as plain JSON-able data. */

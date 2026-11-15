@@ -17,7 +17,7 @@ pub const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/init.ts"
 
 /// `(import name, file under data/js/gnoblin, source)`. `gnoblin` is the user-facing module and only
 /// re-exports the others.
-const MODULES: [(&str, &str, &str); 55] = [
+const MODULES: [(&str, &str, &str); 52] = [
     ("gnoblin", "index.ts", include_str!("../../../data/js/gnoblin/index.ts")),
     (
         "gnoblin/bindings",
@@ -85,11 +85,6 @@ const MODULES: [(&str, &str, &str); 55] = [
         include_str!("../../../data/js/gnoblin/layouts/strip.ts"),
     ),
     (
-        "gnoblin/sets",
-        "sets.ts",
-        include_str!("../../../data/js/gnoblin/sets.ts"),
-    ),
-    (
         "gnoblin/gestures",
         "gestures.ts",
         include_str!("../../../data/js/gnoblin/gestures.ts"),
@@ -98,11 +93,6 @@ const MODULES: [(&str, &str, &str); 55] = [
         "gnoblin/workspace",
         "workspace.ts",
         include_str!("../../../data/js/gnoblin/workspace.ts"),
-    ),
-    (
-        "gnoblin/config",
-        "config.ts",
-        include_str!("../../../data/js/gnoblin/config.ts"),
     ),
     (
         "gnoblin/dialogs",
@@ -134,11 +124,6 @@ const MODULES: [(&str, &str, &str); 55] = [
         "gnoblin/focus",
         "focus.ts",
         include_str!("../../../data/js/gnoblin/focus.ts"),
-    ),
-    (
-        "gnoblin/rules",
-        "rules.ts",
-        include_str!("../../../data/js/gnoblin/rules.ts"),
     ),
     (
         "gnoblin/snap",

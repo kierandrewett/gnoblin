@@ -24,10 +24,9 @@
 //!   and one for the configuration document (what the device objects write to it).
 //! - [`JsRoleRunner`] is the whole runtime role: it locates the config, boots a [`JsRole`] that owns the
 //!   configuration document, reports to the guardian, and serves `config.reload`.
-//! - [`evaluate_document`] reads a config's document in a throwaway shell over an inert tree, with no session, for the
-//!   services role's first-boot `keyring.enabled` decision.
+//! - [`evaluate_document`] reads a config's document in a throwaway shell over an inert tree, with no session: the
+//!   dry-run of `gnoblinctl check` and the services role's first-boot read of the document.
 
-mod autostart;
 mod bindings;
 mod config;
 mod console;
@@ -58,7 +57,6 @@ mod watch;
 mod workspaces;
 mod xr;
 
-pub use bindings::{JsSpawnError, JsSpawnRequest, JsSpawner};
 pub use config::{JsClientConfigLink, JsCommitLog, JsCommitRecord, JsConfigCommit, JsConfigLink, JsLinkError};
 pub use console::{
     CONSOLE_FILE, CONSOLE_SOCKET, CONSOLE_VARIABLE, DEFAULT_MAX_BYTES, JsConsole, JsConsoleError, JsConsoleSite,

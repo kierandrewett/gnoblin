@@ -130,4 +130,4 @@ table in section 3.11 of `design/js-spec-native.md` lists what each one did and 
 | `protocols`, `keyring`, `compositor`, `appearance`, `accessibility`, `layerShell`, `auth`, `location`, `xwayland`, `cursor`, `monitors`, `dialogs.style`           | The default of each                              |
 | `touchpadGestures` (drawn paths), `workspaceSets`, `launcher`, `inputSources`, tablets, styluses, trackballs, pointing sticks, `orientationLock`, keyboard options | A swipe or pinch is `input.bind`; the rest: none |
 
-Window rules, titlebar clicks and the other seat policy were part of `defineConfig` and have no replacement yet.
+Window rules, titlebar clicks and the other seat policy have no replacement yet.

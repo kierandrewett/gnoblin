@@ -12,31 +12,19 @@
 // output properties and collections; root collections; collection events and workspace membership; layout visibility
 // and slides; client styles; layout driver; generation snapshots; native lifecycle; output configuration and events;
 // frame events and listener queue; input and focus; window policy and actions; decorations and session services;
-// config callbacks and integrations; XR and session API bridges; transition rollback and animation; public facade;
+// window menu and alert services; XR and session API bridges; transition rollback and animation; public facade;
 // console and shell entry.
 // Public classes and helpers are exported for the stock `gnoblin` index and user configuration imports.
 //
 // Reads use the host mirror plus staged writes. Destroyed nodes retain their last values for reads and reject writes.
 // Listener errors are collected rather than propagated, so one failing listener does not stop the frame.
 
-import { desugarConfig, defaultConfig, mergeConfig, outputRequest, planStockLauncher } from "gnoblin/config";
-import type {
-    BindingAction,
-    ConfigListeners,
-    ConfigPlan,
-    GnoblinConfig,
-    GnoblinHost,
-    OutputConfig,
-    PlannedKey,
-    ResolvedAction,
-} from "gnoblin/config";
 import { DialogManager } from "gnoblin/dialogs";
 import type { DialogEvent } from "gnoblin/dialogs";
 import { AuthenticationManager } from "gnoblin/authentication";
 import { IdleMonitor } from "gnoblin/idle";
 import type { IdleCommand, IdleReading } from "gnoblin/idle";
 import { LaunchFeedback } from "gnoblin/launches";
-import { StripLayout } from "gnoblin/layouts/strip";
 import { Layout } from "gnoblin/layout";
 import type { Gaps, LayoutContext } from "gnoblin/layout";
 import {
@@ -50,21 +38,18 @@ import {
     resolveLayout,
 } from "gnoblin/workspace";
 import type { CheckedPlacement, StockLayoutName, WorkspaceOptions } from "gnoblin/workspace";
-import { FOCUS_DEFAULTS, FocusPolicy, focusSettings, seatFocusSettings } from "gnoblin/focus";
-import type { FocusConfig, FocusSettings } from "gnoblin/focus";
+import { FOCUS_DEFAULTS, FocusPolicy, seatFocusSettings } from "gnoblin/focus";
+import type { FocusSettings } from "gnoblin/focus";
 import { InputManager } from "gnoblin/input";
-import { attachDeviceSettings, deviceDocument, deviceSettingsRevision, overlayDocument } from "gnoblin/devices";
+import { attachDeviceSettings, deviceDocument, deviceSettingsRevision } from "gnoblin/devices";
 import { NativeObject } from "gnoblin/native_object";
 import type { InputHost, InputMessage } from "gnoblin/input";
-import { RULE_DEFAULTS, RuleEngine, compileRules } from "gnoblin/rules";
-import type { RuleHost, RuleView } from "gnoblin/rules";
 import { attachUi, uiNodeGone, uiReleaseAll } from "gnoblin/ui";
 import type { UiBackend } from "gnoblin/ui";
 import { attachLock, lockRelease, runLockFrame } from "gnoblin/lock";
 import type { LockBackend } from "gnoblin/lock";
 import { defaultTitlebarStyle, Decorations } from "gnoblin/titlebar";
 import { inspect } from "gnoblin/inspect";
-import { WorkspaceSetError, WorkspaceSets } from "gnoblin/sets";
 import { restoreSnap, snapClient, snapRecord, snappedZone, unsnapClient } from "gnoblin/snap";
 import type { SnapClient, SnapZone } from "gnoblin/snap";
 import { windowMenu } from "gnoblin/menus";
@@ -101,7 +86,8 @@ import {
     sceneReleaseAll,
 } from "gnoblin/scene";
 import type { SceneBackend } from "gnoblin/scene";
-import { Display, OutputProfile, attachDisplays } from "gnoblin/display";
+import { Display, OutputProfile, attachDisplays, outputRequest } from "gnoblin/display";
+import type { OutputConfig } from "gnoblin/display";
 import { DisplayManager } from "gnoblin/display_manager";
 import type { DisplayBackend, OutputSet } from "gnoblin/display_manager";
 import {
@@ -180,14 +166,12 @@ interface Entry {
     /** What the module could not do, said once per generation: a style property no renderer draws. */
     takeNotices(): string[];
     /**
-     * The config document patch of the running generation, as JSON text: `{}` when it sets none. It holds what
-     * `defineConfig` declared and the device settings a script wrote (`Mouse.sensitivity` and the like).
+     * The config document patch of the running generation, as JSON text: `{}` when it sets none. It holds the device
+     * settings a script wrote (`Mouse.sensitivity` and the like).
      */
     document(): string;
     /** A number that moves when a device setting is written: the shell commits `document()` again when it moved. */
     documentRevision(): number;
-    /** The commands the running generation's config starts with the session, as JSON text of argv lists. */
-    autostart(): string;
     /** What the compositor sent for the dialog observation slot; returns how many calls wait. */
     dialogs(events: DialogEvent[]): number;
     /** The verdicts the frame's listeners gave, each once. */
@@ -226,7 +210,7 @@ interface Entry {
 
 interface Host {
     /** Checks a document patch (JSON) against the document in force: the validator's problems, or undefined. */
-    config: { check(patch: string, autostart?: string): string | undefined };
+    config: { check(patch: string): string | undefined };
     kind(node: NodeId): string | undefined;
     get(node: NodeId, key: string): HostValue | undefined;
     published(node: NodeId, key: string): HostValue | undefined;
@@ -1591,7 +1575,7 @@ export class Output extends NativeObject {
         return read<string>(this, "model");
     }
 
-    /** The connector the display is plugged into (`DP-1`): what `defineConfig({ outputs })` and `mirrorOf` name. */
+    /** The connector the display is plugged into (`DP-1`): what an `OutputProfile` matches and `mirrorOf` names. */
     get connector(): string {
         return read<string>(this, "connector");
     }
@@ -1998,48 +1982,9 @@ export class MutableCollection<T extends Member> extends Collection<T> {
 
 /** The workspaces of the script, which also say which of them each output shows. */
 class WorkspaceCollection extends MutableCollection<Workspace> {
-    /** Named groups of workspaces to show together, each entry on an output. */
-    readonly sets = new WorkspaceSets({
-        declared: () => new Set((workspaceRoot.list as Workspace[]).map((workspace) => workspace.id)),
-        outputs: () => ({
-            names: deskOutputs().map((output) => output.name),
-            primary: primaryOutput()?.name ?? "",
-        }),
-        show: (id, output) =>
-            showWorkspace(id, {
-                duration: SLIDE_SECONDS,
-                ...(output === undefined ? {} : { output: deskOutputs().find((one) => one.name === output) }),
-            }),
-        report: (message) => {
-            reports.push({ site: "gnoblin.workspaces.sets", error: new Error(message) });
-        },
-    });
-
     /** The area windows are laid out in on the primary output; null while the tree has none. */
     get area(): Rect | null {
         return screenArea();
-    }
-
-    /**
-     * Makes the set `name` of `defineConfig({ workspaceSets })` (or of `sets.define`) live: each entry shows its
-     * workspace on its output, and one whose output is not connected shows on the primary output, with a report.
-     * Activating the live set again changes nothing. Refused (false, with a report) for an unknown set or a workspace
-     * that has since gone, as the the retired shell `activate_set` did; `sets.activate` throws instead.
-     */
-    activateSet(name: string): boolean {
-        try {
-            this.sets.activate(name);
-            return true;
-        } catch (error) {
-            if (!(error instanceof WorkspaceSetError)) {
-                throw error;
-            }
-            reports.push({
-                site: "gnoblin.workspaces.activateSet",
-                error: new Error(`workspace set refused: ${error.message}`),
-            });
-            return false;
-        }
     }
 
     /**
@@ -2657,7 +2602,7 @@ const holding = new Map<Workspace, number>();
  */
 function motion(seconds: number): number {
     const seat = mainSeat();
-    return seat !== undefined && seatHost.settings(seat)?.reducedMotion === true ? 0 : seconds;
+    return seat !== undefined && host.input.settings(seat)?.reducedMotion === true ? 0 : seconds;
 }
 
 /** `gnoblin.workspaces.show(workspace, options)`. */
@@ -2809,9 +2754,8 @@ function removeWorkspace(workspace: Workspace): void {
 }
 
 /**
- * A script that declared no workspace gets one floating `desktop`, so there is always somewhere for a window to go. A
- * script that never calls `defineConfig` is a program with no keys to switch workspaces, so one is all it needs; the
- * stock config's four workspaces come with `defineConfig` (`defaultConfig`).
+ * A script that declared no workspace gets one floating `desktop`, so there is always somewhere for a window to go. The
+ * stock default's four workspaces are `installDefaults`; a user's `init.ts` that declares none gets this one.
  */
 function ensureDefaultWorkspace(): void {
     if (workspaceRoot.list.length > 0) {
@@ -3744,7 +3688,6 @@ function adoptScreen(node: NodeId, announce: boolean): void {
     // A mirror and an output that is off have no place in the desktop, so they get no desk: nothing is laid out there.
     const wasParked = (outputSeen.get(output) as OutputSeen).detached ? false : giveDesk(output);
     if (!announce) {
-        configureOutput(output);
         return;
     }
     queueFor(outputRoot, "onAdded", [output, outputRoot.self]);
@@ -3762,7 +3705,6 @@ function adoptScreen(node: NodeId, announce: boolean): void {
         const first = (wsState(desk.shown).clientsState.list as Client[]).find((one) => one.alive && !one.minimised);
         first?.focus();
     }
-    configureOutput(output);
 }
 
 /**
@@ -4051,23 +3993,6 @@ function settleApplications(): void {
     }
 }
 
-/** The `outputs` table of the running config, applied to each output as it appears and to the ones already here. */
-let configuredOutputs: Readonly<Record<string, OutputConfig>> = {};
-
-/** Applies the config entry for this output's connector, if the config has one. */
-function configureOutput(output: Output): void {
-    const setting = configuredOutputs[output.connector];
-    if (setting === undefined) {
-        return;
-    }
-    const path = `outputs.${output.connector}`;
-    try {
-        applyOutput(output, setting, `config.${path}`, path);
-    } catch (error) {
-        say(`${path}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-}
-
 /** Raises the events one output's changed properties imply, to the listeners that held it. */
 function outputChanged(output: Output): void {
     displayManager.changed();
@@ -4339,29 +4264,9 @@ function takeErrors(): ErrorReport[] {
 // ---- Input and focus integration ----
 // Owns the shell's input adapters, focus lookup, stock requests, and keyboard actions.
 
-/** Config values that override the compositor's edge tiling and drag constraints. */
-
-const seatOverrides: { edgeTiling: boolean | null; dragConstraint: string | null } = {
-    edgeTiling: null,
-    dragConstraint: null,
-};
-
-/** Host input operations with config overrides layered over the published seat settings. */
-
-const seatHost: InputHost = {
-    ...host.input,
-    dragConstraint: (seat) => seatOverrides.dragConstraint ?? host.input.dragConstraint(seat),
-    settings(seat) {
-        const published = host.input.settings(seat);
-        return published && seatOverrides.edgeTiling !== null
-            ? { ...published, edgeTiling: seatOverrides.edgeTiling }
-            : published;
-    },
-};
-
 /** Seat input manager wired to host focus, window stack, layouts, and the deferred callback queue. */
 
-const input = new InputManager(seatHost, {
+const input = new InputManager(host.input, {
     clientOf: (node) => clientsByNode.get(node),
     stack: () => host.windows().flatMap((node) => clientsByNode.get(node) ?? []),
     workArea: (client) => workAreaOf((client as Client | undefined) ?? null),
@@ -4377,7 +4282,7 @@ const input = new InputManager(seatHost, {
 });
 
 attachDeviceSettings({
-    check: (patch) => host.config.check(patch, "[]"),
+    check: (patch) => host.config.check(patch),
     error: (code, target, message) => new GnoblinError(code, target, message),
 });
 
@@ -4523,11 +4428,11 @@ windowState.start<Client>({
     now: () => host.input.now(),
     dragConstraint: () => {
         const seat = host.input.seats()[0];
-        return seat === undefined ? undefined : seatHost.dragConstraint(seat);
+        return seat === undefined ? undefined : host.input.dragConstraint(seat);
     },
     edgeTiling: () => {
         const seat = host.input.seats()[0];
-        return seat !== undefined && seatHost.settings(seat)?.edgeTiling === true;
+        return seat !== undefined && host.input.settings(seat)?.edgeTiling === true;
     },
 });
 
@@ -4536,13 +4441,13 @@ repositioning.start({
     workArea: (client) => workAreaOf(client as unknown as Client),
     dragConstraint: () => {
         const seat = mainSeat();
-        return seat === undefined ? undefined : seatHost.dragConstraint(seat);
+        return seat === undefined ? undefined : host.input.dragConstraint(seat);
     },
     focus: (client) => (client as unknown as Client).focus(),
 });
 
 /**
- * Whether the first seat holds its keyboard focus on `client`. The stock policy and the rules read the seat, not
+ * Whether the first seat holds its keyboard focus on `client`. The stock policy reads the seat, not
  * `client.focused`: a shell gives focus by writing the seat's `focus`, and a real compositor was seen not to keep a
  * window's own `focused` current while a shell holds the tree.
  */
@@ -4564,102 +4469,20 @@ function focusedAmong(list: readonly Member[]): Member | null {
     return list.find((member) => member === held) ?? null;
 }
 
-/** What a window rule reads and writes of a client: the host's end of `RuleEngine`. */
-const ruleHost: RuleHost<Client> = {
-    view: (client): RuleView => ({
-        appId: client.appId,
-        title: client.title,
-        focused: hasFocus(client),
-        workspace: client.workspace?.id ?? null,
-    }),
-    alive: (client) => client.alive,
-    isArrival: (client) => !preexisting.has(client),
-    moveToWorkspace(client, id) {
-        const target = workspaceRoot.list.find((workspace) => workspace.id === id);
-        if (target === undefined) {
-            return false;
-        }
-        transferClient(target as Workspace, client);
-        return true;
-    },
-    setFloating: (client, on) => {
-        client.floating = on;
-    },
-    setSize: (client, size) => {
-        (client as unknown as { size?: { width: number; height: number } }).size = size;
-    },
-    setBounds: (client, rect) => {
-        client.bounds = rect;
-        (client as unknown as { floatingBounds?: Rect }).floatingBounds = { ...rect };
-    },
-    bounds: (client) => client.bounds,
-    setFullscreen: (client, on) => {
-        if (on) {
-            windowState.enterFullscreen(client);
-        } else {
-            windowState.leaveFullscreen(client);
-        }
-    },
-    setMaximised: (client, on) => {
-        if (on) {
-            windowState.maximise(client);
-        } else {
-            windowState.unmaximise(client);
-        }
-    },
-    setSecure: (client, on) => {
-        client.secure = on;
-    },
-    setOpacity: (client, value) => {
-        // A rule's opacity is the client's own style, the highest layer; the value an undone rule restores (1) is
-        // the style going back to inheriting.
-        if (value === RULE_DEFAULTS.opacity) {
-            client.style.unset("opacity");
-        } else {
-            client.style.opacity = value;
-        }
-    },
-    setStyle: (client, field, value) => {
-        client.style[field] = value as never;
-    },
-};
-
-/** Config overrides applied before seat focus defaults are resolved. */
-
-let focusOverrides: FocusConfig = {};
-
-/** Resolves effective focus policy from config overrides and the first seat's settings. */
+/** Resolves the effective focus policy from the first seat's published settings. */
 
 function currentFocusSettings(): FocusSettings {
     const seat = host.input.seats()[0];
-    const published = seat === undefined ? undefined : seatHost.settings(seat);
-    const base = published === undefined ? FOCUS_DEFAULTS : seatFocusSettings(published);
-    return focusSettings(focusOverrides, "config.focus", base);
+    const published = seat === undefined ? undefined : host.input.settings(seat);
+    return published === undefined ? FOCUS_DEFAULTS : seatFocusSettings(published);
 }
 
-/**
- * The stock window rules and focus policy. The focus policy is attached for every config, so a plain `init.ts` has
- * click focus and the built-in snapping; the rules engine is attached only by the deprecated `defineConfig`.
- */
-let stock: { rules: RuleEngine<Client>; focus: FocusPolicy<Client> } | null = null;
+/** The stock focus policy, attached for every config: a plain `init.ts` has click focus and the built-in snapping. */
+let focusPolicy: FocusPolicy<Client> | null = null;
 
-/** What `installStock` reads of a config plan: the stock rules, focus settings and snap knobs. */
-type StockPlan = Pick<ConfigPlan, "rules" | "focus" | "edgeTiling" | "dragConstraint">;
+/** Attaches the stock focus policy to every client. */
 
-/** The plan of a shell whose config has none: no rules, the built-in focus policy and edge snapping. */
-const BUILT_IN_STOCK: StockPlan = { rules: [], focus: {}, edgeTiling: null, dragConstraint: null };
-
-/** Replaces the stock rules and focus policy while preserving their listener order. */
-
-function installStock(plan: StockPlan): void {
-    if (stock !== null) {
-        clientRoot.self.removeListener(stock.rules);
-        clientRoot.self.removeListener(stock.focus);
-    }
-    seatOverrides.edgeTiling = plan.edgeTiling;
-    seatOverrides.dragConstraint = plan.dragConstraint;
-    focusOverrides = plan.focus;
-    const rules = new RuleEngine(compileRules(plan.rules), ruleHost);
+function installFocus(): void {
     const focus = new FocusPolicy<Client>({
         settings: currentFocusSettings,
         focused: hasFocus,
@@ -4674,12 +4497,9 @@ function installStock(plan: StockPlan): void {
         now: () => host.input.now(),
         isArrival: (client) => !preexisting.has(client),
         fromLauncher: (client) => client.fromLauncher,
-        skipsFocus: (client) => rules.skipsFocus(client),
         alive: (client) => client.alive,
     });
-    stock = { rules, focus };
-    // The rules hear a new window first: `skipFocus` is what the focus policy reads when it hears the same one.
-    clientRoot.self.addListener(rules);
+    focusPolicy = focus;
     clientRoot.self.addListener(focus);
 }
 
@@ -4818,65 +4638,8 @@ function trackLaunches(): void {
     clientRoot.self.addListener(changes);
 }
 
-// ---- Config callbacks and integrations ----
-// Owns the registrations and bridges used by config, menus, alerts, XR, and session APIs.
-
-/** The config document patch this generation declared, as JSON text. The shell commits it once the generation runs. */
-let documentPatch = "{}";
-
-/** The commands this generation's config starts with the session, as JSON text of argv lists. */
-let autostartList = "[]";
-
-/**
- * The `on` handlers of a config as listeners of `gnoblin.clients`: a membership listener for `clientAdded` and
- * `clientRemoved`, a client listener for `titleChanged` and `focusChanged`. A listener a config does not give is
- * not attached, so no call is queued for an event nobody asked about.
- */
-function attachOn(on: ConfigListeners): void {
-    if (on.clientAdded !== undefined || on.clientRemoved !== undefined) {
-        const members = new CollectionListener();
-        if (on.clientAdded !== undefined) {
-            members.onAdded = (member) => {
-                if (member instanceof Client) {
-                    on.clientAdded?.(member);
-                }
-            };
-        }
-        if (on.clientRemoved !== undefined) {
-            members.onRemoved = (member) => {
-                if (member instanceof Client) {
-                    on.clientRemoved?.(member);
-                }
-            };
-        }
-        clientRoot.self.addListener(members);
-    }
-    if (on.titleChanged !== undefined || on.focusChanged !== undefined) {
-        const clients = new ClientListener();
-        if (on.titleChanged !== undefined) {
-            clients.onTitleChanged = (client, title) => on.titleChanged?.(client, title);
-        }
-        if (on.focusChanged !== undefined) {
-            clients.onFocusChanged = (client, focused) => on.focusChanged?.(client, focused);
-        }
-        clientRoot.self.addListener(clients);
-    }
-}
-
-/**
- * Refuses a config whose document settings the validator would refuse, with the key path in the message. The
- * `autostart` commands go along: a host that owns the document commits them as its `autostart` section, so one that
- * would start a second keyring is refused here, while the running generation is still the old one.
- */
-function checkDocument(patch: ConfigPlan["document"], autostart: ConfigPlan["autostart"]): void {
-    if (Object.keys(patch).length === 0 && autostart.length === 0) {
-        return;
-    }
-    const problems = host.config.check(JSON.stringify(patch), JSON.stringify(autostart));
-    if (problems != null) {
-        throw new GnoblinError("invalid-config", "defineConfig", problems);
-    }
-}
+// ---- Window menu and alert services ----
+// Owns the services a script starts with `startWindowMenu` and `startNotRespondingAlert`.
 
 /** Starts the window menu once: it answers the compositor's menu requests. A config that does not call it has none. */
 export function startWindowMenu(): void {
@@ -4920,9 +4683,6 @@ export function startNotRespondingAlert(): void {
         });
     }
 }
-
-/** The merged config of the last `__register`, which is what the inspector reports as the effective one. */
-let effectiveConfig: GnoblinConfig | null = null;
 
 /** The scene the XR module makes its nodes in: the host's, with clients as the content a View shows. */
 // ---- XR and session API bridges ----
@@ -5244,112 +5004,13 @@ class Gnoblin {
     off(target: Subscription | string, fn?: (event: SignalEvent) => void): void {
         hostApi.bus.off(target, fn);
     }
-
-    /**
-     * Deprecated compatibility path, kept until the tests and docs that use `defineConfig` are rewritten: nothing in the
-     * boot path calls it. The hook `defineConfig` calls with the config it was given. The config is laid over the stock one
-     * (`mergeConfig`), then the document settings are checked (a refused value throws, which fails the stage and
-     * keeps the running generation), the declared workspaces become real `Workspace` objects in
-     * `gnoblin.workspaces`, the keys are bound on the first seat, the `on` handlers are attached and `setup` runs.
-     * The document settings themselves are committed by the shell once this generation is the running one.
-     */
-    __register(config: GnoblinConfig): void {
-        const merged = mergeConfig(defaultConfig, config);
-        const plan = desugarConfig(merged);
-        checkDocument(plan.document, plan.autostart);
-        effectiveConfig = merged;
-        for (const planned of plan.workspaces) {
-            addWorkspace(
-                new Workspace({ id: planned.id, name: planned.name, layout: planned.layout, gaps: planned.gaps }),
-            );
-        }
-        if (plan.workspaceSets.length > 0) {
-            (workspaceRoot.self as WorkspaceCollection).sets.define([...plan.workspaceSets]);
-        }
-        if (plan.decorations) {
-            startDecorations();
-        }
-        if (plan.menus) {
-            startWindowMenu();
-        }
-        if (plan.alerts) {
-            startNotRespondingAlert();
-        }
-        bindKeys([...plan.bindings, ...planStockLauncher(merged)]);
-        installStock(plan);
-        replaceStyle(scopeStyle(clientRoot).style, plan.style);
-        configuredOutputs = plan.outputs;
-        for (const output of liveOutputs()) {
-            configureOutput(output);
-        }
-        attachOn(merged.on ?? {});
-        documentPatch = JSON.stringify(plan.document);
-        autostartList = JSON.stringify(plan.autostart);
-        plan.setup?.(gnoblin as unknown as GnoblinHost);
-    }
-
-    /** The config `__register` last merged over the stock one, for the inspector; null before any. */
-    __effectiveConfig(): GnoblinConfig | null {
-        return effectiveConfig;
-    }
-}
-
-/** What a key of the config does when it is pressed. A binding action is not a handler: `bindKeys` binds it whole. */
-function keyHandler(action: Exclude<ResolvedAction, BindingAction>): () => void {
-    switch (action.kind) {
-        case "spawn":
-            return () => gnoblin.spawn([...action.argv]);
-        case "show":
-            return () => gnoblin.show(action.workspace, { duration: SLIDE_SECONDS });
-        case "show-position":
-            return () => {
-                const target = workspaceRoot.list[action.position - 1];
-                if (target !== undefined) {
-                    showWorkspace(target as Workspace, { duration: SLIDE_SECONDS });
-                }
-            };
-        case "focus-column":
-            return () => {
-                const shown = currentDesk()?.shown ?? null;
-                if (shown !== null && shown.layout instanceof StripLayout) {
-                    if (action.direction === "left") {
-                        shown.layout.focusLeft(shown);
-                    } else {
-                        shown.layout.focusRight(shown);
-                    }
-                }
-            };
-        case "close":
-            return () => (input.primary.focusedClient as Client | null)?.close();
-        case "call":
-            return () => action.handler({ gnoblin: gnoblin as unknown as GnoblinHost });
-    }
-}
-
-/** Binds the config's keys on the first seat. A tree with no seat has no keyboard to bind, so its keys are left out. */
-function bindKeys(keys: readonly PlannedKey[]): void {
-    if (keys.length === 0) {
-        return;
-    }
-    let seat;
-    try {
-        seat = input.primary;
-    } catch (error) {
-        if (error instanceof GnoblinError && error.code === "no-seat") {
-            return;
-        }
-        throw error;
-    }
-    for (const { trigger, action } of keys) {
-        seat.bind(trigger, action.kind === "binding" ? action.create() : keyHandler(action));
-    }
 }
 
 /** The object model installed as `globalThis.gnoblin` for this generation. */
 
 export const gnoblin = new Gnoblin();
 trackLaunches();
-installStock(BUILT_IN_STOCK);
+installFocus();
 
 // ---- Console and shell entry ----
 // Registers inspectable objects, adopts the initial tree, and exposes frame callbacks to the shell.
@@ -5458,9 +5119,8 @@ host.entry = {
     ready,
     takeErrors,
     takeNotices: () => notices.splice(0),
-    document: () => JSON.stringify(overlayDocument(JSON.parse(documentPatch), deviceDocument())),
+    document: () => JSON.stringify(deviceDocument()),
     documentRevision: deviceSettingsRevision,
-    autostart: () => autostartList,
     dialogs: (events) => {
         dialogs.deliver(events);
         return queue.length;
@@ -5492,7 +5152,7 @@ host.entry = {
     input: (messages) => {
         input.deliver(messages);
         try {
-            stock?.focus.frame();
+            focusPolicy?.frame();
         } catch (error) {
             reports.push({ site: "FocusPolicy.frame", error });
         }

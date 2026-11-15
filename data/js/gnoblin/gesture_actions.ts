@@ -2,17 +2,14 @@
 // `Gestures.direction`, `Gestures.on_swipe`, `Gestures.on_pinch`). The cases that cover it are in
 // crates/gnoblin-js/tests/input.rs.
 //
-//   defineConfig({
-//       gestureActions: {
-//           Swipe4: { up: "window.toggle-maximise", left: "workspace.next", right: "workspace.previous" },
-//           Pinch3: { in: "window.minimise", out: (event) => console.log(event.scale) },
-//       },
-//   });
+//   const input = gnoblin.input.primary;
+//   input.bind("Swipe4", onSwipe({ up: "window.toggle-maximise", left: "workspace.next", right: "workspace.previous" }));
+//   input.bind("Pinch3", onPinch({ in: "window.minimise", out: (event) => console.log(event.scale) }));
 //
 // A gesture is bound like a chord (`Swipe3`, `Pinch4`: the gesture and its finger count) and Gnoblin claims it, so no
 // client sees it. An action runs once, when the fingers lift, for the direction the gesture went; a cancelled gesture
-// runs nothing. The five named actions are `gnoblin.gestures.actions`, and a config can give a function instead of a
-// name. The stock shell binds one gesture, the three-finger workspace slide: a gesture bound at its trigger replaces
+// runs nothing. The five named actions are `gnoblin.gestures.actions`, and a script can give a function instead of a
+// name. The stock default binds one gesture, the three-finger workspace slide: a gesture bound at its trigger replaces
 // it, so use four fingers to keep both.
 
 import { GestureBinding } from "gnoblin/bindings";
@@ -244,19 +241,4 @@ export interface GestureTools {
     direction: typeof gestureDirection;
     onSwipe(map: SwipeMap, threshold?: number): SwipeActionBinding;
     onPinch(map: PinchMap, threshold?: number): PinchActionBinding;
-}
-
-/** What `defineConfig({ gestureActions })` takes for one gesture: a swipe's four directions or a pinch's two. */
-export type GestureActionConfig = SwipeMap & PinchMap;
-
-/**
- * The binding a `gestureActions` entry stands for: a swipe for `Swipe<n>`, a pinch for `Pinch<n>`. The trigger names
- * the gesture and its finger count and no direction: the map holds the directions.
- */
-export function gestureActionBinding(
-    trigger: string,
-    map: GestureActionConfig,
-    gesture: "swipe" | "pinch",
-): GestureBinding {
-    return gesture === "swipe" ? new SwipeActionBinding(map, { trigger }) : new PinchActionBinding(map, { trigger });
 }

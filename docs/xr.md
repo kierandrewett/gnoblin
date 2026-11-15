@@ -123,7 +123,7 @@ gnoblin.extensions.configure("xr", {
 });
 ```
 
-The window rules have no `xr` key (`data/js/gnoblin/rules.ts` refuses it by name), so the function is the one way.
+A window's `accept` function is the one way to choose which windows appear: there is no declarative window-rule key for it.
 
 ### The ring
 

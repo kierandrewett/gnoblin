@@ -150,23 +150,6 @@ export function deviceDocument(): Table {
     return Object.keys(groups).length === 0 ? {} : { input: groups };
 }
 
-/** `patch` laid over `base`, table by table; a list or a value in `patch` replaces what `base` holds. */
-export function overlayDocument(base: Table, patch: Table): Table {
-    const merged: Table = { ...base };
-    for (const [key, value] of Object.entries(patch)) {
-        const held = merged[key];
-        const bothTables =
-            typeof value === "object" &&
-            value !== null &&
-            !Array.isArray(value) &&
-            typeof held === "object" &&
-            held !== null &&
-            !Array.isArray(held);
-        merged[key] = bothTables ? overlayDocument(held as Table, value as Table) : value;
-    }
-    return merged;
-}
-
 /** Fails as `shell` does when it is attached, else as a plain `Error`. */
 function refuse(code: string, target: string, message: string): Error {
     return shell?.error(code, target, message) ?? new Error(`${target}: ${message}`);

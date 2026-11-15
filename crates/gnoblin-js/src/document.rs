@@ -85,9 +85,8 @@ impl TreeLink for InertTree {
     }
 }
 
-/// The document the config at `entry` commits, as JSON bytes: what its objects wrote to the document, and its
-/// autostart commands (only the deprecated `defineConfig` has any) as the document's `autostart` section. `{}` for a
-/// config that writes nothing there.
+/// The document the config at `entry` commits, as JSON bytes: what its objects wrote to the document (the device
+/// settings). `{}` for a config that writes nothing there.
 ///
 /// The relative imports of `entry` resolve under its own directory, as they do in the shell.
 ///
@@ -120,7 +119,7 @@ pub fn evaluate_document(entry: &Path) -> Result<Vec<u8>, JsError> {
         },
     };
     let mut shell = JsShell::new(Box::<InertTree>::default(), config).map_err(failed)?;
-    // The shell owns the document, so its autostart commands go into the document instead of being started here.
+    // The shell owns the document, so nothing is read from a compositor that is not there.
     shell.own_document();
     shell.load_entry(&entry).map_err(failed)?;
     let document = shell.declared_document().map_err(failed)?;

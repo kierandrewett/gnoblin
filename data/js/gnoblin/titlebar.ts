@@ -1,7 +1,7 @@
 // The stock titlebar: a `Box` row with a drag area that holds the title and the minimise, maximise and close buttons.
 // It is drawn as a child of the window's node (design/archive/node-api-refactor.md, Decision 2, option (a)).
-// Every look setting is a field of `TitlebarStyle`. A config passes its own style, or changes keys through
-// `defineConfig({ style })`. `Decorations` keeps one bar per decorated window and reports its height with `insetOf`.
+// Every look setting is a field of `TitlebarStyle`. A script passes its own style to `Decorations`.
+// `Decorations` keeps one bar per decorated window and reports its height with `insetOf`.
 // The layout driver leaves that height free above each window, so the bar and the content never overlap.
 // docs/js-ui.md, "Titlebar", says why.
 

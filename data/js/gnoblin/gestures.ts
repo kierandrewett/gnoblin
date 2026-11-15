@@ -7,7 +7,7 @@
 // A TypeScript workspace is not a node, so the slide moves its windows: each window's `x` follows the fingers
 // and goes back to where it rests when the slide is over. The gesture reaches the shell through `SlideHost`
 // and never imports the host module. Read `gnoblin/bindings` (`GestureBinding`) first. This module does not
-// register itself: a config adds `new WorkspaceSlideBinding()` to the bindings it wants.
+// register itself: a script adds `new WorkspaceSlideBinding()` to the bindings it wants.
 
 import { GestureBinding } from "gnoblin/bindings";
 import type { BindingOptions, DragEvent } from "gnoblin/bindings";

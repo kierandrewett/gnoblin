@@ -11,7 +11,7 @@ use rquickjs::function::Opt;
 use rquickjs::{Ctx, Function, Object, Value};
 
 use super::props::{JsPropDef, JsPropKind, default_value, defs_for, may_call};
-use super::{HostState, JsHostValue, JsSpawnRequest, NodeHandles, SharedState, effect_from_js};
+use super::{HostState, JsHostValue, NodeHandles, SharedState, effect_from_js};
 
 /// Every node of the mirror, parents before their children. The root's tree comes first, in tree order; then
 /// each tree that has no parent (the compositor makes a window unparented, and a shell parents it), by id.
@@ -321,14 +321,6 @@ pub(crate) fn call(state: &mut HostState, node: NodeId, method: &str) -> Option<
     tick.call(mirror, node, method, Vec::new(), *tokens, Default::default())
         .err()
         .map(|_| "unknown-node")
-}
-
-/// Hands a spawn request to the host's spawner, and returns its refusal, if any.
-pub(crate) fn spawn(state: &mut HostState, request: &JsSpawnRequest) -> Option<String> {
-    let Some(spawner) = state.spawner.as_mut() else {
-        return Some("no spawner is attached to this shell".to_owned());
-    };
-    spawner(request).err().map(|error| error.0)
 }
 
 pub(crate) fn script_value<'js>(value: &Value<'js>) -> JsScriptValue {

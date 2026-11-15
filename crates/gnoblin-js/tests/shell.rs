@@ -1559,15 +1559,6 @@ fn the_inspector_helpers_return_plain_data() {
 }
 
 #[test]
-fn a_shell_whose_entry_is_spec_style_has_no_effective_config() {
-    let comp = two_windows();
-    let rig = rig(&comp, "export {};\n");
-    let config = evaluate_in(&rig.shell, "inspect.config()", 65536).expect("it renders");
-    let config: Json = serde_json::from_str(&config).expect("JSON");
-    assert_eq!(config["type"], json!("null"));
-}
-
-#[test]
 fn the_role_serves_its_console_between_frames_and_a_reload_drops_what_the_prompt_defined() {
     let comp = two_windows();
     let dir = tempfile::tempdir().expect("a temp dir");

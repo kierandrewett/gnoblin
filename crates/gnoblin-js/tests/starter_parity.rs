@@ -1,13 +1,10 @@
-//! The stock default is one world however it is reached, and that world is the one `defineConfig(defaultConfig)` made
-//! before the default became code.
+//! The stock default is one world however it is reached.
 //!
-//! Four ways to boot over the same fake compositor: the deprecated `defineConfig(defaultConfig)` (what the shell ran
-//! when there was no `init.ts`, kept until the tests that use it are rewritten), no `init.ts` at all
-//! (`load_default_config`, which runs
+//! Three ways to boot over the same fake compositor: no `init.ts` at all (`load_default_config`, which runs
 //! `installDefaults`), the `init.ts` `gnoblinctl config init` writes, and a file that calls `installDefaults`. Each is
 //! digested into the workspaces, the claimed keys and gestures, the titlebars, the window menu, the not-responding alert
-//! and what each stock key does when it is pressed, and the four digests must be equal. A last test holds the statements
-//! of `installDefaults` and of the starter file together, so the readable file cannot drift from what runs.
+//! and what each stock key does when it is pressed, and the three digests must be equal. A last test holds the
+//! statements of `installDefaults` and of the starter file together, so the readable file cannot drift from what runs.
 
 use std::fs;
 use std::path::Path;
@@ -138,43 +135,43 @@ fn digest(rig: &mut Rig) -> serde_json::Value {
 }
 
 #[test]
-fn every_way_to_boot_the_stock_default_builds_the_world_define_config_made() {
-    let old = digest(&mut boot(Some(
-        "import { defaultConfig, defineConfig } from \"gnoblin\";\ndefineConfig(defaultConfig);\n",
-    )));
+fn every_way_to_boot_the_stock_default_builds_one_world() {
     let none = digest(&mut boot(None));
     let starter = digest(&mut boot(Some(STARTER_CONFIG)));
     let call = digest(&mut boot(Some(
         "import { installDefaults } from \"gnoblin/starter\";\ninstallDefaults(gnoblin);\n",
     )));
 
-    // The old world is real: four floating workspaces, the stock keys, the swipe, titlebars, menu and alert.
-    assert_eq!(old["world"]["workspaces"].as_array().map(Vec::len), Some(4), "{old:#}");
-    assert!(
-        old["claims"].as_array().expect("claims").len() >= 20,
-        "the stock keys and the floating layout's drags are claimed: {old:#}"
+    // The world is real: four floating workspaces, the stock keys, the swipe, titlebars, menu and alert.
+    assert_eq!(
+        none["world"]["workspaces"].as_array().map(Vec::len),
+        Some(4),
+        "{none:#}"
     );
-    assert_eq!(old["world"]["menu"], true);
-    assert_eq!(old["world"]["alert"], true);
-    assert_eq!(old["frames"]["inset"], "28", "titlebars: {old:#}");
+    assert!(
+        none["claims"].as_array().expect("claims").len() >= 20,
+        "the stock keys and the floating layout's drags are claimed: {none:#}"
+    );
+    assert_eq!(none["world"]["menu"], true);
+    assert_eq!(none["world"]["alert"], true);
+    assert_eq!(none["frames"]["inset"], "28", "titlebars: {none:#}");
     // The presses recorded something: a workspace key shows its workspace, a strip key moves a column, a media key
     // spawns its command and the launcher key opens an entry.
-    let seen = |at: usize| &old["presses"][at]["seen"];
-    assert_eq!(seen(1)["shown"], "2", "{old:#}");
-    assert_eq!(seen(4)["moved"], serde_json::json!(["focusRight"]), "{old:#}");
+    let seen = |at: usize| &none["presses"][at]["seen"];
+    assert_eq!(seen(1)["shown"], "2", "{none:#}");
+    assert_eq!(seen(4)["moved"], serde_json::json!(["focusRight"]), "{none:#}");
     assert_eq!(
         seen(5)["spawned"],
         serde_json::json!(["wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"]),
-        "{old:#}"
+        "{none:#}"
     );
     assert!(
-        old["presses"][8]["canvases"].as_u64().unwrap_or(0) > 0,
-        "the launcher key draws an entry: {old:#}"
+        none["presses"][8]["canvases"].as_u64().unwrap_or(0) > 0,
+        "the launcher key draws an entry: {none:#}"
     );
 
-    assert_eq!(none, old, "no init.ts runs the stock default");
-    assert_eq!(starter, old, "the starter file is the stock default");
-    assert_eq!(call, old, "installDefaults is the stock default");
+    assert_eq!(starter, none, "the starter file is the stock default");
+    assert_eq!(call, none, "installDefaults is the stock default");
 }
 
 #[test]

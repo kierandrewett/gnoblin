@@ -28,7 +28,7 @@ use common::{honest_config, honest_role_config, timed_config};
 // -- the trigger grammar -----------------------------------------------------------------------------------
 
 const GRAMMAR_HARNESS: &str = r##"
-globalThis.gnoblin = { __register() {} };
+globalThis.gnoblin = {};
 export const emit = (value) => { globalThis.out = String(value); };
 "##;
 

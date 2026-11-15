@@ -445,7 +445,7 @@ export interface DragEvent extends BindingEvent {
     readonly button?: number;
     readonly workArea?: Rect;
     readonly dragConstraint?: string;
-    /** The seat's `edge_tiling` (or the config's `edgeTiling`): whether a drop on a screen edge tiles the window. */
+    /** The seat's `edge_tiling`: whether a drop on a screen edge tiles the window. */
     readonly edgeTiling?: boolean;
     readonly deltaTime: number;
     readonly modifiers: ReadonlySet<string>;
@@ -826,7 +826,7 @@ export interface ClientMoveOptions extends Partial<PointerDragBindingOptions> {
     /**
      * Edge tiling on release: how near a screen edge, in pixels, the pointer must be for the drop to tile the window
      * (left and right take half the work area, top all of it). Default `SNAP_MARGIN`. `false` never tiles. Only when
-     * the seat's `edge_tiling` (or the config's `edgeTiling`) is on, as in the Lua shell; off, a drop is just a move.
+     * the seat's `edge_tiling` is on, as in the Lua shell; off, a drop is just a move.
      */
     snap?: number | false;
 }

@@ -1,6 +1,6 @@
 // The stock launcher: Super+Space opens a command entry on the screen. Return starts the command and closes the
-// entry; Escape closes it. A config that gives `launcher` a command line runs that program on Super+Space instead and
-// opens no entry.
+// entry; Escape closes it. The `Super+Space` binding is the script's: the stock default binds `openLauncher`, and a
+// script can bind the key to any other command.
 //
 // It owns the entry and what happens when it is submitted. It does not own the Super+Space binding (read
 // `gnoblin/bindings`). Read `gnoblin/widgets` first for `Entry`, which does all the typing.

@@ -11,9 +11,9 @@
 //!
 //! 1. A configuration the compositor has already accepted in this session.
 //! 2. The user's own `init.ts` or `init.js`, evaluated here in a throwaway generation with no host
-//!    ([`gnoblin_js::evaluate_document`]): the effective `keyring.enabled` before anything is
-//!    committed, so a first boot with `keyring.enabled = false` does not wait out the window below.
-//!    A config that cannot be evaluated without a session is not guessed at; the order goes on.
+//!    ([`gnoblin_js::evaluate_document`]). No object of the specification carries `keyring.enabled`, so a
+//!    config has no source for it: its document has no `keyring` section and the flag is the schema default
+//!    (on). A config that cannot be evaluated without a session is not guessed at; the order goes on.
 //! 3. An accepted configuration, waited for at most [`CONFIGURATION_WAIT`]. This is the only source
 //!    when the config cannot be evaluated here.
 //! 4. The last accepted file, then the schema default.
@@ -50,8 +50,8 @@ pub enum KeyringSource {
         /// The revision the compositor reported.
         revision: u64,
     },
-    /// The user's `init.ts` or `init.js` decided, as evaluated by the services role itself before the runtime
-    /// committed anything.
+    /// The user's `init.ts` or `init.js` was evaluated by the services role itself before the runtime committed
+    /// anything. No config carries `keyring.enabled`, so the schema default (on) decided.
     ConfigFile,
     /// No accepted configuration arrived in time, and the last accepted file decided.
     LastAccepted,

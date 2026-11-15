@@ -29,7 +29,7 @@ use common::timed_config;
 // -- the pure functions, run in a bare generation -----------------------------------------------------------
 
 const HARNESS: &str = r##"
-globalThis.gnoblin = { __register() {} };
+globalThis.gnoblin = {};
 export const emit = (value) => { globalThis.out = String(value); };
 export const thrown = (fn) => {
     try { fn(); } catch (e) { return `${e.name}: ${e.message}`; }
@@ -41,7 +41,7 @@ const IMPORTS: &str = r#"
 import { emit, thrown } from "harness";
 import {
     focusSettings, seatFocusSettings, opensFocused, hoverFocus, autoRaiseSeconds, REST_SECONDS, restFocus,
-    leaveClears, focusDecision, compileRules, effectsFor, matchingRules, edgeTilingEnabled, edgeZone, tileRect,
+    leaveClears, focusDecision, edgeTilingEnabled, edgeZone, tileRect,
     ClientResizeBinding, ClientMoveBinding,
 } from "gnoblin";
 "#;
@@ -238,7 +238,6 @@ fn the_focus_decision_is_a_pure_function_of_the_settings_and_one_event() {
             "added " + d({}, { kind: "added" }),
             "added from a launcher, prevent " + d({}, { kind: "added", fromLauncher: true }),
             "added from a launcher, allow " + d({ newWindows: "allow" }, { kind: "added", fromLauncher: true }),
-            "added, skipFocus " + d({}, { kind: "added", skipFocus: true }),
             "press " + d({}, { kind: "press" }),
             "press, no raise " + d({ raiseOnClick: false }, { kind: "press" }),
             "click enter " + d({}, enter),
@@ -262,7 +261,6 @@ fn the_focus_decision_is_a_pure_function_of_the_settings_and_one_event() {
             "added true/false/false/null/null",
             "added from a launcher, prevent false/false/false/null/null",
             "added from a launcher, allow true/false/false/null/null",
-            "added, skipFocus false/false/false/null/null",
             "press true/false/true/null/null",
             "press, no raise true/false/false/null/null",
             "click enter false/false/false/null/null",
@@ -280,173 +278,6 @@ fn the_focus_decision_is_a_pure_function_of_the_settings_and_one_event() {
             "TypeError: unknown focus event {\"kind\":\"scroll\"}",
         ])
     );
-}
-
-// -- window rules, pure -------------------------------------------------------------------------------------
-
-const VIEW: &str = r#"
-        const effects = (list: any[], view: any = {}) =>
-            effectsFor(compileRules(list), { appId: "", title: "", focused: false, workspace: null, ...view });
-"#;
-
-#[test]
-fn a_glob_matches_the_whole_text_and_a_regexp_anywhere_in_it() {
-    // Before: "a pattern matches anywhere in the app_id unless anchored". A retired pattern `fire` is the glob `*fire*`; the
-    // the retired shell `^fire$` is the plain text `fire`, which matches the whole id only.
-    let got = run(&format!(
-        r#"{VIEW}
-        const fs = (pattern: any, appId: string) =>
-            String(effects([{{ appId: pattern, fullscreen: true }}], {{ appId }}).fullscreen);
-        const g = /fire/g;
-        emit([
-            fs("*fire*", "org.mozilla.firefox"),
-            fs("fire", "firefox"),
-            fs("fire", "fire"),
-            fs("fire*", "firefox"),
-            fs("fire*", "xfire"),
-            fs("org.?ozilla.*", "org.mozilla.firefox"),
-            fs("org.?ozilla.*", "orgxmozilla.firefox"),
-            fs("a+b", "a+b"),
-            fs("a+b", "aab"),
-            fs(/^org\.mozilla\./, "org.mozilla.firefox"),
-            fs(/fire/, "org.mozilla.firefox"),
-            fs(/^fire$/, "firefox"),
-            fs(g, "fire") + fs(g, "fire"),
-            String(effects([{{ title: "a*b", fullscreen: true }}], {{ title: "a\nb" }}).fullscreen),
-        ].join(","));
-    "#
-    ));
-    assert_eq!(
-        got,
-        "true,undefined,true,true,undefined,true,undefined,true,undefined,true,true,undefined,truetrue,true"
-    );
-}
-
-#[test]
-fn a_malformed_rule_throws_at_compile_time_naming_its_index_and_field() {
-    // Before: "a malformed pattern is a compile error", "an unknown rule field raises", "a rule's opacity must be a
-    // number in [0, 1]", "corners is refused at load", "maximised is a boolean rule field". New: the sets-nothing,
-    // needs-a-query and role refusals, which the retired rule could not express.
-    let got = run(r#"
-        const bad = (list: any) => thrown(() => compileRules(list));
-        const ok = { appId: "x", secure: true };
-        emit([
-            bad([{ appId: 5, fullscreen: true }]),
-            bad([{ title: { not: "a pattern" }, secure: true }]),
-            bad([{ title: "x", fullscren: true }]),
-            bad([ok, { appId: "x", style: { opacity: 1.5 } }]),
-            bad([{ appId: "x", style: { opacity: "half" } }]),
-            bad([{ appId: "x", style: { shine: 1 } }]),
-            bad([{ appId: "x", corners: { radius: 8 } }]),
-            bad([{ appId: "x", maximised: "yes" }]),
-            bad([{ appId: "x", role: "dialog", secure: true }]),
-            bad([{ appId: "x" }]),
-            bad([{ secure: true }]),
-            bad([{ appId: "x", size: { width: 0, height: 5 } }]),
-            bad([{ appId: "x", position: { x: 1 } }]),
-            bad([{ appId: "x", workspace: "" }]),
-            bad(5),
-            bad([null]),
-            bad([ok, { appId: "y", secure: true, first: 1 }]),
-            bad([ok, { appId: "y", style: { opacity: 0.5 }, maximised: true }]),
-        ].join("\n"));
-    "#);
-    assert_eq!(
-        got,
-        lines(&[
-            "TypeError: rules[0].appId: must be a glob string or a RegExp, got 5",
-            "TypeError: rules[0].title: must be a glob string or a RegExp, got [object Object]",
-            "TypeError: rules[0] has no \"fullscren\" (did you mean \"fullscreen\"?); expected one of appId, title, role, focused, onWorkspace, workspace, floating, size, position, style, fullscreen, maximised, secure, skipFocus, first, reapply",
-            "TypeError: rules[1].style.opacity: must be a number from 0 to 1, got 1.5",
-            "TypeError: rules[0].style.opacity: must be a number from 0 to 1, got \"half\"",
-            "TypeError: rules[0].style has no \"shine\"; expected one of cornerRadius, opacity, shadows",
-            "TypeError: rules[0] has no \"corners\"; expected one of appId, title, role, focused, onWorkspace, workspace, floating, size, position, style, fullscreen, maximised, secure, skipFocus, first, reapply",
-            "TypeError: rules[0].maximised: must be true or false, got \"yes\"",
-            "TypeError: rules[0].role: the compositor publishes no window role, so a rule cannot match one; use appId or title",
-            "TypeError: rules[0]: sets nothing; give it one of workspace, floating, size, position, style, fullscreen, maximised, secure, skipFocus",
-            "TypeError: rules[0]: needs a query: appId, title, focused or onWorkspace",
-            "TypeError: rules[0].size.width: must be a positive finite number, got 0",
-            "TypeError: rules[0].position.y: must be a finite number, got undefined",
-            "TypeError: rules[0].workspace: must be a workspace id, got \"\"",
-            "TypeError: rules must be an array",
-            "TypeError: rules[0]: must be an object",
-            "TypeError: rules[1].first: must be true or false, got 1",
-            "did not throw",
-        ])
-    );
-}
-
-#[test]
-fn every_matching_rule_merges_in_list_order_and_a_first_rule_ends_the_search() {
-    // Before: "the last matching rule wins for a field", "a later rule that does not set a field leaves the earlier
-    // value", "rules merge in list order: the last matching rule wins for each field, the others are kept". The
-    // JavaScript list merges the same way with the same inputs and expected values. New: `first: true` stops the
-    // search at a rule, and the the retired shell-era `all` option is gone, so it is refused by name.
-    let got = run(&format!(
-        r#"{VIEW}
-        const show = (e: any) => [e.fullscreen, e.secure, e.maximised].map(String).join("/");
-        const foo = {{ appId: "foo" }};
-        const view = {{ appId: "foo", title: "", focused: false, workspace: null }};
-        emit([
-            show(effects([{{ ...foo, fullscreen: true }}, {{ ...foo, fullscreen: false, secure: true }}], foo)),
-            show(effects([{{ ...foo, secure: true }}, {{ ...foo, fullscreen: true }}], foo)),
-            show(effects([
-                {{ ...foo, fullscreen: true }},
-                {{ ...foo, secure: true }},
-                {{ ...foo, fullscreen: false }},
-            ], foo)),
-            show(effects([{{ appId: "bar", secure: true }}, {{ ...foo, maximised: true }}], foo)),
-            show(effects([{{ ...foo, secure: true }}], {{ appId: "bar" }})),
-            matchingRules(compileRules([{{ ...foo, secure: true }}, {{ ...foo, fullscreen: true }}, {{ ...foo, maximised: true }}]), view).map((r) => r.index).join(","),
-            show(effects([{{ ...foo, secure: true, first: true }}, {{ ...foo, fullscreen: true }}], foo)),
-            show(effects([
-                {{ ...foo, fullscreen: true }},
-                {{ ...foo, secure: true, first: true }},
-                {{ ...foo, maximised: true }},
-            ], foo)),
-            matchingRules(compileRules([{{ ...foo, secure: true }}, {{ ...foo, fullscreen: true, first: true }}, {{ ...foo, maximised: true }}]), view).map((r) => r.index).join(","),
-            thrown(() => compileRules([{{ ...foo, secure: true, all: true }}])).startsWith('TypeError: rules[0] has no "all"'),
-        ].join("\n"));
-    "#
-    ));
-    assert_eq!(
-        got,
-        lines(&[
-            "false/true/undefined",
-            "true/true/undefined",
-            "false/true/undefined",
-            "undefined/undefined/true",
-            "undefined/undefined/undefined",
-            "0,1,2",
-            "undefined/true/undefined",
-            "true/true/undefined",
-            "0,1",
-            "true",
-        ])
-    );
-}
-
-#[test]
-fn a_query_can_read_the_focus_and_the_workspace_of_the_window() {
-    // Before: "the focused condition follows the window's focus", "a workspace rule carries its workspace id". The the retired shell
-    // `match.workspace_id` is `onWorkspace`, because `workspace` is where the rule sends the window.
-    let got = run(&format!(
-        r#"{VIEW}
-        const focused = [{{ focused: true, secure: true }}];
-        const sent = [{{ appId: "term", workspace: "2" }}];
-        const here = [{{ appId: "x", onWorkspace: "2", secure: true }}];
-        emit([
-            effects(focused, {{ focused: true }}).secure,
-            effects(focused, {{ focused: false }}).secure,
-            effects(sent, {{ appId: "term" }}).workspace,
-            effects(here, {{ appId: "x", workspace: "2" }}).secure,
-            effects(here, {{ appId: "x", workspace: "1" }}).secure,
-            effects(here, {{ appId: "x", workspace: null }}).secure,
-            effects([{{ appId: "x", size: {{ width: 3, height: 4 }}, position: {{ x: 5, y: 6 }}, style: {{ opacity: 0.5, cornerRadius: 9 }} }}], {{ appId: "x" }}).opacity,
-        ].map(String).join(","));
-    "#
-    ));
-    assert_eq!(got, "true,undefined,2,true,undefined,undefined,0.5");
 }
 
 // -- edge snapping, pure ------------------------------------------------------------------------------------

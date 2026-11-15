@@ -1,5 +1,5 @@
-//! The second set of stock TypeScript layouts (`data/js/gnoblin/`): Dwindle, Kiosk, Strip and Carousel3d, the
-//! workspace slide gesture and workspace sets, run in a real generation with no host.
+//! The second set of stock TypeScript layouts (`data/js/gnoblin/`): Dwindle, Kiosk, Strip and Carousel3d, and the
+//! workspace slide gesture, run in a real generation with no host.
 //!
 //! The cases are the retired shell's: `the retired retired corpus` (Dwindle, Kiosk),
 //! `the retired retired corpus` (Strip, Carousel3d, the ring), `retired corpus sets` (the pure set cases)
@@ -77,7 +77,7 @@ const IMPORTS: &str = r#"
 import { area, nodes, focusables, tiled, lay, named, thrown, rect, emit } from "harness";
 import {
     DwindleLayout, KioskLayout, StripLayout, Carousel3dLayout, ring, clampColumn,
-    WorkspaceSlideBinding, defineSets, activateSet, WorkspaceSets, WorkspaceSetError,
+    WorkspaceSlideBinding,
 } from "gnoblin";
 "#;
 
@@ -792,123 +792,6 @@ fn the_slide_binding_has_the_retired_travel_and_commit_and_refuses_a_start_witho
             "RangeError: WorkspaceSlideBinding travel must be a finite number above 0",
             "RangeError: WorkspaceSlideBinding commit must be a number from 0 to 1",
             "true",
-        ])
-    );
-}
-
-// -- workspace sets -----------------------------------------------------------------------------------------------
-
-const SETS_HEADER: &str = r#"
-const DECLARED = new Set(["1", "2", "3"]);
-const set = (name, entries) => ({ name, entries });
-const text = (r) => JSON.stringify(r.ok ? r.value : r.error);
-"#;
-
-fn sets(body: &str) -> String {
-    run(&format!("{SETS_HEADER}\n{body}"))
-}
-
-#[test]
-fn the_pure_set_cases_of_the_retired_module_give_the_same_results() {
-    // retired retired corpus sets, case by case: unknown set, empty set, undeclared workspace (whole list refused), a removed
-    // workspace refuses to activate, duplicate and empty names, two entries for one output, an unknown output falls
-    // back to the primary with a warning, each workspace on its own output, the live set again changes nothing.
-    let got = sets(
-        r#"
-        const work = defineSets([set("work", [{ workspace: "2" }])], DECLARED);
-        const list = (work as any).value;
-        const primary = { declared: DECLARED, outputs: [], primary: "DP-1" };
-        const both = { declared: DECLARED, outputs: ["DP-1", "HDMI-1"], primary: "DP-1" };
-        const split = defineSets(
-            [set("split", [{ workspace: "1", output: "DP-1" }, { workspace: "2", output: "HDMI-1" }])],
-            DECLARED,
-        ) as any;
-        const gone = defineSets([set("work", [{ workspace: "3", output: "GONE-1" }])], DECLARED) as any;
-        const live = defineSets([set("work", [{ workspace: "2", output: "HDMI-1" }])], DECLARED) as any;
-        emit([
-            text(activateSet(list, "nope", primary)),
-            text(defineSets([set("empty", [])], DECLARED)),
-            text(defineSets([set("good", [{ workspace: "1" }]), set("bad", [{ workspace: "99" }])], DECLARED)),
-            text(activateSet(defineSets([set("work", [{ workspace: "3" }])], DECLARED).value as any, "work", { ...primary, declared: new Set(["1", "2"]) })),
-            text(defineSets([set("work", [{ workspace: "1" }]), set("work", [{ workspace: "2" }])], DECLARED)),
-            text(defineSets([set("", [{ workspace: "1" }])], DECLARED)),
-            text(defineSets([set("clash", [{ workspace: "1", output: "HDMI-1" }, { workspace: "2", output: "HDMI-1" }])], DECLARED)),
-            JSON.stringify(activateSet(gone.value, "work", both).value),
-            JSON.stringify(activateSet(split.value, "split", both).value),
-            [activateSet(live.value, "work", both).value.changed, activateSet(live.value, "work", { ...both, active: "work" }).value.changed].join(","),
-        ].join("\n"));
-    "#,
-    );
-    assert_eq!(
-        got,
-        lines(&[
-            r#"{"kind":"unknown_set","name":"nope"}"#,
-            r#"{"kind":"empty_set","name":"empty"}"#,
-            r#"{"kind":"undeclared_workspace","set":"bad","workspace":"99"}"#,
-            r#"{"kind":"undeclared_workspace","set":"work","workspace":"3"}"#,
-            r#"{"kind":"duplicate_name","name":"work"}"#,
-            r#"{"kind":"empty_name"}"#,
-            r#"{"kind":"duplicate_output","set":"clash","output":"HDMI-1"}"#,
-            r#"{"set":"work","placements":[{"workspace":"3","output":"DP-1"}],"warnings":[{"kind":"output_fallback","set":"work","output":"GONE-1"}],"changed":true}"#,
-            r#"{"set":"split","placements":[{"workspace":"1","output":"DP-1"},{"workspace":"2","output":"HDMI-1"}],"warnings":[],"changed":true}"#,
-            "true,false",
-        ])
-    );
-}
-
-#[test]
-fn workspace_sets_show_the_named_workspaces_and_keep_the_sets_in_force_when_a_list_is_refused() {
-    // retired retired corpus sets, the stock-shell cases: the user's sets show each named workspace on its own output; a
-    // refused new list is reported and the old sets stay (here it throws and they stay); an unknown set is refused; an
-    // output that is gone shows its workspace on the primary output, with a report; the live set again changes
-    // nothing. The environment is told the output of every placement, so a workspace for an output that is not the
-    // primary one is shown there (`tests/outputs.rs` proves the shell shows it).
-    let got = sets(
-        r#"
-        const shown: string[] = [];
-        const where: string[] = [];
-        const reports: string[] = [];
-        let declared = new Set(["1", "2", "3"]);
-        const sets = new WorkspaceSets({
-            declared: () => declared,
-            outputs: () => ({ names: ["DP-1", "HDMI-1"], primary: "DP-1" }),
-            show: (id, output) => { shown.push(id); where.push(`${id}@${output}`); },
-            report: (message) => reports.push(message),
-        });
-        sets.define([set("work", [{ workspace: "2", output: "DP-1" }]), set("away", [{ workspace: "3", output: "GONE-1" }]), set("split", [{ workspace: "1", output: "DP-1" }, { workspace: "2", output: "HDMI-1" }])]);
-        const out: string[] = [];
-        out.push(thrown(() => sets.define([set("empty", [])])));
-        out.push(sets.list.map((s) => s.name).join(","));
-        sets.activate("work");
-        out.push(shown.join(",") + "|" + sets.active);
-        sets.activate("work");
-        out.push(shown.join(",") + "|live again changes nothing");
-        out.push(thrown(() => sets.activate("nope")));
-        sets.activate("away");
-        out.push(shown.join(",") + "|" + reports.length + "|" + reports[0]);
-        sets.activate("split");
-        out.push(shown.join(",") + "|" + reports.length + "|" + reports[1]);
-        declared = new Set(["1", "2"]);
-        const refused = (() => { try { sets.activate("away"); return "ok"; } catch (e: any) { return `${e.name}: ${e.message} ${e instanceof WorkspaceSetError}`; } })();
-        out.push(refused);
-        out.push(sets.active as string);
-        out.push(where.join(","));
-        emit(out.join("\n"));
-    "#,
-    );
-    assert_eq!(
-        got,
-        lines(&[
-            "WorkspaceSetError: set \"empty\" has no entries",
-            "work,away,split",
-            "2|work",
-            "2|live again changes nothing",
-            "WorkspaceSetError: no set is named \"nope\"",
-            "2,3|1|workspace set \"away\": output \"GONE-1\" is not connected; its workspace shows on the primary output",
-            "2,3,1,2|1|undefined",
-            "WorkspaceSetError: set \"away\" names workspace \"3\", which no workspace has true",
-            "split",
-            "2@DP-1,3@DP-1,1@DP-1,2@HDMI-1",
         ])
     );
 }
