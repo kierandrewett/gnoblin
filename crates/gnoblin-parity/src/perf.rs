@@ -191,19 +191,27 @@ impl Subject {
         let socket = directory.path().join(DISPLAY);
         let (session, door): (LauncherSession, Box<dyn EisDoor>) = match target {
             PerfTarget::Candidate => {
-                let binary = std::env::current_exe()
-                    .map_err(|error| live(target, format!("cannot find this binary to start the candidate: {error}")))?;
+                let binary = std::env::current_exe().map_err(|error| {
+                    live(
+                        target,
+                        format!("cannot find this binary to start the candidate: {error}"),
+                    )
+                })?;
                 let names = Names {
                     target: "candidate",
                     log: "candidate",
                 };
-                let session = LauncherSession::start(names, binary.as_os_str(), &["serve-candidate"], directory.path())?;
+                let session =
+                    LauncherSession::start(names, binary.as_os_str(), &["serve-candidate"], directory.path())?;
                 let door = SocketDoor::new("candidate", directory.path().join(candidate::EIS_SOCKET));
                 (session, Box::new(door))
             }
             PerfTarget::Mutter51 => {
                 let launcher = environment.mutter51_launcher.clone().ok_or_else(|| {
-                    live(target, format!("{} names no launcher", crate::mutter::LAUNCHER_VARIABLE))
+                    live(
+                        target,
+                        format!("{} names no launcher", crate::mutter::LAUNCHER_VARIABLE),
+                    )
                 })?;
                 let names = Names {
                     target: "mutter51",
@@ -351,10 +359,10 @@ fn key_latency(
         let received = Instant::now();
         let frames = peer.frame_times().len();
         peer.redraw(window)?;
-        if wait(peer, LOST, |peer| peer.frame_times().len() > frames)? {
-            if let Some(frame) = peer.frame_times().last() {
-                to_frame.push(frame.duration_since(sent));
-            }
+        if wait(peer, LOST, |peer| peer.frame_times().len() > frames)?
+            && let Some(frame) = peer.frame_times().last()
+        {
+            to_frame.push(frame.duration_since(sent));
         }
         to_client.push(received.duration_since(sent));
         ei.key(KEY_A, false)?;
@@ -365,11 +373,7 @@ fn key_latency(
 }
 
 /// Dispatches events until `done` holds or `limit` passes, without sleeping in steps, and reports whether it held.
-fn wait(
-    peer: &mut WaylandPeer,
-    limit: Duration,
-    done: impl Fn(&WaylandPeer) -> bool,
-) -> Result<bool, TargetError> {
+fn wait(peer: &mut WaylandPeer, limit: Duration, done: impl Fn(&WaylandPeer) -> bool) -> Result<bool, TargetError> {
     let deadline = Instant::now() + limit;
     loop {
         if done(peer) {
@@ -429,10 +433,10 @@ fn memory_point(group: u32, windows: usize) -> MemoryPoint {
         }
     };
     let total_kib = members.iter().map(figure).sum();
-    let largest = members
-        .iter()
-        .max_by_key(|process| figure(process))
-        .map_or_else(|| "none".to_owned(), |process| format!("{} ({})", process.comm, process.pid));
+    let largest = members.iter().max_by_key(|process| figure(process)).map_or_else(
+        || "none".to_owned(),
+        |process| format!("{} ({})", process.comm, process.pid),
+    );
     MemoryPoint {
         windows,
         metric,
@@ -533,7 +537,9 @@ impl Request {
     /// Parses `<target> [--json FILE]`.
     pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Self, String> {
         let mut args = args.into_iter();
-        let name = args.next().ok_or("perf needs a target: candidate, mutter51 or mutter-gnoblin")?;
+        let name = args
+            .next()
+            .ok_or("perf needs a target: candidate, mutter51 or mutter-gnoblin")?;
         let name = name.to_string_lossy().into_owned();
         let target = PerfTarget::parse(&name).ok_or_else(|| format!("`{name}` is not a perf target"))?;
         let mut json = None;

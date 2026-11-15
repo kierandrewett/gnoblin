@@ -136,9 +136,7 @@ mod tests {
     fn this_process_is_a_member_of_its_own_group() {
         let own = rustix::process::getpgrp();
         let pgid = u32::try_from(own.as_raw_nonzero().get()).expect("a process group id");
-        let found = members(pgid)
-            .into_iter()
-            .any(|sample| sample.pid == std::process::id());
+        let found = members(pgid).into_iter().any(|sample| sample.pid == std::process::id());
         assert!(found, "the test process is in its own process group");
     }
 }

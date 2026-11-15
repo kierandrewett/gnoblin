@@ -14,8 +14,8 @@ use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 
 use futures_lite::future::block_on;
+use zbus::Variant;
 use zbus::connection::Builder;
-use zbus::zvariant::Value;
 use zbus::{Connection, OwnedFd, OwnedObjectPath, Proxy};
 
 use crate::ei_peer::EisDoor;
@@ -64,7 +64,7 @@ impl EisDoor for RemoteDesktopDoor {
             let manager = Proxy::new(&connection, DESTINATION, MANAGER_PATH, MANAGER).await?;
             let path: OwnedObjectPath = manager.call("CreateSession", &()).await?;
             let session = Proxy::new(&connection, DESTINATION, path.as_str(), SESSION).await?;
-            let options: HashMap<&str, Value<'_>> = HashMap::new();
+            let options: HashMap<&str, Variant> = HashMap::new();
             let fd: OwnedFd = session.call("ConnectToEIS", &options).await?;
             session.call::<_, _, ()>("Start", &()).await?;
             Ok::<_, zbus::Error>(fd)

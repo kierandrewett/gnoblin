@@ -1611,9 +1611,12 @@ dependencies = [
 name = "gnoblin-parity"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "futures-lite",
  "gnoblin-compositor",
+ "gnoblin-input-eis",
  "gnoblin-wayland",
  "gnoblinctl",
+ "reis",
  "rustix 1.1.6",
  "serde",
  "serde_json",
@@ -1621,6 +1624,7 @@ dependencies = [
  "toml",
  "wayland-client",
  "wayland-protocols",
+ "zbus",
 ]
 
 [[package]]

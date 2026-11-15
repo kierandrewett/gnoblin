@@ -266,13 +266,15 @@ impl TargetSpec {
             },
             Self::MutterGnoblin(_) => match &environment.mutter_gnoblin_launcher {
                 Some(_) => {
-                    let launch = MutterGnoblinLaunch::from_environment(environment).map_err(|detail| {
-                        TargetError::Live {
+                    let launch =
+                        MutterGnoblinLaunch::from_environment(environment).map_err(|detail| TargetError::Live {
                             target: self.name(),
                             detail,
-                        }
-                    })?;
-                    Ok(Box::new(MutterGnoblinTarget::new(launch, environment.runtime_base.clone())))
+                        })?;
+                    Ok(Box::new(MutterGnoblinTarget::new(
+                        launch,
+                        environment.runtime_base.clone(),
+                    )))
                 }
                 None => Err(TargetError::Unavailable {
                     target: self.name(),
@@ -514,7 +516,10 @@ command = { program = "printf", args = ["%s", "not json"], format = "json" }
             panic!("a session with no control client cannot be driven");
         };
         assert!(matches!(error, TargetError::Live { .. }), "{error}");
-        assert!(error.to_string().contains("GNOBLIN_PARITY_MUTTER_GNOBLIN_CTL"), "{error}");
+        assert!(
+            error.to_string().contains("GNOBLIN_PARITY_MUTTER_GNOBLIN_CTL"),
+            "{error}"
+        );
     }
 
     #[test]

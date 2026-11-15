@@ -349,7 +349,11 @@ impl WaylandPeer {
     }
 
     /// Waits until `done` holds of the input received, or `limit` passes, and reports whether it held.
-    pub(crate) fn wait_input(&mut self, limit: Duration, done: impl Fn(&InputLog) -> bool) -> Result<bool, TargetError> {
+    pub(crate) fn wait_input(
+        &mut self,
+        limit: Duration,
+        done: impl Fn(&InputLog) -> bool,
+    ) -> Result<bool, TargetError> {
         self.pump_until(limit, |state| done(&state.input))
     }
 
@@ -573,10 +577,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for Protocol {
                 key,
                 state: WEnum::Value(edge),
                 ..
-            } => state
-                .input
-                .keys
-                .push((key, edge == wl_keyboard::KeyState::Pressed)),
+            } => state.input.keys.push((key, edge == wl_keyboard::KeyState::Pressed)),
             _ => {}
         }
     }
@@ -609,10 +610,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Protocol {
                 axis: WEnum::Value(axis),
                 value,
                 ..
-            } => state
-                .input
-                .axes
-                .push((axis == wl_pointer::Axis::VerticalScroll, value)),
+            } => state.input.axes.push((axis == wl_pointer::Axis::VerticalScroll, value)),
             _ => {}
         }
     }
