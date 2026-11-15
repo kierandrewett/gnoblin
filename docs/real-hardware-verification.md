@@ -68,7 +68,15 @@ A mode change on a hardware display is off unless the session starts with `GNOBL
 
 Record the GPU driver. A driver that refuses a commit its own test passed is a finding.
 
-## 8. Remove Gnoblin
+## 8. Return to GNOME
+
+::: details Check the GNOME session
+
+Log out and select GNOME. Confirm its desktop still works.
+
+:::
+
+## 9. Remove Gnoblin
 
 For package-release testing, remove Gnoblin using its documented uninstall
 path and check that the Gnoblin login entry disappears.
