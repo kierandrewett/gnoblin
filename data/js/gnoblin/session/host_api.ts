@@ -1,10 +1,4 @@
-// The host API that is not about windows: `gnoblin.session`, `gnoblin.runtime`, `gnoblin.process`, `gnoblin.timers`,
-// `gnoblin.on`, `gnoblin.find`, `gnoblin.focus` and `gnoblin.version`.
-// `HostApi` is plain TypeScript over a few functions of the shell (`ApiHost`), so it runs without a compositor. The
-// shell calls `frame` once a frame with what happened outside the script: a call the compositor finished, a signal it
-// raised, a process that ended. Every listener and callback runs as a queued call under the usual wall-clock budget.
-// Errors are typed. A call that cannot be made at all throws (`TypeError` for a bad argument). A call that is made and
-// refused returns an `Operation` that fails with an `OperationError`; its `code` is one of `docs/shell-api/errors.md`.
+// Script-facing session, process and event APIs backed by functions supplied by the shell.
 
 import { Timers } from "gnoblin/operation";
 import type { OperationHost } from "gnoblin/operation";
@@ -18,27 +12,33 @@ import type { HistoryClient } from "gnoblin/session/focus_history";
 import type { Host, HostEvent, Version } from "gnoblin/session/types";
 import type { TrackEndedEvent } from "gnoblin/transition/types";
 
-/** What the shell gives the module that is not a host function. */
+/** Object lists and focus state supplied by the shell. */
 export interface ApiSources extends FindSource {
     /** The window that holds the keyboard focus, or null. */
     focusedWindow(): HistoryClient | null;
 }
 
 /**
- * The host API of one generation: its timers, processes, bus and session calls. A generation's state is its own, so
- * a reload starts these afresh and `retire` ends what the old one had pending.
+ * Holds the script-facing APIs for one generation. Reloading creates fresh state; `retire` ends the old generation's
+ * pending work.
  */
 export class HostApi {
+    /** Schedules callbacks and runs them on frame updates. */
     readonly timers: Timers;
+    /** Tracks child processes started by scripts. */
     readonly process: ProcessTable;
+    /** Sends session and power requests to the shell. */
     readonly session: Session;
+    /** Provides runtime information and operations. */
     readonly runtime: Runtime;
+    /** Sends and receives script events. */
     readonly bus: EventBus;
+    /** Returns windows in most-recently-focused order. */
     readonly focus: FocusHistory;
     #host: Host;
     #sources: ApiSources;
     #calls: Calls;
-    /** Told of each timed write the compositor says has ended; `gnoblin.requestTransition` is the one that listens. */
+    /** Called when the compositor reports that a timed transition has ended. */
     onTrackEnded: (event: TrackEndedEvent) => void = () => {};
 
     constructor(host: Host, sources: ApiSources) {
@@ -67,16 +67,17 @@ export class HostApi {
         );
     }
 
-    /** The build identity, read on each call. */
+    /** Returns the build identity, reading it on each call. */
     version(): Version {
         return Object.freeze(JSON.parse(this.#host.version()) as Version);
     }
 
+    /** Returns matching live objects in list order. */
     find(kind: string, filter?: Record<string, Scalar> | ((object: never) => unknown)): object[] {
         return find(this.#sources, kind, filter);
     }
 
-    /** One frame: what the host collected, then the timers that are due. */
+    /** Delivers host events, updates focus history and fires due timers. */
     frame(batch: string): void {
         for (const event of JSON.parse(batch) as HostEvent[]) {
             switch (event.kind) {
@@ -101,7 +102,7 @@ export class HostApi {
         this.timers.fire();
     }
 
-    /** Ends what the generation had pending: its timers, its handlers and the calls it was waiting on. */
+    /** Ends this generation's pending timers, handlers and calls. */
     retire(): void {
         this.timers.cancelAll();
         this.bus.clear();

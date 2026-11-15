@@ -1,7 +1,5 @@
-// The claims a context holds on its seat and the registrations that stand on them. A binding of a collection the
-// context follows (its own, a layout's, a device's) becomes a registration; the first registration of a chord or
-// gesture for one device acquires the claim from the compositor, and the last one to go releases it. `candidates`
-// answers which registrations can take an input on a claim, best first.
+// Tracks the compositor claims held for a context's bindings and the registrations that use them. Bindings for the same
+// trigger and device share a claim; the last registration releases it. Candidates are returned in precedence order.
 
 import type { Binding, BindingCollection } from "gnoblin/bindings/binding";
 import { claimOf } from "gnoblin/bindings/claim";
@@ -12,7 +10,7 @@ import type { InputHost, InputLayout, InputWorld } from "gnoblin/input/host";
 import { byPrecedence, specKeyOf } from "gnoblin/input/registration";
 import type { ClaimEntry, InputBindingInfo, Registration } from "gnoblin/input/registration";
 
-/** The claims and registrations of one context. */
+/** Tracks the claims and registrations held by one input context. */
 export class ClaimTable {
     readonly #host: InputHost;
     readonly #world: InputWorld;
@@ -52,10 +50,7 @@ export class ClaimTable {
         return this.#registrations.has(registration);
     }
 
-    /**
-     * Every registration, and where it ranks among the registrations of the same trigger. Plain data, for the
-     * inspector.
-     */
+    /** Returns plain data about each registration and its rank among bindings of the same trigger. */
     describe(): InputBindingInfo[] {
         const groups = new Map<string, Registration[]>();
         for (const registration of this.#registrations) {
@@ -85,7 +80,10 @@ export class ClaimTable {
         return described;
     }
 
-    /** Registers every binding of `source` and the ones it gains later, and returns the call that undoes both. All or none: a binding the seat refuses leaves nothing behind. */
+    /**
+     * Follows every binding in `source`, including later additions, and returns a function that removes them all.
+     * If the compositor refuses a claim, no binding from this source remains registered.
+     */
     follow(
         source: BindingCollection,
         tier: number,
@@ -224,7 +222,7 @@ export class ClaimTable {
         return list.sort(byPrecedence);
     }
 
-    /** Gives up every claim, as a context that is going away does. `release` is false when the seat is already gone. */
+    /** Gives up every claim. Set `release` to false when the seat is already gone. */
     drop(release: boolean): void {
         for (const claim of [...this.#claims.values()]) {
             this.#claims.delete(`${claim.specKey}\n${claim.device}`);

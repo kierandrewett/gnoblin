@@ -1,17 +1,20 @@
-// Moving through a menu by keyboard: which row is hot, and what each key does.
+// Keyboard selection and key mapping for menu rows.
 
-/** What the navigator needs of a row. */
+/** The fields the navigator uses to select a row. */
 export interface NavRow {
+    /** Text shown for the row and used for letter-key navigation. */
     readonly label: string;
+    /** Whether the row can be selected and activated. */
     readonly enabled: boolean;
+    /** Whether the row opens a submenu. */
     readonly submenu: boolean;
 }
 
 /**
- * Which row of a menu the keyboard is on, over the rows that can be run: a card of rows and, once one is opened, a
- * submenu's. Selection is kept per card, so closing the submenu leaves its parent row selected.
+ * Tracks keyboard selection across a menu and its open submenu. Each card keeps its selection when the submenu closes.
  */
 export class MenuNavigator<R extends NavRow = NavRow> {
+    /** Rows in the main card. */
     readonly rows: readonly R[];
     #sub: readonly R[] = [];
     #depth: 1 | 2 = 1;
@@ -21,20 +24,22 @@ export class MenuNavigator<R extends NavRow = NavRow> {
         this.rows = rows;
     }
 
+    /** Whether selection is in the main card (1) or submenu (2). */
     get depth(): 1 | 2 {
         return this.#depth;
     }
 
+    /** Rows in the open submenu, or an empty list when it is closed. */
     get subRows(): readonly R[] {
         return this.#sub;
     }
 
-    /** The rows the keyboard is in. */
+    /** The rows in the active card. */
     active(): readonly R[] {
         return this.#depth === 2 ? this.#sub : this.rows;
     }
 
-    /** The place of the selection among the active rows, or -1. */
+    /** The selected row's index in the active card, or -1. */
     get index(): number {
         return this.#picked[this.#depth - 1];
     }
@@ -44,12 +49,12 @@ export class MenuNavigator<R extends NavRow = NavRow> {
         return this.active()[this.index] ?? null;
     }
 
-    /** Whether `row` is the one picked in its card. */
+    /** Returns whether `row` is selected in either card. */
     isSelected(row: R): boolean {
         return this.rows[this.#picked[0]] === row || this.#sub[this.#picked[1]] === row;
     }
 
-    /** Puts the selection on `row`. The pointer going back to the first card closes the submenu it left. */
+    /** Selects `row`; selecting a row outside the submenu closes it. */
     select(row: R): void {
         if (this.#depth === 2 && !this.#sub.includes(row)) {
             this.closeSubmenu();
@@ -80,17 +85,19 @@ export class MenuNavigator<R extends NavRow = NavRow> {
         }
     }
 
+    /** Selects the first enabled row. */
     home(): void {
         this.#picked[this.#depth - 1] = -1;
         this.move(1);
     }
 
+    /** Selects the last enabled row. */
     end(): void {
         this.#picked[this.#depth - 1] = -1;
         this.move(-1);
     }
 
-    /** The first row after the selection, wrapping, whose label starts with `letter` (compared without case). */
+    /** Selects the next enabled row whose label starts with `letter`, ignoring case. */
     jump(letter: string): void {
         const rows = this.active();
         const count = rows.length;
@@ -103,7 +110,7 @@ export class MenuNavigator<R extends NavRow = NavRow> {
         }
     }
 
-    /** Opens a submenu of `rows` and puts the selection on its first row that can be run. */
+    /** Opens a submenu and selects its first enabled row. */
     openSubmenu(rows: readonly R[]): void {
         this.closeSubmenu();
         this.#sub = rows;
@@ -112,6 +119,7 @@ export class MenuNavigator<R extends NavRow = NavRow> {
         this.move(1);
     }
 
+    /** Closes the submenu and restores the parent card's selection. */
     closeSubmenu(): void {
         if (this.#depth !== 2) {
             return;
@@ -122,13 +130,13 @@ export class MenuNavigator<R extends NavRow = NavRow> {
     }
 }
 
-/** What a key does to a menu. */
+/** An action produced by a menu key. */
 export type MenuKeyAction =
     | { do: "move"; step: 1 | -1 }
     | { do: "home" | "end" | "activate" | "right" | "left" | "escape" }
     | { do: "jump"; letter: string };
 
-/** The action for a key of the keyboard while a menu is open, or `null` for a key the menu does not use. */
+/** Maps a key to its menu action, or returns `null` when the menu does not use it. */
 export function menuKeyAction(key: string, text: string): MenuKeyAction | null {
     switch (key) {
         case "Escape":

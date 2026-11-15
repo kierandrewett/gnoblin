@@ -1,19 +1,21 @@
-// `gnoblin.find`: the live objects of one kind that match a table of field values or a predicate.
+// Finds live windows, workspaces and outputs by field values or a predicate.
 
 import { camel } from "gnoblin/session/names";
 
-/** A value a `gnoblin.find` table can match. */
+/** A scalar value that a `gnoblin.find` table can match. */
 export type Scalar = string | number | boolean;
 
-/** The objects `gnoblin.find` can search, as the shell lists them. */
+/** The live object lists searched by `gnoblin.find`. */
 export interface FindSource {
+    /** Returns the current windows in shell order. */
     windows(): object[];
+    /** Returns the current workspaces in shell order. */
     workspaces(): object[];
     /** The live outputs, or null when this shell has none. */
     outputs(): object[] | null;
 }
 
-/** The scalar fields of each kind: what a table filter may name. */
+/** Scalar fields that each kind can match. */
 const FIELDS: Record<string, readonly string[]> = {
     Window: [
         "id",
@@ -39,16 +41,14 @@ const FIELDS: Record<string, readonly string[]> = {
     Workspace: ["id", "name", "alive", "index", "active"],
 };
 
-/** The kinds `find` accepts. `Output` is listed only by a shell that has outputs. */
+/** Returns the kinds available from this shell. */
 export function findKinds(source: FindSource): string[] {
     return source.outputs() === null ? ["Window", "Workspace"] : ["Window", "Workspace", "Output"];
 }
 
 /**
- * The live objects of one kind that match a filter, in list order. A table filter keeps the objects whose scalar
- * fields equal every value given (`appId` and `app_id` are one field); a function filter keeps those it returns a
- * truthy value for. An unknown kind or field, or a value that is not a string, number or boolean, throws and names
- * what works.
+ * Returns matching live objects in list order. Table filters compare scalar fields for equality; predicate filters
+ * keep objects for which the function returns a truthy value. Unknown kinds or fields and invalid values throw.
  */
 export function find(source: FindSource, kind: string, filter?: Record<string, Scalar> | ((object: never) => unknown)) {
     const kinds = findKinds(source);
@@ -66,6 +66,7 @@ export function find(source: FindSource, kind: string, filter?: Record<string, S
     if (typeof filter !== "object" || filter === null || Array.isArray(filter)) {
         throw new TypeError("gnoblin.find: the filter is a table of field values or a predicate function");
     }
+    // Convert filter keys and validate them before searching.
     const wanted = Object.entries(filter).map(([key, value]) => {
         const field = camel(key);
         const fields = FIELDS[kind] ?? scalarFields(objects[0]);
@@ -82,7 +83,7 @@ export function find(source: FindSource, kind: string, filter?: Record<string, S
     return objects.filter((object) => wanted.every(([field, value]) => Reflect.get(object, field) === value));
 }
 
-/** The names of an object's scalar properties, for a kind that declares none (the outputs of another module). */
+/** Lists scalar properties for kinds without a fixed field list. */
 function scalarFields(sample: object | undefined): string[] {
     if (sample === undefined) {
         return [];

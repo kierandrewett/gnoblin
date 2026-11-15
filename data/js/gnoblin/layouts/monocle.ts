@@ -1,6 +1,6 @@
-// MonocleLayout: the shown node fills the area and every other node is hidden, not moved. The shown node is the
-// focused one when it is a child, otherwise the first child. Geometry is the Lua shell's `Monocle` in
-// data/lua/gnoblin/shell/tiling.lua. Read `gnoblin/layout` first for the `Layout` base class.
+// MonocleLayout shows the focused node at full size and hides the others without moving them. If focus is elsewhere,
+// it shows the first child. Hidden nodes remain in the tree and are tiled again when shown. See `gnoblin/layout` for
+// the `Layout` base class.
 
 import { Layout, tile, tilingGeometry } from "gnoblin/layout";
 import type { LayoutContext, Placement } from "gnoblin/layout";
@@ -10,6 +10,7 @@ import type { LayoutContext, Placement } from "gnoblin/layout";
  * shown.
  */
 export class MonocleLayout extends Layout {
+    /** Returns full-area placements, with only the focused child visible. */
     compute(context: LayoutContext): Placement[] {
         const nodes = context.children;
         if (nodes.length === 0) {

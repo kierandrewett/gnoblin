@@ -1,13 +1,13 @@
-// `gnoblin.on`: the event bus. A handler is called for each `namespace.object.signal` the compositor raises, as a
-// queued call under the usual budget; an unknown name throws and lists the near ones.
+// `gnoblin.on`: handlers for compositor signals, called as queued script work.
 
 import type { Subscription } from "gnoblin/operation";
 import { camel, nearMatches } from "gnoblin/session/names";
 import type { Host, SignalEvent, SignalMessage } from "gnoblin/session/types";
 
-/** The most handlers the bus holds, as the retired Lua host's. */
+/** The maximum number of handlers the bus can hold. */
 export const MAX_HANDLERS = 1024;
 
+/** Tracks a signal handler and whether it still accepts queued calls. */
 interface Handler {
     name: string;
     fn: (event: SignalEvent) => void;
@@ -16,7 +16,7 @@ interface Handler {
     active: boolean;
 }
 
-/** `gnoblin.on`: handlers for the schema's signals, by their `namespace.object.signal` names. */
+/** Handlers for schema signals, keyed by `namespace.object.signal`. */
 export class EventBus {
     #host: Host;
     #known: Set<string> | null = null;
@@ -26,7 +26,7 @@ export class EventBus {
         this.#host = host;
     }
 
-    /** Every name `on` accepts, in schema order. */
+    /** Returns every accepted signal name in schema order. */
     get names(): string[] {
         return [...this.#signals()];
     }
@@ -39,7 +39,7 @@ export class EventBus {
         return this.#known;
     }
 
-    /** The schema spelling of a name: hyphens are underscores. An unknown name throws and lists the near ones. */
+    /** Returns the schema name for an event, or throws with suggestions for an unknown name. */
     canonical(name: string, site: string): string {
         if (typeof name !== "string") {
             throw new TypeError(`${site}: the event name must be a string`);
@@ -56,6 +56,7 @@ export class EventBus {
         return schema;
     }
 
+    /** Validates a handler and stores it for future signals. */
     #add(name: string, fn: (event: SignalEvent) => void, once: boolean, site: string): Subscription {
         const schema = this.canonical(name, site);
         if (typeof fn !== "function") {
@@ -69,15 +70,17 @@ export class EventBus {
         return { unsubscribe: () => this.#remove(handler) };
     }
 
+    /** Calls `fn` for each matching signal until its subscription is removed. */
     on(name: string, fn: (event: SignalEvent) => void): Subscription {
         return this.#add(name, fn, false, "gnoblin.on");
     }
 
+    /** Calls `fn` for the next matching signal, then removes its subscription. */
     once(name: string, fn: (event: SignalEvent) => void): Subscription {
         return this.#add(name, fn, true, "gnoblin.once");
     }
 
-    /** Detaches a subscription, or every handler `fn` of the event `name`. */
+    /** Removes a subscription or every matching handler for an event name. */
     off(target: Subscription | string, fn?: (event: SignalEvent) => void): void {
         if (typeof target === "string") {
             const schema = this.canonical(target, "gnoblin.off");
@@ -93,11 +96,13 @@ export class EventBus {
         }
     }
 
+    /** Marks a handler inactive and removes it from the list. */
     #remove(handler: Handler): void {
         handler.active = false;
         this.#detach(handler);
     }
 
+    /** Removes a handler without preventing an already queued call. */
     #detach(handler: Handler): void {
         const index = this.#handlers.indexOf(handler);
         if (index >= 0) {
@@ -105,7 +110,7 @@ export class EventBus {
         }
     }
 
-    /** One signal the compositor raised: each handler of its name is queued. */
+    /** Queues each handler for a signal and maps its fields to camelCase. */
     deliver(message: SignalMessage): void {
         const event: Record<string, unknown> = { name: message.name, object: message.object };
         for (const [field, value] of Object.entries(message.fields)) {
@@ -124,6 +129,7 @@ export class EventBus {
         }
     }
 
+    /** Removes all handlers and prevents their queued calls from running. */
     clear(): void {
         for (const handler of [...this.#handlers]) {
             this.#remove(handler);

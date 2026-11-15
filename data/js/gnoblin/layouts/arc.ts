@@ -1,7 +1,6 @@
-// ArcLayout: nodes on an arc around the viewer, the focused one at the front, as the specification's section 12 writes
-// it ("Spatial arc compute, not XR-specific"). It returns `transform` placements: a position on a circle in the x-z
-// plane and a turn about the vertical axis that faces each node to the centre. Read `gnoblin/layout` first for
-// `Placement.transform`, which says what a flat workspace does with them.
+// ArcLayout places nodes around the viewer, with the focused node at the front. It uses transform placements: positions
+// on a circle in the x-z plane and turns about the vertical axis that face each node towards the centre. See
+// `gnoblin/layout` for how a flat workspace uses `Placement.transform`.
 
 import { Layout } from "gnoblin/layout";
 import type { LayoutContext, LayoutNode, Placement } from "gnoblin/layout";
@@ -23,7 +22,7 @@ function check(name: string, value: unknown, positive: boolean): number {
     return value;
 }
 
-/** What a View shows, so a layout of Views follows the focus of the client behind each. Undefined for any other node. */
+/** What a View shows, so a layout of Views follows the focus of the client behind each. Undefined for other nodes. */
 function contentOf(node: LayoutNode): unknown {
     return "content" in node ? node.content : undefined;
 }
@@ -38,7 +37,9 @@ function contentOf(node: LayoutNode): unknown {
  * across), its depth `z`, its turn about Y and its scale; see `Placement.transform`.
  */
 export class ArcLayout extends Layout {
+    /** Distance from the centre of the arc to each node, in scene units. Default 1200. */
     radius: number;
+    /** Angle between neighbouring nodes, in radians. Default 0.35. */
     spacing: number;
 
     constructor(options: ArcOptions = {}) {
@@ -47,6 +48,7 @@ export class ArcLayout extends Layout {
         this.spacing = check("spacing", options.spacing ?? 0.35, false);
     }
 
+    /** Returns one transform placement for each child, with the focused child at the front. */
     compute(context: LayoutContext): Placement[] {
         const { children, focused } = context;
         const at =

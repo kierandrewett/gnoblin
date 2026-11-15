@@ -1,5 +1,4 @@
-// `context.bind(trigger, action)`: how a function or a `Binding` becomes a binding of a collection, and the two small
-// parsers of a seat's device names that the context uses.
+// Turns functions and bindings into collection entries and parses device names reported by the compositor.
 
 import { GestureBinding, KeyBinding } from "gnoblin/bindings/binding";
 import type { Binding, BindingCollection } from "gnoblin/bindings/binding";
@@ -45,8 +44,7 @@ export function bindIn(
     action: ((event: BindingEvent) => void | false) | Binding | false,
     what: string,
 ): Binding {
-    // `false` claims the trigger and does nothing with it: the chord is withheld from clients and nothing runs,
-    // as the Lua shell's `seat:bind({ chord = false })` did.
+    // A false action claims the trigger without running a callback.
     if (action === false) {
         return bindIn(collection, trigger, () => undefined, what);
     }

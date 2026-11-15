@@ -1,8 +1,5 @@
-// Spatial value parsing: the shapes the specification gives a position, a rotation, a scale and a transform
-// (`{ x, y, z }` objects, a quaternion, a bare number) reduced to the three-number lists the tree stores.
-// This module owns the shapes and their errors only; the nodes that store them are `gnoblin/scene` (script nodes) and
-// the host's `Client`. It reads no host state, so it runs anywhere.
-
+// Parses positions, rotations, scales and transforms into the three-number lists stored by the scene tree and clients.
+// This module validates values without reading host state.
 /** Three numbers: a position, the angles about X, Y and Z in radians, or the scale along each axis. */
 export type Triple = readonly [number, number, number];
 
@@ -11,13 +8,17 @@ export type AxisTriple = [number, number, number] & { readonly x: number; readon
 
 /** A point or a vector as an object. */
 export interface Vec3Like {
+    /** Horizontal component. */
     x: number;
+    /** Vertical component. */
     y: number;
+    /** Depth component. */
     z: number;
 }
 
 /** A rotation as a unit quaternion. */
 export interface QuaternionLike extends Vec3Like {
+    /** Scalar component of the quaternion. */
     w: number;
 }
 
@@ -29,15 +30,21 @@ export type ScaleInit = number | Triple | Vec3Like;
 
 /** What a script may give as a transform: each part is optional, and a part left out is not written. */
 export interface TransformInit {
+    /** Position in logical pixels on flat layouts. */
     position?: Triple | Vec3Like;
+    /** Rotation in radians, as Euler angles or a quaternion. */
     rotation?: RotationInit;
+    /** Uniform scale or scale along each axis. */
     scale?: ScaleInit;
 }
 
 /** A transform with each part turned into the three numbers the tree stores, or null where the script gave none. */
 export interface ParsedTransform {
+    /** Parsed position, or null when omitted. */
     position: [number, number, number] | null;
+    /** Parsed rotation in radians, or null when omitted. */
     rotation: [number, number, number] | null;
+    /** Parsed scale, or null when omitted. */
     scale: [number, number, number] | null;
 }
 

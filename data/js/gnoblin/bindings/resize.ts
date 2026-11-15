@@ -24,9 +24,13 @@ export interface ClientResizeOptions extends Partial<PointerDragBindingOptions> 
  * What `ClientResizeBinding.onStart` keeps for one drag. `corner`, a corner or one side, is fixed for the whole drag.
  */
 export interface ResizeState {
+    /** Client being resized. */
     client: BindingClient;
+    /** Client bounds when the drag started, in logical pixels. */
     start: Rect;
+    /** Pointer position when the drag started, in logical pixels. */
     pointer: Point;
+    /** Corner or side that follows the pointer for the whole drag. */
     corner: ResizeCorner | ResizeEdge;
 }
 
@@ -100,6 +104,7 @@ export function resizedRect(
  * not switch corners.
  */
 export class ClientResizeBinding extends PointerDragBinding {
+    /** Chooses the moving corner or side at drag start. Defaults to `quadrant`. */
     edges: "quadrant" | "nearest" | ResizeCorner;
 
     constructor(options: ClientResizeOptions = {}) {
@@ -113,6 +118,7 @@ export class ClientResizeBinding extends PointerDragBinding {
         this.edges = edges;
     }
 
+    /** Starts a resize for a movable client and records the selected corner or side. */
     onStart(event: DragEvent): ResizeState | false {
         const { client, position } = event;
         if (!client || !position || !draggable(client)) {
@@ -131,6 +137,7 @@ export class ClientResizeBinding extends PointerDragBinding {
         return { client, start, pointer: { ...position }, corner };
     }
 
+    /** Resizes the client using pointer travel from the start. */
     onUpdate(event: DragEvent, state: object): void {
         const { client, start, pointer, corner } = state as ResizeState;
         if (!client.alive || !event.position) {
@@ -139,6 +146,7 @@ export class ClientResizeBinding extends PointerDragBinding {
         client.bounds = resizedRect(start, corner, moved(pointer, event.position), client.minSize, client.maxSize);
     }
 
+    /** Saves the final bounds as the client's floating bounds. */
     onEnd(_event: DragEvent, state: object): void {
         const { client } = state as ResizeState;
         if (client.alive) {
@@ -146,6 +154,7 @@ export class ClientResizeBinding extends PointerDragBinding {
         }
     }
 
+    /** Restores the original bounds when the drag is cancelled. */
     onCancel(_event: DragEvent, state: object): void {
         const { client, start } = state as ResizeState;
         if (client.alive) {

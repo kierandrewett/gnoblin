@@ -1,5 +1,4 @@
-// Touchpad gestures: begin, update, end and cancel of a claimed swipe or pinch map to the same four hooks as a drag. A
-// gesture starts on the best candidate whose direction has come true, and `progress` says how far it has gone its way.
+// Matches claimed touchpad swipes and pinches. Gesture hooks receive the same lifecycle events as pointer drags.
 
 import type { GestureTriggerParts } from "gnoblin/bindings/trigger_types";
 import type { BindingClient, DragEvent } from "gnoblin/bindings/types";
@@ -14,8 +13,9 @@ const PINCH_DECIDE = 0.1;
 /** Touchpad units for a whole swipe (`progress` 1), and the scale distance for a whole pinch. */
 const SWIPE_TRAVEL = 400;
 const PINCH_TRAVEL = 0.5;
-/** The progress at which a function bound to a gesture fires: the Lua shell's 48 units and 0.12 scale. */
+/** Minimum progress for a swipe action to run when the gesture ends. */
 export const SWIPE_COMMIT = 48 / SWIPE_TRAVEL;
+/** Minimum progress for a pinch action to run when the gesture ends. */
 export const PINCH_COMMIT = 0.12 / PINCH_TRAVEL;
 
 interface GestureSample {
@@ -99,7 +99,10 @@ export class GestureMatcher {
         this.#hooks = hooks;
     }
 
-    /** One step of a claimed gesture: `begin` picks the candidates, `update` and `end` run the hooks, `cancel` stops it. */
+    /**
+     * One step of a claimed gesture: `begin` picks the candidates, `update` and `end` run the hooks, `cancel` stops
+     * it.
+     */
     message(claim: ClaimEntry, message: InputGestureMessage): void {
         const sample: GestureSample = {
             dx: message.dx,

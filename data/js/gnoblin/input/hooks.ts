@@ -1,6 +1,4 @@
-// How a matcher runs a binding's hook: the event it hands over, the call that reports a throw instead of raising it, and the
-// start that asks a binding to take a drag. The key, pointer and gesture matchers share them, and read the context
-// they act for only through `MatchEnv`.
+// Builds binding events and runs hooks for the key, pointer and gesture matchers of one context.
 
 import type { Point, DragEvent, BindingClient } from "gnoblin/bindings/types";
 import type { InputDevice } from "gnoblin/devices";
@@ -11,19 +9,25 @@ import type { Registration } from "gnoblin/input/registration";
 /** `deltaTime` never exceeds this, so a simulation that integrates it is not thrown by a stall. */
 const MAX_DELTA_TIME = 0.1;
 
-/** What a matcher reads of the context it works for. The context builds one and hands it to each matcher. */
+/** Services a matcher reads from its context while processing input. */
 export interface MatchEnv {
     /** The context, which a hook's event names. */
     readonly context: object;
+    /** The host that provides seat state and claim operations. */
     readonly host: InputHost;
+    /** Client, layout and scheduling services used by the matchers. */
     readonly world: InputWorld;
+    /** Looks up claims held by this context. */
     readonly claims: ClaimTable;
     /** The seat the context makes claims on. */
     seat(): number;
+    /** Returns the current window-management settings for the seat. */
     settings(): SeatSettings;
     /** The pointer in the compositor's logical space. */
     pointer(): Point;
+    /** Finds the topmost client at a logical pointer position, or null. */
     hitTest(position: Point): InputHit | null;
+    /** Returns the client with keyboard focus, or null. */
     focusedClient(): BindingClient | null;
     /** The device this context holds that reports `name`, or null. */
     deviceNamed(name: string): InputDevice | null;
@@ -37,7 +41,7 @@ export class Hooks {
         this.#env = env;
     }
 
-    /** The event of a hook: when it runs, how long since the last one, where the pointer is, and what the registration knows of the client, device and layout. */
+    /** Builds the event passed to a hook, including elapsed time and the current pointer position. */
     event(
         registration: Registration,
         client: BindingClient | null,
@@ -82,6 +86,7 @@ export class Hooks {
         }
     }
 
+    /** Starts a binding's drag hook and returns its state, or null if it declines, throws or returns no state. */
     start(registration: Registration, event: DragEvent): object | null {
         const outcome = this.call(registration, "onStart", () => registration.binding.onStart(event));
         if (!outcome.ok || outcome.value === false) {

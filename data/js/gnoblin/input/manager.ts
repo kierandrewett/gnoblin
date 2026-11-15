@@ -1,6 +1,4 @@
-// `InputManager`, which is `gnoblin.input`: the contexts (one per seat the compositor reports, then the ones a script
-// added) and the devices, kept up to date with the seats, and the delivery of the compositor's messages to the context
-// whose claim they are for.
+// Manages input contexts and devices, keeps them in sync with seats, and routes compositor messages to their contexts.
 
 import type { BindingClient } from "gnoblin/bindings/types";
 import { InputList, MutableInputList } from "gnoblin/input_list";
@@ -10,8 +8,8 @@ import type { InputHost, InputWorld } from "gnoblin/input/host";
 import type { InputMessage } from "gnoblin/input/messages";
 
 /**
- * `gnoblin.input`: the contexts and the devices. The contexts are one per seat the compositor reports, then the ones a
- * script added (`contexts.add(new InputContext({ name }))`); `primary` is the first seat's.
+ * Manages the contexts and devices exposed as `gnoblin.input`. There is one context per seat, followed by any
+ * contexts added by scripts. `primary` is the first seat's context.
  */
 export class InputManager {
     /** The seats' contexts, then the scripts'. `add` and `remove` are for the scripts' own. */

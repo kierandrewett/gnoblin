@@ -1,8 +1,7 @@
-// The live lists of `gnoblin.input`: `contexts` and `devices` (owner-spec.md section 10).
+// The live lists exposed by `gnoblin.input`.
 //
-// Each is a `Collection<T>` in the specification: iterable, with `length`, `at`, `get`, `find`, `filter` and `map`. They
-// read what the manager holds each time, so a list a script kept shows later changes. Only `contexts` takes `add` and
-// `remove`: a script makes contexts, while devices are the compositor's.
+// Each list is iterable and provides `length`, `at`, `get`, `find`, `filter` and `map`. A saved list reflects later
+// changes. Scripts may add and remove contexts; devices belong to the compositor.
 
 /** A live, read-only list. `read` answers the members now, each time it is asked. */
 export class InputList<T extends { readonly id: string }> implements Iterable<T> {
@@ -47,6 +46,7 @@ export class InputList<T extends { readonly id: string }> implements Iterable<T>
         return this.#read().flatMap(mapper);
     }
 
+    /** Iterates the current members. */
     [Symbol.iterator](): Iterator<T> {
         return this.#read()[Symbol.iterator]();
     }

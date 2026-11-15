@@ -1,11 +1,11 @@
-// Naming helpers shared by the event bus and `find`: the camelCase of an event name, and the known names near a
-// misspelt one.
+// Naming helpers for event names and suggestions for unknown names.
 
+/** Converts underscores followed by lowercase letters or digits to camelCase. */
 export function camel(name: string): string {
     return name.replace(/_([a-z0-9])/g, (_, letter: string) => letter.toUpperCase());
 }
 
-/** The edit distance of two names, for the near matches an unknown event name lists. */
+/** Calculates the number of single-character edits between two names. */
 function distance(a: string, b: string): number {
     let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
     for (let row = 1; row <= a.length; row++) {
@@ -19,10 +19,10 @@ function distance(a: string, b: string): number {
     return previous[b.length];
 }
 
-/** How many edits away a name may be and still be offered as a near match. */
+/** The maximum edit distance for suggesting a near match. */
 const NEAR_DISTANCE = 3;
 
-/** The known names that are near `name`: the same last segment, or a small edit distance. */
+/** Returns names with the same final segment or within the suggestion distance. */
 export function nearMatches(name: string, known: readonly string[]): string[] {
     const last = name.split(".").pop() ?? name;
     return known

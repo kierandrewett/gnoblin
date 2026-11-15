@@ -1,7 +1,5 @@
-// KioskLayout: one node at a time, full area. The shown node is the focused one when it is a child, otherwise the
-// first child; every other node is hidden and stays a child, so it is still tiled when shown again. Geometry is the
-// Lua shell's `Kiosk` in data/lua/gnoblin/shell/tiling.lua, which places exactly as `Monocle` does: the two differ
-// only in the name a configuration gives the intent.
+// KioskLayout shows one node at a time in the full area. It shows the focused child, or the first child if focus is
+// elsewhere; hidden nodes remain children and are tiled again when shown.
 
 import { MonocleLayout } from "gnoblin/layouts/monocle";
 

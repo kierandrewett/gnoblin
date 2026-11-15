@@ -1,8 +1,5 @@
-// Pointer chords: the compositor streams a claimed chord's drag as `start`, `update`, `end` and `cancel` messages that
-// carry the pointer's place. A start records the press place and the client under it; once an update is past the drag
-// threshold, the candidates' `onStart` are asked in precedence order and the first to return a state object owns the
-// drag (`onUpdate` per sample, `onEnd` on the end message, `onCancel` on the compositor's cancel, if the client dies, the
-// binding is removed, `onUpdate` throws or the generation retires). An end before any movement is a click.
+// Matches claimed pointer chords. A press records its position and client; movement past the threshold starts a drag.
+// Bindings are tried in precedence order. The active binding receives updates and then an end or cancel event.
 
 import { PointerDragBinding } from "gnoblin/bindings/binding";
 import type { BindingClient, DragEvent, Point } from "gnoblin/bindings/types";
@@ -48,7 +45,7 @@ export class PointerMatcher {
         this.#hooks = hooks;
     }
 
-    /** One step of a claimed pointer chord: `start` records the press, `update` schedules a sample, `end` and `cancel` finish it. */
+    /** Records a press, schedules drag samples, or finishes the interaction for a chord message. */
     message(claim: ClaimEntry, message: InputPointerMessage): void {
         const at = { x: message.x, y: message.y };
         if (message.phase === "start") {
@@ -106,7 +103,7 @@ export class PointerMatcher {
         });
     }
 
-    /** The event of a pointer drag hook: the position, how far it is from the press, the button and the work area. */
+    /** Builds a drag event with the position, distance from the press, button and work area. */
     #pointerEvent(registration: Registration, press: PointerPress, position: Point): { event: DragEvent; now: number } {
         return this.#hooks.event(registration, press.client, position, press.lastTime, {
             x: position.x,

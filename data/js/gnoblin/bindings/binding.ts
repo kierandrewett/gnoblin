@@ -13,7 +13,9 @@ import type { ErrorCode } from "gnoblin/errors";
 export class BindingConflictError extends Error {
     /** The trigger is taken at that priority. */
     readonly code: ErrorCode = "already_exists";
+    /** The canonical trigger that caused the conflict. */
     readonly trigger: string;
+    /** The two conflicting binding ids, in existing-then-added order. */
     readonly ids: readonly [string, string];
 
     constructor(trigger: string, existing: string, added: string, priority: number) {
@@ -34,8 +36,11 @@ const owners = new WeakMap<Binding, BindingCollection>();
  * drag or gesture binding names the type of the state object its `onStart` returns, which each later hook receives.
  */
 export class Binding<State extends object = object> {
+    /** Unique within the collection that holds this binding. */
     readonly id: string;
+    /** Whether the matcher considers this binding. Defaults to true. */
     enabled: boolean;
+    /** Which matching binding wins. Defaults to 0; higher values win. */
     priority: number;
     #trigger: ParsedTrigger;
     #written: string;
@@ -68,6 +73,7 @@ export class Binding<State extends object = object> {
         return this.#written;
     }
 
+    /** Replaces the trigger; invalid spellings throw `TriggerError`. */
     set trigger(value: string) {
         const parsed = (this.constructor as typeof Binding).readTrigger(value, `Binding "${this.id}" trigger`);
         const owner = owners.get(this);
@@ -93,10 +99,13 @@ export class Binding<State extends object = object> {
         return false;
     }
 
+    /** Called for each sample after `onStart` accepts the input. */
     onUpdate(_event: DragEvent, _state: State): void {}
 
+    /** Called when an accepted input ends normally. */
     onEnd(_event: DragEvent, _state: State): void {}
 
+    /** Called when an accepted input is cancelled. */
     onCancel(_event: DragEvent, _state: State): void {}
 
     /**
@@ -124,6 +133,7 @@ export class KeyBinding extends Binding {
         this.#action = options.action;
     }
 
+    /** Runs the optional action for this press. */
     onPress(event: BindingEvent): void | false {
         return this.#action?.(event);
     }
@@ -139,10 +149,10 @@ export interface PointerDragBindingOptions extends BindingOptions {
 }
 
 /**
- * The base of every behaviour that follows an input from its start to its end (owner-spec.md section 11): the host
- * calls `onStart`, then `onUpdate` per sample, then `onEnd` or `onCancel`, each with the state object `onStart`
- * returned. Abstract: extend `PointerDragBinding` for a pointer drag, `GestureBinding` for a touchpad gesture, or
- * this class for a source the library does not know.
+ * The base of every behaviour that follows an input from its start to its end: the host calls `onStart`, then
+ * `onUpdate` for each sample, then `onEnd` or `onCancel`, each with the state object returned by `onStart`.
+ * Extend `PointerDragBinding` for a pointer drag, `GestureBinding` for a touchpad gesture, or this class for an
+ * input source the library does not know.
  */
 export class DragBinding<State extends object = object> extends Binding<State> {
     constructor(options: BindingOptions) {
@@ -155,6 +165,7 @@ export class DragBinding<State extends object = object> extends Binding<State> {
 
 /** The base of the pointer drag behaviours: the host calls `onStart`, `onUpdate` and `onEnd` or `onCancel`. */
 export class PointerDragBinding<State extends object = object> extends DragBinding<State> {
+    /** Minimum pointer travel in pixels before a drag starts. */
     threshold: number;
 
     constructor(options: PointerDragBindingOptions) {
@@ -172,7 +183,9 @@ export class GestureBinding<State extends object = object> extends Binding<State
 
 /** A watcher of a collection. The input context registers claims through one. */
 export interface BindingWatcher {
+    /** Called after a binding joins the collection. */
     added?(binding: Binding): void;
+    /** Called after a binding leaves the collection. */
     removed?(binding: Binding): void;
     /** The trigger changed from `previous`; the binding already holds the new one. */
     retriggered?(binding: Binding, previous: ParsedTrigger): void;
@@ -183,6 +196,7 @@ export class BindingCollection implements Iterable<Binding> {
     private readonly byId = new Map<string, Binding>();
     private readonly watchers: BindingWatcher[] = [];
 
+    /** Number of bindings currently in the collection. */
     get size(): number {
         return this.byId.size;
     }
@@ -216,14 +230,17 @@ export class BindingCollection implements Iterable<Binding> {
         return binding;
     }
 
+    /** Returns the binding with this id, or `undefined` if absent. */
     get(id: string): Binding | undefined {
         return this.byId.get(id);
     }
 
+    /** Whether a binding with this id is in the collection. */
     has(id: string): boolean {
         return this.byId.has(id);
     }
 
+    /** Removes a binding by id. Returns false when the id is absent. */
     remove(id: string): boolean {
         const binding = this.byId.get(id);
         if (binding === undefined) {
@@ -237,6 +254,7 @@ export class BindingCollection implements Iterable<Binding> {
         return true;
     }
 
+    /** Removes every binding from the collection. */
     clear(): void {
         for (const id of [...this.byId.keys()]) {
             this.remove(id);
@@ -270,6 +288,7 @@ export class BindingCollection implements Iterable<Binding> {
         }
     }
 
+    /** Iterates over bindings in insertion order. */
     [Symbol.iterator](): Iterator<Binding> {
         return this.byId.values();
     }
@@ -281,10 +300,9 @@ export function checkTrigger(trigger: unknown, what: string): asserts trigger is
 }
 
 /**
- * The trigger of each named binding of a layout: `defaults` with `overrides` on top. A name that is
- * omitted or `undefined` keeps its default and `null` turns that binding off; `{ ...defaults, ...overrides }`
- * would let an explicit `undefined` erase the default (spec-review.md 1.19). A name that is not in
- * `defaults` is a typo and throws.
+ * The trigger of each named binding: `defaults` with `overrides` on top. An omitted or `undefined` name keeps its
+ * default; `null` turns that binding off. A name not in `defaults` is a typo and throws. Explicit `undefined`
+ * keeps the default rather than erasing it.
  */
 export function resolveTriggers<K extends string>(
     defaults: Readonly<Record<K, string>>,

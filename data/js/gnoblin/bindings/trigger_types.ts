@@ -49,28 +49,39 @@ interface TriggerBase {
 
 /** A key, or a lone `Super` tap (`modifiers` empty, `key` `Super`). */
 export interface KeyTriggerParts extends TriggerBase {
+    /** Discriminator for a key trigger. */
     readonly kind: "key";
+    /** Canonical keysym name. */
     readonly key: string;
 }
 
 /** A mouse button; `action` is `drag` when the trigger ends in `Drag`, else `click`. */
 export interface PointerTriggerParts extends TriggerBase {
+    /** Discriminator for a mouse-button trigger. */
     readonly kind: "pointer";
+    /** Button named by the trigger. */
     readonly button: TriggerButton;
+    /** Whether the button input is a click or a drag. */
     readonly action: "click" | "drag";
 }
 
 /** A parsed wheel trigger. `direction` is null when the trigger names none. */
 export interface WheelTriggerParts extends TriggerBase {
+    /** Discriminator for a wheel trigger. */
     readonly kind: "wheel";
+    /** Wheel direction, or null when no direction is named. */
     readonly direction: "up" | "down" | "left" | "right" | null;
 }
 
 /** A parsed touchpad gesture trigger: its finger count and, when named, its direction. */
 export interface GestureTriggerParts extends TriggerBase {
+    /** Discriminator for a touchpad gesture trigger. */
     readonly kind: "gesture";
+    /** Gesture type, either a swipe or pinch. */
     readonly gesture: "swipe" | "pinch";
+    /** Number of fingers in the gesture. */
     readonly fingers: number;
+    /** Gesture direction, or null when none is named. */
     readonly direction: TriggerDirection | null;
 }
 
@@ -82,11 +93,13 @@ export type ControllerButton = "Trigger" | "Grip" | "Thumbstick" | "Primary" | "
  * (`gnoblin/xr`): no seat claims it, and a context ignores a binding that has one.
  */
 export interface ControllerTriggerParts extends TriggerBase {
+    /** Discriminator for an XR controller trigger. */
     readonly kind: "controller";
     /** The hand every button must be on, or null for either. */
     readonly hand: "Left" | "Right" | null;
     /** The buttons that must be down together, in the order `Trigger, Grip, Thumbstick, Primary, Secondary`. */
     readonly buttons: readonly ControllerButton[];
+    /** Controller triggers follow button presses as a drag. */
     readonly action: "drag";
 }
 

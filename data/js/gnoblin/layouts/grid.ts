@@ -1,9 +1,6 @@
-// GridLayout: a near-square grid of the nodes in child order. Geometry is the Lua shell's `GridLayout` in
-// data/lua/gnoblin/shell/tiling.lua. `fill` is "row" (left to right, then down) or "column" (top to bottom, then
-// right); a partly filled last row or column leaves its empty cells at the end. `columns` fixes the column count,
-// which the Lua class cannot. It registers one default binding in `layout.bindings`: `swap` (Super+MouseLeft+Drag,
-// `ClientSwapBinding`) trades the places of two cells. A grid has no divider to drag, so it has no resize binding.
-// `triggers` replaces the trigger, and `null` leaves the binding out.
+// GridLayout places nodes in child order in a near-square grid. `fill` chooses row-wise or column-wise order, and
+// `columns` can fix the column count. The `swap` binding trades two cells; there is no divider to resize.
+// `triggers` replaces the binding trigger, and `null` leaves the binding out.
 
 import { resolveTriggers } from "gnoblin/bindings/binding";
 import { ClientSwapBinding } from "gnoblin/bindings/tiling";
@@ -17,6 +14,7 @@ export type GridFill = "row" | "column";
 export interface GridOptions {
     /** `"auto"` picks a near-square grid; a number fixes the column count. Default `"auto"`. */
     columns?: "auto" | number;
+    /** Fills rows left to right or columns top to bottom. Default `row`. */
     fill?: GridFill;
     /** Overrides the workspace's inner gap. */
     gap?: number;
@@ -28,9 +26,13 @@ const DEFAULT_TRIGGERS = { swap: "Super+MouseLeft+Drag" } as const;
 
 /** A near-square grid of the workspace's nodes. */
 export class GridLayout extends Layout {
+    /** Fixed column count, or `"auto"` for a near-square grid. Default `"auto"`. */
     columns: "auto" | number;
+    /** Order in which nodes fill the grid. Default `row`. */
     fill: GridFill;
+    /** Gap between cells, or `undefined` to use the workspace gap. */
     gap: number | undefined;
+    /** Resolved `swap` trigger; `null` means the binding is disabled. */
     readonly triggers: Readonly<Record<"swap", string | null>>;
 
     constructor(options: GridOptions = {}) {
@@ -44,6 +46,7 @@ export class GridLayout extends Layout {
         }
     }
 
+    /** Returns one tiled placement per child in the selected grid order. */
     compute(context: LayoutContext): Placement[] {
         const nodes = context.children;
         const n = nodes.length;

@@ -1,14 +1,10 @@
-// Moving and resizing a window with the keyboard, ported from data/lua/gnoblin/shell/reposition.lua. The window menu's
-// Move and Resize start it, so a window can be placed without a pointer.
+// Keyboard move and resize modes let a user place a window without a pointer. The menu's Move and Resize actions start
+// them; the arrow keys move by `REPOSITION_STEP` pixels (or grow/shrink by that amount when resizing).
 //
-//   Client.moveWithKeys()     the arrow keys move the window by STEP pixels, inside the work area
-//   Client.resizeWithKeys()   Right and Down grow the window by STEP pixels, Left and Up shrink it
-//
-// Return, Enter and Space keep the new place; Escape puts the window back where it was. The mode takes the keyboard
-// while it runs and gives it back to the window when it ends. It ends when the window closes and when the session
-// locks. Only a floating window can be moved this way: a maximised, fullscreen or tiled window is refused (`false`),
-// and a snapped one is unsnapped first, as a drag does. One window is repositioned at a time. The cases that cover it
-// are in crates/gnoblin-js/tests/reposition.rs.
+// Return, Enter or Space keeps the new place; Escape restores the previous one. The mode holds the keyboard and gives
+// it back to the window when it ends. It also ends when the window closes or the session locks. Only floating windows
+// can move this way; maximised, fullscreen and tiled windows are refused. A snapped window is unsnapped first.
+// Only one window can be repositioned at a time. See `crates/gnoblin-js/tests/reposition.rs`.
 
 import { clampAxis, dragConstraintMode } from "gnoblin/bindings/drag";
 import { growRect, NO_INSET, shrinkRect } from "gnoblin/frame/inset";
@@ -34,13 +30,21 @@ export type RepositionMode = "move" | "resize";
 
 /** What the mode needs of a window. A `Client` of the host module is one. */
 export interface RepositionClient extends SnapClient {
+    /** False after the window closes. */
     readonly alive: boolean;
+    /** Whether the window fills its output. */
     readonly fullscreen: boolean;
+    /** Whether the window is maximised. */
     readonly maximised: boolean;
+    /** Whether the window is arranged by a layout. */
     readonly tiled: boolean;
+    /** Whether the window's contents are secure. */
     readonly secure?: boolean;
+    /** Frame extents around the content, in logical pixels. */
     readonly frameInset?: FrameInset;
+    /** Current workspace, or null when the window has none. */
     readonly workspace: { readonly active: boolean } | null;
+    /** Saved floating rectangle, in logical pixels. */
     floatingBounds?: Rect | null;
 }
 
@@ -64,9 +68,13 @@ const ARROWS: Readonly<Record<string, readonly [number, number]>> = {
 
 /** The node that holds the keyboard while the mode runs. It draws one line: what the keys do. */
 export class RepositionGrab extends Box {
+    /** Whether arrow keys move or resize the window. */
     readonly mode: RepositionMode;
+    /** Window being moved or resized. */
     readonly client: RepositionClient;
+    /** Original rectangle, restored when the mode is cancelled. */
     readonly from: Rect;
+    /** Previous snap state, restored when the mode is cancelled. */
     readonly snapped: SnapRecord | null;
     readonly #owner: Repositioning;
 
@@ -130,6 +138,7 @@ export class RepositionGrab extends Box {
         }
     }
 
+    /** Handles the repositioning mode's arrow, accept and cancel keys. */
     override onKey(event: UiKeyEvent): void {
         // The keys are taken, pressed or released: this node is the keyboard's until it ends.
         event.stop();

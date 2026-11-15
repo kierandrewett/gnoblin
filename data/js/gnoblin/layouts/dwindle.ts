@@ -1,18 +1,12 @@
-// DwindleLayout: a binary split tree in the style of Hyprland. Geometry is data/lua/gnoblin/shell/tiling.lua
-// `Dwindle`. Each new node splits the cell of the node that had focus when it arrived (or the last node's cell) in
-// two. A split keeps the direction it was created with: "horizontal" and "vertical" fix it, "aspect" takes the longer
-// side of the cell at creation. `ratio` is the share of the first child of every split and `gap` separates the two
-// halves of each split.
+// DwindleLayout keeps a binary split tree for one workspace. Each new node splits the focused node's cell, or the last
+// node's cell when none is focused. `horizontal` and `vertical` fix the split direction; `aspect` chooses the longer
+// side when the node arrives. `ratio` sets the first child's share, and `gap` separates the two cells.
 //
-// The tree is state the layout keeps between computes, as the Lua class kept one per workspace: a node that
-// goes collapses its split, a node that arrives is inserted. That makes `compute` depend on its history, so one
-// instance must serve one workspace. Every walk is a loop over an explicit stack: a run of windows that each split
-// the last one makes a tree as deep as it is long, and the engine's call stack is short.
+// The tree persists between computes: removing a node collapses its split, and adding one inserts a leaf. A deep tree
+// is walked with an explicit stack so it does not use the engine's call stack.
 //
-// It registers two default bindings in `layout.bindings`: `swap` (Super+MouseLeft+Drag, `ClientSwapBinding`) trades
-// the places of two leaves in the tree, and `resize` (Super+MouseRight+Drag, `SplitResizeBinding`) drags one split. A
-// dragged split keeps a ratio of its own, which `layout.ratio` no longer sets for it; a cancelled drag gives the split
-// back to `layout.ratio`. `triggers` replaces a trigger, and `null` leaves that binding out.
+// Default `swap` and `resize` bindings exchange leaves and drag split dividers. A dragged split keeps its own ratio
+// until reset. `triggers` replaces a binding trigger, and `null` leaves that binding out.
 
 import { resolveTriggers } from "gnoblin/bindings/binding";
 import { ClientSwapBinding, SplitResizeBinding } from "gnoblin/bindings/tiling";
@@ -26,6 +20,7 @@ export type DwindleSplit = "aspect" | "horizontal" | "vertical";
 
 /** Options of `DwindleLayout`. */
 export interface DwindleOptions {
+    /** Split direction for each new node. `aspect` chooses the longer side of the cell. Default `aspect`. */
     split?: DwindleSplit;
     /** The first child's share of every split, held to 0.1 to 0.9. Default 0.5. */
     ratio?: number;
@@ -106,9 +101,13 @@ function cells(root: Tree, area: Rect, gap: number, ratio: number, splits?: Map<
 
 /** A dwindle tiling layout. Each new node splits the cell it arrives in, as the header describes. */
 export class DwindleLayout extends Layout {
+    /** Direction used when a new node arrives. */
     split: DwindleSplit;
+    /** First child's share of each split, clamped to 0.1..0.9 when computing. Default 0.5. */
     ratio: number;
+    /** Overrides the workspace's inner gap; `undefined` uses the workspace gap. */
     gap: number | undefined;
+    /** Resolved `swap` and `resize` triggers; `null` means that binding is disabled. */
     readonly triggers: Readonly<Record<"swap" | "resize", string | null>>;
     /**
      * How many times a drag changed the ratio of one split. The tree is not a field the workspace can compare, so this
@@ -135,6 +134,7 @@ export class DwindleLayout extends Layout {
         }
     }
 
+    /** Computes placements for the current children, updating the stored split tree as needed. */
     compute(context: LayoutContext): Placement[] {
         const nodes = context.children;
         if (!SPLITS.includes(this.split)) {
@@ -181,6 +181,7 @@ export class DwindleLayout extends Layout {
         });
     }
 
+    /** Swaps two nodes in the stored tree without changing their positions. */
     onClientsSwapped(a: LayoutNode, b: LayoutNode): void {
         const first = this.#leaves.get(a);
         const second = this.#leaves.get(b);

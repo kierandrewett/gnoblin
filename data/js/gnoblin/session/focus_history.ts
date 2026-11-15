@@ -1,17 +1,20 @@
-// `gnoblin.focus`: the windows in the order they were last focused.
+// Tracks windows in the order they were last focused.
 
-/** A window as the focus history reads it. */
+/** The window fields used by focus history. */
 export interface HistoryClient {
+    /** Stable window identifier. */
     readonly id: string;
+    /** Whether this window is still open. */
     readonly alive: boolean;
+    /** The current workspace, or null when it is not assigned to one. */
     readonly workspace: { readonly id: string } | null;
 }
 
-/** What `gnoblin.focus.history` takes. The snake_case spellings are accepted too. */
+/** The filters accepted by `gnoblin.focus.history`. Snake_case spellings are accepted too. */
 export interface FocusHistoryFilter {
     /** Only the windows on this workspace. */
     workspaceId?: string;
-    /** Only the windows on this output; a window with no `output` property matches none. */
+    /** Only the windows on this output; windows without an output match none. */
     monitorId?: string;
     /** The most windows to return, 1 to 256; 50 by default. */
     limit?: number;
@@ -45,9 +48,8 @@ export class FocusHistory<C extends HistoryClient = HistoryClient> {
     }
 
     /**
-     * The live windows, most recently focused first, then those whose focus was never seen in the order the shell
-     * lists them. Minimised windows are included and a window that closed is gone. At startup only the focused window
-     * seeds the order.
+     * Returns live windows most recently focused first, then unseen windows in shell list order. Includes minimised
+     * windows; omits closed windows. At startup, only the focused window seeds the order.
      */
     history(filter?: FocusHistoryFilter | Record<string, unknown>): C[] {
         const given = filter ?? {};

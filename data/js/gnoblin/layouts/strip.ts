@@ -1,8 +1,5 @@
-// Two layouts whose nodes are not tiled, from data/lua/gnoblin/shell/strip.lua.
-// StripLayout: a row of columns, one node per column, scrolled so the focused column stays in view.
-// Carousel3dLayout: nodes on a ring seen in perspective, the focused one at the front.
-//
-// Neither floors its rectangles and neither marks its nodes tiled, as the Lua classes did not.
+// StripLayout places one node per column in a horizontal strip, with focus kept in view. Carousel3dLayout arranges
+// nodes on a perspective ring with the focused node at the front. Neither layout tiles its nodes.
 
 import { Layout } from "gnoblin/layout";
 import type { LayoutContext, LayoutNode, Placement, Rect } from "gnoblin/layout";
@@ -21,12 +18,15 @@ export function clampColumn(value: unknown): number {
 
 /** What the focus helpers need of a node: whether it has focus and how to give it focus. */
 export interface FocusableNode {
+    /** Whether this node currently has focus. */
     readonly focused: boolean;
+    /** Gives focus to this node. */
     focus(): void;
 }
 
 /** What they need of a workspace: the nodes it holds. */
 export interface NodeSource {
+    /** Nodes available for focus navigation. */
     readonly clients: Iterable<LayoutNode>;
 }
 
@@ -48,6 +48,7 @@ export interface StripOptions {
  * end. One instance must serve one workspace.
  */
 export class StripLayout extends Layout {
+    /** Column width as a fraction of the strip width, clamped to 0.1..1. Default 0.5. */
     column: number;
     /** The view offset in pixels `scrollTo` pinned, or `null` while the view follows the focused column. */
     pin: number | null = null;
@@ -62,6 +63,7 @@ export class StripLayout extends Layout {
         clampColumn(this.column);
     }
 
+    /** Returns placements for the strip's ordered columns, scrolled to show focus or the pinned offset. */
     compute(context: LayoutContext): Placement[] {
         const { x, y, width: viewWidth, height } = context.area;
         const columnWidth = clampColumn(this.column) * viewWidth;
@@ -162,6 +164,7 @@ export interface RingOptions {
 
 /** One card of the ring: the projected rectangle, the depth fade, the angle round the ring and the depth. */
 export interface RingSlot extends Rect {
+    /** Fade from 0.4 at the back to 1 at the front. */
     opacity: number;
     /** Degrees: 0 at the front, 180 at the back, positive to the right of the front card. */
     rotation: number;
@@ -221,8 +224,11 @@ export type Carousel3dOptions = RingOptions;
  * belongs to the rules.
  */
 export class Carousel3dLayout extends Layout {
+    /** Vertical field of view, in degrees. Default 40. */
     fov: number;
+    /** Card width as a fraction of the area's width. Default 0.36. */
     cardWidth: number;
+    /** Card height as a fraction of the area's height. Default 0.6. */
     cardHeight: number;
 
     constructor(options: Carousel3dOptions = {}) {
@@ -232,6 +238,7 @@ export class Carousel3dLayout extends Layout {
         this.cardHeight = options.cardHeight ?? 0.6;
     }
 
+    /** Returns one perspective placement per child, with the focused node at the front. */
     compute(context: LayoutContext): Placement[] {
         const nodes = context.children;
         const focused = context.focused ?? null;

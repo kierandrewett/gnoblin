@@ -1,26 +1,26 @@
-// The look of the menu card: its sizes and colours, how tall a list of entries is, and where the card goes.
+// Shared dimensions, colours and placement helpers for the stock window menu.
 
 import type { MenuEntry } from "gnoblin/menus/types";
 
-/** The height of an entry, in logical pixels. */
+/** The height of a menu entry, in logical pixels. */
 export const ITEM_H = 28;
 
-/** The height of a separator. */
+/** The height of a separator, in logical pixels. */
 export const SEPARATOR_H = 9;
 
-/** The padding inside the card. */
+/** The padding inside a menu card, in logical pixels. */
 export const PAD = 4;
 
-/** The space inside an entry, left and right of its label. */
+/** Horizontal space between an entry edge and its label, in logical pixels. */
 export const EDGE = 8;
 
-/** The width of the check and submenu marks. */
+/** The width of a check or submenu mark, in logical pixels. */
 export const MARK = 14;
 
-/** The narrowest a card is. */
+/** The minimum card width, in logical pixels. */
 export const MIN_WIDTH = 170;
 
-/** The kernel number of the left mouse button. */
+/** The kernel code for the left mouse button. */
 export const LEFT = 272;
 
 /** The colours of the card, as the stock look draws it. */
@@ -33,7 +33,7 @@ export const MENU_COLOURS = {
     line: "#45475a",
 } as const;
 
-/** The height the card for `entries` takes. */
+/** The card height for `entries`, in logical pixels. */
 export function menuHeight(entries: readonly MenuEntry[]): number {
     let height = 2 * PAD;
     for (const entry of entries) {
@@ -42,7 +42,7 @@ export function menuHeight(entries: readonly MenuEntry[]): number {
     return height;
 }
 
-/** Where a card of `size` goes when asked for at `anchor`: its corner at the anchor, moved back inside `area`. */
+/** Places a card at `anchor`, clamping its top-left corner inside `area`. */
 export function placeCard(
     anchor: { x: number; y: number },
     size: { width: number; height: number },

@@ -12,10 +12,15 @@ import type { BindingClient, DragEvent, Point } from "gnoblin/bindings/types";
  * read as well.
  */
 export interface TiledClient extends BindingClient {
+    /** True when the layout places the client in a tile. */
     readonly tiled?: boolean;
+    /** True when the client is floating instead of occupying a tile. */
     readonly floating?: boolean;
+    /** Parent window when the client is a dialog. */
     readonly parentWindow?: unknown;
+    /** Whether the client is visible to the user. */
     readonly visible?: boolean;
+    /** Workspace that holds the client's tile. */
     readonly workspace?: OrderedWorkspace | null;
 }
 
@@ -26,13 +31,17 @@ function inTile(client: TiledClient): boolean {
 
 /** The part of a workspace the swap binding needs: its clients in layout order, and a way to trade two places. */
 export interface OrderedWorkspace {
+    /** Clients in layout order; `swap` trades their positions. */
     readonly clients: Iterable<TiledClient> & { swap(a: TiledClient, b: TiledClient): void };
 }
 
 /** What `ClientSwapBinding.onStart` keeps for one drag. `over` is the tile the pointer last was over, or null. */
 export interface SwapState {
+    /** Client being dragged for a swap. */
     dragged: TiledClient;
+    /** Workspace whose client order may change on release. */
     workspace: OrderedWorkspace;
+    /** Tile last under the pointer, or null when none was found. */
     over: TiledClient | null;
 }
 
@@ -69,6 +78,7 @@ export class ClientSwapBinding extends PointerDragBinding {
         super({ ...options, id: options.id ?? "swap", trigger: options.trigger ?? "Super+MouseLeft+Drag" });
     }
 
+    /** Starts a swap when the pressed client belongs to a tiled workspace. */
     onStart(event: DragEvent): SwapState | false {
         const client = event.client as TiledClient | undefined;
         const workspace = client?.workspace;
@@ -78,11 +88,13 @@ export class ClientSwapBinding extends PointerDragBinding {
         return { dragged: client, workspace, over: null };
     }
 
+    /** Tracks the tile currently under the pointer. */
     onUpdate(event: DragEvent, state: object): void {
         const swap = state as SwapState;
         swap.over = event.position ? tileAt(swap.workspace, event.position, swap.dragged) : null;
     }
 
+    /** Swaps the dragged client with the tile under the release point. */
     onEnd(event: DragEvent, state: object): void {
         const { dragged, workspace } = state as SwapState;
         // The release decides, not the last sample: the pointer may have moved since it.
@@ -95,8 +107,11 @@ export class ClientSwapBinding extends PointerDragBinding {
 
 /** What `SplitResizeBinding.onStart` keeps for one drag. */
 export interface SplitState {
+    /** Divider being resized. */
     split: LayoutSplit;
+    /** Pointer position when the drag started, in logical pixels. */
     start: Point;
+    /** Divider ratio when the drag started. */
     startRatio: number;
 }
 
@@ -112,8 +127,11 @@ export interface LayoutSplit {
     readonly span: number;
     /** 1 when moving the pointer right or down grows `ratio`, -1 when it shrinks it. */
     readonly direction: 1 | -1;
+    /** Lowest ratio the layout allows. */
     readonly min: number;
+    /** Highest ratio the layout allows. */
     readonly max: number;
+    /** Current divider position as a ratio. */
     ratio: number;
     /** Puts the split back as it was when `findSplit` returned it: a drag cancelled. */
     reset(): void;
@@ -136,6 +154,7 @@ export class SplitResizeBinding extends PointerDragBinding {
         super({ ...options, id: options.id ?? "resize", trigger: options.trigger ?? "Super+MouseRight+Drag" });
     }
 
+    /** Starts resizing the nearest divider when the layout provides one. */
     onStart(event: DragEvent): SplitState | false {
         const client = event.client as TiledClient | undefined;
         const { position } = event;
@@ -150,6 +169,7 @@ export class SplitResizeBinding extends PointerDragBinding {
         return { split, start: { ...position }, startRatio: split.ratio };
     }
 
+    /** Updates the divider ratio from pointer travel. */
     onUpdate(event: DragEvent, state: object): void {
         const { split, start, startRatio } = state as SplitState;
         if (!event.position) {
@@ -160,6 +180,7 @@ export class SplitResizeBinding extends PointerDragBinding {
         split.ratio = Math.max(split.min, Math.min(split.max, ratio));
     }
 
+    /** Restores the divider position from before the drag. */
     onCancel(_event: DragEvent, state: object): void {
         (state as SplitState).split.reset();
     }

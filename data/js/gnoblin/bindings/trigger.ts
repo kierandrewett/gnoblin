@@ -27,7 +27,9 @@ import type { ErrorCode } from "gnoblin/errors";
 export class TriggerError extends TypeError {
     /** A spelling the grammar refuses is a bad argument. */
     readonly code: ErrorCode = "invalid_argument";
+    /** The part of the trigger spelling that caused the error. */
     readonly token: string;
+    /** The complete trigger spelling that was rejected. */
     readonly trigger: string;
 
     constructor(what: string, trigger: string, token: string, reason: string) {

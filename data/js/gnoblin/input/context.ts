@@ -1,20 +1,11 @@
-// `InputContext`: the logical group of devices the specification exports as a `wl_seat` (owner-spec.md section 10). It
-// owns the claims for its bindings and decides what each chord, drag or gesture means.
+// Handles input for one logical group of devices. The compositor claims triggers for the context; matchers route
+// incoming chord, pointer and gesture events to its bindings.
+
+// Bindings run in device, layout, then context order. Within each tier, priority decides; a binding can decline an
+// event to let the next candidate handle it. Equal-priority bindings in one collection cannot share a trigger.
 //
-// The compositor does not know what a binding is. A binding's trigger becomes a *claim* on a seat: the compositor
-// withholds that chord (or touchpad gesture) from clients and tells the shell each time it changes state. A context
-// owns the claims (one per distinct chord, shared by every binding that wants it, released when the last of them
-// goes; `ClaimTable`), and hands what the compositor sends to the matcher of that kind (`KeyMatcher`, `PointerMatcher`,
-// `GestureMatcher`).
-//
-// Precedence: device bindings, then the bindings of the layout that owns the targeted client, then the context's own.
-// A binding that declines (`onStart` returns false, `onPress` returns false) lets the next one have the input. Within
-// a tier, `priority` decides, and two bindings of one collection that match the same trigger at the same priority are
-// refused when the second is added (`BindingConflictError`).
-//
-// Every hook runs as its own scheduled call, under the shell's per-call budget and with its throw reported and
-// isolated. A drag takes at most one sample per frame and at most one waits at a time: when scripts are behind, the
-// next hook reads the latest position (latest wins). Starts, ends and cancels are never merged or dropped.
+// Each hook runs as a scheduled call. A drag keeps only its latest pending position, while starts, ends and cancels
+// remain distinct.
 
 import type { Binding } from "gnoblin/bindings/binding";
 import type { BindingClient, BindingEvent, Point } from "gnoblin/bindings/types";
@@ -44,10 +35,10 @@ function layoutOf(client: BindingClient): unknown {
     return typeof workspace === "object" && workspace !== null ? Reflect.get(workspace, "layout") : undefined;
 }
 
-/** What the module reads and does on behalf of every context, set by the `InputManager` of the generation. */
+/** Runtime services shared by contexts in this generation. */
 let runtime: { host: InputHost; world: InputWorld } | null = null;
 
-/** Gives the contexts of this generation their host and world. The `InputManager` calls it once, when it is made. */
+/** Provides the host and world used by contexts in this generation. */
 export function bindInputRuntime(host: InputHost, world: InputWorld): void {
     runtime = { host, world };
 }
@@ -59,20 +50,16 @@ export interface InputContextOptions {
 }
 
 /**
- * An input context, the logical group of devices the specification exports as a `wl_seat` (section 10). It owns the
- * claims for its bindings and decides what each chord, drag or gesture means, as the header describes.
+ * An input context owns bindings for a group of devices. The compositor reports one context per seat; scripts can
+ * add contexts that share the primary seat's devices.
  *
- * The compositor has one input seat and attaches every device to it, so what a context is depends on how it got
- * into `gnoblin.input.contexts`. The contexts the shell finds there (one per seat the tree reports) are those
- * seats. One a script makes with `new InputContext({ name })` and adds is a context over the primary seat's devices:
- * it holds the devices assigned to it (`device.context = ...`), and its bindings match only the events of those
- * devices, by claiming each chord for each of them. Pointer and keyboard focus stay the seat's: the compositor
- * keeps one, so `focusedClient` reads the same client as the primary's. A chord that only the primary binds still
- * fires for a device of another context, because the compositor withholds a chord by claim and a claim for one
- * device exists only where a binding asked for it.
+ * Context bindings apply to all held devices. Device bindings apply only to their device, and layout bindings apply
+ * to clients whose workspace uses that layout. Pointer and keyboard focus remain those of the underlying seat.
  */
 export class InputContext extends NativeObject implements DeviceHome {
+    /** Name assigned to this context. */
     readonly name: string;
+    /** Bindings registered directly on this context. */
     readonly bindings = new BindingCollection();
 
     readonly #host: InputHost;
@@ -198,8 +185,8 @@ export class InputContext extends NativeObject implements DeviceHome {
     }
 
     /**
-     * The display under this context's pointer (the primary output's when the pointer is outside every output), or null
-     * while no display has an output. Assigning `viewport.content` of it switches that monitor's workspace.
+     * The display under the pointer, or the primary display when the pointer is outside every output. Returns null
+     * when no display has an output. Assigning `viewport.content` switches that display's workspace.
      */
     get activeDisplay(): Display | null {
         return this.#world.displayAt(this.pointer) as Display | null;
@@ -262,10 +249,7 @@ export class InputContext extends NativeObject implements DeviceHome {
         return true;
     }
 
-    /**
-     * Every binding registered on this context, whoever bound it (the context, a layout attached to it, one of its
-     * devices) and where it ranks among the bindings of the same trigger. Plain data, for the inspector.
-     */
+    /** Returns each registered binding and its rank among bindings of the same trigger. */
     describeBindings(): InputBindingInfo[] {
         return this.#table.describe();
     }
@@ -341,8 +325,8 @@ export class InputContext extends NativeObject implements DeviceHome {
     }
 
     /**
-     * @internal Puts the context into `gnoblin.input.contexts` on `seat`: the seat's own context (`virtual` false) makes
-     * claims for its bindings at once; one a script made holds devices and registers its bindings per device.
+     * @internal Puts the context into `gnoblin.input.contexts` on `seat`: the seat's own context (`virtual` false)
+     * makes claims for its bindings at once; one a script made holds devices and registers its bindings per device.
      */
     attach(seat: number, virtual: boolean): void {
         this.#seat = seat;
@@ -393,7 +377,7 @@ export class InputContext extends NativeObject implements DeviceHome {
         }
     }
 
-    /** Starts matching the bindings of `device`, and for a context made by a script this context's own, to its events. */
+    /** Starts matching this device's bindings, plus this context's bindings when it is script-created. */
     #own(device: InputDevice): void {
         const undo: (() => void)[] = [];
         try {

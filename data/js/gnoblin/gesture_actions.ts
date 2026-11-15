@@ -3,7 +3,8 @@
 // crates/gnoblin-js/tests/input.rs.
 //
 //   const input = gnoblin.input.primary;
-//   input.bind("Swipe4", onSwipe({ up: "window.toggle-maximise", left: "workspace.next", right: "workspace.previous" }));
+//   input.bind("Swipe4", onSwipe({ up: "window.toggle-maximise", left: "workspace.next",
+//     right: "workspace.previous" }));
 //   input.bind("Pinch3", onPinch({ in: "window.minimise", out: (event) => console.log(event.scale) }));
 //
 // A gesture is bound like a chord (`Swipe3`, `Pinch4`: the gesture and its finger count) and Gnoblin claims it, so no
@@ -43,6 +44,7 @@ export type GestureActionName =
 export interface GestureActions {
     /** Shows the workspace after the shown one; nothing at the last. */
     workspaceNext(): void;
+    /** Shows the workspace before the shown one; nothing at the first. */
     workspacePrevious(): void;
     /** Asks the focused window to close; nothing without one. */
     windowClose(): void;
@@ -238,7 +240,10 @@ export function onPinch(map: PinchMap, threshold?: number, options: GestureActio
 export interface GestureTools {
     /** The five stock actions. */
     readonly actions: GestureActions;
+    /** Gets the direction of a swipe event. */
     direction: typeof gestureDirection;
+    /** Creates a binding that runs an action when a swipe ends. */
     onSwipe(map: SwipeMap, threshold?: number): SwipeActionBinding;
+    /** Creates a binding that runs an action when a pinch ends. */
     onPinch(map: PinchMap, threshold?: number): PinchActionBinding;
 }

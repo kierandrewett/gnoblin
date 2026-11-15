@@ -10,8 +10,11 @@ import type { SnapClient } from "gnoblin/snap";
 
 /** What `ClientMoveBinding.onStart` keeps for one drag. */
 export interface MoveState {
+    /** Client whose bounds are being moved. */
     client: BindingClient;
+    /** Pointer position when the drag started, in logical pixels. */
     startPointer: Point;
+    /** Client bounds when the drag started, in logical pixels. */
     startBounds: Rect;
 }
 
@@ -31,6 +34,7 @@ export interface ClientMoveOptions extends Partial<PointerDragBindingOptions> {
  * `snap` pixels of a screen edge tiles the window when edge tiling is on (`gnoblin/snap`).
  */
 export class ClientMoveBinding extends PointerDragBinding {
+    /** Edge distance in logical pixels for tiling on release, or false to disable tiling. */
     snap: number | false;
 
     constructor(options: ClientMoveOptions = {}) {
@@ -42,6 +46,7 @@ export class ClientMoveBinding extends PointerDragBinding {
         this.snap = snap;
     }
 
+    /** Starts a move for a movable client and records its starting position. */
     onStart(event: DragEvent): MoveState | false {
         const { client, position } = event;
         if (!client || !position || !draggable(client)) {
@@ -52,6 +57,7 @@ export class ClientMoveBinding extends PointerDragBinding {
         return { client, startPointer: { ...position }, startBounds: { ...client.bounds } };
     }
 
+    /** Moves the client by the pointer distance from the start. */
     onUpdate(event: DragEvent, state: object): void {
         const { client, startPointer, startBounds } = state as MoveState;
         if (!client.alive || !event.position) {
@@ -71,6 +77,7 @@ export class ClientMoveBinding extends PointerDragBinding {
         client.bounds = { ...shrinkRect(frame, inset), width: target.width, height: target.height };
     }
 
+    /** Saves the moved bounds and tiles on release when edge tiling is enabled. */
     onEnd(event: DragEvent, state: object): void {
         const { client } = state as MoveState;
         if (!client.alive) {
@@ -90,6 +97,7 @@ export class ClientMoveBinding extends PointerDragBinding {
         }
     }
 
+    /** Restores the original bounds when the drag is cancelled. */
     onCancel(_event: DragEvent, state: object): void {
         const { client, startBounds } = state as MoveState;
         if (client.alive) {

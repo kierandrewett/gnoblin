@@ -13,9 +13,13 @@ import type { Point } from "gnoblin/bindings/types";
 
 /** A rectangle in layout pixels: `x` and `y` are the top-left corner, `width` and `height` the size. */
 export interface Rect {
+    /** Horizontal position of the top-left corner, in logical pixels. */
     x: number;
+    /** Vertical position of the top-left corner, in logical pixels. */
     y: number;
+    /** Width in logical pixels. */
     width: number;
+    /** Height in logical pixels. */
     height: number;
 }
 
@@ -27,7 +31,9 @@ export type LayoutNode = object;
  * `bounds` leaves its node where it is.
  */
 export interface Placement<N extends LayoutNode = LayoutNode> {
+    /** The node this placement describes. */
     node: N;
+    /** The node's rectangle in logical pixels. */
     bounds?: Rect;
     /** `false` hides the node (a monocle's other windows). Default: shown. */
     visible?: boolean;
@@ -40,12 +46,11 @@ export interface Placement<N extends LayoutNode = LayoutNode> {
     /** Scale along each axis. Default 1. */
     scale?: readonly [number, number, number];
     /**
-     * The node's placement in 3D, as the specification's spatial layouts return it: a position, a rotation (radians, a list,
-     * `{ x, y, z }` or a quaternion) and a scale (one number or one per axis). On a flat workspace the position's `x` and
-     * `y` move the node from the centre of its `bounds` (or, with no `bounds`, of the area, at the node's own size), in
-     * layout pixels with y down; its `z` is the node's depth; the rotation and scale are the node's. The flat fields
-     * `z`, `rotation` and `scale` win over the transform's when both are given. See `docs/typescript-shell.md`,
-     * "Spatial layouts".
+     * The node's placement in 3D: position, rotation in radians (a list, `{ x, y, z }` or a quaternion) and scale
+     * (one number or one per axis). On a flat workspace, position `x` and `y` offset the node from the centre of its
+     * `bounds` or, without bounds, the area. Coordinates are layout pixels with y down; `z` is depth. Rotation and
+     * scale apply to the node. The flat `z`, `rotation` and `scale` fields take precedence when both forms are given.
+     * See `docs/typescript-shell.md`, "Spatial layouts".
      */
     transform?: TransformInit;
 }
@@ -73,6 +78,7 @@ export interface LayoutContext<N extends LayoutNode = LayoutNode> {
  * no setters. Private (`#x`) fields are not compared.
  */
 export class Layout {
+    /** Pointer and split-resize bindings associated with this layout. */
     readonly bindings = new BindingCollection();
 
     /**
@@ -91,8 +97,11 @@ export class Layout {
  * define one has no own property to hide the inherited method.
  */
 export interface Layout {
+    /** Called after a node joins the workspace. */
     onClientAdded?(client: LayoutNode, context: LayoutContext): void;
+    /** Called after a node leaves the workspace. */
     onClientRemoved?(client: LayoutNode, context: LayoutContext): void;
+    /** Called when the workspace rectangle changes. */
     onAreaChanged?(oldArea: Rect, newArea: Rect): void;
     /**
      * The workspace traded the places of `a` and `b` in its order (`workspace.clients.swap`). A layout that places by
@@ -109,7 +118,9 @@ export interface Layout {
 
 /** The workspace's gaps: `inner` between tiles, `outer` between the tiles and the area's edge. */
 export interface Gaps {
+    /** Gap between neighbouring tiles, in logical pixels. */
     inner: number;
+    /** Gap between tiles and the workspace edge, in logical pixels. */
     outer: number;
 }
 

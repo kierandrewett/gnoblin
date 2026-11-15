@@ -1,10 +1,9 @@
-// Edge tiling: dropping a dragged window on a screen edge tiles it to that part of the work area. Off unless the
-// seat's `edge_tiling` is true. Ported from data/lua/gnoblin/shell/snap.lua and the snap/unsnap methods of
-// data/lua/gnoblin/shell/init.lua; the cases in crates/gnoblin-js/tests/stock_focus.rs cover this module.
+// Edge tiling snaps a dragged window to the left or right half, or the full work area at the top edge. It is off
+// unless the seat's `edge_tiling` is true. The behaviour follows the Lua shell's snap methods; coverage is in
+// `crates/gnoblin-js/tests/stock_focus.rs`.
 //
-// The pure functions take plain rectangles. `snapClient` and `unsnapClient` act on anything with `bounds`, which is
-// a `Client`, and keep what they need to undo a snap off the client, so a library that does not own the object
-// leaves nothing on it.
+// The geometry helpers use plain rectangles. `snapClient` and `unsnapClient` work with objects that have `bounds`;
+// they keep restore data in a WeakMap rather than adding fields to the client.
 
 import { NO_INSET, shrinkRect } from "gnoblin/frame/inset";
 import type { FrameInset } from "gnoblin/frame/inset";
@@ -58,6 +57,7 @@ export function tileRect(zone: string, area: Rect): Rect | null {
 
 /** What `snapClient` reads and writes of a client. */
 export interface SnapClient {
+    /** Current content rectangle in logical pixels. */
     bounds: Rect;
     /** Written `false` before a maximised client snaps: it floats first. */
     maximised?: boolean;
@@ -67,6 +67,7 @@ export interface SnapClient {
 
 /** What a snap keeps: the zone and the rectangle unsnapping goes back to. */
 export interface SnapRecord {
+    /** Edge region the client was snapped to. */
     zone: SnapZone;
     /** The rectangle `unsnapClient` restores. */
     floating: Rect;
@@ -80,7 +81,9 @@ const snapped = new WeakMap<object, SnapRecord>();
  * `inset` on every side, so a window with a frame on its left and right still fills the whole half.
  */
 export interface SnapOptions {
+    /** Whether edge tiling is enabled for this operation. */
     edgeTiling: boolean;
+    /** Rectangle available for tiling, in logical pixels. */
     area: Rect;
     /** The frame's room round the content. Left out, the window has no frame. */
     inset?: FrameInset;

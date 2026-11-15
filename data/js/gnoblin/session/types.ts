@@ -1,40 +1,45 @@
-// The shapes the host API shares: what the session and the runtime answer with, the events the compositor raises,
-// and what the shell hands `HostApi.frame`. Types only.
+// Data shapes shared by the script host APIs and compositor event handling.
 
 import type { ErrorCode } from "gnoblin/errors";
 import type { ClockHost } from "gnoblin/operation";
 import type { ExitEvent } from "gnoblin/process";
 import type { TrackEndedEvent } from "gnoblin/transition/types";
 
-/** The lock states the compositor reports. */
+/** Lock states reported by the compositor. */
 export type LockState = "unlocked" | "covering" | "locked" | "failsafe";
 
 /**
- * The session as the compositor last published it. `state` is `running` while the shell has a connection to the
- * compositor and `unavailable` when it has none. `lockState` is present only while `lockAvailable` is true:
- * unavailable does not mean unlocked.
+ * The latest published session state. `unavailable` means there is no compositor connection, not that the session is
+ * unlocked. `lockState` is present only when `lockAvailable` is true.
  */
 export interface SessionStatus {
+    /** Whether the session connection is available. */
     readonly state: "running" | "unavailable";
+    /** Whether the shell can report lock state. */
     readonly lockAvailable: boolean;
     /** How many lock state changes the session has published. */
     readonly revision: number;
+    /** Current lock state, present when `lockAvailable` is true. */
     readonly lockState?: LockState;
 }
 
-/** What `logout`, `poweroff`, `reboot`, `suspend` and `hibernate` succeed with: the compositor took the request. */
+/** The compositor accepted a logout, power, reboot, suspend or hibernate request. */
 export interface Accepted {
+    /** Always true when the compositor accepts the request. */
     readonly accepted: true;
 }
 
-/** What `lock` succeeds with: a shell client received the request. Read `status()` to see the session lock. */
+/** A shell client received the lock request. Read `status()` to check the session lock. */
 export interface LockRequest {
+    /** Whether the shell client received the lock request. */
     readonly dispatched: boolean;
 }
 
-/** What `gnoblin.runtime.reloadConfig()` succeeds with once the compositor accepted the reloaded document. */
+/** The result of a successful configuration reload. */
 export interface ReloadResult {
+    /** Always true for a successful reload result. */
     readonly ok: true;
+    /** The action completed by the reload. */
     readonly action: "config reload";
     /** The revision of the settings the compositor now holds. */
     readonly settingsRevision: number;
@@ -44,21 +49,27 @@ export interface ReloadResult {
     readonly notApplied: readonly string[];
 }
 
-/** The build identity. A field the build does not know is `"unknown"`; remote credentials are removed. */
+/** Build identity fields from `gnoblin.version`. Unknown fields are `"unknown"`; remote credentials are removed. */
 export interface Version {
+    /** Gnoblin version. */
     readonly gnoblin: string;
+    /** GNOME version. */
     readonly gnome: string;
+    /** Mutter version. */
     readonly mutter: string;
     /** The script engine. */
     readonly js: string;
     /** The control API version, `major.minor.patch`. */
     readonly api: string;
+    /** Sanitised Git remote URL. */
     readonly gitRemote: string;
+    /** Git commit identifier. */
     readonly gitSha: string;
+    /** Build identifier. */
     readonly buildId: string;
 }
 
-/** A schema signal as a handler receives it: its name, the object that raised it, and its fields in camelCase. */
+/** A compositor signal delivered to a handler, with its fields in camelCase. */
 export interface SignalEvent {
     /** `namespace.object.signal`, with underscores. */
     readonly name: string;
@@ -67,7 +78,7 @@ export interface SignalEvent {
     readonly [field: string]: unknown;
 }
 
-/** What the shell hands the module: the host's functions, the queue and the clock. */
+/** Functions, queue and clock supplied by the shell to the host API. */
 export interface ApiHost extends ClockHost {
     /** The native spawn: argv and options as JSON; answers `{id, pid}` or `{error}` as JSON. */
     spawn(argv: string, options: string): string;
@@ -89,29 +100,40 @@ export interface ApiHost extends ClockHost {
     loading(): boolean;
 }
 
-/** What the host API reads of the shell. */
+/** The host API's view of the shell functions. */
 export type Host = ApiHost;
 
-/** A failed call: its error code and message. */
+/** The error code and message for a failed call. */
 export interface Failure {
+    /** Error code returned by the failed call. */
     code: string;
+    /** Human-readable error message. */
     message: string;
 }
 
-/** A compositor call that finished, by its token. */
+/** A compositor call response, identified by its ticket. */
 export interface OperationEvent {
+    /** Identifies this message as a compositor operation response. */
     kind: "op";
+    /** Ticket identifying the pending call. */
     ticket: number;
+    /** Whether the operation succeeded. */
     ok: boolean;
+    /** Successful operation result, when present. */
     value?: unknown;
+    /** Failure details, when the operation failed. */
     error?: Failure;
 }
 
-/** A signal the compositor raised. */
+/** A compositor signal as received by the host. */
 export interface SignalMessage {
+    /** Identifies this message as a compositor signal. */
     kind: "signal";
+    /** Signal name. */
     name: string;
+    /** Identity of the object that raised the signal. */
     object: number;
+    /** Signal fields, keyed by their wire names. */
     fields: Record<string, unknown>;
 }
 
@@ -120,10 +142,10 @@ interface LostMessage {
     message: string;
 }
 
-/** The compositor's `track_ended` signal, as the host collects it (`data/js/gnoblin/transition.ts`). */
+/** A compositor `track_ended` signal, collected by the host. */
 interface TrackEndedMessage extends TrackEndedEvent {
     kind: "trackEnded";
 }
 
-/** Anything the shell hands `HostApi.frame`. */
+/** Events delivered to `HostApi.frame`. */
 export type HostEvent = OperationEvent | SignalMessage | LostMessage | ExitEvent | TrackEndedMessage;

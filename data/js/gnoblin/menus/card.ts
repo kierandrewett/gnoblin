@@ -1,6 +1,4 @@
-// `WindowMenu`: one menu card, the widgets in it (an entry, a check or submenu mark, a separator, the panel that holds
-// them), its keys, and the submenu it may have open. An entry opens a submenu as a `WindowMenu` of its own, so the
-// widgets and the menu are one module.
+// A menu card and its entry widgets. Submenus use their own cards, so the menu and widgets share this module.
 
 import {
     EDGE,
@@ -24,7 +22,7 @@ import { Text } from "gnoblin/ui/text";
 import type { UiKeyEvent, UiPointerEvent } from "gnoblin/ui/events";
 import type { PaintOp } from "gnoblin/ui/paint";
 
-/** A tick or a chevron, drawn from lines so it never depends on the font having the glyph. */
+/** Draws a check or submenu arrow from lines, without relying on a font glyph. */
 class MenuMark extends Box {
     kind: "" | "check" | "arrow" = "";
     color: string = MENU_COLOURS.text;
@@ -78,12 +76,19 @@ class MenuSeparator extends Box {
  * A disabled entry is shown dim and the selection skips it.
  */
 export class MenuItem extends Box implements NavRow {
+    /** The source entry used to build this row. */
     readonly entry: MenuEntry;
+    /** The displayed label, or an empty string when omitted. */
     readonly label: string;
+    /** Whether this row can be selected or activated. */
     readonly enabled: boolean;
+    /** Whether this row displays a check mark. */
     readonly checked: boolean;
+    /** Whether this row opens a submenu. */
     readonly submenu: boolean;
+    /** Whether this row is selected by the pointer or keyboard. */
     selected = false;
+    /** The text widget that displays the label. */
     readonly labelText: Text;
     readonly #check = new MenuMark();
     readonly #arrow = new MenuMark();
@@ -113,11 +118,12 @@ export class MenuItem extends Box implements NavRow {
         return this.selected ? MENU_COLOURS.hotText : MENU_COLOURS.text;
     }
 
-    /** How wide the entry wants to be: its label, the marks, the gaps and the edges. */
+    /** Returns the width needed for the label, marks, gaps and edges. */
     natural(): number {
         return this.labelText.metrics().width + 2 * EDGE + 2 * MARK + 4 * 4;
     }
 
+    /** Updates row colours to match its enabled and selected state. */
     override refresh(): void {
         const ink = this.ink();
         this.fill = this.selected && this.enabled ? MENU_COLOURS.hot : "#00000000";
@@ -126,6 +132,7 @@ export class MenuItem extends Box implements NavRow {
         this.#arrow.color = ink;
     }
 
+    /** Selects this row when the pointer enters it. */
     override onEnter(): void {
         const menu = this.#menu();
         if (menu !== null && this.enabled) {
@@ -133,6 +140,7 @@ export class MenuItem extends Box implements NavRow {
         }
     }
 
+    /** Selects and activates this row on a left-button press. */
     override onPress(event: UiPointerEvent): void {
         event.stop();
         const menu = this.#menu();
@@ -154,6 +162,7 @@ export class MenuItem extends Box implements NavRow {
 
 /** A column of entries on a card. It takes the presses on its padding, so a press there is not a click away. */
 export class MenuPanel extends Box {
+    /** Visible menu rows in display order. */
     rows: MenuItem[] = [];
     /**
      * Where the card goes along x. The first card's is the anchor; a submenu's sits beside its parent.
@@ -164,6 +173,7 @@ export class MenuPanel extends Box {
         super({ direction: "column", radius: 10, fill: MENU_COLOURS.card, padding: PAD, gap: 0, secure });
     }
 
+    /** Sizes the card to its widest row and updates its horizontal position. */
     override refresh(): void {
         let widest = MIN_WIDTH;
         for (const row of this.rows) {
@@ -173,12 +183,13 @@ export class MenuPanel extends Box {
         this.x = this.placeX(this);
     }
 
+    /** Keeps presses on the card padding from closing the menu. */
     override onPress(event: UiPointerEvent): void {
         event.stop();
     }
 }
 
-/** The card for `entries`, with the extra properties `place` gives it, and the rows that can be selected, in order. */
+/** Builds a card from entries and their placement. */
 function buildPanel(
     menu: WindowMenu,
     entries: readonly MenuEntry[],
@@ -202,15 +213,18 @@ function buildPanel(
 }
 
 /**
- * The whole menu: a transparent layer over the screen that takes every press, so one outside the cards is a click away,
- * and that holds the keyboard focus. The cards are its children, so closing it closes them.
+ * A menu layer that takes every press outside its cards and holds keyboard focus. Closing it also closes its cards.
  */
 export class WindowMenu extends Box {
+    /** Client whose menu is open. */
     readonly client: MenuClient;
     /** Where the keyboard was before the menu took it: the node it goes back to. */
     readonly before: number | null;
+    /** Keyboard selection across the main card and submenu. */
     readonly nav: MenuNavigator<MenuItem>;
+    /** Main card containing the top-level entries. */
     readonly panel: MenuPanel;
+    /** Open submenu card, or `null` when none is open. */
     sub: MenuPanel | null = null;
     readonly #owner: WindowMenus;
 
@@ -233,7 +247,7 @@ export class WindowMenu extends Box {
         this.nav = new MenuNavigator(this.panel.rows);
     }
 
-    /** Runs a row. A submenu opens; anything else closes the menu first and then runs, so what it does starts clean. */
+    /** Runs an entry, opening its submenu or closing the menu before running its action. */
     activate(row: MenuItem): void {
         if (!row.enabled) {
             return;
@@ -248,7 +262,7 @@ export class WindowMenu extends Box {
         run?.(client);
     }
 
-    /** Opens the submenu of `row` to the right of the card, or to the left when there is no room. */
+    /** Opens `row`'s submenu to the right of the card, or to the left when there is no room. */
     openSubmenu(row: MenuItem): void {
         const spec = row.entry.submenu;
         const entries = typeof spec === "function" ? spec(this.client) : spec;
@@ -269,6 +283,7 @@ export class WindowMenu extends Box {
         this.nav.openSubmenu(sub.rows);
     }
 
+    /** Closes the submenu and restores selection to the main card. */
     closeSubmenu(): void {
         if (this.nav.depth !== 2) {
             return;
@@ -278,12 +293,14 @@ export class WindowMenu extends Box {
         this.nav.closeSubmenu();
     }
 
+    /** Syncs row highlights with the keyboard selection. */
     override refresh(): void {
         for (const row of [...this.panel.rows, ...(this.sub?.rows ?? [])]) {
             row.selected = this.nav.isSelected(row);
         }
     }
 
+    /** Closes the menu when a press lands outside its cards. */
     override onPress(event: UiPointerEvent): void {
         event.stop();
         this.#owner.close();

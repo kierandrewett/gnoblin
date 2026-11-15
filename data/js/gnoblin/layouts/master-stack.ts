@@ -1,9 +1,7 @@
-// MasterStackLayout: a master column of `masterCount` nodes and a stack of the rest. Geometry is
-// data/lua/gnoblin/shell/tiling.lua `Tiling`, rectangle for rectangle: the master takes `ratio` of the
-// free width (height for top and bottom), `gap` separates tiles, and every edge is floored.
-// It registers two default bindings in `layout.bindings`: `swap` (Super+MouseLeft+Drag, `ClientSwapBinding`) trades two
-// tiles' places, and `resize` (Super+MouseRight+Drag, `SplitResizeBinding`) drags the divider between master and
-// stack. `triggers` replaces a trigger, and `null` leaves that binding out.
+// MasterStackLayout places `masterCount` nodes in a master column and the rest in a stack. The master takes `ratio`
+// of the available width (or height for top and bottom); `gap` separates tiles.
+// Default `swap` and `resize` bindings trade tile positions and drag the divider between the master and stack.
+// `triggers` replaces a binding trigger, and `null` leaves that binding out.
 
 import { resolveTriggers } from "gnoblin/bindings/binding";
 import { ClientSwapBinding, SplitResizeBinding } from "gnoblin/bindings/tiling";
@@ -48,10 +46,15 @@ interface Computed {
 
 /** A tiling layout with one master column on one edge. The other nodes stack in the remaining column. */
 export class MasterStackLayout extends Layout {
+    /** Share of the available master axis, clamped to 0.1..0.9 when computing. Default 0.5. */
     ratio: number;
+    /** Number of nodes placed in the master region. Default 1. */
     masterCount: number;
+    /** Gap between tiles, or `undefined` to use the workspace gap. */
     gap: number | undefined;
+    /** Edge used for the master region. Default `left`. */
     orientation: Orientation;
+    /** Resolved `swap` and `resize` triggers; `null` means that binding is disabled. */
     readonly triggers: Readonly<Record<"swap" | "resize", string | null>>;
     #computed: Computed | null = null;
 
@@ -70,6 +73,7 @@ export class MasterStackLayout extends Layout {
         }
     }
 
+    /** Returns one tiled placement per child in the master and stack regions. */
     compute(context: LayoutContext): Placement[] {
         const nodes = context.children;
         if (nodes.length === 0) {

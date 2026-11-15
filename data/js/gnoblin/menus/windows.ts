@@ -1,8 +1,4 @@
-// The stock window menu, ported from data/lua/gnoblin/shell/menus.lua. It owns the menu card, its keys and submenus.
-// The compositor sends a `menu` request for a window: a client's `show_window_menu`, the window-menu key, or a
-// titlebar's right click. Each request ends in `windowMenu.show`. Its entries come from `windowMenu.items`; assign
-// either to change it. `crates/gnoblin-js/tests/stock_ui.rs` drives the menu. A script starts it with
-// `startWindowMenu()`.
+// The stock window menu handles compositor requests, builds entries and opens a menu card.
 
 import { WindowMenu } from "gnoblin/menus/card";
 import type { MenuClient, MenuEntry, MenuWorld } from "gnoblin/menus/types";
@@ -11,9 +7,8 @@ import { uiFocus, uiFocused, uiLocked, uiPointer, uiScreen } from "gnoblin/ui/se
 import { isRequestHandled } from "gnoblin/window_state";
 
 /**
- * What the window menu offers a window: Restore or Maximise, Minimise, Move, Resize, Always on top, Move to workspace
- * and Close. Move and Resize are the keyboard modes (`gnoblin/reposition`): they are shown off for a window that is not
- * floating and for a client that does not offer `moveWithKeys` and `resizeWithKeys`.
+ * Returns the stock entries for a window. Move and Resize are disabled for non-floating windows or clients without
+ * keyboard move and resize support.
  */
 export function defaultMenuItems(client: MenuClient, controller: WindowMenus, world: MenuWorld): MenuEntry[] {
     const floating = !(client.maximised || client.fullscreen || client.tiled);
@@ -86,26 +81,25 @@ export function defaultMenuItems(client: MenuClient, controller: WindowMenus, wo
 }
 
 /**
- * The window menu of the shell: it answers the compositor's menu requests, opens one menu at a time and keeps the
- * keyboard where it was. `items` and `show` are the two places to change it: assign either
- * (`windowMenu.items = (client) => [...]`) to change what the menu offers or to draw another.
+ * Handles compositor menu requests, opens one menu at a time and restores keyboard focus when it closes. Set `items`
+ * to change the entries or `show` to draw a different menu.
  */
 export class WindowMenus {
     #world: MenuWorld | null = null;
     #current: WindowMenu | null = null;
     readonly #above = new Set<MenuClient>();
 
-    /** Whether the stock menu answers the compositor's requests. */
+    /** Whether this instance has started answering compositor requests. */
     get started(): boolean {
         return this.#world !== null;
     }
 
-    /** The menu now open, or `null`. */
+    /** The currently open menu, or `null`. */
     get current(): WindowMenu | null {
         return this.#current;
     }
 
-    /** Starts answering menu requests. A shell does this once, through `startWindowMenu`. */
+    /** Starts handling menu requests. A shell calls this through `startWindowMenu`. */
     start(world: MenuWorld): void {
         this.#world = world;
         onUiRequest((request) => {
@@ -120,7 +114,7 @@ export class WindowMenus {
         onUiFrame(() => this.#watch());
     }
 
-    /** What the menu offers `client`: a list of entries. Assign it to change the menu. */
+    /** Returns the entries for `client`. Assign this method to change the menu. */
     items(client: MenuClient): MenuEntry[] {
         if (this.#world === null) {
             return [];
@@ -129,18 +123,15 @@ export class WindowMenus {
     }
 
     /**
-     * Opens the window's menu with its corner at (x, y) in the compositor's coordinates, at the pointer when none is
-     * given. Every request ends here; assign it to draw a different menu.
+     * Opens `client`'s menu at `(x, y)`, or at the pointer when coordinates are omitted. Assign this method to draw a
+     * different menu.
      */
     show(client: MenuClient, x?: number, y?: number): WindowMenu | null {
         const pointer = uiPointer() ?? { x: 0, y: 0 };
         return this.open(client, x ?? pointer.x, y ?? pointer.y);
     }
 
-    /**
-     * The stock menu: closes any other, and opens nothing when the window is not showing, the session is locked, there
-     * are no entries or the tree has no screen. Returns the menu, or `null` when none opened.
-     */
+    /** Closes any open menu, then opens the stock menu unless the window or session cannot show it or it is empty. */
     open(client: MenuClient, x: number, y: number): WindowMenu | null {
         this.close();
         const world = this.#world;
@@ -161,7 +152,7 @@ export class WindowMenus {
         return menu;
     }
 
-    /** Closes the menu, if one is open, and gives the keyboard back to where it was. Returns whether one was open. */
+    /** Closes the open menu and restores keyboard focus. Returns whether a menu was open. */
     close(): boolean {
         const menu = this.#current;
         if (menu === null) {
@@ -178,14 +169,12 @@ export class WindowMenus {
         return true;
     }
 
-    /** Whether the window is pinned over the ones that are not. */
+    /** Whether `client` is pinned above unpinned windows. */
     isAbove(client: MenuClient): boolean {
         return this.#above.has(client);
     }
 
-    /**
-     * Pins `client` above the windows that are not pinned, or lets it go. Raising keeps pinned windows over the others.
-     */
+    /** Pins `client` above unpinned windows, or removes the pin. Pinned windows stay above unpinned ones on raise. */
     setAbove(client: MenuClient, on: boolean): void {
         if (on) {
             this.#above.add(client);
@@ -195,7 +184,7 @@ export class WindowMenus {
         }
     }
 
-    /** The menu closes when its window goes or the session locks, and a pinned window is kept over the others. */
+    /** Closes the menu on window removal or session lock, and keeps pinned windows above unpinned windows. */
     #watch(): void {
         const menu = this.#current;
         if (menu !== null && (!menu.client.alive || uiLocked())) {
@@ -207,8 +196,7 @@ export class WindowMenus {
     }
 
     /**
-     * Raises the pinned windows when a window that is not pinned lies over one. A fullscreen window keeps the top over
-     * the pinned ones.
+     * Raises pinned windows when an unpinned window would cover one. Fullscreen windows remain above pinned windows.
      */
     #keepPinned(world: MenuWorld): void {
         for (const client of [...this.#above]) {
@@ -231,5 +219,5 @@ export class WindowMenus {
     }
 }
 
-/** The stock window menu, started by `startWindowMenu`. */
+/** The stock window menu instance, started by `startWindowMenu`. */
 export const windowMenu = new WindowMenus();

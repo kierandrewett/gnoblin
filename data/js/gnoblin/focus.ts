@@ -24,10 +24,13 @@ export type NewWindowPolicy = "allow" | "prevent";
 
 /** The focus settings, every key optional: a key left out is the documented default. */
 export interface FocusConfig {
+    /** Focus behaviour on pointer entry and click. */
     mode?: FocusMode;
     /** Whether a window started from a launcher takes focus. */
     newWindows?: NewWindowPolicy;
+    /** Raises a window when it receives a pointer click. */
     raiseOnClick?: boolean;
+    /** Raises a window after the pointer rests over it. */
     autoRaise?: boolean;
     /** Milliseconds a pointer stays over a window before auto raise lifts it. */
     autoRaiseDelay?: number;
@@ -37,11 +40,17 @@ export interface FocusConfig {
 
 /** The focus settings in force. Read-only: build them with `focusSettings` or `seatFocusSettings`. */
 export interface FocusSettings {
+    /** Focus behaviour on pointer entry and click. */
     readonly mode: FocusMode;
+    /** Whether a newly launched window takes focus. */
     readonly newWindows: NewWindowPolicy;
+    /** Whether a click raises its window. */
     readonly raiseOnClick: boolean;
+    /** Whether pointer rest raises its window. */
     readonly autoRaise: boolean;
+    /** Milliseconds the pointer must rest before a window is raised. */
     readonly autoRaiseDelay: number;
+    /** Whether pointer rest changes focus in hover modes. */
     readonly changeOnPointerRest: boolean;
 }
 
@@ -188,8 +197,11 @@ export type FocusEvent =
 
 /** What to do about it. A `...After` is a delay in milliseconds that a leave or a new rest cancels. */
 export interface FocusDecision {
+    /** Focuses the window immediately. */
     readonly focus: boolean;
+    /** Clears focus from all windows. */
     readonly clear: boolean;
+    /** Raises the window immediately. */
     readonly raise: boolean;
     /** Focus the window after this long, unless the pointer left or a button is held by then. */
     readonly focusAfter: number | null;
@@ -243,9 +255,11 @@ export interface FocusHost<C extends object> {
     settings(): FocusSettings;
     /** Whether `client` has the keyboard focus now. */
     focused(client: C): boolean;
+    /** Gives keyboard focus to `client`. */
     focus(client: C): void;
     /** Takes the keyboard focus from every window. */
     clearFocus(): void;
+    /** Raises `client` above other windows. */
     raise(client: C): void;
     /** Milliseconds on a clock that only goes forward. */
     now(): number;
@@ -253,6 +267,7 @@ export interface FocusHost<C extends object> {
     isArrival(client: C): boolean;
     /** Whether `client` opened on a token the launcher minted (`focus.newWindows` then decides). Absent: no. */
     fromLauncher?(client: C): boolean;
+    /** Whether `client` still exists. */
     alive(client: C): boolean;
 }
 
@@ -283,6 +298,7 @@ export class FocusPolicy<C extends object> {
         });
     }
 
+    /** Applies the configured policy when a new window appears. */
     onAdded(client: C): void {
         if (!this.#host.isArrival(client)) {
             return;
@@ -291,14 +307,17 @@ export class FocusPolicy<C extends object> {
         this.#run(client, focusDecision(this.#host.settings(), { kind: "added", fromLauncher }));
     }
 
+    /** Applies the configured policy when the pointer enters `client`. */
     onPointerEnter(client: C): void {
         this.#run(client, focusDecision(this.#host.settings(), { kind: "enter", held: this.#pressed !== null }));
     }
 
+    /** Applies the configured policy when the pointer moves inside `client`. */
     onPointerMotion(client: C): void {
         this.#run(client, focusDecision(this.#host.settings(), { kind: "motion", held: this.#pressed !== null }));
     }
 
+    /** Cancels pending actions and applies the leave policy. */
     onPointerLeave(client: C): void {
         this.#pending.delete(client);
         const focused = this.#host.focused(client);
@@ -308,15 +327,18 @@ export class FocusPolicy<C extends object> {
         );
     }
 
+    /** Focuses `client` and raises it when the settings require it. */
     onPointerPress(client: C): void {
         this.#pressed = client;
         this.#run(client, focusDecision(this.#host.settings(), { kind: "press" }));
     }
 
+    /** Clears the pressed-window state after a pointer release. */
     onPointerRelease(): void {
         this.#pressed = null;
     }
 
+    /** Cancels pending focus and raise actions for a closed window. */
     onClosed(client: C): void {
         this.#pending.delete(client);
         if (this.#pressed === client) {

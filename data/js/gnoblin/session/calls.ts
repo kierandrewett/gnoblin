@@ -47,6 +47,7 @@ export class Calls {
         return operation;
     }
 
+    /** Settles a pending call from the compositor's response. */
     finish(event: OperationEvent): void {
         const call = this.#pending.get(event.ticket);
         if (call === undefined) {
@@ -71,12 +72,13 @@ export class Calls {
         }
     }
 
+    /** Drops pending call tracking when this instance is retired. */
     clear(): void {
         this.#pending.clear();
     }
 }
 
-/** `gnoblin.session`: the session's state, and the verbs that end it, suspend it or lock it. */
+/** The session's state and its logout, power, suspend and lock operations. */
 export class Session {
     #host: Host;
     #calls: Calls;
@@ -103,34 +105,35 @@ export class Session {
         return this.#calls.begin("logout", "session.logout");
     }
 
-    /** Powers the machine off. Succeeds once the init system accepts; this call does not prompt. */
+    /** Powers the machine off. The operation succeeds when the init system accepts. */
     poweroff(): Operation<Accepted> {
         return this.#calls.begin("poweroff", "session.poweroff");
     }
-
+    /** Restarts the machine. */
     reboot(): Operation<Accepted> {
         return this.#calls.begin("reboot", "session.reboot");
     }
 
     /**
-     * Suspends to RAM. The session locks first. Fails `denied`, `unsupported`, `busy`, `unavailable` or `timed_out`.
+     * Suspends to RAM after locking the session. Can fail with `denied`, `unsupported`, `busy`, `unavailable` or
+     * `timed_out`.
      */
     suspend(): Operation<Accepted> {
         return this.#calls.begin("suspend", "session.suspend");
     }
 
-    /** Hibernates to disk. Fails `unsupported` when the machine reports it cannot. */
+    /** Hibernates to disk. Can fail with `unsupported` when the machine reports it cannot. */
     hibernate(): Operation<Accepted> {
         return this.#calls.begin("hibernate", "session.hibernate");
     }
 
-    /** Asks the compositor to take the session lock. Read `status()` to see it enter a locked state. */
+    /** Asks the compositor to lock the session. Read `status()` to check whether it is locked. */
     lock(): Operation<LockRequest> {
         return this.#calls.begin("lock", "session.lock");
     }
 }
 
-/** `gnoblin.runtime`: what a script asks of the process that runs it. */
+/** Runtime operations available to scripts. */
 export class Runtime {
     #host: Host;
     #calls: Calls;
@@ -141,13 +144,11 @@ export class Runtime {
     }
 
     /**
-     * Asks for the reload `gnoblinctl config reload` asks for: the runtime evaluates the configuration again and
-     * commits it. The operation succeeds once the compositor accepted the revision and fails `config_rejected` with
-     * the reason when the document is refused, in which case the running configuration stays and this generation's
-     * callbacks run. A successful reload replaces the generation that asked, so its callbacks are gone with it:
-     * subscribe to nothing here, read `gnoblin.session` or the `config.reloaded` signal in the new one.
+     * Reloads the configuration. The operation succeeds when the compositor accepts it, or fails with
+     * `config_rejected` and the reason. A failed reload keeps the current configuration; a successful reload replaces
+     * this generation, so its callbacks end. Read `gnoblin.session` or the `config.reloaded` signal in the new one.
      *
-     * Throws while the configuration loads, because every reload would ask for another.
+     * Throws while the configuration is loading.
      */
     reloadConfig(): Operation<ReloadResult> {
         if (this.#host.loading()) {

@@ -16,22 +16,29 @@ import type { BindingOptions, DragEvent } from "gnoblin/bindings/types";
 
 /** What the slide needs of a window. */
 export interface SlideClient {
+    /** The window's horizontal position, in logical pixels. */
     x: number;
+    /** Whether the window is visible on screen. */
     visible: boolean;
+    /** Whether the window still exists. */
     readonly alive: boolean;
+    /** Animates the window's horizontal position, in logical pixels. */
     animate(values: { x: number }, options: { duration: number; easing: "ease-out" }): void;
 }
 
 /** What it needs of a workspace. */
 export interface SlideWorkspace {
+    /** Whether this is the active workspace. */
     readonly active: boolean;
     /** The position among the workspaces. */
     readonly index: number;
+    /** Windows on this workspace. */
     readonly clients: Iterable<SlideClient>;
 }
 
 /** What it needs of the shell: the `gnoblin` global. */
 export interface SlideHost {
+    /** Workspaces in their current order. */
     readonly workspaces: {
         /** The area windows are laid out in; null while there is no screen. */
         readonly area: { readonly width: number } | null;
@@ -39,6 +46,7 @@ export interface SlideHost {
         show(workspace: SlideWorkspace, options: { duration: number; progress: number }): void;
         [Symbol.iterator](): Iterator<SlideWorkspace>;
     };
+    /** Creates a timer that fires after the delay, in milliseconds. */
     readonly timers: {
         /** Runs `run` once, `ms` milliseconds from now. */
         after(ms: number, run: () => void): unknown;
