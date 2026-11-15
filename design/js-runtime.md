@@ -14,17 +14,17 @@ Inputs (all in `design/js-research/`):
 
 ## Decisions
 
-| ID           | Decision                                                                                                                                                                                                                                                                                                                                                                                     | Why                                                                                                                                                                                                                                                                                |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| J1           | Engine is rquickjs 0.14 on quickjs-ng, in a separate supervised `gnoblin-js` process.                                                                                                                                                                                                                                                                                                        | Same shape as the Lua shell VM today (owner socket, tree protocol). The compositor never waits on JS. rquickjs only binds quickjs-ng.                                                                                                                                              |
-| J2           | `.ts` runs directly. oxc (`=0.158.0`, pinned) strips types in the module loader, with a source map. No embedded type checker.                                                                                                                                                                                                                                                                | A user never runs a build step. oxc matches the workspace MSRV 1.97.0. TypeScript 7 has no embeddable compiler.                                                                                                                                                                    |
-| J3           | Editors get a generated `gnoblin.d.ts` and a `tsconfig.json` written on first run. `gnoblinctl check` checks the module graph and syntax itself, and runs an external `tsc` for types when one exists.                                                                                                                                                                                       | Types come from the schema, like `gnoblin.d.lua` does today.                                                                                                                                                                                                                       |
-| J4 (revised) | The public API is the owner's spec; no declarative config layer. An `init.ts` is a program that runs top to bottom against live objects (spec 3, 18 and 20): there is no config object, no merge and no plan. The first design had a second tier, a plain-data `defineConfig` that desugared to the object API; the owner never asked for it, and it was removed (design/js-spec-native.md). | The spec's objects are the whole surface. A library helper exists only where the spec itself shows one in user code (`FocusAppearance`, `LogOutputs`, the stock layouts), and a setting with no object in the spec is not given an invented home (design/js-spec-native.md, 3.11). |
-| J5           | Hot reload swaps a whole generation. New Runtime and Context per generation, stage, validate, commit at one compositor boundary, then drop the old one. A failed reload keeps the old generation and reports file, line and column in `.ts` coordinates. File watching uses inotify.                                                                                                         | QuickJS has no module eviction. A fresh Runtime is the only clean invalidation.                                                                                                                                                                                                    |
-| J6           | Observable fields on user subclasses use a snapshot diff at transaction boundaries. A Proxy in the base class constructor is the fallback if the diff is not enough.                                                                                                                                                                                                                         | Layouts and bindings run in the JS process, so Rust does not have to see every write. No Proxy is visible to users.                                                                                                                                                                |
-| J7           | XR stays an out-of-process program on the owner socket (D34/D35). It is not a `.so` loaded into any process.                                                                                                                                                                                                                                                                                 | `extensions/gnoblin-xr` already works that way. Spec section 17 is replaced by the owner-socket model.                                                                                                                                                                             |
-| J8           | Rust draws the security-critical built-in dialogs: portal consent, secret and passphrase entry, polkit, lock password entry. JS themes them (`dialogs.style`), can intercept them (`DialogListener`), and can replace them only through the owner connection. The compositor owns each request and its deadline. JS holds a lease.                                                           | A crashed or reloading runtime must never leave the keyring, polkit or the lock without a UI. See `popups-portals.md`.                                                                                                                                                             |
-| J9           | The Lua shell stays as the reference until the JS shell passes the same golden geometry corpus. Then delete `gnoblin-lua`, `gnoblin-lua-sandbox`, `data/lua/**` and the Lua docs.                                                                                                                                                                                                            | Spec section 22. No half-migrated state.                                                                                                                                                                                                                                           |
+| ID           | Decision                                                                                                                                                                                                                                                                                                                           | Why                                                                                                                                   |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| J1           | Engine is rquickjs 0.14 on quickjs-ng, in a separate supervised `gnoblin-js` process.                                                                                                                                                                                                                                              | Same shape as the Lua shell VM today (owner socket, tree protocol). The compositor never waits on JS. rquickjs only binds quickjs-ng. |
+| J2           | `.ts` runs directly. oxc (`=0.158.0`, pinned) strips types in the module loader, with a source map. No embedded type checker.                                                                                                                                                                                                      | A user never runs a build step. oxc matches the workspace MSRV 1.97.0. TypeScript 7 has no embeddable compiler.                       |
+| J3           | Editors get a generated `gnoblin.d.ts` and a `tsconfig.json` written on first run. `gnoblinctl check` checks the module graph and syntax itself, and runs an external `tsc` for types when one exists.                                                                                                                             | Types come from the schema, like `gnoblin.d.lua` does today.                                                                          |
+| J4 (revised) | The public API is the owner's spec. There is no declarative config layer: an `init.ts` runs top to bottom against live objects. The first design's plain-data tier (`defineConfig`) was removed.                                                                                                                                   | The owner never asked for a second tier. A setting with no spec object gets no invented home (design/js-spec-native.md, 3.11).        |
+| J5           | Hot reload swaps a whole generation. New Runtime and Context per generation, stage, validate, commit at one compositor boundary, then drop the old one. A failed reload keeps the old generation and reports file, line and column in `.ts` coordinates. File watching uses inotify.                                               | QuickJS has no module eviction. A fresh Runtime is the only clean invalidation.                                                       |
+| J6           | Observable fields on user subclasses use a snapshot diff at transaction boundaries. A Proxy in the base class constructor is the fallback if the diff is not enough.                                                                                                                                                               | Layouts and bindings run in the JS process, so Rust does not have to see every write. No Proxy is visible to users.                   |
+| J7           | XR stays an out-of-process program on the owner socket (D34/D35). It is not a `.so` loaded into any process.                                                                                                                                                                                                                       | `extensions/gnoblin-xr` already works that way. Spec section 17 is replaced by the owner-socket model.                                |
+| J8           | Rust draws the security-critical built-in dialogs: portal consent, secret and passphrase entry, polkit, lock password entry. JS themes them (`dialogs.style`), can intercept them (`DialogListener`), and can replace them only through the owner connection. The compositor owns each request and its deadline. JS holds a lease. | A crashed or reloading runtime must never leave the keyring, polkit or the lock without a UI. See `popups-portals.md`.                |
+| J9           | The Lua shell stays as the reference until the JS shell passes the same golden geometry corpus. Then delete `gnoblin-lua`, `gnoblin-lua-sandbox`, `data/lua/**` and the Lua docs.                                                                                                                                                  | Spec section 22. No half-migrated state.                                                                                              |
 
 ## Developer checks
 
@@ -37,12 +37,16 @@ non-obvious choice or necessary `any` or type assertion exists. See [contributor
 
 ## Zero-config baseline
 
-Without any `init.ts`, the stock default runs: `installDefaults` of the embedded `gnoblin/starter` module, written as the same
-calls an `init.ts` makes. It declares the four floating workspaces `1` to `4` of the Lua stock config
-(`data/default-config/config/10-windows.lua`), titlebars, the window menu, the not-responding alert, and the stock keys of the Lua shell.
-`Super+1` to `Super+9` show the workspace at that position, so `Super+1` to `Super+4` act and the rest wait for more
-workspaces. An `init.ts` replaces the default: a file that binds no keys has none, and one that declares no workspace gets one
-floating `desktop`. The stock library is itself TypeScript, shipped in `/usr/share/gnoblin/js/` and embedded as the `gnoblin` module.
+Without any `init.ts`, the stock default runs: `installDefaults` of the embedded `gnoblin/starter` module, written as the
+same calls an `init.ts` makes.
+
+- It declares the four floating workspaces `1` to `4` of the Lua stock config (`data/default-config/config/10-windows.lua`),
+  titlebars, the window menu, the not-responding alert and the stock keys of the Lua shell.
+- `Super+1` to `Super+9` show the workspace at that position, so `Super+1` to `Super+4` act and the rest wait for more
+  workspaces.
+- An `init.ts` replaces the default. A file that binds no keys has none, and one that declares no workspace gets one
+  floating `desktop`.
+- The stock library is itself TypeScript, shipped in `/usr/share/gnoblin/js/` and embedded as the `gnoblin` module.
 
 ## Slice 1 (first vertical slice, smallest proof)
 
@@ -575,14 +579,14 @@ compositor stands in only for the unit tests of `swap_generation` (`crates/gnobl
   `JsRole::reload_now`) clears the strikes. The shell is a process of its own, so the compositor never waits for a
   script: the test runs the role in a thread, spins a handler for ever, reads the scene through an observer connection
   while it spins, and maps one more window afterwards.
-- **Zero-config, and no layering.** `JsShell::load_default_config` (the `loadDefault` hook of the host module) runs
-  `installDefaults` of `gnoblin/starter`: the same calls an `init.ts` makes (four floating workspaces, titlebars, the
-  window menu, the alert and the stock keys, each claimed on the first seat). The role runs it when there is no entry
-  file and when the entry fails to load at startup, so a shell is never bare. There is no merge: an `init.ts` runs as
-  written and has none of the stock keys or workspaces unless it calls `installDefaults(gnoblin)` or copies the
-  starter's statements, and it gets the stock workspace `desktop` only when it declared none (`finishLoad`). A tree
-  with no seat has no keyboard, so keys are left out. The device settings its objects write reach the compositor (see
-  "P6 config document and slots status").
+- **Zero-config, and no layering.** `JsShell::load_default_config` (the `loadDefault` hook) runs `installDefaults` of
+  `gnoblin/starter`: the same calls an `init.ts` makes.
+    - The role runs it when there is no entry file and when the entry fails to load at startup, so a shell is never bare.
+    - There is no merge. An `init.ts` has none of the stock keys or workspaces unless it calls `installDefaults(gnoblin)` or
+      copies the starter's statements.
+    - It gets the stock workspace `desktop` only when it declared none (`finishLoad`).
+    - A tree with no seat has no keyboard, so keys are left out.
+    - The device settings its objects write reach the compositor (see "P6 config document and slots status").
 - **Reload request path (`gnoblinctl config reload`).** Superseded by "JS-owned runtime role": the JavaScript role
   itself watches `session.reload_requested`, reloads the config, and answers the request with a `config.commit` or a
   `config.reject`. `GNOBLIN_JS_WATCH=0` (`JsRoleConfig::watch`) turns the watcher off. With no entry file `reload_now` is
@@ -711,15 +715,21 @@ compositor.
 The first design carried the settings of the config document as keys of a plain-data config. Each now has the object the
 owner's spec gives it, or is dropped:
 
-| Setting                                                                                                                                                          | Now                                                                                                                         |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `gaps`, `workspaces`, `keys`, `gestureActions`, `launcher`                                                                                                       | `Workspace.gaps` and a layout's `gap`, `gnoblin.workspaces.add`, `input.bind` on a key or a gesture trigger                 |
-| `decorations`, `menus`, `alerts`                                                                                                                                 | `startDecorations()`, `startWindowMenu()` and `startNotRespondingAlert()`                                                   |
-| `on`, `setup`                                                                                                                                                    | `gnoblin.clients.addListener(...)`, and the body of the file                                                                |
-| `style`                                                                                                                                                          | `gnoblin.clients.style` and `gnoblin.clients.where(...).style`                                                              |
-| `outputs`                                                                                                                                                        | `OutputProfile` and `Output.apply` ("Output modes status")                                                                  |
-| `input` (the device settings)                                                                                                                                    | `Keyboard`, `Mouse` and `Touchpad` properties, written to the document's `input` section                                    |
-| `rules`, `focus`, `edgeTiling`, `dragConstraint`, `autostart`, `workspaceSets`, `protocols`, `touchpadGestures`, `dialogs.style` and the other document sections | dropped: no object in the spec carries them. design/js-spec-native.md, 3.11, lists each with what a home for it would need. |
+| Setting                                                    | Now                                                                                                         |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `gaps`, `workspaces`, `keys`, `gestureActions`, `launcher` | `Workspace.gaps` and a layout's `gap`, `gnoblin.workspaces.add`, `input.bind` on a key or a gesture trigger |
+| `decorations`, `menus`, `alerts`                           | `startDecorations()`, `startWindowMenu()` and `startNotRespondingAlert()`                                   |
+| `on`, `setup`                                              | `gnoblin.clients.addListener(...)`, and the body of the file                                                |
+| `style`                                                    | `gnoblin.clients.style` and `gnoblin.clients.where(...).style`                                              |
+| `outputs`                                                  | `OutputProfile` and `Output.apply` ("Output modes status")                                                  |
+| `input` (the device settings)                              | `Keyboard`, `Mouse` and `Touchpad` properties, written to the document's `input` section                    |
+
+Dropped, because no object in the spec carries them (design/js-spec-native.md, 3.11, says what a home would need):
+
+- `rules`, `focus`, `edgeTiling` and `dragConstraint`.
+- `autostart` and `workspaceSets`.
+- `protocols`, `touchpadGestures` and `dialogs.style`.
+- The other sections of the document.
 
 The per-setting rule behind the compositor's answers is `crates/gnoblin-config/src/apply.rs` (`RULES`).
 
@@ -797,18 +807,19 @@ fake link only (the real compositor answers within 250 ms, so a request is rarel
 
 ### The starter and `config init`
 
-Lane JsConfigLists, as it stands. The starter file is `data/js/starter/init.ts` (embedded as `STARTER_CONFIG`): the statements
-of `installDefaults` in `gnoblin/starter`, with its examples as comments that end the way a line of code ends, so a test can
-switch them on (`crates/gnoblin-js/tests/starter_parity.rs` holds the file and `installDefaults` together).
-`gnoblinctl config init [DIR] [--force]` writes it, refuses when `init.ts` or `init.js` exists (an `init.ts` is read first and
-would hide `init.js`), runs `types init` (`ensure_user_files`), prints three steps, and has a `--json` form
-(`crates/gnoblinctl/tests/js_check.rs`). The lane's `protocols`, `touchpadGestures` and `autostart` keys, its shape checks and
-`rejectUnknown` messages for config keys went with the declarative config layer (see "Where the settings of the first design
-went"). The document's `shortcuts` is not a key: bind a key with `input.bind`. `trigger = "release"` has no equivalent (a key
-acts on press), so such a shortcut stays in `init.lua`.
+Lane JsConfigLists, as it stands.
 
-- **Not done.** Typed completions for nested settings of the document sections: only the device settings of `input` reach the
-  document, and they are properties of `Keyboard`, `Mouse` and `Touchpad`.
+- **The starter.** `data/js/starter/init.ts` (embedded as `STARTER_CONFIG`) holds the statements of `installDefaults`. Its
+  examples are comments that end the way a line of code ends, so a test can switch them on. `starter_parity.rs` holds the
+  file and `installDefaults` together.
+- **`gnoblinctl config init [DIR] [--force]`.** It writes the starter, refuses when `init.ts` or `init.js` exists (an
+  `init.ts` is read first and would hide `init.js`), runs `types init`, prints three steps, and has a `--json` form
+  (`crates/gnoblinctl/tests/js_check.rs`).
+- **Gone.** The lane's config keys, shape checks and `rejectUnknown` messages went with the declarative config layer (see
+  "Where the settings of the first design went").
+- **Shortcuts.** The document's `shortcuts` is not a key: bind a key with `input.bind`. A release shortcut has no
+  equivalent, since a key acts on press, so it stays in `init.lua`.
+- **Not done.** Typed completions for nested document settings: only the device settings of `input` reach the document.
 
 ## Focus, rules and snapping status
 
@@ -850,14 +861,12 @@ link) and one real-compositor test in `crates/gnoblin/tests/js_shell.rs`. The us
   (`a_click_focuses_and_raises_a_real_window_so_the_compositor_picks_it_over_the_one_above`): two overlapping windows,
   a click on the lower one where only it shows, then a click where both show, which the compositor gives to the lower
   window because it was raised.
-- **Rules (removed).** `rules.ts` was a data-only engine: a query over `appId`, `title`, `focused` and `onWorkspace`, and the
-  actions `workspace`, `floating`, `size`, `position`, `style`, `fullscreen`, `maximised`, `secure` and `skipFocus`, applied in
-  list order with the later rule winning per field, and re-applied when the app id, title or focus changed. It was deleted
-  with the declarative config layer. A window rule is a listener plus `gnoblin.clients.where(...).style` (spec 4 and 6);
-  `floating`, `fullscreen`, `maximised`, `secure` and skip-focus have no writable property in the spec, so those actions have
-  no replacement yet (design/js-spec-native.md, 3.11, `rules`). What stayed on `Client`: `fullscreen` (writable), `opacity`,
-  `secure`, `floating`, `raise()` and `ClientListener.onAppIdChanged`; `opacity` reads 1 and not 0 while the compositor has
-  published none.
+- **Rules (removed).** `rules.ts` was a data-only engine: queries over app id, title, focus and workspace, and actions on
+  placement, style and window state. It was deleted with the declarative config layer. A window rule is now a listener
+  plus `gnoblin.clients.where(...).style`. The actions with no writable spec property have no replacement yet
+  (design/js-spec-native.md, 3.11).
+- **Still on `Client`.** `fullscreen` (writable), `opacity`, `secure`, `floating`, `raise()` and
+  `ClientListener.onAppIdChanged`. `opacity` reads 1 and not 0 while the compositor has published none.
 - **Snapping.** `ClientMoveBinding({ snap })` tiles a window dropped within `snap` pixels (default 4, `false` never) of a
   screen edge when the seat's `edge_tiling` is on, as `drag` in `init.lua` did.
   `snapClient`, `unsnapClient`, `snappedZone` and `forgetSnap` keep the floating rectangle off the client; a maximised
