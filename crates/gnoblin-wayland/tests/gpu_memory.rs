@@ -8,9 +8,10 @@
 //!   request is `wl_shm.invalid_stride` and the client is disconnected (`an_shm_buffer_past_the_limit_is_a_protocol_error`).
 //!   The limit is the largest size that is accepted, exactly (`the_largest_buffer_is_accepted_and_one_pixel_more_is_not`).
 //!   The dmabuf twin is in `tests/dmabuf.rs`.
-//! - **Hundreds of surfaces end with their client.** A client that maps two hundred windows and drops its connection
-//!   leaves the session with none of them, and the session still answers a second client
-//!   (`hundreds_of_tiny_windows_end_with_their_client`).
+//! - **A thousand windows stop at the cap and end with their client.** A client that makes a thousand toplevels gets
+//!   exactly as many managed as the session's record allows (256), stays connected and leaves the session with none
+//!   of them when it drops, which frees the room for the next client
+//!   (`a_thousand_tiny_windows_stop_at_the_cap_and_end_with_their_client`).
 //!
 //! What it does not prove: the memory a driver holds for a buffer that is accepted (see `tests/gpu_memory_soak.rs` in
 //! the `gnoblin` crate for the series), and a real GPU's dmabuf import.
@@ -87,46 +88,88 @@ fn the_largest_buffer_is_accepted_and_one_pixel_more_is_not() {
     });
 }
 
-/// Maps `count` tiny windows on `client`, which keeps every protocol object alive.
+/// The most windows the session manages at once: `MAX_WINDOWS` of `src/fallback.rs`, which is private to the crate. A
+/// window past it is left unmanaged, so the number is what bounds the record a client that opens toplevels in a loop
+/// can make the compositor keep. The test fails, rather than quietly follows, if the cap is moved.
+const WINDOW_CAP: usize = 256;
+
+/// Maps `count` 1x1 windows on `client` in two round trips: every toplevel is created and committed first, then every
+/// one is given the same shared buffer, which a client may attach to any number of surfaces.
+///
+/// One round trip per window is what a toolkit does and what made two hundred windows take a minute in a debug build:
+/// each commit presents a frame of everything mapped so far. Here the requests queue up and the session handles them
+/// as fast as it reads them, so a thousand windows are cheap enough for every run. The test client acknowledges every
+/// configure as it arrives, which is what lets the second round attach a buffer.
 fn map_tiny_windows(client: &mut Client, count: usize) -> Vec<session::Window> {
-    (0..count)
+    let windows: Vec<session::Window> = (0..count)
         .map(|index| {
-            let window = client.create_window(&format!("org.example.tiny{index}"), "tiny");
-            client.attach_buffer(&window.surface, 1, 1);
-            window
+            let surface = client.compositor.create_surface(&client.qh, ());
+            let xdg_surface = client.wm_base.get_xdg_surface(&surface, &client.qh, ());
+            let toplevel = xdg_surface.get_toplevel(&client.qh, ());
+            toplevel.set_app_id(format!("org.example.tiny{index}"));
+            toplevel.set_title("tiny".to_owned());
+            surface.commit();
+            session::Window {
+                surface,
+                xdg_surface,
+                toplevel,
+            }
         })
-        .collect()
+        .collect();
+    client.roundtrip();
+    let buffer = client.buffer(1, 1);
+    for window in &windows {
+        window.surface.attach(Some(&buffer), 0, 0);
+        window.surface.damage(0, 0, 1, 1);
+        window.surface.commit();
+    }
+    client.roundtrip();
+    windows
 }
 
-/// Waits up to a minute for the session to hold a number of windows `done` accepts: two hundred windows take the
-/// session longer than the ten seconds the other tests allow a state.
+/// Waits up to ten seconds for the session to hold a number of windows `done` accepts.
 fn wait_len(handle: &Handle, done: impl Fn(usize) -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(60);
+    let deadline = Instant::now() + TIMEOUT;
     while !done(handle.windows().len()) {
         assert!(
             Instant::now() < deadline,
             "the session holds {} windows",
             handle.windows().len()
         );
-        thread::sleep(Duration::from_millis(20));
+        thread::sleep(Duration::from_millis(5));
     }
 }
 
-fn windows_in(handle: &Handle) -> usize {
-    handle.windows().len()
-}
-
 #[test]
-fn hundreds_of_tiny_windows_end_with_their_client() {
-    const COUNT: usize = 200;
+fn a_thousand_tiny_windows_stop_at_the_cap_and_end_with_their_client() {
+    const COUNT: usize = 1000;
     let session = Session::start();
     session.run(|handle| {
         let before = resident();
+        let started = Instant::now();
         let mut hostile = Client::connect(handle.socket());
         let windows = map_tiny_windows(&mut hostile, COUNT);
-        wait_len(handle, |len| len == COUNT);
+        assert_eq!(windows.len(), COUNT, "the client made every window it asked for");
+
+        // The session manages as many as its cap and no more, however many the client keeps making: the rest are left
+        // unmanaged (not in the record, not placed, not listed) while the client stays connected and answered.
+        wait_len(handle, |len| len == WINDOW_CAP);
+        hostile.roundtrip();
+        thread::sleep(Duration::from_millis(200));
+        assert_eq!(
+            handle.windows().len(),
+            WINDOW_CAP,
+            "{COUNT} toplevels from one client must leave exactly the cap managed"
+        );
         let held = resident().saturating_sub(before);
-        println!("{COUNT} tiny windows: the process grew by {held} bytes");
+        println!(
+            "{COUNT} tiny windows ({WINDOW_CAP} managed) in {:?}: the process grew by {held} bytes",
+            started.elapsed()
+        );
+        assert!(
+            held < 256 << 20,
+            "a thousand 1x1 windows grew the process by {held} bytes"
+        );
 
         // The session still answers someone else while it holds them.
         let mut other = Client::connect(handle.socket());
@@ -136,13 +179,17 @@ fn hundreds_of_tiny_windows_end_with_their_client() {
         drop(windows);
         drop(hostile);
         wait_len(handle, |len| len == 0);
-        assert_eq!(windows_in(handle), 0, "no window outlives its client");
         other.roundtrip();
         let left = resident().saturating_sub(before);
         println!("after the client left: the process holds {left} bytes more than before");
         assert!(
-            left < 512 << 20,
-            "two hundred 1x1 windows must not leave half a gigabyte behind: {left} bytes"
+            left < 256 << 20,
+            "a thousand 1x1 windows must not leave a quarter of a gigabyte behind: {left} bytes"
         );
+
+        // Room again: a window of a new client is managed once the hostile one is gone.
+        let mut polite = Client::connect(handle.socket());
+        let _window = polite.map_window("org.example.polite", "polite");
+        wait_len(handle, |len| len == 1);
     });
 }

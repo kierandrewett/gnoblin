@@ -348,7 +348,7 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
         }
         // Screenshots through the control socket: both the composed frame and the one the display shows.
         let mut control = owner(&ipc);
-        let shot = if cycle % 2 == 0 {
+        let shot = if cycle.is_multiple_of(2) {
             control.capture_screen()
         } else {
             control.capture_screen_display()
@@ -358,7 +358,7 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
             Err(_) => refused_screenshots += 1,
         }
         // A factor every fifth cycle: 2, 4, then back to 1.
-        if cycle % 5 == 0 {
+        if cycle.is_multiple_of(5) {
             let next = FACTORS[(cycle / 5 % 3) as usize];
             if supersample(&ipc, output, next) {
                 factor = next;

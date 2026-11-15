@@ -199,6 +199,10 @@ pub struct Config {
     /// How long a client may leave a ping unanswered before its windows are marked
     /// unresponsive. Zero disables the liveness pings.
     pub check_alive_timeout: Duration,
+    /// How often each output's memory numbers (`gpu_memory_*`) are published to the tree. The first publication
+    /// comes one period after the session starts. Zero never publishes them, which is what a test needs that reads the
+    /// tree's serial: a publication is a change batch, so it advances the serial at a time the test does not choose.
+    pub gpu_memory_period: Duration,
     /// The source of the session clock. The loop reads it once per turn and advances the
     /// session clock by the time elapsed since the previous turn, so idle and a rest focus
     /// fire without a caller advancing it. A test that must not depend on wall time passes a
@@ -290,6 +294,7 @@ impl Default for Config {
             workspace_names: Vec::new(),
             wm: WmOptions::default(),
             check_alive_timeout: Duration::from_secs(5),
+            gpu_memory_period: crate::gpu_memory::DEFAULT_PERIOD,
             clock: Arc::new(SystemClock),
             observer: None,
             tree: crate::tree_frame::TreeHooks::default(),
@@ -465,6 +470,7 @@ impl Server {
         // A renderer that draws a View's subtree into a texture takes the View's description instead of its pixels.
         state.composer.set_gpu_views(backend.gpu_views());
         state.liveness = crate::liveness::Liveness::new(config.check_alive_timeout);
+        state.gpu_memory = crate::gpu_memory::Publisher::new(config.gpu_memory_period);
         state.window_process_override = config.window_process_override;
         let clock = config.clock.clone();
         // A worker's answer lands here, so the lock settles on the loop that owns the state.

@@ -100,6 +100,9 @@ impl Session {
         // time as unresponsive, which the shell then paints an alert for. A test thread that a loaded machine does not
         // schedule for that long is not a hung application, so the pings are off unless the test is about them.
         config.wayland.check_alive_timeout = Duration::ZERO;
+        // The screens' memory numbers are published as a change a second into a session, and a change wakes the
+        // shell: the tests that count the frames it ran while nothing happened would see that one as work.
+        config.wayland.gpu_memory_period = Duration::ZERO;
         tune(&mut config);
         let thread = std::thread::Builder::new()
             .name("compositor".to_owned())

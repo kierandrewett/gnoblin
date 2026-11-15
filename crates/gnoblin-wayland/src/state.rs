@@ -601,6 +601,9 @@ pub struct State {
     /// of the capture state reads in one place (`protocols::capture_shared`).
     pub(crate) capture: CaptureTables,
 
+    /// When the per-output memory numbers were last published (`gpu_memory.rs`).
+    pub(crate) gpu_memory: crate::gpu_memory::Publisher,
+
     /// The hosted sessions, their protection covers and their requests, which is
     /// `gnoblin_session_host_v1` (`protocols::gnoblin_session_host_v1`).
     pub(crate) session_host: GnoblinSessionHostV1Tables,
@@ -897,6 +900,7 @@ impl State {
             lock_tables: ExtSessionLockV1Tables::default(),
             lock_auth,
             capture,
+            gpu_memory: crate::gpu_memory::Publisher::new(crate::gpu_memory::DEFAULT_PERIOD),
             session_host,
             observation: Arc::new(Mutex::new(SessionSnapshot::default())),
             observer,

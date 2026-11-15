@@ -234,6 +234,38 @@ fn a_transaction_is_applied_and_its_changes_are_published_at_the_next_serial() {
 }
 
 #[test]
+fn a_screens_memory_reaches_the_shell_as_a_change_once_the_period_passes() {
+    // The other tests of this file run with the publication off (`support`), because a publication is a change batch
+    // that advances the serial when the test does not expect it. This one turns it on, with a short period.
+    let (session, _) = Session::start_privileged_configured(&[], |config| {
+        config.wayland.gpu_memory_period = Duration::from_millis(50);
+    });
+    let mut wire = Wire::connect(session.socket());
+    let (_, nodes) = attach_and_snapshot(&mut wire, 1);
+    let screen = nodes
+        .iter()
+        .find(|node| node.class == "screen")
+        .expect("the session has a screen node")
+        .id;
+    let held = |change: &change::Properties| change.key == "gpu_memory_target_bytes" && change.value_double > 0.0;
+    let mut published = prop_of(&nodes, screen, "gpu_memory_target_bytes").is_some_and(held);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !published {
+        assert!(Instant::now() < deadline, "the screen's memory was never published");
+        let envelope = wire.receive().expect("a frame");
+        if envelope.member != "changes" {
+            continue;
+        }
+        let changes: ChangesPayload = envelope.payload_as().expect("the payload decodes");
+        published = changes
+            .changes
+            .iter()
+            .any(|change| change.kind == "set" && change.node == screen && held(change));
+    }
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
 fn a_stale_base_is_refused_and_the_tree_is_unchanged() {
     let session = Session::start();
     let mut wire = Wire::connect(session.socket());

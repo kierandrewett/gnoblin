@@ -13,7 +13,7 @@ There are three ways to read it:
 - On the tree, the properties are `gpu_memory_target_bytes`, `gpu_memory_scratch_bytes`, `gpu_memory_staging_bytes`,
   `gpu_memory_views_bytes`, `gpu_memory_capture_bytes` and `gpu_memory_bytes`.
 
-They are published after every loop iteration and announced only when a value changes.
+They are published at most once a second, the first a second after the session starts, and announced only when a value changes.
 
 | Field     | What holds the bytes                                                                                                  |
 | --------- | --------------------------------------------------------------------------------------------------------------------- |

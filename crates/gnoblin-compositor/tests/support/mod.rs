@@ -120,6 +120,7 @@ impl Session {
             input_tap: Some(input.clone()),
             wayland: gnoblin_wayland::Config {
                 socket_path: Some(wayland.clone()),
+                gpu_memory_period: Duration::ZERO,
                 ..gnoblin_wayland::Config::default()
             },
             privileged,
@@ -169,6 +170,7 @@ impl Session {
             wayland: gnoblin_wayland::Config {
                 socket_path: Some(wayland.clone()),
                 window_process_override: process,
+                gpu_memory_period: Duration::ZERO,
                 ..gnoblin_wayland::Config::default()
             },
             ..SessionConfig::default()
@@ -306,6 +308,7 @@ pub fn config(directory: &Path, ipc: PathBuf) -> SessionConfig {
         ipc_socket: Some(ipc),
         wayland: gnoblin_wayland::Config {
             socket_path: Some(directory.join("wayland.sock")),
+            gpu_memory_period: Duration::ZERO,
             ..gnoblin_wayland::Config::default()
         },
         ..SessionConfig::default()
