@@ -696,7 +696,14 @@ fn a_mode_change_a_hotplug_and_a_mirror_keep_the_factor() {
             .connect_output("Virtual-2", DisplayMode::new(800, 600, 60_000), Scale::integral(1))
             .expect("a mode that covers pixels");
         let back = id_of(handle, "Virtual-2");
-        let back_node = node_of(&shell, "Virtual-2");
+        // The node of the monitor that was unplugged is still in the shell's tree until its removal arrives, and it still
+        // names the same connector and holds the same factor. The node that was plugged in is the one that is not it.
+        let back_node = until("the screen node of the monitor that was plugged in", || {
+            shell.screen_nodes().into_iter().rfind(|candidate| {
+                *candidate != node
+                    && shell.published(*candidate, "connector") == Some(TreeValue::Text("Virtual-2".to_owned()))
+            })
+        });
         shell.wait_published(back_node, "supersample", &TreeValue::Double(2.0));
         assert_eq!(
             picture(handle, back, |image| image.size().width == 1600).size(),
