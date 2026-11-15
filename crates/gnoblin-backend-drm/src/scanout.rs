@@ -36,6 +36,7 @@ use gnoblin_backend::{DmabufCopy, DmabufCopyError, DmabufImportError, DmabufSupp
 use gnoblin_output::DisplayMode;
 use gnoblin_output::supersample::MAX_VIRTUAL_EDGE;
 use gnoblin_render_frame::error::RenderError;
+use gnoblin_render_frame::footprint::{COLOUR_BYTES_PER_PIXEL, Footprint, image_bytes};
 use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_gles::egl;
@@ -151,6 +152,19 @@ impl Device {
         }
     }
 
+    /// What the probe context holds: the textures of the Views it read back and its 1x1 target. The probe serves every
+    /// output, so it belongs to none; [`crate::Drm`] counts it once.
+    pub(crate) fn footprint(&self) -> Footprint {
+        self.probe.as_ref().map(Gles::footprint).unwrap_or_default()
+    }
+
+    /// Gives back what the probe context holds only between uses.
+    pub(crate) fn release_scratch(&mut self) {
+        if let Some(probe) = self.probe.as_mut() {
+            probe.release_scratch();
+        }
+    }
+
     /// Writes a picture the CPU holds into a client's GPU buffer, on the probe context.
     ///
     /// The frame an output last drew is not copied: a scan-out buffer is the frame, and it is handed to the display,
@@ -213,6 +227,11 @@ impl<T> SlotRing<T> {
             *entry = Some(allocate()?);
         }
         Ok(())
+    }
+
+    /// How many slots hold an allocation.
+    pub(crate) fn allocated(&self) -> usize {
+        self.slots.iter().flatten().count()
     }
 
     /// The value in slot `index`, which must have been allocated.
@@ -307,6 +326,28 @@ impl Buffers {
         Ok(())
     }
 
+    /// What this output holds: its renderer's footprint, and the scan-out buffers allocated so far, which the renderer
+    /// does not count (it only imports them as render targets). The buffers are the frame the kernel scans out, so they
+    /// are target bytes: the budget never takes them back.
+    #[must_use]
+    pub(crate) fn footprint(&self) -> Footprint {
+        let scan_out = Footprint {
+            target: scanout_bytes((self.size.w, self.size.h), self.slots.allocated()),
+            ..Footprint::default()
+        };
+        self.gles.footprint().plus(scan_out)
+    }
+
+    /// Gives back the renderer's blur scratch, which the next frame that blurs makes again.
+    pub(crate) fn release_scratch(&mut self) {
+        self.gles.release_scratch();
+    }
+
+    /// Gives back the textures of every View this output draws; the next frame that names a View draws it again.
+    pub(crate) fn release_views(&mut self) {
+        self.gles.retire_views(&[]);
+    }
+
     /// Draws `frame` into the scan-out buffer of `slot`: straight into it when the output is not supersampled, and
     /// otherwise into the virtual surface, averaged down into the buffer.
     fn draw(&mut self, slot: usize, frame: &OutputFrame, scale: Scale) -> Result<(), String> {
@@ -342,6 +383,15 @@ impl Buffers {
 #[must_use]
 fn size_fits(allocated: (i32, i32), wanted: Size) -> bool {
     u32::try_from(allocated.0) == Ok(wanted.width) && u32::try_from(allocated.1) == Ok(wanted.height)
+}
+
+/// The nominal bytes of `slots` scan-out buffers of `allocated` physical pixels each. The format is XRGB8888, four
+/// bytes a pixel; the allocator may pad a row or tile the buffer, so this is a floor on what the driver holds, as every
+/// footprint is.
+#[must_use]
+fn scanout_bytes(allocated: (i32, i32), slots: usize) -> u64 {
+    let edge = Size::new(allocated.0.unsigned_abs(), allocated.1.unsigned_abs());
+    image_bytes(edge, COLOUR_BYTES_PER_PIXEL).saturating_mul(u64::try_from(slots).unwrap_or(u64::MAX))
 }
 
 /// Allocates one scan-out buffer of `size` and brings it up as a GL render target and a KMS
@@ -483,7 +533,7 @@ impl ModesetKernel for LiveModeset<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{SlotRing, size_fits};
+    use super::{SlotRing, scanout_bytes, size_fits};
     use gnoblin_types::Size;
     use std::cell::Cell;
 
@@ -549,6 +599,43 @@ mod tests {
         assert!(slots.get(0).is_err(), "a failed slot stays empty rather than half set");
         slots.ensure_with(0, || Ok(7)).unwrap();
         assert_eq!(slots.get(0), Ok(&7), "the output is not wedged: the retry allocates");
+    }
+
+    #[test]
+    fn only_the_slots_that_were_allocated_are_counted() {
+        let mut slots: SlotRing<usize> = SlotRing::new(2);
+        assert_eq!(slots.allocated(), 0, "nothing is held before the first draw");
+        slots
+            .ensure_with(0, || Err("the scan-out buffer cannot be allocated".to_string()))
+            .unwrap_err();
+        assert_eq!(slots.allocated(), 0, "a slot whose allocation failed holds nothing");
+        slots.ensure_with(1, || Ok(1)).unwrap();
+        slots.ensure_with(1, || Ok(2)).unwrap();
+        assert_eq!(
+            slots.allocated(),
+            1,
+            "an ensure of a slot already made makes no second one"
+        );
+        slots.ensure_with(0, || Ok(0)).unwrap();
+        assert_eq!(slots.allocated(), 2);
+    }
+
+    #[test]
+    fn a_scan_out_buffer_is_four_bytes_a_pixel_for_each_slot_allocated() {
+        // 1920 x 1080 at 4 bytes is 8_294_400 bytes (7.91 MiB): two slots are 16_588_800.
+        assert_eq!(scanout_bytes((1920, 1080), 0), 0);
+        assert_eq!(scanout_bytes((1920, 1080), 1), 8_294_400);
+        assert_eq!(scanout_bytes((1920, 1080), 2), 16_588_800);
+        assert_eq!(
+            scanout_bytes((-1, 1080), 2),
+            scanout_bytes((1, 1080), 2),
+            "a negative extent is not a huge one"
+        );
+        assert_eq!(
+            scanout_bytes((i32::MAX, i32::MAX), usize::MAX),
+            u64::MAX,
+            "a size past the word saturates"
+        );
     }
 
     #[test]

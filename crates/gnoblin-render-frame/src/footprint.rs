@@ -40,6 +40,19 @@ impl Footprint {
             .saturating_add(self.staging)
             .saturating_add(self.views)
     }
+
+    /// This footprint and `other` held together, field by field: two renderers' bytes, or a renderer's and the
+    /// buffers a backend allocates beside it.
+    #[must_use]
+    pub fn plus(self, other: Self) -> Self {
+        Self {
+            target: self.target.saturating_add(other.target),
+            scratch: self.scratch.saturating_add(other.scratch),
+            staging: self.staging.saturating_add(other.staging),
+            views: self.views.saturating_add(other.views),
+            releasable: self.releasable.saturating_add(other.releasable),
+        }
+    }
 }
 
 /// The nominal bytes of `size` pixels at `bytes_per_pixel`.
@@ -82,5 +95,30 @@ mod tests {
             "the releasable bytes are part of scratch and staging, not extra"
         );
         assert_eq!(Footprint::default().total(), 0);
+    }
+
+    #[test]
+    fn two_footprints_held_together_add_field_by_field() {
+        let one = Footprint {
+            target: 1,
+            scratch: 2,
+            staging: 3,
+            views: 4,
+            releasable: 2,
+        };
+        let two = Footprint {
+            target: 10,
+            scratch: 20,
+            staging: 30,
+            views: 40,
+            releasable: 5,
+        };
+        let sum = one.plus(two);
+        assert_eq!(
+            (sum.target, sum.scratch, sum.staging, sum.views, sum.releasable),
+            (11, 22, 33, 44, 7)
+        );
+        assert_eq!(sum.total(), one.total() + two.total());
+        assert_eq!(Footprint::default().plus(one), one, "nothing added is no change");
     }
 }

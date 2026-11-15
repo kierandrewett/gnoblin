@@ -578,8 +578,28 @@ impl<S: Host + 'static> Backend<S> for Drm {
         self.scanout.read_view(scene, capture, live)
     }
 
+    fn footprint(&self, output: OutputId) -> gnoblin_render_frame::footprint::Footprint {
+        let own = self.buffers.get(&output).map(Buffers::footprint).unwrap_or_default();
+        // The probe context serves every output and belongs to none, so it is counted once, on the first output.
+        if self.outputs.first().is_some_and(|first| first.id == output) {
+            own.plus(self.scanout.footprint())
+        } else {
+            own
+        }
+    }
+
     fn release_views(&mut self) {
         self.scanout.release_views();
+        for buffers in self.buffers.values_mut() {
+            buffers.release_views();
+        }
+    }
+
+    fn release_scratch(&mut self) {
+        self.scanout.release_scratch();
+        for buffers in self.buffers.values_mut() {
+            buffers.release_scratch();
+        }
     }
 
     fn output_controls(&self) -> gnoblin_backend::OutputControls {
