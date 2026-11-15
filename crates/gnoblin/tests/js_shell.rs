@@ -6122,7 +6122,15 @@ fn a_stock_shell_at_the_production_memory_period_does_no_work_when_nothing_happe
         production >= Duration::from_secs(1),
         "the production period is a second or more: {production:?}"
     );
-    let session = Session::start_with(|config| config.wayland.gpu_memory_period = production);
+    // The default bounds: the test is about what a session that was not configured costs when it is quiet.
+    let session = Session::start_with(|config| {
+        config.wayland.gpu_memory_period = production;
+        assert_eq!(
+            config.wayland.gpu_limits,
+            gnoblin_wayland::Limits::default(),
+            "the session runs on the default memory bounds"
+        );
+    });
     let mut mapper = Mapper::connect(&session.wayland());
     for number in 0..5 {
         mapper.map_window(&format!("org.example.window{number}"), &format!("Window {number}"));
@@ -6136,15 +6144,38 @@ fn a_stock_shell_at_the_production_memory_period_does_no_work_when_nothing_happe
         std::thread::sleep(turn_wait(&role));
     }
     tick_until_quiet(&mut role, REST);
-    let published = support::snapshot(&session.ipc())
+    let screens: Vec<_> = support::snapshot(&session.ipc())
         .into_iter()
         .filter(|node| node.class == "screen")
-        .any(|node| {
-            node.props
-                .iter()
-                .any(|prop| prop.key == "gpu_memory_target_bytes" && prop.value_double > 0.0)
-        });
-    assert!(published, "the first publication reached the screen node");
+        .collect();
+    let published = |key: &str| {
+        screens
+            .iter()
+            .find_map(|node| node.props.iter().find(|prop| prop.key == key))
+            .map(|prop| prop.value_double)
+    };
+    assert!(
+        published("gpu_memory_target_bytes").is_some_and(|bytes| bytes > 0.0),
+        "the first publication reached the screen node"
+    );
+    // The counters of the budget are on the node, at the defaults and at what the five windows hold, and they are what
+    // the quiet window below must leave alone.
+    assert_eq!(
+        published("gpu_memory_budget_bytes"),
+        Some(gnoblin_wayland::DEFAULT_BUDGET_BYTES as f64)
+    );
+    assert!(published("gpu_memory_clients_bytes").is_some_and(|bytes| bytes > 0.0));
+    // A snapshot leaves out a property that holds its default, and the default of a count is zero.
+    assert_eq!(
+        published("gpu_memory_refused_total").unwrap_or(0.0),
+        0.0,
+        "nothing was refused"
+    );
+    assert_eq!(
+        published("gpu_memory_evicted_total").unwrap_or(0.0),
+        0.0,
+        "nothing was evicted"
+    );
     let (frames, serial) = (role.shell_mut().frame_stats(), support::tree_serial(&session.ipc()));
     // Four periods of turns as the loop takes them: no value may differ, so nothing may be published or run.
     let watched = Instant::now();
