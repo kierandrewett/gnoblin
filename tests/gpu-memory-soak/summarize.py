@@ -3,7 +3,8 @@
 
 Per series: the run's length, the resident set at the start, the peak and the end, its growth in MiB a minute over the
 second half of the run (a least-squares slope: a leak shows as a slope that stays, a warm-up as one that falls away),
-the range of descriptors and threads, and the largest count of bytes the compositor says it holds.
+the range of descriptors and threads, the largest count of bytes the compositor says it holds and, for a series of the
+budget lane, what the budget refused and evicted.
 """
 
 import json
@@ -33,7 +34,7 @@ def summarise(path):
         return f"{path}: no samples"
     end = rows[-1]["t"]
     late = [(r["t"], r["rss"]) for r in rows if r["t"] >= end / 2]
-    return (
+    summary = (
         f"{path}: {len(rows)} samples over {end:.0f} s, {rows[-1]['cycle']} cycles, "
         f"{rows[-1]['lock_cycles']} lock cycles, {rows[-1]['capture_frames']} capture frames "
         f"({rows[-1]['capture_frames_failed']} refused, {rows[-1]['capture_sessions']} sessions), "
@@ -45,6 +46,16 @@ def summarise(path):
         f"gpu_memory_bytes max {mib(max(r['gpu_memory_bytes'] for r in rows))} MiB, "
         f"end {mib(rows[-1]['gpu_memory_bytes'])} MiB"
     )
+    last = rows[-1]
+    if "budget_bytes" in last:
+        # The series of the budget lane: what the budget did beside what the process held.
+        summary += (
+            f"; budget {mib(last['budget_bytes'])} MiB: {last['refused_total']:.0f} refused, "
+            f"{mib(last['evicted_total'])} MiB evicted, clients' bytes max {mib(max(r['clients_bytes'] for r in rows))} "
+            f"end {mib(last['clients_bytes'])} MiB, the pressure client {last['pressure_admitted']} admitted and "
+            f"{last['pressure_refused']} refused"
+        )
+    return summary
 
 
 if __name__ == "__main__":

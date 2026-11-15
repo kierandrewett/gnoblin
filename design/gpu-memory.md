@@ -105,8 +105,9 @@ series of section 3 with the lock and an open capture session in the churn, and 
 
 A thousand 1x1 windows from one client (`a_thousand_tiny_windows_stop_at_the_cap_and_end_with_their_client`, 4 s in a debug
 build, two round trips instead of two thousand) leave exactly 256 managed, which is `MAX_WINDOWS` of the window record
-(`fallback.rs`): a window past it is left unmanaged. That is a cap on the session, not on a client; no per-client cap on
-toplevels, surfaces or buffers exists, and one client can use all 256. The session answers a second client meanwhile,
+(`fallback.rs`): a window past it is left unmanaged. That is a cap on the session, not on a client: when this was measured
+no per-client cap on toplevels, surfaces or buffers existed (section 6 adds them), and one client could use all 256. The
+session answers a second client meanwhile,
 the process grows by 26 MB and keeps all of it after the client leaves (the allocator holds it), and the next client's
 window is managed again.
 
@@ -117,7 +118,81 @@ serial or the shell's frames at a time they choose run with the period at zero.
 
 Not proven: a real GPU (llvmpipe and lavapipe report no video memory, the build instances have no DRM device, and the
 GLES leak's size on a real driver is unmeasured; gnoblin-lubw tracks the real-GPU dmabuf check), slow growth beyond 25
-minutes, or growth in the software renderer's resident set smaller than the allocator's noise. The DRM scan-out buffers
-are not counted. Nothing here attributes the legacy 31 GiB `GPUActive`: that was Mutter; what this lane adds is the
+minutes, or growth in the software renderer's resident set smaller than the allocator's noise. Nothing here attributes the
+legacy 31 GiB `GPUActive`: that was Mutter; what this lane adds is the
 method and the finding that a Rust compositor using Smithay's GLES renderer without its frame API leaks every imported
 texture, which is a plausible shape for the same symptom on a real GPU. The issue stays open.
+
+## 6. The enforced budget (lane GpuBudget)
+
+Sections 1 to 5 made memory attributable. This section makes it bounded: the compositor refuses or evicts where it used to
+grow. `crates/gnoblin-wayland/src/gpu_memory/ledger.rs` is the one place a request is decided; `gpu_memory.rs` measures,
+evicts and refuses; the bounds are `compositor.gpu-memory-budget-mib`, `compositor.client-memory-limit-mib` and
+`compositor.client-surface-limit` (a zero turns one off; they are read at start).
+
+**What is counted.** Per client: the live buffers and the live surfaces. A shared-memory buffer is its `stride * height`,
+the part of its pool it exposes, not the pool: a pool is a sparse mapping the client controls and costs address space,
+while the texture a renderer makes from a buffer is the same pixels, counted once. A GPU buffer is `width * height` times
+the bytes per pixel of its format (an estimate: tiling and padding add, a planar format is its average; four when the
+format is unknown). A toplevel is a surface, so the surface limit is the per-client window limit; `MAX_WINDOWS` (256)
+stays the session's managed cap. The aggregate is the clients' bytes plus what section 1 already counts: every renderer's
+`target`, `scratch`, `staging` and `views`, and the frame capture keeps. The aggregate is kept apart from the per-client
+maps and the tests compare them after churn.
+
+**Defaults.** Budget 6 GiB: well under the 31 GiB that ran a session out, above a desktop of a few 4K clients (32 MiB a
+buffer, about 100 MiB of output targets). Per client 2 GiB: a third of the budget, so one client cannot take the session
+and two cannot either, and still several of the largest buffer the compositor accepts (512 MiB). Surfaces 4096: a browser
+with a hundred tabs holds a few thousand, and each costs a record the bytes do not show (a 1x1 surface is one pixel).
+
+**Where it is decided.** A shared-memory buffer and a surface at the request (`request_guard.rs`, before Smithay makes the
+object; what was admitted is recorded once the object exists, so a request Smithay rejects leaves nothing behind, and
+`Dispatch::destroyed` gives it back, which a disconnect runs for every object). A GPU buffer where the loop imports it
+(`apply_dmabuf_imports`), because the backend is held there. A mode or supersample change in `apply_output_changes`, as the
+growth of the output's target. The footprint is measured once a frame, after the frame.
+
+**At the bound.** A client past its own limit is refused. For the aggregate, the ledger first counts what could be given
+back (`Footprint::releasable`, View pictures, the capture frame) and admits the request if that covers the excess; the loop
+then gives back, cheapest to remake first and only as far as needed: the capture frame, View pictures
+(`Backend::release_views`), blur scratch and the software renderer's per-layer snapshots (`Backend::release_scratch`).
+Eviction is demand-driven, never because the session is merely over budget, so a session sitting at its budget does not
+repaint in a loop. A request that does not fit even then is refused with `wl_display.error.no_memory`, which ends that
+client's connection (the compositor and every other client go on) and is logged with the client's pid.
+Never evicted: the output target and the staging a frame in flight reads (they are not in `releasable`), a capture frame
+that an open session or a pending screencopy frame reads, and any View picture while a lock is up. A capture frame that was
+given back is made again by the next session or screencopy frame, or when the budget has room for it again; the first copy
+asked right after an eviction can fail (`failed`, `unknown`) and the next is served.
+
+**Targets and captures.** The 8192 edge limit stays; a mode or factor whose target would pass the budget is refused by name
+("memory: ...") after caches are given back, and the output keeps what it had. A capture is never refused by the budget: its
+frame cache is refilled for a reader even over the budget, and the client's own buffers are what is refused.
+
+**Published** (every screen node, the same value on each, since the tree has no session node): `gpu_memory_clients_bytes`,
+`gpu_memory_budget_bytes`, `gpu_memory_refused_total`, `gpu_memory_evicted_total`; `Output.gpuMemory` gains `clients`,
+`budget`, `refused`, `evicted`. They are announced only when they change.
+
+**The DRM backend.** `Drm::footprint(output)` reports what the output's `Buffers` hold: its GLES renderer's footprint (the
+composed target, blur scratch, View pictures) plus the scan-out slots allocated so far, `slots * width * height * 4` bytes
+counted as `target` because the kernel scans one of them out and the budget must never take it back. The probe context
+the device keeps for reading View pictures and importing clients' GPU buffers serves every output and belongs to none, so
+it is added once, to the first output. `release_views` and `release_scratch` reach each output's renderer and the probe, as
+they do on the headless backend, so what the ledger counts as reclaimable on DRM can be reclaimed. Tested on fakes only:
+the slot ring's count (a failed allocation holds nothing, a second ensure makes no second slot), the byte arithmetic
+(`scanout_bytes`, saturating) and `Footprint::plus`. Nothing here has a DRM node, so the real GBM allocation, the
+renderer's footprint on a scan-out context and the comparison with `drm-memory-*` are unmeasured.
+
+**GPU buffer size.** The ledger counts a dmabuf as `width * height * bits_per_pixel / 8`, with the bits from Smithay's
+format table (`get_bpp`; 32 for a format it does not know). The driver's tiling, row padding, compression metadata and the
+extra planes of a multi-planar format are not seen, so it is a floor. It is taken where the loop imports the buffer, after
+the budget is asked, and recorded only if the importer accepted it: a buffer the importer or the budget refuses is never
+in the account, so giving it up gives back nothing. `tests/dmabuf.rs` shows a refused `create` and a refused `create_immed`
+leaving another client's bytes and the same client's earlier buffers exactly as they were.
+
+**A client that was ended.** `post_error` marks the connection dead; the objects of a dead client are destroyed (and so given
+back to the ledger) when the display next cleans up, which wayland-backend does when a client's connection has an event to
+dispatch, so when the client closes it. A client that has heard `no_memory` exits and closes. One that holds the connection
+open and silent keeps what it already held counted until some client's event runs the cleanup, which is the memory it
+still holds; its refused request was never counted.
+
+**Not covered.** The driver's own memory, a driver-reported number to check the estimates against, the `wl_shm_pool`
+objects themselves (each holds a descriptor and a sparse mapping, so a client that makes thousands of pools is bounded by
+the descriptor limit, not by the budget), and a client that holds nothing (an idle connection), which costs nothing here.

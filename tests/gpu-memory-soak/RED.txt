@@ -1,0 +1,315 @@
+Red runs of the memory budget's tests (lane GpuBudget, issue gnoblin-4z5 stays open)
+
+What this shows: each test below FAILS on a copy of the tree in which one piece of the budget is switched off, and
+passes on the tree as committed. It is "red with the check off", not "red before the code existed": the tests were written
+beside the enforcement, so no commit has them failing against a tree that lacks it. The switches are environment
+variables read in a copy of the tree on the Agent37 box (the box resets its tree on the next sync); nothing of them is
+committed.
+
+Switches:
+  admission off (GNOBLIN_RED)            admit_buffer, admit_growth and admit_surface admit every request
+  releases skipped (GNOBLIN_RED_LEAK)    release_buffer and release_surface give nothing back
+  eviction off (GNOBLIN_RED_NOEVICT)     an admission that counted on caches never frees them
+  publication off (GNOBLIN_RED_PUBLISH)  the session numbers are never put on the screen nodes
+  publication noisy (GNOBLIN_RED_NOISY)  gpu_memory_refused_total changes on every publication
+  noisy clients (GNOBLIN_RED_NOISY_CLIENTS)  gpu_memory_clients_bytes changes on every publication
+  configuration ignored (GNOBLIN_RED_CONFIG)  the bounds are always the defaults, whatever the section says
+  dmabuf recorded early (GNOBLIN_RED_RECORD_EARLY)  a GPU buffer is counted before the importer answers
+  DRM accounting wrong (GNOBLIN_RED_DRM) allocated() counts no slot, scanout_bytes ignores the slot count, plus() adds nothing
+  zero bound (GNOBLIN_RED_ZEROBOUND)     a bound of 0 is a bound of 0 bytes instead of no bound
+  record adds (GNOBLIN_RED_RECORD_ADDS) a buffer recorded again under its id is added instead of replacing the old one
+  measurement without capture (GNOBLIN_RED_NOCAPTURE)  the loop's measurement leaves out the frames capture keeps
+  error code 1 (sed of the constant)     NO_MEMORY is 1 instead of the protocol's 2
+
+Per test, the switches under which it failed:
+
+  gpu_memory::ledger::tests::a_client_past_its_own_limit_is_refused_and_another_is_not
+      admission off: every request admitted
+  gpu_memory::ledger::tests::surfaces_are_bounded_per_client_and_released_by_id
+      admission off: every request admitted; releases skipped: a destroyed buffer or surface gives nothing back
+  gpu_memory::ledger::tests::the_aggregate_refuses_what_no_eviction_can_make_room_for
+      admission off: every request admitted; releases skipped: a destroyed buffer or surface gives nothing back
+  gpu_memory::ledger::tests::what_can_be_evicted_is_counted_before_a_request_is_refused
+      admission off: every request admitted
+  gpu_memory::tests::a_frame_cache_that_was_given_back_is_made_again_when_the_budget_has_room
+      admission off: every request admitted; releases skipped: a destroyed buffer or surface gives nothing back; eviction off: an admission that counted on caches never frees them; a zero bound is a bound of zero; the measurement leaves out the frames capture keeps
+  gpu_memory::tests::caches_are_given_back_cheapest_first_and_only_as_far_as_the_need
+      admission off: every request admitted; eviction off: an admission that counted on caches never frees them; a zero bound is a bound of zero; the measurement leaves out the frames capture keeps
+  gpu_memory::tests::a_locked_session_keeps_every_view_picture
+      admission off: every request admitted; eviction off: an admission that counted on caches never frees them; a zero bound is a bound of zero; the measurement leaves out the frames capture keeps
+  a_client_past_its_buffer_limit_is_ended_with_no_memory_and_the_session_goes_on
+      admission off: every request admitted; releases skipped: a destroyed buffer or surface gives nothing back
+  caches_are_given_back_before_a_client_is_refused
+      admission off: every request admitted; eviction off: an admission that counted on caches never frees them
+  clients_each_under_their_limit_are_refused_at_the_aggregate_and_a_leaver_frees_the_room
+      admission off: every request admitted; releases skipped: a destroyed buffer or surface gives nothing back
+  a_client_with_thousands_of_surfaces_is_ended_at_the_default_surface_limit
+      admission off: every request admitted; releases skipped: a destroyed buffer or surface gives nothing back
+  the_surface_limit_is_exact
+      admission off: every request admitted; releases skipped: a destroyed buffer or surface gives nothing back
+  a_frame_cache_nobody_reads_is_given_back_and_made_again_for_the_next_capture
+      admission off: every request admitted; eviction off: an admission that counted on caches never frees them
+  a_frame_cache_a_capture_is_reading_is_not_given_back
+      admission off: every request admitted
+  budget_pressure_does_not_blank_a_lock_surface
+      admission off: every request admitted; eviction off: an admission that counted on caches never frees them
+  a_factor_that_would_pass_the_memory_budget_is_refused_and_a_smaller_one_still_applies
+      admission off: every request admitted
+  gpu_memory::ledger::tests::a_second_release_gives_back_nothing_and_an_empty_client_leaves_no_entry
+      releases skipped: a destroyed buffer or surface gives nothing back
+  a_destroyed_buffer_gives_its_bytes_back_to_the_client
+      releases skipped: a destroyed buffer or surface gives nothing back
+  a_client_that_disconnects_under_pressure_gives_everything_back
+      releases skipped: a destroyed buffer or surface gives nothing back
+  after_churn_the_accounts_sum_to_the_aggregate
+      releases skipped: a destroyed buffer or surface gives nothing back
+  render::compose::idle_cost_tests::memory_numbers_that_did_not_change_publish_nothing
+      publication off: the session numbers are never announced; publication noisy: refused_total changes on every publication; clients_bytes changes on every publication
+  the_memory_budget_reaches_the_shell_on_the_screen_node
+      publication off: the session numbers are never announced
+  renderer::tests::the_memory_bounds_are_the_defaults_until_the_section_states_them
+      configuration ignored: the bounds are always the defaults
+  a_gpu_buffer_is_counted_when_it_is_imported_and_given_back_when_it_is_destroyed
+      dmabuf recorded before the importer answers; releases skipped
+  a_gpu_buffer_past_the_clients_limit_is_refused_before_the_importer_sees_it
+      dmabuf recorded before the importer answers; admission off; releases skipped
+  a_refused_import_releases_nothing_it_did_not_take
+      dmabuf recorded before the importer answers; releases skipped
+  scanout::tests::a_scan_out_buffer_is_four_bytes_a_pixel_for_each_slot_allocated
+      DRM accounting wrong
+  scanout::tests::only_the_slots_that_were_allocated_are_counted
+      DRM accounting wrong
+  footprint::tests::two_footprints_held_together_add_field_by_field
+      DRM accounting wrong
+  a_stock_shell_at_the_production_memory_period_does_no_work_when_nothing_happens
+      idle proof: refused_total changes on every publication; idle proof: the session numbers are never published; idle proof: clients_bytes changes on every publication (a counter the proof only asks to be positive)
+  gpu_memory::ledger::tests::a_zero_limit_turns_that_bound_off
+      a zero bound is a bound of zero
+  gpu_memory::ledger::tests::a_buffer_recorded_again_under_its_id_replaces_the_old_one
+      a buffer recorded again is added, not replaced
+  gpu_memory::tests::the_measurement_counts_the_renderer_the_capture_frame_and_what_can_be_given_back
+      the measurement leaves out the frames capture keeps
+  gpu_memory::tests::a_refusal_names_the_error_the_protocol_has_for_it
+      the error code is not the protocol's
+
+34 tests failed under at least one switch.
+
+The idle proof (js_shell: a_stock_shell_at_the_production_memory_period_does_no_work_when_nothing_happens) failed under
+"publication off" (the budget's counters are asserted present), under "publication noisy" (refused_total is asserted
+zero) and under "noisy clients" at the quiet assertion itself (clients_bytes is only asked to be positive, so the
+failure there is the tree's serial or the shell's frames moving while nothing happened).
+
+The lines of each run that name a failing test, a panic or a result:
+
+##### admission off: every request admitted
+test gpu_memory::ledger::tests::a_client_past_its_own_limit_is_refused_and_another_is_not ... FAILED
+test gpu_memory::ledger::tests::surfaces_are_bounded_per_client_and_released_by_id ... FAILED
+test gpu_memory::ledger::tests::the_aggregate_refuses_what_no_eviction_can_make_room_for ... FAILED
+test gpu_memory::ledger::tests::what_can_be_evicted_is_counted_before_a_request_is_refused ... FAILED
+test gpu_memory::tests::a_frame_cache_that_was_given_back_is_made_again_when_the_budget_has_room ... FAILED
+test gpu_memory::tests::caches_are_given_back_cheapest_first_and_only_as_far_as_the_need ... FAILED
+test gpu_memory::tests::a_locked_session_keeps_every_view_picture ... FAILED
+thread 'gpu_memory::ledger::tests::a_client_past_its_own_limit_is_refused_and_another_is_not' (1769) panicked at crates/gnoblin-wayland/src/gpu_memory/ledger.rs:523:9:
+thread 'gpu_memory::ledger::tests::surfaces_are_bounded_per_client_and_released_by_id' (1772) panicked at crates/gnoblin-wayland/src/gpu_memory/ledger.rs:584:9:
+thread 'gpu_memory::ledger::tests::the_aggregate_refuses_what_no_eviction_can_make_room_for' (1773) panicked at crates/gnoblin-wayland/src/gpu_memory/ledger.rs:544:9:
+thread 'gpu_memory::ledger::tests::what_can_be_evicted_is_counted_before_a_request_is_refused' (1774) panicked at crates/gnoblin-wayland/src/gpu_memory/ledger.rs:569:9:
+thread 'gpu_memory::tests::a_frame_cache_that_was_given_back_is_made_again_when_the_budget_has_room' (1775) panicked at crates/gnoblin-wayland/src/gpu_memory.rs:460:9:
+thread 'gpu_memory::tests::caches_are_given_back_cheapest_first_and_only_as_far_as_the_need' (1779) panicked at crates/gnoblin-wayland/src/gpu_memory.rs:378:9:
+thread 'gpu_memory::tests::a_locked_session_keeps_every_view_picture' (1776) panicked at crates/gnoblin-wayland/src/gpu_memory.rs:437:9:
+test result: FAILED. 7 passed; 7 failed; 0 ignored; 0 measured; 194 filtered out; finished in 0.03s
+test a_client_past_its_buffer_limit_is_ended_with_no_memory_and_the_session_goes_on ... FAILED
+test caches_are_given_back_before_a_client_is_refused ... FAILED
+test clients_each_under_their_limit_are_refused_at_the_aggregate_and_a_leaver_frees_the_room ... FAILED
+test a_client_with_thousands_of_surfaces_is_ended_at_the_default_surface_limit ... FAILED
+test the_surface_limit_is_exact ... FAILED
+thread '<unnamed>' (2226) panicked at crates/gnoblin-wayland/tests/session/mod.rs:553:13:
+thread '<unnamed>' (2232) panicked at crates/gnoblin-wayland/tests/gpu_memory_budget.rs:48:9:
+thread '<unnamed>' (2234) panicked at crates/gnoblin-wayland/tests/session/mod.rs:553:13:
+thread '<unnamed>' (2224) panicked at crates/gnoblin-wayland/tests/session/mod.rs:553:13:
+thread '<unnamed>' (2236) panicked at crates/gnoblin-wayland/tests/session/mod.rs:553:13:
+test result: FAILED. 3 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20.10s
+test a_frame_cache_nobody_reads_is_given_back_and_made_again_for_the_next_capture ... FAILED
+test a_frame_cache_a_capture_is_reading_is_not_given_back ... FAILED
+thread '<unnamed>' (2442) panicked at crates/gnoblin-wayland/tests/capture.rs:940:13:
+thread '<unnamed>' (2441) panicked at crates/gnoblin-wayland/tests/capture.rs:978:21:
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 20 filtered out; finished in 10.12s
+test budget_pressure_does_not_blank_a_lock_surface ... FAILED
+thread '<unnamed>' (2620) panicked at crates/gnoblin-wayland/tests/session_lock.rs:1230:13:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 22 filtered out; finished in 10.58s
+test a_factor_that_would_pass_the_memory_budget_is_refused_and_a_smaller_one_still_applies ... FAILED
+thread '<unnamed>' (2824) panicked at crates/gnoblin-wayland/tests/supersample.rs:556:14:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.30s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 336 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 323 filtered out; finished in 0.00s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 68 filtered out; finished in 0.38s
+##### releases skipped: a destroyed buffer or surface gives nothing back
+test gpu_memory::ledger::tests::a_second_release_gives_back_nothing_and_an_empty_client_leaves_no_entry ... FAILED
+test gpu_memory::ledger::tests::surfaces_are_bounded_per_client_and_released_by_id ... FAILED
+test gpu_memory::ledger::tests::the_aggregate_refuses_what_no_eviction_can_make_room_for ... FAILED
+test gpu_memory::tests::a_frame_cache_that_was_given_back_is_made_again_when_the_budget_has_room ... FAILED
+thread 'gpu_memory::ledger::tests::a_second_release_gives_back_nothing_and_an_empty_client_leaves_no_entry' (11814) panicked at crates/gnoblin-wayland/src/gpu_memory/ledger.rs:604:9:
+thread 'gpu_memory::ledger::tests::surfaces_are_bounded_per_client_and_released_by_id' (11816) panicked at crates/gnoblin-wayland/src/gpu_memory/ledger.rs:592:9:
+thread 'gpu_memory::ledger::tests::the_aggregate_refuses_what_no_eviction_can_make_room_for' (11817) panicked at crates/gnoblin-wayland/src/gpu_memory/ledger.rs:555:9:
+thread 'gpu_memory::tests::a_frame_cache_that_was_given_back_is_made_again_when_the_budget_has_room' (11819) panicked at crates/gnoblin-wayland/src/gpu_memory.rs:481:9:
+test result: FAILED. 10 passed; 4 failed; 0 ignored; 0 measured; 194 filtered out; finished in 0.04s
+test a_destroyed_buffer_gives_its_bytes_back_to_the_client ... FAILED
+test a_client_that_disconnects_under_pressure_gives_everything_back ... FAILED
+test a_client_past_its_buffer_limit_is_ended_with_no_memory_and_the_session_goes_on ... FAILED
+test after_churn_the_accounts_sum_to_the_aggregate ... FAILED
+test the_surface_limit_is_exact ... FAILED
+test a_client_with_thousands_of_surfaces_is_ended_at_the_default_surface_limit ... FAILED
+test clients_each_under_their_limit_are_refused_at_the_aggregate_and_a_leaver_frees_the_room ... FAILED
+thread '<unnamed>' (11843) panicked at crates/gnoblin-wayland/tests/session/mod.rs:512:47:
+thread '<unnamed>' (11844) panicked at crates/gnoblin-wayland/tests/gpu_memory_budget.rs:48:9:
+thread '<unnamed>' (11845) panicked at crates/gnoblin-wayland/tests/gpu_memory_budget.rs:48:9:
+thread '<unnamed>' (11848) panicked at crates/gnoblin-wayland/tests/gpu_memory_budget.rs:48:9:
+thread '<unnamed>' (11854) panicked at crates/gnoblin-wayland/tests/session/mod.rs:512:47:
+thread '<unnamed>' (11842) panicked at crates/gnoblin-wayland/tests/gpu_memory_budget.rs:48:9:
+thread '<unnamed>' (11852) panicked at crates/gnoblin-wayland/tests/gpu_memory_budget.rs:48:9:
+test result: FAILED. 1 passed; 7 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20.10s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.41s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 1.63s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.29s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 336 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 323 filtered out; finished in 0.00s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 68 filtered out; finished in 0.39s
+##### eviction off: an admission that counted on caches never frees them
+test gpu_memory::tests::a_locked_session_keeps_every_view_picture ... FAILED
+test gpu_memory::tests::a_frame_cache_that_was_given_back_is_made_again_when_the_budget_has_room ... FAILED
+test gpu_memory::tests::caches_are_given_back_cheapest_first_and_only_as_far_as_the_need ... FAILED
+thread 'gpu_memory::tests::a_locked_session_keeps_every_view_picture' (11978) panicked at crates/gnoblin-wayland/src/gpu_memory.rs:449:9:
+thread 'gpu_memory::tests::a_frame_cache_that_was_given_back_is_made_again_when_the_budget_has_room' (11977) panicked at crates/gnoblin-wayland/src/gpu_memory.rs:460:9:
+thread 'gpu_memory::tests::caches_are_given_back_cheapest_first_and_only_as_far_as_the_need' (11981) panicked at crates/gnoblin-wayland/src/gpu_memory.rs:390:9:
+test result: FAILED. 11 passed; 3 failed; 0 ignored; 0 measured; 194 filtered out; finished in 0.03s
+test caches_are_given_back_before_a_client_is_refused ... FAILED
+thread '<unnamed>' (12007) panicked at crates/gnoblin-wayland/tests/gpu_memory_budget.rs:48:9:
+test result: FAILED. 7 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.24s
+test a_frame_cache_nobody_reads_is_given_back_and_made_again_for_the_next_capture ... FAILED
+thread '<unnamed>' (12028) panicked at crates/gnoblin-wayland/tests/capture.rs:940:13:
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 20 filtered out; finished in 10.15s
+test budget_pressure_does_not_blank_a_lock_surface ... FAILED
+thread '<unnamed>' (12043) panicked at crates/gnoblin-wayland/tests/session_lock.rs:1230:13:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 22 filtered out; finished in 10.46s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.28s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 336 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 323 filtered out; finished in 0.00s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 68 filtered out; finished in 0.35s
+##### publication off: the session numbers are never announced
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 194 filtered out; finished in 0.02s
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.19s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 1.02s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.28s
+test render::compose::idle_cost_tests::memory_numbers_that_did_not_change_publish_nothing ... FAILED
+thread 'render::compose::idle_cost_tests::memory_numbers_that_did_not_change_publish_nothing' (12229) panicked at crates/gnoblin-backend/src/render/idle_cost_tests.rs:166:5:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 336 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 323 filtered out; finished in 0.00s
+test the_memory_budget_reaches_the_shell_on_the_screen_node ... FAILED
+thread 'the_memory_budget_reaches_the_shell_on_the_screen_node' (12256) panicked at crates/gnoblin-compositor/tests/support/mod.rs:501:25:
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 68 filtered out; finished in 30.26s
+##### publication noisy: refused_total changes on every publication
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 194 filtered out; finished in 0.02s
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.54s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.22s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 1.27s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.28s
+test render::compose::idle_cost_tests::memory_numbers_that_did_not_change_publish_nothing ... FAILED
+thread 'render::compose::idle_cost_tests::memory_numbers_that_did_not_change_publish_nothing' (12387) panicked at crates/gnoblin-backend/src/render/idle_cost_tests.rs:160:5:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 336 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 323 filtered out; finished in 0.00s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 68 filtered out; finished in 0.36s
+##### configuration ignored: the bounds are always the defaults
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 194 filtered out; finished in 0.03s
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.54s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.23s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 1.29s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.27s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 336 filtered out; finished in 0.00s
+test renderer::tests::the_memory_bounds_are_the_defaults_until_the_section_states_them ... FAILED
+thread 'renderer::tests::the_memory_bounds_are_the_defaults_until_the_section_states_them' (12558) panicked at crates/gnoblin-compositor/src/renderer.rs:116:9:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 323 filtered out; finished in 0.00s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 68 filtered out; finished in 0.36s
+##### dmabuf recorded before the importer answers
+test a_gpu_buffer_is_counted_when_it_is_imported_and_given_back_when_it_is_destroyed ... FAILED
+test a_gpu_buffer_past_the_clients_limit_is_refused_before_the_importer_sees_it ... FAILED
+test a_refused_import_releases_nothing_it_did_not_take ... FAILED
+thread '<unnamed>' (13911) panicked at crates/gnoblin-wayland/tests/dmabuf.rs:940:9:
+thread '<unnamed>' (13912) panicked at crates/gnoblin-wayland/tests/dmabuf.rs:146:13:
+thread '<unnamed>' (13919) panicked at crates/gnoblin-wayland/tests/dmabuf.rs:146:13:
+test result: FAILED. 16 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.15s
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 169 filtered out; finished in 0.00s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 40 filtered out; finished in 0.00s
+##### admission off
+test a_gpu_buffer_past_the_clients_limit_is_refused_before_the_importer_sees_it ... FAILED
+thread '<unnamed>' (15118) panicked at crates/gnoblin-wayland/tests/dmabuf.rs:323:13:
+test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.08s
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 169 filtered out; finished in 0.00s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 40 filtered out; finished in 0.00s
+##### releases skipped
+test a_gpu_buffer_is_counted_when_it_is_imported_and_given_back_when_it_is_destroyed ... FAILED
+test a_gpu_buffer_past_the_clients_limit_is_refused_before_the_importer_sees_it ... FAILED
+test a_refused_import_releases_nothing_it_did_not_take ... FAILED
+thread '<unnamed>' (15202) panicked at crates/gnoblin-wayland/tests/dmabuf.rs:146:13:
+thread '<unnamed>' (15204) panicked at crates/gnoblin-wayland/tests/dmabuf.rs:146:13:
+thread '<unnamed>' (15210) panicked at crates/gnoblin-wayland/tests/dmabuf.rs:146:13:
+test result: FAILED. 16 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.17s
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 169 filtered out; finished in 0.00s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 40 filtered out; finished in 0.00s
+##### DRM accounting wrong
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+test scanout::tests::a_scan_out_buffer_is_four_bytes_a_pixel_for_each_slot_allocated ... FAILED
+test scanout::tests::only_the_slots_that_were_allocated_are_counted ... FAILED
+thread 'scanout::tests::a_scan_out_buffer_is_four_bytes_a_pixel_for_each_slot_allocated' (15330) panicked at crates/gnoblin-backend-drm/src/scanout.rs:632:9:
+thread 'scanout::tests::only_the_slots_that_were_allocated_are_counted' (15334) panicked at crates/gnoblin-backend-drm/src/scanout.rs:620:9:
+test result: FAILED. 5 passed; 2 failed; 0 ignored; 0 measured; 169 filtered out; finished in 0.00s
+test footprint::tests::two_footprints_held_together_add_field_by_field ... FAILED
+thread 'footprint::tests::two_footprints_held_together_add_field_by_field' (15351) panicked at crates/gnoblin-render-frame/src/footprint.rs:120:9:
+test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 40 filtered out; finished in 0.00s
+##### idle proof: refused_total changes on every publication
+test a_stock_shell_at_the_production_memory_period_does_no_work_when_nothing_happens ... FAILED
+thread 'a_stock_shell_at_the_production_memory_period_does_no_work_when_nothing_happens' (18684) panicked at crates/gnoblin/tests/js_shell.rs:6169:5:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 59 filtered out; finished in 4.17s
+##### idle proof: the session numbers are never published
+test a_stock_shell_at_the_production_memory_period_does_no_work_when_nothing_happens ... FAILED
+thread 'a_stock_shell_at_the_production_memory_period_does_no_work_when_nothing_happens' (18711) panicked at crates/gnoblin/tests/js_shell.rs:6163:5:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 59 filtered out; finished in 4.03s
+##### a zero bound is a bound of zero
+test gpu_memory::ledger::tests::a_zero_limit_turns_that_bound_off ... FAILED
+test gpu_memory::tests::caches_are_given_back_cheapest_first_and_only_as_far_as_the_need ... FAILED
+test gpu_memory::tests::a_locked_session_keeps_every_view_picture ... FAILED
+test gpu_memory::tests::a_frame_cache_that_was_given_back_is_made_again_when_the_budget_has_room ... FAILED
+thread 'gpu_memory::ledger::tests::a_zero_limit_turns_that_bound_off' (19373) panicked at crates/gnoblin-wayland/src/gpu_memory/ledger.rs:620:9:
+thread 'gpu_memory::tests::caches_are_given_back_cheapest_first_and_only_as_far_as_the_need' (19381) panicked at crates/gnoblin-wayland/src/gpu_memory.rs:378:9:
+thread 'gpu_memory::tests::a_locked_session_keeps_every_view_picture' (19378) panicked at crates/gnoblin-wayland/src/gpu_memory.rs:437:9:
+thread 'gpu_memory::tests::a_frame_cache_that_was_given_back_is_made_again_when_the_budget_has_room' (19377) panicked at crates/gnoblin-wayland/src/gpu_memory.rs:457:53:
+test result: FAILED. 10 passed; 4 failed; 0 ignored; 0 measured; 194 filtered out; finished in 0.02s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 336 filtered out; finished in 0.00s
+##### a buffer recorded again is added, not replaced
+test gpu_memory::ledger::tests::a_buffer_recorded_again_under_its_id_replaces_the_old_one ... FAILED
+thread 'gpu_memory::ledger::tests::a_buffer_recorded_again_under_its_id_replaces_the_old_one' (19669) panicked at crates/gnoblin-wayland/src/gpu_memory/ledger.rs:613:9:
+test result: FAILED. 13 passed; 1 failed; 0 ignored; 0 measured; 194 filtered out; finished in 0.03s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 336 filtered out; finished in 0.00s
+##### the measurement leaves out the frames capture keeps
+test gpu_memory::tests::caches_are_given_back_cheapest_first_and_only_as_far_as_the_need ... FAILED
+test gpu_memory::tests::a_frame_cache_that_was_given_back_is_made_again_when_the_budget_has_room ... FAILED
+test gpu_memory::tests::a_locked_session_keeps_every_view_picture ... FAILED
+test gpu_memory::tests::the_measurement_counts_the_renderer_the_capture_frame_and_what_can_be_given_back ... FAILED
+thread 'gpu_memory::tests::caches_are_given_back_cheapest_first_and_only_as_far_as_the_need' (19720) panicked at crates/gnoblin-wayland/src/gpu_memory.rs:378:9:
+thread 'gpu_memory::tests::a_frame_cache_that_was_given_back_is_made_again_when_the_budget_has_room' (19716) panicked at crates/gnoblin-wayland/src/gpu_memory.rs:460:9:
+thread 'gpu_memory::tests::a_locked_session_keeps_every_view_picture' (19717) panicked at crates/gnoblin-wayland/src/gpu_memory.rs:437:9:
+thread 'gpu_memory::tests::the_measurement_counts_the_renderer_the_capture_frame_and_what_can_be_given_back' (19722) panicked at crates/gnoblin-wayland/src/gpu_memory.rs:365:9:
+test result: FAILED. 10 passed; 4 failed; 0 ignored; 0 measured; 194 filtered out; finished in 0.03s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 336 filtered out; finished in 0.00s
+##### clients_bytes changes on every publication
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 194 filtered out; finished in 0.03s
+test render::compose::idle_cost_tests::memory_numbers_that_did_not_change_publish_nothing ... FAILED
+thread 'render::compose::idle_cost_tests::memory_numbers_that_did_not_change_publish_nothing' (19775) panicked at crates/gnoblin-backend/src/render/idle_cost_tests.rs:160:5:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 336 filtered out; finished in 0.00s
+##### idle proof: clients_bytes changes on every publication (a counter the proof only asks to be positive)
+test a_stock_shell_at_the_production_memory_period_does_no_work_when_nothing_happens ... FAILED
+thread 'a_stock_shell_at_the_production_memory_period_does_no_work_when_nothing_happens' (21403) panicked at crates/gnoblin/tests/js_shell.rs:6187:5:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 59 filtered out; finished in 8.16s
+##### the error code is not the protocol's
+test gpu_memory::tests::a_refusal_names_the_error_the_protocol_has_for_it ... FAILED
+thread 'gpu_memory::tests::a_refusal_names_the_error_the_protocol_has_for_it' (21701) panicked at crates/gnoblin-wayland/src/gpu_memory.rs:489:9:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 207 filtered out; finished in 0.00s

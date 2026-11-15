@@ -1,0 +1,29 @@
+supersample::a_mode_change_a_hotplug_and_a_mirror_keep_the_factor and `UnknownNode` (lane GpuBudget)
+
+The test failed once with `the apply call was refused: UnknownNode` in a whole-crate run of gnoblin-wayland. It was run on
+the base commit (f3e7ddbf3, a git worktree of origin/rust-compositor without the budget) and on the tree with the
+budget, 30 times each in two shapes, on an Agent37 box (4 CPUs, gVisor):
+
+  filtered:      cargo test -p gnoblin-wayland --test supersample --locked a_mode_change_a_hotplug_and_a_mirror_keep_the_factor -- --exact
+  whole binary:  cargo test -p gnoblin-wayland --test supersample --locked        (the tests of the binary run beside each other)
+
+                                                     filtered alone    whole binary
+  base commit, first build (shared target dir)         30 of 30 pass     29 of 30 pass; 1 UnknownNode at tests/supersample.rs:686
+  base commit, own target dir (clean build)            30 of 30 pass     30 of 30 pass
+  tree with the budget, test as it was                 30 of 30 pass     25 of 30 pass; 5 UnknownNode at tests/supersample.rs:720
+  tree with the budget, test fixed (1b26a63a5)         30 of 30 pass     30 of 30 pass
+
+Both failures are the same statement, `shell.apply(back_node, "mirror_of=HEADLESS-1")`, on the base's line numbers and
+the tree's.
+
+Cause: a test race that exists on the base commit, not a ledger or `release_scratch` path. After the monitor on
+`Virtual-2` is unplugged and plugged in again, `node_of` looks for the last screen node of the shell's tree whose
+`connector` is `Virtual-2`. The unplugged monitor's node stays in the shell's tree until its removal arrives, and it still
+names the same connector and still holds `supersample = 2`, so `node_of` can return it, `wait_published` passes on it,
+and the `apply` that follows is addressed to a node the compositor has dropped. The fix waits for a node that is not the
+unplugged one. Nothing the budget adds touches a node: the ledger holds client ids and counts, `release_scratch` and
+`footprint` read a renderer, and the publication skips an output that has no screen node.
+
+Why the tree failed more often before the fix is not shown: the binary has one test more (the budget's own) that runs
+beside the others, which is more load, and 5 of 30 against 1 of 60 on the base is too few runs to separate load from
+anything else. The fixed test does not depend on it: 60 of 60.
