@@ -23,6 +23,7 @@ impl ClassInfo for Table {
         let kind = match (class, key) {
             ("canvas", "content") | ("node", "blob") => ValueType::Bytes,
             ("canvas" | "node", "width" | "height") => ValueType::Double,
+            ("canvas", "placement") => ValueType::Text,
             _ => return None,
         };
         Some(PropertyInfo {
@@ -283,4 +284,59 @@ fn measure_is_a_method_of_a_canvas_only() {
     )
     .expect_err("a plain node has no measure");
     assert_eq!(refusal.code, Code::UnknownMember);
+}
+
+fn set_text(node: u64, key: &str, text: &str) -> TreeOp {
+    TreeOp::Set {
+        node: id(node),
+        key: key.into(),
+        value: TreeValue::Text(text.into()),
+        timing: None,
+    }
+}
+
+#[test]
+fn a_canvas_is_placed_in_the_frame_over_the_window_or_under_it_and_a_word_that_is_none_of_them_is_refused() {
+    let mut scene = scene();
+    validate_and_apply(
+        &mut scene,
+        &Table,
+        Actor::Shell,
+        TreeTransaction::new(make("canvas", 10)),
+    )
+    .expect("applies");
+    assert_eq!(
+        scene.behind(id(10)),
+        Some(false),
+        "a canvas is in front of its parent until it says"
+    );
+    assert_eq!(scene.framed(id(10)), Some(true), "and part of its window's frame");
+
+    for (word, behind, framed) in [("under", true, false), ("over", false, false), ("frame", false, true)] {
+        validate_and_apply(
+            &mut scene,
+            &Table,
+            Actor::Shell,
+            TreeTransaction::new(vec![set_text(10, "placement", word)]),
+        )
+        .expect("applies");
+        assert_eq!(scene.behind(id(10)), Some(behind), "{word}");
+        assert_eq!(scene.framed(id(10)), Some(framed), "{word}");
+        assert_eq!(
+            scene.text(id(10), "placement"),
+            Some(word),
+            "the tree keeps what it was told"
+        );
+    }
+
+    let before = tree_hash(&scene);
+    let refusal = validate_and_apply(
+        &mut scene,
+        &Table,
+        Actor::Shell,
+        TreeTransaction::new(vec![set_text(10, "placement", "sideways")]),
+    )
+    .expect_err("a placement that is not one of the three is refused");
+    assert_eq!(refusal.code, Code::BadValue);
+    assert_eq!(tree_hash(&scene), before, "the canvas keeps its placement");
 }

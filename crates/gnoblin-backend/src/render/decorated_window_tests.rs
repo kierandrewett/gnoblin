@@ -336,3 +336,142 @@ fn a_border_damages_the_whole_frame_it_runs_along() {
         frame.damage()
     );
 }
+
+const BLUE: [u8; 4] = [0, 0, 255, 255];
+
+/// Adds a canvas painted `rgb`, a child of the window's node at `rect` in the node's own plane, in the given place:
+/// `under` paints it behind the window's content, and a canvas that is not `framed` is no part of the window's frame.
+fn add_layer(composer: &mut Composer, node: NodeId, id: u64, rect: Rect, rgb: [u8; 3], under: bool, framed: bool) {
+    composer.with_scene(|scene| {
+        let mut spec = NodeSpec::new(rect);
+        spec.parent = Some(node);
+        scene.insert(NodeId::new(id), spec).expect("the layer's node");
+        scene
+            .set_class(NodeId::new(id), Some("canvas".to_owned()))
+            .expect("the layer's class");
+        scene
+            .set_value(
+                NodeId::new(id),
+                "content",
+                TreeValue::Bytes(paint_list(rect.width as f32, rect.height as f32, rgb)),
+            )
+            .expect("the layer's content");
+        scene.set_behind(NodeId::new(id), under).expect("behind");
+        scene.set_framed(NodeId::new(id), framed).expect("framed");
+    });
+}
+
+fn surfaces(frame: &OutputFrame) -> Vec<&Surface> {
+    frame
+        .layers()
+        .iter()
+        .filter_map(|layer| match layer {
+            Layer::Surface(surface) => Some(surface),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_layer_under_the_window_is_painted_behind_it_and_leaves_the_frames_shape_alone() {
+    let (mut composer, output, window, node) = decorated();
+    composer.set_window_corner_radius(window, 12.0);
+    composer.with_scene(|scene| {
+        scene
+            .set_effects(node, chain(vec![border(2.0, 0.0, true)]))
+            .expect("effects")
+    });
+    // A backdrop that reaches 20 pixels past the frame on every side: the frame is (100, 72, 100, 128).
+    let backdrop = Rect::new(-20, -48, 140, 168);
+    add_layer(&mut composer, node, 901, backdrop, [0, 0, 255], true, false);
+    let frame = frame_of(&mut composer, output);
+
+    let layers = surfaces(&frame);
+    assert_eq!(layers.len(), 3, "the backdrop, the window's content and its titlebar");
+    assert_eq!(
+        layers[0].dst,
+        Rect::new(80, 52, 140, 168),
+        "the backdrop is painted first, behind the content"
+    );
+    assert_eq!(layers[0].silhouette, None, "and is not rounded to the frame");
+    assert_eq!(layers[0].corner_radius, 0.0);
+    for layer in &layers[1..] {
+        assert_eq!(
+            layer.silhouette,
+            Some(FRAME),
+            "the frame is not widened by the backdrop"
+        );
+        assert_eq!(layer.corner_radius, 12.0);
+    }
+    let Some(Layer::Solid(ring)) = frame.layers().last() else {
+        panic!("the last layer is the ring");
+    };
+    assert_eq!(
+        ring.dst, FRAME,
+        "the border runs along the frame, not along the backdrop"
+    );
+
+    let image = pixels_of(&frame);
+    assert_eq!(probe(&image, 85, 57), BLUE, "the backdrop shows outside the frame");
+    assert_eq!(
+        probe(&image, 101, 73),
+        BLUE,
+        "and through the corner the window's rounded frame cuts"
+    );
+    assert_eq!(probe(&image, 150, 150), RED, "the window's content is over it");
+    assert_eq!(probe(&image, 150, 80), GREEN, "and so is its titlebar");
+}
+
+#[test]
+fn a_layer_over_the_window_is_painted_in_front_and_leaves_the_frames_shape_alone() {
+    let (mut composer, output, window, _) = decorated();
+    composer.set_window_corner_radius(window, 12.0);
+    let node = composer.window_node(window).expect("the window's node");
+    // A badge on the frame's top edge that reaches 10 pixels above it.
+    add_layer(
+        &mut composer,
+        node,
+        902,
+        Rect::new(60, -38, 30, 20),
+        [255, 255, 255],
+        false,
+        false,
+    );
+    let frame = frame_of(&mut composer, output);
+
+    let layers = surfaces(&frame);
+    assert_eq!(layers.len(), 3, "the content, the titlebar and the badge");
+    assert_eq!(
+        layers.last().map(|layer| layer.dst),
+        Some(Rect::new(160, 62, 30, 20)),
+        "the badge is last, in front"
+    );
+    for layer in &layers[..2] {
+        assert_eq!(layer.silhouette, Some(FRAME), "the frame is not widened by the badge");
+    }
+    assert_eq!(layers[2].silhouette, None, "the badge is not rounded to the frame");
+    let image = pixels_of(&frame);
+    assert_eq!(probe(&image, 170, 66), WHITE, "the badge shows above the frame");
+}
+
+#[test]
+fn a_canvas_that_is_part_of_the_frame_widens_it_and_is_rounded_to_it() {
+    let (mut composer, output, window, _) = decorated();
+    composer.set_window_corner_radius(window, 12.0);
+    let node = composer.window_node(window).expect("the window's node");
+    // The same 20 pixel strip, now an edge of the frame: a left edge of the shell's frame.
+    add_layer(
+        &mut composer,
+        node,
+        903,
+        Rect::new(-20, 0, 20, 100),
+        [0, 0, 255],
+        false,
+        true,
+    );
+    let frame = frame_of(&mut composer, output);
+    let widened = Rect::new(80, 72, 120, 128);
+    for layer in surfaces(&frame) {
+        assert_eq!(layer.silhouette, Some(widened), "a framed canvas is part of the shape");
+    }
+}

@@ -191,3 +191,81 @@ fn a_new_window_is_on_the_output_while_a_shell_holds_the_tree() {
         session.wait_for(|observation| observation.only().is_some_and(|window| window.visible));
     });
 }
+
+/// A canvas the shell puts under the window's node, as a frame's resize handle.
+const HANDLE: NodeId = NodeId::new(0x7101);
+/// A handle that is hidden from the pointer, as a frame's layers are.
+const LAYER: NodeId = NodeId::new(0x7102);
+
+#[test]
+fn a_node_of_the_shell_outside_the_window_geometry_takes_the_pointer_and_the_client_is_not_sent_it() {
+    let (shell, hooks) = Shell::new();
+    let session = Session::start_shelled(hooks);
+    session.run(move |session| {
+        shell.attach();
+        let mut client = Client::connect(session.socket());
+        let (_keyboard, pointer) = client.seat_devices();
+        assert!(pointer.is_some(), "the seat offers a pointer");
+        let _window = client.map_window("org.gnoblin.Handles", "Handles");
+        let node = shell.wait_window_node();
+        place(&shell, node);
+
+        // A resize handle 6 pixels wide on the window's left, outside its geometry: a child of the window's node at a
+        // negative x. A layer over the whole window that lets the pointer through, as a frame's overlay does.
+        let canvas = |x: f64, y: f64, width: f64, height: f64| {
+            [
+                ("x", TreeValue::Double(x)),
+                ("y", TreeValue::Double(y)),
+                ("width", TreeValue::Double(width)),
+                ("height", TreeValue::Double(height)),
+            ]
+        };
+        shell.create("canvas", HANDLE, Some(node), &canvas(-6.0, 0.0, 6.0, PLACED.3));
+        shell.create(
+            "canvas",
+            LAYER,
+            Some(node),
+            &canvas(-6.0, -6.0, PLACED.2 + 12.0, PLACED.3 + 12.0),
+        );
+        shell.write(
+            LAYER,
+            &[
+                ("input", TreeValue::Bool(false)),
+                ("placement", TreeValue::Text("over".to_owned())),
+            ],
+        );
+
+        let on_handle = Point {
+            x: PLACED.0 as i32 - 3,
+            y: PLACED.1 as i32 + 50,
+        };
+        motion(session, on_handle);
+        shell.wait_input(HANDLE, "enter", 1);
+        button(session, true);
+        shell.wait_input(HANDLE, "press", 1);
+        button(session, false);
+        shell.wait_input(HANDLE, "release", 1);
+        client.roundtrip();
+        assert!(
+            shell.inputs(node).is_empty(),
+            "the window is not the target: {:?}",
+            shell.inputs(node)
+        );
+        assert_eq!(
+            client.state.pointer_enters, 0,
+            "the client never saw the pointer: the handle is outside its geometry"
+        );
+        assert!(
+            shell.inputs(LAYER).is_empty(),
+            "a layer with no input lets the pointer through and is not hit"
+        );
+
+        // Inside the geometry the layer is passed through and the window is the target again.
+        motion(session, INSIDE);
+        shell.wait_input(node, "enter", 1);
+        client.wait_until("the pointer to enter the client's surface", |state| {
+            state.pointer_enters >= 1
+        });
+        assert!(shell.inputs(LAYER).is_empty());
+    });
+}

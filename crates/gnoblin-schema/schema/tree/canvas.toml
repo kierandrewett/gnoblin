@@ -15,6 +15,18 @@ name = "content"
 type = "bytes"
 since = "0.2.0"
 
+# Where a canvas that is a child of a window sits: `frame` (the default) is in front of the window's content and part of
+# the window's frame, so the shape its rounded corners, border and frame shadow follow includes the canvas; `over` is in
+# front and not part of the frame (a badge, a focus ring); `under` is painted behind the window's content and is not part
+# of the frame (a backdrop, a glow). A canvas that reaches past the frame and is `over` or `under` does not widen the
+# frame. Any other word is refused `bad-value`. Under a parent that is not a window the canvas is painted in tree
+# order and `placement` only says whether it counts as part of a frame.
+[[object.property]]
+name = "placement"
+type = "string"
+since = "0.2.0"
+default = "frame"
+
 # Measure text at a size. Answered through `tree.answer`.
 #
 # The call's one argument is the size in pixels as the little-endian bits of an `f64`; its text is the font name, a

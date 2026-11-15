@@ -179,6 +179,9 @@ pub struct Node {
     /// hit; the hit extent says where a pointer reaches.
     draw_extent: Option<Rect>,
     behind: bool,
+    /// Whether the node is part of its window's frame: the shape rounded corners, a border and a frame shadow follow
+    /// includes the node's rectangle. False for a layer over or under the window that is not.
+    framed: bool,
     owner: Actor,
     parented_by: Option<Actor>,
     class: Option<String>,
@@ -249,6 +252,13 @@ impl Node {
     #[must_use]
     pub const fn behind(&self) -> bool {
         self.behind
+    }
+
+    /// Whether the node is part of its window's frame (the default) and so widens the shape the window's rounded
+    /// corners, border and frame shadow follow.
+    #[must_use]
+    pub const fn framed(&self) -> bool {
+        self.framed
     }
 
     /// The actor that created the node. Only it may destroy the node.
@@ -595,6 +605,7 @@ impl Scene {
             hit_extent: None,
             draw_extent: None,
             behind: false,
+            framed: true,
             owner: actor,
             parented_by: spec.parent.map(|_| actor),
             class: None,
@@ -945,6 +956,25 @@ impl Scene {
     #[must_use]
     pub fn behind(&self, id: NodeId) -> Option<bool> {
         self.nodes.get(&id).map(Node::behind)
+    }
+
+    /// Make a node part of its window's frame, or a layer that is not: a glow or a badge that reaches past the frame must
+    /// not widen the shape the window's rounded corners, border and frame shadow follow. The shape changes what is drawn,
+    /// so the subtree's bounds before and after are damage.
+    pub fn set_framed(&mut self, id: NodeId, framed: bool) -> Result<(), SceneError> {
+        let node = self.nodes.get(&id).ok_or(SceneError::UnknownNode(id))?;
+        if node.framed != framed {
+            // The shape is the window's, which the node's flag widens or stops widening: the window's bounds are the damage.
+            let root = node.parent().unwrap_or(id);
+            self.change_within(root, id, |node| node.framed = framed);
+        }
+        Ok(())
+    }
+
+    /// Whether a node is part of its window's frame, or `None` for an unknown node.
+    #[must_use]
+    pub fn framed(&self, id: NodeId) -> Option<bool> {
+        self.nodes.get(&id).map(Node::framed)
     }
 
     /// Let a node be the target of a hit, or make it pass hits through to what is under it.
@@ -1486,6 +1516,7 @@ impl Scene {
         node.children
             .iter()
             .filter_map(|child| self.nodes.get(child))
+            .filter(|child| child.framed)
             .fold(own, |area, child| {
                 let offset = child.transform.base.offset;
                 let bounds = child.bounds.to_f64();
@@ -1565,7 +1596,13 @@ impl Scene {
 
     /// Apply a mutation while recording the projected bounds before and after.
     fn change(&mut self, id: NodeId, apply: impl FnOnce(&mut Node)) {
-        let scope = self.subtree_ids(id);
+        self.change_within(id, id, apply);
+    }
+
+    /// Apply a mutation of node `id` while recording the projected bounds before and after of the whole subtree of `root`,
+    /// an ancestor of `id` whose own bounds the mutation changes too.
+    fn change_within(&mut self, root: NodeId, id: NodeId, apply: impl FnOnce(&mut Node)) {
+        let scope = self.subtree_ids(root);
         let before: Vec<DamageSample> = scope.iter().filter_map(|node| self.sample(*node)).collect();
         {
             let node = self.nodes.get_mut(&id).expect("caller checked the node exists");
@@ -2199,6 +2236,50 @@ mod tests {
     }
 
     #[test]
+    fn a_child_that_is_not_part_of_the_frame_does_not_widen_what_a_frame_shadow_reaches() {
+        let mut scene = scene_with_output();
+        let window = decorated_window(&mut scene);
+        // A glow that reaches 40 pixels past the window on every side, in front of its content.
+        let mut glow = NodeSpec::new(rect(-40, -40, 280, 280));
+        glow.parent = Some(window);
+        scene.insert(NodeId::new(3), glow).expect("glow");
+        scene.set_effects(window, shadow_of(true)).expect("effects");
+        assert_eq!(
+            scene.framed(NodeId::new(3)),
+            Some(true),
+            "a node is part of the frame until it is set"
+        );
+        assert_eq!(
+            scene.absolute_bounds(window),
+            Some(rect(50, 50, 300, 300)),
+            "a framed glow is part of the frame: the shadow reaches 10 pixels past it"
+        );
+        scene.take_damage();
+        scene.set_framed(NodeId::new(3), false).expect("framed");
+        assert_eq!(
+            scene.absolute_bounds(window),
+            Some(rect(90, 62, 220, 248)),
+            "a layer that is not part of the frame leaves the shadow where the bar puts it"
+        );
+        let damage = scene.take_damage();
+        let output = damage.for_output(OutputId::new(0)).expect("the change is damage");
+        assert!(
+            output.covers(rect(50, 50, 300, 300)),
+            "what the glow stopped widening is repainted"
+        );
+        scene.set_framed(NodeId::new(3), false).expect("framed again");
+        assert!(
+            scene.take_damage().for_output(OutputId::new(0)).is_none(),
+            "a flag that did not change damages nothing"
+        );
+        assert_eq!(scene.framed(NodeId::new(99)), None);
+        assert_eq!(
+            scene.set_framed(NodeId::new(99), false),
+            Err(SceneError::UnknownNode(NodeId::new(99)))
+        );
+    }
+
+    #[test]
     fn a_border_damages_the_frame_it_runs_along() {
         let mut scene = scene_with_output();
         let window = decorated_window(&mut scene);
@@ -2252,6 +2333,7 @@ mod tests {
                 hit_extent: None,
                 draw_extent: None,
                 behind: false,
+                framed: true,
                 owner: Actor::Compositor,
                 parented_by: None,
                 class: None,
@@ -2275,6 +2357,7 @@ mod tests {
                 hit_extent: None,
                 draw_extent: None,
                 behind: false,
+                framed: true,
                 owner: Actor::Compositor,
                 parented_by: Some(Actor::Compositor),
                 class: None,

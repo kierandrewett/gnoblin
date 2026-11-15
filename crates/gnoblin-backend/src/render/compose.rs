@@ -3797,10 +3797,13 @@ impl Composer {
         };
         // Keyed by twice the paint rank, so a ring (the odd key after the last rank of its subtree) sorts after the
         // canvases under it and before the next node.
+        // The canvases `placement` puts under a window are painted before it, in their own paint order.
+        let under = self.canvases_under_windows();
         let mut queue: Vec<(u64, QueuedLayer)> = self
             .canvases
             .iter()
             .filter(|(node, picture)| picture.image.is_some() && self.scene.drawn(**node))
+            .filter(|(node, _)| !under.values().any(|nodes| nodes.contains(node)))
             .filter_map(|(node, _)| Some((u64::from(*ranks.get(node)?) * 2, QueuedLayer::Canvas(*node))))
             .collect();
         for (window, node) in ringed {
@@ -3821,6 +3824,12 @@ impl Composer {
             if let Some(rank) = ranks.get(&window_node) {
                 while let Some((_, item)) = waiting.next_if(|(key, _)| *key < u64::from(*rank) * 2) {
                     self.push_waiting(item, rect, frame, &mut spatial);
+                }
+            }
+            for canvas in under.get(&window_node).into_iter().flatten() {
+                if self.canvases.get(canvas).is_some_and(|picture| picture.image.is_some()) && self.scene.drawn(*canvas)
+                {
+                    self.push_canvas(*canvas, rect, frame, &mut spatial);
                 }
             }
             self.push_window(*window, entry, window_node, rect, frame, &mut spatial);
@@ -3895,6 +3904,36 @@ impl Composer {
         !frame.is_empty()
     }
 
+    /// The canvases that are painted before the window they hang under, by that window's node: each canvas child of a
+    /// window node whose `placement` is `under` (it is `behind` in the scene) and everything beneath it, in paint order.
+    /// A canvas is otherwise painted after its parent, in front of the window's content.
+    fn canvases_under_windows(&self) -> BTreeMap<NodeId, Vec<NodeId>> {
+        let mut under = BTreeMap::new();
+        for entry in self.windows.values() {
+            let Some(window_node) = entry.node else {
+                continue;
+            };
+            let mut nodes = Vec::new();
+            let mut pending: Vec<NodeId> = self
+                .scene
+                .children(window_node)
+                .unwrap_or(&[])
+                .iter()
+                .rev()
+                .copied()
+                .filter(|child| self.scene.behind(*child) == Some(true) && self.scene.class(*child) == Some("canvas"))
+                .collect();
+            while let Some(next) = pending.pop() {
+                nodes.push(next);
+                pending.extend(self.scene.children(next).unwrap_or(&[]).iter().rev());
+            }
+            if !nodes.is_empty() {
+                under.insert(window_node, nodes);
+            }
+        }
+        under
+    }
+
     /// The position of every node in the scene's paint order, bottom first: a depth-first walk that visits a node
     /// before its children and a sibling after the one below it.
     fn paint_ranks(&self) -> BTreeMap<NodeId, u32> {
@@ -3949,7 +3988,8 @@ impl Composer {
         let size = image.size();
         // A decoration child of a rounded window (its titlebar) takes the window's radius and is clipped to the
         // window's frame, so the bar and the content have one set of corners and not two.
-        let inherited = (transform.corner_radius <= 0.0 && model.is_none())
+        // A layer over or under the window (`placement`) is not part of the frame and is not rounded to it.
+        let inherited = (transform.corner_radius <= 0.0 && model.is_none() && self.scene.framed(canvas) != Some(false))
             .then(|| self.scene.parent(canvas))
             .flatten()
             .filter(|parent| self.window_of_node(*parent).is_some())
@@ -3999,14 +4039,17 @@ impl Composer {
     }
 
     /// The frame of a window node on `output`, in the output's own logical space: the rectangle its content covers,
-    /// together with the decoration children that lie outside it (a titlebar above the content), and the corner
-    /// radius the node carries. Everything a window draws, its content, its decoration, its borders and, when it
-    /// asks for the frame, its shadow, is rounded and outlined by this one shape.
+    /// together with the decoration children that lie outside it (a titlebar above the content, an edge of the
+    /// shell's frame) and are part of the frame (`placement` `frame`), and the corner radius the node carries.
+    /// Everything a window draws, its content, its decoration, its borders and, when it asks for the frame, its shadow,
+    /// is rounded and outlined by this one shape.
     fn window_shape(&self, node: NodeId, output: Rect) -> Option<WindowShape> {
         let mut area = self.scene.content_bounds(node)?;
         for child in self.scene.children(node).unwrap_or(&[]) {
             let drawn = self.canvases.get(child).is_some_and(|picture| picture.image.is_some());
+            // A layer over or under the window (`placement`) is drawn with the window and is not part of its frame.
             if drawn
+                && self.scene.framed(*child) != Some(false)
                 && self.scene.drawn(*child)
                 && let Some(bounds) = self.scene.content_bounds(*child)
             {

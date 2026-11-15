@@ -1122,6 +1122,11 @@ fn write_value(work: &mut Scene, node: NodeId, key: &str, value: &TreeValue) -> 
     {
         return Err(Code::BadValue);
     }
+    if let ("placement", TreeValue::Text(placement)) = (key, value)
+        && !matches!(placement.as_str(), "frame" | "over" | "under")
+    {
+        return Err(Code::BadValue);
+    }
     if let TreeValue::ListDouble(axes) = value
         && matches!(key, "rotation" | "scale")
         && axes.len() != 3
@@ -1142,6 +1147,10 @@ fn write_value(work: &mut Scene, node: NodeId, key: &str, value: &TreeValue) -> 
         ("visible", TreeValue::Bool(on)) => work.set_visible(node, *on),
         ("clip", TreeValue::Bool(on)) => work.set_clip(node, *on),
         ("input", TreeValue::Bool(on)) => work.set_input(node, *on),
+        // `under` paints behind the window's content, and only `frame` is part of the frame's shape.
+        ("placement", TreeValue::Text(placement)) => work
+            .set_behind(node, placement == "under")
+            .and_then(|()| work.set_framed(node, placement == "frame")),
         ("rotation", TreeValue::ListDouble(axes)) => set_axes(
             work,
             node,
@@ -1188,7 +1197,7 @@ fn effect_chain(passes: &[Pass]) -> Result<Effects, SceneError> {
 fn is_stored(key: &str) -> bool {
     matches!(
         key,
-        "width" | "height" | "visible" | "clip" | "input" | "rotation" | "scale" | "source" | "camera"
+        "width" | "height" | "visible" | "clip" | "input" | "placement" | "rotation" | "scale" | "source" | "camera"
     ) || visual_property(key).is_some()
 }
 
