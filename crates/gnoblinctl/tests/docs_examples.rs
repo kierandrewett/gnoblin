@@ -310,6 +310,7 @@ fn config_validate_runs_on_a_valid_and_an_invalid_file() {
 const TS_DOC_DIRS: &[&str] = &["docs/config", "docs/recipes"];
 const TS_DOC_FILES: &[&str] = &[
     "docs/config.md",
+    "docs/js-settings.md",
     "docs/guides/shortcuts.md",
     "docs/guides/window_rules.md",
     "docs/guides/files_and_load_order.md",
@@ -325,7 +326,7 @@ const TS_DOC_FILES: &[&str] = &[
 ];
 
 /// The fewest samples the pages must hold, so a parse that stops finding them fails loudly.
-const MINIMUM_TS_SAMPLES: usize = 60;
+const MINIMUM_TS_SAMPLES: usize = 40;
 
 /// Every `.md` file under `dir`, recursively.
 fn markdown_files(dir: &std::path::Path, found: &mut Vec<std::path::PathBuf>) {

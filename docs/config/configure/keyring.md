@@ -1,37 +1,13 @@
-# Keyring settings
+# Keyring
 
-The `keyring` key chooses whether Gnoblin runs its built-in keyring:
+Gnoblin runs a built-in keyring. Programs such as libsecret, browsers and `secret-tool` look up passwords on
+`org.freedesktop.secrets`, and Gnoblin serves that name from its own store. Whether it does is the `keyring.enabled`
+setting, which has no TypeScript home yet: see [settings with no TypeScript home yet](/js-settings#dropped-settings).
+The keyring stays enabled.
 
-```ts
-import { defineConfig } from "gnoblin";
+## What the keyring does
 
-export default defineConfig({
-    keyring: { enabled: true },
-});
-```
-
-Programs such as libsecret, browsers and `secret-tool` look up passwords on
-`org.freedesktop.secrets`. With `enabled: true`, Gnoblin serves that name from
-its own store. With `enabled: false`, Gnoblin serves nothing and another program
-(gnome-keyring, KeePassXC, KWallet) or no keyring at all provides it.
-
-| Field     | Type and accepted values | Default | Effect                                                                                      |
-| --------- | ------------------------ | ------- | ------------------------------------------------------------------------------------------- |
-| `enabled` | Boolean                  | `true`  | Run Gnoblin's built-in keyring. Turn it off to use a keyring from another program, or none. |
-
-No other field is accepted. Gnoblin rejects a `keyring` value that is not a
-table, an `enabled` value that is not a boolean, and any other key.
-
-## What changes when it is off
-
-With `enabled: false`, the services role does not request
-`org.freedesktop.secrets`, creates no store file or directory, and runs no
-keyring code. The portal does not export the Secret object, so Gnoblin answers
-no Secret request. The system's keyring answers them.
-
-## What changes when it is on
-
-With `enabled: true`, Gnoblin requests `org.freedesktop.secrets` with
+Gnoblin requests `org.freedesktop.secrets` with
 `DO_NOT_QUEUE`. If another program already owns the name, Gnoblin does not take
 it and logs why. The two can run side by side: the one that lost the name does
 not serve.
@@ -48,52 +24,26 @@ the password first. The app's save finishes after you answer. If the request is
 dismissed or answered wrongly, nothing is saved. Searching and reading
 while locked return nothing until the store is unlocked.
 
-## When a change applies
+## When the keyring starts
 
-The services role does not decide `keyring.enabled` from the file on disk when it
-starts. It waits for the compositor to accept this session's configuration, then
-reads the flag from that accepted document. Until it decides, Gnoblin serves
-nothing: it does not request `org.freedesktop.secrets`, creates no store, and
-writes no file.
+The services role waits for the compositor to accept the session's configuration before it decides. If nothing is
+accepted within 20 seconds it uses the flag of the last accepted configuration file, and then the schema default, which
+is on. The log names which of these decided: `accepted revision`, `last accepted file` or `schema default`.
 
-- **Accepted configuration arrives.** The flag of the accepted document decides at
-  once, and the log names the revision. With `enabled: false` Gnoblin never serves.
-  With `enabled: true` it serves.
-- **Your `init.ts` or `init.js` is there and nothing is accepted yet.** The services role
-  evaluates the file itself, in a throwaway runtime with no compositor. The flag of the
-  document it describes decides at once. This is what makes `keyring.enabled = false`
-  hold on a first boot with no saved file. A config that needs the compositor while it
-  loads cannot be read this way, and the role waits for the accepted configuration.
-- **Nothing is accepted within 20 seconds.** The services role
-  then uses the flag of the last accepted configuration file, if one exists. If none
-  exists, or it cannot be read, the schema default decides, which is on.
-
-The log names the source and the reason. The source is one of these:
-
-- `accepted revision`
-- `the user's config file`
-- `last accepted file`
-- `schema default`
-
-So a change to `keyring.enabled` takes effect at the next session start, once the
-compositor accepts the configuration. On a first boot with no saved file, the flag
-from your `init.ts` decides at once. The wait is not reached.
-
-The Secret portal reads the last accepted file when it starts, not the accepted
-document. On a first boot with no saved file it assumes the default, which is on,
-so it does not follow an unsaved `enabled: false`. This is a known gap of the first-boot decision.
+The Secret portal reads the last accepted file when it starts, not the accepted document.
 
 ## Apps reach gnome-keyring instead
 
-With `enabled: true`, Gnoblin does not stop other programs from taking
+While it is on, Gnoblin does not stop other programs from taking
 `org.freedesktop.secrets`. Apps then reach that program, and their secrets do not
-go to Gnoblin's store. This page lists each route, what Gnoblin does about it, and
+go to Gnoblin's store.
+
+This page lists each route, what Gnoblin does about it, and
 whether that was tested. "Unverified" means the behaviour is read from the package
 files or the code, but was not run on a live session.
 
 | Route                                                                                                            | What Gnoblin does                                                                                          | Status                                                                            |
 | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| An autostart entry that runs `gnome-keyring-daemon` (argv word matches)                                          | Refuses the config at load and check time, and names the entry                                             | Unit tests in `gnoblin-js`                                                        |
 | `pam_gnome_keyring` in the login PAM stack                                                                       | Nothing. PAM runs before the session                                                                       | Outside Gnoblin's control. No file in `/etc/pam.d` names it on the tested machine |
 | D-Bus activation: `/usr/share/dbus-1/services/org.freedesktop.secrets.service` (shipped by gnome-keyring)        | Nothing. Gnoblin does not ship a file that overrides it                                                    | Unverified. Starts when a client calls the name before anything owns it           |
 | systemd user units `gnome-keyring-daemon.socket` and `.service` (`WantedBy=sockets.target` and `default.target`) | Nothing. Gnoblin does not mask them                                                                        | Unverified in a Gnoblin session. Disabled on the tested machine                   |
@@ -105,7 +55,7 @@ files or the code, but was not run on a live session.
 
 Gnoblin never sets `ALLOW_REPLACEMENT` and never takes the name from another owner.
 
-Known gap: with `keyring.enabled = false`, the Secret portal has no provider. The shipped
+Known gap: with the keyring off, the Secret portal has no provider. The shipped
 `portals.conf` routes `org.freedesktop.impl.portal.Secret=gnoblin`, and nothing rewrites that
 line from the setting, so Secret portal requests are refused in that mode. Before this lane the
 route was `Secret=gtk;*`, which did reach any installed backend.

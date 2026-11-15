@@ -3,8 +3,8 @@
 Gnoblin's portal backend answers some XDG Desktop Portal interfaces for apps in the session. This page says which,
 how to route an interface to another backend, and which settings it publishes.
 
-`portals` is not a `defineConfig` key. The `portals` section of the config document is carried and no process reads
-it, so a config that sets it has no effect. Route portals with a standard `portals.conf` file instead, as
+`init.ts` has no setting for portals. The `portals` section of the config document is carried and no process reads it.
+Route portals with a standard `portals.conf` file instead, as
 [below](#route-an-interface-to-another-backend).
 
 Gnoblin routes interfaces only. It does not manage app permissions: the selected backend decides what each app may
@@ -31,7 +31,7 @@ Screenshot takes one picture of the whole output. The compositor sends the PNG, 
 Pictures folder. The response carries its `file://` URI.
 
 The Gnoblin consent dialog asks first. Deny has focus; Tab moves to Allow and Return presses it. Escape or Deny
-returns response 1. To restyle the dialog or refuse a request from a script, see [dialogs](/config/configure/dialogs).
+returns response 1. To refuse a request from a script, see [dialogs](/config/configure/dialogs).
 
 A request with `interactive` set to true asks you to choose an area. The portal refuses it by name after consent.
 
@@ -91,19 +91,19 @@ The `org.freedesktop.impl.portal.Settings` interface answers `ReadAll` and `Read
 already holds. A toolkit reads them through the portal, and each change is announced with `SettingChanged`. The
 backend publishes these keys:
 
-| Namespace                          | Key                                                      | Source                                                   |
-| ---------------------------------- | -------------------------------------------------------- | -------------------------------------------------------- |
-| `org.freedesktop.appearance`       | `color-scheme`                                           | [`appearance.colorScheme`](/config/configure/appearance) |
-| `org.freedesktop.appearance`       | `contrast`                                               | `appearance.highContrast`: 1 on, 0 off                   |
-| `org.freedesktop.appearance`       | `reduced-motion`                                         | `appearance.reducedMotion`: 1 on, 0 off                  |
-| `org.freedesktop.appearance`       | `accent-color`                                           | `appearance.accent`                                      |
-| `org.gnome.desktop.interface`      | `gtk-theme`, `icon-theme`                                | theme names                                              |
-| `org.gnome.desktop.interface`      | `cursor-theme`, `cursor-size`                            | [`cursor`](/config/configure/cursor)                     |
-| `org.gnome.desktop.interface`      | `font-name`, `document-font-name`, `monospace-font-name` | fonts                                                    |
-| `org.gnome.desktop.interface`      | `text-scaling-factor`                                    | text scale                                               |
-| `org.gnome.desktop.interface`      | `button-layout`                                          | window buttons                                           |
-| `org.gnome.desktop.interface`      | `enable-animations`                                      | the inverse of `reducedMotion`                           |
-| `org.gnome.desktop.a11y.interface` | `high-contrast`                                          | `appearance.highContrast`                                |
+| Namespace                          | Key                                                      | Source                                  |
+| ---------------------------------- | -------------------------------------------------------- | --------------------------------------- |
+| `org.freedesktop.appearance`       | `color-scheme`                                           | `appearance.colorScheme`                |
+| `org.freedesktop.appearance`       | `contrast`                                               | `appearance.highContrast`: 1 on, 0 off  |
+| `org.freedesktop.appearance`       | `reduced-motion`                                         | `appearance.reducedMotion`: 1 on, 0 off |
+| `org.freedesktop.appearance`       | `accent-color`                                           | `appearance.accent`                     |
+| `org.gnome.desktop.interface`      | `gtk-theme`, `icon-theme`                                | theme names                             |
+| `org.gnome.desktop.interface`      | `cursor-theme`, `cursor-size`                            | `cursor`                                |
+| `org.gnome.desktop.interface`      | `font-name`, `document-font-name`, `monospace-font-name` | fonts                                   |
+| `org.gnome.desktop.interface`      | `text-scaling-factor`                                    | text scale                              |
+| `org.gnome.desktop.interface`      | `button-layout`                                          | window buttons                          |
+| `org.gnome.desktop.interface`      | `enable-animations`                                      | the inverse of `reducedMotion`          |
+| `org.gnome.desktop.a11y.interface` | `high-contrast`                                          | `appearance.highContrast`               |
 
 An accent colour that is not set is published as the sentinel the Settings portal defines: all three components out of
 range. A key Gnoblin does not publish is absent, not guessed.

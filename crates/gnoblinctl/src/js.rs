@@ -53,10 +53,11 @@ const NO_TSC: &str =
     "type check skipped: no TypeScript compiler found; install one with `npm i -g typescript` or set GNOBLIN_TSC";
 
 /// An inert value that accepts any property read, call or construction and returns itself, so the
-/// author's top-level code can use `gnoblin` without a host. `then` and symbols read as undefined so
-/// awaiting or spreading it does not hang or throw.
+/// author's top-level code can use `gnoblin` without a host. `then` reads as undefined so awaiting it
+/// does not hang, `Symbol.iterator` is an empty sequence so `for (const device of gnoblin.input.devices)` runs no
+/// iteration, and other symbols read as undefined.
 const STUB: &str = "const stub = new Proxy(function () {}, {\n\
-    get: (_, key) => key === 'then' ? undefined : key === Symbol.toPrimitive ? () => '' : typeof key === 'symbol' ? undefined : stub,\n\
+    get: (_, key) => key === 'then' ? undefined : key === Symbol.toPrimitive ? () => '' : key === Symbol.iterator ? () => [][Symbol.iterator]() : typeof key === 'symbol' ? undefined : stub,\n\
     apply: () => stub,\n\
     construct: () => stub,\n\
 });\n";

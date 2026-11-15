@@ -8,9 +8,9 @@
 
     const REFERENCE = [
         {
-            title: "Window rules",
-            href: docsHref("config/window_rule"),
-            text: "Match windows by app or title and change how they look, where they open and how they behave.",
+            title: "Settings in init.ts",
+            href: docsHref("js-settings"),
+            text: "What you can set on devices, outputs, windows, workspaces and keys, with an example each.",
         },
         {
             title: "Animations",
@@ -20,7 +20,7 @@
         {
             title: "Input",
             href: docsHref("config/configure/input"),
-            text: "Keyboards, mice, touchpads, tablets and pens.",
+            text: "Keyboards, mice and touchpads.",
         },
         { title: "Shortcuts", href: docsHref("guides/shortcuts"), text: "Bind any command to a key." },
         {
