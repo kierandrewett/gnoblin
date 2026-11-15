@@ -139,6 +139,9 @@ pub const RULES: &[ApplyRule] = &[
         "client-surface-limit",
         StartProcess::Compositor,
         "the memory ledger is created when the compositor starts",
+    ),
+    restart(
+        "compositor",
         "backend",
         StartProcess::Compositor,
         "the backend is chosen and opened when the compositor starts",

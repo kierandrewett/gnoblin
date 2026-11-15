@@ -1578,6 +1578,9 @@ max = 1000000
 accepted = "an integer from 0 to 1000000; 0 turns the limit off"
 default = { int = 4096 }
 doc = "The most surfaces (toplevels, popups, subsurfaces, cursors) one client may hold at once. A client that asks for another is ended with wl_display.error.no_memory. 0 turns the limit off."
+since = "0.2.0"
+
+[[section.field]]
 key = "backend"
 kind = "enum"
 enum = "BackendChoice"

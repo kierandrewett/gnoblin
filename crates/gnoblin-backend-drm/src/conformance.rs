@@ -404,6 +404,6 @@ fn the_status_table_holds_for_the_hardware_backend() {
     ] {
         measured.is(id, CellStatus::NotApplicable);
     }
-    measured.declared("gpu.footprint", "no footprint");
+    measured.declared("gpu.footprint", "unproven on hardware");
     measured.finish();
 }
