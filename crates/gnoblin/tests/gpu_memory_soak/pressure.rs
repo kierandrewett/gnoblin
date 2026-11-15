@@ -70,22 +70,32 @@ impl Dispatch<wl_buffer::WlBuffer, ()> for Quiet {
     }
 }
 
-/// Connects, asks for a buffer of `width` by `height` pixels and holds it for as long as the returned guard lives.
+/// The width of the buffer the pressure client makes, and the most rows it gives it: 8192 by 12288 pixels is 384 MiB,
+/// which is under the compositor's own cap (16384 on an edge, 2^27 pixels) and over a budget of 384 MiB with anything
+/// else held.
+const WIDTH: i32 = 8192;
+const MAX_ROWS: i32 = 12288;
+
+/// Connects, asks for a buffer of about `bytes` and holds it for as long as the returned connection lives.
 ///
-/// The guard keeps the connection, so the buffer counts against the budget until it is dropped.
-pub fn lean(socket: &Path, width: i32, height: i32) -> (Answer, Option<Connection>) {
+/// The buffer is 8192 pixels wide and as tall as `bytes` needs, at least one row and at most 12288 (384 MiB). The
+/// connection is returned with the answer so that the buffer counts against the budget until it is dropped.
+pub fn lean(socket: &Path, bytes: u64) -> (Answer, Option<Connection>) {
     let stream = UnixStream::connect(socket).expect("the session is listening");
     let connection = Connection::from_socket(stream).expect("a client connection");
     let (globals, mut queue) = registry_queue_init::<Quiet>(&connection).expect("the global list");
     let qh = queue.handle();
     let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).expect("the session advertises wl_shm");
-    let stride = width * 4;
-    let length = stride * height;
+    let stride = WIDTH * 4;
+    let rows = i32::try_from(bytes.div_ceil(u64::from(stride.unsigned_abs())))
+        .unwrap_or(MAX_ROWS)
+        .clamp(1, MAX_ROWS);
+    let length = stride * rows;
     let file = tempfile::tempfile().expect("a shared memory file");
     file.set_len(u64::try_from(length).expect("a positive length"))
         .expect("a sparse file");
     let pool = shm.create_pool(file.as_fd(), length, &qh, ());
-    let _buffer = pool.create_buffer(0, width, height, stride, wl_shm::Format::Argb8888, &qh, ());
+    let _buffer = pool.create_buffer(0, WIDTH, rows, stride, wl_shm::Format::Argb8888, &qh, ());
     // The server answers on its next loop turn, so a refusal can arrive after the first round trip.
     let mut state = Quiet;
     for _ in 0..3 {

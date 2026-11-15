@@ -25,10 +25,11 @@
 //! a run that cannot stay bounded leaves its series instead of an OOM kill.
 //!
 //! `GNOBLIN_SOAK_BUDGET_MIB` (unset by default: the session's default budget) sets the compositor's memory budget to a
-//! small value, and turns on a client that leans on it: every cycle it asks for one large buffer (`pressure.rs`), is
-//! admitted or ended with `wl_display.error.no_memory`, and lets go at the end of the cycle. The series then carries
-//! what the budget did (`refused_total`, `evicted_total`, `clients_bytes`) beside what the process held, which is how a
-//! refusal that leaks or a session that does not survive one shows.
+//! small value, and turns on a client that leans on it: every fifth cycle it asks for one buffer (`pressure.rs`), in
+//! turn one that fits, one a little larger than what is left (which fits only if a cache is given back) and one as large
+//! as the whole budget, is admitted or ended with `wl_display.error.no_memory`, and lets go at once. The series then
+//! carries what the budget did (`refused_total`, `evicted_total`, `clients_bytes`) beside what the process held, which
+//! is how a refusal that leaks or a session that does not survive one shows.
 
 use std::fs;
 use std::io::Write as _;
@@ -510,16 +511,29 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
         if let Some(capture) = &mut capture {
             capture.step();
         }
-        // The client that leans on a small budget: a buffer of 16 to 48 MiB, kept until the end of the cycle.
-        let held = (budget_mib > 0).then(|| {
-            let (width, height) = [(2048, 2048), (3072, 2048), (4096, 3072)][cycle as usize % 3];
-            let (answer, connection) = pressure::lean(&session.wayland(), width, height);
+        // The client that leans on a small budget, every fifth cycle, and in turn: a buffer that fits (16 MiB), one a
+        // little larger than what is left, which fits only if the compositor gives back a cache, and one as large as
+        // the whole budget, which nothing can make room for. It lets go at once, before the soak's own clients ask for
+        // anything, so that a refusal of theirs would be the budget's doing and not this client's.
+        if budget_mib > 0 && cycle.is_multiple_of(5) {
+            let now = screens(&ipc);
+            let left = greatest(&now, "gpu_memory_budget_bytes")
+                - greatest(&now, "gpu_memory_clients_bytes")
+                - sum(&now, "gpu_memory_bytes");
+            let bytes = match (cycle / 5) % 3 {
+                0 => 16 << 20,
+                1 => left.max(0.0) as u64 + (2 << 20),
+                _ => budget_mib << 20,
+            };
+            let (answer, connection) = pressure::lean(&session.wayland(), bytes);
             match answer {
                 pressure::Answer::Accepted => admitted.set(admitted.get() + 1),
                 pressure::Answer::Refused => refused_buffers.set(refused_buffers.get() + 1),
             }
-            connection
-        });
+            std::thread::sleep(Duration::from_millis(100));
+            drop(connection);
+            std::thread::sleep(Duration::from_millis(100));
+        }
         // Screenshots through the control socket: both the composed frame and the one the display shows.
         let mut control = owner(&ipc);
         let shot = if cycle.is_multiple_of(2) {
@@ -569,7 +583,6 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
             );
             next_sample += Duration::from_secs(sample_every);
         }
-        drop(held);
         std::thread::sleep(Duration::from_millis(40));
     }
     // The end: every client gone, the factor back to one, the second output unplugged, then a settled reading.
