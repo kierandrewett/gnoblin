@@ -458,6 +458,8 @@ passing = [
     "TextInputV3WithInputMethodV2Test.input_method_disabled_when_text_input_destroyed",
     "TextInputV3WithInputMethodV2Test.text_field_state_can_be_set",
     "TextInputV3WithInputMethodV2Test.text_input_does_not_enter_non_grabbing_popup",
+    "TextInputV3WithInputMethodV2Test.text_input_enters_grabbing_popup",
+    "TextInputV3WithInputMethodV2Test.text_input_enters_parent_surface_after_child_destroyed",
     "TextInputV3WithInputMethodV2Test.text_input_enters_surface_on_focus",
     "TextInputV3WithInputMethodV2Test.text_input_leaves_surface_on_unfocus",
     "ToplevelInputRegions/ToplevelInputCombinations.input_falls_through_surface_without_region_after_null_buffer_committed/4",
@@ -573,14 +575,4 @@ issue = "gnoblin-of0d"
 [[known_failure]]
 pattern = "PrimarySelection.source_*_request"
 reason = "ledger decision, Mutter parity: the same rule as the clipboard (CopyCutPaste above); source_can_offer, which sets nothing from a client without the keyboard, passes"
-issue = "gnoblin-of0d"
-
-[[known_failure]]
-pattern = "TextInputV3WithInputMethodV2Test.text_input_enters_grabbing_popup"
-reason = "the suite creates the xdg_surface configure expectation inside the test's InSequence after text_input.enter(parent), so the configure that answers the initial commit (which wlcs patch 0010 now acknowledges) is an ordering violation; the compositor sends enter when the window is mapped, after that configure"
-issue = "gnoblin-of0d"
-
-[[known_failure]]
-pattern = "TextInputV3WithInputMethodV2Test.text_input_enters_parent_surface_after_child_destroyed"
-reason = "the same InSequence ordering as text_input_enters_grabbing_popup: the xdg_surface configure expectation is chained after text_input.enter(parent) and the configure comes first"
 issue = "gnoblin-of0d"
