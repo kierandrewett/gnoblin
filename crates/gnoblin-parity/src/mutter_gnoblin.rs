@@ -155,7 +155,7 @@ struct Ctl {
 }
 
 /// The result of one `gnoblinctl` run.
-struct Output {
+struct CtlOutput {
     code: Option<i32>,
     out: String,
     err: String,
@@ -163,13 +163,13 @@ struct Output {
 
 impl Ctl {
     /// Runs `gnoblinctl` with `arguments` against the session.
-    fn run(&self, arguments: &[&str]) -> Result<Output, TargetError> {
+    fn run(&self, arguments: &[&str]) -> Result<CtlOutput, TargetError> {
         let output = Command::new(&self.program)
             .arg(&self.runtime)
             .args(arguments)
             .output()
             .map_err(|error| live(format!("cannot start the control client {:?}: {error}", self.program)))?;
-        Ok(Output {
+        Ok(CtlOutput {
             code: output.status.code(),
             out: String::from_utf8_lossy(&output.stdout).into_owned(),
             err: String::from_utf8_lossy(&output.stderr).into_owned(),

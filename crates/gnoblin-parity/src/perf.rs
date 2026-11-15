@@ -81,7 +81,7 @@ impl PerfTarget {
 
 /// Distribution of a set of durations, in milliseconds.
 #[derive(Debug, Serialize)]
-pub struct Stats {
+pub struct LatencyStats {
     /// How many samples the numbers are from.
     pub samples: usize,
     pub min_ms: f64,
@@ -92,7 +92,7 @@ pub struct Stats {
     pub max_ms: f64,
 }
 
-impl Stats {
+impl LatencyStats {
     /// The distribution of `samples`, or `None` when there are none.
     fn of(samples: &[Duration]) -> Option<Self> {
         if samples.is_empty() {
@@ -118,7 +118,7 @@ impl Stats {
 
 /// The machine the numbers were taken on.
 #[derive(Debug, Serialize)]
-pub struct Host {
+pub struct HostSpecs {
     pub kernel: String,
     pub cpu_model: String,
     pub cpus: usize,
@@ -151,19 +151,19 @@ pub struct IdleCpu {
 #[derive(Debug, Serialize)]
 pub struct PerfReport {
     pub target: &'static str,
-    pub host: Host,
+    pub host: HostSpecs,
     /// Seconds from starting the launcher until the Wayland socket accepted.
     pub startup_seconds: f64,
     /// The processes of the session, as `comm`.
     pub processes: Vec<String>,
     pub idle: Vec<IdleCpu>,
     pub memory: Vec<MemoryPoint>,
-    pub frame_time: Option<Stats>,
+    pub frame_time: Option<LatencyStats>,
     pub frame_count: usize,
     /// EIS key press to the client's `wl_keyboard.key`.
-    pub key_to_client: Option<Stats>,
+    pub key_to_client: Option<LatencyStats>,
     /// EIS key press to the frame callback of the redraw the client committed on receiving the key.
-    pub key_to_frame: Option<Stats>,
+    pub key_to_frame: Option<LatencyStats>,
     /// Key presses that produced no key event within the limit.
     pub keys_lost: usize,
     /// What these numbers do not show.
@@ -171,7 +171,7 @@ pub struct PerfReport {
 }
 
 /// A started target and the ways to reach it.
-struct Subject {
+struct Measured {
     session: LauncherSession,
     socket: PathBuf,
     door: Box<dyn EisDoor>,
@@ -185,7 +185,7 @@ fn live(target: PerfTarget, detail: impl Into<String>) -> TargetError {
     }
 }
 
-impl Subject {
+impl Measured {
     fn start(target: PerfTarget, environment: &RunEnvironment) -> Result<Self, TargetError> {
         let directory = private_directory(target.name(), environment.runtime_base.as_deref())?;
         let socket = directory.path().join(DISPLAY);
@@ -244,7 +244,7 @@ impl Subject {
 /// Runs the whole baseline on `target`.
 pub fn run(target: PerfTarget, environment: &RunEnvironment) -> Result<PerfReport, TargetError> {
     let started = Instant::now();
-    let mut subject = Subject::start(target, environment)?;
+    let mut subject = Measured::start(target, environment)?;
     let startup_seconds = started.elapsed().as_secs_f64();
     let name = target.name();
     let group = subject.session.group();
@@ -304,10 +304,10 @@ pub fn run(target: PerfTarget, environment: &RunEnvironment) -> Result<PerfRepor
         processes,
         idle,
         memory,
-        frame_time: Stats::of(&frame_gaps),
+        frame_time: LatencyStats::of(&frame_gaps),
         frame_count,
-        key_to_client: Stats::of(&to_client),
-        key_to_frame: Stats::of(&to_frame),
+        key_to_client: LatencyStats::of(&to_client),
+        key_to_frame: LatencyStats::of(&to_frame),
         keys_lost: lost,
         limits: vec![
             "headless: no panel, so the frame callback is the compositor's own presentation signal, not photons",
@@ -445,7 +445,7 @@ fn memory_point(group: u32, windows: usize) -> MemoryPoint {
     }
 }
 
-fn host() -> Host {
+fn host() -> HostSpecs {
     let read = |path: &str| std::fs::read_to_string(path).unwrap_or_default();
     let cpuinfo = read("/proc/cpuinfo");
     let cpu_model = cpuinfo
@@ -460,7 +460,7 @@ fn host() -> Host {
         .and_then(|rest| rest.split_whitespace().next())
         .and_then(|number| number.parse().ok())
         .unwrap_or(0);
-    Host {
+    HostSpecs {
         kernel: read("/proc/sys/kernel/osrelease").trim().to_owned(),
         cpu_model,
         cpus,
@@ -500,7 +500,7 @@ pub fn render(report: &PerfReport) -> String {
             point.largest
         );
     }
-    let stats = |label: &str, stats: &Option<Stats>, text: &mut String| match stats {
+    let stats = |label: &str, stats: &Option<LatencyStats>, text: &mut String| match stats {
         Some(stats) => {
             let _ = writeln!(
                 text,
@@ -528,12 +528,12 @@ pub fn serve_candidate(directory: &Path, display: &str) -> Result<(), TargetErro
 }
 
 /// What `gnoblin-parity perf` was asked for, parsed from its arguments.
-pub struct Request {
+pub struct PerfRequest {
     pub target: PerfTarget,
     pub json: Option<PathBuf>,
 }
 
-impl Request {
+impl PerfRequest {
     /// Parses `<target> [--json FILE]`.
     pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Self, String> {
         let mut args = args.into_iter();

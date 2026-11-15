@@ -63,7 +63,7 @@ impl EisDoor for SocketDoor {
 }
 
 /// One device the server created, with the interfaces it carries and its resume state.
-struct Device {
+struct PeerDevice {
     wire: ei::Device,
     interfaces: HashMap<String, reis::Object>,
     done: bool,
@@ -79,7 +79,7 @@ pub(crate) struct EiPeer {
     capabilities: u64,
     seat_done: bool,
     bound: bool,
-    devices: Vec<Device>,
+    devices: Vec<PeerDevice>,
     serial: u32,
     /// The devices a sequence was started on: the protocol starts one once, and later events are only frames.
     emulating: Vec<ei::Device>,
@@ -179,7 +179,7 @@ impl EiPeer {
             ei::Event::Connection(_, ei::connection::Event::Ping { ping }) => ping.done(u64::from(self.serial)),
             ei::Event::Seat(_, ei::seat::Event::Capability { mask, .. }) => self.capabilities |= mask,
             ei::Event::Seat(_, ei::seat::Event::Done) => self.seat_done = true,
-            ei::Event::Seat(_, ei::seat::Event::Device { device }) => self.devices.push(Device {
+            ei::Event::Seat(_, ei::seat::Event::Device { device }) => self.devices.push(PeerDevice {
                 wire: device,
                 interfaces: HashMap::new(),
                 done: false,

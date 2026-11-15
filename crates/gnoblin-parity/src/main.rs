@@ -54,7 +54,7 @@ fn main() -> ExitCode {
 
 /// Take a baseline and print it.
 fn measure(args: Vec<std::ffi::OsString>) -> ExitCode {
-    let request = match perf::Request::parse(args) {
+    let request = match perf::PerfRequest::parse(args) {
         Ok(request) => request,
         Err(error) => {
             eprintln!("[parity] {error}");
