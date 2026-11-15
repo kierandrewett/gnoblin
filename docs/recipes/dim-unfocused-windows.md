@@ -3,18 +3,26 @@
 Set the opacity of windows that are not focused. Put this in `~/.config/gnoblin/init.ts`:
 
 ```ts
-import { defineConfig } from "gnoblin";
+import { ClientListener } from "gnoblin";
+import type { Client } from "gnoblin";
 
-export default defineConfig({
-    rules: [{ focused: false, style: { opacity: 0.95 } }],
-});
+gnoblin.clients.addListener(
+    new (class extends ClientListener {
+        onFocusChanged(client: Client, focused: boolean) {
+            client.style.opacity = focused ? 1 : 0.95;
+        }
+    })(),
+);
 ```
 
-`focused: false` matches windows that do not have focus. `opacity` is a number from `0` (transparent) to `1` (opaque);
-the example uses `0.95`. The rule applies to windows, not layer surfaces.
+`onFocusChanged` runs each time a window gains or loses the focus. `opacity` is a number from `0` (transparent) to `1`
+(opaque); the example uses `0.95`. The listener hears windows, not layer surfaces.
+
+To fade the change instead of cutting it, wrap the assignment in
+`gnoblin.requestTransition(() => { ... }, { duration: 180 })`, which tweens over 180 ms.
+See [transitions](/js-transitions).
 
 Opacity affects text and controls too. For a translucent panel with opaque text, use transparency in the client's
-background instead. Remove the rule and save to go back to full opacity; a window whose rule stops matching returns to
-opacity `1`.
+background instead. Remove the listener and save to go back to full opacity.
 
-See the [window rule reference](/config/window_rule) for all query keys and field ranges.
+See [window style](/js-style) for the style properties.

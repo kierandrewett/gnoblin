@@ -1,30 +1,29 @@
 # Build a small desktop
 
-This setup starts Waybar and Mako with the session, binds a launcher and terminal, and selects a larger cursor. It gives
-you a usable bar, notifications and two ways to open applications while leaving the shell itself to your choice.
+This setup binds a launcher and a terminal, and leaves the shell itself to your choice: a bar and notifications are
+separate programs that you start with the session. It gives you two ways to open applications.
 
 ![Firefox beneath Waybar in a clean Gnoblin session](../images/gnoblin-waybar-firefox.png)
 
 _Firefox is an ordinary window; Waybar runs as a separate desktop client._
 
-Save this as `~/.config/gnoblin/init.ts`. Replace any command with an application installed on your system.
+Add this to `~/.config/gnoblin/init.ts`. Replace any command with an application installed on your system.
 
 ```ts
-import { defineConfig, spawn } from "gnoblin";
+const input = gnoblin.input.primary;
 
-export default defineConfig({
-    cursor: { theme: "default", size: 28 },
-    autostart: ["waybar", "mako"],
-    keys: {
-        "Super+d": spawn("fuzzel"),
-        "Super+Return": spawn("foot"),
-    },
+input.bind("Super+d", () => {
+    gnoblin.spawn(["fuzzel"]);
+});
+input.bind("Super+Return", () => {
+    gnoblin.spawn(["foot"]);
 });
 ```
 
-Install the selected applications first. The cursor uses the system's default theme; its size is in logical pixels.
-`autostart` launches each command once per session; it does not install or configure the applications themselves.
+Install the selected applications first. Start Waybar and Mako with the session, because `init.ts` has no autostart list:
+see [autostart](/guides/autostart). `init.ts` cannot set the cursor theme either: see
+[cursor themes](/guides/cursors).
 
-If the stock config already uses one of these triggers, your key replaces it. Check for key conflicts with your shell,
-then save the file. See [shell setup](/bring-your-own-shell) for choosing the programs that provide the visible
-desktop.
+A trigger is bound once, so if the starter you wrote with `gnoblinctl config init` already binds one of these, edit that
+line instead of adding another. See [shell setup](/bring-your-own-shell) for choosing the programs that provide the
+visible desktop.

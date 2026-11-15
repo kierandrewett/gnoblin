@@ -3,7 +3,7 @@
 Get completion, argument hints and type checking for `gnoblin` in your editor.
 
 Gnoblin publishes a `gnoblin.d.ts` declaration file and a `tsconfig.json` that finds it. Any editor that runs the TypeScript
-language service, such as VS Code, Neovim, Helix or Zed, then completes every `defineConfig` key and every member of the
+language service, such as VS Code, Neovim, Helix or Zed, then completes every member of the
 `gnoblin` object, and underlines a wrong one.
 
 ## Set it up

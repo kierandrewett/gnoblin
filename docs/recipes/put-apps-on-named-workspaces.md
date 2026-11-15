@@ -4,38 +4,51 @@ Give workspaces stable IDs in `init.ts`, then place each matching new window on 
 the example app IDs with the values reported by `gnoblinctl window list --json`.
 
 ```ts
-import { defineConfig } from "gnoblin";
+import { CollectionListener, FloatingLayout, Workspace } from "gnoblin";
+import type { Client } from "gnoblin";
 
-export default defineConfig({
-    workspaces: [{ id: "code" }, { id: "web" }, { id: "chat" }],
-    rules: [
-        { appId: "org.gnome.TextEditor", workspace: "code" },
-        { appId: "org.mozilla.firefox", workspace: "web" },
-        { appId: "org.gnome.Fractal", workspace: "chat" },
-    ],
-});
+for (const id of ["code", "web", "chat"]) {
+    gnoblin.workspaces.add(new Workspace({ id, layout: new FloatingLayout() }));
+}
+
+const homes: Record<string, string> = {
+    "org.gnome.TextEditor": "code",
+    "org.mozilla.firefox": "web",
+    "org.gnome.Fractal": "chat",
+};
+
+gnoblin.clients.addListener(
+    new (class extends CollectionListener {
+        onAdded(client: Client) {
+            const id = homes[client.appId];
+            const target = id === undefined ? undefined : gnoblin.workspaces.get(id);
+            if (target !== undefined) {
+                client.moveToWorkspace(target);
+            }
+        }
+    })(),
+);
 ```
 
-The shell builds one workspace for each declared entry and names it by its `id`, so a rule targets a workspace by that
-ID. IDs must be unique non-empty strings. The first one is shown when the shell starts.
+Each `Workspace` has a unique non-empty `id`, and `gnoblin.workspaces.get(id)` finds it. The first one added is shown when
+the shell starts.
 
-| Option      | Values and default                          | Effect                                                 |
-| ----------- | ------------------------------------------- | ------------------------------------------------------ |
-| `appId`     | A glob or a `RegExp`; unset matches any app | Selects windows by application ID.                     |
-| `workspace` | The id of a declared workspace; unset       | Places a matching new normal window on that workspace. |
+| Part                        | Values and default                    | Effect                                                         |
+| --------------------------- | ------------------------------------- | -------------------------------------------------------------- |
+| `client.appId`              | The application ID of the window      | Selects windows by application ID, here by exact match.        |
+| `client.moveToWorkspace(w)` | A `Workspace` in `gnoblin.workspaces` | Moves the window; false when it cannot (a dialog, fullscreen). |
 
-A glob matches the whole ID, so `"org.mozilla.firefox"` matches only that app. Use `"org.mozilla.*"` for every app of
-that prefix, or a `RegExp` for anything finer.
+An ID matches whole, so `"org.mozilla.firefox"` matches only that app. For every app of one prefix, test
+`client.appId.startsWith("org.mozilla.")`, or use a `RegExp`.
 
-Save the file and the running shell reloads it. A window that is already open is not placed again.
+Save the file and the running shell reloads it. A listener also runs for the windows that are already open, so they move
+too when the file loads.
 
 Placement happens once; it does not lock a window to its workspace. You can move it afterward, and the shell leaves it
 there.
 
-- If an app reuses an existing window, the shell does not place it again.
+- If an app reuses an existing window, the listener does not run again.
 - Dialogs stay with their parent window.
-- A rule that names a workspace the config does not declare fails the load, so a typo is caught before it moves a
-  window.
+- A workspace id you did not declare makes `gnoblin.workspaces.get` return `undefined`, so the window stays where it is.
 
-See [workspace rules](/guides/window_rules#workspaces) and the
-[window-management reference](/config/configure/window_management).
+See [window rules](/guides/window_rules#workspaces) and the [workspaces](/shell-api/workspaces) reference.

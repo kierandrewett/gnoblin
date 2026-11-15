@@ -4,13 +4,9 @@ A script hears the compositor in two ways. Attach a listener to a window, a work
 it. Call `gnoblin.on` for everything else: the session, a reload, a finished operation, a dialog request.
 
 ```ts
-import { defineConfig, toast } from "gnoblin";
+import { toast } from "gnoblin";
 
-defineConfig({
-    setup: (gnoblin) => {
-        gnoblin.on("gnoblin.session.bell", (event) => toast(`Bell number ${event.count}`));
-    },
-});
+gnoblin.on("gnoblin.session.bell", (event) => toast(`Bell number ${event.count}`));
 ```
 
 Put the file in `~/.config/gnoblin/init.ts`. Ring a terminal bell and a message appears in the top right corner. A reload

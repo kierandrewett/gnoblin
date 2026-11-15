@@ -1,42 +1,54 @@
 # Window rules
 
-A window rule changes what the shell does to the windows it matches. Rules are the `rules` list of your
-`defineConfig`, in `~/.config/gnoblin/init.ts`. They load with the config, and a save reloads them.
+A window rule is code in your `init.ts` that runs for the windows it matches. Gnoblin has no rule table. You attach a
+listener to `gnoblin.clients` and decide in a function, or you style a selection of windows with
+`gnoblin.clients.where(...)`. The file runs top to bottom against live objects, and a save reloads it.
 
 ## Add a rule
 
 This places every editor window on workspace `dev` and maximises it:
 
 ```ts
-import { defineConfig } from "gnoblin";
+import { CollectionListener, FloatingLayout, Workspace } from "gnoblin";
+import type { Client } from "gnoblin";
 
-export default defineConfig({
-    workspaces: [{ id: "web" }, { id: "dev" }],
-    rules: [{ appId: "org.example.Editor", workspace: "dev", maximised: true }],
-});
+gnoblin.workspaces.add(new Workspace({ id: "web", layout: new FloatingLayout() }));
+gnoblin.workspaces.add(new Workspace({ id: "dev", layout: new FloatingLayout() }));
+
+gnoblin.clients.addListener(
+    new (class extends CollectionListener {
+        onAdded(client: Client) {
+            if (client.appId === "org.example.Editor") {
+                const dev = gnoblin.workspaces.get("dev");
+                if (dev !== undefined) {
+                    client.moveToWorkspace(dev);
+                }
+                client.maximised = true;
+            }
+        }
+    })(),
+);
 ```
 
-A rule runs when a window opens, so it does not move windows that are already open when the config loads.
-
-The [window rule reference](/config/window_rule) lists every query key and field.
+`onAdded` runs when a window opens, and once for each window that is already open when the file loads, so a save
+applies the rule to the windows on screen too. Run `gnoblinctl check --types init.ts` before you save.
 
 ## Choose what to match
 
-Every query key you give must match. If a key is omitted, the rule matches any value of it.
+A rule is an `if`. Test any property of the client:
 
-| Key           | Matches                                         |
-| ------------- | ----------------------------------------------- |
-| `appId`       | The application ID, as a glob or a `RegExp`     |
-| `title`       | The current title, as a glob or a `RegExp`      |
-| `focused`     | `true` or `false`                               |
-| `onWorkspace` | The id of the window's workspace, such as `"2"` |
+| Property         | Matches                                  |
+| ---------------- | ---------------------------------------- |
+| `client.appId`   | The application ID.                      |
+| `client.title`   | The current title.                       |
+| `client.focused` | `true` for the window that has the focus |
 
-Choose the key based on what identifies the window:
+Choose the property based on what identifies the window:
 
 - Use `appId` to match an application across its windows.
 - Use `title` to target a particular document or window. Titles often change as the document or page changes.
 
-Layer-shell surfaces are not windows, so a rule never matches them.
+Layer-shell surfaces are not windows, so a listener never sees them.
 
 ## Find the values
 
@@ -50,78 +62,78 @@ Use the `app_id` and `title` of the window you want as the values to match.
 
 ## Write a matcher
 
-`appId` and `title` take a glob string or a `RegExp`:
-
-- A glob matches the whole text. `*` is any run of characters and `?` is one character. A dot is a dot.
-- A `RegExp` is tested anywhere in the text. Use `^` and `$` to match the whole value.
-- Both are case-sensitive.
-
-To match `org.gnome.Nautilus` only, write the full id:
+Compare with `===` for a whole id, or use a `RegExp` for a part. A `RegExp` is tested anywhere in the text, so use `^`
+and `$` to match the whole value. Both are case-sensitive.
 
 ```ts
-import { defineConfig } from "gnoblin";
+import { CollectionListener } from "gnoblin";
+import type { Client } from "gnoblin";
 
-export default defineConfig({
-    rules: [{ appId: "org.gnome.Nautilus", maximised: true }],
-});
+gnoblin.clients.addListener(
+    new (class extends CollectionListener {
+        onAdded(client: Client) {
+            if (client.appId === "org.gnome.Nautilus") {
+                client.maximised = true;
+            }
+            if (/Notes/.test(client.title)) {
+                client.maximised = false;
+            }
+        }
+    })(),
+);
 ```
 
-To match a title that contains `Notes` anywhere, put a `*` on both sides, or use a `RegExp`:
+The `/Notes/` test also matches `Notes - Work`. For only the title `Notes`, write `client.title === "Notes"`.
+
+A title or app id can change after the window opens. A rule written in `onAdded` sees the values at that moment. To
+react to a change, add `onTitleChanged(client, title)` or `onAppIdChanged(client, appId)` to a `ClientListener`.
+
+## Style the windows of one app
+
+Appearance does not need a listener. `where` selects windows by property, live, and the selection has its own style:
 
 ```ts
-import { defineConfig } from "gnoblin";
-
-export default defineConfig({
-    rules: [{ title: /Notes/, maximised: false }],
-});
+const nautilus = gnoblin.clients.where({ appId: "org.gnome.Nautilus" });
+nautilus.style.opacity = 0.9;
 ```
 
-This also matches `Notes — Work`. To match only the title `Notes`, write `title: "Notes"`.
-
-This rule targets only unfocused windows from one app:
-
-```ts
-import { defineConfig } from "gnoblin";
-
-export default defineConfig({
-    rules: [{ appId: "org.gnome.Nautilus", focused: false, style: { opacity: 0.9 } }],
-});
-```
+A window that stops matching the query goes back to the style it inherits. The scopes, and the properties, are in
+[window style](/js-style).
 
 ## Workspaces {#workspaces}
 
-The stock config has four workspaces, named `"1"` to `"4"`. When your config declares `workspaces`, the shell builds
-those instead, and each workspace is named by its `id`. Name the workspace by that id in a rule:
+Declare the workspaces yourself with `new Workspace({ id, layout })` and `gnoblin.workspaces.add`, and fetch one by its
+id with `gnoblin.workspaces.get("code")`. It returns `undefined` for an id you did not declare, so test it before you
+move a window:
 
 ```ts
-import { defineConfig } from "gnoblin";
+import { CollectionListener, FloatingLayout, Workspace } from "gnoblin";
+import type { Client } from "gnoblin";
 
-export default defineConfig({
-    workspaces: [{ id: "code" }, { id: "web" }],
-    rules: [
-        { appId: "org.example.Editor", workspace: "code" },
-        { onWorkspace: "web", maximised: true },
-    ],
-});
+for (const id of ["code", "web"]) {
+    gnoblin.workspaces.add(new Workspace({ id, layout: new FloatingLayout() }));
+}
+
+gnoblin.clients.addListener(
+    new (class extends CollectionListener {
+        onAdded(client: Client) {
+            const target = client.appId === "org.example.Editor" ? gnoblin.workspaces.get("code") : undefined;
+            if (target !== undefined) {
+                client.moveToWorkspace(target);
+            }
+        }
+    })(),
+);
 ```
 
-A `workspace` that names a workspace the config does not declare fails the load.
+To act on the windows already on a workspace, read `workspace.clients`, a collection with its own `style`.
 
-## When rules run again
+## Order
 
-A rule runs when a window opens. It runs again when the window's title, app ID or focus changes whether the rule
-matches.
+Code runs in the order you wrote it. A later statement overrides what an earlier one set, so put the general rule first
+and the one for a single app after it. A later `maximised = false` beats an earlier `maximised = true`.
 
-- A field that no matching rule sets falls back to its default.
-- A window whose title stops matching a `secure` rule is not secure.
-- A window that stops matching a `maximised` rule is unmaximised.
-- Give a rule `reapply: false` to apply it once, when the window opens, and leave the window alone afterwards.
+## What a rule cannot do yet
 
-## Rule order
-
-Matching does not stop at the first rule. Later rules override only the fields they set, so a rule that maximises every
-window can be followed by a rule for one application that sets `maximised: false`. A rule with `first: true` ends the
-search where it matches.
-
-The `rules` list replaces the stock list as a whole. A list with a mistake is refused as a whole at load, with one
-error that names the rule, and the rules already in force stay.
+`floating`, `secure` and skip-focus have no writable property on a client, so a listener cannot set them. A window rule is not re-applied for you when a window's title or focus changes: a handler that should react
+to one attaches its own `onTitleChanged` or `onFocusChanged`.

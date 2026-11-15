@@ -4,44 +4,61 @@ Give a writing workspace a stable ID, send new editor windows there, and bind ke
 focused window to one. Add this to `~/.config/gnoblin/init.ts`:
 
 ```ts
-import { defineConfig, show } from "gnoblin";
+import { CollectionListener, FloatingLayout, MasterStackLayout, MonocleLayout, Workspace } from "gnoblin";
+import type { Client } from "gnoblin";
 
-export default defineConfig({
-    workspaces: [
-        { id: "write", name: "Write", layout: "monocle" },
-        { id: "research", name: "Research", layout: "master-stack" },
-        { id: "review", name: "Review" },
-        { id: "other", name: "Other" },
-    ],
-    rules: [{ appId: "org.gnome.TextEditor", workspace: "write" }],
-    keys: {
-        ...show.numbered("Super+{n}", ["write", "research", "review", "other"]),
-        "Super+Shift+w": ({ gnoblin }) => {
-            const workspace = gnoblin.workspaces.get("write");
-            if (workspace !== undefined) {
-                gnoblin.clients.focused?.moveToWorkspace(workspace);
+const layouts = {
+    write: new MonocleLayout(),
+    research: new MasterStackLayout(),
+    review: new FloatingLayout(),
+    other: new FloatingLayout(),
+};
+const names = { write: "Write", research: "Research", review: "Review", other: "Other" };
+
+const input = gnoblin.input.primary;
+const ids = ["write", "research", "review", "other"] as const;
+ids.forEach((id, index) => {
+    gnoblin.workspaces.add(new Workspace({ id, name: names[id], layout: layouts[id] }));
+    input.bind(`Super+${index + 1}`, () => {
+        gnoblin.workspaces.get(id)?.show();
+    });
+});
+
+gnoblin.clients.addListener(
+    new (class extends CollectionListener {
+        onAdded(client: Client) {
+            const write = gnoblin.workspaces.get("write");
+            if (client.appId === "org.gnome.TextEditor" && write !== undefined) {
+                client.moveToWorkspace(write);
             }
-        },
-    },
+        }
+    })(),
+);
+
+input.bind("Super+Shift+w", () => {
+    const write = gnoblin.workspaces.get("write");
+    if (write !== undefined) {
+        input.focusedClient?.moveToWorkspace(write);
+    }
 });
 ```
 
-Each object declares a workspace. Its ID stays attached when the workspace position changes; the list order sets the
-initial positions. Declare every ID that a rule or a `show` key uses: a `show` or a rule that names a workspace the
-config does not declare fails the load, and the message names the key or rule.
+Each `new Workspace` declares a workspace. Its `id` stays attached when the workspace position changes, and the order of
+the `add` calls sets the initial positions. `gnoblin.workspaces.get` returns `undefined` for an id you did not declare, so
+the code tests it before it moves a window.
 
-| Field    | Accepted value                                  | Meaning                                                                                           |
-| -------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `id`     | Required, unique non-empty string               | Stable workspace identity used by rules, keys and `gnoblinctl`.                                   |
-| `name`   | A string; defaults to the id                    | Label shown for the workspace.                                                                    |
-| `layout` | A layout name or object; defaults to `floating` | How the windows of the workspace are arranged. See [`workspaces`](/typescript-config#workspaces). |
+| Field    | Accepted value                    | Meaning                                                                              |
+| -------- | --------------------------------- | ------------------------------------------------------------------------------------ |
+| `id`     | Required, unique non-empty string | Stable workspace identity used by code, keys and `gnoblinctl`.                       |
+| `name`   | A string; defaults to the id      | Label shown for the workspace.                                                       |
+| `layout` | A layout object                   | How the windows of the workspace are arranged. See [layouts](/shell-api/workspaces). |
 
-The list replaces the stock four workspaces, so keep at least one entry. The first workspace is shown when the shell
-starts. `show.numbered` binds `Super+1` to the first ID and so on, and `Super+Shift+w` moves the focused window to
-`write` without changing the shown workspace.
+Your file replaces the stock four workspaces, so keep at least one. The first workspace added is shown when the shell
+starts. `Super+1` shows the first ID and so on, and `Super+Shift+w` moves the focused window to `write` without changing
+the shown workspace.
 
-The editor's `workspace` field takes effect once, when the window opens. Dialogs stay with their parent window. Placement
-does not lock a window to its workspace: you can move it afterward, and the shell leaves it there.
+The editor listener takes effect once, when the window opens. Dialogs stay with their parent window. Placement does not
+lock a window to its workspace: you can move it afterward, and the shell leaves it there.
 
 Save the file, then list the workspaces:
 
@@ -50,5 +67,5 @@ gnoblinctl workspace list
 ```
 
 Replace the app id with the value `gnoblinctl window list` prints for your editor. Workspace positions can change when
-workspaces are removed or reordered; use configured IDs in rules and keys. See [workspace rules](/guides/window_rules#workspaces)
-and the [window management reference](/config/configure/window_management).
+workspaces are removed or reordered; use the ids in keys and listeners. See [window rules](/guides/window_rules#workspaces)
+and the [workspaces](/shell-api/workspaces) reference.

@@ -1,8 +1,7 @@
 # Animations
 
-The TypeScript shell has no declarations for named animations, keyframes or per-window animation rules, and the
-`animations` section of the configuration is read by nothing. This page says what moves today and how to move a window
-yourself.
+The TypeScript shell has no declarations for named animations, keyframes or per-window animation rules. This page says
+what moves today and how to move a window yourself.
 
 ## What animates
 
@@ -21,17 +20,8 @@ A client that reuses a GPU buffer for its next frame while a fade runs can show 
 
 ## Turn animations off
 
-Reduced motion makes every one of these instant: a workspace switch lands at once and a window is hidden at once.
-
-```ts
-import { defineConfig } from "gnoblin";
-
-export default defineConfig({
-    appearance: { reducedMotion: true },
-});
-```
-
-This also asks applications to stop animating. See [appearance settings](/config/configure/appearance).
+Reduced motion makes every one of these instant: a workspace switch lands at once and a window is hidden at once. A
+config can read the setting, as `gnoblin.input.primary.settings.reducedMotion`, but `init.ts` cannot set it. See [dropped settings](/js-settings#dropped-settings).
 
 ## Animate a window yourself
 
@@ -46,18 +36,19 @@ This also asks applications to stop animating. See [appearance settings](/config
 This fades each Text Editor window in when it opens:
 
 ```ts
-import { defineConfig } from "gnoblin";
+import { CollectionListener } from "gnoblin";
+import type { Client } from "gnoblin";
 
-export default defineConfig({
-    on: {
-        clientAdded(client) {
+gnoblin.clients.addListener(
+    new (class extends CollectionListener {
+        onAdded(client: Client) {
             if (client.appId === "org.gnome.TextEditor") {
                 client.opacity = 0;
                 client.animate({ opacity: 1 }, { duration: 0.3, easing: "out-cubic" });
             }
-        },
-    },
-});
+        }
+    })(),
+);
 ```
 
 Replace the app id with the value `gnoblinctl window list` prints.

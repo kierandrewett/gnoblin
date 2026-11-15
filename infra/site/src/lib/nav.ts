@@ -129,8 +129,6 @@ export const NAV: NavSection[] = [
                     { label: "Writing workspace", slug: "recipes/writing-workspace" },
                     { label: "Small desktop", slug: "recipes/small-desktop" },
                     { label: "Laptop input", slug: "recipes/laptop-input" },
-                    { label: "Pointer feedback", slug: "recipes/pointer-feedback" },
-                    { label: "Pen display", slug: "recipes/pen-display-workflow" },
                     { label: "Organise config files", slug: "recipes/organize-config-files" },
                     { label: "Named workspaces", slug: "recipes/put-apps-on-named-workspaces" },
                 ],

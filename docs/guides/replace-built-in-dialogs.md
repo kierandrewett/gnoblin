@@ -6,7 +6,7 @@ They are the default, and the first two are replaceable by a program of your own
 Your `init.ts` has two smaller options, and neither draws a dialog:
 
 - Watch the requests and refuse one by policy: [Requests and dialogs](/shell-api/requests).
-- Restyle the dialogs with the `dialogs` key of `defineConfig`: [dialogs](/config/configure/dialogs).
+- Restyle the dialogs: `init.ts` cannot set the dialog style, which [dialogs](/config/configure/dialogs) describes.
 
 The built-in dialog stays in the compositor as the fallback, so a request is never left without a way to ask the user.
 
@@ -34,15 +34,8 @@ gets what is left.
 
 Only the session owner's connection can claim a slot. Any program that connects
 to the IPC socket as the same user is that connection. Start your program with
-an [autostart](/guides/autostart) entry, so Gnoblin launches it with the session:
-
-```ts
-import { defineConfig } from "gnoblin";
-
-export default defineConfig({
-    autostart: [["/home/you/bin/my-dialogs"]],
-});
-```
+the session, as [autostart](/guides/autostart) describes, for example from a systemd user unit that runs
+`/home/you/bin/my-dialogs`.
 
 Replace the path with your own program. The program finds the socket through
 `$GNOBLIN_IPC_SOCKET`, or at `$XDG_RUNTIME_DIR/gnoblin/ipc.sock` when that is

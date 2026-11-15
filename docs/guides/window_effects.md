@@ -7,7 +7,7 @@ of truth is the code, not this page.
 
 | Effect                 | Where it works     | Set from                                            |
 | ---------------------- | ------------------ | --------------------------------------------------- |
-| Opacity                | Every renderer     | `style.opacity`, or a rule's `style`                |
+| Opacity                | Every renderer     | `style.opacity`                                     |
 | Outer shadow           | GLES renderer only | `style.shadows`                                     |
 | Blur behind the window | GLES renderer only | `style.backdropFilter`                              |
 | Rounded corners        | Stored, not drawn  | `style.cornerRadius`                                |
@@ -18,24 +18,21 @@ it keeps working when the renderer learns to draw it.
 
 ## Set an effect
 
-Set the style where it should apply. X
+Set the style on the scope it should reach:
 
 ```ts
-import { defineConfig } from "gnoblin";
-
-export default defineConfig({
-    style: { shadows: [{ y: 8, blur: 24, color: "#00000066" }] },
-    rules: [{ appId: "foot", style: { opacity: 0.92 } }],
-});
+gnoblin.clients.style.shadows = [{ x: 0, y: 8, blur: 24, color: "#00000066" }];
+gnoblin.clients.where({ appId: "foot" }).style.opacity = 0.92;
 ```
 
-The `style` key sets the style of every window. A window rule's `style` sets the matched window's own style, which beats
-it. The scopes, the full property list and the filters are in [window style](/js-style).
+`gnoblin.clients.style` sets the style of every window. The style of a `where` selection, a workspace's `clients` or one
+client sits above it and wins. The scopes, the full property list and the filters are in [window style](/js-style).
 
-## What a window rule cannot do
+A frosted window is a blur and a little saturation behind it:
 
-A rule does not take `blur`, `corners`, `shader`, `animation`, `frame` or `match.layer`. A rule that names one is
-refused when the config loads, and the message names the key. Use `style.backdropFilter` for blur.
+```ts
+gnoblin.clients.where({ appId: "foot" }).style.backdropFilter = [{ blur: 24 }, { saturate: 1.35 }];
+```
 
 ## Background blur from applications
 

@@ -2,17 +2,9 @@
 
 [Configuration reference](/config/configure)
 
-Dropping a dragged window on a screen edge tiles it. Turn that on in `~/.config/gnoblin/init.ts`:
+Dropping a dragged window on a screen edge tiles it. Edge tiling is always on, and `init.ts` has no setting for it.
 
-```ts
-import { defineConfig } from "gnoblin";
-
-export default defineConfig({
-    edgeTiling: true,
-});
-```
-
-The stock config has it on. With it on, drag a window with `Super` and the left button until the pointer is within 4
+Drag a window with `Super` and the left button until the pointer is within 4
 pixels of an edge, then release:
 
 | Drop on        | Result                         |
@@ -23,7 +15,7 @@ pixels of an edge, then release:
 
 Drag a snapped window away to restore its original size. Windows fill the usable part of the monitor, leaving room for
 panels that reserve space. Minimum sizes still apply; fullscreen and fixed-size windows are excluded. See
-[drag boundaries](/guides/session_settings#window-drag-boundary) for the overlap policy.
+[session settings](/guides/session_settings) for the drag boundary.
 
 With Bingux installed you can also press Super+Z to choose a layout. Bingux displays the picker, saves layouts in
 `~/.config/bingux/snapping.ini`, and imports Tiling Shell layouts once when available. Other shells can provide their

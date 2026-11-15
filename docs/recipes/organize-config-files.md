@@ -1,38 +1,52 @@
 # Organize a growing config
 
-Keep the entry point short and group settings by the kind of change you make. For example, let `init.ts` import your
-rules and your shortcuts, and combine them in one `defineConfig`.
+Keep the entry point short and group statements by the kind of change you make. For example, let `init.ts` import a module
+that styles windows and one that binds your shortcuts, and call them in the order you want.
 
-In `rules.ts`:
+In `windows.ts`:
 
 ```ts
-// rules.ts
-export const rules = [{ appId: "org.gnome.TextEditor", maximised: true }];
+// windows.ts
+import { CollectionListener } from "gnoblin";
+import type { Client } from "gnoblin";
+
+export function placeWindows(): void {
+    gnoblin.clients.addListener(
+        new (class extends CollectionListener {
+            onAdded(client: Client) {
+                if (client.appId === "org.gnome.TextEditor") {
+                    client.maximised = true;
+                }
+            }
+        })(),
+    );
+}
 ```
 
 In `bindings.ts`:
 
 ```ts
 // bindings.ts
-import { spawn } from "gnoblin";
-
-export const keys = { "Super+d": spawn("fuzzel") };
+export function bindKeys(): void {
+    gnoblin.input.primary.bind("Super+d", () => {
+        gnoblin.spawn(["fuzzel"]);
+    });
+}
 ```
 
 In `init.ts`:
 
 ```ts
-import { defineConfig } from "gnoblin";
-import { keys } from "./bindings.ts";
-import { rules } from "./rules.ts";
+import { bindKeys } from "./bindings.ts";
+import { placeWindows } from "./windows.ts";
 
-export default defineConfig({ keys, rules });
+placeWindows();
+bindKeys();
 ```
 
-Imported files share the same Gnoblin library and need no registration. Keep the combining in one place, `init.ts`, so
-you can see which file supplies each setting. Lists such as `rules`, `autostart` and `xkbOptions` replace the stock
-list, so list every value you intend to keep. To add to a list from another file, spread it:
-`rules: [...baseRules, ...localRules]`.
+Imported files share the same `gnoblin` object and need no registration. Keep the calls in one place, `init.ts`, so you
+can see which file supplies each part, and in the order they run. A trigger is bound once, so bind each key from one file
+only. `gnoblin.workspaces.add` and `gnoblin.clients.addListener` accumulate across files.
 
 Check the files with `gnoblinctl check init.ts`, and read [file loading and order](/guides/files_and_load_order) before
 adding overlapping files.
