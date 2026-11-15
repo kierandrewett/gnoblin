@@ -4,7 +4,8 @@
 # usage: parity-mutter51 RUNTIME_DIR DISPLAY
 #
 # The runner calls this with XDG_RUNTIME_DIR set to RUNTIME_DIR (mode 0700) and expects a Wayland socket named DISPLAY
-# in it. The script stays in the foreground until the runner kills its process group. One 1280x720 virtual monitor.
+# in it, and a session bus at RUNTIME_DIR/bus (the way to Mutter's EIS server, `org.gnome.Mutter.RemoteDesktop`). The
+# script stays in the foreground until the runner kills its process group. One 1280x720 virtual monitor.
 #
 # Environment:
 #   GNOBLIN_PARITY_MUTTER_PREFIX  prefix of a Mutter 51 install, for a build that is not on the system paths
@@ -20,21 +21,8 @@ set -euo pipefail
 runtime_dir="${1:?usage: parity-mutter51 RUNTIME_DIR DISPLAY}"
 display="${2:?usage: parity-mutter51 RUNTIME_DIR DISPLAY}"
 
-if [ -n "${GNOBLIN_PARITY_MUTTER_ROOT:-}" ]; then
-    root="${GNOBLIN_PARITY_MUTTER_ROOT%/}"
-    case "$runtime_dir" in
-        "$root"/*) ;;
-        *)
-            echo "parity-mutter51: $runtime_dir is not inside GNOBLIN_PARITY_MUTTER_ROOT ($root)" >&2
-            exit 2
-            ;;
-    esac
-    exec chroot "$root" /usr/bin/env -i \
-        PATH=/usr/local/bin:/usr/bin:/bin HOME=/root \
-        "GNOBLIN_PARITY_MUTTER_PREFIX=${GNOBLIN_PARITY_MUTTER_PREFIX:-}" \
-        "GNOBLIN_PARITY_MUTTER_ARGS=${GNOBLIN_PARITY_MUTTER_ARGS---no-x11}" \
-        /bin/bash -s -- "${runtime_dir#"$root"}" "$display" <"${BASH_SOURCE[0]}"
-fi
+[ -n "${PARITY_LAUNCHER_LIB:-}" ] || source "$(dirname "${BASH_SOURCE[0]}")/parity-launcher-lib.sh"
+parity_enter_root "${BASH_SOURCE[0]}" "$runtime_dir" "$display"
 
 mutter=mutter
 if [ -n "${GNOBLIN_PARITY_MUTTER_PREFIX:-}" ]; then
@@ -47,6 +35,7 @@ fi
 export XDG_RUNTIME_DIR="$runtime_dir"
 # No GPU: render with llvmpipe, so the session is the same on a runner and on a workstation.
 export LIBGL_ALWAYS_SOFTWARE=1
+parity_start_bus "$runtime_dir"
 # shellcheck disable=SC2086  # the extra arguments are a word list on purpose
-exec dbus-run-session -- "$mutter" --headless --wayland --wayland-display "$display" \
-    --virtual-monitor 1280x720 ${GNOBLIN_PARITY_MUTTER_ARGS---no-x11}
+exec "$mutter" --headless --wayland --wayland-display "$display" \
+    --virtual-monitor 1280x720 ${GNOBLIN_PARITY_MUTTER_ARGS---no-x11} </dev/null

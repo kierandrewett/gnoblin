@@ -21,10 +21,12 @@ use std::path::PathBuf;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use gnoblin_compositor::{Compositor, SessionConfig, StopHandle};
+use gnoblin_compositor::{Compositor, EisGate, SessionConfig, StopHandle};
+use gnoblin_input_eis::Caps;
 use gnoblinctl::SocketConnection;
 use serde_json::{Value, json};
 
+use crate::ei_peer::EisDoor;
 use crate::probes::{self, Probes};
 use crate::target::{Observations, Target, TargetError};
 use crate::wayland_peer::{Toplevel, WaylandPeer};
@@ -40,6 +42,39 @@ const APP_ID: &str = "org.gnoblin.parity";
 const WINDOW_TITLE: &str = "parity-window";
 /// A window id no session hands out, for the refusal probe.
 const UNKNOWN_WINDOW: &str = "9999999";
+/// The EIS socket's file name, beside the IPC socket (`crates/gnoblin-compositor/src/eis.rs`).
+pub(crate) const EIS_SOCKET: &str = "eis.sock";
+
+/// The candidate's EIS door: its endpoint's own socket, which every connection leaves default deny until the gate
+/// approves it. Nothing in a running session approves it, so the parity harness does what the compositor's own EIS
+/// tests do and grants every capability, which is the harness playing the user.
+pub(crate) struct CandidateDoor {
+    socket: PathBuf,
+    gate: EisGate,
+}
+
+impl CandidateDoor {
+    /// A door to `socket`, approved through `gate`.
+    pub(crate) fn new(socket: PathBuf, gate: EisGate) -> Self {
+        Self { socket, gate }
+    }
+}
+
+impl EisDoor for CandidateDoor {
+    fn open(&mut self) -> Result<UnixStream, TargetError> {
+        // The grant is the endpoint's decision for every client that connects after it, so it is made first: a client
+        // that connected before it would race the endpoint's accept.
+        let deadline = Instant::now() + TIMEOUT;
+        while !self.gate.grant(Caps::ALL) {
+            if Instant::now() >= deadline {
+                return Err(live("the EIS endpoint never started, so nothing could be granted"));
+            }
+            std::thread::sleep(POLL);
+        }
+        UnixStream::connect(&self.socket)
+            .map_err(|error| live(format!("cannot connect to {}: {error}", self.socket.display())))
+    }
+}
 
 /// Runs each scenario against a fresh headless Rust compositor.
 #[derive(Debug)]
@@ -86,10 +121,12 @@ fn live(detail: impl Into<String>) -> TargetError {
 /// One running session and the Wayland peer the steps keep between them.
 struct CandidateSession {
     peers: Option<Peers>,
-    /// The client of the focus and popup probes, connected by the first of them.
+    /// The client of the focus, popup and input probes, connected by the first of them.
     shared: Option<Probes>,
     thread: Option<JoinHandle<Result<gnoblin_compositor::SessionEnd, gnoblin_compositor::Error>>>,
     stop: StopHandle,
+    /// The consent gate of the session's EIS endpoint, which the input probes grant as the test harness does.
+    eis: EisGate,
     ipc: PathBuf,
     wayland: PathBuf,
     /// Kept alive for the session's lifetime: dropping it would unlink both sockets.
@@ -109,9 +146,11 @@ impl CandidateSession {
         let ipc = directory.path().join("ipc.sock");
         let wayland = directory.path().join("wayland.sock");
         let stop = StopHandle::new();
+        let eis = EisGate::default();
         let config = SessionConfig {
             ipc_socket: Some(ipc.clone()),
             stop: Some(stop.clone()),
+            eis: eis.clone(),
             wayland: gnoblin_wayland::Config {
                 socket_path: Some(wayland.clone()),
                 ..gnoblin_wayland::Config::default()
@@ -127,6 +166,7 @@ impl CandidateSession {
             shared: None,
             thread: Some(thread),
             stop,
+            eis,
             ipc,
             wayland,
             _directory: directory,
@@ -187,7 +227,8 @@ impl CandidateSession {
     /// The client of the shared focus and popup probes.
     fn shared(&mut self) -> Result<&mut Probes, TargetError> {
         if self.shared.is_none() {
-            self.shared = Some(Probes::connect(TARGET, &self.wayland)?);
+            let door = CandidateDoor::new(self.ipc.with_file_name(EIS_SOCKET), self.eis.clone());
+            self.shared = Some(Probes::connect(TARGET, &self.wayland, Some(Box::new(door)))?);
         }
         self.shared
             .as_mut()
@@ -324,4 +365,35 @@ struct Ctl {
     code: u8,
     out: String,
     err: String,
+}
+
+/// Serves the candidate compositor in this process, with its sockets in `directory`, until the process is killed.
+///
+/// This is the other half of the performance baseline: the baseline measures the candidate from outside, as it measures
+/// the Mutter targets, so the compositor has to be a process of its own. The Wayland socket is named `display` so the
+/// launcher contract holds (`<directory>/<display>` is what the session serves), and the EIS gate is granted once the
+/// endpoint is up, the way [`CandidateDoor`] does for a session in this process.
+pub(crate) fn serve(directory: &std::path::Path, display: &str) -> Result<(), TargetError> {
+    let eis = EisGate::default();
+    let config = SessionConfig {
+        ipc_socket: Some(directory.join("ipc.sock")),
+        eis: eis.clone(),
+        wayland: gnoblin_wayland::Config {
+            socket_path: Some(directory.join(display)),
+            ..gnoblin_wayland::Config::default()
+        },
+        ..SessionConfig::default()
+    };
+    std::thread::Builder::new()
+        .name("candidate-eis-grant".to_owned())
+        .spawn(move || {
+            let deadline = Instant::now() + TIMEOUT;
+            while !eis.grant(Caps::ALL) && Instant::now() < deadline {
+                std::thread::sleep(POLL);
+            }
+        })
+        .map_err(|error| live(format!("cannot start the EIS grant thread: {error}")))?;
+    Compositor::run(config)
+        .map(|_| ())
+        .map_err(|error| live(format!("the compositor failed: {error}")))
 }

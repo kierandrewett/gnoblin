@@ -2,12 +2,12 @@
 //!
 //! A target is "a way to start a headless session with a fixed virtual output
 //! layout and to stop it" (design/rust-compositor.md). The Rust candidate
-//! ([`crate::candidate::CandidateTarget`]) and stock Mutter 51
-//! ([`crate::mutter::Mutter51Target`], started by a launcher the environment names)
-//! are live. Mutter 51 without a launcher is reported as skipped with the reason,
-//! never as a pass. Gnoblin on the patched Mutter is not implemented, so
-//! [`TargetSpec::build_target`] rejects it and a scenario that asks for it is
-//! reported as failing rather than passing on a stand-in.
+//! ([`crate::candidate::CandidateTarget`]), stock Mutter 51
+//! ([`crate::mutter::Mutter51Target`]) and Gnoblin on the patched Mutter
+//! ([`crate::mutter_gnoblin::MutterGnoblinTarget`]) are live. The two Mutter
+//! targets are started by launchers the environment names; without one a
+//! target is reported as skipped with the variable to set, never as a pass, so
+//! no scenario passes on a stand-in.
 //!
 //! Two targets are real today and make the runner testable end to end without a
 //! compositor:
@@ -31,6 +31,10 @@ use serde_json::Value;
 
 use crate::candidate::CandidateTarget;
 use crate::mutter::{LAUNCHER_VARIABLE, Mutter51Target};
+use crate::mutter_gnoblin::{
+    CTL_VARIABLE as MUTTER_GNOBLIN_CTL_VARIABLE, LAUNCHER_VARIABLE as MUTTER_GNOBLIN_VARIABLE, MutterGnoblinLaunch,
+    MutterGnoblinTarget,
+};
 use crate::scenario::{CommandStep, OutputFormat, Scenario, TargetSpec};
 
 /// One observation per step, keyed by step id.
@@ -206,20 +210,27 @@ fn trim_output(text: &str) -> &str {
     text.trim_end_matches(['\n', '\r'])
 }
 
-/// What a run may use beyond the checked-in files: the launcher of the Mutter reference.
+/// What a run may use beyond the checked-in files: the launchers of the Mutter targets.
 #[derive(Debug, Clone, Default)]
 pub struct RunEnvironment {
     /// The program that starts headless Mutter 51 (`GNOBLIN_PARITY_MUTTER51`). Absent means the reference cannot run.
     pub mutter51_launcher: Option<OsString>,
-    /// Where the reference's private runtime directory is made (`GNOBLIN_PARITY_RUNTIME_BASE`).
+    /// The program that starts the legacy Gnoblin on its patched Mutter (`GNOBLIN_PARITY_MUTTER_GNOBLIN`).
+    pub mutter_gnoblin_launcher: Option<OsString>,
+    /// The program that runs the legacy `gnoblinctl` against that session (`GNOBLIN_PARITY_MUTTER_GNOBLIN_CTL`).
+    pub mutter_gnoblin_ctl: Option<OsString>,
+    /// Where the Mutter targets' private runtime directory is made (`GNOBLIN_PARITY_RUNTIME_BASE`).
     pub runtime_base: Option<PathBuf>,
 }
 
 impl RunEnvironment {
     /// Reads the process environment.
     pub fn from_process() -> Self {
+        let program = |variable: &str| std::env::var_os(variable).filter(|value| !value.is_empty());
         Self {
-            mutter51_launcher: std::env::var_os(LAUNCHER_VARIABLE).filter(|launcher| !launcher.is_empty()),
+            mutter51_launcher: program(LAUNCHER_VARIABLE),
+            mutter_gnoblin_launcher: program(MUTTER_GNOBLIN_VARIABLE),
+            mutter_gnoblin_ctl: program(MUTTER_GNOBLIN_CTL_VARIABLE),
             runtime_base: std::env::var_os("GNOBLIN_PARITY_RUNTIME_BASE").map(PathBuf::from),
         }
     }
@@ -253,11 +264,23 @@ impl TargetSpec {
                     ),
                 }),
             },
-            Self::MutterGnoblin(_) => Err(TargetError::NotImplemented {
-                target: self.name(),
-                hint: "a reference run on Gnoblin's patched Mutter needs a session this crate does not start yet"
-                    .to_owned(),
-            }),
+            Self::MutterGnoblin(_) => match &environment.mutter_gnoblin_launcher {
+                Some(_) => {
+                    let launch = MutterGnoblinLaunch::from_environment(environment).map_err(|detail| {
+                        TargetError::Live {
+                            target: self.name(),
+                            detail,
+                        }
+                    })?;
+                    Ok(Box::new(MutterGnoblinTarget::new(launch, environment.runtime_base.clone())))
+                }
+                None => Err(TargetError::Unavailable {
+                    target: self.name(),
+                    reason: format!(
+                        "no headless Gnoblin on the patched Mutter is configured: set {MUTTER_GNOBLIN_VARIABLE} to a launcher (tests/parity/README.md, \"Run the Gnoblin reference\")"
+                    ),
+                }),
+            },
             Self::Candidate(_) => Ok(Box::new(CandidateTarget::new())),
         }
     }
@@ -287,8 +310,6 @@ pub enum TargetError {
     },
     /// The program's output is not JSON though the step asked for JSON.
     NotJson { step: String, detail: String },
-    /// A live target has no implementation yet.
-    NotImplemented { target: String, hint: String },
     /// A live target is implemented but this machine cannot run it. The runner reports a skip with `reason`.
     Unavailable { target: String, reason: String },
     /// A live target failed while it was running the scenario's steps.
@@ -320,9 +341,6 @@ impl fmt::Display for TargetError {
             }
             Self::NotJson { step, detail } => {
                 write!(formatter, "step `{step}`: output is not JSON: {detail}")
-            }
-            Self::NotImplemented { target, hint } => {
-                write!(formatter, "target `{target}` is not implemented: {hint}")
             }
             Self::Unavailable { target, reason } => write!(formatter, "target `{target}` is unavailable: {reason}"),
             Self::Live { target, detail } => write!(formatter, "target `{target}` failed: {detail}"),
@@ -476,15 +494,41 @@ command = { program = "printf", args = ["%s", "not json"], format = "json" }
     }
 
     #[test]
-    fn a_target_that_is_not_implemented_is_rejected() {
+    fn gnoblin_on_mutter_without_a_launcher_is_unavailable_and_names_the_variable() {
         let spec = TargetSpec::MutterGnoblin(LiveOptions {});
         let Err(error) = spec.build_target(Path::new("."), &RunEnvironment::default()) else {
-            panic!("a target with no implementation must not build");
+            panic!("the target cannot build without a launcher");
         };
-        assert!(
-            error.to_string().contains("target `mutter-gnoblin` is not implemented"),
-            "{error}"
-        );
+        assert!(matches!(error, TargetError::Unavailable { .. }), "{error}");
+        assert!(error.to_string().contains("GNOBLIN_PARITY_MUTTER_GNOBLIN"), "{error}");
+    }
+
+    #[test]
+    fn gnoblin_on_mutter_with_a_launcher_and_no_control_client_fails_naming_the_variable() {
+        let spec = TargetSpec::MutterGnoblin(LiveOptions {});
+        let environment = RunEnvironment {
+            mutter_gnoblin_launcher: Some("/nonexistent/dir/parity-mutter-gnoblin".into()),
+            ..RunEnvironment::default()
+        };
+        let Err(error) = spec.build_target(Path::new("."), &environment) else {
+            panic!("a session with no control client cannot be driven");
+        };
+        assert!(matches!(error, TargetError::Live { .. }), "{error}");
+        assert!(error.to_string().contains("GNOBLIN_PARITY_MUTTER_GNOBLIN_CTL"), "{error}");
+    }
+
+    #[test]
+    fn gnoblin_on_mutter_with_both_programs_builds() {
+        let spec = TargetSpec::MutterGnoblin(LiveOptions {});
+        let environment = RunEnvironment {
+            mutter_gnoblin_launcher: Some("/x/launcher".into()),
+            mutter_gnoblin_ctl: Some("/x/ctl".into()),
+            ..RunEnvironment::default()
+        };
+        let target = spec
+            .build_target(Path::new("."), &environment)
+            .expect("both programs are named");
+        assert_eq!(target.name(), "mutter-gnoblin");
     }
 
     #[test]

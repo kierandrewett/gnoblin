@@ -13,9 +13,13 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+use rustix::event::{PollFd, PollFlags, poll};
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
-use wayland_client::protocol::{wl_buffer, wl_compositor, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface};
-use wayland_client::{Connection as WaylandConnection, Dispatch, EventQueue, Proxy, QueueHandle};
+use wayland_client::protocol::{
+    wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool,
+    wl_surface,
+};
+use wayland_client::{Connection as WaylandConnection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
 use wayland_protocols::xdg::shell::client::{xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base};
 
 use crate::target::TargetError;
@@ -34,6 +38,26 @@ pub(crate) struct Tag(u32);
 pub(crate) struct ToplevelFocus {
     /// Whether the last configure carried the `activated` state, which is how a client learns it has focus.
     pub activated: bool,
+    /// The size of the last configure, `(0, 0)` while the compositor leaves the size to the client.
+    pub size: (i32, i32),
+}
+
+/// What the seat's keyboard and pointer delivered to this client, in arrival order. The input probes read it after
+/// they inject input through EIS, so it is the only place a compositor's handling of that input is visible.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct InputLog {
+    /// Whether `wl_keyboard.enter` arrived: the keyboard focus is on one of this client's surfaces.
+    pub keyboard_entered: bool,
+    /// Key edges as `(evdev code, pressed)`.
+    pub keys: Vec<(u32, bool)>,
+    /// Whether `wl_pointer.enter` arrived: the pointer is over one of this client's surfaces.
+    pub pointer_entered: bool,
+    /// Pointer positions of `wl_pointer.motion`, in surface coordinates.
+    pub motions: Vec<(f64, f64)>,
+    /// Button edges as `(evdev code, pressed)`.
+    pub buttons: Vec<(u32, bool)>,
+    /// Axis events as `(vertical, value)`; `vertical` is false for the horizontal axis.
+    pub axes: Vec<(bool, f64)>,
 }
 
 /// What the compositor last told a popup.
@@ -52,6 +76,15 @@ pub(crate) struct PopupState {
 pub(crate) struct Protocol {
     toplevels: BTreeMap<Tag, ToplevelFocus>,
     popups: BTreeMap<Tag, PopupState>,
+    /// What the seat's keyboard and pointer delivered.
+    input: InputLog,
+    /// When each `wl_surface.frame` callback of this client fired, in order.
+    frames: Vec<Instant>,
+    /// The seat's devices, kept so the objects live as long as the connection.
+    keyboard: Option<wl_keyboard::WlKeyboard>,
+    pointer: Option<wl_pointer::WlPointer>,
+    /// What the seat announced it has, once it has.
+    capabilities: Option<wl_seat::Capability>,
 }
 
 /// A real Wayland client connection, with the globals toplevels and popups need.
@@ -73,6 +106,9 @@ pub(crate) struct Toplevel {
     surface: wl_surface::WlSurface,
     xdg_surface: xdg_surface::XdgSurface,
     toplevel: xdg_toplevel::XdgToplevel,
+    /// The buffer the window shows and its size, so a redraw can attach it again.
+    buffer: wl_buffer::WlBuffer,
+    size: (i32, i32),
 }
 
 /// One popup's protocol objects.
@@ -224,21 +260,97 @@ impl WaylandPeer {
 
     /// Creates a toplevel, lets the session configure it, and maps it with a buffer.
     pub(crate) fn map_toplevel(&mut self, app_id: &str, title: &str) -> Result<Toplevel, TargetError> {
+        self.map_toplevel_sized(app_id, title, false)
+    }
+
+    /// Creates a toplevel that asks to be fullscreen and maps it at the size the session configures, so it covers
+    /// the output and a pointer position anywhere on the output is a position over it. The input probes use it:
+    /// two compositors place an ordinary window differently, and a fullscreen window is where they agree.
+    pub(crate) fn map_fullscreen(&mut self, app_id: &str, title: &str) -> Result<Toplevel, TargetError> {
+        self.map_toplevel_sized(app_id, title, true)
+    }
+
+    fn map_toplevel_sized(&mut self, app_id: &str, title: &str, fullscreen: bool) -> Result<Toplevel, TargetError> {
         let tag = self.tag();
         let surface = self.compositor.create_surface(&self.qh, ());
         let xdg_surface = self.wm_base.get_xdg_surface(&surface, &self.qh, ());
         let toplevel = xdg_surface.get_toplevel(&self.qh, tag);
         toplevel.set_app_id(app_id.to_owned());
         toplevel.set_title(title.to_owned());
+        if fullscreen {
+            toplevel.set_fullscreen(None);
+        }
         surface.commit();
         self.roundtrip()?;
-        self.attach_buffer(&surface, WINDOW_SIZE)?;
+        let size = if fullscreen {
+            // The configure that follows `set_fullscreen` carries the output's size. A compositor that never sends
+            // one leaves the client the default size, which the probe then reports as a difference.
+            self.pump_until(Duration::from_secs(3), |state| {
+                state.toplevels.get(&tag).is_some_and(|window| window.size.0 > 0)
+            })?;
+            self.state
+                .toplevels
+                .get(&tag)
+                .map(|window| window.size)
+                .filter(|size| size.0 > 0 && size.1 > 0)
+                .unwrap_or(WINDOW_SIZE)
+        } else {
+            WINDOW_SIZE
+        };
+        let buffer = self.attach_buffer(&surface, size)?;
         Ok(Toplevel {
             tag,
             surface,
             xdg_surface,
             toplevel,
+            buffer,
+            size,
         })
+    }
+
+    /// Binds the seat's keyboard and pointer, which the input probes read. The seat announces what it has after a
+    /// round trip, so the devices are made here and not at connect: a probe that needs no input leaves the seat as
+    /// it found it.
+    pub(crate) fn enable_input(&mut self) -> Result<(), TargetError> {
+        if self.state.keyboard.is_some() || self.state.pointer.is_some() {
+            return Ok(());
+        }
+        let seat = self
+            .seat
+            .clone()
+            .ok_or_else(|| self.live("the session does not advertise wl_seat, so no input can arrive"))?;
+        self.pump_until(Duration::from_secs(3), |state| state.capabilities.is_some())?;
+        let capabilities = self
+            .state
+            .capabilities
+            .ok_or_else(|| self.live("the seat never announced its capabilities"))?;
+        if capabilities.contains(wl_seat::Capability::Keyboard) {
+            self.state.keyboard = Some(seat.get_keyboard(&self.qh, ()));
+        }
+        if capabilities.contains(wl_seat::Capability::Pointer) {
+            self.state.pointer = Some(seat.get_pointer(&self.qh, ()));
+        }
+        self.roundtrip()
+    }
+
+    /// What the seat's keyboard and pointer delivered since the last [`Self::clear_input`].
+    pub(crate) fn input(&self) -> &InputLog {
+        &self.state.input
+    }
+
+    /// Forgets the input received so far, so a probe reads only what its own injection caused.
+    pub(crate) fn clear_input(&mut self) {
+        let entered = (self.state.input.keyboard_entered, self.state.input.pointer_entered);
+        self.state.input = InputLog {
+            keyboard_entered: entered.0,
+            pointer_entered: entered.1,
+            ..InputLog::default()
+        };
+    }
+
+    /// Waits until `done` holds of the input received, or `limit` passes, and reports whether it held.
+    pub(crate) fn wait_input(&mut self, limit: Duration, done: impl Fn(&InputLog) -> bool) -> Result<bool, TargetError> {
+        self.pump_until(limit, |state| done(&state.input))
     }
 
     /// Creates a popup of `parent`, takes its initial configure and maps it with a buffer of the size it asked
@@ -294,12 +406,13 @@ impl WaylandPeer {
         positioner
     }
 
-    /// Attaches a shared-memory buffer and commits, which maps the surface.
+    /// Attaches a shared-memory buffer and commits, which maps the surface. The buffer is returned so a window can
+    /// show it again.
     fn attach_buffer(
         &mut self,
         surface: &wl_surface::WlSurface,
         (width, height): (i32, i32),
-    ) -> Result<(), TargetError> {
+    ) -> Result<wl_buffer::WlBuffer, TargetError> {
         let stride = width * 4;
         let length = stride * height;
         let file = tempfile::tempfile().map_err(|error| self.live(format!("cannot create a buffer file: {error}")))?;
@@ -310,7 +423,8 @@ impl WaylandPeer {
         surface.attach(Some(&buffer), 0, 0);
         surface.damage(0, 0, width, height);
         surface.commit();
-        self.roundtrip()
+        self.roundtrip()?;
+        Ok(buffer)
     }
 
     /// Closes a toplevel the way a well-behaved client does.
@@ -318,6 +432,7 @@ impl WaylandPeer {
         window.toplevel.destroy();
         window.xdg_surface.destroy();
         window.surface.destroy();
+        window.buffer.destroy();
         self.roundtrip()
     }
 
@@ -327,6 +442,57 @@ impl WaylandPeer {
         popup.xdg_surface.destroy();
         popup.surface.destroy();
         self.roundtrip()
+    }
+
+    /// Shows the window's buffer again and asks for a frame callback, as a client that animates does for every frame.
+    pub(crate) fn redraw(&mut self, window: &Toplevel) -> Result<(), TargetError> {
+        let (width, height) = window.size;
+        window.surface.frame(&self.qh, ());
+        window.surface.attach(Some(&window.buffer), 0, 0);
+        window.surface.damage(0, 0, width, height);
+        window.surface.commit();
+        self.queue
+            .flush()
+            .map_err(|error| self.live(format!("cannot flush the Wayland connection: {error}")))
+    }
+
+    /// The times the frame callbacks of this client fired, in order.
+    pub(crate) fn frame_times(&self) -> &[Instant] {
+        &self.state.frames
+    }
+
+    /// Dispatches whatever the compositor sends, waiting up to `limit` for the first event instead of sleeping in
+    /// steps, so a latency measured around it is not rounded to the step. Returns whether anything was dispatched.
+    pub(crate) fn dispatch_for(&mut self, limit: Duration) -> Result<bool, TargetError> {
+        let dispatched = self
+            .queue
+            .dispatch_pending(&mut self.state)
+            .map_err(|error| self.live(format!("the Wayland dispatch failed: {error}")))?;
+        if dispatched > 0 {
+            return Ok(true);
+        }
+        let Some(guard) = self.queue.prepare_read() else {
+            return Ok(true);
+        };
+        let readable = {
+            let fd = guard.connection_fd();
+            let mut fds = [PollFd::new(&fd, PollFlags::IN)];
+            let timeout = rustix::event::Timespec::try_from(limit).ok();
+            poll(&mut fds, timeout.as_ref())
+                .map(|ready| ready > 0)
+                .map_err(|error| self.live(format!("cannot wait for the compositor: {error}")))?
+        };
+        if !readable {
+            return Ok(false);
+        }
+        guard
+            .read()
+            .map_err(|error| self.live(format!("cannot read from the compositor: {error}")))?;
+        let dispatched = self
+            .queue
+            .dispatch_pending(&mut self.state)
+            .map_err(|error| self.live(format!("the Wayland dispatch failed: {error}")))?;
+        Ok(dispatched > 0)
     }
 }
 
@@ -355,9 +521,102 @@ ignore_events!(
     wl_shm::WlShm,
     wl_shm_pool::WlShmPool,
     wl_buffer::WlBuffer,
-    wl_seat::WlSeat,
     xdg_positioner::XdgPositioner,
 );
+
+impl Dispatch<wl_seat::WlSeat, ()> for Protocol {
+    fn event(
+        state: &mut Self,
+        _: &wl_seat::WlSeat,
+        event: <wl_seat::WlSeat as Proxy>::Event,
+        _: &(),
+        _: &WaylandConnection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_seat::Event::Capabilities {
+            capabilities: WEnum::Value(capabilities),
+        } = event
+        {
+            state.capabilities = Some(capabilities);
+        }
+    }
+}
+
+impl Dispatch<wl_callback::WlCallback, ()> for Protocol {
+    fn event(
+        state: &mut Self,
+        _: &wl_callback::WlCallback,
+        event: <wl_callback::WlCallback as Proxy>::Event,
+        _: &(),
+        _: &WaylandConnection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_callback::Event::Done { .. } = event {
+            state.frames.push(Instant::now());
+        }
+    }
+}
+
+impl Dispatch<wl_keyboard::WlKeyboard, ()> for Protocol {
+    fn event(
+        state: &mut Self,
+        _: &wl_keyboard::WlKeyboard,
+        event: <wl_keyboard::WlKeyboard as Proxy>::Event,
+        _: &(),
+        _: &WaylandConnection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_keyboard::Event::Enter { .. } => state.input.keyboard_entered = true,
+            wl_keyboard::Event::Leave { .. } => state.input.keyboard_entered = false,
+            wl_keyboard::Event::Key {
+                key,
+                state: WEnum::Value(edge),
+                ..
+            } => state
+                .input
+                .keys
+                .push((key, edge == wl_keyboard::KeyState::Pressed)),
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<wl_pointer::WlPointer, ()> for Protocol {
+    fn event(
+        state: &mut Self,
+        _: &wl_pointer::WlPointer,
+        event: <wl_pointer::WlPointer as Proxy>::Event,
+        _: &(),
+        _: &WaylandConnection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_pointer::Event::Enter { .. } => state.input.pointer_entered = true,
+            wl_pointer::Event::Leave { .. } => state.input.pointer_entered = false,
+            wl_pointer::Event::Motion {
+                surface_x, surface_y, ..
+            } => state.input.motions.push((surface_x, surface_y)),
+            wl_pointer::Event::Button {
+                button,
+                state: WEnum::Value(edge),
+                ..
+            } => state
+                .input
+                .buttons
+                .push((button, edge == wl_pointer::ButtonState::Pressed)),
+            wl_pointer::Event::Axis {
+                axis: WEnum::Value(axis),
+                value,
+                ..
+            } => state
+                .input
+                .axes
+                .push((axis == wl_pointer::Axis::VerticalScroll, value)),
+            _ => {}
+        }
+    }
+}
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for Protocol {
     fn event(
@@ -410,14 +669,16 @@ impl Dispatch<xdg_toplevel::XdgToplevel, Tag> for Protocol {
         _: &WaylandConnection,
         _: &QueueHandle<Self>,
     ) {
-        if let xdg_toplevel::Event::Configure { states, .. } = event {
+        if let xdg_toplevel::Event::Configure { width, height, states } = event {
             let activated = states
                 .as_chunks::<4>()
                 .0
                 .iter()
                 .map(|state| u32::from_ne_bytes(*state))
                 .any(|state| state == u32::from(xdg_toplevel::State::Activated));
-            state.toplevels.entry(*tag).or_default().activated = activated;
+            let window = state.toplevels.entry(*tag).or_default();
+            window.activated = activated;
+            window.size = (width, height);
         }
     }
 }

@@ -117,9 +117,9 @@ pub enum OutputFormat {
 /// Which target a scenario runs against.
 ///
 /// `recorded` replays a checked-in JSON recording and `command` runs a program per
-/// step. `candidate` and `mutter51` are live. `mutter-gnoblin` is named in the plan
-/// and rejected until its lane lands, so a scenario that asks for it fails loudly
-/// rather than passing on a stand-in.
+/// step. `candidate`, `mutter51` and `mutter-gnoblin` are live; the two Mutter targets
+/// are skipped, with the variable to set, where no launcher is configured, so a
+/// scenario never passes on a stand-in.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub enum TargetSpec {
@@ -132,8 +132,10 @@ pub enum TargetSpec {
     /// protocol behaviour. Started by the launcher `GNOBLIN_PARITY_MUTTER51`
     /// names; without one the scenario is skipped with that reason.
     Mutter51(LiveOptions),
-    /// Gnoblin on the patched Mutter: the reference for Gnoblin's own API.
-    /// Arrives with the Mutter target lane.
+    /// The legacy C Gnoblin on its patched Mutter, headless: the reference for
+    /// Gnoblin's own API. Started by the launcher `GNOBLIN_PARITY_MUTTER_GNOBLIN`
+    /// names, read through the legacy `gnoblinctl`; without a launcher the
+    /// scenario is skipped with that reason.
     MutterGnoblin(LiveOptions),
     /// The Rust candidate with `gnoblin-backend` headless.
     Candidate(LiveOptions),

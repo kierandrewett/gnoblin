@@ -1,4 +1,4 @@
-//! The probes every live target answers: focus and popups, observed as a Wayland client sees them.
+//! The probes every live target answers: focus, popups and input, observed as a Wayland client sees them.
 //!
 //! A probe's id is a step id in a scenario. Each one stimulates the compositor through the shared client
 //! ([`crate::wayland_peer`]) and reports what the client was told, so the same step runs on the Rust candidate and on
@@ -7,6 +7,11 @@
 //! Focus is observed as the `activated` state of an `xdg_toplevel` configure, which is how any client learns it has
 //! focus and needs no input device. Popup placement is the position and size of the `xdg_popup` configure, relative
 //! to the parent's window geometry.
+//!
+//! Input is injected the way an input emulator does it, through the compositor's EIS server ([`crate::ei_peer`]), and
+//! observed as the `wl_keyboard` and `wl_pointer` events the shared client receives. The client's window is
+//! fullscreen, so a pointer position anywhere on the output is a position over it on every compositor, and the
+//! observation does not depend on where a compositor places an ordinary window.
 //!
 //! A probe waits for the change it expects and then reports the state it finds either way, so a compositor that does
 //! not make the change shows up as a difference in the observation instead of a failed run.
@@ -18,8 +23,14 @@ use std::time::Duration;
 use serde_json::{Value, json};
 use wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity};
 
+use crate::ei_peer::{EiPeer, EisDoor};
 use crate::target::TargetError;
 use crate::wayland_peer::{Place, Popup, Toplevel, WaylandPeer};
+
+/// `KEY_A` from `linux/input-event-codes.h`.
+const KEY_A: u32 = 30;
+/// `BTN_LEFT` from `linux/input-event-codes.h`.
+const BTN_LEFT: u32 = 0x110;
 
 /// How long a probe waits for a change it expects before it reports the state it found.
 const SETTLE: Duration = Duration::from_secs(3);
@@ -39,6 +50,10 @@ const STEPS: &[&str] = &[
     "popup.map.parent-keeps-focus",
     "popup.destroy.parent-keeps-focus",
     "popup.grab.without-input",
+    "input.key.reaches-focused-toplevel",
+    "input.pointer.relative-motion",
+    "input.pointer.button",
+    "input.pointer.scroll",
 ];
 
 /// Whether `step` is one of the shared probes.
@@ -52,16 +67,27 @@ pub(crate) struct Probes {
     peer: WaylandPeer,
     windows: BTreeMap<&'static str, Toplevel>,
     popups: BTreeMap<&'static str, Popup>,
+    /// How the target hands out an EIS socket, or `None` for a target that has none.
+    door: Option<Box<dyn EisDoor>>,
+    /// The EI client, connected by the first input step.
+    ei: Option<EiPeer>,
 }
 
 impl Probes {
-    /// Connects the shared client to the session's Wayland socket.
-    pub(crate) fn connect(target: &'static str, socket: &Path) -> Result<Self, TargetError> {
+    /// Connects the shared client to the session's Wayland socket. `door` is how the input steps reach the session's
+    /// EIS server.
+    pub(crate) fn connect(
+        target: &'static str,
+        socket: &Path,
+        door: Option<Box<dyn EisDoor>>,
+    ) -> Result<Self, TargetError> {
         Ok(Self {
             target,
             peer: WaylandPeer::connect(target, socket)?,
             windows: BTreeMap::new(),
             popups: BTreeMap::new(),
+            door,
+            ei: None,
         })
     }
 
@@ -149,6 +175,52 @@ impl Probes {
         self.ensure_window("a")?;
         self.map_popup("menu", Parent::Window("a"), place, false)?;
         self.placed("menu")
+    }
+
+    /// The EI client, which `ensure_input` connected.
+    fn ei(&mut self) -> Result<&mut EiPeer, TargetError> {
+        let target = self.target;
+        self.ei.as_mut().ok_or_else(|| TargetError::Live {
+            target: target.to_owned(),
+            detail: "the EI client is not connected".to_owned(),
+        })
+    }
+
+    /// Maps the fullscreen window the input steps watch, waits until the keyboard is on it, and connects the EI client,
+    /// once. The seat's devices are bound before the window maps, so the keyboard focus the map causes is seen.
+    fn ensure_input(&mut self) -> Result<(), TargetError> {
+        self.peer.enable_input()?;
+        if !self.windows.contains_key("input") {
+            let window = self.peer.map_fullscreen("org.gnoblin.parity.input", "input")?;
+            self.windows.insert("input", window);
+        }
+        self.wait_activated("input", true, SETTLE)?;
+        self.peer.wait_input(SETTLE, |log| log.keyboard_entered)?;
+        if self.ei.is_none() {
+            let target = self.target;
+            let door = self.door.as_mut().ok_or_else(|| TargetError::Live {
+                target: target.to_owned(),
+                detail: "the target has no EIS door, so it cannot be given input".to_owned(),
+            })?;
+            let stream = door.open()?;
+            let mut ei = EiPeer::connect(self.target, stream)?;
+            ei.ready()?;
+            self.ei = Some(ei);
+        }
+        Ok(())
+    }
+
+    /// Like `ensure_input`, and makes sure the pointer is over the window: a pointer that has not moved yet may not
+    /// have entered any surface, so one pixel to the right and back brings it in.
+    fn ensure_pointer(&mut self) -> Result<(), TargetError> {
+        self.ensure_input()?;
+        if !self.peer.input().pointer_entered {
+            let ei = self.ei()?;
+            ei.motion(1.0, 0.0)?;
+            ei.motion(-1.0, 0.0)?;
+            self.peer.wait_input(SETTLE, |log| log.pointer_entered)?;
+        }
+        Ok(())
     }
 
     /// Produces the observation for one step id.
@@ -300,6 +372,63 @@ impl Probes {
                 waited?;
                 Ok(json!({ "popup_done": state.done, "parent_activated": self.activated("a")? }))
             }
+            "input.key.reaches-focused-toplevel" => {
+                self.ensure_input()?;
+                self.peer.clear_input();
+                let ei = self.ei()?;
+                ei.key(KEY_A, true)?;
+                ei.key(KEY_A, false)?;
+                self.peer.wait_input(SETTLE, |log| log.keys.len() >= 2)?;
+                let log = self.peer.input();
+                Ok(json!({
+                    "keyboard_entered": log.keyboard_entered,
+                    "keys": edges(&log.keys),
+                }))
+            }
+            "input.pointer.relative-motion" => {
+                self.ensure_pointer()?;
+                self.peer.clear_input();
+                let ei = self.ei()?;
+                for _ in 0..3 {
+                    ei.motion(10.0, 5.0)?;
+                }
+                self.peer.wait_input(SETTLE, |log| log.motions.len() >= 3)?;
+                let log = self.peer.input();
+                // The positions are surface coordinates, which differ between compositors by wherever the pointer
+                // started. What the injection decides is the step between two motions, so that is what is reported.
+                let steps: Vec<Value> = log
+                    .motions
+                    .windows(2)
+                    .map(|pair| {
+                        let (dx, dy) = (pair[1].0 - pair[0].0, pair[1].1 - pair[0].1);
+                        json!([dx.round() as i64, dy.round() as i64])
+                    })
+                    .collect();
+                Ok(json!({ "pointer_entered": log.pointer_entered, "motions": log.motions.len(), "steps": steps }))
+            }
+            "input.pointer.button" => {
+                self.ensure_pointer()?;
+                self.peer.clear_input();
+                let ei = self.ei()?;
+                ei.button(BTN_LEFT, true)?;
+                ei.button(BTN_LEFT, false)?;
+                self.peer.wait_input(SETTLE, |log| log.buttons.len() >= 2)?;
+                Ok(json!({ "buttons": edges(&self.peer.input().buttons) }))
+            }
+            "input.pointer.scroll" => {
+                self.ensure_pointer()?;
+                self.peer.clear_input();
+                self.ei()?.scroll(0.0, 15.0)?;
+                self.peer.wait_input(SETTLE, |log| !log.axes.is_empty())?;
+                let log = self.peer.input();
+                // A compositor scales a scroll the way it likes, so the observation is which axis moved and which
+                // way, not by how much.
+                Ok(json!({
+                    "axis_events": !log.axes.is_empty(),
+                    "vertical_only": log.axes.iter().all(|(vertical, _)| *vertical),
+                    "positive": log.axes.iter().map(|(_, value)| value).sum::<f64>() > 0.0,
+                }))
+            }
             other => Err(self.live(format!("no shared probe for step `{other}`"))),
         }
     }
@@ -318,4 +447,14 @@ fn placement(placed: Option<(i32, i32, i32, i32)>) -> Value {
         Some((x, y, width, height)) => json!({ "x": x, "y": y, "width": width, "height": height }),
         None => Value::Null,
     }
+}
+
+/// Key or button edges as an observation: the code and whether it went down.
+fn edges(edges: &[(u32, bool)]) -> Value {
+    Value::Array(
+        edges
+            .iter()
+            .map(|(code, pressed)| json!({ "code": code, "pressed": pressed }))
+            .collect(),
+    )
 }

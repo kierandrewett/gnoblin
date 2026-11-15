@@ -325,10 +325,10 @@ id = "windows.list"
     }
 
     #[test]
-    fn a_target_with_no_implementation_fails_loudly() {
+    fn gnoblin_on_mutter_without_a_launcher_is_a_skip_that_names_the_variable() {
         let scenario = Scenario::parse(
             r#"
-name = "not-implemented"
+name = "legacy"
 target = { mutter-gnoblin = {} }
 
 [[steps]]
@@ -339,13 +339,8 @@ id = "windows.list"
         .expect("scenario parses");
         let report = run_scenario(&scenario, Path::new("."), &RunEnvironment::default());
         match report.verdict() {
-            Verdict::Fail { diff } => {
-                assert!(
-                    diff.to_string().contains("target `mutter-gnoblin` is not implemented"),
-                    "{diff}"
-                );
-            }
-            other => panic!("expected a failure, got {other:?}"),
+            Verdict::Skipped { reason } => assert!(reason.contains("GNOBLIN_PARITY_MUTTER_GNOBLIN"), "{reason}"),
+            other => panic!("expected a skip, got {other:?}"),
         }
     }
 

@@ -26,8 +26,18 @@ wayland-client = "0.31.14"
 wayland-protocols = { version = "0.32.13", features = ["client"] }
 # A private temporary directory for the candidate's two sockets.
 tempfile = "3.23.0"
-# The Mutter reference runs in a process group of its own and is stopped by signalling the group.
-rustix.workspace = true
+# The Mutter reference runs in a process group of its own and is stopped by signalling the group. `event` is `poll`, which
+# the Wayland client waits on without sleeping in steps, `time` the monotonic clock the EI frame stamps carry, and
+# `param` the page size and clock tick rate the performance baseline reads `/proc` with.
+rustix = { workspace = true, features = ["process", "event", "time", "param"] }
+# Input is injected through EIS, the way an input emulator does it. The EI client is `reis`, the library the
+# compositor's own EIS server is built on; `Caps` and the consent gate come from the candidate's EIS crate.
+reis = { version = "0.7.1", default-features = false }
+gnoblin-input-eis = { path = "../gnoblin-input-eis" }
+# Stock Mutter hands out its EIS socket through `org.gnome.Mutter.RemoteDesktop` on the session bus. `block_on` waits for
+# the calls without a runtime of this crate's own, as the other bus clients of the workspace do.
+zbus.workspace = true
+futures-lite.workspace = true
 
 [lints]
 workspace = true
