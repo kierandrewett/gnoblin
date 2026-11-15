@@ -2,17 +2,17 @@
 //!
 //! The backend is the one place a session touches hardware, so it is the one place
 //! [`SessionConfig`](crate::SessionConfig) has to name a choice. It is an enum and not a trait
-//! object because the choice is data: a supervisor reads it from a configuration
-//! document, a test passes it in, and the DRM lane turns [`Backend::Drm`] from a
-//! refusal into a session by changing one arm of [`Backend::build`]. Nothing else in
-//! this crate has to know which one ran.
+//! object because the choice is data: [`crate::backend_select`] reads it from the configuration document, the
+//! `GNOBLIN_BACKEND` variable and the host, and a test passes it in. Nothing else in this crate has to know which
+//! one ran.
 //!
 //! # Failure modes first
 //!
-//! 1. **A backend is selected that this build does not carry.** The run is refused
-//!    with the backend named rather than falling back to a headless session nobody
-//!    asked for: a session that renders nowhere is a worse answer than an error.
-//!    [`Backend::Drm`] is that case today: `drm_is_refused_by_name`.
+//! 1. **The hardware backend cannot start here.** The run is refused with the step that failed and what to do about
+//!    it (no seat, no GPU node, no permission, no GLES on the GPU) rather than falling back to a headless session
+//!    nobody asked for: a session that renders nowhere is a worse answer than an error. A machine with no seat
+//!    reaches it: `drm_without_a_seat_is_refused_with_the_step_and_the_way_out`; every [`DrmError`] has its own
+//!    hint: `every_drm_failure_names_the_way_out`.
 //! 2. **A nested session cannot reach its parent.** The parent socket is named in the
 //!    error and the compositor does not start a session with no output:
 //!    `a_nested_session_without_a_parent_is_refused`.
@@ -28,6 +28,7 @@ use gnoblin_backend::Backend as BackendTrait;
 use gnoblin_backend::headless::{Headless, HeadlessConfig, HeadlessHandle};
 use gnoblin_backend::nested::{Nested, NestedConfig, NestedError};
 use gnoblin_backend::render::renderer::RendererKind;
+use gnoblin_backend_drm::{Drm, DrmError, RealModeset};
 use gnoblin_config::RendererChoice;
 use gnoblin_render_frame::frame::SecureTreatment;
 use gnoblin_wayland::State;
@@ -82,6 +83,38 @@ fn refused(renderer: RendererChoice, backend: &'static str, reason: &'static str
     }
 }
 
+/// What a person does about a hardware backend that could not start. One line per kind of failure, because the
+/// answer differs: a machine with no seat wants a login session, a machine with no GPU wants another backend, and a
+/// GPU that refuses is a permissions problem.
+#[must_use]
+pub fn drm_hint(error: &DrmError) -> &'static str {
+    use gnoblin_backend_drm::session::SessionError;
+    use gnoblin_backend_drm::udev::ChoiceError;
+    match error {
+        DrmError::Session(SessionError::Libseat(_)) => {
+            "there is no seat to take: start the session from a display manager or a login on a VT (logind or seatd),              or set compositor.backend to nested or headless"
+        }
+        DrmError::Session(SessionError::Open { .. }) => {
+            "the seat refused the GPU node: the session is not the active one on its seat, or this user may not open              the device"
+        }
+        DrmError::Session(SessionError::Switch { .. }) => "the seat refused a VT switch",
+        DrmError::Discovery(_) => "udev could not be read: check that udevd is running and its socket is reachable",
+        DrmError::NoGpu(ChoiceError::NoGpu) => {
+            "this machine has no DRM card node: load the kernel's KMS driver, or set compositor.backend to nested or              headless"
+        }
+        DrmError::NoGpu(ChoiceError::Missing(_) | ChoiceError::NotACardNode(_)) => {
+            "GNOBLIN_DRM_DEVICE names a node that cannot drive a display: unset it, or name a /dev/dri/card* node"
+        }
+        DrmError::Seat(_) => "XDG_SEAT names a different seat from the one this session is on: unset it",
+        DrmError::Device(_) => {
+            "the GPU refused to be driven: it may be a device without KMS, or another process may hold DRM master"
+        }
+        DrmError::Renderer(_) => {
+            "the GPU cannot give the GLES context the hardware backend scans out with: use the nested or headless              backend on this machine"
+        }
+    }
+}
+
 /// The backend a session drives.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum Backend {
@@ -95,8 +128,11 @@ pub enum Backend {
     /// A session hosted in another Wayland compositor: one toplevel per output, on the
     /// parent's socket.
     Nested(NestedConfig),
-    /// Direct rendering on the hardware. The DRM backend is not wired into this build
-    /// yet, so selecting it is refused by name rather than starting a different backend.
+    /// Direct rendering on the hardware: the GPU, its displays and libinput on the seat this process runs in.
+    ///
+    /// It scans out with the GLES renderer only, and a mode change on a real display stays off unless the process
+    /// sets `GNOBLIN_DRM_MODESET=1` ([`RealModeset`]). A machine that cannot start it is refused with the reason
+    /// ([`Error::Drm`]), never given another backend.
     Drm,
 }
 
@@ -111,9 +147,8 @@ impl Backend {
     ///
     /// # Errors
     ///
-    /// [`Error::Nested`] when the parent compositor cannot host the session,
-    /// [`Error::BackendRefused`] when this build does not carry the selected backend, and
-    /// [`Error::RendererRefused`] when the backend cannot draw with the named renderer.
+    /// [`Error::Nested`] when the parent compositor cannot host the session, [`Error::Drm`] when the hardware
+    /// cannot be opened, and [`Error::RendererRefused`] when the backend cannot draw with the named renderer.
     pub fn build(
         self,
         renderer: RendererChoice,
@@ -171,10 +206,28 @@ impl Backend {
                     Err(error) => Err(Error::Nested(error)),
                 }
             }
-            Backend::Drm => Err(Error::BackendRefused {
-                backend: "drm",
-                reason: "the DRM backend is not wired into this build yet",
-            }),
+            Backend::Drm => {
+                // The scan-out path is the GLES renderer. `auto` is that renderer here, and another named renderer
+                // is refused rather than replaced.
+                if !matches!(renderer, RendererChoice::Auto | RendererChoice::Gles) {
+                    return Err(refused(
+                        renderer,
+                        "drm",
+                        "the hardware backend scans out with the GLES renderer only",
+                    ));
+                }
+                let seat = std::env::var("XDG_SEAT")
+                    .ok()
+                    .filter(|seat| !seat.is_empty())
+                    .unwrap_or_else(|| "seat0".to_owned());
+                match Drm::open(&seat, RealModeset::from_process_env()) {
+                    Ok(drm) => Ok(Box::new(drm)),
+                    Err(error) => Err(Error::Drm {
+                        hint: drm_hint(&error),
+                        error,
+                    }),
+                }
+            }
         }
     }
 
@@ -191,7 +244,7 @@ impl Backend {
 
 #[cfg(test)]
 mod tests {
-    use super::Backend;
+    use super::{Backend, drm_hint};
     use crate::Error;
     use gnoblin_backend::nested::NestedConfig;
     use gnoblin_config::RendererChoice;
@@ -218,12 +271,66 @@ mod tests {
     }
 
     #[test]
-    fn drm_is_refused_by_name() {
-        match Backend::Drm.build(RendererChoice::Auto, SecureTreatment::default()) {
-            Err(Error::BackendRefused { backend, .. }) => assert_eq!(backend, "drm"),
-            Err(other) => panic!("drm refused with the wrong error: {other}"),
-            Ok(_) => panic!("drm must not start a session in this build"),
+    fn the_hardware_backend_scans_out_with_gles_only_and_refuses_another_renderer_by_name() {
+        // Refused before the seat is touched, so this test never reaches hardware.
+        for choice in [RendererChoice::Software, RendererChoice::Vulkan] {
+            match Backend::Drm.build(choice, SecureTreatment::default()) {
+                Err(Error::RendererRefused {
+                    leaf,
+                    renderer,
+                    backend,
+                    ..
+                }) => assert_eq!(
+                    (leaf, renderer, backend),
+                    ("compositor.renderer", choice.as_str(), "drm")
+                ),
+                Err(other) => panic!("{choice} on drm refused with the wrong error: {other}"),
+                Ok(_) => panic!("drm must not draw with {choice}"),
+            }
         }
+    }
+
+    #[test]
+    fn every_drm_failure_names_the_way_out() {
+        use gnoblin_backend_drm::DrmError;
+        use gnoblin_backend_drm::session::SessionError;
+        use gnoblin_backend_drm::udev::ChoiceError;
+        use gnoblin_render_frame::error::RenderError;
+
+        let failures: Vec<(DrmError, &str)> = vec![
+            (
+                DrmError::Session(SessionError::Libseat("no backend".to_owned())),
+                "no seat",
+            ),
+            (
+                DrmError::Session(SessionError::Open {
+                    path: "/dev/dri/card0".to_owned(),
+                    reason: "denied".to_owned(),
+                }),
+                "refused the GPU node",
+            ),
+            (DrmError::Discovery("no socket".to_owned()), "udev"),
+            (DrmError::NoGpu(ChoiceError::NoGpu), "no DRM card node"),
+            (
+                DrmError::NoGpu(ChoiceError::Missing("/dev/x".to_owned())),
+                "GNOBLIN_DRM_DEVICE",
+            ),
+            (DrmError::Seat("seat1 is not seat0".to_owned()), "XDG_SEAT"),
+            (DrmError::Device("busy".to_owned()), "DRM master"),
+            (DrmError::Renderer(RenderError::Unavailable), "GLES"),
+        ];
+        let mut hints = std::collections::BTreeSet::new();
+        for (error, expected) in failures {
+            let text = Error::Drm {
+                hint: drm_hint(&error),
+                error,
+            }
+            .to_string();
+            assert!(text.starts_with("the drm backend cannot start: "), "{text}");
+            assert!(text.contains(expected), "{text} must mention {expected}");
+            hints.insert(text);
+        }
+        assert_eq!(hints.len(), 8, "each failure has its own message");
     }
 
     #[test]

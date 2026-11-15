@@ -113,6 +113,53 @@ fn an_out_of_range_value_reports_the_range() {
 }
 
 #[test]
+fn a_backend_the_compositor_does_not_have_is_refused_naming_the_accepted_values() {
+    let document = table([("compositor", table([("backend", text("x11"))]))]);
+    let problems = problems(document);
+    assert_eq!(problems.len(), 1, "one leaf is wrong, got {problems:?}");
+    assert_eq!(problems[0].0, "compositor.backend");
+    assert_eq!(
+        problems[0].1,
+        Fault::UnsupportedValue {
+            expected: "one of auto, headless, nested, drm".to_owned()
+        }
+    );
+}
+
+#[test]
+fn the_backend_leaves_take_their_values() {
+    let document = table([(
+        "compositor",
+        table([
+            ("backend", text("nested")),
+            ("nested-display", text("wayland-1")),
+            ("nested-outputs", int(2)),
+            ("nested-width", int(1280)),
+            ("nested-height", int(720)),
+        ]),
+    )]);
+    let config = Config::from_value(document).expect("valid");
+    let compositor = config.compositor.as_ref().expect("compositor");
+    assert_eq!(compositor.backend, Some(gnoblin_config::BackendChoice::Nested));
+    assert_eq!(compositor.nested_display.as_deref(), Some("wayland-1"));
+    assert_eq!(compositor.nested_outputs, Some(2));
+    assert_eq!(
+        (compositor.nested_width, compositor.nested_height),
+        (Some(1280), Some(720))
+    );
+}
+
+#[test]
+fn a_nested_output_count_outside_its_range_is_refused() {
+    for count in [0, 9] {
+        let document = table([("compositor", table([("nested-outputs", int(count))]))]);
+        let problems = problems(document);
+        assert_eq!(problems.len(), 1, "{count} is out of range, got {problems:?}");
+        assert_eq!(problems[0].0, "compositor.nested-outputs");
+    }
+}
+
+#[test]
 fn an_out_of_range_monitors_global_scale_is_refused_naming_the_leaf() {
     let document = table([("monitors", table([("global-scale", int(5))]))]);
     let problems = problems(document);

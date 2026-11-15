@@ -211,6 +211,9 @@ pub struct NestedConfig {
     pub secure_treatment: SecureTreatment,
     /// The renderer every output draws with. `auto` is software, as on the headless backend.
     pub renderer: RendererKind,
+    /// The size an output starts at when the parent leaves the size to the session (xdg-shell's zero by zero
+    /// configure). A parent that states a size always wins.
+    pub initial_size: Size,
 }
 
 impl NestedConfig {
@@ -224,6 +227,7 @@ impl NestedConfig {
             outputs: vec![OutputSpec::default()],
             secure_treatment: SecureTreatment::default(),
             renderer: RendererKind::default(),
+            initial_size: UNCONSTRAINED_SIZE,
         }
     }
 }
@@ -411,6 +415,7 @@ impl Nested {
                 outputs,
             },
             config.app_id.clone(),
+            config.initial_size,
         );
         let count = config.outputs.len().max(1);
         for index in 0..count {

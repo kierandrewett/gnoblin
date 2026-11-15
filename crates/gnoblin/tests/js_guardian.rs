@@ -99,6 +99,9 @@ impl Session {
             .env("XDG_DATA_HOME", directory.path().join("data"))
             .env("GNOBLIN_IPC_SOCKET", directory.path().join("ipc.sock"))
             .env("GNOBLIN_TEST_FAST", "1")
+            // The session has to run headless however the machine that runs the test is set up: `auto` would nest in a
+            // desktop that sets WAYLAND_DISPLAY, or take the seat of a login session.
+            .env("GNOBLIN_BACKEND", "headless")
             // The session must not inherit the machine's own choice of stock library.
             .env_remove("GNOBLIN_JS_STOCK_DIR")
             .env_remove("GNOBLIN_JS_WATCH")

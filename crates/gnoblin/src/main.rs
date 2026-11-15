@@ -180,6 +180,12 @@ fn compositor() -> Result<(), Exit> {
     gnoblin_compositor::configure_monitors_from_environment(&mut config);
     gnoblin_compositor::configure_xwayland_from_environment(&mut config);
     gnoblin_compositor::configure_renderer_from_environment(&mut config);
+    // The backend is decided last: it reads the same document and the environment, and a refusal of it (a value no
+    // backend has, a nested session with no host) ends the start with the reason rather than starting headless.
+    if let Err(error) = gnoblin_compositor::configure_backend_from_environment(&mut config) {
+        log::error!("{error}");
+        return Err(Exit(1));
+    }
     match gnoblin_compositor::Compositor::run(config) {
         Ok(gnoblin_compositor::SessionEnd::Stopped) => Ok(()),
         // The guardian reads this code as a logout and ends the session rather than restarting it.

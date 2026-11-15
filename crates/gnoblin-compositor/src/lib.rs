@@ -83,6 +83,8 @@
 
 mod accessibility;
 mod backend;
+/// Which backend a started session drives: the setting, the environment override and the host.
+pub mod backend_select;
 mod bell;
 mod compat;
 mod cursor;
@@ -109,7 +111,11 @@ pub use accessibility::{
     configure_from_environment as configure_accessibility_from_environment,
     configure_from_store as configure_accessibility_from_store,
 };
-pub use backend::{Backend, OutputTap};
+pub use backend::{Backend, OutputTap, drm_hint};
+pub use backend_select::{
+    SelectError as BackendSelectError, configure_from_environment as configure_backend_from_environment,
+    configure_from_store as configure_backend_from_store,
+};
 pub use bell::{
     configure_from_environment as configure_bell_from_environment, configure_from_store as configure_bell_from_store,
 };
@@ -364,7 +370,7 @@ impl Compositor {
     ///
     /// [`Error::Schema`] when the embedded schema cannot be loaded,
     /// [`Error::Ipc`] when the socket cannot be prepared or bound,
-    /// [`Error::BackendRefused`] names a backend this build does not carry, and
+    /// [`Error::Drm`] a machine that cannot start the hardware backend, and
     /// [`Error::Nested`] a parent compositor that cannot host the session. [`Error::Wayland`]
     /// when the Wayland session cannot start, and [`Error::Loop`] when the running loop fails.
     pub fn run(mut config: SessionConfig) -> Result<SessionEnd, Error> {
@@ -409,6 +415,8 @@ impl Compositor {
             .and_then(|path| path.file_name())
             .map(|name| name.to_string_lossy().into_owned());
         let backend_name = config.backend.name();
+        // The tree says where the session runs, before anything is ready to read it.
+        store.set_backend(backend_name);
         let backend = config.backend.build_tapped(
             config.renderer.unwrap_or(gnoblin_config::RendererChoice::Auto),
             config.secure_treatment.map_or_else(
@@ -547,13 +555,13 @@ pub enum Error {
     Model(ModelError),
     /// The nested backend could not connect to its parent compositor.
     Nested(NestedError),
-    /// The selected backend is not carried by this build. It is named so the refusal says
-    /// which backend it refused, rather than starting a different one in its place.
-    BackendRefused {
-        /// The backend's name, as [`Backend::name`] reports it.
-        backend: &'static str,
-        /// Why this build cannot start it.
-        reason: &'static str,
+    /// The hardware backend could not start. The step that failed is in the error and the way out is the hint, so
+    /// the session is refused with what to do rather than started on another backend.
+    Drm {
+        /// What could not be opened.
+        error: gnoblin_backend_drm::DrmError,
+        /// What to do about it ([`drm_hint`]).
+        hint: &'static str,
     },
     /// The renderer the `compositor.renderer` setting names cannot be used by the selected
     /// backend. The setting is named, and the session does not start with another renderer in
@@ -581,9 +589,7 @@ impl std::fmt::Display for Error {
             Error::Loop(error) => write!(formatter, "the Wayland session stopped: {error}"),
             Error::Model(error) => write!(formatter, "the object graph refused the session: {error}"),
             Error::Nested(error) => write!(formatter, "the nested session cannot start: {error}"),
-            Error::BackendRefused { backend, reason } => {
-                write!(formatter, "the {backend} backend cannot start: {reason}")
-            }
+            Error::Drm { error, hint } => write!(formatter, "the drm backend cannot start: {error}; {hint}"),
             Error::RendererRefused {
                 leaf,
                 renderer,

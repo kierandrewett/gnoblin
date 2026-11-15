@@ -114,6 +114,9 @@ impl Session {
             .env("XDG_CONFIG_HOME", directory.path().join("config"))
             .env("GNOBLIN_IPC_SOCKET", directory.path().join("ipc.sock"))
             .env("GNOBLIN_TEST_FAST", "1")
+            // The session has to run headless however the machine that runs the test is set up: `auto` would nest in a
+            // desktop that sets WAYLAND_DISPLAY, or take the seat of a login session.
+            .env("GNOBLIN_BACKEND", "headless")
             .stdin(Stdio::null())
             .stdout(Stdio::from(file.try_clone().expect("a duplicated log")))
             .stderr(Stdio::from(file));

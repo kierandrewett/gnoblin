@@ -65,7 +65,6 @@ use gnoblin_types::{OutputId, Size};
 
 use crate::RawTouchpadKind;
 
-use super::UNCONSTRAINED_SIZE;
 use super::input::position;
 use super::records::Table;
 use super::scale_from_parent;
@@ -203,11 +202,13 @@ pub(crate) struct Handler {
     pinch: Option<zwp_pointer_gesture_pinch_v1::ZwpPointerGesturePinchV1>,
     /// The app id set on every toplevel.
     app_id: String,
+    /// The size an output takes when the parent's configure leaves the size to the session.
+    initial_size: Size,
 }
 
 impl Handler {
     /// A handler for a connection whose globals have been bound.
-    pub fn new(bound: Bound, app_id: String) -> Self {
+    pub fn new(bound: Bound, app_id: String, initial_size: Size) -> Self {
         Self {
             table: Table::new(),
             objects: Vec::new(),
@@ -228,6 +229,7 @@ impl Handler {
             swipe: None,
             pinch: None,
             app_id,
+            initial_size,
         }
     }
 
@@ -907,7 +909,9 @@ impl Dispatch<xdg_toplevel::XdgToplevel, OutputKey> for Handler {
     ) {
         match event {
             xdg_toplevel::Event::Configure { width, height, .. } => {
-                state.table.configure(key.0, configured_size(width, height));
+                state
+                    .table
+                    .configure(key.0, configured_size(width, height, state.initial_size));
             }
             xdg_toplevel::Event::Close => state.table.close(key.0),
             _ => {}
@@ -933,31 +937,40 @@ impl Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, OutputKey> for Handle
 /// The size a `xdg_toplevel.configure` asks for.
 ///
 /// xdg-shell states zero on both axes for "choose for yourself". A nested output
-/// that chooses gets [`UNCONSTRAINED_SIZE`]: it has to draw at *some* size, and a
-/// size of no pixels is an output that can never show a window.
-fn configured_size(width: i32, height: i32) -> Size {
+/// that chooses gets `fallback` (`UNCONSTRAINED_SIZE` unless the session configured
+/// another): it has to draw at *some* size, and a size of no pixels is an output that
+/// can never show a window.
+fn configured_size(width: i32, height: i32, fallback: Size) -> Size {
     if width > 0 && height > 0 {
         Size::new(width.unsigned_abs(), height.unsigned_abs())
     } else {
-        UNCONSTRAINED_SIZE
+        fallback
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::UNCONSTRAINED_SIZE;
     use super::*;
 
     #[test]
     fn a_configure_size_is_the_size_the_parent_asked_for() {
-        assert_eq!(configured_size(1024, 768), Size::new(1024, 768));
+        assert_eq!(configured_size(1024, 768, UNCONSTRAINED_SIZE), Size::new(1024, 768));
     }
 
     #[test]
     fn a_configure_that_leaves_the_size_to_us_is_not_an_empty_output() {
-        assert_eq!(configured_size(0, 0), UNCONSTRAINED_SIZE);
+        assert_eq!(configured_size(0, 0, UNCONSTRAINED_SIZE), UNCONSTRAINED_SIZE);
         // One axis stated and one left out is not a size either.
-        assert_eq!(configured_size(1024, 0), UNCONSTRAINED_SIZE);
-        assert_eq!(configured_size(-1, 768), UNCONSTRAINED_SIZE);
+        assert_eq!(configured_size(1024, 0, UNCONSTRAINED_SIZE), UNCONSTRAINED_SIZE);
+        assert_eq!(configured_size(-1, 768, UNCONSTRAINED_SIZE), UNCONSTRAINED_SIZE);
+    }
+
+    #[test]
+    fn a_session_that_configured_a_starting_size_gets_it_where_the_parent_leaves_the_size_open() {
+        let chosen = Size::new(1600, 900);
+        assert_eq!(configured_size(0, 0, chosen), chosen);
+        assert_eq!(configured_size(800, 600, chosen), Size::new(800, 600));
     }
 
     #[test]

@@ -52,6 +52,8 @@ use crate::log;
 mod member {
     /// The `session` object's version property.
     pub const VERSION: &str = "version";
+    /// The `session` object's backend property.
+    pub const BACKEND: &str = "backend";
     /// The `session` object's ready signal.
     pub const READY: &str = "ready";
     /// The `session` object's bell signal.
@@ -205,6 +207,9 @@ impl SessionSync {
         // The schema needs a value for `lock_state`, so it starts at the state a lock starts in.
         let mut properties = Fields::from([
             (member::VERSION.to_owned(), Value::Text(version.to_string())),
+            // The backend is built after the graph, so the property holds nothing until `set_backend` names it,
+            // which `Compositor::run` does before the session is ready.
+            (member::BACKEND.to_owned(), Value::Text(String::new())),
             (
                 member::LOCK_STATE.to_owned(),
                 Value::Text(lock_state_name(LockState::Unlocked).to_owned()),
@@ -252,6 +257,12 @@ impl SessionSync {
         if let Err(error) = self.graph.signal(self.session, member::RELOAD_REQUESTED, fields) {
             log::error!(area = "ipc", %error, "the session object declares no reload_requested signal");
         }
+    }
+
+    /// Publishes the backend the session runs on, as [`crate::Backend::name`] spells it. Called once at start,
+    /// before [`SessionSync::ready`]: the backend is chosen before the session exists and never changes.
+    pub fn set_backend(&mut self, name: &str) {
+        self.set_if_changed(self.session, member::BACKEND, Value::Text(name.to_owned()));
     }
 
     /// Raises `session.ready`, once, when the IPC server is about to accept.
@@ -989,6 +1000,15 @@ mod tests {
             .and_then(|live| live.property(property))
             .cloned()
             .unwrap_or_else(|| panic!("the session object has no `{property}`"))
+    }
+
+    /// The backend is empty until the compositor names it, and then reads back exactly what it was told.
+    #[test]
+    fn the_backend_is_published_once_the_compositor_names_it() {
+        let mut store = store();
+        assert_eq!(session_property(&store, "backend"), Value::Text(String::new()));
+        store.set_backend("nested");
+        assert_eq!(session_property(&store, "backend"), Value::Text("nested".to_owned()));
     }
 
     /// The session publishes its lock state with a revision that advances on each change,

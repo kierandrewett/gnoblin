@@ -370,7 +370,7 @@ pub(crate) fn check<K: ModesetKernel>(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -382,15 +382,15 @@ mod tests {
     use crate::plan::PhysicalExtent;
     use crate::present::FrameStep;
 
-    const FULL_HD: DisplayMode = DisplayMode::new(1920, 1080, 60_000);
-    const FOUR_K: DisplayMode = DisplayMode::new(3840, 2160, 60_000);
-    const UNLISTED: DisplayMode = DisplayMode::new(1280, 720, 60_000);
+    pub(crate) const FULL_HD: DisplayMode = DisplayMode::new(1920, 1080, 60_000);
+    pub(crate) const FOUR_K: DisplayMode = DisplayMode::new(3840, 2160, 60_000);
+    pub(crate) const UNLISTED: DisplayMode = DisplayMode::new(1280, 720, 60_000);
 
     type Log = Rc<RefCell<Vec<String>>>;
 
     /// Buffers that say when they are dropped, so the order against the commit is checked.
-    struct Held {
-        size: Size,
+    pub(crate) struct Held {
+        pub(crate) size: Size,
         /// The virtual surface the output composes on, which is `size` when there is no supersampling.
         composed: Size,
         log: Log,
@@ -406,7 +406,7 @@ mod tests {
 
     /// A kernel that records every call and refuses the ones it is told to.
     #[derive(Default)]
-    struct Fake {
+    pub(crate) struct Fake {
         log: Log,
         /// The texture limit the GPU reports, or 8192 when none is set.
         limit: Option<u32>,
@@ -417,7 +417,7 @@ mod tests {
         refuse_unstage: bool,
         refuse_gamma: bool,
         /// A fake takes real mode changes unless a test turns them off, as a kernel the opt-in was given to does.
-        real_modeset_off: bool,
+        pub(crate) real_modeset_off: bool,
     }
 
     impl Fake {
@@ -425,7 +425,7 @@ mod tests {
             self.log.borrow_mut().push(line);
         }
 
-        fn held(&self, size: Size) -> Held {
+        pub(crate) fn held(&self, size: Size) -> Held {
             Held {
                 size,
                 composed: size,
@@ -433,7 +433,7 @@ mod tests {
             }
         }
 
-        fn calls(&self) -> Vec<String> {
+        pub(crate) fn calls(&self) -> Vec<String> {
             self.log.borrow().clone()
         }
 
@@ -524,7 +524,7 @@ mod tests {
         }
     }
 
-    fn connector(connected: bool) -> Connector {
+    pub(crate) fn connector(connected: bool) -> Connector {
         Connector {
             id: OutputId::new(1),
             name: "DP-1".to_owned(),
@@ -537,7 +537,7 @@ mod tests {
         }
     }
 
-    fn lit() -> OutputState {
+    pub(crate) fn lit() -> OutputState {
         OutputState {
             vrr: true,
             kelvin: Some(4000),
@@ -546,7 +546,7 @@ mod tests {
     }
 
     /// An output that has drawn and flipped once: clean, slot 0 on screen, over buffers of its mode.
-    fn presenting(fake: &Fake) -> (Option<Held>, Presenter) {
+    pub(crate) fn presenting(fake: &Fake) -> (Option<Held>, Presenter) {
         let mut presenter = Presenter::new();
         presenter.flip_submitted(0);
         presenter.vblank();
@@ -554,7 +554,7 @@ mod tests {
     }
 
     /// A request for `mode` and `scale` with no supersampling.
-    fn ask(mode: DisplayMode, scale: Scale) -> Composition {
+    pub(crate) fn ask(mode: DisplayMode, scale: Scale) -> Composition {
         Composition {
             mode,
             scale,

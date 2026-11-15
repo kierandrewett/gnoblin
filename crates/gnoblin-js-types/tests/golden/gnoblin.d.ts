@@ -172,6 +172,7 @@ declare module "gnoblin/schema/gnoblin" {
         lockAvailable: boolean;
         /** Schema name `lock_revision`. */
         lockRevision: number;
+        backend: string;
         /** Signal `ready`. */
         onReady(handler: (target: this) => void): Unsubscribe;
         /** Signal `bell`. */

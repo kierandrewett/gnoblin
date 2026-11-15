@@ -49,6 +49,17 @@ variants = [
 ]
 
 [[enum]]
+name = "BackendChoice"
+setting = "backend"
+doc = "Which backend the compositor drives: the thing that gives it outputs and input."
+variants = [
+    { spelling = "auto", doc = "Pick by environment: a host Wayland compositor means nested; a login session with a seat and a DRM node means drm; otherwise headless." },
+    { spelling = "headless", doc = "Virtual outputs with no hardware and no window. Runs anywhere, and what it draws can be read back." },
+    { spelling = "nested", doc = "The session is a window (one per output) of another Wayland compositor." },
+    { spelling = "drm", doc = "Direct rendering on the machine's GPU and displays, with libinput for input. Needs a seat and a DRM node." },
+]
+
+[[enum]]
 name = "ColourFilter"
 setting = "colour-filter"
 doc = "A colour transform applied to every output. The vision-deficiency filters simulate how a viewer with that deficiency sees the screen; they do not correct it."
@@ -1567,6 +1578,50 @@ max = 1000000
 accepted = "an integer from 0 to 1000000; 0 turns the limit off"
 default = { int = 4096 }
 doc = "The most surfaces (toplevels, popups, subsurfaces, cursors) one client may hold at once. A client that asks for another is ended with wl_display.error.no_memory. 0 turns the limit off."
+key = "backend"
+kind = "enum"
+enum = "BackendChoice"
+accepted = "one of auto, headless, nested, drm"
+default = { enum = "auto" }
+doc = "Which backend the compositor drives. The GNOBLIN_BACKEND environment variable overrides it."
+since = "0.2.0"
+
+[[section.field]]
+key = "nested-display"
+kind = "text"
+nonempty = true
+accepted = "a Wayland socket name or an absolute path"
+doc = "The Wayland socket of the compositor that hosts a nested session. A name is looked up in the runtime directory. Unset, the WAYLAND_DISPLAY of the process is used."
+since = "0.2.0"
+
+[[section.field]]
+key = "nested-outputs"
+kind = "int"
+min = 1
+max = 8
+accepted = "an integer from 1 to 8"
+default = { int = 1 }
+doc = "How many outputs (host windows) a nested session opens."
+since = "0.2.0"
+
+[[section.field]]
+key = "nested-width"
+kind = "int"
+min = 64
+max = 16384
+accepted = "an integer from 64 to 16384 pixels"
+default = { int = 1024 }
+doc = "The width a nested output starts at when its host leaves the size to the session."
+since = "0.2.0"
+
+[[section.field]]
+key = "nested-height"
+kind = "int"
+min = 64
+max = 16384
+accepted = "an integer from 64 to 16384 pixels"
+default = { int = 768 }
+doc = "The height a nested output starts at when its host leaves the size to the session."
 since = "0.2.0"
 
 [[section]]

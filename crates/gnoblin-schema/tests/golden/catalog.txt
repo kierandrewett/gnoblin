@@ -221,6 +221,7 @@ object session since 0.2.0 secret false
   property lock_state type string since 0.2.0 secret false
   property lock_available type bool since 0.2.0 secret false
   property lock_revision type uint since 0.2.0 secret false
+  property backend type string since 0.2.0 secret false
   method logout since 0.2.0 secret false function true
   method poweroff since 0.2.0 secret false function true
   method reboot since 0.2.0 secret false function true
@@ -1403,6 +1404,8 @@ message Session {
     bool lock_available = 7;
     // since 0.2.0
     uint64 lock_revision = 8;
+    // since 0.2.0
+    string backend = 9;
   }
 
   // Method `logout`, since 0.2.0.

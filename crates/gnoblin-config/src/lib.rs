@@ -96,15 +96,15 @@ pub use autostart::{enabled_autostart, keyring_conflict};
 pub use document::{CARRIED_SECTIONS, Config, Salvaged, TOP_LEVEL_KEYS, salvage};
 /// Generated enums, settings and the alias table, all from `schema/config.toml`.
 pub use generated::{
-    ALIASES, AccelProfile, Accessibility, Appearance, Auth, Autostart, AutostartEntry, AutostartWhen, Blur, BounceKeys,
-    CaptureSecureTreatment, CaptureSettings, ClickMethod, ColorScheme, ColourFilter, Compat, CompatCapture, Compositor,
-    Cursor, CursorProvider, DeviceAccelProfile, DialogButtonLayout, Dialogs, DialogsFont, DialogsStyle, ENUM_SPECS,
-    FocusMode, FocusNewWindows, Gesture, GestureDirection, GestureKind, GesturePoint, Handedness, Input, InputSource,
-    InputSourceType, InputSources, Keyboard, KeyringConfig, LayerShell, Location, LocationAccuracy, LogConsole,
-    Logging, Monitors, Mouse, MouseKeys, PadButton, PadButtonAction, PointingStick, Protocol, Protocols,
-    RendererChoice, ScrollMethod, Shortcut, ShortcutTrigger, Shortcuts, SlowKeys, StickyKeys, Stylus, StylusAction,
-    StylusEraserMode, Tablet, TabletMapping, TapButtonMap, TitlebarAction, ToggleKeys, Touchpad, Trackball,
-    VisualAccessibility, VisualBellType, WindowManagement, Workspace, Xwayland, XwaylandExtension,
+    ALIASES, AccelProfile, Accessibility, Appearance, Auth, Autostart, AutostartEntry, AutostartWhen, BackendChoice,
+    Blur, BounceKeys, CaptureSecureTreatment, CaptureSettings, ClickMethod, ColorScheme, ColourFilter, Compat,
+    CompatCapture, Compositor, Cursor, CursorProvider, DeviceAccelProfile, DialogButtonLayout, Dialogs, DialogsFont,
+    DialogsStyle, ENUM_SPECS, FocusMode, FocusNewWindows, Gesture, GestureDirection, GestureKind, GesturePoint,
+    Handedness, Input, InputSource, InputSourceType, InputSources, Keyboard, KeyringConfig, LayerShell, Location,
+    LocationAccuracy, LogConsole, Logging, Monitors, Mouse, MouseKeys, PadButton, PadButtonAction, PointingStick,
+    Protocol, Protocols, RendererChoice, ScrollMethod, Shortcut, ShortcutTrigger, Shortcuts, SlowKeys, StickyKeys,
+    Stylus, StylusAction, StylusEraserMode, Tablet, TabletMapping, TapButtonMap, TitlebarAction, ToggleKeys, Touchpad,
+    Trackball, VisualAccessibility, VisualBellType, WindowManagement, Workspace, Xwayland, XwaylandExtension,
 };
 /// The built-in keyring rule: from the environment, from a document, or from the last accepted file.
 pub use keyring::{

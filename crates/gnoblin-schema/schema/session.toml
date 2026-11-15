@@ -154,6 +154,14 @@ name = "lock_revision"
 type = "uint"
 since = "0.2.0"
 
+# The backend this compositor drives: `headless`, `nested` or `drm`. It is what `compositor.backend` and
+# `GNOBLIN_BACKEND` resolved to at start (`auto` is never published), so a reader learns where the session runs
+# without guessing from the environment. It never changes while the session runs.
+[[object.property]]
+name = "backend"
+type = "string"
+since = "0.2.0"
+
 # The session's lock state changed. `state` is the new state's name and `revision` is the
 # value `lock_revision` now holds, so a reader that missed one still sees the revision gap.
 [[object.signal]]

@@ -10,6 +10,8 @@
 //! This crate is a development dependency only; `cargo xtask deps` fails if a
 //! shipped crate declares it outside `[dev-dependencies]`.
 
+/// The per-backend status table in `design/backend-parity.md`, read so the conformance tests can hold it to the code.
+pub mod backend_status;
 /// A clock that moves only when a test moves it.
 pub mod clock;
 /// Records observations as JSON with secrets removed before they are stored.
