@@ -312,7 +312,7 @@ fn types_is_refused_for_a_file_the_runtime_does_not_load() {
 }
 
 #[test]
-fn types_init_writes_both_files_and_a_second_run_keeps_an_edited_tsconfig() {
+fn types_init_writes_the_real_sources_and_a_second_run_keeps_an_edited_tsconfig() {
     let dir = Dir::new();
     let target = dir.path().join("config");
     let args = [
@@ -323,20 +323,91 @@ fn types_init_writes_both_files_and_a_second_run_keeps_an_edited_tsconfig() {
 
     let (code, out, err) = run(&args);
     assert_eq!(code, 0, "{err}");
+    assert!(out.contains("library refreshed"), "{out}");
     assert!(out.contains("gnoblin.d.ts refreshed"), "{out}");
     assert!(out.contains("tsconfig.json created"), "{out}");
-    let declarations = fs::read_to_string(target.join("gnoblin.d.ts")).expect("gnoblin.d.ts is written");
-    assert!(declarations.contains("gnoblin"), "{declarations}");
-    assert!(target.join("tsconfig.json").is_file());
+    let declarations = fs::read_to_string(target.join(".gnoblin/gnoblin.d.ts")).expect("the declarations are written");
+    assert!(
+        declarations.contains("declare module \"gnoblin/schema/tree\""),
+        "{declarations}"
+    );
+    assert!(
+        !declarations.contains("declare module \"gnoblin\""),
+        "the library is not declared a second time"
+    );
+    let tsconfig = fs::read_to_string(target.join("tsconfig.json")).expect("the tsconfig is written");
+    assert!(tsconfig.contains("./.gnoblin/tsconfig.json"), "{tsconfig}");
+
+    // The editor reads the library's own files: byte for byte what the repository holds, except the user-facing
+    // module, which is the repository's index plus the host's exports.
+    let library = target.join(".gnoblin/lib/gnoblin");
+    let sources = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/js/gnoblin");
+    for file in [
+        "scene/node.ts",
+        "scene/camera.ts",
+        "scene.ts",
+        "host/workspace.ts",
+        "extensions/xr.ts",
+    ] {
+        assert_eq!(
+            fs::read_to_string(library.join(file)).expect("the source is written"),
+            fs::read_to_string(sources.join(file)).expect("the source is in the repository"),
+            "{file}"
+        );
+    }
+    let index = fs::read_to_string(library.join("index.ts")).expect("the index is written");
+    let original = fs::read_to_string(sources.join("index.ts")).expect("the index is in the repository");
+    assert_eq!(index, format!("{original}\nexport * from \"gnoblin/host\";\n"));
 
     fs::write(target.join("tsconfig.json"), "{\"mine\": true}\n").expect("the user edits the tsconfig");
     let (code, out, err) = run(&args);
     assert_eq!(code, 0, "{err}");
     assert!(out.contains("tsconfig.json kept"), "{out}");
+    assert!(
+        out.contains("does not extend .gnoblin/tsconfig.json"),
+        "a tsconfig that cannot find the types is said so: {out}"
+    );
     assert_eq!(
         fs::read_to_string(target.join("tsconfig.json")).expect("the tsconfig is still there"),
         "{\"mine\": true}\n"
     );
+}
+
+#[test]
+fn types_init_upgrades_the_files_an_earlier_release_wrote() {
+    let dir = Dir::new();
+    let target = dir.path().join("config");
+    let legacy = serde_json::json!({
+        "compilerOptions": {
+            "target": "es2023", "lib": ["es2023"], "module": "esnext", "moduleResolution": "bundler",
+            "strict": true, "noEmit": true, "isolatedModules": true, "allowImportingTsExtensions": true,
+            "types": [], "paths": { "gnoblin": ["./gnoblin.d.ts"] },
+        },
+        "files": ["./gnoblin.d.ts"],
+        "include": ["./**/*.ts"],
+    });
+    fs::create_dir_all(&target).expect("the config directory");
+    fs::write(target.join("tsconfig.json"), legacy.to_string()).expect("the old tsconfig");
+    fs::write(
+        target.join("gnoblin.d.ts"),
+        "// gnoblin.d.ts: the types of the Gnoblin JavaScript and TypeScript API.\n",
+    )
+    .expect("the old declarations");
+
+    let (code, out, err) = run(&[
+        OsString::from("types"),
+        OsString::from("init"),
+        target.as_os_str().to_owned(),
+    ]);
+
+    assert_eq!(code, 0, "{err}");
+    assert!(out.contains("tsconfig.json replaced"), "{out}");
+    assert!(
+        !target.join("gnoblin.d.ts").exists(),
+        "the old declarations would clash"
+    );
+    let tsconfig = fs::read_to_string(target.join("tsconfig.json")).expect("the tsconfig");
+    assert!(tsconfig.contains("./.gnoblin/tsconfig.json"), "{tsconfig}");
 }
 
 #[test]
@@ -353,8 +424,15 @@ fn types_init_reports_where_it_wrote_as_json() {
     assert_eq!(code, 0, "{err}");
     let document: serde_json::Value = serde_json::from_str(&out).expect("--json prints JSON");
     assert_eq!(document["tsconfig_created"], true);
-    let expected = target.join("gnoblin.d.ts");
+    assert_eq!(document["tsconfig_linked"], true);
+    let expected = target.join(".gnoblin/gnoblin.d.ts");
     assert_eq!(document["types"], expected.to_str().expect("the path is UTF-8"));
+    let library = target.join(".gnoblin/lib/gnoblin");
+    assert_eq!(document["library"], library.to_str().expect("the path is UTF-8"));
+    assert!(
+        document["library_files"].as_u64().is_some_and(|count| count > 100),
+        "{document}"
+    );
 }
 
 #[test]
@@ -395,7 +473,7 @@ fn config_init_writes_the_starter_and_the_editor_files_and_prints_three_next_ste
         gnoblin_js::STARTER_CONFIG,
         "the starter is the one the runtime ships"
     );
-    assert!(target.join("gnoblin.d.ts").is_file(), "types init ran");
+    assert!(target.join(".gnoblin/gnoblin.d.ts").is_file(), "types init ran");
     assert!(target.join("tsconfig.json").is_file(), "types init ran");
     assert!(out.contains("init.ts written"), "{out}");
     assert!(out.contains("gnoblin.d.ts refreshed"), "{out}");

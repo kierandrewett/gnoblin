@@ -42,7 +42,8 @@ editor needs for completion:
 
 ```text
 ok  init.ts written: /home/me/.config/gnoblin/init.ts
-ok  gnoblin.d.ts refreshed: /home/me/.config/gnoblin/gnoblin.d.ts
+ok  library refreshed: /home/me/.config/gnoblin/.gnoblin/lib/gnoblin (200 files, the real sources of `gnoblin`)
+ok  gnoblin.d.ts refreshed: /home/me/.config/gnoblin/.gnoblin/gnoblin.d.ts
 ok  tsconfig.json created: /home/me/.config/gnoblin/tsconfig.json
 
 Next:
@@ -140,9 +141,20 @@ of the wrong type. Without a compiler it says so and exits 0. See [Check and typ
 
 ## Editor support
 
-`gnoblinctl config init` runs `gnoblinctl types init`, which writes `gnoblin.d.ts` and `tsconfig.json` beside `init.ts`.
-An editor that understands TypeScript then completes every key and underlines a wrong one. Run `gnoblinctl types init`
-again after an upgrade to refresh `gnoblin.d.ts`. It never replaces a `tsconfig.json` you have.
+`gnoblinctl config init` runs `gnoblinctl types init`. It writes:
+
+- the library's own TypeScript source and the generated declarations, into a `.gnoblin` directory beside `init.ts`,
+- a `tsconfig.json` that extends the one inside `.gnoblin`.
+
+An editor that understands TypeScript then completes every key and underlines a wrong one. Go-to-definition on an import
+such as `gnoblin/scene` opens the file the shell runs.
+
+- Commit `init.ts` and `tsconfig.json`. Do not commit `.gnoblin`: it holds a copy of the library that the command writes
+  again, and it ignores itself in a Git repository.
+- Run `gnoblinctl types init` again after an upgrade. It rewrites `.gnoblin` to the release you run and never replaces a
+  `tsconfig.json` you have.
+
+See [Editor files](gnoblinctl.md#editor-files) for what is written where.
 
 ## What the file can do
 

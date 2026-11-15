@@ -46,7 +46,7 @@ gnoblinctl types init [DIR]
 - `check` runs the file in the dry-run shell, the shell's own library over an empty tree, and reports a syntax error, a
   missing import or export, a refused value or trigger and a top-level throw at its `.ts` line.
 - `check --types` also runs an installed TypeScript compiler.
-- `types init` writes `gnoblin.d.ts` and `tsconfig.json` for your editor.
+- `types init` writes the library sources, `gnoblin.d.ts` and `tsconfig.json` for your editor.
 
 Neither needs a running session. See the
 [gnoblinctl reference](../gnoblinctl.md#check-and-types).

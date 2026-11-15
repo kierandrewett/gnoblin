@@ -19,7 +19,6 @@ use gnoblin_config::SearchPaths;
 use gnoblin_config_migrate::{
     ConfigSourceLoader, MigrateSource, MigrationOutput, glob_matches, is_glob, migrate, resolve_load_path,
 };
-use gnoblin_js_types::{TSCONFIG_FILE, TYPES_FILE, ensure_user_files};
 use serde_json::json;
 
 use crate::js;
@@ -241,7 +240,7 @@ pub(crate) fn run(request: &MigrateRequest, out: &mut dyn Write, err: &mut dyn W
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
-    let written = match ensure_user_files(&target_dir) {
+    let written = match js::write_editor_files(&target_dir) {
         Ok(written) => written,
         Err(error) => {
             return fail(
@@ -454,23 +453,15 @@ fn report_written(
         document["dry_run"] = json!(false);
         document["written"] = json!(true);
         document["init"] = json!(target);
-        document["types"] = json!(written.types);
-        document["tsconfig"] = json!(target_dir.join(TSCONFIG_FILE));
-        document["tsconfig_created"] = json!(written.tsconfig.is_some());
+        if let Some(editor) = js::editor_json(written, &target_dir).as_object() {
+            for (key, value) in editor {
+                document[key.as_str()] = value.clone();
+            }
+        }
         document["next"] = json!(next);
         writeln!(out, "{document}")
     } else {
         let theme = js::theme(io::stdout().is_terminal());
-        let tsconfig = match &written.tsconfig {
-            Some(path) => (LineOutcome::Ok, format!("{TSCONFIG_FILE} created: {}", path.display())),
-            None => (
-                LineOutcome::Info,
-                format!(
-                    "{TSCONFIG_FILE} kept, it already exists: {}",
-                    target_dir.join(TSCONFIG_FILE).display()
-                ),
-            ),
-        };
         let steps: String = next
             .iter()
             .enumerate()
@@ -478,18 +469,13 @@ fn report_written(
             .collect();
         writeln!(
             out,
-            "{}\n{}\n{}\n\n{}\nNext:{steps}",
+            "{}\n{}\n\n{}\nNext:{steps}",
             status_line(
                 &theme,
                 LineOutcome::Ok,
                 &format!("{TS_INIT} written: {}", target.display())
             ),
-            status_line(
-                &theme,
-                LineOutcome::Ok,
-                &format!("{TYPES_FILE} refreshed: {}", written.types.display())
-            ),
-            status_line(&theme, tsconfig.0, &tsconfig.1),
+            js::editor_lines(&theme, written, &target_dir),
             report_text(output, load_problem, &theme),
         )
     };

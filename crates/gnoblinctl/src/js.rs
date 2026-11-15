@@ -19,8 +19,10 @@ use gnoblin_cli_style::{
     ColorChoice, ErrorReport, LineOutcome, OutputEnvironment, OutputTheme, error_block, status_line,
 };
 use gnoblin_config::SearchPaths;
-use gnoblin_js::{JsError, JsErrorKind, STARTER_CONFIG};
-use gnoblin_js_types::{TSCONFIG_FILE, TYPES_FILE, ensure_user_files};
+use gnoblin_js::{JsError, JsErrorKind, STARTER_CONFIG, editor_library};
+use gnoblin_js_types::{
+    GENERATED_DIR, GENERATED_TSCONFIG_FILE, JsWritten, TSCONFIG_FILE, TYPES_FILE, TsconfigOutcome, ensure_user_files,
+};
 use serde_json::{Value as Json, json};
 
 /// The extensions the shell runtime loads as modules, and so the ones `check` sends down the
@@ -325,13 +327,13 @@ impl Drop for Scratch {
     }
 }
 
-/// Run the external type checker over `file` with the generated declarations.
+/// Run the external type checker over `file` with the real library and the generated declarations.
 ///
-/// The declarations and the `tsconfig.json` come from `ensure_user_files`, written into a scratch
-/// directory so a check never touches the user's directory. The `tsconfig.json` is then pointed at
-/// the checked file alone (`files`), rather than at every `.ts` below the scratch directory, so the
-/// compiler sees the module graph the runtime would load and nothing else, and a `gnoblin.d.ts` the
-/// user already keeps beside it cannot be declared twice.
+/// The editor files come from `write_editor_files`, written into a scratch directory so a check never touches the
+/// user's directory: the library sources, `gnoblin.d.ts` and the generated `tsconfig.json`. The configuration the
+/// compiler is given extends that one and names the checked file and the declarations alone (`files`), rather than
+/// every `.ts` below the scratch directory, so the compiler sees the module graph the runtime would load and nothing
+/// else, and a `gnoblin.d.ts` the user already keeps beside the file cannot be declared twice.
 fn type_check(file: &Path, search: &TscSearch) -> TypeCheck {
     let Some(tool) = search.find() else {
         return TypeCheck::Skipped;
@@ -341,22 +343,18 @@ fn type_check(file: &Path, search: &TscSearch) -> TypeCheck {
             .canonicalize()
             .map_err(|error| format!("cannot read {}: {error}", file.display()))?;
         let scratch = Scratch::new().map_err(|error| format!("cannot create a scratch directory: {error}"))?;
-        let written = ensure_user_files(&scratch.0).map_err(|error| format!("cannot write the type files: {error}"))?;
-        let config_path = scratch.0.join(TSCONFIG_FILE);
-        let text =
-            std::fs::read_to_string(&config_path).map_err(|error| format!("cannot read the tsconfig: {error}"))?;
-        let mut config: Json =
-            serde_json::from_str(&text).map_err(|error| format!("the tsconfig is not JSON: {error}"))?;
-        config["files"] = json!([written.types, entry]);
-        if let Some(object) = config.as_object_mut() {
-            object.remove("include");
-        }
+        let written =
+            write_editor_files(&scratch.0).map_err(|error| format!("cannot write the type files: {error}"))?;
+        let config_path = scratch.0.join(CHECK_TSCONFIG_FILE);
+        let mut config = json!({
+            "extends": format!("./{GENERATED_DIR}/{GENERATED_TSCONFIG_FILE}"),
+            "files": [written.types, entry],
+        });
         if entry
             .extension()
             .is_some_and(|extension| extension == "js" || extension == "mjs")
         {
-            config["compilerOptions"]["allowJs"] = Json::Bool(true);
-            config["compilerOptions"]["checkJs"] = Json::Bool(true);
+            config["compilerOptions"] = json!({ "allowJs": true, "checkJs": true });
         }
         std::fs::write(&config_path, config.to_string())
             .map_err(|error| format!("cannot write the tsconfig: {error}"))?;
@@ -385,7 +383,81 @@ pub(crate) fn default_config_dir(paths: &SearchPaths) -> Option<PathBuf> {
     }
 }
 
-/// `types init [DIR]`: write `gnoblin.d.ts` and, when absent, `tsconfig.json`, so an editor works
+/// The name of the configuration `check --types` hands the compiler, in the scratch directory.
+const CHECK_TSCONFIG_FILE: &str = "check.tsconfig.json";
+
+/// Write the editor files into `dir`: the library as the shell embeds it, the schema declarations and the tsconfigs.
+/// `types init`, `config init`, `migrate` and `check --types` all write the same files through this.
+pub(crate) fn write_editor_files(dir: &Path) -> io::Result<JsWritten> {
+    ensure_user_files(dir, &editor_library())
+}
+
+/// What the editor-file commands print after `written` was written into `dir`: the library, the declarations and what
+/// became of the user's `tsconfig.json`.
+pub(crate) fn editor_lines(theme: &OutputTheme, written: &JsWritten, dir: &Path) -> String {
+    let line = |outcome: LineOutcome, text: String| status_line(theme, outcome, &text);
+    let tsconfig_path = dir.join(TSCONFIG_FILE);
+    let mut lines = vec![
+        line(
+            LineOutcome::Ok,
+            format!(
+                "library refreshed: {} ({} files, the real sources of `gnoblin`)",
+                written.library.display(),
+                written.library_files
+            ),
+        ),
+        line(
+            LineOutcome::Ok,
+            format!("{TYPES_FILE} refreshed: {}", written.types.display()),
+        ),
+    ];
+    match &written.tsconfig {
+        TsconfigOutcome::Created(path) => {
+            lines.push(line(
+                LineOutcome::Ok,
+                format!("{TSCONFIG_FILE} created: {}", path.display()),
+            ));
+        }
+        TsconfigOutcome::Migrated(path) => lines.push(line(
+            LineOutcome::Ok,
+            format!(
+                "{TSCONFIG_FILE} replaced, it was the one an earlier release wrote and no longer finds the types: {}",
+                path.display()
+            ),
+        )),
+        TsconfigOutcome::Kept => lines.push(line(
+            LineOutcome::Info,
+            format!("{TSCONFIG_FILE} kept, it already exists: {}", tsconfig_path.display()),
+        )),
+        TsconfigOutcome::NotLinked => {
+            let generated = format!("{GENERATED_DIR}/{GENERATED_TSCONFIG_FILE}");
+            lines.push(line(
+                LineOutcome::Warn,
+                format!(
+                    "{TSCONFIG_FILE} kept, but it does not extend {generated}, so the editor does not see the types: \
+                     add \"extends\": \"./{generated}\" to {}",
+                    tsconfig_path.display()
+                ),
+            ));
+        }
+    }
+    lines.join("\n")
+}
+
+/// The same report as JSON: where the files are, and what became of the user's `tsconfig.json`.
+pub(crate) fn editor_json(written: &JsWritten, dir: &Path) -> Json {
+    json!({
+        "types": written.types,
+        "library": written.library,
+        "library_files": written.library_files,
+        "tsconfig": dir.join(TSCONFIG_FILE),
+        "tsconfig_created": matches!(written.tsconfig, TsconfigOutcome::Created(_)),
+        "tsconfig_replaced": matches!(written.tsconfig, TsconfigOutcome::Migrated(_)),
+        "tsconfig_linked": !matches!(written.tsconfig, TsconfigOutcome::NotLinked),
+    })
+}
+
+/// `types init [DIR]`: write the library sources, `gnoblin.d.ts` and, when absent, `tsconfig.json`, so an editor works
 /// with no build step.
 pub(crate) fn types_init(dir: Option<&Path>, json: bool, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let theme_err = theme(io::stderr().is_terminal());
@@ -411,7 +483,7 @@ pub(crate) fn types_init(dir: Option<&Path>, json: bool, out: &mut dyn Write, er
             }
         },
     };
-    let written = match ensure_user_files(&dir) {
+    let written = match write_editor_files(&dir) {
         Ok(written) => written,
         Err(error) => {
             return fail(
@@ -422,38 +494,13 @@ pub(crate) fn types_init(dir: Option<&Path>, json: bool, out: &mut dyn Write, er
         }
     };
     let result = if json {
+        writeln!(out, "{}", editor_json(&written, &dir))
+    } else {
         writeln!(
             out,
             "{}",
-            json!({
-                "types": written.types,
-                "tsconfig": dir.join(TSCONFIG_FILE),
-                "tsconfig_created": written.tsconfig.is_some(),
-            })
+            editor_lines(&theme(io::stdout().is_terminal()), &written, &dir)
         )
-    } else {
-        let theme = theme(io::stdout().is_terminal());
-        let types = status_line(
-            &theme,
-            LineOutcome::Ok,
-            &format!("{TYPES_FILE} refreshed: {}", written.types.display()),
-        );
-        let config = match &written.tsconfig {
-            Some(path) => status_line(
-                &theme,
-                LineOutcome::Ok,
-                &format!("{TSCONFIG_FILE} created: {}", path.display()),
-            ),
-            None => status_line(
-                &theme,
-                LineOutcome::Info,
-                &format!(
-                    "{TSCONFIG_FILE} kept, it already exists: {}",
-                    dir.join(TSCONFIG_FILE).display()
-                ),
-            ),
-        };
-        writeln!(out, "{types}\n{config}")
     };
     u8::from(result.is_err())
 }
@@ -531,7 +578,7 @@ pub(crate) fn config_init(dir: Option<&Path>, force: bool, json: bool, out: &mut
             "check that the directory is writable, or name another: `gnoblinctl config init DIR`",
         );
     }
-    let written = match ensure_user_files(&dir) {
+    let written = match write_editor_files(&dir) {
         Ok(written) => written,
         Err(error) => {
             return fail(
@@ -557,32 +604,13 @@ pub(crate) fn config_init(dir: Option<&Path>, force: bool, json: bool, out: &mut
         ));
     }
     let result = if json {
-        writeln!(
-            out,
-            "{}",
-            json!({
-                "init": init,
-                "replaced": replaced,
-                "types": written.types,
-                "tsconfig": dir.join(TSCONFIG_FILE),
-                "tsconfig_created": written.tsconfig.is_some(),
-                "next": next,
-            })
-        )
+        let mut document = editor_json(&written, &dir);
+        document["init"] = json!(init);
+        document["replaced"] = json!(replaced);
+        document["next"] = json!(next);
+        writeln!(out, "{document}")
     } else {
         let theme = theme(io::stdout().is_terminal());
-        let tsconfig = match &written.tsconfig {
-            Some(path) => format!("{TSCONFIG_FILE} created: {}", path.display()),
-            None => format!(
-                "{TSCONFIG_FILE} kept, it already exists: {}",
-                dir.join(TSCONFIG_FILE).display()
-            ),
-        };
-        let tsconfig_outcome = if written.tsconfig.is_some() {
-            LineOutcome::Ok
-        } else {
-            LineOutcome::Info
-        };
         let verb = if replaced { "replaced" } else { "written" };
         let steps: String = next
             .iter()
@@ -590,18 +618,13 @@ pub(crate) fn config_init(dir: Option<&Path>, force: bool, json: bool, out: &mut
             .map(|(number, step)| format!("\n  {}. {step}", number + 1))
             .collect();
         let text = format!(
-            "{}\n{}\n{}\n\nNext:{steps}",
+            "{}\n{}\n\nNext:{steps}",
             status_line(
                 &theme,
                 LineOutcome::Ok,
                 &format!("{INIT_FILE} {verb}: {}", init.display())
             ),
-            status_line(
-                &theme,
-                LineOutcome::Ok,
-                &format!("{TYPES_FILE} refreshed: {}", written.types.display())
-            ),
-            status_line(&theme, tsconfig_outcome, &tsconfig),
+            editor_lines(&theme, &written, &dir),
         );
         writeln!(out, "{text}")
     };
@@ -669,15 +692,15 @@ mod tests {
     }
 
     #[test]
-    fn the_compiler_is_given_the_generated_declarations_and_its_output_is_kept_unchanged() {
+    fn the_compiler_is_given_the_library_and_the_declarations_and_its_output_is_kept_unchanged() {
         let dir = scratch_dir("tsc");
         let file = dir.join("init.ts");
         std::fs::write(&file, "export {};\n").expect("write init.ts");
-        // `$5` is the tsconfig, after `--noEmit --pretty false -p`. The script proves the declarations
-        // exist beside it, echoes a diagnostic and fails.
+        // `$5` is the tsconfig, after `--noEmit --pretty false -p`. The script proves the declarations and the real
+        // library sources exist beside it, echoes a diagnostic and fails.
         let tool = fake_tsc(
             &dir,
-            "test -f \"$(dirname \"$5\")/gnoblin.d.ts\" || exit 9\ngrep -q init.ts \"$5\" || exit 8\necho \"init.ts(1,1): error TS0000: fake\"\nexit 2",
+            "d=\"$(dirname \"$5\")/.gnoblin\"\ntest -f \"$d/gnoblin.d.ts\" || exit 9\ntest -f \"$d/lib/gnoblin/scene/node.ts\" || exit 7\ngrep -q init.ts \"$5\" || exit 8\necho \"init.ts(1,1): error TS0000: fake\"\nexit 2",
         );
         let search = TscSearch {
             explicit: Some(tool),

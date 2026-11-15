@@ -11,7 +11,8 @@
 //! - [`ConfigWatcher`] turns editor save bursts into one [`ReloadRequest`]; [`JsReloader`] stages and
 //!   commits on a request and reports failures at the author's `.ts` line; [`JsSupervisor`] counts
 //!   interrupts and panics and decides between restaging and giving up.
-//! - [`stock_modules`] is the TypeScript stock library (`data/js/gnoblin/`) as embedded `gnoblin` modules.
+//! - [`stock_modules`] is the TypeScript stock library (`data/js/gnoblin/`) as embedded `gnoblin` modules, and
+//!   [`editor_library`] the same sources as the files an editor reads.
 //! - [`JsShell`] runs the shell over the compositor's tree: `gnoblin.clients` and the rest of the object
 //!   model in `data/js/gnoblin/host.ts` (the `gnoblin/host` module), over the host functions in `bindings`, with the
 //!   frame loop of `ShellVm`. A workspace is a script object: [`JsWorkspaceSnapshot`] carries which window was on
@@ -84,7 +85,7 @@ pub use rquickjs;
 pub use runner::{FRAME_WAIT, JsRoleError, JsRoleRunner, STOCK_DIR_VARIABLE, TEST_CRASH_VARIABLE, WATCH_VARIABLE};
 pub use script_console::{JsConsoleLevel, JsConsoleLine, MAX_LINE_BYTES, MAX_LINES_PER_SECOND};
 pub use shell::{JsFrame, JsFrameStats, JsShell, JsShellConfig, JsShellError, JsStaging, STALE_RETRIES};
-pub use stock::{STARTER_CONFIG, stock_modules, stock_modules_in, stock_sources_in};
+pub use stock::{STARTER_CONFIG, editor_library, stock_modules, stock_modules_in, stock_sources_in};
 pub use supervisor::{
     JsClock, JsFault, JsFaultAction, JsHealth, JsManualClock, JsStrikePolicy, JsSupervisor, JsSystemClock,
 };

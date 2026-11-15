@@ -43,10 +43,10 @@ fn files_under(dir: &Path, ext: &str, into: &mut Vec<PathBuf>) {
     }
 }
 
-/// What a script reads as TypeScript: the library, the starter and the declarations.
+/// What a script reads as TypeScript: the library and the starter.
 fn typescript_sources() -> Vec<PathBuf> {
     let root = repo();
-    let mut files = vec![root.join("crates/gnoblin-js-types/static/gnoblin-stock.d.ts")];
+    let mut files = Vec::new();
     files_under(&root.join("data/js"), "ts", &mut files);
     files
 }
@@ -184,12 +184,11 @@ fn the_old_easing_names_and_the_old_timer_are_gone_from_everything_a_script_read
 
 #[test]
 fn the_declared_easing_names_are_the_ones_the_runtime_accepts() {
-    let dts = std::fs::read_to_string(repo().join("crates/gnoblin-js-types/static/gnoblin-stock.d.ts"))
-        .expect("the declarations");
-    let declared: Vec<String> = dts
+    let source = std::fs::read_to_string(repo().join("data/js/gnoblin/transition/easing.ts")).expect("the library");
+    let declared: Vec<String> = source
         .lines()
         .find_map(|line| line.trim().strip_prefix("export type Easing = "))
-        .expect("the declarations name `Easing`")
+        .expect("the library names `Easing`")
         .trim_end_matches(';')
         .split('|')
         .map(|name| name.trim().trim_matches('"').to_owned())

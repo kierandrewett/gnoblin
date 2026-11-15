@@ -318,7 +318,23 @@ fn the_starter_converts_to_a_file_that_loads_and_reports_each_setting_it_has_no_
         assert_eq!(after.get(name), Some(original), "{name} was changed");
     }
     let new: Vec<&String> = after.keys().filter(|name| !before.contains_key(*name)).collect();
-    assert_eq!(new, ["gnoblin.d.ts", "init.ts", "tsconfig.json"]);
+    // The editor files are the generated `.gnoblin` directory (the library sources, the declarations) and the tsconfig.
+    let beside: Vec<&str> = new
+        .iter()
+        .map(|name| name.as_str())
+        .filter(|name| !name.starts_with(".gnoblin/"))
+        .collect();
+    assert_eq!(beside, ["init.ts", "tsconfig.json"]);
+    for generated in [
+        ".gnoblin/gnoblin.d.ts",
+        ".gnoblin/tsconfig.json",
+        ".gnoblin/lib/gnoblin/index.ts",
+    ] {
+        assert!(
+            new.iter().any(|name| name.as_str() == generated),
+            "{generated} is written: {new:?}"
+        );
+    }
 
     // The file loads in the dry-run host, which is what `check` runs.
     let (check_code, check_out, check_err) = run(&["check", ts.to_str().expect("UTF-8")]);
@@ -568,7 +584,7 @@ fn it_writes_the_editor_files_and_prints_three_next_steps() {
     let (dir, init) = clean_dir();
     let (code, out, _) = migrate(&init, &[]);
     assert_eq!(code, 0, "{out}");
-    assert!(dir.path().join("gnoblin.d.ts").is_file(), "types init ran");
+    assert!(dir.path().join(".gnoblin/gnoblin.d.ts").is_file(), "types init ran");
     assert!(dir.path().join("tsconfig.json").is_file(), "types init ran");
     assert!(out.contains("gnoblin.d.ts refreshed"), "{out}");
     assert!(out.contains("tsconfig.json created"), "{out}");
@@ -640,7 +656,7 @@ fn output_goes_where_dash_o_says() {
     assert!(target.is_file());
     assert!(!dir.path().join("init.ts").exists(), "the default is not written");
     assert!(
-        dir.path().join("out/gnoblin.d.ts").is_file(),
+        dir.path().join("out/.gnoblin/gnoblin.d.ts").is_file(),
         "the editor files go beside the output"
     );
 }
@@ -666,7 +682,7 @@ fn dry_run_prints_typescript_and_writes_nothing() {
         "{err}"
     );
     assert!(!dir.path().join("init.ts").exists());
-    assert!(!dir.path().join("gnoblin.d.ts").exists());
+    assert!(!dir.path().join(".gnoblin").exists());
     // `--dry-run` does not trip over an init.ts that is there.
     fs::write(dir.path().join("init.ts"), "// mine\n").expect("write");
     assert_eq!(migrate(&init, &["--dry-run"]).0, 0);

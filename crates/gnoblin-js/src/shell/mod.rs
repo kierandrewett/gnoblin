@@ -47,7 +47,7 @@ use crate::dialogs::JsDialogs;
 use crate::error::JsError;
 use crate::generation::{JsConfig, JsGeneration};
 use crate::host_idle::JsIdle;
-use crate::stock::stock_sources_in;
+use crate::stock::{HOST_MODULE_NAME, host_export, stock_sources_in};
 use crate::supervisor::{JsClock, JsSystemClock};
 use crate::workspaces::JsWorkspaceSnapshot;
 use crate::{bindings, input};
@@ -61,10 +61,6 @@ mod txgate;
 pub use self::gate::JsFrameStats;
 
 gnoblin_log::logger!(log = "js");
-
-/// The import name of the object model of the `gnoblin` global (`gnoblin.clients`, `Client`, the listeners): the stock
-/// module `data/js/gnoblin/host.ts`, which the user-facing `gnoblin` module re-exports.
-const HOST_MODULE_NAME: &str = "gnoblin/host";
 
 /// The most promise jobs one frame's pump runs, so that a chain of jobs that schedules itself cannot hold the frame.
 const MAX_JOBS_PER_PUMP: usize = 1000;
@@ -233,17 +229,13 @@ impl JsShell {
         // The console's rate limit counts on the clock the scripts read, so a test that moves it moves that too.
         js.clock = Arc::clone(&config.clock);
         let typescript = Arc::make_mut(&mut js.typescript);
-        // The user-facing `gnoblin` module is the stock index plus the host's exports, so one import line
-        // reaches `Workspace` and `ClientListener` alike. The stock sources stay as they are: their own
-        // tests embed them without a host (the host module is only evaluated when something imports it).
-        // A module the caller embedded under a name stays: the caller knows what it wants. The library is
-        // embedded as TypeScript and stripped only when a module is imported and the bytecode cache lacks it.
+        // The user-facing `gnoblin` module is the stock index plus the host's exports (`stock::host_export`, which
+        // `editor_library` appends to the index an editor reads too). A module the caller embedded under a name
+        // stays: the caller knows what it wants. The library is embedded as TypeScript and stripped only when a
+        // module is imported and the bytecode cache lacks it.
         let mut stock = stock_sources_in(config.stock_dir.as_deref());
         if let Some(index) = stock.get_mut("gnoblin") {
-            index
-                .source
-                .to_mut()
-                .push_str(&format!("\nexport * from \"{HOST_MODULE_NAME}\";\n"));
+            index.source.to_mut().push_str(&host_export());
         }
         for (name, module) in stock {
             typescript.entry(name).or_insert(module);

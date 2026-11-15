@@ -37,7 +37,7 @@ To get the object itself, read it from `gnoblin.clients`, `gnoblin.workspaces` o
 which receives the object.
 
 Handlers run as queued calls under the same time budget as every listener. A handler that throws is reported once in the
-log, and the next handler still runs. The generated `gnoblin.d.ts` types each event by its name.
+log, and the next handler still runs. The generated `.gnoblin/gnoblin.d.ts` types each event by its name.
 
 ## Which events exist
 

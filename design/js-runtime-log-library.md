@@ -7,7 +7,7 @@ Part of the [JS/TS runtime design](js-runtime.md).
 
 `crates/gnoblin-js-types` renders `gnoblin.d.ts` from the schema catalog (`render_dts`) and writes it with a
 `tsconfig.json` into the config directory (`ensure_user_files`: the declarations are refreshed on every call, the
-`tsconfig.json` only when absent).
+`tsconfig.json` only when absent). The layout described here was replaced by design/js-types.md: the library sources are the types.
 
 One interface per schema object; a signal `mode_changed` is `onModeChanged(handler)`. The hand-written stock library
 (`Client`, `Collection<T>`, `Layout`, ...) is checked in as `static/gnoblin-stock.d.ts` and marked proposed.

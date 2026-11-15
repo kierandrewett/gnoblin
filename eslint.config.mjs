@@ -63,11 +63,8 @@ export default [
         rules: { "@typescript-eslint/no-unsafe-declaration-merging": "off" },
     },
     {
-        // These files are generated from the same schema; lint the handwritten API sources instead.
-        files: [
-            "crates/gnoblin-js-types/static/gnoblin-stock.d.ts",
-            "crates/gnoblin-js-types/tests/golden/gnoblin.d.ts",
-        ],
+        // The generated declarations are generated from the schema; lint the handwritten API sources instead.
+        files: ["crates/gnoblin-js-types/tests/golden/gnoblin.d.ts"],
         rules: {
             "@typescript-eslint/no-empty-object-type": "off",
             "@typescript-eslint/no-unsafe-function-type": "off",

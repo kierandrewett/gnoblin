@@ -48,12 +48,7 @@ export type {
 } from "gnoblin/bindings/trigger_types";
 export type { BindingClient, BindingEvent, BindingOptions, DragEvent, Point } from "gnoblin/bindings/types";
 export * from "gnoblin/focus";
-export { InputContext } from "gnoblin/input/context";
-export { InputManager } from "gnoblin/input/manager";
-export type { InputContextOptions } from "gnoblin/input/context";
-export type { InputHit, InputHost, InputLayout, InputWorld, SeatSettings } from "gnoblin/input/host";
-export type { InputChordMessage, InputGestureMessage, InputMessage, InputPointerMessage } from "gnoblin/input/messages";
-export type { InputBindingInfo } from "gnoblin/input/registration";
+export * from "gnoblin/input";
 export * from "gnoblin/layout";
 export * from "gnoblin/layouts/floating";
 export * from "gnoblin/layouts/grid";
@@ -143,19 +138,8 @@ export type {
     SignalEvent,
     Version,
 } from "gnoblin/session/types";
-// The style classes and their list elements. The cascade's plumbing (`bindStyle`, `resolveStyle`, ...) stays in the
-// module for the host.
-export { Border, Shadow } from "gnoblin/style/border_shadow";
-export { StyleElement } from "gnoblin/style/element";
-export { BlurFilter, BrightnessFilter, ContrastFilter, SaturateFilter } from "gnoblin/style/filters";
-export { ClientStyle, Style } from "gnoblin/style/style";
-export { MAX_STYLE_LIST } from "gnoblin/style/values";
-export type { BorderInit, BorderLike, ShadowInit, ShadowLike } from "gnoblin/style/border_shadow";
-export type { Filter, FilterInit } from "gnoblin/style/filters";
-export type { StyleList, StyleProperty } from "gnoblin/style/lists";
-export type { BorderValue, ComputedStyle, FilterValue, ShadowValue } from "gnoblin/style/resolve";
-export type { ClientStyleInit } from "gnoblin/style/style";
-export type { CornerRadii } from "gnoblin/style/values";
+// The style classes and their list elements (`gnoblin/style`).
+export * from "gnoblin/style";
 // Logical displays (owner-spec sections 8 and 9). The manager (`gnoblin/display_manager`) stays with the host.
 export { Camera2D, Display, OutputProfile, Viewport } from "gnoblin/display";
 export { Camera3D } from "gnoblin/scene/camera";

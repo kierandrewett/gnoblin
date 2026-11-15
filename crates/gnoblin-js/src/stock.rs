@@ -22,6 +22,35 @@ pub const STARTER_CONFIG: &str = include_str!("../../../data/js/starter/init.ts"
 // `gnoblin/host` is the object model.
 include!(concat!(env!("OUT_DIR"), "/stock_modules.rs"));
 
+/// The import name of the object model of the `gnoblin` global (`gnoblin.clients`, `Client`, the listeners): the stock
+/// module `data/js/gnoblin/host.ts`, which the user-facing `gnoblin` module re-exports.
+pub(crate) const HOST_MODULE_NAME: &str = "gnoblin/host";
+
+/// What the user-facing `gnoblin` module has beyond the stock index: the host's exports, so one import line reaches
+/// `Workspace` and `ClientListener` alike. The stock sources stay as they are because their own tests embed them
+/// without a host (the host module is only evaluated when something imports it). The shell appends this to the
+/// index it embeds and [`editor_library`] appends it to the index an editor reads, so the two cannot disagree.
+pub(crate) fn host_export() -> String {
+    format!("\nexport * from \"{HOST_MODULE_NAME}\";\n")
+}
+
+/// The stock library as an editor and a type checker read it: `(path under data/js/gnoblin, TypeScript)` for every
+/// module in path order. These are the real sources, byte for byte, except `index.ts`, which is the `gnoblin` module
+/// the runtime builds (the stock index plus [`host_export`]). `gnoblinctl types init` writes them next to the user's
+/// config, so `import ... from "gnoblin/scene/node"` opens the file the shell runs.
+pub fn editor_library() -> Vec<(String, String)> {
+    MODULES
+        .iter()
+        .map(|(name, file, source)| {
+            let mut text = (*source).to_owned();
+            if *name == "gnoblin" {
+                text.push_str(&host_export());
+            }
+            ((*file).to_owned(), text)
+        })
+        .collect()
+}
+
 /// The stock modules by import name, as JavaScript, ready to embed in a [`JsConfig`](crate::JsConfig).
 ///
 /// A source that fails to strip cannot happen for the files compiled in (a test imports every one), but a
@@ -172,5 +201,30 @@ mod tests {
         assert!(names.contains(&"gnoblin"), "index.ts is the user-facing module");
         assert!(names.contains(&"gnoblin/layouts/arc"));
         assert!(names.contains(&"gnoblin/host"));
+        // A module that sits beside a directory of the same name is that directory's one import path.
+        for barrel in ["gnoblin/scene", "gnoblin/style", "gnoblin/input", "gnoblin/ui"] {
+            assert!(names.contains(&barrel), "{barrel}");
+        }
+    }
+
+    /// The editor reads the sources the shell embeds: the same files, the same bytes, and for the user-facing module the
+    /// same text the shell builds, so a type the editor shows is the type the runtime has.
+    #[test]
+    fn the_editor_library_is_the_embedded_sources() {
+        let library = editor_library();
+        assert_eq!(library.len(), MODULES.len());
+        for ((name, file, source), (editor_file, text)) in MODULES.iter().zip(&library) {
+            assert_eq!(file, editor_file);
+            if *name == "gnoblin" {
+                assert_eq!(*text, format!("{source}{}", host_export()));
+            } else {
+                assert_eq!(text, source, "{file}");
+            }
+        }
+        let (_, index) = library
+            .iter()
+            .find(|(file, _)| file == "index.ts")
+            .expect("the index is listed");
+        assert!(index.ends_with("export * from \"gnoblin/host\";\n"));
     }
 }

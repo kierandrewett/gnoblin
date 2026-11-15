@@ -216,22 +216,22 @@ fn a_namespace_declares_its_error_codes_as_a_string_literal_union() {
 }
 
 #[test]
-fn the_stock_library_follows_the_generated_modules_and_is_marked_proposed() {
+fn the_generated_file_declares_the_schema_and_two_globals_and_not_the_library() {
     let text = rendered();
-    let generated_end = text
-        .find("declare module \"gnoblin\" {")
-        .expect("the stock module is declared");
-    assert!(text.find("declare module \"gnoblin/schema/tree\"").expect("tree") < generated_end);
-    assert!(text.contains("PROPOSED API"));
-    for line in [
-        "    export interface Collection<T> extends Iterable<T> {",
-        "    export class Client extends Node {",
-        "    export class Workspace extends Node {",
-        "    export class Layout extends NativeObject {",
-        "    export class Binding {",
-        "    export class InputContext extends NativeObject {",
-        "    export class ClientListener extends MemberListener<Client> {",
-    ] {
-        assert!(text.lines().any(|candidate| candidate == line), "missing `{line}`");
+    let tree = text
+        .find("declare module \"gnoblin/schema/tree\"")
+        .expect("the tree module is declared");
+    let globals = text
+        .find("declare const gnoblin:")
+        .expect("the gnoblin global is declared");
+    assert!(tree < globals, "the globals follow the generated modules");
+    assert!(text.contains("declare const console: {"));
+    // The global is typed by the library's own class, so its members are declared where they are implemented.
+    assert!(text.contains("declare const gnoblin: import(\"gnoblin/host/gnoblin\").Gnoblin;"));
+    // Every ambient module is a schema module: the library is the real source, not a second declaration of it.
+    for line in text.lines().filter(|line| line.starts_with("declare module")) {
+        assert!(line.starts_with("declare module \"gnoblin/schema"), "{line}");
     }
+    assert!(!text.contains("PROPOSED API"));
+    assert!(!text.contains("hand-written stock library"));
 }

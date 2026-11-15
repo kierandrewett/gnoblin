@@ -3,8 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 temporary_config="$(mktemp "${TMPDIR:-/tmp}/gnoblin-js-tsconfig.XXXXXX.json")"
-starter_config="$(mktemp "${TMPDIR:-/tmp}/gnoblin-js-starter-tsconfig.XXXXXX.json")"
-trap 'rm -f "$temporary_config" "$starter_config"' EXIT
+trap 'rm -f "$temporary_config"' EXIT
 
 cat >"$temporary_config" <<EOF
 {
@@ -30,25 +29,5 @@ EOF
 
 npx --yes --package=typescript@7.0.2 tsc --project "$temporary_config"
 
-# The starter is a user's file, so it sees what a user sees: the generated declarations, which name the shell's own
-# exports (`Workspace`, `startDecorations`) and the `gnoblin` global that the stock library modules do not.
-types="$repo_root/crates/gnoblin-js-types/tests/golden/gnoblin.d.ts"
-cat >"$starter_config" <<EOF
-{
-  "compilerOptions": {
-    "strict": true,
-    "noEmit": true,
-    "target": "ES2023",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "isolatedModules": true,
-    "allowImportingTsExtensions": true,
-    "lib": ["ES2023"],
-    "types": [],
-    "paths": { "gnoblin": ["$types"] }
-  },
-  "files": ["$types", "$repo_root/data/js/starter/init.ts"]
-}
-EOF
-
-npx --yes --package=typescript@7.0.2 tsc --project "$starter_config"
+# What a user sees is checked on the files `gnoblinctl types init` writes, with the starter as the user's `init.ts`.
+"$repo_root/scripts/js-types-check.sh"

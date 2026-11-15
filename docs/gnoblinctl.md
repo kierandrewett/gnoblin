@@ -250,7 +250,8 @@ gnoblinctl config init
 
 ```text
 ok  init.ts written: /home/me/.config/gnoblin/init.ts
-ok  gnoblin.d.ts refreshed: /home/me/.config/gnoblin/gnoblin.d.ts
+ok  library refreshed: /home/me/.config/gnoblin/.gnoblin/lib/gnoblin (200 files, the real sources of `gnoblin`)
+ok  gnoblin.d.ts refreshed: /home/me/.config/gnoblin/.gnoblin/gnoblin.d.ts
 ok  tsconfig.json created: /home/me/.config/gnoblin/tsconfig.json
 
 Next:
@@ -263,7 +264,7 @@ A directory that already has an `init.ts` or an `init.js` is left as it is, and 
 that names the file. An `init.js` counts because the shell reads `init.ts` first, so a new `init.ts` would hide it. Add
 `--force` to write the starter over `init.ts`. The first line of the output says `replaced` when it did.
 
-With `--json` it prints `init`, `replaced`, `types`, `tsconfig`, `tsconfig_created` and `next`.
+With `--json` it prints `init`, `replaced`, `next` and the fields of [`types init`](#editor-files).
 
 ### Convert an init.lua
 
@@ -291,7 +292,8 @@ gnoblinctl config migrate
 
 ```text
 ok  init.ts written: /home/me/.config/gnoblin/init.ts
-ok  gnoblin.d.ts refreshed: /home/me/.config/gnoblin/gnoblin.d.ts
+ok  library refreshed: /home/me/.config/gnoblin/.gnoblin/lib/gnoblin (200 files, the real sources of `gnoblin`)
+ok  gnoblin.d.ts refreshed: /home/me/.config/gnoblin/.gnoblin/gnoblin.d.ts
 ok  tsconfig.json created: /home/me/.config/gnoblin/tsconfig.json
 
 Converted
@@ -420,10 +422,9 @@ not ship one. The first of these that exists is used:
 - `node_modules/.bin/tsc` beside the file
 - `tsc`, `tsc6` or `tsgo` on `PATH`
 
-The compiler gets the generated `gnoblin.d.ts` and a `tsconfig.json` made for
-the run in a temporary directory, so nothing is written next to your
-configuration. Its output is passed through unchanged, and a compiler that
-reports errors makes the command exit 1.
+The compiler gets the real library and the generated `gnoblin.d.ts`, written into a temporary directory with a
+`tsconfig.json` made for the run, so nothing is written next to your configuration. Its output is passed through
+unchanged, and a compiler that reports errors makes the command exit 1.
 
 ```sh
 gnoblinctl check init.ts --types
@@ -444,29 +445,53 @@ With `--json`, `check` prints one document:
 
 ### Editor files
 
-`gnoblinctl types init [DIR]` writes the files an editor needs, so completion
-and diagnostics work with no build step. `DIR` defaults to the config
-directory, `$XDG_CONFIG_HOME/gnoblin` or `~/.config/gnoblin`.
+`gnoblinctl types init [DIR]` writes the files an editor needs, so completion, hover and go-to-definition work with no
+build step. `DIR` defaults to the config directory, `$XDG_CONFIG_HOME/gnoblin` or `~/.config/gnoblin`.
 
-- `gnoblin.d.ts` is generated from the object schema and rewritten each time,
-  so an upgrade reaches the editor.
-- `tsconfig.json` is written only when it is absent. Once it exists it is
-  yours, and a second run leaves it alone.
+The types of `import ... from "gnoblin"` are the library's own TypeScript source, not a description of it. The command
+writes that source as files and points the compiler at them, so go-to-definition opens the file the shell runs, hover
+shows the comment written above the class, and a class extends the class it really extends (`Camera3D` is a `Node`).
+
+```text
+~/.config/gnoblin/
+  init.ts
+  tsconfig.json              yours: extends .gnoblin/tsconfig.json
+  .gnoblin/                  generated, rewritten on every run
+    tsconfig.json            the compiler options and the two `paths` that find the library
+    gnoblin.d.ts             the schema declarations and the `gnoblin` and `console` globals
+    lib/gnoblin/             the library: `gnoblin` is index.ts, `gnoblin/scene` is scene.ts,
+                             `gnoblin/scene/node` is scene/node.ts, and so on
+    VERSION                  the release that wrote the directory
+    .gitignore               so a repository that holds your config skips the directory
+```
+
+- `.gnoblin/` is rewritten each time, so an upgrade reaches the editor. A file whose bytes are already right is left
+  alone, and a module the library does not have is removed, so that its import does not resolve. Do not edit it, and do
+  not commit it.
+- `tsconfig.json` is written only when it is absent. Once it exists it is yours, and a second run leaves it alone.
+  It extends `.gnoblin/tsconfig.json`, so the options and the paths follow the release; add your own `include`,
+  `exclude` or options beside the `extends`. If you keep a `tsconfig.json` that does not extend it, the command says
+  so, because the editor cannot find the library without it.
 
 ```sh
 gnoblinctl types init
 ```
 
 ```text
-ok  gnoblin.d.ts refreshed: /home/me/.config/gnoblin/gnoblin.d.ts
+ok  library refreshed: /home/me/.config/gnoblin/.gnoblin/lib/gnoblin (200 files, the real sources of `gnoblin`)
+ok  gnoblin.d.ts refreshed: /home/me/.config/gnoblin/.gnoblin/gnoblin.d.ts
 ok  tsconfig.json created: /home/me/.config/gnoblin/tsconfig.json
 ```
 
-When `tsconfig.json` is already there, the second line is an `info` line that
-says it was kept, with its path. A directory that cannot be written exits 1 with
-an error block.
+When `tsconfig.json` is already there, the last line is an `info` line that says it was kept, with its path, or a `warn`
+line when it does not extend the generated one. A directory that cannot be written exits 1 with an error block.
 
-With `--json` it prints `types`, `tsconfig` and `tsconfig_created`.
+A release before this layout wrote `gnoblin.d.ts` and a `tsconfig.json` that mapped `gnoblin` to it. The command removes
+that `gnoblin.d.ts` and replaces that `tsconfig.json`, when they are still the files it wrote. A file you changed is
+left alone.
+
+With `--json` it prints `types`, `library`, `library_files`, `tsconfig`, `tsconfig_created`, `tsconfig_replaced` and
+`tsconfig_linked`.
 
 ## Console
 

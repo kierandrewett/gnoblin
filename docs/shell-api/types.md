@@ -1,7 +1,7 @@
 # Shared types
 
-The records and small types that more than one part of the API uses. `gnoblin.d.ts` in your config directory declares every
-type in full: `gnoblinctl types init` writes it, and your editor reads it for completion. See
+The records and small types that more than one part of the API uses. The library sources in your config directory declare every
+type in full: `gnoblinctl types init` writes them to `.gnoblin`, and your editor reads them for completion. See
 [Editor support](/guides/editor_support).
 
 ## Geometry

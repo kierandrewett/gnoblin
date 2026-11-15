@@ -382,7 +382,7 @@ fn types_command() -> Command {
         .arg_required_else_help(true)
         .subcommand(
             Command::new("init")
-                .about("Write gnoblin.d.ts and, when absent, tsconfig.json, so an editor works with no build step.")
+                .about("Write the library sources and declarations to .gnoblin, and tsconfig.json when absent.")
                 .arg(
                     Arg::new("dir")
                         .value_name("DIR")

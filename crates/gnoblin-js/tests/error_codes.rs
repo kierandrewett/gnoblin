@@ -4,7 +4,7 @@
 //! bespoke classes with no code. The specification gives no codes, so the snake_case set the host already spoke is the
 //! one, extended where the kebab codes said more. Three halves hold it:
 //!
-//! - the docs table, the `ErrorCode` of the library and the one of the declarations list the same codes,
+//! - the docs table and the `ErrorCode` of the library (the type scripts import) list the same codes,
 //! - no source throws a code that is not one of them, and
 //! - runs of throw sites show a `code` from the set, and an error class a script catches by type carries one too.
 
@@ -71,11 +71,9 @@ fn typescript_sources() -> Vec<PathBuf> {
 }
 
 #[test]
-fn the_docs_the_library_and_the_declarations_list_the_same_codes() {
+fn the_docs_and_the_library_list_the_same_codes() {
     let library = union_members(&read("data/js/gnoblin/errors.ts"));
-    let declared = union_members(&read("crates/gnoblin-js-types/static/gnoblin-stock.d.ts"));
     let documented = documented_codes();
-    assert_eq!(library, declared, "errors.ts and the declarations");
     assert_eq!(library, documented, "errors.ts and docs/shell-api/errors.md");
     assert!(
         library.iter().all(|code| !code.contains('-')),
