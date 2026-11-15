@@ -2,8 +2,8 @@
 
 import type { FrameContext } from "gnoblin/frame/client";
 import { WindowDrag } from "gnoblin/frame/drag";
-import { Box } from "gnoblin/ui";
-import type { BoxOptions } from "gnoblin/ui";
+import { Box } from "gnoblin/ui/box";
+import type { BoxOptions } from "gnoblin/ui/box";
 
 /**
  * A `Box` that is a handle for its window. A press on it, or on anything inside it that does not take the press

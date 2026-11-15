@@ -1,8 +1,8 @@
 // `TitleText`: the window's title as one line of text that follows the window. Put it in any outlet.
 
 import type { FrameContext } from "gnoblin/frame/client";
-import { Text } from "gnoblin/ui";
-import type { TextOptions } from "gnoblin/ui";
+import { Text } from "gnoblin/ui/text";
+import type { TextOptions } from "gnoblin/ui/text";
 
 /**
  * The window's title, ellipsized to the room it has. It reads the title once a frame, so a title that changes is

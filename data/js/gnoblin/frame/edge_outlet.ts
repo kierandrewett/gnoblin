@@ -5,7 +5,7 @@
 import type { FrameGeometry, OutletOwner } from "gnoblin/frame/outlet";
 import { Outlet } from "gnoblin/frame/outlet";
 import type { Node } from "gnoblin/scene/node";
-import type { Canvas } from "gnoblin/ui";
+import type { Canvas } from "gnoblin/ui/canvas";
 import type { Rect } from "gnoblin/types";
 
 /** The four edges of a frame. */

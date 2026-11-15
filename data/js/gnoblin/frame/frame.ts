@@ -17,7 +17,7 @@ import type { FrameGeometry, Outlet, OutletOwner } from "gnoblin/frame/outlet";
 import { ResizeHandles } from "gnoblin/frame/parts/resize_handles";
 import type { ResizeHandlesOptions } from "gnoblin/frame/parts/resize_handles";
 import type { Rect } from "gnoblin/types";
-import { onUiFrame } from "gnoblin/ui";
+import { onUiFrame } from "gnoblin/ui/frame";
 
 /**
  * What a frame is for: `server` for a window the shell frames (it has edges and an inset), `layers` for a window that

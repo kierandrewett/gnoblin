@@ -4,8 +4,9 @@
 import { resizedRect } from "gnoblin/bindings/resize";
 import type { ResizeCorner, ResizeEdge } from "gnoblin/bindings/resize";
 import type { FrameContext } from "gnoblin/frame/client";
-import { Box } from "gnoblin/ui";
-import type { BoxOptions, UiPointerEvent } from "gnoblin/ui";
+import { Box } from "gnoblin/ui/box";
+import type { BoxOptions } from "gnoblin/ui/box";
+import type { UiPointerEvent } from "gnoblin/ui/events";
 
 /** The side or corner of the window a handle holds: it moves with the pointer, the opposite one stays. */
 export type ResizeSide = ResizeCorner | ResizeEdge;

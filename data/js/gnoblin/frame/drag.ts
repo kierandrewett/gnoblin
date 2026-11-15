@@ -3,7 +3,8 @@
 // has it; any other canvas can take it with `attach`.
 
 import type { FrameContext } from "gnoblin/frame/client";
-import type { Canvas, UiPointerEvent } from "gnoblin/ui";
+import type { Canvas } from "gnoblin/ui/canvas";
+import type { UiPointerEvent } from "gnoblin/ui/events";
 
 /** The buttons of the pointer, as the compositor numbers them (Linux `BTN_LEFT`, `BTN_RIGHT`, `BTN_MIDDLE`). */
 const LEFT = 272;

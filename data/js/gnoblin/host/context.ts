@@ -3,7 +3,7 @@
 
 import type { AuthenticationManager } from "gnoblin/authentication";
 import type { DialogManager } from "gnoblin/dialogs";
-import type { DisplayManager } from "gnoblin/display_manager";
+import type { DisplayManager } from "gnoblin/display_manager/manager";
 import type { FocusPolicy } from "gnoblin/focus";
 import type { Decorations } from "gnoblin/frame/decorations";
 import type { FrameInset } from "gnoblin/frame/inset";

@@ -9,7 +9,7 @@ import type { InputHost } from "gnoblin/input/host";
 import type { InputMessage } from "gnoblin/input/messages";
 import type { LockBackend } from "gnoblin/lock";
 import type { HostValue, NodeId } from "gnoblin/types";
-import type { UiBackend } from "gnoblin/ui";
+import type { UiBackend } from "gnoblin/ui/backend";
 
 /** A listener or internal task failure retained until the shell takes frame errors. */
 export interface ErrorReport {

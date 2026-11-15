@@ -9,7 +9,7 @@ import { workAreaOf } from "gnoblin/host/work_area";
 import type { Workspace } from "gnoblin/host/workspace";
 import { wsState } from "gnoblin/host/workspace_state";
 import { InputManager } from "gnoblin/input/manager";
-import { attachUi } from "gnoblin/ui";
+import { attachUi } from "gnoblin/ui/state";
 
 /** Makes the input manager and attaches the device and toolkit backends. */
 export function installInput(): void {

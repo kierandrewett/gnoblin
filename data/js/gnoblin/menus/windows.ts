@@ -6,7 +6,8 @@
 
 import { WindowMenu } from "gnoblin/menus/card";
 import type { MenuClient, MenuEntry, MenuWorld } from "gnoblin/menus/types";
-import { onUiFrame, onUiRequest, uiFocus, uiFocused, uiLocked, uiPointer, uiScreen } from "gnoblin/ui";
+import { onUiFrame, onUiRequest } from "gnoblin/ui/frame";
+import { uiFocus, uiFocused, uiLocked, uiPointer, uiScreen } from "gnoblin/ui/session";
 import { isRequestHandled } from "gnoblin/window_state";
 
 /**

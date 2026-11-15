@@ -1,7 +1,8 @@
 // What the console shows of the host's own objects. A client is the short block of what a person asks about a
 // window; nested inside another value (a collection's member) it is only its id, app and title.
 
-import { Display, OutputProfile } from "gnoblin/display";
+import { Display } from "gnoblin/display/display";
+import { OutputProfile } from "gnoblin/display/output_profile";
 import { Client } from "gnoblin/host/client";
 import { Collection } from "gnoblin/host/collections";
 import { Output } from "gnoblin/host/output";

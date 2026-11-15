@@ -36,8 +36,9 @@ import { ClientResizeBinding } from "gnoblin/bindings/resize";
 import type { ResizeCorner } from "gnoblin/bindings/resize";
 import type { DragEvent, Point, Rect } from "gnoblin/bindings/types";
 import type { FrameInset } from "gnoblin/frame/inset";
-import { onUiFrame, onUiRequest, uiPointer } from "gnoblin/ui";
-import type { UiRequest } from "gnoblin/ui";
+import { onUiFrame, onUiRequest } from "gnoblin/ui/frame";
+import { uiPointer } from "gnoblin/ui/session";
+import type { UiRequest } from "gnoblin/ui/frame";
 import { NEVER, onWake } from "gnoblin/wake";
 
 /** Every request the compositor makes of a window. `menu` is answered by the window menu (`gnoblin/menus`). */

@@ -1,7 +1,7 @@
 // `Output.apply`: one request to the compositor's output engine and the answer that comes back a frame later.
 
-import { outputRequest, supersampleNotice } from "gnoblin/display";
-import type { OutputConfig } from "gnoblin/display";
+import { outputRequest, supersampleNotice } from "gnoblin/display/output_config";
+import type { OutputConfig } from "gnoblin/display/output_config";
 import { GnoblinError } from "gnoblin/errors";
 import { host } from "gnoblin/host/bridge";
 import { emitMember, holders } from "gnoblin/host/collection_events";

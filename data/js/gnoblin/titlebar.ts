@@ -14,7 +14,7 @@ import { DragArea } from "gnoblin/frame/parts/drag_area";
 import { TitleText } from "gnoblin/frame/parts/title_text";
 import { defaultButtonIcons, WindowButton } from "gnoblin/frame/parts/window_button";
 import type { WindowButtonName } from "gnoblin/frame/parts/window_button";
-import { Box } from "gnoblin/ui";
+import { Box } from "gnoblin/ui/box";
 
 /** The three window buttons, which a style can order, leave out or give other icons. */
 export type TitlebarButton = WindowButtonName;

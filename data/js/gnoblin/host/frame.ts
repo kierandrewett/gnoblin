@@ -22,7 +22,7 @@ import { adoptOrphans, ensureDefaultWorkspace } from "gnoblin/host/workspaces";
 import { noteHostTouched, raiseSignal } from "gnoblin/properties";
 import { sceneForget, sceneNodePointer } from "gnoblin/scene/registry";
 import type { NodeId } from "gnoblin/types";
-import { uiNodeGone } from "gnoblin/ui";
+import { uiNodeGone } from "gnoblin/ui/frame";
 import { windowState } from "gnoblin/window_state";
 
 /**

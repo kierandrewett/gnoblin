@@ -2,7 +2,8 @@
 // the objects, and what a `where` query matches. The collection classes are in `collections`; the notifications
 // that keep views current are in `collection_events`.
 
-import type { Display, OutputProfile } from "gnoblin/display";
+import type { Display } from "gnoblin/display/display";
+import type { OutputProfile } from "gnoblin/display/output_profile";
 import type { Client } from "gnoblin/host/client";
 import type { Collection } from "gnoblin/host/collections";
 import { ctx } from "gnoblin/host/context";

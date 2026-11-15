@@ -5,9 +5,13 @@
 // until it is collected. `PasswordEntry` overwrites its own characters on submit, and draws one mask character each.
 // The Rust fallback lock card is used when no shell holds the lock screen (docs/session-lock.md).
 
-import { Box, Text, runUiFrame, uiFocus, uiFocused } from "gnoblin/ui";
+import { Box } from "gnoblin/ui/box";
+import { runUiFrame } from "gnoblin/ui/frame";
+import { uiFocus, uiFocused } from "gnoblin/ui/session";
+import { Text } from "gnoblin/ui/text";
 import { NEVER, NOW, onWake } from "gnoblin/wake";
-import type { PaintOp, UiKeyEvent } from "gnoblin/ui";
+import type { UiKeyEvent } from "gnoblin/ui/events";
+import type { PaintOp } from "gnoblin/ui/paint";
 
 /** The compositor's answer to a password check: `result` is `ok`, or the wait in milliseconds under `rate-limited`. */
 export interface LockAnswer {

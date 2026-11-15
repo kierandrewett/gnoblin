@@ -2,8 +2,8 @@
 // pixels, and it is what a frame with no titlebar leaves to fill the gap.
 
 import { LayerOutlet } from "gnoblin/frame/layer_outlet";
-import { Box } from "gnoblin/ui";
-import type { BoxOptions } from "gnoblin/ui";
+import { Box } from "gnoblin/ui/box";
+import type { BoxOptions } from "gnoblin/ui/box";
 
 /** A `Box` as large as the frame, less the `bleed` of the layer it is in. `fill` and `radius` are the box's. */
 export class FrameBackdrop extends Box {

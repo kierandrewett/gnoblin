@@ -18,8 +18,11 @@ import { menuKeyAction, MenuNavigator } from "gnoblin/menus/navigator";
 import type { NavRow } from "gnoblin/menus/navigator";
 import type { MenuClient, MenuEntry } from "gnoblin/menus/types";
 import type { WindowMenus } from "gnoblin/menus/windows";
-import { Box, Text, uiScreen } from "gnoblin/ui";
-import type { PaintOp, UiKeyEvent, UiPointerEvent } from "gnoblin/ui";
+import { Box } from "gnoblin/ui/box";
+import { uiScreen } from "gnoblin/ui/session";
+import { Text } from "gnoblin/ui/text";
+import type { UiKeyEvent, UiPointerEvent } from "gnoblin/ui/events";
+import type { PaintOp } from "gnoblin/ui/paint";
 
 /** A tick or a chevron, drawn from lines so it never depends on the font having the glyph. */
 class MenuMark extends Box {

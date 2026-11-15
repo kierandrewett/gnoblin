@@ -1,8 +1,9 @@
 // `WindowButton`: one of the window's three buttons as an icon: minimise, maximise or close.
 
 import type { FrameContext } from "gnoblin/frame/client";
-import { Icon } from "gnoblin/ui";
-import type { IconOptions, UiPointerEvent } from "gnoblin/ui";
+import { Icon } from "gnoblin/ui/icon";
+import type { UiPointerEvent } from "gnoblin/ui/events";
+import type { IconOptions } from "gnoblin/ui/icon";
 
 /** The three window buttons. */
 export type WindowButtonName = "minimise" | "maximise" | "close";

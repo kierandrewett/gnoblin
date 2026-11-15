@@ -218,7 +218,7 @@ const CLOCK_READS: &[&str] = &[".now()", "uiNow(", "Date.now(", "new Date("];
 /// Files that read a clock and need no source, and why. A file that registers one is not listed.
 const NO_SOURCE_NEEDED: &[(&str, &str)] = &[
     (
-        "ui.ts",
+        "ui/session.ts",
         "defines `uiNow`, which the parts below read; it keeps no deadline",
     ),
     ("host/input_bridge.ts", "hands the toolkit the seat's clock"),

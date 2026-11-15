@@ -84,8 +84,9 @@ implement, so the class is the specification's name for an existing behaviour; a
 subclasses them, with no second owner. `gnoblin.workspaces.show` stays and is what a viewport assignment calls; it is
 not the documented way any more.
 
-**Where it lives.** `data/js/gnoblin/display.ts` holds the objects a script makes (`OutputProfile`, `Display`,
-`Viewport`, `Camera2D`) and `display_manager.ts` the `DisplayManager` that reconciles them with the connected outputs.
+**Where it lives.** `data/js/gnoblin/display/` holds the objects a script makes (`OutputProfile`, `Display`,
+`Viewport`, `Camera2D`; `display.ts` is the import path that lists them) and `display_manager/` the `DisplayManager`
+that reconciles them with the connected outputs (`display_manager.ts` is its import path).
 The host module (`data/js/gnoblin/host.ts`) owns the collections, the desks and the output requests, and gives
 the manager a `DisplayBackend`. The compositor and its protocol are unchanged: everything below is the existing
 `screen.apply` text, mirror and the per-output desks.

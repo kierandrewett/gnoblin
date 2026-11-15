@@ -32,12 +32,16 @@ Structure of the object model (was one `gnoblin.ts` of 5,186 lines with 279 top-
   (erased) still form a loop among the object classes, which is inherent to `Client`, `Workspace` and `Output`
   naming each other. A lower module asks `isClient`, `isOutput` or `isWorkspace` instead of `instanceof`.
 - **Module table.** `crates/gnoblin-js/build.rs` embeds every `.ts` under `data/js/gnoblin`; a new file needs no edit.
-- **Sizes.** The largest host module, `client.ts`, is about 600 lines. In Rust, the `shell`, `input`, `ui`,
+- **Sizes.** The largest host module, `client.ts`, is 577 lines (its `animate` types are in `client_animation.ts`). In Rust, the `shell`, `input`, `ui`,
   `generation`, `reload`, `console`, `host_process` and `bindings/host` modules are directories, none over 600 lines
   (`shell.rs` 1433 became `shell/mod.rs` 571 plus `frame`, `txgate`, `links` and `document`; `input.rs` 984 became
   `input/mod.rs` 226 plus `claims`, `seats` and `install`; the inline tests of each are in `tests.rs`).
-- **Not yet split** (still over 600 lines): `ui.ts`, `display.ts`, `display_manager.ts`. `input`, `xr`, `style`,
-  `bindings`, `scene`, `transition`, `menus` and `session` are directories now; the largest file is `input/context` (537).
+- **Split.** No `.ts` file under `data/js` or `.rs` file under `crates/gnoblin-js/src` is over 600 lines. `ui`,
+  `display` and `display_manager` are directories (`gnoblin/ui/*` with `state` as the one owner of the host, the
+  report and the live canvases; `display/*` with `state` for the shell's hooks; `display_manager/*`), and `ui.ts`,
+  `display.ts` and `display_manager.ts` are barrels listing their exports by name. The largest is
+  `display_manager/manager` (585). `loader.rs` (677) keeps the resolver and loader; the file resolution and its tests
+  are `loader/files.rs`.
 
 - **Boot order.** `JsShell::new` attaches, drains the snapshot and loads `gnoblin/host`, so `gnoblin.clients` exists
   for the entry. `load_entry` evaluates `init.ts`. The first `frame()` announces `ready` for the snapshot's nodes,

@@ -1,7 +1,7 @@
 // `XRViewport`, the viewport that shows the room in the headset, and `pickView`, the ray test that finds the panel a
 // controller points at.
 
-import { Viewport } from "gnoblin/display";
+import { Viewport } from "gnoblin/display/viewport";
 import { Camera3D } from "gnoblin/scene/camera";
 import { Node } from "gnoblin/scene/node";
 import { mountOnRoot } from "gnoblin/scene/registry";

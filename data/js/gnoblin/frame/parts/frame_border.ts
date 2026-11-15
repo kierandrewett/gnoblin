@@ -2,8 +2,9 @@
 
 import type { FrameContext } from "gnoblin/frame/client";
 import { LayerOutlet } from "gnoblin/frame/layer_outlet";
-import { Canvas } from "gnoblin/ui";
-import type { CanvasOptions, PaintOp } from "gnoblin/ui";
+import { Canvas } from "gnoblin/ui/canvas";
+import type { CanvasOptions } from "gnoblin/ui/canvas";
+import type { PaintOp } from "gnoblin/ui/paint";
 
 /** A colour, or a function of the window that makes one: `(client) => client.focused ? "#89b4fa" : "#45475a"`. */
 export type FrameColour = string | ((client: FrameContext["client"]) => string);

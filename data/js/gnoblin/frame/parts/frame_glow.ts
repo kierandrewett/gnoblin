@@ -2,8 +2,9 @@
 // of rounded rectangles that grow outwards and fade, drawn into the underlay's `bleed`.
 
 import { LayerOutlet } from "gnoblin/frame/layer_outlet";
-import { Canvas } from "gnoblin/ui";
-import type { CanvasOptions, PaintOp } from "gnoblin/ui";
+import { Canvas } from "gnoblin/ui/canvas";
+import type { CanvasOptions } from "gnoblin/ui/canvas";
+import type { PaintOp } from "gnoblin/ui/paint";
 
 /** Options of `FrameGlow`. */
 export interface FrameGlowOptions extends CanvasOptions {

@@ -1,9 +1,11 @@
 // The shell's side of `gnoblin/display_manager`: what a `Display` does to the desks and the output requests.
 
-import { attachDisplays, Display } from "gnoblin/display";
-import type { OutputConfig, OutputProfile } from "gnoblin/display";
-import { DisplayManager } from "gnoblin/display_manager";
-import type { DisplayBackend, OutputSet } from "gnoblin/display_manager";
+import { Display } from "gnoblin/display/display";
+import { attachDisplays } from "gnoblin/display/state";
+import type { OutputConfig } from "gnoblin/display/output_config";
+import type { OutputProfile } from "gnoblin/display/output_profile";
+import { DisplayManager } from "gnoblin/display_manager/manager";
+import type { DisplayBackend, OutputSet } from "gnoblin/display_manager/backend";
 import { GnoblinError } from "gnoblin/errors";
 import { CREATE } from "gnoblin/host/bridge";
 import { holders, recompute } from "gnoblin/host/collection_events";

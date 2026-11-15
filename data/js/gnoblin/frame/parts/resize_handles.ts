@@ -5,7 +5,7 @@
 import type { FrameContext } from "gnoblin/frame/client";
 import { ResizeHandle } from "gnoblin/frame/parts/resize_handle";
 import type { ResizeSide } from "gnoblin/frame/parts/resize_handle";
-import { Box } from "gnoblin/ui";
+import { Box } from "gnoblin/ui/box";
 
 /** Options of `ResizeHandles`, in pixels. */
 export interface ResizeHandlesOptions {

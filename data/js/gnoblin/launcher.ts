@@ -5,8 +5,8 @@
 // It owns the entry and what happens when it is submitted. It does not own the Super+Space binding (read
 // `gnoblin/bindings`). Read `gnoblin/widgets` first for `Entry`, which does all the typing.
 
-import { uiScreen } from "gnoblin/ui";
-import type { UiKeyEvent } from "gnoblin/ui";
+import { uiScreen } from "gnoblin/ui/session";
+import type { UiKeyEvent } from "gnoblin/ui/events";
 import { Entry } from "gnoblin/widgets";
 import type { EntryOptions } from "gnoblin/widgets";
 

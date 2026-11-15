@@ -1,7 +1,8 @@
 // The root collections: `gnoblin.clients`, `workspaces`, `outputs`, `displays` and the output profiles. Each is made
 // once per generation by `installRoots` and kept on the context.
 
-import type { Display, OutputProfile } from "gnoblin/display";
+import type { Display } from "gnoblin/display/display";
+import type { OutputProfile } from "gnoblin/display/output_profile";
 import { GnoblinError } from "gnoblin/errors";
 import { CREATE } from "gnoblin/host/bridge";
 import type { Client } from "gnoblin/host/client";

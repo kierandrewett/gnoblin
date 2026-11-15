@@ -3,7 +3,7 @@
 
 import { errorCodeOfRefusal, GnoblinError } from "gnoblin/errors";
 import { host, nodeName } from "gnoblin/host/bridge";
-import { ANIMATED_KEYS } from "gnoblin/host/client";
+import { ANIMATED_KEYS } from "gnoblin/host/client_animation";
 import { ctx } from "gnoblin/host/context";
 import { layout } from "gnoblin/host/layout_driver";
 import { motion } from "gnoblin/host/seat";

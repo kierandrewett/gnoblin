@@ -3,7 +3,7 @@
 // and so does a stock part, so the window behaves the same wherever the button is.
 
 import type { FrameClient, FrameHooks } from "gnoblin/frame/client";
-import { uiNow, uiSeatAction } from "gnoblin/ui";
+import { uiNow, uiSeatAction } from "gnoblin/ui/session";
 import { NEVER, onWake } from "gnoblin/wake";
 
 /** The retired Lua shell's fade on close: out over 0.18 s, as a window shrinks to 0.92 of its size. */

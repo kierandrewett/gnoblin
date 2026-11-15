@@ -7,8 +7,9 @@ import type { FrameClient } from "gnoblin/frame/client";
 import type { FrameInset } from "gnoblin/frame/inset";
 import { Node } from "gnoblin/scene/node";
 import { mountUnder } from "gnoblin/scene/registry";
-import { Box } from "gnoblin/ui";
-import type { BoxOptions, Canvas } from "gnoblin/ui";
+import { Box } from "gnoblin/ui/box";
+import type { BoxOptions } from "gnoblin/ui/box";
+import type { Canvas } from "gnoblin/ui/canvas";
 import type { Rect } from "gnoblin/types";
 
 /** The window's content size and the room its frame takes around it: what an outlet is placed from. */

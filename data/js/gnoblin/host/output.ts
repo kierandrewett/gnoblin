@@ -1,6 +1,6 @@
 // `Output`: a connected display, the compositor's `screen` node, with the workspace it shows.
 
-import type { OutputConfig } from "gnoblin/display";
+import type { OutputConfig } from "gnoblin/display/output_config";
 import { CREATE, host } from "gnoblin/host/bridge";
 import { ctx } from "gnoblin/host/context";
 import { effectiveDesk, liveOutputs } from "gnoblin/host/desks";

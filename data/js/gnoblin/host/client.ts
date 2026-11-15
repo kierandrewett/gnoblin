@@ -16,6 +16,8 @@ import { motion } from "gnoblin/host/seat";
 import { clientStyle, computedStyleOf, styleWarningsOf } from "gnoblin/host/style_scopes";
 import type { Workspace } from "gnoblin/host/workspace";
 import { wsOf } from "gnoblin/host/workspace_state";
+import { ANIMATED_KEYS } from "gnoblin/host/client_animation";
+import type { AnimateOptions, ClientAnimation } from "gnoblin/host/client_animation";
 import { NativeObject } from "gnoblin/native_object";
 import { noteHostRead, propertiesOf } from "gnoblin/properties";
 import type { PropertyBinding, PropertyBindings } from "gnoblin/properties";
@@ -29,7 +31,6 @@ import type { ComputedStyle } from "gnoblin/style/resolve";
 import type { ClientStyle } from "gnoblin/style/style";
 import { curveSamples, DEFAULT_EASING, EASING_NAMES, easingCurve } from "gnoblin/transition/easing";
 import { setProperties } from "gnoblin/transition/engine";
-import type { Easing } from "gnoblin/transition/easing";
 import type { Transition } from "gnoblin/transition/transition";
 import type { TransitionOptions } from "gnoblin/transition/types";
 import type { NodeId, Rect } from "gnoblin/types";
@@ -58,38 +59,6 @@ export const CLIENT_KEYS = [
     "decoration",
     "decoration_wanted",
 ];
-
-/** The properties of a client `animate` can move, and the kind of value each takes. */
-export const ANIMATED_KEYS: Readonly<Record<string, "number" | "vector">> = {
-    x: "number",
-    y: "number",
-    width: "number",
-    height: "number",
-    opacity: "number",
-    z: "number",
-    rotation: "vector",
-    scale: "vector",
-};
-
-/** What `Client.animate` takes: the values to move to, each of the kind its property holds. */
-export interface ClientAnimation {
-    x?: number;
-    y?: number;
-    width?: number;
-    height?: number;
-    opacity?: number;
-    z?: number;
-    rotation?: Triple;
-    scale?: Triple;
-}
-
-/** Duration and easing options for a client animation. */
-export interface AnimateOptions {
-    /** Milliseconds. Zero is an instant write. */
-    duration: number;
-    /** One of the CSS names of `Easing`. Default `"ease-out"`. */
-    easing?: Easing;
-}
 
 /** A toplevel window the compositor manages. */
 export class Client extends NativeObject {

@@ -16,8 +16,11 @@ import type { FrameInset } from "gnoblin/frame/inset";
 import type { Rect } from "gnoblin/layout";
 import { restoreSnap, snapRecord, unsnapClient } from "gnoblin/snap";
 import type { SnapClient, SnapRecord } from "gnoblin/snap";
-import { Box, Text, onUiFrame, uiLocked } from "gnoblin/ui";
-import type { UiKeyEvent } from "gnoblin/ui";
+import { Box } from "gnoblin/ui/box";
+import { onUiFrame } from "gnoblin/ui/frame";
+import { uiLocked } from "gnoblin/ui/session";
+import { Text } from "gnoblin/ui/text";
+import type { UiKeyEvent } from "gnoblin/ui/events";
 
 /** How far an arrow key moves or resizes the window, in pixels. */
 export const REPOSITION_STEP = 16;

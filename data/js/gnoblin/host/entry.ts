@@ -14,7 +14,7 @@ import { inspect } from "gnoblin/inspect";
 import { lockRelease, runLockFrame } from "gnoblin/lock";
 import { sceneReleaseAll } from "gnoblin/scene/registry";
 import { installDefaults } from "gnoblin/starter";
-import { uiReleaseAll } from "gnoblin/ui";
+import { uiReleaseAll } from "gnoblin/ui/frame";
 import { NEVER, NOW, nextWake, onWake } from "gnoblin/wake";
 
 /** What the shell calls each frame, over the object model of `gnoblin`. */

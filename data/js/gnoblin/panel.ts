@@ -4,7 +4,9 @@
 // It owns the toast card. It does not own the bar: that is `Bar`, in `gnoblin/widgets`. Read `gnoblin/ui` first for
 // `Box`, `Text` and the frame loop that calls `refresh()`.
 
-import { Box, Text, uiNow, uiScreen } from "gnoblin/ui";
+import { Box } from "gnoblin/ui/box";
+import { uiNow, uiScreen } from "gnoblin/ui/session";
+import { Text } from "gnoblin/ui/text";
 
 import { NEVER, NOW, onWake } from "gnoblin/wake";
 

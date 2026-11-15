@@ -5,9 +5,12 @@
 // Force quit ignores presses for `armMs` milliseconds after the alert opens, so input already in flight cannot press it.
 // `AlertTracker` is the state machine on its own. A script starts the alert with `startNotRespondingAlert()`.
 
-import { Box, Text, onUiFrame, uiFocus, uiFocused, uiLocked, uiNow, uiScreen } from "gnoblin/ui";
+import { Box } from "gnoblin/ui/box";
+import { onUiFrame } from "gnoblin/ui/frame";
+import { uiFocus, uiFocused, uiLocked, uiNow, uiScreen } from "gnoblin/ui/session";
+import { Text } from "gnoblin/ui/text";
 import { NEVER, onWake } from "gnoblin/wake";
-import type { UiKeyEvent, UiPointerEvent } from "gnoblin/ui";
+import type { UiKeyEvent, UiPointerEvent } from "gnoblin/ui/events";
 
 const LEFT = 272;
 const WIDTH = 480;

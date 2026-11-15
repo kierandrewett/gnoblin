@@ -3,8 +3,8 @@
 import type { FrameContext } from "gnoblin/frame/client";
 import { WindowButton } from "gnoblin/frame/parts/window_button";
 import type { WindowButtonName, WindowButtonOptions } from "gnoblin/frame/parts/window_button";
-import { Box } from "gnoblin/ui";
-import type { BoxOptions } from "gnoblin/ui";
+import { Box } from "gnoblin/ui/box";
+import type { BoxOptions } from "gnoblin/ui/box";
 
 /** Options of `WindowButtons`. `buttons` are the buttons left to right. */
 export interface WindowButtonsOptions extends BoxOptions {

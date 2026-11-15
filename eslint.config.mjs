@@ -59,7 +59,7 @@ export default [
     },
     {
         // These APIs intentionally merge optional hooks into classes without creating instance fields.
-        files: ["data/js/gnoblin/layout.ts", "data/js/gnoblin/ui.ts"],
+        files: ["data/js/gnoblin/layout.ts", "data/js/gnoblin/ui/canvas.ts"],
         rules: { "@typescript-eslint/no-unsafe-declaration-merging": "off" },
     },
     {

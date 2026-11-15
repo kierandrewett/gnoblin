@@ -3,8 +3,9 @@
 // the same tile, in every window and every session.
 
 import type { FrameContext } from "gnoblin/frame/client";
-import { Box } from "gnoblin/ui";
-import type { BoxOptions, PaintOp } from "gnoblin/ui";
+import { Box } from "gnoblin/ui/box";
+import type { BoxOptions } from "gnoblin/ui/box";
+import type { PaintOp } from "gnoblin/ui/paint";
 
 /** The colours a tile is taken from, all dark enough for white lettering. */
 const TILE_COLOURS = ["#5b6ee1", "#2f8f6b", "#b5533c", "#8a56ac", "#2d7d9a", "#a0762a", "#a8416a", "#4f7b38"] as const;

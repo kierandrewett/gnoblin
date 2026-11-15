@@ -6,8 +6,12 @@
 // tested and reused. An `Entry` reads the keys the retired Lua one read: the `key` event of the canvas that holds
 // the keyboard focus, with `key` (the keysym's name) and `text` (what it types).
 
-import { Box, Text, uiNow, uiScreen } from "gnoblin/ui";
-import type { BoxOptions, Color, PaintOp, UiKeyEvent } from "gnoblin/ui";
+import { Box } from "gnoblin/ui/box";
+import { uiNow, uiScreen } from "gnoblin/ui/session";
+import { Text } from "gnoblin/ui/text";
+import type { BoxOptions } from "gnoblin/ui/box";
+import type { UiKeyEvent } from "gnoblin/ui/events";
+import type { Color, PaintOp } from "gnoblin/ui/paint";
 import { NEVER, onWake } from "gnoblin/wake";
 
 // ---- EntryModel --------------------------------------------------------------------------------------------------
