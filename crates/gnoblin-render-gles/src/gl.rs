@@ -208,6 +208,21 @@ impl GlContext {
             .unwrap_or_else(|_| "unknown".to_owned())
     }
 
+    /// The largest texture edge the driver accepts, in pixels. A context that cannot answer reports the minimum
+    /// GLES 3 guarantees, 2048, so a limit check errs towards refusing.
+    pub(crate) fn max_texture_size(&mut self) -> u32 {
+        self.renderer
+            .with_context(|gl| unsafe {
+                // SAFETY: reading an integer parameter needs only a current context, which `with_context`
+                // establishes, and changes no state.
+                gl.get_parameter_i32(glow::MAX_TEXTURE_SIZE)
+            })
+            .ok()
+            .and_then(|size| u32::try_from(size).ok())
+            .filter(|size| *size > 0)
+            .unwrap_or(2048)
+    }
+
     /// Whether the driver is a software rasteriser.
     pub(crate) fn is_software(&mut self) -> bool {
         let name = self.renderer_name().to_ascii_lowercase();

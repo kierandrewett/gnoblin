@@ -106,6 +106,41 @@ impl Scale {
     pub const fn is_identity(self) -> bool {
         self.numerator == self.denominator
     }
+
+    /// The two scales applied one after the other, as one reduced fraction.
+    ///
+    /// A supersampled output composes at its scale times its supersample factor, and both are exact fractions, so
+    /// the product is too. Numerator and denominator saturate rather than wrap: a product that large is refused
+    /// by the output limits long before it is drawn.
+    #[must_use]
+    pub fn product(self, other: Self) -> Self {
+        Self::reduced(
+            u64::from(self.numerator) * u64::from(other.numerator),
+            u64::from(self.denominator) * u64::from(other.denominator),
+        )
+    }
+
+    /// `numerator / denominator` reduced in 64 bits, then clamped into the 32-bit fields.
+    fn reduced(numerator: u64, denominator: u64) -> Self {
+        let (mut left, mut right) = (numerator, denominator);
+        while right != 0 {
+            let remainder = left % right;
+            left = right;
+            right = remainder;
+        }
+        let divisor = left.max(1);
+        Self::new(
+            u32::try_from(numerator / divisor).unwrap_or(u32::MAX),
+            u32::try_from(denominator / divisor).unwrap_or(u32::MAX),
+        )
+    }
+
+    /// The smallest whole number of physical pixels per logical pixel that is not below this scale: the value
+    /// `wl_output.scale` carries for a fractional scale.
+    #[must_use]
+    pub const fn ceil(self) -> u32 {
+        self.numerator.div_ceil(self.denominator)
+    }
 }
 
 impl Default for Scale {
@@ -139,4 +174,30 @@ fn greatest_common_divisor(mut left: u32, mut right: u32) -> u32 {
         right = remainder;
     }
     left
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Scale;
+
+    #[test]
+    fn a_product_is_exact_and_reduced() {
+        assert_eq!(Scale::integral(2).product(Scale::integral(2)), Scale::integral(4));
+        assert_eq!(Scale::new(3, 2).product(Scale::new(4, 3)), Scale::integral(2));
+        assert_eq!(Scale::new(5, 4).product(Scale::integral(2)), Scale::new(5, 2));
+    }
+
+    #[test]
+    fn a_product_too_large_for_the_fields_saturates() {
+        let huge = Scale::integral(u32::MAX).product(Scale::integral(u32::MAX));
+        assert_eq!(huge.numerator(), u32::MAX);
+    }
+
+    #[test]
+    fn the_ceiling_is_what_wl_output_carries() {
+        assert_eq!(Scale::integral(2).ceil(), 2);
+        assert_eq!(Scale::new(5, 2).ceil(), 3);
+        assert_eq!(Scale::new(3, 2).ceil(), 2);
+        assert_eq!(Scale::new(1, 2).ceil(), 1);
+    }
 }

@@ -599,6 +599,7 @@ impl Nested {
             output: id,
             mode: output.mode,
             scale: output.scale,
+            supersample: output.supersample,
         });
     }
 

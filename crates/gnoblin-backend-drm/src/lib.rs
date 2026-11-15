@@ -343,6 +343,7 @@ impl Drm {
             output,
             mode: state.mode,
             scale: state.scale,
+            supersample: Scale::IDENTITY,
         });
     }
 
@@ -623,7 +624,11 @@ impl<S: Host + 'static> Backend<S> for Drm {
         output: OutputId,
         mode: gnoblin_output::DisplayMode,
         scale: Scale,
+        supersample: Scale,
     ) -> Result<(), BackendError> {
+        if !supersample.is_identity() {
+            return Err(BackendError::Supersample(output));
+        }
         let (connector, current, index, crtc) = self.modeset_target(output)?;
         // The buffers leave the map for the length of the call so the kernel adapter can borrow the rest of the
         // backend; a refused change gives them back untouched.
@@ -662,7 +667,11 @@ impl<S: Host + 'static> Backend<S> for Drm {
         output: OutputId,
         mode: gnoblin_output::DisplayMode,
         scale: Scale,
+        supersample: Scale,
     ) -> Result<(), BackendError> {
+        if !supersample.is_identity() {
+            return Err(BackendError::Supersample(output));
+        }
         let (connector, current, _, crtc) = self.modeset_target(output)?;
         let mut kernel = LiveModeset {
             gpu: &self.gpu,

@@ -29,6 +29,7 @@ export const OUTPUT_KEYS = [
     "width",
     "height",
     "output_scale",
+    "supersample",
     "transform",
     "mode",
     "primary",
@@ -135,6 +136,26 @@ export class Output extends NativeObject {
     /** The factor the output composes at: 2 is a HiDPI panel. */
     get scale(): number {
         return read<number>(this, "output_scale");
+    }
+
+    /**
+     * The supersample factor (owner-requested addition beyond the display specification): the output is composed at
+     * this multiple of its mode and shown at the mode. 1 is none.
+     */
+    get supersample(): number {
+        return read<number>(this, "supersample");
+    }
+
+    /** The size the output is composed at, `mode * supersample`, in pixels: the size of its screenshots. */
+    get virtualSize(): { readonly width: number; readonly height: number } {
+        const [, width, height] = /^(\d+)x(\d+)@/.exec(this.mode) ?? [];
+        const factor = this.supersample;
+        return { width: Math.round(Number(width) * factor), height: Math.round(Number(height) * factor) };
+    }
+
+    /** The scale clients are told: `scale * supersample`. */
+    get effectiveScale(): number {
+        return this.scale * this.supersample;
     }
 
     get transform(): string {

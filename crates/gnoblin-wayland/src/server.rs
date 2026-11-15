@@ -332,10 +332,10 @@ fn apply_global_scale(backend: &mut dyn Backend<State>, previous: Option<u32>, n
         .outputs()
         .iter()
         .filter(|output| output.scale == from)
-        .map(|output| (output.id, output.mode))
+        .map(|output| (output.id, output.mode, output.supersample))
         .collect();
-    for (id, mode) in targets {
-        if let Err(error) = backend.configure_output(id, mode, to) {
+    for (id, mode, supersample) in targets {
+        if let Err(error) = backend.configure_output(id, mode, to, supersample) {
             log::warn!(area = "monitors", %error, "global-scale {} refused; the output keeps its scale", next.unwrap_or(1));
         }
     }
@@ -1346,15 +1346,25 @@ impl ControlHandle {
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
-    /// Takes a picture of what `output` currently shows.
+    /// Takes a picture of what `output` currently shows, as the compositor composed it.
     ///
     /// The request is answered by the frame hook at the end of the next iteration, so
     /// it is the last frame *drawn*, not a fresh one: a screenshot of an idle session
     /// is the screen that is on screen. [`None`] means the loop did not answer within
     /// [`crate::frame::SCREENSHOT_TIMEOUT`], which is what a stopped session does.
+    ///
+    /// A supersampled output composes more pixels than its mode has, and this is that frame: `mode * supersample`
+    /// on each axis. [`ControlHandle::screenshot_display`] is the frame the display shows.
     #[must_use]
     pub fn screenshot(&self, output: OutputId) -> Option<Image> {
         self.control.screenshot(output)
+    }
+
+    /// [`ControlHandle::screenshot`] for the frame as the display shows it: the composed frame averaged down to
+    /// the output's mode. It is the same picture as `screenshot` when the output is not supersampled.
+    #[must_use]
+    pub fn screenshot_display(&self, output: OutputId) -> Option<Image> {
+        self.control.screenshot_display(output)
     }
 }
 
@@ -1623,6 +1633,10 @@ impl Control {
 
     fn screenshot(&self, output: OutputId) -> Option<Image> {
         self.screenshots.request(output, &self.ping)
+    }
+
+    fn screenshot_display(&self, output: OutputId) -> Option<Image> {
+        self.screenshots.request_display(output, &self.ping)
     }
 }
 

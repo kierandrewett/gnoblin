@@ -36,6 +36,9 @@ array.
 | `mirrorOf`                  | The output this one shows a copy of, or `null`.                                                               |
 | `mode`                      | The mode in use, `WxH@Hz`.                                                                                    |
 | `scale`                     | The factor the output composes at. 2 is a HiDPI panel.                                                        |
+| `supersample`               | The factor the output is composed above its mode, 1 for none. See [Supersampling](#supersampling).            |
+| `virtualSize`               | `{ width, height }`: the mode times `supersample`, the size of the output's screenshots.                      |
+| `effectiveScale`            | `scale * supersample`: the scale clients are told.                                                            |
 | `transform`                 | The rotation and flip: `normal`, `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180` or `flipped-270`. |
 | `x`, `y`, `width`, `height` | The output's rectangle in the compositor's coordinates. `bounds` is the same as one object.                   |
 | `position`                  | `{ x, y }` of the output.                                                                                     |
@@ -62,14 +65,15 @@ value.
   last good arrangement stays.
 - It keeps the result as that monitor's profile, so the same monitor on the same port gets it back after an unplug.
 
-| Key         | Values                                                                           |
-| ----------- | -------------------------------------------------------------------------------- |
-| `mode`      | `"3440x1440@144"`, or `"preferred"` to keep what the backend drives.             |
-| `scale`     | A number from 0.5 to 4.                                                          |
-| `transform` | `"normal"`. The compositor draws no rotation, so the others are refused by name. |
-| `position`  | `[x, y]` or `{ x, y }`: the top-left corner in the one desktop coordinate space. |
-| `enabled`   | `false` switches the output off: it shows black and has no place in the desktop. |
-| `mirrorOf`  | The connector, or an `Output`, to show an exact copy of. `null` stops mirroring. |
+| Key           | Values                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------- |
+| `mode`        | `"3440x1440@144"`, or `"preferred"` to keep what the backend drives.                              |
+| `scale`       | A number from 0.5 to 4.                                                                           |
+| `supersample` | A number from 1 to 16: compose at this multiple of the mode. See [Supersampling](#supersampling). |
+| `transform`   | `"normal"`. The compositor draws no rotation, so the others are refused by name.                  |
+| `position`    | `[x, y]` or `{ x, y }`: the top-left corner in the one desktop coordinate space.                  |
+| `enabled`     | `false` switches the output off: it shows black and has no place in the desktop.                  |
+| `mirrorOf`    | The connector, or an `Output`, to show an exact copy of. `null` stops mirroring.                  |
 
 A value of the wrong shape throws before anything is sent, naming the key: `Output#output-1.apply.scale must be a number
 from 0.5 to 4`.
@@ -113,6 +117,41 @@ shows one workspace over several outputs.
 **In your file.** An `OutputProfile` applies the same keys by connector when the file loads, and again when that display is
 plugged in: see [Hardware profiles](#hardware-profiles). One the compositor refuses is reported as a diagnostic naming
 `outputs.profiles.<id>.<key>`.
+
+### Supersampling
+
+`supersample` is an owner-requested addition beyond the display specification, like macOS's scaled resolutions.
+
+- The compositor composes the output on a virtual surface of `mode * supersample` pixels, tells clients the scale
+  `scale * supersample`, and shows the result at the real mode, averaged down.
+- The logical size (`mode / scale`), window geometry and pointer do not change, so the desktop looks the same,
+  anti-aliased and crisp, and screenshots and captures come out hi-res.
+- Wayland clients draw `supersample` times the pixels. X11 clients are not scaled by the factor yet: the compositor
+  upscales them as it does at any scale above one.
+  upscaled by the compositor as they are at any scale above one.
+
+- **Supported factors.** 1, 2 and 4. Any other number from 1 to 16 is accepted when `mode * supersample` is a whole size
+  and logs one notice, `supersample N is not recommended: use 1, 2 or 4`; the downsample is then bilinear.
+- **Refused by name.** A value that is not a number from 1 to 16 throws before anything is sent, naming the key. A factor
+  that gives a fractional size (1.5 on a 1367 pixel wide mode) or a surface above 8192 by 8192 (4 on 3840x2160) is
+  refused by the compositor with the numbers, and the output keeps what it had.
+- **What `wl_output` and `xdg_output` say.** The mode stays the real one, `scale` is the next whole number above
+  `scale * supersample`, the preferred fractional scale is exact, and the logical size does not change.
+
+```ts
+const output = gnoblin.outputs.where({ name: "output-1" }).at(0)!;
+output.apply({ supersample: 1 }); // the default: composed at the mode
+output.apply({ supersample: 2 }); // 1920x1080 composed at 3840x2160; output.virtualSize is { width: 3840, height: 2160 }
+output.apply({ supersample: 4 }); // composed at 7680x4320; needs a GPU with 8192 texels per edge
+```
+
+A screenshot or capture of a supersampled output is the composed frame: 3840x2160 at a factor of 2 on a 1920x1080 mode,
+with the secure-content masks applied before anything is read. `wlr-screencopy`, `ext-image-copy-capture`, the
+PipeWire export and `capture.screen` all advertise that size. `capture.screen` takes the payload `display` for the frame
+as the display shows it, at the mode. `gnoblinctl output call <id> apply 'supersample=2'` takes the same path.
+
+Applying a factor works on the virtual (headless) backend. The nested backend refuses it by name. The DRM backend refuses
+it until its scan-out downscale pass lands.
 
 ### What each backend applies
 

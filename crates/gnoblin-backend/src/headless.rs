@@ -185,30 +185,38 @@ impl std::fmt::Debug for HeadlessTarget {
 }
 
 impl HeadlessTarget {
-    /// A target of the given mode and scale.
+    /// A target of the given mode and scale, with no supersampling.
     ///
     /// # Errors
     ///
     /// [`RenderError`] when the size covers no pixels or the software renderer
     /// cannot be created, which means the session cannot draw at all.
     pub fn new(mode: DisplayMode, scale: Scale) -> Result<Self, RenderError> {
-        Self::with_renderer(RendererKind::Software, mode, scale)
+        Self::with_renderer(RendererKind::Software, mode, scale, Scale::IDENTITY)
     }
 
-    /// A target of the given mode and scale, drawn by the given renderer.
+    /// A target of the given mode, scale and supersample factor, drawn by the given renderer.
+    ///
+    /// The buffer is the mode times the factor and the target composes at the scale times the factor, so the
+    /// logical size is the same at every factor.
     ///
     /// # Errors
     ///
     /// [`RenderError::Degenerate`] when the mode covers no pixels, and
     /// [`RenderError::Unavailable`] when the renderer cannot be created on this machine —
     /// which for [`RendererKind::Gles`] means no surfaceless EGL context.
-    pub fn with_renderer(kind: RendererKind, mode: DisplayMode, scale: Scale) -> Result<Self, RenderError> {
-        let physical = Size::new(mode.width, mode.height);
+    pub fn with_renderer(
+        kind: RendererKind,
+        mode: DisplayMode,
+        scale: Scale,
+        supersample: Scale,
+    ) -> Result<Self, RenderError> {
+        let physical = Output::virtual_extent(mode, supersample);
         let size = mode.logical_size(gnoblin_types::Orientation::Normal, scale);
         Ok(Self {
             size,
             physical,
-            scale,
+            scale: scale.product(supersample),
             presents: 0,
             damage: Vec::new(),
             renderer: AnyRenderer::new(kind, physical)?,
@@ -345,14 +353,22 @@ impl HeadlessTarget {
         Rect::new(0, 0, self.size.width, self.size.height)
     }
 
-    /// Replaces the target's extent and buffer after a mode change.
-    fn resize(&mut self, mode: DisplayMode, scale: Scale) -> Result<(), RenderError> {
-        self.renderer.resize(Size::new(mode.width, mode.height))?;
-        self.physical = Size::new(mode.width, mode.height);
+    /// Replaces the target's extent and buffer after a mode, scale or supersample change.
+    fn resize(&mut self, mode: DisplayMode, scale: Scale, supersample: Scale) -> Result<(), RenderError> {
+        let physical = Output::virtual_extent(mode, supersample);
+        self.renderer.resize(physical)?;
+        self.physical = physical;
         self.size = mode.logical_size(gnoblin_types::Orientation::Normal, scale);
-        self.scale = scale;
+        self.scale = scale.product(supersample);
         self.damage.clear();
         Ok(())
+    }
+
+    /// The largest virtual edge this target's renderer can hold, within the compositor's own limit.
+    fn max_virtual_edge(&mut self) -> u32 {
+        self.renderer
+            .max_texture_size()
+            .min(gnoblin_output::supersample::MAX_VIRTUAL_EDGE)
     }
 }
 
@@ -796,7 +812,7 @@ impl Headless {
             mode.width > 0 && mode.height > 0,
             "a mode that covers no pixels cannot be an output: {mode:?}"
         );
-        let target = HeadlessTarget::with_renderer(self.renderer, mode, scale)?;
+        let target = HeadlessTarget::with_renderer(self.renderer, mode, scale, Scale::IDENTITY)?;
         let id = OutputId::new(self.next_output);
         self.next_output = self.next_output.saturating_add(1);
         let output = Output::new(id, connector, mode, scale).with_identity(identity);
@@ -827,15 +843,37 @@ impl Headless {
         Ok(())
     }
 
-    /// Sets the mode and scale of an output, reporting the change on the next
+    /// Sets the mode and scale of an output, keeping its supersample factor, and reports the change on the next
     /// dispatch.
     ///
     /// # Errors
     ///
-    /// [`BackendError::UnknownOutput`] when the id is not this backend's,
-    /// [`BackendError::DegenerateMode`] when the mode covers no pixels, and
-    /// [`BackendError::Render`] when the new buffer cannot be created.
+    /// As [`Self::resize_supersampled`].
     pub fn resize(&mut self, output: OutputId, mode: DisplayMode, scale: Scale) -> Result<(), BackendError> {
+        let supersample = self
+            .outputs
+            .iter()
+            .find(|entry| entry.id == output)
+            .map(|entry| entry.supersample)
+            .ok_or(BackendError::UnknownOutput(output))?;
+        self.resize_supersampled(output, mode, scale, supersample)
+    }
+
+    /// Sets the mode, scale and supersample factor of an output, reporting the change on the next dispatch.
+    ///
+    /// # Errors
+    ///
+    /// [`BackendError::UnknownOutput`] when the id is not this backend's,
+    /// [`BackendError::DegenerateMode`] when the mode covers no pixels,
+    /// [`BackendError::Supersample`] when the factor does not give a whole virtual size within the renderer's limit,
+    /// and [`BackendError::Render`] when the new buffer cannot be created. The output keeps what it had in each case.
+    pub fn resize_supersampled(
+        &mut self,
+        output: OutputId,
+        mode: DisplayMode,
+        scale: Scale,
+        supersample: Scale,
+    ) -> Result<(), BackendError> {
         let Some(index) = self.index(output) else {
             return Err(BackendError::UnknownOutput(output));
         };
@@ -848,12 +886,16 @@ impl Headless {
         let Some(target) = self.targets.get_mut(index) else {
             return Err(BackendError::UnknownOutput(output));
         };
-        target.resize(mode, scale).map_err(BackendError::Render)?;
+        let limit = target.max_virtual_edge();
+        gnoblin_output::supersample::virtual_size(mode, supersample, limit)
+            .map_err(|_| BackendError::Supersample(output))?;
+        target.resize(mode, scale, supersample).map_err(BackendError::Render)?;
         let Some(entry) = self.outputs.get_mut(index) else {
             return Err(BackendError::UnknownOutput(output));
         };
         entry.mode = mode;
         entry.scale = scale;
+        entry.supersample = supersample;
         // One pending change per output, so the latest size wins and a storm of
         // resizes cannot deliver a queue of sizes that are already gone.
         self.pending.retain(|event| {
@@ -862,7 +904,12 @@ impl Headless {
                 BackendEvent::OutputResized { output: changed, .. } if *changed == output
             )
         });
-        self.pending.push(BackendEvent::OutputResized { output, mode, scale });
+        self.pending.push(BackendEvent::OutputResized {
+            output,
+            mode,
+            scale,
+            supersample,
+        });
         Ok(())
     }
 
@@ -1076,7 +1123,13 @@ impl<S: Host + 'static> Backend<S> for Headless {
         Ok(())
     }
 
-    fn configure_output(&mut self, output: OutputId, mode: DisplayMode, scale: Scale) -> Result<(), BackendError> {
+    fn configure_output(
+        &mut self,
+        output: OutputId,
+        mode: DisplayMode,
+        scale: Scale,
+        supersample: Scale,
+    ) -> Result<(), BackendError> {
         {
             let mut control = locked(&self.control);
             match control.configure_budget {
@@ -1088,20 +1141,40 @@ impl<S: Host + 'static> Backend<S> for Headless {
                 None => {}
             }
         }
-        self.resize(output, mode, scale)
+        self.resize_supersampled(output, mode, scale, supersample)
     }
 
-    fn test_output(&mut self, output: OutputId, mode: DisplayMode, _scale: Scale) -> Result<(), BackendError> {
+    fn test_output(
+        &mut self,
+        output: OutputId,
+        mode: DisplayMode,
+        _scale: Scale,
+        supersample: Scale,
+    ) -> Result<(), BackendError> {
         // A virtual output has no kernel to ask: it can be given any mode with pixels, which is what `resize` checks
         // before it touches anything.
-        self.index(output).ok_or(BackendError::UnknownOutput(output))?;
+        let index = self.index(output).ok_or(BackendError::UnknownOutput(output))?;
         if mode.width == 0 || mode.height == 0 {
             return Err(BackendError::DegenerateMode {
                 width: mode.width,
                 height: mode.height,
             });
         }
+        let limit = self
+            .targets
+            .get_mut(index)
+            .ok_or(BackendError::UnknownOutput(output))?
+            .max_virtual_edge();
+        gnoblin_output::supersample::virtual_size(mode, supersample, limit)
+            .map_err(|_| BackendError::Supersample(output))?;
         Ok(())
+    }
+
+    fn max_virtual_edge(&mut self, output: OutputId) -> u32 {
+        self.index(output).and_then(|index| self.targets.get_mut(index)).map_or(
+            gnoblin_output::supersample::MAX_VIRTUAL_EDGE,
+            HeadlessTarget::max_virtual_edge,
+        )
     }
 }
 
@@ -1188,6 +1261,7 @@ mod tests {
                 output,
                 mode: DisplayMode::new(740, 580, 60_000),
                 scale: Scale::integral(1),
+                supersample: Scale::IDENTITY,
             }
         );
         assert_eq!(backend.logical_size(output), Some(Size::new(740, 580)));
@@ -1222,7 +1296,7 @@ mod tests {
         );
         let wanted = DisplayMode::new(800, 600, 60_000);
         driver(&mut backend)
-            .test_output(output, wanted, Scale::integral(2))
+            .test_output(output, wanted, Scale::integral(2), Scale::IDENTITY)
             .expect("a mode with pixels would be driven");
         assert_eq!(
             backend.logical_size(output),
@@ -1230,12 +1304,17 @@ mod tests {
             "a test changes nothing"
         );
         assert_eq!(
-            driver(&mut backend).test_output(output, DisplayMode::new(800, 0, 60_000), Scale::integral(1)),
+            driver(&mut backend).test_output(
+                output,
+                DisplayMode::new(800, 0, 60_000),
+                Scale::integral(1),
+                Scale::IDENTITY
+            ),
             Err(BackendError::DegenerateMode { width: 800, height: 0 })
         );
         let stranger = OutputId::new(99);
         assert_eq!(
-            driver(&mut backend).test_output(stranger, wanted, Scale::integral(1)),
+            driver(&mut backend).test_output(stranger, wanted, Scale::integral(1), Scale::IDENTITY),
             Err(BackendError::UnknownOutput(stranger))
         );
         assert_eq!(

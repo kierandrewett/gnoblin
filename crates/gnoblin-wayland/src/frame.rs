@@ -92,6 +92,9 @@ fn frame_time() -> u32 {
 /// A screenshot request waiting for the loop.
 struct Shot {
     output: OutputId,
+    /// Whether the picture is the frame as the display shows it (at the output's mode) rather than the one the
+    /// compositor composed, which has more pixels when the output is supersampled.
+    display: bool,
     slot: Arc<ShotSlot>,
 }
 
@@ -144,17 +147,29 @@ pub struct Screenshots {
 }
 
 impl Screenshots {
-    /// Queues a request and waits for the loop to answer it.
+    /// Queues a request for the composed frame and waits for the loop to answer it. The frame has
+    /// `mode * supersample` pixels on each axis, which is the mode itself when the output is not supersampled.
     ///
     /// The ping wakes the loop so the answer arrives on the next iteration rather than
     /// on its timeout.
     pub fn request(&self, output: OutputId, ping: &Ping) -> Option<Image> {
+        self.ask(output, false, ping)
+    }
+
+    /// [`Screenshots::request`] for the frame as the display shows it: the composed frame averaged down to the
+    /// output's mode.
+    pub fn request_display(&self, output: OutputId, ping: &Ping) -> Option<Image> {
+        self.ask(output, true, ping)
+    }
+
+    fn ask(&self, output: OutputId, display: bool, ping: &Ping) -> Option<Image> {
         let slot = Arc::new(ShotSlot::default());
         self.queue
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push_back(Shot {
                 output,
+                display,
                 slot: Arc::clone(&slot),
             });
         ping.ping();
@@ -167,7 +182,11 @@ impl Screenshots {
             let Some(shot) = self.queue.lock().unwrap_or_else(PoisonError::into_inner).pop_front() else {
                 return;
             };
-            let image = backend.screenshot(shot.output);
+            let image = if shot.display {
+                backend.capture_display(shot.output, false)
+            } else {
+                backend.screenshot(shot.output)
+            };
             shot.slot.serve(image);
         }
     }
@@ -249,8 +268,9 @@ pub fn render(
             continue;
         }
         if let Some(source) = shadow.source {
-            // The mirror shows what the source's screen shows, pointer included, as the source's own readback has it.
-            match backend.capture(source, true) {
+            // The mirror shows what the source's screen shows, pointer included, as the source's own readback has it:
+            // the frame at the source's mode, not the hi-res one a supersampled source composed.
+            match backend.capture_display(source, true) {
                 Some(picture) => state.set_mirror_picture(shadow.output, picture),
                 None => continue,
             }

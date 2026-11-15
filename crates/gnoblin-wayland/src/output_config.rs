@@ -235,8 +235,8 @@ impl State {
     }
 }
 
-/// One output change in a configuration: the mode and scale to move it from and to. Rollback restores the mode
-/// and the scale the head had.
+/// One output change in a configuration: the mode, scale and supersample factor to move it from and to. Rollback
+/// restores what the head had.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct OutputChange {
     /// The head being changed.
@@ -249,6 +249,10 @@ pub(crate) struct OutputChange {
     pub(crate) before: Scale,
     /// The scale the head moves to.
     pub(crate) after: Scale,
+    /// The supersample factor the head had before the change.
+    pub(crate) before_supersample: Scale,
+    /// The supersample factor the head moves to.
+    pub(crate) supersample: Scale,
 }
 
 /// A configuration that could not be applied. The output named is the first one refused; the
@@ -285,14 +289,14 @@ impl ApplyFailure {
 /// as stuck rather than hidden, because the client must be told which output kept its change.
 pub(crate) fn apply_in_order(
     steps: &[OutputChange],
-    mut configure: impl FnMut(OutputId, DisplayMode, Scale) -> Result<(), String>,
+    mut configure: impl FnMut(OutputId, DisplayMode, Scale, Scale) -> Result<(), String>,
 ) -> Result<(), ApplyFailure> {
     for (index, step) in steps.iter().enumerate() {
-        if let Err(reason) = configure(step.id, step.mode, step.after) {
+        if let Err(reason) = configure(step.id, step.mode, step.after, step.supersample) {
             let mut restored = Vec::new();
             let mut stuck = Vec::new();
             for done in steps[..index].iter().rev() {
-                match configure(done.id, done.before_mode, done.before) {
+                match configure(done.id, done.before_mode, done.before, done.before_supersample) {
                     Ok(()) => restored.push(done.id),
                     Err(_) => stuck.push(done.id),
                 }
@@ -322,6 +326,8 @@ mod tests {
             before_mode: DisplayMode::new(1920, 1080, 60_000),
             before: Scale::from_percent(from),
             after: Scale::from_percent(to),
+            before_supersample: Scale::IDENTITY,
+            supersample: Scale::IDENTITY,
         }
     }
 
@@ -332,7 +338,7 @@ mod tests {
         refuse: impl Fn(OutputId, u32) -> bool,
     ) -> (Result<(), ApplyFailure>, Vec<(u64, u32)>) {
         let mut calls = Vec::new();
-        let result = apply_in_order(steps, |id, _mode, scale| {
+        let result = apply_in_order(steps, |id, _mode, scale, _supersample| {
             let percent = (scale.as_f64() * 100.0).round() as u32;
             calls.push((id.get(), percent));
             if refuse(id, percent) {

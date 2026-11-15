@@ -21,6 +21,7 @@
 //!    sent on the object's creation, which is what the protocol asks for, so nothing
 //!    depends on a commit or a mapped window.
 
+use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::wayland::compositor::with_states;
 use smithay::wayland::fractional_scale::{self, FractionalScaleHandler, FractionalScaleManagerState};
@@ -38,5 +39,24 @@ impl FractionalScaleHandler for State {
         with_states(&surface, |states| {
             fractional_scale::with_fractional_scale(states, |state| state.set_preferred_scale(scale));
         });
+        self.fractional_surfaces.push(surface);
+    }
+}
+
+impl State {
+    /// Tells every surface that has a `wp_fractional_scale_v1` object the scale of its output again, after an
+    /// output's scale changed.
+    ///
+    /// An object is told its surface's scale when it is created and never asked again, so a client whose output was
+    /// re-scaled (a new scale, or a supersample factor, which changes the scale clients are told) would keep drawing
+    /// at the old one. The surfaces are the ones that asked, kept as they come, and the dead ones are dropped here.
+    pub(crate) fn refresh_preferred_scales(&mut self) {
+        self.fractional_surfaces.retain(|surface| surface.is_alive());
+        for surface in self.fractional_surfaces.clone() {
+            let scale = self.surface_scale(&surface);
+            with_states(&surface, |states| {
+                fractional_scale::with_fractional_scale(states, |state| state.set_preferred_scale(scale));
+            });
+        }
     }
 }

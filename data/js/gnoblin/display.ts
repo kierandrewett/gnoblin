@@ -24,6 +24,13 @@ export interface OutputConfig {
     mode?: string;
     /** From 0.5 to 4. */
     scale?: number;
+    /**
+     * Owner-requested addition beyond the display specification. The output is composed at this multiple of its mode
+     * (`mode * supersample` pixels, clients told `scale * supersample`) and shown at its mode, so the desktop keeps its
+     * logical size and looks anti-aliased, and screenshots come out hi-res. A number from 1 to 16; 1, 2 and 4 are the
+     * supported ones, any other is accepted when `mode * supersample` is a whole size, with one notice.
+     */
+    supersample?: number;
     transform?: OutputTransform;
     /** The output's top-left corner in the one desktop coordinate space, `[x, y]`. Left out, it follows the row. */
     position?: readonly [number, number] | { readonly x: number; readonly y: number };
@@ -34,11 +41,15 @@ export interface OutputConfig {
 }
 
 /** The keys `outputRequest` accepts, for the error text of an unknown one. */
-const OUTPUT_KEYS: readonly string[] = ["mode", "scale", "transform", "position", "enabled", "mirrorOf"];
+const OUTPUT_KEYS: readonly string[] = ["mode", "scale", "supersample", "transform", "position", "enabled", "mirrorOf"];
 
 /** The scale range the compositor accepts for an output. */
 const MIN_OUTPUT_SCALE = 0.5;
 const MAX_OUTPUT_SCALE = 4;
+
+/** The supersample range the compositor accepts for an output. */
+const MIN_SUPERSAMPLE = 1;
+const MAX_SUPERSAMPLE = 16;
 
 /** The same names as `OutputTransform`, as a list, to check a value at run time. */
 const TRANSFORMS: readonly string[] = [
@@ -86,6 +97,19 @@ export function outputRequest(
                     throw new RangeError(`${where} must be a number from ${MIN_OUTPUT_SCALE} to ${MAX_OUTPUT_SCALE}`);
                 }
                 lines.push(`scale=${value}`);
+                break;
+            case "supersample":
+                if (
+                    typeof value !== "number" ||
+                    !Number.isFinite(value) ||
+                    value < MIN_SUPERSAMPLE ||
+                    value > MAX_SUPERSAMPLE
+                ) {
+                    throw new RangeError(
+                        `${where} must be a number from ${MIN_SUPERSAMPLE} to ${MAX_SUPERSAMPLE}, such as 1, 2 or 4`,
+                    );
+                }
+                lines.push(`supersample=${value}`);
                 break;
             case "transform":
                 if (typeof value !== "string" || !TRANSFORMS.includes(value)) {
@@ -192,6 +216,8 @@ export interface OutputProfileInit {
     mode?: OutputProfileMode;
     /** From 0.5 to 4. */
     scale?: number;
+    /** Composes the output at this multiple of its mode; see `OutputConfig.supersample`. */
+    supersample?: number;
     transform?: OutputTransform;
     /** Asks for variable refresh rate. Accepted and reported as not applied: the backends have none. */
     vrr?: boolean;
@@ -295,6 +321,7 @@ export interface ProfileState {
     match: Readonly<OutputMatch>;
     mode: OutputProfileMode | undefined;
     scale: number | undefined;
+    supersample: number | undefined;
     transform: OutputTransform | undefined;
     vrr: boolean | undefined;
     position: OutputProfilePosition | undefined;
@@ -413,7 +440,7 @@ export class OutputProfile {
         if (init === null || typeof init !== "object") {
             throw new TypeError("OutputProfile: needs an object with match and the settings");
         }
-        const { id, match, mode, scale, transform, vrr, position, enabled, ...unknown } = init;
+        const { id, match, mode, scale, supersample, transform, vrr, position, enabled, ...unknown } = init;
         const extra = Object.keys(unknown);
         if (extra.length > 0) {
             throw new TypeError(`OutputProfile.${extra[0]}: not a setting of a profile`);
@@ -428,6 +455,7 @@ export class OutputProfile {
             match: checked,
             mode: undefined,
             scale: undefined,
+            supersample: undefined,
             transform: undefined,
             vrr: undefined,
             position: undefined,
@@ -435,6 +463,7 @@ export class OutputProfile {
         });
         if (mode !== undefined) this.mode = mode;
         if (scale !== undefined) this.scale = scale;
+        if (supersample !== undefined) this.supersample = supersample;
         if (transform !== undefined) this.transform = transform;
         if (vrr !== undefined) this.vrr = vrr;
         if (position !== undefined) this.position = position;
@@ -463,6 +492,13 @@ export class OutputProfile {
     }
     set scale(value: number) {
         this.#change("scale", value, { scale: value });
+    }
+
+    get supersample(): number | undefined {
+        return profileState(this).supersample;
+    }
+    set supersample(value: number) {
+        this.#change("supersample", value, { supersample: value });
     }
 
     get transform(): OutputTransform | undefined {
@@ -508,7 +544,7 @@ export class OutputProfile {
         this.#change("enabled", value, { enabled: value });
     }
 
-    #change<K extends "mode" | "scale" | "transform" | "enabled">(
+    #change<K extends "mode" | "scale" | "supersample" | "transform" | "enabled">(
         key: K,
         value: ProfileState[K],
         check: OutputSetting,
@@ -581,6 +617,7 @@ export function profileSetting(profile: OutputProfile): OutputSetting {
     const setting: Record<string, unknown> = {};
     if (state.mode !== undefined) setting.mode = modeText(state.mode, `OutputProfile "${state.id}"`);
     if (state.scale !== undefined) setting.scale = state.scale;
+    if (state.supersample !== undefined) setting.supersample = state.supersample;
     if (state.transform !== undefined) setting.transform = state.transform;
     if (state.enabled !== undefined) setting.enabled = state.enabled;
     if (state.position !== undefined && relativeTarget(state.position) === null) setting.position = state.position;

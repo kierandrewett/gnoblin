@@ -151,6 +151,84 @@ impl Image {
     }
 }
 
+impl Image {
+    /// This image shown at `target` pixels: the frame a display receives when the compositor composed at a multiple
+    /// of the mode.
+    ///
+    /// When each source axis is a whole multiple of the target's (a supersample factor of 2 or 4) every target pixel
+    /// is the exact average of its `s x s` block of source pixels, each channel rounded half up: a box filter, which
+    /// anti-aliases a one-pixel line to the coverage it has. Any other ratio is sampled bilinearly at the target
+    /// pixel's centre, which is correct for odd factors and no more. Alpha is averaged like a colour, which is exact
+    /// for the opaque frames a compositor produces.
+    ///
+    /// A target the same size as the image is a copy, and an empty target or image gives a blank image of the
+    /// target's size.
+    #[must_use]
+    pub fn downsample(&self, target: Size) -> Self {
+        if target == self.size {
+            return self.clone();
+        }
+        if target.is_empty() || self.size.is_empty() {
+            return Self::blank(target);
+        }
+        let (source_width, source_height) = (self.size.width as usize, self.size.height as usize);
+        let (width, height) = (target.width as usize, target.height as usize);
+        let mut data = vec![0u8; row_bytes(target.width).saturating_mul(height)];
+        let boxed = source_width % width == 0 && source_height % height == 0;
+        if boxed {
+            let (across, down) = (source_width / width, source_height / height);
+            let count = (across * down) as u32;
+            for y in 0..height {
+                for x in 0..width {
+                    let mut sums = [0u32; 4];
+                    for row in 0..down {
+                        let start = (y * down + row) * self.stride + x * across * 4;
+                        for column in 0..across {
+                            let pixel = &self.data[start + column * 4..start + column * 4 + 4];
+                            for (sum, channel) in sums.iter_mut().zip(pixel) {
+                                *sum += u32::from(*channel);
+                            }
+                        }
+                    }
+                    let out = (y * width + x) * 4;
+                    for (slot, sum) in data[out..out + 4].iter_mut().zip(sums) {
+                        // Rounded half up; the average of bytes is at most 255.
+                        *slot = u8::try_from((sum + count / 2) / count).unwrap_or(u8::MAX);
+                    }
+                }
+            }
+        } else {
+            let (scale_x, scale_y) = (source_width as f64 / width as f64, source_height as f64 / height as f64);
+            for y in 0..height {
+                let source_y = ((y as f64 + 0.5) * scale_y - 0.5).clamp(0.0, (source_height - 1) as f64);
+                let (top, fraction_y) = (source_y.floor() as usize, source_y.fract());
+                let bottom = (top + 1).min(source_height - 1);
+                for x in 0..width {
+                    let source_x = ((x as f64 + 0.5) * scale_x - 0.5).clamp(0.0, (source_width - 1) as f64);
+                    let (left, fraction_x) = (source_x.floor() as usize, source_x.fract());
+                    let right = (left + 1).min(source_width - 1);
+                    let at = |row: usize, column: usize| row * self.stride + column * 4;
+                    let (a, b, c, d) = (at(top, left), at(top, right), at(bottom, left), at(bottom, right));
+                    let out = (y * width + x) * 4;
+                    for channel in 0..4 {
+                        let upper = f64::from(self.data[a + channel]) * (1.0 - fraction_x)
+                            + f64::from(self.data[b + channel]) * fraction_x;
+                        let lower = f64::from(self.data[c + channel]) * (1.0 - fraction_x)
+                            + f64::from(self.data[d + channel]) * fraction_x;
+                        let value = upper * (1.0 - fraction_y) + lower * fraction_y;
+                        data[out + channel] = value.round().clamp(0.0, 255.0) as u8;
+                    }
+                }
+            }
+        }
+        Self {
+            size: target,
+            stride: row_bytes(target.width),
+            data,
+        }
+    }
+}
+
 /// The bytes one packed row of `width` RGBA8 pixels occupies.
 fn row_bytes(width: u32) -> usize {
     (width as usize).saturating_mul(4)
@@ -211,5 +289,72 @@ mod tests {
             assert_eq!(image.size(), size);
             assert!(image.data().is_empty(), "{size:?} holds no pixel");
         }
+    }
+
+    /// A `width x height` image whose pixel `(x, y)` is `paint(x, y)`.
+    fn painted(width: u32, height: u32, paint: impl Fn(u32, u32) -> [u8; 4]) -> Image {
+        let mut data = Vec::new();
+        for y in 0..height {
+            for x in 0..width {
+                data.extend_from_slice(&paint(x, y));
+            }
+        }
+        Image::new(Size::new(width, height), width as usize * 4, data).expect("a packed image")
+    }
+
+    #[test]
+    fn a_whole_ratio_is_the_exact_box_average() {
+        // A 4x4 checker of black and white 1-pixel cells shown at 2x2: each 2x2 block holds two of each.
+        let checker = painted(4, 4, |x, y| {
+            if (x + y) % 2 == 0 {
+                [255, 255, 255, 255]
+            } else {
+                [0, 0, 0, 255]
+            }
+        });
+        let shown = checker.downsample(Size::new(2, 2));
+        assert_eq!(shown.size(), Size::new(2, 2));
+        for (x, y) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+            // (255 + 255 + 0 + 0) / 4 = 127.5, rounded half up.
+            assert_eq!(shown.colour_at(x, y), Some([128, 128, 128, 255]), "({x}, {y})");
+        }
+    }
+
+    #[test]
+    fn a_one_pixel_line_is_its_coverage() {
+        // A vertical red line one pixel wide on black, at twice the size: half of each block it crosses.
+        let line = painted(4, 2, |x, _| if x == 1 { [200, 0, 0, 255] } else { [0, 0, 0, 255] });
+        let shown = line.downsample(Size::new(2, 1));
+        assert_eq!(shown.colour_at(0, 0), Some([100, 0, 0, 255]));
+        assert_eq!(shown.colour_at(1, 0), Some([0, 0, 0, 255]));
+    }
+
+    #[test]
+    fn a_block_of_one_colour_stays_that_colour() {
+        let flat = painted(6, 6, |_, _| [10, 20, 30, 255]);
+        let shown = flat.downsample(Size::new(2, 2));
+        assert_eq!(shown.colour_at(1, 1), Some([10, 20, 30, 255]));
+        let odd = flat.downsample(Size::new(4, 4));
+        assert_eq!(
+            odd.colour_at(3, 3),
+            Some([10, 20, 30, 255]),
+            "bilinear keeps a flat colour too"
+        );
+    }
+
+    #[test]
+    fn the_same_size_is_a_copy_and_an_empty_target_is_blank() {
+        let image = painted(2, 2, |x, y| [x as u8, y as u8, 0, 255]);
+        assert_eq!(image.downsample(Size::new(2, 2)), image);
+        assert_eq!(image.downsample(Size::new(0, 2)).data().len(), 0);
+    }
+
+    #[test]
+    fn a_ratio_that_is_not_whole_is_sampled_bilinearly_inside_the_range() {
+        let ramp = painted(3, 1, |x, _| [(x * 100) as u8, 0, 0, 255]);
+        let shown = ramp.downsample(Size::new(2, 1));
+        let first = shown.colour_at(0, 0).expect("a pixel")[0];
+        let second = shown.colour_at(1, 0).expect("a pixel")[0];
+        assert!(first < second && second <= 200, "{first} {second}");
     }
 }

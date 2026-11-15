@@ -573,6 +573,8 @@ declare module "gnoblin/schema/tree" {
         readonly identity: string;
         /** Schema name `mirror_of`. Default `""`. */
         readonly mirrorOf: string;
+        /** Default `1`. */
+        readonly supersample: number;
         apply(text: string): Reply;
         /** Signal `mode_changed`. */
         onModeChanged(handler: (target: this) => void): Unsubscribe;

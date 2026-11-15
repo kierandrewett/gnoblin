@@ -1707,11 +1707,27 @@ impl Dispatcher {
 
     /// Answers `capture.screen` with one PNG of the first output.
     ///
+    /// The picture is the frame the compositor composed (`mode * supersample` pixels on each axis); a payload of
+    /// [`wire::CAPTURE_DISPLAY`] asks for the frame as the display shows it, at the output's mode. Any other payload
+    /// is refused as malformed.
+    ///
     /// The lock is asked first: a locked or embargoed session is refused before any pixel
     /// is read. The picture comes from the backend's screenshot, which applies the
     /// configured secure treatment to secure layers, so a masked or omitted layer never
     /// reaches the PNG.
     fn capture_screen(&mut self, client: ClientId, envelope: &Envelope) {
+        let display = match envelope.payload().unwrap_or(&[]) {
+            [] => false,
+            payload if payload == wire::CAPTURE_DISPLAY => true,
+            _ => {
+                return self.refuse(
+                    client,
+                    envelope,
+                    MALFORMED,
+                    "a capture.screen payload is empty or `display`",
+                );
+            }
+        };
         // Headroom for the envelope around the payload, so the reply still fits one frame.
         const ENVELOPE_HEADROOM: usize = 4096;
         let snapshot = match self.observation.lock() {
@@ -1726,7 +1742,12 @@ impl Dispatcher {
                 return self.refuse(client, envelope, code, message);
             }
         };
-        let Some(image) = self.control.screenshot(output) else {
+        let image = if display {
+            self.control.screenshot_display(output)
+        } else {
+            self.control.screenshot(output)
+        };
+        let Some(image) = image else {
             let (code, message) = capture_refusal(Refusal::Unavailable);
             return self.refuse(client, envelope, code, message);
         };

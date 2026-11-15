@@ -484,6 +484,8 @@ pub struct ScreenInfo {
     /// The mode being driven, as `WxH@Hz`.
     pub mode: String,
     pub scale: f64,
+    /// The supersample factor: the output is composed at this multiple of its mode.
+    pub supersample: f64,
     /// Whether the layout's primary logical monitor is on this output.
     pub primary: bool,
     /// The connector the backend knows the output by.
@@ -795,6 +797,7 @@ impl Composer {
             ("model", TreeValue::Text(info.model.clone())),
             ("mode", TreeValue::Text(info.mode.clone())),
             ("output_scale", TreeValue::Double(info.scale)),
+            ("supersample", TreeValue::Double(info.supersample)),
             ("transform", TreeValue::Text("normal".to_owned())),
             ("primary", TreeValue::Bool(info.primary)),
             ("enabled", TreeValue::Bool(info.enabled)),
@@ -7118,6 +7121,7 @@ mod tests {
             model: "HEADLESS-1".to_owned(),
             mode: "800x600@60".to_owned(),
             scale: 1.0,
+            supersample: 1.0,
             primary: true,
             connector: "HEADLESS-1".to_owned(),
             identity: String::new(),
@@ -7137,6 +7141,7 @@ mod tests {
         assert_eq!(composer.scene.text(node, "model"), Some("HEADLESS-1"));
         assert_eq!(composer.scene.text(node, "mode"), Some("800x600@60"));
         assert_eq!(composer.scene.number(node, "output_scale"), Some(1.0));
+        assert_eq!(composer.scene.number(node, "supersample"), Some(1.0));
         assert_eq!(composer.scene.value(node, "primary"), Some(&TreeValue::Bool(true)));
         composer.take_tree_changes();
         composer.set_output_info(output, &info);
@@ -7150,6 +7155,21 @@ mod tests {
                 key: "primary".to_owned(),
                 value: TreeValue::Bool(false),
             }]
+        );
+
+        let supersampled = ScreenInfo {
+            supersample: 2.0,
+            ..demoted
+        };
+        composer.set_output_info(output, &supersampled);
+        assert_eq!(
+            composer.take_tree_changes(),
+            vec![TreeChange::Set {
+                node,
+                key: "supersample".to_owned(),
+                value: TreeValue::Double(2.0),
+            }],
+            "the factor is published on the screen node when it changes"
         );
     }
 

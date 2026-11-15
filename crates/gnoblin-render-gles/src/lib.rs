@@ -260,6 +260,11 @@ impl Gles {
         self.device.is_software()
     }
 
+    /// The largest texture edge the driver accepts, in pixels: the most a target of this renderer can be across.
+    pub fn max_texture_size(&mut self) -> u32 {
+        self.device.max_texture_size()
+    }
+
     /// The rasteriser the driver reports, for a log line and a test's failure message.
     pub fn driver(&mut self) -> String {
         self.device.renderer_name()

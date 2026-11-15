@@ -589,6 +589,15 @@ impl<T: Transport> Client<T> {
         self.await_reply(correlation)
     }
 
+    /// [`Client::capture_screen`] for the frame as the display shows it: the composed frame averaged down to the
+    /// output's mode. It is the same picture when the output is not supersampled.
+    pub fn capture_screen_display(&mut self) -> Result<Vec<u8>, ClientError> {
+        let correlation = self.next_id();
+        let frame = wire::capture_screen_display(correlation);
+        self.send(&frame)?;
+        self.await_reply(correlation)
+    }
+
     /// Tell the compositor the user approved remote desktop session `session` for
     /// `devices` (the portal's bitmask: 1 keyboard, 2 pointer, 4 touch screen), so the
     /// session's EIS connection may inject them. Privileged: the portal role.

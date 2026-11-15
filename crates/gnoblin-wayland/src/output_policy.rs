@@ -52,6 +52,8 @@ pub(crate) struct OutputShadow {
     pub(crate) mode: DisplayMode,
     /// The scale the output composes at.
     pub(crate) scale: gnoblin_types::Scale,
+    /// The supersample factor the output composes at.
+    pub(crate) supersample: gnoblin_types::Scale,
 }
 
 /// Where the answer to a queued `apply` goes.
@@ -227,15 +229,21 @@ fn attribute(error: &LayoutError, change: &ProfileChange) -> Option<&'static str
     }
 }
 
-/// The mode and scale an output is driven at under `profile`: what it names, and what the backend already drives
-/// for anything it leaves open. A mirror keeps what it drives, because it shows its source's picture at its own size.
-fn wanted(output: &Output, profile: Option<&OutputProfile>) -> (DisplayMode, gnoblin_types::Scale) {
+/// The mode, scale and supersample factor an output is driven at under `profile`: what it names, and what the backend
+/// already drives for anything it leaves open. A mirror keeps what it drives, because it shows its source's picture at
+/// its own size. A profile that names no supersample factor means none: the factor is part of what a profile decides,
+/// so a profile made by a mode change leaves the output unsupersampled.
+fn wanted(
+    output: &Output,
+    profile: Option<&OutputProfile>,
+) -> (DisplayMode, gnoblin_types::Scale, gnoblin_types::Scale) {
     match profile {
         Some(profile) if profile.mirror_of.is_none() => (
             profile.mode.unwrap_or(output.mode),
             profile.scale.unwrap_or(output.scale),
+            profile.supersample.unwrap_or(gnoblin_types::Scale::IDENTITY),
         ),
-        _ => (output.mode, output.scale),
+        _ => (output.mode, output.scale, output.supersample),
     }
 }
 
@@ -366,7 +374,7 @@ impl State {
         let descriptors: Vec<OutputDescriptor> = outputs
             .iter()
             .map(|candidate_output| {
-                let (mode, scale) = wanted(candidate_output, candidate.find(sighting(candidate_output)));
+                let (mode, scale, _) = wanted(candidate_output, candidate.find(sighting(candidate_output)));
                 let mut descriptor =
                     OutputDescriptor::new(candidate_output.id, candidate_output.connector.clone(), vec![mode]);
                 descriptor.scales = vec![scale];
@@ -380,17 +388,35 @@ impl State {
             });
         }
 
+        // A factor has to give a whole virtual size within the renderer's limit, and the message names the numbers,
+        // so it is checked here, before the backend is asked.
+        for candidate_output in &outputs {
+            let (mode, _, supersample) = wanted(candidate_output, candidate.find(sighting(candidate_output)));
+            if supersample.is_identity() {
+                continue;
+            }
+            let limit = backend.max_virtual_edge(candidate_output.id);
+            if let Err(error) = gnoblin_output::supersample::virtual_size(mode, supersample, limit) {
+                return Err(format!("supersample: {}: {error}", candidate_output.connector));
+            }
+        }
+
         let steps: Vec<OutputChange> = outputs
             .iter()
             .filter_map(|candidate_output| {
-                let (mode, scale) = wanted(candidate_output, candidate.find(sighting(candidate_output)));
-                (mode != candidate_output.mode || scale != candidate_output.scale).then_some(OutputChange {
-                    id: candidate_output.id,
-                    mode,
-                    before_mode: candidate_output.mode,
-                    before: candidate_output.scale,
-                    after: scale,
-                })
+                let (mode, scale, supersample) = wanted(candidate_output, candidate.find(sighting(candidate_output)));
+                (mode != candidate_output.mode
+                    || scale != candidate_output.scale
+                    || supersample != candidate_output.supersample)
+                    .then_some(OutputChange {
+                        id: candidate_output.id,
+                        mode,
+                        before_mode: candidate_output.mode,
+                        before: candidate_output.scale,
+                        after: scale,
+                        before_supersample: candidate_output.supersample,
+                        supersample,
+                    })
             })
             .collect();
         let name = |id: OutputId| {
@@ -401,28 +427,39 @@ impl State {
         };
         let key = if changes.iter().any(|(_, change)| change.mode.is_some()) {
             "mode"
+        } else if changes.iter().any(|(_, change)| change.supersample.is_some()) {
+            "supersample"
         } else {
             "scale"
         };
         if !steps.is_empty() && !backend.output_controls().configure {
-            return Err(format!("{key}: this backend cannot change an output's mode or scale"));
+            return Err(format!(
+                "{key}: this backend cannot change an output's mode, scale or supersample factor"
+            ));
         }
         // Every change is tested before the first is driven, so a configuration one output cannot take is refused
         // without any output having flickered through a modeset it then has to undo.
         for step in &steps {
             backend
-                .test_output(step.id, step.mode, step.after)
+                .test_output(step.id, step.mode, step.after, step.supersample)
                 .map_err(|error| format!("{key}: {}: the backend refused the change: {error}", name(step.id)))?;
         }
         if test_only {
             return Ok(());
         }
-        if let Err(failure) = apply_in_order(&steps, |id, mode, scale| {
+        if let Err(failure) = apply_in_order(&steps, |id, mode, scale, supersample| {
             backend
-                .configure_output(id, mode, scale)
+                .configure_output(id, mode, scale, supersample)
                 .map_err(|error| error.to_string())
         }) {
             return Err(format!("{key}: {}", failure.describe(name)));
+        }
+        for (_, change) in changes {
+            if let Some(Some(supersample)) = change.supersample
+                && let Some(notice) = gnoblin_output::supersample::notice(supersample)
+            {
+                log::warn!(area = "output", "{notice}");
+            }
         }
         self.output_policy.profiles = candidate;
         self.sync_outputs(backend.outputs());
@@ -445,20 +482,24 @@ impl State {
             })
             .filter_map(|candidate| {
                 let profile = self.output_policy.profiles.find(sighting(candidate));
-                let (mode, scale) = wanted(candidate, profile);
-                (mode != candidate.mode || scale != candidate.scale).then_some(OutputChange {
-                    id: candidate.id,
-                    mode,
-                    before_mode: candidate.mode,
-                    before: candidate.scale,
-                    after: scale,
-                })
+                let (mode, scale, supersample) = wanted(candidate, profile);
+                (mode != candidate.mode || scale != candidate.scale || supersample != candidate.supersample).then_some(
+                    OutputChange {
+                        id: candidate.id,
+                        mode,
+                        before_mode: candidate.mode,
+                        before: candidate.scale,
+                        after: scale,
+                        before_supersample: candidate.supersample,
+                        supersample,
+                    },
+                )
             })
             .collect();
         for step in steps {
-            if let Err(failure) = apply_in_order(&[step], |id, mode, scale| {
+            if let Err(failure) = apply_in_order(&[step], |id, mode, scale, supersample| {
                 backend
-                    .configure_output(id, mode, scale)
+                    .configure_output(id, mode, scale, supersample)
                     .map_err(|error| error.to_string())
             }) {
                 log::warn!(area = "output", reason = %failure.reason, "a stored mode could not be restored");

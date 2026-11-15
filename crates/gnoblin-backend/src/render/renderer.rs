@@ -184,6 +184,15 @@ impl AnyRenderer {
         }
     }
 
+    /// The largest edge, in pixels, this renderer's buffer can have. Only a GPU renderer has a texture limit; the
+    /// software renderer's buffer is bounded by memory, which the compositor's own virtual-size limit bounds.
+    pub fn max_texture_size(&mut self) -> u32 {
+        match self {
+            Self::Gles(gles) => gles.max_texture_size(),
+            _ => u32::MAX,
+        }
+    }
+
     /// Draws a frame, repainting only its damage.
     ///
     /// # Errors

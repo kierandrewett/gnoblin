@@ -462,9 +462,22 @@ pub fn portal_cancel(request_id: u64) -> Envelope {
     Envelope::request(NAMESPACE, member::PORTAL_CANCEL, request_id, Vec::new())
 }
 
+/// The payload of a `capture.screen` request for the frame as the display shows it. An empty payload asks for the
+/// frame the compositor composed.
+pub const CAPTURE_DISPLAY: &[u8] = b"display";
+
 /// A request for one still picture of an output, answered with the PNG. Privileged.
+///
+/// The picture is the frame the compositor composed: an output composed at a multiple of its mode (supersampling)
+/// gives a picture of that many times the pixels.
 pub fn capture_screen(request_id: u64) -> Envelope {
     Envelope::request(NAMESPACE, member::CAPTURE_SCREEN, request_id, Vec::new())
+}
+
+/// [`capture_screen`] for the frame as the display shows it: averaged down to the output's mode, which is the same
+/// picture when the output is not supersampled.
+pub fn capture_screen_display(request_id: u64) -> Envelope {
+    Envelope::request(NAMESPACE, member::CAPTURE_SCREEN, request_id, CAPTURE_DISPLAY.to_vec())
 }
 
 /// The user approved a remote desktop session for these devices. Privileged: the portal

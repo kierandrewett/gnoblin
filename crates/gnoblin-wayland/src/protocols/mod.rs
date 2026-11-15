@@ -35,6 +35,7 @@
 //! | [`zwp_pointer_gestures_v1`] | `zwp_pointer_gestures_v1` | creates the gesture objects |
 //! | [`wp_presentation_time`] | `wp_presentation` | answers feedback with the frame's present time |
 //! | [`zwp_relative_pointer_v1`] | `zwp_relative_pointer_manager_v1` | the vector motion a locked pointer reports |
+//! | [`zxdg_output_v1`] | `zxdg_output_manager_v1` | the logical size and place of each output, from the layout, so a supersampled output keeps its logical size |
 //! | [`wl_seat`] | `wl_seat` | keyboard and pointer focus over surfaces |
 //! | [`wp_security_context_v1`] | `wp_security_context_v1` | application sandboxes, marked before their first request |
 //! | [`wl_data_device_manager`] | `wl_data_device_manager` | the clipboard and what follows focus |
@@ -169,3 +170,5 @@ pub mod zwp_text_input_v3;
 pub mod zwp_virtual_keyboard_v1;
 /// `zxdg_decoration_manager_v1`: the client's server-side decoration preference.
 pub mod zxdg_decoration_v1;
+/// `zxdg_output_manager_v1`: the logical size and place of an output, from the layout rather than the mode.
+pub mod zxdg_output_v1;

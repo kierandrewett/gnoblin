@@ -46,6 +46,9 @@ pub struct OutputProfile {
     pub mode: Option<DisplayMode>,
     /// The scale, or `None` for the default.
     pub scale: Option<Scale>,
+    /// The supersample factor: the output is composed at this multiple of its mode and shown at the mode, or
+    /// `None` for no supersampling (a factor of one). See [`crate::supersample`].
+    pub supersample: Option<Scale>,
     /// The rotation or reflection.
     pub orientation: Orientation,
     /// The logical position, or `None` to follow the row.
@@ -64,6 +67,7 @@ impl OutputProfile {
             enabled: true,
             mode: None,
             scale: None,
+            supersample: None,
             orientation: Orientation::Normal,
             position: None,
             mirror_of: None,
@@ -78,6 +82,9 @@ impl OutputProfile {
         }
         if let Some(scale) = change.scale {
             self.scale = scale;
+        }
+        if let Some(supersample) = change.supersample {
+            self.supersample = supersample;
         }
         if let Some(orientation) = change.orientation {
             self.orientation = orientation;
@@ -103,6 +110,8 @@ pub struct ProfileChange {
     pub mode: Option<Option<DisplayMode>>,
     /// The scale.
     pub scale: Option<Option<Scale>>,
+    /// The supersample factor.
+    pub supersample: Option<Option<Scale>>,
     /// The rotation or reflection.
     pub orientation: Option<Orientation>,
     /// The logical position.
@@ -149,6 +158,15 @@ fn parse_scale(text: &str) -> Result<Option<Scale>, ProfileError> {
     Ok(Some(Scale::from_percent((value * 100.0).round() as u32)))
 }
 
+/// A factor of one is no supersampling, so it is kept as the default and two spellings of "off" are one profile.
+fn parse_supersample(text: &str) -> Result<Option<Scale>, ProfileError> {
+    if text == "default" {
+        return Ok(None);
+    }
+    let factor = crate::supersample::parse_factor(text).map_err(|error| bad("supersample", error.to_string()))?;
+    Ok((!factor.is_identity()).then_some(factor))
+}
+
 fn parse_orientation(text: &str) -> Result<Orientation, ProfileError> {
     Ok(match text {
         "normal" => Orientation::Normal,
@@ -177,8 +195,8 @@ fn parse_position(text: &str) -> Result<Option<(i32, i32)>, ProfileError> {
 
 impl ProfileChange {
     /// Reads a request: one `key=value` per line. Keys are `mode` (`WxH@Hz` or `preferred`), `scale` (a number or
-    /// `default`), `transform`, `position` (`X,Y` or `auto`), `enabled` (`true` or `false`) and `mirror_of`
-    /// (a connector, or empty for none).
+    /// `default`), `supersample` (a number from 1 to 16 or `default`), `transform`, `position` (`X,Y` or `auto`),
+    /// `enabled` (`true` or `false`) and `mirror_of` (a connector, or empty for none).
     ///
     /// # Errors
     ///
@@ -193,6 +211,7 @@ impl ProfileChange {
             match key {
                 "mode" => change.mode = Some(parse_mode(value)?),
                 "scale" => change.scale = Some(parse_scale(value)?),
+                "supersample" => change.supersample = Some(parse_supersample(value)?),
                 "transform" => change.orientation = Some(parse_orientation(value)?),
                 "position" => change.position = Some(parse_position(value)?),
                 "enabled" => {

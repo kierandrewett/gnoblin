@@ -173,3 +173,54 @@ fn an_overlap_from_a_stored_position_is_still_refused_by_name() {
     .expect_err("two outputs at the origin overlap");
     assert!(matches!(error, LayoutError::Overlap { .. }));
 }
+
+#[test]
+fn a_supersample_factor_is_read_and_one_is_the_default() {
+    let change = ProfileChange::parse("supersample=2").expect("a factor");
+    assert_eq!(change.supersample, Some(Some(Scale::integral(2))));
+    assert_eq!(
+        ProfileChange::parse("supersample=1.5").expect("odd").supersample,
+        Some(Some(Scale::new(3, 2)))
+    );
+    // One is no supersampling, so "1" and "default" are the same profile.
+    assert_eq!(
+        ProfileChange::parse("supersample=1").expect("one").supersample,
+        Some(None)
+    );
+    assert_eq!(
+        ProfileChange::parse("supersample=default").expect("reset").supersample,
+        Some(None)
+    );
+    for text in [
+        "supersample=0.5",
+        "supersample=NaN",
+        "supersample=17",
+        "supersample=-2",
+        "supersample=two",
+    ] {
+        let error = ProfileChange::parse(text).expect_err(text);
+        assert!(
+            matches!(error, ProfileError::BadValue { ref key, .. } if key == "supersample"),
+            "{text}: {error}"
+        );
+    }
+}
+
+#[test]
+fn a_supersample_factor_is_kept_in_the_profile_and_changes_no_layout() {
+    let mut store = ProfileStore::new();
+    let plain = compute(&[descriptor(1, "DP-1", FHD)], &store.layout(&[sighting("DP-1", None)])).expect("the row");
+    let profile = OutputProfile::new("DP-1", None).with(&ProfileChange::parse("supersample=2").expect("a factor"));
+    assert_eq!(profile.supersample, Some(Scale::integral(2)));
+    store.keep(profile);
+    let supersampled =
+        compute(&[descriptor(1, "DP-1", FHD)], &store.layout(&[sighting("DP-1", None)])).expect("the same row");
+    assert_eq!(
+        supersampled.monitors[0].rect, plain.monitors[0].rect,
+        "supersampling composes at more pixels and shows the same logical monitor"
+    );
+    assert_eq!(
+        store.find(sighting("DP-1", None)).map(|kept| kept.supersample),
+        Some(Some(Scale::integral(2)))
+    );
+}

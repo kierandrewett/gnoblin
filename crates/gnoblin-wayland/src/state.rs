@@ -217,8 +217,10 @@ pub(crate) struct OutputEntry {
     pub(crate) backend: OutputId,
     /// The mode being driven, as the backend reported it.
     pub(crate) mode: gnoblin_output::DisplayMode,
-    /// The scale the output composes at.
+    /// The scale the output composes at, before supersampling: the one the layout derives its logical size from.
     pub(crate) scale: gnoblin_types::Scale,
+    /// The supersample factor the output composes at. Clients are told `scale * supersample`.
+    pub(crate) supersample: gnoblin_types::Scale,
     /// Whether this output carries the layout's primary logical monitor.
     pub(crate) primary: bool,
     /// The Smithay output, which owns the `wl_output` global.
@@ -267,9 +269,14 @@ pub struct State {
     /// Whether a popup committed since the last frame, so its frame callbacks are answered at the end of this
     /// iteration even when no frame was drawn.
     pub(crate) callbacks_due: bool,
-    /// Kept alive so the `zxdg_output_manager_v1` global stays registered.
+    /// Kept alive so the `wl_output` machinery stays registered. The `zxdg_output_manager_v1` global is not
+    /// Smithay's: see [`crate::protocols::zxdg_output_v1`].
     #[allow(dead_code)]
     pub(crate) output_manager_state: OutputManagerState,
+    /// The `zxdg_output_v1` objects clients hold.
+    pub(crate) xdg_outputs: crate::protocols::zxdg_output_v1::XdgOutputs,
+    /// The surfaces that have a `wp_fractional_scale_v1` object, so an output's new scale can be sent to them.
+    pub(crate) fractional_surfaces: Vec<WlSurface>,
     /// Kept alive so the `zxdg_decoration_manager_v1` global stays registered; the
     /// handler in [`crate::protocols::zxdg_decoration_v1`] answers its requests.
     #[allow(dead_code)]
@@ -632,7 +639,8 @@ impl State {
         let compositor_state = CompositorState::new::<Self>(&display_handle);
         let xdg_shell_state = XdgShellState::new::<Self>(&display_handle);
         let shm_state = ShmState::new::<Self>(&display_handle, Vec::new());
-        let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&display_handle);
+        let output_manager_state = OutputManagerState::new();
+        crate::protocols::zxdg_output_v1::global(&display_handle);
         crate::protocols::wp_viewporter::create_global(&display_handle);
         let decoration_state = XdgDecorationState::new::<Self>(&display_handle);
         // The lock global is advertised to every client: the standard protocol makes
@@ -770,6 +778,8 @@ impl State {
             surface_trees: crate::surface_tree::SurfaceTrees::default(),
             callbacks_due: false,
             output_manager_state,
+            xdg_outputs: crate::protocols::zxdg_output_v1::XdgOutputs::default(),
+            fractional_surfaces: Vec::new(),
             decoration_state,
             decorations_seen: false,
             session_lock_state,
@@ -1342,6 +1352,7 @@ impl State {
                 logical: output.logical_size(),
                 mode: output.mode,
                 scale: output.scale,
+                supersample: output.supersample,
             })
             .collect();
         for shadow in &shadows {
@@ -1383,6 +1394,7 @@ impl State {
             model: connector.clone(),
             mode: mode_text(shadow.mode),
             scale: shadow.scale.as_f64(),
+            supersample: shadow.supersample.as_f64(),
             primary: false,
             connector,
             identity,
@@ -1454,12 +1466,12 @@ impl State {
         smithay_output.change_current_state(
             Some(mode),
             Some(Transform::Normal),
-            Some(Self::smithay_scale(output.scale)),
+            Some(Self::smithay_scale(output.effective_scale())),
             Some(SmithayPoint::from((rect.x, rect.y))),
         );
         let global = smithay_output.create_global::<Self>(&self.display_handle);
 
-        self.composer.set_output_scale(output.id, output.scale);
+        self.composer.set_output_scale(output.id, output.effective_scale());
         self.composer.set_output(output.id, rect);
         log::debug!(area = "output", connector = %output.connector, ?rect, "connected");
         self.outputs.push(OutputEntry {
@@ -1468,6 +1480,7 @@ impl State {
             global,
             mode: output.mode,
             scale: output.scale,
+            supersample: output.supersample,
             primary: false,
             rect,
         });
@@ -1485,14 +1498,23 @@ impl State {
         };
         entry.mode = output.mode;
         entry.scale = output.scale;
+        entry.supersample = output.supersample;
         let backend = entry.backend;
+        let scale_changed =
+            (entry.output.current_scale().fractional_scale() - output.effective_scale().as_f64()).abs() > f64::EPSILON;
+        // Clients are told the scale the output composes at: the user's scale times the supersample factor. The
+        // logical size does not depend on the factor, so a change of it moves no rectangle.
         entry.output.change_current_state(
             Some(smithay_mode(output)),
             None,
-            Some(Self::smithay_scale(output.scale)),
+            Some(Self::smithay_scale(output.effective_scale())),
             None,
         );
-        self.composer.set_output_scale(backend, output.scale);
+        self.composer.set_output_scale(backend, output.effective_scale());
+        if scale_changed {
+            // `wp_fractional_scale_v1` objects are told at their creation only, so the ones that exist hear it now.
+            self.refresh_preferred_scales();
+        }
         self.move_output(index, rect);
         self.publish_screen(backend);
     }
@@ -1513,6 +1535,7 @@ impl State {
             model: physical.model,
             mode: mode_text(entry.mode),
             scale: entry.scale.as_f64(),
+            supersample: entry.supersample.as_f64(),
             primary: entry.primary,
             connector: entry.output.name(),
             identity,
@@ -1531,10 +1554,10 @@ impl State {
             return;
         }
         entry.rect = rect;
-        entry
-            .output
-            .change_current_state(None, None, None, Some(SmithayPoint::from((rect.x, rect.y))));
-        let backend = entry.backend;
+        let (backend, output) = (entry.backend, entry.output.clone());
+        // The `xdg_output` events come first: the state change sends `wl_output.done`, which has to end the update.
+        self.update_xdg_outputs(backend, rect);
+        output.change_current_state(None, None, None, Some(SmithayPoint::from((rect.x, rect.y))));
         self.composer.set_output(backend, rect);
         let effects = self.fallback.output_moved(backend, rect);
         self.apply_decided(effects);

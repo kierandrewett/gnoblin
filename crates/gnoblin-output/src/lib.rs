@@ -113,6 +113,7 @@ mod model;
 mod output;
 mod physical;
 mod profile;
+pub mod supersample;
 mod transaction;
 
 /// EDID parsing: what a monitor reports about itself, and why a bad block is refused.

@@ -188,6 +188,10 @@ pub struct Output {
     pub mode: DisplayMode,
     /// The scale the output composes at.
     pub scale: Scale,
+    /// The supersample factor: the output is composed on a virtual surface of `mode * supersample` pixels at the
+    /// compositing scale `scale * supersample` and shown at `mode`. One is no supersampling. The logical size does
+    /// not depend on it. See `design/supersample.md`.
+    pub supersample: Scale,
     /// The monitor's EDID identity (`MAN:product:serial`), or `None` for an output that reports none. A saved profile
     /// is keyed by the connector and this, so a different panel on the same port does not inherit it.
     pub identity: Option<String>,
@@ -202,6 +206,7 @@ impl Output {
             connector: connector.into(),
             mode,
             scale,
+            supersample: Scale::IDENTITY,
             identity: None,
         }
     }
@@ -211,6 +216,42 @@ impl Output {
     pub fn with_identity(mut self, identity: Option<String>) -> Self {
         self.identity = identity;
         self
+    }
+
+    /// The same output composed at `supersample` times its mode.
+    #[must_use]
+    pub fn with_supersample(mut self, supersample: Scale) -> Self {
+        self.supersample = supersample;
+        self
+    }
+
+    /// The scale the output is composed at: the user's scale times the supersample factor. Clients are told this
+    /// scale, and it is what maps a logical rectangle to a pixel of the virtual surface.
+    #[must_use]
+    pub fn effective_scale(&self) -> Scale {
+        self.scale.product(self.supersample)
+    }
+
+    /// The size of the surface the output is composed on: the mode times the supersample factor, which is the mode
+    /// itself when there is no supersampling.
+    #[must_use]
+    pub fn virtual_size(&self) -> Size {
+        Self::virtual_extent(self.mode, self.supersample)
+    }
+
+    /// `mode` times `supersample`, in pixels. A factor that does not give a whole size is refused before an output
+    /// is driven at it ([`gnoblin_output::supersample::virtual_size`]); rounding here only keeps a stale value from
+    /// panicking.
+    #[must_use]
+    pub fn virtual_extent(mode: DisplayMode, supersample: Scale) -> Size {
+        let denominator = u64::from(supersample.denominator());
+        let axis = |extent: u32| {
+            let scaled = u64::from(extent) * u64::from(supersample.numerator());
+            u32::try_from((scaled + denominator / 2) / denominator)
+                .unwrap_or(u32::MAX)
+                .max(1)
+        };
+        Size::new(axis(mode.width), axis(mode.height))
     }
 
     /// The logical extent the mode and scale produce.
@@ -638,14 +679,16 @@ pub enum BackendEvent {
     OutputConnected(Output),
     /// An output went away.
     OutputDisconnected(OutputId),
-    /// An output's mode or scale changed.
+    /// An output's mode, scale or supersample factor changed.
     OutputResized {
         /// The output that changed.
         output: OutputId,
         /// The mode it is in now.
         mode: DisplayMode,
-        /// The scale it composes at now.
+        /// The scale it composes at now, before supersampling.
         scale: Scale,
+        /// The supersample factor it composes at now.
+        supersample: Scale,
     },
     /// The backend lost the connection to whatever drives it, so every output it
     /// reported is gone and none can come back.
@@ -898,20 +941,56 @@ pub trait Backend<S: Host + 'static> {
         Err(BackendError::Unsupported(output))
     }
 
-    /// Drive `output` at `mode` and `scale`. Backends that cannot re-mode a live output
-    /// refuse, which is the default. A backend that can reports [`OutputControls::configure`].
+    /// Drive `output` at `mode`, `scale` and `supersample`. Backends that cannot re-mode a live output
+    /// refuse, which is the default. A backend that can reports [`OutputControls::configure`]. A backend that cannot
+    /// compose larger than the display refuses any factor but one.
     ///
-    /// The change is all or nothing: on `Err` the output keeps the mode and scale it had, its buffers and its
-    /// controls (gamma, power), so the caller can roll a multi-output configuration back by configuring the outputs
-    /// it already changed to what they were.
-    fn configure_output(&mut self, output: OutputId, _mode: DisplayMode, _scale: Scale) -> Result<(), BackendError> {
+    /// The change is all or nothing: on `Err` the output keeps the mode, scale, supersample factor and buffers it
+    /// had, and its controls (gamma, power), so the caller can roll a multi-output configuration back by configuring
+    /// the outputs it already changed to what they were.
+    fn configure_output(
+        &mut self,
+        output: OutputId,
+        _mode: DisplayMode,
+        _scale: Scale,
+        _supersample: Scale,
+    ) -> Result<(), BackendError> {
         Err(BackendError::Unsupported(output))
     }
 
-    /// Checks that [`Backend::configure_output`] would accept `mode` and `scale` on `output`, without changing it.
-    /// The default refuses, like `configure_output`: a backend that cannot re-mode cannot test a re-mode.
-    fn test_output(&mut self, output: OutputId, _mode: DisplayMode, _scale: Scale) -> Result<(), BackendError> {
+    /// Checks that [`Backend::configure_output`] would accept `mode`, `scale` and `supersample` on `output`, without
+    /// changing it. The default refuses, like `configure_output`: a backend that cannot re-mode cannot test a re-mode.
+    fn test_output(
+        &mut self,
+        output: OutputId,
+        _mode: DisplayMode,
+        _scale: Scale,
+        _supersample: Scale,
+    ) -> Result<(), BackendError> {
         Err(BackendError::Unsupported(output))
+    }
+
+    /// The largest virtual surface edge, in pixels, `output` can be composed at: what a supersample factor may make
+    /// of its mode. The default is the compositor's own limit ([`gnoblin_output::supersample::MAX_VIRTUAL_EDGE`]); a
+    /// renderer with a smaller texture limit answers that.
+    fn max_virtual_edge(&mut self, _output: OutputId) -> u32 {
+        gnoblin_output::supersample::MAX_VIRTUAL_EDGE
+    }
+
+    /// The last frame drawn on `output` as the display shows it: [`Backend::capture`] shown at the output's mode.
+    ///
+    /// An output with no supersampling shows the frame it composed, so this is the same image. A supersampled output
+    /// composed more pixels than its mode has, and the frame it presents is those pixels averaged down
+    /// ([`gnoblin_render_frame::image::Image::downsample`]).
+    fn capture_display(&mut self, output: OutputId, with_cursor: bool) -> Option<gnoblin_render_frame::image::Image> {
+        let mode = self.output(output)?.mode;
+        let shown = Size::new(mode.width, mode.height);
+        let picture = self.capture(output, with_cursor)?;
+        Some(if picture.size() == shown {
+            picture
+        } else {
+            picture.downsample(shown)
+        })
     }
 
     /// Every mode `output` can be driven in, the one it is driven in now included, or an empty list for an unknown
@@ -975,6 +1054,9 @@ pub enum BackendError {
     /// The backend can change the mode of a live output but has that turned off, because a mode change blanks a real
     /// display and has not been proven on one. The output keeps its mode. The text says how to turn it on.
     ModesetDisabled(OutputId, &'static str),
+    /// The output cannot be composed at that supersample factor: the backend renders no larger than its display, or
+    /// the virtual surface it needs is above what its renderer can hold. The output keeps what it had.
+    Supersample(OutputId),
 }
 
 impl fmt::Display for BackendError {
@@ -1007,6 +1089,12 @@ impl fmt::Display for BackendError {
                 write!(
                     formatter,
                     "changing the mode of output {output} is turned off on this backend ({how_to_enable}); it keeps its mode"
+                )
+            }
+            Self::Supersample(output) => {
+                write!(
+                    formatter,
+                    "the backend cannot compose output {output} at that supersample factor"
                 )
             }
             Self::InvalidGamma(output) => {

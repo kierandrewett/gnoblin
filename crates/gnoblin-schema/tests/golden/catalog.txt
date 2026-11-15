@@ -631,6 +631,7 @@ object screen since 0.2.0 secret false
   property connector type string since 0.2.0 secret false
   property identity type string since 0.2.0 secret false
   property mirror_of type string since 0.2.0 secret false
+  property supersample type double since 0.2.0 secret false
   method capture since 0.2.0 secret false function false
   method apply since 0.2.0 secret false function false
     param text type string since 0.2.0 secret false
@@ -2397,6 +2398,8 @@ message Screen {
     string identity = 36;
     // since 0.2.0
     string mirror_of = 37;
+    // since 0.2.0
+    double supersample = 38;
   }
 
   // Method `capture`, since 0.2.0.

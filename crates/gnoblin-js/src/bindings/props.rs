@@ -125,6 +125,7 @@ const SCREEN: &[JsPropDef] = &[
     def("width", JsPropKind::Double, false),
     def("height", JsPropKind::Double, false),
     def("output_scale", JsPropKind::Double, false),
+    def("supersample", JsPropKind::Double, false),
     def("transform", JsPropKind::Text, false),
     def("mode", JsPropKind::Text, false),
     def("primary", JsPropKind::Flag, false),
@@ -255,7 +256,7 @@ pub(crate) fn may_call(class: &str, method: &str) -> bool {
 pub(crate) fn default_value(def: &JsPropDef) -> MirrorValue {
     match (def.name, def.kind) {
         ("visible", _) | ("enabled", _) => MirrorValue::Bool(true),
-        ("output_scale", _) => MirrorValue::Double(1.0),
+        ("output_scale", _) | ("supersample", _) => MirrorValue::Double(1.0),
         ("transform", _) => MirrorValue::Text("normal".to_owned()),
         ("decoration", _) => MirrorValue::Text("client".to_owned()),
         ("decoration_wanted", _) => MirrorValue::Text("unset".to_owned()),
