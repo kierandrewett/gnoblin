@@ -1,0 +1,112 @@
+# Fill a window frame with your own parts
+
+Each example is a whole `startDecorations` call for `~/.config/gnoblin/init.ts`. The
+[window frame reference](/js-window-frame) names every outlet and part. A save reloads the shell and frames every window
+again, so a change shows at once.
+
+A file that never passes a `frame` callback keeps the stock titlebar. A callback runs for every window: it returns `false`
+to leave a window with no frame, and it reads `frame.server` to tell a window the shell frames from one that draws its
+own.
+
+Every example here is mounted over the fake compositor by `crates/gnoblin-js/tests/window_frame.rs`, which reads the code
+from this page.
+
+## A bar with the buttons on the left
+
+The window buttons in the traffic-light order, the title in the middle, and a bar you can drag.
+
+```ts
+import { DragArea, TitleText, WindowButtons, startDecorations } from "gnoblin";
+
+startDecorations({
+    frame(_client, frame) {
+        if (!frame.server) return false;
+        frame.top.size = 34;
+        frame.top.fill = "#2a2b3c";
+        // `start` is the left end of the top edge. It is as wide as what it holds.
+        frame.start.add(new WindowButtons(frame, { buttons: ["close", "minimise", "maximise"], gap: 8 }));
+        // `center` takes the rest. A drag area moves the window, and a double click on it does what the seat says.
+        const bar = new DragArea(frame, { grow: 1, direction: "row" });
+        bar.add(new TitleText(frame));
+        frame.center.add(bar);
+    },
+});
+```
+
+The top edge is 34 pixels, so the layouts leave 34 pixels above the content of every window. A node in an outlet reads
+the window once a frame, so the title follows a rename and the maximise button follows `maximised`.
+
+## A border and a glow without a titlebar
+
+A 2 pixel ring that follows the focus, and a soft halo behind the window. No edge is touched, so the window keeps its whole
+frame and nothing is taken from it.
+
+```ts
+import { FrameBorder, FrameGlow, startDecorations } from "gnoblin";
+
+startDecorations({
+    frame(_client, frame) {
+        // The underlay is behind the window and reaches 24 pixels past it. It takes no room and no pointer.
+        frame.underlay.bleed = 24;
+        frame.underlay.add(new FrameGlow({ color: "#000000", strength: 0.45, radius: 12 }));
+        // The overlay is in front of the window and as large as its frame.
+        frame.overlay.add(
+            new FrameBorder(frame, {
+                thickness: 2,
+                radius: 12,
+                color: (client) => (client.focused ? "#89b4fa" : "#45475a"),
+            }),
+        );
+    },
+});
+```
+
+This works for a window that draws its own frame too, because only the two layers are used. Without a titlebar a window
+moves with `Super+MouseLeft+Drag`.
+
+## A status strip at the bottom and a dock handle at the side
+
+The stock titlebar on top, a strip under the window that shows its application and size, and a handle on the right that
+resizes it.
+
+```ts
+import { ResizeHandle, Text, defaultTitlebarStyle, startDecorations, titlebarFill } from "gnoblin";
+import type { WindowFrame } from "gnoblin";
+
+// The stock fill is a function of the same shape, so it composes: call it, then add your own outlets.
+const stockTitlebar = titlebarFill(defaultTitlebarStyle);
+
+class StatusText extends Text {
+    readonly frame: WindowFrame;
+
+    constructor(frame: WindowFrame) {
+        super({ grow: 1, size: 11, color: "#a6adc8" });
+        this.frame = frame;
+    }
+
+    override refresh(): void {
+        const { client } = this.frame;
+        this.text = `${client.appId ?? "window"}  ${Math.round(client.width)} x ${Math.round(client.height ?? 0)}`;
+    }
+}
+
+startDecorations({
+    frame(client, frame) {
+        if (stockTitlebar(client, frame) === false) return false;
+        frame.bottom.size = 22;
+        frame.bottom.fill = "#181825";
+        frame.bottom.padding = 4;
+        frame.bottom.hideWhen = (window) => window.maximised;
+        frame.bottom.add(new StatusText(frame));
+        // The right edge is 12 pixels of frame that belongs to the handle. It is inside the frame, so it takes room.
+        frame.right.size = 12;
+        frame.right.fill = "#313244";
+        frame.right.add(new ResizeHandle(frame, "right", { grow: 1 }));
+    },
+});
+```
+
+The bottom and right edges take their room from the window, so a tiled window is smaller by 22 pixels below and 12 on the
+right, and the strip gives its 22 pixels back while the window is maximised.
+
+See [resize handles outside the frame](/js-window-frame#resize-handles) for handles that take no room.

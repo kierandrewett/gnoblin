@@ -19,6 +19,8 @@ A save reloads the running shell, and `gnoblinctl config reload` does it on requ
 - [Organize a growing config](/recipes/organize-config-files): split window placement and shortcuts into imported files.
 - [Route new app windows to named workspaces](/recipes/put-apps-on-named-workspaces): send new editor, browser and chat
   windows to stable workspace IDs.
+- [Fill a window frame with your own parts](/recipes/window-frame): put the buttons on the left, draw a border and a
+  glow with no titlebar, or add a status strip and a resize handle.
 
 See the [shell API](/shell-api) for the objects and the [configuration guides](/guides/window_rules) for behaviour and
 tradeoffs. The cursor theme, pointer feedback and tablet settings cannot be set from `init.ts`, so they have no recipe.

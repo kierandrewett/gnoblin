@@ -84,6 +84,9 @@ Pointer events are handled by methods on a canvas:
 - `onPress`, `onRelease`, `onMotion`, `onScroll`, `onEnter` and `onLeave` take the event.
 - An event goes to the canvas the pointer is over, then up through its parents until a handler calls `event.stop()`.
 - The event's `x` and `y` are in the coordinates of the canvas whose handler runs.
+- A press on a canvas holds it until that button is released: it hears the motion and the release wherever the pointer
+  goes, with `x` and `y` outside its rectangle, and nothing else hears the pointer meanwhile. A window is not held, because
+  its client hears the pointer itself.
 
 A key goes to the canvas that holds the keyboard focus, then up through its parents, in `onKey(event)`:
 
@@ -95,9 +98,12 @@ A key goes to the canvas that holds the keyboard focus, then up through its pare
 
 ## Titlebar
 
-After `startDecorations()` a window that takes the shell's frame gets a `Titlebar`, a canvas under the
-window's node. The starter calls it. A file that does not call it has no titlebars. A window that draws its
+After `startDecorations()` a window that takes the shell's frame gets a `WindowFrame`, and the stock fill puts a `Titlebar`
+in its top outlet. The starter calls it. A file that does not call it has no titlebars. A window that draws its
 own title bar gets none (see "Who draws the frame" below).
+
+To make a different frame, fill the outlets yourself with [the window frame](/js-window-frame). The
+[recipes](/recipes/window-frame) show three.
 
 The bar is a `Box` row: a drag area that holds the title, then the minimise, maximise and close buttons. It follows its
 window:
@@ -145,8 +151,8 @@ Scripts read it from the client:
 - `client.decorationWanted` is what the client asked for: `client`, `server`, or `unset`.
 - `ClientListener.onDecorationChanged` hears the answer change.
 
-`Decorations` mounts a `Titlebar` only on a `server` window, and takes it away from a window whose answer changes to
-anything else. A `client` window never shows a second bar over its own.
+`Decorations` makes a server frame, and fills it with a `Titlebar`, only on a `server` window. It makes it again for a window
+whose answer changes. A `client` window never shows a second bar over its own: it has the underlay and the overlay only.
 
 The shell declares that it draws decorations by writing the seat's `decorations_available`:
 
@@ -158,28 +164,31 @@ The shell declares that it draws decorations by writing the seat's `decorations_
 - A change reaches the windows that already exist. A reload whose file does not call `startDecorations()` gives each window that asked for
   the shell's bar its own back, and a reload whose file calls it gives the bar again.
 
-### The room above the client
+### The room round the client
 
-The stock library gives a server-decorated window's bar room of its own instead of drawing over the client:
+The stock library gives a server-decorated window's frame room of its own instead of drawing over the client:
 
-- The bar is a child of the window's node at `y = -height`: it lies above the node, never over it.
-- `client.bounds` (and `x`, `y`, `width` and `height`) is the content's rectangle. The frame is the content with the bar
-  on top, and `client.frameInset` is the bar's height. It is 0 for a window with no bar: one that draws its own frame, or
-  that is fullscreen.
-- A layout places frames. The layout driver writes a placement `y` plus the inset and a height minus the inset, so a
-  tiled window's bar is on its tile. Floating placement places the frame and puts the content below the bar. Dragging
-  keeps the frame inside the work area, so a bar is never lost off the top, and an edge snap tiles the frame.
+- A frame is a `WindowFrame`: a node under the window's node for each outlet the script reads. The stock titlebar is a
+  child of the `top` outlet, which lies above the window's node at `y = -height` and never over it. See
+  [the window frame](/js-window-frame).
+- `client.bounds` (and `x`, `y`, `width` and `height`) is the content's rectangle. The frame is the content with its
+  inset round it, and `client.frameInset` is that inset: `{ top, right, bottom, left }`. It is all zero for a window with no
+  frame: one that draws its own frame, or that is fullscreen. For the stock titlebar only `top` is more than 0.
+- A layout places frames. The layout driver gives a tile to the frame and the content is what the four sides leave.
+  Floating placement places the frame and puts the content inside it. Dragging keeps the frame inside the work area, so an
+  edge is never lost off the screen, and an edge snap tiles the frame.
 - A window the compositor maximises or makes fullscreen is sized by the compositor. A maximise through the titlebar or
-  the menu goes through the shell, which leaves the bar its room.
-- The frame keeps its place when the bar comes or goes. A bar can arrive after the window was placed: the window mapped
-  before the shell declared decorations, a reload turned them on, or the compositor changed the window's `decoration`.
-    - The content moves down by the bar when it comes and up by it when it goes, so the bar is never drawn above the top of
-      the work area. The frame is clamped inside the area.
+  the menu goes through the shell, which leaves the frame its room.
+- The frame keeps its place when it comes, goes or changes. A frame can arrive after the window was placed: the window
+  mapped before the shell declared decorations, a reload turned them on, or the compositor changed the window's
+  `decoration`.
+    - The content moves in by what the top and left gained and out by what they lost, so no outlet is drawn off the
+      work area. The frame is clamped inside the area.
     - A maximised window fills the area again, a snapped one tiles to its zone again, and a tiled one is placed again by its
       layout.
     - The rectangles a window returns to follow. A fullscreen window is left alone and fitted when it leaves.
 
-To have no bar on any window, leave `startDecorations()` out of your file.
+To have no frame on any window, leave `startDecorations()` out of your file.
 
 ## Entry, Clock and Bar
 
@@ -251,6 +260,6 @@ The consent and passphrase dialogs are not here: the compositor draws them, and 
 
 ## What is not done
 
-- Dragging a titlebar with a real pointer. It moves the window by how far the pointer is from where it was pressed, and
-  has been tested against a fake compositor only. A right click on the bar is proved on the real compositor.
+- A right click on the titlebar and a drag of a resize handle are proved on the real compositor. A drag of the titlebar
+  itself has been tested against a fake compositor only.
 - A fade on close for a window the client closes itself.

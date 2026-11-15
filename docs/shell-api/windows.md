@@ -43,32 +43,32 @@ const titles = gnoblin.clients.map((client) => client.title);
 A read gives the state the compositor last published. A write asks the compositor to change it, and the next read shows
 the result. Coordinates are logical pixels in the compositor's space, and an output further right starts at a larger `x`.
 
-| Property                    | Type                | Meaning                                                                             |
-| --------------------------- | ------------------- | ----------------------------------------------------------------------------------- |
-| `id`                        | string              | The window's identity, stable while it lives. What `get(id)` takes.                 |
-| `alive`                     | boolean             | `false` once the window closed.                                                     |
-| `appId`                     | string              | The application id the client set. Empty when it set none.                          |
-| `title`                     | string              | The window title.                                                                   |
-| `focused`                   | boolean             | Whether the window holds the keyboard focus. Read-only.                             |
-| `x`, `y`, `width`, `height` | number              | The window geometry, shadow left out. A write moves or resizes it.                  |
-| `bounds`                    | `Rect`              | `{ x, y, width, height }` of the window geometry. A write sets all four.            |
-| `maximised`                 | boolean             | Whether the window is maximised. A write maximises or restores it.                  |
-| `minimised`                 | boolean             | Whether the window is hidden by minimising. A write hides or shows it.              |
-| `fullscreen`                | boolean             | Whether the window covers its output. A write enters or leaves it.                  |
-| `floating`                  | boolean             | A floating window is left out of its workspace's tiling.                            |
-| `tiled`                     | boolean             | Whether the window sits in a tiled layout.                                          |
-| `visible`                   | boolean             | Whether the window is drawn.                                                        |
-| `opacity`                   | number              | 0 (invisible) to 1 (opaque). The compositor clamps other values.                    |
-| `z`                         | number              | The window's place in depth. Negative is in front of the camera.                    |
-| `rotation`, `scale`         | `[x, y, z]` numbers | Rotation about each axis in radians, and the scale along each axis.                 |
-| `secure`                    | boolean             | `true` keeps the window out of screen captures.                                     |
-| `unresponsive`              | boolean             | The client left a liveness ping unanswered too long. Read-only.                     |
-| `workspace`                 | `Workspace` or null | The workspace the window is on. Read-only: use `moveToWorkspace`.                   |
-| `output`                    | `Output` or null    | The output that shows the window's workspace. Read-only.                            |
-| `parentWindow`              | `Client` or null    | The window this one is a dialog of.                                                 |
-| `fromLauncher`              | boolean             | The window opened on a token the session's launcher minted.                         |
-| `frameInset`                | number              | Pixels a titlebar takes above `bounds`. 0 with no bar.                              |
-| `style`, `computedStyle`    | styles              | What this window overrides, and what it resolves to. See [window style](/js-style). |
+| Property                    | Type                | Meaning                                                                                         |
+| --------------------------- | ------------------- | ----------------------------------------------------------------------------------------------- |
+| `id`                        | string              | The window's identity, stable while it lives. What `get(id)` takes.                             |
+| `alive`                     | boolean             | `false` once the window closed.                                                                 |
+| `appId`                     | string              | The application id the client set. Empty when it set none.                                      |
+| `title`                     | string              | The window title.                                                                               |
+| `focused`                   | boolean             | Whether the window holds the keyboard focus. Read-only.                                         |
+| `x`, `y`, `width`, `height` | number              | The window geometry, shadow left out. A write moves or resizes it.                              |
+| `bounds`                    | `Rect`              | `{ x, y, width, height }` of the window geometry. A write sets all four.                        |
+| `maximised`                 | boolean             | Whether the window is maximised. A write maximises or restores it.                              |
+| `minimised`                 | boolean             | Whether the window is hidden by minimising. A write hides or shows it.                          |
+| `fullscreen`                | boolean             | Whether the window covers its output. A write enters or leaves it.                              |
+| `floating`                  | boolean             | A floating window is left out of its workspace's tiling.                                        |
+| `tiled`                     | boolean             | Whether the window sits in a tiled layout.                                                      |
+| `visible`                   | boolean             | Whether the window is drawn.                                                                    |
+| `opacity`                   | number              | 0 (invisible) to 1 (opaque). The compositor clamps other values.                                |
+| `z`                         | number              | The window's place in depth. Negative is in front of the camera.                                |
+| `rotation`, `scale`         | `[x, y, z]` numbers | Rotation about each axis in radians, and the scale along each axis.                             |
+| `secure`                    | boolean             | `true` keeps the window out of screen captures.                                                 |
+| `unresponsive`              | boolean             | The client left a liveness ping unanswered too long. Read-only.                                 |
+| `workspace`                 | `Workspace` or null | The workspace the window is on. Read-only: use `moveToWorkspace`.                               |
+| `output`                    | `Output` or null    | The output that shows the window's workspace. Read-only.                                        |
+| `parentWindow`              | `Client` or null    | The window this one is a dialog of.                                                             |
+| `fromLauncher`              | boolean             | The window opened on a token the session's launcher minted.                                     |
+| `frameInset`                | `FrameInset`        | The room the frame takes round `bounds`: `top`, `right`, `bottom`, `left`. All 0 with no frame. |
+| `style`, `computedStyle`    | styles              | What this window overrides, and what it resolves to. See [window style](/js-style).             |
 
 `parentWindow` and `fromLauncher` are explained in [Outputs](outputs#dialogs).
 

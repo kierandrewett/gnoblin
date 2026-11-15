@@ -5,6 +5,7 @@
 //! child of the window's node, placed in the window's own coordinates (the origin is the content's top left corner), so
 //! `-10,-30,430,30` is a strip 30 high that starts 10 to the left of the content and 30 above it.
 
+use gnoblin_js::{JsRole, JsRoleLinks};
 use gnoblin_paint::{PaintList, PaintOp, decode};
 use gnoblin_tree_client::tree_mirror::MirrorValue;
 
@@ -707,4 +708,236 @@ fn a_node_in_an_outlet_follows_the_window_through_a_binding_without_the_script_r
         Vec::<String>::new(),
         "a binding of a node that went with its window ends quietly"
     );
+}
+
+// ---- the three worked examples of docs/recipes/window-frame.md ----------------------------------------------------------
+
+/// The code of the first `ts` block under `## heading` of the recipes page. The tests mount the page's own code, so an
+/// example in the docs that stops working fails here.
+fn recipe(heading: &str) -> String {
+    let page = include_str!("../../../docs/recipes/window-frame.md");
+    let at = page
+        .find(&format!("## {heading}\n"))
+        .unwrap_or_else(|| panic!("the page has the heading {heading}"));
+    let rest = &page[at..];
+    let open = rest.find("```ts\n").expect("a code block under the heading") + "```ts\n".len();
+    let close = rest[open..].find("```").expect("the block ends");
+    rest[open..open + close].to_owned()
+}
+
+#[test]
+fn the_recipe_with_the_buttons_on_the_left_mounts_and_works() {
+    let mut rig = world(0, &recipe("A bar with the buttons on the left"));
+    rig.comp.create_window(3, "term", "foot");
+    let diagnostics = rig.settle();
+    assert_eq!(diagnostics, Vec::<String>::new());
+    assert_eq!(
+        inset(&mut rig),
+        "34,0,0,0",
+        "the top edge is 34 pixels and nothing else takes room"
+    );
+    let top = rig.comp.children(3)[0];
+    assert_eq!(rig.comp.rect(top), "0,-34,400,34");
+    let zones = rig.comp.children(top);
+    assert_eq!(zones.len(), 3);
+    let start = parts(&rig.comp.rect(zones[0]));
+    let center = parts(&rig.comp.rect(zones[1]));
+    assert!(start.2 > 0.0, "the buttons give the first zone a width");
+    assert_eq!(center.0, start.2, "the center zone starts where the buttons end");
+    let strip = rig.comp.children(zones[0])[0];
+    let buttons = rig.comp.children(strip);
+    let names: Vec<Vec<String>> = buttons.iter().map(|button| icons(&painted(&rig, *button))).collect();
+    assert_eq!(
+        names,
+        [
+            vec!["window-close-symbolic"],
+            vec!["window-minimize-symbolic"],
+            vec!["window-maximize-symbolic"]
+        ],
+        "the buttons are in the traffic-light order"
+    );
+    let xs: Vec<f64> = buttons.iter().map(|button| parts(&rig.comp.rect(*button)).0).collect();
+    assert!(xs.windows(2).all(|pair| pair[0] < pair[1]), "left to right: {xs:?}");
+    let bar = rig.comp.children(zones[1])[0];
+    let title = rig.comp.children(bar)[0];
+    assert_eq!(texts(&painted(&rig, title)), ["term"]);
+
+    let start = content(&rig, 3);
+    rig.comp.pointer(bar, "press", 20.0, 10.0, LEFT);
+    rig.comp.pointer(bar, "motion", 50.0, 25.0, 0);
+    rig.settle();
+    let moved = content(&rig, 3);
+    assert_eq!(
+        (moved.0 - start.0, moved.1 - start.1),
+        (30.0, 15.0),
+        "the bar drags the window"
+    );
+    rig.comp.pointer(bar, "release", 50.0, 25.0, LEFT);
+    rig.comp.pointer(buttons[0], "press", 4.0, 4.0, LEFT);
+    rig.settle();
+    assert!(rig.comp.timed_sets() > 0, "the close button fades the window out");
+}
+
+#[test]
+fn the_recipe_with_a_border_and_a_glow_and_no_titlebar_mounts_and_works() {
+    let mut rig = world(0, &recipe("A border and a glow without a titlebar"));
+    rig.comp.create_window(3, "term", "foot");
+    rig.comp.create_window_decorated(4, "own", "gtk", "client");
+    let diagnostics = rig.settle();
+    assert_eq!(diagnostics, Vec::<String>::new());
+    assert_eq!(
+        inset(&mut rig),
+        "0,0,0,0",
+        "no edge is touched, so the frame takes no room"
+    );
+    for window in [3, 4] {
+        let layers = rig.comp.children(window);
+        assert_eq!(
+            layers.len(),
+            2,
+            "window {window}: the underlay and the overlay, and no titlebar"
+        );
+        let (under, over) = (layers[0], layers[1]);
+        assert_eq!(rig.comp.value(under, "placement"), Some(text("under")));
+        assert_eq!(rig.comp.value(over, "placement"), Some(text("over")));
+        assert_eq!(
+            rig.comp.rect(under),
+            "-24,-24,448,348",
+            "the glow reaches 24 pixels past the frame"
+        );
+        assert_eq!(rig.comp.rect(over), "0,0,400,300", "the overlay is the frame");
+        let glow = rig.comp.children(under)[0];
+        let rings = painted(&rig, glow)
+            .ops
+            .iter()
+            .filter(|op| matches!(op, PaintOp::Rect { .. }))
+            .count();
+        assert_eq!(rings, 8, "the halo is eight rings");
+        let ring = rig.comp.children(over)[0];
+        let stroke = |rig: &Rig| match &painted(rig, ring).ops[..] {
+            [
+                PaintOp::Rect {
+                    stroke, stroke_width, ..
+                },
+            ] => (*stroke, *stroke_width),
+            other => panic!("one rect, got {other:?}"),
+        };
+        let (unfocused, width) = stroke(&rig);
+        assert_eq!(width, 2.0);
+        rig.comp.external_set(window, "focused", MirrorValue::Bool(true));
+        rig.settle();
+        assert_ne!(stroke(&rig).0, unfocused, "the ring follows the focus");
+    }
+}
+
+#[test]
+fn the_recipe_with_a_status_strip_and_a_dock_handle_mounts_and_works() {
+    let mut rig = world(0, &recipe("A status strip at the bottom and a dock handle at the side"));
+    rig.comp.create_window(3, "term", "foot");
+    let diagnostics = rig.settle();
+    assert_eq!(diagnostics, Vec::<String>::new());
+    assert_eq!(
+        inset(&mut rig),
+        "28,12,22,0",
+        "the stock titlebar, a 22 pixel strip and a 12 pixel handle"
+    );
+    let outlets: Vec<String> = rig.comp.children(3).iter().map(|node| rig.comp.rect(*node)).collect();
+    assert_eq!(
+        outlets,
+        ["400,0,12,300", "0,-28,412,28", "0,300,412,22"],
+        "the right edge, the titlebar's top edge and the bottom strip"
+    );
+    let [right, _, bottom] = rig.comp.children(3)[..] else {
+        panic!("three outlets");
+    };
+    let status = rig.comp.children(bottom)[0];
+    assert_eq!(texts(&painted(&rig, status)), ["foot  400 x 300"]);
+
+    let handle = rig.comp.children(right)[0];
+    rig.comp.pointer(handle, "press", 2.0, 50.0, LEFT);
+    rig.comp.pointer(handle, "motion", 12.0, 50.0, 0);
+    rig.settle();
+    assert_eq!(content(&rig, 3).2, 410.0, "the handle on the right grew the window");
+    assert_eq!(
+        texts(&painted(&rig, status)),
+        ["foot  410 x 300"],
+        "and the strip follows the size"
+    );
+    rig.comp.pointer(handle, "release", 12.0, 50.0, LEFT);
+
+    request(&mut rig, 3, "maximize");
+    assert_eq!(
+        inset(&mut rig),
+        "28,12,0,0",
+        "the strip gives its room back while the window is maximised"
+    );
+}
+
+// ---- hot reload ---------------------------------------------------------------------------------------------------------
+
+#[test]
+fn a_reload_swaps_the_generation_and_leaves_no_node_of_the_old_one() {
+    let comp = FakeCompositor::new();
+    comp.add_node(
+        20,
+        ROOT,
+        "screen",
+        vec![
+            ("width", MirrorValue::Double(1000.0)),
+            ("height", MirrorValue::Double(800.0)),
+            ("primary", MirrorValue::Bool(true)),
+        ],
+    );
+    comp.add_node(21, ROOT, "seat", vec![("name", text("seat0"))]);
+    comp.add_node(22, ROOT, "lock", Vec::new());
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let root = std::fs::canonicalize(dir.path()).expect("the temp dir exists");
+    let entry = root.join("init.ts");
+    std::fs::write(&entry, format!("{IMPORTS}startDecorations({{ resizeHandles: 6 }});\n")).expect("init.ts");
+    let mut config = honest_role_config(&root);
+    config.watch = false;
+    let mut role = JsRole::over_link(Box::new(comp.clone()), JsRoleLinks::default(), config).expect("the role boots");
+    let settle = |role: &mut JsRole| {
+        for _ in 0..6 {
+            role.tick().expect("a frame");
+        }
+    };
+    // A window the first generation frames as it maps, the way a real one arrives.
+    comp.create_window(3, "win1", "foot");
+    settle(&mut role);
+    let with_handles = comp.canvases().len();
+    assert!(with_handles > 10, "a titlebar and eight handles: {with_handles}");
+    assert_eq!(
+        comp.number(3, "y"),
+        28.0,
+        "the window is placed below the titlebar of the first generation"
+    );
+
+    // The next generation has a frame of another shape: none of the first one's nodes may be left, and the window's
+    // content moves to where the new frame wants it with the frame itself kept in place.
+    std::fs::write(&entry, format!("{IMPORTS}{FOUR}\n")).expect("init.ts");
+    let report = role.reload_now();
+    assert!(report.ok, "{:?}", report.errors);
+    settle(&mut role);
+    assert_eq!(
+        comp.canvases().len(),
+        4,
+        "the four outlets of the new frame, and nothing of the old one"
+    );
+    assert_eq!(comp.children(3).len(), 4);
+    assert_eq!(
+        (comp.number(3, "x"), comp.number(3, "y")),
+        (10.0, 30.0),
+        "the frame stayed where it was: the content moved to what the new edges leave"
+    );
+
+    // A generation that never frames a window takes the last frame away and gives the window its room back.
+    std::fs::write(&entry, format!("{IMPORTS}\n")).expect("init.ts");
+    assert!(role.reload_now().ok);
+    settle(&mut role);
+    assert!(
+        comp.canvases().is_empty(),
+        "no canvas of any earlier generation is left"
+    );
+    assert_eq!((comp.number(3, "x"), comp.number(3, "y")), (0.0, 0.0));
 }

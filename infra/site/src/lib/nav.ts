@@ -117,6 +117,7 @@ export const NAV: NavSection[] = [
                     { label: "Laptop input", slug: "recipes/laptop-input" },
                     { label: "Organise config files", slug: "recipes/organize-config-files" },
                     { label: "Named workspaces", slug: "recipes/put-apps-on-named-workspaces" },
+                    { label: "Window frame parts", slug: "recipes/window-frame" },
                 ],
             },
         ],
@@ -133,6 +134,7 @@ export const NAV: NavSection[] = [
             { label: "Console and inspector", slug: "js-console" },
             { label: "UI toolkit", slug: "js-ui" },
             { label: "Window style", slug: "js-style" },
+            { label: "Window frame", slug: "js-window-frame" },
             { label: "Window policy", slug: "js-window-policy" },
             { label: "Animation", slug: "js-transitions" },
             {

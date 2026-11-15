@@ -46,6 +46,22 @@ as a secure window is.
 If an op cannot be encoded, the runtime reports `draw op N: ...` and leaves the content as it was. If the compositor cannot
 decode a list, it refuses the write with `bad-paint` and the canvas keeps its last content.
 
+## Placement
+
+A canvas that is a child of a window has a `placement`, which says where it sits in the window's frame:
+
+- `frame` is the default. The canvas is in front of the window's content and part of the frame's shape, so the rounded
+  corners, the border ring and the shadow follow it. A titlebar is one.
+- `over` is in front of the content and not part of the frame's shape.
+- `under` is painted behind the content and not part of the frame's shape.
+
+A badge or a focus ring that reaches past the frame is `over`, and a glow is `under`, so neither widens the rounded frame.
+Any other value is refused with `bad-value`, and the canvas keeps its placement.
+
+A canvas with `input` set to `false` lets the pointer through to what is under it. A child of a window that lies outside the
+window's rectangle still takes the pointer. The [window frame](/js-window-frame#layers-and-the-canvas-placement) writes
+`over` and `under` for its two layers.
+
 ## Ops
 
 Coordinates are pixels from the node's top left. Ops draw in order, later over earlier. Each op is an object with an `op`
