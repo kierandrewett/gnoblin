@@ -15,7 +15,7 @@ use full_moon::ast::{Assignment, Block, FunctionCall, LocalAssignment, Stmt, Var
 use full_moon::node::Node;
 
 use crate::chord::{ChordTranslation, canonical_trigger, translate_chord};
-use crate::emit::{self, Head, KeyDef, Needs, RuleDef, Slot, Test, WorkspaceDef};
+use crate::emit::{self, Head, KeyDef, Needs, Placed, RuleDef, Test, WorkspaceDef};
 use crate::lua::{self, LuaField, LuaKind, LuaScope, Lv, SourceFile, Span};
 use crate::names;
 use crate::pattern::{PatternTranslation, translate_lua_pattern};
@@ -80,20 +80,20 @@ struct RuleDraft {
 
 /// A group of statements that is worked out at the end and printed where its first member was met.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Group {
+enum Batch {
     Workspaces,
     Keys,
     Rules,
 }
 
 /// One thing the output holds, in the order it was met.
-enum Entry {
+enum Piece {
     /// `From FILE.` ahead of the first thing a file contributed.
     Header(Rc<str>),
     /// Comment lines: what was left out, with where and why.
     Note(Vec<String>),
     /// Statements worked out at the end.
-    Group(Group),
+    Batch(Batch),
 }
 
 pub(crate) struct Engine<'a> {
@@ -102,15 +102,15 @@ pub(crate) struct Engine<'a> {
     unmapped: Vec<UnmappedItem>,
     notes: Vec<String>,
     /// What the output holds, in the order it was first met.
-    entries: Vec<Entry>,
+    entries: Vec<Piece>,
     /// The file the last `From ...` comment named.
     header: Option<Rc<str>>,
     globals: HashMap<String, Lv>,
     /// The files being read, outermost first, so a load that names one of them is refused.
     stack: Vec<String>,
-    workspaces: Option<Vec<Slot<WorkspaceDef>>>,
+    workspaces: Option<Vec<Placed<WorkspaceDef>>>,
     shortcuts: Vec<ShortcutDef>,
-    rules: Option<Vec<Slot<RuleDraft>>>,
+    rules: Option<Vec<Placed<RuleDraft>>>,
     /// What `seat.data.alerts` said, when it said anything.
     alerts: Option<bool>,
 }
@@ -188,28 +188,28 @@ impl<'a> Engine<'a> {
     /// Lists `span` as left out and writes its comment among the statements of the config.
     fn leave_out(&mut self, file: &Rc<str>, span: &Span, reason: &str, pointer: &'static str) {
         let lines = self.report(span, reason, pointer);
-        self.push_entry(file, Entry::Note(lines));
+        self.push_entry(file, Piece::Note(lines));
     }
 
     // --- The output --------------------------------------------------------------------------------------------
 
     /// Adds an entry, ahead of it a comment naming the file when that is not the file of the last one.
-    fn push_entry(&mut self, file: &Rc<str>, entry: Entry) {
+    fn push_entry(&mut self, file: &Rc<str>, entry: Piece) {
         if self.header.as_ref() != Some(file) {
             self.header = Some(Rc::clone(file));
-            self.entries.push(Entry::Header(Rc::clone(file)));
+            self.entries.push(Piece::Header(Rc::clone(file)));
         }
         self.entries.push(entry);
     }
 
     /// Fixes where a group stands: where its first member was met.
-    fn reserve(&mut self, file: &Rc<str>, group: Group) {
+    fn reserve(&mut self, file: &Rc<str>, group: Batch) {
         if !self
             .entries
             .iter()
-            .any(|entry| matches!(entry, Entry::Group(known) if *known == group))
+            .any(|entry| matches!(entry, Piece::Batch(known) if *known == group))
         {
-            self.push_entry(file, Entry::Group(group));
+            self.push_entry(file, Piece::Batch(group));
         }
     }
 
@@ -628,17 +628,17 @@ impl<'a> Engine<'a> {
         for item in items {
             out.push(self.workspace(item, &mut seen));
         }
-        self.reserve(&file.name, Group::Workspaces);
+        self.reserve(&file.name, Batch::Workspaces);
         self.workspaces = Some(out);
     }
 
-    fn workspace(&mut self, item: &Lv, seen: &mut Vec<String>) -> Slot<WorkspaceDef> {
+    fn workspace(&mut self, item: &Lv, seen: &mut Vec<String>) -> Placed<WorkspaceDef> {
         let Some(fields) = item.fields() else {
             let reason = match &item.kind {
                 LuaKind::Failed(reason) => reason.clone(),
                 _ => "a workspace is a table with an id and a name".to_owned(),
             };
-            return Slot::Note(self.report(&item.span, &reason, CONSTRUCTS));
+            return Placed::Note(self.report(&item.span, &reason, CONSTRUCTS));
         };
         let mut name: Option<String> = None;
         let mut notes: Vec<Vec<String>> = Vec::new();
@@ -660,14 +660,14 @@ impl<'a> Engine<'a> {
             }
         }
         let Some(id) = id else {
-            return Slot::Note(self.report(&item.span, "the workspace has no id, so it is left out", CONSTRUCTS));
+            return Placed::Note(self.report(&item.span, "the workspace has no id, so it is left out", CONSTRUCTS));
         };
         if seen.contains(&id) {
             let reason = format!("the id \"{id}\" is already declared, and an id is unique");
-            return Slot::Note(self.report(&item.span, &reason, CONSTRUCTS));
+            return Placed::Note(self.report(&item.span, &reason, CONSTRUCTS));
         }
         seen.push(id.clone());
-        Slot::Def(WorkspaceDef { id, name, notes })
+        Placed::Def(WorkspaceDef { id, name, notes })
     }
 
     // --- shortcuts ---------------------------------------------------------------------------------------------
@@ -682,7 +682,7 @@ impl<'a> Engine<'a> {
             self.shortcut(file, entry, section);
         }
         if !entries.is_empty() {
-            self.reserve(&file.name, Group::Keys);
+            self.reserve(&file.name, Batch::Keys);
         }
     }
 
@@ -804,17 +804,17 @@ impl<'a> Engine<'a> {
         for item in items {
             out.push(self.rule(item));
         }
-        self.reserve(&file.name, Group::Rules);
+        self.reserve(&file.name, Batch::Rules);
         self.rules = Some(out);
     }
 
-    fn rule(&mut self, item: &Lv) -> Slot<RuleDraft> {
+    fn rule(&mut self, item: &Lv) -> Placed<RuleDraft> {
         let Some(fields) = item.fields() else {
             let reason = match &item.kind {
                 LuaKind::Failed(reason) => reason.clone(),
                 _ => "a rule is a table".to_owned(),
             };
-            return Slot::Note(self.report(&item.span, &reason, CONSTRUCTS));
+            return Placed::Note(self.report(&item.span, &reason, CONSTRUCTS));
         };
         let mut conditions: Vec<(&'static str, Test)> = Vec::new();
         let mut workspace: Option<(String, Span)> = None;
@@ -828,7 +828,7 @@ impl<'a> Engine<'a> {
                 (_, LuaKind::Nil) => {}
                 ("match", _) => match self.rule_match(item, field, &mut conditions) {
                     Ok(found) => has_query = found,
-                    Err(note) => return Slot::Note(note),
+                    Err(note) => return Placed::Note(note),
                 },
                 (_, LuaKind::Failed(reason)) => notes.push(self.report(&field.span, reason, LIMITS)),
                 ("workspace", LuaKind::Str(id)) if !id.is_empty() => {
@@ -883,7 +883,7 @@ impl<'a> Engine<'a> {
                 "the rule has no match the converter could carry over",
                 CONSTRUCTS,
             );
-            return Slot::Note(note);
+            return Placed::Note(note);
         }
         if workspace.is_none() && maximised.is_none() && fullscreen.is_none() && opacity.is_none() {
             let note = self.report(
@@ -891,13 +891,13 @@ impl<'a> Engine<'a> {
                 "the rule sets nothing the converter could carry over",
                 CONSTRUCTS,
             );
-            return Slot::Note(note);
+            return Placed::Note(note);
         }
         let (workspace, workspace_span) = match workspace {
             Some((id, span)) => (Some(id), Some(span)),
             None => (None, None),
         };
-        Slot::Def(RuleDraft {
+        Placed::Def(RuleDraft {
             def: RuleDef {
                 origin: format!("{}:{}", item.span.file, item.span.line),
                 conditions,
@@ -1031,14 +1031,14 @@ impl<'a> Engine<'a> {
         let mut after_note = false;
         for entry in std::mem::take(&mut self.entries) {
             let (lines, is_note) = match entry {
-                Entry::Header(file) => {
+                Piece::Header(file) => {
                     header = Some(format!("// From {file}."));
                     continue;
                 }
-                Entry::Note(lines) => (emit::comment(&lines), true),
-                Entry::Group(Group::Workspaces) => (workspaces.take().unwrap_or_default(), false),
-                Entry::Group(Group::Keys) => (keys.take().unwrap_or_default(), false),
-                Entry::Group(Group::Rules) => (rules.take().unwrap_or_default(), false),
+                Piece::Note(lines) => (emit::comment(&lines), true),
+                Piece::Batch(Batch::Workspaces) => (workspaces.take().unwrap_or_default(), false),
+                Piece::Batch(Batch::Keys) => (keys.take().unwrap_or_default(), false),
+                Piece::Batch(Batch::Rules) => (rules.take().unwrap_or_default(), false),
             };
             if lines.is_empty() {
                 continue;
@@ -1067,8 +1067,8 @@ impl<'a> Engine<'a> {
         let ids: Vec<String> = items
             .iter()
             .filter_map(|item| match item {
-                Slot::Def(def) => Some(def.id.clone()),
-                Slot::Note(_) => None,
+                Placed::Def(def) => Some(def.id.clone()),
+                Placed::Note(_) => None,
             })
             .collect();
         counts.workspaces = ids.len();
@@ -1084,7 +1084,7 @@ impl<'a> Engine<'a> {
     /// The statements for the shortcuts, and the canonical triggers they bind.
     fn finish_keys(&mut self, counts: &mut ConvertedCounts, needs: &mut Needs) -> (Vec<String>, BTreeSet<String>) {
         let defs = std::mem::take(&mut self.shortcuts);
-        let mut slots: Vec<Slot<KeyDef>> = Vec::new();
+        let mut slots: Vec<Placed<KeyDef>> = Vec::new();
         let mut bound: Vec<(String, usize)> = Vec::new();
         let mut taken: BTreeSet<String> = BTreeSet::new();
         for def in defs {
@@ -1100,7 +1100,7 @@ impl<'a> Engine<'a> {
             }
             let Some((chord, chord_span)) = def.binding.clone() else {
                 let reason = format!("{} \"{}\" has no binding", def.section.name(), def.name);
-                slots.push(Slot::Note(self.report(&def.span, &reason, CONSTRUCTS)));
+                slots.push(Placed::Note(self.report(&def.span, &reason, CONSTRUCTS)));
                 continue;
             };
             let Some(argv) = def.command.clone() else {
@@ -1109,44 +1109,44 @@ impl<'a> Engine<'a> {
                     def.section.name(),
                     def.name
                 );
-                slots.push(Slot::Note(self.report(&def.span, &reason, CONSTRUCTS)));
+                slots.push(Placed::Note(self.report(&def.span, &reason, CONSTRUCTS)));
                 continue;
             };
             if def.release {
                 let reason = "a shortcut on key release has no equivalent: a key acts when it is pressed";
-                slots.push(Slot::Note(self.report(&def.span, reason, CONSTRUCTS)));
+                slots.push(Placed::Note(self.report(&def.span, reason, CONSTRUCTS)));
                 continue;
             }
             let trigger = match translate_chord(&chord) {
                 ChordTranslation::Trigger(trigger) => trigger,
                 ChordTranslation::Unmapped(why) => {
                     let reason = format!("the chord \"{chord}\" has no exact trigger: {why}");
-                    slots.push(Slot::Note(self.report(&chord_span, &reason, CONSTRUCTS)));
+                    slots.push(Placed::Note(self.report(&chord_span, &reason, CONSTRUCTS)));
                     continue;
                 }
             };
             let canonical = canonical_trigger(&trigger);
             if let Some((_, line)) = bound.iter().find(|(known, _)| *known == canonical) {
                 let reason = format!("it binds {trigger}, which line {line} binds too, and a trigger is bound once");
-                slots.push(Slot::Note(self.report(&chord_span, &reason, CONSTRUCTS)));
+                slots.push(Placed::Note(self.report(&chord_span, &reason, CONSTRUCTS)));
                 continue;
             }
             bound.push((canonical.clone(), chord_span.line));
             taken.insert(canonical);
-            slots.push(Slot::Def(KeyDef { trigger, argv }));
+            slots.push(Placed::Def(KeyDef { trigger, argv }));
         }
-        counts.keys = slots.iter().filter(|slot| matches!(slot, Slot::Def(_))).count();
+        counts.keys = slots.iter().filter(|slot| matches!(slot, Placed::Def(_))).count();
         (emit::keys(&slots, needs), taken)
     }
 
     /// The statements for the rules that convert; a rule for a workspace the config does not declare is left out.
     fn finish_rules(&mut self, declared: &[String], counts: &mut ConvertedCounts, needs: &mut Needs) -> Vec<String> {
         let drafts = self.rules.take().unwrap_or_default();
-        let mut slots: Vec<Slot<RuleDef>> = Vec::new();
+        let mut slots: Vec<Placed<RuleDef>> = Vec::new();
         for draft in drafts {
             match draft {
-                Slot::Note(lines) => slots.push(Slot::Note(lines)),
-                Slot::Def(draft) => {
+                Placed::Note(lines) => slots.push(Placed::Note(lines)),
+                Placed::Def(draft) => {
                     if let (Some(id), Some(span)) = (&draft.def.workspace, &draft.workspace_span)
                         && !declared.contains(id)
                     {
@@ -1154,12 +1154,12 @@ impl<'a> Engine<'a> {
                             "the rule at line {} was left out: it moves windows to workspace \"{id}\", which the config does not declare",
                             draft.line
                         );
-                        slots.push(Slot::Note(self.report(span, &reason, CONSTRUCTS)));
-                        slots.extend(draft.def.notes.into_iter().map(Slot::Note));
+                        slots.push(Placed::Note(self.report(span, &reason, CONSTRUCTS)));
+                        slots.extend(draft.def.notes.into_iter().map(Placed::Note));
                         continue;
                     }
                     counts.rules += 1;
-                    slots.push(Slot::Def(draft.def));
+                    slots.push(Placed::Def(draft.def));
                 }
             }
         }

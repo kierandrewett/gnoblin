@@ -924,3 +924,34 @@ fn text_that_is_not_data_never_reaches_the_output_unmarked() {
         }
     }
 }
+
+#[test]
+fn no_output_names_the_config_api_that_was_removed() {
+    let outputs = [
+        convert_with(STARTER_INIT, STARTER_FILES, None),
+        convert_with(EVERYTHING, &[], Some(EVERYTHING_SHELL)),
+        convert(NO_HOME),
+        convert(UNMAPPED),
+    ];
+    for output in &outputs {
+        for removed in [
+            "defineConfig",
+            "desugarConfig",
+            "mergeConfig",
+            "defaultConfig",
+            "export default",
+        ] {
+            assert!(
+                !output.typescript.contains(removed),
+                "{removed} is in the output:\n{}",
+                output.typescript
+            );
+        }
+        // Every statement the converter writes is against an object: no `spawn(` action helper, no `keys:` table.
+        assert!(
+            !output.typescript.contains("\nkeys:") && !output.typescript.contains(": spawn("),
+            "{}",
+            output.typescript
+        );
+    }
+}

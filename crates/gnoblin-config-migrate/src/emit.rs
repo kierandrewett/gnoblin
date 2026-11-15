@@ -33,7 +33,7 @@ impl Needs {
 }
 
 /// A thing of a group, or the comment that stands where one was left out.
-pub(crate) enum Slot<T> {
+pub(crate) enum Placed<T> {
     Def(T),
     Note(Vec<String>),
 }
@@ -133,12 +133,12 @@ pub(crate) fn comment(lines: &[String]) -> Vec<String> {
 }
 
 /// The statements that declare `items`, one `gnoblin.workspaces.add` each, in the order the Lua config listed them.
-pub(crate) fn workspaces(items: &[Slot<WorkspaceDef>], needs: &mut Needs) -> Vec<String> {
+pub(crate) fn workspaces(items: &[Placed<WorkspaceDef>], needs: &mut Needs) -> Vec<String> {
     let mut out = Vec::new();
     for item in items {
         match item {
-            Slot::Note(lines) => out.extend(comment(lines)),
-            Slot::Def(def) => {
+            Placed::Note(lines) => out.extend(comment(lines)),
+            Placed::Def(def) => {
                 needs.import("Workspace");
                 needs.import("FloatingLayout");
                 let name = def
@@ -166,12 +166,12 @@ fn argv(argv: &[String]) -> String {
 }
 
 /// The statements that bind `items` on the primary seat.
-pub(crate) fn keys(items: &[Slot<KeyDef>], needs: &mut Needs) -> Vec<String> {
+pub(crate) fn keys(items: &[Placed<KeyDef>], needs: &mut Needs) -> Vec<String> {
     let mut out = Vec::new();
     for item in items {
         match item {
-            Slot::Note(lines) => out.extend(comment(lines)),
-            Slot::Def(def) => {
+            Placed::Note(lines) => out.extend(comment(lines)),
+            Placed::Def(def) => {
                 needs.input = true;
                 out.push(format!("input.bind({}, () => {{", names::string(&def.trigger)));
                 out.push(format!("    gnoblin.spawn({});", argv(&def.argv)));
@@ -209,12 +209,12 @@ fn actions(def: &RuleDef, with_opacity: bool) -> Vec<String> {
 /// keeps it up to date as windows come and go. That is only used when every opacity rule can be one, because a
 /// selection's style and a window's own style are two layers and a later rule must win over an earlier one in both.
 /// Everything else runs in one `CollectionListener`, in the order the Lua listed the rules.
-pub(crate) fn rules(items: &[Slot<RuleDef>], needs: &mut Needs) -> Vec<String> {
+pub(crate) fn rules(items: &[Placed<RuleDef>], needs: &mut Needs) -> Vec<String> {
     let defs: Vec<&RuleDef> = items
         .iter()
         .filter_map(|item| match item {
-            Slot::Def(def) => Some(def),
-            Slot::Note(_) => None,
+            Placed::Def(def) => Some(def),
+            Placed::Note(_) => None,
         })
         .collect();
     let selections = defs
@@ -225,12 +225,12 @@ pub(crate) fn rules(items: &[Slot<RuleDef>], needs: &mut Needs) -> Vec<String> {
     let mut blocks: Vec<String> = Vec::new();
     for item in items {
         let def = match item {
-            Slot::Note(lines) => {
+            Placed::Note(lines) => {
                 // A note stands between the statements it was met between.
                 out.extend(comment(lines));
                 continue;
             }
-            Slot::Def(def) => def,
+            Placed::Def(def) => def,
         };
         let mut noted = false;
         if selections && let Some(opacity) = def.opacity {
