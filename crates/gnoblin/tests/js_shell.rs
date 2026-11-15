@@ -1,4 +1,4 @@
-//! The JavaScript shell against a real compositor session (design/js-runtime.md, "P6 role wiring").
+//! The JavaScript shell against a real compositor session (design/js-runtime-log-config.md, "P6 role wiring").
 //!
 //! Nothing here is a fake. The session is [`Compositor::run`] on a headless backend with its sockets in a
 //! temporary directory. The windows are mapped by a real `wayland-client` connection. The shell is a
@@ -12,7 +12,7 @@
 //! shell's crate is an IPC client and may link neither (`xtask deps`).
 //!
 //! The tests run in parallel and on a loaded machine. They wait for the state they need, with a deadline, and do not
-//! sleep for the time they guess a state will take (design/js-runtime.md, "Real-compositor tests").
+//! sleep for the time they guess a state will take (design/js-runtime-testing.md, "Real-compositor tests").
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -1098,7 +1098,7 @@ fn a_shell_that_dies_leaves_the_compositor_answering_and_a_restarted_one_reattac
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 }
 
-/// The UI toolkit against the real compositor (design/js-runtime.md, "P7 UI toolkit status"): a script makes a `Box`
+/// The UI toolkit against the real compositor (design/js-runtime-log-ui.md, "P7 UI toolkit status"): a script makes a `Box`
 /// and asks for decorations, and the compositor's own tree, read through an observer, holds what the shell wrote: a
 /// canvas of the box's size with a paint list the compositor decoded (a list it could not decode would have been
 /// refused `bad-paint` and never stored), and one titlebar canvas under the mapped window with the window's title and
@@ -1714,7 +1714,7 @@ fn a_strip_workspace_places_two_real_windows_in_columns_and_scrolls_to_the_focus
     assert!(shell.diagnostics().is_empty(), "{:?}", shell.diagnostics());
 }
 
-/// Live verification (design/js-runtime.md, "Live verification"): a screenshot of `MasterStackLayout({ ratio: 0.6, gap:
+/// Live verification (design/js-runtime-live-verification.md, "Live verification"): a screenshot of `MasterStackLayout({ ratio: 0.6, gap:
 /// 12 })` on 1024 by 768 showed a black column at the screen's right edge. The stack was 404 wide and started at 619, so
 /// it ended at 1023: a width floored on its own, where the floors of the master and the gap had already fallen short.
 #[test]

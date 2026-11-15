@@ -6,7 +6,7 @@ claimed input, and the hold that gives the shell time to claim before the window
 fake runtime only. No headset, no OpenXR runtime and no `gnoblin-xr` binary ran for it.
 
 Owner-spec section 13 asks for a native `.so` extension. J7 replaces that with the out-of-process program of D34 and
-D35, so this document says what each spec class becomes in that model. See `design/js-runtime.md` (J7, "P9 XR status"),
+D35, so this document says what each spec class becomes in that model. See `design/js-runtime-log-console-xr.md` (J7, "P9 XR status"),
 `design/xr-extension.md` and `docs/xr.md`.
 
 ## The model in four lines

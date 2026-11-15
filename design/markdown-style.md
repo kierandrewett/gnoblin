@@ -35,14 +35,17 @@ and Jev. Keep editorial rules here instead of duplicating them in code.
 - Use tables for compact comparisons whose cells scan as short values or
   phrases. If descriptions wrap into sentences, use grouped bullets instead;
   split a large table by topic rather than squeezing it into narrow columns.
-  Keep table cells under about 24 prose words; move explanations into nearby
-  bullets when a cell needs more space.
+  Keep every table cell at or below 24 prose words; move explanations into
+  nearby bullets when a cell needs more space.
 - Do not place a table and then explain its rows again in prose. Follow-up
   prose should explain interactions, limits, discovery steps, or choices that
   the table does not already state. If prose repeats three or more field
   definitions from one table, keep each definition in one place.
 
 ## Explain settings and accepted values
+
+This section applies to user documentation: `docs/`, the documentation site and README files. Maintainer records under
+`design/` and the change log are not user pages and are exempt from it.
 
 - For each documented option, state its type, accepted values, default, and
   effect when those details are known. Say when a change takes effect, such as
@@ -78,6 +81,9 @@ accepted values`, `Default`, and `Meaning or example`. Add an inline example
 
 ## Keep API reference current and complete
 
+This section applies to user documentation: `docs/`, the documentation site and README files. Maintainer records under
+`design/` and the change log are not user pages and are exempt from it.
+
 - Document the current public API with complete examples. Show where
   configuration belongs and when it takes effect.
 - Keep every supported public `gnoblin.*` Lua API represented in the Config
@@ -94,6 +100,9 @@ accepted values`, `Default`, and `Meaning or example`. Add an inline example
 
 ## Make examples useful
 
+This section applies to user documentation: `docs/`, the documentation site and README files. Maintainer records under
+`design/` and the change log are not user pages and are exempt from it.
+
 - Include examples for Gnoblin features that help readers complete a task.
   Cover built-in session services as well as the compositor, configuration API,
   and shell integration.
@@ -109,6 +118,9 @@ accepted values`, `Default`, and `Meaning or example`. Add an inline example
 
 ## Use screenshots to show the real result
 
+This section applies to user documentation: `docs/`, the documentation site and README files. Maintainer records under
+`design/` and the change log are not user pages and are exempt from it.
+
 - When a configuration example has a useful visual result, show that example
   running in Gnoblin or the application it configures.
 - Capture the actual interface or application state. Do not create a fake UI,
@@ -123,6 +135,9 @@ accepted values`, `Default`, and `Meaning or example`. Add an inline example
 
 ## Write for the person who uses Gnoblin
 
+This section applies to user documentation: `docs/`, the documentation site and README files. Maintainer records under
+`design/` and the change log are not user pages and are exempt from it.
+
 Documentation pages are for people who install, configure and use Gnoblin. Everything else stays out of them. The
 Markdown validator checks the rules in this section that a pattern can find, and the review checks the rest.
 
@@ -136,11 +151,15 @@ Markdown validator checks the rules in this section that a pattern can find, and
   readers do not need it. Names the reader must type or install, such as `org.gnome.desktop.session` or a library in a prerequisite list, are fine.
 - **Write nothing that can go out of date.** Treat every fact as likely to change. Do not write version numbers,
   release or codename lists, dates, architecture lists, counts, or words such as "currently", "not yet", "newest" and
-  "no longer". Do not list the systems or releases Gnoblin supports. Link to the page or file that holds the fact:
-  [platform support](/platform-support), the releases page, or the file in the source tree. Platform support is the
-  one page that lists releases and architectures. Distribution names, commands, file paths, package names and the
-  signing key fingerprint are fine. API reference pages may mark the API version that added a feature, such as
-  "API 1.29+", because integrators need it to check compatibility.
+  "no longer". Do not list the systems or releases Gnoblin supports.
+
+    Link to the page or file that holds the fact: [platform support](/platform-support), the releases page, or the file in
+    the source tree. Platform support is the one page that lists releases and architectures.
+
+    Distribution names, commands, file paths, package names and the signing key fingerprint are fine. API reference pages
+    may mark the API version that added a feature, such as "API 1.29+", because integrators need it to check
+    compatibility.
+
 - **Keep install pages to the steps.** An install page has the steps to install, update and remove, and a link to
   troubleshooting. It has no troubleshooting sections of its own.
 - **Follow the normal process.** Install pages use the steps that the distribution documents for its package manager.
@@ -170,9 +189,10 @@ Markdown validator checks the rules in this section that a pattern can find, and
   infer from the image alone.
 - Preserve technical meaning while editing. Do not remove examples or change
   API behavior to make prose shorter.
-- A paragraph should usually stay below 60 words. Split it when its subject or
+- A paragraph stays at or below 60 prose words. Split it when its subject or
   purpose changes, and use a list when it defines several independent facts.
-  The Markdown validator flags paragraphs over 60 words, paragraphs with six
-  or more inline-code terms and at least 30 prose words, and table cells over
-  24 words for review; the counts are prompts to improve scanability, not a
-  reason to break a coherent explanation into fragments.
+- The Markdown validator checks the counts exactly and fails on a paragraph
+  over 60 prose words, on a paragraph of 30 or more prose words with six or
+  more distinct inline-code terms, and on a table cell over 24 prose words.
+  Do not flag a paragraph or cell that the validator accepts as too long or too
+  dense; the review judges structure and wording, not word counts.

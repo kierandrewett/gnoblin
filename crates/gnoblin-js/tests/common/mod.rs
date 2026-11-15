@@ -736,7 +736,7 @@ impl TreeLink for FakeCompositor {
 
 // ---- time ---------------------------------------------------------------------------------------------------------
 //
-// The rule for every test in this crate (design/js-runtime.md, "Unit test timing"): no assertion may rest on how fast
+// The rule for every test in this crate (design/js-runtime-testing.md, "Unit test timing"): no assertion may rest on how fast
 // the machine is. A script that is not meant to run out of time gets `HONEST_BUDGET`, and anything that waits
 // (an arming window, a fade, a delay, `gnoblin.timers.after`) waits on the injected clock of `timed_config`, which
 // moves only when the test moves it. A test that is about a budget runs a script that never ends, keeps the budget

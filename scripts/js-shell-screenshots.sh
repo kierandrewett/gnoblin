@@ -19,7 +19,7 @@
 #       libegl1 libgles2 libegl-mesa0 libgl1-mesa-dri
 #   cargo build --release -p gnoblin -p gnoblinctl
 #   scripts/js-shell-screenshots.sh ./shots
-# design/js-runtime.md, "Live verification", says how to run it through a37-gate.sh.
+# design/js-runtime-live-verification.md, "Live verification", says how to run it through a37-gate.sh.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

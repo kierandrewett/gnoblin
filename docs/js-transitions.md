@@ -157,5 +157,5 @@ These are still missing, in the compositor or the spec's model. The shell does n
 `crates/gnoblin-js/tests/transition.rs` runs the staging, the transaction and the failures over a fake compositor, and
 `crates/gnoblin/tests/js_shell.rs` runs a layout change inside a transition against the real compositor with two mapped
 windows and an injected clock. The compositor's tracks are tested in `crates/gnoblin-wayland/tests/tree_live.rs`.
-`design/js-research/spec-review.md` lists the acceptance rows AN1 to AN8, and `design/js-runtime.md`, "Transitions status",
+`design/js-research/spec-review.md` lists the acceptance rows AN1 to AN8, and `design/js-runtime-log-ui.md`, "Transitions status",
 says which are proven.
