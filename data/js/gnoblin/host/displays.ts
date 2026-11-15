@@ -1,0 +1,152 @@
+// The shell's side of `gnoblin/display_manager`: what a `Display` does to the desks and the output requests.
+
+import { attachDisplays, Display } from "gnoblin/display";
+import type { OutputConfig, OutputProfile } from "gnoblin/display";
+import { DisplayManager } from "gnoblin/display_manager";
+import type { DisplayBackend, OutputSet } from "gnoblin/display_manager";
+import { GnoblinError } from "gnoblin/errors";
+import { CREATE } from "gnoblin/host/bridge";
+import { holders, recompute } from "gnoblin/host/collection_events";
+import { collectionState, rootState } from "gnoblin/host/collection_state";
+import { Collection } from "gnoblin/host/collections";
+import { ctx } from "gnoblin/host/context";
+import { effectiveDesk, fillDesks, liveOutputs, primaryOutput, setShown } from "gnoblin/host/desks";
+import { queueFor, say } from "gnoblin/host/dispatch";
+import { Output } from "gnoblin/host/output";
+import { applyOutput } from "gnoblin/host/output_apply";
+import { showWorkspace } from "gnoblin/host/show";
+import { Workspace } from "gnoblin/host/workspace";
+import { wsState } from "gnoblin/host/workspace_state";
+
+/** Whether two lists hold the same outputs in the same order. */
+function sameOutputs(a: readonly Output[], b: readonly Output[]): boolean {
+    return a.length === b.length && a.every((output, at) => output === b[at]);
+}
+
+/**
+ * Makes the desk of `lead` show one workspace over `members` (the desks of the other members show nothing of their own
+ * and cover the same workspace), or ends the span with null. Asking for the span that holds changes nothing.
+ */
+function spanDesks(lead: Output, members: readonly Output[] | null): void {
+    const desk = ctx.deskByOutput.get(lead);
+    if (desk === undefined) {
+        return;
+    }
+    const covered = (members ?? []).filter((output) => ctx.deskByOutput.has(output));
+    const next = covered.length > 1 ? covered : null;
+    if (next === null ? desk.spans === null : desk.spans !== null && sameOutputs(desk.spans, next)) {
+        return;
+    }
+    for (const other of ctx.desks) {
+        if (other.spannedBy === desk) {
+            other.spannedBy = null;
+        }
+    }
+    desk.spans = next;
+    for (const output of next ?? []) {
+        const under = ctx.deskByOutput.get(output);
+        if (under !== undefined && under !== desk) {
+            under.spannedBy = desk;
+            setShown(under, null);
+        }
+    }
+    if (desk.shown !== null) {
+        wsState(desk.shown).dirty = true;
+    }
+    fillDesks();
+}
+
+/** Sends an output request on behalf of a profile or display; a request the shell cannot send is reported, not thrown. */
+function requestOutput(
+    output: Output,
+    setting: Omit<OutputConfig, "mirrorOf"> & { mirrorOf?: Output | string | null },
+    path: string,
+): void {
+    try {
+        applyOutput(output, setting, `gnoblin.${path}`, path);
+    } catch (error) {
+        say(`${path}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+
+/** A `Collection<Output>` for one display, kept equal to what the display presents. */
+function makeOutputSet(): OutputSet {
+    const collection = new Collection<Output>(CREATE, rootState("Output"));
+    const state = collectionState(collection);
+    return {
+        collection,
+        set(outputs) {
+            const before = state.list as Output[];
+            if (sameOutputs(before, outputs as Output[])) {
+                return;
+            }
+            state.list = [...outputs] as Output[];
+            for (const output of outputs as Output[]) {
+                if (!before.includes(output)) {
+                    queueFor(state, "onAdded", [output, collection]);
+                }
+            }
+            for (const output of before) {
+                if (!outputs.includes(output)) {
+                    queueFor(state, "onRemoved", [output, collection]);
+                }
+            }
+        },
+    };
+}
+
+/** Tells the collection that holds `member` that it joined (`onAdded`) or left (`onRemoved`). */
+function announceMember(member: Display | OutputProfile, joined: boolean): void {
+    const root = member instanceof Display ? ctx.displayRoot : ctx.profileRoot;
+    if (joined) {
+        queueFor(root, "onAdded", [member, root.self]);
+        recompute(root, member);
+        return;
+    }
+    for (const view of holders(root, member)) {
+        view.members?.delete(member);
+        queueFor(view, "onRemoved", [member, view.self]);
+    }
+}
+
+/** Makes the display manager and attaches `Display` to it. */
+export function installDisplays(): void {
+    const displayBackend: DisplayBackend = {
+        outputs: () => liveOutputs(),
+        primary: () => primaryOutput(),
+        hasDesk: (output) => ctx.deskByOutput.has(output as Output),
+        shownOn: (output) => {
+            const desk = ctx.deskByOutput.get(output as Output);
+            return desk === undefined ? null : effectiveDesk(desk).shown;
+        },
+        attached: (workspace) => wsState(workspace as Workspace).attached,
+        show: (workspace, output) => showWorkspace(workspace as Workspace, { output: output as Output }),
+        span: (lead, members) => spanDesks(lead as Output, members as readonly Output[] | null),
+        mirrorOf: (output) => (output as Output).mirrorOf,
+        mirror: (output, source, path) => requestOutput(output as Output, { mirrorOf: source as Output | null }, path),
+        apply: (output, setting, path) => requestOutput(output as Output, setting as OutputConfig, path),
+        pending: (output) => [...ctx.applications.values()].some((pending) => pending.output === output),
+        say,
+        error: (code, target, message) => new GnoblinError(code, target, message),
+        outputSet: makeOutputSet,
+        listed: (member) => announceMember(member, true),
+        unlisted: (member) => announceMember(member, false),
+    };
+
+    // Reconciles the script's profiles and displays with the connected outputs.
+    ctx.displayManager = new DisplayManager(
+        displayBackend,
+        ctx.profileRoot.list as OutputProfile[],
+        ctx.displayRoot.list as Display[],
+    );
+
+    attachDisplays({
+        changed: () => ctx.displayManager.changed(),
+        isWorkspace: (value) => value instanceof Workspace,
+        isOutput: (value) => value instanceof Output,
+        error: (code, target, message) => new GnoblinError(code, target, message),
+        shown: (display) => ctx.displayManager.shown(display),
+        show: (display, workspace) => ctx.displayManager.assignContent(display, workspace),
+        outputs: (display) => ctx.displayManager.outputsOf(display),
+    });
+}

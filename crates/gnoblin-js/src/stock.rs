@@ -82,8 +82,65 @@ mod tests {
         let mut on_disk = Vec::new();
         walk(&root, &mut on_disk, &root);
         on_disk.sort();
-        let embedded: Vec<&str> = MODULES.iter().map(|(_, file, _)| *file).collect();
+        let mut embedded: Vec<&str> = MODULES.iter().map(|(_, file, _)| *file).collect();
+        embedded.sort_unstable();
         assert_eq!(embedded, on_disk);
+    }
+
+    /// The modules that import one another at run time (the stripped JavaScript has no type-only imports) form a
+    /// tree of layers, never a loop: a loop makes the order modules evaluate in depend on which one was imported first.
+    #[test]
+    fn stock_modules_do_not_import_each_other_in_a_cycle() {
+        let modules = stock_modules();
+        // The module a line of stripped JavaScript imports or re-exports, if it does.
+        fn specifier(line: &str) -> Option<&str> {
+            let line = line.trim_start();
+            if !(line.starts_with("import ") || line.starts_with("export ")) {
+                return None;
+            }
+            let at = line
+                .rfind(" from \"")
+                .map(|at| at + " from \"".len())
+                .or_else(|| line.strip_prefix("import \"").map(|_| "import \"".len()))?;
+            let end = line[at..].find('"')?;
+            Some(&line[at..at + end])
+        }
+        let imports_of = |name: &str| -> Vec<String> {
+            modules[name]
+                .lines()
+                .filter_map(specifier)
+                .filter(|target| modules.contains_key(*target))
+                .map(str::to_owned)
+                .collect()
+        };
+        // Depth-first search; `path` is the chain of modules being visited, so a repeat in it is a cycle.
+        fn visit(
+            name: &str,
+            imports_of: &dyn Fn(&str) -> Vec<String>,
+            path: &mut Vec<String>,
+            done: &mut std::collections::HashSet<String>,
+        ) {
+            if done.contains(name) {
+                return;
+            }
+            if let Some(at) = path.iter().position(|seen| seen == name) {
+                let mut cycle = path[at..].to_vec();
+                cycle.push(name.to_owned());
+                panic!("stock modules import each other in a cycle: {}", cycle.join(" -> "));
+            }
+            path.push(name.to_owned());
+            for next in imports_of(name) {
+                visit(&next, imports_of, path, done);
+            }
+            path.pop();
+            done.insert(name.to_owned());
+        }
+        let mut done = std::collections::HashSet::new();
+        let mut names: Vec<&String> = modules.keys().collect();
+        names.sort();
+        for name in names {
+            visit(name, &imports_of, &mut Vec::new(), &mut done);
+        }
     }
 
     #[test]

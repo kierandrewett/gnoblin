@@ -10,21 +10,19 @@
 //
 // The statements of `installDefaults` and of data/js/starter/init.ts are one text. A test compares them, so edit both.
 
-import { Workspace, startDecorations, startNotRespondingAlert, startWindowMenu } from "gnoblin/host";
-import type { gnoblin as Gnoblin } from "gnoblin/host";
+import type { Gnoblin } from "gnoblin/host/gnoblin";
+import { startDecorations, startNotRespondingAlert, startWindowMenu } from "gnoblin/host/services";
+import { Workspace } from "gnoblin/host/workspace";
 import { WorkspaceSlideBinding } from "gnoblin/gestures";
 import { FloatingLayout } from "gnoblin/layouts/floating";
 import { StripLayout } from "gnoblin/layouts/strip";
 import { openLauncher } from "gnoblin/launcher";
 
-/** What the stock default needs of the `gnoblin` global. */
-type Host = typeof Gnoblin;
-
 /**
  * Declares the stock default on `gnoblin`: four floating workspaces, titlebars, the window menu, the not-responding
  * alert, workspace keys, strip focus keys, the three-finger workspace swipe, the launcher key and the media keys.
  */
-export function installDefaults(gnoblin: Host): void {
+export function installDefaults(gnoblin: Gnoblin): void {
     // Four floating workspaces. The first is shown until a key shows another.
     for (const id of ["1", "2", "3", "4"]) {
         gnoblin.workspaces.add(new Workspace({ id, name: `Workspace ${id}`, layout: new FloatingLayout() }));

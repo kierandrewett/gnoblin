@@ -282,11 +282,37 @@ would start `wpctl`, open the launcher and slide the window the test drags.
 ## P3 status
 
 `JsShell` (`crates/gnoblin-js/src/shell.rs`) does for QuickJS what `ShellVm` does for Lua, over `gnoblin-tree-client`.
-The object model is TypeScript (`data/js/gnoblin/host.ts`), embedded as `gnoblin/host`. `JsShell` embeds the
-stock library beside it and appends `export * from "gnoblin/host"` to the stock `gnoblin` index, so one
-`import { Workspace, ClientListener } from "gnoblin"` reaches both; the stock sources are unchanged. The Rust side
-(`src/bindings/`) is a set of plain host functions behind `globalThis.__gnoblinHost`. It runs against a fake
+The object model is TypeScript, embedded as `gnoblin/host`: `data/js/gnoblin/host.ts` lists its public exports and
+`data/js/gnoblin/host/*.ts` is the code.
+
+`JsShell` embeds the stock library, which holds it, and appends `export * from "gnoblin/host"` to the stock `gnoblin`
+index. One `import { Workspace, ClientListener } from "gnoblin"` reaches both.
+
+The Rust side (`src/bindings/`) is plain host functions behind `globalThis.__gnoblinHost`. It runs against a fake
 compositor in `crates/gnoblin-js/tests/shell.rs`, and against the real one by P6 role wiring (below).
+
+Structure of the object model (was one `gnoblin.ts` of 5,186 lines with 279 top-level declarations):
+
+- **Layers.** `gnoblin/types` and `gnoblin/errors` are leaves. `host/bridge`, `host/contract` (types of the two sides of
+  the bridge) and `host/context` (the shared state, see below) sit on them. Above come per-concept modules
+  (`client`, `workspace`, `output`, `collections`, `desks`, `membership`, `work_area`, `fitting`, `placements`,
+  `styles`, `layout_driver`, `snapshot`, `adoption`, `frame`), then the wiring (`policy`, `services`, `xr_bridge`,
+  `session_bridge`, `rollback`, `staging`, `input_bridge`, `displays`, `roots`) and last `facade`.
+- **State.** The 14 reassigned module-level `let`s and the module maps are fields of one `HostContext` (`host/context`);
+  no module keeps state of its own. It is an exported instance, not a parameter, because a script constructs
+  `new Workspace(...)` and has nothing to pass it.
+- **Composition root.** Only `host/facade` runs anything when imported: it calls each `install*` function in order, makes
+  `gnoblin`, adopts the existing nodes and hands the shell its `Entry`.
+- **No cycles.** `stock::tests` fails when the stripped stock modules import each other in a loop. Type-only imports
+  (erased) still form a loop among the object classes, which is inherent to `Client`, `Workspace` and `Output`
+  naming each other. A lower module asks `isClient`, `isOutput` or `isWorkspace` instead of `instanceof`.
+- **Module table.** `crates/gnoblin-js/build.rs` embeds every `.ts` under `data/js/gnoblin`; a new file needs no edit.
+- **Sizes.** The largest host module, `client.ts`, is about 600 lines. In Rust, the `shell`, `input`, `ui`,
+  `generation`, `reload`, `console`, `host_process` and `bindings/host` modules are directories, none over 600 lines
+  (`shell.rs` 1433 became `shell/mod.rs` 571 plus `frame`, `txgate`, `links` and `document`; `input.rs` 984 became
+  `input/mod.rs` 226 plus `claims`, `seats` and `install`; the inline tests of each are in `tests.rs`).
+- **Not yet split** (still over 600 lines): `input.ts`, `xr.ts`, `style.ts`, `bindings.ts`, `ui.ts`, `scene.ts`,
+  `display.ts`, `transition.ts`, `menus.ts`, `session.ts`, `display_manager.ts`.
 
 - **Boot order.** `JsShell::new` attaches, drains the snapshot and loads `gnoblin/host`, so `gnoblin.clients` exists
   for the entry. `load_entry` evaluates `init.ts`. The first `frame()` announces `ready` for the snapshot's nodes,
