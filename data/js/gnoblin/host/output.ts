@@ -40,11 +40,17 @@ export const OUTPUT_KEYS = [
 export interface OutputSeen {
     /** Whether the output has no place of its own: it mirrors another or is off. It has no desk then. */
     detached: boolean;
+    /** The output's mode as the compositor publishes it (for example `3440x1440@144`). */
     mode: string;
+    /** The output's scale factor. */
     scale: number;
+    /** The output's left edge, in logical pixels. */
     x: number;
+    /** The output's top edge, in logical pixels. */
     y: number;
+    /** The output's width, in logical pixels. */
     width: number;
+    /** The output's height, in logical pixels. */
     height: number;
 }
 
@@ -86,10 +92,12 @@ export class Output extends NativeObject {
         ctx.outputSeen.set(this, publishedOutput(node));
     }
 
+    /** The compositor's label for this output, or `?` when it has none. */
     get id(): string {
         return host.label(stateOf(this).node) ?? "?";
     }
 
+    /** Whether the output is still connected. The same as `connected`. */
     get alive(): boolean {
         return stateOf(this).alive;
     }
@@ -104,10 +112,12 @@ export class Output extends NativeObject {
         return read<string>(this, "name");
     }
 
+    /** The monitor's manufacturer, as it reports it. */
     get make(): string {
         return read<string>(this, "make");
     }
 
+    /** The monitor's model name, as it reports it. */
     get model(): string {
         return read<string>(this, "model");
     }
@@ -176,6 +186,7 @@ export class Output extends NativeObject {
         };
     }
 
+    /** The output's rotation and flip, in the compositor's names: `normal`, `90`, `180`, `270` or a `flipped` form. */
     get transform(): string {
         return read<string>(this, "transform");
     }
@@ -185,26 +196,32 @@ export class Output extends NativeObject {
         return read<boolean>(this, "primary");
     }
 
+    /** Whether the output is switched on. */
     get enabled(): boolean {
         return read<boolean>(this, "enabled");
     }
 
+    /** The output's left edge in the compositor's coordinates, in logical pixels. */
     get x(): number {
         return read<number>(this, "x");
     }
 
+    /** The output's top edge in the compositor's coordinates, in logical pixels. */
     get y(): number {
         return read<number>(this, "y");
     }
 
+    /** The output's width in logical pixels. */
     get width(): number {
         return read<number>(this, "width");
     }
 
+    /** The output's height in logical pixels. */
     get height(): number {
         return read<number>(this, "height");
     }
 
+    /** The output's top-left corner as `{ x, y }`, in logical pixels. */
     get position(): { x: number; y: number } {
         return { x: this.x, y: this.y };
     }
@@ -230,8 +247,10 @@ export class Output extends NativeObject {
         return { x: this.x, y: this.y, width: this.width, height: this.height };
     }
 
-    /** What a layout tiles in on this output: the output less the bars on it. Null for a gone output or one with no
-     * size. */
+    /**
+     * What a layout tiles in on this output: the output less the bars on it. Null for a gone output or one with no
+     * size.
+     */
     get area(): Rect | null {
         return stateOf(this).alive ? areaOf(this) : null;
     }
@@ -250,6 +269,7 @@ export class Output extends NativeObject {
         showWorkspace(workspace, { ...options, output: this });
     }
 
+    /** Attaches a listener to this output. Adding the same listener twice has no effect. */
     addListener(listener: OutputListener): void {
         assertListener(listener, `${this}.addListener`);
         const { listeners } = stateOf(this);
@@ -258,6 +278,7 @@ export class Output extends NativeObject {
         }
     }
 
+    /** Detaches a listener that `addListener` attached; one that is not attached is ignored. */
     removeListener(listener: OutputListener): void {
         const { listeners } = stateOf(this);
         const at = listeners.indexOf(listener);
@@ -266,6 +287,7 @@ export class Output extends NativeObject {
         }
     }
 
+    /** The output's label for messages, such as `Output#DP-1`. */
     toString(): string {
         return `Output#${host.label(stateOf(this).node)}`;
     }
