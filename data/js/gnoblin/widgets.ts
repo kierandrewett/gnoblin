@@ -415,8 +415,8 @@ onWake("clock widgets", () => {
 
 /**
  * A text that shows the time, as `format` says (`%H:%M` by default). It follows the clock a frame at a time, and asks
- * the shell for a frame when its text is due to change: the next second for a format that shows seconds, the next
- * minute otherwise.
+ * the shell for a frame when its text is due to change: every 1000 ms for a format with the `%S` or `%T` field, every
+ * 60000 ms otherwise, on the system clock's boundaries.
  */
 export class Clock extends Text {
     format = "%H:%M";

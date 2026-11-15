@@ -380,8 +380,8 @@ fn a_clock_widget_asks_for_a_frame_when_its_minute_ends_and_draws_the_new_time_i
 fn a_clock_widget_that_shows_seconds_asks_for_a_frame_each_second() {
     let mut rig = clock_world("%H:%M:%S");
     rig.quiet();
-    let left = 1000 - (1_700_000_000_000_u64 % 1000);
-    assert_eq!(rig.shell.next_wake(), Some(Duration::from_millis(left)));
+    // The frozen time sits on a whole second, so a whole second is left.
+    assert_eq!(rig.shell.next_wake(), Some(Duration::from_millis(1000)));
 }
 
 #[test]

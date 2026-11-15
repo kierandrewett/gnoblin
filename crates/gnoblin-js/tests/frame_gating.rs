@@ -319,9 +319,11 @@ impl Sequence {
     }
 }
 
+type Repeatable = (&'static str, fn(&mut Rig, u64));
+
 /// The changes that can happen again and again: each takes a number that makes it a real change every time. The lock is
 /// not one of them: a lock screen that is up is awake on every turn, so the shell would never rest again.
-const REPEATABLE: &[(&str, fn(&mut Rig, u64))] = &[
+const REPEATABLE: &[Repeatable] = &[
     ("a window moved", |rig, n| {
         rig.comp.external_set(3, "x", MirrorValue::Double(n as f64))
     }),

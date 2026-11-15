@@ -1341,14 +1341,19 @@ fn an_unresponsive_window_gets_its_alert_when_the_look_a_frame_skipped_comes_due
         card(&mut rig).is_some(),
         "the alert opened without anything else arriving"
     );
-    // Force quit arms after its delay, which is a deadline too.
-    assert_eq!(rig.shell.next_wake(), Some(std::time::Duration::from_millis(1000)));
-    rig.advance(1000);
-    assert!(rig.next_frame_runs(), "the arming woke a frame");
-    rig.quiet();
-    assert_eq!(
-        rig.shell.next_wake(),
-        None,
-        "an armed alert waits for the user and nothing else"
-    );
+    // Force quit arms after its delay, which is a deadline too. Each frame that drew leaves one more look inside the
+    // interval, so the clock is moved to whatever is due until nothing is.
+    let armed = "String(notRespondingAlerts.cardOf(gnoblin.clients.at(0)).armed)";
+    assert_eq!(rig.eval(armed), "false", "the card has not armed yet");
+    let mut rested = false;
+    for _ in 0..12 {
+        rig.quiet();
+        let Some(due) = rig.shell.next_wake() else {
+            rested = true;
+            break;
+        };
+        rig.advance((due.as_secs_f64() * 1000.0).ceil() as u64);
+    }
+    assert!(rested, "an armed alert waits for the user and nothing else");
+    assert_eq!(rig.eval(armed), "true", "the arming delay woke a frame");
 }
