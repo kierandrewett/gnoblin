@@ -831,6 +831,7 @@ impl State {
 
     /// How many outputs capture holds a frame for, which is the number of outputs the session has unless an entry
     /// outlived its output.
+    #[cfg(test)]
     pub(crate) fn capture_cached_outputs(&self) -> usize {
         self.capture.pixels.len()
     }

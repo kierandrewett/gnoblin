@@ -27,30 +27,31 @@ A removed output keeps its last values and reads `connected === false`.
 `mode`, `scale`, `primary`, `enabled`, `x`, `y`, `width` and `height`. [`gnoblin.find("Output", filter)`](find) returns an
 array.
 
-| Member                      | Meaning                                                                                                       |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `name`                      | The compositor's name for the output, such as `output-0`. Not a stable name: use `connector`.                 |
-| `connector`                 | The connector the display is plugged into, such as `DP-1`. An `OutputProfile` matches it.                     |
-| `identity`                  | The monitor's EDID identity, `MAN:product:serial`. Empty for a display that reports none.                     |
-| `make`, `model`             | What the compositor knows of the display. Empty when it knows nothing.                                        |
-| `mirrorOf`                  | The output this one shows a copy of, or `null`.                                                               |
-| `mode`                      | The mode in use, `WxH@Hz`.                                                                                    |
-| `scale`                     | The factor the output composes at. 2 is a HiDPI panel.                                                        |
-| `supersample`               | The factor the output is composed above its mode, 1 for none. See [Supersampling](#supersampling).            |
-| `virtualSize`               | `{ width, height }`: the mode times `supersample`, the size of the output's screenshots.                      |
-| `effectiveScale`            | `scale * supersample`: the scale clients are told.                                                            |
-| `transform`                 | The rotation and flip: `normal`, `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180` or `flipped-270`. |
-| `x`, `y`, `width`, `height` | The output's rectangle in the compositor's coordinates. `bounds` is the same as one object.                   |
-| `position`                  | `{ x, y }` of the output.                                                                                     |
-| `primary`                   | Whether this is the primary output, the one the stock bars and `gnoblin.workspaces.area` are on.              |
-| `enabled`                   | Whether the output is on.                                                                                     |
-| `area`                      | What a layout tiles in on this output: its rectangle less the bars on it. `null` when the output is gone.     |
-| `workspace`                 | The workspace the output shows, or `null`.                                                                    |
-| `show(workspace, options?)` | Shows a workspace on this output. `options.duration` slides the windows.                                      |
-| `apply(options)`            | Configures the display. See [Configure an output](#configure-an-output).                                      |
-| `mirror(source)`            | Shows a copy of `source`, or stops with `null`.                                                               |
-| `connected`, `alive`        | `false` once the display is gone.                                                                             |
-| `addListener(listener)`     | Attaches an `OutputListener`.                                                                                 |
+| Member                      | Meaning                                                                                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`                      | The compositor's name for the output, such as `output-0`. Not a stable name: use `connector`.                                              |
+| `connector`                 | The connector the display is plugged into, such as `DP-1`. An `OutputProfile` matches it.                                                  |
+| `identity`                  | The monitor's EDID identity, `MAN:product:serial`. Empty for a display that reports none.                                                  |
+| `make`, `model`             | What the compositor knows of the display. Empty when it knows nothing.                                                                     |
+| `mirrorOf`                  | The output this one shows a copy of, or `null`.                                                                                            |
+| `mode`                      | The mode in use, `WxH@Hz`.                                                                                                                 |
+| `scale`                     | The factor the output composes at. 2 is a HiDPI panel.                                                                                     |
+| `supersample`               | The factor the output is composed above its mode, 1 for none. See [Supersampling](#supersampling).                                         |
+| `virtualSize`               | `{ width, height }`: the mode times `supersample`, the size of the output's screenshots.                                                   |
+| `effectiveScale`            | `scale * supersample`: the scale clients are told.                                                                                         |
+| `gpuMemory`                 | `{ target, scratch, staging, views, capture, total }` in bytes: what the compositor holds for the output. See [GPU memory](../gpu-memory). |
+| `transform`                 | The rotation and flip: `normal`, `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180` or `flipped-270`.                              |
+| `x`, `y`, `width`, `height` | The output's rectangle in the compositor's coordinates. `bounds` is the same as one object.                                                |
+| `position`                  | `{ x, y }` of the output.                                                                                                                  |
+| `primary`                   | Whether this is the primary output, the one the stock bars and `gnoblin.workspaces.area` are on.                                           |
+| `enabled`                   | Whether the output is on.                                                                                                                  |
+| `area`                      | What a layout tiles in on this output: its rectangle less the bars on it. `null` when the output is gone.                                  |
+| `workspace`                 | The workspace the output shows, or `null`.                                                                                                 |
+| `show(workspace, options?)` | Shows a workspace on this output. `options.duration` slides the windows.                                                                   |
+| `apply(options)`            | Configures the display. See [Configure an output](#configure-an-output).                                                                   |
+| `mirror(source)`            | Shows a copy of `source`, or stops with `null`.                                                                                            |
+| `connected`, `alive`        | `false` once the display is gone.                                                                                                          |
+| `addListener(listener)`     | Attaches an `OutputListener`.                                                                                                              |
 
 A script reads these properties and writes none. It changes a display with `apply` and `mirror`, below, or keeps a
 setting for a monitor with an [`OutputProfile`](#hardware-profiles) in `gnoblin.outputs.profiles`.

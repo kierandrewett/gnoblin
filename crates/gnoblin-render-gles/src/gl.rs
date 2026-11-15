@@ -26,6 +26,7 @@ use std::num::NonZeroU32;
 
 use glow::HasContext;
 
+use smithay::backend::renderer::Renderer as _;
 use smithay::backend::renderer::Texture as _;
 use smithay::backend::renderer::gles::{GlesError, GlesTexture};
 use smithay::backend::renderer::glow::GlowRenderer;
@@ -533,6 +534,36 @@ impl GlContext {
             gl.delete_renderbuffer(target.renderbuffer);
             gl.delete_texture(target.texture.handle);
         });
+    }
+
+    /// Deletes the GL names of every texture the frame imported and has now let go of.
+    ///
+    /// Smithay does not delete a texture when its owner drops it: the drop queues the name, and the queue is emptied
+    /// by `cleanup_texture_cache` (its own frames do that when they finish). This renderer draws with its own passes
+    /// and so never ends a Smithay frame, which is why nothing emptied the queue and every client buffer, overlay and
+    /// cursor imported for a frame stayed in the driver for the life of the context.
+    pub(crate) fn collect_textures(&mut self) {
+        if let Err(error) = self.renderer.cleanup_texture_cache() {
+            log::warn!(
+                area = "render",
+                ?error,
+                "the textures of a frame could not be given back"
+            );
+        }
+    }
+
+    /// How many of the texture names `1..=upto` are live in this context: the textures the renderer holds, whoever
+    /// made them. A test counts them to see whether a frame's imports are given back.
+    #[cfg(test)]
+    pub(crate) fn live_textures(&mut self, upto: u32) -> usize {
+        self.renderer
+            .with_context(|gl| unsafe {
+                // SAFETY: `is_texture` reads a name's state and changes nothing; every name is checked against this context.
+                (1..=upto)
+                    .filter(|name| NonZeroU32::new(*name).is_some_and(|name| gl.is_texture(glow::NativeTexture(name))))
+                    .count()
+            })
+            .unwrap_or(0)
     }
 
     /// Binds `target` and clears it to opaque black and its stencil to zero, the picture a View starts from.

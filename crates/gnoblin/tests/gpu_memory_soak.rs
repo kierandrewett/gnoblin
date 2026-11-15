@@ -204,31 +204,13 @@ fn first_output(ipc: &Path) -> Option<u64> {
     out.lines().next()?.split('\t').next()?.parse().ok()
 }
 
-/// Applies a supersample factor to an output, keeping its mode.
+/// Applies a supersample factor to an output; every other setting is left as it is.
 fn supersample(ipc: &Path, output: u64, factor: &str) -> bool {
     let id = output.to_string();
-    let (_, mode, _) = ctl(ipc, &["output", "get", &id, "mode"]);
-    let mode = mode.trim().to_owned();
-    let supersample = format!("supersample={factor}");
-    let mode = format!("mode={mode}");
-    let (code, _, error) = ctl(
-        ipc,
-        &[
-            "output",
-            "call",
-            &id,
-            "apply",
-            "x=0",
-            "y=0",
-            "scale=1",
-            "transform=0",
-            "enabled=true",
-            &mode,
-            &supersample,
-        ],
-    );
+    let setting = format!("supersample={factor}");
+    let (code, out, error) = ctl(ipc, &["output", "call", &id, "apply", &setting]);
     if code != 0 {
-        eprintln!("supersample {factor} was refused: {error}");
+        eprintln!("supersample {factor} was refused (exit {code}): out {out:?} err {error:?}");
     }
     code == 0
 }
@@ -331,7 +313,6 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
             "screenshots": screenshots,
             "screenshots_refused": refused,
             "rss": status_field("VmRSS") * 1024,
-            "rss_peak": status_field("VmHWM") * 1024,
             "threads": status_field("Threads"),
             "fds": entries("/proc/self/fd"),
             "gpu_memory_bytes": sum(&screens, "gpu_memory_bytes"),
@@ -411,7 +392,7 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
 }
 
 /// The backend id of the output on `connector`: the screen node is named `output-N` after it.
-fn plugged(ipc: &Path, connector: &str) -> Option<u32> {
+fn plugged(ipc: &Path, connector: &str) -> Option<u64> {
     snapshot(ipc)
         .into_iter()
         .filter(|node| node.class == "screen")

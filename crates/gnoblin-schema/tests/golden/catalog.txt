@@ -635,6 +635,12 @@ object screen since 0.2.0 secret false
   property identity type string since 0.2.0 secret false
   property mirror_of type string since 0.2.0 secret false
   property supersample type double since 0.2.0 secret false
+  property gpu_memory_target_bytes type double since 0.2.0 secret false
+  property gpu_memory_scratch_bytes type double since 0.2.0 secret false
+  property gpu_memory_staging_bytes type double since 0.2.0 secret false
+  property gpu_memory_views_bytes type double since 0.2.0 secret false
+  property gpu_memory_capture_bytes type double since 0.2.0 secret false
+  property gpu_memory_bytes type double since 0.2.0 secret false
   method capture since 0.2.0 secret false function false
   method apply since 0.2.0 secret false function false
     param text type string since 0.2.0 secret false
@@ -2409,6 +2415,18 @@ message Screen {
     string mirror_of = 37;
     // since 0.2.0
     double supersample = 38;
+    // since 0.2.0
+    double gpu_memory_target_bytes = 39;
+    // since 0.2.0
+    double gpu_memory_scratch_bytes = 40;
+    // since 0.2.0
+    double gpu_memory_staging_bytes = 41;
+    // since 0.2.0
+    double gpu_memory_views_bytes = 42;
+    // since 0.2.0
+    double gpu_memory_capture_bytes = 43;
+    // since 0.2.0
+    double gpu_memory_bytes = 44;
   }
 
   // Method `capture`, since 0.2.0.

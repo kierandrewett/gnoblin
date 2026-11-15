@@ -812,6 +812,27 @@ fn a_zero_sized_buffer_is_a_protocol_error() {
 }
 
 #[test]
+fn a_buffer_larger_than_the_compositor_holds_is_a_protocol_error_and_the_importer_is_never_asked() {
+    let session = Session::with_importer(Some(DEVICE));
+    session.run(|handle| {
+        let mut client = Client::connect(&handle.socket);
+        let global = client.dmabuf(4);
+        // A 16384 x 16384 buffer is a gigabyte of pixels. Its plane file is sparse, so the stand-in importer (which
+        // accepts every buffer it is asked about) would take it: the refusal below is the compositor's own.
+        let params = client.params_with_plane(&global, 16384, 16384, Modifier::Linear);
+        params.create(16384, 16384, Fourcc::Argb8888 as u32, params::Flags::empty());
+        let (interface, code) = client.protocol_error();
+        assert_eq!(interface, "zwp_linux_buffer_params_v1");
+        assert_eq!(code, params::Error::InvalidDimensions as u32);
+        assert!(
+            handle.seen().is_empty(),
+            "the buffer never reached the importer: {:?}",
+            handle.seen()
+        );
+    });
+}
+
+#[test]
 fn an_unoffered_format_is_a_protocol_error() {
     let session = Session::with_importer(Some(DEVICE));
     session.run(|handle| {

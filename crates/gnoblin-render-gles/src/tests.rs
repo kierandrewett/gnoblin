@@ -1489,3 +1489,39 @@ fn a_region_with_nothing_in_the_frame_is_refused() {
         "no pixel of the region is in the frame"
     );
 }
+
+/// The textures a renderer holds after `frames` frames that each import an overlay and a cursor.
+fn live_after(renderer: &mut Gles, frames: usize) -> usize {
+    let size = renderer.size();
+    let pixels = Image::new(Size::new(16, 16), 64, vec![200; 16 * 16 * 4]).expect("a bitmap");
+    let mut frame = frame_with(
+        Color::BLACK,
+        size,
+        Rect::new(0, 0, 8, 8),
+        Color::from_rgba8(255, 0, 0, 255),
+    );
+    frame.push_layer(Layer::Overlay(
+        Overlay::new(Rect::new(4, 4, 16, 16), &pixels).expect("an overlay"),
+    ));
+    frame.set_cursor_image(Overlay::new(Rect::new(30, 30, 16, 16), &pixels));
+    for _ in 0..frames {
+        renderer.draw(&frame, Scale::IDENTITY).expect("a frame");
+    }
+    renderer.device.live_textures(4096)
+}
+
+#[test]
+fn the_textures_a_frame_imports_are_given_back_when_it_is_drawn() {
+    let Some(mut renderer) = gles(Size::new(64, 48)) else {
+        return;
+    };
+    // Smithay queues a dropped texture for deletion and deletes it only when told to, so before this was fixed every
+    // frame left an overlay and a cursor texture behind: 400 frames, 800 textures.
+    let settled = live_after(&mut renderer, 5);
+    let after = live_after(&mut renderer, 400);
+    assert!(
+        after <= settled + 4,
+        "400 more frames left {} textures behind ({settled} after the first five)",
+        after - settled
+    );
+}

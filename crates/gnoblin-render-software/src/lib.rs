@@ -158,16 +158,31 @@ impl Software {
         self.physical
     }
 
-    /// The bytes this renderer holds: the output buffer, and the two byte vectors it reuses between frames.
+    /// The bytes this renderer holds: the output buffer, the two byte vectors it reuses between frames, and the
+    /// client textures of the frame last drawn.
     ///
-    /// Those vectors only grow (a tinted layer's bytes, the pixels under the cursor), so their capacity is what
-    /// shows the largest layer this output ever drew. The client textures of the frame in flight are Pixman's own
-    /// copies and are not counted: their size is not known to this crate.
+    /// The vectors only grow (a tinted layer's bytes, the pixels under the cursor), so their capacity shows the
+    /// largest layer this output ever drew. The textures are Pixman's snapshot of every layer's buffer, made on each
+    /// draw and kept until the next one, so they are what a window of a huge buffer costs this renderer; they are
+    /// reported as `staging`, the upload copies, at their nominal `width * height * 4`.
     #[must_use]
     pub fn footprint(&self) -> Footprint {
+        let textures = self
+            .textures
+            .iter()
+            .flatten()
+            .chain(self.cursor.as_ref())
+            .map(|texture| {
+                image_bytes(
+                    Size::new(texture.size().w as u32, texture.size().h as u32),
+                    COLOUR_BYTES_PER_PIXEL,
+                )
+            })
+            .fold(0, u64::saturating_add);
         Footprint {
             target: image_bytes(self.physical, COLOUR_BYTES_PER_PIXEL),
             scratch: (self.scratch.capacity() as u64).saturating_add(self.cursor_under.capacity() as u64),
+            staging: textures,
             ..Footprint::default()
         }
     }

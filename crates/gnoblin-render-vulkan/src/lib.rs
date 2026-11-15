@@ -253,10 +253,7 @@ impl Vulkan {
             return Err(RenderError::Lost);
         }
         self.read_target(with_cursor)
-            .map(|image| {
-                self.trim();
-                image
-            })
+            .inspect(|_| self.trim())
             .map_err(|result| self.fail(result))
     }
 

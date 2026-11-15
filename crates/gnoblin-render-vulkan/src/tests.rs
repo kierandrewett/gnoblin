@@ -839,3 +839,29 @@ fn the_readback_buffer_follows_the_target_back_down() {
     );
     clean(&vulkan);
 }
+
+/// The resident set of this process, in bytes.
+fn resident() -> u64 {
+    std::fs::read_to_string("/proc/self/statm")
+        .ok()
+        .and_then(|statm| statm.split_whitespace().nth(1)?.parse::<u64>().ok())
+        .map_or(0, |pages| pages * 4096)
+}
+
+#[test]
+#[ignore = "open (gnoblin-4z5): 200 frames grow the process by about 160 MiB on lavapipe, whatever the frame holds; not yet attributed to the renderer or to lavapipe"]
+fn frames_with_no_upload_do_not_grow_the_process() {
+    let Some(mut vulkan) = renderer(SIZE) else { return };
+    let mut plain = frame(Color::BLACK, SIZE);
+    solid(&mut plain, Rect::new(0, 0, 16, 16), colour(255, 0, 0, 255));
+    for _ in 0..30 {
+        vulkan.draw(&plain, Scale::IDENTITY).expect("a warm-up frame");
+    }
+    let settled = resident();
+    for _ in 0..200 {
+        vulkan.draw(&plain, Scale::IDENTITY).expect("a frame");
+    }
+    let grown = resident().saturating_sub(settled);
+    println!("solid only: 200 frames grew the process by {} MiB", grown >> 20);
+    assert!(grown < 64 << 20, "grew by {} MiB", grown >> 20);
+}

@@ -26,12 +26,23 @@
 //!    [`crate::subsurface_position`], which applies it with the parent's commit as the protocol says.
 //! 4. **A rule that costs every request.** Which object and which request a check is for is decided
 //!    from the types, so a request that has no check pays a few type comparisons and nothing else.
+//! 5. **A buffer larger than the compositor holds.** `wl_shm_pool.create_buffer` and
+//!    `zwp_linux_buffer_params_v1.create`/`create_immed` name a width and a height, and nothing in Smithay bounds them
+//!    but the pool's own size (a sparse file of any length is a valid pool) and the driver at the first draw. A buffer of
+//!    more than 16384 pixels on an edge or 2^27 pixels is refused at the request, before anything is mapped or imported:
+//!    `wl_shm.invalid_stride` for a pool, `zwp_linux_buffer_params_v1.invalid_dimensions` for a dmabuf.
+//!    Tests: `tests/gpu_memory.rs` and `tests/dmabuf.rs`.
 
 use std::any::Any;
 use std::sync::{Mutex, PoisonError};
 
 use smithay::backend::renderer::utils::RendererSurfaceStateUserData;
+use smithay::reexports::wayland_protocols::wp::linux_dmabuf::zv1::server::zwp_linux_buffer_params_v1::{
+    self, ZwpLinuxBufferParamsV1,
+};
 use smithay::reexports::wayland_protocols::xdg::shell::server::{xdg_surface, xdg_wm_base};
+use smithay::reexports::wayland_server::protocol::wl_shm;
+use smithay::reexports::wayland_server::protocol::wl_shm_pool::{self, WlShmPool};
 use smithay::reexports::wayland_server::protocol::wl_subsurface::{self, WlSubsurface};
 use smithay::reexports::wayland_server::protocol::wl_surface::{self, WlSurface};
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource, Weak, protocol::wl_buffer::WlBuffer};
@@ -160,7 +171,58 @@ where
             _ => Screened::Forward,
         };
     }
+    if let Some(request) = request.downcast_ref::<wl_shm_pool::Request>() {
+        if let (Some(pool), wl_shm_pool::Request::CreateBuffer { width, height, .. }) =
+            (resource.downcast_ref::<WlShmPool>(), request)
+            && let Some(message) = oversized(*width, *height)
+        {
+            // The protocol has no error for a buffer that is too large; `invalid_stride` is the one `wl_shm` names for
+            // a width, height or stride the pool cannot describe, and the message says which limit was passed.
+            pool.post_error(wl_shm::Error::InvalidStride, message);
+            return Screened::Consumed;
+        }
+        return Screened::Forward;
+    }
+    if let Some(request) = request.downcast_ref::<zwp_linux_buffer_params_v1::Request>() {
+        let (width, height) = match request {
+            zwp_linux_buffer_params_v1::Request::Create { width, height, .. }
+            | zwp_linux_buffer_params_v1::Request::CreateImmed { width, height, .. } => (*width, *height),
+            _ => return Screened::Forward,
+        };
+        if let (Some(params), Some(message)) = (
+            resource.downcast_ref::<ZwpLinuxBufferParamsV1>(),
+            oversized(width, height),
+        ) {
+            params.post_error(zwp_linux_buffer_params_v1::Error::InvalidDimensions, message);
+            return Screened::Consumed;
+        }
+        return Screened::Forward;
+    }
     Screened::Forward
+}
+
+/// The widest or tallest buffer a client may create, in pixels: the largest texture edge the drivers this compositor
+/// draws with commonly report (`GL_MAX_TEXTURE_SIZE` is 16384 on Mesa's).
+const MAX_BUFFER_EDGE: i32 = 16384;
+
+/// The most pixels one buffer may hold: 2^27, half a GiB of RGBA. A window as large as the compositor's own largest
+/// output surface (8192 by 8192, `gnoblin_output::supersample`) holds half of that.
+const MAX_BUFFER_PIXELS: i64 = 1 << 27;
+
+/// Why a buffer of `width` by `height` pixels is larger than the compositor holds, if it is.
+///
+/// A size with no pixels is Smithay's to refuse, with the error the protocol names for it.
+fn oversized(width: i32, height: i32) -> Option<String> {
+    if width <= 0 || height <= 0 {
+        return None;
+    }
+    let pixels = i64::from(width) * i64::from(height);
+    (width > MAX_BUFFER_EDGE || height > MAX_BUFFER_EDGE || pixels > MAX_BUFFER_PIXELS).then(|| {
+        format!(
+            "a buffer of {width}x{height} pixels is larger than the compositor holds (at most {MAX_BUFFER_EDGE} on an \
+             edge and {MAX_BUFFER_PIXELS} pixels)"
+        )
+    })
 }
 
 /// One coordinate of a client that draws at `scale` (an Xwayland client's) in logical pixels.

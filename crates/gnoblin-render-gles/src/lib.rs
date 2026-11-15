@@ -613,6 +613,21 @@ impl Gles {
         damage: &[Rect],
         glass: Option<&LayerParts<'_>>,
     ) -> Result<(), RenderError> {
+        let painted = self.paint_layers(frame, scale, damage, glass);
+        // Every texture the frame imported was dropped when `paint_layers` returned, on every path out of it, so their
+        // names are given back here, once per frame.
+        self.device.collect_textures();
+        painted
+    }
+
+    /// [`Gles::paint`] without the collection of what the frame imported.
+    fn paint_layers(
+        &mut self,
+        frame: &OutputFrame,
+        scale: Scale,
+        damage: &[Rect],
+        glass: Option<&LayerParts<'_>>,
+    ) -> Result<(), RenderError> {
         // Textures first: importing needs the renderer mutably, and a pass borrows it for the
         // whole of the draw.
         let mut textures: Vec<Option<Texture>> = Vec::with_capacity(frame.layers().len());
@@ -790,7 +805,11 @@ impl Gles {
                 );
             })
             .ok()?;
-        Texture::from_smithay(&texture)
+        let handle = Texture::from_smithay(&texture);
+        // The texture owns the GL name: dropped here, the name would be queued for deletion and a collection before the
+        // frame is painted would delete it from under the pass.
+        owned.push(texture);
+        handle
     }
 
     /// Imports the overlay's premultiplied pixels as a texture.
