@@ -539,7 +539,7 @@ pub struct State {
     pub(crate) pointer_position: SmithayPoint<f64, Logical>,
     /// Where the surface the pointer is over has its origin, as the pointer last learned it, so a surface that moves
     /// under a pointer that has not is noticed.
-    pointer_origin: Option<SmithayPoint<f64, Logical>>,
+    pub(crate) pointer_origin: Option<SmithayPoint<f64, Logical>>,
     /// Whether a device has put the pointer anywhere yet. Until it has, the pointer is at the layout's corner by
     /// default and no surface is under it in any sense a client should hear of.
     pointer_placed: bool,
@@ -1182,12 +1182,6 @@ impl State {
             .and_then(|output| self.outputs.iter().find(|entry| entry.backend == output))
             .or_else(|| self.outputs.first());
         entry.map_or(1.0, |entry| entry.output.current_scale().fractional_scale())
-    }
-
-    /// Whether the pointer is currently over a surface.
-    #[must_use]
-    pub(crate) fn pointer_is_over(&self, surface: &WlSurface) -> bool {
-        self.pointer.current_focus().as_ref() == Some(surface)
     }
 
     /// Sends a relative motion vector to the surface the pointer is on.
@@ -1858,6 +1852,7 @@ impl State {
         }
         self.set_selection_focus(client.as_ref());
         self.restore_layout(target.as_ref());
+        self.update_pointer_constraints();
     }
 
     /// Moves the pointer to a layout position and gives it the focus it lands on.
@@ -1905,6 +1900,8 @@ impl State {
         // The enter, leave and motion of one move are a group: a client that bound `wl_pointer` at version 5 or
         // later (GTK and Qt both do) applies none of them before the frame that closes it.
         pointer.frame(self);
+        // The pointer's focus may have just moved, which is what starts and ends a constraint.
+        self.update_pointer_constraints();
     }
 
     /// The layout position nearest `wanted` that is inside an output.
@@ -1952,6 +1949,7 @@ impl State {
             },
         );
         pointer.frame(self);
+        self.update_pointer_constraints();
     }
 
     /// The surface of the window the window manager has focused.
@@ -3905,6 +3903,10 @@ impl Host for State {
                     f64::from(position.y + entry.rect.y),
                 ));
                 let delta = position - self.pointer_position;
+                // The first position a device gives the pointer places it, and a pointer that was never anywhere has
+                // travelled from nowhere: reporting the distance from the layout's corner would be a vector nothing
+                // moved by.
+                let travelled = self.pointer_placed;
                 // A locked pointer does not move: its whole motion becomes a relative
                 // vector for the client that asked for the lock, and nothing else changes.
                 if self.locked_surface().is_some() {
@@ -3915,19 +3917,28 @@ impl Host for State {
                 self.move_pointer(position, time);
                 // The vector goes out with the position, so a client that only wants
                 // relative motion does not have to difference two positions.
-                self.send_relative_motion(delta, time);
+                if travelled {
+                    self.send_relative_motion(delta, time);
+                }
             }
             InputEvent::PointerMotionRelative { dx, dy, .. } => {
                 // A relative device states a delta rather than a position, which is what
-                // a mouse and an EI client both send. The delta is applied to the
-                // position the seat holds and the result is kept inside the layout, so a
-                // fast move stops at an edge instead of leaving every output.
-                let wanted = SmithayPoint::from((
-                    self.pointer_position.x + f64::from(dx),
-                    self.pointer_position.y + f64::from(dy),
-                ));
-                let position = self.within_layout(wanted);
+                // a mouse and an EI client both send. It is the vector a client that asked
+                // for relative motion hears, whatever becomes of the pointer: a locked
+                // pointer does not move, and one held at the edge of a layout or a
+                // confinement still reports the whole motion.
+                let delta = SmithayPoint::from((f64::from(dx), f64::from(dy)));
+                if self.locked_surface().is_some() {
+                    self.send_relative_motion(delta, time);
+                    return;
+                }
+                // The delta is applied to the position the seat holds and the result is kept
+                // inside the layout, so a fast move stops at an edge instead of leaving every
+                // output, and then inside the region a client confined the pointer to.
+                let wanted = self.pointer_position + delta;
+                let position = self.confine(self.within_layout(wanted));
                 self.move_pointer(position, time);
+                self.send_relative_motion(delta, time);
             }
             InputEvent::PointerLeave => {
                 self.shell_pointer(None);
@@ -3943,6 +3954,7 @@ impl Host for State {
                     },
                 );
                 pointer.frame(self);
+                self.update_pointer_constraints();
             }
             InputEvent::PointerButton {
                 device,

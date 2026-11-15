@@ -50,7 +50,9 @@ use wayland_protocols::wp::idle_inhibit::zv1::client::{zwp_idle_inhibit_manager_
 use wayland_protocols::wp::keyboard_shortcuts_inhibit::zv1::client::{
     zwp_keyboard_shortcuts_inhibit_manager_v1, zwp_keyboard_shortcuts_inhibitor_v1,
 };
-use wayland_protocols::wp::pointer_constraints::zv1::client::{zwp_locked_pointer_v1, zwp_pointer_constraints_v1};
+use wayland_protocols::wp::pointer_constraints::zv1::client::{
+    zwp_confined_pointer_v1, zwp_locked_pointer_v1, zwp_pointer_constraints_v1,
+};
 use wayland_protocols::wp::presentation_time::client::{wp_presentation, wp_presentation_feedback};
 use wayland_protocols::wp::relative_pointer::zv1::client::{zwp_relative_pointer_manager_v1, zwp_relative_pointer_v1};
 use wayland_protocols::wp::security_context::v1::client::{wp_security_context_manager_v1, wp_security_context_v1};
@@ -128,6 +130,16 @@ impl Handle {
             device: DeviceId::VIRTUAL,
             output,
             position: at,
+        });
+    }
+
+    /// Queues a pointer motion by a distance, which is how a mouse reports it: a device that states a
+    /// delta, not a place.
+    fn move_pointer_by(&self, dx: i32, dy: i32) {
+        self.control.inject_input(InputEvent::PointerMotionRelative {
+            device: DeviceId::VIRTUAL,
+            dx,
+            dy,
         });
     }
 
@@ -302,6 +314,8 @@ struct App {
     // Pointer constraints.
     locked: u32,
     unlocked: u32,
+    confined: u32,
+    unconfined: u32,
     // Idle.
     idled: u32,
     resumed: u32,
@@ -506,6 +520,7 @@ ignored!(
     wl_output::WlOutput,
     xdg_toplevel::XdgToplevel,
     zwp_relative_pointer_manager_v1::ZwpRelativePointerManagerV1,
+    wl_region::WlRegion,
     zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1,
     zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1,
     zwp_text_input_manager_v3::ZwpTextInputManagerV3,
@@ -760,6 +775,23 @@ impl Dispatch<zwp_locked_pointer_v1::ZwpLockedPointerV1, ()> for App {
         match event {
             zwp_locked_pointer_v1::Event::Locked => state.locked += 1,
             zwp_locked_pointer_v1::Event::Unlocked => state.unlocked += 1,
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<zwp_confined_pointer_v1::ZwpConfinedPointerV1, ()> for App {
+    fn event(
+        state: &mut Self,
+        _: &zwp_confined_pointer_v1::ZwpConfinedPointerV1,
+        event: <zwp_confined_pointer_v1::ZwpConfinedPointerV1 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            zwp_confined_pointer_v1::Event::Confined => state.confined += 1,
+            zwp_confined_pointer_v1::Event::Unconfined => state.unconfined += 1,
             _ => {}
         }
     }
@@ -1092,6 +1124,237 @@ fn a_pointer_lock_is_released_when_focus_moves() {
             (state.pointer_x, state.pointer_y) == (f64::from(moved.x - geometry.x), f64::from(moved.y - geometry.y)),
             "the pointer moved by the second motion, not by the enter"
         );
+    });
+}
+
+/// A client with a mapped window, the seat's pointer and the constraint manager.
+struct Pointed {
+    client: Client,
+    window: Window,
+    constraints: zwp_pointer_constraints_v1::ZwpPointerConstraintsV1,
+    pointer: wl_pointer::WlPointer,
+    geometry: gnoblin_types::Rect,
+}
+
+impl Pointed {
+    fn map(session: &Handle, app_id: &str) -> Self {
+        let mut client = Client::app(session.socket());
+        let window = client.map_window(app_id);
+        let geometry = session.focused_window();
+        let constraints = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises zwp_pointer_constraints_v1");
+        let pointer = client.pointer();
+        Self {
+            client,
+            window,
+            constraints,
+            pointer,
+            geometry,
+        }
+    }
+
+    /// A point in the window's surface, as the window's frame origin offset by `(x, y)`.
+    fn at(&self, x: i32, y: i32) -> Point {
+        Point::new(self.geometry.x + x, self.geometry.y + y)
+    }
+
+    /// Runs `motion`, waits for the pointer's next motion event and answers where the client says the pointer is.
+    fn pointer_after(&mut self, motion: impl FnOnce()) -> (f64, f64) {
+        self.client.state.pointer_motions = 0;
+        motion();
+        let state = self.client.wait_for(|state| state.pointer_motions >= 1);
+        (state.pointer_x, state.pointer_y)
+    }
+}
+
+/// A mouse reports a delta, and that is the path every real pointer takes: a lock holds it and the motion is the
+/// vector a relative pointer reports; once the lock is gone the same delta moves the pointer and still reports.
+#[test]
+fn a_locked_pointer_reports_a_mouse_as_relative_motion() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut held = Pointed::map(session, "org.gnoblin.MouseLocked");
+        let relatives: zwp_relative_pointer_manager_v1::ZwpRelativePointerManagerV1 = held
+            .client
+            .globals
+            .bind(&held.client.qh, 1..=1, ())
+            .expect("the session advertises zwp_relative_pointer_manager_v1");
+        let _relative = relatives.get_relative_pointer(&held.pointer, &held.client.qh, ());
+        session.move_pointer(held.at(100, 75));
+        held.client.wait_for(|state| state.pointer_enters == 1);
+        let lock = held.constraints.lock_pointer(
+            &held.window.surface,
+            &held.pointer,
+            None,
+            zwp_pointer_constraints_v1::Lifetime::Persistent,
+            &held.client.qh,
+            (),
+        );
+        held.client.wait_for(|state| state.locked == 1);
+
+        held.client.state.pointer_motions = 0;
+        held.client.state.relative.clear();
+        session.move_pointer_by(20, 10);
+        let state = held.client.wait_for(|state| !state.relative.is_empty());
+        assert_eq!(state.pointer_motions, 0, "a locked pointer does not move");
+        assert_eq!(
+            state.relative,
+            vec![(20.0, 10.0)],
+            "the mouse's motion arrived as a vector"
+        );
+
+        lock.destroy();
+        held.client.roundtrip();
+        held.client.state.relative.clear();
+        session.move_pointer_by(5, 5);
+        let state = held
+            .client
+            .wait_for(|state| state.pointer_motions >= 1 && !state.relative.is_empty());
+        assert_eq!(
+            state.relative,
+            vec![(5.0, 5.0)],
+            "an unlocked mouse reports its vector as well"
+        );
+        assert_eq!(
+            (state.pointer_x, state.pointer_y),
+            (105.0, 80.0),
+            "and moves the pointer by it"
+        );
+    });
+}
+
+/// A confinement with no region is the whole surface. The last pixel the pointer can stand on is the one before the
+/// surface's right and bottom edge, which is outside the surface, and the surface that holds the pointer is the one
+/// whose bounds apply even though nothing lies where the motion would have landed.
+#[test]
+fn a_confined_pointer_stays_inside_its_surface() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut held = Pointed::map(session, "org.gnoblin.Confined");
+        session.move_pointer(held.at(100, 75));
+        held.client.wait_for(|state| state.pointer_enters == 1);
+        let _confinement = held.constraints.confine_pointer(
+            &held.window.surface,
+            &held.pointer,
+            None,
+            zwp_pointer_constraints_v1::Lifetime::Oneshot,
+            &held.client.qh,
+            (),
+        );
+        held.client.wait_for(|state| state.confined == 1);
+
+        // `map_window` draws a surface of 200 by 150.
+        assert_eq!(
+            held.pointer_after(|| session.move_pointer_by(1000, 1000)),
+            (199.0, 149.0)
+        );
+        assert_eq!(held.pointer_after(|| session.move_pointer_by(-1000, -1000)), (0.0, 0.0));
+        // A device that states positions is held the same way.
+        let far = held.at(5000, -5000);
+        assert_eq!(held.pointer_after(|| session.move_pointer(far)), (199.0, 0.0));
+        assert_eq!(
+            held.client.state.unconfined, 0,
+            "the pointer never left, so nothing ended the confinement"
+        );
+    });
+}
+
+/// A confinement waits until the pointer is inside its region, holds it inside the region's bounds, and a surface
+/// that is only partly the region is held to the part.
+#[test]
+fn a_confined_pointer_stays_inside_its_region() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut held = Pointed::map(session, "org.gnoblin.ConfinedRegion");
+        session.move_pointer(held.at(10, 10));
+        held.client.wait_for(|state| state.pointer_enters == 1);
+        let region = held.client.compositor.create_region(&held.client.qh, ());
+        region.add(50, 40, 100, 60);
+        let _confinement = held.constraints.confine_pointer(
+            &held.window.surface,
+            &held.pointer,
+            Some(&region),
+            zwp_pointer_constraints_v1::Lifetime::Persistent,
+            &held.client.qh,
+            (),
+        );
+        held.client.roundtrip();
+        assert_eq!(
+            held.client.state.confined, 0,
+            "a pointer outside the region is not confined: the protocol promises it is inside when it is"
+        );
+
+        session.move_pointer(held.at(100, 75));
+        held.client.wait_for(|state| state.confined == 1);
+
+        assert_eq!(
+            held.pointer_after(|| session.move_pointer_by(1000, 1000)),
+            (149.0, 99.0)
+        );
+        assert_eq!(
+            held.pointer_after(|| session.move_pointer_by(-1000, -1000)),
+            (50.0, 40.0)
+        );
+    });
+}
+
+/// A lock that started when the pointer merely passed over a window would freeze it for a user who types into another
+/// one, so a constraint waits for its window to have the keyboard, ends when another window takes it and starts again
+/// when its window is chosen again.
+#[test]
+fn a_pointer_constraint_waits_until_its_window_has_the_keyboard() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut first = Client::app(session.socket());
+        let _first_window = first.map_window("org.gnoblin.ConstraintFirst");
+        session.focused_window();
+        let mut second = Client::app(session.socket());
+        let second_window = second.map_window("org.gnoblin.ConstraintSecond");
+        let [(_, _), (_, second_at)] =
+            touch_spots(session, "org.gnoblin.ConstraintFirst", "org.gnoblin.ConstraintSecond");
+        let constraints: zwp_pointer_constraints_v1::ZwpPointerConstraintsV1 = second
+            .globals
+            .bind(&second.qh, 1..=1, ())
+            .expect("the session advertises zwp_pointer_constraints_v1");
+        let pointer = second.pointer();
+
+        // The pointer is over the second window and the keyboard is the first's.
+        session.move_pointer(second_at);
+        second.wait_for(|state| state.pointer_enters == 1);
+        let _lock = constraints.lock_pointer(
+            &second_window.surface,
+            &pointer,
+            None,
+            zwp_pointer_constraints_v1::Lifetime::Persistent,
+            &second.qh,
+            (),
+        );
+        second.roundtrip();
+        assert_eq!(
+            second.state.locked, 0,
+            "a lock waits while its window does not have the keyboard"
+        );
+
+        // Choosing the window starts it.
+        session.click(second_at);
+        second.wait_for(|state| state.locked == 1);
+
+        // Another window taking the keyboard ends it, with the pointer where it was; the lock is persistent, so it
+        // is the same lock that starts again when its window is chosen again.
+        let observation = session.snapshot();
+        let id_of = |app_id: &str| {
+            observation
+                .windows()
+                .find(|window| window.app_id == app_id)
+                .expect("the window")
+                .id
+        };
+        assert_eq!(session.control.focus(id_of("org.gnoblin.ConstraintFirst")), Some(true));
+        second.wait_for(|state| state.unlocked == 1);
+        assert_eq!(session.control.focus(id_of("org.gnoblin.ConstraintSecond")), Some(true));
+        second.wait_for(|state| state.locked == 2);
     });
 }
 
