@@ -14,17 +14,17 @@ Inputs (all in `design/js-research/`):
 
 ## Decisions
 
-| ID  | Decision                                                                                                                                                                                                                                                                                                                           | Why                                                                                                                                   |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| J1  | Engine is rquickjs 0.14 on quickjs-ng, in a separate supervised `gnoblin-js` process.                                                                                                                                                                                                                                              | Same shape as the Lua shell VM today (owner socket, tree protocol). The compositor never waits on JS. rquickjs only binds quickjs-ng. |
-| J2  | `.ts` runs directly. oxc (`=0.158.0`, pinned) strips types in the module loader, with a source map. No embedded type checker.                                                                                                                                                                                                      | A user never runs a build step. oxc matches the workspace MSRV 1.97.0. TypeScript 7 has no embeddable compiler.                       |
-| J3  | Editors get a generated `gnoblin.d.ts` and a `tsconfig.json` written on first run. `gnoblinctl check` checks the module graph and syntax itself, and runs an external `tsc` for types when one exists.                                                                                                                             | Types come from the schema, like `gnoblin.d.lua` does today.                                                                          |
-| J4  | Two tiers. Tier 1: `export default defineConfig({...})`, plain data, a closed set of key actions, diffable on reload. Tier 2: the full object API from the spec, reached from `setup(gnoblin)` or from any module.                                                                                                                 | A user who wants a key bound or a gap set does not need `new Workspace(...)`. Tier 1 desugars to tier 2.                              |
-| J5  | Hot reload swaps a whole generation. New Runtime and Context per generation, stage, validate, commit at one compositor boundary, then drop the old one. A failed reload keeps the old generation and reports file, line and column in `.ts` coordinates. File watching uses inotify.                                               | QuickJS has no module eviction. A fresh Runtime is the only clean invalidation.                                                       |
-| J6  | Observable fields on user subclasses use a snapshot diff at transaction boundaries. A Proxy in the base class constructor is the fallback if the diff is not enough.                                                                                                                                                               | Layouts and bindings run in the JS process, so Rust does not have to see every write. No Proxy is visible to users.                   |
-| J7  | XR stays an out-of-process program on the owner socket (D34/D35). It is not a `.so` loaded into any process.                                                                                                                                                                                                                       | `extensions/gnoblin-xr` already works that way. Spec section 17 is replaced by the owner-socket model.                                |
-| J8  | Rust draws the security-critical built-in dialogs: portal consent, secret and passphrase entry, polkit, lock password entry. JS themes them (`dialogs.style`), can intercept them (`DialogListener`), and can replace them only through the owner connection. The compositor owns each request and its deadline. JS holds a lease. | A crashed or reloading runtime must never leave the keyring, polkit or the lock without a UI. See `popups-portals.md`.                |
-| J9  | The Lua shell stays as the reference until the JS shell passes the same golden geometry corpus. Then delete `gnoblin-lua`, `gnoblin-lua-sandbox`, `data/lua/**` and the Lua docs.                                                                                                                                                  | Spec section 22. No half-migrated state.                                                                                              |
+| ID           | Decision                                                                                                                                                                                                                                                                                                                                                                                     | Why                                                                                                                                                                                                                                                                                |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| J1           | Engine is rquickjs 0.14 on quickjs-ng, in a separate supervised `gnoblin-js` process.                                                                                                                                                                                                                                                                                                        | Same shape as the Lua shell VM today (owner socket, tree protocol). The compositor never waits on JS. rquickjs only binds quickjs-ng.                                                                                                                                              |
+| J2           | `.ts` runs directly. oxc (`=0.158.0`, pinned) strips types in the module loader, with a source map. No embedded type checker.                                                                                                                                                                                                                                                                | A user never runs a build step. oxc matches the workspace MSRV 1.97.0. TypeScript 7 has no embeddable compiler.                                                                                                                                                                    |
+| J3           | Editors get a generated `gnoblin.d.ts` and a `tsconfig.json` written on first run. `gnoblinctl check` checks the module graph and syntax itself, and runs an external `tsc` for types when one exists.                                                                                                                                                                                       | Types come from the schema, like `gnoblin.d.lua` does today.                                                                                                                                                                                                                       |
+| J4 (revised) | The public API is the owner's spec; no declarative config layer. An `init.ts` is a program that runs top to bottom against live objects (spec 3, 18 and 20): there is no config object, no merge and no plan. The first design had a second tier, a plain-data `defineConfig` that desugared to the object API; the owner never asked for it, and it was removed (design/js-spec-native.md). | The spec's objects are the whole surface. A library helper exists only where the spec itself shows one in user code (`FocusAppearance`, `LogOutputs`, the stock layouts), and a setting with no object in the spec is not given an invented home (design/js-spec-native.md, 3.11). |
+| J5           | Hot reload swaps a whole generation. New Runtime and Context per generation, stage, validate, commit at one compositor boundary, then drop the old one. A failed reload keeps the old generation and reports file, line and column in `.ts` coordinates. File watching uses inotify.                                                                                                         | QuickJS has no module eviction. A fresh Runtime is the only clean invalidation.                                                                                                                                                                                                    |
+| J6           | Observable fields on user subclasses use a snapshot diff at transaction boundaries. A Proxy in the base class constructor is the fallback if the diff is not enough.                                                                                                                                                                                                                         | Layouts and bindings run in the JS process, so Rust does not have to see every write. No Proxy is visible to users.                                                                                                                                                                |
+| J7           | XR stays an out-of-process program on the owner socket (D34/D35). It is not a `.so` loaded into any process.                                                                                                                                                                                                                                                                                 | `extensions/gnoblin-xr` already works that way. Spec section 17 is replaced by the owner-socket model.                                                                                                                                                                             |
+| J8           | Rust draws the security-critical built-in dialogs: portal consent, secret and passphrase entry, polkit, lock password entry. JS themes them (`dialogs.style`), can intercept them (`DialogListener`), and can replace them only through the owner connection. The compositor owns each request and its deadline. JS holds a lease.                                                           | A crashed or reloading runtime must never leave the keyring, polkit or the lock without a UI. See `popups-portals.md`.                                                                                                                                                             |
+| J9           | The Lua shell stays as the reference until the JS shell passes the same golden geometry corpus. Then delete `gnoblin-lua`, `gnoblin-lua-sandbox`, `data/lua/**` and the Lua docs.                                                                                                                                                                                                            | Spec section 22. No half-migrated state.                                                                                                                                                                                                                                           |
 
 ## Developer checks
 
@@ -37,11 +37,12 @@ non-obvious choice or necessary `any` or type assertion exists. See [contributor
 
 ## Zero-config baseline
 
-Without any `init.ts`, the stock library runs: the four floating workspaces `1` to `4` of the Lua stock config
-(`data/default-config/config/10-windows.lua`), one display per output, and the stock key bindings of the Lua shell.
+Without any `init.ts`, the stock default runs: `installDefaults` of the embedded `gnoblin/starter` module, written as the same
+calls an `init.ts` makes. It declares the four floating workspaces `1` to `4` of the Lua stock config
+(`data/default-config/config/10-windows.lua`), titlebars, the window menu, the not-responding alert, and the stock keys of the Lua shell.
 `Super+1` to `Super+9` show the workspace at that position, so `Super+1` to `Super+4` act and the rest wait for more
-workspaces. A script that never calls `defineConfig` is a program with no keys: it gets one floating `desktop`. The stock library is itself TypeScript,
-shipped in `/usr/share/gnoblin/js/` and embedded as the `gnoblin` module.
+workspaces. An `init.ts` replaces the default: a file that binds no keys has none, and one that declares no workspace gets one
+floating `desktop`. The stock library is itself TypeScript, shipped in `/usr/share/gnoblin/js/` and embedded as the `gnoblin` module.
 
 ## Slice 1 (first vertical slice, smallest proof)
 
@@ -71,7 +72,7 @@ Done criteria (headless, on Agent37):
 | P1 `gnoblin-js` core     | rquickjs runtime, generation, module loader and resolver, oxc strip with source map, interrupt budget, memory limit, bytecode cache | none          |
 | P2 types                 | `gnoblin.d.ts` generator from the schema, `tsconfig.json` writer, `gnoblinctl check`                                                | P1 loader API |
 | P3 tree binding          | JS host objects over `tree_link` and `tree_mirror`, `Collection<T>`, `Client`, `Workspace`, listener classes                        | P1            |
-| P4 stock library         | `defineConfig`, `FloatingLayout`, `MasterStackLayout`, `GridLayout`, bindings, rules, goldens against Lua                           | P3            |
+| P4 stock library         | `FloatingLayout`, `MasterStackLayout`, `GridLayout`, bindings, goldens against Lua                                                  | P3            |
 | P5 reload and supervisor | watcher, generation swap, failure keep-old, restart, Rust fallback                                                                  | P1, P3        |
 | P6 dialogs               | `gnoblin.dialogs`, `DialogListener`, `SecureEntry`, lease and `request.release`, Rust built-ins for secret entry and polkit         | P3            |
 | P7 console               | JSON-over-socket REPL and inspector, `gnoblinctl console`                                                                           | P3            |
@@ -83,7 +84,7 @@ Done criteria (headless, on Agent37):
 `crates/gnoblin-js-types` renders `gnoblin.d.ts` from the schema catalog (`render_dts`) and writes it with a
 `tsconfig.json` into the config directory (`ensure_user_files`: the declarations are refreshed on every call, the
 `tsconfig.json` only when absent). One interface per schema object; a signal `mode_changed` is
-`onModeChanged(handler)`. The hand-written stock library (`defineConfig`, `Client`, `Collection<T>`, `Layout`, ...) is
+`onModeChanged(handler)`. The hand-written stock library (`Client`, `Collection<T>`, `Layout`, ...) is
 checked in as `static/gnoblin-stock.d.ts` and marked proposed. `gnoblinctl check FILE` (a `.ts`, `.mts`, `.js` or
 `.mjs` file loads through the `gnoblin-js` loader in a throwaway generation with a 1 s budget; any other file keeps the
 configuration check) and `gnoblinctl types init [DIR]` are done (`crates/gnoblinctl/src/js.rs`). `check --types` runs an
@@ -96,7 +97,7 @@ directory, and says so on one line when none is installed. The check has no host
 
 The stock library is TypeScript under `data/js/gnoblin/`, compiled into `gnoblin-js` (`stock_modules()` strips it once
 and returns the embedded `gnoblin` module family: `gnoblin` re-exports `gnoblin/bindings`, `gnoblin/layout`,
-`gnoblin/layouts/{floating,grid,master-stack,monocle}` and `gnoblin/config`; the modules import one another by those
+`gnoblin/layouts/{floating,grid,master-stack,monocle}`; the modules import one another by those
 names). It reaches the host only through `globalThis.gnoblin`.
 
 Parity-tested against the Lua goldens (`crates/gnoblin-js/tests/stock_layouts.rs`, in a real generation with a fake
@@ -107,19 +108,15 @@ the Lua ones (ratio 0.5, gap 0), not the 0.65 and 8 of the spec's illustrative c
 algorithm, not in the Lua corpus: master count, right and bottom orientations, fixed grid `columns`.
 
 `LayoutContext` carries the workspace rectangle and `gap: { inner, outer }`; a tiling layout insets by `outer` and uses
-`inner` unless its own `gap` is set, so one `defineConfig({ gaps })` setting reaches every stock layout. `defineConfig`
-checks the shape (closed key sets, closed key-action union, references to undeclared workspaces) and registers the
-config through `globalThis.gnoblin.__register` when the host provides it; `desugarConfig` is the table of
-spec-review.md section 4 as a plain-data plan. `defaultConfig` is four floating workspaces (`1` to `4`), the keys of the Lua
-shell (`Super+1` to `Super+9`, `Super+Left` and `Super+Right`, the `Swipe3` slide; see "P4b status") and the media keys
-of `data/default-config`.
+`inner` unless its own `gap` is set, so a workspace's `gaps` reach every stock layout. The stock default (see "Zero-config
+baseline") is four floating workspaces (`1` to `4`), the keys of the Lua shell (`Super+1` to `Super+9`, `Super+Left` and
+`Super+Right`, the `Swipe3` slide; see "P4b status") and the media keys of `data/default-config`.
 
 `Binding` and `BindingCollection` are wired by the input module (see "P3c status"): the `triggers` option of
 `FloatingLayout` registers its `move` and `resize` bindings, which go live when an input context attaches the layout.
-The swap and split-resize drag behaviours (`MasterStackLayout`, `GridLayout`) are not written; `style` and `outputs`
-are stored and have no native effect; `rules` and `focus` are applied (see "Focus, rules and snapping status"); `on` and `setup` are in the plan for the host to apply. The layouts and
-keys that were not ported here (`Dwindle`, `Strip`, `Super+space`, `Super+Left` and `Super+Right`, the `Swipe3` slide)
-are in "P4b status".
+The swap and split-resize drag behaviours (`MasterStackLayout`, `GridLayout`) were written later (see "Tiling bindings
+status"). The layouts and keys that were not ported here (`Dwindle`, `Strip`, `Super+space`, `Super+Left` and
+`Super+Right`, the `Swipe3` slide) are in "P4b status".
 
 ### P4b status
 
@@ -164,19 +161,16 @@ The remaining stock layouts, workspace sets, the slide gesture and the launcher 
   in the previous workspace and left the next, lifting after `commit` (0.25) with the motion more horizontal than
   vertical finishes with `0.25 * (1 - progress)` seconds left, anything else slides back over 0.2 s (`out-cubic`) and
   hides the incoming workspace, a change of direction resets, a workspace switched under the fingers ends the slide.
-  `defaultConfig` binds it with `binding(() => new WorkspaceSlideBinding())`, a new key action (`kind: "binding"`)
-  that the host binds whole. The Lua shell claimed the undirected `Swipe3`, so one binding covers both directions.
-- **Workspace sets** (`gnoblin/sets`, `gnoblin.workspaces.sets`). `defineSets` and `activateSet` are the pure functions of
-  `sets.lua` with its results and errors (`sets_test.lua` ported); `WorkspaceSets` keeps the list in force:
-  `define(list)` throws `WorkspaceSetError` and leaves the sets in force when a list is refused, `activate(name)`
-  shows each entry's workspace, a missing output falls back to the primary with a report, a live set again changes
-  nothing. A workspace for an output that is not the primary one is reported and not shown: workspaces are per
-  shell, not per output, so per-display workspaces are not ported.
-- **Keys.** `defaultConfig` binds `Super+1` to `Super+9` (`show.position(n)`: the workspace at that position, whatever
-  its id, nothing when there is none, as `desk().space.children[i]`), `Super+Left` and `Super+Right`
-  (`focusColumn`: the shown workspace's `StripLayout` moves focus one column, other layouts do nothing) and `Swipe3`.
-  `launcher` is a new config key, a command line or an argv: `Super+space` runs it through `spawn` (a `keys` entry for
-  `Super+space` wins). There is no default command, because the repository names no stock launcher program.
+  The stock default binds it with `input.bind("Swipe3", new WorkspaceSlideBinding())`. The Lua shell claimed the
+  undirected `Swipe3`, so one binding covers both directions.
+- **Workspace sets** (removed). The first slice ported `sets.lua` as `gnoblin/sets` with `gnoblin.workspaces.sets` and
+  `activateSet`. The owner's spec has no sets ("each display chooses independently from the same global workspace
+  registry", spec 9E), so the module, the property and the method were deleted with the declarative config layer
+  (design/js-spec-native.md, 3.11).
+- **Keys.** The stock default binds `Super+1` to `Super+9` (the workspace at that position, whatever its id, nothing
+  when there is none, as `desk().space.children[i]`), `Super+Left` and `Super+Right` (the shown workspace's
+  `StripLayout` moves focus one column, other layouts do nothing) and `Swipe3`. `Super+space` opens the stock launcher
+  entry (`openLauncher`); a script that wants another command binds the key itself.
 - **Proved against the real compositor** (`crates/gnoblin/tests/js_shell.rs`): two real Wayland windows on a
   `DwindleLayout` workspace sit at the two halves of the screen, and on a `StripLayout` workspace in two columns, as
   the compositor's tree holds them.
@@ -285,7 +279,7 @@ would start `wpctl`, open the launcher and slide the window the test drags.
 `JsShell` (`crates/gnoblin-js/src/shell.rs`) does for QuickJS what `ShellVm` does for Lua, over `gnoblin-tree-client`.
 The object model is TypeScript (`crates/gnoblin-js/js/gnoblin.ts`), embedded as `gnoblin/host`. `JsShell` embeds the
 stock library beside it and appends `export * from "gnoblin/host"` to the stock `gnoblin` index, so one
-`import { defineConfig, ClientListener } from "gnoblin"` reaches both; the stock sources are unchanged. The Rust side
+`import { Workspace, ClientListener } from "gnoblin"` reaches both; the stock sources are unchanged. The Rust side
 (`src/bindings/`) is a set of plain host functions behind `globalThis.__gnoblinHost`. It runs against a fake
 compositor in `crates/gnoblin-js/tests/shell.rs`, and against the real one by P6 role wiring (below).
 
@@ -513,8 +507,8 @@ Workspaces and the layout driver (`crates/gnoblin-js/js/gnoblin.ts`, `data/js/gn
   workspace flagged active, else the first. A new toplevel joins it. Active is a single flag for now (the first
   workspace added, or the last `show`n), standing in for "the workspace the primary display shows". Windows that were
   there at boot join it on the first frame, not while the entry loads, so a reload can put them back first.
-  `defineConfig({ workspaces })` calls `gnoblin.__register`, which makes real `Workspace` objects; a config that
-  declares none gets `desktop` (floating) when its entry has loaded.
+  `gnoblin.workspaces.add(new Workspace(...))` makes real `Workspace` objects; a config that declares none gets
+  `desktop` (floating) when its entry has loaded.
 - **Layout driver.** At the end of every frame, after all listeners, `entry.layout()` runs. For each workspace it
   diffs the layout's own enumerable fields against the last snapshot (J6: `Object.is` per key, so an edit in place is
   not seen and a `#private` field is not a field), the gaps, and the area (the primary screen's `width` and `height`
@@ -581,19 +575,14 @@ compositor stands in only for the unit tests of `swap_generation` (`crates/gnobl
   `JsRole::reload_now`) clears the strikes. The shell is a process of its own, so the compositor never waits for a
   script: the test runs the role in a thread, spins a handler for ever, reads the scene through an observer connection
   while it spins, and maps one more window afterwards.
-- **Zero-config and layering.** `JsShell::load_default_config` (the `loadDefault` hook of the host module) registers
-  `defaultConfig` alone, as a real runtime config: the `desktop` workspace with `FloatingLayout` (and its move and
-  resize bindings) and the stock keys, each claimed on the first seat. The role runs it when there is no entry file
-  and when the entry fails to load at startup, so a shell is never bare. `defineConfig` no longer registers only
-  the workspaces: the host (`__register`) lays the user's config over `defaultConfig` with `mergeConfig`
-  (`data/js/gnoblin/config.ts`), applies the merged workspaces, and binds the merged keys on the first seat
-  (`spawn`, `show`, `"close"` and function actions; a tree with no seat has no keyboard, so the keys are left out). The merge
-  rule: `workspaces` and `rules` replace as a whole (an absent or empty `workspaces` keeps the stock one); `keys`
-  merge by canonical trigger, the user's replacing the stock key, and a stock key that shows a workspace the merged
-  config does not declare is dropped; `gaps`, `style`, `outputs` and `on` merge by key; `setup` is the user's when
-  given; `decorations` is not layered (a config that does not ask for titlebars has none, as `desugarConfig` says). An `init.ts` that never calls `defineConfig` is a program: it runs as written and gets no stock keys, only
-  the stock workspace when it declared none (`finishLoad`). `on` and `setup` are applied and the config document
-  sections reach the compositor (see "P6 config document and slots status"); `style`, `outputs` and `rules` are not.
+- **Zero-config, and no layering.** `JsShell::load_default_config` (the `loadDefault` hook of the host module) runs
+  `installDefaults` of `gnoblin/starter`: the same calls an `init.ts` makes (four floating workspaces, titlebars, the
+  window menu, the alert and the stock keys, each claimed on the first seat). The role runs it when there is no entry
+  file and when the entry fails to load at startup, so a shell is never bare. There is no merge: an `init.ts` runs as
+  written and has none of the stock keys or workspaces unless it calls `installDefaults(gnoblin)` or copies the
+  starter's statements, and it gets the stock workspace `desktop` only when it declared none (`finishLoad`). A tree
+  with no seat has no keyboard, so keys are left out. The device settings its objects write reach the compositor (see
+  "P6 config document and slots status").
 - **Reload request path (`gnoblinctl config reload`).** Superseded by "JS-owned runtime role": the JavaScript role
   itself watches `session.reload_requested`, reloads the config, and answers the request with a `config.commit` or a
   `config.reject`. `GNOBLIN_JS_WATCH=0` (`JsRoleConfig::watch`) turns the watcher off. With no entry file `reload_now` is
@@ -612,9 +601,8 @@ compositor stands in only for the unit tests of `swap_generation` (`crates/gnobl
   meanwhile at the next step of the cascade (96, 96 after (32, 32) and (64, 64)) and takes the two windows the shell
   had moved back to the places it gave them (it never knew the shell's), and the restarted shell reattaches, is told
   every window is ready, learns of each and places them again with their ids unchanged. Zero-config: with no
-  `init.ts` the shell runs `desktop` with `FloatingLayout` and the stock keys, and a `defineConfig` layered over it
-  has its workspaces, its keys, the stock keys it left alone and not the stock key that showed the dropped
-  workspace; the file's appearing is a reload. `gnoblinctl config reload` against the real session with the watcher
+  `init.ts` the shell runs the stock default, and a user's `init.ts` replaces it whole; the file's appearing is a
+  reload. `gnoblinctl config reload` against the real session with the watcher
   off: an edit alone changes nothing; the request exits 0 and the shell takes the file with the same window id; a
   syntax error exits 1 with `init.ts:3:` and the old generation places a new window; the fixed file recovers.
 - **What the real tree changed in the binding.** The fake compositor's ids are small and its windows hang under the
@@ -669,13 +657,14 @@ the Lua host committed. Now the JavaScript role does all of it and starts no Lua
 - **The shell owns the document** (`JsShell::own_document`, `ConfigState::owns_document`). Each commit is the generation's
   document patch laid over an empty document: nothing the compositor held before is read, so a key deleted from `init.ts`
   is gone after a reload and after a runtime restart. Every load commits, even when the result equals the document in
-  force, because the compositor holds a `config.reload` caller until a commit or a reject answers it. `autostart`
-  commands become the document's `autostart` section, named by the program's file name (`foot`, then `foot-2`) so the
-  same list gives the same names, and the shell starts none itself: the guardian starts them and matches a running one by
-  name and command (so a reload, or a restart of the runtime role, starts no second copy), stops one a reload no longer
-  lists, and does not restart one that exits (`ChildSpec::autostart`). The keyring conflict rule (`enabled_autostart`, moved to `gnoblin-config`) runs at `defineConfig`
-  time (`host.config.check` takes the autostart list too), so a refused autostart fails the stage and the old generation
-  keeps running, which is stronger than the Lua host's refusal after the evaluation.
+  force, because the compositor holds a `config.reload` caller until a commit or a reject answers it. The document's
+  `autostart` section is the guardian's: it starts the entries (named by the program's file name, `foot`, then
+  `foot-2`), matches a running one by name and command (so a reload, or a restart of the runtime role, starts no second
+  copy), stops one a reload no longer lists, and does not restart one that exits (`ChildSpec::autostart`). No `init.ts`
+  object writes the section any more (the `autostart` setting was dropped, design/js-spec-native.md 3.11) and the shell
+  starts no program itself. The keyring conflict rule (`enabled_autostart`, in `gnoblin-config`) still runs on the
+  document the shell would commit, so a document that would start a second keyring is refused before the commit and the
+  old generation keeps running.
 - **Reload.** A request evaluates the entry in a staged generation and swaps it in when it evaluated cleanly (the machinery
   of "Hot reload"). If the stage failed, or it evaluated and nothing was committed (the compositor refused the commit, or
   the file is gone), the role calls `config.reject` with the reason, which `gnoblinctl config reload` prints with the
@@ -685,23 +674,23 @@ the Lua host committed. Now the JavaScript role does all of it and starts no Lua
 - **Keyring first boot** (`crates/gnoblin-services/src/keyring.rs`, `decide`). Order: a configuration the compositor
   already accepted; the user's `init.ts` or `init.js` evaluated by `gnoblin_js::evaluate_document`; an accepted
   configuration waited for (20 s); the last accepted file; the schema default. `evaluate_document` evaluates the entry in
-  a throwaway generation with no tree and no host objects (the probe module `gnoblin-document-probe` stands in for the
-  host's `__register`), a 1 s budget and 32 MiB, merges what `defineConfig` was given over the stock config and
-  desugars it as the shell does, and returns the document. A config that needs the compositor while it loads cannot
-  be read that way; the error is kept as the reason and the wait goes on. `gnoblin-services` therefore depends on
-  `gnoblin-js` (`xtask deps` accepts the edge: both are role entry crates and neither names an engine).
+  a throwaway generation over an inert tree (the root and one seat, no windows or outputs), a 1 s budget and 32 MiB, and
+  returns the document the entry's objects wrote (the device settings). No object of the spec carries `keyring.enabled`,
+  so that document has no `keyring` section and the flag is the schema default. A config that needs the compositor while
+  it loads cannot be read that way; the error is kept as the reason and the wait goes on. `gnoblin-services` therefore
+  depends on `gnoblin-js` (`xtask deps` accepts the edge: both are role entry crates and neither names an engine).
 - **`gnoblinctl config validate FILE`** routes `.ts`, `.mts`, `.js` and `.mjs` to the same in-process check as
   `gnoblinctl check`.
 - **Proven against the real compositor.** `crates/gnoblin/tests/js_runtime_role.rs` runs the shipped `JsRoleRunner`
-  in a thread over a headless compositor: commit, then `config-accepted`, then `ready`; autostart lines before the
-  revision; a config the validator refuses runs the stock config and still commits; the twins of the Lua role's
+  in a thread over a headless compositor: commit, then `config-accepted`, then `ready`; a config that fails to load
+  runs the stock config and still commits; the twins of the Lua role's
   `runtime_reload.rs` (a script's `reloadConfig()` commits what the file says now, a broken file keeps the accepted
-  document and the role, an autostart the check refuses keeps the old handlers); `config.reload` answers with the
+  document and the role); `config.reload` answers with the
   revision and a removed file is refused with why; the role ends cleanly when the compositor goes; and the shipped
   starter loads (the twin of `starter_config.rs`). `crates/gnoblin/tests/js_guardian.rs` runs the binary under its
   guardian with `GNOBLIN_SHELL_VM` unset and no Lua anywhere: `init.ts` committed as revision 1, `config reload`, the
-  watcher, a killed runtime committing what the file says and not what it left behind, `autostart` started by the
-  guardian, the Lua fallback with one warning, an `init.ts` beside
+  watcher, a killed runtime committing what the file says and not what it left behind, the Lua fallback with one
+  warning, an `init.ts` beside
   an `init.lua`, and `GNOBLIN_SHELL_VM=lua` and `js` with only an `init.lua`. `crates/gnoblin/tests/guardian.rs` is
   unchanged and now runs the JavaScript role (no `GNOBLIN_SHELL_VM`): the killed runtime restarts and commits revision 2.
 - **Faked.** Nothing in those tests. The unit tests of `ConfigState` use a fake document link (no compositor), and
@@ -714,72 +703,35 @@ the Lua host committed. Now the JavaScript role does all of it and starts no Lua
 
 ## P6 config document and slots status
 
-Lane JsConfigSlots. `defineConfig` keys that are settings of the config document now reach it, a script can observe
-and refuse the compositor's own dialogs, and `on` and `setup` run. Code: `crates/gnoblin-js/src/config.rs` (the
-document), `crates/gnoblin-js/src/dialogs.rs` and `data/js/gnoblin/dialogs.ts` (`gnoblin.dialogs`),
-`JsShell::apply_document`/`run_dialogs`, `JsRole` (the connections). Tests: `crates/gnoblin-js/tests/config_slots.rs`
-over fakes, `crates/gnoblin/tests/js_shell.rs` against the real compositor.
+Lane JsConfigSlots, as it stands after the declarative config layer was removed (design/js-spec-native.md). The settings a
+script writes through the spec objects reach the config document, and a script can observe and refuse the compositor's own
+dialogs. Code: `crates/gnoblin-js/src/config.rs` (the document), `crates/gnoblin-js/src/dialogs.rs` and
+`data/js/gnoblin/dialogs.ts` (`gnoblin.dialogs`), `JsShell::apply_document`/`run_dialogs`, `JsRole` (the connections).
+Tests: `crates/gnoblin-js/tests/config_slots.rs` over fakes, `crates/gnoblin/tests/js_shell.rs` against the real
+compositor.
 
-### What each `defineConfig` key becomes
+### Where the settings of the first design went
 
-| `defineConfig` key                                                    | Becomes                                                                                                                                                                    | State                                                                                                        |
-| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `gaps`                                                                | `Workspace.gaps`, a script property (no document key, no tree property)                                                                                                    | applied                                                                                                      |
-| `workspaces`                                                          | `Workspace` objects in `gnoblin.workspaces`. The document's `workspaces` section is the Lua host's list, read at start                                                     | applied as script objects; not written to the document                                                       |
-| `keys`                                                                | `gnoblin.input.primary.bind`: seat claims, a tree call (the document's `keybindings` is carried and read by nothing)                                                       | applied                                                                                                      |
-| `decorations`                                                         | a `Titlebar` canvas node per client, a tree write                                                                                                                          | applied                                                                                                      |
-| `menus`, `alerts`                                                     | flags: the stock window menu answers menu requests, the stock alert watches pings (see the shell UI status section)                                                        | applied                                                                                                      |
-| `on` (`clientAdded`, `clientRemoved`, `titleChanged`, `focusChanged`) | listeners on `gnoblin.clients`: a `CollectionListener` and a `ClientListener`                                                                                              | applied                                                                                                      |
-| `setup(gnoblin)`                                                      | called once after everything above, inside the generation's load budget                                                                                                    | applied                                                                                                      |
-| `dialogs.style`                                                       | document `dialogs.style` (`radius`, `accent`, `font.family`, `font.size`, `button-layout`, `scale`)                                                                        | applied: live, the next dialog uses it                                                                       |
-| `appearance`                                                          | document `appearance` (`color-scheme`, `accent`, `reduced-motion`, `high-contrast`)                                                                                        | applied: live                                                                                                |
-| `cursor`                                                              | document `cursor` (`theme`, `size`, `providers`)                                                                                                                           | applied: live                                                                                                |
-| `windowManagement`                                                    | document `window-management` (focus, raise, edge tiling, titlebar actions, ...)                                                                                            | applied: live, except `attach-modal-dialogs` and `disable-workarounds` (unused)                              |
-| `input`                                                               | document `input`: `keyboard` is live; `mouse`, `touchpad`, `trackball`, `pointing-stick`, `tablets`, `styluses`, `orientation-lock` are accepted and read by no device yet | `keyboard` applied; the rest not applied (notice from the compositor)                                        |
-| `inputSources`                                                        | document `input-sources` (`sources`, `per-window`)                                                                                                                         | applied: live                                                                                                |
-| `accessibility`                                                       | document `accessibility` (magnifier, colour filter)                                                                                                                        | applied: live                                                                                                |
-| `compositor`                                                          | document `compositor`: `visual-bell`, `visual-bell-type` live; `renderer` at the next compositor start; the rest unused                                                    | partly applied                                                                                               |
-| `monitors`                                                            | document `monitors`: `global-scale` live; `privacy-screen` unused                                                                                                          | partly applied                                                                                               |
-| `xwayland`                                                            | document `xwayland`                                                                                                                                                        | applied: live (restarts the X11 server when no X11 client is connected)                                      |
-| `keyring`, `location`, `compat`, `capture`, `logging`                 | document sections read when a process starts                                                                                                                               | committed; takes effect at the next start of that process (the compositor says so in a `not applied` notice) |
-| `layerShell`, `auth`                                                  | document sections nothing reads yet                                                                                                                                        | committed; not applied (notice)                                                                              |
-| `style`                                                               | `gnoblin.clients.style`, the global scope of the style cascade; `rules[].style` is the client's own style                                                                  | applied: opacity, outer shadows, backdrop blur; the rest is noticed, not drawn (P8a)                         |
-| `outputs`                                                             | stored as written. The document has only the global `monitors.global-scale`, and a screen's tree properties are read-only                                                  | applied through `screen.apply` ("Output modes status")                                                       |
-| `rules`                                                               | stored as written; lane JsStockFocus owns `rules.ts`                                                                                                                       | not applied by this lane                                                                                     |
-| `launcher`                                                            | a `Super+space` key running the command, unless `keys` binds that trigger                                                                                                  | applied (a key, see `keys`)                                                                                  |
-| `focus`, `edgeTiling`, `dragConstraint`                               | script-side overrides of the seat's published settings (see "Focus, rules and snapping status")                                                                            | applied                                                                                                      |
-| `autostart`                                                           | argv lists the shell starts through `gnoblin.spawn` once per session (see "Lists, maps and the first run"); not the document's `autostart`                                 | applied: a command already started this shell is never started again                                         |
-| `protocols`                                                           | document `protocols` (camelCase protocol names to kebab-case, booleans)                                                                                                    | committed; takes effect at the next compositor start                                                         |
-| `touchpadGestures`                                                    | document `touchpad-gestures`, one list value (a reload that drops the key removes the list)                                                                                | applied: live                                                                                                |
+The first design carried the settings of the config document as keys of a plain-data config. Each now has the object the
+owner's spec gives it, or is dropped:
 
-The per-setting rule behind the last columns is `crates/gnoblin-config/src/apply.rs` (`RULES`).
+| Setting                                                                                                                                                          | Now                                                                                                                         |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `gaps`, `workspaces`, `keys`, `gestureActions`, `launcher`                                                                                                       | `Workspace.gaps` and a layout's `gap`, `gnoblin.workspaces.add`, `input.bind` on a key or a gesture trigger                 |
+| `decorations`, `menus`, `alerts`                                                                                                                                 | `startDecorations()`, `startWindowMenu()` and `startNotRespondingAlert()`                                                   |
+| `on`, `setup`                                                                                                                                                    | `gnoblin.clients.addListener(...)`, and the body of the file                                                                |
+| `style`                                                                                                                                                          | `gnoblin.clients.style` and `gnoblin.clients.where(...).style`                                                              |
+| `outputs`                                                                                                                                                        | `OutputProfile` and `Output.apply` ("Output modes status")                                                                  |
+| `input` (the device settings)                                                                                                                                    | `Keyboard`, `Mouse` and `Touchpad` properties, written to the document's `input` section                                    |
+| `rules`, `focus`, `edgeTiling`, `dragConstraint`, `autostart`, `workspaceSets`, `protocols`, `touchpadGestures`, `dialogs.style` and the other document sections | dropped: no object in the spec carries them. design/js-spec-native.md, 3.11, lists each with what a home for it would need. |
 
-Every top-level section of the document is either a `defineConfig` key or recorded here as not one. The test
-`every_section_of_the_config_document_is_a_key_or_a_recorded_non_key` (`crates/gnoblin-js/tests/config_keys.rs`) fails
-when the schema gains a section that has neither:
-
-| Document section                                                                                                | `defineConfig`                                                                                                                                |
-| --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `compositor`, `window-management`, `cursor`, `appearance`, `dialogs`, `input`, `input-sources`, `accessibility` | a key of the camelCase name                                                                                                                   |
-| `layer-shell`, `keyring`, `auth`, `location`, `compat`, `capture`, `monitors`, `xwayland`, `logging`            | a key of the camelCase name                                                                                                                   |
-| `protocols`, `touchpad-gestures`                                                                                | a key (`protocols`, `touchpadGestures`): their inner names are fixed (protocol names, gesture fields), so camelCase maps back to the document |
-| `workspaces`                                                                                                    | the key `workspaces`, as script objects; the document's list is the Lua host's and is not written                                             |
-| `autostart`                                                                                                     | the key `autostart`, but shell-side (below), not the document section: its entries are keyed by names the user chooses                        |
-| `shortcuts`                                                                                                     | **not a key**: `keys` is the one way to bind a key. Naming it is refused with the mapping in the message (docs/typescript-config.md)          |
-| `keybindings`                                                                                                   | **not a key**: carried and read by nothing; `keys`                                                                                            |
-| `animations`, `portals`                                                                                         | **not keys**: carried and read by nothing                                                                                                     |
-| environment, per-output settings                                                                                | the schema has no environment section. A screen's tree properties are read-only, so `outputs` stays stored as written (native style objects)  |
-
-A table keyed by names the user chooses (`autostart`, `shortcuts`) cannot be a document key: turning `camelCase` keys back
-into the user's own names is not possible. A list (`touchpad-gestures`) can, because it is one value and the keys inside an
-item are fixed.
+The per-setting rule behind the compositor's answers is `crates/gnoblin-config/src/apply.rs` (`RULES`).
 
 ### The document commit
 
-- **Keys.** A section key is camelCase in a config and kebab-case in the document (`windowManagement` is
-  `window-management`, `buttonLayout` is `button-layout`); a key already kebab-case is left alone, and two spellings
-  of one key are a `TypeError`. `desugarConfig` puts the result in `ConfigPlan.document`, plain JSON, and
-  `mergeConfig` merges the sections by key (a list or a scalar of the user's replaces).
+- **The patch.** The only writer of the document is the device objects (`Keyboard.repeatRate`, `Mouse.sensitivity`, ...):
+  `deviceDocument()` is the `input` section they wrote, the entry exports it as `document()`, and `documentRevision()`
+  moves on every accepted write so the shell commits again.
 - **The shell's connections.** `JsRole::connect` opens two owner connections besides the tree's: a `ClientSlotLink` (the
   one the Lua role uses) and a `JsClientConfigLink`, which reads `config.current` and writes `config.commit`, the two
   verbs the Lua host uses. `JsRole::over_link` takes them as `JsRoleLinks`; each is optional and the role runs without
@@ -788,17 +740,18 @@ item are fixed.
   accepts, so a commit must carry everything. The shell commits the document in force with the generation's patch
   laid over it, and remembers the key paths the patch set. The next commit starts from the document in force with those
   paths taken out (a table the removal empties goes with it) and the new patch laid on. That is the
-  generation-overlay rule of spec-review 1.27: a reload that drops `dialogs.style.radius` puts it back to its default,
+  generation-overlay rule of spec-review 1.27: a reload that drops a `Keyboard.repeatRate` write puts it back to its default,
   and a setting the shell never made (the Lua file's) is not touched. A document that would not change is not
   committed.
 - **Validation and where it is reported.** `Config::from_value`, the validator the compositor and the Lua host use,
-  runs on the document the commit would send. It runs when `defineConfig` is called, which is while a reload is
-  staging: `host.config.check` throws a `GnoblinError` (`defineConfig: dialogs.style.radius: ...`, the document's key
-  path), the entry fails, `ReloadReport.errors` carries it with the file and line, and the running generation and the
-  document stay. The compositor refuses nothing here itself: it records and parses a committed document and keeps its
-  last good settings when one does not decode, so the check is the runtime's. A commit the compositor does refuse
-  (it can, for `xwayland`) happens after the swap, which cannot be taken back: it is a diagnostic with the compositor's
-  reason, and the notices of an accepted commit (`not applied: ...`) are diagnostics too.
+  runs on the document the commit would send. It runs when a device setting is written, which may be while a reload is
+  staging: `host.config.check` makes the setter throw (`the configuration refused it: input.keyboard...: ...`, the
+  document's key path), the entry fails, `ReloadReport.errors` carries it with the file and line, and the running
+  generation and the document stay. The compositor refuses nothing here itself: it records and parses a committed
+  document and keeps its last good settings when one does not decode, so the check is the runtime's. A commit the
+  compositor does refuse (it can, for `xwayland`) happens after the swap, which cannot be taken back: it is a
+  diagnostic with the compositor's reason, and the notices of an accepted commit (`not applied: ...`) are diagnostics
+  too.
 - **The Lua host's reload commits too.** `gnoblinctl config reload` reloads the shell first and then the Lua host,
   which commits a document with none of the shell's settings. `ShellFrame::config_committed` (called by the Lua
   role right after its commit, before it announces the reload) makes the shell lay its settings back over the document
@@ -831,84 +784,51 @@ item are fixed.
 
 ### Proof
 
-Against the real compositor (`crates/gnoblin/tests/js_shell.rs`): `defineConfig({ dialogs })` is in the document the
-compositor holds, read back through a second owner connection (`button-layout` camelCase to kebab-case); a radius of 5000
-is refused at the reload with `dialogs.style.radius` in the shell's diagnostics, the generation stays and the document
-is untouched; a reload without the key removes `dialogs` from the document. A listener that declines a request from
-one app refuses it (the requester gets `cancelled(user)` without anything withdrawing it) while a request from another
-app stays open for the built-in dialog; a listener that never returns is interrupted, the request is not refused and
-the built-in dialog serves it, the generation restarts and the next request is refused again. Against fakes
-(`crates/gnoblin-js/tests/config_slots.rs`): the patch, the removal and the no-op commits, a foreign commit, a refused
-commit, notices, the missing links, `on`, `setup`, the claim and release, the verdict words, isolation, the budget, a
+Against the real compositor (`crates/gnoblin/tests/js_shell.rs`): the device settings of a `Keyboard` are in the
+document the compositor holds, read back through a second owner connection (`repeatRate` is the document's
+`repeat-interval` in milliseconds); a `repeatDelay` of 20000 is refused by the setter, which names the key, the
+generation stays and the document is untouched; a reload without the write removes it from the document. A listener that
+declines a request from one app refuses it (the requester gets `cancelled(user)` without anything withdrawing it) while
+a request from another app stays open for the built-in dialog; a listener that never returns is interrupted, the request
+is not refused and the built-in dialog serves it, the generation restarts and the next request is refused again.
+Against fakes (`crates/gnoblin-js/tests/config_slots.rs`): the patch, the removal and the no-op commits, a foreign
+commit, a refused commit, notices, the missing links, the claim and release, the verdict words, isolation, the budget, a
 held request at `retire`, a lost connection.
 
 What the real tests do not show: that the built-in dialog opens is shown by the request staying open until its
 requester withdraws it, not by a screenshot of the dialog; `retire` answering a held request is proven against the
 fake link only (the real compositor answers within 250 ms, so a request is rarely held across a swap).
 
-### Lists, maps and the first run
+### The starter and `config init`
 
-Lane JsConfigLists. Code: `data/js/gnoblin/config.ts` (`CONFIG_KEYS`, `DOCUMENT_LISTS`, `checkShape`, `planAutostart`),
-`data/js/gnoblin/workspace.ts` (`rejectUnknown`, `nearestKey`), `crates/gnoblin-js/src/autostart.rs`,
-`crates/gnoblinctl/src/js.rs` (`config_init`), `data/js/starter/init.ts`. Tests: `crates/gnoblin-js/tests/config_keys.rs`
-(plans and messages), `config_slots.rs` (the document and autostart over fakes), `crates/gnoblin/tests/js_shell.rs`
-(the starter against the real compositor), `crates/gnoblinctl/tests/js_check.rs` (`config init`).
+Lane JsConfigLists, as it stands. The starter file is `data/js/starter/init.ts` (embedded as `STARTER_CONFIG`): the statements
+of `installDefaults` in `gnoblin/starter`, with its examples as comments that end the way a line of code ends, so a test can
+switch them on (`crates/gnoblin-js/tests/starter_parity.rs` holds the file and `installDefaults` together).
+`gnoblinctl config init [DIR] [--force]` writes it, refuses when `init.ts` or `init.js` exists (an `init.ts` is read first and
+would hide `init.js`), runs `types init` (`ensure_user_files`), prints three steps, and has a `--json` form
+(`crates/gnoblinctl/tests/js_check.rs`). The lane's `protocols`, `touchpadGestures` and `autostart` keys, its shape checks and
+`rejectUnknown` messages for config keys went with the declarative config layer (see "Where the settings of the first design
+went"). The document's `shortcuts` is not a key: bind a key with `input.bind`. `trigger = "release"` has no equivalent (a key
+acts on press), so such a shortcut stays in `init.lua`.
 
-- **`protocols` and `touchpadGestures`.** They go through the document commit unchanged: the first is a section in
-  `DOCUMENT_SECTIONS`, the second a list in `DOCUMENT_LISTS`, which `planDocument` writes as one value. Add, change,
-  removal (the section is gone again) and a refused value (`protocols.wlr-layer-shell`, `touchpad-gestures`) are
-  tested in `config_slots.rs`.
-- **`autostart` is the shell's, not the document's.** The guardian starts the document's `autostart` entries, but it
-  learns them from the Lua host's commit (`commit` in `gnoblin-lua/src/role.rs` sends the `autostart` lines) and retires
-  any child that commit did not list, so a section the shell wrote would be stopped by the next Lua reload. The shell
-  instead starts each command through the spawner `gnoblin.spawn` uses (process group of its own, reaped).
-  `JsShell::apply_settings` runs after a generation is swapped in or loaded, so a failed stage starts nothing.
-- **Identity and limits.** A command is its argv. `JsAutostart` keeps the set of argv lists started by this shell; a
-  reload starts only the new ones, removal stops nothing (the shell keeps no handle to stop), and listing a removed
-  command again does not start it again. A command that cannot be started is a diagnostic and is not remembered, so the
-  next reload tries again. The set is the shell's memory: a restarted runtime role (the guardian restarts it) starts
-  every command again and a survivor from before runs twice. Documented in docs/typescript-config.md.
-- **One way to bind a key.** The document's `shortcuts` (`<Super>Return` chords, `command`, `trigger`, `enable`) is not a
-  key. `RETIRED_KEYS` gives the message for `shortcuts`, `keybindings` and the kebab/snake spellings of
-  `touchpad-gestures`. `trigger = "release"` has no `keys` equivalent (a key acts on press), so such a shortcut stays in
-  `init.lua`.
-- **Messages.** `rejectUnknown` names the place and the key, suggests the nearest valid key within two edits (case, `-`
-  and `_` do not count as edits; ties go to the first in the list), and lists the valid ones. `checkShape` runs first
-  and checks that a table key holds a table and a list key a list, naming `config.<key>`, what it should be and what it
-  got. A nested document value is checked by `Config::from_value` with the document's key path
-  (`dialogs.style.radius`), and a nested name it does not know is listed with the accepted ones.
-- **`gnoblinctl config init [DIR] [--force]`.** Writes `STARTER_CONFIG` (`data/js/starter/init.ts`, embedded in
-  `gnoblin-js`), refuses when `init.ts` or `init.js` exists (an `init.ts` is read first and would hide `init.js`),
-  runs `types init` (`ensure_user_files`), prints three steps, and has a `--json` form. The starter as written is
-  `defaultConfig` (empty `keys`, `rules`, `autostart`, the stock gaps, `decorations: true`, the one `desktop`
-  workspace); its examples are comments that end the way a config line ends, so a test can switch them on.
-- **Proof.** `the_starter_as_written_plans_exactly_what_the_stock_config_plans` compares plans;
-  `the_starter_is_the_stock_config_as_written_and_its_examples_work_switched_on` (real compositor) loads the starter
-  over a no-`init.ts` shell and asserts the same workspaces, the same bound keys and the same titlebar count, then
-  switches every example on and sees the second workspace, the example keys and an autostart command that ran once
-  and not again after a reload. `gnoblinctl check --types` is run on the starter, as written and switched on: it passes
-  when no TypeScript compiler is present (the step is skipped, and the test prints that) and it type-checks when one is.
-- **Not done.** Typed completions for the nested settings of the document sections (`input.keyboard`, ...): they are
-  `DocumentSection` tables in `gnoblin-stock.d.ts`, so an editor does not complete them, and a wrong nested name is a
-  load error that lists the accepted names. A TypeScript emitter in `gnoblin-config-codegen` would generate them from
-  the schema; `style` and `outputs` still need native style objects.
+- **Not done.** Typed completions for nested settings of the document sections: only the device settings of `input` reach the
+  document, and they are properties of `Keyboard`, `Mouse` and `Touchpad`.
 
 ## Focus, rules and snapping status
 
-Lane JsStockFocus: `data/js/gnoblin/focus.ts`, `rules.ts` and `snap.ts`, ported from `data/lua/gnoblin/shell/focus.lua`,
-`rules.lua` and `snap.lua` and the `Window:on_*`, `apply_rules`, `snap` and `unsnap` wiring of `init.lua`. The tests are
-`crates/gnoblin-js/tests/stock_focus.rs` (the cases of `crates/gnoblin-lua/tests/lua/{focus,rules,snap}_test.lua`, over
-the fake link) and one real-compositor test in `crates/gnoblin/tests/js_shell.rs`. User pages: `docs/config/window_rule.md`
-(the rule fields and the table from Lua patterns) and `docs/config/configure/window_management.md`.
+Lane JsStockFocus: `data/js/gnoblin/focus.ts` and `snap.ts`, ported from `data/lua/gnoblin/shell/focus.lua` and `snap.lua` and the
+`Window:on_*`, `snap` and `unsnap` wiring of `init.lua`, and `rules.ts` from `rules.lua` (a data-only window rules engine,
+removed with the declarative config layer; design/js-spec-native.md, 3.11, says what a replacement needs). The tests are
+`crates/gnoblin-js/tests/stock_focus.rs` (the cases of `crates/gnoblin-lua/tests/lua/{focus,snap}_test.lua`, over the fake
+link) and one real-compositor test in `crates/gnoblin/tests/js_shell.rs`. The user page is
+`docs/config/configure/window_management.md`.
 
 - **Settings.** The compositor publishes `edge_tiling`, `drag_constraint` and the six focus keys on the seat, read-only.
   `JsShell` reads them through `__gnoblinHost.input.settings(seat)` (`crates/gnoblin-js/src/input.rs`, the schema's
-  defaults until the compositor says otherwise) and `InputContext.settings` hands them out. `defineConfig` has three
-  keys over them: `focus` (`mode`, `newWindows`, `raiseOnClick`, `autoRaise`, `autoRaiseDelay`, `changeOnPointerRest`),
-  `edgeTiling` and `dragConstraint`. A key the config leaves out is the seat's, so the compositor's configuration is
-  the default and the script overrides it for the shell only (a seat prop cannot be written). The focus modes are
-  `click`, `sloppy` (the seat's `hover`) and `follow-mouse` (`hover-strict`: acts on entry only and clears focus when the
-  pointer leaves the focused window); `desugarConfig` checks the keys and the plan holds them as plain data.
+  defaults until the compositor says otherwise) and `InputContext.settings` hands them out. The shell uses them as
+  published: there is no script override (the `focus`, `edgeTiling` and `dragConstraint` keys were dropped, design/js-spec-native.md
+  3.11). The focus modes are `click`, `sloppy` (the seat's `hover`) and `follow-mouse` (`hover-strict`: acts on entry only
+  and clears focus when the pointer leaves the focused window).
 - **Pure core.** `focusSettings`, `opensFocused`, `hoverFocus`, `autoRaiseSeconds`, `restFocus`, `leaveClears` are the
   Lua functions; `focusDecision(settings, event)` composes them into one decision per event (`added`, `enter`, `motion`,
   `leave`, `press`), a plain object: focus, clear, raise, and the delays of a rest focus and an auto raise. `edgeZone`,
@@ -919,16 +839,14 @@ the fake link) and one real-compositor test in `crates/gnoblin/tests/js_shell.rs
   `entry.pointer(events)`, which queues the clients' `onPointerEnter`, `onPointerMotion`, `onPointerLeave`,
   `onPointerPress` and `onPointerRelease` with `{ x, y, button }` in the window's own coordinates. A client listener
   hears one client's edges, a collection listener every member's. Scroll and key events still have no JavaScript API.
-- **Wiring.** `defineConfig` registers a `RuleEngine` and a `FocusPolicy` on `gnoblin.clients`, rules first, so
-  `skipFocus` is known when the focus policy hears the window. The policy keeps two timers (a pointer rest, an auto
-  raise) on `InputManager`'s per-frame hook, with the clock of `__gnoblinHost.input.now`. A new window takes focus
-  (`client.focus()`), except a window the shell found at boot: a reload does not take the user's focus. `client.focus()`
-  is a write of the first seat's `focus` (the Lua shell's `seat.focus = window`), because the compositor answers no
-  `focus` call on a window (`run_window_calls` handles `close` and `kill`); the call it was before did nothing against
-  the real compositor. The policy and the rules read focus from the seat as well (`InputContext.focusedClient`), because
-  an observer connection saw no window's own `focused` set while a shell held the tree. The Lua shell
-  never set `from_launcher`, so `focus_new_windows` has no launcher origin to read yet and the policy passes `false`.
-  A script that never calls `defineConfig` runs bare, with neither.
+- **Wiring.** The runtime attaches a `FocusPolicy` on `gnoblin.clients` for every config. The policy keeps two timers (a
+  pointer rest, an auto raise) on `InputManager`'s per-frame hook, with the clock of `__gnoblinHost.input.now`. A new window
+  takes focus (`client.focus()`), except a window the shell found at boot: a reload does not take the user's focus.
+  `client.focus()` is a write of the first seat's `focus` (the Lua shell's `seat.focus = window`), because the compositor
+  answers no `focus` call on a window (`run_window_calls` handles `close` and `kill`); the call it was before did nothing
+  against the real compositor. The policy reads focus from the seat as well (`InputContext.focusedClient`), because an
+  observer connection saw no window's own `focused` set while a shell held the tree. The Lua shell never set
+  `from_launcher`, so `focus_new_windows` has no launcher origin to read yet and the policy passes `false`.
 - **Raise.** `Client.raise()` calls `__gnoblinHost.raise`: the tree's order is the stacking order, but a window the
   compositor made has no parent and sorts after the root's tree, so the call first gives every unparented window the root
   for its parent, in the order it already has, and then moves the window last. A window already on top queues nothing.
@@ -936,26 +854,16 @@ the fake link) and one real-compositor test in `crates/gnoblin/tests/js_shell.rs
   (`a_click_focuses_and_raises_a_real_window_so_the_compositor_picks_it_over_the_one_above`): two overlapping windows,
   a click on the lower one where only it shows, then a click where both show, which the compositor gives to the lower
   window because it was raised.
-- **Rules.** A rule is data: the query keys `appId` and `title` (a glob, matched against the whole text, or a RegExp tested
-  anywhere in it), `focused`, `onWorkspace`; the actions `workspace`, `floating`, `size`, `position`, `style`
-  (`opacity` is applied, `cornerRadius` and `shadows` are checked and kept with no native effect, like `config.style`),
-  `fullscreen`, `maximised`, `secure`, `skipFocus`; and `first`, `reapply`. Every matching rule applies in list order and
-  the later wins per field, as every Lua rule list did (`rules_test.lua`: "the last matching rule wins for a field", "rules
-  merge in list order"); a rule with `first: true` ends the search where it matches. A rule applies when its window
-  appears and, unless it says `reapply: false`, again when appId, title or focus changes (`ClientListener.onAppIdChanged`
-  is new; `RuleEngine.onFocusChanged` is the focus read), and undoes `secure`, `fullscreen`, `maximised`, `opacity`, the
-  corner radius and the shadows when it stops matching, to what a rule that still matches sets (else the default). A rule
-  that still matches writes nothing. A window the shell found at boot is not touched. Workspace changes of a window are
-  not a rule input yet: the client has no event for them.
-  `compileRules` runs in `desugarConfig`, so a bad rule fails the stage naming `rules[i]` and the field. `role` is
-  refused by name: the tree publishes no window role. The Lua `xr` field and the app-id fallback to the WM class are not
-  ported (the tree carries no class). A `position` holds the window there (`floatingBounds`), a lone `size` is what the
-  floating layout places it at (`client.size`), and `floating` keeps a window out of the layout's `compute`
-  (`Client.floating`, new; a script-side flag). `maximised` and `fullscreen` write the flag and fill the primary
-  screen's area, and turning the rule off puts the window back. New `Client` members: `fullscreen` (writable), `opacity`,
-  `secure`, `floating`, `raise()`; `opacity` reads 1 and not 0 while the compositor has published none.
+- **Rules (removed).** `rules.ts` was a data-only engine: a query over `appId`, `title`, `focused` and `onWorkspace`, and the
+  actions `workspace`, `floating`, `size`, `position`, `style`, `fullscreen`, `maximised`, `secure` and `skipFocus`, applied in
+  list order with the later rule winning per field, and re-applied when the app id, title or focus changed. It was deleted
+  with the declarative config layer. A window rule is a listener plus `gnoblin.clients.where(...).style` (spec 4 and 6);
+  `floating`, `fullscreen`, `maximised`, `secure` and skip-focus have no writable property in the spec, so those actions have
+  no replacement yet (design/js-spec-native.md, 3.11, `rules`). What stayed on `Client`: `fullscreen` (writable), `opacity`,
+  `secure`, `floating`, `raise()` and `ClientListener.onAppIdChanged`; `opacity` reads 1 and not 0 while the compositor has
+  published none.
 - **Snapping.** `ClientMoveBinding({ snap })` tiles a window dropped within `snap` pixels (default 4, `false` never) of a
-  screen edge when the seat's `edge_tiling` (or the config's `edgeTiling`) is on, as `drag` in `init.lua` did.
+  screen edge when the seat's `edge_tiling` is on, as `drag` in `init.lua` did.
   `snapClient`, `unsnapClient`, `snappedZone` and `forgetSnap` keep the floating rectangle off the client; a maximised
   window floats first; unsnapping restores the rectangle the window had when it snapped (Lua's `keep_floating`), and
   a drag that takes hold of a snapped window ends the snapped state. `ClientResizeBinding({ edges: "nearest" })` moves the
@@ -980,8 +888,8 @@ three tests in `crates/gnoblin/tests/js_shell.rs` that run a real Wayland client
 
 - **Delivery.** A `request` event is parked by `JsUiState` whatever its node and reaches `onUiRequest` handlers in the
   toolkit's frame. `windowState.start` registers its handler when `gnoblin.ts` loads, so it runs before the window menu's
-  (which also hears `menu`) and a script's answer can stop the menu. A script that never calls `defineConfig` has the
-  policy too: it is not a config key, and a request with no answer is a window that cannot be maximised.
+  (which also hears `menu`) and a script's answer can stop the menu. Every script has the policy: a request with no
+  answer is a window that cannot be maximised.
 - **The hook.** `ClientListener.onRequest(client, request)`: the listeners attached to the client first, then each
   collection that holds it, each in the order attached, called synchronously; the first to call `request.handle()` wins,
   later listeners are not called and the built-in answer does not run. A throw is reported (`Name.onRequest`) and the
@@ -1022,8 +930,8 @@ w = d.width, h = d.height }` in the workspace's own space), and `Desk:sync_fulls
   fake link only: a real `xdg_toplevel.move` needs a client that sends the request with a pointer serial, which the
   test client does not.
 - **Rules and the stock workspaces** moved in the same lane. Rule lists merge every matching rule (see "Focus, rules and
-  snapping status"); the zero-config baseline is four workspaces, `1` to `4`, named `Workspace 1` to `Workspace 4`
-  (`defineConfig({ workspaces: [{ id, name, layout }] })` gained `name`), and the starter is rewritten to match.
+  snapping status"); the zero-config baseline is four workspaces, `1` to `4`, named `Workspace 1` to `Workspace 4`, and
+  the starter is written to match.
 - **Not done.** The Lua `refit` of a maximised or snapped window when the bars change, a request for a window on
   another output (the shell has one primary screen), and the kept rectangles across a reload: they live in the
   generation, so a window that is fullscreen or maximised when the config reloads leaves it where it is.
@@ -1036,10 +944,10 @@ actions (`gesture_actions.ts`, `gestureActions`, `gnoblin.gestures`), reduced mo
 `reduced_motion`), binding-only devices (`claim_device`) and the `false` action, the focus hand-off for every layout,
 `Workspace.walk`, workspace removal to the neighbour before it with the last refused, titlebar presses reaching the focus
 policy, a refit of the windows when a bar changes the work area, kept rectangles across a reload (carried in the workspace
-snapshot, `JsKeptWindow`), and `workspaceSets` with `activateSet`.
+snapshot, `JsKeptWindow`), and workspace sets (removed later with the spec's lack of sets).
 
-- **Decisions.** A gesture bound at the stock slide's trigger replaces it; `gestureActions` and `keys` for one gesture is an
-  error. The hand-off is skipped for a layout that defines `onClientRemoved` (a strip's columns are not in window order).
+- **Decisions.** A gesture bound at the stock slide's trigger replaces it. The hand-off is skipped for a layout that
+  defines `onClientRemoved` (a strip's columns are not in window order).
   `workspaces.remove` returns a boolean and refuses the last workspace; `clear()` still empties.
 - **Not done.** Nothing of the five lane targets; the real-compositor proof covers only the keyboard move and resize, the rest
   runs over the fake link.
@@ -1134,8 +1042,8 @@ carries the EDID identity. A mirror or an output that is off is a shadow: its sc
 do not see it, and its frame is the source's readback fitted into its panel, or black.
 
 **JS.** `Output.apply(options)`, `Output.mirror(source)`, `Output.connector`, `identity`, `mirrorOf`,
-`OutputListener.onApplied`, and the `outputs` config key applied by connector (`outputRequest` in
-`data/js/gnoblin/config.ts` checks a request and names the key path). A mirrored or off output has no desk, so nothing is
+`OutputListener.onApplied`, and an output setting applied by connector (`outputRequest` in
+`data/js/gnoblin/display.ts` checks a request and names the key path). A mirrored or off output has no desk, so nothing is
 laid out on it; it gets one back when it is ordinary again. (`Display`, `Viewport` and the cameras were not added then; see
 "Displays status" below, which reverses that.)
 
@@ -1258,9 +1166,9 @@ strokeWidth }`, `line`, `text`, `icon`, `pushClip`, `popClip`, `pushOpacity`, `p
   (`TreeIncoming::Answer`) for the toolkit; any other answer is still dropped. Until the answer a text is sized by the
   Lua estimate, and a late answer for text that has since changed is ignored.
 - **Titlebar.** A `Box` row of a drag area (holding the title), minimise, maximise and close buttons, mounted under the
-  window's node (decision 2a). Every number and colour is a field of `TitlebarStyle`. `defineConfig({ decorations: true
-})` attaches a `Decorations` listener to `gnoblin.clients`: one titlebar per client, there at attach or arriving
-  later. `defaultConfig` sets the key; a config without it has no titlebars, so a config that does not ask is unchanged.
+  window's node (decision 2a). Every number and colour is a field of `TitlebarStyle`. `startDecorations()` attaches a
+  `Decorations` listener to `gnoblin.clients`: one titlebar per client, there at attach or arriving
+  later. The stock default calls it; an `init.ts` that does not has no titlebars.
   The tree has no server-side decoration flag a window could be asked for (a window's decoration mode is always
   client-side today, `zxdg_decoration_v1.rs`), so every client is decorated. `Client` gains `maximised` and
   `minimised` (writable) for the buttons.
@@ -1297,9 +1205,9 @@ the titlebar's gestures, fade and reserved room. User page: `docs/js-ui.md`.
   (callable now) and the host's `lower` (`Client.lower()`).
 - **Menu.** The pure parts are `menuHeight`, `placeCard`, `MenuNavigator` and `menuKeyAction`; the controller is
   `windowMenu`. It answers `menu` requests, opens one menu at a time on a layer over the screen, keeps the keyboard where
-  it was and closes with its window and on a lock. `defineConfig({ menus: false })` never starts it: the compositor still
-  sends the requests, and nothing answers them. The compositor does not wait for the shell, so there is no timeout to
-  add. A shell that never calls `defineConfig` has no menu, as it has no stock keys. Always on top is kept by the menu
+  it was and closes with its window and on a lock. A script that does not call `startWindowMenu()` never starts it: the
+  compositor still sends the requests, and nothing answers them. The compositor does not wait for the shell, so there is no
+  timeout to add. Always on top is kept by the menu
   controller (a pinned window is raised again when another window comes over it), not by the compositor.
 - **Alert.** `AlertTracker` is the state machine. The alert reads `unresponsive` a few times a second (the property is
   written, not signalled) and its Force quit calls `Client.kill()`.
@@ -1379,15 +1287,13 @@ the frame pass), `effects` and `skipped` in `crates/gnoblin-js/src/bindings/prop
   a diagnostic `not applied: style.<property>: <reason>` (`takeNotices`, read by `collect_reports`). The compositor's
   own list of effects it skipped (`skipped` in `node.toml`; the task called it `effects_unsupported`) is appended to
   `client.styleWarnings`. GLES draws blur and shadow; the software and Vulkan renderers draw none.
-- **Config.** `defineConfig({ style })` is validated by `desugarConfig` (errors name `config.style`) and set on
-  `gnoblin.clients.style` before `setup` runs, so `setup` can change it. `rules[].style` (`opacity`, `cornerRadius`,
-  `shadows`) is set on the matched client's own style through `RuleHost.setStyle` and `setOpacity`, which replaces
-  `RuleEngine.styleOf`: a rule beats every scope, and a rule that stops matching unsets what it set. A rule's `opacity`
-  of 1 (what an undone rule restores) unsets the style's opacity instead of pinning it.
-- **Proven on the real compositor.** A config with `style: { opacity, shadows }` and a window rule's `opacity` ends as the
+- **Config.** A script sets the global style with `gnoblin.clients.style` and a selection's with
+  `gnoblin.clients.where(...).style`; a client's own style is the highest layer and beats every scope. (The window rules
+  engine that once set a matched client's style was removed; design/js-spec-native.md, 3.11.)
+- **Proven on the real compositor.** A script that sets `gnoblin.clients.style` opacity and shadows ends as the
   `effects` list and `opacity` of three mapped windows' nodes in the scene (one with a `where()` selection's own
   shadow), and a reload without the lines takes both off. **Proven against the fake link only:** the cascade
-  (ST1 to ST5, ST7), copy on write, the mapping, the notices, the 8-effect cap and the rule routing. **Not proven:**
+  (ST1 to ST5, ST7), copy on write, the mapping and the notices and the 8-effect cap. **Not proven:**
   that a renderer draws the effects (GLES only, not exercised here), `ST6` (secure masking).
 - **Not done.** `Node.style` and `workspace.style`; content filters, inset shadows, a blur radius, a background and
   per-corner radii (a per-corner radius is drawn as the largest of the four); a titlebar restore animation still ends
@@ -1509,12 +1415,11 @@ introspection tools of owner-spec section 18.
 - **Errors.** `{ id, ok: false, error: { kind, message, location, stack } }`; `location` is the first stack frame in
   `<console>` (so `null.x` on line 3 says line 3, not a frame of the library under it), else the error's own location.
   A syntax error has one too.
-- **Inspector.** `inspect.clients()`, `inspect.workspaces()`, `inspect.bindings()` and `inspect.config()` return plain
+- **Inspector.** `inspect.clients()`, `inspect.workspaces()` and `inspect.bindings()` return plain
   data. `bindings()` is `InputContext.describeBindings()` over every seat: id, trigger, kind, owner (`context`, `layout` or
   `device`), the layout's class or the device's name, `priority`, `enabled` and `rank`, which orders the registrations
-  of one trigger by the comparator a press uses (tier, then priority, then registration order). `config()` is the config
-  `__register` merged over the stock one, kept in the host (`__effectiveConfig`); `null` for an entry that never called
-  `defineConfig`. `gnoblin.clients.focused` (a getter on `Collection`) is the seat's focus, and with no seat the member whose
+  of one trigger by the comparator a press uses (tier, then priority, then registration order). `gnoblin.clients.focused`
+  (a getter on `Collection`) is the seat's focus, and with no seat the member whose
   own `focused` is set. `inspect` is a global of the generation (non-enumerable, like `gnoblin`) and is exported by
   `gnoblin` for `init.ts`.
 - **`gnoblinctl console`.** A plain line loop over standard input (`gnoblinctl` has no line-editor dependency and the
@@ -1840,18 +1745,18 @@ a37 pull ID /home/node/shots/master-stack-decorated.png master-stack-decorated.p
 Any Linux box with the build works the same way: `GNOBLIN_BIN_DIR=target/release scripts/js-shell-screenshots.sh ./shots`.
 Each scenario boots its own session over a fresh directory, so one can be run alone by name.
 
-| Scenario                                      | What it shows                                                                             |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `one-window`                                  | zero config, one window, its titlebar                                                     |
-| `cascade`                                     | zero config, three windows of the default size                                            |
-| `master-stack`, `dwindle`                     | three windows, then a reload to the owner's `defineConfig` (no `decorations` key)         |
-| `master-stack-decorated`, `dwindle-decorated` | the same with `decorations: true`                                                         |
-| `shadows-software`, `shadows-gles`            | `style.shadows` on each renderer (the renderer is read at start, so the session restarts) |
-| `csd-double`, `csd-own`, `csd-tiled`          | foot as it comes: the shell's one bar; with decorations off, foot's own bar (off screen)  |
-| `reload-tiled`, `transition-mid`              | a reload of three tiled windows (before and after compared); a frame mid-transition       |
-| `window-menu`                                 | the window menu, opened with `Alt+Space` sent by `wtype`                                  |
-| `lock`                                        | `gnoblinctl lock`, then a capture, which is refused                                       |
-| `rounded`                                     | decorated windows with `cornerRadius`, a border and a shadow on GLES                      |
+| Scenario                                      | What it shows                                                                                             |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `one-window`                                  | zero config, one window, its titlebar                                                                     |
+| `cascade`                                     | zero config, three windows of the default size                                                            |
+| `master-stack`, `dwindle`                     | three windows, then a reload to an `init.ts` that declares workspaces                                     |
+| `master-stack-decorated`, `dwindle-decorated` | the same with `startDecorations()`                                                                        |
+| `shadows-software`, `shadows-gles`            | `gnoblin.clients.style.shadows` on each renderer (the renderer is read at start, so the session restarts) |
+| `csd-double`, `csd-own`, `csd-tiled`          | foot as it comes: the shell's one bar; with decorations off, foot's own bar (off screen)                  |
+| `reload-tiled`, `transition-mid`              | a reload of three tiled windows (before and after compared); a frame mid-transition                       |
+| `window-menu`                                 | the window menu, opened with `Alt+Space` sent by `wtype`                                                  |
+| `lock`                                        | `gnoblinctl lock`, then a capture, which is refused                                                       |
+| `rounded`                                     | decorated windows with `cornerRadius`, a border and a shadow on GLES                                      |
 
 The pictures (`/home/kieran/dev/lanes/JsLiveVerify-shots/` on the workstation of the lane) are not in the repository except
 four that are clean product states and are in `docs/typescript-shell.md`, "What it looks like": `docs/images/js-shell/`.
@@ -1883,7 +1788,7 @@ four that are clean product states and are in `docs/typescript-shell.md`, "What 
 | --- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | `master-stack.png`                | A black column at x = 1023: `tile()` floored each width on its own, so a master of 607.2 and a stack of 404.8 at 619.2 ended at 619 + 404 = 1023. Every tiled layout had it (grid with 3 columns on 1000 px ended at 999; the Lua shell had the same).                                                                                                             | Fixed in `data/js/gnoblin/layout.ts` (`tile` floors edges). Tests: `stock_layouts.rs`, real: `a_master_stack_workspace_with_a_ratio_and_a_gap_fills_the_screen_to_both_edges`. The Lua goldens that pinned the sliver are changed.                                                                                                                |
 | 2   | `cascade.png` (before the fix)    | Three windows of the default size: the second and the third landed at exactly (324, 268). `placeRect` pushes a cascade that found no free spot back inside the area, pinning every later window to the far corner, so the third hid the second.                                                                                                                    | Fixed in `FloatingLayout.onClientAdded` (`apartFrom` steps back by the cascade step). `placeRect` and its golden table are unchanged. Tests: `stock_layouts.rs`, real: `windows_too_big_for_a_free_spot_cascade_and_never_land_exactly_on_each_other`.                                                                                            |
-| 3   | `master-stack.png`, `dwindle.png` | The owner's `defineConfig({ workspaces })` draws no titlebars. `docs/typescript-config.md` says so in its table (`decorations` is "not layered") and contradicts itself two paragraphs above ("A key you leave out keeps its default"). With foot as the client, foot then draws its own title bar, which is outside its window and off screen for the top row.    | Open, by design, owner's call: should `decorations` default to `true` for a config that leaves it out? The doc and the screenshots in `docs/` say what is.                                                                                                                                                                                        |
+| 3   | `master-stack.png`, `dwindle.png` | An `init.ts` that declares workspaces and does not call `startDecorations()` draws no titlebars. With foot as the client, foot then draws its own title bar, which is outside its window and off screen for the top row.                                                                                                                                           | Open, by design, owner's call: should an `init.ts` that leaves the call out get titlebars? An `init.ts` replaces the default, and the starter calls `startDecorations()`. The doc and the screenshots in `docs/` say what is.                                                                                                                     |
 | 4   | `csd-own.png`                     | Fixed: the window is its geometry, so foot's bar is on screen and the window is 700 by 500 (below, "The 52 px, fixed").                                                                                                                                                                                                                                            | Fixed in the compositor: the window node is the window geometry. Test: `a_client_side_decorated_window_is_held_at_its_window_geometry_not_its_buffer_less_its_bar`, no longer ignored.                                                                                                                                                            |
 | 5   | `shadows-gles.png`                | The shadow is the window node's, so it is cast by the content and not by the frame: it has nothing at the titlebar's side. The shadow effect has no rectangle of its own to grow.                                                                                                                                                                                  | Open. Needs the effect to take an extent, in the compositor.                                                                                                                                                                                                                                                                                      |
 | 6   | `master-stack.log`                | A reload logged 19 `a seat claim's chord is already bound for that device` and one `a seat gesture claim was refused` at WARN. The new generation claimed each stock key while the old one still held it, so the compositor refused the duplicate, and the old generation's release then freed the chord: after the reload nobody held it and the key did nothing. | Fixed (lane JsReloadClaims). A staged generation's claims wait for the swap and go out behind the old generation's releases, in one transaction ("Hot reload", "Seat claims across a reload"). Tests: `crates/gnoblin-js/tests/input.rs`, real: `a_reload_hands_every_seat_claim_over_so_each_shortcut_fires_once_and_a_removed_one_is_released`. |

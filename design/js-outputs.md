@@ -17,7 +17,7 @@ Lane OutputMirror. Spec: `design/js-research/owner-spec.md` sections 9 and 21; a
   node, which is what JsOutputs found.
 - **`gnoblinctl output ...`.** It speaks to the model graph of `gnoblin-compositor`, which served no `apply` on an
   output: `gnoblinctl output call <id> apply` was refused with "does not serve that method". It is served now.
-- **`defineConfig({ outputs })`.** Checked and stored, applied by nothing.
+- **A declarative `outputs` setting.** Checked and stored, applied by nothing. It was removed with the declarative config layer; an `OutputProfile` is the way now (see "Displays, viewports and cameras").
 - **Backends.** Only the headless backend could change a live mode (`Headless::resize`). The DRM backend refused
   `configure_output`; it implements it now (see "DRM modeset"). Position, mirror and off need no modeset and work on
   any backend.
@@ -27,9 +27,8 @@ Lane OutputMirror. Spec: `design/js-research/owner-spec.md` sections 9 and 21; a
 The `config` document has no outputs section and a screen's properties are read-only, so the smallest surface is the
 call the schema already named. `apply` now takes one `text` argument, `key=value` lines (`mode`, `scale`, `transform`,
 `position`, `enabled`, `mirror_of`), and the compositor answers under the call's token. JS `Output.apply`,
-`Output.mirror` and `defineConfig({ outputs })` all go through it; a config entry is applied to each output with that
-connector, when the config loads and when the output is plugged in. Errors carry the key path
-(`outputs.DP-1.mode: ...`).
+`Output.mirror` and an `OutputProfile` all go through it; a profile is applied to each output that matches it, when
+the script runs and when the output is plugged in. Errors carry the path (`OutputProfile "dp1".mode: ...`).
 
 The request is transactional (`crates/gnoblin-wayland/src/output_policy.rs`):
 
@@ -71,7 +70,7 @@ parked: it changes no layout, and the same monitor on the same port gets its mod
 it returns (`settle_outputs` drives a newly connected output to the stored mode). A different monitor on that port does
 not inherit it. A stored arrangement that no longer resolves falls back to the row, with a warning, rather than leave
 the session without a desktop. Profiles live in the session, not on disk: they survive a hotplug, not a restart, where
-`defineConfig({ outputs })` applies them again.
+an `OutputProfile` of the user's `init.ts` applies them again.
 
 ## Displays, viewports and cameras
 

@@ -96,18 +96,18 @@ Goal: prove **TS init → runtime process → tree protocol → real window geom
 2. Load `~/.config/gnoblin/init.ts` (and `init.js`). `.ts` is type-stripped before evaluation; relative `./x.ts` imports work; the bare `gnoblin` module exports the slice's classes.
 3. Objects (read from the mirror, write via transactions): `gnoblin.clients` (read-only `Collection<Client>` with `length/at/get/find/filter/[Symbol.iterator]`), `Client { id, appId, title, alive, bounds (rw), close() }`, `ClientListener` with `onAdded`-style forwarding via `CollectionListener` (`onAdded`, `onRemoved`) and `onTitleChanged`.
 4. One implicit workspace: all toplevels belong to it (answers 1.10 for the slice), with one `Layout` slot. Ship `FloatingLayout` (hook-only, cascade) and `MasterStackLayout` (`compute`, verbatim from L1173-1206) as JS modules. A `Layout` subclass with a plain `this.gap` field must re-lay out when `gap` is edited (snapshot-diff dirty check, 1.15).
-5. Input: `gnoblin.input.primary.bind("Super+Return", fn)` for key chords only, plus `"close"`/`spawn` actions via the simple tier below (`keys:`). Pointer drags are out.
+5. Input: `gnoblin.input.primary.bind("Super+Return", fn)` for key chords only, with `() => gnoblin.spawn([...])` and `() => input.focusedClient?.close()` as the handlers. Pointer drags are out.
 6. Hot reload: file watcher or `gnoblinctl reload` runs a _new_ QuickJS context (generation N+1), stages all writes, validates, commits in one tree transaction, then drops generation N's bindings and listeners. Failure (syntax error, thrown exception, bad value) leaves generation N fully intact and reports file:line (original `.ts` line).
 7. Runtime-down behaviour: kill the runtime process; compositor keeps running with `fallback.rs` policy; restart re-applies config without disturbing open clients.
 
 ### Example the slice must run (plain TS)
 
 ```ts
-import { defineConfig, MasterStackLayout, spawn } from "gnoblin";
-export default defineConfig({
-    layout: new MasterStackLayout({ ratio: 0.6, gap: 12 }),
-    keys: { "Super+Return": spawn("foot"), "Super+Q": "close" },
-});
+import { MasterStackLayout, Workspace } from "gnoblin";
+const input = gnoblin.input.primary;
+gnoblin.workspaces.add(new Workspace({ id: "main", layout: new MasterStackLayout({ ratio: 0.6, gap: 12 }) }));
+input.bind("Super+Return", () => gnoblin.spawn(["foot"]));
+input.bind("Super+Q", () => input.focusedClient?.close());
 ```
 
 ### Done criteria (all headless, no GPU, no real input device)
@@ -115,7 +115,7 @@ export default defineConfig({
 - D1. `init.ts` with type annotations and a `./helper.ts` import runs; an error in it reports the original `.ts` line.
 - D2. With the testkit's null compositor/fake owner (as in the `lib.rs` doctest: `Server::new(Graph::new(catalog))` + `connect`), opening 3 fake toplevels yields `MasterStackLayout.compute` rectangles applied through a single tree transaction (assert exact rects for gap 12, ratio 0.6, 1/2/3 windows).
 - D3. Editing `gap` in `init.ts` and reloading changes applied rects without closing or re-creating any toplevel, and the `Window` ids are unchanged.
-- D4. A reload with a syntax error keeps the old rects and key bindings, and the error names file and line. A reload that removes a `keys` entry removes that binding.
+- D4. A reload with a syntax error keeps the old rects and key bindings, and the error names file and line. A reload that removes a `bind` call removes that binding.
 - D5. `Super+Q` (synthetic chord through the owner socket) closes the focused toplevel; `Super+Return` spawns the configured command (recorded by a stub spawner).
 - D6. `ClientListener.onTitleChanged` fires exactly once per change with the client as argument 1; a listener from generation N never fires after generation N+1 is live.
 - D7. Killing the runtime process leaves the compositor responsive; windows opened meanwhile are placed by `fallback.rs`; a restarted runtime re-lays out all existing toplevels.
@@ -135,53 +135,15 @@ Estimated size: ~12-15 units [INFERENCE], mostly items 10, 11, 6 (small), 8 and 
 - U5. **Three ways to write a property** (assignment, `set()`, `requestTransition`) plus four opacity spellings (1.13). Document one primary path per use.
 - U6. **Stringly tokens:** triggers, `"quadrant"`, `unset("cornerRadius")`, colour strings (`"#ffffff40"`, `"#0006"` both appear, L2385 vs L347). TypeScript can type triggers (template literal types) and `keyof ClientStyle`.
 
-### Proposed simple tier: `defineConfig` (plain TS, pure sugar)
+### A simple tier was proposed here and has been removed
 
-`defineConfig(config)` is an identity function with a typed parameter (so editors complete it) and a runtime registration. Each key _desugars to the object API in §4-12_; there is no second system. `export default defineConfig(...)` makes hot reload a diff of plain data. The callback tier stays available: `setup(gnoblin)` runs after the declarative part and may use any class.
-
-```ts
-import { defineConfig, spawn, show, MasterStackLayout } from "gnoblin";
-
-export default defineConfig({
-    gaps: { inner: 12, outer: 8 }, // applied to every stock layout via LayoutContext.area/gap
-    style: { cornerRadius: 12, shadows: [{ y: 8, blur: 24, color: "#00000066" }] },
-    workspaces: [
-        // creates Workspace objects, ids stable for reload
-        { id: "desktop", layout: "floating" },
-        { id: "dev", layout: new MasterStackLayout({ ratio: 0.65 }) },
-    ],
-    outputs: { "DP-1": { mode: "3440x1440@144", scale: 1.25 } }, // OutputProfile + implicit Display/Viewport
-    keys: {
-        "Super+Return": spawn("ghostty"),
-        "Super+Q": "close",
-        "Super+Tab": ({ gnoblin }) =>
-            gnoblin.requestTransition(
-                () => {
-                    /* … */
-                },
-                { duration: 300 },
-            ),
-        ...show.numbered("Super+{n}", ["desktop", "dev"]), // Super+1, Super+2
-    },
-    rules: [{ appId: "firefox", workspace: "web", style: { cornerRadius: 18 } }],
-    on: {
-        clientAdded(c) {
-            /* typed ClientListener sugar */
-        },
-    },
-    setup(gnoblin) {
-        /* escape hatch: full OOP API */
-    },
-});
-```
-
-Requirements for the tier:
-
-- Desugaring table published (`gaps.inner` → `gap` on each stock layout, `rules[].style` → `clients.where(query).style`, `keys` → `input.primary.bind`). Missing keys do nothing; unknown keys are type errors.
-- **Gap needs a real core concept:** add `LayoutContext.gap`/`inset` supplied by the workspace (`Workspace.gaps`) so one setting applies to all stock layouts and custom layouts can read it.
-- `keys` actions are a closed union (`"close"`, `spawn(...)`, `show(ws)`, `fn`) so bindings are inspectable and diffable.
-- Rules use data-only queries (1.12), which keeps them native-evaluable.
-- Zero-config baseline spelled out: one `desktop` workspace, floating layout, one implicit display per output, stock bindings (the existing Lua shell's set).
+This review proposed a plain-data front over the object API (a typed identity function with a runtime registration, whose keys
+desugared to `gap`, `clients.where(query).style`, `input.primary.bind` and the rest), so that a user who only wants a key
+bound or a gap set needs no `new Workspace(...)`. It was built, and the owner never asked for it: the public API is exactly
+the owner's specification and an `init.ts` is a program run against live objects (design/js-runtime.md, J4 (revised);
+design/js-spec-native.md). Two of its requirements outlived it: `LayoutContext.gap` supplied by `Workspace.gaps`, so one
+setting reaches every stock layout, and the zero-config baseline spelled out in code (`gnoblin/starter`: four floating
+workspaces and the stock bindings of the Lua shell).
 
 ## 5. Proposed acceptance tests (headless)
 
@@ -275,12 +237,12 @@ IDs map to §21 bullets; **(+)** marks tests I added because §21 leaves the beh
 
 ## Recommendation
 
-Build the existing Lua runtime's architecture again with QuickJS rather than starting from the spec's object zoo: first the slice in section 3 (a plain-TS `defineConfig` front, one implicit workspace, `compute`-based layouts, key bindings, generation-based hot reload over the existing tree socket), and treat styles, displays, transitions and XR as later, separately sized projects. Before coding, the owner must decide: the initial-workspace rule (1.10), copy-on-write semantics for inherited style lists (1.13), the observable-field mechanism (1.15, recommend snapshot diff), `.so` vs owner-socket extensions (1.16, recommend the latter), data-only `where()` queries (1.12), the trigger grammar (1.22), and the latency budget (1.20).
+Build the existing Lua runtime's architecture again with QuickJS rather than starting from the spec's object zoo: first the slice in section 3 (an `init.ts` that binds keys and declares a workspace, one implicit workspace, `compute`-based layouts, key bindings, generation-based hot reload over the existing tree socket), and treat styles, displays, transitions and XR as later, separately sized projects. Before coding, the owner must decide: the initial-workspace rule (1.10), copy-on-write semantics for inherited style lists (1.13), the observable-field mechanism (1.15, recommend snapshot diff), `.so` vs owner-socket extensions (1.16, recommend the latter), data-only `where()` queries (1.12), the trigger grammar (1.22), and the latency budget (1.20).
 
 ## Open risks
 
 - JS-in-the-input-loop latency for pointer drags and 90 Hz XR manipulation is untested; the design depends on it being acceptable.
-- Generation-overlay hot reload (1.27) turns an imperative script into a reconcilable program. It may force a declarative front (`defineConfig`) as the primary form.
+- Generation-overlay hot reload (1.27) turns an imperative script into a reconcilable program. The shipped shell reconciles workspaces by stable `id` and keeps the generation's layers, with no declarative front.
 - The transition planner needs user `compute` results for the after-state, so a transition is no longer "one callback then native". Complexity and failure modes (compute throws mid-transition) are underspecified.
 - Span/mirror with mixed scales and the effect stack across three backends are the largest unknown costs.
 - Engine-neutral extraction from `tree_link.rs` / `tree_mirror.rs` may be larger than assumed [unverified].

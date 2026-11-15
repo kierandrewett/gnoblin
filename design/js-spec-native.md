@@ -1,7 +1,8 @@
 # Spec-native shell: what removing `defineConfig` touches, what the shell already runs of the owner's examples, and how to replace it
 
-Lane SpecNativeAudit. Status: inventory, harness and design. Lane SpecCore landed steps 3 and 4 of the removal plan (3.11); the
-`defineConfig` path is deprecated and still present, and no part of the boot path uses it.
+Lane SpecNativeAudit. Status: **done**. The compatibility path was deleted in lane RmFinal (3.9 step 8, below): the identifiers
+this document is about no longer exist in the tree, and the document is now the record of the removal. Part 1 is the inventory
+as it stood before; part 3.11 is the live list of dropped settings, the follow-up scope.
 
 The owner reviewed the TypeScript shell and said they never asked for `defineConfig`. It was added by the agent (proposed in
 design/js-research/spec-review.md section 4, adopted as decision J4 in design/js-runtime.md). The owner chose to remove it. The
@@ -719,9 +720,9 @@ Step 5 can run in parallel with step 6 once step 3 lands. Steps 6 and 7 are larg
 
 The owner decided (3.10): remove `defineConfig`, keep the spec as the whole API, no `gnoblin.settings`, the user's `init.ts`
 replaces the stock default, and a binding `add` with a duplicate id stays refused. Steps 3 and 4 of 3.9 landed as follows, in
-two pushes. The deprecated `defineConfig` path (`mergeConfig`, `desugarConfig`, `defaultConfig`, `__register`) still works, so
-that the tests and pages that use it keep passing; nothing in the boot path uses it. The next lanes rewrite those tests, the
-converter and the pages, then delete it (step 8).
+two pushes. Lanes RmTests, RmCtl, RmDocsConfig and RmTestsShell then rewrote the tests, the converter, the tools and the
+pages, and lane RmFinal did step 8: it deleted the compatibility path, so the text below describes the code as it was when
+the boot path left it, and every step of 3.9 is done.
 
 **The stock default is code.** `data/js/gnoblin/starter.ts` (embedded as `gnoblin/starter`) exports `installDefaults(gnoblin)`:
 four floating workspaces, `startDecorations()`, `startWindowMenu()`, `startNotRespondingAlert()`, `Super+1` to `Super+9`,
@@ -769,7 +770,7 @@ so the helpers 3.1 called by those names are functions on the `gnoblin` module: 
 <!-- prettier-ignore-end -->
 
 **Dropped settings (follow-up scope).** No object in the owner's specification carries these, and the decision is to invent
-none. The boot path no longer reads them. They stay in `defineConfig` only for as long as the compatibility path does. A future
+none. The boot path does not read them and the compatibility path that carried them is deleted. A future
 home is a question for the specification, so the last column says what the setting needs, not where it goes.
 
 <!-- prettier-ignore-start -->
@@ -784,7 +785,7 @@ home is a question for the specification, so the last column says what the setti
 | `touchpadGestures` | Drawn-path touchpad gestures that start a command. | A path gesture trigger. Cardinal swipes and pinches are `input.bind`. |
 | `keyring` | `keyring.enabled`, read at first boot before the runtime has committed anything. | A compositor-wide settings object read before the session starts. The keyring keeps its default (enabled), and `evaluate_document` reports no JS source for it. |
 | `dialogs.style` | The look of the compositor's dialogs. | A style object on the dialog manager. The `gnoblin.dialogs` listeners stay. |
-| `workspaceSets` | Named groups of workspaces shown together, activated by name. | None: the spec has no sets (9E). `sets.ts` stays until the compatibility path is deleted. |
+| `workspaceSets` | Named groups of workspaces shown together, activated by name. | None: the spec has no sets (9E). `sets.ts`, `gnoblin.workspaces.sets` and `activateSet` are deleted. |
 | `launcher` | A command for `Super+space` instead of the stock entry. Removed with the key: `stock_ui.rs`'s case that a configured command takes the key and the entry is not bound as well, and `stock_layouts2.rs`'s checks of the key's shape. | Nothing is missing: bind the key yourself. The starter binds `openLauncher`, and a user who wants another command deletes that line. |
 | `compositor`, `windowManagement`, `appearance`, `accessibility`, `layerShell`, `auth`, `location`, `compat`, `capture`, `monitors`, `xwayland`, `logging`, `cursor` | The document's sections as `defineConfig` keys. | A compositor-wide settings object (the proposed `gnoblin.settings`, refused) or one object for each. Today only the device settings of `input` reach the document. |
 
@@ -835,6 +836,18 @@ device settings (`Keyboard.repeatRate`, `repeatDelay`) are the document content 
 | merge by trigger | A user's `defineConfig` merged its keys over the stock keys by canonical trigger and replaced the workspaces whole. | `js_shell.rs`: `a_shell_with_no_init_file_runs_the_stock_config_and_a_defined_config_layers_over_it` is now `a_shell_with_no_init_file_runs_the_stock_config_and_a_user_file_replaces_it_whole`: a user file has none of the stock keys, and `installDefaults(gnoblin)` brings them back. |
 
 <!-- prettier-ignore-end -->
+
+**Step 8, the deletion (lane RmFinal).** Deleted: `data/js/gnoblin/config.ts` (the config shape, `defaultConfig`, `mergeConfig`,
+`desugarConfig`, the key action helpers and `CONFIG_KEYS`), `rules.ts` and `sets.ts` (the stock library is 52 modules now), the
+`__register`, `__effectiveConfig` and probe plumbing of `crates/gnoblin-js/js/gnoblin.ts`, `inspect.config()`, the shell's
+overrides of the focus, edge-tiling and drag-constraint settings and the focus policy's `skipsFocus` hook,
+`crates/gnoblin-js/src/autostart.rs` with the spawner (`JsSpawner`, `JsSpawnRequest`, `JsShell::set_spawner`) that only
+`autostart` used, the `autostart` argument of `host.config.check`, `gnoblin-js-types/tests/config_keys.rs`, and the
+declarations of `Config`, `defineConfig`, `WorkspaceSetConfig`, `GestureActionConfig` and `effectiveConfig` in
+`gnoblin-stock.d.ts` (the golden is regenerated). `outputRequest` and `OutputConfig` moved to `data/js/gnoblin/display.ts`.
+What stays: the document's `autostart` section and the guardian's handling of it, `evaluate_document` (the dry-run of
+`gnoblinctl check` and the keyring's first-boot read, which now finds no `keyring` setting and so decides the schema
+default), and `ConfigState`'s validator, which still refuses a document that would start a second keyring.
 
 ## Appendix: docs pages that mention the identifiers
 
