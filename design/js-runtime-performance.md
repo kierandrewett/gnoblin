@@ -57,7 +57,7 @@ something can have changed what it does:
 - **Script ran outside a frame** (`eval`, the console, a load, a reload, a link handed over).
 - **The script asked** through `entry.wake()` (`data/js/gnoblin/wake.ts`): the part of the library that has a clock to
   keep registers it, by name, where it holds its state. Timers, focus rests, launch deadlines, a window drag's limit, a
-  titlebar's close fade, a clock widget's minute, the display manager's dirty flag, queued listener calls, a look the
+  window's close fade, a clock widget's minute, the display manager's dirty flag, queued listener calls, a look the
   not-responding alert skipped, and the sources that draw every frame while they hold (a lock screen that is up, an XR
   session, a toast). A source that throws is reported and asks for nothing, so one part's failure does not end the shell.
 - **The last frame did work**, so one more looks for what it left for the pass after it.

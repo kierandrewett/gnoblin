@@ -62,7 +62,7 @@ const CONTEXT: &[(&str, Part)] = &[
     ("holding", State),
     ("shownByLayout", State),
     ("writtenVisible", State),
-    ("fittedBar", State),
+    ("fittedInset", State),
     ("scopeStyles", State),
     ("styledSelections", State),
     ("clientStyles", State),
@@ -71,7 +71,7 @@ const CONTEXT: &[(&str, Part)] = &[
         Driven("an output application is answered by the compositor, which is a message on the link"),
     ),
     ("focusPolicy", Wakes("focus rests")),
-    ("decorations", Wakes("titlebar close fade")),
+    ("decorations", Wakes("window close fade")),
     ("flags", State),
     (
         "staging",
@@ -232,6 +232,10 @@ const NO_SOURCE_NEEDED: &[(&str, &str)] = &[
     (
         "session/host_api.ts",
         "hands the timers the host's clock; `operation.ts` registers them",
+    ),
+    (
+        "frame/drag.ts",
+        "stamps a press with the time it was handled, to tell a double click; the close fade's clock is `frame/actions.ts`'s",
     ),
     (
         "input/gesture.ts",
