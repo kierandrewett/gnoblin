@@ -225,13 +225,18 @@ impl Table {
     /// Gives a session a new buffer shape, for a target whose own size changed under it.
     ///
     /// The next frame repaints the whole of the new shape, because the damage the session held was measured on the
-    /// old one. Answers whether the session is there.
+    /// old one. A claim taken for the old shape is dropped: its buffer is the client's, sized for the old shape, so
+    /// the claim resolves as [`Refusal::Stale`] rather than copying the new shape into it. A stopped session keeps no
+    /// damage, as a stop leaves it. Answers whether the session is there.
     pub fn reformat(&mut self, session: SessionId, format: Format) -> bool {
         let Some(entry) = self.sessions.get_mut(&session) else {
             return false;
         };
         entry.format = format;
-        entry.damage = vec![entry.full()];
+        entry.drop_claim();
+        if entry.live() {
+            entry.damage = vec![entry.full()];
+        }
         true
     }
 
@@ -997,5 +1002,98 @@ mod tests {
             "a stopped session does not resume when the lock is released"
         );
         assert!(!table.enforce(SessionId::new(99), Capture::Desktop));
+    }
+
+    /// A session opened while the lock is already up is refused its first frame and stopped: opening is not consent, so
+    /// there is no frame that could be the "first" one the lock lets through.
+    #[test]
+    fn a_session_opened_under_the_lock_never_copies_a_frame() {
+        let mut table = Table::new();
+        let session = open(&mut table, CaptureStream::Requested);
+        let mut source = Fake::new(Some(Rect::from_size(SIZE)));
+        let frame = table.request(session, BufferId::new(1), Tick::new(1)).expect("a claim");
+        assert_eq!(
+            table.capture(frame, Tick::new(1), Capture::Refused, &mut source),
+            CaptureOutcome::Refused(Refusal::Locked)
+        );
+        assert!(source.copies.is_empty(), "the very first frame copied nothing");
+        assert_eq!(
+            table.get(session).and_then(|entry| entry.stopped()),
+            Some(Stop::Embargoed)
+        );
+    }
+
+    /// A target that exists but has no pixel inside the buffer the client negotiated (a window that moved its
+    /// own rectangle away, or shrank to nothing) stops the session instead of reporting a frame it never wrote.
+    #[test]
+    fn a_target_with_nothing_inside_the_buffer_stops_its_session() {
+        let mut table = Table::new();
+        let session = table.open(
+            ClientId::new(9),
+            Target::Window(WindowId::new(4)),
+            CaptureStream::Requested,
+            format(),
+        );
+        let mut source = Fake::new(Some(Rect::new(SIZE.width as i32 * 4, 0, 5, 5)));
+        let frame = table.request(session, BufferId::new(1), Tick::new(1)).expect("a claim");
+        assert_eq!(
+            table.capture(frame, Tick::new(1), Capture::Desktop, &mut source),
+            CaptureOutcome::Refused(Refusal::TargetGone)
+        );
+        assert!(source.copies.is_empty(), "no frame was copied");
+        assert_eq!(
+            table.get(session).and_then(|entry| entry.stopped()),
+            Some(Stop::TargetGone)
+        );
+    }
+
+    /// A claim taken for the old shape of a session does not resolve after the session changes shape: its buffer is the
+    /// client's and is sized for the old shape, so copying the new shape into it would write past what the client made.
+    #[test]
+    fn a_reformat_drops_a_claim_taken_for_the_old_shape() {
+        let mut table = Table::new();
+        let view = Target::View(NodeId::new(4));
+        let session = table.open(ClientId::new(9), view, CaptureStream::Requested, format());
+        let old = table.request(session, BufferId::new(1), Tick::new(1)).expect("a claim");
+
+        let grown = Size::new(SIZE.width * 2, SIZE.height * 2);
+        let wider = Format::new(grown, grown.width * 4, PixelFormat::Argb8888).expect("a valid format");
+        assert!(table.reformat(session, wider));
+        let mut source = Fake::new(Some(Rect::from_size(grown)));
+        assert_eq!(
+            table.capture(old, Tick::new(1), Capture::Desktop, &mut source),
+            CaptureOutcome::Refused(Refusal::Stale)
+        );
+        assert!(source.copies.is_empty(), "nothing was written into the old buffer");
+
+        // The session is not wedged: the client's next buffer, sized for the new shape, is the one that is copied.
+        let next = table
+            .request(session, BufferId::new(2), Tick::new(1))
+            .expect("a claim for the new shape");
+        assert!(
+            table
+                .capture(next, Tick::new(1), Capture::Desktop, &mut source)
+                .is_copied()
+        );
+        assert_eq!(source.copies.len(), 1);
+    }
+
+    /// A stop clears the damage a session owed, and a later change of shape does not bring it back: a stopped
+    /// session produces no frame, so nothing may keep describing pixels of a target it no longer has.
+    #[test]
+    fn a_reformat_leaves_a_stopped_session_with_no_damage() {
+        let mut table = Table::new();
+        let view = Target::View(NodeId::new(4));
+        let session = table.open(ClientId::new(9), view, CaptureStream::Requested, format());
+        assert!(table.stop(session, Stop::TargetGone));
+        let grown = Size::new(SIZE.width * 2, SIZE.height * 2);
+        let wider = Format::new(grown, grown.width * 4, PixelFormat::Argb8888).expect("a valid format");
+        assert!(table.reformat(session, wider));
+        assert!(table.get(session).is_some_and(|entry| entry.damage.is_empty()));
+        assert_eq!(
+            table.request(session, BufferId::new(1), Tick::new(1)),
+            Err(Refusal::Stopped(Stop::TargetGone)),
+            "the reformat did not revive it"
+        );
     }
 }

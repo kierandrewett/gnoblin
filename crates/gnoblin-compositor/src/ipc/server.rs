@@ -1711,10 +1711,10 @@ impl Dispatcher {
     /// [`wire::CAPTURE_DISPLAY`] asks for the frame as the display shows it, at the output's mode. Any other payload
     /// is refused as malformed.
     ///
-    /// The lock is asked first: a locked or embargoed session is refused before any pixel
-    /// is read. The picture comes from the backend's screenshot, which applies the
-    /// configured secure treatment to secure layers, so a masked or omitted layer never
-    /// reaches the PNG.
+    /// The lock is asked first: a locked or embargoed session is refused before any pixel is read, and the loop
+    /// asks it again at the moment it reads them, because the snapshot this handler checked can be an instant old. The
+    /// picture comes from the backend's screenshot, which applies the configured secure treatment to secure layers,
+    /// so a masked or omitted layer never reaches the PNG.
     fn capture_screen(&mut self, client: ClientId, envelope: &Envelope) {
         let display = match envelope.payload().unwrap_or(&[]) {
             [] => false,
@@ -1742,14 +1742,16 @@ impl Dispatcher {
                 return self.refuse(client, envelope, code, message);
             }
         };
-        let image = if display {
-            self.control.screenshot_display(output)
-        } else {
-            self.control.screenshot(output)
-        };
-        let Some(image) = image else {
-            let (code, message) = capture_refusal(Refusal::Unavailable);
-            return self.refuse(client, envelope, code, message);
+        // The snapshot above can be an instant old, so the loop asks the lock again when it reads the pixels.
+        let image = match self.control.capture_guarded(output, display) {
+            Ok(image) => image,
+            Err(refusal) => {
+                let (code, message) = capture_refusal(match refusal {
+                    gnoblin_wayland::ShotRefusal::Locked => Refusal::Locked,
+                    gnoblin_wayland::ShotRefusal::Unavailable => Refusal::Unavailable,
+                });
+                return self.refuse(client, envelope, code, message);
+            }
         };
         let max_len = gnoblin_proto::MAX_FRAME_LEN - ENVELOPE_HEADROOM;
         match still::encode_png(image.size(), image.stride(), image.data(), max_len) {

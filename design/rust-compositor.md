@@ -807,7 +807,15 @@ Landed:
   `focus-toplevels`) run on both, and `tests/parity/reports/` stores the report.
 - Failure-mode lists, each entry naming its test, in the crate docs of
   `gnoblin-wm`, `gnoblin-lock`, `gnoblin-authority`, `gnoblin-a11y`,
-  `gnoblin-session`, `gnoblin-config`, `gnoblin-model` and `gnoblin-render`.
+  `gnoblin-session`, `gnoblin-config`, `gnoblin-model` and `gnoblin-render`, and
+  the capture-embargo list in `gnoblin-capture`: 36 entries from this plan,
+  `capture-api.md`, `layers.md` and `supersample.md`, each with its test, and a
+  list of what is not covered and why. The lock and the capture table are tested
+  together through whole lock cycles (`gnoblin-capture/tests/lock_cycle.rs`).
+  Writing it found two defects, both fixed with a test: a session that changed
+  shape kept a claim made for the old shape, and a `capture.screen` still checked
+  the lock only from a snapshot of the session and not where the loop reads the
+  pixels.
 - `gnoblin-types`, and the first engine slice: a headless backend with the
   software renderer and `gnoblin-wayland` serving a real `wayland-client`.
 
@@ -1514,8 +1522,35 @@ refused.
 #### Redirect map
 
 Consumers marked [INFERENCE] are not checked against their source. Phase 0
-records the real consumers with `busctl monitor` and `WAYLAND_DEBUG` in a
-reference session.
+recorded a reference session with `busctl monitor` and `WAYLAND_DEBUG` on stock
+Mutter 51 headless (`tests/parity/reference-session/`, 2026-11-15;
+[adapter-support-matrices.md](adapter-support-matrices.md) sets it beside every
+adapter's matrix). It shows what Mutter serves and uses, and what a GTK 4 client
+binds and sends. It could not show the stock GNOME portal calling Mutter: the
+portal refused every call because its sandbox check opens `/proc/PID/root`, which
+an Agent37 instance lacks. Rows that need that stay [INFERENCE]. Corrections the
+recording makes to the table:
+
+- `org.gnome.Mutter.Clipboard` is an interface on the RemoteDesktop and
+  InputCapture session objects, not a bus name. Mutter owns nine names:
+  `org.freedesktop.a11y.Manager`, `org.gnome.Mutter.ColorManager`, `DisplayConfig`,
+  `IdleMonitor`, `InputCapture`, `InputMapping`, `RemoteDesktop`, `ScreenCast` and
+  `ServiceChannel`.
+- `org.freedesktop.a11y.KeyboardMonitor` is served on the bus name
+  `org.freedesktop.a11y.Manager`, beside `org.freedesktop.a11y.PointerLocator`,
+  which no row covers. Mutter also watches `org.gnome.Orca.KeyboardMonitor`.
+- `org.gnome.Shell.Introspect` and `org.gnome.Shell.Screenshot` are not Mutter's:
+  GNOME Shell serves them, so no Mutter-only session can check their adapters.
+- Mutter calls `org.gnome.SessionManager.Setenv` and watches that name, and watches
+  `org.gnome.SettingsDaemon.Color` and `org.gnome.SettingsDaemon.Power.Screen`.
+- Sessions belong to the bus connection that created them: Mutter ends a ScreenCast,
+  RemoteDesktop or InputCapture session when that connection goes away, which is
+  the rule the Renderer card states for the candidate.
+- GTK 4 (`gtk4-node-editor`) binds `gtk_shell1` v7 and sends `get_gtk_surface` and
+  `set_dbus_properties`; Mutter 51 offers 40 globals and `gtk_shell1` is the only
+  one whose name is outside the standard families (`wl_`, `wp_`, `xdg_`, `zxdg_`,
+  `zwp_`, `ext_`). `mutter_x11_interop` is absent because the reference Mutter has
+  no Xwayland.
 
 | Mutter or GNOME surface                | Known consumers                                   | Redirect to                                         | Proposal                |
 | -------------------------------------- | ------------------------------------------------- | --------------------------------------------------- | ----------------------- |
@@ -3273,8 +3308,9 @@ Needs Kieran:
       performance baseline with them.
 - [x] Write the failure-mode lists for lock, authority and focus, input policy
       and the pure crates, each entry naming its test.
-- [ ] Write the capture-embargo failure-mode list; `gnoblin-capture` is still a
-      skeleton and the lock crate owns only the answer, not the list.
+- [x] Write the capture-embargo failure-mode list in the crate docs of
+      `gnoblin-capture`, each entry naming its test, and cross-link it from
+      `gnoblin-lock`.
 - [ ] Probe native dependency versions on every target image.
 - [ ] Record every GNOME and Mutter D-Bus name and private Wayland protocol that
       a reference session uses (`busctl monitor`, `WAYLAND_DEBUG`), and write

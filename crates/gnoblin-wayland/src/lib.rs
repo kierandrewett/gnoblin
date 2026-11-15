@@ -237,7 +237,7 @@ mod xwayland;
 /// Clocks the frame and timeout code reads: the system clock, and a manual one for tests.
 pub use clock::{Clock, ManualClock, SystemClock};
 /// Frame counters, and the timeout a screenshot waits for before it gives up.
-pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
+pub use frame::{FrameStats, SCREENSHOT_TIMEOUT, ShotRefusal};
 pub use gnoblin_lock::State as LockState;
 /// The built-in lock card's seam with the session: when it is wanted, and what it takes and is answered.
 pub use lock_card::{LOCK_UI_GRACE_MS, LOCK_UI_LEASE_MS, LockCardAnswer, LockCardInput};

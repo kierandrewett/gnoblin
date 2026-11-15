@@ -29,6 +29,11 @@
 //!    `a_frame_that_cannot_be_drawn_does_not_stop_the_loop`.
 //! 3. **A screenshot waits forever when the loop stops.** The request has a deadline
 //!    and answers [`None`]: `a_screenshot_request_is_answered_with_pixels`.
+//! 4. **A guarded screenshot reads pixels the lock covered after the caller looked.** The caller checks the lock from a
+//!    snapshot of the session, and the loop reads the pixels later, so a lock engaged in between would be missed. A
+//!    guarded request ([`Screenshots::request_guarded`]) is asked again at the moment the loop reads, and is answered
+//!    [`ShotRefusal::Locked`] with no pixels:
+//!    `a_guarded_screenshot_is_refused_when_the_loop_finds_the_session_covered`.
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
@@ -95,7 +100,19 @@ struct Shot {
     /// Whether the picture is the frame as the display shows it (at the output's mode) rather than the one the
     /// compositor composed, which has more pixels when the output is supersampled.
     display: bool,
+    /// Whether the lock is asked again when the loop reads the pixels: a capture a client asked for, as opposed to a
+    /// screenshot the harness takes of the session as it is.
+    guarded: bool,
     slot: Arc<ShotSlot>,
+}
+
+/// Why a guarded screenshot produced no picture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShotRefusal {
+    /// The loop found the session covered by the lock, or capture embargoed, when it came to read the pixels.
+    Locked,
+    /// The loop did not answer in time, or the output has no frame to read back.
+    Unavailable,
 }
 
 /// Where a served screenshot lands.
@@ -110,6 +127,8 @@ struct ShotSlot {
 struct ShotState {
     image: Option<Image>,
     served: bool,
+    /// The loop refused to read: the session was covered when it came to it.
+    covered: bool,
 }
 
 impl ShotSlot {
@@ -121,8 +140,30 @@ impl ShotSlot {
         self.ready.notify_all();
     }
 
+    /// Records that the loop found the session covered, and wakes the waiter. No pixel was read.
+    fn serve_covered(&self) {
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        state.covered = true;
+        state.served = true;
+        self.ready.notify_all();
+    }
+
     /// Waits for the answer, or gives up after `timeout`.
     fn wait(&self, timeout: Duration) -> Option<Image> {
+        self.take(timeout).and_then(|state| state.image)
+    }
+
+    /// [`ShotSlot::wait`] for a guarded request, which can also be refused because the session was covered.
+    fn wait_guarded(&self, timeout: Duration) -> Result<Image, ShotRefusal> {
+        match self.take(timeout) {
+            Some(state) if state.covered => Err(ShotRefusal::Locked),
+            Some(ShotState { image: Some(image), .. }) => Ok(image),
+            _ => Err(ShotRefusal::Unavailable),
+        }
+    }
+
+    /// Waits until the loop has looked at the request and takes what it left, or gives up after `timeout`.
+    fn take(&self, timeout: Duration) -> Option<ShotState> {
         let deadline = Instant::now().checked_add(timeout);
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         while !state.served {
@@ -136,7 +177,7 @@ impl ShotSlot {
                 return None;
             }
         }
-        state.image.take()
+        Some(std::mem::take(&mut *state))
     }
 }
 
@@ -162,7 +203,19 @@ impl Screenshots {
         self.ask(output, true, ping)
     }
 
+    /// [`Screenshots::request`] or [`Screenshots::request_display`] (`display`) for a capture a client asked for: the
+    /// lock is asked again when the loop reads the pixels, so a lock that engaged after the caller looked still
+    /// refuses it. The harness's plain requests are not guarded, because a test reads the cover the lock draws.
+    pub fn request_guarded(&self, output: OutputId, display: bool, ping: &Ping) -> Result<Image, ShotRefusal> {
+        self.enqueue(output, display, true, ping)
+            .wait_guarded(SCREENSHOT_TIMEOUT)
+    }
+
     fn ask(&self, output: OutputId, display: bool, ping: &Ping) -> Option<Image> {
+        self.enqueue(output, display, false, ping).wait(SCREENSHOT_TIMEOUT)
+    }
+
+    fn enqueue(&self, output: OutputId, display: bool, guarded: bool, ping: &Ping) -> Arc<ShotSlot> {
         let slot = Arc::new(ShotSlot::default());
         self.queue
             .lock()
@@ -170,18 +223,24 @@ impl Screenshots {
             .push_back(Shot {
                 output,
                 display,
+                guarded,
                 slot: Arc::clone(&slot),
             });
         ping.ping();
-        slot.wait(SCREENSHOT_TIMEOUT)
+        slot
     }
 
-    /// Answers every queued request from the backend's readback.
-    fn serve(&self, backend: &mut dyn Backend<State>) {
+    /// Answers every queued request from the backend's readback. `covered` is the lock's answer now: a guarded
+    /// request is refused without reading anything while it holds.
+    fn serve(&self, backend: &mut dyn Backend<State>, covered: bool) {
         loop {
             let Some(shot) = self.queue.lock().unwrap_or_else(PoisonError::into_inner).pop_front() else {
                 return;
             };
+            if shot.guarded && covered {
+                shot.slot.serve_covered();
+                continue;
+            }
             let image = if shot.display {
                 backend.capture_display(shot.output, false)
             } else {
@@ -304,7 +363,9 @@ pub fn render(
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .record(drew, &damage);
-    screenshots.serve(backend);
+    // The lock is asked again here, where the pixels are read, and not only where the request was made.
+    let covered = state.capture_covered();
+    screenshots.serve(backend, covered);
 }
 
 #[cfg(test)]
@@ -776,6 +837,57 @@ mod tests {
         let waiter = std::thread::spawn(move || slot.wait(SCREENSHOT_TIMEOUT));
         server.serve(None);
         assert_eq!(waiter.join().expect("the waiter finished"), None);
+    }
+
+    /// Queues a screenshot request the way [`Screenshots::request`] does, without waiting, so a test can run the loop
+    /// between the request and its answer.
+    fn queue(screenshots: &Screenshots, output: OutputId, guarded: bool) -> Arc<ShotSlot> {
+        let slot = Arc::new(ShotSlot::default());
+        screenshots.queue.lock().expect("the queue").push_back(Shot {
+            output,
+            display: false,
+            guarded,
+            slot: Arc::clone(&slot),
+        });
+        slot
+    }
+
+    /// Failure mode 4: the caller checked the lock from a snapshot, the lock engaged, and the loop then read the desktop.
+    /// A guarded request is asked again where the pixels are read: it is answered while the session is unlocked, refused
+    /// by name once the lock is requested (with nothing read), and a plain request, which the harness uses to look at the
+    /// cover itself, is still answered.
+    #[test]
+    fn a_guarded_screenshot_is_refused_when_the_loop_finds_the_session_covered() {
+        let (mut backend, mut state) = session();
+        let output = Backend::<State>::outputs(&backend)[0].id;
+        let stats = Arc::new(Mutex::new(FrameStats::default()));
+        let screenshots = Screenshots::default();
+        let wait = Duration::from_millis(50);
+
+        let open = queue(&screenshots, output, true);
+        render(&mut backend, &mut state, &stats, &screenshots);
+        assert!(
+            open.wait_guarded(wait).is_ok(),
+            "an unlocked session answers a guarded request"
+        );
+
+        // The request was queued while the session was unlocked; the lock engages before the loop reads.
+        let guarded = queue(&screenshots, output, true);
+        let plain = queue(&screenshots, output, false);
+        let effects = state.lock.apply(LockEvent::LockRequested {
+            locker: ClientId::new(1),
+        });
+        state.apply_lock(effects);
+        assert_eq!(state.lock_state(), LockState::Locking);
+        render(&mut backend, &mut state, &stats, &screenshots);
+        assert!(
+            matches!(guarded.wait_guarded(wait), Err(ShotRefusal::Locked)),
+            "the loop refused the read: the session was covered"
+        );
+        assert!(
+            plain.wait(wait).is_some(),
+            "the harness's own screenshot is not guarded"
+        );
     }
 
     #[test]

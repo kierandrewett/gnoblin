@@ -1366,6 +1366,21 @@ impl ControlHandle {
     pub fn screenshot_display(&self, output: OutputId) -> Option<Image> {
         self.control.screenshot_display(output)
     }
+
+    /// A capture a client asked for: [`ControlHandle::screenshot`], or with `display` set
+    /// [`ControlHandle::screenshot_display`], except that the lock is asked again at the moment the loop reads the
+    /// pixels. A caller that checked the lock from a snapshot of the session and then asked for a picture would
+    /// otherwise be answered with the desktop if the lock engaged in between.
+    ///
+    /// # Errors
+    ///
+    /// [`ShotRefusal::Locked`] when the loop found the session covered or capture embargoed, and
+    /// [`ShotRefusal::Unavailable`] when it did not answer in time or the output has no frame.
+    pub fn capture_guarded(&self, output: OutputId, display: bool) -> Result<Image, crate::frame::ShotRefusal> {
+        self.control
+            .screenshots
+            .request_guarded(output, display, &self.control.ping)
+    }
 }
 
 impl std::fmt::Debug for ControlHandle {

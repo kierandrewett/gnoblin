@@ -321,6 +321,18 @@ impl Session {
         let _ = self.state.step(CaptureSessionEvent::Release { sequence });
     }
 
+    /// Drops the outstanding claim, whichever frame it is.
+    ///
+    /// A claim names a client buffer sized for the shape the session had when it was taken, so a session that changes
+    /// shape must not let that claim resolve: it would copy the new shape into the old buffer. The transition is the
+    /// same `Release` the claim's own frame would send, so the table in [`CaptureSessionState`] stays the only place
+    /// a claim ends.
+    pub(crate) fn drop_claim(&mut self) {
+        if let CaptureSessionState::Claimed { sequence, .. } = self.state {
+            self.release(sequence);
+        }
+    }
+
     /// The whole target, for a frame that must repaint everything it returns.
     pub(crate) const fn full(&self) -> Rect {
         Rect::from_size(self.format.size())

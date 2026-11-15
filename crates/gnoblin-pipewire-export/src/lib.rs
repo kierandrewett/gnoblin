@@ -22,7 +22,7 @@
 //!   or an output whose rectangle a secure node overlaps) is stopped before the frame's replies are sent, so the mark
 //!   is acknowledged only after that stream has been disconnected and the daemon synced. A frame a consumer already
 //!   took is the consumer's own: the producer cannot recall it, so the guarantee does not reach it. The tests are
-//!   `no_buffer_queued_before_a_mark_is_delivered_after_it_on_a_real_cast` and
+//!   `a_mark_ends_the_cast_and_nothing_with_the_window_arrives_after_the_acknowledgement` and
 //!   `no_buffer_queued_before_the_lock_is_delivered_after_it_on_a_real_cast` in `gnoblin-wayland`'s
 //!   `tests/view_capture_e2e.rs`, on a real daemon.
 //!

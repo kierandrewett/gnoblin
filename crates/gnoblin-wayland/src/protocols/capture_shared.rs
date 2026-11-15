@@ -60,7 +60,7 @@
 //! 6. **A View stream shows a secure node, or outlives its lock, View or consent.** A PipeWire stream of a View
 //!    reads the picture a View capture reads (`view_pictures`, secure nodes already masked), is cut by the lock
 //!    whether or not anything reads it, ends when the View is destroyed, and is only started for a session the user
-//!    approved: `a_cast_of_a_view_masks_a_secure_window`, `the_session_lock_ends_a_cast_of_a_view_and_refuses_a_new_one`,
+//!    approved: `a_cast_of_a_view_masks_a_secure_gpu_window`, `the_session_lock_ends_a_cast_of_a_view_and_refuses_a_new_one`,
 //!    `a_cast_of_a_view_ends_cleanly_when_the_view_is_destroyed` (`tests/view_capture_e2e.rs`) and
 //!    `a_view_start_with_no_recorded_consent_is_refused_and_makes_no_node` (`gnoblin-compositor/tests/cast.rs`).
 
@@ -632,6 +632,12 @@ impl State {
     /// The lock's answer for `stream` right now.
     pub(crate) fn lock_capture(&self, stream: CaptureStream) -> Capture {
         self.lock.capture(stream)
+    }
+
+    /// Whether the desktop may not be read right now: the lock covers the session, or capture is embargoed. A caller
+    /// with no consent grant is the one the lock treats strictest, so this is the answer for any caller.
+    pub(crate) fn capture_covered(&self) -> bool {
+        self.lock_capture(CaptureStream::Requested) != Capture::Desktop || !self.capture_allowed()
     }
 
     /// Starts the PipeWire stream of a screen cast the user approved.

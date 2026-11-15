@@ -1469,6 +1469,44 @@ mod tests {
         );
     }
 
+    /// Secure content is replaced before any resampling (`design/supersample.md`, "Captures"): the displayed frame of a
+    /// supersampled output is the average of a frame that already holds the mask, so no averaged pixel can carry a trace
+    /// of the layer's own pixels. A red secure square is the probe: any pixel with a channel that differs from the
+    /// neutral grey the mask is would be red leaking through the average. The factor 3/2 is the case a box average
+    /// cannot hide behind: the square's edge falls inside a displayed pixel.
+    #[test]
+    fn a_supersampled_capture_masks_a_secure_layer_before_it_averages() {
+        for factor in [gnoblin_types::Scale::integral(2), gnoblin_types::Scale::new(3, 2)] {
+            let mut backend = Headless::new();
+            let output = backend.outputs[0].id;
+            let (mode, scale) = (backend.outputs[0].mode, backend.outputs[0].scale);
+            backend
+                .resize_supersampled(output, mode, scale, factor)
+                .expect("the factor gives a whole virtual size");
+            let mut host = SecureScene;
+            assert_eq!(backend.render(&mut host, output), Ok(Present::Nothing));
+            let hires = backend.capture(output, false).expect("a hi-res readback");
+            let shown =
+                Backend::<SecureScene>::capture_display(&mut backend, output, false).expect("the displayed frame");
+            assert_eq!(shown.size(), Size::new(mode.width, mode.height));
+            assert!(
+                hires.size().width > shown.size().width,
+                "the frame is composed at the factor"
+            );
+            for (name, image) in [("composed", &hires), ("displayed", &shown)] {
+                for y in 0..3 {
+                    for x in 0..3 {
+                        let [red, green, blue, alpha] = image.colour_at(x, y).expect("a pixel inside the secure layer");
+                        assert!(
+                            red == green && green == blue && alpha == 255,
+                            "the {name} frame at {x},{y} (factor {factor:?}) is {red},{green},{blue},{alpha}, not the neutral mask"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn a_headless_session_can_draw_with_the_gles_renderer() {
         // The renderer is a configuration choice, and the two paths must be

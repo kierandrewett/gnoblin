@@ -56,6 +56,10 @@
 //! 10. Capture is requested during the lock transition:
 //!     `capture_during_locking_is_refused`.
 //! 11. Capture runs while locked: `granted_stream_sees_only_the_lock_scene`.
+//!     Entries 10 and 11 are the lock's half of the capture embargo. The other half, where the answer is applied to a
+//!     frame, and the failure modes of every path that reads pixels, are listed in the crate docs of `gnoblin-capture`
+//!     ("Failure modes: the capture embargo"), each with its test; `gnoblin-capture/tests/lock_cycle.rs` drives this
+//!     machine and that table together through whole lock cycles.
 //! 12. An input method pops up, or any input reaches a covered client:
 //!     `input_for_a_covered_client_is_consumed`.
 //! 13. Clipboard, drag and data-control reach a covered client:
