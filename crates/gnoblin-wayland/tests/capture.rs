@@ -32,7 +32,7 @@ use gnoblin_lock::State as LockState;
 use gnoblin_render::transaction::{ClassInfo, Code, PropertyInfo, TreeOp, TreeTransaction, TreeValue, ValueType};
 use gnoblin_types::NodeId;
 use gnoblin_wayland::{
-    Config, ControlHandle, Ledger, Limits, LoopError, Server, SessionSnapshot, TreeHooks, TreeQueue,
+    Config, ControlHandle, Ledger, LoopError, MemoryLimits, Server, SessionSnapshot, TreeHooks, TreeQueue,
 };
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
@@ -321,7 +321,7 @@ impl Session {
     }
 
     /// Creates a session that enforces the memory bounds a test chose.
-    fn start_limited(limits: Limits) -> Self {
+    fn start_limited(limits: MemoryLimits) -> Self {
         Self::start_configured(Protocols::default(), gnoblin_backend::headless::Headless::new(), limits)
     }
 
@@ -340,11 +340,15 @@ impl Session {
 
     /// Creates a session on `backend`, on sockets of its own.
     fn start_on(protocols: Protocols, backend: gnoblin_backend::headless::Headless) -> Self {
-        Self::start_configured(protocols, backend, Limits::default())
+        Self::start_configured(protocols, backend, MemoryLimits::default())
     }
 
     /// Creates a session on `backend` with the memory bounds a test chose.
-    fn start_configured(protocols: Protocols, backend: gnoblin_backend::headless::Headless, limits: Limits) -> Self {
+    fn start_configured(
+        protocols: Protocols,
+        backend: gnoblin_backend::headless::Headless,
+        limits: MemoryLimits,
+    ) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let privileged_socket = directory.path().join("wayland-0-privileged.sock");
@@ -890,8 +894,8 @@ fn screencopy_until_ready(capture: &mut Client, shm: &Shm) {
 /// is 0.1 MiB and the capture client's own buffer 3 MiB, so 9.2 MiB are held before the two clients of 16 MiB. They make
 /// 41.2 MiB, which is 1.2 MiB past the budget: room the frame cache gives back when nothing reads it, and a refusal when
 /// something does.
-fn tight_budget() -> Limits {
-    Limits {
+fn tight_budget() -> MemoryLimits {
+    MemoryLimits {
         budget_bytes: 40 << 20,
         client_bytes: 0,
         client_surfaces: 0,

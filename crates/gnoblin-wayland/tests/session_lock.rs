@@ -23,7 +23,7 @@ use gnoblin_lock::State as LockState;
 use gnoblin_render_frame::frame::Overlay;
 use gnoblin_render_frame::image::Image;
 use gnoblin_types::{DeviceId, OutputId, Point, Rect, Size};
-use gnoblin_wayland::{Config, ControlHandle, Ledger, Limits, LoopError, Modal, Server, SessionSnapshot};
+use gnoblin_wayland::{Config, ControlHandle, Ledger, LoopError, MemoryLimits, Modal, Server, SessionSnapshot};
 use wayland_client::backend::ObjectId;
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
@@ -182,11 +182,11 @@ struct Session {
 impl Session {
     /// Creates a session on a socket of its own, with a handle to its backend.
     fn start() -> Self {
-        Self::start_limited(Limits::default())
+        Self::start_limited(MemoryLimits::default())
     }
 
     /// Like `start`, with the memory bounds a test chose.
-    fn start_limited(limits: Limits) -> Self {
+    fn start_limited(limits: MemoryLimits) -> Self {
         let backend = Headless::new();
         let backend_handle = backend.handle();
         let directory = tempfile::tempdir().expect("a temporary directory");
@@ -1198,7 +1198,7 @@ fn budget_pressure_does_not_blank_a_lock_surface() {
     // The output is 3 MiB of target and keeps 3 MiB of capture frame, and the lock surface and the cover add to what the
     // renderer holds. The two windows of 16 MiB are some 4 MiB past 44 MiB, which is room the caches give back: that is
     // the pressure, with a lock up and its surface drawn.
-    let session = Session::start_limited(Limits {
+    let session = Session::start_limited(MemoryLimits {
         budget_bytes: 44 * MIB,
         client_bytes: 0,
         client_surfaces: 0,

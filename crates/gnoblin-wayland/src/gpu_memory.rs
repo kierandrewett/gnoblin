@@ -40,10 +40,10 @@ use crate::log;
 
 mod ledger;
 
-use ledger::Held;
+use ledger::HeldMemory;
 pub use ledger::{
-    Admission, ClientMemory, DEFAULT_BUDGET_BYTES, DEFAULT_CLIENT_BYTES, DEFAULT_CLIENT_SURFACES, Ledger, Limits,
-    Refusal, Snapshot,
+    ClientMemory, DEFAULT_BUDGET_BYTES, DEFAULT_CLIENT_BYTES, DEFAULT_CLIENT_SURFACES, Ledger, LedgerSnapshot,
+    MemoryAdmission, MemoryLimits, MemoryRefusal,
 };
 
 /// Gives back what a destroyed object cost the ledger: a `wl_buffer`'s bytes or a `wl_surface`'s count. Any other
@@ -125,7 +125,7 @@ impl State {
     /// Called once a frame and whenever eviction has changed something. It reads, it does not change.
     pub(crate) fn measure_gpu_memory(&mut self, backend: &dyn Backend<State>) {
         let locked = self.lock_is_up();
-        let mut held = Held::default();
+        let mut held = HeldMemory::default();
         for output in self.output_ids() {
             let footprint = backend.footprint(output);
             held.renderer = held.renderer.saturating_add(footprint.total());
@@ -189,7 +189,7 @@ impl State {
     ///
     /// The compositor and every other client go on: a protocol error ends one connection. The client's buffers and
     /// surfaces are released as its objects are destroyed.
-    pub(crate) fn refuse_client(&self, client: &Client, refusal: Refusal) {
+    pub(crate) fn refuse_client(&self, client: &Client, refusal: MemoryRefusal) {
         let pid = client
             .get_credentials(&self.display_handle)
             .ok()
@@ -331,7 +331,7 @@ mod tests {
             crate::lock_auth::LockAuth::new(Arc::new(gnoblin_lock_auth::FakeAuthenticator::new()), None).0,
         )
         .expect("a state for the default output");
-        state.gpu_ledger = Arc::new(Ledger::new(Limits {
+        state.gpu_ledger = Arc::new(Ledger::new(MemoryLimits {
             budget_bytes: 1500,
             client_bytes: 0,
             client_surfaces: 0,
@@ -374,7 +374,7 @@ mod tests {
         // 1100 held. A buffer of 500 is 100 past the budget; the capture frame (400) covers that alone.
         assert_eq!(
             state.gpu_ledger.admit_buffer(&ids[0], 500),
-            Ok(Admission::Evict { needed: 100 })
+            Ok(MemoryAdmission::Evict { needed: 100 })
         );
         state.gpu_ledger.record_buffer(&ids[0], 1, 500);
         state.settle_gpu_memory(&mut backend);
@@ -391,7 +391,7 @@ mod tests {
         // enough, so the scratch (100) goes too.
         assert_eq!(
             state.gpu_ledger.admit_buffer(&ids[0], 600),
-            Ok(Admission::Evict { needed: 300 })
+            Ok(MemoryAdmission::Evict { needed: 300 })
         );
         state.gpu_ledger.record_buffer(&ids[0], 2, 600);
         state.settle_gpu_memory(&mut backend);
@@ -410,7 +410,7 @@ mod tests {
         // Nothing is left to give: a buffer that does not fit is refused, and nothing is evicted for it.
         assert!(matches!(
             state.gpu_ledger.admit_buffer(&ids[0], 600),
-            Err(Refusal::Budget { .. })
+            Err(MemoryRefusal::Budget { .. })
         ));
         assert!(!state.gpu_ledger.needs_room());
     }
@@ -433,13 +433,13 @@ mod tests {
         // rather than taking them.
         assert!(matches!(
             state.gpu_ledger.admit_buffer(&ids[0], 1000),
-            Err(Refusal::Budget { .. })
+            Err(MemoryRefusal::Budget { .. })
         ));
         // A buffer of 850 needs 450: the capture frame (400) is not enough and the scratch (100) is, and the View
         // pictures stay where they are.
         assert_eq!(
             state.gpu_ledger.admit_buffer(&ids[0], 850),
-            Ok(Admission::Evict { needed: 450 })
+            Ok(MemoryAdmission::Evict { needed: 450 })
         );
         state.settle_gpu_memory(&mut backend);
         assert_eq!(backend.views_released, 0, "the lock's pictures were never released");

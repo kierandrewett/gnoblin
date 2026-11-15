@@ -6127,7 +6127,7 @@ fn a_stock_shell_at_the_production_memory_period_does_no_work_when_nothing_happe
         config.wayland.gpu_memory_period = production;
         assert_eq!(
             config.wayland.gpu_limits,
-            gnoblin_wayland::Limits::default(),
+            gnoblin_wayland::MemoryLimits::default(),
             "the session runs on the default memory bounds"
         );
     });

@@ -25,7 +25,7 @@ use gnoblin_backend::InputEvent;
 use gnoblin_backend::headless::Headless;
 use gnoblin_config::Protocols;
 use gnoblin_types::{DeviceId, Point};
-use gnoblin_wayland::{Config, ControlHandle, Ledger, Limits, LoopError, Server, SessionSnapshot, TreeHooks};
+use gnoblin_wayland::{Config, ControlHandle, Ledger, LoopError, MemoryLimits, Server, SessionSnapshot, TreeHooks};
 use gnoblin_wayland::{NewWindowFocus, WmOptions};
 use wayland_client::backend::WaylandError;
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
@@ -207,7 +207,7 @@ impl Session {
     }
 
     /// Creates a session that enforces `limits` on what its clients and the session may hold.
-    pub fn start_limited(limits: Limits) -> Self {
+    pub fn start_limited(limits: MemoryLimits) -> Self {
         Self::create_configured(
             Box::new(Headless::new()),
             Protocols::default(),
@@ -229,7 +229,10 @@ impl Session {
     }
 
     /// [`Session::start_shelled_detached`] with the memory bounds a test chose.
-    pub fn start_shelled_limited(tree: TreeHooks, limits: Limits) -> (Self, gnoblin_backend::headless::HeadlessHandle) {
+    pub fn start_shelled_limited(
+        tree: TreeHooks,
+        limits: MemoryLimits,
+    ) -> (Self, gnoblin_backend::headless::HeadlessHandle) {
         let backend = Headless::new();
         let outputs = backend.handle();
         (
@@ -270,7 +273,7 @@ impl Session {
         wm: WmOptions,
         tree: TreeHooks,
     ) -> Self {
-        Self::create_configured(backend, protocols, wm, tree, Limits::default())
+        Self::create_configured(backend, protocols, wm, tree, MemoryLimits::default())
     }
 
     /// Builds the session with the tree hooks a shell uses and the memory bounds a test chose.
@@ -279,7 +282,7 @@ impl Session {
         protocols: Protocols,
         wm: WmOptions,
         tree: TreeHooks,
-        limits: Limits,
+        limits: MemoryLimits,
     ) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");

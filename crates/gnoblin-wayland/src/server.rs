@@ -203,9 +203,9 @@ pub struct Config {
     /// comes one period after the session starts. Zero never publishes them, which is what a test needs that reads the
     /// tree's serial: a publication is a change batch, so it advances the serial at a time the test does not choose.
     pub gpu_memory_period: Duration,
-    /// The bounds on what clients and the session may hold (`gpu_memory::Limits`): per-client buffer bytes and
+    /// The bounds on what clients and the session may hold (`gpu_memory::MemoryLimits`): per-client buffer bytes and
     /// surfaces, and the session's aggregate budget. A zero value turns that bound off.
-    pub gpu_limits: crate::gpu_memory::Limits,
+    pub gpu_limits: crate::gpu_memory::MemoryLimits,
     /// The source of the session clock. The loop reads it once per turn and advances the
     /// session clock by the time elapsed since the previous turn, so idle and a rest focus
     /// fire without a caller advancing it. A test that must not depend on wall time passes a
@@ -298,7 +298,7 @@ impl Default for Config {
             wm: WmOptions::default(),
             check_alive_timeout: Duration::from_secs(5),
             gpu_memory_period: crate::gpu_memory::DEFAULT_PERIOD,
-            gpu_limits: crate::gpu_memory::Limits::default(),
+            gpu_limits: crate::gpu_memory::MemoryLimits::default(),
             clock: Arc::new(SystemClock),
             observer: None,
             tree: crate::tree_frame::TreeHooks::default(),

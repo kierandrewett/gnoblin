@@ -38,7 +38,9 @@ use std::time::{Duration, Instant};
 use gnoblin_backend::headless::Headless;
 use gnoblin_backend::{DmabufImportError, DmabufProvider, DmabufSupport};
 use gnoblin_render_frame::error::RenderError;
-use gnoblin_wayland::{Config, ControlHandle, Ledger, Limits, LoopError, Server, SessionSnapshot, Snapshot};
+use gnoblin_wayland::{
+    Config, ControlHandle, Ledger, LedgerSnapshot, LoopError, MemoryLimits, Server, SessionSnapshot,
+};
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::allocator::{Buffer as _, Format, Fourcc, Modifier};
 use wayland_client::backend::WaylandError;
@@ -136,7 +138,7 @@ impl Handle {
 
     /// Waits until the ledger satisfies `predicate`, which the loop makes true on the turn that imports a buffer or
     /// ends a client, and returns what it held then.
-    fn wait_for_ledger(&self, predicate: impl Fn(&Snapshot) -> bool) -> Snapshot {
+    fn wait_for_ledger(&self, predicate: impl Fn(&LedgerSnapshot) -> bool) -> LedgerSnapshot {
         let deadline = Instant::now() + TIMEOUT;
         loop {
             let snapshot = self.ledger.snapshot();
@@ -178,16 +180,16 @@ struct Session {
 impl Session {
     /// A session whose backend has no GPU: the software renderer.
     fn software() -> Self {
-        Self::start(Headless::new(), Arc::default(), Limits::default())
+        Self::start(Headless::new(), Arc::default(), MemoryLimits::default())
     }
 
     /// A session whose importer is the stand-in: `device` is the render node it reports.
     fn with_importer(device: Option<u64>) -> Self {
-        Self::with_importer_limited(device, Limits::default())
+        Self::with_importer_limited(device, MemoryLimits::default())
     }
 
     /// [`Session::with_importer`] under the memory bounds a test chose.
-    fn with_importer_limited(device: Option<u64>, limits: Limits) -> Self {
+    fn with_importer_limited(device: Option<u64>, limits: MemoryLimits) -> Self {
         let imports = Arc::new(Mutex::new(Imports::default()));
         let provider = Mock {
             device,
@@ -200,7 +202,7 @@ impl Session {
         )
     }
 
-    fn start(backend: Headless, imports: Arc<Mutex<Imports>>, limits: Limits) -> Self {
+    fn start(backend: Headless, imports: Arc<Mutex<Imports>>, limits: MemoryLimits) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let config = Config {
@@ -1009,7 +1011,7 @@ fn a_gpu_buffer_past_the_clients_limit_is_refused_before_the_importer_sees_it() 
     // The limit holds one buffer and a hundred bytes more, so the second is the one that passes it.
     let session = Session::with_importer_limited(
         Some(DEVICE),
-        Limits {
+        MemoryLimits {
             budget_bytes: 0,
             client_bytes: BUFFER + 100,
             client_surfaces: 0,

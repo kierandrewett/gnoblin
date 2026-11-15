@@ -905,7 +905,9 @@ impl State {
             lock_auth,
             capture,
             gpu_memory: crate::gpu_memory::Publisher::new(crate::gpu_memory::DEFAULT_PERIOD),
-            gpu_ledger: Arc::new(crate::gpu_memory::Ledger::new(crate::gpu_memory::Limits::default())),
+            gpu_ledger: Arc::new(crate::gpu_memory::Ledger::new(
+                crate::gpu_memory::MemoryLimits::default(),
+            )),
             session_host,
             observation: Arc::new(Mutex::new(SessionSnapshot::default())),
             observer,

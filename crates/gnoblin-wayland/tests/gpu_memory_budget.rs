@@ -26,7 +26,7 @@ mod session;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use gnoblin_wayland::{Limits, Snapshot};
+use gnoblin_wayland::{LedgerSnapshot, MemoryLimits};
 use session::{Client, Handle, Session, TIMEOUT};
 
 /// `wl_display.error.no_memory`.
@@ -38,7 +38,7 @@ const MIB: u64 = 1 << 20;
 const OFF: u64 = 0;
 
 /// Waits up to ten seconds for the ledger to satisfy `done`, and returns what it held.
-fn wait_ledger(handle: &Handle, what: &str, done: impl Fn(&Snapshot) -> bool) -> Snapshot {
+fn wait_ledger(handle: &Handle, what: &str, done: impl Fn(&LedgerSnapshot) -> bool) -> LedgerSnapshot {
     let deadline = Instant::now() + TIMEOUT;
     loop {
         let snapshot = handle.ledger.snapshot();
@@ -51,13 +51,13 @@ fn wait_ledger(handle: &Handle, what: &str, done: impl Fn(&Snapshot) -> bool) ->
 }
 
 /// Whether the ledger holds nothing for any client: what a session with every client gone must say.
-fn is_empty(snapshot: &Snapshot) -> bool {
+fn is_empty(snapshot: &LedgerSnapshot) -> bool {
     snapshot.clients.is_empty() && snapshot.client_bytes == 0
 }
 
 /// A session that bounds a client's buffer bytes and nothing else.
 fn limited(client_bytes: u64) -> Session {
-    Session::start_limited(Limits {
+    Session::start_limited(MemoryLimits {
         budget_bytes: OFF,
         client_bytes,
         client_surfaces: 0,
@@ -130,7 +130,7 @@ fn a_destroyed_buffer_gives_its_bytes_back_to_the_client() {
 fn clients_each_under_their_limit_are_refused_at_the_aggregate_and_a_leaver_frees_the_room() {
     // 24 MiB each is under the client limit of 32, two of them with the output's own 3 MiB target and its 3 MiB
     // capture frame fit in 64, and a third does not fit even with the capture frame given back.
-    let session = Session::start_limited(Limits {
+    let session = Session::start_limited(MemoryLimits {
         budget_bytes: 64 * MIB,
         client_bytes: 32 * MIB,
         client_surfaces: 0,
@@ -208,7 +208,7 @@ fn a_client_with_thousands_of_surfaces_is_ended_at_the_default_surface_limit() {
 
 #[test]
 fn the_surface_limit_is_exact() {
-    let session = Session::start_limited(Limits {
+    let session = Session::start_limited(MemoryLimits {
         budget_bytes: OFF,
         client_bytes: OFF,
         client_surfaces: 50,
@@ -245,7 +245,7 @@ fn caches_are_given_back_before_a_client_is_refused() {
     // The output is 1024 x 768: its target is 3 MiB and the frame capture keeps is 3 MiB. Two clients of 16 MiB are
     // 38 MiB with them, which is 2 MiB past the budget, and the capture frame (which nothing reads) covers it.
     // A third client is past the budget by 13 MiB and nothing is left to give.
-    let session = Session::start_limited(Limits {
+    let session = Session::start_limited(MemoryLimits {
         budget_bytes: 36 * MIB,
         client_bytes: OFF,
         client_surfaces: 0,
@@ -290,7 +290,7 @@ fn caches_are_given_back_before_a_client_is_refused() {
 
 #[test]
 fn a_client_that_disconnects_under_pressure_gives_everything_back() {
-    let session = Session::start_limited(Limits {
+    let session = Session::start_limited(MemoryLimits {
         budget_bytes: 64 * MIB,
         client_bytes: 32 * MIB,
         client_surfaces: 200,
@@ -354,7 +354,7 @@ impl Churned {
 #[test]
 fn after_churn_the_accounts_sum_to_the_aggregate() {
     // No bound is reached: the point is that what is counted is exactly what the clients hold, however they got there.
-    let session = Session::start_limited(Limits::unlimited());
+    let session = Session::start_limited(MemoryLimits::unlimited());
     session.run(|handle| {
         let mut random = Lcg(0x5eed);
         let mut clients: Vec<Churned> = Vec::new();

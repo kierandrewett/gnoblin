@@ -542,7 +542,7 @@ fn a_factor_that_would_pass_the_memory_budget_is_refused_and_a_smaller_one_still
     let (shell, hooks) = Shell::new();
     let (session, _outputs) = Session::start_shelled_limited(
         hooks,
-        gnoblin_wayland::Limits {
+        gnoblin_wayland::MemoryLimits {
             budget_bytes: 40 << 20,
             client_bytes: 0,
             client_surfaces: 0,

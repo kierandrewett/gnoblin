@@ -243,15 +243,15 @@ pub use frame::{FrameStats, SCREENSHOT_TIMEOUT, ShotRefusal};
 pub use gnoblin_lock::State as LockState;
 /// The memory budget: the bounds, the ledger that enforces them and what a reader sees of it.
 pub use gpu_memory::{
-    Admission, ClientMemory, DEFAULT_BUDGET_BYTES, DEFAULT_CLIENT_BYTES, DEFAULT_CLIENT_SURFACES, Ledger, Limits,
-    Refusal, Snapshot,
+    ClientMemory, DEFAULT_BUDGET_BYTES, DEFAULT_CLIENT_BYTES, DEFAULT_CLIENT_SURFACES, Ledger, LedgerSnapshot,
+    MemoryAdmission, MemoryLimits, MemoryRefusal,
 };
 /// The built-in lock card's seam with the session: when it is wanted, and what it takes and is answered.
 pub use lock_card::{LOCK_UI_GRACE_MS, LOCK_UI_LEASE_MS, LockCardAnswer, LockCardInput};
 /// A modal dialog's state, and the events that change it.
 pub use modal::{Modal, ModalEvent};
 pub use observation::lock_state_name;
-/// Snapshot types a reader observes, and the observer trait it implements.
+/// LedgerSnapshot types a reader observes, and the observer trait it implements.
 pub use observation::{
     ActivationDenial, LockObservation, MenuAnchor, MenuRequest, MenuSource, ObservedLayer, ObservedOutput,
     ObservedWindow, ObservedWorkspace, Observer, SessionSnapshot,

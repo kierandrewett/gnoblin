@@ -10,7 +10,7 @@
 use std::path::Path;
 
 use gnoblin_config::{Compositor, RendererChoice, SearchPaths, Store};
-use gnoblin_wayland::Limits;
+use gnoblin_wayland::MemoryLimits;
 
 use crate::SessionConfig;
 
@@ -18,15 +18,15 @@ use crate::log;
 
 /// The memory bounds a `compositor` section sets: a key it leaves out keeps the built-in default, and a stated zero turns
 /// that bound off. The values are mebibytes in the document and bytes in the session.
-pub(crate) fn limits_of(section: &Compositor) -> Limits {
+pub(crate) fn limits_of(section: &Compositor) -> MemoryLimits {
     const MIB: u64 = 1 << 20;
-    let defaults = Limits::default();
+    let defaults = MemoryLimits::default();
     let mebibytes = |stated: Option<i64>, default: u64| {
         stated
             .and_then(|mib| u64::try_from(mib).ok())
             .map_or(default, |mib| mib.saturating_mul(MIB))
     };
-    Limits {
+    MemoryLimits {
         budget_bytes: mebibytes(section.gpu_memory_budget_mib, defaults.budget_bytes),
         client_bytes: mebibytes(section.client_memory_limit_mib, defaults.client_bytes),
         client_surfaces: section
@@ -103,7 +103,7 @@ mod tests {
 
     #[test]
     fn the_memory_bounds_are_the_defaults_until_the_section_states_them() {
-        assert_eq!(limits_of(&Compositor::default()), Limits::default());
+        assert_eq!(limits_of(&Compositor::default()), MemoryLimits::default());
         let stated = Compositor {
             gpu_memory_budget_mib: Some(512),
             client_memory_limit_mib: Some(0),
@@ -112,7 +112,7 @@ mod tests {
         };
         assert_eq!(
             limits_of(&stated),
-            Limits {
+            MemoryLimits {
                 budget_bytes: 512 << 20,
                 client_bytes: 0,
                 client_surfaces: 10,

@@ -36,7 +36,7 @@ use gnoblin_render_frame::frame::{Layer, OutputFrame, Overlay};
 use gnoblin_render_frame::image::Image;
 use gnoblin_types::{Orientation, OutputId, Rect, Size};
 
-use crate::gpu_memory::Admission;
+use crate::gpu_memory::MemoryAdmission;
 use crate::output_config::{OutputChange, apply_in_order};
 use crate::{State, log};
 
@@ -427,9 +427,9 @@ impl State {
         }
         if growth > 0 {
             match self.gpu_ledger.admit_growth(growth) {
-                Ok(Admission::Fits) => {}
-                Ok(Admission::Evict { .. }) if test_only => {}
-                Ok(Admission::Evict { .. }) => self.settle_gpu_memory(backend),
+                Ok(MemoryAdmission::Fits) => {}
+                Ok(MemoryAdmission::Evict { .. }) if test_only => {}
+                Ok(MemoryAdmission::Evict { .. }) => self.settle_gpu_memory(backend),
                 Err(refusal) => return Err(format!("memory: the output would hold {growth} bytes more: {refusal}")),
             }
         }

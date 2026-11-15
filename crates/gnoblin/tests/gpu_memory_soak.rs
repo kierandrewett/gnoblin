@@ -114,7 +114,7 @@ struct Session {
 }
 
 impl Session {
-    fn start(renderer: RendererChoice, limits: gnoblin_wayland::Limits) -> Self {
+    fn start(renderer: RendererChoice, limits: gnoblin_wayland::MemoryLimits) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).expect("the directory mode");
         let stop = StopHandle::new();
@@ -400,7 +400,7 @@ fn the_session_keeps_its_memory_bounded_under_churn() {
     let budget_mib: u64 = setting("GNOBLIN_SOAK_BUDGET_MIB", "0")
         .parse()
         .expect("GNOBLIN_SOAK_BUDGET_MIB is a number");
-    let mut limits = gnoblin_wayland::Limits::default();
+    let mut limits = gnoblin_wayland::MemoryLimits::default();
     if budget_mib > 0 {
         limits.budget_bytes = budget_mib << 20;
     }

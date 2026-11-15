@@ -82,7 +82,7 @@ use smithay::wayland::dmabuf::{
 };
 
 use crate::State;
-use crate::gpu_memory::Admission;
+use crate::gpu_memory::MemoryAdmission;
 use crate::log;
 
 /// The dmabuf global and the buffers waiting for the loop's answer.
@@ -191,8 +191,8 @@ impl State {
             let bytes = dmabuf_bytes(&dmabuf);
             if let Some(client) = &client {
                 match self.gpu_ledger.admit_buffer(&client.id(), bytes) {
-                    Ok(Admission::Fits) => {}
-                    Ok(Admission::Evict { .. }) => self.settle_gpu_memory(backend),
+                    Ok(MemoryAdmission::Fits) => {}
+                    Ok(MemoryAdmission::Evict { .. }) => self.settle_gpu_memory(backend),
                     Err(refusal) => {
                         self.refuse_client(client, refusal);
                         notifier.failed();

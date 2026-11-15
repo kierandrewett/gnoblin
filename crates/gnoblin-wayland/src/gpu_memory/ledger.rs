@@ -46,7 +46,7 @@ pub const DEFAULT_CLIENT_SURFACES: u32 = 4096;
 
 /// The bounds a session enforces. A zero value turns that bound off.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Limits {
+pub struct MemoryLimits {
     /// Everything the compositor holds: the clients' buffers, what the renderers hold and what capture keeps.
     pub budget_bytes: u64,
     /// The live buffer bytes of one client.
@@ -55,7 +55,7 @@ pub struct Limits {
     pub client_surfaces: u32,
 }
 
-impl Default for Limits {
+impl Default for MemoryLimits {
     fn default() -> Self {
         Self {
             budget_bytes: DEFAULT_BUDGET_BYTES,
@@ -65,7 +65,7 @@ impl Default for Limits {
     }
 }
 
-impl Limits {
+impl MemoryLimits {
     /// No bound at all, which is what the sessions before the budget existed had.
     #[must_use]
     pub const fn unlimited() -> Self {
@@ -103,7 +103,7 @@ impl Limits {
 
 /// Why a request was refused.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
-pub enum Refusal {
+pub enum MemoryRefusal {
     /// The client's buffers would pass its own limit.
     #[error("the client holds {held} bytes of buffers and a buffer of {asked} more passes its limit of {limit}")]
     ClientBytes {
@@ -139,7 +139,7 @@ pub enum Refusal {
 
 /// What a request that was not refused needs before it is served.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Admission {
+pub enum MemoryAdmission {
     /// It fits as things are.
     Fits,
     /// It fits once this many bytes of caches are given back, which the loop does before it draws.
@@ -151,7 +151,7 @@ pub enum Admission {
 
 /// What the loop last measured of the memory that is not a client's, and how much of it may be given back.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct Held {
+pub(crate) struct HeldMemory {
     /// The renderers' footprint over every output.
     pub renderer: u64,
     /// The frames capture keeps.
@@ -180,11 +180,11 @@ impl Account {
 }
 
 #[derive(Debug, Default)]
-struct Inner {
+struct LedgerState {
     clients: HashMap<ClientId, Account>,
     /// The sum of the clients' bytes, kept apart from the per-client maps (see the module comment).
     client_bytes: u64,
-    held: Held,
+    held: HeldMemory,
     /// What must be freed before the next frame, from the admissions that counted on eviction.
     need: u64,
     refused: u64,
@@ -204,9 +204,9 @@ pub struct ClientMemory {
 
 /// What the ledger holds, at one instant.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Snapshot {
+pub struct LedgerSnapshot {
     /// The bounds in force.
-    pub limits: Limits,
+    pub limits: MemoryLimits,
     /// Every client that holds a buffer or a surface.
     pub clients: Vec<ClientMemory>,
     /// The aggregate of the clients' bytes, as counted on its own.
@@ -223,7 +223,7 @@ pub struct Snapshot {
     pub evicted: u64,
 }
 
-impl Snapshot {
+impl LedgerSnapshot {
     /// The sum of what every client holds, from the per-client entries: what `client_bytes` must equal.
     #[must_use]
     pub fn summed_client_bytes(&self) -> u64 {
@@ -242,27 +242,27 @@ impl Snapshot {
 /// The ledger. Shared by the state, the request screen and whoever reads the session from outside.
 #[derive(Debug)]
 pub struct Ledger {
-    limits: Limits,
-    inner: Mutex<Inner>,
+    limits: MemoryLimits,
+    inner: Mutex<LedgerState>,
 }
 
 impl Ledger {
     /// A ledger that enforces `limits`.
     #[must_use]
-    pub fn new(limits: Limits) -> Self {
+    pub fn new(limits: MemoryLimits) -> Self {
         Self {
             limits,
-            inner: Mutex::new(Inner::default()),
+            inner: Mutex::new(LedgerState::default()),
         }
     }
 
-    fn lock(&self) -> MutexGuard<'_, Inner> {
+    fn lock(&self) -> MutexGuard<'_, LedgerState> {
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// The bounds in force.
     #[must_use]
-    pub fn limits(&self) -> Limits {
+    pub fn limits(&self) -> MemoryLimits {
         self.limits
     }
 
@@ -273,15 +273,15 @@ impl Ledger {
     ///
     /// # Errors
     ///
-    /// [`Refusal::ClientBytes`] when the client's own limit would pass, and [`Refusal::Budget`] when the session's
+    /// [`MemoryRefusal::ClientBytes`] when the client's own limit would pass, and [`MemoryRefusal::Budget`] when the session's
     /// budget cannot hold the buffer even after every cache that may be evicted is given back.
-    pub fn admit_buffer(&self, client: &ClientId, bytes: u64) -> Result<Admission, Refusal> {
+    pub fn admit_buffer(&self, client: &ClientId, bytes: u64) -> Result<MemoryAdmission, MemoryRefusal> {
         let mut inner = self.lock();
         let held = inner.clients.get(client).map_or(0, |account| account.bytes);
         let limit = self.limits.per_client();
         if held.saturating_add(bytes) > limit {
             inner.refused = inner.refused.saturating_add(1);
-            return Err(Refusal::ClientBytes {
+            return Err(MemoryRefusal::ClientBytes {
                 held,
                 asked: bytes,
                 limit,
@@ -295,14 +295,14 @@ impl Ledger {
     ///
     /// # Errors
     ///
-    /// [`Refusal::Budget`] when the budget cannot hold them even after every cache that may be evicted is given back.
-    pub fn admit_growth(&self, bytes: u64) -> Result<Admission, Refusal> {
+    /// [`MemoryRefusal::Budget`] when the budget cannot hold them even after every cache that may be evicted is given back.
+    pub fn admit_growth(&self, bytes: u64) -> Result<MemoryAdmission, MemoryRefusal> {
         let mut inner = self.lock();
         self.admit_bytes(&mut inner, bytes)
     }
 
     /// The aggregate half of an admission: what the session holds, plus `bytes`, against the budget.
-    fn admit_bytes(&self, inner: &mut Inner, bytes: u64) -> Result<Admission, Refusal> {
+    fn admit_bytes(&self, inner: &mut LedgerState, bytes: u64) -> Result<MemoryAdmission, MemoryRefusal> {
         let used = inner
             .client_bytes
             .saturating_add(inner.held.renderer)
@@ -310,15 +310,15 @@ impl Ledger {
         let after = used.saturating_add(bytes);
         let budget = self.limits.budget();
         if after <= budget {
-            return Ok(Admission::Fits);
+            return Ok(MemoryAdmission::Fits);
         }
         let needed = after - budget;
         if inner.held.reclaimable >= needed {
             inner.need = inner.need.max(needed);
-            return Ok(Admission::Evict { needed });
+            return Ok(MemoryAdmission::Evict { needed });
         }
         inner.refused = inner.refused.saturating_add(1);
-        Err(Refusal::Budget {
+        Err(MemoryRefusal::Budget {
             used,
             asked: bytes,
             budget,
@@ -356,14 +356,14 @@ impl Ledger {
     ///
     /// # Errors
     ///
-    /// [`Refusal::ClientSurfaces`] when it holds as many as it may.
-    pub fn admit_surface(&self, client: &ClientId) -> Result<(), Refusal> {
+    /// [`MemoryRefusal::ClientSurfaces`] when it holds as many as it may.
+    pub fn admit_surface(&self, client: &ClientId) -> Result<(), MemoryRefusal> {
         let mut inner = self.lock();
         let held = inner.clients.get(client).map_or(0, |account| account.surfaces.len());
         let held = u32::try_from(held).unwrap_or(u32::MAX);
         if held >= self.limits.surfaces() {
             inner.refused = inner.refused.saturating_add(1);
-            return Err(Refusal::ClientSurfaces { held });
+            return Err(MemoryRefusal::ClientSurfaces { held });
         }
         Ok(())
     }
@@ -391,7 +391,7 @@ impl Ledger {
     }
 
     /// Stores what the loop measured of the memory that is not a client's.
-    pub(crate) fn observe(&self, held: Held) {
+    pub(crate) fn observe(&self, held: HeldMemory) {
         self.lock().held = held;
     }
 
@@ -431,9 +431,9 @@ impl Ledger {
 
     /// Everything the ledger holds, copied.
     #[must_use]
-    pub fn snapshot(&self) -> Snapshot {
+    pub fn snapshot(&self) -> LedgerSnapshot {
         let inner = self.lock();
-        Snapshot {
+        LedgerSnapshot {
             limits: self.limits,
             clients: inner
                 .clients
@@ -491,8 +491,8 @@ mod tests {
 
     use super::test_support::clients;
 
-    fn limits() -> Limits {
-        Limits {
+    fn limits() -> MemoryLimits {
+        MemoryLimits {
             budget_bytes: 1000,
             client_bytes: 400,
             client_surfaces: 3,
@@ -503,18 +503,18 @@ mod tests {
     fn a_client_past_its_own_limit_is_refused_and_another_is_not() {
         let ids = clients(2);
         let ledger = Ledger::new(limits());
-        assert_eq!(ledger.admit_buffer(&ids[0], 300), Ok(Admission::Fits));
+        assert_eq!(ledger.admit_buffer(&ids[0], 300), Ok(MemoryAdmission::Fits));
         ledger.record_buffer(&ids[0], 1, 300);
         assert!(matches!(
             ledger.admit_buffer(&ids[0], 101),
-            Err(Refusal::ClientBytes {
+            Err(MemoryRefusal::ClientBytes {
                 held: 300,
                 asked: 101,
                 limit: 400
             })
         ));
-        assert_eq!(ledger.admit_buffer(&ids[0], 100), Ok(Admission::Fits));
-        assert_eq!(ledger.admit_buffer(&ids[1], 400), Ok(Admission::Fits));
+        assert_eq!(ledger.admit_buffer(&ids[0], 100), Ok(MemoryAdmission::Fits));
+        assert_eq!(ledger.admit_buffer(&ids[1], 400), Ok(MemoryAdmission::Fits));
         assert_eq!(ledger.snapshot().refused, 1);
     }
 
@@ -528,7 +528,7 @@ mod tests {
         // 800 held, 200 left: a buffer of 300 does not fit and there is nothing to evict.
         assert!(matches!(
             ledger.admit_buffer(&ids[2], 300),
-            Err(Refusal::Budget {
+            Err(MemoryRefusal::Budget {
                 used: 800,
                 asked: 300,
                 budget: 1000,
@@ -537,7 +537,7 @@ mod tests {
         ));
         // Releasing one client's buffer frees the room for the next.
         ledger.release_buffer(&ids[0], 1);
-        assert_eq!(ledger.admit_buffer(&ids[2], 300), Ok(Admission::Fits));
+        assert_eq!(ledger.admit_buffer(&ids[2], 300), Ok(MemoryAdmission::Fits));
     }
 
     #[test]
@@ -545,17 +545,23 @@ mod tests {
         let ids = clients(2);
         let ledger = Ledger::new(limits());
         ledger.record_buffer(&ids[0], 1, 400);
-        ledger.observe(Held {
+        ledger.observe(HeldMemory {
             renderer: 300,
             capture: 200,
             reclaimable: 250,
         });
         // 900 held. A buffer of 300 needs 200 back and 250 can be given.
-        assert_eq!(ledger.admit_buffer(&ids[1], 300), Ok(Admission::Evict { needed: 200 }));
+        assert_eq!(
+            ledger.admit_buffer(&ids[1], 300),
+            Ok(MemoryAdmission::Evict { needed: 200 })
+        );
         assert_eq!(ledger.take_need(), Some(200));
         assert_eq!(ledger.take_need(), None, "the need is taken once");
         // A buffer of 400 needs 300 back and only 250 can be given.
-        assert!(matches!(ledger.admit_buffer(&ids[1], 400), Err(Refusal::Budget { .. })));
+        assert!(matches!(
+            ledger.admit_buffer(&ids[1], 400),
+            Err(MemoryRefusal::Budget { .. })
+        ));
     }
 
     #[test]
@@ -566,7 +572,10 @@ mod tests {
             assert_eq!(ledger.admit_surface(&ids[0]), Ok(()));
             ledger.record_surface(&ids[0], id);
         }
-        assert_eq!(ledger.admit_surface(&ids[0]), Err(Refusal::ClientSurfaces { held: 3 }));
+        assert_eq!(
+            ledger.admit_surface(&ids[0]),
+            Err(MemoryRefusal::ClientSurfaces { held: 3 })
+        );
         assert_eq!(
             ledger.admit_surface(&ids[1]),
             Ok(()),
@@ -580,7 +589,7 @@ mod tests {
     #[test]
     fn a_second_release_gives_back_nothing_and_an_empty_client_leaves_no_entry() {
         let ids = clients(1);
-        let ledger = Ledger::new(Limits::default());
+        let ledger = Ledger::new(MemoryLimits::default());
         ledger.record_buffer(&ids[0], 7, 100);
         ledger.record_buffer(&ids[0], 8, 50);
         ledger.release_buffer(&ids[0], 7);
@@ -596,7 +605,7 @@ mod tests {
     #[test]
     fn a_buffer_recorded_again_under_its_id_replaces_the_old_one() {
         let ids = clients(1);
-        let ledger = Ledger::new(Limits::default());
+        let ledger = Ledger::new(MemoryLimits::default());
         ledger.record_buffer(&ids[0], 1, 100);
         ledger.record_buffer(&ids[0], 1, 30);
         let snapshot = ledger.snapshot();
@@ -606,8 +615,8 @@ mod tests {
     #[test]
     fn a_zero_limit_turns_that_bound_off() {
         let ids = clients(1);
-        let ledger = Ledger::new(Limits::unlimited());
-        assert_eq!(ledger.admit_buffer(&ids[0], u64::MAX / 2), Ok(Admission::Fits));
+        let ledger = Ledger::new(MemoryLimits::unlimited());
+        assert_eq!(ledger.admit_buffer(&ids[0], u64::MAX / 2), Ok(MemoryAdmission::Fits));
         for id in 0..10_000 {
             assert_eq!(ledger.admit_surface(&ids[0]), Ok(()));
             ledger.record_surface(&ids[0], id);
