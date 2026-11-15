@@ -46,7 +46,7 @@ use crate::dialogs::JsDialogs;
 use crate::error::JsError;
 use crate::generation::{JsConfig, JsGeneration};
 use crate::host_idle::JsIdle;
-use crate::stock::stock_modules_in;
+use crate::stock::stock_sources_in;
 use crate::supervisor::{JsClock, JsSystemClock};
 use crate::workspaces::JsWorkspaceSnapshot;
 use crate::{bindings, input};
@@ -226,18 +226,21 @@ impl JsShell {
         let mut js = config.js.clone();
         // The console's rate limit counts on the clock the scripts read, so a test that moves it moves that too.
         js.clock = Arc::clone(&config.clock);
-        let embedded = Arc::make_mut(&mut js.embedded);
+        let typescript = Arc::make_mut(&mut js.typescript);
         // The user-facing `gnoblin` module is the stock index plus the host's exports, so one import line
         // reaches `Workspace` and `ClientListener` alike. The stock sources stay as they are: their own
         // tests embed them without a host (the host module is only evaluated when something imports it).
-        // A module the caller embedded under a name stays: the caller knows what it wants.
-        let mut stock = stock_modules_in(config.stock_dir.as_deref());
-        stock
-            .entry("gnoblin".to_owned())
-            .or_default()
-            .push_str(&format!("\nexport * from \"{HOST_MODULE_NAME}\";\n"));
-        for (name, source) in stock {
-            embedded.entry(name).or_insert(source);
+        // A module the caller embedded under a name stays: the caller knows what it wants. The library is
+        // embedded as TypeScript and stripped only when a module is imported and the bytecode cache lacks it.
+        let mut stock = stock_sources_in(config.stock_dir.as_deref());
+        if let Some(index) = stock.get_mut("gnoblin") {
+            index
+                .source
+                .to_mut()
+                .push_str(&format!("\nexport * from \"{HOST_MODULE_NAME}\";\n"));
+        }
+        for (name, module) in stock {
+            typescript.entry(name).or_insert(module);
         }
         // Generation 0 is the bare one (the host objects and no user code); the reloader numbers the ones it
         // stages from 1.

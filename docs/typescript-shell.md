@@ -96,6 +96,17 @@ A save reloads the file. So does `gnoblinctl config reload`, which prints the re
 refused, with the file, line and column. `GNOBLIN_JS_WATCH=0` turns the reload on save off, and then only the command
 reloads.
 
+## The bytecode cache
+
+The shell keeps what the stock library and your config compile to, so a start loads bytecode instead of compiling it
+again: about 6 ms in place of about 40 ms for the stock library and a small `init.ts`.
+
+- **Where.** `$XDG_CACHE_HOME/gnoblin/js/`, or `~/.cache/gnoblin/js/` without the variable. The files are private to
+  you.
+- **Why it is never stale.** Each file is named by a hash of the module's text and of the shell's build, so an edit or
+  an upgrade reads nothing old. A file that is damaged is compiled again and replaced.
+- **Clearing and turning it off.** Delete the directory, or set `GNOBLIN_JS_CACHE=0`.
+
 ## Which shell runs
 
 The TypeScript shell is the only shell. Nothing selects it, and `GNOBLIN_SHELL_VM` is not read. To work on the stock

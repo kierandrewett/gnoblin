@@ -52,7 +52,58 @@ fn run() -> Result<(), String> {
         let _ = writeln!(text, "    ({:?}, {file:?}, include_str!({full:?})),", import_name(file));
     }
     text.push_str("];\n");
-    fs::write(out_dir.join("stock_modules.rs"), text).map_err(|error| format!("cannot write stock_modules.rs: {error}"))
+    fs::write(out_dir.join("stock_modules.rs"), text)
+        .map_err(|error| format!("cannot write stock_modules.rs: {error}"))?;
+    println!("cargo:rustc-env=GNOBLIN_JS_TOOLCHAIN={}", toolchain(&manifest));
+    Ok(())
+}
+
+/// The crates whose versions decide what bytecode a module compiles to: the engine, and the oxc crates that strip the
+/// types before it sees the text. `src/bytecode.rs` keys its cache directory on them.
+const TOOLCHAIN_CRATES: &[&str] = &[
+    "rquickjs-sys",
+    "oxc_allocator",
+    "oxc_codegen",
+    "oxc_parser",
+    "oxc_semantic",
+    "oxc_sourcemap",
+    "oxc_span",
+    "oxc_transformer",
+];
+
+/// `name=version;` for each of [`TOOLCHAIN_CRATES`], from the workspace's `Cargo.lock`, or the empty string when the
+/// lock file cannot be read or does not list one of them, which turns the bytecode cache off: a build that cannot name
+/// its toolchain must not share a directory with one that can.
+fn toolchain(manifest: &Path) -> String {
+    let lock = manifest.join("../../Cargo.lock");
+    println!("cargo:rerun-if-changed={}", lock.display());
+    let Ok(text) = fs::read_to_string(&lock) else {
+        return String::new();
+    };
+    let mut found: Vec<(String, String)> = Vec::new();
+    let mut name: Option<&str> = None;
+    for line in text.lines() {
+        if let Some(value) = line.strip_prefix("name = ") {
+            name = Some(value.trim_matches('"'));
+        } else if let (Some(value), Some(current)) = (line.strip_prefix("version = "), name) {
+            if TOOLCHAIN_CRATES.contains(&current) {
+                found.push((current.to_owned(), value.trim_matches('"').to_owned()));
+            }
+            name = None;
+        }
+    }
+    found.sort();
+    found.dedup();
+    if !TOOLCHAIN_CRATES
+        .iter()
+        .all(|wanted| found.iter().any(|(name, _)| name == wanted))
+    {
+        return String::new();
+    }
+    found.iter().fold(String::new(), |mut out, (name, version)| {
+        let _ = write!(out, "{name}={version};");
+        out
+    })
 }
 
 /// The name a script imports `file` (a path under the stock directory, with `/` separators) by.

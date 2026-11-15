@@ -8,8 +8,14 @@ license.workspace = true
 publish.workspace = true
 build = "build.rs"
 
-[lints]
-workspace = true
+# The workspace's lint table with one deliberate difference: `unsafe_code` is `deny` rather than `forbid`. The one
+# exception is `engine::load` in the `bytecode` module, which hands QuickJS the bytecode the cache verified; `rquickjs`
+# marks that call `unsafe` and no safe API reads bytecode that is not `'static`. Nothing else in the crate may use it.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
 
 [dependencies]
 # The JavaScript engine (QuickJS-ng). One generation owns one runtime and context.
@@ -49,6 +55,9 @@ gnoblin-log = { path = "../gnoblin-log" }
 gnoblin-model = { path = "../gnoblin-model" }
 gnoblin-js-types = { path = "../gnoblin-js-types" }
 serde.workspace = true
+# The bytecode cache names each file by the SHA-256 of what its bytecode is made from and checks a file against the
+# SHA-256 it was written with (the `bytecode` module).
+sha2.workspace = true
 
 [dev-dependencies]
 # The loader and budget tests write real module trees and symlinks under a temp root.
@@ -60,4 +69,3 @@ toml.workspace = true
 gnoblin-paint.workspace = true
 # The console tests read what a script logged through `console`, with the level each line was logged at.
 gnoblin-log = { path = "../gnoblin-log", features = ["capture"] }
-sha2.workspace = true

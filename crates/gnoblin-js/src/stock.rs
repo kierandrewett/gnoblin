@@ -5,9 +5,11 @@
 //! [`JsConfig::embed`](crate::JsConfig::embed) takes. The modules import one another by their embedded names
 //! (`gnoblin/layout`), because the loader resolves a relative import only against a file module.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
 
+use crate::loader::JsTypeScriptModule;
 use crate::ts::strip_types;
 
 /// The `init.ts` `gnoblinctl config init` writes (`data/js/starter/init.ts`). It is the readable, commented text of
@@ -33,22 +35,43 @@ pub fn stock_modules() -> HashMap<String, String> {
 /// A file that is missing, or that cannot be read, is the compiled-in module: a half-installed directory must
 /// not leave the shell without a stock library. A file that does not strip becomes a module that throws.
 pub fn stock_modules_in(dir: Option<&Path>) -> HashMap<String, String> {
+    stock_sources_in(dir)
+        .into_iter()
+        .map(|(name, module)| {
+            let javascript = javascript_of(&name, &module.path, &module.source);
+            (name, javascript)
+        })
+        .collect()
+}
+
+/// The stock modules by import name as TypeScript, which is how the shell embeds them
+/// ([`JsConfig::embed_typescript`](crate::JsConfig::embed_typescript)): nothing is stripped until a module is
+/// loaded, and a module the bytecode cache holds is never stripped at all. `dir` is read as in [`stock_modules_in`].
+pub fn stock_sources_in(dir: Option<&Path>) -> HashMap<String, JsTypeScriptModule> {
     MODULES
         .iter()
         .map(|(name, file, compiled)| {
             let path = dir.map_or_else(|| Path::new("data/js/gnoblin").join(file), |dir| dir.join(file));
-            let from_dir = dir.and_then(|_| std::fs::read_to_string(&path).ok());
-            let source = from_dir.as_deref().unwrap_or(compiled);
-            let javascript = match strip_types(&path, source) {
-                Ok(stripped) => stripped.code,
-                Err(error) => {
-                    let reason = error.to_string().replace(['\\', '"', '\n'], " ");
-                    format!("throw new Error(\"stock module {name} does not compile: {reason}\");\n")
-                }
+            let source = match dir.and_then(|_| std::fs::read_to_string(&path).ok()) {
+                Some(text) => Cow::Owned(text),
+                None => Cow::Borrowed(*compiled),
             };
-            ((*name).to_owned(), javascript)
+            ((*name).to_owned(), JsTypeScriptModule { path, source })
         })
         .collect()
+}
+
+/// The JavaScript of the stock module `name`, whose TypeScript is `source` (read from `path`). A source that does not
+/// strip becomes a module that throws the reason when it is imported, because a panic or a missing module in a
+/// compositor-side process is worse than an error where the module is used.
+pub(crate) fn javascript_of(name: &str, path: &Path, source: &str) -> String {
+    match strip_types(path, source) {
+        Ok(stripped) => stripped.code,
+        Err(error) => {
+            let reason = error.to_string().replace(['\\', '"', '\n'], " ");
+            format!("throw new Error(\"stock module {name} does not compile: {reason}\");\n")
+        }
+    }
 }
 
 #[cfg(test)]

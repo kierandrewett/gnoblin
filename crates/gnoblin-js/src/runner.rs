@@ -49,6 +49,7 @@ use gnoblin_model::{Filter, ObjectId, ObjectView, Observation};
 use gnoblin_proto::Version;
 use thiserror::Error;
 
+use crate::bytecode::JsBytecodeCache;
 use crate::config::{JsCommitLog, JsCommitRecord};
 use crate::role::{JsRole, JsRoleConfig};
 use crate::shell::JsShellError;
@@ -274,6 +275,9 @@ impl JsRoleRunner {
         }
         config.watch = env(WATCH_VARIABLE).as_deref() != Some("0");
         config.shell.xr_declared = env("GNOBLIN_XR").as_deref() == Some("1");
+        // The role starts with the stock library and with every reload: what compiled last time is loaded instead
+        // of compiled again. `GNOBLIN_JS_CACHE=0` turns it off.
+        config.shell.js.cache = JsBytecodeCache::from_environment(&|name| env(name));
         config.owns_document = true;
         config.commits = Some(commits.clone());
         Ok(config)

@@ -828,12 +828,24 @@ pub fn rig_with(imports: &str, init_body: &str) -> Rig {
 
 /// Like [`rig_with`], with `setup` run on the compositor before the shell attaches: the nodes that are there at boot.
 pub fn rig_setup(imports: &str, init_body: &str, setup: impl FnOnce(&FakeCompositor)) -> Rig {
+    rig_configured(imports, init_body, setup, |_| {})
+}
+
+/// Like [`rig_setup`], with `configure` run on the shell's config before the shell boots: a bytecode cache, a stock
+/// directory.
+pub fn rig_configured(
+    imports: &str,
+    init_body: &str,
+    setup: impl FnOnce(&FakeCompositor),
+    configure: impl FnOnce(&mut JsShellConfig),
+) -> Rig {
     let comp = FakeCompositor::new();
     setup(&comp);
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = fs::canonicalize(dir.path()).expect("the temp dir exists");
     fs::write(root.join("init.ts"), format!("{imports}{init_body}\n")).expect("init.ts is written");
-    let (config, clock) = timed_config(&root);
+    let (mut config, clock) = timed_config(&root);
+    configure(&mut config);
     let mut shell = JsShell::new(Box::new(comp.clone()), config).expect("the shell boots");
     let load_diagnostics = shell.load_entry(Path::new("init.ts")).expect("init.ts loads");
     Rig {

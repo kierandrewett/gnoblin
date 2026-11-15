@@ -24,8 +24,9 @@ use rquickjs::convert::Coerced;
 use rquickjs::{Context, Ctx, Error, Exception, FromJs, Module, Runtime, Value};
 
 use crate::budget::STAGE_BUDGET;
+use crate::bytecode::JsBytecodeCache;
 use crate::error::{JsError, JsErrorKind, JsLoadError, JsLocation};
-use crate::loader::{JsLoadState, JsLoader, JsResolver};
+use crate::loader::{JsLoadState, JsLoader, JsResolver, JsTypeScriptModule};
 use crate::script_console::{JsConsoleLine, JsScriptConsole};
 use crate::supervisor::{JsClock, JsSystemClock};
 
@@ -36,6 +37,10 @@ pub struct JsConfig {
     pub root: PathBuf,
     /// Modules the host embeds, by import name (`gnoblin`, `gnoblin/layouts`), with their JavaScript.
     pub embedded: Arc<HashMap<String, String>>,
+    /// Modules the host embeds as TypeScript (the stock library), stripped when imported. A name in `embedded` wins.
+    pub typescript: Arc<HashMap<String, JsTypeScriptModule>>,
+    /// Where compiled modules are kept between starts. Disabled by default; the runtime role turns it on.
+    pub cache: JsBytecodeCache,
     /// The wall-clock budget [`JsGeneration::eval_module`] gets for the import and its jobs.
     pub stage_budget: Duration,
     /// The heap limit in bytes; 0 means unlimited.
@@ -53,6 +58,8 @@ impl JsConfig {
         Self {
             root: root.into(),
             embedded: Arc::new(HashMap::new()),
+            typescript: Arc::new(HashMap::new()),
+            cache: JsBytecodeCache::disabled(),
             stage_budget: STAGE_BUDGET,
             memory_limit: 64 << 20,
             max_stack_size: 512 << 10,
@@ -64,6 +71,21 @@ impl JsConfig {
     #[must_use]
     pub fn embed(mut self, name: impl Into<String>, source: impl Into<String>) -> Self {
         Arc::make_mut(&mut self.embedded).insert(name.into(), source.into());
+        self
+    }
+
+    /// Registers an embedded module as TypeScript: it is stripped and compiled when first imported, unless the
+    /// bytecode cache holds it. `path` is what the stripper's diagnostics name.
+    #[must_use]
+    pub fn embed_typescript(mut self, name: impl Into<String>, module: JsTypeScriptModule) -> Self {
+        Arc::make_mut(&mut self.typescript).insert(name.into(), module);
+        self
+    }
+
+    /// Gives the generations this config makes a bytecode cache.
+    #[must_use]
+    pub fn with_cache(mut self, cache: JsBytecodeCache) -> Self {
+        self.cache = cache;
         self
     }
 }
@@ -169,8 +191,21 @@ impl JsGeneration {
         runtime.set_interrupt_handler(Some(Box::new(move || handler.expired())));
 
         let load = JsLoadState::new();
-        let resolver = JsResolver::new(&config.root, Arc::clone(&config.embedded), Rc::clone(&load)).map_err(engine)?;
-        let loader = JsLoader::new(&config.root, Arc::clone(&config.embedded), Rc::clone(&load)).map_err(engine)?;
+        let resolver = JsResolver::new(
+            &config.root,
+            Arc::clone(&config.embedded),
+            Arc::clone(&config.typescript),
+            Rc::clone(&load),
+        )
+        .map_err(engine)?;
+        let loader = JsLoader::new(
+            &config.root,
+            Arc::clone(&config.embedded),
+            Arc::clone(&config.typescript),
+            config.cache.clone(),
+            Rc::clone(&load),
+        )
+        .map_err(engine)?;
         runtime.set_loader(resolver, loader);
 
         // The `Eval` intrinsic is not optional: QuickJS compiles modules for the host through it, and

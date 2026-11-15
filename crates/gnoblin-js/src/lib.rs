@@ -26,9 +26,12 @@
 //!   configuration document, reports to the guardian, and serves `config.reload`.
 //! - [`evaluate_document`] reads a config's document in a throwaway shell over an inert tree, with no session: the
 //!   dry run of `gnoblinctl check`.
+//! - [`JsBytecodeCache`] keeps what a module compiles to under the user's cache directory, so a start loads the stock
+//!   library's bytecode instead of stripping and compiling it again.
 
 mod bindings;
 mod budget;
+mod bytecode;
 mod config;
 mod console;
 mod dialogs;
@@ -59,6 +62,7 @@ mod workspaces;
 mod xr;
 
 pub use budget::{ENTRY_BUDGET, FRAME_BUDGET, STAGE_BUDGET};
+pub use bytecode::{CACHE_VARIABLE, JsBytecodeCache, JsCacheStats, MAX_ENTRIES as CACHE_MAX_ENTRIES};
 pub use config::{JsClientConfigLink, JsCommitLog, JsCommitRecord, JsConfigCommit, JsConfigLink, JsLinkError};
 pub use console::{
     CONSOLE_FILE, CONSOLE_SOCKET, CONSOLE_VARIABLE, DEFAULT_MAX_BYTES, JsConsole, JsConsoleError, JsConsoleSite,
@@ -73,14 +77,14 @@ pub use host_process::{JsExit, JsProcessCode, JsProcessError, JsProcesses, JsSpa
 pub use host_session::{
     JsClientSessionLink, JsOperationError, JsSessionEvent, JsSessionLink, JsSessionStatus, JsSessionVerb,
 };
-pub use loader::{JsLoadState, JsLoader, JsResolver};
+pub use loader::{JsLoadState, JsLoader, JsResolver, JsTypeScriptModule};
 pub use reload::{JsDiagnostic, JsReloader, ReloadReport};
 pub use role::{JsRole, JsRoleConfig, JsRoleLinks, RELOAD_DEBOUNCE, config_dir, entry_in};
 pub use rquickjs;
 pub use runner::{FRAME_WAIT, JsRoleError, JsRoleRunner, STOCK_DIR_VARIABLE, TEST_CRASH_VARIABLE, WATCH_VARIABLE};
 pub use script_console::{JsConsoleLevel, JsConsoleLine, MAX_LINE_BYTES, MAX_LINES_PER_SECOND};
 pub use shell::{JsFrame, JsShell, JsShellConfig, JsShellError, JsStaging, STALE_RETRIES};
-pub use stock::{STARTER_CONFIG, stock_modules, stock_modules_in};
+pub use stock::{STARTER_CONFIG, stock_modules, stock_modules_in, stock_sources_in};
 pub use supervisor::{
     JsClock, JsFault, JsFaultAction, JsHealth, JsManualClock, JsStrikePolicy, JsSupervisor, JsSystemClock,
 };

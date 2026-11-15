@@ -1806,6 +1806,41 @@ build, the stock desktop with 40 windows and 300 frames of title changes and new
   test shortens `stage_budget`), `DOCUMENT_BUDGET` (the 1 s of the `gnoblinctl check` dry run, which is a command and not
   the session; under load a check can run out of it) and the honest-test budgets above.
 
+## Performance
+
+What the runtime costs when nothing is happening and when it starts. Numbers are release builds on a 4-CPU Agent37
+instance (`crates/gnoblin-js/tests/boot_cost.rs`, ignored; read the numbers, not a pass).
+
+### The bytecode cache
+
+Starting the shell, and every reload, used to strip the types of the 52 stock modules with oxc and compile them with
+QuickJS before the user's first line ran. `src/bytecode.rs` keeps the QuickJS bytecode of each module under
+`$XDG_CACHE_HOME/gnoblin/js/qjs-<toolchain>/` (`~/.cache` without the variable), one file per module named by the
+SHA-256 of the toolchain, the module's name, whether it was stripped, and its text. The stock modules and the user's
+`init.ts` and imports are cached the same way, so there is nothing to invalidate by hand: changed text is a new file.
+
+- **The key.** The toolchain is the `rquickjs-sys` (QuickJS) and oxc versions read from `Cargo.lock` by `build.rs`,
+  and this crate's version. A directory is never read by a build that differs in any of them, and the other toolchains'
+  directories are removed when a new one is first written. A build that cannot read its lock file does not cache.
+- **Never trusted blindly.** A file carries its payload length and SHA-256, is written under a temporary name and
+  renamed, and is created 0600 in a 0700 directory. A file that is short, damaged, from another format or refused by
+  QuickJS is compiled from source, removed and written again; the cache can only make a start faster. QuickJS does not
+  verify bytecode, so the checksum is what makes the one `unsafe` call (`engine::load`) sound, and the crate's
+  `unsafe_code` is `deny` instead of `forbid` for that module alone.
+- **Source maps.** A module loaded from bytecode was not stripped in this process, so its source map is made from its
+  text the first time a stack names it (`MapSlot::Pending`); an error in a cached `init.ts` still reports its `.ts`
+  line (`an_error_in_a_cached_config_is_reported_at_its_ts_line`).
+- **Size.** At most `CACHE_MAX_ENTRIES` (512) files; the oldest go first.
+- **Knobs.** `GNOBLIN_JS_CACHE=0` turns it off. Delete the directory to clear it. The library is embedded as TypeScript
+  and stripped only for a module that misses, so a start that hits everything never runs oxc.
+
+| Boot of the stock library and an `init.ts` that imports it | min     | median  |
+| ---------------------------------------------------------- | ------- | ------- |
+| Before the cache (rig boot)                                | 35.6 ms | 36.2 ms |
+| No cache (this build)                                      | 36.9 ms | 39.3 ms |
+| Cold: an empty cache, one file written per module          | 48.3 ms | 51.8 ms |
+| Warm: every module from bytecode                           | 5.8 ms  | 6.4 ms  |
+
 ## Live verification
 
 Lane JsLiveVerify. Until now the shell was proven by scene-tree assertions; nobody had looked at it. This section is what was

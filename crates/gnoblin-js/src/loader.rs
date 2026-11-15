@@ -14,6 +14,7 @@
 //! A module's name inside QuickJS is its canonical path, so a stack frame names the file it came from and
 //! `generation` can remap it through the source map kept here.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 use std::ffi::OsString;
@@ -22,12 +23,25 @@ use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 
+use gnoblin_config::Language;
 use oxc_sourcemap::SourceMap;
 use rquickjs::loader::{ImportAttributes, Loader, Resolver};
 use rquickjs::{Ctx, Error, Module, Result};
 
+use crate::bytecode::{Digest, JsBytecodeCache};
 use crate::error::{JsError, JsLoadError, JsLocation};
 use crate::ts::{position, strip_types};
+
+/// The source map of a `.ts` module: made when it was stripped, or still to be made from its source.
+#[derive(Debug)]
+enum MapSlot {
+    Ready(SourceMap<'static>),
+    /// The module's bytecode came from the cache, so the types were never stripped in this process.
+    Pending {
+        path: PathBuf,
+        text: String,
+    },
+}
 
 /// What the resolver and loader of one generation share with it: the source maps of the `.ts` files
 /// loaded so far, and the structured error behind the last failed load.
@@ -36,7 +50,7 @@ use crate::ts::{position, strip_types};
 /// [`JsError`] is kept here and `generation` swaps it in when the message matches.
 #[derive(Debug, Default)]
 pub struct JsLoadState {
-    maps: RefCell<HashMap<String, SourceMap<'static>>>,
+    maps: RefCell<HashMap<String, MapSlot>>,
     /// Every file the loader read, canonical: the module graph the hot-reload watcher observes.
     files: RefCell<BTreeSet<PathBuf>>,
     failure: RefCell<Option<JsFailure>>,
@@ -89,9 +103,25 @@ impl JsLoadState {
 
     /// Maps a 1-based `line` and `column` in the stripped JavaScript of module `file` to the 1-based
     /// position in the `.ts` source, or `None` when `file` has no source map (plain JavaScript).
+    ///
+    /// A module whose bytecode came from the cache was never stripped in this process, so its map is made here, from
+    /// the source, the first time a stack names it. The stripper is deterministic, so it is the map the compiled
+    /// code was made with.
     pub(crate) fn remap(&self, file: &str, line: u32, column: u32) -> Option<(u32, u32)> {
-        let maps = self.maps.borrow();
-        let map = maps.get(file)?;
+        let mut maps = self.maps.borrow_mut();
+        let slot = maps.get_mut(file)?;
+        if let MapSlot::Pending { path, text } = slot {
+            match strip_types(path, text).ok().and_then(|stripped| stripped.map) {
+                Some(map) => *slot = MapSlot::Ready(map),
+                None => {
+                    maps.remove(file);
+                    return None;
+                }
+            }
+        }
+        let MapSlot::Ready(map) = maps.get(file)? else {
+            return None;
+        };
         let table = map.generate_lookup_table();
         // QuickJS counts from 1, the source map from 0.
         let token = map.lookup_token_approx(&table, line.saturating_sub(1), column.saturating_sub(1))?;
@@ -99,27 +129,48 @@ impl JsLoadState {
     }
 }
 
+/// A module the host embeds as TypeScript: the stock library. It is stripped and compiled when something imports it
+/// and the bytecode cache has no copy, so a start that finds every module cached never runs the stripper.
+#[derive(Clone, Debug)]
+pub struct JsTypeScriptModule {
+    /// Where the text came from, for the stripper's diagnostics.
+    pub path: PathBuf,
+    /// The TypeScript.
+    pub source: Cow<'static, str>,
+}
+
 /// The resolver: turns an import specifier and its importer into a module name.
 #[derive(Debug)]
 pub struct JsResolver {
     root: PathBuf,
     embedded: Arc<HashMap<String, String>>,
+    typescript: Arc<HashMap<String, JsTypeScriptModule>>,
     state: Rc<JsLoadState>,
 }
 
 impl JsResolver {
     /// A resolver confined to `root`, which must exist; it is canonicalised here so every later
     /// comparison is between canonical paths.
-    pub fn new(root: &Path, embedded: Arc<HashMap<String, String>>, state: Rc<JsLoadState>) -> Result<Self> {
+    pub fn new(
+        root: &Path,
+        embedded: Arc<HashMap<String, String>>,
+        typescript: Arc<HashMap<String, JsTypeScriptModule>>,
+        state: Rc<JsLoadState>,
+    ) -> Result<Self> {
         let root = fs::canonicalize(root)
             .map_err(|error| Error::new_loading_message(root.display().to_string(), error.to_string()))?;
-        Ok(Self { root, embedded, state })
+        Ok(Self {
+            root,
+            embedded,
+            typescript,
+            state,
+        })
     }
 
     fn resolve_name(&self, base: &str, name: &str) -> std::result::Result<String, JsLoadError> {
         let relative = name.starts_with("./") || name.starts_with("../");
         if !relative && !Path::new(name).is_absolute() {
-            return if self.embedded.contains_key(name) {
+            return if self.embedded.contains_key(name) || self.typescript.contains_key(name) {
                 Ok(name.to_owned())
             } else if name == "gnoblin" || name.starts_with("gnoblin/") {
                 Err(JsLoadError::NoEmbedded { name: name.to_owned() })
@@ -183,26 +234,69 @@ fn at_import(base: &str, name: &str, error: JsLoadError) -> JsError {
     error
 }
 
-/// The loader: reads a resolved module and hands QuickJS its JavaScript.
+/// What a module is made from, before it is stripped or compiled.
+struct ModuleText<'a> {
+    kind: Language,
+    text: Cow<'a, str>,
+    /// The path the stripper reports diagnostics against, and the path of a `.ts` file whose map is kept.
+    path: PathBuf,
+    /// Whether a stack frame in this module is remapped through a source map: a user's `.ts` file. The stock
+    /// library has none (its stack frames name the stripped text).
+    mapped: bool,
+    /// Whether the bytecode cache may hold this module. Test modules embedded as JavaScript are not worth a file.
+    cacheable: bool,
+}
+
+/// The loader: reads a resolved module and hands QuickJS its bytecode or its JavaScript.
 #[derive(Debug)]
 pub struct JsLoader {
     root: PathBuf,
     embedded: Arc<HashMap<String, String>>,
+    typescript: Arc<HashMap<String, JsTypeScriptModule>>,
+    cache: JsBytecodeCache,
     state: Rc<JsLoadState>,
 }
 
 impl JsLoader {
-    /// A loader for the same `root` and embedded modules as the [`JsResolver`] it is paired with.
-    pub fn new(root: &Path, embedded: Arc<HashMap<String, String>>, state: Rc<JsLoadState>) -> Result<Self> {
+    /// A loader for the same `root` and embedded modules as the [`JsResolver`] it is paired with. Modules the
+    /// `cache` holds are loaded from bytecode, and what it lacks is compiled and offered to it.
+    pub fn new(
+        root: &Path,
+        embedded: Arc<HashMap<String, String>>,
+        typescript: Arc<HashMap<String, JsTypeScriptModule>>,
+        cache: JsBytecodeCache,
+        state: Rc<JsLoadState>,
+    ) -> Result<Self> {
         let root = fs::canonicalize(root)
             .map_err(|error| Error::new_loading_message(root.display().to_string(), error.to_string()))?;
-        Ok(Self { root, embedded, state })
+        Ok(Self {
+            root,
+            embedded,
+            typescript,
+            cache,
+            state,
+        })
     }
 
-    /// The JavaScript for module `name`, and records its source map when it came from TypeScript.
-    fn source(&self, name: &str) -> std::result::Result<String, JsError> {
+    /// The text of module `name` and what it is.
+    fn origin(&self, name: &str) -> std::result::Result<ModuleText<'_>, JsError> {
         if let Some(source) = self.embedded.get(name) {
-            return Ok(source.clone());
+            return Ok(ModuleText {
+                kind: Language::JavaScript,
+                text: Cow::Borrowed(source),
+                path: PathBuf::from(name),
+                mapped: false,
+                cacheable: false,
+            });
+        }
+        if let Some(module) = self.typescript.get(name) {
+            return Ok(ModuleText {
+                kind: Language::TypeScript,
+                text: Cow::Borrowed(&module.source),
+                path: module.path.clone(),
+                mapped: false,
+                cacheable: true,
+            });
         }
         let path = Path::new(name);
         // The resolver already confined the name; checking again keeps a loader that is handed a name by
@@ -220,17 +314,42 @@ impl JsLoader {
         // observes: fixing it must trigger a reload.
         self.state.files.borrow_mut().insert(canonical.clone());
         let text = fs::read_to_string(&canonical).map_err(|error| read_error(&canonical, &error))?;
-        match canonical.extension().and_then(|ext| ext.to_str()) {
-            Some("ts" | "mts") => {
-                let stripped = strip_types(&canonical, &text)?;
+        let kind = match canonical.extension().and_then(|ext| ext.to_str()) {
+            Some("ts" | "mts") => Language::TypeScript,
+            Some("js" | "mjs") => Language::JavaScript,
+            _ => return Err(JsLoadError::Extension { path: canonical }.into()),
+        };
+        Ok(ModuleText {
+            kind,
+            text: Cow::Owned(text),
+            path: canonical,
+            mapped: kind == Language::TypeScript,
+            cacheable: true,
+        })
+    }
+
+    /// The JavaScript for `origin`, stripping its types and recording its source map when that is kept.
+    fn javascript(&self, name: &str, origin: ModuleText<'_>) -> std::result::Result<String, JsError> {
+        match origin.kind {
+            Language::JavaScript => Ok(origin.text.into_owned()),
+            Language::TypeScript if origin.mapped => {
+                let stripped = strip_types(&origin.path, &origin.text)?;
                 if let Some(map) = stripped.map {
-                    self.state.maps.borrow_mut().insert(name.to_owned(), map);
+                    self.state
+                        .maps
+                        .borrow_mut()
+                        .insert(name.to_owned(), MapSlot::Ready(map));
                 }
                 Ok(stripped.code)
             }
-            Some("js" | "mjs") => Ok(text),
-            _ => Err(JsLoadError::Extension { path: canonical }.into()),
+            Language::TypeScript => Ok(crate::stock::javascript_of(name, &origin.path, &origin.text)),
         }
+    }
+
+    /// Reports `error` to QuickJS as the load's failure, keeping the typed error for `generation`.
+    fn refuse(&self, name: &str, error: JsError) -> Error {
+        let message = self.state.fail(error);
+        Error::new_loading_message(name, message)
     }
 }
 
@@ -241,13 +360,33 @@ impl Loader for JsLoader {
         name: &str,
         _attributes: Option<ImportAttributes<'js>>,
     ) -> Result<Module<'js>> {
-        match self.source(name) {
-            Ok(code) => Module::declare(ctx.clone(), name, code),
-            Err(error) => {
-                let message = self.state.fail(error);
-                Err(Error::new_loading_message(name, message))
+        let origin = self.origin(name).map_err(|error| self.refuse(name, error))?;
+        let digest: Option<Digest> = origin
+            .cacheable
+            .then(|| self.cache.digest(origin.kind, name, &origin.text))
+            .flatten();
+        if let Some(digest) = &digest
+            && let Some(module) = self.cache.declare(ctx, digest, name)
+        {
+            if origin.mapped {
+                self.state.maps.borrow_mut().insert(
+                    name.to_owned(),
+                    MapSlot::Pending {
+                        path: origin.path,
+                        text: origin.text.into_owned(),
+                    },
+                );
             }
+            return Ok(module);
         }
+        let code = self
+            .javascript(name, origin)
+            .map_err(|error| self.refuse(name, error))?;
+        let module = Module::declare(ctx.clone(), name, code)?;
+        if let Some(digest) = &digest {
+            self.cache.store(digest, name, &module);
+        }
+        Ok(module)
     }
 }
 
