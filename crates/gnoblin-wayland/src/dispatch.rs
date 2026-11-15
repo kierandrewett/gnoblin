@@ -55,7 +55,14 @@ where
             Screened::Forward => None,
             Screened::ForwardThenTrack(created) => Some(created),
         };
+        // What the compositor must see of a request Smithay keeps out of reach is taken after the screen, so a refused
+        // request is never recorded, and before Smithay sees it; what an input method that just bound is owed is given
+        // after.
+        let Some(request) = crate::request_tap::before(state, resource, request, dhandle, data_init) else {
+            return;
+        };
         data.request(state, client, resource, request, dhandle, data_init);
+        crate::request_tap::after(state, dhandle, data_init);
         if let Some(created) = created {
             created.track(client, dhandle);
         }

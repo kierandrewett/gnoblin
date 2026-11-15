@@ -283,6 +283,10 @@ pub struct State {
     /// Whether the shell's decorations were available when the windows last heard what the compositor answers
     /// `xdg-decoration`. A change re-sends the answer to every window.
     pub(crate) decorations_seen: bool,
+    /// The decoration objects that are alive and the managers that made them, so a toplevel destroyed before its
+    /// decoration can be answered with the protocol's `orphaned` error: Smithay keeps the object where nothing else
+    /// can read it.
+    pub(crate) decoration_links: Vec<crate::protocols::zxdg_decoration_v1::DecorationLink>,
     /// Kept alive so the `ext_session_lock_manager_v1` global stays registered; the
     /// handler in [`crate::protocols::ext_session_lock_v1`] answers its requests.
     pub(crate) session_lock_state: SessionLockManagerState,
@@ -487,6 +491,11 @@ pub struct State {
     /// arrives afterwards therefore has to be found by the compositor, and this is what
     /// keeps that search from sending `enter` twice for one object.
     pub(crate) announced_text_inputs: HashSet<ObjectId>,
+    /// What text inputs asked while no input method was bound, kept for the one that binds.
+    ///
+    /// Smithay discards a text input's requests when there is no input method, and an input method that starts after an
+    /// application enabled its text field would otherwise never hear of it.
+    pub(crate) held_text_inputs: HashMap<ObjectId, crate::protocols::zwp_text_input_v3::HeldTextInput>,
     /// The last cursor image a client set.
     pub(crate) cursor_image: CursorImageStatus,
     /// Set when a client changes the pointer image; the composer is told at the next frame.
@@ -781,6 +790,7 @@ impl State {
             fractional_surfaces: Vec::new(),
             decoration_state,
             decorations_seen: false,
+            decoration_links: Vec::new(),
             session_lock_state,
             xwayland_shell_state,
             keyboard_grab_state,
@@ -847,6 +857,7 @@ impl State {
             shortcuts_held: Vec::new(),
             input_method_popups: Vec::new(),
             announced_text_inputs: HashSet::new(),
+            held_text_inputs: HashMap::new(),
             cursor_image: CursorImageStatus::default_named(),
             cursor_shape_changed: false,
             cursor_chain: crate::protocols::wp_cursor_shape_v1::cursor_chain(&cursor),
@@ -1837,6 +1848,8 @@ impl State {
             // announcement set starts again and the sweep below tells every text input the
             // new focus owns exactly once.
             self.announced_text_inputs.clear();
+            // `leave` resets a text input: nothing it asked while the focus was elsewhere is true any more.
+            self.held_text_inputs.clear();
             if target.is_some() {
                 crate::protocols::zwp_text_input_v3::announce_new_text_inputs(self);
             }

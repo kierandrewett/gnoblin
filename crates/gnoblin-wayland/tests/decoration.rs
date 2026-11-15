@@ -9,7 +9,7 @@ mod session;
 use gnoblin_render::transaction::TreeValue;
 use session::shell::Shell;
 use session::{Client, Session};
-use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1::Mode;
+use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1::{Error, Mode};
 
 fn text(value: &str) -> TreeValue {
     TreeValue::Text(value.to_owned())
@@ -233,5 +233,35 @@ fn a_client_that_changes_its_mind_is_answered_again() {
             Some(text("client")),
             "a client with no preference keeps its own frame"
         );
+    });
+}
+
+/// The protocol makes the client destroy a decoration before its toplevel. A toplevel that goes first is the client's
+/// error, and it is raised on the manager the decoration came from.
+#[test]
+fn destroying_a_toplevel_before_its_decoration_is_an_error() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let (window, _decoration) = client.create_decorated_window("org.example.orphan", "Orphan", None);
+        window.toplevel.destroy();
+        let (interface, code) = client.protocol_error();
+        assert_eq!(interface, "zxdg_decoration_manager_v1");
+        assert_eq!(code, Error::Orphaned as u32);
+    });
+}
+
+/// The order the protocol asks for is not an error, and a second toplevel can be decorated afterwards.
+#[test]
+fn destroying_a_decoration_before_its_toplevel_is_not_an_error() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let (window, decoration) = client.create_decorated_window("org.example.ordered", "Ordered", None);
+        decoration.destroy();
+        window.toplevel.destroy();
+        client.roundtrip();
+        let (_second, decoration) = client.create_decorated_window("org.example.second", "Second", None);
+        assert_eq!(client.wait_decoration_modes(&decoration, 1), vec![Mode::ClientSide]);
     });
 }

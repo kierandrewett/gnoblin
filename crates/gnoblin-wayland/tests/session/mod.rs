@@ -27,12 +27,13 @@ use gnoblin_config::Protocols;
 use gnoblin_types::{DeviceId, Point};
 use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot, TreeHooks};
 use gnoblin_wayland::{NewWindowFocus, WmOptions};
+use wayland_client::backend::WaylandError;
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
     wl_buffer, wl_compositor, wl_data_device, wl_data_device_manager, wl_data_offer, wl_data_source, wl_keyboard,
     wl_output, wl_pointer, wl_region, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
 };
-use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
+use wayland_client::{Connection, Dispatch, DispatchError, EventQueue, Proxy, QueueHandle, WEnum};
 use wayland_protocols::ext::data_control::v1::client::{
     ext_data_control_device_v1, ext_data_control_manager_v1, ext_data_control_offer_v1, ext_data_control_source_v1,
 };
@@ -490,6 +491,24 @@ impl Client {
                 return;
             }
             assert!(Instant::now() < deadline, "the client never saw {what}");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    /// Round-trips until the server closes the connection with a protocol error, and returns the interface of the
+    /// object the error is posted on and its code. The server may answer on its next loop turn, so the error can
+    /// arrive after the first round trip.
+    pub fn protocol_error(&mut self) -> (String, u32) {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            match self.queue.roundtrip(&mut self.state) {
+                Ok(_) => {}
+                Err(DispatchError::Backend(WaylandError::Protocol(error))) => {
+                    return (error.object_interface.to_string(), error.code);
+                }
+                Err(other) => panic!("the round trip failed for another reason: {other}"),
+            }
+            assert!(Instant::now() < deadline, "the server never posted a protocol error");
             thread::sleep(Duration::from_millis(5));
         }
     }

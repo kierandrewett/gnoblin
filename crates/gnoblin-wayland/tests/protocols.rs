@@ -5,15 +5,23 @@
 //! makes) and asserts on what each connection received. The failure-mode list each test
 //! covers is at the top of the module it exercises:
 //!
-//! - `a_surface_is_told_the_scale_of_its_output` — `protocols::wp_fractional_scale_v1`
+//! - `a_surface_is_told_the_scale_of_its_output`,
+//!   `a_second_fractional_scale_object_is_an_error_on_the_manager`,
+//!   `a_surface_may_have_a_fractional_scale_object_again_once_the_first_is_gone` — `protocols::wp_fractional_scale_v1`
 //! - `a_locked_pointer_reports_motion_as_relative_events`,
+//!   `a_locked_pointer_reports_a_mouse_as_relative_motion`,
+//!   `a_confined_pointer_stays_inside_its_surface`, `a_confined_pointer_stays_inside_its_region`,
+//!   `a_pointer_constraint_waits_until_its_window_has_the_keyboard`,
 //!   `a_pointer_lock_is_released_when_focus_moves`,
 //!   `a_session_lock_releases_a_pointer_lock` — `protocols::zwp_pointer_constraints_v1`
 //! - `idle_notify_fires_after_its_timeout`, `input_resumes_an_idled_notification`,
 //!   `an_idle_inhibitor_suppresses_idle_and_never_leaks` — `protocols::ext_idle_notify_v1`
 //! - `presentation_feedback_reports_a_present_timestamp` — `protocols::wp_presentation_time`
 //! - `a_shortcuts_inhibitor_is_refused_while_locked` — `protocols::zwp_keyboard_shortcuts_inhibit_v1`
-//! - `text_input_enter_and_commit_round_trip` — `protocols::zwp_text_input_v3`
+//! - `text_input_enter_and_commit_round_trip`,
+//!   `a_text_field_enabled_before_the_input_method_binds_is_activated`,
+//!   `a_text_field_enabled_before_the_input_method_binds_is_not_activated_after_it_lost_focus`
+//!   — `protocols::zwp_text_input_v3`
 //! - `a_sandboxed_client_does_not_see_the_privileged_globals` — `protocols::wp_security_context_v1`
 //! - `a_bound_key_is_consumed_and_its_release_is_not_leaked`,
 //!   `a_keymap_change_under_a_held_key_keeps_its_target`,
@@ -2354,8 +2362,8 @@ fn a_window_remembers_its_layout() {
 fn text_input_enter_and_commit_round_trip() {
     let session = Session::start();
     session.run(|session| {
-        // The input method first: a text input's requests are discarded until one exists,
-        // which is the protocol's rule and Smithay's.
+        // The input method first, which is the ordinary order: it is there before the application
+        // asks. The late arrival is the next test.
         let mut ime_client = Client::connect(session.socket());
         let ime_manager: zwp_input_method_manager_v2::ZwpInputMethodManagerV2 = ime_client
             .globals
@@ -2400,6 +2408,151 @@ fn text_input_enter_and_commit_round_trip() {
         let state = client.wait_for(|state| !state.text_commits.is_empty());
         assert_eq!(state.text_commits, vec!["hello".to_owned()]);
         let _ = window;
+    });
+}
+
+/// An input method that starts, or restarts, after the application enabled its text field. The application's `enable`
+/// and `commit` reach the session before the input method's `get_input_method`, and Smithay discards a text input's
+/// requests while there is no input method, so without the session's own record the input method would never be told.
+#[test]
+fn a_text_field_enabled_before_the_input_method_binds_is_activated() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut client = Client::app(session.socket());
+        let window = client.map_window("org.gnoblin.LateInputMethod");
+        session.focused_window();
+        let manager: zwp_text_input_manager_v3::ZwpTextInputManagerV3 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises zwp_text_input_manager_v3");
+        let seat = client.seat.clone();
+        let input = manager.get_text_input(&seat, &client.qh, ());
+        client.wait_for(|state| state.text_enters >= 1);
+        input.enable();
+        input.commit();
+        client.roundtrip();
+
+        // Only now does the input method bind: there was none when the application asked.
+        let mut ime_client = Client::connect(session.socket());
+        let ime_manager: zwp_input_method_manager_v2::ZwpInputMethodManagerV2 = ime_client
+            .globals
+            .bind(&ime_client.qh, 1..=1, ())
+            .expect("the session advertises zwp_input_method_manager_v2");
+        let ime_seat = ime_client.seat.clone();
+        let method = ime_manager.get_input_method(&ime_seat, &ime_client.qh, ());
+        ime_client.wait_for(|state| state.ime_activates == 1 && state.ime_dones >= 1);
+
+        // The application's one commit is the serial it expects back, and the input method's own count of its `done`
+        // events is the one the session expects of it, so a string committed now reaches the application.
+        let serial = ime_client.state.ime_dones;
+        method.commit_string("hello".to_owned());
+        method.commit(serial);
+        ime_client.roundtrip();
+        let state = client.wait_for(|state| !state.text_commits.is_empty());
+        assert_eq!(state.text_commits, vec!["hello".to_owned()]);
+        let _ = window;
+    });
+}
+
+/// What a text field asked is true while its window has the keyboard: `leave` resets it, so an input method that binds
+/// after the window lost the keyboard is not told about a field nobody is typing into, and is told when the field is
+/// enabled again on the window that has it back.
+#[test]
+fn a_text_field_enabled_before_the_input_method_binds_is_not_activated_after_it_lost_focus() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.TypingFirst");
+        session.focused_window();
+        let manager: zwp_text_input_manager_v3::ZwpTextInputManagerV3 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises zwp_text_input_manager_v3");
+        let seat = client.seat.clone();
+        let input = manager.get_text_input(&seat, &client.qh, ());
+        client.wait_for(|state| state.text_enters >= 1);
+        input.enable();
+        input.commit();
+        client.roundtrip();
+
+        // Another window takes the keyboard.
+        let mut other = Client::app(session.socket());
+        let _other_window = other.map_window("org.gnoblin.TypingSecond");
+        let id_of = |app_id: &str| {
+            session
+                .wait_for(|observation| {
+                    observation
+                        .windows()
+                        .any(|window| window.app_id == app_id && window.mapped)
+                })
+                .windows()
+                .find(|window| window.app_id == app_id)
+                .expect("the window")
+                .id
+        };
+        assert_eq!(session.control.focus(id_of("org.gnoblin.TypingSecond")), Some(true));
+        client.wait_for(|state| state.text_leaves >= 1);
+
+        let mut ime_client = Client::connect(session.socket());
+        let ime_manager: zwp_input_method_manager_v2::ZwpInputMethodManagerV2 = ime_client
+            .globals
+            .bind(&ime_client.qh, 1..=1, ())
+            .expect("the session advertises zwp_input_method_manager_v2");
+        let ime_seat = ime_client.seat.clone();
+        let _method = ime_manager.get_input_method(&ime_seat, &ime_client.qh, ());
+        ime_client.roundtrip();
+        assert_eq!(
+            ime_client.state.ime_activates, 0,
+            "a field on a window that no longer has the keyboard was activated"
+        );
+
+        // The window gets the keyboard back and its field is enabled again, which does reach the input method: the
+        // silence above is the rule and not a broken path.
+        let entered = client.state.text_enters;
+        assert_eq!(session.control.focus(id_of("org.gnoblin.TypingFirst")), Some(true));
+        client.wait_for(|state| state.text_enters > entered);
+        input.enable();
+        input.commit();
+        client.roundtrip();
+        ime_client.wait_for(|state| state.ime_activates == 1);
+    });
+}
+
+/// A client with two text inputs that destroys the enabled one: the input method is deactivated for a field that is
+/// gone, and not left active because another text input of the same client still exists.
+#[test]
+fn destroying_the_active_text_input_deactivates_the_input_method() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut ime_client = Client::connect(session.socket());
+        let ime_manager: zwp_input_method_manager_v2::ZwpInputMethodManagerV2 = ime_client
+            .globals
+            .bind(&ime_client.qh, 1..=1, ())
+            .expect("the session advertises zwp_input_method_manager_v2");
+        let ime_seat = ime_client.seat.clone();
+        let _method = ime_manager.get_input_method(&ime_seat, &ime_client.qh, ());
+        ime_client.roundtrip();
+
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.TwoFields");
+        session.focused_window();
+        let manager: zwp_text_input_manager_v3::ZwpTextInputManagerV3 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises zwp_text_input_manager_v3");
+        let seat = client.seat.clone();
+        let _other_field = manager.get_text_input(&seat, &client.qh, ());
+        let field = manager.get_text_input(&seat, &client.qh, ());
+        client.wait_for(|state| state.text_enters >= 2);
+        field.enable();
+        field.commit();
+        client.roundtrip();
+        ime_client.wait_for(|state| state.ime_activates == 1);
+        let dones = ime_client.state.ime_dones;
+
+        field.destroy();
+        client.roundtrip();
+        ime_client.wait_for(|state| state.ime_dones > dones);
     });
 }
 

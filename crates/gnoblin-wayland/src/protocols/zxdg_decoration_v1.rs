@@ -17,8 +17,26 @@
 //! - A Wayland client that never binds the manager draws its own frame: it is `client` and `unset`.
 //! - An X11 window has no decoration protocol. The shell frames it, so it is `server` while the shell declares
 //!   decorations and `none` while it does not ([`State::apply_decoration`]).
+//!
+//! # Failure modes
+//!
+//! 1. **A toplevel destroyed before its decoration.** The protocol makes it the client's error: the decoration object
+//!    must be destroyed first. Smithay keeps the decoration object where nothing else can read it and says nothing, so
+//!    the compositor remembers which toplevels have a live decoration and the manager that made it
+//!    ([`DecorationLink`]), and answers the destruction of such a toplevel with `orphaned` on that manager, which is
+//!    where Smithay posts the protocol's other two errors (`already_constructed`, and `orphaned` for a toplevel that
+//!    is already gone when the decoration is asked for): `destroying_a_toplevel_before_its_decoration_is_an_error`
+//!    in `tests/decoration.rs`.
+//! 2. **A mode asked for before the first commit is lost.** The window record exists from `get_toplevel`, so the
+//!    preference is recorded and the answer travels with the toplevel's initial configure, which is the answer to the
+//!    client's first commit.
 
-use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
+use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_decoration_manager_v1::ZxdgDecorationManagerV1;
+use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::{
+    Error, Mode, ZxdgToplevelDecorationV1,
+};
+use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::XdgToplevel;
+use smithay::reexports::wayland_server::{Resource, Weak};
 use smithay::wayland::shell::xdg::ToplevelSurface;
 use smithay::wayland::shell::xdg::decoration::XdgDecorationHandler;
 
@@ -29,6 +47,55 @@ use crate::State;
 use crate::state::Managed;
 
 use crate::log;
+
+/// A toplevel that has a live decoration object, and the manager that created it.
+pub(crate) struct DecorationLink {
+    toplevel: Weak<XdgToplevel>,
+    manager: ZxdgDecorationManagerV1,
+}
+
+/// Whether a link is for `toplevel`.
+fn is_for(link: &DecorationLink, toplevel: &XdgToplevel) -> bool {
+    link.toplevel.upgrade().is_ok_and(|held| held == *toplevel)
+}
+
+/// A manager is asked to decorate `toplevel`: remembers the link, unless Smithay is going to refuse the request
+/// (a toplevel that already has a decoration or is gone), which it does with its own error.
+pub(crate) fn decoration_requested(state: &mut State, manager: &ZxdgDecorationManagerV1, toplevel: &XdgToplevel) {
+    state
+        .decoration_links
+        .retain(|link| link.manager.is_alive() && link.toplevel.upgrade().is_ok());
+    if !toplevel.is_alive() || state.decoration_links.iter().any(|link| is_for(link, toplevel)) {
+        return;
+    }
+    state.decoration_links.push(DecorationLink {
+        toplevel: toplevel.downgrade(),
+        manager: manager.clone(),
+    });
+}
+
+/// A decoration object is destroyed, which is how a client ends it in order.
+pub(crate) fn decoration_destroyed(state: &mut State, decoration: &ZxdgToplevelDecorationV1) {
+    let Some(toplevel) = decoration
+        .data::<ToplevelSurface>()
+        .map(|surface| surface.xdg_toplevel().clone())
+    else {
+        return;
+    };
+    state.decoration_links.retain(|link| !is_for(link, &toplevel));
+}
+
+/// A toplevel is being destroyed: if its decoration is still alive the client broke the protocol's order.
+pub(crate) fn toplevel_destroying(state: &mut State, toplevel: &XdgToplevel) {
+    let Some(position) = state.decoration_links.iter().position(|link| is_for(link, toplevel)) else {
+        return;
+    };
+    let link = state.decoration_links.swap_remove(position);
+    link.manager.post_error(
+        Error::Orphaned,
+        "the xdg_toplevel was destroyed before its decoration object",
+    );
+}
 
 impl XdgDecorationHandler for State {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
