@@ -251,6 +251,9 @@ fn render_message(text: &mut String, name: &str, fields: &[Field], indent: &str,
         if field.secret {
             notes.push(SECRET_NOTE.to_owned());
         }
+        if field.optional {
+            notes.push("optional: a call may leave it out".to_owned());
+        }
         render_field(text, &field_indent, &field.name, index + 1, &field.ty, &notes, records);
     }
     let _ = writeln!(text, "{indent}}}");

@@ -41,9 +41,11 @@ fn dump_object(text: &mut String, object: &ObjectType) {
         )
         .unwrap();
         for param in &method.params {
+            // Only an optional parameter says so, so the lines of the required ones are as they were.
+            let optional = if param.optional { " optional true" } else { "" };
             writeln!(
                 text,
-                "    param {} type {} since {} secret {}",
+                "    param {} type {} since {} secret {}{optional}",
                 param.name, param.ty, param.since, param.secret
             )
             .unwrap();

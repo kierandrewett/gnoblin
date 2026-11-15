@@ -32,6 +32,7 @@ Audit of the `gnoblinctl` examples in the user docs against a live headless sess
 
 - `gnoblinctl.md` rewritten to the commands this build has. The previous text described commands that do not exist here: `input`, `animation`, `shortcut`, `lua`, `monitor`, `layer`, `focus`, `reload`, `privacy`, `logout`, `init` and `completion`.
 - `output` methods are now `set_layout` and `apply`.
+- `output apply` takes only optional parameters now (a key left out keeps its value), so the `output call 6 apply` row above no longer refuses: it was a live result of that build, not of this one. `gnoblinctl.md` shows the refusal with `window call 6 set_opacity` instead. That example is covered by the argument parser's unit tests (`crates/gnoblinctl/src/args.rs`), and was not run against a live session again.
 - `cli/index.md`, `troubleshooting.md`, `config.md`, `build-a-desktop.md`, `bring-your-own-shell.md`, `guides/files_and_load_order.md` and `guides/shortcuts.md` corrected. The shortcut-capture section in `guides/shortcuts.md` described a command that does not exist, so it was removed.
 
 ## Findings not fixed here

@@ -42,8 +42,11 @@
 //!   set it. It must match the property's type.
 //! - `readonly = true` on a property: a `set` from a client is refused.
 //! - `animated = true` on a property: a `set` may carry a duration in seconds.
+//! - `optional = true` on a method parameter: a call may leave the parameter out, and the method's own comment says what
+//!   a missing one means. A required parameter after an optional one is refused, so the generated signatures can write
+//!   the optional ones as trailing parameters; a signal field is never optional.
 //!
-//! `readonly` and `animated` are booleans and default to `false`. Every key a
+//! `readonly`, `animated` and `optional` are booleans and default to `false`. Every key a
 //! schema file has not declared is refused, so a misspelt key cannot pass silently.
 
 use std::collections::BTreeSet;
@@ -144,6 +147,8 @@ struct RawField {
     since: Option<String>,
     #[serde(default)]
     secret: bool,
+    #[serde(default)]
+    optional: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -434,11 +439,20 @@ fn parse_fields(
                 since
             }
         };
+        if raw_field.optional && role != "parameter" {
+            problems.push(format!("{owner}: only a method parameter can be `optional`"));
+        }
+        if !raw_field.optional && fields.last().is_some_and(|before: &Field| before.optional) {
+            problems.push(format!(
+                "{owner}: a required {role} cannot follow an optional one, so the optional ones come last"
+            ));
+        }
         fields.push(Field {
             name: raw_field.name.clone(),
             ty,
             since,
             secret: raw_field.secret,
+            optional: raw_field.optional,
         });
     }
     fields
@@ -559,6 +573,47 @@ mod tests {
         assert!(schema.objects[0].is_sensitive());
         // The parameter inherits the member's `since` when it omits one.
         assert_eq!(method.params[0].since.to_string(), "0.2.0");
+    }
+
+    #[test]
+    fn an_optional_parameter_is_read_and_must_come_last() {
+        let schema = parse_schema(
+            "test.toml",
+            &schema_text(
+                "\n[[object.method]]\nname = \"apply\"\nsince = \"0.2.0\"\n\
+                 \n[[object.method.param]]\nname = \"a\"\ntype = \"int\"\n\
+                 \n[[object.method.param]]\nname = \"b\"\ntype = \"int\"\noptional = true\n",
+            ),
+        )
+        .expect("schema");
+        let params = &schema.objects[0].methods[0].params;
+        assert!(!params[0].optional && params[1].optional);
+
+        let found = problems(
+            "\n[[object.method]]\nname = \"apply\"\nsince = \"0.2.0\"\n\
+             \n[[object.method.param]]\nname = \"a\"\ntype = \"int\"\noptional = true\n\
+             \n[[object.method.param]]\nname = \"b\"\ntype = \"int\"\n",
+        );
+        assert!(
+            found
+                .iter()
+                .any(|problem| problem.contains("cannot follow an optional one")),
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn a_signal_field_cannot_be_optional() {
+        let found = problems(
+            "\n[[object.signal]]\nname = \"ready\"\nsince = \"0.2.0\"\n\
+             \n[[object.signal.field]]\nname = \"a\"\ntype = \"int\"\noptional = true\n",
+        );
+        assert!(
+            found
+                .iter()
+                .any(|problem| problem.contains("only a method parameter can be `optional`")),
+            "{found:?}"
+        );
     }
 
     #[test]

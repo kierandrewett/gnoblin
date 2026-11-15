@@ -60,7 +60,7 @@ Gnoblin only routes the portal request. The selected backend decides access.
 A mode change on a hardware display is off unless the session starts with `GNOBLIN_DRM_MODESET=1`. See
 [outputs](shell-api/outputs#what-each-backend-applies).
 
-1. With the variable unset, run `gnoblinctl output call <id> apply` with another mode. Confirm it is refused with an
+1. With the variable unset, run `gnoblinctl output call <id> apply mode=<another mode>`. Confirm it is refused with an
    error that names the variable, and that the display keeps its mode.
 2. Start the session with `GNOBLIN_DRM_MODESET=1`. On a monitor that lists two modes, switch to the other and back. The
    screen blanks briefly, then shows the desktop at the new size.

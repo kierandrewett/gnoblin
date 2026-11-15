@@ -385,11 +385,19 @@ fn write_signal(out: &mut String, object: &ObjectType, signal: &Signal, objects:
     );
 }
 
-/// `name: type, ...` for a method's parameters or a signal's fields.
+/// `name: type, ...` for a method's parameters or a signal's fields; an optional parameter is `name?: type`.
 fn param_list(fields: &[Field], objects: &BTreeMap<&str, &ObjectType>, taken: &[&str]) -> String {
     fields
         .iter()
-        .map(|field| format!("{}: {}", param_ident(&field.name, taken), ts_type(&field.ty, objects)))
+        .map(|field| {
+            // An optional parameter is the last of its method (the schema parser sees to that), so `?` is legal here.
+            let mark = if field.optional { "?" } else { "" };
+            format!(
+                "{}{mark}: {}",
+                param_ident(&field.name, taken),
+                ts_type(&field.ty, objects)
+            )
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }

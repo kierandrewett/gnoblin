@@ -343,6 +343,9 @@ pub struct Field {
     pub since: Version,
     /// True when the value must be redacted from unauthorised readers.
     pub secret: bool,
+    /// True when a call may leave the parameter out; the method's own comment says what a missing one means. Only a
+    /// method parameter is ever optional, and the optional ones are the last of a method's.
+    pub optional: bool,
 }
 
 /// A declared error code a namespace can return in an error frame.

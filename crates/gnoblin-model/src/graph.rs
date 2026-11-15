@@ -478,7 +478,9 @@ impl Graph {
     /// Nothing is published here: the call is a request to the compositor, and its
     /// effect appears as property diffs and as the single completion. Arguments are
     /// checked against the schema before the operation is issued, so an operation
-    /// always names a call that was valid when it started.
+    /// always names a call that was valid when it started. A parameter the schema
+    /// marks `optional` may be left out; every other one is required, and a name the
+    /// method does not declare is refused.
     pub fn call(&mut self, object: ObjectId, method: &str, arguments: Fields) -> Result<Operation, ModelError> {
         let (ty, declared) = {
             let live = self.objects.get(&object).ok_or(ModelError::UnknownObject { object })?;
@@ -487,7 +489,7 @@ impl Graph {
                 .types
                 .get(&ty)
                 .ok_or_else(|| ModelError::UnknownType { ty: ty.clone() })?;
-            let declared: Option<Vec<(String, Type)>> = object_type
+            let declared: Option<Vec<(String, Type, bool)>> = object_type
                 .methods
                 .iter()
                 .find(|declared| declared.name == method)
@@ -495,7 +497,7 @@ impl Graph {
                     declared
                         .params
                         .iter()
-                        .map(|parameter| (parameter.name.clone(), parameter.ty.clone()))
+                        .map(|parameter| (parameter.name.clone(), parameter.ty.clone(), parameter.optional))
                         .collect()
                 });
             (ty, declared)
@@ -504,8 +506,10 @@ impl Graph {
             ty,
             method: method.to_owned(),
         })?;
-        for (parameter, expected) in &declared {
+        for (parameter, expected, optional) in &declared {
             match arguments.get(parameter) {
+                // An optional parameter may be left out; one that is present is checked like any other.
+                None if *optional => {}
                 None => {
                     return Err(ModelError::MissingArgument {
                         method: method.to_owned(),
@@ -524,7 +528,7 @@ impl Graph {
         }
         if let Some(undeclared) = arguments
             .keys()
-            .find(|name| !declared.iter().any(|(known, _)| known == *name))
+            .find(|name| !declared.iter().any(|(known, _, _)| known == *name))
         {
             return Err(ModelError::UnexpectedArgument {
                 method: method.to_owned(),

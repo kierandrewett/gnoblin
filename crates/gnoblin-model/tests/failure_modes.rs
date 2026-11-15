@@ -598,3 +598,56 @@ fn an_answered_outcome_debug_never_prints_the_answer() {
     );
     assert!(shown.contains("7 bytes redacted"), "the length is still shown: {shown}");
 }
+
+/// A graph of one `probe` object whose `set` method has a required `name` and an optional `size`.
+fn probe_graph() -> (Graph, ObjectId) {
+    let schema = gnoblin_schema::parse_schema(
+        "probe.toml",
+        "namespace = \"test\"\nversion = \"0.2.0\"\n\n[[object]]\nname = \"probe\"\nsince = \"0.2.0\"\n\n\
+         [[object.method]]\nname = \"set\"\nsince = \"0.2.0\"\n\n\
+         [[object.method.param]]\nname = \"name\"\ntype = \"string\"\n\n\
+         [[object.method.param]]\nname = \"size\"\ntype = \"uint\"\noptional = true\n",
+    )
+    .expect("the probe schema parses");
+    let mut graph = Graph::new(Catalog::new(vec![schema]).expect("the catalog builds"));
+    let probe = graph
+        .create(TypeKey::new("test", "probe"), Fields::new())
+        .expect("the probe has no properties");
+    (graph, probe)
+}
+
+#[test]
+fn an_optional_parameter_may_be_left_out_and_nothing_else_may() {
+    let (mut graph, probe) = probe_graph();
+    let name = |text: &str| Fields::from([("name".to_owned(), Value::Text(text.to_owned()))]);
+
+    graph
+        .call(probe, "set", name("a"))
+        .expect("the optional `size` may be left out");
+    let mut both = name("b");
+    both.insert("size".to_owned(), Value::Uint(3));
+    graph.call(probe, "set", both).expect("and may be given");
+
+    assert!(
+        matches!(
+            graph.call(probe, "set", Fields::from([("size".to_owned(), Value::Uint(3))])),
+            Err(ModelError::MissingArgument { parameter, .. }) if parameter == "name"
+        ),
+        "a required parameter is still required"
+    );
+    let mut wrong = name("c");
+    wrong.insert("size".to_owned(), Value::Text("big".to_owned()));
+    assert!(
+        matches!(graph.call(probe, "set", wrong), Err(ModelError::WrongType { .. })),
+        "an optional parameter that is given still has to fit its type"
+    );
+    let mut stray = name("d");
+    stray.insert("colour".to_owned(), Value::Uint(1));
+    assert!(
+        matches!(
+            graph.call(probe, "set", stray),
+            Err(ModelError::UnexpectedArgument { parameter, .. }) if parameter == "colour"
+        ),
+        "an undeclared parameter is still refused"
+    );
+}

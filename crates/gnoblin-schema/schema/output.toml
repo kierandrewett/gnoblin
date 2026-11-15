@@ -123,7 +123,11 @@ since = "0.2.0"
 # what the compositor did by reading the object, not from this call's reply. There
 # is no `primary` parameter: the layout derives the primary output, so an `apply` that
 # carries one is refused by name rather than accepted and ignored. Every parameter is
-# required, as for any method: `supersample` too, with 1 for none.
+# optional and a parameter left out keeps the output's value, as a key left out of the text
+# `screen.apply` takes does: `apply supersample=2` changes only the factor. `x` and `y` are one
+# setting, the position: given one, the other is the output's current one. An empty `mode` keeps the
+# mode too. A parameter that is given must have its declared type, and a name that is not a
+# parameter is refused.
 [[object.method]]
 name = "apply"
 since = "0.2.0"
@@ -132,31 +136,37 @@ since = "0.2.0"
 name = "x"
 type = "int"
 since = "0.2.0"
+optional = true
 
 [[object.method.param]]
 name = "y"
 type = "int"
 since = "0.2.0"
+optional = true
 
 [[object.method.param]]
 name = "scale"
 type = "double"
 since = "0.2.0"
+optional = true
 
 [[object.method.param]]
 name = "transform"
 type = "uint"
 since = "0.2.0"
+optional = true
 
 [[object.method.param]]
 name = "enabled"
 type = "bool"
 since = "0.2.0"
+optional = true
 
 [[object.method.param]]
 name = "mode"
 type = "string"
 since = "0.2.0"
+optional = true
 
 # The factor to compose the output above its mode: 1 for none. A value the compositor cannot honour (a fractional
 # virtual size, or one past the renderer's limit) is refused with `supersample-refused` and the output keeps what it had.
@@ -164,6 +174,7 @@ since = "0.2.0"
 name = "supersample"
 type = "double"
 since = "0.2.0"
+optional = true
 
 # The output is gone: it was unplugged or the compositor stopped driving it. A
 # caller drops its view on this signal and asks for the state again.

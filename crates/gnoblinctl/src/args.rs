@@ -5,7 +5,7 @@
 //! value that does not fit its type are all usage errors (exit 2) here rather than
 //! a frame the compositor has to refuse. That is what "typed argument parsing from
 //! the schema types" buys: the compositor never sees a call this build could have
-//! rejected itself.
+//! rejected itself. A parameter the schema marks optional may be left out.
 
 use gnoblin_model::Fields;
 
@@ -49,7 +49,7 @@ pub(crate) fn parse(method: &CliMethod, tokens: &[String]) -> Result<Fields, Str
     let missing: Vec<&str> = method
         .params
         .iter()
-        .filter(|parameter| !fields.contains_key(parameter.name))
+        .filter(|parameter| !parameter.optional && !fields.contains_key(parameter.name))
         .map(|parameter| parameter.name)
         .collect();
     if !missing.is_empty() {
@@ -89,11 +89,19 @@ mod tests {
             name: "user",
             ty: "string",
             secret: false,
+            optional: false,
         },
         CliParam {
             name: "attempts",
             ty: "uint",
             secret: false,
+            optional: false,
+        },
+        CliParam {
+            name: "note",
+            ty: "string",
+            secret: false,
+            optional: true,
         },
     ];
 
@@ -122,13 +130,21 @@ mod tests {
     #[test]
     fn an_undeclared_parameter_names_the_declared_ones() {
         let error = parse(&METHOD, &tokens(&["user=alice", "attempts=1", "extra=1"])).expect_err("extra is undeclared");
-        assert!(error.contains("`user` and `attempts`"), "{error}");
+        assert!(error.contains("`user`, `attempts` and `note`"), "{error}");
     }
 
     #[test]
     fn a_missing_parameter_is_named() {
         let error = parse(&METHOD, &tokens(&["user=alice"])).expect_err("attempts is missing");
         assert!(error.contains("needs `attempts`"), "{error}");
+    }
+
+    #[test]
+    fn an_optional_parameter_may_be_left_out_or_given() {
+        let without = parse(&METHOD, &tokens(&["user=alice", "attempts=2"])).expect("`note` is optional");
+        assert!(!without.contains_key("note"));
+        let with = parse(&METHOD, &tokens(&["user=alice", "attempts=2", "note=hi"])).expect("and may be given");
+        assert_eq!(with["note"], gnoblin_model::Value::Text("hi".to_owned()));
     }
 
     #[test]
@@ -149,6 +165,7 @@ mod tests {
             name: "response",
             ty: "uint",
             secret: true,
+            optional: false,
         }];
         const AUTH: CliMethod = CliMethod {
             name: "auth_response",

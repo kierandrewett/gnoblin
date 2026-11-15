@@ -82,6 +82,8 @@ pub struct CliParam {
     pub ty: &'static str,
     /// The schema marks this parameter secret.
     pub secret: bool,
+    /// The schema lets a call leave this parameter out.
+    pub optional: bool,
 }
 
 impl CliParam {

@@ -146,14 +146,13 @@ output.apply({ supersample: 2 }); // 1920x1080 composed at 3840x2160; output.vir
 output.apply({ supersample: 4 }); // 1920x1080 composed at 7680x4320: a GPU with 8192 texels per edge is needed
 ```
 
-From a terminal the call carries the whole configuration (every parameter is required, `supersample` included, 1 for
-none, and an empty `mode` keeps the mode the output has):
+From a terminal every key is optional and a key left out keeps its value, so a call names only what it changes:
 
 ```sh
-gnoblinctl output call <id> apply x=0 y=0 scale=1 transform=0 enabled=true mode= supersample=1  # no supersampling
-gnoblinctl output call <id> apply x=0 y=0 scale=1 transform=0 enabled=true mode= supersample=2  # twice the mode
-gnoblinctl output call <id> apply x=0 y=0 scale=1 transform=0 enabled=true mode= supersample=4  # four times the mode
-gnoblinctl output get <id> supersample                                                         # what it is now
+gnoblinctl output call <id> apply supersample=1   # no supersampling
+gnoblinctl output call <id> apply supersample=2   # twice the mode
+gnoblinctl output call <id> apply supersample=4   # four times the mode
+gnoblinctl output get <id> supersample            # what it is now
 ```
 
 **What a screenshot looks like.** A screenshot or capture of a supersampled output is the composed frame, so it has
@@ -207,10 +206,15 @@ Turn the mode change on, check it on your own display before relying on it, and 
 The `wlr-output-management` protocol (`wlr-randr`, `kanshi`) and `gnoblinctl output call <id> apply` go through the same
 engine as `apply`: the same checks, the same test before the first output is driven and the same rollback.
 
-`output.apply` takes the whole configuration of one output:
+`output.apply` takes the configuration of one output, and each key is optional:
 
-- **Keys.** `x`, `y`, `scale`, `transform`, `enabled`, `mode` and `supersample`. All of them are required.
-- **Mode.** An empty `mode` keeps the mode the output has.
+- **Keys.** `x`, `y`, `scale`, `transform`, `enabled`, `mode` and `supersample`. A key left out keeps the value the
+  output has, as a key left out of a shell's `screen.apply` does, so `apply supersample=2` changes only the factor and
+  `apply scale=1` keeps the factor. A call with no key changes nothing.
+- **Position.** `x` and `y` are one setting. Given only one, the other is the output's current coordinate.
+- **Mode.** An empty `mode` keeps the mode the output has, as leaving it out does.
+- **Strict.** A name that is not a key is refused, and so is a value of the wrong type or of a range the engine
+  does not take (a `supersample` under 1, a `scale` outside 0.5 to 4). In each case nothing is applied.
 - **Primary.** `primary` is not a key: the layout derives the primary output. A call that carries it is refused with
   an error that names `primary`, and nothing is applied. In a script, `output.apply({ primary: true })` throws a
   `TypeError` that names it.

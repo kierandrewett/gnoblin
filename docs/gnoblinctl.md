@@ -176,11 +176,14 @@ methods that exist are:
 are `ready`, `bell`, `reload_requested` and `lock_state_changed`. The `window`
 signal `menu_requested` is declared in the same way.
 
-Calling a method takes its parameters by name. Leaving one out is refused with an
-error that names the ones the method needs:
+Calling a method takes its parameters by name. Leaving out a parameter the method
+requires is refused with an error that names the ones it needs. A parameter the schema
+marks optional may be left out, and the method keeps the value it has: `output apply`
+takes only the settings it changes.
 
 ```sh
-gnoblinctl output call 6 apply
+gnoblinctl window call 6 set_opacity
+gnoblinctl output call 6 apply supersample=2
 ```
 
 ## Config

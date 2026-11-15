@@ -63,13 +63,13 @@ object output since 0.2.0 secret false
   property width type uint since 0.2.0 secret false
   property height type uint since 0.2.0 secret false
   method apply since 0.2.0 secret false function false
-    param x type int since 0.2.0 secret false
-    param y type int since 0.2.0 secret false
-    param scale type double since 0.2.0 secret false
-    param transform type uint since 0.2.0 secret false
-    param enabled type bool since 0.2.0 secret false
-    param mode type string since 0.2.0 secret false
-    param supersample type double since 0.2.0 secret false
+    param x type int since 0.2.0 secret false optional true
+    param y type int since 0.2.0 secret false optional true
+    param scale type double since 0.2.0 secret false optional true
+    param transform type uint since 0.2.0 secret false optional true
+    param enabled type bool since 0.2.0 secret false optional true
+    param mode type string since 0.2.0 secret false optional true
+    param supersample type double since 0.2.0 secret false optional true
   signal closed since 0.2.0 secret false
   signal added since 0.2.0 secret false
     field output_id type string since 0.2.0 secret false
@@ -1010,19 +1010,19 @@ message Output {
 
   // Method `apply`, since 0.2.0.
   message ApplyArgs {
-    // since 0.2.0
+    // since 0.2.0; optional: a call may leave it out
     int64 x = 1;
-    // since 0.2.0
+    // since 0.2.0; optional: a call may leave it out
     int64 y = 2;
-    // since 0.2.0
+    // since 0.2.0; optional: a call may leave it out
     double scale = 3;
-    // since 0.2.0
+    // since 0.2.0; optional: a call may leave it out
     uint64 transform = 4;
-    // since 0.2.0
+    // since 0.2.0; optional: a call may leave it out
     bool enabled = 5;
-    // since 0.2.0
+    // since 0.2.0; optional: a call may leave it out
     string mode = 6;
-    // since 0.2.0
+    // since 0.2.0; optional: a call may leave it out
     double supersample = 7;
   }
 

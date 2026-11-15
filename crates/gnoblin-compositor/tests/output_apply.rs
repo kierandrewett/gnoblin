@@ -210,14 +210,127 @@ fn a_supersample_the_virtual_size_cannot_honour_is_refused_naming_it_and_the_out
     session.stop().expect("the session stops cleanly");
 }
 
+/// What `output get` prints for a property, as text.
+#[track_caller]
+fn text(session: &Session, id: u64, property: &str) -> String {
+    session
+        .ctl(&["output", "get", &id.to_string(), property])
+        .ok()
+        .out
+        .trim()
+        .to_owned()
+}
+
 #[test]
-fn an_apply_without_a_supersample_is_refused_naming_it() {
+fn an_apply_with_only_a_supersample_changes_only_the_factor() {
+    // The owner's call: `gnoblinctl output call <id> apply supersample=2`, with nothing else, is served and every
+    // setting that was left out keeps its value.
     let session = Session::start();
     let id = first_output(&session);
-    let mut arguments = apply_arguments(&id.to_string(), "1", "0", "800x600@60");
-    arguments.retain(|argument| !argument.starts_with("supersample="));
-    let command = call(&session, &arguments);
-    assert_ne!(command.code, 0, "every parameter is required");
-    assert!(command.err.contains("supersample"), "{}", command.err);
+    let text_id = id.to_string();
+    let full = apply_arguments(&text_id, "2", "0", "800x600@60");
+    let command = call(&session, &full);
+    assert_eq!(command.code, 0, "{}", command.err);
+    wait_for("the new scale", || {
+        ((number(&session, id, "scale") - 2.0).abs() < f64::EPSILON).then_some(())
+    });
+    let mode = text(&session, id, "mode");
+    let width = number(&session, id, "width");
+
+    let only = call(
+        &session,
+        &["output", "call", &text_id, "apply", "supersample=2"].map(str::to_owned),
+    );
+    assert_eq!(only.code, 0, "a call with only `supersample` is served: {}", only.err);
+    wait_for("the factor", || {
+        ((number(&session, id, "supersample") - 2.0).abs() < f64::EPSILON).then_some(())
+    });
+    assert!(
+        (number(&session, id, "scale") - 2.0).abs() < f64::EPSILON,
+        "the scale was left out"
+    );
+    assert_eq!(text(&session, id, "mode"), mode, "the mode was left out");
+    assert!(
+        (number(&session, id, "width") - width).abs() < f64::EPSILON,
+        "so the desktop kept its size"
+    );
+
+    // The other way round: a scale alone keeps the factor the output was composed at.
+    let scale = call(
+        &session,
+        &["output", "call", &text_id, "apply", "scale=1"].map(str::to_owned),
+    );
+    assert_eq!(scale.code, 0, "{}", scale.err);
+    wait_for("the scale", || {
+        ((number(&session, id, "scale") - 1.0).abs() < f64::EPSILON).then_some(())
+    });
+    assert!(
+        (number(&session, id, "supersample") - 2.0).abs() < f64::EPSILON,
+        "the factor was left out of this call"
+    );
+    assert_eq!(text(&session, id, "mode"), mode);
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn an_apply_with_no_key_at_all_changes_nothing() {
+    let session = Session::start();
+    let id = first_output(&session);
+    let (mode, scale) = (text(&session, id, "mode"), number(&session, id, "scale"));
+    let command = call(
+        &session,
+        &["output", "call", &id.to_string(), "apply"].map(str::to_owned),
+    );
+    assert_eq!(command.code, 0, "every parameter is optional: {}", command.err);
+    assert_eq!(text(&session, id, "mode"), mode);
+    assert!((number(&session, id, "scale") - scale).abs() < f64::EPSILON);
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn an_apply_with_only_x_is_served_and_keeps_y() {
+    let session = Session::start();
+    let id = first_output(&session);
+    let y = number(&session, id, "y");
+    let command = call(
+        &session,
+        &["output", "call", &id.to_string(), "apply", "x=0"].map(str::to_owned),
+    );
+    assert_eq!(command.code, 0, "{}", command.err);
+    assert!((number(&session, id, "x")).abs() < f64::EPSILON);
+    assert!((number(&session, id, "y") - y).abs() < f64::EPSILON, "`y` was left out");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn an_apply_still_refuses_a_key_it_does_not_declare_and_a_value_of_the_wrong_type() {
+    let session = Session::start();
+    let id = first_output(&session);
+    let text_id = id.to_string();
+    let factor = number(&session, id, "supersample");
+
+    let unknown = call(
+        &session,
+        &["output", "call", &text_id, "apply", "supersample=2", "sharpness=3"].map(str::to_owned),
+    );
+    assert_ne!(unknown.code, 0, "`sharpness` is not a parameter");
+    assert!(unknown.err.contains("sharpness"), "the key is named: {}", unknown.err);
+
+    let wrong = call(
+        &session,
+        &["output", "call", &text_id, "apply", "supersample=lots"].map(str::to_owned),
+    );
+    assert_ne!(wrong.code, 0, "`lots` is not a number");
+    assert!(wrong.err.contains("supersample"), "the key is named: {}", wrong.err);
+
+    let bad = call(
+        &session,
+        &["output", "call", &text_id, "apply", "supersample=0.5"].map(str::to_owned),
+    );
+    assert_ne!(bad.code, 0, "a factor under 1 is refused by the engine");
+    assert!(
+        (number(&session, id, "supersample") - factor).abs() < f64::EPSILON,
+        "nothing was applied"
+    );
     session.stop().expect("the session stops cleanly");
 }

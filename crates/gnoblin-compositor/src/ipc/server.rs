@@ -2392,9 +2392,10 @@ impl Dispatcher {
         self.finish(object, &operation, outcome);
     }
 
-    /// Serves `output.apply`: the whole configuration of one output, handed to the loop as the `key=value` text a
-    /// shell's `screen.apply` takes, so it runs through the same engine: the layout is resolved first, every mode and
-    /// scale is tested on the backend, the outputs are driven in order, and a refusal puts back what was driven. The
+    /// Serves `output.apply`: the configuration of one output, handed to the loop as the `key=value` text a shell's
+    /// `screen.apply` takes, so it runs through the same engine, and every key left out keeps its value: the layout is
+    /// resolved first, every mode and scale is tested on the backend, the outputs are driven in order, and a refusal
+    /// puts back what was driven. The
     /// operation completes `done` only when the arrangement was driven and kept; a refusal completes with a code naming
     /// the key it refused (`mode-refused`, `scale-refused`, `position-refused`, `enabled-refused`,
     /// `transform-refused`, or `refused`). A connection that is not the session owner's is refused `denied` before the
@@ -2417,7 +2418,15 @@ impl Dispatcher {
             );
             return;
         }
-        let text = match output_apply_text(arguments) {
+        // The output's place now, for a call that moves only one axis of it.
+        let position = {
+            let coordinate = |name| match self.store.graph().object(object).and_then(|live| live.property(name)) {
+                Some(gnoblin_model::Value::Int(value)) => *value,
+                _ => 0,
+            };
+            (coordinate("x"), coordinate("y"))
+        };
+        let text = match output_apply_text(arguments, position) {
             Ok(text) => text,
             Err(message) => {
                 self.refuse(client, envelope, wire::code::UNKNOWN_MEMBER, &message);
@@ -2955,31 +2964,67 @@ fn object_argument(arguments: &gnoblin_model::Fields, name: &str) -> Option<gnob
 
 /// The `key=value` text a shell's `screen.apply` takes, from the arguments of `output.apply`.
 ///
-/// The method carries the whole configuration of one output, so every key is written, `supersample` included (1 for
-/// none). An empty `mode` keeps the mode the output has. `primary` is refused by name: the layout derives the primary output, so an `apply` that carried one
+/// Every parameter is optional and a key left out is left out of the text, so the engine keeps that setting as the text
+/// form of `screen.apply` does: a call that carries only `supersample` changes only the factor. An empty `mode` keeps
+/// the mode the output has. `x` and `y` are one setting, the position; when only one is given the other is the one the
+/// output has now (`position`), so `apply x=100` moves the output sideways. A value of the wrong type is refused by
+/// name, as the graph refuses it, and so is a key `apply` does not declare (the graph refuses that before an operation
+/// exists). `primary` is refused by name too: the layout derives the primary output, so an `apply` that carried one
 /// would be told it worked while nothing changed. A transform other than `0` (normal) is refused here with the reason,
 /// as the engine refuses it: nothing draws a rotation.
-fn output_apply_text(arguments: &gnoblin_model::Fields) -> Result<String, String> {
+fn output_apply_text(arguments: &gnoblin_model::Fields, position: (i64, i64)) -> Result<String, String> {
     if arguments.contains_key("primary") {
         return Err("primary: `apply` cannot set it, because the layout derives the primary output".to_owned());
     }
-    let missing = |name: &str| format!("`apply` needs its `{name}`");
-    let x = int_argument(arguments, "x").ok_or_else(|| missing("x"))?;
-    let y = int_argument(arguments, "y").ok_or_else(|| missing("y"))?;
-    let scale = double_argument(arguments, "scale").ok_or_else(|| missing("scale"))?;
-    let transform = uint_argument(arguments, "transform").ok_or_else(|| missing("transform"))?;
-    let enabled = bool_argument(arguments, "enabled").ok_or_else(|| missing("enabled"))?;
-    let mode = text_argument(arguments, "mode").ok_or_else(|| missing("mode"))?;
-    let supersample = double_argument(arguments, "supersample").ok_or_else(|| missing("supersample"))?;
-    if transform != 0 {
+    let x = present(arguments, "x", int_argument)?;
+    let y = present(arguments, "y", int_argument)?;
+    let scale = present(arguments, "scale", double_argument)?;
+    let transform = present(arguments, "transform", uint_argument)?;
+    let enabled = present(arguments, "enabled", bool_argument)?;
+    let mode = present(arguments, "mode", text_argument)?;
+    let supersample = present(arguments, "supersample", double_argument)?;
+    if transform.is_some_and(|transform| transform != 0) {
         return Err("transform: this compositor draws only `normal` (0)".to_owned());
     }
-    let mut text =
-        format!("position={x},{y}\nscale={scale}\ntransform=normal\nenabled={enabled}\nsupersample={supersample}\n");
-    if !mode.is_empty() {
+    let mut text = String::new();
+    if x.is_some() || y.is_some() {
+        text.push_str(&format!(
+            "position={},{}\n",
+            x.unwrap_or(position.0),
+            y.unwrap_or(position.1)
+        ));
+    }
+    if let Some(scale) = scale {
+        text.push_str(&format!("scale={scale}\n"));
+    }
+    if transform.is_some() {
+        text.push_str("transform=normal\n");
+    }
+    if let Some(enabled) = enabled {
+        text.push_str(&format!("enabled={enabled}\n"));
+    }
+    if let Some(supersample) = supersample {
+        text.push_str(&format!("supersample={supersample}\n"));
+    }
+    if let Some(mode) = mode.filter(|mode| !mode.is_empty()) {
         text.push_str(&format!("mode={mode}\n"));
     }
     Ok(text)
+}
+
+/// The argument `name` read by `read`: `None` when it was left out, and an error naming it when it is there with a type
+/// `read` does not take.
+fn present<T>(
+    arguments: &gnoblin_model::Fields,
+    name: &str,
+    read: fn(&gnoblin_model::Fields, &str) -> Option<T>,
+) -> Result<Option<T>, String> {
+    if !arguments.contains_key(name) {
+        return Ok(None);
+    }
+    read(arguments, name)
+        .map(Some)
+        .ok_or_else(|| format!("{name}: the value is not of the type `apply` declares for it"))
 }
 
 /// The code `output.apply` completes with when the engine refused the arrangement: it names the key the reason begins

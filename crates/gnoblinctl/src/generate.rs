@@ -212,10 +212,11 @@ fn module(version: Version, entries: &[Entry<'_>]) -> String {
                     for parameter in &method.params {
                         let _ = writeln!(
                             text,
-                            "                    CliParam {{ name: {:?}, ty: {:?}, secret: {} }},",
+                            "                    CliParam {{ name: {:?}, ty: {:?}, secret: {}, optional: {} }},",
                             parameter.name,
                             parameter.ty.to_string(),
-                            parameter.secret
+                            parameter.secret,
+                            parameter.optional
                         );
                     }
                     text.push_str("                ],\n");
