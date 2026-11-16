@@ -514,6 +514,19 @@ impl OutputFrame {
         }
     }
 
+    /// Replaces the damage with its bounding rectangle when it holds more than `limit` rectangles, for a caller that
+    /// carries the damage of several frames into one and must not let the list grow without end. Damage may be
+    /// larger than what changed and never smaller, so the bound is safe.
+    pub fn bound_damage(&mut self, limit: usize) {
+        if self.damage.len() <= limit {
+            return;
+        }
+        if let Some(bounds) = self.damage.iter().copied().reduce(Rect::union) {
+            self.damage.clear();
+            self.damage.push(bounds);
+        }
+    }
+
     /// Whether nothing has to be drawn.
     #[must_use]
     pub fn is_empty(&self) -> bool {

@@ -67,6 +67,9 @@
 //!    refuses while a frame callback is outstanding, and
 //!    [`crate::Backend::render`] does not even describe a frame:
 //!    `gnoblin-wayland`'s `tests/nested.rs::a_frame_waits_for_the_hosts_frame_callback`.
+//!    The host keeps an output's damage until the output is asked about, so what changed
+//!    meanwhile is drawn after the parent's answer, and a pointer that moved on the way
+//!    leaves no old picture and does not freeze: `gnoblin-wayland`'s `tests/cursor_trail.rs`.
 //! 9. **A supersample factor the parent's window cannot honour.** The parent decides the mode and the
 //!    scale, so a nested output is configured with a factor and nothing else; [`Backend::configure_output`]
 //!    refuses another mode or scale. The renderer composes at the factor and the frame is averaged down
@@ -1186,15 +1189,22 @@ impl<S: Host + 'static> Backend<S> for Nested {
             return Err(BackendError::UnknownOutput(output));
         };
         if target.awaiting_frame() {
-            // The parent has not finished the last frame, so it has not asked for this
-            // one: nothing is described and nothing is presented.
+            // The parent has not finished the last frame, so it has not asked for this one: nothing is described and
+            // nothing is presented, and the host keeps this output's damage until it is asked about it. Describing
+            // the frame now would also answer the session's own clients' frame callbacks at the session's pace and
+            // not the parent's.
             return Ok(Present::Nothing);
         }
-        if !host.frame(output, frame) {
+        let described = host.frame(output, frame);
+        // A frame drawn earlier that no slot could take is sent now, with the damage the target kept for it.
+        if !described && !target.unpresented() {
             return Ok(Present::Nothing);
         }
-        target.draw(frame).map_err(BackendError::Render)?;
-        let present = target.present(frame.damage());
+        if described {
+            target.draw(frame).map_err(BackendError::Render)?;
+        }
+        let damage = if described { frame.damage() } else { &[] };
+        let present = target.present(damage);
         self.flush();
         Ok(present)
     }

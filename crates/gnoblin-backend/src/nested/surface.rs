@@ -10,7 +10,11 @@
 //!   is looking at.
 //! - **The parent is asked for a frame only when it has finished the last one.** The
 //!   target knows whether a frame callback is outstanding, so a compositor that
-//!   renders faster than its parent cannot queue frames.
+//!   renders faster than its parent cannot queue frames. Nothing is drawn meanwhile, and
+//!   the host keeps the output's damage until it is asked about it. A frame that was
+//!   drawn and then found no free slot is not lost either: the renderer keeps it, the
+//!   target collects its damage, and the next iteration sends it
+//!   ([`NestedTarget::unpresented`]).
 //! - **The frame is written whole and the damage is forwarded.** A slot is filled from
 //!   the renderer in one pass and the frame's damage rectangles are stated to the
 //!   parent as `damage_buffer`, so a parent that honours damage reads less than a whole
@@ -378,6 +382,9 @@ pub struct NestedTarget {
     frame: FrameWait,
     /// The damage that has not reached the parent yet, in the output's logical space.
     damage: Vec<Rect>,
+    /// Whether the renderer holds a frame the parent has not been sent because every slot was still in the parent's
+    /// hands. The host reports a change once, so without this the picture would wait for the next one.
+    unpresented: bool,
     /// How many frames the target has presented.
     presents: u64,
     /// The shared-memory pixel format of the buffers.
@@ -501,6 +508,7 @@ impl NestedTarget {
             ring: Ring::new(SLOTS),
             frame: FrameWait::Idle,
             damage: Vec::new(),
+            unpresented: false,
             presents: 0,
             format,
             buffer_scale: planned
@@ -538,6 +546,13 @@ impl NestedTarget {
     #[must_use]
     pub fn awaiting_frame(&self) -> bool {
         self.frame == FrameWait::Awaiting
+    }
+
+    /// Whether the renderer holds a frame the parent has not been sent yet, because every slot was still in its hands
+    /// when the frame was drawn. The next iteration sends it, with the damage it collected.
+    #[must_use]
+    pub fn unpresented(&self) -> bool {
+        self.unpresented
     }
 
     /// How many frames this target presented.
@@ -932,8 +947,12 @@ impl NestedTarget {
     }
 
     /// Damages the whole output.
+    ///
+    /// It is called when the renderer's buffer is new, so a frame it held back is gone with it: the host is asked
+    /// for the whole output again, and presenting the blank buffer in the meantime would show black.
     fn damage_whole(&mut self) {
         let size = self.output.logical_size();
+        self.unpresented = false;
         self.damage.clear();
         self.damage.push(Rect::new(0, 0, size.width, size.height));
     }
@@ -997,6 +1016,7 @@ impl Target for NestedTarget {
     fn draw(&mut self, frame: &OutputFrame) -> Result<(), RenderError> {
         self.renderer.draw(frame, self.output.effective_scale())?;
         self.display = frame.has_secure().then(|| frame.clone());
+        self.unpresented = true;
         Ok(())
     }
 
@@ -1054,6 +1074,7 @@ impl Target for NestedTarget {
         let _callback = self.surface.frame(&self.qh, OutputKey(self.index));
         self.surface.commit();
         self.damage.clear();
+        self.unpresented = false;
         self.frame = FrameWait::Awaiting;
         self.presents = self.presents.saturating_add(1);
         if matches!(taken, Taken::Gpu) {

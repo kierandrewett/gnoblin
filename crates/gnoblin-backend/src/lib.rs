@@ -79,6 +79,13 @@
 //!    the damage it reports, and [`Backend::render`] returns that as a [`Present`]. A
 //!    backend may also hold a present and return [`Present::Nothing`] (the headless
 //!    backend does while its presenting is paused), which leaves the output as it was.
+//!
+//!    The host keeps an output's damage until a frame is asked of that output
+//!    ([`render::compose::Composer::frame_asked`]), so a backend that does not ask while its
+//!    parent has not answered the last frame, or while a held present is on, loses nothing: what
+//!    changed is drawn on the next iteration that does ask. A backend that asks and then cannot
+//!    present must keep what it was told: the hardware backend keeps the frame and the damage of
+//!    the ones it never drew, and the nested backend keeps a frame no buffer slot could take.
 //! 6. **Capture, if asked.** [`Backend::capture`] reads back the last frame a target drew.
 //!    It does not describe a new one.
 //!

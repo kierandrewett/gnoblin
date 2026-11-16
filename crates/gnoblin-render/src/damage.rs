@@ -36,6 +36,8 @@
 //! take in the same iteration would find an empty set and leave pixels stale, so
 //! the take is not repeated.
 
+use std::collections::BTreeMap;
+
 use gnoblin_types::{OutputId, Rect};
 
 /// The damage for one output.
@@ -91,6 +93,43 @@ impl Damage {
     #[must_use]
     pub fn rect_count(&self) -> usize {
         self.outputs.iter().map(OutputDamage::rect_count).sum()
+    }
+
+    /// Adds the damage of an earlier iteration that no frame was drawn for.
+    ///
+    /// The scene's damage is taken once per iteration and forgotten, so an output nobody asked a frame of (a nested
+    /// session whose parent has not answered the last one) would otherwise lose what changed in that iteration, and
+    /// the changed pixels would stay as they were on screen. The earlier damage is kept until the output is drawn:
+    /// it joins the damage of the iteration that follows, merged under the same budget of `limit` rectangles, and
+    /// becomes the whole output when it would pass it. `outputs` is the scene's outputs: damage of one that is gone
+    /// is dropped.
+    pub fn absorb(&mut self, earlier: Self, outputs: &BTreeMap<OutputId, Rect>, limit: usize) {
+        for old in earlier.outputs {
+            let Some(area) = outputs.get(&old.output) else {
+                continue;
+            };
+            let Some(now) = self.outputs.iter_mut().find(|now| now.output == old.output) else {
+                self.outputs.push(old);
+                continue;
+            };
+            if now.full {
+                continue;
+            }
+            if old.full {
+                *now = old;
+                continue;
+            }
+            let mut rects = std::mem::take(&mut now.rects);
+            rects.extend(old.rects);
+            let merged = merge_rects(rects);
+            if merged.len() > limit {
+                now.rects = vec![*area];
+                now.full = true;
+            } else {
+                now.rects = merged;
+            }
+        }
+        self.outputs.sort_by_key(|entry| entry.output);
     }
 }
 
@@ -177,5 +216,73 @@ mod tests {
         };
         assert!(damage.covers(Rect::new(100, 100, 1, 1)));
         assert_eq!(damage.rect_count(), 1);
+    }
+
+    fn damage_of(output: u64, rects: Vec<Rect>, full: bool) -> Damage {
+        Damage {
+            outputs: vec![OutputDamage {
+                output: OutputId::new(output),
+                rects,
+                full,
+            }],
+        }
+    }
+
+    fn screens() -> BTreeMap<OutputId, Rect> {
+        BTreeMap::from([(OutputId::new(0), Rect::new(0, 0, 800, 600))])
+    }
+
+    #[test]
+    fn earlier_damage_joins_the_damage_of_the_iteration_after_it() {
+        let mut now = damage_of(0, vec![Rect::new(300, 300, 10, 10)], false);
+        now.absorb(damage_of(0, vec![Rect::new(0, 0, 10, 10)], false), &screens(), 16);
+        let entry = now.for_output(OutputId::new(0)).expect("damage on the output");
+        assert!(
+            entry.covers(Rect::new(0, 0, 10, 10)),
+            "the earlier change is still drawn"
+        );
+        assert!(entry.covers(Rect::new(300, 300, 10, 10)), "and so is the new one");
+        assert!(!entry.full);
+    }
+
+    #[test]
+    fn earlier_damage_on_an_output_with_none_now_is_kept() {
+        let mut now = Damage::default();
+        now.absorb(damage_of(0, vec![Rect::new(5, 5, 4, 4)], false), &screens(), 16);
+        assert_eq!(now.rect_count(), 1);
+    }
+
+    #[test]
+    fn full_damage_stays_full_whichever_side_it_came_from() {
+        let area = Rect::new(0, 0, 800, 600);
+        let mut now = damage_of(0, vec![Rect::new(1, 1, 2, 2)], false);
+        now.absorb(damage_of(0, vec![area], true), &screens(), 16);
+        assert!(now.for_output(OutputId::new(0)).is_some_and(|entry| entry.full));
+        let mut now = damage_of(0, vec![area], true);
+        now.absorb(damage_of(0, vec![Rect::new(1, 1, 2, 2)], false), &screens(), 16);
+        assert!(now.for_output(OutputId::new(0)).is_some_and(|entry| entry.full));
+    }
+
+    #[test]
+    fn earlier_damage_past_the_budget_becomes_the_whole_output() {
+        let spread = |at: i32| {
+            vec![
+                Rect::new(at, 0, 4, 4),
+                Rect::new(at, 100, 4, 4),
+                Rect::new(at, 200, 4, 4),
+            ]
+        };
+        let mut now = damage_of(0, spread(0), false);
+        now.absorb(damage_of(0, spread(400), false), &screens(), 4);
+        let entry = now.for_output(OutputId::new(0)).expect("damage on the output");
+        assert!(entry.full, "six separate rectangles do not fit a budget of four");
+        assert_eq!(entry.rects, vec![Rect::new(0, 0, 800, 600)]);
+    }
+
+    #[test]
+    fn damage_of_an_output_that_is_gone_is_dropped() {
+        let mut now = Damage::default();
+        now.absorb(damage_of(7, vec![Rect::new(0, 0, 4, 4)], false), &screens(), 16);
+        assert!(now.is_empty());
     }
 }

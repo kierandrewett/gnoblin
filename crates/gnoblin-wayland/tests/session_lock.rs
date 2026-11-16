@@ -1267,6 +1267,74 @@ fn a_lock_surface_is_drawn_over_the_cover() {
     });
 }
 
+/// The pixels of a screenshot that are neither the background nor the one grey window, as a count.
+fn not_the_desktop(image: &Image, window: Rect) -> usize {
+    let size = image.size();
+    let mut wrong = 0;
+    for y in 0..size.height as i32 {
+        for x in 0..size.width as i32 {
+            // The window's one-pixel border is left out: a rounded or scaled edge may belong to either side.
+            let within = |margin: i32| {
+                x >= window.x + margin
+                    && y >= window.y + margin
+                    && x < window.x + window.width as i32 - margin
+                    && y < window.y + window.height as i32 - margin
+            };
+            let inside = within(1);
+            let edge = !inside && within(-1);
+            let Some(pixel) = image.pixel(Point::new(x, y)) else {
+                continue;
+            };
+            let want = if inside { [128, 128, 128] } else { BLACK };
+            if !edge && [pixel[0], pixel[1], pixel[2]] != want {
+                wrong += 1;
+            }
+        }
+    }
+    wrong
+}
+
+/// The cover and the lock's own surface are drawn over the desktop and taken away again on unlock: what is left is the
+/// desktop as it was, with nothing of either on it.
+#[test]
+fn unlocking_leaves_nothing_of_the_cover_or_the_lock_surface() {
+    let session = Session::start();
+    session.run(|session| {
+        let output = first_output(session);
+        let mut app = Client::app(session.socket());
+        let _window = map_grey_window(&mut app);
+        let window = session
+            .wait_for(|observation| observation.only().is_some_and(|window| window.mapped))
+            .only()
+            .expect("the window")
+            .geometry;
+        let wait_for_desktop = |what: &str| {
+            let deadline = Instant::now() + TIMEOUT;
+            loop {
+                let image = session.control.screenshot(output).expect("a screenshot");
+                let wrong = not_the_desktop(&image, window);
+                if wrong == 0 {
+                    return;
+                }
+                assert!(Instant::now() < deadline, "{what}: {wrong} pixels are not the desktop");
+                thread::sleep(Duration::from_millis(10));
+            }
+        };
+        wait_for_desktop("before the lock");
+
+        let mut locker = Client::locker(session.socket());
+        locker.lock();
+        session.wait_for_lock(LockState::Locked);
+        locker.wait_for_locked();
+        let _surface = locker.lock_surface_with_pixel(0, 0xffff_ffff);
+        session.wait_for_corner(output, MASK, "the lock surface covers the desktop");
+
+        locker.unlock();
+        session.wait_for_lock(LockState::Unlocked);
+        wait_for_desktop("after the unlock");
+    });
+}
+
 #[test]
 fn an_unmapped_lock_surface_shows_the_cover_again() {
     let session = Session::start();

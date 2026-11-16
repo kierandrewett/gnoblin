@@ -76,6 +76,7 @@
 //!     the picture drawn before a mark: `a_source_below_a_secure_ancestor_is_redacted_in_the_views_capture_and_the_view_is_a_secure_layer`
 //!     and the cases beside it in `view_secure_tests.rs`.
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
@@ -528,6 +529,13 @@ pub struct Composer {
     /// The damage of the iteration being drawn, taken once by
     /// [`Composer::begin_frame`] and consumed output by output.
     damage: Option<Damage>,
+    /// The damage of earlier iterations on the outputs nobody asked a frame of, which joins the damage of the iteration
+    /// after it. A frame is drawn from the damage, so a change an output was never asked about must wait for it.
+    carried: Damage,
+    /// The outputs a frame was asked of in this iteration: [`Composer::compose`] and every other way an output is
+    /// described note it, and [`Composer::end_frame`] keeps the damage of the rest. Behind a cell because describing an
+    /// output reads the composer and changes nothing a caller sees.
+    asked: RefCell<BTreeSet<OutputId>>,
     /// Animations of window properties, driven by [`Composer::advance_motion`].
     motion: TweenPlayer,
     /// The live track for each window property, so a retarget can supersede it.
@@ -652,6 +660,8 @@ impl Composer {
             background: Color::BLACK,
             node_ids,
             damage: None,
+            carried: Damage::default(),
+            asked: RefCell::new(BTreeSet::new()),
             motion: TweenPlayer::new(),
             tracks: BTreeMap::new(),
             shell_tracks: BTreeMap::new(),
@@ -901,6 +911,14 @@ impl Composer {
         self.cursor = cursor;
     }
 
+    /// Notes that a frame was asked of `output` in this iteration, so its damage is spent and not carried to the next.
+    ///
+    /// [`Composer::compose`] does it. A caller that describes an output another way (the lock's cover, a mirror) calls
+    /// it itself, because that frame is drawn all the same.
+    pub fn frame_asked(&self, output: OutputId) {
+        self.asked.borrow_mut().insert(output);
+    }
+
     /// Takes every output's damage for this iteration.
     ///
     /// It is taken once, not per output: the backend renders outputs one call at a
@@ -925,7 +943,13 @@ impl Composer {
             self.lock_ui_changed = true;
         }
         self.render_views(&dirty, reader);
-        self.damage = Some(self.scene.take_damage());
+        let mut damage = self.scene.take_damage();
+        // What changed on an output nobody asked for a frame last time is still not on its screen.
+        let carried = std::mem::take(&mut self.carried);
+        if !carried.is_empty() {
+            damage.absorb(carried, self.scene.outputs(), self.scene.damage_rect_limit());
+        }
+        self.damage = Some(damage);
     }
 
     /// Whether the lock node, or a canvas under it, changed since the last call. The lock cover redraws on it.
@@ -1571,9 +1595,14 @@ impl Composer {
         f(&mut self.scene)
     }
 
-    /// Drops the damage of the iteration that just ended.
+    /// Ends the iteration. The damage of an output a frame was asked of is spent; the damage of one nobody asked is kept
+    /// for the next iteration, because the next frame is drawn from the damage and would otherwise miss the change.
     pub fn end_frame(&mut self) {
-        self.damage = None;
+        let asked = std::mem::take(&mut *self.asked.borrow_mut());
+        if let Some(mut damage) = self.damage.take() {
+            damage.outputs.retain(|entry| !asked.contains(&entry.output));
+            self.carried = damage;
+        }
         // A reduced-motion flash is drawn by the one frame that began after its bell, so it
         // ends here rather than on a timer that might pass before any frame draws it.
         if self.flash.is_some_and(|flash| flash.reduced) {
@@ -3827,6 +3856,7 @@ impl Composer {
     /// Returns whether anything has to be drawn: `false` means the output did not
     /// change and its previous pixels still stand.
     pub fn compose(&self, output: OutputId, frame: &mut OutputFrame) -> bool {
+        self.frame_asked(output);
         frame.clear();
         frame.set_background(self.background);
         let Some(rect) = self.scene.outputs().get(&output).copied() else {
@@ -5005,8 +5035,9 @@ mod tests {
         let mut composer = Composer::new();
         let output = OutputId::new(0);
         composer.set_output(output, Rect::new(0, 0, 800, 600));
-        // The output's first frame is not this test's subject.
+        // The output's first frame is not this test's subject: it is asked for and spent.
         composer.begin_frame();
+        composer.frame_asked(output);
         composer.end_frame();
         (composer, output)
     }
@@ -5940,6 +5971,8 @@ mod tests {
         composer.set_output(first, Rect::new(0, 0, 800, 600));
         composer.set_output(second, Rect::new(800, 0, 800, 600));
         composer.begin_frame();
+        composer.frame_asked(first);
+        composer.frame_asked(second);
         composer.end_frame();
         let window = WindowId::new(1);
         composer.insert_window(window, Rect::new(810, 20, 40, 50));
@@ -6541,6 +6574,55 @@ mod tests {
         composer.set_cursor(Some(at), true);
         let damage = damage_of(&mut composer, output).expect("a new shape is drawn");
         assert!(covers(&damage, at));
+    }
+
+    #[test]
+    fn damage_of_an_output_nobody_asked_a_frame_of_is_kept_for_the_next_iteration() {
+        let (mut composer, output) = screen();
+        let first = Rect::new(10, 10, 24, 24);
+        let second = Rect::new(100, 40, 24, 24);
+        let third = Rect::new(300, 200, 24, 24);
+        composer.set_cursor(Some(first), false);
+        assert!(damage_of(&mut composer, output).is_some(), "the first cursor is drawn");
+        // The pointer moves while no frame is asked of the output (a nested session whose parent is behind): what
+        // changed is not drawn and nobody is told of it again.
+        composer.set_cursor(Some(second), false);
+        composer.begin_frame();
+        composer.end_frame();
+        composer.set_cursor(Some(third), false);
+        let damage = damage_of(&mut composer, output).expect("the next frame is drawn");
+        assert!(
+            covers(&damage, first),
+            "the cursor that is still on the screen is erased: {damage:?}"
+        );
+        assert!(
+            covers(&damage, second),
+            "and so is the one that was never drawn: {damage:?}"
+        );
+        assert!(covers(&damage, third), "and the new one is painted: {damage:?}");
+    }
+
+    #[test]
+    fn damage_of_an_output_that_was_asked_a_frame_of_is_spent() {
+        let (mut composer, output) = screen();
+        composer.set_cursor(Some(Rect::new(10, 10, 24, 24)), false);
+        assert!(damage_of(&mut composer, output).is_some());
+        assert_eq!(
+            damage_of(&mut composer, output),
+            None,
+            "a frame that was drawn is not drawn again"
+        );
+    }
+
+    #[test]
+    fn a_frame_asked_another_way_spends_the_damage_too() {
+        let (mut composer, output) = screen();
+        composer.set_cursor(Some(Rect::new(10, 10, 24, 24)), false);
+        // The lock's cover and a mirror describe the output without `compose`; they say so.
+        composer.begin_frame();
+        composer.frame_asked(output);
+        composer.end_frame();
+        assert_eq!(damage_of(&mut composer, output), None);
     }
 
     #[test]

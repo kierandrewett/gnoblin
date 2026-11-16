@@ -3897,6 +3897,9 @@ impl Host for State {
     }
 
     fn frame(&mut self, output: OutputId, frame: &mut OutputFrame) -> bool {
+        // However the output is described below, the backend asked for its frame: the damage the iteration took for it
+        // is spent here. An output nobody asks for keeps its damage for the iteration that does.
+        self.composer.frame_asked(output);
         // An output with no place of its own shows its source's picture or black; the scene knows nothing of it.
         if let Some(shadow) = self.output_policy.shadow(output) {
             return self.shadow_frame(shadow, frame);

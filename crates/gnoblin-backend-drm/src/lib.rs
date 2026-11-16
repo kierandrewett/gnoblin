@@ -46,6 +46,13 @@
 //!    [`BackendEvent::Disconnected`].
 //! 5. **A gamma table does not fit.** [`gamma::GammaRamp::matches`] refuses it before the
 //!    ioctl and the refusal is logged, so the display keeps the table it had.
+//! 6. **A change is described while the output cannot draw it.** The host reports what
+//!    changed once per iteration and does not repeat it. An output with a flip in flight, or
+//!    one whose flip the kernel refused, keeps the frame it was last given until it is drawn
+//!    and carries the damage of every frame it never drew, so the retry draws what changed
+//!    and not an empty frame, which is a black screen:
+//!    `frame::tests::a_change_described_while_a_flip_is_in_flight_is_drawn_when_the_flip_completes`
+//!    and `frame::tests::a_refused_flip_retries_the_frame_that_was_described_not_an_empty_one`.
 
 /// The DRM column of the backend status table, measured against a fake kernel.
 #[cfg(test)]
@@ -79,7 +86,7 @@ use gnoblin_types::{Orientation, OutputId, Scale};
 use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::drm::control::crtc;
 
-use crate::frame::{Presented, present};
+use crate::frame::{Presented, UndrawnFrame, present};
 use crate::libinput::Libinput;
 use crate::libinput::map::Screen;
 use crate::modeset::Composition;
@@ -90,7 +97,6 @@ use gnoblin_backend::{
     Backend, BackendError, BackendEvent, DmabufImportError, DmabufSupport, Host, InputEvent, InputSource, Output,
     Present, Target,
 };
-use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_render_frame::image::Image;
 use std::collections::{HashMap, HashSet};
 
@@ -149,6 +155,9 @@ pub struct Drm {
     scanout: ScanoutDevice,
     /// Each output's scan-out buffers, allocated on its first draw and dropped on resume.
     buffers: HashMap<OutputId, Buffers>,
+    /// What each output was last described and has not drawn yet: the host reports a change once, and an output with
+    /// a flip in flight cannot draw it at once.
+    waiting: HashMap<OutputId, UndrawnFrame>,
     /// The outputs switched off, which a mode change refuses: lighting them is a power change.
     dark: HashSet<OutputId>,
     /// Changes the backend made itself, reported by the next dispatch.
@@ -273,6 +282,7 @@ impl Drm {
             channels,
             scanout,
             buffers: HashMap::new(),
+            waiting: HashMap::new(),
             dark: HashSet::new(),
             pending: Vec::new(),
             input,
@@ -409,6 +419,7 @@ impl Drm {
                 self.outputs.retain(|output| output.id != id);
                 self.channels.retain(|channel| channel.id != id);
                 self.buffers.remove(&id);
+                self.waiting.remove(&id);
                 self.dark.remove(&id);
                 vec![BackendEvent::OutputDisconnected(id)]
             }
@@ -497,8 +508,10 @@ impl<S: Host + 'static> Backend<S> for Drm {
             return Err(BackendError::Unpresentable(output));
         };
         let crtc = self.channels[index].crtc;
-        let mut frame = OutputFrame::new();
-        if host.frame(output, &mut frame) {
+        // The host is asked on every iteration, and what it describes is kept until it is drawn: an output with a
+        // flip in flight, or one the kernel refused, cannot draw it now, and the host will not say it again.
+        let waiting = self.waiting.entry(output).or_insert_with(UndrawnFrame::new);
+        if waiting.describe(|frame| host.frame(output, frame)) {
             self.channels[index].presenter.mark_dirty();
         }
         let physical = gnoblin_types::Size::new(size.width, size.height);
@@ -527,9 +540,12 @@ impl<S: Host + 'static> Backend<S> for Drm {
             crtc,
             scale,
         };
-        match present(&mut self.channels[index].presenter, &mut flip, &frame) {
+        match present(&mut self.channels[index].presenter, &mut flip, waiting.frame()) {
             Presented::Idle | Presented::Waiting => Ok(Present::Nothing),
-            Presented::Queued { .. } => Ok(Present::Rendered),
+            Presented::Queued { .. } => {
+                waiting.drawn();
+                Ok(Present::Rendered)
+            }
             Presented::Refused { slot, first, error } => {
                 if first {
                     log::warn!(area = "drm", output = %output, slot, %error, "a frame was refused; the output retries it");
