@@ -333,6 +333,39 @@ fn the_lock_screen_renews_its_lease_twice_a_second_while_it_is_up_and_not_after_
 }
 
 #[test]
+fn a_lock_frame_that_throws_renews_no_lease_and_the_lease_comes_back_when_it_runs_again() {
+    let mut rig = locked();
+    let before = beats(&rig);
+    assert!(before >= 1, "the screen is up and renews its lease");
+
+    // The screen's frame throws from now on: the toolkit reports it and the shell goes on, but a frame that did not run
+    // to its end says nothing about the screen being alive. The compositor's card takes the password when the beats stop.
+    exec(&mut rig, "lockScreen().frame = () => { throw new Error('broken'); };");
+    let mut told = Vec::new();
+    for _ in 0..4 {
+        rig.advance(600);
+        told.extend(rig.settle());
+    }
+    assert_eq!(beats(&rig), before, "a screen whose frame throws renews nothing");
+    assert_eq!(
+        told.iter()
+            .filter(|line| line.contains("LockScreen.frame threw"))
+            .count(),
+        1,
+        "and the failure is reported once, not once a frame: {told:?}"
+    );
+
+    // It is mended: the next frame runs to its end and the lease is renewed again.
+    exec(&mut rig, "delete lockScreen().frame;");
+    rig.advance(600);
+    rig.settle();
+    assert!(
+        beats(&rig) > before,
+        "the screen renews its lease once its frame runs again"
+    );
+}
+
+#[test]
 fn a_refusal_at_a_serial_the_mirror_has_already_reached_does_not_hold_the_resend_back() {
     let mut rig = world(1, "new Layout()");
     // The shell's base is ahead of the compositor's serial: it refuses with no op named and no batch follows, so the

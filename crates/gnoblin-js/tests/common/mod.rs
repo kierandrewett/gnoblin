@@ -54,9 +54,9 @@ pub struct Claim {
 }
 
 /// How the fake answers a transaction instead of applying it, in the words of the real compositor
-/// (`gnoblin_render::tree_revision`, `gnoblin_render::transaction`). Faults are queued with
-/// [`FakeCompositor::fault`] and each one takes the next transaction the shell sends, in order; once the queue is empty
-/// every transaction applies again.
+/// (`gnoblin_render::tree_revision`, `gnoblin_render::transaction`), or how the link behaves around it. Faults are
+/// queued with [`FakeCompositor::fault`] and each one takes the next transaction the shell sends, in order; once the
+/// queue is empty every transaction applies again.
 #[derive(Clone, Debug)]
 pub enum Fault {
     /// `stale-base`: a batch the shell had not read changed a node the transaction names. `racing` is that batch: the
@@ -70,6 +70,18 @@ pub enum Fault {
     /// `unknown-node` at `failed_op`: the compositor destroyed a node the transaction writes, and the transaction was
     /// built before the shell read that. The destroy is published first, as it is in the real order.
     UnknownNode { failed_op: i64, destroyed: u64 },
+    /// A refusal for a reason that is the script's and not the base's, spelled as the compositor's table spells it
+    /// (`read-only`, `not-finite`, `too-large`, `bad-value`, ...). `failed_op` is the first op that failed, or `-1` for
+    /// the whole batch. It applies nothing and publishes nothing, so no newer base cures it: the same op sent again is
+    /// refused again.
+    Refuse { code: &'static str, failed_op: i64 },
+    /// The compositor applies the transaction and answers it, but nothing it says from now on (this answer and
+    /// everything behind it, in order) reaches the shell until the shell has polled `polls` times: a compositor that
+    /// is slow to answer.
+    Late { polls: usize },
+    /// The link dies as the transaction is sent: nothing is applied and `transact` fails, as a write to a socket the
+    /// compositor has closed does. Every later call on the link fails too, until [`FakeCompositor::reconnect`].
+    Disconnect,
 }
 
 pub struct Compositor {
@@ -85,6 +97,18 @@ pub struct Compositor {
     pub faults: VecDeque<Fault>,
     /// How many transactions were refused.
     pub refused: usize,
+    /// While above zero, a poll returns nothing and counts it down: what [`Fault::Late`] sets.
+    pub stall: usize,
+    /// Whether the link is dead: every call on it fails. See [`Fault::Disconnect`].
+    pub dead: bool,
+    /// How many of the batches the compositor publishes next are lost on the way.
+    pub drop_batches: usize,
+    /// Refuse every `n`th transaction `stale-base`, naming no op, and apply the others; `0` refuses none. A refusal of
+    /// that kind changes nothing the shell can read, so a suite that passes without it passes with it too. Set from
+    /// `GNOBLIN_FAKE_REFUSE_EVERY`, so a whole suite can be run with refusals turned on.
+    pub refuse_every: usize,
+    /// How many transactions have landed (refused ones included), for `refuse_every`.
+    pub landed: usize,
 }
 
 #[derive(Clone)]
@@ -132,6 +156,14 @@ impl Compositor {
             queue: Vec::new(),
             faults: VecDeque::new(),
             refused: 0,
+            stall: 0,
+            dead: false,
+            drop_batches: 0,
+            refuse_every: std::env::var("GNOBLIN_FAKE_REFUSE_EVERY")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(0),
+            landed: 0,
         }
     }
 
@@ -268,10 +300,63 @@ impl FakeCompositor {
         self.0.borrow().refused
     }
 
-    pub fn land(&self, tx: &TreeTx) {
+    /// The link dies now: every later call on it fails, as one to a compositor that exited does.
+    pub fn disconnect(&self) {
+        self.0.borrow_mut().dead = true;
+    }
+
+    /// A new connection after the old one died. What the compositor held for the dead one is gone, as it is when a
+    /// connection ends: the claims it made, and what it had not said yet.
+    pub fn reconnect(&self) {
         let mut c = self.0.borrow_mut();
+        c.dead = false;
+        c.stall = 0;
+        c.claims.clear();
+        c.queue.clear();
+    }
+
+    /// The next `count` batches of changes the compositor publishes are lost on the way to the shell, so the batch
+    /// after them skips serials.
+    pub fn drop_batches(&self, count: usize) {
+        self.0.borrow_mut().drop_batches = count;
+    }
+
+    /// Refuses every `n`th transaction from now on, as [`Compositor::refuse_every`] says; `0` stops.
+    pub fn refuse_every(&self, n: usize) {
+        let mut c = self.0.borrow_mut();
+        c.refuse_every = n;
+        c.landed = 0;
+    }
+
+    /// What the link answers a transaction the shell sends: applies it, refuses it or fails, by the next fault.
+    ///
+    /// # Errors
+    ///
+    /// The link is dead, or the transaction meets [`Fault::Disconnect`].
+    pub fn land(&self, tx: &TreeTx) -> Result<(), LinkError> {
+        let mut c = self.0.borrow_mut();
+        if c.dead {
+            return Err(LinkError("the compositor closed the link".to_owned()));
+        }
         c.sent.push(tx.ops.clone());
-        match c.faults.pop_front() {
+        c.landed += 1;
+        // A password check is never refused by the periodic mode: the lock tests want the check to arrive, and its
+        // text cannot be sent again.
+        let periodic = c.refuse_every > 0
+            && c.landed.is_multiple_of(c.refuse_every)
+            && c.faults.is_empty()
+            && !tx
+                .ops
+                .iter()
+                .any(|op| matches!(op, TxOp::Call { method, .. } if method == "authenticate"));
+        let fault = c.faults.pop_front().or_else(|| {
+            periodic.then_some(Fault::StaleBase {
+                failed_op: Some(-1),
+                racing: Vec::new(),
+            })
+        });
+        let mut stall = 0;
+        match fault {
             Some(Fault::StaleBase { failed_op, racing }) => {
                 let failed_op = failed_op.unwrap_or_else(|| {
                     let changed: Vec<u64> = racing.iter().map(|change| change.node).collect();
@@ -305,10 +390,7 @@ impl FakeCompositor {
                 if !racing.is_empty() {
                     c.serial += 1;
                     let serial = c.serial;
-                    c.queue.push(TreeIncoming::Changes {
-                        serial,
-                        changes: racing,
-                    });
+                    Self::deliver(&mut c, serial, racing);
                 }
                 let serial = c.serial;
                 c.refused += 1;
@@ -319,7 +401,7 @@ impl FakeCompositor {
                     code: "stale-base".to_owned(),
                     removed: Vec::new(),
                 }));
-                return;
+                return Ok(());
             }
             Some(Fault::UnknownNode { failed_op, destroyed }) => {
                 let removed = c.subtree(destroyed);
@@ -329,13 +411,14 @@ impl FakeCompositor {
                 }
                 c.serial += 1;
                 let serial = c.serial;
-                c.queue.push(TreeIncoming::Changes {
+                Self::deliver(
+                    &mut c,
                     serial,
-                    changes: vec![MirrorChange {
+                    vec![MirrorChange {
                         removed,
                         ..change(MirrorChangeKind::Destroyed, destroyed)
                     }],
-                });
+                );
                 c.refused += 1;
                 c.queue.push(TreeIncoming::Reply(TxReply {
                     serial,
@@ -344,8 +427,25 @@ impl FakeCompositor {
                     code: "unknown-node".to_owned(),
                     removed: Vec::new(),
                 }));
-                return;
+                return Ok(());
             }
+            Some(Fault::Refuse { code, failed_op }) => {
+                c.refused += 1;
+                let serial = c.serial;
+                c.queue.push(TreeIncoming::Reply(TxReply {
+                    serial,
+                    applied: false,
+                    failed_op,
+                    code: code.to_owned(),
+                    removed: Vec::new(),
+                }));
+                return Ok(());
+            }
+            Some(Fault::Disconnect) => {
+                c.dead = true;
+                return Err(LinkError("the compositor closed the link".to_owned()));
+            }
+            Some(Fault::Late { polls }) => stall = polls,
             None => {}
         }
         Self::apply_whole(&mut c, tx);
@@ -356,6 +456,20 @@ impl FakeCompositor {
             code: String::new(),
             removed: Vec::new(),
         }));
+        if stall > 0 {
+            c.stall = stall;
+        }
+        Ok(())
+    }
+
+    /// Queues a batch of changes for the shell, unless a drop is pending: then the batch is lost, and the one after it
+    /// skips its serial.
+    fn deliver(c: &mut Compositor, serial: u64, changes: Vec<MirrorChange>) {
+        if c.drop_batches > 0 {
+            c.drop_batches -= 1;
+            return;
+        }
+        c.queue.push(TreeIncoming::Changes { serial, changes });
     }
 
     /// Applies every op of `tx`, advances the serial to it and queues the change batch, when there is one.
@@ -369,10 +483,7 @@ impl FakeCompositor {
         c.serial = tx.serial;
         // The compositor sends no change message for a transaction that changed no node.
         if !changes.is_empty() {
-            c.queue.push(TreeIncoming::Changes {
-                serial: tx.serial,
-                changes,
-            });
+            Self::deliver(c, tx.serial, changes);
         }
     }
 
@@ -381,7 +492,7 @@ impl FakeCompositor {
         let mut c = self.0.borrow_mut();
         c.serial += 1;
         let serial = c.serial;
-        c.queue.push(TreeIncoming::Changes { serial, changes });
+        Self::deliver(&mut c, serial, changes);
     }
 
     /// A window that is in the tree already, as at boot. It is server-decorated: the shell's titlebar frames it.
@@ -735,12 +846,19 @@ impl TreeLink for FakeCompositor {
     }
 
     fn transact(&mut self, tx: &TreeTx) -> Result<(), LinkError> {
-        self.land(tx);
-        Ok(())
+        self.land(tx)
     }
 
     fn poll(&mut self) -> Result<Vec<TreeIncoming>, LinkError> {
-        Ok(std::mem::take(&mut self.0.borrow_mut().queue))
+        let mut c = self.0.borrow_mut();
+        if c.dead {
+            return Err(LinkError("the compositor closed the link".to_owned()));
+        }
+        if c.stall > 0 {
+            c.stall -= 1;
+            return Ok(Vec::new());
+        }
+        Ok(std::mem::take(&mut c.queue))
     }
 }
 

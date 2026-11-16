@@ -66,8 +66,20 @@ Structure of the object model (was one `gnoblin.ts` of 5,186 lines with 279 top-
     (`lost_writes`), which lays its workspace out again, because a placement is computed only for a workspace that is
     dirty and the pass cleared that before the write went out.
 
+    A refusal no newer base cures (any code but `stale-base` and `unknown-node`: `read-only`, `not-finite`, `too-large`,
+    `bad-value`, ...) is the script's mistake, and the shell used to drop the whole transaction for it, the innocent ops
+    and the calls beside the bad op included, so an `Output.apply` waited for an answer that never came. The compositor
+    names the first op that failed, and the shell gives that op up, answers it `failed` if it is a call, forgets it if it
+    is a write (the script reads what the compositor holds, and the layout is not asked to write the refused value
+    again), and sends the others again in order (`partition_refused`, `give_up_refused`). Ops on a node that a given-up
+    `new` would have made go with it. A refusal that names no op (`failed_op` -1, such as `too-large` for a batch over
+    4096 ops) cannot say which op to give up, so every op is given up and every call in it is answered `failed`.
+
     Tests: `crates/gnoblin-js/tests/write_refusals.rs` over the shared fake compositor, which refuses as the real one does
-    (`Fault`), and `crates/gnoblin/tests/js_lock.rs` against the real one.
+    (`Fault`), `crates/gnoblin-js/tests/link_failures.rs` for the refusals no base cures, a late answer, a link that dies
+    and a lost batch, with a sweep that runs the layout under random stale refusals and under every third transaction
+    refused (`GNOBLIN_FAKE_REFUSE_EVERY` turns that mode on for any suite), and `crates/gnoblin/tests/js_lock.rs`
+    against the real compositor.
 
 - **Objects.** One `Client` per window node for the life of the generation (workspaces are the script's, see P3b), so
   the same node is the same JS object.

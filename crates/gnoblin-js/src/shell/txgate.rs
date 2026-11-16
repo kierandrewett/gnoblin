@@ -98,6 +98,49 @@ fn fail_call(state: &mut HostState, token: u64, code: &str) {
     route_answer(state, token, b"", &error);
 }
 
+/// What a refusal no newer base cures does to the ops it refused.
+#[derive(Debug, Default, PartialEq)]
+struct Refused {
+    /// The ops that go again, in order: the ones that were not at fault.
+    kept: Vec<TxOp>,
+    /// The ops given up: the one the compositor named (every op when it named none), and every op on a node that a
+    /// given-up `new` would have made, which has nothing to land on.
+    dropped: Vec<TxOp>,
+    /// The calls whose text is secret, as `(method, token)`: they cannot go again.
+    secret: Vec<(String, u64)>,
+}
+
+/// Splits the ops of a transaction the compositor refused for a reason of its own. `failed_op` is the op it names, or
+/// `-1` when it refused the batch as a whole and so named none.
+fn partition_refused(failed_op: i64, ops: Vec<SentOp>) -> Refused {
+    let named = usize::try_from(failed_op).ok();
+    let mut out = Refused::default();
+    let mut unmade: Vec<NodeId> = Vec::new();
+    for (index, op) in ops.into_iter().enumerate() {
+        let op = match op {
+            SentOp::Keep(op) => op,
+            SentOp::Secret { method, token } => {
+                out.secret.push((method, token));
+                continue;
+            }
+        };
+        let on_unmade = match &op {
+            TxOp::Set { node, .. } | TxOp::Destroy { node } | TxOp::Call { node, .. } => unmade.contains(node),
+            TxOp::Insert { node, parent, .. } => unmade.contains(node) || unmade.contains(parent),
+            TxOp::New { .. } => false,
+        };
+        if named.is_none_or(|failed| failed == index) || on_unmade {
+            if let TxOp::New { id, .. } = &op {
+                unmade.push(*id);
+            }
+            out.dropped.push(op);
+        } else {
+            out.kept.push(op);
+        }
+    }
+    out
+}
+
 impl JsShell {
     /// Matches a reply to its transaction and, for a stale refusal, keeps the ops to send again.
     pub(super) fn handle_reply(&mut self, reply: &TxReply, diagnostics: &mut Vec<String>) {
@@ -138,21 +181,64 @@ impl JsShell {
             reply.failed_op
         );
         if !reply.applied {
-            let state = self.state.borrow();
-            let op = usize::try_from(reply.failed_op)
-                .ok()
-                .and_then(|i| {
-                    ops.get(i).map(|op| match op {
-                        SentOp::Keep(op) => describe_op(i, op, &state.mirror),
-                        SentOp::Secret { method, .. } => format!("op {i}: call {method} (secret text not kept)"),
+            let op = {
+                let state = self.state.borrow();
+                usize::try_from(reply.failed_op)
+                    .ok()
+                    .and_then(|i| {
+                        ops.get(i).map(|op| match op {
+                            SentOp::Keep(op) => describe_op(i, op, &state.mirror),
+                            SentOp::Secret { method, .. } => format!("op {i}: call {method} (secret text not kept)"),
+                        })
                     })
-                })
-                .unwrap_or_else(|| "op not recorded".to_owned());
+                    .unwrap_or_else(|| "op not recorded".to_owned())
+            };
             diagnostics.push(format!(
                 "transaction {} refused at op {}: {}; {}",
                 reply.serial, reply.failed_op, reply.code, op
             ));
+            self.give_up_refused(reply, ops, diagnostics);
         }
+    }
+
+    /// Settles a refusal no newer base cures: the op it names is wrong whatever the base, so sending it again would be
+    /// refused again. The compositor applies a transaction whole or not at all, so the ops beside the named one were
+    /// refused with it and are not at fault: they go again, in order, on the next base, and a refusal costs the frame
+    /// its one bad op and not the rest of its writes (see [`partition_refused`]).
+    ///
+    /// What is given up is told to whoever waits for it: a call is answered `failed`, so its caller is not left
+    /// waiting, and a write is forgotten, so a read shows what the compositor holds and not the value it refused (the
+    /// layout is not asked to write it again: the same value would be refused again). A call whose text is secret
+    /// cannot go again whatever the cause and is answered `failed`.
+    fn give_up_refused(&mut self, reply: &TxReply, ops: Vec<SentOp>, diagnostics: &mut Vec<String>) {
+        let Refused { kept, dropped, secret } = partition_refused(reply.failed_op, ops);
+        let mut state = self.state.borrow_mut();
+        for op in &dropped {
+            match op {
+                TxOp::Set { node, key, .. } => state.tick.forget_write(*node, key),
+                TxOp::Call { token, .. } => fail_call(&mut state, *token, &reply.code),
+                TxOp::New { .. } | TxOp::Insert { .. } | TxOp::Destroy { .. } => {}
+            }
+        }
+        for (method, token) in secret {
+            fail_call(&mut state, token, &reply.code);
+            diagnostics.push(format!(
+                "transaction {} {}: the {method} call carries a secret, was not sent again and failed",
+                reply.serial, reply.code
+            ));
+        }
+        log::debug!(
+            area = "shell",
+            "transaction {} refused {} at op {}; {} ops sent again, {} given up",
+            reply.serial,
+            reply.code,
+            reply.failed_op,
+            kept.len(),
+            dropped.len()
+        );
+        let mut kept = kept;
+        kept.append(&mut self.retry);
+        self.retry = kept;
     }
 
     /// Keeps the ops of a transaction refused for an out-of-date base, to be sent again on the next base ahead of the
@@ -303,5 +389,115 @@ impl JsShell {
             self.link.transact(&tx).map_err(|e| JsShellError::Link(e.0))?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use gnoblin_secret::SecretText;
+    use gnoblin_tree_client::tree_mirror::MirrorValue;
+
+    use super::*;
+
+    fn set(node: NodeId, key: &str) -> SentOp {
+        SentOp::Keep(TxOp::Set {
+            node,
+            key: key.to_owned(),
+            value: MirrorValue::Double(1.0),
+            seconds: None,
+            delay: None,
+            tween: None,
+            samples: None,
+        })
+    }
+
+    fn made(id: NodeId) -> SentOp {
+        SentOp::Keep(TxOp::New {
+            id,
+            class: "canvas".to_owned(),
+        })
+    }
+
+    fn insert(node: NodeId, parent: NodeId) -> SentOp {
+        SentOp::Keep(TxOp::Insert {
+            node,
+            parent,
+            index: -1,
+        })
+    }
+
+    fn call(node: NodeId, token: u64) -> SentOp {
+        SentOp::Keep(TxOp::Call {
+            node,
+            method: "apply".to_owned(),
+            args: Vec::new(),
+            token,
+            text: SecretText::new(String::new()),
+        })
+    }
+
+    fn ops(parts: Vec<SentOp>) -> Vec<TxOp> {
+        parts
+            .into_iter()
+            .map(|op| match op {
+                SentOp::Keep(op) => op,
+                SentOp::Secret { .. } => panic!("a secret has no op to compare"),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_named_op_is_given_up_and_the_ops_beside_it_go_again_in_order() {
+        let refused = partition_refused(1, vec![set(3, "x"), set(4, "y"), call(5, 7), set(6, "x")]);
+        assert_eq!(refused.dropped, ops(vec![set(4, "y")]));
+        assert_eq!(refused.kept, ops(vec![set(3, "x"), call(5, 7), set(6, "x")]));
+        assert!(refused.secret.is_empty());
+    }
+
+    #[test]
+    fn a_refusal_that_names_no_op_gives_every_op_up() {
+        let refused = partition_refused(-1, vec![set(3, "x"), call(5, 7)]);
+        assert!(refused.kept.is_empty(), "no op can be told from the others");
+        assert_eq!(refused.dropped, ops(vec![set(3, "x"), call(5, 7)]));
+    }
+
+    #[test]
+    fn the_ops_on_a_node_a_given_up_new_would_have_made_go_with_it() {
+        // The `new` of node 9 is refused: its insert, its writes and the insert of a node under it have nothing to
+        // land on. The window's write beside them, and a `new` of a node that is not under it, are not at fault.
+        let refused = partition_refused(
+            1,
+            vec![
+                set(3, "x"),
+                made(9),
+                insert(9, 1),
+                set(9, "width"),
+                made(10),
+                insert(10, 9),
+                set(10, "width"),
+            ],
+        );
+        assert_eq!(
+            refused.dropped,
+            ops(vec![made(9), insert(9, 1), set(9, "width"), insert(10, 9)])
+        );
+        assert_eq!(refused.kept, ops(vec![set(3, "x"), made(10), set(10, "width")]));
+    }
+
+    #[test]
+    fn a_secret_call_is_never_kept_whoever_was_at_fault() {
+        let refused = partition_refused(
+            0,
+            vec![
+                set(3, "x"),
+                SentOp::Secret {
+                    method: "authenticate".to_owned(),
+                    token: 4,
+                },
+            ],
+        );
+        assert_eq!(refused.dropped, ops(vec![set(3, "x")]));
+        assert!(refused.kept.is_empty());
+        assert_eq!(refused.secret, [("authenticate".to_owned(), 4)]);
     }
 }

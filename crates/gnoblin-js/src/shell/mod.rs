@@ -12,6 +12,9 @@
 //! applies nothing, so what is sent again is the whole transaction, every kind of op, and a refusal that names no
 //! op (the base is older than the compositor's history) sends the whole frame again. What cannot be sent again
 //! (a call whose text is a secret) is answered as failed, and a write given up on is handed back to the layout.
+//! A refusal no newer base cures (`read-only`, `not-finite`, `too-large`, ...) gives up the op it names and sends
+//! the others again, so one bad write costs a frame that write and nothing else; a call that is given up is answered
+//! as failed too, and the script reads what the compositor holds again.
 //!
 //! The boot order is: attach and drain the snapshot; load the `gnoblin` module; evaluate the entry
 //! ([`JsShell::load_entry`]); announce `ready` for the snapshot's nodes, parents first, on the first
