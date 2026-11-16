@@ -155,6 +155,7 @@
 pub mod dmabuf;
 mod gpu;
 pub mod headless;
+pub mod input_settings;
 pub mod nested;
 pub mod render;
 pub mod selection;
@@ -169,6 +170,7 @@ use smithay::reexports::calloop::LoopHandle;
 
 use gnoblin_output::{DisplayMode, OutputDescriptor};
 
+pub use input_settings::InputSettingsRefusal;
 pub use selection::{SelectionRefusal, SelectionTarget};
 pub use tablet::{PadLayout, Stylus, TabletAxes, TabletEvent, TabletTool, ToolAxes, ToolKind};
 
@@ -992,6 +994,23 @@ pub trait Backend<S: Host + 'static> {
         _fd: std::os::fd::OwnedFd,
     ) -> Result<(), SelectionRefusal> {
         Err(SelectionRefusal::Unsupported)
+    }
+
+    /// The document's `input` section, applied to the devices this backend has and to every device that arrives
+    /// later. The host calls it once at start with the section the last accepted document holds, and again each
+    /// time a committed document changes it. A document with no `input` section is an empty one, which puts
+    /// back whatever an earlier one set.
+    ///
+    /// A device that refuses a setting does not fail the call: the backend says so in its log, once per device
+    /// and setting, and goes on with the rest ([`input_settings::DeviceSettings::apply`]).
+    ///
+    /// # Errors
+    ///
+    /// [`InputSettingsRefusal`] when this backend has no devices of its own to configure, which is the default.
+    /// A refusal is typed and not ignored, so the host can say that a document's `input.touchpad` has no effect
+    /// on this session.
+    fn set_input_settings(&mut self, _input: &gnoblin_config::Input) -> Result<(), InputSettingsRefusal> {
+        Err(InputSettingsRefusal::NoDevices)
     }
 
     /// What this backend can control on its outputs: gamma tables and power state.

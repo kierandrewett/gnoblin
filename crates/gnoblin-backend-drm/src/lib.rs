@@ -464,6 +464,20 @@ impl<S: Host + 'static> Backend<S> for Drm {
         &mut self.input
     }
 
+    fn set_input_settings(
+        &mut self,
+        input: &gnoblin_config::Input,
+    ) -> Result<(), gnoblin_backend::InputSettingsRefusal> {
+        match &mut self.input {
+            Input::Live(libinput) => {
+                libinput.set_input_settings(input);
+                Ok(())
+            }
+            // No libinput context is open, so there is no device to configure.
+            Input::Refused(_) => Err(gnoblin_backend::InputSettingsRefusal::NoDevices),
+        }
+    }
+
     fn register(&mut self, loop_handle: &LoopHandle<'static, S>) -> io::Result<()> {
         self.gpu.register(loop_handle)?;
         let screens = self.screens();

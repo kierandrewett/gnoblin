@@ -412,6 +412,72 @@ fn devices_are_numbered_once_and_the_gpu_removal_is_reported_as_the_primary_lost
     );
 }
 
+/// A libinput device that records the calls made on it, standing in for one the kernel has.
+#[derive(Clone, Default)]
+struct FakeLibinput(std::rc::Rc<std::cell::RefCell<Vec<crate::libinput::configure::DeviceCall>>>);
+
+impl crate::libinput::configure::Execute for FakeLibinput {
+    fn call(
+        &mut self,
+        call: crate::libinput::configure::DeviceCall,
+    ) -> Result<(), gnoblin_backend::input_settings::SettingRefusal> {
+        self.0.borrow_mut().push(call);
+        Ok(())
+    }
+}
+
+#[test]
+fn a_document_configures_each_device_through_libinput_calls() {
+    use crate::libinput::configure::{Configurator, DeviceCall, Profile};
+    use gnoblin_backend::input_settings::DeviceBook;
+    use gnoblin_backend::{DeviceInfo, DeviceKind};
+    use gnoblin_config::{AccelProfile, Inherit, Input, Mouse, Touchpad};
+
+    // Devices are numbered the way the backend numbers them, and configured when they are announced.
+    let mut numbering = crate::libinput::devices::Devices::new();
+    let mut book: DeviceBook<Configurator<FakeLibinput>> = DeviceBook::new();
+    let mut calls = Vec::new();
+    for (sysname, kind) in [("event3", DeviceKind::Touchpad), ("event4", DeviceKind::Mouse)] {
+        let draft = DeviceInfo::new(DeviceId::VIRTUAL, sysname, kind);
+        let info = numbering.announce(sysname, draft).expect("a new device is announced");
+        let fake = FakeLibinput::default();
+        calls.push(fake.0.clone());
+        assert!(book.add(&info, Configurator::new(fake)).is_empty());
+    }
+    // The section arrives after both devices: a reload, and the first one of the session.
+    book.set_input(Input {
+        touchpad: Some(Touchpad {
+            tap_to_click: Some(Inherit::Value(true)),
+            ..Touchpad::default()
+        }),
+        mouse: Some(Mouse {
+            accel_profile: Some(Inherit::Value(AccelProfile::Flat)),
+            ..Mouse::default()
+        }),
+        ..Input::default()
+    });
+    assert_eq!(
+        *calls[0].borrow(),
+        [DeviceCall::Tap(true)],
+        "the touchpad reads the touchpad section"
+    );
+    assert_eq!(
+        *calls[1].borrow(),
+        [DeviceCall::AccelProfile(Profile::Flat)],
+        "and the mouse reads the mouse section"
+    );
+    // An unplugged device is forgotten, so a later reload makes no call on it.
+    let gone = numbering.remove("event3").expect("a known device");
+    assert!(book.remove(gone).is_some());
+    book.set_input(Input::default());
+    assert_eq!(calls[0].borrow().len(), 1, "no call reaches a device that went away");
+    assert_eq!(
+        calls[1].borrow().len(),
+        2,
+        "the mouse's flat profile is put back to its default"
+    );
+}
+
 /// Every row of the table, for the DRM column: measured by the tests above through the same code the backend runs,
 /// or declared with the words the table must carry.
 #[test]
@@ -473,5 +539,24 @@ fn the_status_table_holds_for_the_hardware_backend() {
         measured.is(id, CellStatus::NotApplicable);
     }
     measured.declared("gpu.footprint", "unproven on hardware");
+    // Measured above against fake libinput devices (`a_document_configures_each_device_through_libinput_calls`):
+    // the calls are proven, and what a real device answers is not.
+    measured.is("input.settings", CellStatus::Supported);
+    assert!(
+        table
+            .row("input.settings")
+            .cell("drm")
+            .note
+            .contains("fake libinput devices"),
+        "`input.settings` is proven on fake devices, and the table says so"
+    );
+    assert!(
+        table
+            .row("input.settings")
+            .cell("drm")
+            .note
+            .contains("unproven on hardware"),
+        "and says what is not proven"
+    );
     measured.finish();
 }

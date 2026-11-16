@@ -51,7 +51,7 @@ use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use gnoblin_types::{OutputId, Rect, Scale, Size};
+use gnoblin_types::{DeviceId, OutputId, Rect, Scale, Size};
 use smithay::reexports::calloop::LoopHandle;
 
 use gnoblin_output::DisplayMode;
@@ -59,6 +59,7 @@ use gnoblin_output::DisplayMode;
 use gnoblin_config::RendererChoice;
 
 use crate::gpu::{DmabufHub, GpuTarget, TargetParts};
+use crate::input_settings::{DeviceBook, Setting, VirtualDevice};
 use crate::render::renderer::{AnyRenderer, RendererKind};
 use crate::{
     Backend, BackendError, BackendEvent, DmabufCopy, DmabufCopyError, DmabufImportError, DmabufProvider, DmabufSource,
@@ -86,6 +87,8 @@ struct HeadlessControl {
     /// Mode changes still allowed before one is refused, or `None` for no injected failure. The refusal happens once:
     /// a rollback that follows it must succeed, or a test could not tell a restore from a stuck output.
     configure_budget: Option<u32>,
+    /// The virtual devices the session's tests announced, each holding the settings the document gave it.
+    input: DeviceBook<VirtualDevice>,
 }
 
 fn locked<T>(shared: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -392,6 +395,8 @@ struct HeadlessRequests {
     end_session: bool,
     /// Whether the thing driving the backend went away.
     lose_device: bool,
+    /// Input events to deliver on the next dispatch, as if a device had produced them.
+    input: Vec<InputEvent>,
 }
 
 /// A caller's control over a headless backend a session already owns.
@@ -406,6 +411,13 @@ pub struct HeadlessHandle {
 }
 
 impl HeadlessHandle {
+    /// Queues an input event for the next dispatch, as a device of the session would produce it. A
+    /// [`InputEvent::DeviceAdded`] announces a virtual device, which the document's `input` section
+    /// configures like a hardware device ([`HeadlessHandle::device_settings`]).
+    pub fn push_input(&self, event: InputEvent) {
+        self.requests().input.push(event);
+    }
+
     /// Connects a new output on the next dispatch.
     ///
     /// # Errors
@@ -506,6 +518,20 @@ impl HeadlessHandle {
     #[must_use]
     pub fn power(&self, output: OutputId) -> bool {
         locked(&self.control).power.get(&output).copied().unwrap_or(true)
+    }
+
+    /// The settings the document's `input` section gave a virtual device, in a fixed order, or `None` for a
+    /// device nobody announced (or that was removed).
+    ///
+    /// A headless session has no hardware, so the settings are recorded where a hardware backend would send
+    /// them to libinput: the same section reaches the same devices through the same rules.
+    #[must_use]
+    pub fn device_settings(&self, device: DeviceId) -> Option<Vec<Setting>> {
+        let control = locked(&self.control);
+        control
+            .input
+            .device(device)
+            .map(|held| held.settings().cloned().collect())
     }
 }
 
@@ -842,6 +868,9 @@ impl Headless {
     /// Applies the requests a [`HeadlessHandle`] queued, as the next dispatch.
     fn apply_requests(&mut self) {
         let requests = std::mem::take(&mut *self.requests.lock().unwrap_or_else(PoisonError::into_inner));
+        for event in requests.input {
+            self.input.push(event);
+        }
         if let Some(present) = requests.present {
             self.presenting = present;
         }
@@ -864,6 +893,31 @@ impl Headless {
         for (connector, mode, scale, identity) in requests.connect {
             self.try_push_output(&connector, mode, scale, identity)
                 .expect("a virtual output whose renderer this machine can create");
+        }
+    }
+
+    /// Hands everything queued to the host, in order.
+    fn deliver_input<S: Host>(&mut self, host: &mut S) {
+        while let Some(event) = self.input.next_event() {
+            self.observe_device(&event);
+            host.input(event);
+        }
+    }
+
+    /// Takes a device that joins or leaves the session through the input queue into the book of virtual devices,
+    /// so the document's `input` section reaches it as it would reach a device of the hardware backend.
+    fn observe_device(&mut self, event: &InputEvent) {
+        match event {
+            InputEvent::DeviceAdded { device } => {
+                let news = locked(&self.control).input.add(device, VirtualDevice::default());
+                for refused in news {
+                    refused.report();
+                }
+            }
+            InputEvent::DeviceRemoved { id } => {
+                let _ = locked(&self.control).input.remove(*id);
+            }
+            _ => {}
         }
     }
 
@@ -931,15 +985,23 @@ impl<S: Host + 'static> Backend<S> for Headless {
     }
 
     fn dispatch(&mut self, host: &mut S) -> Vec<BackendEvent> {
-        while let Some(event) = self.input.next_event() {
-            host.input(event);
-        }
+        self.deliver_input(host);
         self.apply_requests();
+        // What a handle queued this turn is delivered this turn.
+        self.deliver_input(host);
         std::mem::take(&mut self.pending)
     }
 
     fn secure_treatment(&self) -> SecureTreatment {
         self.secure_treatment
+    }
+
+    fn set_input_settings(&mut self, input: &gnoblin_config::Input) -> Result<(), crate::InputSettingsRefusal> {
+        let news = locked(&self.control).input.set_input(input.clone());
+        for refused in news {
+            refused.report();
+        }
+        Ok(())
     }
 
     fn effect_kinds(&self) -> &'static [&'static str] {

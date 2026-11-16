@@ -235,6 +235,10 @@ pub struct Config {
     pub input_sources: Option<gnoblin_config::InputSources>,
     /// The document's `input.keyboard`: repeat delay, repeat interval and XKB options.
     pub keyboard: Option<gnoblin_config::Keyboard>,
+    /// The document's whole `input` section, given to the backend's devices when the session starts
+    /// ([`Backend::set_input_settings`]); a later commit hands it over again through
+    /// [`ControlHandle::set_input_settings`]. [`None`] configures no device.
+    pub input: Option<gnoblin_config::Input>,
     /// The document's `shortcuts`: each named binding and the command it runs.
     pub shortcuts: Option<gnoblin_config::Shortcuts>,
     /// The document's `touchpad-gestures`, in declaration order.
@@ -310,6 +314,7 @@ impl Default for Config {
             protocols: Protocols::default(),
             input_sources: None,
             keyboard: None,
+            input: None,
             shortcuts: None,
             touchpad_gestures: Vec::new(),
             titlebar_actions: TitlebarActions::default(),
@@ -354,6 +359,16 @@ fn apply_global_scale(backend: &mut dyn Backend<State>, previous: Option<u32>, n
         }
     }
     true
+}
+
+/// Hands the document's `input` section to the backend's devices.
+///
+/// A backend with no devices of its own refuses, and the refusal is a line in the log and not a failure: a nested
+/// session's devices are the host's, and the host applies its own settings to them.
+fn apply_input_settings(backend: &mut dyn Backend<State>, input: &gnoblin_config::Input) {
+    if let Err(refusal) = backend.set_input_settings(input) {
+        log::debug!(area = "input", %refusal, backend = backend.name(), "the input settings were not applied to the backend's devices");
+    }
 }
 
 /// A session that is ready to run.
@@ -423,6 +438,10 @@ impl Server {
         let workspace_names = config.workspace_names;
         let global_scale = config.monitors.global_scale;
         apply_global_scale(backend.as_mut(), None, global_scale);
+        // The devices the backend has, and the ones that arrive, take the document's settings from the first turn.
+        if let Some(input) = &config.input {
+            apply_input_settings(backend.as_mut(), input);
+        }
         let outputs = backend.outputs().to_vec();
         let (ping, source) = make_ping().map_err(StartupError::Io)?;
         // A shell's submission wakes the loop, so a frame drains it even when nothing else
@@ -569,6 +588,7 @@ impl Server {
             ping,
             screenshots: Screenshots::default(),
             global_scale: Mutex::new(None),
+            input_settings: Mutex::new(None),
             logout: std::sync::atomic::AtomicBool::new(false),
             backend_lost: std::sync::atomic::AtomicBool::new(false),
         });
@@ -846,6 +866,10 @@ impl Server {
                     }
                     None => false,
                 };
+                // A document committed since the last turn is handed to the devices here, where the backend is held.
+                if let Some(input) = control.take_input_settings() {
+                    apply_input_settings(backend.as_mut(), &input);
+                }
                 state.poll_liveness();
                 state.flush();
                 // A locker that dies sends no request, so the lock is told to look for
@@ -1280,6 +1304,14 @@ impl ControlHandle {
         self.control.request_global_scale(scale);
     }
 
+    /// Hands the document's `input` section to the backend's devices from the next loop turn, as a committed
+    /// document does: every device the backend has is configured again, and a setting that left the document is
+    /// put back to the device's own default. A request made before the loop turned is replaced by a later one, so
+    /// only the newest section is applied.
+    pub fn set_input_settings(&self, input: gnoblin_config::Input) {
+        self.control.request_input_settings(input);
+    }
+
     /// Replaces the magnifier and colour filter from the next loop turn, as a committed
     /// document does. Every output is repainted, so the next frame shows the new filter.
     pub fn set_visual_accessibility(&self, settings: VisualAccessibilitySettings) {
@@ -1690,6 +1722,9 @@ struct Control {
     /// [`None`] follows the system setting. The backend is owned by the loop, so a scale
     /// cannot be applied from the command queue, which has no backend.
     global_scale: Mutex<Option<Option<u32>>>,
+    /// The `input` section a control handle asked for and the loop has not given the backend yet. Like the scale,
+    /// it waits for the loop because the backend is the loop's, and a newer section replaces an older one.
+    input_settings: Mutex<Option<Box<gnoblin_config::Input>>>,
     /// Set when a logout ends the loop, so the caller can tell a logout from a stop.
     logout: std::sync::atomic::AtomicBool,
     /// Set when the backend reports that the device driving it is gone, which ends the loop with a failure.
@@ -1711,6 +1746,18 @@ impl Control {
 
     fn request_global_scale(&self, scale: Option<u32>) {
         *self.global_scale.lock().unwrap_or_else(PoisonError::into_inner) = Some(scale);
+        self.ping.ping();
+    }
+
+    fn take_input_settings(&self) -> Option<Box<gnoblin_config::Input>> {
+        self.input_settings
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+    }
+
+    fn request_input_settings(&self, input: gnoblin_config::Input) {
+        *self.input_settings.lock().unwrap_or_else(PoisonError::into_inner) = Some(Box::new(input));
         self.ping.ping();
     }
 

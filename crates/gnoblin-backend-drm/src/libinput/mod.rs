@@ -1,10 +1,11 @@
 //! The seat's input devices: libinput over the session, mapped to the contract's events.
 //!
 //! This is the mechanism half of the Input card (design/rust-compositor.md, "Input"). The
-//! decisions are next door in [`map`] (what a device event means) and [`settings`] (what the
-//! configuration asks a device to be), both pure and unit-tested. This module is what is left:
-//! a libinput context opened through the seat's session, a device table, and the translation
-//! from Smithay's device-agnostic events into [`DeviceEvent`]s.
+//! decisions are next door in [`map`] (what a device event means) and in
+//! `gnoblin_backend::input_settings` (what the configuration asks a device to be), both pure and
+//! unit-tested, and [`configure`] makes a device so. This module is what is left: a libinput context
+//! opened through the seat's session, a device table, and the translation from Smithay's
+//! device-agnostic events into [`DeviceEvent`]s.
 //!
 //! ```text
 //! libinput event -> DeviceEvent (map::Mapper) -> InputEvent -> the compositor's seat
@@ -15,8 +16,9 @@
 //!
 //! libinput reports capabilities, not kinds, so [`kind_of`] is the rule that turns them into
 //! the configuration's kinds: a touchpad reports tap finger counts, a touch screen has the
-//! touch capability, a keyboard has the keyboard capability and no pointer capability, and
-//! everything else is a mouse. It is one function so the rule has one place to change.
+//! touch capability, a keyboard has the keyboard capability and no pointer capability, a
+//! trackball and a pointing stick carry udev's tags for them, and everything else is a mouse.
+//! The rule is one pure function, [`classify`], so it has one place to change.
 //!
 //! # Failure modes first
 //!
@@ -26,20 +28,20 @@
 //! 2. **A resumed session delivers the events of the pause.** The context is suspended on a
 //!    pause and the queue is dropped, because a delta accumulated while another VT was on the
 //!    display is a pointer jump nobody asked for.
-//! 3. **A refused setting stops the rest of the configuration.** It is counted and skipped
-//!    ([`Applier`]): `settings::tests::a_refused_setting_does_not_stop_the_rest`.
+//! 3. **A refused setting stops the rest of the configuration.** It is recorded and skipped
+//!    (`Applier`): `input_settings::tests::a_refused_setting_does_not_stop_the_rest`.
 //! 4. **An event is translated with the wrong scale.** libinput states absolute and touch
 //!    positions as fractions of the device's own range, so they pass through as they are and
 //!    the mapper places them on an output: `map::tests::an_absolute_point_lands_where_it_was_reported`.
 //! 5. **A gesture reaches the seat as a pointer click.** Gestures are [`InputEvent::Touchpad`]s
 //!    and never pointer events, so the router sees them and no client does.
 
+/// The configuration calls libinput takes, and the translation of a setting into them.
+pub mod configure;
 /// The devices the seat has, and the numbers they were announced under.
 pub mod devices;
 /// The translation rules: libinput device events become seat events, as pure logic over plain values.
 pub mod map;
-/// The configuration rules: what each device is asked to be, and what a refusal costs.
-pub mod settings;
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -59,15 +61,17 @@ use smithay::backend::session::libseat::LibSeatSession;
 use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::input as libinput;
 
+use gnoblin_backend::input_settings::DeviceBook;
 use gnoblin_backend::{
     DeviceCaps, DeviceInfo, DeviceKind, InputEvent, InputSource, PadLayout, RawTouchpadKind, RawTouchpadPhase,
     RawTouchpadSample, TabletAxes, TabletTool, ToolAxes, ToolKind, TouchPhase, single_line,
 };
+use gnoblin_config::Input;
 use gnoblin_types::DeviceId;
 
+pub use configure::Configurator;
 pub use devices::{Device, Devices};
 pub use map::{DeviceEvent, Mapper, Screen, TabletDeviceEvent};
-pub use settings::{Accel, Applier, ButtonMap, Click, DeviceSettings, Scroll, Setting};
 
 use crate::log;
 
@@ -104,6 +108,9 @@ pub struct Libinput {
     ready: VecDeque<InputEvent>,
     /// The devices the seat has, and the numbers they were announced under.
     devices: Devices,
+    /// The document's `input` section and the libinput devices it was applied to, so a device that arrives is
+    /// configured from it and a reload reaches every device the seat has.
+    book: DeviceBook<Configurator<libinput::Device>>,
     /// Whether the seat is suspended, in which case nothing is delivered.
     suspended: bool,
     /// The libinput adapter, which [`Libinput::source`] hands to the loop once.
@@ -153,6 +160,7 @@ impl Libinput {
             mapper: Mapper::new(),
             ready: VecDeque::new(),
             devices: Devices::new(),
+            book: DeviceBook::new(),
             suspended: false,
             context: Some(adapter),
             touch_positions: BTreeMap::new(),
@@ -195,6 +203,16 @@ impl Libinput {
     #[must_use]
     pub fn devices(&self) -> &[Device] {
         self.devices.all()
+    }
+
+    /// Takes the document's `input` section: it is applied to every device the seat has now, and to each one
+    /// that arrives later. A setting that left the document is put back to the device's own default.
+    ///
+    /// A device that refuses a setting is reported in the log once, and the rest of its settings still apply.
+    pub fn set_input_settings(&mut self, input: &Input) {
+        for refused in self.book.set_input(input.clone()) {
+            refused.report();
+        }
     }
 
     /// Tells the mapper which outputs absolute devices report on.
@@ -282,6 +300,10 @@ impl Libinput {
                 let draft = describe(&device);
                 if let Some(info) = self.devices.announce(device.sysname(), draft) {
                     log::debug!(area = "input", name = %info.name, id = %info.id, kind = ?info.kind, caps = %info.caps, "a device arrived");
+                    // The device is configured the moment the seat knows it, before its first event is read.
+                    for refused in self.book.add(&info, Configurator::new(device)) {
+                        refused.report();
+                    }
                     produced.push(InputEvent::DeviceAdded { device: info });
                 }
             }
@@ -289,6 +311,7 @@ impl Libinput {
                 let sysname = device.sysname().to_owned();
                 log::info!(area = "input", sysname = %sysname, "a device went away");
                 if let Some(id) = self.devices.remove(&sysname) {
+                    let _ = self.book.remove(id);
                     // Only this device's held buttons and touch points end with it.
                     produced.extend(self.mapper.cancel_device(id));
                     self.touch_positions.retain(|(held, _), _| *held != id);
@@ -339,7 +362,15 @@ impl Libinput {
             BackendEvent::PointerAxis { event } => {
                 let (horizontal, vertical) = axis(&event);
                 let device = self.device_id(&event.device());
-                produced.extend(self.mapper.event(device, DeviceEvent::Scroll { horizontal, vertical }));
+                // `touchpad.scroll-speed` is the seat's multiplier: the device reports its own distance.
+                let speed = self.book.device(device).map_or(1.0, Configurator::scroll_speed);
+                produced.extend(self.mapper.event(
+                    device,
+                    DeviceEvent::Scroll {
+                        horizontal: horizontal * speed,
+                        vertical: vertical * speed,
+                    },
+                ));
             }
             BackendEvent::TouchDown { event } => {
                 let device = self.device_id(&event.device());
@@ -616,25 +647,68 @@ fn tablet_position<E: TabletToolEvent<LibinputInputBackend>>(event: &E) -> (f64,
     )
 }
 
-/// The configuration kind of a device, from the capabilities the driver reports.
+/// What the driver and udev say about a device, as plain facts, for [`classify`].
+#[derive(Clone, Copy, Debug, Default)]
+struct Facts {
+    /// The finger count libinput reports for tapping; zero for a device that cannot tap.
+    tap_fingers: u32,
+    /// The device has the touch capability.
+    touch: bool,
+    /// The device has the keyboard capability.
+    keyboard: bool,
+    /// The device has the pointer capability.
+    pointer: bool,
+    /// udev tags the device `ID_INPUT_POINTINGSTICK`.
+    pointing_stick: bool,
+    /// udev tags the device `ID_INPUT_TRACKBALL`.
+    trackball: bool,
+}
+
+/// The configuration kind a device's facts make it.
 ///
-/// libinput names capabilities rather than kinds, and the configuration's sections are kinds.
-/// The rule, in order: a device that reports a tap finger count is a touchpad, a device with a
-/// touch capability is a touch screen, a device with a keyboard capability and no pointer
-/// capability is a keyboard, and anything else is a mouse.
-#[must_use]
-pub fn kind_of(device: &libinput::Device) -> DeviceKind {
-    if device.config_tap_finger_count() > 0 {
+/// The rule, in order: a device that reports a tap finger count is a touchpad, a device with a touch
+/// capability is a touch screen, a device with a keyboard capability and no pointer capability is a
+/// keyboard, a device udev tags as a pointing stick or as a trackball is that, and anything else is a
+/// mouse. libinput has no capability for the last two, so without the udev tags a trackball would read the
+/// mouse section and `input.trackball` and `input.pointing-stick` would apply to nothing.
+fn classify(facts: Facts) -> DeviceKind {
+    if facts.tap_fingers > 0 {
         DeviceKind::Touchpad
-    } else if device.has_capability(libinput::DeviceCapability::Touch) {
+    } else if facts.touch {
         DeviceKind::Touch
-    } else if device.has_capability(libinput::DeviceCapability::Keyboard)
-        && !device.has_capability(libinput::DeviceCapability::Pointer)
-    {
+    } else if facts.keyboard && !facts.pointer {
         DeviceKind::Keyboard
+    } else if facts.pointing_stick {
+        DeviceKind::PointingStick
+    } else if facts.trackball {
+        DeviceKind::Trackball
     } else {
         DeviceKind::Mouse
     }
+}
+
+/// Whether udev tags the input device `sysname` with `property` set to 1.
+///
+/// The tags come from systemd's hwdb (`ID_INPUT_TRACKBALL`, `ID_INPUT_POINTINGSTICK`), and libinput reads the same
+/// ones. A device udev does not know, or a machine without the hwdb, is untagged, which is a mouse.
+fn tagged(sysname: &str, property: &str) -> bool {
+    smithay::reexports::udev::Device::from_subsystem_sysname("input".to_owned(), sysname.to_owned())
+        .ok()
+        .and_then(|device| device.property_value(property).map(|value| value == "1"))
+        .unwrap_or(false)
+}
+
+/// The configuration kind of a device, from the capabilities the driver reports and the tags udev gives it.
+#[must_use]
+pub fn kind_of(device: &libinput::Device) -> DeviceKind {
+    classify(Facts {
+        tap_fingers: device.config_tap_finger_count(),
+        touch: device.has_capability(libinput::DeviceCapability::Touch),
+        keyboard: device.has_capability(libinput::DeviceCapability::Keyboard),
+        pointer: device.has_capability(libinput::DeviceCapability::Pointer),
+        pointing_stick: tagged(device.sysname(), "ID_INPUT_POINTINGSTICK"),
+        trackball: tagged(device.sysname(), "ID_INPUT_TRACKBALL"),
+    })
 }
 
 /// What the seat records about a libinput device: its name, ids, kind, capabilities and logical seat.
@@ -707,5 +781,66 @@ fn end_phase(cancelled: bool) -> RawTouchpadPhase {
         RawTouchpadPhase::Cancel
     } else {
         RawTouchpadPhase::End
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_device_that_taps_is_a_touchpad_whatever_else_it_says() {
+        let touchpad = Facts {
+            tap_fingers: 3,
+            pointer: true,
+            trackball: true,
+            ..Facts::default()
+        };
+        assert_eq!(classify(touchpad), DeviceKind::Touchpad);
+    }
+
+    #[test]
+    fn a_trackball_and_a_pointing_stick_are_what_udev_tags_them() {
+        let pointer = Facts {
+            pointer: true,
+            ..Facts::default()
+        };
+        assert_eq!(classify(pointer), DeviceKind::Mouse, "an untagged pointer is a mouse");
+        assert_eq!(
+            classify(Facts {
+                trackball: true,
+                ..pointer
+            }),
+            DeviceKind::Trackball
+        );
+        assert_eq!(
+            classify(Facts {
+                pointing_stick: true,
+                ..pointer
+            }),
+            DeviceKind::PointingStick
+        );
+    }
+
+    #[test]
+    fn a_keyboard_is_a_device_with_keys_and_no_pointer() {
+        let keys = Facts {
+            keyboard: true,
+            ..Facts::default()
+        };
+        assert_eq!(classify(keys), DeviceKind::Keyboard);
+        assert_eq!(
+            classify(Facts { pointer: true, ..keys }),
+            DeviceKind::Mouse,
+            "a keyboard with a pointer of its own is the pointer's kind"
+        );
+        assert_eq!(classify(Facts { touch: true, ..keys }), DeviceKind::Touch);
+    }
+
+    #[test]
+    fn a_device_with_no_capability_the_rule_knows_is_a_mouse() {
+        // A drawing tablet or a lid switch. The settings layer reads the capabilities and gives it no pointer
+        // section (`a_device_without_a_pointer_gets_no_pointer_setting`).
+        assert_eq!(classify(Facts::default()), DeviceKind::Mouse);
     }
 }

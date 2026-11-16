@@ -1,6 +1,6 @@
 //! The session-wide tables the Wayland host reads at startup: the advertised protocols,
 //! from the `protocols` configuration section, the keyboard repeat and XKB options, from
-//! `input.keyboard`, and the switchable layouts, from `input-sources`.
+//! `input.keyboard`, the whole `input` section for the backend's devices, and the switchable layouts, from `input-sources`.
 //!
 //! A document with no such section keeps the built-in defaults. The values are checked by
 //! the schema before they reach this module, so an unknown protocol name or a non-boolean
@@ -21,6 +21,7 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
         Ok(stored) => {
             config.started_with = Some(stored.config.clone());
             config.wayland.protocols = stored.config.protocols.unwrap_or_default();
+            config.wayland.input = stored.config.input.clone();
             config.wayland.keyboard = stored.config.input.and_then(|input| input.keyboard);
             config.wayland.input_sources = stored.config.input_sources;
             config.wayland.shortcuts = stored.config.shortcuts;

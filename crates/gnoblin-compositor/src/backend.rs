@@ -35,8 +35,8 @@ use gnoblin_wayland::State;
 
 use crate::Error;
 
-/// Where a test hotplugs outputs of a headless session it started: filled when the session builds its backend, empty
-/// before that and for a backend with no virtual outputs. Every clone shares one session.
+/// Where a test hotplugs outputs and devices of a headless session it started: filled when the session builds its
+/// backend, empty before that and for a backend with no virtual outputs. Every clone shares one session.
 #[derive(Clone, Debug, Default)]
 pub struct OutputTap {
     handle: std::sync::Arc<std::sync::Mutex<Option<HeadlessHandle>>>,
@@ -65,6 +65,28 @@ impl OutputTap {
             handle.disconnect_output(output);
             true
         })
+    }
+
+    /// Delivers `event` on the session's next turn, as a device would produce it: a
+    /// [`gnoblin_backend::InputEvent::DeviceAdded`] announces a virtual device, which the document's `input` section
+    /// configures. `false` when no headless session serves yet.
+    pub fn push_input(&self, event: gnoblin_backend::InputEvent) -> bool {
+        let handle = self.handle.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        handle.as_ref().is_some_and(|handle| {
+            handle.push_input(event);
+            true
+        })
+    }
+
+    /// What the document's `input` section gave a virtual device, or `None` for a device the session does not have
+    /// (or no headless session yet).
+    #[must_use]
+    pub fn device_settings(
+        &self,
+        device: gnoblin_types::DeviceId,
+    ) -> Option<Vec<gnoblin_backend::input_settings::Setting>> {
+        let handle = self.handle.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        handle.as_ref()?.device_settings(device)
     }
 
     fn fill(&self, handle: HeadlessHandle) {

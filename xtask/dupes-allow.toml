@@ -689,12 +689,6 @@ kind = "same-name"
 reason = "backend's Change is one connector's part of a plan, its target state and operations; the portal's Change is one thing a settings subscriber is told"
 
 [[allow]]
-left = "gnoblin-backend-drm::Setting"
-right = "xdg-desktop-portal-gnoblin::Setting"
-kind = "same-name"
-reason = "backend's libinput Setting is one device setting in libinput's configuration terms; the portal's Setting is one published setting"
-
-[[allow]]
 left = "gnoblin-backend::Setting"
 right = "xdg-desktop-portal-gnoblin::Setting"
 kind = "same-name"
@@ -1113,18 +1107,6 @@ right = "gnoblin-render-frame::Model"
 kind = "same-name"
 reason = "a backend layer's 3D model matrix is a draw transform; the accessibility model is the tree of exposed objects"
 
-
-[[allow]]
-left = "gnoblin-backend::Setting"
-right = "gnoblin-backend-drm::Setting"
-kind = "same-name"
-reason = "backend's X11 Setting is one XSETTINGS value; the DRM crate's Setting is one libinput device setting in libinput's configuration terms"
-
-[[allow]]
-left = "gnoblin-backend-drm::Setting"
-right = "gnoblin-config::Setting"
-kind = "same-name"
-reason = "a libinput device setting the DRM backend applies versus a configuration key's catalogue entry"
 
 [[allow]]
 left = "gnoblin-backend::GammaRamp"

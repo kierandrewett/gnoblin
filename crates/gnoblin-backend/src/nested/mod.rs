@@ -1232,6 +1232,13 @@ impl<S: Host + 'static> Backend<S> for Nested {
         outcome
     }
 
+    fn set_input_settings(&mut self, _input: &gnoblin_config::Input) -> Result<(), crate::InputSettingsRefusal> {
+        // The devices of a nested session are the host's seat, which the host configures: a touchpad's tap and
+        // speed are set by the compositor this window runs in, and a second set of values here would act on
+        // nothing. The refusal is typed so the host session can say so.
+        Err(crate::InputSettingsRefusal::HostOwnsDevices)
+    }
+
     fn output_controls(&self) -> crate::OutputControls {
         // The parent's window decides the mode and the scale, so the only thing a nested output is configured with
         // is its supersample factor: `configure_output` refuses a different mode or scale.

@@ -1418,6 +1418,10 @@ impl Dispatcher {
                 if let Some(keyboard) = config.input.as_ref().and_then(|input| input.keyboard.clone()) {
                     self.control.set_keyboard_settings(keyboard);
                 }
+                // The devices follow the accepted document the way the cursor does: a document with no `input`
+                // section is an empty one, which puts every device back to what it started with.
+                self.control
+                    .set_input_settings(config.input.clone().unwrap_or_default());
                 if let Some(sources) = config.input_sources.clone() {
                     self.control.set_input_sources(sources);
                 }

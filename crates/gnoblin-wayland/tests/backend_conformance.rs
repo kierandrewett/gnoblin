@@ -600,6 +600,24 @@ fn input(rig: &mut dyn Rig, m: &mut ColumnCheck, probe: &mut Probe) {
     m.is("input.touch", CellStatus::Supported);
 }
 
+/// The document's `input` section, given to the backend's devices through the trait: applied (`supported`) or refused with
+/// the shared typed answer (`refused`), never silently dropped.
+#[track_caller]
+fn input_settings(rig: &mut dyn Rig) -> CellStatus {
+    let section = gnoblin_config::Input {
+        mouse: Some(gnoblin_config::Mouse {
+            speed: Some(gnoblin_config::Inherit::Value(0.5)),
+            ..gnoblin_config::Mouse::default()
+        }),
+        ..gnoblin_config::Input::default()
+    };
+    match rig.backend().set_input_settings(&section) {
+        Ok(()) => CellStatus::Supported,
+        Err(gnoblin_backend::InputSettingsRefusal::HostOwnsDevices) => CellStatus::Refused,
+        Err(other) => panic!("a refusal outside the shared vocabulary: {other:?}"),
+    }
+}
+
 #[test]
 fn the_status_table_holds_for_headless() {
     let table = table();
@@ -653,6 +671,37 @@ fn the_status_table_holds_for_headless() {
         &InputEvent::DeviceRemoved { id: DeviceId::new(7) },
     );
     m.is("input.devices", CellStatus::Supported);
+    // The document's input section reaches a virtual device the session has, and the one that arrives after it.
+    let mouse = DeviceId::new(11);
+    delivered(
+        &mut rig,
+        &mut probe,
+        &InputEvent::DeviceAdded {
+            device: DeviceInfo::new(mouse, "conformance mouse", DeviceKind::Mouse),
+        },
+    );
+    let applied = input_settings(&mut rig);
+    m.is("input.settings", applied);
+    assert_eq!(
+        rig.handle.device_settings(mouse),
+        Some(vec![gnoblin_backend::input_settings::Setting::Speed(0.5)]),
+        "the section reached the virtual mouse"
+    );
+    let later = DeviceId::new(12);
+    delivered(
+        &mut rig,
+        &mut probe,
+        &InputEvent::DeviceAdded {
+            device: DeviceInfo::new(later, "conformance mouse 2", DeviceKind::Mouse),
+        },
+    );
+    assert_eq!(
+        rig.handle.device_settings(later),
+        Some(vec![gnoblin_backend::input_settings::Setting::Speed(0.5)]),
+        "a device that arrives later is configured from the section the backend holds"
+    );
+    delivered(&mut rig, &mut probe, &InputEvent::DeviceRemoved { id: mouse });
+    assert_eq!(rig.handle.device_settings(mouse), None, "a removed device is forgotten");
     let sample = gnoblin_backend::RawTouchpadSample {
         device: DeviceId::new(7),
         phase: gnoblin_backend::RawTouchpadPhase::Begin,
@@ -769,6 +818,8 @@ fn the_status_table_holds_for_nested() {
             probe.inputs
         );
         m.is("input.devices", CellStatus::Supported);
+        // The host's seat is the host's to configure: the section is refused, with the shared typed answer.
+        m.is("input.settings", input_settings(&mut rig));
 
         outputs(&mut rig, &mut m, &mut probe);
         rendering(&mut rig, &mut m, &mut probe);

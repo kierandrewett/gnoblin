@@ -136,6 +136,7 @@ it.
 | Keys                                                                                  | supported                                                 | supported                                                                                            | supported                                                                          |
 | Touch                                                                                 | supported                                                 | supported                                                                                            | supported                                                                          |
 | Devices announced when they join and leave                                            | supported                                                 | supported                                                                                            | supported                                                                          |
+| Input device settings from the document: speed, tap, scroll, handedness               | supported: recorded per virtual device                    | refused: the host compositor owns the devices and applies its own settings                           | supported: fake libinput devices prove the calls; unproven on hardware             |
 | Touchpad swipe and pinch                                                              | supported                                                 | supported: when the host offers pointer gestures                                                     | supported: gestures come from libinput                                             |
 | Tablet tools: proximity, motion with pressure, tilt and distance, the tip and buttons | supported: a synthetic stylus, injected like any input    | supported: where the host offers zwp_tablet_v2                                                       | supported: libinput's tool events                                                  |
 | Tablet pads: buttons, rings and strips                                                | supported: injected like any input                        | supported: where the host offers zwp_tablet_v2                                                       | refused: the toolkit's libinput source drops pad events, so a pad is not announced |
@@ -167,6 +168,8 @@ A nested session is a Wayland client of the host, with the host's permissions an
   the host offers it and whole otherwise.
 - **Identity.** The window has a title, an application id and an icon, so the host's window list shows the session.
 - **The clipboard and the primary selection.** See [the clipboard](#the-clipboard-and-what-it-can-leak) below.
+- **Input settings.** The `input` section of your configuration is not applied: the devices are the host's, and the
+  host applies its own pointer and touchpad settings to them. See [input device settings](#input-device-settings).
 - **Tablets.** A drawing tablet the host has is a tablet of the session: the pen's position, pressure, tilt, distance,
   tip and buttons, and the pad's buttons, rings and strips, where the host offers `zwp_tablet_v2`. A pen moves no pointer.
 - **GPU buffers.** When the session draws with the GLES renderer and the host can import GPU buffers
@@ -182,6 +185,41 @@ What does not cross, and why:
   announced there. The pen is.
 - **GPU buffers with the software or Vulkan renderer.** Only GLES draws into a GPU buffer, so those two read each frame
   back into shared memory.
+
+## Input device settings
+
+The `input` section of your configuration (`mouse`, `touchpad`, `trackball` and `pointing-stick`) is given to each
+input device the session has when it starts, again to every device after a reload, and to a device when you plug it in.
+A line you remove from the section puts that setting back to what the device started with, and a device you unplug is
+forgotten.
+
+- **The hardware backend** applies it through libinput. Each setting a device does not have (a mouse has no tap) is left
+  out, and a setting a device refuses is written to the log once for that device (`gnoblinctl log`, area `input`)
+  while the rest still apply.
+- **A nested session** does not apply it. Its devices are the host's, and the host applies its own settings to them.
+- **A headless session** has no devices; the settings are recorded for each virtual device a test announces.
+
+What is not applied yet:
+
+| Setting                                           | Why                                                                              |
+| ------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `mouse.double-click-time`, `mouse.drag-threshold` | The toolkits read them, not a device, and nothing publishes them to the toolkits |
+| `mouse.accel-curve`, `touchpad.accel-curve`       | A custom acceleration curve needs libinput 1.23; this build is made for 1.19     |
+| `touchpad.disable-while-typing-timeout`           | The timeout needs libinput 1.31                                                  |
+| `touchpad.click-method = none`                    | The libinput binding has no value for "no software buttons"                      |
+| `tablets`, `styluses`                             | No tablet or stylus override is applied                                          |
+| `orientation-lock`                                | There is no automatic rotation to lock                                           |
+
+Every reload names the settings it cannot apply, so `gnoblinctl config reload` says so when you change one of them. Two
+details of the touchpad: `scroll-speed` multiplies how far the touchpad scrolls and is not a libinput setting, and
+`edge-scrolling-enabled` and `two-finger-scrolling-enabled` choose one scroll method between them (two fingers wins when
+both are on).
+
+A trackball and a pointing stick are found by the tags udev gives them (`ID_INPUT_TRACKBALL`, `ID_INPUT_POINTINGSTICK`).
+On a machine without those tags they are mice.
+
+What stays unproven without real hardware: the order and values of the libinput calls are proven against recorded fake
+devices, and a device that really refuses a setting is not exercised.
 
 ## The clipboard, and what it can leak
 
