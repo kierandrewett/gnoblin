@@ -2,6 +2,10 @@
 
 import type { Client } from "gnoblin-core/host/client";
 import type { Collection } from "gnoblin-core/host/collections";
+import { CLIENT_EVENTS, COLLECTION_EVENTS, OUTPUT_EVENTS } from "gnoblin-core/host/listeners";
+import type { ClientListener, CollectionListener, OutputListener } from "gnoblin-core/host/listeners";
+import { defineSubscriptions, withPrefix } from "gnoblin-core/subscriptions";
+import type { Prefixed, Subscribe } from "gnoblin-core/subscriptions";
 import { ctx } from "gnoblin-core/host/context";
 import type { OutputCollection } from "gnoblin-core/host/roots";
 import { motion } from "gnoblin-core/host/seat";
@@ -21,7 +25,7 @@ export class Gnoblin {
     /** Live clients in the order they were adopted. */
     readonly clients = ctx.clientRoot.self as Collection<Client>;
     /** The outputs, live across hotplug: an output is added when it is plugged in and removed when it goes. */
-    readonly outputs = ctx.outputRoot.self as OutputCollection;
+    readonly outputs = ctx.outputRoot.self as unknown as OutputCollection;
     /** The seats of the compositor as input contexts, with the bindings that run on their chords and drags. */
     readonly input = ctx.input;
     /** Policy over the compositor's own consent, passphrase and authentication dialogs: listeners that may refuse a
@@ -78,3 +82,43 @@ export class Gnoblin {
         return ctx.hostApi.find(kind, filter);
     }
 }
+
+/**
+ * The named subscriptions of the `gnoblin` object, which forward to `gnoblin.clients` and `gnoblin.outputs`:
+ *
+ * - `onClientCreated(handler)`: a window appeared. `handler(client)` also runs, once each, for the windows that are
+ *   there when it is attached, as `CollectionListener.onAdded` does.
+ * - `onClient<Event>(handler)` for each method of `ClientListener`: `onClientTitleChanged`, `onClientFocusChanged`,
+ *   `onClientClosed`, `onClientReady` and the rest. `handler(client, ...)` hears the event of every window.
+ * - `onOutputAdded` and `onOutputRemoved` for `CollectionListener`, and `onOutput<Event>` for each method of
+ *   `OutputListener` (`onOutputConnected`, `onOutputModeChanged`, ...): the same for every output.
+ *
+ * Each returns the function that detaches the handler.
+ */
+export interface Gnoblin
+    extends
+        Prefixed<"Client", ClientListener>,
+        Prefixed<"Output", OutputListener>,
+        Prefixed<"Output", CollectionListener<Output>> {
+    /**
+     * A window appeared: `handler(client)` runs for every window that joins `gnoblin.clients`, and for each one there
+     * already when it is attached. The same as `gnoblin.clients.onAdded`.
+     */
+    readonly onClientCreated: Subscribe<CollectionListener<Client>, "onAdded">;
+}
+defineSubscriptions<ClientListener>(Gnoblin.prototype, CLIENT_EVENTS, {
+    name: withPrefix("Client"),
+    target: (self: Gnoblin) => self.clients,
+});
+defineSubscriptions<CollectionListener>(Gnoblin.prototype, ["onAdded"], {
+    name: () => "onClientCreated",
+    target: (self: Gnoblin) => self.clients,
+});
+defineSubscriptions<OutputListener>(Gnoblin.prototype, OUTPUT_EVENTS, {
+    name: withPrefix("Output"),
+    target: (self: Gnoblin) => self.outputs,
+});
+defineSubscriptions<CollectionListener>(Gnoblin.prototype, COLLECTION_EVENTS, {
+    name: withPrefix("Output"),
+    target: (self: Gnoblin) => self.outputs,
+});

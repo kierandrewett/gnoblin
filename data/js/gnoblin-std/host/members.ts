@@ -19,6 +19,8 @@ import { isOutput, stateOf } from "gnoblin-core/host/node_state";
 import { Output } from "gnoblin-core/host/output";
 import { InputContext } from "gnoblin-core/input/context";
 import type { Rect } from "gnoblin-core/types";
+import { defineSubscriptions, withPrefix } from "gnoblin-core/subscriptions";
+import type { ClientListener } from "gnoblin-core/host/listeners";
 import type { Display } from "gnoblin-std/display/display";
 import type { OutputProfile } from "gnoblin-std/display/output_profile";
 import { Extensions } from "gnoblin-std/extensions/xr/availability";
@@ -331,6 +333,15 @@ export function extendObjectModel(): void {
                 replaceStyle(scopeStyle(collectionState(this)).style, value);
             },
         },
+    });
+
+    // `ClientListener.onRequest` is std's own method, so its named subscriptions are std's too: on a client, on a
+    // collection of clients, and on `gnoblin` as `onClientRequest`.
+    defineSubscriptions<ClientListener>(Client.prototype, ["onRequest"]);
+    defineSubscriptions<ClientListener>(Collection.prototype, ["onRequest"]);
+    defineSubscriptions<ClientListener>(Gnoblin.prototype, ["onRequest"], {
+        name: withPrefix("Client"),
+        target: (self: Gnoblin) => self.clients,
     });
 
     field(gnoblin.outputs, "profiles", std.profileRoot.self);

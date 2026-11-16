@@ -413,6 +413,9 @@ gnoblin.outputs.addListener(new Hotplug());
 
 [Events](/events/desktop-state#listen-to-outputs) lists the methods an `OutputListener` can define.
 
+Without a class, `gnoblin.outputs.onConnected(handler)` listens for one event and returns the function that stops
+listening. `gnoblin.outputs.onDisconnected(handler)` does the same for an unplugged output.
+
 A listener on the collection hears a connection only for
 an output plugged in while the shell runs. A disconnection is reported after the output is gone, and its last values stay
 readable. Membership changes reach a collection listener as additions and removals, as they do for windows.

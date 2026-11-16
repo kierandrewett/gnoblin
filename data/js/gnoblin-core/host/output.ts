@@ -4,11 +4,13 @@ import type { OutputConfig } from "gnoblin-core/output_config";
 import { CREATE, host } from "gnoblin-core/host/bridge";
 import { ctx } from "gnoblin-core/host/context";
 import { attach, detach } from "gnoblin-core/host/dispatch";
-import { assertListener } from "gnoblin-core/host/listeners";
+import { assertListener, OUTPUT_EVENTS } from "gnoblin-core/host/listeners";
 import type { OutputListener } from "gnoblin-core/host/listeners";
 import { read, stateOf } from "gnoblin-core/host/node_state";
 import { applyOutput } from "gnoblin-core/host/output_apply";
 import type { Operation } from "gnoblin-core/operation";
+import { defineSubscriptions } from "gnoblin-core/subscriptions";
+import type { Subscriptions } from "gnoblin-core/subscriptions";
 import { NativeObject } from "gnoblin-core/native_object";
 import type { NodeId, Rect } from "gnoblin-core/types";
 
@@ -282,3 +284,7 @@ export class Output extends NativeObject {
         return `Output#${host.label(stateOf(this).node)}`;
     }
 }
+
+// `output.onModeChanged(handler)` and the others: one named subscription for each method of `OutputListener`.
+export interface Output extends Subscriptions<OutputListener> {}
+defineSubscriptions<OutputListener>(Output.prototype, OUTPUT_EVENTS);

@@ -75,6 +75,40 @@ export class OutputListener {
     onGeometryChanged?(output: Output, geometry: Rect): void;
 }
 
+// The method names of the listener classes above, once each. A listener method is also a named subscription
+// (`client.onTitleChanged(handler)`): `defineSubscriptions` makes one for each name in these lists, and the types of the
+// objects that take the listener declare them from the class, so the two cannot differ in what the editor shows. A
+// package that adds a method to a class by declaration merging adds the name to the subscriptions the same way.
+
+/** The methods of `ClientListener`. */
+export const CLIENT_EVENTS = [
+    "onTitleChanged",
+    "onAppIdChanged",
+    "onDecorationChanged",
+    "onPointerEnter",
+    "onPointerMotion",
+    "onPointerLeave",
+    "onPointerPress",
+    "onPointerRelease",
+    "onFocusChanged",
+    "onGeometryChanged",
+    "onClosed",
+    "onReady",
+] as const satisfies readonly (keyof ClientListener)[];
+
+/** The methods of `CollectionListener`. */
+export const COLLECTION_EVENTS = ["onAdded", "onRemoved"] as const satisfies readonly (keyof CollectionListener)[];
+
+/** The methods of `OutputListener`. */
+export const OUTPUT_EVENTS = [
+    "onApplied",
+    "onConnected",
+    "onDisconnected",
+    "onModeChanged",
+    "onScaleChanged",
+    "onGeometryChanged",
+] as const satisfies readonly (keyof OutputListener)[];
+
 /** Checks listener input before it is attached. Throws for non-object values. */
 export function assertListener(listener: unknown, target: string): asserts listener is object {
     if (typeof listener !== "object" || listener === null) {

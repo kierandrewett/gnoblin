@@ -114,6 +114,9 @@ pub struct AllowEntry {
 pub struct TypeDecl {
     bases: Vec<String>,
     members: BTreeMap<String, Option<String>>,
+    /// `Prefixed<"Client", ClientListener>` bases, as `(prefix, listener)`: a subscription `on<Prefix><Event>` for each
+    /// method `on<Event>` of the listener.
+    prefixed: Vec<(String, String)>,
 }
 
 /// The implemented names, read from the declarations.
@@ -162,6 +165,17 @@ impl Implemented {
         if depth > 8 {
             return None;
         }
+        // A subscription a `Prefixed` base generates is a member that has the listener's method behind it.
+        for (prefix, listener) in &decl.prefixed {
+            let event = name
+                .strip_prefix("on")
+                .and_then(|rest| rest.strip_prefix(prefix.as_str()));
+            if let Some(event) = event.filter(|event| !event.is_empty())
+                && self.member(listener, &format!("on{event}"), depth + 1).is_some()
+            {
+                return Some(None);
+            }
+        }
         decl.bases.iter().find_map(|base| self.member(base, name, depth + 1))
     }
 }
@@ -189,14 +203,30 @@ pub struct DocsReport {
 }
 
 /// Read the classes and interfaces a `.d.ts` declares. A declaration is a line that opens `class` or
-/// `interface`; its members are the lines one indent level deeper, up to the closing brace. Lines at any
-/// other depth (parameters, object types, comments) are not members.
+/// `interface` (a header that a formatter broke over several lines is one line to this reader); its members are the
+/// lines one indent level deeper, up to the closing brace. Lines at any other depth (parameters, object types,
+/// comments) are not members.
+///
+/// Two bases are generated sets of subscriptions, not types: `Subscriptions<Listener>` is the methods of the listener
+/// (a subscription for each), and `Prefixed<"Client", Listener>` is the same under `onClient<Event>` names.
 pub fn parse_declarations(text: &str) -> Implemented {
     let mut implemented = Implemented::default();
     let mut open: Option<(usize, String)> = None;
-    for line in text.lines() {
+    let mut lines = text.lines();
+    while let Some(first) = lines.next() {
+        let mut line = first.to_owned();
+        let indent = first.len() - first.trim_start().len();
+        if open.is_none() && declaration(first.trim()).is_some() && !first.contains('{') {
+            // The header goes on until the line that opens the body.
+            for next in lines.by_ref() {
+                line.push(' ');
+                line.push_str(next.trim());
+                if next.contains('{') {
+                    break;
+                }
+            }
+        }
         let body = line.trim();
-        let indent = line.len() - line.trim_start().len();
         if let Some((declared_at, owner)) = &open {
             if indent == *declared_at && body.starts_with('}') {
                 open = None;
@@ -205,17 +235,82 @@ pub fn parse_declarations(text: &str) -> Implemented {
             }
         } else if let Some((name, bases)) = declaration(body) {
             let decl = implemented.types.entry(name.clone()).or_default();
-            decl.bases.extend(bases);
+            for base in bases {
+                match base {
+                    Base::Type(base) => decl.bases.push(base),
+                    Base::Prefixed { prefix, listener } => decl.prefixed.push((prefix, listener)),
+                }
+            }
             if body.ends_with('{') {
                 open = Some((indent, name));
             }
         }
     }
+    add_prefixed_methods(&mut implemented);
     implemented
 }
 
+/// A base of a declaration: a type to inherit members from, or the subscriptions generated from a listener.
+#[derive(Debug, PartialEq, Eq)]
+enum Base {
+    Type(String),
+    Prefixed { prefix: String, listener: String },
+}
+
+/// The bases an `extends` entry names: `Subscriptions<L>` has the members of `L`, `Prefixed<"P", L>` the subscriptions of
+/// `L` under the prefix, `MemberSubscriptions<T>` those of both listeners of the members a collection holds, and any
+/// other entry is the type it starts with.
+fn base_of(entry: &str) -> Vec<Base> {
+    let entry = entry.trim();
+    let name: String = entry.chars().take_while(is_ident).collect();
+    if name.is_empty() {
+        return Vec::new();
+    }
+    let arguments = entry[name.len()..]
+        .strip_prefix('<')
+        .and_then(|rest| rest.rfind('>').map(|end| &rest[..end]))
+        .map(split_top_level);
+    let listener = |argument: Option<&&str>| {
+        argument
+            .map(|text| text.trim().chars().take_while(is_ident).collect::<String>())
+            .filter(|listener| !listener.is_empty())
+    };
+    match (name.as_str(), arguments) {
+        ("Subscriptions", Some(arguments)) => listener(arguments.first()).map(Base::Type).into_iter().collect(),
+        ("Prefixed", Some(arguments)) if arguments.len() == 2 => {
+            let prefix = arguments[0].trim().trim_matches('"').to_owned();
+            listener(arguments.get(1))
+                .map(|listener| Base::Prefixed { prefix, listener })
+                .into_iter()
+                .collect()
+        }
+        ("MemberSubscriptions", Some(_)) => ["ClientListener", "OutputListener"]
+            .map(|listener| Base::Type(listener.to_owned()))
+            .into(),
+        _ => vec![Base::Type(name)],
+    }
+}
+
+/// Counts the generated `on<Prefix><Event>` subscriptions as methods, because a page calls them as `.onClientCreated(`.
+fn add_prefixed_methods(implemented: &mut Implemented) {
+    let mut names = Vec::new();
+    for decl in implemented.types.values() {
+        for (prefix, listener) in &decl.prefixed {
+            let Some(listener) = implemented.types.get(listener) else {
+                continue;
+            };
+            for member in listener.members.keys() {
+                if let Some(event) = member.strip_prefix("on") {
+                    names.push(format!(".on{prefix}{event}"));
+                }
+            }
+        }
+    }
+    implemented.methods.extend(names);
+}
+
 /// The name and base types of a `class` or `interface` line, or `None` for any other line.
-fn declaration(body: &str) -> Option<(String, Vec<String>)> {
+fn declaration(body: &str) -> Option<(String, Vec<Base>)> {
     let mut rest = body;
     for prefix in ["export ", "declare ", "abstract "] {
         rest = rest.strip_prefix(prefix).unwrap_or(rest);
@@ -233,11 +328,7 @@ fn declaration(body: &str) -> Option<(String, Vec<String>)> {
         .map(|list| {
             let list = list.split('{').next().unwrap_or(list);
             let list = list.split(" implements ").next().unwrap_or(list);
-            split_top_level(list)
-                .iter()
-                .map(|base| base.trim().chars().take_while(is_ident).collect::<String>())
-                .filter(|base| !base.is_empty())
-                .collect()
+            split_top_level(list).into_iter().flat_map(base_of).collect()
         })
         .unwrap_or_default();
     Some((name, bases))
@@ -325,6 +416,10 @@ fn read_member(owner: &str, body: &str, implemented: &mut Implemented) {
     } else {
         after.strip_prefix(':').and_then(type_name)
     };
+    // A named subscription declared by hand (`readonly onClientCreated: Subscribe<...>`) is called like a method.
+    if declared_type.as_deref() == Some("Subscribe") {
+        implemented.methods.insert(format!(".{name}"));
+    }
     let decl = implemented.types.entry(owner.to_owned()).or_default();
     decl.members.insert(name, declared_type);
 }
@@ -845,6 +940,16 @@ declare module "gnoblin-core" {
             "gnoblin.process.spawn",
             "gnoblin.session.lock",
             "gnoblin.session.addListener",
+            "gnoblin.session.onBell",
+            "gnoblin.runtime.onConfigReloaded",
+            "gnoblin.onClientCreated",
+            "gnoblin.onClientTitleChanged",
+            "gnoblin.onOutputModeChanged",
+            "gnoblin.clients.onAdded",
+            "gnoblin.clients.onTitleChanged",
+            "gnoblin.outputs.onModeChanged",
+            ".onClientCreated",
+            ".onClientRequest",
             "gnoblin.window.created",
             "gnoblin.config.reload_failed",
             ".set",
@@ -854,5 +959,60 @@ declare module "gnoblin-core" {
         }
         assert!(!surface.provides("gnoblin.no_such_member"));
         assert!(!surface.provides("gnoblin.on"), "the string-named bus is gone");
+    }
+
+    /// A listener, and the objects that take it, as the library declares them: the subscriptions are generated from the
+    /// listener class by `Subscriptions`, `Prefixed` and `MemberSubscriptions`, and a formatter may break a header.
+    const SUBSCRIPTIONS: &str = r#"
+export class ClientListener {
+    onTitleChanged?(client: Client, title: string): void;
+    onClosed?(client: Client): void;
+}
+export class CollectionListener<M> {
+    onAdded?(member: M, collection: Collection<M>): void;
+}
+export class OutputListener {
+    onModeChanged?(output: Output, mode: string): void;
+}
+export class Client {}
+export interface Client extends Subscriptions<ClientListener> {}
+export class Collection<T> {}
+export interface Collection<T> extends Subscriptions<CollectionListener<T>>, MemberSubscriptions<T> {}
+export class Gnoblin {
+    readonly clients: Collection<Client>;
+}
+export interface Gnoblin
+    extends
+        Prefixed<"Client", ClientListener>,
+        Prefixed<"Output", OutputListener> {
+    readonly onClientCreated: Subscribe<CollectionListener<Client>, "onAdded">;
+}
+"#;
+
+    #[test]
+    fn generated_subscriptions_are_members_and_methods_of_the_objects_that_take_the_listener() {
+        let surface = parse_declarations(SUBSCRIPTIONS);
+        for name in [
+            "gnoblin.onClientCreated",
+            "gnoblin.onClientTitleChanged",
+            "gnoblin.onClientClosed",
+            "gnoblin.onOutputModeChanged",
+            "gnoblin.clients.onAdded",
+            "gnoblin.clients.onTitleChanged",
+            "gnoblin.clients.onModeChanged",
+            ".onClientCreated",
+            ".onClientTitleChanged",
+            ".onOutputModeChanged",
+            ".onTitleChanged",
+        ] {
+            assert!(surface.provides(name), "{name}: {surface:?}");
+        }
+        for name in [
+            "gnoblin.onClientModeChanged",
+            "gnoblin.onOutputTitleChanged",
+            "gnoblin.onClient",
+        ] {
+            assert!(!surface.provides(name), "{name} is not generated");
+        }
     }
 }

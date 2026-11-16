@@ -5,8 +5,10 @@ import { CREATE, host } from "gnoblin-core/host/bridge";
 import { ctx } from "gnoblin-core/host/context";
 import { attach, detach } from "gnoblin-core/host/dispatch";
 import { hooks } from "gnoblin-core/host/hooks";
-import { assertListener } from "gnoblin-core/host/listeners";
+import { assertListener, CLIENT_EVENTS } from "gnoblin-core/host/listeners";
 import type { ClientListener } from "gnoblin-core/host/listeners";
+import { defineSubscriptions } from "gnoblin-core/subscriptions";
+import type { Subscriptions } from "gnoblin-core/subscriptions";
 import { callMethod, publishedValues, read, refuse, stateOf, writeProperty } from "gnoblin-core/host/node_state";
 import { NativeObject } from "gnoblin-core/native_object";
 import { noteHostRead, propertiesOf } from "gnoblin-core/properties";
@@ -485,3 +487,7 @@ export class Client extends NativeObject {
         return `Client#${host.label(stateOf(this).node)}`;
     }
 }
+
+// `client.onTitleChanged(handler)` and the others: one named subscription for each method of `ClientListener`.
+export interface Client extends Subscriptions<ClientListener> {}
+defineSubscriptions<ClientListener>(Client.prototype, CLIENT_EVENTS);

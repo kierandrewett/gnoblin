@@ -59,8 +59,16 @@ export { Process, ProcessListener } from "gnoblin-core/process";
 export type { ProcessExit, ProcessSignal, SpawnOptions, StreamMode } from "gnoblin-core/process";
 export type { FocusHistoryFilter } from "gnoblin-core/session/focus_history";
 export { RuntimeListener, SessionListener } from "gnoblin-core/session/events";
-export type { ConfigReloaded, ConfigReloadFailed, Subscribe, Unsubscribe } from "gnoblin-core/session/events";
-export type { Accepted, LockRequest, LockState, ReloadResult, SessionStatus, Version } from "gnoblin-core/session/types";
+export type { ConfigReloaded, ConfigReloadFailed } from "gnoblin-core/session/events";
+export type { ListenerHost, Prefixed, Subscribe, Subscriptions, Unsubscribe } from "gnoblin-core/subscriptions";
+export type {
+    Accepted,
+    LockRequest,
+    LockState,
+    ReloadResult,
+    SessionStatus,
+    Version,
+} from "gnoblin-core/session/types";
 export type { PropertyBinding, PropertyBindings } from "gnoblin-core/properties";
 export type { RotationInit, ScaleInit, TransformInit, Vec3Like } from "gnoblin-core/math/spatial";
 export type { LockAnswer, LockBackend } from "gnoblin-core/lock";

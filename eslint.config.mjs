@@ -58,6 +58,21 @@ export default [
         },
     },
     {
+        // A listener method is also a named subscription of the objects that take the listener. The interface that
+        // declares those members from the listener class merges into the class, and has no members of its own.
+        files: [
+            "data/js/gnoblin-core/host/client.ts",
+            "data/js/gnoblin-core/host/collections.ts",
+            "data/js/gnoblin-core/host/gnoblin.ts",
+            "data/js/gnoblin-core/host/output.ts",
+            "data/js/gnoblin-core/session/calls.ts",
+        ],
+        rules: {
+            "@typescript-eslint/no-empty-object-type": "off",
+            "@typescript-eslint/no-unsafe-declaration-merging": "off",
+        },
+    },
+    {
         // These APIs intentionally merge optional hooks into classes without creating instance fields.
         files: ["data/js/gnoblin-std/layout.ts", "data/js/gnoblin-std/ui/canvas.ts"],
         rules: { "@typescript-eslint/no-unsafe-declaration-merging": "off" },

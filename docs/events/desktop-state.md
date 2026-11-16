@@ -38,10 +38,25 @@ Save it as `shell.ts`. Open a terminal and read the lines with `journalctl --use
 | `onPointerLeave(client, event)`       | The pointer left the window.                                                |
 | `onPointerPress(client, event)`       | A button went down on the window.                                           |
 | `onPointerRelease(client, event)`     | A button came up on the window.                                             |
+| `onDecorationChanged(client, mode)`   | Who draws the window's frame changed: `client`, `server` or `none`.         |
+| `onReady(client)`                     | The window finished its first setup. A window there at boot hears it once.  |
 | `onRequest(client, request)`          | The client asked for a change of its window. See below.                     |
 
 A pointer `event` has `x` and `y` in the window's own coordinates and `button`, which is 0 for every event but a press and
 a release.
+
+Each method is also a named subscription that takes just the handler and returns the function that detaches it. The
+window has them (`client.onTitleChanged(handler)`), so has every collection of windows (`gnoblin.clients.onTitleChanged(handler)`
+hears every window), and so has `gnoblin` under a longer name: `gnoblin.onClientTitleChanged(handler)`. See
+[Events](/events/#subscribe-to-one-event).
+
+```ts
+const stop = gnoblin.onClientFocusChanged((client, focused) => {
+    if (focused) {
+        gnoblin.spawn(["logger", "-t", "focus", client.appId]);
+    }
+});
+```
 
 ### Answer a request yourself
 
@@ -71,6 +86,16 @@ class Count extends CollectionListener<Client> {
 gnoblin.clients.addListener(new Count());
 ```
 
+Each is also a named subscription of the collection, which takes just the handler: `gnoblin.clients.onAdded(handler)`
+runs it for every window there is now and every one that joins, and `gnoblin.onClientCreated(handler)` is the same for
+windows from `gnoblin`.
+
+```ts
+gnoblin.onClientCreated((client) => {
+    gnoblin.spawn(["logger", "-t", "windows", `${client.appId} appeared`]);
+});
+```
+
 ## Listen to outputs
 
 An `OutputListener` attached to `gnoblin.outputs`, or to one output, has these methods:
@@ -86,6 +111,21 @@ An `OutputListener` attached to `gnoblin.outputs`, or to one output, has these m
 
 A listener on the collection does not hear `onConnected` for an output that was there when the shell started. See
 [Outputs](/shell-api/outputs#listen-for-plugging-and-unplugging).
+
+Each method is also a named subscription that takes just the handler:
+
+- `output.onModeChanged(handler)` hears one output, and `gnoblin.outputs.onModeChanged(handler)` hears every output.
+- `gnoblin` has them as `gnoblin.onOutputModeChanged`, `gnoblin.onOutputConnected` and so on.
+- `gnoblin.onOutputAdded` and `gnoblin.onOutputRemoved` follow the membership of `gnoblin.outputs`.
+
+`onAdded` runs for the outputs there are now as well as for each that joins. `onConnected` runs only for an output that is
+plugged in later.
+
+```ts
+gnoblin.onOutputConnected((output) => {
+    gnoblin.spawn(["notify-send", `${output.connector} connected`]);
+});
+```
 
 ## Signals the compositor raises
 

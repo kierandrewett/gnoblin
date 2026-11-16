@@ -6,7 +6,8 @@ describes. Each method receives `gnoblin.session` or `gnoblin.runtime` first, th
 
 ## Session
 
-Attach a `SessionListener` with `gnoblin.session.addListener(listener)`. Every method is optional.
+Attach a `SessionListener` with `gnoblin.session.addListener(listener)`. Every method is optional, and each is also a
+named subscription, `gnoblin.session.onBell(handler)`, that returns the function that detaches it.
 
 | Method                                         | Compositor signal                    | When                                                                |
 | ---------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------- |

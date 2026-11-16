@@ -6,8 +6,12 @@ import { collectionState, itemsOf } from "gnoblin-core/host/collection_state";
 import type { CollectionState, Member, Mutation } from "gnoblin-core/host/collection_state";
 import { ctx } from "gnoblin-core/host/context";
 import { attach, detach, handlerOf, run } from "gnoblin-core/host/dispatch";
-import { assertListener } from "gnoblin-core/host/listeners";
+import { assertListener, CLIENT_EVENTS, COLLECTION_EVENTS, OUTPUT_EVENTS } from "gnoblin-core/host/listeners";
 import type { ClientListener, CollectionListener, OutputListener } from "gnoblin-core/host/listeners";
+import type { Client } from "gnoblin-core/host/client";
+import type { Output } from "gnoblin-core/host/output";
+import { defineSubscriptions } from "gnoblin-core/subscriptions";
+import type { Subscriptions, Unsubscribe } from "gnoblin-core/subscriptions";
 import { focusedAmong } from "gnoblin-core/host/seat";
 import { noteSignal } from "gnoblin-core/properties";
 import type { Query } from "gnoblin-core/types";
@@ -136,6 +140,34 @@ export class Collection<T extends Member> implements Iterable<T> {
         return (itemsOf(collectionState(this)) as T[])[Symbol.iterator]();
     }
 }
+
+/** The listener that takes the events of one kind of member: a `Client`'s, an `Output`'s, and none for the others. */
+type MemberListener<T> = T extends Client ? ClientListener : T extends Output ? OutputListener : never;
+
+/** The handler of the listener method `K`, as the members `T` have it; `never` where they have no such method. */
+type MemberHandler<L, K extends PropertyKey> = L extends unknown
+    ? K extends keyof L
+        ? NonNullable<L[K]>
+        : never
+    : never;
+
+/**
+ * The member events of a collection as named subscriptions: `gnoblin.clients.onTitleChanged(handler)` hears the title of
+ * every client, and `gnoblin.outputs.onModeChanged(handler)` the mode of every output. A collection of another kind of
+ * member has none: its handler type is `never`.
+ */
+export type MemberSubscriptions<T> = {
+    readonly [K in keyof ClientListener | keyof OutputListener]-?: (
+        handler: MemberHandler<MemberListener<T>, K>,
+    ) => Unsubscribe;
+};
+
+// `collection.onAdded(handler)` and the others: one named subscription for each method of `CollectionListener`, and for
+// each method of the listener of the members, which a collection hands to every one of them.
+export interface Collection<T extends Member> extends Subscriptions<CollectionListener<T>>, MemberSubscriptions<T> {}
+defineSubscriptions<CollectionListener>(Collection.prototype, COLLECTION_EVENTS);
+defineSubscriptions<ClientListener>(Collection.prototype, CLIENT_EVENTS);
+defineSubscriptions<OutputListener>(Collection.prototype, OUTPUT_EVENTS);
 
 /**
  * A collection whose membership scripts can change. Workspace collections are mutable; `gnoblin.clients` is not
