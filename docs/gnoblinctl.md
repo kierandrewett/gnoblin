@@ -250,7 +250,7 @@ gnoblinctl config init
 
 ```text
 ok  init.ts written: /home/me/.config/gnoblin/init.ts
-ok  library refreshed: /home/me/.config/gnoblin/.gnoblin/lib/gnoblin (200 files, the real sources of `gnoblin`)
+ok  library refreshed: /home/me/.config/gnoblin/.gnoblin/lib (200 files, the real sources of `gnoblin-core` and `gnoblin-std`)
 ok  gnoblin.d.ts refreshed: /home/me/.config/gnoblin/.gnoblin/gnoblin.d.ts
 ok  tsconfig.json created: /home/me/.config/gnoblin/tsconfig.json
 
@@ -292,7 +292,7 @@ gnoblinctl config migrate
 
 ```text
 ok  init.ts written: /home/me/.config/gnoblin/init.ts
-ok  library refreshed: /home/me/.config/gnoblin/.gnoblin/lib/gnoblin (200 files, the real sources of `gnoblin`)
+ok  library refreshed: /home/me/.config/gnoblin/.gnoblin/lib (200 files, the real sources of `gnoblin-core` and `gnoblin-std`)
 ok  gnoblin.d.ts refreshed: /home/me/.config/gnoblin/.gnoblin/gnoblin.d.ts
 ok  tsconfig.json created: /home/me/.config/gnoblin/tsconfig.json
 
@@ -480,7 +480,7 @@ gnoblinctl types init
 ```
 
 ```text
-ok  library refreshed: /home/me/.config/gnoblin/.gnoblin/lib/gnoblin (200 files, the real sources of `gnoblin`)
+ok  library refreshed: /home/me/.config/gnoblin/.gnoblin/lib (200 files, the real sources of `gnoblin-core` and `gnoblin-std`)
 ok  gnoblin.d.ts refreshed: /home/me/.config/gnoblin/.gnoblin/gnoblin.d.ts
 ok  tsconfig.json created: /home/me/.config/gnoblin/tsconfig.json
 ```

@@ -401,7 +401,7 @@ pub(crate) fn editor_lines(theme: &OutputTheme, written: &JsWritten, dir: &Path)
         line(
             LineOutcome::Ok,
             format!(
-                "library refreshed: {} ({} files, the real sources of `gnoblin`)",
+                "library refreshed: {} ({} files, the real sources of `gnoblin-core` and `gnoblin-std`)",
                 written.library.display(),
                 written.library_files
             ),

@@ -431,7 +431,7 @@ fn types_init_reports_where_it_wrote_as_json() {
     assert_eq!(document["tsconfig_linked"], true);
     let expected = target.join(".gnoblin/gnoblin.d.ts");
     assert_eq!(document["types"], expected.to_str().expect("the path is UTF-8"));
-    let library = target.join(".gnoblin/lib/gnoblin");
+    let library = target.join(".gnoblin/lib");
     assert_eq!(document["library"], library.to_str().expect("the path is UTF-8"));
     assert!(
         document["library_files"].as_u64().is_some_and(|count| count > 100),

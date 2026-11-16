@@ -325,7 +325,7 @@ fn the_starter_converts_to_a_file_that_loads_and_reports_each_setting_it_has_no_
     for generated in [
         ".gnoblin/gnoblin.d.ts",
         ".gnoblin/tsconfig.json",
-        ".gnoblin/lib/gnoblin/index.ts",
+        ".gnoblin/lib/gnoblin-core/index.ts",
     ] {
         assert!(
             new.iter().any(|name| name.as_str() == generated),
