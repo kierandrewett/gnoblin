@@ -344,6 +344,7 @@ mod tests {
                 })
                 .collect(),
             is_binary: false,
+            lints: crate::metadata::Lints::Unread,
         }
     }
 

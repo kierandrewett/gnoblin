@@ -7,7 +7,7 @@
 
 use std::fmt;
 
-use crate::metadata::{Dep, DepKind, Graph, Package};
+use crate::metadata::{Dep, DepKind, Graph, Lints, Package};
 
 /// Crates that define shared types, pure policy or the client half of the IPC.
 ///
@@ -37,6 +37,7 @@ const FOUNDATION: &[&str] = &[
     "gnoblin-cli-style",
     "gnoblin-client",
     "gnoblin-config",
+    "gnoblin-core-abi",
     "gnoblin-cursor",
     "gnoblin-lock",
     "gnoblin-model",
@@ -46,6 +47,7 @@ const FOUNDATION: &[&str] = &[
     "gnoblin-schema",
     "gnoblin-shell-discovery",
     "gnoblin-types",
+    "gnoblin-wm-api",
 ];
 
 /// The shared primitives: the root of every other crate's dependency graph.
@@ -122,8 +124,58 @@ const HUB_FRAME: &str = "gnoblin-render-frame";
 const CLIENT_SIDE: &[&str] = &[
     "gnoblin-js",
     "gnoblin-services",
+    "gnoblin-shell-host",
     "gnoblin-tree-client",
     "xdg-desktop-portal-gnoblin",
+];
+
+/// The SDK tier of design/modular-framework.md, section 4.4: the crates a shell author depends on
+/// (`gnoblin-core = "1"`, `gnoblin-std = "1"`). They hold `extern` declarations and safe wrappers and
+/// are compiled into the shell, so they may never carry a workspace crate along (see [`sdk_isolation`]).
+const SDK: &[&str] = &["gnoblin-core-abi", "gnoblin-macros", "gnoblin-core", "gnoblin-std"];
+
+/// The part of [`SDK`] that belongs to core. `gnoblin-std` sits above it, so it may name them; nothing
+/// below std may name `gnoblin-std` (see [`std_below_core`]).
+const SDK_CORE: &[&str] = &["gnoblin-core-abi", "gnoblin-macros", "gnoblin-core"];
+
+/// The implementation tier: the cdylibs that carry the C ABI symbols and the only crates besides the
+/// existing FFI shims that may contain `unsafe` (see [`impl_unsafe`]). Nothing links one as a normal
+/// dependency: the loader reaches them by file name, and the launcher through a link stub
+/// ([`impl_sealed`]).
+const IMPL: &[&str] = &[
+    "gnoblin-core-impl",
+    "gnoblin-std-impl",
+    "gnoblin-runtime-js",
+    "gnoblin-runtime-python",
+];
+
+/// The std tier: policy and the desktop API, linked above core. `gnoblin-a11y` is classified here
+/// (accessibility settings are desktop policy); `gnoblin-wm-api` is not, it is core-side by design.
+const STD: &[&str] = &["gnoblin-a11y", "gnoblin-std", "gnoblin-std-impl", "gnoblin-std-wm"];
+
+/// The pure fallback window manager. It may name the provider trait crate and the primitives only.
+const STD_WM: &str = "gnoblin-std-wm";
+
+/// The crates that may omit `[lints] workspace = true` and restate the table with
+/// `unsafe_code = "deny"` (the pattern at the top of the workspace `Cargo.toml`): the existing FFI and
+/// generated-protocol crates, `gnoblin-core-abi` (the `repr(C)` types), `gnoblin-core` and `gnoblin-macros` of the SDK, the
+/// core's test-fixture launcher, and every [`IMPL`] crate. An addition here is a reviewed change.
+const LINT_OPT_OUT: &[&str] = &[
+    "gnoblin-client",
+    "gnoblin-compat-wayland-gtk-shell1",
+    "gnoblin-compat-wayland-mutter-x11-interop",
+    "gnoblin-core",
+    "gnoblin-core-abi",
+    "gnoblin-fixture-launcher",
+    "gnoblin-js",
+    "gnoblin-lock-auth",
+    "gnoblin-macros",
+    "gnoblin-render-frame",
+    "gnoblin-render-gles",
+    "gnoblin-render-vulkan",
+    "gnoblin-wayland",
+    "gnoblin-wlcs",
+    "pam-gnoblin-keyring",
 ];
 
 /// The binary whose own dependencies [`binary_roots`] constrains.
@@ -282,6 +334,18 @@ const RULES: &[Rule] = &[
         id: "abi-leaf",
         check: abi_leaf,
     },
+    Rule {
+        id: "sdk-isolation",
+        check: sdk_isolation,
+    },
+    Rule {
+        id: "impl-sealed",
+        check: impl_sealed,
+    },
+    Rule {
+        id: "std-below-core",
+        check: std_below_core,
+    },
 ];
 
 /// One broken edge.
@@ -310,6 +374,14 @@ impl fmt::Display for DepViolation {
 pub fn check(graph: &Graph) -> Vec<DepViolation> {
     let mut violations = Vec::new();
     for package in &graph.packages {
+        if let Some(message) = impl_unsafe(package) {
+            violations.push(DepViolation {
+                package: package.name.clone(),
+                dependency: String::new(),
+                rule: "impl-unsafe",
+                message,
+            });
+        }
         if let Some(message) = compat_naming(package) {
             violations.push(DepViolation {
                 package: package.name.clone(),
@@ -806,7 +878,12 @@ fn log_isolation(package: &Package, dep: &Dep) -> Option<String> {
 /// log for a process it does not own, and one that enabled a sink would ship a database into every
 /// role that logs. A dev-dependency is exempt, because a test target may drive a sink.
 fn log_features(package: &Package, dep: &Dep) -> Option<String> {
-    if dep.name != LOG_CRATE || dep.kind == DepKind::Dev || dep.features.is_empty() || package.is_binary {
+    if dep.name != LOG_CRATE
+        || dep.kind == DepKind::Dev
+        || dep.features.is_empty()
+        || package.is_binary
+        || is_impl(&package.name)
+    {
         return None;
     }
     Some(format!(
@@ -974,6 +1051,122 @@ fn dev_crates(package: &Package, dep: &Dep) -> Option<String> {
         package.name,
         dep.kind.as_str()
     ))
+}
+
+fn is_sdk(name: &str) -> bool {
+    SDK.contains(&name)
+}
+
+fn is_impl(name: &str) -> bool {
+    IMPL.contains(&name)
+}
+
+fn is_std(name: &str) -> bool {
+    STD.contains(&name)
+}
+
+/// An SDK crate is compiled into every shell, so it names only SDK crates among the workspace's own:
+/// a shell must never carry the compositor, a foundation crate or an implementation into itself. The
+/// one other edge is the build-time schema `gnoblin-core-abi` generates its constants from, which
+/// ships no code. A development dependency is exempt, as for every rule that guards what ships.
+fn sdk_isolation(package: &Package, dep: &Dep) -> Option<String> {
+    if !is_sdk(&package.name) || !is_workspace_crate(&dep.name) || is_sdk(&dep.name) || dep.kind == DepKind::Dev {
+        return None;
+    }
+    if package.name == "gnoblin-core-abi" && dep.name == "gnoblin-schema" && dep.kind == DepKind::Build {
+        return None;
+    }
+    Some(format!(
+        "an SDK crate names only SDK crates ({}) among workspace crates; `{}` would be compiled into every shell",
+        SDK.join(", "),
+        dep.name
+    ))
+}
+
+/// Nothing depends on an implementation crate. The loader finds a cdylib by file name, and the launcher
+/// links the real library through a stub that carries its SONAME (design/modular-framework.md, 4.3), so
+/// a Cargo edge would only compile the whole implementation a second time. A development dependency is
+/// exempt: a test target may load the implementation, and that edge cannot ship.
+fn impl_sealed(package: &Package, dep: &Dep) -> Option<String> {
+    if !is_impl(&dep.name) || dep.kind == DepKind::Dev {
+        return None;
+    }
+    Some(format!(
+        "`{}` is an implementation library and is loaded by file name, never linked as a {} dependency; `{}` may depend on it only as a development dependency",
+        dep.name,
+        dep.kind.as_str(),
+        package.name
+    ))
+}
+
+/// The std tier sits above core: no foundation, engine, client-side or core SDK crate depends on a
+/// std crate. `gnoblin-wm-api` is not std (it is the trait core calls), so the fallback window manager
+/// in `gnoblin-std-wm` reaches core through it. `gnoblin-std-wm` itself is pure and names the provider
+/// trait crate and the primitives only. A development dependency is exempt.
+///
+/// The composition root `gnoblin-compositor` is in none of these sets, so it may name `gnoblin-std-wm`
+/// and `gnoblin-a11y` while they are compiled in behind its `std-providers` feature (M1.5 to M2.11).
+fn std_below_core(package: &Package, dep: &Dep) -> Option<String> {
+    if dep.kind == DepKind::Dev {
+        return None;
+    }
+    if package.name == STD_WM {
+        if is_workspace_crate(&dep.name) && dep.name != "gnoblin-wm-api" && dep.name != TYPES {
+            return Some(format!(
+                "`{STD_WM}` is the pure fallback window manager and may depend only on `gnoblin-wm-api` and `{TYPES}` among workspace crates, not `{}`",
+                dep.name
+            ));
+        }
+        return None;
+    }
+    if !is_std(&dep.name) {
+        return None;
+    }
+    if is_foundation(&package.name)
+        || is_engine(&package.name)
+        || is_client_side(&package.name)
+        || SDK_CORE.contains(&package.name.as_str())
+    {
+        return Some(format!(
+            "`{}` sits below std and may not depend on the std crate `{}`",
+            package.name, dep.name
+        ));
+    }
+    None
+}
+
+/// Only the crates in [`LINT_OPT_OUT`] and the [`IMPL`] crates may omit `[lints] workspace = true`,
+/// and each restates the workspace table with `unsafe_code = "deny"` and the clippy levels. Every
+/// other crate inherits `unsafe_code = "forbid"`, so `unsafe` stays out of policy crates. A package
+/// whose manifest was not read (a hand-written fixture) passes.
+fn impl_unsafe(package: &Package) -> Option<String> {
+    let may_opt_out = LINT_OPT_OUT.contains(&package.name.as_str()) || is_impl(&package.name);
+    match &package.lints {
+        Lints::Unread | Lints::Inherited => None,
+        Lints::Missing => Some("declares no `[lints]` table; add `[lints] workspace = true`".to_owned()),
+        Lints::Own { .. } if !may_opt_out => Some(
+            "restates its own lint table, but only the FFI crates, the SDK crates `gnoblin-core` and `gnoblin-macros` and the implementation crates may; use `[lints] workspace = true`"
+                .to_owned(),
+        ),
+        Lints::Own {
+            unsafe_code,
+            clippy_all_denied,
+        } => {
+            if unsafe_code.as_deref() != Some("deny") {
+                return Some(
+                    "restates the workspace lint table with `unsafe_code` other than \"deny\"; an unsafe-capable crate sets `unsafe_code = \"deny\"` and confines unsafe to named modules"
+                        .to_owned(),
+                );
+            }
+            if !clippy_all_denied {
+                return Some(
+                    "restates the workspace lint table without `all = { level = \"deny\", priority = -1 }` under `[lints.clippy]`"
+                        .to_owned(),
+                );
+            }
+            None
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1731,6 +1924,195 @@ mod tests {
             "unexpected violation: {}",
             reported[0]
         );
+    }
+
+    /// One edge of the given kind from `package` to `dependency`, checked on its own.
+    fn edge_violations(package: &str, dependency: &str, kind: &str) -> Vec<String> {
+        let kind = if kind == "normal" {
+            serde_json::Value::Null
+        } else {
+            serde_json::Value::from(kind)
+        };
+        let document = serde_json::json!({ "packages": [{
+            "name": package,
+            "dependencies": [{ "name": dependency, "kind": kind }],
+        }] });
+        let graph = from_json(&document.to_string()).expect("the fixture parses");
+        check(&graph).iter().map(DepViolation::to_string).collect()
+    }
+
+    #[test]
+    fn an_sdk_crate_names_only_sdk_crates_among_the_workspace_crates() {
+        assert_eq!(
+            edge_violations("gnoblin-std", "gnoblin-core", "normal"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            edge_violations("gnoblin-core", "gnoblin-core-abi", "normal"),
+            Vec::<String>::new()
+        );
+        assert_eq!(edge_violations("gnoblin-core", "serde", "normal"), Vec::<String>::new());
+        for dep in [
+            "gnoblin-compositor",
+            "gnoblin-log",
+            "gnoblin-types",
+            "gnoblin-core-impl",
+        ] {
+            let found = edge_violations("gnoblin-core", dep, "normal");
+            assert!(
+                found.iter().any(|line| line.contains("[sdk-isolation]")),
+                "gnoblin-core -> {dep}: {found:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_abi_crate_may_build_from_the_schema_but_not_link_it() {
+        let built = edge_violations("gnoblin-core-abi", "gnoblin-schema", "build");
+        assert!(
+            !built.iter().any(|line| line.contains("[sdk-isolation]")),
+            "sdk-isolation allows the build-time schema edge (abi-leaf is stricter): {built:?}"
+        );
+        let linked = edge_violations("gnoblin-core-abi", "gnoblin-schema", "normal");
+        assert!(linked.iter().any(|line| line.contains("[sdk-isolation]")), "{linked:?}");
+        assert_eq!(
+            edge_violations("gnoblin-core", "gnoblin-compositor", "dev"),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn an_implementation_crate_is_a_development_dependency_only() {
+        for imp in IMPL {
+            let normal = edge_violations("gnoblin", imp, "normal");
+            assert!(
+                normal.iter().any(|line| line.contains("[impl-sealed]")),
+                "{imp}: {normal:?}"
+            );
+            let build = edge_violations("gnoblin", imp, "build");
+            assert!(
+                build.iter().any(|line| line.contains("[impl-sealed]")),
+                "{imp}: {build:?}"
+            );
+            assert!(
+                !edge_violations("gnoblin", imp, "dev")
+                    .iter()
+                    .any(|line| line.contains("[impl-sealed]")),
+                "a test target may load {imp}"
+            );
+        }
+    }
+
+    #[test]
+    fn nothing_below_std_names_a_std_crate() {
+        for package in [
+            "gnoblin-model",
+            "gnoblin-wayland",
+            "gnoblin-js",
+            "gnoblin-service-core",
+            "gnoblin-core",
+        ] {
+            for std in ["gnoblin-std", "gnoblin-std-wm", "gnoblin-std-impl", "gnoblin-a11y"] {
+                let found = edge_violations(package, std, "normal");
+                assert!(
+                    found.iter().any(|line| line.contains("[std-below-core]")),
+                    "{package} -> {std}: {found:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_composition_root_and_std_itself_may_name_the_std_crates() {
+        for std in ["gnoblin-std-wm", "gnoblin-a11y"] {
+            assert_eq!(
+                edge_violations("gnoblin-compositor", std, "normal"),
+                Vec::<String>::new()
+            );
+        }
+        assert_eq!(edge_violations("gnoblin-std-impl", "gnoblin-std-wm", "normal").len(), 0);
+        assert_eq!(
+            edge_violations("gnoblin-wayland", "gnoblin-std-wm", "dev"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            edge_violations("gnoblin-wayland", "gnoblin-wm-api", "normal"),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn the_fallback_window_manager_names_the_provider_trait_and_the_primitives_only() {
+        for dep in ["gnoblin-wm-api", "gnoblin-types", "serde"] {
+            assert_eq!(
+                edge_violations("gnoblin-std-wm", dep, "normal"),
+                Vec::<String>::new(),
+                "{dep}"
+            );
+        }
+        let model = edge_violations("gnoblin-std-wm", "gnoblin-model", "normal");
+        assert!(model.iter().any(|line| line.contains("[std-below-core]")), "{model:?}");
+    }
+
+    #[test]
+    fn an_implementation_crate_may_enable_the_logging_features() {
+        let document = serde_json::json!({ "packages": [{
+            "name": "gnoblin-core-impl",
+            "dependencies": [{ "name": "gnoblin-log", "kind": null, "features": ["init"] }],
+        }] });
+        let graph = from_json(&document.to_string()).expect("the fixture parses");
+        assert_eq!(check(&graph).len(), 0);
+    }
+
+    /// A package that declares the given lints and no dependencies.
+    fn with_lints(name: &str, lints: Lints) -> Vec<String> {
+        let graph = Graph {
+            packages: vec![Package {
+                name: name.to_owned(),
+                deps: Vec::new(),
+                is_binary: false,
+                lints,
+            }],
+        };
+        check(&graph).iter().map(DepViolation::to_string).collect()
+    }
+
+    fn restated(unsafe_code: &str, clippy_all_denied: bool) -> Lints {
+        Lints::Own {
+            unsafe_code: Some(unsafe_code.to_owned()),
+            clippy_all_denied,
+        }
+    }
+
+    #[test]
+    fn a_crate_inherits_the_workspace_lints_unless_it_is_unsafe_capable() {
+        assert_eq!(with_lints("gnoblin-model", Lints::Inherited), Vec::<String>::new());
+        assert_eq!(with_lints("gnoblin-model", Lints::Unread), Vec::<String>::new());
+        let own = with_lints("gnoblin-model", restated("deny", true));
+        assert!(own.iter().any(|line| line.contains("[impl-unsafe]")), "{own:?}");
+        let missing = with_lints("gnoblin-model", Lints::Missing);
+        assert!(missing.iter().any(|line| line.contains("[impl-unsafe]")), "{missing:?}");
+    }
+
+    #[test]
+    fn an_unsafe_capable_crate_restates_the_table_with_unsafe_denied() {
+        for name in [
+            "gnoblin-wayland",
+            "gnoblin-core",
+            "gnoblin-macros",
+            "gnoblin-core-impl",
+            "gnoblin-std-impl",
+        ] {
+            assert_eq!(with_lints(name, restated("deny", true)), Vec::<String>::new(), "{name}");
+            assert_eq!(with_lints(name, Lints::Inherited), Vec::<String>::new(), "{name}");
+            let allowed = with_lints(name, restated("allow", true));
+            assert!(
+                allowed.iter().any(|line| line.contains("[impl-unsafe]")),
+                "{name}: {allowed:?}"
+            );
+            let lax = with_lints(name, restated("deny", false));
+            assert!(lax.iter().any(|line| line.contains("[impl-unsafe]")), "{name}: {lax:?}");
+        }
     }
 
     #[test]

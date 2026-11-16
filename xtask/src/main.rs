@@ -18,6 +18,7 @@ mod logging;
 mod metadata;
 mod native_libs;
 mod native_probe;
+mod profiles;
 #[cfg(test)]
 mod test_fixtures;
 
@@ -28,7 +29,8 @@ const USAGE: &str = "\
 usage: cargo xtask <subcommand>
 
 subcommands:
-  deps               check the workspace dependency rules from design/rust-compositor.md
+  deps               check the workspace dependency rules from design/rust-compositor.md and design/modular-framework.md,
+                     and that no Cargo profile sets panic = abort
   native-libs       fail on a -sys crate in a lock file whose system packages the CI install list lacks
   native-probe       probe an image's root file system for the native libraries the workspace needs; see
                      xtask/src/native_probe.rs (list, packages, check, unprobed, matrix)
@@ -99,9 +101,19 @@ fn deps_command() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let violations = deps::check(&graph);
+    let mut violations: Vec<String> = deps::check(&graph).iter().map(ToString::to_string).collect();
+    match profiles::check(Path::new(".")) {
+        Ok(aborting) => violations.extend(aborting.into_iter().map(|line| format!("[profile-unwind] {line}"))),
+        Err(error) => {
+            eprintln!("[deps] {error}");
+            return ExitCode::from(2);
+        }
+    }
     if violations.is_empty() {
-        println!("[deps] {} packages checked, no violations", graph.packages.len());
+        println!(
+            "[deps] {} packages checked, no violations (panic strategy: unwind)",
+            graph.packages.len()
+        );
         return ExitCode::SUCCESS;
     }
     for violation in &violations {

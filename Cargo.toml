@@ -95,6 +95,7 @@ members = [
     "crates/gnoblin-types",
     "crates/gnoblin-wayland",
     "crates/gnoblin-wlcs",
+    "crates/gnoblin-wm-api",
     "crates/gnoblin-xwayland",
     "crates/gnoblinctl",
     "crates/xdg-desktop-portal-gnoblin",
@@ -139,6 +140,18 @@ unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
+
+# Panics unwind, stated here because the plan depends on it rather than on Cargo's default.
+# The shell host catches a panic at every boundary it calls (a shell callback, a window-manager
+# provider, a runtime module) and counts it as a strike instead of ending the session, and
+# `gnoblin-js`'s supervisor already relies on unwinding through host frames. `panic = "abort"` in
+# any profile would turn the first such panic into a process abort, so `cargo xtask deps` fails
+# a workspace that sets it (design/modular-framework.md, 5.7). `test` and `bench` inherit these.
+[profile.dev]
+panic = "unwind"
+
+[profile.release]
+panic = "unwind"
 
 # Versions every member shares, so a bump is one line per dependency instead of
 # one line per crate. Members inherit these with `serde_json.workspace = true`.

@@ -23,3 +23,8 @@ gnoblin-render = { path = "../gnoblin-render" }
 # Exposes `Software::composed`, the readback the Vulkan parity tests compare with. Off in
 # every normal build, so the compositor cannot depend on a test-only entry point.
 test-support = []
+
+# This crate has no `unsafe` of its own (Pixman is reached through Smithay), so it inherits the
+# workspace lint levels, `unsafe_code = "forbid"` included.
+[lints]
+workspace = true
