@@ -25,21 +25,24 @@ struct WindowTable;
 
 impl ClassInfo for WindowTable {
     fn has_class(&self, class: &str) -> bool {
-        matches!(class, "node" | "window" | "seat" | "screen" | "view")
+        matches!(class, "node" | "window" | "seat" | "screen" | "view" | "surface")
     }
 
     fn is_a(&self, class: &str, ancestor: &str) -> bool {
-        class == ancestor || (ancestor == "node" && matches!(class, "window" | "view"))
+        class == ancestor || (ancestor == "node" && matches!(class, "window" | "view" | "surface"))
     }
 
     fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
         let kind = match (class, key) {
             ("window", "maximised" | "fullscreen" | "minimised" | "report_presented")
-            | ("node" | "window" | "view", "visible" | "input")
+            | ("node" | "window" | "view" | "surface", "visible" | "input")
+            | ("surface", "placement_override")
             | ("seat", "decorations_available" | "builtin_motion") => ValueType::Bool,
-            ("node" | "window" | "view", "x" | "y" | "width" | "height") | ("window", "frame_rate") => {
+            ("node" | "window" | "view" | "surface", "x" | "y" | "width" | "height") | ("window", "frame_rate") => {
                 ValueType::Double
             }
+            ("surface", "stack") => ValueType::Int,
+            ("surface", "reserve") => ValueType::ListDouble,
             ("node" | "window" | "view", "input_mode") | ("window", "frame_policy") => ValueType::Text,
             ("node" | "window" | "view", "rotation" | "scale") => ValueType::ListDouble,
             ("view", "source") => ValueType::Node("node".to_owned()),
@@ -136,6 +139,54 @@ impl Shell {
         wait(&format!("{count} window node(s)"), || {
             Some(self.window_nodes()).filter(|nodes| nodes.len() >= count)
         })
+    }
+
+    /// Every `surface` node the compositor announced whose published `role` is `role` (`popup`, `subsurface` or
+    /// `layer`), in the order it announced them.
+    pub fn surface_nodes(&self, role: &str) -> Vec<NodeId> {
+        let created: Vec<NodeId> = self
+            .batches
+            .lock()
+            .expect("the batch lock is not poisoned")
+            .iter()
+            .flat_map(|batch| &batch.changes)
+            .filter_map(|change| match change {
+                TreeChange::Created { node, class, .. } if class == "surface" => Some(*node),
+                _ => None,
+            })
+            .collect();
+        created
+            .into_iter()
+            .filter(|node| self.published(*node, "role") == Some(TreeValue::Text(role.to_owned())))
+            .collect()
+    }
+
+    /// Waits until `count` surface nodes of `role` were announced, and returns them in order.
+    #[track_caller]
+    pub fn wait_surface_nodes(&self, role: &str, count: usize) -> Vec<NodeId> {
+        wait(&format!("{count} `{role}` surface node(s)"), || {
+            Some(self.surface_nodes(role)).filter(|nodes| nodes.len() >= count)
+        })
+    }
+
+    /// Waits for the first surface node of `role`.
+    #[track_caller]
+    pub fn wait_surface_node(&self, role: &str) -> NodeId {
+        self.wait_surface_nodes(role, 1)[0]
+    }
+
+    /// Waits until the compositor announced that `node` is gone.
+    #[track_caller]
+    pub fn wait_destroyed(&self, node: NodeId) {
+        wait(&format!("{node:?} to be destroyed"), || {
+            self.batches
+                .lock()
+                .expect("the batch lock is not poisoned")
+                .iter()
+                .flat_map(|batch| &batch.changes)
+                .any(|change| matches!(change, TreeChange::Destroyed { removed, .. } if removed.contains(&node)))
+                .then_some(())
+        });
     }
 
     /// The main seat's node, once the compositor announced it.

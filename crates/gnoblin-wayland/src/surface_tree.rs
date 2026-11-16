@@ -59,7 +59,7 @@ pub(crate) struct SurfaceTrees {
 }
 
 /// A surface's key among those of its window: its protocol id, which no two surfaces of one client share.
-fn key_of(surface: &WlSurface) -> u64 {
+pub(crate) fn key_of(surface: &WlSurface) -> u64 {
     u64::from(surface.id().protocol_id())
 }
 

@@ -8,7 +8,10 @@ since = "0.2.0"
 base = "node"
 
 # `popup`, `subsurface`, `layer`, `lock`, `cursor`, or `drag`. A window's popups and subsurfaces are children of the
-# window's node that the compositor draws, so the tree can name them; the shell cannot move or destroy them.
+# window's node that the compositor draws, so the tree can name them; the shell cannot reparent or destroy them. What it
+# may do with them is `placement_override`, `stack`, `visible` and, for a layer surface, `reserve` (below). The compositor
+# makes a node for each popup and subsurface of a window and for each layer-shell surface; a session lock, the cursor and
+# a drag icon have none, and the lock card and the compositor's own dialogs are never nodes.
 [[object.property]]
 name = "role"
 type = "string"
@@ -27,4 +30,98 @@ name = "app_id"
 type = "string"
 since = "0.2.0"
 default = ""
+readonly = true
+
+# Whether the shell places this popup, subsurface or layer surface instead of the protocol. False by default, and written by
+# the shell. Read only while a shell holds the tree and the session is unlocked; the compositor writes it back to false
+# when the shell lets go, so the next shell starts from the protocol's own placement. A write of true on a node whose
+# `role` is not `popup`, `subsurface` or `layer` is refused `not-owner`: a lock surface, the cursor and a drag icon are
+# the compositor's.
+#
+# While it is true the node's `x` and `y` are the place the shell wants, in the same plane the compositor publishes them
+# in. A subsurface is drawn and hit where the shell wrote, and its client is not told: `wl_subsurface` has no event for
+# its place, and the client's own `set_position` keeps being applied as the protocol says, so writing false shows it
+# where the client put it. A popup is configured at the place the shell wrote, after the popup's positioner has adjusted
+# it (flip, slide and resize, as the client asked), so the client sees an `xdg_popup.configure` that matches what is on
+# screen; the compositor writes the place it settled on back to `x` and `y`. A layer surface takes `x`, `y`, `width`
+# and `height` as its rectangle on the output plane, is configured at that size, and reports the same rectangle to its
+# popups. Writing a width or a height of 0 keeps the size the protocol computed for that axis.
+[[object.property]]
+name = "placement_override"
+type = "bool"
+since = "0.2.0"
+default = false
+
+# The paint and pick order of a popup or subsurface among the surfaces that hang from the same parent: lower is further
+# down. 0 (the default) is the order the protocol and the compositor give, and a negative number puts the surface behind
+# its parent's own pixels, a positive one in front. Surfaces with the same number keep the protocol's order. Read only
+# while `placement_override` is true. A layer surface is not drawn by the compositor, so the number has no effect on it.
+[[object.property]]
+name = "stack"
+type = "int"
+since = "0.2.0"
+default = 0
+
+# The strip a layer surface takes out of its output's work area while `placement_override` is true, as four whole,
+# non-negative insets in pixels: top, right, bottom, left. Empty (the default) keeps the strip the surface's own exclusive
+# zone asks for along its anchored edge; `[0, 0, 0, 0]` makes it reserve nothing. Any other length, a fraction or a
+# negative number is refused `bad-value`.
+[[object.property]]
+name = "reserve"
+type = "list<double>"
+since = "0.2.0"
+default = []
+
+# The namespace the client gave its layer surface (`zwlr_layer_shell_v1.get_layer_surface`), which is how a shell
+# recognises its own bars. Empty on a node that is not a layer surface. Read-only.
+[[object.property]]
+name = "namespace"
+type = "string"
+since = "0.2.0"
+default = ""
+readonly = true
+
+# The layer the surface asked for: `background`, `bottom`, `top` or `overlay`. Empty on a node that is not a layer
+# surface. Read-only.
+[[object.property]]
+name = "layer"
+type = "string"
+since = "0.2.0"
+default = ""
+readonly = true
+
+# The edges the layer surface is anchored to, among `top`, `bottom`, `left` and `right`. Read-only: the client sets them,
+# and a shell that places the surface itself reads them to decide where it goes.
+[[object.property]]
+name = "anchor"
+type = "list<string>"
+since = "0.2.0"
+default = []
+readonly = true
+
+# The margins the client asked for, in pixels: top, right, bottom, left. Read-only.
+[[object.property]]
+name = "margin"
+type = "list<double>"
+since = "0.2.0"
+default = [0.0, 0.0, 0.0, 0.0]
+readonly = true
+
+# The size the client asked for with `set_size`, as width and height in pixels; 0 in an axis means the client leaves it
+# to the compositor. Read-only: a shell that overrides the placement reads it, and the rectangle it writes is what the
+# client is then configured at.
+[[object.property]]
+name = "requested_size"
+type = "list<double>"
+since = "0.2.0"
+default = [0.0, 0.0]
+readonly = true
+
+# The exclusive zone the client asked for, as the protocol states it: -1 to be left alone by other surfaces' zones, 0 for
+# none, above 0 the pixels to keep clear along its anchored edge. Read-only; `reserve` overrides its effect.
+[[object.property]]
+name = "exclusive_zone"
+type = "double"
+since = "0.2.0"
+default = 0.0
 readonly = true

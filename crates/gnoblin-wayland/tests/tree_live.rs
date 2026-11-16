@@ -1076,3 +1076,133 @@ fn a_delayed_write_holds_its_start_value_and_a_plain_write_ends_it_cancelled() {
     assert_eq!(live.x(), 7.0);
     take_batches();
 }
+
+/// The schema of a `surface` node, as far as the surface overrides need it.
+struct SurfaceTable;
+
+impl ClassInfo for SurfaceTable {
+    fn has_class(&self, class: &str) -> bool {
+        matches!(class, "node" | "surface")
+    }
+
+    fn property(&self, class: &str, key: &str) -> Option<PropertyInfo> {
+        let kind = match (class, key) {
+            ("surface", "placement_override") => ValueType::Bool,
+            ("surface", "x" | "y" | "width" | "height") => ValueType::Double,
+            ("surface", "reserve") => ValueType::ListDouble,
+            _ => return None,
+        };
+        Some(PropertyInfo {
+            kind,
+            readonly: false,
+            animated: false,
+        })
+    }
+
+    fn has_method(&self, _class: &str, _method: &str) -> bool {
+        false
+    }
+}
+
+/// A shell's transaction on a layer surface's node reaches the composer in the frame and is acted on there; a write of
+/// the override to a node the shell may not place is refused with `not-owner` and changes nothing; and the composer gives
+/// the placement back when the shell lets go of the tree.
+#[test]
+fn a_shells_transaction_places_a_layer_node_in_the_frame_and_the_detach_gives_it_back() {
+    use gnoblin_backend::render::compose::{LayerNodeInfo, LayerOverride};
+
+    let mut composer = Composer::new();
+    let info = LayerNodeInfo {
+        namespace: "bar".to_owned(),
+        layer: "top",
+        anchor: vec!["top".to_owned()],
+        margin: [0.0; 4],
+        requested: [0.0, 30.0],
+        zone: 30.0,
+        mapped: true,
+    };
+    let layer = composer.add_layer_node(&info).expect("a node for the layer surface");
+    composer.update_layer_node(layer, &info, Rect::new(0, 0, 800, 30), false);
+    // A compositor-made surface that names no role: the lock surface, the cursor and a drag icon are like it.
+    let lock = NodeId::new(0x310);
+    composer.with_scene(|scene| {
+        scene
+            .insert_as(Actor::Compositor, lock, NodeSpec::new(Rect::new(0, 0, 10, 10)))
+            .expect("the composer creates the node");
+        scene
+            .set_class(lock, Some("surface".to_owned()))
+            .expect("the node takes a class");
+        scene.set_holder_attached(true);
+    });
+    composer.follow_placement();
+    let mut frame = TreeFrame::with_hooks(TreeHooks {
+        classes: Arc::new(SurfaceTable),
+        publish: Arc::new(|batch| PUBLISHED.with(|published| published.borrow_mut().push(batch))),
+        ..TreeHooks::default()
+    });
+    let replies: Replies = Arc::default();
+    let set = |node: NodeId, key: &str, value: TreeValue| TreeOp::Set {
+        node,
+        key: key.to_owned(),
+        value,
+        timing: None,
+    };
+
+    submit(
+        &frame,
+        0,
+        TreeTransaction::new(vec![
+            set(layer, "placement_override", TreeValue::Bool(true)),
+            set(layer, "x", TreeValue::Double(100.0)),
+            set(layer, "width", TreeValue::Double(400.0)),
+            set(layer, "reserve", TreeValue::ListDouble(vec![0.0, 0.0, 0.0, 12.0])),
+        ]),
+        &replies,
+    );
+    drain(&mut frame, &mut composer);
+    assert_eq!(
+        composer.layer_override(layer),
+        Some(LayerOverride {
+            rect: Rect::new(100, 0, 400, 30),
+            reserve: Some(gnoblin_types::Insets::new(0, 0, 0, 12)),
+        }),
+        "the shell's rectangle and strip are what the composer reads"
+    );
+
+    let applied = replies.lock().expect("the reply lock is not poisoned").len();
+    submit(
+        &frame,
+        1,
+        TreeTransaction::new(vec![set(lock, "placement_override", TreeValue::Bool(true))]),
+        &replies,
+    );
+    drain(&mut frame, &mut composer);
+    assert!(
+        !replies.lock().expect("the reply lock is not poisoned")[applied].1,
+        "the override is refused on a node with no role the shell may place"
+    );
+    composer.with_scene(|scene| {
+        assert_eq!(
+            scene.value(lock, "placement_override"),
+            None,
+            "a refused transaction writes nothing"
+        );
+    });
+
+    composer.with_scene(|scene| scene.set_holder_attached(false));
+    composer.follow_placement();
+    assert_eq!(
+        composer.layer_override(layer),
+        None,
+        "the shell let go: the protocol places it again"
+    );
+    composer.with_scene(|scene| {
+        assert_eq!(
+            scene.value(layer, "placement_override"),
+            Some(&TreeValue::Bool(false)),
+            "and the node says so"
+        );
+        assert_eq!(scene.value(layer, "reserve"), Some(&TreeValue::ListDouble(Vec::new())));
+    });
+    take_batches();
+}

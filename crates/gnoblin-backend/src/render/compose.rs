@@ -112,6 +112,9 @@ use canvases::CanvasPicture;
 
 mod lock_ui;
 
+mod surface_shell;
+pub use surface_shell::{LayerNodeInfo, LayerOverride, PickSurface, SurfaceShell};
+
 mod seat_input;
 pub use seat_input::ShellCursor;
 
@@ -332,6 +335,8 @@ struct TreeNode {
     role: TreeSurfaceRole,
     /// The position and size last published to the tree, as `[x, y, width, height]`; NaN before the first.
     published: [f64; 4],
+    /// What the shell last asked of the node (`placement_override`, `stack`, `visible`).
+    seen: surface_shell::ShellSeen,
 }
 
 /// What a closing window becomes once its fade ends.
@@ -555,6 +560,8 @@ pub struct Composer {
     /// The compositor's lock node, once added. Its `state` is the session lock's state, so a
     /// shell that attaches while the session is locked reads it in the snapshot.
     lock_node: Option<NodeId>,
+    /// The node of each layer-shell surface the protocol engine made one for. See [`Composer::add_layer_node`].
+    layer_nodes: BTreeMap<NodeId, surface_shell::LayerNode>,
     /// Whether the canvases under the lock node changed since [`Composer::take_lock_ui_changed`].
     lock_ui_changed: bool,
     /// The focus node the compositor last wrote to the main seat. A `focus` the scene holds
@@ -660,6 +667,7 @@ impl Composer {
             lock_requested: Vec::new(),
             main_seat: None,
             lock_node: None,
+            layer_nodes: BTreeMap::new(),
             lock_ui_changed: false,
             published_focus: None,
             shell_focus: None,
@@ -1146,6 +1154,8 @@ impl Composer {
     /// starts at the negated offset and runs as far as the buffer does, and the surface tree is hit over the tree's
     /// bounds moved into the same plane.
     fn apply_extents(&mut self, window: WindowId) {
+        // The pointer reaches a subsurface the shell moved too, wherever it put it.
+        let placed = self.placed_tree_extent(window);
         let Some(entry) = self.windows.get_mut(&window) else {
             return;
         };
@@ -1158,6 +1168,9 @@ impl Composer {
         let hit = entry
             .hit_extent
             .map(|extent| extent.translate(-x, -y))
+            .map_or(placed, |extent| {
+                Some(placed.map_or(extent, |placed| extent.union(placed)))
+            })
             .filter(|extent| *extent != frame);
         let (applied_draw, applied_hit) = entry.applied_extents;
         entry.applied_extents = (draw, hit);
@@ -1494,6 +1507,7 @@ impl Composer {
         self.placing = holds;
         if !holds {
             self.release_shell_controls();
+            self.release_surface_controls();
         }
         let order = self.order.clone();
         for window in order {
@@ -2520,6 +2534,7 @@ impl Composer {
         };
         entry.tree = surfaces;
         self.sync_tree(window);
+        self.apply_extents(window);
     }
 
     /// Makes the scene nodes under a window's node match its tree: nodes for new surfaces, none for gone ones,
@@ -2543,6 +2558,8 @@ impl Composer {
         let mut seen = BTreeSet::new();
         tree.retain(|surface| surface.parent.is_none_or(|parent| seen.contains(&parent)) && seen.insert(surface.key));
         self.remove_stale_tree_nodes(&tree, &mut nodes);
+        // Where each surface is drawn: the protocol's place, or the shell's for a subsurface it placed.
+        let mut placed: BTreeMap<u64, (i32, i32)> = BTreeMap::new();
         for surface in &tree {
             let parent = match surface.parent {
                 None => window_node,
@@ -2552,25 +2569,35 @@ impl Composer {
                 },
             };
             let bounds = Rect::from_size(surface.content.size);
-            let transform = Self::tree_transform(surface, Self::tree_origin(surface, origin));
-            if let Some(existing) = nodes.get(&surface.key) {
+            let protocol_at = Self::tree_origin(surface, origin);
+            if let Some(existing) = nodes.get_mut(&surface.key) {
+                let at = self.settled_position(existing, surface, protocol_at);
+                placed.insert(surface.key, at);
+                let transform = Self::tree_transform(surface, at);
                 self.update_tree_node(existing.node, bounds, transform, surface);
-            } else if let Some(node) = self.create_tree_node(parent, bounds, transform, surface) {
-                nodes.insert(
-                    surface.key,
-                    TreeNode {
-                        node,
-                        parent: surface.parent,
-                        role: surface.role,
-                        published: [f64::NAN; 4],
-                    },
-                );
+            } else {
+                let transform = Self::tree_transform(surface, protocol_at);
+                if let Some(node) = self.create_tree_node(parent, bounds, transform, surface) {
+                    placed.insert(surface.key, protocol_at);
+                    nodes.insert(
+                        surface.key,
+                        TreeNode {
+                            node,
+                            parent: surface.parent,
+                            role: surface.role,
+                            published: [f64::NAN; 4],
+                            seen: surface_shell::ShellSeen::default(),
+                        },
+                    );
+                }
             }
         }
         self.order_tree_nodes(window_node, &tree, &nodes);
         for surface in &tree {
-            if let Some(node) = nodes.get_mut(&surface.key) {
-                self.publish_tree_geometry(node, surface, Self::tree_origin(surface, origin));
+            if let Some(node) = nodes.get_mut(&surface.key)
+                && let Some(at) = placed.get(&surface.key)
+            {
+                self.publish_tree_geometry(node, surface, *at);
             }
         }
         for surface in &mut tree {
@@ -2705,6 +2732,31 @@ impl Composer {
         Some(id)
     }
 
+    /// Where a surface's node is drawn in its parent's plane. A subsurface the shell placed (`placement_override`) is where
+    /// the shell wrote, in whole pixels: its client is not told, so the protocol's place stays the client's. Any other surface
+    /// is at the protocol's place, and a place the shell wrote on it that the compositor does not honour (a popup is placed
+    /// through its configure, and a surface the shell did not place is not the shell's to move) is published back, so the
+    /// shell reads where the surface is and not where it asked for it.
+    fn settled_position(&self, node: &mut TreeNode, surface: &TreeSurface, protocol_at: (i32, i32)) -> (i32, i32) {
+        let current = self
+            .scene
+            .transform(node.node)
+            .map(|transform| (transform.base.offset.x, transform.base.offset.y));
+        if surface.role == TreeSurfaceRole::Subsurface
+            && self.surface_placed(node.node)
+            && let Some((x, y)) = current
+        {
+            return (x.round() as i32, y.round() as i32);
+        }
+        if let Some((x, y)) = current
+            && [x, y] != [node.published[0], node.published[1]]
+        {
+            node.published[0] = f64::NAN;
+            node.published[1] = f64::NAN;
+        }
+        protocol_at
+    }
+
     /// Brings a surface's node to its size, place and paint side, and damages it when the surface committed.
     fn update_tree_node(&mut self, node: NodeId, bounds: Rect, transform: VisualTransform, surface: &TreeSurface) {
         if self.scene.bounds(node) != Some(bounds) {
@@ -2715,7 +2767,8 @@ impl Composer {
         if surface.damaged || self.scene.transform(node) != Some(&transform) {
             let _ = self.scene.set_transform(node, transform);
         }
-        let _ = self.scene.set_behind(node, surface.behind);
+        let (behind, _) = self.surface_side(node, surface.behind);
+        let _ = self.scene.set_behind(node, behind);
     }
 
     /// Puts the children of the window's node, and of each surface's node, in paint order: the surfaces behind their
@@ -2725,23 +2778,30 @@ impl Composer {
         let parents =
             std::iter::once((window_node, None)).chain(nodes.iter().map(|(key, node)| (node.node, Some(*key))));
         for (parent, key) in parents.collect::<Vec<_>>() {
-            let mine: Vec<(NodeId, bool)> = tree
+            // Each surface with the side it paints on and the `stack` the shell gave it: the shell's order wins over the
+            // protocol's, and surfaces with the same number keep the order the tree gave.
+            let mut mine: Vec<(NodeId, bool, i64)> = tree
                 .iter()
                 .filter(|surface| surface.parent == key)
-                .filter_map(|surface| Some((nodes.get(&surface.key)?.node, surface.behind)))
+                .filter_map(|surface| {
+                    let node = nodes.get(&surface.key)?.node;
+                    let (behind, stack) = self.surface_side(node, surface.behind);
+                    Some((node, behind, stack))
+                })
                 .collect();
             if mine.is_empty() {
                 continue;
             }
+            mine.sort_by_key(|(_, _, stack)| *stack);
             let current = self.scene.children(parent).unwrap_or(&[]).to_vec();
-            let owned: BTreeSet<NodeId> = mine.iter().map(|(node, _)| *node).collect();
+            let owned: BTreeSet<NodeId> = mine.iter().map(|(node, _, _)| *node).collect();
             let mut order: Vec<NodeId> = mine
                 .iter()
-                .filter(|(_, behind)| *behind)
-                .map(|(node, _)| *node)
+                .filter(|(_, behind, _)| *behind)
+                .map(|(node, _, _)| *node)
                 .collect();
             order.extend(current.iter().filter(|node| !owned.contains(node)));
-            order.extend(mine.iter().filter(|(_, behind)| !*behind).map(|(node, _)| *node));
+            order.extend(mine.iter().filter(|(_, behind, _)| !*behind).map(|(node, _, _)| *node));
             if order != current {
                 let _ = self.scene.set_order(Some(parent), &order);
             }
@@ -3449,7 +3509,8 @@ impl Composer {
     /// the surfaces under it.
     fn push_children(&self, paint: &Paint, parent: NodeId, behind: bool, frame: &mut OutputFrame, spatial: &mut bool) {
         for child in self.scene.children(parent).unwrap_or(&[]) {
-            if self.scene.behind(*child) != Some(behind) {
+            // A surface the shell hid is not drawn, and neither is anything that hangs from it.
+            if self.scene.behind(*child) != Some(behind) || self.scene.visible(*child) == Some(false) {
                 continue;
             }
             let Some(surface) = paint

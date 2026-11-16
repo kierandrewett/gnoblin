@@ -17,7 +17,7 @@ struct Kinds;
 
 impl ClassInfo for Kinds {
     fn has_class(&self, class: &str) -> bool {
-        matches!(class, "Window" | "Panel" | "View")
+        matches!(class, "Window" | "Panel" | "View" | "surface")
     }
 
     fn is_a(&self, class: &str, ancestor: &str) -> bool {
@@ -33,7 +33,16 @@ impl ClassInfo for Kinds {
             "layer" => (ValueType::Int, false),
             "count" => (ValueType::Uint, false),
             "ratio" | "frame_rate" => (ValueType::Double, false),
-            "visible" => (ValueType::Bool, false),
+            "visible" | "placement_override" => (ValueType::Bool, false),
+            "stack" => (ValueType::Int, false),
+            "reserve" => (ValueType::ListDouble, false),
+            "x" | "width" => {
+                return Some(PropertyInfo {
+                    kind: ValueType::Double,
+                    readonly: false,
+                    animated: true,
+                });
+            }
             "parent_ref" => (ValueType::Node("Window".into()), false),
             "source" | "camera" => (ValueType::Node("Window".into()), false),
             "axes" => (ValueType::ListDouble, false),
@@ -484,4 +493,119 @@ fn frame_rate_takes_a_rate_above_zero_up_to_a_thousand_and_refuses_the_rest() {
         Code::NotFinite,
     );
     assert_eq!(scene.value(win, "frame_rate"), Some(&TreeValue::Double(1000.0)));
+}
+
+/// A compositor-made `surface` node of `role`, as the compositor makes a popup, a subsurface or a layer surface.
+fn compositor_surface(scene: &mut Scene, raw: u64, role: Option<&str>) -> NodeId {
+    let id = NodeId::new(COMPOSITOR_ID_BASE | raw);
+    scene.insert(id, NodeSpec::new(Rect::new(0, 0, 100, 100))).unwrap();
+    scene.set_class(id, Some("surface".into())).unwrap();
+    if let Some(role) = role {
+        scene.set_text(id, "role", role.into()).unwrap();
+    }
+    id
+}
+
+/// A shell may place a popup, a subsurface or a layer surface, and the refusal for any other node is `not-owner`: a lock
+/// surface, the cursor and a drag icon are the compositor's, and so is a node that names no role. Writing false is never
+/// refused, and a refused write leaves the node as it was.
+#[test]
+fn placement_override_is_refused_on_a_surface_the_shell_may_not_place() {
+    let mut scene = scene();
+    for (raw, role) in [(0x200, "popup"), (0x201, "subsurface"), (0x202, "layer")] {
+        let surface = compositor_surface(&mut scene, raw, Some(role));
+        assert!(
+            apply(&mut scene, set(surface, "placement_override", TreeValue::Bool(true))).is_none(),
+            "{role}"
+        );
+        assert_eq!(
+            scene.value(surface, "placement_override"),
+            Some(&TreeValue::Bool(true)),
+            "{role}"
+        );
+    }
+    for (raw, role) in [
+        (0x210, Some("lock")),
+        (0x211, Some("cursor")),
+        (0x212, Some("drag")),
+        (0x213, None),
+    ] {
+        let surface = compositor_surface(&mut scene, raw, role);
+        assert_refused(
+            apply(&mut scene, set(surface, "placement_override", TreeValue::Bool(true))),
+            Code::NotOwner,
+        );
+        assert_eq!(
+            scene.value(surface, "placement_override"),
+            None,
+            "{role:?}: a refused write leaves no value"
+        );
+        assert!(
+            apply(&mut scene, set(surface, "placement_override", TreeValue::Bool(false))).is_none(),
+            "{role:?}: false asks for nothing"
+        );
+    }
+}
+
+/// `reserve` is empty or four whole non-negative insets; anything else is `bad-value`.
+#[test]
+fn reserve_takes_no_insets_or_four_whole_ones_and_refuses_the_rest() {
+    let mut scene = scene();
+    let layer = compositor_surface(&mut scene, 0x300, Some("layer"));
+    for insets in [vec![], vec![0.0, 0.0, 0.0, 0.0], vec![32.0, 0.0, 0.0, 8.0]] {
+        assert!(
+            apply(&mut scene, set(layer, "reserve", TreeValue::ListDouble(insets.clone()))).is_none(),
+            "{insets:?}"
+        );
+        assert_eq!(scene.value(layer, "reserve"), Some(&TreeValue::ListDouble(insets)));
+    }
+    for insets in [
+        vec![1.0],
+        vec![1.0, 2.0, 3.0],
+        vec![1.0, 2.0, 3.0, 4.0, 5.0],
+        vec![-1.0, 0.0, 0.0, 0.0],
+        vec![1.5, 0.0, 0.0, 0.0],
+        vec![f64::from(i32::MAX) + 1.0, 0.0, 0.0, 0.0],
+    ] {
+        assert_refused(
+            apply(&mut scene, set(layer, "reserve", TreeValue::ListDouble(insets.clone()))),
+            Code::BadValue,
+        );
+    }
+    assert_eq!(
+        scene.value(layer, "reserve"),
+        Some(&TreeValue::ListDouble(vec![32.0, 0.0, 0.0, 8.0])),
+        "a refused write leaves the insets as they were"
+    );
+}
+
+/// A surface's place and size are read once a frame and acted on, so a timed write of them is `not-animated`, while the
+/// same write at once applies.
+#[test]
+fn a_timed_write_of_a_surfaces_place_is_not_animated() {
+    let mut scene = scene();
+    let popup = compositor_surface(&mut scene, 0x400, Some("popup"));
+    let timed = |node: NodeId, key: &str| TreeOp::Set {
+        node,
+        key: key.into(),
+        value: TreeValue::Double(40.0),
+        timing: Some(gnoblin_render::transaction::Timing {
+            seconds: 1.0,
+            delay: 0.0,
+            group: None,
+            samples: vec![0.0, 1.0],
+        }),
+    };
+    for key in ["x", "width"] {
+        assert_refused(apply(&mut scene, timed(popup, key)), Code::NotAnimated);
+        assert!(
+            apply(&mut scene, set(popup, key, TreeValue::Double(40.0))).is_none(),
+            "{key} at once"
+        );
+    }
+    let window = node(&mut scene, 0x401, "Window");
+    assert!(
+        apply(&mut scene, timed(window, "x")).is_none(),
+        "a window's x still animates"
+    );
 }

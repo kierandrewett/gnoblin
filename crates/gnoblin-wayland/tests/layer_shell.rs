@@ -15,6 +15,9 @@ mod session;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use gnoblin_render::transaction::TreeValue;
+use gnoblin_types::{Insets, Rect};
+use session::shell::Shell;
 use session::{Client, LayerWindow, PopupPlace, Session, TIMEOUT};
 use wayland_protocols::xdg::shell::client::xdg_positioner;
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
@@ -587,5 +590,246 @@ fn a_popup_of_a_bar_that_is_repositioned_stays_inside_the_bar() {
         positioner.destroy();
         client.wait_until("the repositioned popup", |state| state.popup_repositioned == Some(7));
         assert_eq!(client.state.popup_placed, Some((500, 10, 100, 20)));
+    });
+}
+
+// A shell that holds the tree places a layer surface itself (`placement_override` on its node). The client is configured at
+// the shell's size as the protocol says, the work area follows the strip the shell chose, and the compositor places the
+// surface again the moment the shell lets go.
+
+fn text(value: &str) -> TreeValue {
+    TreeValue::Text(value.to_owned())
+}
+
+fn number(value: f64) -> TreeValue {
+    TreeValue::Double(value)
+}
+
+#[test]
+fn a_layer_surfaces_node_says_what_the_client_asked_for_and_where_the_protocol_put_it() {
+    let (shell, hooks) = Shell::new();
+    let session = Session::start_shelled(hooks);
+    session.run(move |session| {
+        shell.attach();
+        let mut client = Client::connect(session.privileged_socket());
+        let _bar = map_bar(
+            &mut client,
+            "org.gnoblin.TestBar",
+            zwlr_layer_shell_v1::Layer::Top,
+            30,
+            30,
+        );
+        session.wait_for(|observation| {
+            observation
+                .layer("org.gnoblin.TestBar")
+                .is_some_and(|layer| layer.mapped)
+        });
+        let node = shell.wait_surface_node("layer");
+
+        shell.wait_published(node, "namespace", &text("org.gnoblin.TestBar"));
+        shell.wait_published(node, "layer", &text("top"));
+        shell.wait_published(
+            node,
+            "anchor",
+            &TreeValue::ListText(vec!["top".to_owned(), "left".to_owned(), "right".to_owned()]),
+        );
+        shell.wait_published(node, "requested_size", &TreeValue::ListDouble(vec![0.0, 30.0]));
+        shell.wait_published(node, "exclusive_zone", &number(30.0));
+        shell.wait_published(node, "mapped", &TreeValue::Bool(true));
+        for (key, value) in [("x", 0.0), ("y", 0.0), ("width", 1024.0), ("height", 30.0)] {
+            shell.wait_published(node, key, &number(value));
+        }
+    });
+}
+
+#[test]
+fn a_write_to_a_layer_surfaces_rectangle_without_the_override_is_not_honoured_and_is_written_back() {
+    let (shell, hooks) = Shell::new();
+    let session = Session::start_shelled(hooks);
+    session.run(move |session| {
+        shell.attach();
+        let mut client = Client::connect(session.privileged_socket());
+        let _bar = map_bar(
+            &mut client,
+            "org.gnoblin.TestBar",
+            zwlr_layer_shell_v1::Layer::Top,
+            30,
+            30,
+        );
+        session.wait_for(|observation| {
+            observation
+                .layer("org.gnoblin.TestBar")
+                .is_some_and(|layer| layer.mapped)
+        });
+        let node = shell.wait_surface_node("layer");
+        shell.wait_published(node, "width", &number(1024.0));
+
+        shell.write(node, &[("x", number(300.0)), ("width", number(400.0))]);
+        shell.wait_published(node, "x", &number(0.0));
+        shell.wait_published(node, "width", &number(1024.0));
+        assert_eq!(
+            session.windows().layer("org.gnoblin.TestBar").map(|layer| layer.rect),
+            Some(Rect::new(0, 0, 1024, 30)),
+            "the surface did not move"
+        );
+        assert_eq!(
+            client.state.layer_size,
+            Some((1024, 30)),
+            "and its client was not told otherwise"
+        );
+    });
+}
+
+#[test]
+fn a_shell_that_places_a_layer_surface_sets_its_rectangle_its_configure_and_its_strip() {
+    let (shell, hooks) = Shell::new();
+    let session = Session::start_shelled(hooks);
+    session.run(move |session| {
+        shell.attach();
+        let mut client = Client::connect(session.privileged_socket());
+        let _bar = map_bar(
+            &mut client,
+            "org.gnoblin.TestBar",
+            zwlr_layer_shell_v1::Layer::Top,
+            30,
+            30,
+        );
+        let observation = session.wait_for(|observation| {
+            observation
+                .layer("org.gnoblin.TestBar")
+                .is_some_and(|layer| layer.mapped)
+        });
+        assert_eq!(
+            observation.layer("org.gnoblin.TestBar").map(|layer| layer.reserved),
+            Some(Insets::new(30, 0, 0, 0)),
+            "the control: the bar's own zone is the strip it takes"
+        );
+        let node = shell.wait_surface_node("layer");
+
+        shell.write(
+            node,
+            &[
+                ("placement_override", TreeValue::Bool(true)),
+                ("x", number(100.0)),
+                ("y", number(200.0)),
+                ("width", number(400.0)),
+                ("height", number(50.0)),
+            ],
+        );
+        wait_configure(&mut client, (400, 50));
+        let observation = session.wait_for(|observation| {
+            observation
+                .layer("org.gnoblin.TestBar")
+                .is_some_and(|layer| layer.rect == Rect::new(100, 200, 400, 50))
+        });
+        assert_eq!(
+            observation.layer("org.gnoblin.TestBar").map(|layer| layer.exclusive),
+            Some(30),
+            "the client's own exclusive zone is what it asked, whatever the shell does with the strip"
+        );
+
+        // The strip the surface takes out of the work area is the shell's to choose, and it may take none.
+        shell.write(node, &[("reserve", TreeValue::ListDouble(vec![0.0, 0.0, 0.0, 12.0]))]);
+        session.wait_for(|observation| {
+            observation.layer("org.gnoblin.TestBar").map(|layer| layer.reserved) == Some(Insets::new(0, 0, 0, 12))
+        });
+        shell.write(node, &[("reserve", TreeValue::ListDouble(vec![0.0, 0.0, 0.0, 0.0]))]);
+        session.wait_for(|observation| {
+            observation.layer("org.gnoblin.TestBar").map(|layer| layer.reserved) == Some(Insets::ZERO)
+        });
+        shell.write(node, &[("reserve", TreeValue::ListDouble(Vec::new()))]);
+        session.wait_for(|observation| {
+            observation.layer("org.gnoblin.TestBar").map(|layer| layer.reserved) == Some(Insets::new(30, 0, 0, 0))
+        });
+
+        // An axis the shell leaves at 0 keeps the protocol's: the bar spans the output again, 40 high.
+        shell.write(
+            node,
+            &[
+                ("width", number(0.0)),
+                ("height", number(40.0)),
+                ("x", number(0.0)),
+                ("y", number(0.0)),
+            ],
+        );
+        wait_configure(&mut client, (1024, 40));
+    });
+}
+
+#[test]
+fn a_layer_surface_goes_back_to_the_protocol_when_the_shell_lets_go_or_stops_placing_it() {
+    let (shell, hooks) = Shell::new();
+    let session = Session::start_shelled(hooks);
+    session.run(move |session| {
+        shell.attach();
+        let mut client = Client::connect(session.privileged_socket());
+        let _bar = map_bar(
+            &mut client,
+            "org.gnoblin.TestBar",
+            zwlr_layer_shell_v1::Layer::Top,
+            30,
+            30,
+        );
+        session.wait_for(|observation| {
+            observation
+                .layer("org.gnoblin.TestBar")
+                .is_some_and(|layer| layer.mapped)
+        });
+        let node = shell.wait_surface_node("layer");
+        let place = [
+            ("placement_override", TreeValue::Bool(true)),
+            ("x", number(10.0)),
+            ("y", number(10.0)),
+            ("width", number(300.0)),
+            ("height", number(60.0)),
+            ("reserve", TreeValue::ListDouble(vec![0.0, 0.0, 0.0, 5.0])),
+        ];
+
+        // The shell writes false again: the compositor places it, and the node says so.
+        shell.write(node, &place);
+        wait_configure(&mut client, (300, 60));
+        shell.write(node, &[("placement_override", TreeValue::Bool(false))]);
+        wait_configure(&mut client, (1024, 30));
+        session.wait_for(|observation| {
+            observation.layer("org.gnoblin.TestBar").is_some_and(|layer| {
+                layer.rect == Rect::new(0, 0, 1024, 30) && layer.reserved == Insets::new(30, 0, 0, 0)
+            })
+        });
+        shell.wait_published(node, "width", &number(1024.0));
+
+        // The shell detaches: what it wrote goes with it, so the next shell starts from the protocol's own.
+        shell.write(node, &place);
+        wait_configure(&mut client, (300, 60));
+        shell.detach();
+        wait_configure(&mut client, (1024, 30));
+        session.wait_for(|observation| {
+            observation.layer("org.gnoblin.TestBar").is_some_and(|layer| {
+                layer.rect == Rect::new(0, 0, 1024, 30) && layer.reserved == Insets::new(30, 0, 0, 0)
+            })
+        });
+        shell.wait_published(node, "placement_override", &TreeValue::Bool(false));
+        shell.wait_published(node, "reserve", &TreeValue::ListDouble(Vec::new()));
+    });
+}
+
+#[test]
+fn a_layer_surface_that_goes_takes_its_node_with_it() {
+    let (shell, hooks) = Shell::new();
+    let session = Session::start_shelled(hooks);
+    session.run(move |session| {
+        shell.attach();
+        let mut client = Client::connect(session.privileged_socket());
+        let bar = map_bar(
+            &mut client,
+            "org.gnoblin.TestBar",
+            zwlr_layer_shell_v1::Layer::Top,
+            30,
+            30,
+        );
+        let node = shell.wait_surface_node("layer");
+        bar.layer_surface.destroy();
+        bar.surface.destroy();
+        client.roundtrip();
+        shell.wait_destroyed(node);
     });
 }

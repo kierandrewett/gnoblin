@@ -43,8 +43,15 @@ pub(crate) struct HeldGrab {
 ///
 /// The configured position is the one that counts for finding the popup: the compositor decided it and told the
 /// client, and a client that was told to move a popup draws it there from its next commit. Waiting for the client's
-/// acknowledgement or commit would leave the pointer hitting the old place for the round trip between them.
+/// acknowledgement or commit would leave the pointer hitting the old place for the round trip between them. A popup
+/// the shell placed that is not reactive is the exception: it may not be configured again, so the place the shell put
+/// it at is the one that counts.
 fn configured_location(surface: &WlSurface) -> Point<i32, Logical> {
+    // A popup the shell placed that its client was not told of (a positioner that is not reactive may not be
+    // reconfigured) is where the shell put it: that is what the screen shows, so it is what the pointer finds.
+    if let Some(place) = crate::surface_override::shell_place(surface) {
+        return place;
+    }
     with_states(surface, |states| {
         states
             .data_map
@@ -123,6 +130,10 @@ impl State {
         window: WindowId,
         position: Point<f64, Logical>,
     ) -> Option<(WlSurface, Point<f64, Logical>)> {
+        // A window with a surface the shell placed or hid is picked from the order the scene draws its surfaces in.
+        if self.window_has_surface_overrides(window) {
+            return self.shell_surface_under(window, position, true);
+        }
         let root = self.windows.get(&window)?.surface.wl_surface()?;
         // The window's frame is its window geometry, and a popup is placed from the surface's own origin, which starts
         // the geometry's offset up and left of the frame.
@@ -242,6 +253,25 @@ impl State {
             }
         }
         self.popup_grabs.retain(|held| !held.grab.has_ended());
+    }
+
+    /// Ends the grab of every popup in `hidden` that holds one, topmost first. A popup nobody can see must not keep the
+    /// keyboard and the pointer, so it is sent `popup_done` like one the user dismissed, and its client destroys it. The
+    /// grab stays in the list until the popup goes ([`State::popup_gone`] hands the seat back).
+    pub(crate) fn dismiss_hidden_popup_grabs(&mut self, hidden: &std::collections::BTreeSet<u64>) {
+        if hidden.is_empty() {
+            return;
+        }
+        for held in &mut self.popup_grabs {
+            while !held.grab.has_ended()
+                && held
+                    .grab
+                    .current_grab()
+                    .is_some_and(|top| hidden.contains(&crate::surface_tree::key_of(&top)))
+            {
+                held.grab.ungrab(PopupUngrabStrategy::Topmost);
+            }
+        }
     }
 
     /// A popup went away: the manager forgets it, a grab that held only it is over, the keyboard goes back to the

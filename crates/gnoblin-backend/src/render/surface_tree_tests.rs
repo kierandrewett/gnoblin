@@ -1271,3 +1271,365 @@ fn a_view_of_a_window_shows_the_window_geometry_not_the_shadow() {
         );
     }
 }
+
+// A shell that holds the tree places, restacks and hides the surfaces of a window (`placement_override`, `stack` and
+// `visible` on a `surface` node), and the composer draws and reports what it wrote.
+
+/// The shell writes `values` on `node` as a transaction would: its place as the node's offset, the rest as values.
+fn shell_writes(composer: &mut Composer, node: NodeId, at: Option<(f32, f32)>, values: &[(&str, TreeValue)]) {
+    composer.with_scene(|scene| {
+        if let Some((x, y)) = at {
+            scene
+                .set_property(node, VisualProperty::OffsetX, PropertyValue::Number(x))
+                .expect("x");
+            scene
+                .set_property(node, VisualProperty::OffsetY, PropertyValue::Number(y))
+                .expect("y");
+        }
+        for (key, value) in values {
+            scene.set_value(node, key, value.clone()).expect("a value");
+        }
+    });
+}
+
+fn shell_holds(composer: &mut Composer, holds: bool) {
+    composer.with_scene(|scene| scene.set_holder_attached(holds));
+    composer.follow_placement();
+}
+
+#[test]
+fn a_subsurface_the_shell_placed_is_drawn_where_it_wrote_and_where_the_client_put_it_again_after_the_detach() {
+    let (mut composer, output, window) = drawing();
+    composer.set_window_surfaces(window, vec![subsurface(10, (10, 10), (20, 20), BLUE)]);
+    let before = shown(&mut composer, output);
+    assert_eq!(probe(&before, 115, 115), BLUE, "the control: the client's place");
+
+    shell_holds(&mut composer, true);
+    let node = tree_node(&composer, window, 10);
+    shell_writes(
+        &mut composer,
+        node,
+        Some((60.0, 60.0)),
+        &[("placement_override", TreeValue::Bool(true))],
+    );
+    assert_eq!(
+        composer.follow_surface_shell(),
+        vec![window],
+        "the window is told it changed"
+    );
+    let image = shown(&mut composer, output);
+    assert_eq!(probe(&image, 115, 115), RED, "the subsurface left the client's place");
+    assert_eq!(probe(&image, 165, 165), BLUE, "and is where the shell wrote");
+    assert_eq!(
+        composer.follow_surface_shell(),
+        Vec::<WindowId>::new(),
+        "a change is noticed once"
+    );
+
+    // The client commits again: its own place is not the one drawn while the shell places the surface.
+    composer.set_window_surfaces(window, vec![subsurface(10, (10, 10), (20, 20), BLUE)]);
+    let image = shown(&mut composer, output);
+    assert_eq!(
+        probe(&image, 165, 165),
+        BLUE,
+        "the shell's place survives the client's commit"
+    );
+    assert_eq!(probe(&image, 115, 115), RED);
+
+    shell_holds(&mut composer, false);
+    let image = shown(&mut composer, output);
+    assert_eq!(
+        probe(&image, 115, 115),
+        BLUE,
+        "the client's place is back once the shell lets go"
+    );
+    assert_eq!(probe(&image, 165, 165), RED);
+    assert_eq!(
+        composer.scene.value(node, "placement_override"),
+        Some(&TreeValue::Bool(false)),
+        "the override is released"
+    );
+}
+
+#[test]
+fn a_surface_the_shell_did_not_place_keeps_the_place_it_has_whatever_the_shell_wrote_there() {
+    let (mut composer, output, window) = drawing();
+    composer.set_window_surfaces(window, vec![subsurface(10, (10, 10), (20, 20), BLUE)]);
+    shell_holds(&mut composer, true);
+    let node = tree_node(&composer, window, 10);
+    composer.take_tree_changes();
+    shell_writes(&mut composer, node, Some((60.0, 60.0)), &[]);
+    composer.set_window_surfaces(window, vec![subsurface(10, (10, 10), (20, 20), BLUE)]);
+    let image = shown(&mut composer, output);
+    assert_eq!(
+        probe(&image, 115, 115),
+        BLUE,
+        "the write is not honoured without the override"
+    );
+    assert!(
+        composer.take_tree_changes().iter().any(|change| matches!(
+            change,
+            TreeChange::Set { node: set, key, value: TreeValue::Double(x) } if *set == node && key == "x" && *x == 10.0
+        )),
+        "the shell is told where the surface really is"
+    );
+}
+
+#[test]
+fn a_popup_stays_where_the_protocol_configured_it_because_the_protocol_engine_moves_it() {
+    let (mut composer, output, window) = drawing();
+    composer.set_window_surfaces(window, vec![popup(10, (90, 90), (40, 40), BLUE)]);
+    shell_holds(&mut composer, true);
+    let node = tree_node(&composer, window, 10);
+    shell_writes(
+        &mut composer,
+        node,
+        Some((0.0, 0.0)),
+        &[("placement_override", TreeValue::Bool(true))],
+    );
+    composer.follow_surface_shell();
+    let image = shown(&mut composer, output);
+    assert_eq!(
+        probe(&image, 215, 215),
+        BLUE,
+        "a popup moves with its configure, not with the node"
+    );
+    assert_eq!(
+        composer.window_surface_shell(window),
+        vec![SurfaceShell {
+            key: 10,
+            role: TreeSurfaceRole::Popup,
+            placed: Some((90.0, 90.0)),
+            hidden: false,
+        }],
+        "and the node says where it is, not what the shell asked"
+    );
+}
+
+#[test]
+fn the_shells_stack_orders_surfaces_that_share_a_parent_and_a_negative_one_goes_behind_the_parent() {
+    let (mut composer, output, window) = drawing();
+    composer.set_window_surfaces(
+        window,
+        vec![
+            subsurface(10, (10, 10), (20, 20), BLUE),
+            subsurface(11, (10, 10), (20, 20), GREEN),
+        ],
+    );
+    let image = shown(&mut composer, output);
+    assert_eq!(
+        probe(&image, 115, 115),
+        GREEN,
+        "the control: the later surface is on top"
+    );
+
+    shell_holds(&mut composer, true);
+    let blue = tree_node(&composer, window, 10);
+    shell_writes(
+        &mut composer,
+        blue,
+        None,
+        &[
+            ("placement_override", TreeValue::Bool(true)),
+            ("stack", TreeValue::Int(1)),
+        ],
+    );
+    composer.follow_surface_shell();
+    let image = shown(&mut composer, output);
+    assert_eq!(probe(&image, 115, 115), BLUE, "stack 1 raises it over the other");
+    let order = composer.window_pick_order(window);
+    assert_eq!(
+        order.iter().map(|surface| surface.key).collect::<Vec<_>>(),
+        vec![Some(10), Some(11), None],
+        "and the pointer finds it first, then the other, then the window"
+    );
+
+    shell_writes(&mut composer, blue, None, &[("stack", TreeValue::Int(-1))]);
+    composer.follow_surface_shell();
+    let image = shown(&mut composer, output);
+    assert_eq!(
+        probe(&image, 115, 115),
+        GREEN,
+        "a negative stack is behind its parent, and the other is over the window"
+    );
+    let order = composer.window_pick_order(window);
+    assert_eq!(
+        order.iter().map(|surface| surface.key).collect::<Vec<_>>(),
+        vec![Some(11), None, Some(10)],
+        "the pointer reaches it last"
+    );
+}
+
+#[test]
+fn a_surface_the_shell_hid_is_not_drawn_or_picked_and_nor_is_anything_that_hangs_from_it() {
+    let (mut composer, output, window) = drawing();
+    let child = tree_surface(11, Some(10), TreeSurfaceRole::Subsurface, (5, 5), (10, 10), GREEN);
+    composer.set_window_surfaces(window, vec![subsurface(10, (10, 10), (30, 30), BLUE), child]);
+    let image = shown(&mut composer, output);
+    assert_eq!(probe(&image, 112, 112), BLUE);
+    assert_eq!(probe(&image, 118, 118), GREEN, "the control: both are drawn");
+
+    shell_holds(&mut composer, true);
+    let node = tree_node(&composer, window, 10);
+    composer.with_scene(|scene| scene.set_visible(node, false).expect("hide"));
+    let image = shown(&mut composer, output);
+    assert_eq!(probe(&image, 112, 112), RED, "the hidden surface is gone");
+    assert_eq!(probe(&image, 118, 118), RED, "and so is the one under it");
+    assert_eq!(
+        composer
+            .window_pick_order(window)
+            .iter()
+            .map(|surface| surface.key)
+            .collect::<Vec<_>>(),
+        vec![None],
+        "the pointer reaches neither"
+    );
+    assert_eq!(
+        composer.window_surface_shell(window),
+        vec![SurfaceShell {
+            key: 10,
+            role: TreeSurfaceRole::Subsurface,
+            placed: None,
+            hidden: true,
+        }]
+    );
+
+    shell_holds(&mut composer, false);
+    assert_eq!(
+        probe(&shown(&mut composer, output), 112, 112),
+        BLUE,
+        "the detach shows it again"
+    );
+}
+
+#[test]
+fn the_pick_order_is_the_draw_order_with_popups_above_everything() {
+    let (mut composer, _output, window) = drawing();
+    let mut below = subsurface(10, (80, 80), (10, 10), BLUE);
+    below.behind = true;
+    let above = subsurface(11, (5, 5), (10, 10), GREEN);
+    composer.set_window_surfaces(window, vec![below, above, popup(12, (90, 90), (40, 40), BLUE)]);
+    let order = composer.window_pick_order(window);
+    assert_eq!(
+        order,
+        vec![
+            PickSurface {
+                key: Some(12),
+                popup: true,
+                origin: (90, 90)
+            },
+            PickSurface {
+                key: Some(11),
+                popup: false,
+                origin: (5, 5)
+            },
+            PickSurface {
+                key: None,
+                popup: false,
+                origin: (0, 0)
+            },
+            PickSurface {
+                key: Some(10),
+                popup: false,
+                origin: (80, 80)
+            },
+        ]
+    );
+}
+
+#[test]
+fn a_subsurface_the_shell_moved_outside_its_window_is_reachable_there() {
+    let (mut composer, _output, window) = drawing();
+    composer.set_window_surfaces(window, vec![subsurface(10, (10, 10), (20, 20), BLUE)]);
+    shell_holds(&mut composer, true);
+    let node = tree_node(&composer, window, 10);
+    shell_writes(
+        &mut composer,
+        node,
+        Some((300.0, 10.0)),
+        &[("placement_override", TreeValue::Bool(true))],
+    );
+    composer.follow_surface_shell();
+    let window_node = node_of(&composer, window);
+    let hit = composer.scene.hit_test(PointF::new(410.0, 115.0));
+    assert_eq!(
+        hit.map(|hit| hit.node),
+        Some(window_node),
+        "the window takes hits over the moved subsurface"
+    );
+}
+
+#[test]
+fn a_layer_surfaces_node_carries_its_request_and_is_the_shells_to_place() {
+    let (mut composer, _output, _window) = drawing();
+    let info = LayerNodeInfo {
+        namespace: "bar".to_owned(),
+        layer: "top",
+        anchor: vec!["top".to_owned(), "left".to_owned(), "right".to_owned()],
+        margin: [1.0, 2.0, 3.0, 4.0],
+        requested: [0.0, 30.0],
+        zone: 30.0,
+        mapped: true,
+    };
+    let node = composer.add_layer_node(&info).expect("a node");
+    composer.update_layer_node(node, &info, Rect::new(0, 0, 800, 30), false);
+    let changes = composer.take_tree_changes();
+    assert!(
+        changes.iter().any(|change| matches!(change, TreeChange::Created { node: created, class, .. } if *created == node && class == "surface")),
+        "the node is announced as a surface"
+    );
+    for (key, value) in [
+        ("role", TreeValue::Text("layer".to_owned())),
+        ("namespace", TreeValue::Text("bar".to_owned())),
+        ("layer", TreeValue::Text("top".to_owned())),
+        (
+            "anchor",
+            TreeValue::ListText(vec!["top".to_owned(), "left".to_owned(), "right".to_owned()]),
+        ),
+        ("requested_size", TreeValue::ListDouble(vec![0.0, 30.0])),
+        ("exclusive_zone", TreeValue::Double(30.0)),
+        ("width", TreeValue::Double(800.0)),
+    ] {
+        assert!(
+            changes.iter().any(|change| matches!(change, TreeChange::Set { node: set, key: name, value: held } if *set == node && name == key && *held == value)),
+            "{key} is published"
+        );
+    }
+    assert_eq!(composer.layer_override(node), None, "no shell, no override");
+
+    shell_holds(&mut composer, true);
+    assert_eq!(
+        composer.layer_override(node),
+        None,
+        "a shell that has not asked for the override has none"
+    );
+    shell_writes(
+        &mut composer,
+        node,
+        Some((100.0, 20.0)),
+        &[
+            ("placement_override", TreeValue::Bool(true)),
+            ("reserve", TreeValue::ListDouble(vec![0.0, 0.0, 0.0, 12.0])),
+        ],
+    );
+    composer.with_scene(|scene| scene.set_bounds(node, Rect::new(0, 0, 400, 30)).expect("size"));
+    assert_eq!(
+        composer.layer_override(node),
+        Some(LayerOverride {
+            rect: Rect::new(100, 20, 400, 30),
+            reserve: Some(gnoblin_types::Insets::new(0, 0, 0, 12)),
+        })
+    );
+
+    // The shell lets go: the override is released and the node is the protocol's again.
+    shell_holds(&mut composer, false);
+    assert_eq!(composer.layer_override(node), None);
+    composer.update_layer_node(node, &info, Rect::new(0, 0, 800, 30), false);
+    assert_eq!(composer.scene.bounds(node), Some(Rect::new(0, 0, 800, 30)));
+    assert_eq!(
+        composer.scene.value(node, "reserve"),
+        Some(&TreeValue::ListDouble(Vec::new()))
+    );
+    composer.remove_layer_node(node);
+    assert!(composer.scene.bounds(node).is_none(), "the node went with its surface");
+}

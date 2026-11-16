@@ -130,13 +130,68 @@ tree. Animatable properties are marked **A**.
 
 Signals: `destroyed()`. Input signals (`press`, `release`, `motion`, `scroll`, `enter`, `leave`, `key`) are section 5.
 
-**Surface** (base `Node`). A client surface that is not a toplevel: popup, subsurface, layer shell, session lock, cursor, drag icon. A window's popups and subsurfaces are children of the window's node that the compositor draws and positions (a popup at the place the compositor configured it, a subsurface at the offset its client set), so a capture of the window includes them; the shell cannot move or destroy them.
+**Surface** (base `Node`). A client surface that is not a toplevel: popup, subsurface, layer shell, session lock, cursor, drag icon.
+
+- A window's popups and subsurfaces are children of the window's node that the compositor draws and positions (a popup at the place the compositor configured it, a subsurface at the offset its client set), so a capture of the window includes them.
+- Each layer-shell surface is an unparented node of its own.
+- The shell cannot reparent or destroy any of them, but it may place, restack and hide them (below).
+- A session lock, the cursor and a drag icon have no node, and the lock card and the compositor's own dialogs are never nodes.
 
 | Property | Type     | Default | Flags                                                               |
 | -------- | -------- | ------- | ------------------------------------------------------------------- |
 | `role`   | `string` | none    | readonly (`popup`, `subsurface`, `layer`, `lock`, `cursor`, `drag`) |
 | `mapped` | `bool`   | `false` | readonly                                                            |
 | `app_id` | `string` | `""`    | readonly                                                            |
+
+**Surface overrides (implemented, lane CoreGapsG6, gap G6; default selected, owner may revisit).** A shell that holds the
+tree places the popups, subsurfaces and layer surfaces the compositor made nodes of, instead of the protocol. Every member
+is additive and defaults to the protocol's own behaviour, so a shell that writes none of them sees the compositor as before.
+
+| Property             | Type           | Default     | Flags    | Notes                                                                                |
+| -------------------- | -------------- | ----------- | -------- | ------------------------------------------------------------------------------------ |
+| `placement_override` | `bool`         | `false`     |          | the shell places this surface; `true` on any other role is refused `not-owner`       |
+| `stack`              | `int`          | `0`         |          | order among surfaces with one parent; negative is behind the parent                  |
+| `reserve`            | `list<double>` | `[]`        |          | a layer surface's strip while overridden: top, right, bottom, left, else `bad-value` |
+| `namespace`          | `string`       | `""`        | readonly | a layer surface's namespace                                                          |
+| `layer`              | `string`       | `""`        | readonly | `background`, `bottom`, `top` or `overlay`                                           |
+| `anchor`             | `list<string>` | `[]`        | readonly | the edges among `top`, `bottom`, `left`, `right`                                     |
+| `margin`             | `list<double>` | `[0,0,0,0]` | readonly | top, right, bottom, left                                                             |
+| `requested_size`     | `list<double>` | `[0,0]`     | readonly | the size the client asked for (`set_size`)                                           |
+| `exclusive_zone`     | `double`       | `0.0`       | readonly | the zone the client asked for, as the protocol states it                             |
+
+`visible` (a node property) hides a surface and everything under it.
+
+- Overrides are read only while a shell holds the tree and the session is unlocked. A locked session ignores them and writes the protocol's own place to the node.
+- The compositor sets `placement_override`, `stack` and `reserve` back to their defaults and shows every surface again when the shell lets go. A crashed shell leaves nothing moved or hidden, and the next shell starts from the protocol's placement.
+- A timed write (`seconds`) of `x`, `y`, `width` or `height` of a surface is refused `not-animated`: the compositor reads them once a frame and acts on them (a configure, a reserved strip), so it takes the value the shell settles on.
+
+- **Subsurface.** `placement_override` makes `x` and `y` the place it is drawn and picked at, in whole pixels, in its
+  parent's plane. The client is not told: `wl_subsurface` has no event for its place, its own `set_position` keeps being
+  applied as the protocol says, and writing `false` shows it where the client put it. A synchronized
+  subsurface keeps showing the content its parent last applied: only its place moves, so the shell's write never shows a
+  commit early. The window's pointer area grows to
+  cover a subsurface moved outside the window.
+- **Popup.** `x` and `y` are where the popup's _surface_ starts in its parent's plane (the window node's, or a parent
+  popup's). The compositor runs the popup's positioner on that place, so the client's own `constraint_adjustment` (flip,
+  slide, resize) still keeps it on the monitor, and writes the place it settled on back to `x` and `y`. A popup whose
+  positioner is _reactive_ is configured at the place (`xdg_popup.configure`), so the client's idea of its place is what
+  is drawn. `xdg_popup` allows no configure after the first for a popup that is not reactive, so such a popup is drawn and
+  picked at the place without being told, as a subsurface is. A popup of a layer surface has no node.
+- **Layer surface.** The node's `x`, `y`, `width` and `height` are the rectangle the protocol computed from the anchors,
+  margins and size, published as the compositor places the surface. While `placement_override` is true they are the
+  shell's: the surface is configured at that size (`zwlr_layer_surface_v1.configure` is still sent, and the client still
+  has the anchors and size it asked for), the rectangle is the one its popups are constrained to and the session publishes,
+  and `reserve` replaces the strip its exclusive zone takes out of the work area (`[0, 0, 0, 0]` takes none). A width or
+  height of 0 keeps the protocol's size on that axis. The compositor does not draw layer surfaces (their buffers are not in
+  the scene), so the node carries the rectangle and the shell draws or leaves them as it likes.
+- **Restack and hide.** `stack` orders a popup or subsurface among the surfaces that hang from its parent, in the order
+  the scene draws and the pointer finds them: a negative number is behind the parent's own pixels, a positive one in front,
+  and equal numbers keep the protocol's order. A window with a surface the shell placed, restacked or hid is picked from
+  that order and not from the protocol's tree, so the pointer reaches what is drawn. A hidden surface is neither drawn nor
+  picked, and a hidden popup that holds a grab is dismissed (`popup_done`): a popup nobody can see must not keep the
+  keyboard and the pointer. Nothing else about a popup's grab changes.
+- **Not done.** A surface-level input region override falls out of none of the above, so there is none: the pointer still
+  reaches a surface through the input region its client set.
 
 **Window** (base `Node`). A toplevel: xdg-shell, X11, foreign toplevel.
 
@@ -384,7 +439,8 @@ surface), nor destroy a compositor-owned node; both are refused `not-owner`. Mov
 `root-immutable`. Ownership governs lifecycle and parentage only. Property writes are governed only by the schema's
 `readonly` flag, whoever owns the node: the shell may write `x`, `y`, `width`, `height`, `visible`, opacity and the
 other placement properties of a compositor-owned window, and may not write a read-only property (`title`, `app_id`,
-...), which is refused `read-only`.
+...), which is refused `read-only`. The compositor acts on `x`, `y`, `width` and `height` of a popup, subsurface or layer
+surface node only while `placement_override` is true (the surface overrides under the `Surface` class).
 
 | Node                                          | Created by         | Destroyed by                                        | Shell may `insert` it? |
 | --------------------------------------------- | ------------------ | --------------------------------------------------- | ---------------------- |

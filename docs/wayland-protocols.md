@@ -51,9 +51,13 @@ and keyboard interactivity, and Gnoblin answers as the protocol says:
 - A popup that belongs to a layer surface is placed against that surface, and
   a repositioned popup stays inside it.
 
-The protocol is the whole interface. A layer surface is not a window, so
-window rules do not match it, and Gnoblin keeps no registry of layer surfaces
-to configure, list or subscribe to.
+The protocol is the whole interface for a client. A layer surface is not a
+window, so window rules do not match it, and Gnoblin keeps no registry of layer
+surfaces to configure, list or subscribe to.
+
+A shell that holds the node tree sees each layer surface as a `surface` node and
+may place it itself: see
+[Place popups, subsurfaces and layer surfaces](shell-api/scene.md#place-popups-subsurfaces-and-layer-surfaces).
 
 ![Quickshell panel above Firefox in a Gnoblin session](images/gnoblin-quickshell-firefox.png)
 

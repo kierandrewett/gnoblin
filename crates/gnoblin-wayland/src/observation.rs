@@ -9,7 +9,7 @@
 use std::collections::BTreeMap;
 
 use gnoblin_lock::State as LockState;
-use gnoblin_types::{OutputId, Rect, Scale, WindowId, WorkspaceId};
+use gnoblin_types::{Insets, OutputId, Rect, Scale, WindowId, WorkspaceId};
 
 /// One window, as the server last saw it.
 #[derive(Clone, PartialEq, Debug)]
@@ -66,6 +66,9 @@ pub struct ObservedLayer {
     pub exclusive: i32,
     /// Whether it has committed a buffer, which is what "shown" means for one.
     pub mapped: bool,
+    /// What it takes out of its output's work area: the strip its exclusive zone asks for along its anchored edge, or the
+    /// insets a shell that places it chose instead (`reserve` on its node).
+    pub reserved: Insets,
 }
 
 /// A refused activation: what was refused and why.

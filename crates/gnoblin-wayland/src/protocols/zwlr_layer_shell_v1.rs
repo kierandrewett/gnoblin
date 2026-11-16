@@ -30,6 +30,17 @@
 //! assert on the configure size, the published rectangle and the work area rather
 //! than on pixels.
 //!
+//! ## The shell's say
+//!
+//! Each layer surface has a `surface` node in the tree, made when the client creates it and removed with it. A shell that
+//! holds the tree reads what the client asked for there (`namespace`, `layer`, `anchor`, `margin`, `requested_size`,
+//! `exclusive_zone`) and may take the placement over with `placement_override` (`design/node-core.md`, "Surface overrides").
+//! The protocol's arithmetic (`place`) still runs and stays what the node shows while the shell does not place the
+//! surface. When it does, the shell's rectangle stands, the surface is configured at that size and the surface's popups
+//! and the published rectangle follow it, and the shell's `reserve` replaces the strip the exclusive zone takes out of
+//! the work area. A locked session, a shell that stops placing the surface and a shell that detaches all hand the surface
+//! back to the protocol at the next frame (`State::follow_layer_overrides`).
+//!
 //! ## Failure modes first
 //!
 //! Each is a test in `tests/layer_shell.rs` unless it says otherwise.
@@ -74,8 +85,17 @@
 //!     positioner put it, measured from the bar, and a reposition keeps it inside the bar's rectangle —
 //!     `a_popup_of_a_bar_is_placed_against_the_bar` and
 //!     `a_popup_of_a_bar_that_is_repositioned_stays_inside_the_bar`.
+//! 11. **A shell's placement outlives its permission.** A surface the shell stopped placing, the session's lock and the
+//!     shell's detach put the protocol's rectangle, configure and strip back, and a write to the node's rectangle that is
+//!     not honoured is written back —
+//!     `a_layer_surface_goes_back_to_the_protocol_when_the_shell_lets_go_or_stops_placing_it` and
+//!     `a_write_to_a_layer_surfaces_rectangle_without_the_override_is_not_honoured_and_is_written_back`.
+//! 12. **The shell's rectangle is not what the client is told.** The client is configured at the size the shell chose, an
+//!     axis the shell left at 0 keeps the protocol's —
+//!     `a_shell_that_places_a_layer_surface_sets_its_rectangle_its_configure_and_its_strip`.
 
-use gnoblin_types::{Edge, Insets, OutputId, Rect};
+use gnoblin_backend::render::compose::{LayerNodeInfo, LayerOverride};
+use gnoblin_types::{Edge, Insets, NodeId, OutputId, Rect};
 use smithay::output::Output as SmithayOutput;
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
@@ -139,6 +159,16 @@ struct ZwlrLayerShellV1LayerEntry {
     keyboard: KeyboardInteractivity,
     /// Whether it has committed a buffer, which is what "shown" means here.
     mapped: bool,
+    /// What the shell sees of it: the node the tree names it by, made when the client created the surface.
+    node: Option<NodeId>,
+    /// What the client asked for and where it is, as the node publishes it.
+    info: LayerNodeInfo,
+    /// What the shell wrote on the node and the compositor acted on at the last placement, when the shell placed the
+    /// surface (`placement_override`) and the session was unlocked. Compared with what the node says now, so a change is
+    /// noticed without a commit from the client.
+    placed: Option<LayerOverride>,
+    /// The strip the shell chose for the surface to reserve instead of its own exclusive zone's.
+    reserve_override: Option<Insets>,
 }
 
 impl ZwlrLayerShellV1LayerEntry {
@@ -149,6 +179,9 @@ impl ZwlrLayerShellV1LayerEntry {
     /// is a whole band, not a strip) or to neither (it is not against an edge at
     /// all), so both reserve nothing.
     fn reserve(&self) -> Insets {
+        if let Some(insets) = self.reserve_override {
+            return insets;
+        }
         let ExclusiveZone::Exclusive(amount) = self.exclusive else {
             return Insets::ZERO;
         };
@@ -203,6 +236,7 @@ impl ZwlrLayerShellV1Layers {
                 rect: entry.rect,
                 exclusive: exclusive_value(entry.exclusive),
                 mapped: entry.mapped,
+                reserved: entry.reserve(),
             })
             .collect()
     }
@@ -227,6 +261,16 @@ impl State {
             surface = ?surface.wl_surface().id(),
             "created"
         );
+        let info = LayerNodeInfo {
+            namespace: namespace.clone(),
+            layer: layer_name(layer),
+            anchor: Vec::new(),
+            margin: [0.0; 4],
+            requested: [0.0; 2],
+            zone: 0.0,
+            mapped: false,
+        };
+        let node = self.composer.add_layer_node(&info);
         self.layers.entries.push(ZwlrLayerShellV1LayerEntry {
             surface,
             namespace,
@@ -237,6 +281,10 @@ impl State {
             edge: None,
             keyboard: KeyboardInteractivity::None,
             mapped: false,
+            node,
+            info,
+            placed: None,
+            reserve_override: None,
         });
     }
 
@@ -251,6 +299,25 @@ impl State {
         else {
             return;
         };
+        self.layer_place(index);
+    }
+
+    /// What the shell wrote on a layer surface's node, when it places the surface and the session is unlocked. A locked
+    /// session ignores it, so the protocol's own placement stands under the lock and the shell's returns with the unlock.
+    fn layer_override(&self, index: usize) -> Option<LayerOverride> {
+        if !self.surface_overrides_apply() {
+            return None;
+        }
+        self.composer.layer_override(self.layers.entries.get(index)?.node?)
+    }
+
+    /// Places a layer surface and tells it, its popups, the work area and the shell.
+    ///
+    /// The protocol's rectangle comes from the anchors, margins and size the client asked for. When the shell placed the
+    /// surface (`placement_override` on its node) the shell's rectangle stands instead, an axis it left at 0 keeping the
+    /// protocol's, and the client is configured at that size: it still receives its configure, and still sees the
+    /// anchors and margins it asked for. The strip it reserves is the shell's `reserve` when the shell wrote one.
+    fn layer_place(&mut self, index: usize) {
         let cached = self.layers.entries[index].surface.with_cached_state(|state| *state);
         let Some(monitor) = self.layers.entries[index]
             .output
@@ -262,8 +329,32 @@ impl State {
             log::debug!(area = "layer", "no output to place a layer surface on yet");
             return;
         };
-        let rect = place(monitor, &cached);
-        let configured = configure_size(monitor, &cached);
+        let shell = self.layer_override(index);
+        let protocol = place(monitor, &cached);
+        let rect = match shell {
+            Some(shell) => Rect::new(
+                shell.rect.x,
+                shell.rect.y,
+                if shell.rect.width > 0 {
+                    shell.rect.width
+                } else {
+                    protocol.width
+                },
+                if shell.rect.height > 0 {
+                    shell.rect.height
+                } else {
+                    protocol.height
+                },
+            ),
+            None => protocol,
+        };
+        let configured = match shell {
+            Some(_) => Size::from((
+                i32::try_from(rect.width).unwrap_or(i32::MAX),
+                i32::try_from(rect.height).unwrap_or(i32::MAX),
+            )),
+            None => configure_size(monitor, &cached),
+        };
         let surface = self.layers.entries[index].surface.clone();
         surface.with_pending_state(|state| {
             state.size = Some(configured);
@@ -279,14 +370,52 @@ impl State {
         entry.keyboard = cached.keyboard_interactivity;
         entry.rect = rect;
         entry.mapped = crate::state::has_buffer(surface.wl_surface());
+        entry.placed = shell;
+        entry.reserve_override = shell.and_then(|shell| shell.reserve);
+        entry.info = LayerNodeInfo {
+            namespace: entry.namespace.clone(),
+            layer: layer_name(cached.layer),
+            anchor: anchor_names(cached.anchor),
+            margin: [
+                f64::from(cached.margin.top),
+                f64::from(cached.margin.right),
+                f64::from(cached.margin.bottom),
+                f64::from(cached.margin.left),
+            ],
+            requested: [f64::from(cached.size.w), f64::from(cached.size.h)],
+            zone: f64::from(exclusive_value(cached.exclusive_zone)),
+            mapped: entry.mapped,
+        };
         log::debug!(area = "layer", namespace = %entry.namespace,
             ?rect,
             mapped = entry.mapped,
+            placed_by_shell = shell.is_some(),
             "configured"
         );
+        if let Some(node) = entry.node {
+            self.composer
+                .update_layer_node(node, &entry.info, rect, shell.is_some());
+        }
         self.refresh_reserved();
         self.refresh_layer_focus();
         self.publish();
+    }
+
+    /// Follows what the shell wrote on the layer surfaces' nodes: a surface it started or stopped placing, moved, resized
+    /// or gave another strip to reserve is placed again, and the session's lock or the shell's detach hands every surface
+    /// back to the protocol. A node the shell wrote that the compositor does not honour is written back.
+    pub(crate) fn follow_layer_overrides(&mut self) {
+        for index in 0..self.layers.entries.len() {
+            if self.layer_override(index) != self.layers.entries[index].placed {
+                self.layer_place(index);
+                continue;
+            }
+            let entry = &self.layers.entries[index];
+            if let Some(node) = entry.node {
+                self.composer
+                    .update_layer_node(node, &entry.info, entry.rect, entry.placed.is_some());
+            }
+        }
     }
 
     /// A layer surface is gone, whether the client destroyed it or disconnected.
@@ -302,6 +431,9 @@ impl State {
         };
         let entry = self.layers.entries.remove(index);
         log::debug!(area = "layer", namespace = %entry.namespace, "destroyed");
+        if let Some(node) = entry.node {
+            self.composer.remove_layer_node(node);
+        }
         // The strip goes back with the surface: a bar that exits must not keep the
         // work area short for the rest of the session.
         if entry.surface.wl_surface() == wl_surface {
@@ -486,6 +618,20 @@ fn reservation_edge(state: &LayerSurfaceCachedState) -> Option<Edge> {
         (false, false, false, true) => Some(Edge::Right),
         _ => None,
     }
+}
+
+/// The edges of an anchor, by the names the node publishes them under.
+fn anchor_names(anchor: Anchor) -> Vec<String> {
+    [
+        (Anchor::TOP, "top"),
+        (Anchor::BOTTOM, "bottom"),
+        (Anchor::LEFT, "left"),
+        (Anchor::RIGHT, "right"),
+    ]
+    .into_iter()
+    .filter(|(edge, _)| anchor.contains(*edge))
+    .map(|(_, name)| name.to_owned())
+    .collect()
 }
 
 /// The protocol's name for a layer, for a log line and an observation.

@@ -260,6 +260,81 @@ the frame reached the screen, in milliseconds on `CLOCK_MONOTONIC`, the clock `w
 reading the window's client is sent in its presentation feedback. It is off by default because a property written on
 every frame is a change in every batch.
 
+## Place popups, subsurfaces and layer surfaces
+
+A shell that holds the tree decides where a client's extra surfaces are, instead of the protocol. These are the popups
+(menus, tooltips) and subsurfaces of a window, and the layer-shell surfaces (bars, docks, overlays).
+
+The members are tree properties, written over the owner socket by a shell of any language. The TypeScript library does not
+wrap them yet. A shell that writes none of them sees the compositor as before.
+
+The compositor makes a `surface` node for each:
+
+| `role`       | Where the node is                    |
+| ------------ | ------------------------------------ |
+| `popup`      | A child of its window's node         |
+| `subsurface` | A child of its parent surface's node |
+| `layer`      | Unparented, like a window            |
+
+| Property             | Type           | Default | What it does                                                         |
+| -------------------- | -------------- | ------- | -------------------------------------------------------------------- |
+| `placement_override` | `bool`         | `false` | The node's `x` and `y` (layer: and `width`, `height`) are the place. |
+| `stack`              | `int`          | `0`     | Order among surfaces with one parent; negative is behind it.         |
+| `visible`            | `bool`         | `true`  | `false` hides the surface and what hangs from it.                    |
+| `reserve`            | `list<double>` | `[]`    | A layer surface's strip: top, right, bottom, left.                   |
+
+A layer surface also publishes what its client asked for, read-only: `namespace`, `layer`, `anchor`, `margin`,
+`requested_size` and `exclusive_zone`.
+
+What is refused and when the overrides count:
+
+- `placement_override` set to `true` on any node whose `role` is not `popup`, `subsurface` or `layer` is refused
+  `not-owner`.
+- A `reserve` that is not empty or four whole non-negative numbers is refused `bad-value`.
+- A timed write (`seconds`) of a surface's `x`, `y`, `width` or `height` is refused `not-animated`. The compositor acts on
+  the value the shell settles on.
+- The overrides count only while a shell holds the tree and the session is unlocked. A locked session uses the protocol's
+  placement and writes it to the node, so a shell writes its place again after the unlock.
+- When the shell lets go, the compositor sets `placement_override`, `stack` and `reserve` back to their defaults and shows
+  every surface again.
+
+**Subsurfaces.** With `placement_override` the subsurface is drawn and picked at `x`, `y` in its parent's plane.
+
+- Its client is not told: `wl_subsurface` has no event for its place.
+- The client's own `set_position` keeps being applied as the protocol says, so writing `false` shows it where the client
+  put it.
+- A synchronized subsurface keeps showing the content its parent last applied. Only its place moves, so the shell's write
+  never shows a commit early.
+
+**Popups.** `x` and `y` are where the popup's surface starts in its parent's plane.
+
+- The compositor runs the popup's positioner on that place, so the client's constraint adjustment still keeps it on the
+  monitor. It writes the place the popup settled on back to `x` and `y`.
+- A popup whose positioner is reactive is configured there, so what the client knows is what is drawn.
+- `xdg_popup` allows no configure after the first for a popup that is not reactive. Such a popup is drawn and picked at the
+  place without being told.
+- A hidden popup that holds a grab is dismissed, because a popup nobody can see must not keep the keyboard and the pointer.
+- A popup of a layer surface has no node.
+
+**Layer surfaces.** The node's `x`, `y`, `width` and `height` start as the rectangle the protocol computed from the anchors,
+margins and size.
+
+- With `placement_override` the surface is configured at the width and height the shell wrote. A `0` keeps the protocol's
+  size on that axis.
+- `zwlr_layer_surface_v1.configure` is still sent, and the client still has the anchors and size it asked for.
+- The rectangle is also the one the surface's popups are placed against and the one the session reports.
+- `reserve` sets the strip the surface takes out of the work area. `[0, 0, 0, 0]` takes none, and an empty list keeps the
+  strip the surface's own exclusive zone asks for.
+- The compositor does not draw layer surfaces. The node carries the rectangle, and the shell draws or ignores the surface.
+
+**Restack and hide.** The pointer reaches what is drawn and nothing that is hidden.
+
+- `stack` orders a popup or subsurface among the surfaces that hang from its parent.
+- A negative number is behind the parent's own pixels and a positive one in front. Equal numbers keep the protocol's order.
+
+A surface-level input region override is not offered: the pointer still reaches a surface through the input region its
+client set.
+
 ## Not built
 
 - A perspective camera that projects a flat workspace's windows is not built, so `ArcLayout` is not seen as a ring.

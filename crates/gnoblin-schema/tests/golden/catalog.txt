@@ -779,6 +779,15 @@ object surface since 0.2.0 secret false
   property role type string since 0.2.0 secret false
   property mapped type bool since 0.2.0 secret false
   property app_id type string since 0.2.0 secret false
+  property placement_override type bool since 0.2.0 secret false
+  property stack type int since 0.2.0 secret false
+  property reserve type list<double> since 0.2.0 secret false
+  property namespace type string since 0.2.0 secret false
+  property layer type string since 0.2.0 secret false
+  property anchor type list<string> since 0.2.0 secret false
+  property margin type list<double> since 0.2.0 secret false
+  property requested_size type list<double> since 0.2.0 secret false
+  property exclusive_zone type double since 0.2.0 secret false
   signal destroyed since 0.2.0 secret false
 object tween since 0.2.0 secret false
   property id type uint since 0.2.0 secret false
@@ -2747,6 +2756,24 @@ message Surface {
     bool mapped = 22;
     // since 0.2.0
     string app_id = 23;
+    // since 0.2.0
+    bool placement_override = 24;
+    // since 0.2.0
+    int64 stack = 25;
+    // since 0.2.0; list
+    repeated double reserve = 26;
+    // since 0.2.0
+    string namespace = 27;
+    // since 0.2.0
+    string layer = 28;
+    // since 0.2.0; list
+    repeated string anchor = 29;
+    // since 0.2.0; list
+    repeated double margin = 30;
+    // since 0.2.0; list
+    repeated double requested_size = 31;
+    // since 0.2.0
+    double exclusive_zone = 32;
   }
 
   // Signal `destroyed`, since 0.2.0.

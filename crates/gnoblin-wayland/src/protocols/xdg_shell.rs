@@ -218,15 +218,22 @@ impl State {
     /// root is a layer surface is clamped to that surface's own rectangle instead: a
     /// bar's menu belongs over the bar, not over the whole monitor.
     pub(crate) fn unconstrain_popup(&mut self, popup: &PopupSurface) {
+        if let Some(geometry) = self.popup_geometry(popup) {
+            popup.with_pending_state(|state| state.geometry = geometry);
+        }
+    }
+
+    /// Where [`State::unconstrain_popup`] puts a popup: its positioner's place, or the place a shell that placed it asked
+    /// for, either way adjusted as the positioner's `constraint_adjustment` says so it stays on the monitor. `None` while
+    /// the popup has no root or its window is gone.
+    pub(crate) fn popup_geometry(&self, popup: &PopupSurface) -> Option<Rectangle<i32, Logical>> {
         let Ok(root) = find_popup_root_surface(&PopupKind::Xdg(popup.clone())) else {
             log::trace!(area = "xdg", "a popup has no root surface yet");
-            return;
+            return None;
         };
         let (rectangle, origin) = match (self.window_of(&root), self.layer_rect(&root)) {
             (Some(window), _) => {
-                let (Some(geometry), Some(monitor)) = (self.geometry_of(window), self.monitor_of(window)) else {
-                    return;
-                };
+                let (geometry, monitor) = (self.geometry_of(window)?, self.monitor_of(window)?);
                 (
                     Rectangle::new(
                         Point::from((monitor.x, monitor.y)),
@@ -242,13 +249,20 @@ impl State {
                 ),
                 Point::from((rect.x, rect.y)),
             ),
-            (None, None) => return,
+            (None, None) => return None,
         };
         let mut target = rectangle;
         target.loc -= get_popup_toplevel_coords(&PopupKind::Xdg(popup.clone()));
         target.loc -= origin;
-        popup.with_pending_state(|state| {
-            state.geometry = state.positioner.get_unconstrained_geometry(target);
-        });
+        // A shell that placed the popup asked for a place of its own: the positioner is moved so that place is where it
+        // starts, and its constraint adjustment then keeps the popup on the monitor as the client asked.
+        let wanted = self.popup_override_place(popup);
+        Some(popup.with_pending_state(|state| {
+            let mut positioner = state.positioner;
+            if let Some(wanted) = wanted {
+                positioner.offset += wanted - positioner.get_geometry().loc;
+            }
+            positioner.get_unconstrained_geometry(target)
+        }))
     }
 }

@@ -323,3 +323,47 @@ fn the_motion_switch_and_the_frame_controls_default_to_the_compositors_own_behav
         assert!(!property.3, "`{name}` is not animated");
     }
 }
+
+/// A shell that holds the tree may place, restack and hide the surfaces the compositor made nodes of (lane CoreGapsG6): a
+/// popup, a subsurface or a layer surface. Every member is additive with the default that keeps the protocol's own
+/// behaviour, so a shell that writes none of them sees the compositor as before, and what a layer surface asked for is
+/// read-only.
+#[test]
+fn the_surface_overrides_default_to_the_protocols_own_placement() {
+    let catalog = stock();
+    let surface = object(&catalog, "surface");
+    let property_of = |name: &str| {
+        surface
+            .properties
+            .iter()
+            .find(|property| property.name == name)
+            .map(|property| {
+                (
+                    property.ty.clone(),
+                    property.default.clone(),
+                    property.readonly,
+                    property.animated,
+                )
+            })
+            .unwrap_or_else(|| panic!("`surface` has no `{name}`"))
+    };
+    let list = |items: &[f64]| DefaultValue::List(items.iter().map(|item| DefaultValue::Double(*item)).collect());
+    let measured = [
+        ("placement_override", "bool", DefaultValue::Bool(false), false),
+        ("stack", "int", DefaultValue::Int(0), false),
+        ("reserve", "list<double>", list(&[]), false),
+        ("namespace", "string", DefaultValue::Text(String::new()), true),
+        ("layer", "string", DefaultValue::Text(String::new()), true),
+        ("anchor", "list<string>", DefaultValue::List(Vec::new()), true),
+        ("margin", "list<double>", list(&[0.0, 0.0, 0.0, 0.0]), true),
+        ("requested_size", "list<double>", list(&[0.0, 0.0]), true),
+        ("exclusive_zone", "double", DefaultValue::Double(0.0), true),
+    ];
+    for (name, ty, default, readonly) in measured {
+        let property = property_of(name);
+        assert_eq!(property.0, Type::parse(ty).unwrap(), "the type of `{name}`");
+        assert_eq!(property.1.as_ref(), Some(&default), "the default of `{name}`");
+        assert_eq!(property.2, readonly, "who writes `{name}`");
+        assert!(!property.3, "`{name}` is not animated");
+    }
+}

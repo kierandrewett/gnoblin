@@ -853,7 +853,10 @@ fn set_value(
     };
     if let Some(timing) = timing {
         let list = info.kind == ValueType::ListDouble && matches!(key, "rotation" | "scale");
-        if !info.animated || !(info.kind == ValueType::Double || list) {
+        // The compositor reads a surface's place and size once per frame and acts on them (a configure, a reserved strip),
+        // so it takes the value the shell settles on and not each step of a curve towards it.
+        let placed = work.class(node) == Some("surface") && matches!(key, "x" | "y" | "width" | "height");
+        if !info.animated || !(info.kind == ValueType::Double || list) || placed {
             return Err(Code::NotAnimated);
         }
         check_timing(timing)?;
@@ -1138,6 +1141,22 @@ fn write_value(work: &mut Scene, node: NodeId, key: &str, value: &TreeValue) -> 
     }
     if let ("placement", TreeValue::Text(placement)) = (key, value)
         && !matches!(placement.as_str(), "frame" | "over" | "under")
+    {
+        return Err(Code::BadValue);
+    }
+    // A surface the shell may place is a popup, a subsurface or a layer surface. A lock surface, the cursor and a drag
+    // icon are the compositor's, and so is a node that names no role at all.
+    if let ("placement_override", TreeValue::Bool(true)) = (key, value)
+        && !matches!(work.text(node, "role"), Some("popup" | "subsurface" | "layer"))
+    {
+        return Err(Code::NotOwner);
+    }
+    if let ("reserve", TreeValue::ListDouble(insets)) = (key, value)
+        && !(insets.is_empty()
+            || (insets.len() == 4
+                && insets
+                    .iter()
+                    .all(|inset| inset.fract() == 0.0 && (0.0..=f64::from(i32::MAX)).contains(inset))))
     {
         return Err(Code::BadValue);
     }

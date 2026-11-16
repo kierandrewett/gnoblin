@@ -269,6 +269,8 @@ pub struct State {
     pub(crate) popup_grabs: Vec<crate::popup::HeldGrab>,
     /// The windows whose surface trees are to be built again, and the surfaces that committed since they were.
     pub(crate) surface_trees: crate::surface_tree::SurfaceTrees,
+    /// The popups the shell placed, so one it stops placing is put back where the protocol says.
+    pub(crate) surface_overrides: crate::surface_override::SurfaceOverrides,
     /// Whether a popup committed since the last frame, so its frame callbacks are answered at the end of this
     /// iteration even when no frame was drawn.
     pub(crate) callbacks_due: bool,
@@ -814,6 +816,7 @@ impl State {
             popups: PopupManager::default(),
             popup_grabs: Vec::new(),
             surface_trees: crate::surface_tree::SurfaceTrees::default(),
+            surface_overrides: crate::surface_override::SurfaceOverrides::default(),
             callbacks_due: false,
             frame_pacer: CallbackPacer::default(),
             output_manager_state,
@@ -3517,6 +3520,10 @@ impl State {
             return Some(popup);
         }
         let (window, local) = picked?;
+        // A window with a surface the shell placed or hid is picked from the order the scene draws its surfaces in.
+        if self.window_has_surface_overrides(window) {
+            return self.shell_surface_under(window, position, false);
+        }
         let root = self.windows.get(&window)?.surface.wl_surface()?;
         // The scene picks the window by its node, which is the window geometry, so the point it reports is relative to
         // the geometry's origin. A surface's input region and its subsurfaces are in surface coordinates, which start
@@ -3969,6 +3976,8 @@ impl Host for State {
         self.answer_window_writes(window_writes);
         self.follow_decorations_available();
         self.follow_frame_policies();
+        // The popups, subsurfaces and layer surfaces the shell placed, restacked or hid in those transactions.
+        self.follow_surface_overrides();
         // The cursor the shell wrote in this frame's transactions is the one the frame draws.
         self.follow_shell_cursor();
         self.reconcile_seats();

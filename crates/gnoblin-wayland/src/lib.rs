@@ -234,6 +234,7 @@ mod server;
 mod shell_cursor;
 mod state;
 mod subsurface_position;
+mod surface_override;
 mod surface_tree;
 mod touchpad;
 mod tree_frame;

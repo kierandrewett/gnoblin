@@ -401,6 +401,8 @@ pub struct App {
     pub pointer_enters: u32,
     /// How many times the pointer left a surface of this client.
     pub pointer_leaves: u32,
+    /// The surface the pointer is over, from its last `enter` until its `leave`.
+    pub pointer_surface: Option<wl_surface::WlSurface>,
     /// Where the pointer last said it is, in the coordinates of the surface it is over: the point of an `enter` or a
     /// `motion`.
     pub pointer_at: Option<(f64, f64)>,
@@ -773,6 +775,9 @@ impl Client {
         positioner.set_anchor(place.anchor);
         positioner.set_gravity(place.gravity);
         positioner.set_constraint_adjustment(place.constraint_adjustment);
+        if place.reactive {
+            positioner.set_reactive();
+        }
         positioner
     }
 
@@ -830,6 +835,9 @@ pub struct PopupPlace {
     pub gravity: xdg_positioner::Gravity,
     /// How the compositor may move the popup to keep it where it belongs.
     pub constraint_adjustment: xdg_positioner::ConstraintAdjustment,
+    /// Whether the compositor may configure the popup again (`xdg_positioner.set_reactive`): without it the protocol
+    /// allows no configure after the first.
+    pub reactive: bool,
 }
 
 impl PopupPlace {
@@ -841,6 +849,7 @@ impl PopupPlace {
             anchor: xdg_positioner::Anchor::TopLeft,
             gravity: xdg_positioner::Gravity::BottomRight,
             constraint_adjustment: xdg_positioner::ConstraintAdjustment::None,
+            reactive: false,
         }
     }
 }
@@ -928,15 +937,22 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
                     .push((button, button_state == WEnum::Value(wl_pointer::ButtonState::Pressed)));
             }
             wl_pointer::Event::Enter {
-                surface_x, surface_y, ..
+                surface,
+                surface_x,
+                surface_y,
+                ..
             } => {
                 state.pointer_enters += 1;
+                state.pointer_surface = Some(surface);
                 state.pointer_at = Some((surface_x, surface_y));
             }
             wl_pointer::Event::Motion {
                 surface_x, surface_y, ..
             } => state.pointer_at = Some((surface_x, surface_y)),
-            wl_pointer::Event::Leave { .. } => state.pointer_leaves += 1,
+            wl_pointer::Event::Leave { .. } => {
+                state.pointer_leaves += 1;
+                state.pointer_surface = None;
+            }
             _ => {}
         }
     }
