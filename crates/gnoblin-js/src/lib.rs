@@ -35,6 +35,7 @@ mod budget;
 mod bytecode;
 mod config;
 mod console;
+mod diagnostics;
 mod dialogs;
 mod document;
 mod error;
@@ -69,6 +70,7 @@ pub use console::{
     CONSOLE_FILE, CONSOLE_SOCKET, CONSOLE_VARIABLE, DEFAULT_MAX_BYTES, JsConsole, JsConsoleError, JsConsoleSite,
     MAX_REQUEST, console_enabled, console_socket_path, evaluate_in, peer_allowed,
 };
+pub use diagnostics::{DIAGNOSTIC_LINE_BYTES, DIAGNOSTICS_KEPT};
 pub use document::{DOCUMENT_BUDGET, evaluate_document};
 pub use error::{JsError, JsErrorKind, JsLoadError, JsLocation, JsTsError};
 pub use generation::{JsConfig, JsGeneration};

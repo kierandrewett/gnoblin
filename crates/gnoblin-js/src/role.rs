@@ -37,6 +37,7 @@ use gnoblin_tree_client::tree_mirror::TreeLink;
 
 use crate::config::{JsClientConfigLink, JsCommitLog, JsConfigLink, JsRecordingLink};
 use crate::console::{JsConsole, JsConsoleSite, console_enabled, console_socket_path};
+use crate::diagnostics::{DIAGNOSTICS_KEPT, Diagnostics};
 use crate::generation::JsGeneration;
 use crate::host_idle::{JsClientIdleLink, JsIdleConnector, JsIdleLink};
 use crate::host_session::{JsClientSessionLink, JsSessionLink};
@@ -96,6 +97,8 @@ pub struct JsRoleConfig {
     /// Where the shell records each document commit it makes, for the runtime role that reports them to the
     /// guardian. `None` records nothing.
     pub commits: Option<JsCommitLog>,
+    /// How many diagnostics the role keeps (see [`JsRole::diagnostics`]). A test that floods the role sets it low.
+    pub diagnostics_kept: usize,
 }
 
 impl JsRoleConfig {
@@ -114,6 +117,7 @@ impl JsRoleConfig {
             console: JsConsoleSite::default(),
             owns_document: false,
             commits: None,
+            diagnostics_kept: DIAGNOSTICS_KEPT,
         }
     }
 }
@@ -144,8 +148,8 @@ pub struct JsRole {
     handoff: Rc<RefCell<Option<JsGeneration>>>,
     /// How many of the shell's strikes the role has already acted on.
     handled_strikes: u32,
-    /// Every diagnostic reported since the role started, oldest first.
-    diagnostics: Vec<String>,
+    /// The newest diagnostics reported since the role started, oldest first, and a count of the ones let go.
+    diagnostics: Diagnostics,
     /// Why the shell ended during a reload, for the next [`tick`](Self::tick) to return.
     ended: Option<JsShellError>,
     /// The user's entry module, which may not exist.
@@ -289,7 +293,7 @@ impl JsRole {
             watcher,
             handoff,
             handled_strikes: 0,
-            diagnostics: Vec::new(),
+            diagnostics: Diagnostics::new(config.diagnostics_kept),
             ended: None,
             entry: config.entry.clone(),
             console: None,
@@ -479,10 +483,29 @@ impl JsRole {
         }
     }
 
-    /// Every diagnostic the role has reported since it started, oldest first: a failed reload as
-    /// `file:line:column: message`, a listener that threw, a refused transaction.
+    /// The newest diagnostics the role has reported, oldest first: a failed reload as `file:line:column: message`, a
+    /// listener that threw, a refused transaction. The list is bounded ([`crate::DIAGNOSTICS_KEPT`] lines, each cut at
+    /// [`crate::DIAGNOSTIC_LINE_BYTES`]): once the role has let any go, the first line says how many, and
+    /// [`Self::diagnostics_reported`] still counts all of them.
     pub fn diagnostics(&self) -> &[String] {
-        &self.diagnostics
+        self.diagnostics.lines()
+    }
+
+    /// How many diagnostics the role has reported since it started, those it let go of included.
+    pub fn diagnostics_reported(&self) -> u64 {
+        self.diagnostics.reported()
+    }
+
+    /// How many diagnostics the role let go to keep its list bounded.
+    pub fn diagnostics_dropped(&self) -> u64 {
+        self.diagnostics.dropped()
+    }
+
+    /// The kept diagnostics reported after the first `reported`, where `reported` is what
+    /// [`Self::diagnostics_reported`] answered when the caller last looked. It does not move when the list drops its
+    /// oldest, which an index into [`Self::diagnostics`] does.
+    pub fn diagnostics_since(&self, reported: u64) -> &[String] {
+        self.diagnostics.since(reported)
     }
 
     /// The id of the generation that runs. A restart or a successful reload raises it.

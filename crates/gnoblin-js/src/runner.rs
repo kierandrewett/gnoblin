@@ -369,7 +369,7 @@ fn reload(
     reporter: &mut Reporter,
     entry: &std::path::Path,
 ) -> Result<(), JsRoleError> {
-    let seen = role.diagnostics().len();
+    let seen = role.diagnostics_reported();
     let report = role.reload_now();
     if let Some(revision) = publish(commits, reporter) {
         log::info!(area = "runtime", path = %entry.display(), revision, "configuration reloaded");
@@ -396,9 +396,10 @@ fn reload(
         .map_err(|error| JsRoleError::Commit(error.to_string()))
 }
 
-/// The diagnostics the role reported after the first `seen`, joined on one line.
-fn last_diagnostics(role: &JsRole, seen: usize) -> String {
-    role.diagnostics()[seen..].join("; ")
+/// The diagnostics the role reported after the first `seen` (what `diagnostics_reported` answered before), joined on
+/// one line.
+fn last_diagnostics(role: &JsRole, seen: u64) -> String {
+    role.diagnostics_since(seen).join("; ")
 }
 
 #[cfg(test)]
