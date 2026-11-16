@@ -74,6 +74,17 @@ gnoblinctl config reload
 
 Confirm the setting changed and existing windows survived.
 
+Then check a device setting, which only a real device can prove:
+
+1. Set `Touchpad.tapToClick = true` in `init.ts`, reload, and tap the touchpad. It should click.
+2. Delete the line, reload, and tap again. It should not click, because tap-to-click is off by default on most
+   touchpads.
+3. Do the same with `Mouse.sensitivity` or `Mouse.naturalScroll` for a mouse.
+
+Another program's `libinput list-devices` shows its own libinput context, so it cannot confirm this. A device that does
+not take a setting is named once in the log (`gnoblinctl log --level WARN`, area `input`). See
+[backends](backends.md#input-device-settings).
+
 ## 6. Lock and unlock
 
 Confirm the lock screen receives input, desktop controls are unavailable while

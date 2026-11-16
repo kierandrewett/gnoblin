@@ -163,8 +163,9 @@ What backs them:
 - The shell commits the document with these writes when the entry loads, and again on the frame after a later write (for
   example from a key handler). A value outside the range throws a `RangeError` at the write; one the document refuses
   throws a `GnoblinError` with code `config_rejected` and the document's reason.
-- The compositor applies `input.keyboard` (repeat and delay) when the document is committed. It accepts and checks
-  `input.mouse` and `input.touchpad` and reports them as not applied: no device reads them yet, see
+- The compositor applies `input.keyboard` (repeat and delay) when the document is committed, and hands `input.mouse` and
+  `input.touchpad` to the backend's devices: the hardware backend applies them through libinput to every device of the
+  kind, including one plugged in later, and a nested session leaves its host's devices alone, see
   [Input settings](/config/configure/input). A `Touchscreen` and a `Tablet` have no setting here.
 - `device.enabled` is always `true`. Assigning `false` throws a `GnoblinError` with code `unsupported`, because nothing can
   disable one device. Use `bindingOnly` to keep a device's keys from windows.

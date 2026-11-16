@@ -315,8 +315,9 @@ Built (data/js/gnoblin/{devices,input,input_list,native_object}.ts; tests in cra
 - **Device settings** (`sensitivity`, `acceleration`, `naturalScroll`, `tapToClick`, `repeatRate`, `repeatDelay`). The only
   backing the compositor has is the document's `input` section, which is per kind, not per device: a write on one `Mouse` is
   every mouse's setting. Reading choice: `sensitivity` is libinput's -1..1 speed, `repeatRate` is repeats per second (the
-  document holds the interval in ms). The keyboard group is applied; mouse and touchpad are accepted and reported "not
-  applied" until a libinput applier reads them (crates/gnoblin-config/src/apply.rs). The shell commits the writes with the
+  document holds the interval in ms). The keyboard, mouse and touchpad groups are applied: the hardware backend gives the
+  document's `input` section to every device of the kind through libinput, on load and on every reload (docs/backends.md, "Input
+  device settings"; crates/gnoblin-backend-drm/src/libinput/configure.rs). The shell commits the writes with the
   entry and again a frame after a later write (`documentRevision`). `enabled = false` is refused (`unsupported`): nothing
   backs it. Tablet and touchscreen settings are keyed by vendor/product or belong to the seat and are not exposed.
 - **A second `InputContext`.** The compositor has one input seat and attaches every device to it

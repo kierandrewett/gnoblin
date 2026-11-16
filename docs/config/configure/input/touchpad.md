@@ -1,7 +1,8 @@
 # Touchpad settings
 
-A `Touchpad` has four settings. They are accepted and checked, and no device reads them: the compositor logs
-`not applied: ...` for the `input.touchpad` group. This example enables tap-to-click and natural scrolling:
+A `Touchpad` has four settings. The hardware backend gives them to every touchpad through libinput when the session
+starts, when you plug one in and after every reload; a nested session leaves its host's devices alone
+([input device settings](/backends#input-device-settings)). This example enables tap-to-click and natural scrolling:
 
 ```ts
 import { Touchpad } from "gnoblin";

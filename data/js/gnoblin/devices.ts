@@ -11,8 +11,9 @@
 // then against the document validator when the shell has attached one (`attachDeviceSettings`), and joins the
 // generation's document patch (`deviceDocument`); the shell commits it on load and again, a frame later, after any
 // later write (`deviceSettingsRevision` moves). `undefined` takes a setting back to the system's. The keyboard group
-// is applied by the compositor; the mouse and touchpad groups are accepted and validated, and the compositor reports
-// them as not applied until a libinput applier reads them (crates/gnoblin-config/src/apply.rs). `enabled = false`
+// and the mouse and touchpad groups are applied by the compositor: the hardware backend gives them to every device of
+// the kind through libinput, on load and on every reload; a nested session leaves its host's devices alone
+// (docs/backends.md, "Input device settings"). `enabled = false`
 // has nothing behind it at all and is refused.
 //
 // This module reaches no host: the context it belongs to and the shell hooks are injected.
@@ -380,7 +381,7 @@ export class Keyboard extends InputDevice {
 export class Mouse extends InputDevice {
     /**
      * Pointer speed from -1 (slowest) to 1, or `undefined` for the system's. Written to `input.mouse.speed`. The
-     * compositor accepts and checks it and reports it as not applied until a device reads it.
+     * hardware backend gives it to every mouse through libinput; a nested session does not (its host decides).
      */
     get sensitivity(): number | undefined {
         return readSetting("mouseSensitivity");
@@ -393,7 +394,7 @@ export class Mouse extends InputDevice {
 
     /**
      * `"default"`, `"flat"` or `"adaptive"`, or `undefined` for the system's. Written to `input.mouse.accel-profile`
-     * (not applied by the compositor yet, as `sensitivity`). A custom curve has no property here.
+     * (applied as `sensitivity` is). A custom curve has no property here.
      */
     get acceleration(): "default" | "flat" | "adaptive" | undefined {
         return readSetting("mouseAcceleration");

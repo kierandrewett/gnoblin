@@ -23,8 +23,11 @@ read on another mouse shows it. A device that is plugged in later reads the same
 throws an error that names the device and the property, as in `Keyboard#1.repeatRate: must be a number of repeats per
 second from 0.1 to 1000, got 0`.
 
-Only the keyboard properties are applied. The mouse and touchpad properties are accepted and checked, and no device
-reads them, so the compositor logs `not applied: ...` for each.
+The keyboard, mouse and touchpad properties are applied. The hardware backend gives them to every device of that kind
+when the session starts, to a device you plug in later, and again after every reload.
+
+A nested session leaves its host's devices alone. See [input device settings](/backends#input-device-settings) for what
+each backend does and the settings that are not applied yet.
 
 - [Keyboard](/config/configure/input/keyboard): `repeatRate` and `repeatDelay`.
 - [Mouse](/config/configure/input/mouse): `sensitivity`, `acceleration` and `naturalScroll`.

@@ -1,7 +1,8 @@
 # Mouse settings
 
-A `Mouse` stands for a mouse, a trackball or a pointing stick, and has three settings. They are accepted and checked,
-and no device reads them: the compositor logs `not applied: ...` for the `input.mouse` group.
+A `Mouse` stands for a mouse, a trackball or a pointing stick, and has three settings. The hardware backend gives them
+to every mouse through libinput when the session starts, when you plug a mouse in and after every reload; a nested
+session leaves its host's devices alone ([input device settings](/backends#input-device-settings)).
 
 ```ts
 import { Mouse } from "gnoblin";
