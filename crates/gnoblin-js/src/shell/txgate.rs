@@ -100,7 +100,7 @@ fn fail_call(state: &mut HostState, token: u64, code: &str) {
 
 /// What a refusal no newer base cures does to the ops it refused.
 #[derive(Debug, Default, PartialEq)]
-struct Refused {
+struct RefusedOps {
     /// The ops that go again, in order: the ones that were not at fault.
     kept: Vec<TxOp>,
     /// The ops given up: the one the compositor named (every op when it named none), and every op on a node that a
@@ -112,9 +112,9 @@ struct Refused {
 
 /// Splits the ops of a transaction the compositor refused for a reason of its own. `failed_op` is the op it names, or
 /// `-1` when it refused the batch as a whole and so named none.
-fn partition_refused(failed_op: i64, ops: Vec<SentOp>) -> Refused {
+fn partition_refused(failed_op: i64, ops: Vec<SentOp>) -> RefusedOps {
     let named = usize::try_from(failed_op).ok();
-    let mut out = Refused::default();
+    let mut out = RefusedOps::default();
     let mut unmade: Vec<NodeId> = Vec::new();
     for (index, op) in ops.into_iter().enumerate() {
         let op = match op {
@@ -211,7 +211,7 @@ impl JsShell {
     /// layout is not asked to write it again: the same value would be refused again). A call whose text is secret
     /// cannot go again whatever the cause and is answered `failed`.
     fn give_up_refused(&mut self, reply: &TxReply, ops: Vec<SentOp>, diagnostics: &mut Vec<String>) {
-        let Refused { kept, dropped, secret } = partition_refused(reply.failed_op, ops);
+        let RefusedOps { kept, dropped, secret } = partition_refused(reply.failed_op, ops);
         let mut state = self.state.borrow_mut();
         for op in &dropped {
             match op {
