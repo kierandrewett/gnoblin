@@ -553,7 +553,7 @@ and fakes nothing. The parts are:
 It prints `PASS` or `FAIL` for each assertion and exits non-zero if any failed.
 
 ```sh
-cargo build -p gnoblin
+cargo xtask stage && cargo build -p gnoblin    # `gnoblin` records libgnoblin-core.so.1; stage names the library beside it
 cargo build --manifest-path extensions/gnoblin-xr/Cargo.toml --bins
 scripts/xr-smoke.sh            # installs the packages and builds Monado once when they are missing
 ```

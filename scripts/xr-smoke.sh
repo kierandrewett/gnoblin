@@ -22,7 +22,7 @@
 #                holds such a recording, which the replay tests read; see docs/xr.md, "Recorded trees".
 #
 # Build on the instance first:
-#   cargo build -p gnoblin
+#   cargo xtask stage && cargo build -p gnoblin   (gnoblin records libgnoblin-core.so.1; stage names the library beside it)
 #   cargo build --manifest-path extensions/gnoblin-xr/Cargo.toml --bins
 set -u
 

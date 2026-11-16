@@ -71,6 +71,11 @@ jobs:
         run: rustup show active-toolchain
       - name: Run the workspace gate
         run: just workspace-ci
+      # The binary links `libgnoblin-core.so.1` and the install tree has a layout (design/modular-framework.md section 11):
+      # NEEDED once, the core's SONAME and exports, the run path that finds the core with no LD_LIBRARY_PATH, a shell that
+      # needs the core only, the links, header and pkg-config file. The workspace gate above built the debug tree this reuses.
+      - name: Check the core link and the install layout
+        run: just dist-check
 
   # The XR extension is a workspace of its own (`extensions/gnoblin-xr`, own lockfile), so the job above does not
   # build, lint, test or check its licences. `just ci` runs both gates. Its `wayland-sys` probes `libwayland` with

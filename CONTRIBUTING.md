@@ -126,6 +126,19 @@ llvmpipe). The extension workspace needs none of these packages to build. The `w
 `scripts/wlcs.sh`. The XR smoke test (`scripts/xr-smoke.sh`) installs its own packages and is not part of CI on a
 hosted runner.
 
+## The core library in the build tree
+
+`gnoblin` links `libgnoblin-core.so.1` (`NEEDED`, once) through a generated stub, so `cargo build -p gnoblin` succeeds on its own and does not build the library: Cargo cannot make a binary wait for a `cdylib`. `crates/gnoblin/build.rs` gives the binary a run path of `$ORIGIN:$ORIGIN/../lib:$ORIGIN/../lib64`, so the loader looks for the library beside the binary in `target/<profile>/`, where Cargo writes it as `libgnoblin_core_impl.so`. Something has to name it `libgnoblin-core.so.1` there:
+
+- `cargo build --workspace`, `cargo test --workspace` and any build that includes `gnoblin-core-impl` do it themselves: its `build.rs` links `target/<profile>/libgnoblin-core.so.1` to the library Cargo writes.
+- `cargo xtask stage` (`just stage`; `--release` for the release tree) builds `gnoblin-core-impl`, refuses a library `dist-check` would refuse (a missing export, the test driver left in) and makes the SONAME link and the linker link `libgnoblin-core.so`. Run it before `cargo build -p gnoblin` and `cargo test -p gnoblin`, whose integration tests run `target/debug/gnoblin`. Without it the binary stops with the loader's own message, `libgnoblin-core.so.1: cannot open shared object file`.
+
+```sh
+cargo xtask stage && cargo build -p gnoblin && target/debug/gnoblin --version
+```
+
+`GNOBLIN_CORE_LIB_DIR=target/debug` links the real library (its linker name is staged too) instead of the stub. `GNOBLIN_RPATH` replaces the run path when `gnoblin` is built, and an empty value leaves none: a distribution package installs under `/usr`, which the loader searches. `just dist-check` builds the workspace, stages, installs into three temporary trees and runs `cargo xtask dist-check` on the build tree and on each (SONAME and exports of the core, `NEEDED` once, no `gnoblin_*` in a shell, every gnoblin library resolving inside the tree, links, header, `.pc`, manifest, the glibc floor, and `gnoblin --version` run with `LD_LIBRARY_PATH` unset); CI runs it. `design/dist-status.md` has the install layout.
+
 ## Full suite
 
 ```sh

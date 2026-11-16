@@ -19,6 +19,7 @@ mod metadata;
 mod native_libs;
 mod native_probe;
 mod profiles;
+mod stage;
 #[cfg(test)]
 mod test_fixtures;
 
@@ -44,8 +45,11 @@ subcommands:
   compat-report --json  the same report as JSON
   dist install|uninstall --prefix P [--destdir D] [--profile NAME] [--libdir NAME]
                      install or remove the session tree; see xtask/src/dist.rs
-  dist-check ...     check an installed or staged tree: core SONAME and exports, NEEDED entries, links, header, pkg-config;
-                     see xtask/src/dist_check.rs
+  dist-check ...     check an installed or staged tree: core SONAME and exports, NEEDED entries and how they resolve,
+                     links, header, pkg-config, manifest and layout, glibc floor; see xtask/src/dist_check.rs
+  stage [--release | --profile NAME] [--no-build]
+                     build gnoblin-core-impl and name it libgnoblin-core.so.1 beside the binary, so `cargo build -p gnoblin`
+                     output runs; see xtask/src/stage.rs
   abi-check [--update]  fail when crates/gnoblin-core-abi/abi.lock and the ABI crate disagree, or a released entry changed
   abi-header [--out FILE]  write the C header (include/gnoblin/core.h) generated from the ABI crate";
 
@@ -62,6 +66,7 @@ fn main() -> ExitCode {
         ("layout", []) => layout::run(),
         ("logging", []) => logging::run(),
         ("native-libs", []) => native_libs::run(),
+        ("stage", _) => stage::run(&rest),
         ("docs-parity", []) => docs_parity::run(),
         ("compat-report", []) => compat_report::run(false),
         ("compat-report", [flag]) if flag == "--json" => compat_report::run(true),

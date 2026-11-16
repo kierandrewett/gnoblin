@@ -102,6 +102,40 @@ dist prefix="/usr/local" destdir="":
     cargo build --release --manifest-path extensions/gnoblin-xr/Cargo.toml --target-dir "${CARGO_TARGET_DIR:-target}"
     cargo xtask dist install --prefix "{{prefix}}" --destdir "{{destdir}}"
 
+# Make the build tree runnable: build gnoblin-core-impl and name it libgnoblin-core.so.1 beside target/debug/gnoblin, which
+# records that name and finds it through its $ORIGIN run path. `cargo build --workspace` does the same; this is the way to
+# run what `cargo build -p gnoblin` built. `just stage --release` for the release tree. See xtask/src/stage.rs.
+stage *args:
+    cargo xtask stage {{args}}
+
+# Check how the session links and what it installs. The debug build tree first (the core staged, the binary recording
+# NEEDED libgnoblin-core.so.1 once and running with no LD_LIBRARY_PATH), then installs into three temporary trees (a private
+# prefix with lib, a /usr stage with lib64, a /usr stage with a multiarch library directory) and checks each against section
+# 11 of design/modular-framework.md: the core's SONAME and exports, no Rust runtime symbols, a shell fixture that needs the
+# core only and defines no gnoblin_*, every gnoblin NEEDED resolving inside the tree, links, header, pkg-config, the manifest
+# and the glibc floor. Needs a C compiler and pkg-config (a machine that links Rust has the first). See xtask/src/dist_check.rs.
+dist-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    target="${CARGO_TARGET_DIR:-target}"
+    scratch="$(mktemp -d)"
+    trap 'rm -rf "$scratch"' EXIT
+    cargo build --workspace
+    cargo xtask stage --no-build
+    cargo xtask dist-check --staged --shell "$target/debug/libshell_min.so" --run
+    # A private prefix: the binary finds the core through its $ORIGIN/../lib run path alone.
+    cargo xtask dist install --prefix "$scratch/prefix" --profile debug
+    cargo xtask dist-check --prefix "$scratch/prefix" --shell "$target/debug/libshell_min.so" --run
+    env -u LD_LIBRARY_PATH "$scratch/prefix/bin/gnoblin" --version
+    cargo xtask dist uninstall --prefix "$scratch/prefix"
+    # A distribution stage: /usr with lib64 (still inside the run path), then with a multiarch directory, which only the
+    # loader's default search path reaches, so it is checked without running the binary.
+    cargo xtask dist install --prefix /usr --destdir "$scratch/lib64" --libdir lib64 --profile debug
+    cargo xtask dist-check --prefix /usr --destdir "$scratch/lib64" --libdir lib64 --shell "$target/debug/libshell_min.so" --run
+    multiarch="lib/$(uname -m)-linux-gnu"
+    cargo xtask dist install --prefix /usr --destdir "$scratch/multiarch" --libdir "$multiarch" --profile debug
+    cargo xtask dist-check --prefix /usr --destdir "$scratch/multiarch" --libdir "$multiarch" --shell "$target/debug/libshell_min.so"
+
 # Check advisories, licences, duplicate versions and git sources.
 deny:
     cargo deny check

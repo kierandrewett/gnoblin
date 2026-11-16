@@ -1,19 +1,25 @@
 //! `cargo xtask dist-check`: the static and link-level checks of an installed (or staged) Gnoblin tree.
 //!
 //! The modular framework makes dynamic linking part of the product, so "it builds" is not enough: the installed core must
-//! carry the right SONAME and export exactly the ABI, the launcher must record the core once, a shell must link the core and
-//! never carry a copy of it, and the development files must let a C program link and run. `design/modular-framework.md`
-//! section 11 lists the checks; this is that list as a command, over files read with `elf.rs` (cross-checked against
-//! `readelf` and `nm` by its tests). The run-time half (one core mapping in a live process) is a test of the sessions, not a
-//! static check.
+//! carry the right SONAME and export exactly the ABI, the launcher must record the core once and find it with no
+//! `LD_LIBRARY_PATH`, a shell must link the core and never carry a copy of it, and the development files must let a C program
+//! link and run. `design/modular-framework.md` section 11 lists the checks; this is that list as a command, over files read
+//! with `elf.rs` (cross-checked against `readelf` and `nm` by its tests). The run-time half (one core mapping in a live
+//! process) is a test of the sessions, not a static check.
 //!
 //! ```text
-//! cargo xtask dist-check --prefix /usr --destdir /tmp/stage [--libdir lib64] [--shell FILE]... [--std-shell FILE]...
-//! cargo xtask dist-check --core target/debug/libgnoblin_core_impl.so --shell target/debug/libmyshell.so
+//! cargo xtask dist-check --prefix /usr --destdir /tmp/stage [--libdir lib64] [--shell FILE]... [--std-shell FILE]... [--run]
+//! cargo xtask dist-check --staged [--profile release] [--run]
+//! cargo xtask dist-check --core target/debug/libgnoblin_core_impl.so --shell target/debug/libshell_min.so
 //! ```
 //!
 //! With `--prefix` the command finds the core, the launcher, the std library, the SONAME links, the header and the
-//! pkg-config file where `dist install` puts them. Individual files can also be named; each flag checks that file only.
+//! pkg-config file where `dist install` puts them; it also checks the tree against its install manifest and the layout of
+//! section 11, resolves every gnoblin library the launcher needs the way the loader would (run path, then the tree's own
+//! library directory for a `/usr` prefix), and checks every shell found in `<libdir>/gnoblin/shells`. With `--staged` it
+//! checks the build tree `cargo xtask stage` made: `target/<profile>/gnoblin` and `libgnoblin-core.so.1`. `--run` also runs
+//! the launcher from its own tree with `LD_LIBRARY_PATH` cleared. Individual files can be named; each flag checks that file
+//! only. The glibc floor of every file is printed; `--max-glibc X.Y` fails a file that needs more.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -28,8 +34,9 @@ use crate::elf::{self, Elf};
 pub const STD_SONAME: &str = "libgnoblin-std.so.1";
 
 const USAGE: &str = "\
-usage: cargo xtask dist-check [--prefix P [--destdir D] [--libdir NAME]] [--core FILE] [--launcher FILE] [--std FILE]
-                              [--shell FILE]... [--std-shell FILE]... [--max-glibc X.Y]";
+usage: cargo xtask dist-check [--prefix P [--destdir D] [--libdir NAME]] [--staged [--profile NAME]] [--core FILE]
+                              [--launcher FILE] [--std FILE] [--shell FILE]... [--std-shell FILE]... [--run]
+                              [--max-glibc X.Y]";
 
 fn is_core(name: &str) -> bool {
     name == abi::SONAME
@@ -79,7 +86,7 @@ pub fn check_core(elf: &Elf) -> Vec<String> {
     problems
 }
 
-/// The launcher: the core recorded exactly once, and no std.
+/// The launcher: the core recorded exactly once, no std, and no export of its own that could interpose on the core's.
 pub fn check_launcher(elf: &Elf) -> Vec<String> {
     let mut problems = Vec::new();
     let cores = elf.needed.iter().filter(|needed| is_core(needed)).count();
@@ -92,6 +99,12 @@ pub fn check_launcher(elf: &Elf) -> Vec<String> {
     }
     if let Some(std) = elf.needed.iter().find(|needed| is_std(needed)) {
         problems.push(format!("needs `{std}`: the launcher links core only"));
+    }
+    let defined: Vec<&String> = elf.defined.iter().filter(|name| name.starts_with("gnoblin_")).collect();
+    if !defined.is_empty() {
+        problems.push(format!(
+            "defines {defined:?}: a launcher that exports the core's names would take the calls of every shell"
+        ));
     }
     problems
 }
@@ -145,6 +158,14 @@ pub fn check_core_only_shell(elf: &Elf) -> Vec<String> {
     let mut problems = check_shell_common(elf);
     if let Some(std) = elf.needed.iter().find(|needed| is_std(needed)) {
         problems.push(format!("needs `{std}`: a core-only shell must not load std"));
+    } else if let Some(other) = elf
+        .needed
+        .iter()
+        .find(|needed| needed.starts_with("libgnoblin") && !is_core(needed))
+    {
+        problems.push(format!(
+            "needs `{other}`: a core-only shell links the core and no other gnoblin library"
+        ));
     }
     problems
 }
@@ -185,6 +206,151 @@ pub fn check_glibc(files: &[(String, Elf)], ceiling: Option<(u32, u32)>) -> (Opt
         }
     }
     (newest, problems)
+}
+
+/// The directories the dynamic loader searches for a library `file` needs, with `LD_LIBRARY_PATH` unset: the file's run
+/// path (`DT_RUNPATH`, else `DT_RPATH`) with `$ORIGIN` expanded to the directory the file really sits in, then `system_dirs`
+/// (the directories the loader searches by default, which for a staged `/usr` tree are its own library directory).
+pub fn search_dirs(file: &Path, elf: &Elf, system_dirs: &[PathBuf]) -> Vec<PathBuf> {
+    let origin = fs::canonicalize(file)
+        .ok()
+        .and_then(|real| real.parent().map(Path::to_path_buf))
+        .unwrap_or_default()
+        .display()
+        .to_string();
+    let mut dirs = Vec::new();
+    if let Some(path) = elf.runpath.as_ref().or(elf.rpath.as_ref()) {
+        for entry in path.split(':').filter(|entry| !entry.is_empty()) {
+            dirs.push(PathBuf::from(
+                entry.replace("${ORIGIN}", &origin).replace("$ORIGIN", &origin),
+            ));
+        }
+    }
+    dirs.extend(system_dirs.iter().cloned());
+    dirs
+}
+
+/// Resolves one NEEDED entry of `file` the way the loader would: the first search directory that holds a file of that name,
+/// which must carry the name as its SONAME. Returns the path found, or what was searched.
+pub fn resolve_needed(file: &Path, elf: &Elf, name: &str, system_dirs: &[PathBuf]) -> Result<PathBuf, String> {
+    let dirs = search_dirs(file, elf, system_dirs);
+    for dir in &dirs {
+        let candidate = dir.join(name);
+        if !candidate.exists() {
+            continue;
+        }
+        let found = elf::read(&candidate).map_err(|error| format!("{}: {error}", candidate.display()))?;
+        if found.soname.as_deref() != Some(name) {
+            return Err(format!(
+                "`{name}` resolves to {}, whose SONAME is {:?}",
+                candidate.display(),
+                found.soname
+            ));
+        }
+        return Ok(fs::canonicalize(&candidate).unwrap_or(candidate));
+    }
+    Err(format!(
+        "`{name}` is found in none of the directories the loader would search for {} (run path {:?}, searched {dirs:?}); \
+         install with a libdir the run path names (`lib`, `lib64`), or set GNOBLIN_RPATH when building",
+        file.display(),
+        elf.runpath.as_ref().or(elf.rpath.as_ref())
+    ))
+}
+
+/// Resolves every gnoblin library `file` needs. Returns what resolved (name and path, for the report) and the failures;
+/// libraries of the system (libc, libwayland) are the loader's own business, which `ldd` covers.
+pub fn check_resolution(file: &Path, elf: &Elf, system_dirs: &[PathBuf]) -> (Vec<(String, PathBuf)>, Vec<String>) {
+    let mut resolved = Vec::new();
+    let mut problems = Vec::new();
+    for name in elf.needed.iter().filter(|needed| needed.starts_with("libgnoblin")) {
+        match resolve_needed(file, elf, name, system_dirs) {
+            Ok(path) => resolved.push((name.clone(), path)),
+            Err(problem) => problems.push(problem),
+        }
+    }
+    (resolved, problems)
+}
+
+/// The paths the layout of `design/modular-framework.md` section 11 puts in a tree that carries the core, which the manifest
+/// check cannot supply: it only proves that what is listed is there.
+pub fn check_layout(root: &Path, libdir: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+    for file in ["bin/gnoblin", "bin/gnoblinctl", "include/gnoblin/core.h"] {
+        if !root.join(file).is_file() {
+            problems.push(format!("{file} is missing"));
+        }
+    }
+    for dir in [
+        "share/gnoblin/shells".to_owned(),
+        format!("{libdir}/gnoblin/shells"),
+        "share/gnoblin/js/gnoblin-core".to_owned(),
+        "share/gnoblin/js/gnoblin-std".to_owned(),
+    ] {
+        if !root.join(&dir).is_dir() {
+            problems.push(format!("{dir}/ is missing"));
+        }
+    }
+    for package in ["gnoblin-core", "gnoblin-std"] {
+        let index = format!("share/gnoblin/js/{package}/index.ts");
+        if !root.join(&index).is_file() {
+            problems.push(format!(
+                "{index} is missing: the stock JavaScript library is installed as data"
+            ));
+        }
+    }
+    problems
+}
+
+/// The shared objects under `dir` that a shell package installed, found recursively and sorted.
+pub fn installed_shells(dir: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(next) = pending.pop() {
+        let Ok(entries) = fs::read_dir(&next) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else if path.extension().is_some_and(|extension| extension == "so") {
+                found.push(path);
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+/// Runs the launcher as a user would after an install, with the loader's own environment cleared, and returns what went wrong.
+/// The `--version` run proves the dynamic link works with no `LD_LIBRARY_PATH` (the run path alone finds the core); the
+/// `--role compositor --help` run proves the role dispatch starts from the install tree.
+pub fn check_runs(launcher: &Path) -> Vec<String> {
+    let mut problems = Vec::new();
+    for arguments in [&["--version"][..], &["--role", "compositor", "--help"][..]] {
+        let output = Command::new(launcher)
+            .args(arguments)
+            .env_remove("LD_LIBRARY_PATH")
+            .env_remove("LD_PRELOAD")
+            .output();
+        match output {
+            Ok(output) if output.status.success() && !output.stdout.is_empty() => {}
+            Ok(output) => problems.push(format!(
+                "`{} {}` exited with {} and printed {} bytes; stderr: {}",
+                launcher.display(),
+                arguments.join(" "),
+                output.status,
+                output.stdout.len(),
+                String::from_utf8_lossy(&output.stderr).trim()
+            )),
+            Err(error) => problems.push(format!(
+                "cannot run `{} {}`: {error}",
+                launcher.display(),
+                arguments.join(" ")
+            )),
+        }
+    }
+    problems
 }
 
 /// The symlink chain of a versioned library: `<stem>.so.<major>.<minor>.<patch>` is the file, `<stem>.so.<major>` points at
@@ -410,11 +576,20 @@ struct CheckOptions {
     shells: Vec<PathBuf>,
     std_shells: Vec<PathBuf>,
     max_glibc: Option<(u32, u32)>,
+    /// Check the build tree `cargo xtask stage` made: the launcher and the staged core in `<target>/<profile>`.
+    staged: bool,
+    /// The directory under the target directory `--staged` reads.
+    profile: String,
+    target_dir: PathBuf,
+    /// Run the launcher the way a user would (see [`check_runs`]).
+    run: bool,
 }
 
 fn parse_args(args: &[String]) -> Result<CheckOptions, String> {
     let mut options = CheckOptions {
         libdir: "lib".to_owned(),
+        profile: "debug".to_owned(),
+        target_dir: std::env::var_os("CARGO_TARGET_DIR").map_or_else(|| PathBuf::from("target"), PathBuf::from),
         ..CheckOptions::default()
     };
     let mut rest = args.iter();
@@ -429,6 +604,9 @@ fn parse_args(args: &[String]) -> Result<CheckOptions, String> {
             "--std" => options.std = Some(PathBuf::from(value()?)),
             "--shell" => options.shells.push(PathBuf::from(value()?)),
             "--std-shell" => options.std_shells.push(PathBuf::from(value()?)),
+            "--staged" => options.staged = true,
+            "--profile" => options.profile = value()?,
+            "--run" => options.run = true,
             "--max-glibc" => {
                 let text = value()?;
                 let (major, minor) = text
@@ -447,13 +625,17 @@ fn parse_args(args: &[String]) -> Result<CheckOptions, String> {
         }
     }
     if options.prefix.is_none()
+        && !options.staged
         && options.core.is_none()
         && options.launcher.is_none()
         && options.std.is_none()
         && options.shells.is_empty()
         && options.std_shells.is_empty()
     {
-        return Err("nothing to check: give `--prefix`, or at least one file".to_owned());
+        return Err("nothing to check: give `--prefix`, `--staged`, or at least one file".to_owned());
+    }
+    if options.run && options.prefix.is_none() && !options.staged && options.launcher.is_none() {
+        return Err("`--run` needs a launcher: give `--prefix`, `--staged` or `--launcher`".to_owned());
     }
     Ok(options)
 }
@@ -502,11 +684,19 @@ fn run_checks(options: &CheckOptions) -> Result<usize, String> {
         .as_ref()
         .map(|prefix| crate::dist::install_root(&options.destdir, prefix));
     let libdir = root.as_ref().map(|root| root.join(&options.libdir));
+    let staged_dir = options.staged.then(|| options.target_dir.join(&options.profile));
+    // A distribution prefix needs no run path: the loader searches `/usr/<libdir>` itself. Any other prefix is found only
+    // through the binary's own run path, so the resolution check gets no system directory for it.
+    let system_dirs: Vec<PathBuf> = match (&libdir, options.prefix.as_deref()) {
+        (Some(libdir), Some("/usr")) => vec![libdir.clone()],
+        _ => Vec::new(),
+    };
 
     let core_path = options
         .core
         .clone()
-        .or_else(|| libdir.as_ref().map(|libdir| libdir.join(abi::SONAME)));
+        .or_else(|| libdir.as_ref().map(|libdir| libdir.join(abi::SONAME)))
+        .or_else(|| staged_dir.as_ref().map(|dir| dir.join(abi::SONAME)));
     if let Some(path) = &core_path
         && let Some(core) = read_elf(path, &mut outcome, &mut files)
     {
@@ -523,18 +713,43 @@ fn run_checks(options: &CheckOptions) -> Result<usize, String> {
         outcome.report(&format!("SONAME links in {}", libdir.display()), &problems);
     }
 
-    let launcher_path = options.launcher.clone().or_else(|| {
-        root.as_ref()
-            .map(|root| root.join("bin/gnoblin"))
-            .filter(|path| core_path.is_some() && path.exists())
-    });
+    let launcher_path = options
+        .launcher
+        .clone()
+        .or_else(|| {
+            root.as_ref()
+                .map(|root| root.join("bin/gnoblin"))
+                .filter(|path| core_path.is_some() && path.exists())
+        })
+        .or_else(|| staged_dir.as_ref().map(|dir| dir.join("gnoblin")));
     if let Some(path) = &launcher_path {
+        let mut resolved = Vec::new();
         if let Some(launcher) = read_elf(path, &mut outcome, &mut files) {
             outcome.report(&format!("launcher {}", path.display()), &check_launcher(&launcher));
+            let (found, problems) = check_resolution(path, &launcher, &system_dirs);
+            for (name, found) in &found {
+                println!("[dist-check] info  {name} resolves to {}", found.display());
+            }
+            outcome.report(
+                &format!("loader resolution of {} with LD_LIBRARY_PATH unset", path.display()),
+                &problems,
+            );
+            resolved = found;
         }
+        // The loader's own answer for everything else the launcher needs. A gnoblin library the model above resolved
+        // through the staged `/usr` tree is not on this machine's search path, so `ldd` cannot see it.
         match ldd_missing(path) {
-            Ok(missing) => outcome.report(&format!("ldd {}", path.display()), &missing),
+            Ok(missing) => {
+                let missing: Vec<String> = missing
+                    .into_iter()
+                    .filter(|line| !resolved.iter().any(|(name, _)| line.starts_with(name.as_str())))
+                    .collect();
+                outcome.report(&format!("ldd {}", path.display()), &missing);
+            }
             Err(error) => outcome.report(&format!("ldd {}", path.display()), &[error]),
+        }
+        if options.run {
+            outcome.report(&format!("{} runs from its own tree", path.display()), &check_runs(path));
         }
     }
 
@@ -548,6 +763,10 @@ fn run_checks(options: &CheckOptions) -> Result<usize, String> {
         && let Some(std) = read_elf(path, &mut outcome, &mut files)
     {
         outcome.report(&format!("std {}", path.display()), &check_std_library(&std));
+        // A library in a private prefix must find the core through its own run path; one in the library directory of a
+        // distribution prefix needs none.
+        let (_, problems) = check_resolution(path, &std, &system_dirs);
+        outcome.report(&format!("loader resolution of {}", path.display()), &problems);
     }
     for path in &options.shells {
         if let Some(shell) = read_elf(path, &mut outcome, &mut files) {
@@ -562,8 +781,29 @@ fn run_checks(options: &CheckOptions) -> Result<usize, String> {
             outcome.report(&format!("std shell {}", path.display()), &check_std_shell(&shell));
         }
     }
+    // Shells a package installed into the core's module directory. They are loaded by a process that already holds the
+    // core, so they need no run path; they must still link it and carry no copy of it.
+    if let (Some(libdir), Some(_)) = (&libdir, &core_path) {
+        for path in installed_shells(&libdir.join("gnoblin/shells")) {
+            if let Some(shell) = read_elf(&path, &mut outcome, &mut files) {
+                let problems = if shell.needed.iter().any(|needed| is_std(needed)) {
+                    check_std_shell(&shell)
+                } else {
+                    check_core_only_shell(&shell)
+                };
+                outcome.report(&format!("installed shell {}", path.display()), &problems);
+            }
+        }
+    }
 
     if let (Some(root), true) = (&root, core_path.is_some()) {
+        let (problems, listed) = crate::dist::manifest_problems(root)?;
+        outcome.report(&format!("install manifest, {listed} paths"), &problems);
+        outcome.report(
+            "install layout (design section 11)",
+            &check_layout(root, &options.libdir),
+        );
+
         let header = root.join("include/gnoblin/core.h");
         let expected = crate::abi_c::render_header(&gnoblin_core_abi::reflect::reflection())?;
         let problems = match fs::read_to_string(&header) {
@@ -599,6 +839,13 @@ fn run_checks(options: &CheckOptions) -> Result<usize, String> {
         );
     }
 
+    // The glibc floor: the newest symbol version each file needs, so a build on a newer machine than the oldest target
+    // shows up as a number before it shows up as a loader error on the target. `--max-glibc` turns it into a failure.
+    for (name, elf) in &files {
+        if let Some((major, minor)) = elf.glibc {
+            println!("[dist-check] info  glibc {major}.{minor} is the newest symbol version {name} needs");
+        }
+    }
     let (newest, problems) = check_glibc(&files, options.max_glibc);
     match newest {
         Some((major, minor)) => println!("[dist-check] info  minimum glibc for these files: {major}.{minor}"),
@@ -928,5 +1175,224 @@ mod tests {
         assert_eq!(options.libdir, "lib64");
         assert_eq!(options.max_glibc, Some((2, 31)));
         assert_eq!(options.shells, vec![PathBuf::from("a.so")]);
+    }
+
+    /// A tree like an install: `root/bin/<name>` linked against a fixture core and carrying `rpath`, and the core in
+    /// `root/<libdir>/libgnoblin-core.so.1`. Returns the root and the launcher.
+    fn tree(name: &str, rpath: &str, libdir: &str) -> (PathBuf, PathBuf) {
+        let dir = scratch(name);
+        let core_dir = dir.join("fixture-core");
+        fs::create_dir_all(&core_dir).unwrap();
+        let core = good_core(&core_dir);
+        let root = dir.join("root");
+        fs::create_dir_all(root.join("bin")).unwrap();
+        fs::create_dir_all(root.join(libdir)).unwrap();
+        fs::copy(&core, root.join(libdir).join(abi::SONAME)).unwrap();
+        let built = crate::test_fixtures::launcher(&dir, "gnoblin", &core_dir, rpath);
+        let installed = root.join("bin/gnoblin");
+        fs::copy(built, &installed).unwrap();
+        (root, installed)
+    }
+
+    #[test]
+    fn the_core_resolves_through_the_run_path_and_a_miss_names_what_was_searched() {
+        let (root, launcher) = tree("resolve-ok", "$ORIGIN/../lib", "lib");
+        let elf = elf::read(&launcher).unwrap();
+        let (found, problems) = check_resolution(&launcher, &elf, &[]);
+        assert_eq!(problems, Vec::<String>::new());
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].0, abi::SONAME);
+        assert_eq!(
+            found[0].1,
+            fs::canonicalize(root.join("lib").join(abi::SONAME)).unwrap()
+        );
+
+        // A run path that names the wrong directory: a private prefix whose libdir is not `lib`.
+        let (root, launcher) = tree("resolve-miss", "$ORIGIN/../lib", "lib/x86_64-linux-gnu");
+        let elf = elf::read(&launcher).unwrap();
+        let (found, problems) = check_resolution(&launcher, &elf, &[]);
+        assert!(found.is_empty());
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(
+            problems[0].contains(abi::SONAME) && problems[0].contains("GNOBLIN_RPATH") && problems[0].contains("lib"),
+            "{problems:?}"
+        );
+        // The same tree under a distribution prefix is found through the loader's default directories.
+        let default_dir = root.join("lib/x86_64-linux-gnu");
+        let (found, problems) = check_resolution(&launcher, &elf, &[default_dir]);
+        assert_eq!((found.len(), problems.len()), (1, 0));
+    }
+
+    #[test]
+    fn a_library_found_under_the_core_name_must_carry_its_soname() {
+        let (root, launcher) = tree("resolve-soname", "$ORIGIN/../lib", "lib");
+        cc(
+            &root,
+            "wrong.c",
+            "void other(void) {}\n",
+            &[
+                "-shared",
+                "-fPIC",
+                "-Wl,-soname,libother.so.1",
+                "-o",
+                "lib/libgnoblin-core.so.1",
+            ],
+        );
+        let elf = elf::read(&launcher).unwrap();
+        let (_, problems) = check_resolution(&launcher, &elf, &[]);
+        assert!(
+            problems.iter().any(|problem| problem.contains("whose SONAME is")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn origin_is_the_directory_the_file_really_sits_in() {
+        let (root, launcher) = tree("origin", "$ORIGIN/../lib:${ORIGIN}/x:", "lib");
+        let alias = root.join("alias");
+        std::os::unix::fs::symlink(&launcher, &alias).unwrap();
+        let elf = elf::read(&alias).unwrap();
+        let dirs = search_dirs(&alias, &elf, &[PathBuf::from("/system")]);
+        let bin = fs::canonicalize(root.join("bin")).unwrap();
+        assert_eq!(
+            dirs,
+            [bin.join("../lib"), bin.join("x"), PathBuf::from("/system")],
+            "the loader expands $ORIGIN from the resolved path; an empty entry is dropped"
+        );
+    }
+
+    #[test]
+    fn a_launcher_that_exports_core_names_is_caught() {
+        let dir = scratch("launcher-exports");
+        cc(
+            &dir,
+            "exports.c",
+            "int main(void) { return 0; }\nvoid gnoblin_get_api(void) {}\n",
+            &["-rdynamic", "-o", "exports"],
+        );
+        let problems = check_launcher(&elf::read(&dir.join("exports")).unwrap());
+        assert!(
+            problems.iter().any(|problem| problem.contains("gnoblin_get_api")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn a_core_only_shell_may_not_link_another_gnoblin_library() {
+        let dir = scratch("shell-other-lib");
+        good_core(&dir);
+        cc(
+            &dir,
+            "libgnoblin-extras.c",
+            "void extras(void) {}\n",
+            &[
+                "-shared",
+                "-fPIC",
+                "-Wl,-soname,libgnoblin-extras.so.1",
+                "-o",
+                "libgnoblin-extras.so",
+            ],
+        );
+        let with = shell(
+            &dir,
+            "with.so",
+            &format!(
+                "{ENTRY}extern void extras(void);\n__attribute__((visibility(\"hidden\"))) void *use(void) {{ return (void *)extras; }}\n"
+            ),
+            &["-lgnoblin-extras"],
+        );
+        let problems = check_core_only_shell(&elf::read(&with).unwrap());
+        assert!(
+            problems
+                .iter()
+                .any(|problem| problem.contains("libgnoblin-extras.so.1")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn the_launcher_is_run_with_the_loader_environment_cleared() {
+        let dir = scratch("runs");
+        cc(
+            &dir,
+            "ok.c",
+            "#include <stdio.h>\nint main(void) { puts(\"gnoblin\"); return 0; }\n",
+            &["-o", "ok"],
+        );
+        assert_eq!(check_runs(&dir.join("ok")), Vec::<String>::new());
+        cc(&dir, "bad.c", "int main(void) { return 3; }\n", &["-o", "bad"]);
+        let problems = check_runs(&dir.join("bad"));
+        assert_eq!(problems.len(), 2, "{problems:?}");
+        assert!(problems[0].contains("--version") && problems[1].contains("--role compositor --help"));
+        assert_eq!(check_runs(&dir.join("missing")).len(), 2);
+    }
+
+    #[test]
+    fn the_layout_of_section_11_is_listed_when_missing() {
+        let empty = scratch("layout-empty");
+        let problems = check_layout(&empty, "lib64");
+        for expected in [
+            "bin/gnoblin is missing",
+            "include/gnoblin/core.h is missing",
+            "lib64/gnoblin/shells/ is missing",
+            "share/gnoblin/shells/ is missing",
+            "share/gnoblin/js/gnoblin-core/index.ts is missing",
+            "share/gnoblin/js/gnoblin-std/index.ts is missing",
+        ] {
+            assert!(
+                problems.iter().any(|problem| problem.starts_with(expected)),
+                "{expected}: {problems:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn shells_in_the_module_directory_are_found_below_it() {
+        let dir = scratch("installed-shells");
+        fs::create_dir_all(dir.join("tiler")).unwrap();
+        fs::write(dir.join("tiler/libtiler.so"), b"x").unwrap();
+        fs::write(dir.join("libplain.so"), b"x").unwrap();
+        fs::write(dir.join("notes.txt"), b"x").unwrap();
+        assert_eq!(
+            installed_shells(&dir),
+            [dir.join("libplain.so"), dir.join("tiler/libtiler.so")]
+        );
+        assert!(installed_shells(&dir.join("missing")).is_empty());
+    }
+
+    #[test]
+    fn a_staged_tree_is_checked_through_its_origin_run_path() {
+        let dir = scratch("staged");
+        let core_dir = dir.join("fixture-core");
+        fs::create_dir_all(&core_dir).unwrap();
+        let core = good_core(&core_dir);
+        let debug = dir.join("target/debug");
+        fs::create_dir_all(&debug).unwrap();
+        fs::copy(&core, debug.join("libgnoblin_core_impl.so")).unwrap();
+        std::os::unix::fs::symlink("libgnoblin_core_impl.so", debug.join(abi::SONAME)).unwrap();
+        let built = crate::test_fixtures::launcher(&dir, "gnoblin", &core_dir, "$ORIGIN");
+        fs::copy(built, debug.join("gnoblin")).unwrap();
+        let options = CheckOptions {
+            staged: true,
+            profile: "debug".to_owned(),
+            target_dir: dir.join("target"),
+            libdir: "lib".to_owned(),
+            ..CheckOptions::default()
+        };
+        assert_eq!(run_checks(&options).unwrap(), 0);
+
+        // Without the staged link the launcher has nothing to resolve to, and the check says so.
+        fs::remove_file(debug.join(abi::SONAME)).unwrap();
+        assert!(run_checks(&options).unwrap() >= 2);
+    }
+
+    #[test]
+    fn the_staged_and_run_flags_parse() {
+        let words = |text: &[&str]| text.iter().map(|word| (*word).to_owned()).collect::<Vec<_>>();
+        let options = parse_args(&words(&["--staged", "--profile", "release", "--run"])).unwrap();
+        assert!(options.staged && options.run);
+        assert_eq!(options.profile, "release");
+        assert!(parse_args(&words(&["--run"])).is_err(), "--run needs a launcher to run");
+        assert!(parse_args(&words(&["--run", "--launcher", "bin/gnoblin"])).is_ok());
     }
 }

@@ -8,10 +8,18 @@
 //! portal's D-Bus service) carry an `@PREFIX@` placeholder, replaced with the prefix as the file is
 //! written.
 //!
-//! Every installed file is listed in `share/gnoblin/install-manifest` as `<sha256>  <path>`, relative
-//! to the prefix. An install replaces only files the manifest lists and that still hold the content it
-//! wrote. Anything else already at a destination is refused before the first write. `uninstall`
-//! removes the listed files that are unchanged, keeps modified ones and reports them.
+//! The layout is the one of `design/modular-framework.md` section 11, with `--libdir` (`lib`, `lib64` or a multiarch
+//! directory) naming where libraries go: the core library `libgnoblin_core_impl.so` is installed as
+//! `<libdir>/libgnoblin-core.so.<major>.<minor>.<patch>` with the SONAME link and the linker link, the generated header
+//! `include/gnoblin/core.h` and `<libdir>/pkgconfig/gnoblin-core.pc` go with it, `share/gnoblin/js/` holds the stock JavaScript
+//! library as data, and the directories shell packages install into (`share/gnoblin/shells`, `<libdir>/gnoblin/shells`)
+//! are made. All of these need the core library to have been built, except the JavaScript data.
+//!
+//! Every installed path is listed in `share/gnoblin/install-manifest` as `<digest>  <path>`, relative to the prefix: a
+//! file's sha256, `symlink:<target>` for a link, `dir` for a directory the install made. An install replaces only entries
+//! the manifest lists and that still hold what it wrote. Anything else already at a destination is refused before the first
+//! write (an existing directory where the install wants one is adopted). `uninstall` removes the listed entries that are
+//! unchanged, keeps modified ones and reports them, and removes a listed directory only while it is empty.
 //!
 //! Exit codes: 0 success, 1 a refused or failed install or uninstall, 2 a usage error.
 
@@ -37,6 +45,9 @@ const LIBDIR_TOKEN: &str = "@LIBDIR@";
 const LINK_PREFIX: &str = "symlink:";
 /// What cargo names the core's `cdylib` (`libgnoblin_core_impl.so`); dist installs it under the SONAME's name.
 const CORE_BUILT_NAME: &str = "libgnoblin_core_impl.so";
+/// What the manifest records for a directory the install made, where a file has its sha256: the directory is ours while it
+/// stays empty, and is removed with the install only then (another package may install into it).
+const DIR_DIGEST: &str = "dir";
 
 pub const USAGE: &str = "\
 usage: cargo xtask dist install --prefix PREFIX [--destdir DIR] [--profile NAME] [--libdir NAME]
@@ -95,6 +106,13 @@ enum InstallItem {
     Generated {
         to: &'static str,
         kind: Generated,
+        requires_built: &'static str,
+    },
+    /// Every regular file under a repository directory, installed under `to` with the same relative paths, as plain data.
+    Tree { from: &'static str, to: &'static str },
+    /// An empty directory the layout needs (a place other packages install into), made when `requires_built` was built.
+    Dir {
+        to: &'static str,
         requires_built: &'static str,
     },
 }
@@ -200,6 +218,28 @@ const ITEMS: &[InstallItem] = &[
         kind: Generated::CorePkgConfig,
         requires_built: CORE_BUILT_NAME,
     },
+    // The stock JavaScript library as installed data (`share/gnoblin/js/<package>/`). The runtime still embeds a copy and
+    // falls back to it, so these are read when the JavaScript runtime moves to the loader; they are installed now so the
+    // layout is the one of the design (`design/modular-framework.md` section 11) and a package ships them once.
+    InstallItem::Tree {
+        from: "data/js/gnoblin-core",
+        to: "share/gnoblin/js/gnoblin-core",
+    },
+    InstallItem::Tree {
+        from: "data/js/gnoblin-std",
+        to: "share/gnoblin/js/gnoblin-std",
+    },
+    // The two places a shell package installs into: launcher files under `share`, the modules they name under the core's
+    // library directory (`module` in a launcher file is relative to it; `$libdir/gnoblin/` is also where the runtime
+    // modules go). The install makes them so discovery finds a directory, empty, on a fresh install.
+    InstallItem::Dir {
+        to: "share/gnoblin/shells",
+        requires_built: CORE_BUILT_NAME,
+    },
+    InstallItem::Dir {
+        to: "@LIBDIR@/gnoblin/shells",
+        requires_built: CORE_BUILT_NAME,
+    },
 ];
 
 /// What an installed path holds.
@@ -211,6 +251,8 @@ enum PlannedContent {
     Bytes(Vec<u8>),
     /// A symlink with this relative target.
     Link(String),
+    /// A directory (an empty one, or one a file below it creates).
+    Dir,
 }
 
 /// One path the install would write, with its content resolved.
@@ -347,8 +389,8 @@ fn parse_manifest(path: &Path, text: &str) -> Result<Manifest, DistError> {
                     "a symlink target must be a relative path that stays inside the prefix",
                 ));
             }
-        } else if !is_sha256(digest) {
-            return Err(bad("the digest is not a lower-case sha256 or a symlink target"));
+        } else if digest != DIR_DIGEST && !is_sha256(digest) {
+            return Err(bad("the digest is not a lower-case sha256, `dir` or a symlink target"));
         }
         if rel.is_empty() || rel.starts_with('/') || rel.split('/').any(|part| part == "..") {
             return Err(bad("the path must be relative and stay inside the prefix"));
@@ -385,6 +427,8 @@ enum Removal {
     Remove,
     Modified,
     Missing,
+    /// A directory that is not empty: another package installed into it, so it stays.
+    Shared,
 }
 
 fn removal(current: Option<&str>, recorded: &str) -> Removal {
@@ -395,19 +439,49 @@ fn removal(current: Option<&str>, recorded: &str) -> Removal {
     }
 }
 
+/// Removes the recorded entry `rel` when it is unchanged, and prunes the directories that leaves empty.
+fn remove_recorded(root: &Path, rel: &str, digest: &str) -> Result<Removal, DistError> {
+    let path = root.join(rel);
+    let outcome = removal(current_digest(&path)?.as_deref(), digest);
+    if outcome != Removal::Remove {
+        return Ok(outcome);
+    }
+    if digest == DIR_DIGEST {
+        if fs::remove_dir(&path).is_err() {
+            return Ok(Removal::Shared);
+        }
+    } else {
+        fs::remove_file(&path).map_err(io_at(&path))?;
+    }
+    prune_dirs(root, &path);
+    Ok(Removal::Remove)
+}
+
+/// The recorded entries in the order they can be removed: files first, then directories, deepest first.
+fn removal_order(manifest: &Manifest) -> Vec<(&String, &String)> {
+    let files = manifest.iter().filter(|(_, digest)| digest.as_str() != DIR_DIGEST);
+    let dirs = manifest
+        .iter()
+        .rev()
+        .filter(|(_, digest)| digest.as_str() == DIR_DIGEST);
+    files.chain(dirs).collect()
+}
+
 /// What the manifest records for a symlink: its target, not the content it resolves to, so a link repointed elsewhere is a
 /// modification and a dangling link is still a link.
 fn link_digest(target: &str) -> String {
     format!("{LINK_PREFIX}{target}")
 }
 
-/// The digest of what is at `path` (a file's sha256, or `symlink:<target>` for a link), or `None` if nothing is there.
+/// The digest of what is at `path` (a file's sha256, `symlink:<target>` for a link, `dir` for a directory), or `None` if
+/// nothing is there.
 fn current_digest(path: &Path) -> Result<Option<String>, DistError> {
     match fs::symlink_metadata(path) {
         Ok(meta) if meta.file_type().is_symlink() => {
             let target = fs::read_link(path).map_err(io_at(path))?;
             Ok(Some(link_digest(&target.to_string_lossy())))
         }
+        Ok(meta) if meta.is_dir() => Ok(Some(DIR_DIGEST.to_owned())),
         Ok(_) => match fs::read(path) {
             Ok(bytes) => Ok(Some(sha256_hex(&bytes))),
             Err(error) => Err(DistError::Io(path.to_owned(), error)),
@@ -415,6 +489,32 @@ fn current_digest(path: &Path) -> Result<Option<String>, DistError> {
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
         Err(error) => Err(DistError::Io(path.to_owned(), error)),
     }
+}
+
+/// What differs between an installed tree and the manifest its install recorded: one line per listed path that is missing
+/// or no longer holds what the install wrote, and the number of paths checked. `dist-check` runs it, so a tree that was
+/// edited, or only half copied, is not mistaken for the layout of section 11.
+pub(crate) fn manifest_problems(root: &Path) -> Result<(Vec<String>, usize), String> {
+    let path = root.join(MANIFEST);
+    if !path.is_file() {
+        return Ok((
+            vec![format!(
+                "{} does not exist: the tree was not made by `dist install`",
+                path.display()
+            )],
+            0,
+        ));
+    }
+    let manifest = read_manifest(&path).map_err(|error| error.to_string())?;
+    let mut problems = Vec::new();
+    for (rel, digest) in &manifest {
+        match current_digest(&root.join(rel)).map_err(|error| error.to_string())? {
+            None => problems.push(format!("{rel} is listed in the manifest and missing")),
+            Some(now) if now != *digest => problems.push(format!("{rel} no longer holds what the install wrote")),
+            Some(_) => {}
+        }
+    }
+    Ok((problems, manifest.len()))
 }
 
 fn read_manifest(path: &Path) -> Result<Manifest, DistError> {
@@ -441,7 +541,7 @@ fn write_file(dest: &Path, contents: &[u8], mode: FileMode) -> Result<(), DistEr
 
 /// Makes a symlink at `dest` pointing at `target`, replacing a link already there, through a sibling temporary link so a
 /// reader never finds the name missing.
-fn write_link(dest: &Path, target: &str) -> Result<(), DistError> {
+pub(crate) fn write_link(dest: &Path, target: &str) -> Result<(), DistError> {
     let parent = dest
         .parent()
         .ok_or_else(|| DistError::Unsupported(dest.to_owned(), "has no parent directory"))?;
@@ -563,6 +663,35 @@ fn plan(repo: &Path, built: &Path, libdir: &str) -> Result<Vec<Planned>, DistErr
                     });
                 }
             }
+            InstallItem::Tree { from, to } => {
+                let source = repo.join(from);
+                let mut files = Vec::new();
+                collect_files(&source, &mut files)?;
+                for file in files {
+                    let relative = file.strip_prefix(&source).map_err(|_| {
+                        DistError::Unsupported(file.clone(), "is not under the directory the install table names")
+                    })?;
+                    let relative = relative
+                        .to_str()
+                        .ok_or_else(|| DistError::Unsupported(file.clone(), "has a name that is not UTF-8"))?;
+                    planned.push(Planned {
+                        to: format!("{}/{relative}", expand_libdir(to, libdir)),
+                        content: PlannedContent::File(file),
+                        mode: FileMode::Data,
+                        template: false,
+                    });
+                }
+            }
+            InstallItem::Dir { to, requires_built } => {
+                if built.join(requires_built).is_file() {
+                    planned.push(Planned {
+                        to: expand_libdir(to, libdir),
+                        content: PlannedContent::Dir,
+                        mode: FileMode::Data,
+                        template: false,
+                    });
+                }
+            }
         }
     }
     let mut seen = BTreeSet::new();
@@ -572,6 +701,29 @@ fn plan(repo: &Path, built: &Path, libdir: &str) -> Result<Vec<Planned>, DistErr
         }
     }
     Ok(planned)
+}
+
+/// The regular files under `dir`, in name order. A symlink or anything else is refused: a tree is plain data.
+fn collect_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), DistError> {
+    let mut entries: Vec<PathBuf> = fs::read_dir(dir)
+        .map_err(io_at(dir))?
+        .map(|entry| entry.map(|entry| entry.path()).map_err(io_at(dir)))
+        .collect::<Result<_, _>>()?;
+    entries.sort();
+    for path in entries {
+        let kind = fs::symlink_metadata(&path).map_err(io_at(&path))?.file_type();
+        if kind.is_dir() {
+            collect_files(&path, files)?;
+        } else if kind.is_file() {
+            files.push(path);
+        } else {
+            return Err(DistError::Unsupported(
+                path,
+                "is not a regular file or a directory, and a data tree holds only those",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn expand_libdir(to: &str, libdir: &str) -> String {
@@ -676,6 +828,7 @@ fn parse(args: &[String], target_dir: PathBuf) -> Result<DistOptions, String> {
 enum Payload {
     Bytes(Vec<u8>),
     Link(String),
+    Dir,
 }
 
 /// Renders a template entry's text with the prefix and digests what will be written.
@@ -709,13 +862,21 @@ fn install(repo: &Path, options: &DistOptions) -> Result<(), DistError> {
                 prepare(raw, source, entry, &options.prefix)?
             }
             PlannedContent::Bytes(bytes) => prepare(bytes.clone(), Path::new(&entry.to), entry, &options.prefix)?,
+            PlannedContent::Dir => (Payload::Dir, DIR_DIGEST.to_owned()),
         };
         let dest = root.join(&entry.to);
         let current = current_digest(&dest)?;
-        match destination(current.as_deref(), recorded.get(&entry.to).map(String::as_str)) {
-            Destination::Create | Destination::Replace => {}
-            Destination::Foreign => return Err(DistError::Foreign(dest)),
-            Destination::Modified => return Err(DistError::Modified(dest)),
+        if matches!(payload, Payload::Dir) {
+            // A directory another package made is adopted; a file or link in its place is not ours to replace.
+            if current.as_deref().is_some_and(|now| now != DIR_DIGEST) {
+                return Err(DistError::Foreign(dest));
+            }
+        } else {
+            match destination(current.as_deref(), recorded.get(&entry.to).map(String::as_str)) {
+                Destination::Create | Destination::Replace => {}
+                Destination::Foreign => return Err(DistError::Foreign(dest)),
+                Destination::Modified => return Err(DistError::Modified(dest)),
+            }
         }
         staged.push((entry, dest, payload, digest));
     }
@@ -728,6 +889,7 @@ fn install(repo: &Path, options: &DistOptions) -> Result<(), DistError> {
         let written = match payload {
             Payload::Bytes(contents) => write_file(dest, contents, entry.mode),
             Payload::Link(target) => write_link(dest, target),
+            Payload::Dir => fs::create_dir_all(dest).map_err(io_at(dest)),
         };
         if let Err(error) = written {
             failure = Some(error);
@@ -742,20 +904,17 @@ fn install(repo: &Path, options: &DistOptions) -> Result<(), DistError> {
     let mut retired = Vec::new();
     let mut kept = Vec::new();
     if failure.is_none() {
-        for (rel, digest) in &recorded {
+        for (rel, digest) in removal_order(&recorded) {
             if wanted.contains(rel.as_str()) {
                 continue;
             }
-            let path = root.join(rel);
-            match removal(current_digest(&path)?.as_deref(), digest) {
+            match remove_recorded(&root, rel, digest)? {
                 Removal::Remove => {
-                    fs::remove_file(&path).map_err(io_at(&path))?;
-                    prune_dirs(&root, &path);
                     manifest.remove(rel);
                     retired.push(rel.clone());
                 }
                 Removal::Modified => kept.push(rel.clone()),
-                Removal::Missing => {
+                Removal::Missing | Removal::Shared => {
                     manifest.remove(rel);
                 }
             }
@@ -791,19 +950,15 @@ fn uninstall(options: &DistOptions) -> Result<(), DistError> {
 
     let mut kept = Manifest::new();
     let mut removed = 0_usize;
-    for (rel, digest) in &recorded {
-        let path = root.join(rel);
-        match removal(current_digest(&path)?.as_deref(), digest) {
-            Removal::Remove => {
-                fs::remove_file(&path).map_err(io_at(&path))?;
-                prune_dirs(&root, &path);
-                removed += 1;
-            }
+    for (rel, digest) in removal_order(&recorded) {
+        match remove_recorded(&root, rel, digest)? {
+            Removal::Remove => removed += 1,
             Removal::Modified => {
                 println!("[dist] kept {rel}: changed since the install");
                 kept.insert(rel.clone(), digest.clone());
             }
             Removal::Missing => println!("[dist] missing {rel}: already removed"),
+            Removal::Shared => println!("[dist] left {rel}: not empty"),
         }
     }
     if kept.is_empty() {
@@ -1240,5 +1395,150 @@ mod tests {
         );
         assert!(!root.join("lib/pkgconfig").exists(), "the empty directory is pruned");
         assert!(!root.join(MANIFEST).exists());
+    }
+
+    #[test]
+    fn the_stock_javascript_library_and_the_shell_directories_are_part_of_a_core_install() {
+        let dir = scratch("dist-plan-layout");
+        let core_dir = dir.join("fixture-core");
+        fs::create_dir_all(&core_dir).unwrap();
+        let core = good_core(&core_dir);
+        let without = plan(&repo_root(), &fake_build(&dir, None, None).join("release"), "lib64").unwrap();
+        assert!(
+            without.iter().all(|entry| entry.content != PlannedContent::Dir),
+            "a build without the core makes no shell directory"
+        );
+        let with = plan(
+            &repo_root(),
+            &fake_build(&dir, None, Some(&core)).join("release"),
+            "lib64",
+        )
+        .unwrap();
+        for directory in ["share/gnoblin/shells", "lib64/gnoblin/shells"] {
+            assert!(
+                with.iter()
+                    .any(|entry| entry.to == directory && entry.content == PlannedContent::Dir),
+                "{directory} is not planned"
+            );
+        }
+        // Every file of both stock packages is installed under the same relative path, as plain data.
+        for package in ["gnoblin-core", "gnoblin-std"] {
+            let source = repo_root().join("data/js").join(package);
+            let mut files = Vec::new();
+            collect_files(&source, &mut files).unwrap();
+            assert!(!files.is_empty(), "{package} has no files");
+            for file in files {
+                let relative = file.strip_prefix(&source).unwrap().to_str().unwrap().to_owned();
+                let entry = with
+                    .iter()
+                    .find(|entry| entry.to == format!("share/gnoblin/js/{package}/{relative}"))
+                    .unwrap_or_else(|| panic!("{package}/{relative} is not planned"));
+                assert_eq!(entry.content, PlannedContent::File(file));
+                assert_eq!(entry.mode, FileMode::Data);
+                assert!(!entry.template);
+            }
+        }
+    }
+
+    #[test]
+    fn a_data_tree_refuses_a_symlink() {
+        let dir = scratch("dist-tree-link");
+        fs::write(dir.join("real"), b"x").unwrap();
+        std::os::unix::fs::symlink("real", dir.join("alias")).unwrap();
+        let mut files = Vec::new();
+        let error = collect_files(&dir, &mut files).unwrap_err();
+        assert!(matches!(error, DistError::Unsupported(..)), "{error}");
+    }
+
+    #[test]
+    fn the_manifest_records_a_directory_and_the_removal_order_puts_directories_last() {
+        let good = sha256_hex(b"x");
+        let text = format!("dir  lib/gnoblin/shells\n{good}  lib/a.so\ndir  lib/gnoblin\n");
+        let manifest = parse_manifest(Path::new("m"), &text).unwrap();
+        assert_eq!(manifest["lib/gnoblin/shells"], DIR_DIGEST);
+        assert_eq!(
+            removal_order(&manifest)
+                .iter()
+                .map(|(path, _)| path.as_str())
+                .collect::<Vec<_>>(),
+            ["lib/a.so", "lib/gnoblin/shells", "lib/gnoblin"],
+            "files first, then directories deepest first"
+        );
+        assert!(parse_manifest(Path::new("m"), "directory  lib/x\n").is_err());
+    }
+
+    #[test]
+    fn the_core_install_makes_the_layout_and_uninstall_keeps_a_directory_another_package_filled() {
+        let dir = scratch("dist-install-layout");
+        let core_dir = dir.join("fixture-core");
+        fs::create_dir_all(&core_dir).unwrap();
+        let core = good_core(&core_dir);
+        let target = fake_build(&dir, None, Some(&core));
+        let destdir = dir.join("dest");
+        // A shell package installed first: its directory is adopted, not refused, and not removed with ours.
+        let root = install_root(&destdir, "/usr");
+        fs::create_dir_all(root.join("share/gnoblin/shells")).unwrap();
+        fs::write(root.join("share/gnoblin/shells/tiler.toml"), b"module = \"x\"\n").unwrap();
+
+        install(&repo_root(), &options(&destdir, &target, "lib64")).unwrap();
+        let manifest = read_manifest(&root.join(MANIFEST)).unwrap();
+        assert_eq!(manifest["share/gnoblin/shells"], DIR_DIGEST);
+        assert_eq!(manifest["lib64/gnoblin/shells"], DIR_DIGEST);
+        assert!(root.join("lib64/gnoblin/shells").is_dir());
+        assert!(root.join("share/gnoblin/js/gnoblin-core/index.ts").is_file());
+        assert!(root.join("share/gnoblin/js/gnoblin-std/index.ts").is_file());
+        assert_eq!(manifest_problems(&root).unwrap().0, Vec::<String>::new());
+
+        let mut remove = options(&destdir, &target, "lib64");
+        remove.action = DistAction::Uninstall;
+        uninstall(&remove).unwrap();
+        assert!(
+            !root.join("lib64/gnoblin").exists(),
+            "the empty module directory went with the install"
+        );
+        assert!(
+            root.join("share/gnoblin/shells/tiler.toml").is_file(),
+            "the other package's launcher file stays"
+        );
+        assert!(!root.join("share/gnoblin/js").exists());
+        assert!(!root.join(MANIFEST).exists());
+
+        // A file where a directory belongs is not ours to replace.
+        let fresh = dir.join("fresh");
+        fs::create_dir_all(fresh.join("usr/share/gnoblin")).unwrap();
+        fs::write(fresh.join("usr/share/gnoblin/shells"), b"not a directory").unwrap();
+        let error = install(&repo_root(), &options(&fresh, &target, "lib64")).unwrap_err();
+        assert!(matches!(error, DistError::Foreign(_)), "{error}");
+    }
+
+    #[test]
+    fn a_tree_that_drifted_from_its_manifest_is_reported() {
+        let dir = scratch("dist-manifest-drift");
+        let core_dir = dir.join("fixture-core");
+        fs::create_dir_all(&core_dir).unwrap();
+        let core = good_core(&core_dir);
+        let target = fake_build(&dir, None, Some(&core));
+        let destdir = dir.join("dest");
+        install(&repo_root(), &options(&destdir, &target, "lib")).unwrap();
+        let root = install_root(&destdir, "/usr");
+
+        fs::write(root.join("share/gnoblin/js/gnoblin-core/index.ts"), b"// edited\n").unwrap();
+        fs::remove_file(root.join("include/gnoblin/core.h")).unwrap();
+        let (problems, listed) = manifest_problems(&root).unwrap();
+        assert!(listed > 10, "{listed}");
+        assert!(
+            problems
+                .iter()
+                .any(|problem| problem.starts_with("share/gnoblin/js/gnoblin-core/index.ts no longer")),
+            "{problems:?}"
+        );
+        assert!(
+            problems
+                .iter()
+                .any(|problem| problem.starts_with("include/gnoblin/core.h is listed")),
+            "{problems:?}"
+        );
+        let (problems, _) = manifest_problems(&dir.join("nothing")).unwrap();
+        assert!(problems[0].contains("not made by `dist install`"), "{problems:?}");
     }
 }
